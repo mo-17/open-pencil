@@ -1,13 +1,13 @@
 import type { PagePathInfo } from '#compiler/adapters/react/route-paths'
-import { buildIndexCss, buildMetadataTags } from '#compiler/project'
-import type { CompilerOptions, HtmlMetadata } from '#compiler/types'
+import { buildIndexCSS, buildMetadataTags } from '#compiler/project'
+import type { CompilerOptions, HTMLMetadata } from '#compiler/types'
 
 import type { VueLowcodeUsage } from './lowcode/usage'
 
 const VUE_VERSION = '^3.5.29'
 const VUE_ROUTER_VERSION = '^4.6.4'
 
-export function buildVuePackageJson(options: CompilerOptions, router: boolean): string {
+export function buildVuePackageJSON(options: CompilerOptions, router: boolean): string {
   const dependencies: Record<string, string> = { vue: VUE_VERSION }
   if (router) dependencies['vue-router'] = VUE_ROUTER_VERSION
   return `${JSON.stringify(
@@ -74,21 +74,21 @@ export function buildVueTsConfig(): string {
   )}\n`
 }
 
-export function buildVueIndexHtml(
+export function buildVueIndexHTML(
   packageName: string,
-  metadata: HtmlMetadata | undefined,
+  metadata: HTMLMetadata | undefined,
   sourceLocale?: string
 ): string {
   const title = cleanText(metadata?.title) ?? packageName
   const locale = normalizeVueSourceLocale(sourceLocale)
-  const direction = isRtlLocale(locale) ? ' dir="rtl"' : ''
+  const direction = isRTLLocale(locale) ? ' dir="rtl"' : ''
   const extra = buildMetadataTags(metadata)
   return `<!doctype html>
-<html lang="${escapeHtml(locale)}"${direction}>
+<html lang="${escapeHTML(locale)}"${direction}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escapeHtml(title)}</title>
+    <title>${escapeHTML(title)}</title>
 ${extra}  </head>
   <body>
     <div id="app"></div>
@@ -105,12 +105,12 @@ export function buildVueMain(
 ): string {
   const routerImport = router ? `import { router } from './router'\n` : ''
   const routerUse = router ? '.use(router)' : ''
-  const validationCss = lowcode.validation ? `import './lowcode-validation.css'\n` : ''
+  const validationCSS = lowcode.validation ? `import './lowcode-validation.css'\n` : ''
   const previewImports = devMode ? `import './lowcode-state'\nimport './__preview-bridge'\n` : ''
   return `import { createApp } from 'vue'
 ${routerImport}import App from './App.vue'
 import './index.css'
-${validationCss}${previewImports}
+${validationCSS}${previewImports}
 createApp(App)${routerUse}.mount('#app')
 `
 }
@@ -163,14 +163,14 @@ ${routes}
 `
 }
 
-export function buildVueIndexCssFile(
+export function buildVueIndexCSSFile(
   classNames: readonly string[],
   options: CompilerOptions
 ): string {
   const custom = [options.themeCss?.trim(), options.metadata?.customCss?.trim()]
     .filter(Boolean)
     .join('\n\n')
-  return buildIndexCss(classNames, '', custom)
+  return buildIndexCSS(classNames, '', custom)
 }
 
 export function buildVueReadme(router: boolean): string {
@@ -207,7 +207,7 @@ export function normalizeVueSourceLocale(value: string | undefined): string {
   return /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(locale) ? locale : 'en'
 }
 
-function isRtlLocale(value: string): boolean {
+function isRTLLocale(value: string): boolean {
   return RTL_LOCALES.has(value.split('-')[0].toLowerCase())
 }
 
@@ -228,7 +228,7 @@ const RTL_LOCALES = new Set([
   'syr'
 ])
 
-function escapeHtml(value: string): string {
+function escapeHTML(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')

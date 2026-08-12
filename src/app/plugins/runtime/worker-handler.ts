@@ -153,19 +153,19 @@ export function createPluginRuntimeWorkerRequestHandler(
     const fallbackRequestId = candidateRequestId(value)
     try {
       const request = await parseWorkerRequest(value)
-      const outputJson = await executeWasmPluginCompute({
+      const outputJSON = await executeWasmPluginCompute({
         wasmBytes: request.wasmBytes,
         inputJson: request.inputJson,
         maxOutputBytes: request.limits.maxOutputBytes
       })
-      if (encoder.encode(outputJson).byteLength > request.limits.maxOutputBytes) {
+      if (encoder.encode(outputJSON).byteLength > request.limits.maxOutputBytes) {
         throw new Error('Plugin runtime Worker output exceeds its byte limit')
       }
       post({
         version: PLUGIN_RUNTIME_WORKER_PROTOCOL_VERSION,
         type: 'result',
         requestId: request.requestId,
-        outputJson
+        outputJson: outputJSON
       })
     } catch (cause) {
       if (fallbackRequestId) {

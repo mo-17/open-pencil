@@ -4,8 +4,8 @@ import {
   auditApplicationRuntime,
   detectSupabaseSecretKey,
   isSafeLowcodeHeadLinkHref,
-  unsafeLowcodeCustomCssUrls,
-  unsafeLowcodeHeadMetaRefreshUrl,
+  unsafeLowcodeCustomCSSURLs,
+  unsafeLowcodeHeadMetaRefreshURL,
   validateAnalyticsConfig
 } from '@open-pencil/core/lowcode-validation'
 import type { ApplicationRuntimeIssue } from '@open-pencil/core/lowcode-validation'
@@ -21,7 +21,7 @@ import type {
   SupabaseConfig,
   WorkflowDef
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
 
@@ -85,7 +85,7 @@ export type ApplicationSecurityReadinessCategory =
 
 export type ApplicationSecurityReadinessSeverity = 'error' | 'warning'
 
-export interface ApplicationSecurityReadinessFinding extends JsonObject {
+export interface ApplicationSecurityReadinessFinding extends JSONObject {
   code: ApplicationSecurityReadinessFindingCode
   category: ApplicationSecurityReadinessCategory
   severity: ApplicationSecurityReadinessSeverity
@@ -94,7 +94,7 @@ export interface ApplicationSecurityReadinessFinding extends JsonObject {
   occurrences: number
 }
 
-export interface ApplicationSecurityReadinessSummary extends JsonObject {
+export interface ApplicationSecurityReadinessSummary extends JSONObject {
   visitedNodeCount: number
   visitedActionCount: number
   clientEndpointCount: number
@@ -105,7 +105,7 @@ export interface ApplicationSecurityReadinessSummary extends JsonObject {
   serverEnvironmentBindingCount: number
 }
 
-export interface ApplicationSecurityReadinessResult extends JsonObject {
+export interface ApplicationSecurityReadinessResult extends JSONObject {
   kind: 'application-security-readiness'
   scope: 'document'
   pluginId: typeof APPLICATION_SECURITY_READINESS_PLUGIN_ID
@@ -905,10 +905,10 @@ function inspectAnalytics(root: SceneNode | undefined, state: AuditState): void 
   }
 }
 
-function inspectCss(value: string, state: AuditState): void {
+function inspectCSS(value: string, state: AuditState): void {
   const bounded = value.slice(0, APPLICATION_SECURITY_READINESS_LIMITS.customCssCodeUnits)
   if (value.length > bounded.length) state.truncated = true
-  const unsafe = unsafeLowcodeCustomCssUrls(bounded)
+  const unsafe = unsafeLowcodeCustomCSSURLs(bounded)
   if (unsafe.length > 0) addFinding(state, 'unsafe-custom-css-url', unsafe.length)
 }
 
@@ -918,7 +918,7 @@ async function inspectCustomCode(
   state: AuditState,
   signal: AbortSignal | undefined
 ): Promise<void> {
-  if (typeof root?.lowcodeCustomCss === 'string') inspectCss(root.lowcodeCustomCss, state)
+  if (typeof root?.lowcodeCustomCss === 'string') inspectCSS(root.lowcodeCustomCss, state)
   const head = root?.lowcodeHeadMetadata
   if (!head) return
   const styles = Array.isArray(head.styles) ? head.styles : []
@@ -926,7 +926,7 @@ async function inspectCustomCode(
   if (styles.length > styleCount) state.truncated = true
   for (let index = 0; index < styleCount; index += 1) {
     await checkpoint(state, signal)
-    if (typeof styles[index] === 'string') inspectCss(styles[index], state)
+    if (typeof styles[index] === 'string') inspectCSS(styles[index], state)
     else addFinding(state, 'lowcode-structure-invalid')
   }
   const links = Array.isArray(head.link) ? head.link : []
@@ -959,7 +959,7 @@ async function inspectCustomCode(
     }
     const key = boundedString(entry.key, state, 256)
     const content = boundedString(entry.content, state, 4_096)
-    if (unsafeLowcodeHeadMetaRefreshUrl(entry.kind, key, content)) {
+    if (unsafeLowcodeHeadMetaRefreshURL(entry.kind, key, content)) {
       addFinding(state, 'unsafe-meta-refresh')
     }
   }

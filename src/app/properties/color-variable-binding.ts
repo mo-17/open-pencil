@@ -1,6 +1,6 @@
 import type { Color, Variable } from '@open-pencil/scene-graph'
 
-export type ColorVariableBindingApi = {
+export type ColorVariableBindingAPI = {
   store: {
     resolveColorVariable: (id: string) => unknown
   }
@@ -13,7 +13,7 @@ export type ColorVariableBindingApi = {
   createAndBindVariable?: (nodeId: string, index: number, color: Color, name?: string) => void
 }
 
-export type GradientStopColorVariableBindingApi = ColorVariableBindingApi & {
+export type GradientStopColorVariableBindingAPI = ColorVariableBindingAPI & {
   getGradientStopBoundVariable: (
     nodeId: string,
     fillIndex: number,
@@ -51,19 +51,19 @@ function isColor(value: unknown): value is Color {
 }
 
 export function resolveColorVariable(
-  bindingApi: Pick<ColorVariableBindingApi, 'store'>,
+  bindingAPI: Pick<ColorVariableBindingAPI, 'store'>,
   variableId: string
 ): Color | undefined {
-  const color = bindingApi.store.resolveColorVariable(variableId)
+  const color = bindingAPI.store.resolveColorVariable(variableId)
   return isColor(color) ? color : undefined
 }
 
 export function boundGradientStopColor(
-  bindingApi: GradientStopColorVariableBindingApi,
+  bindingAPI: GradientStopColorVariableBindingAPI,
   nodeId: string,
   fillIndex: number,
   stopIndex: number
 ): Color | undefined {
-  const variable = bindingApi.getGradientStopBoundVariable(nodeId, fillIndex, stopIndex)
-  return variable ? resolveColorVariable(bindingApi, variable.id) : undefined
+  const variable = bindingAPI.getGradientStopBoundVariable(nodeId, fillIndex, stopIndex)
+  return variable ? resolveColorVariable(bindingAPI, variable.id) : undefined
 }

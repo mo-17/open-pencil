@@ -41,17 +41,17 @@ describe('compile (public API, end-to-end)', () => {
     expect(pkg.dependencies['react-dom']).toBeDefined()
     expect(pkg.devDependencies['@tailwindcss/vite']).toBeDefined()
 
-    const indexHtml = out.files.get('index.html') as string
-    expect(indexHtml).toContain('<title>demo-app</title>')
-    expect(indexHtml).toContain('/src/main.tsx')
+    const indexHTML = out.files.get('index.html') as string
+    expect(indexHTML).toContain('<title>demo-app</title>')
+    expect(indexHTML).toContain('/src/main.tsx')
 
     const mainTsx = out.files.get('src/main.tsx') as string
     expect(mainTsx).toContain("import App from './App'")
     expect(mainTsx).toContain("import './index.css'")
     expect(mainTsx).toContain('createRoot')
 
-    const indexCss = out.files.get('src/index.css') as string
-    expect(indexCss).toContain('@import "tailwindcss"')
+    const indexCSS = out.files.get('src/index.css') as string
+    expect(indexCSS).toContain('@import "tailwindcss"')
 
     const appTsx = out.files.get('src/App.tsx') as string
     expect(appTsx).toContain('export default function App')
@@ -231,8 +231,8 @@ describe('compile (public API, end-to-end)', () => {
       pageIds: [pageId],
       options: withDefaults({ packageName: 'a&b<c>' })
     })
-    const indexHtml = out.files.get('index.html') as string
-    expect(indexHtml).toContain('<title>a&amp;b&lt;c&gt;</title>')
+    const indexHTML = out.files.get('index.html') as string
+    expect(indexHTML).toContain('<title>a&amp;b&lt;c&gt;</title>')
   })
 
   test('devMode=true emits the preview bridge and data-node-id', () => {

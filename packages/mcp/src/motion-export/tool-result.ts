@@ -8,15 +8,15 @@ import {
   type MotionRenderedFrame
 } from '@open-pencil/core/io/motion-export'
 
-interface JsonRecord {
+interface JSONRecord {
   [key: string]: unknown
 }
 
-function record(value: unknown, label: string): JsonRecord {
+function record(value: unknown, label: string): JSONRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Motion ${label} is malformed`)
   }
-  return value as JsonRecord
+  return value as JSONRecord
 }
 
 function integer(value: unknown, label: string, min = 0): number {
@@ -44,7 +44,7 @@ function validBase64(value: unknown, label: string): Buffer {
   return bytes
 }
 
-function assertPng(bytes: Uint8Array, label: string): void {
+function assertPNG(bytes: Uint8Array, label: string): void {
   const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
   if (bytes.length < signature.length || !signature.every((byte, index) => bytes[index] === byte)) {
     throw new Error(`Motion ${label} is not valid PNG data`)
@@ -105,7 +105,7 @@ function reconstructPlan(manifestValue: unknown): MotionFramePlan {
   }
 }
 
-function renderedFrames(result: JsonRecord, plan: MotionFramePlan): MotionRenderedFrame[] {
+function renderedFrames(result: JSONRecord, plan: MotionFramePlan): MotionRenderedFrame[] {
   if (!Array.isArray(result.frames) || result.frames.length !== plan.frameCount) {
     throw new Error('Motion PNG sequence result frame count is malformed')
   }
@@ -117,7 +117,7 @@ function renderedFrames(result: JsonRecord, plan: MotionFramePlan): MotionRender
       throw new Error(`Motion PNG sequence frame ${index} has an unexpected file name`)
     }
     const bytes = validBase64(candidate.base64, `PNG sequence frame ${index} base64`)
-    assertPng(bytes, `PNG sequence frame ${index}`)
+    assertPNG(bytes, `PNG sequence frame ${index}`)
     if (candidate.byteLength !== undefined && candidate.byteLength !== bytes.length) {
       throw new Error(`Motion PNG sequence frame ${index} length does not match`)
     }
@@ -145,7 +145,7 @@ function assertEncodedSignature(format: string, bytes: Uint8Array): void {
 }
 
 /** Convert a bounded app-rendered PNG sequence into a real Node-platform encoded result. */
-export async function encodeMotionPngSequenceToolResult(
+export async function encodeMotionPNGSequenceToolResult(
   value: unknown,
   encoder: MotionAnimationEncoder,
   signal?: AbortSignal,

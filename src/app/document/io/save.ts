@@ -1,4 +1,5 @@
 import type { EditorState } from '@open-pencil/core/editor'
+import { dialogMessages } from '@open-pencil/vue'
 
 import { downloadBlob } from '@/app/document/io/browser'
 import { documentNameFromFigPath } from '@/app/document/io/names'
@@ -156,7 +157,7 @@ export function createSaveActions({
       return
     }
 
-    const filename = prompt('Save as:', getDownloadName() ?? 'Untitled.fig')
+    const filename = prompt(dialogMessages.get().saveAsPrompt, getDownloadName() ?? 'Untitled.fig')
     if (!filename || !sourceIsUnchanged(sourceRevision)) return
     const built = await buildFigFile()
     if (!sourceIsUnchanged(sourceRevision)) return

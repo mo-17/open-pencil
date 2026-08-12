@@ -296,7 +296,7 @@ function emit(event: OutgoingEvent): void {
   process.stdout.write(JSON.stringify(event) + '\n')
 }
 
-async function runCli(): Promise<void> {
+async function runCLI(): Promise<void> {
   let portArg = 0
   let rootArg: string | undefined
   let targetArg: WebVfsTarget = 'react'
@@ -400,7 +400,7 @@ async function handleCommand(
 // Bun sets `import.meta.main = true` for the entry module. The type
 // augmentation lives in bun-types; cast to access without redeclaring.
 if ((import.meta as { main?: boolean }).main) {
-  void runCli()
+  void runCLI()
 }
 
 // Used by ViteDevServer reference — keeping the import explicit avoids `vite`

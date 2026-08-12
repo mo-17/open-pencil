@@ -9,11 +9,11 @@ import type {
 } from '@agentclientprotocol/sdk'
 
 import {
-  beginAcpDiagnostics,
-  getAcpDiagnostics,
-  recordAcpConfigOptions,
-  recordAcpNewSession,
-  resetAcpDiagnostics
+  beginACPDiagnostics,
+  getACPDiagnostics,
+  recordACPConfigOptions,
+  recordACPNewSession,
+  resetACPDiagnostics
 } from '@/app/ai/acp/diagnostics'
 import { mapUpdate } from '@/app/ai/acp/map-update'
 import {
@@ -127,9 +127,9 @@ describe('requestACPConfigOption', () => {
 
 describe('ACP config diagnostics', () => {
   test('clears missing categories from complete option snapshots', () => {
-    resetAcpDiagnostics()
-    beginAcpDiagnostics('Codex')
-    recordAcpConfigOptions([
+    resetACPDiagnostics()
+    beginACPDiagnostics('Codex')
+    recordACPConfigOptions([
       {
         type: 'select',
         id: 'model',
@@ -147,21 +147,21 @@ describe('ACP config diagnostics', () => {
         options: [{ value: 'high', name: 'High' }]
       }
     ])
-    expect(getAcpDiagnostics()).toMatchObject({
+    expect(getACPDiagnostics()).toMatchObject({
       modelId: 'gpt-5.6-sol',
       thoughtLevel: 'high'
     })
 
-    recordAcpConfigOptions([])
-    expect(getAcpDiagnostics().modelId).toBeUndefined()
-    expect(getAcpDiagnostics().thoughtLevel).toBeUndefined()
-    resetAcpDiagnostics()
+    recordACPConfigOptions([])
+    expect(getACPDiagnostics().modelId).toBeUndefined()
+    expect(getACPDiagnostics().thoughtLevel).toBeUndefined()
+    resetACPDiagnostics()
   })
 
   test('uses the legacy new-session model only when config options omit a model', () => {
-    resetAcpDiagnostics()
-    beginAcpDiagnostics('Codex')
-    recordAcpNewSession({
+    resetACPDiagnostics()
+    beginACPDiagnostics('Codex')
+    recordACPNewSession({
       sessionId: 'session-1',
       configOptions: [
         {
@@ -178,12 +178,12 @@ describe('ACP config diagnostics', () => {
         availableModels: []
       }
     })
-    expect(getAcpDiagnostics()).toMatchObject({
+    expect(getACPDiagnostics()).toMatchObject({
       modelId: 'legacy-model',
       thoughtLevel: 'medium'
     })
 
-    recordAcpNewSession({
+    recordACPNewSession({
       sessionId: 'session-2',
       configOptions: [
         {
@@ -200,9 +200,9 @@ describe('ACP config diagnostics', () => {
         availableModels: []
       }
     })
-    expect(getAcpDiagnostics().modelId).toBe('config-model')
-    expect(getAcpDiagnostics().thoughtLevel).toBeUndefined()
-    resetAcpDiagnostics()
+    expect(getACPDiagnostics().modelId).toBe('config-model')
+    expect(getACPDiagnostics().thoughtLevel).toBeUndefined()
+    resetACPDiagnostics()
   })
 })
 

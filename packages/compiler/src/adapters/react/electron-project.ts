@@ -1,7 +1,7 @@
 import {
   appendReactProjectGitignore,
   configureReactViteRelativeBase,
-  patchReactCompilerPackageJson,
+  patchReactCompilerPackageJSON,
   rewriteReactProjectForHashRouting,
   type ReactCompilerProjectFiles
 } from './source-project'
@@ -39,7 +39,7 @@ export function buildElectronReactProjectFiles(
   compiledFiles: ReactCompilerProjectFiles,
   productName: string
 ): Map<string, string | Uint8Array> {
-  const files = patchReactCompilerPackageJson(compiledFiles, {
+  const files = patchReactCompilerPackageJSON(compiledFiles, {
     description: `Electron project exported from ${productName} in OpenPencil`,
     main: 'electron/main.cjs',
     scripts: {

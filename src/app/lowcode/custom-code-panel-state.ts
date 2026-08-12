@@ -1,8 +1,8 @@
 import {
   compactLowcodeHeadMetadata,
-  unsafeLowcodeCustomCssUrls,
-  unsafeLowcodeHeadMetaRefreshUrl,
-  validateLowcodeCustomCss
+  unsafeLowcodeCustomCSSURLs,
+  unsafeLowcodeHeadMetaRefreshURL,
+  validateLowcodeCustomCSS
 } from '@open-pencil/core/lowcode-validation'
 import type {
   LowcodeHeadLink,
@@ -58,13 +58,13 @@ export function emptyHeadLink(): LowcodeHeadLink {
 
 export function draftFromCustomCode(
   head: LowcodeHeadMetadata | undefined,
-  customCss: string | undefined
+  customCSS: string | undefined
 ): CustomCodeDraft {
   return {
     meta: head?.meta?.length ? head.meta.map((entry) => ({ ...entry })) : [],
     link: head?.link?.length ? head.link.map((entry) => ({ ...entry })) : [],
     stylesText: head?.styles?.join('\n\n') ?? '',
-    customCss: customCss ?? ''
+    customCss: customCSS ?? ''
   }
 }
 
@@ -74,10 +74,10 @@ export function buildCustomCodePatch(draft: CustomCodeDraft): CustomCodePatch {
     link: draft.link,
     styles: draft.stylesText.split(/\n{2,}/)
   })
-  const customCss = draft.customCss.trim()
+  const customCSS = draft.customCss.trim()
   return {
     lowcodeHeadMetadata: head,
-    lowcodeCustomCss: customCss && validateLowcodeCustomCss(customCss).ok ? customCss : undefined
+    lowcodeCustomCss: customCSS && validateLowcodeCustomCSS(customCSS).ok ? customCSS : undefined
   }
 }
 
@@ -98,9 +98,9 @@ export function hasIncompleteCustomCodeRows(draft: CustomCodeDraft): boolean {
 
 export function hasUnsafeCustomCodeUrls(draft: CustomCodeDraft): boolean {
   return (
-    unsafeLowcodeCustomCssUrls(`${draft.stylesText}\n${draft.customCss}`).length > 0 ||
+    unsafeLowcodeCustomCSSURLs(`${draft.stylesText}\n${draft.customCss}`).length > 0 ||
     draft.meta.some(
-      (entry) => unsafeLowcodeHeadMetaRefreshUrl(entry.kind, entry.key, entry.content) !== undefined
+      (entry) => unsafeLowcodeHeadMetaRefreshURL(entry.kind, entry.key, entry.content) !== undefined
     )
   )
 }
@@ -108,7 +108,7 @@ export function hasUnsafeCustomCodeUrls(draft: CustomCodeDraft): boolean {
 export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCspRisk[] {
   const risks: CustomCodeCspRisk[] = []
   const styles = draft.stylesText.trim()
-  const customCss = draft.customCss.trim()
+  const customCSS = draft.customCss.trim()
   if (styles) {
     risks.push({
       id: 'inline-head-style',
@@ -118,7 +118,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
         'Hosts with strict CSP must allow inline styles by nonce/hash or style-src unsafe-inline.'
     })
   }
-  for (const url of unsafeLowcodeCustomCssUrls(styles)) {
+  for (const url of unsafeLowcodeCustomCSSURLs(styles)) {
     risks.push({
       id: `head-style-unsafe-url:${url}`,
       kind: 'headStyleUnsafeUrl',
@@ -128,7 +128,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
     })
   }
   for (const meta of draft.meta) {
-    const url = unsafeLowcodeHeadMetaRefreshUrl(meta.kind, meta.key, meta.content)
+    const url = unsafeLowcodeHeadMetaRefreshURL(meta.kind, meta.key, meta.content)
     if (!url) continue
     risks.push({
       id: `head-meta-refresh-unsafe-url:${url}`,
@@ -142,7 +142,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
   for (const link of draft.link) {
     const rel = link.rel.trim().toLowerCase()
     const href = link.href.trim()
-    if (!href || !isExternalUrl(href)) continue
+    if (!href || !isExternalURL(href)) continue
     if (rel === 'stylesheet') {
       risks.push({
         id: `external-stylesheet:${href}`,
@@ -167,7 +167,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
     }
   }
 
-  for (const url of cssExternalUrls(customCss)) {
+  for (const url of cssExternalUrls(customCSS)) {
     risks.push({
       id: `custom-css-url:${url}`,
       kind: 'customCssExternalResource',
@@ -176,7 +176,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
       detail: `${url} must be allowed by the deployed host CSP resource directives.`
     })
   }
-  for (const url of unsafeLowcodeCustomCssUrls(customCss)) {
+  for (const url of unsafeLowcodeCustomCSSURLs(customCSS)) {
     risks.push({
       id: `custom-css-unsafe-url:${url}`,
       kind: 'customCssUnsafeUrl',
@@ -189,7 +189,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
   return dedupeRisks(risks)
 }
 
-function isExternalUrl(value: string): boolean {
+function isExternalURL(value: string): boolean {
   return /^https?:\/\//i.test(value) || value.startsWith('//')
 }
 
@@ -206,11 +206,11 @@ function cssExternalUrls(css: string): string[] {
   const urls = new Set<string>()
   for (const match of css.matchAll(/@import\s+(?:url\()?["']?([^"')\s]+)["']?\)?/gi)) {
     const value = match[1]?.trim()
-    if (value && isExternalUrl(value)) urls.add(value)
+    if (value && isExternalURL(value)) urls.add(value)
   }
   for (const match of css.matchAll(/url\(["']?([^"')]+)["']?\)/gi)) {
     const value = match[1]?.trim()
-    if (value && isExternalUrl(value)) urls.add(value)
+    if (value && isExternalURL(value)) urls.add(value)
   }
   return [...urls]
 }

@@ -17,7 +17,7 @@ import {
   type PreviewRefreshPolicy
 } from './compile-scheduler'
 import DeployControls from './DeployControls.vue'
-import { useCompileOnChange, type PreviewTarget, type PreviewUiKit } from './use-compile-on-change'
+import { useCompileOnChange, type PreviewTarget, type PreviewUIKit } from './use-compile-on-change'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -30,7 +30,7 @@ const INBOUND_SOURCE = 'op-lowcode-preview'
 const OUTBOUND_SOURCE = 'op-lowcode-editor'
 
 const previewTarget = ref<PreviewTarget>('react')
-const previewUiKit = ref<PreviewUiKit>('none')
+const previewUIKit = ref<PreviewUIKit>('none')
 const previewI18nEnabled = ref(false)
 const previewLocalesInput = ref('')
 const previewTheme = ref<'light' | 'dark'>('light')
@@ -62,7 +62,7 @@ const {
   forceRecompile
 } = useCompileOnChange({
   target: previewTarget,
-  uiKit: previewUiKit,
+  uiKit: previewUIKit,
   i18nEnabled: previewI18nEnabled,
   localesInput: previewLocalesInput,
   refreshPolicy: previewRefreshPolicy
@@ -188,7 +188,7 @@ const url = computed(() => (status.value.kind === 'ready' ? status.value.url : n
 // would render. Iframe-initiated navs (`<button onClick={navigate(...)}>`)
 // reach the editor via the inbound `navigate` channel → switchPage →
 // currentPageId, so this derivation stays correct in both directions.
-function formatPreviewUrl(origin: string, route: string): string {
+function formatPreviewURL(origin: string, route: string): string {
   const base = origin.replace(/\/$/, '')
   return `${base}${route}`
 }
@@ -201,7 +201,7 @@ const statusLabel = computed(() => {
       return 'Starting dev server…'
     case 'ready': {
       const route = findRouteForPageId(store.state.currentPageId) ?? '/'
-      return formatPreviewUrl(status.value.url, route)
+      return formatPreviewURL(status.value.url, route)
     }
     case 'error':
       return `Error: ${status.value.message}`
@@ -495,7 +495,7 @@ watch(
   }
 )
 
-watch([previewUiKit, previewI18nEnabled, previewLocalesInput], () => {
+watch([previewUIKit, previewI18nEnabled, previewLocalesInput], () => {
   recompilePreviewOptions()
 })
 
@@ -504,7 +504,7 @@ watch(previewTarget, (target) => {
   // controls as the sidecar restarts so the visible settings match the
   // compiler request instead of silently preserving ignored values.
   if (target === 'vue') {
-    previewUiKit.value = 'none'
+    previewUIKit.value = 'none'
     previewI18nEnabled.value = false
     previewLocalesInput.value = ''
   }
@@ -559,7 +559,7 @@ onBeforeUnmount(() => {
           <label class="flex items-center gap-1 text-xs text-muted">
             <span>UI</span>
             <select
-              v-model="previewUiKit"
+              v-model="previewUIKit"
               :disabled="previewTarget === 'vue'"
               data-test-id="lowcode-preview-uikit"
               class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"

@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import {
   createMotionPreset,
   isMotionPresetId,
-  parseSharedMotionPresetManifestJson,
+  parseSharedMotionPresetManifestJSON,
   type MotionPresetId,
   type MotionSpec,
   type MotionStaggerOptions
@@ -79,7 +79,7 @@ export function useMotionPresetLibrary() {
   const { selectedIds } = useSelectionState()
   const { panels } = useI18n()
   const error = ref('')
-  const exportJson = ref('')
+  const exportJSON = ref('')
   const staggerEnabled = ref(false)
   const staggerStepMs = ref(80)
   const staggerDirection = ref<MotionPresetStaggerOptions['direction']>('forward')
@@ -285,22 +285,22 @@ export function useMotionPresetLibrary() {
     }
   }
 
-  function importJson(
+  function importJSON(
     json: string,
-    policy: Parameters<typeof appMotionPresetLibrary.importJson>[1]
+    policy: Parameters<typeof appMotionPresetLibrary.importJSON>[1]
   ) {
     try {
-      appMotionPresetLibrary.importJson(json, policy)
-      exportJson.value = ''
+      appMotionPresetLibrary.importJSON(json, policy)
+      exportJSON.value = ''
       clearError()
     } catch (cause) {
       reportError(cause)
     }
   }
 
-  function exportLibraryJson() {
+  function exportLibraryJSON() {
     try {
-      exportJson.value = appMotionPresetLibrary.exportJson()
+      exportJSON.value = appMotionPresetLibrary.exportJSON()
       clearError()
     } catch (cause) {
       reportError(cause)
@@ -309,15 +309,15 @@ export function useMotionPresetLibrary() {
 
   async function importFile(
     file: File | undefined,
-    policy: Parameters<typeof appMotionPresetLibrary.importJson>[1]
+    policy: Parameters<typeof appMotionPresetLibrary.importJSON>[1]
   ) {
     try {
       const json = file
         ? await readBrowserMotionPresetLibraryFile(file)
         : await chooseTauriMotionPresetLibraryFile()
       if (json === null) return
-      appMotionPresetLibrary.importJson(json, policy)
-      exportJson.value = ''
+      appMotionPresetLibrary.importJSON(json, policy)
+      exportJSON.value = ''
       clearError()
     } catch (cause) {
       reportError(cause)
@@ -326,7 +326,7 @@ export function useMotionPresetLibrary() {
 
   async function exportFile() {
     try {
-      await saveMotionPresetLibraryFile(appMotionPresetLibrary.exportJson())
+      await saveMotionPresetLibraryFile(appMotionPresetLibrary.exportJSON())
       clearError()
     } catch (cause) {
       reportError(cause)
@@ -353,9 +353,9 @@ export function useMotionPresetLibrary() {
     }
   }
 
-  function acceptSharedJson(json: string) {
+  function acceptSharedJSON(json: string) {
     try {
-      appMotionPresetLibrary.acceptSharedLibrary(parseSharedMotionPresetManifestJson(json))
+      appMotionPresetLibrary.acceptSharedLibrary(parseSharedMotionPresetManifestJSON(json))
       clearError()
     } catch (cause) {
       reportError(cause)
@@ -393,7 +393,7 @@ export function useMotionPresetLibrary() {
     errorMessage,
     authoringDisabled,
     authoringDisabledReason,
-    exportJson,
+    exportJSON,
     canSaveCurrent,
     selectedKey,
     staggerEnabled,
@@ -408,11 +408,11 @@ export function useMotionPresetLibrary() {
     edit,
     updateFromCurrent,
     remove,
-    importJson,
-    exportLibraryJson,
+    importJSON,
+    exportLibraryJSON,
     importFile,
     exportFile,
-    acceptSharedJson,
+    acceptSharedJSON,
     checkSharedLibrary,
     acceptSharedUpdate,
     removeSharedLibrary

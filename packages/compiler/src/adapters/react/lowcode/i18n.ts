@@ -53,7 +53,7 @@ export const RTL_LOCALES: ReadonlySet<string> = new Set([
 
 /** Phase 3 §9 v11 — does this locale code lay out right-to-left? Compares the
  *  primary subtag (case-insensitive) against `RTL_LOCALES`. */
-export function isRtlLocale(code: string): boolean {
+export function isRTLLocale(code: string): boolean {
   return RTL_LOCALES.has(code.split('-')[0].toLowerCase())
 }
 
@@ -216,7 +216,7 @@ export function buildLowcodeI18nRuntime(
     .join(', ')
   // Phase 3 §9 v11: only wire document direction when an RTL locale is actually
   // in play (source or any target), so LTR-only apps stay byte-identical to v8.
-  const rtl = isRtlLocale(sourceLocale) || targetLocales.some(isRtlLocale)
+  const rtl = isRTLLocale(sourceLocale) || targetLocales.some(isRTLLocale)
   const reactImport = rtl
     ? `import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'`
     : `import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'`

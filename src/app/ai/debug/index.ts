@@ -2,14 +2,14 @@ import type { UIMessage } from 'ai'
 
 import { buildDebugLog } from '@open-pencil/core/tools'
 import type { ToolDebugLog, ToolLogEntry } from '@open-pencil/core/tools'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
-import { formatAcpDiagnostics, getAcpDiagnostics } from '@/app/ai/acp/diagnostics'
+import { formatACPDiagnostics, getACPDiagnostics } from '@/app/ai/acp/diagnostics'
 import { getStepUsages, getToolLogEntries } from '@/app/ai/tools'
 
 export function formatTokenUsage(): string {
-  const acp = getAcpDiagnostics()
-  if (acp.active) return formatAcpDiagnostics(acp)
+  const acp = getACPDiagnostics()
+  if (acp.active) return formatACPDiagnostics(acp)
 
   const steps = getStepUsages()
   if (steps.length === 0) return '  (no usage data — provider may not report it)'
@@ -159,7 +159,7 @@ export function formatDiagnostics(log: ToolDebugLog): string {
 }
 
 function formatToolPart(part: Record<string, unknown>): string {
-  const inv = part.toolInvocation as JsonObject | undefined
+  const inv = part.toolInvocation as JSONObject | undefined
   if (inv) {
     const lines = [`  [tool] ${String(inv.toolName)} (${String(inv.state)})`]
     if (inv.args) lines.push(`    args: ${JSON.stringify(inv.args)}`)
@@ -186,7 +186,7 @@ function formatMessageStats(messages: UIMessage[]): string {
     if (msg.role === 'user') userMessages++
     else if (msg.role === 'assistant') assistantMessages++
     for (const part of msg.parts) {
-      const p = part as JsonObject
+      const p = part as JSONObject
       if (p.type === 'text') {
         totalTextLength += typeof p.text === 'string' ? p.text.length : 0
       } else if (
@@ -214,7 +214,7 @@ export function formatConversationMessage(message: UIMessage): string {
   const parts: string[] = []
 
   for (const part of message.parts) {
-    const p = part as JsonObject
+    const p = part as JSONObject
     if (p.type === 'text') {
       parts.push(`  ${p.text as string}`)
     } else if (p.type === 'file') {

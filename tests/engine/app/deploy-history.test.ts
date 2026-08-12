@@ -97,22 +97,22 @@ describe('lowcode deploy history', () => {
 
   test('derives provider dashboard links for rollback guidance', async () => {
     installLocalStorage()
-    const { deployDashboardUrl } = await import('@/app/lowcode/preview-pane/deploy/history')
+    const { deployDashboardURL } = await import('@/app/lowcode/preview-pane/deploy/history')
 
-    expect(deployDashboardUrl({ provider: 'netlify', deployId: 'dep 1' })).toBe(
+    expect(deployDashboardURL({ provider: 'netlify', deployId: 'dep 1' })).toBe(
       'https://app.netlify.com/deploys/dep%201'
     )
-    expect(deployDashboardUrl({ provider: 'vercel', deployId: 'dep_2' })).toBe(
+    expect(deployDashboardURL({ provider: 'vercel', deployId: 'dep_2' })).toBe(
       'https://vercel.com/deployments/dep_2'
     )
     expect(
-      deployDashboardUrl({
+      deployDashboardURL({
         provider: 'cloudflare',
         deployId: 'cf_3',
         site: 'account/project'
       })
     ).toBe('https://dash.cloudflare.com/account/pages/view/project/cf_3')
-    expect(deployDashboardUrl({ provider: 'cloudflare', deployId: 'cf_4' })).toBeNull()
+    expect(deployDashboardURL({ provider: 'cloudflare', deployId: 'cf_4' })).toBeNull()
   })
 
   test('describes provider rollback contracts without calling provider APIs', async () => {
@@ -202,7 +202,7 @@ describe('lowcode deploy history', () => {
 
   test('parses Cloudflare Pages account/project targets for rollback readiness', async () => {
     installLocalStorage()
-    const { deployDashboardUrl, parseCloudflarePagesTarget } =
+    const { deployDashboardURL, parseCloudflarePagesTarget } =
       await import('@/app/lowcode/preview-pane/deploy/history')
 
     expect(parseCloudflarePagesTarget(' account / project ')).toEqual({
@@ -243,7 +243,7 @@ describe('lowcode deploy history', () => {
       reason: 'Cloudflare rollback needs a site target in account/project format.'
     })
     expect(
-      deployDashboardUrl({ provider: 'cloudflare', deployId: 'cf_5', site: 'project' })
+      deployDashboardURL({ provider: 'cloudflare', deployId: 'cf_5', site: 'project' })
     ).toBeNull()
   })
 

@@ -2,9 +2,9 @@ import { z } from 'zod'
 
 import { parsePluginObjectParameterSchema } from '@open-pencil/core/plugins'
 
-import { PLUGIN_MCP_CATALOG_LIMITS, type PluginMcpToolKind } from '#mcp/tool/plugin/contract'
+import { PLUGIN_MCP_CATALOG_LIMITS, type PluginMCPToolKind } from '#mcp/tool/plugin/contract'
 
-interface JsonRecord {
+interface JSONRecord {
   [key: string]: unknown
 }
 
@@ -44,7 +44,7 @@ function jsonBytes(value: unknown): number {
   }
 }
 
-function record(value: unknown, path: string): JsonRecord {
+function record(value: unknown, path: string): JSONRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError(`${path} must be an object`)
   }
@@ -52,7 +52,7 @@ function record(value: unknown, path: string): JsonRecord {
   if (prototype !== Object.prototype && prototype !== null) {
     throw new TypeError(`${path} must be a plain object`)
   }
-  return value as JsonRecord
+  return value as JSONRecord
 }
 
 function finiteNumber(value: unknown, path: string): number {
@@ -109,12 +109,12 @@ function schemaProperties(
   path: string,
   depth: number,
   state: SchemaWalkState
-): Readonly<JsonRecord> {
+): Readonly<JSONRecord> {
   const properties = record(value, path)
   if (Object.keys(properties).length > 128) {
     throw new TypeError(`${path} may contain at most 128 properties`)
   }
-  const parsed: JsonRecord = {}
+  const parsed: JSONRecord = {}
   for (const [propertyName, propertySchema] of Object.entries(properties)) {
     if (
       FORBIDDEN_KEYS.has(propertyName) ||
@@ -161,7 +161,7 @@ function schemaNode(
   path: string,
   depth: number,
   state: SchemaWalkState
-): Readonly<JsonRecord> {
+): Readonly<JSONRecord> {
   if (depth > PLUGIN_MCP_CATALOG_LIMITS.maxSchemaDepth) {
     throw new TypeError(`${path} exceeds the JSON Schema depth limit`)
   }
@@ -170,17 +170,17 @@ function schemaNode(
     throw new TypeError(`${path} exceeds the JSON Schema node limit`)
   }
   const source = record(value, path)
-  const parsed: JsonRecord = {}
+  const parsed: JSONRecord = {}
   for (const [key, entry] of Object.entries(source)) {
     parsed[key] = schemaEntry(key, entry, `${path}.${key}`, depth, state)
   }
   return Object.freeze(parsed)
 }
 
-export function parsePluginMcpInputSchema(
+export function parsePluginMCPInputSchema(
   value: unknown,
   path: string,
-  kind: PluginMcpToolKind
+  kind: PluginMCPToolKind
 ): Readonly<Record<string, unknown>> {
   if (kind === 'command' || kind === 'exporter' || kind === 'connector') {
     const parsed = parsePluginObjectParameterSchema(value, path, {

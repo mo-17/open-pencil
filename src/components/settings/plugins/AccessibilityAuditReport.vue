@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 import { useI18n } from '@open-pencil/vue'
 
 import { parseStaticAccessibilityReport } from '@/app/plugins/accessibility-report'
 
-const { data } = defineProps<{ data?: JsonValue }>()
+const { data } = defineProps<{ data?: JSONValue }>()
 const { dialogs } = useI18n()
 const report = computed(() => parseStaticAccessibilityReport(data))
 

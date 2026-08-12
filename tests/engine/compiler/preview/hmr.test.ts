@@ -39,7 +39,7 @@ function buildFiles(x: number, y: number, w: number, h: number) {
     .files
 }
 
-async function fetchCss(server: PreviewServer, withQuery: boolean): Promise<string> {
+async function fetchCSS(server: PreviewServer, withQuery: boolean): Promise<string> {
   const url = `${server.url}src/index.css${withQuery ? `?t=${Date.now()}` : ''}`
   const res = await fetch(url)
   if (res.status !== 200) throw new Error(`GET ${url} → ${res.status}`)
@@ -80,14 +80,14 @@ describe('preview dev-server HMR round-trip (Phase 1 §10)', () => {
     // Initial: BUTTON at (120, 80) size 100×40 → top-20 left-30 w-25 h-10
     // (twirlwind maps 4-px multiples to clean Tailwind classes).
     server.updateFiles(buildFiles(120, 80, 100, 40))
-    const first = await fetchCss(server, false)
+    const first = await fetchCSS(server, false)
     expect(first).toMatch(/\.top-20\s*\{/)
     expect(first).toMatch(/\.left-30\s*\{/)
 
     // Move + resize to non-multiples → bracket notation for top/left/w.
     // New classes must appear, stale must disappear.
     server.updateFiles(buildFiles(111, 183, 125, 48))
-    const second = await fetchCss(server, true) // cache-busted
+    const second = await fetchCSS(server, true) // cache-busted
     expect(second).toMatch(/\.top-\\\[183px\\\]\s*\{/)
     expect(second).toMatch(/\.left-\\\[111px\\\]\s*\{/)
     expect(second).toMatch(/\.w-\\\[125px\\\]\s*\{/)
@@ -99,7 +99,7 @@ describe('preview dev-server HMR round-trip (Phase 1 §10)', () => {
     if (!server) throw new Error('no server')
     server.updateFiles(buildFiles(0, 0, 100, 40))
     server.updateFiles(buildFiles(50, 50, 100, 40))
-    const css = await fetchCss(server, true)
+    const css = await fetchCSS(server, true)
     expect(css).toMatch(/\.relative\s*\{/)
     expect(css).toMatch(/\.min-h-screen\s*\{/)
   }, 15_000)

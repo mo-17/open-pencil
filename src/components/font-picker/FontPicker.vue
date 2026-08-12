@@ -25,10 +25,11 @@ import {
 
 import { WEB_FONT_PROVIDER_IDS } from '@open-pencil/core/text'
 
-const { label = 'Font family' } = defineProps<{ label?: string }>()
+const { panels } = useI18n()
+const { label: providedLabel } = defineProps<{ label?: string }>()
+const label = computed(() => providedLabel ?? panels.value.fontFamily)
 const modelValue = defineModel<string>({ required: true })
 const emit = defineEmits<{ select: [family: string] }>()
-const { panels } = useI18n()
 
 const cls = usePopoverUI({
   content: 'w-[var(--reka-combobox-trigger-width)] min-w-64 overflow-hidden p-0'
@@ -150,7 +151,10 @@ function updateLicenseFilter(setLicenseFilter: (filter: FontLicenseFilter) => vo
     :local-font-access="localFontAccess"
     :ui="ui"
     :empty-license-filter-text="panels.noFontsForLicenseFilter"
-    empty-fonts-hint="Use the desktop app or Chrome/Edge to access system fonts."
+    :search-placeholder="panels.searchFonts"
+    :empty-search-text="panels.noFontsFound"
+    :empty-fonts-text="panels.noLocalFontsAvailable"
+    :empty-fonts-hint="panels.localFontsAccessHint"
     @select="emit('select', $event)"
   >
     <template #trigger="{ option }">

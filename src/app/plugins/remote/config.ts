@@ -9,7 +9,7 @@ import {
   validateModuleIdentity
 } from '@open-pencil/scene-graph'
 
-import { parseRemotePluginUrl } from './transport'
+import { parseRemotePluginURL } from './transport'
 
 export const REMOTE_PLUGIN_TRUST_CONFIG_SCHEMA_VERSION = 1 as const
 export const REMOTE_PLUGIN_TRUST_CONFIG_LIMITS = Object.freeze({
@@ -78,7 +78,7 @@ export async function parseRemotePluginTrustConfig(
     CATALOG_KEYS,
     CATALOG_KEYS
   )
-  const url = parseRemotePluginUrl(catalog.url as string).href
+  const url = parseRemotePluginURL(catalog.url as string).href
   const catalogId = identity(catalog.catalogId, 'remotePluginTrustConfig.catalog.catalogId')
   const catalogKeyId = identity(catalog.keyId, 'remotePluginTrustConfig.catalog.keyId')
   const catalogPublicKey = await importEd25519PublicKeyPem(
@@ -128,7 +128,7 @@ export async function parseRemotePluginTrustConfig(
   }
 }
 
-export async function parseRemotePluginTrustConfigJson(
+export async function parseRemotePluginTrustConfigJSON(
   source: string
 ): Promise<ResolvedRemotePluginTrustConfig> {
   if (

@@ -73,7 +73,7 @@ function selectedValue(
   return options ? findACPConfigOption(options, category)?.currentValue : undefined
 }
 
-export function recordAcpConfigOptions(options: SessionConfigOption[] | null | undefined): void {
+export function recordACPConfigOptions(options: SessionConfigOption[] | null | undefined): void {
   const selectedModelId = modelIdFrom(selectedValue(options, 'model'))
   const thoughtLevel = selectedValue(options, 'thought_level')
   const modelId = selectedModelId ? normalizeModelId(selectedModelId, thoughtLevel) : undefined
@@ -85,20 +85,20 @@ export function recordAcpConfigOptions(options: SessionConfigOption[] | null | u
   }
 }
 
-export function beginAcpDiagnostics(agentName: string): void {
+export function beginACPDiagnostics(agentName: string): void {
   snapshot = { active: true, agentName }
 }
 
-export function recordAcpNewSession(result: NewSessionResponse): void {
+export function recordACPNewSession(result: NewSessionResponse): void {
   const configModelId = modelIdFrom(selectedValue(result.configOptions, 'model'))
-  recordAcpConfigOptions(result.configOptions)
+  recordACPConfigOptions(result.configOptions)
   const modelId = modelIdFrom(result.models?.currentModelId)
   if (!configModelId && modelId) {
     snapshot = { ...snapshot, modelId: normalizeModelId(modelId, snapshot.thoughtLevel) }
   }
 }
 
-export function recordAcpPrompt(result: PromptResponse): void {
+export function recordACPPrompt(result: PromptResponse): void {
   const reportedModelId = promptModelId(result)
   const modelId = reportedModelId
     ? normalizeModelId(reportedModelId, snapshot.thoughtLevel)
@@ -113,7 +113,7 @@ export function recordAcpPrompt(result: PromptResponse): void {
   }
 }
 
-export function recordAcpSessionUpdate(update: SessionUpdate): void {
+export function recordACPSessionUpdate(update: SessionUpdate): void {
   if (update.sessionUpdate === 'usage_update') {
     snapshot = {
       ...snapshot,
@@ -125,15 +125,15 @@ export function recordAcpSessionUpdate(update: SessionUpdate): void {
       }
     }
   } else if (update.sessionUpdate === 'config_option_update') {
-    recordAcpConfigOptions(update.configOptions)
+    recordACPConfigOptions(update.configOptions)
   }
 }
 
-export function getAcpDiagnostics(): Readonly<ACPDiagnosticsSnapshot> {
+export function getACPDiagnostics(): Readonly<ACPDiagnosticsSnapshot> {
   return snapshot
 }
 
-export function formatAcpDiagnostics(value: Readonly<ACPDiagnosticsSnapshot>): string {
+export function formatACPDiagnostics(value: Readonly<ACPDiagnosticsSnapshot>): string {
   const lines = [`Provider: ACP${value.agentName ? ` (${value.agentName})` : ''}`]
 
   lines.push(`Model: ${value.modelId ?? '(agent did not report model)'}`)
@@ -166,7 +166,7 @@ export function formatAcpDiagnostics(value: Readonly<ACPDiagnosticsSnapshot>): s
   return lines.join('\n')
 }
 
-export function formatAcpRuntimeContext(value: Readonly<ACPDiagnosticsSnapshot>): string {
+export function formatACPRuntimeContext(value: Readonly<ACPDiagnosticsSnapshot>): string {
   if (!value.active || !value.modelId) return ''
 
   return [
@@ -180,6 +180,6 @@ export function formatAcpRuntimeContext(value: Readonly<ACPDiagnosticsSnapshot>)
   ].join('\n')
 }
 
-export function resetAcpDiagnostics(): void {
+export function resetACPDiagnostics(): void {
   snapshot = { active: false }
 }

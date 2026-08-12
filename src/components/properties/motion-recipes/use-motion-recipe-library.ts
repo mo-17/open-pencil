@@ -35,8 +35,8 @@ export function useMotionRecipeLibrary() {
   const createDescription = ref('')
   const roleMapping = ref<Record<string, string[]>>({})
   const parameters = ref<Record<string, number>>({})
-  const importJson = ref('')
-  const exportedJson = ref('')
+  const importJSON = ref('')
+  const exportedJSON = ref('')
   const localError = ref('')
 
   const recipes = computed(() => appMotionRecipeLibrarySnapshot.value.library.recipes)
@@ -180,8 +180,8 @@ export function useMotionRecipeLibrary() {
 
   function importLibrary(policy: MotionRecipeMergePolicy): void {
     try {
-      appMotionRecipeLibrary.importJson(importJson.value, policy)
-      importJson.value = ''
+      appMotionRecipeLibrary.importJSON(importJSON.value, policy)
+      importJSON.value = ''
       localError.value = ''
     } catch (cause) {
       localError.value = errorMessage(cause)
@@ -190,7 +190,7 @@ export function useMotionRecipeLibrary() {
 
   function exportLibrary(): void {
     try {
-      exportedJson.value = appMotionRecipeLibrary.exportJson()
+      exportedJSON.value = appMotionRecipeLibrary.exportJSON()
       localError.value = ''
     } catch (cause) {
       localError.value = errorMessage(cause)
@@ -206,7 +206,7 @@ export function useMotionRecipeLibrary() {
         ? await readBrowserMotionRecipeLibraryFile(file)
         : await chooseTauriMotionRecipeLibraryFile()
       if (json === null) return
-      appMotionRecipeLibrary.importJson(json, policy)
+      appMotionRecipeLibrary.importJSON(json, policy)
       localError.value = ''
     } catch (cause) {
       localError.value = errorMessage(cause)
@@ -215,7 +215,7 @@ export function useMotionRecipeLibrary() {
 
   async function exportFile(): Promise<void> {
     try {
-      await saveMotionRecipeLibraryFile(appMotionRecipeLibrary.exportJson())
+      await saveMotionRecipeLibraryFile(appMotionRecipeLibrary.exportJSON())
       localError.value = ''
     } catch (cause) {
       localError.value = errorMessage(cause)
@@ -233,8 +233,8 @@ export function useMotionRecipeLibrary() {
     roleMapping,
     parameters,
     compatibility,
-    importJson,
-    exportedJson,
+    importJSON,
+    exportedJSON,
     selectRecipe,
     createFromSelection,
     setRoleTargets,

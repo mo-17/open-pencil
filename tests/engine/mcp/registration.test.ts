@@ -11,7 +11,7 @@ interface RegisteredDefinition {
 
 type RegisteredHandler = (args: Record<string, unknown>) => Promise<MCPResult>
 
-function captureRegistration(sendRpc: () => Promise<unknown>): {
+function captureRegistration(sendRPC: () => Promise<unknown>): {
   definitions: Map<string, RegisteredDefinition>
   handlers: Map<string, RegisteredHandler>
 } {
@@ -25,7 +25,7 @@ function captureRegistration(sendRpc: () => Promise<unknown>): {
     }
   })
 
-  registerTools(server, { enableEval: false, sendRpc })
+  registerTools(server, { enableEval: false, sendRPC })
   return { definitions, handlers }
 }
 

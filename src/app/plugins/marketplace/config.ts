@@ -1,6 +1,6 @@
 import { importEd25519PublicKeyPem, parseExactManifestRecord } from '@open-pencil/scene-graph'
 
-import { parseRemotePluginUrl } from '../remote'
+import { parseRemotePluginURL } from '../remote'
 
 export const MARKETPLACE_TRUST_CONFIG_SCHEMA_VERSION = 1 as const
 export const MARKETPLACE_TRUST_CONFIG_LIMITS = Object.freeze({
@@ -45,7 +45,7 @@ export async function parseMarketplaceTrustConfig(
     throw new TypeError('marketplaceTrustConfig.channel must be stable or beta')
   }
   return {
-    snapshotUrl: parseRemotePluginUrl(boundedText(source.url, 'marketplaceTrustConfig.url', 2_048))
+    snapshotUrl: parseRemotePluginURL(boundedText(source.url, 'marketplaceTrustConfig.url', 2_048))
       .href,
     expectedMarketplaceId: boundedText(
       source.marketplaceId,
@@ -64,7 +64,7 @@ export async function parseMarketplaceTrustConfig(
   }
 }
 
-export async function parseMarketplaceTrustConfigJson(
+export async function parseMarketplaceTrustConfigJSON(
   source: string
 ): Promise<ResolvedMarketplaceTrustConfig> {
   if (

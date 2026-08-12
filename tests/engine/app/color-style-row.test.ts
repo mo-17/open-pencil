@@ -3,12 +3,12 @@ import { describe, expect, test } from 'bun:test'
 import type { Color, Variable } from '@open-pencil/scene-graph'
 
 import { boundGradientStopColor } from '@/app/properties/color-variable-binding'
-import type { GradientStopColorVariableBindingApi } from '@/app/properties/color-variable-binding'
+import type { GradientStopColorVariableBindingAPI } from '@/app/properties/color-variable-binding'
 
-function fakeBindingApi(
+function fakeBindingAPI(
   variable?: Variable,
   resolved?: unknown
-): GradientStopColorVariableBindingApi {
+): GradientStopColorVariableBindingAPI {
   return {
     store: {
       resolveColorVariable: () => resolved
@@ -38,7 +38,7 @@ describe('color style row helpers', () => {
     } satisfies Variable
     const color = { r: 0.25, g: 0.5, b: 0.75, a: 1 } satisfies Color
 
-    expect(boundGradientStopColor(fakeBindingApi(variable, color), 'node:1', 0, 1)).toEqual(color)
+    expect(boundGradientStopColor(fakeBindingAPI(variable, color), 'node:1', 0, 1)).toEqual(color)
   })
 
   test('ignores missing or non-color gradient stop variable values', () => {
@@ -52,9 +52,9 @@ describe('color style row helpers', () => {
       hiddenFromPublishing: false
     } satisfies Variable
 
-    expect(boundGradientStopColor(fakeBindingApi(undefined), 'node:1', 0, 1)).toBeUndefined()
+    expect(boundGradientStopColor(fakeBindingAPI(undefined), 'node:1', 0, 1)).toBeUndefined()
     expect(
-      boundGradientStopColor(fakeBindingApi(variable, 'not-a-color'), 'node:1', 0, 1)
+      boundGradientStopColor(fakeBindingAPI(variable, 'not-a-color'), 'node:1', 0, 1)
     ).toBeUndefined()
   })
 })

@@ -1,6 +1,6 @@
 import type { IRFieldValidation } from '#compiler/ir/types'
 
-import { docStateTypeScript, scriptExpression, scriptJson, type VueEmitContext } from '../shared'
+import { docStateTypeScript, scriptExpression, scriptJSON, type VueEmitContext } from '../shared'
 
 export const VUE_VALIDATION_RUNTIME_FILE = 'src/lowcode-validation.ts'
 export const VUE_VALIDATION_CSS_FILE = 'src/lowcode-validation.css'
@@ -60,7 +60,7 @@ export function __opValidateValue(
 `
 }
 
-export function buildVueValidationCss(): string {
+export function buildVueValidationCSS(): string {
   return `[data-openpencil-validation-invalid="true"] {
   border-color: var(--color-destructive, #dc2626) !important;
   outline: 1px solid var(--color-destructive, #dc2626);
@@ -115,22 +115,22 @@ function buildValidator(field: IRFieldValidation, context: VueEmitContext): stri
   const stateAlias = context.identAliases.get(field.stateName) ?? field.stateName
   let stateRead = stateAlias
   if (field.stateKind === 'docState') {
-    stateRead = `__getDocState<${docStateTypeScript(context.docStateTypes.get(field.stateName))}>(${scriptJson(field.stateName)})`
+    stateRead = `__getDocState<${docStateTypeScript(context.docStateTypes.get(field.stateName))}>(${scriptJSON(field.stateName)})`
   } else if (context.refNames.has(stateAlias)) {
     stateRead = `${stateAlias}.value`
   }
   const lines = [
-    `  ${scriptJson(field.key)}: (valueOverride?: unknown) => {`,
+    `  ${scriptJSON(field.key)}: (valueOverride?: unknown) => {`,
     `    const value = valueOverride !== undefined ? valueOverride : ${stateRead}`,
-    `    let error = __opValidateValue(value, ${scriptJson(field.rules)})`
+    `    let error = __opValidateValue(value, ${scriptJSON(field.rules)})`
   ]
   if (field.custom) {
     lines.push(
-      `    if (error === null && !(${scriptExpression(field.custom.ast, context.refNames, context.identAliases)})) error = ${scriptJson(field.custom.message)}`
+      `    if (error === null && !(${scriptExpression(field.custom.ast, context.refNames, context.identAliases)})) error = ${scriptJSON(field.custom.message)}`
     )
   }
   if (field.async) {
-    lines.push(`    if (error === null) error = ${scriptJson(VUE_ASYNC_VALIDATION_ERROR)}`)
+    lines.push(`    if (error === null) error = ${scriptJSON(VUE_ASYNC_VALIDATION_ERROR)}`)
   }
   lines.push('    return error', '  },')
   return lines.join('\n')
@@ -151,6 +151,6 @@ export function vueValidationKeyBinding(context: VueEmitContext, key: string): s
   context.expressionIndex += 1
   const binding = `__opValidationKey_${context.expressionIndex}`
   context.validationKeyBindings.set(key, binding)
-  context.templateBindings.push(`const ${binding} = ${scriptJson(key)}`)
+  context.templateBindings.push(`const ${binding} = ${scriptJSON(key)}`)
   return binding
 }

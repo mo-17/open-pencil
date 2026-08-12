@@ -50,7 +50,7 @@ function normalizeError(value: unknown): string | null {
   return 'Tool call failed'
 }
 
-function errorFromJsonText(value: string): string | null {
+function errorFromJSONText(value: string): string | null {
   const text = value.trim()
   if (!text.startsWith('{') || !text.endsWith('}')) return null
   try {
@@ -65,7 +65,7 @@ function errorFromJsonText(value: string): string | null {
   }
 }
 
-function errorFromMcpResult(value: UnknownRecord): string | null {
+function errorFromMCPResult(value: UnknownRecord): string | null {
   const directError = normalizeError(value.error)
   if (directError) return directError
 
@@ -83,7 +83,7 @@ function errorFromMcpResult(value: UnknownRecord): string | null {
     : []
 
   for (const item of textItems) {
-    const jsonError = errorFromJsonText(item.text as string)
+    const jsonError = errorFromJSONText(item.text as string)
     if (jsonError) return jsonError
   }
 
@@ -105,7 +105,7 @@ export function toolOutputErrorText(output: unknown): string | null {
   if (outputErrorCache.has(record)) return outputErrorCache.get(record) ?? null
 
   const result = asRecord(record.result)
-  const error = errorFromMcpResult(record) || (result ? errorFromMcpResult(result) : null)
+  const error = errorFromMCPResult(record) || (result ? errorFromMCPResult(result) : null)
   outputErrorCache.set(record, error)
   return error
 }

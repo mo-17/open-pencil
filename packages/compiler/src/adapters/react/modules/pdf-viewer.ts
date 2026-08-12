@@ -3,7 +3,7 @@ import { PDF_VIEWER_MODULE_TYPE, PDF_VIEWER_PLUGIN_ID } from '@open-pencil/core/
 import { REACT_MODULE_POSITIONED_HOST_SOURCE } from './runtime-source'
 import type { ReactModuleAdapter, ReactModuleRuntimeOptions } from './types'
 
-export function buildOpenPencilPdfViewerComponent(options: ReactModuleRuntimeOptions): string {
+export function buildOpenPencilPDFViewerComponent(options: ReactModuleRuntimeOptions): string {
   const stateImport = options.devMode
     ? "import { useEffect, useState, type HTMLAttributes } from 'react'"
     : "import type { HTMLAttributes } from 'react'"
@@ -115,5 +115,5 @@ export const PDF_VIEWER_REACT_MODULE_ADAPTER: ReactModuleAdapter = Object.freeze
   runtimePath: 'src/__openpencil_pdf_viewer.tsx',
   rootImportPath: './__openpencil_pdf_viewer',
   nestedImportPath: '../__openpencil_pdf_viewer',
-  buildRuntime: buildOpenPencilPdfViewerComponent
+  buildRuntime: buildOpenPencilPDFViewerComponent
 })

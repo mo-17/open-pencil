@@ -1,12 +1,12 @@
-export interface PluginJsonDataRecord {
+export interface PluginJSONDataRecord {
   readonly [key: string]: unknown
 }
 
-interface MutablePluginJsonDataRecord {
+interface MutablePluginJSONDataRecord {
   [key: string]: unknown
 }
 
-export interface JsonTraversalState {
+export interface JSONTraversalState {
   nodes: number
   readonly ancestors: WeakSet<object>
 }
@@ -22,7 +22,7 @@ export function strictPlainDataRecord(
   path: string,
   maximumKeys?: number,
   maximumKeysMessage?: string
-): PluginJsonDataRecord {
+): PluginJSONDataRecord {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError(`${path} must be a plain object`)
   }
@@ -34,7 +34,7 @@ export function strictPlainDataRecord(
   if (maximumKeys !== undefined && keys.length > maximumKeys) {
     throw new TypeError(maximumKeysMessage ?? `${path} exceeds the field limit`)
   }
-  const normalized = Object.create(null) as MutablePluginJsonDataRecord
+  const normalized = Object.create(null) as MutablePluginJSONDataRecord
   for (const key of keys) {
     if (typeof key !== 'string') throw new TypeError(`${path} must not contain symbol fields`)
     const descriptor = Object.getOwnPropertyDescriptor(value, key)

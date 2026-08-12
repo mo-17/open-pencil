@@ -1,10 +1,10 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
 import { hasExactPluginKeys } from './parse-helpers'
@@ -23,12 +23,12 @@ export const TABLE_MODULE_LIMITS = Object.freeze({
   fontSizeMax: 72
 })
 
-export interface TableDataV1 extends JsonObject {
+export interface TableDataV1 extends JSONObject {
   columns: string[]
   rows: string[][]
 }
 
-export interface TableModuleConfigV1 extends JsonObject {
+export interface TableModuleConfigV1 extends JSONObject {
   table: TableDataV1
   showHeader: boolean
   striped: boolean
@@ -88,7 +88,7 @@ function parseCell(value: unknown, path: string): string {
 }
 
 function parseTableData(value: unknown): TableDataV1 {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, TABLE_KEYS)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, TABLE_KEYS)) {
     throw new TypeError('table config table must contain exactly columns and rows')
   }
   if (
@@ -130,7 +130,7 @@ function parseTableData(value: unknown): TableDataV1 {
 }
 
 function parseTableConfig(value: unknown): ParseResult {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
     return {
       ok: false,
       reason:
@@ -185,7 +185,7 @@ function parseTableConfig(value: unknown): ParseResult {
 
 function mergeWithDefaults(config: unknown): unknown {
   if (config === undefined) return structuredClone(TABLE_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
+  if (!isPlainJSONObject(config)) return config
   return { ...structuredClone(TABLE_MODULE_DEFAULT_CONFIG), ...config }
 }
 

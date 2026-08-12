@@ -12,7 +12,30 @@ const remoteObjectPaths = [
   '/designs/open_pencil_storage/canvases/remote-1.thumb.jpg'
 ] as const
 
-async function routeS3Workspace(page: Page, deletedPaths?: Set<string>): Promise<void> {
+type S3WorkspaceRouteStats = {
+  fullDocumentGets: number
+  rangeGets: number
+}
+
+function fixtureByteRange(range: string | undefined): { start: number; end: number } | null {
+  const explicit = range?.match(/^bytes=(\d+)-(\d+)$/)
+  if (explicit) {
+    return {
+      start: Number(explicit[1]),
+      end: Math.min(Number(explicit[2]), fixture.byteLength - 1)
+    }
+  }
+  const suffix = range?.match(/^bytes=-(\d+)$/)
+  if (!suffix) return null
+  const length = Math.min(Number(suffix[1]), fixture.byteLength)
+  return { start: fixture.byteLength - length, end: fixture.byteLength - 1 }
+}
+
+async function routeS3Workspace(
+  page: Page,
+  deletedPaths?: Set<string>
+): Promise<S3WorkspaceRouteStats> {
+  const stats = { fullDocumentGets: 0, rangeGets: 0 }
   await page.route('https://s3.example.com/**', async (route) => {
     const url = new URL(route.request().url())
     if (route.request().method() === 'DELETE') {
@@ -46,12 +69,44 @@ async function routeS3Workspace(page: Page, deletedPaths?: Set<string>): Promise
       })
       return
     }
+    if (url.pathname.endsWith('/remote-1.fig') && route.request().headers().range) {
+      const range = route.request().headers().range
+      const requestedRange = fixtureByteRange(range)
+      if (!requestedRange) {
+        await route.fulfill({ status: 416 })
+        return
+      }
+      const { start, end } = requestedRange
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) {
+        await route.fulfill({ status: 416 })
+        return
+      }
+      await route.fulfill({
+        status: 206,
+        headers: {
+          'Content-Range': `bytes ${start}-${end}/${fixture.byteLength}`
+        },
+        contentType: 'application/octet-stream',
+        body: fixture.subarray(start, end + 1)
+      })
+      stats.rangeGets++
+      return
+    }
+    if (url.pathname.endsWith('/remote-1.fig') && route.request().method() === 'HEAD') {
+      await route.fulfill({
+        status: 200,
+        headers: { 'Content-Length': String(fixture.byteLength) }
+      })
+      return
+    }
     if (url.pathname.endsWith('/remote-1.fig')) {
+      stats.fullDocumentGets++
       await route.fulfill({ contentType: 'application/octet-stream', body: fixture })
       return
     }
     await route.fulfill({ status: 404 })
   })
+  return stats
 }
 
 async function configureS3Workspace(page: Page): Promise<void> {
@@ -75,15 +130,25 @@ async function configureS3Workspace(page: Page): Promise<void> {
   await expect(page.getByText('Remote design')).toBeVisible()
 }
 
-test('configured storage lists and opens a remote document', async ({ page }) => {
-  await routeS3Workspace(page)
+test('configured storage lists a range-loaded preview before opening the document', async ({
+  page
+}) => {
+  const stats = await routeS3Workspace(page)
   await configureS3Workspace(page)
   const canvas = new CanvasHelper(page)
+
+  const preview = page.locator('[data-document-id="remote-1"] > div').first()
+  await expect(preview).toBeVisible()
+  await expect(preview).toHaveCSS('background-image', /^url\("blob:/)
+  expect(stats.rangeGets).toBe(3)
+  expect(stats.fullDocumentGets).toBe(0)
 
   await page.locator('[data-document-id="remote-1"]').click()
   await expect(page).toHaveURL(/\/$/, { timeout: 15_000 })
   await canvas.waitForInit()
   await expect(page.getByText('Remote design').first()).toBeVisible()
+  expect(stats.rangeGets).toBeGreaterThan(3)
+  expect(stats.fullDocumentGets).toBe(0)
 })
 
 test('deletes local-first and completes the remote removal in the background', async ({ page }) => {

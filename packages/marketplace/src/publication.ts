@@ -28,7 +28,7 @@ import {
 import {
   compareStableSemver,
   importEd25519PublicKeyPem,
-  parseSha256Base64Url,
+  parseSha256Base64URL,
   stableSemverParts,
   validateModuleIdentity
 } from '@open-pencil/scene-graph'
@@ -37,7 +37,7 @@ import type { MarketplaceArtifact, MarketplaceArtifactStore } from './artifacts'
 import { findActiveMarketplacePublisherKey } from './publisher-trust'
 import {
   MARKETPLACE_RELEASE_CHANNELS,
-  parseMarketplacePublicUrl,
+  parseMarketplacePublicURL,
   parseMarketplaceTimestamp,
   type MarketplacePublicationCatalogV1,
   type MarketplacePublisherKeyV1,
@@ -128,8 +128,8 @@ function validityMilliseconds(value: number | undefined): number {
   return resolved
 }
 
-function baseUrl(value: string): string {
-  const parsed = new URL(parseMarketplacePublicUrl(value, 'marketplace public base URL'))
+function baseURL(value: string): string {
+  const parsed = new URL(parseMarketplacePublicURL(value, 'marketplace public base URL'))
   if (parsed.pathname !== '/' || parsed.search !== '') {
     throw new TypeError(
       'Marketplace public base URL must be an HTTPS origin without a path or query'
@@ -138,16 +138,16 @@ function baseUrl(value: string): string {
   return parsed.href
 }
 
-function publicUrl(base: string, path: string): string {
+function publicURL(base: string, path: string): string {
   return new URL(path.replace(/^\//, ''), base).href
 }
 
-function artifactUrl(base: string, digest: string): string {
-  return publicUrl(base, `/v1/artifacts/${digest}`)
+function artifactURL(base: string, digest: string): string {
+  return publicURL(base, `/v1/artifacts/${digest}`)
 }
 
-function artifactDigestFromUrl(value: string, base: string): string {
-  const prefix = publicUrl(base, '/v1/artifacts/')
+function artifactDigestFromURL(value: string, base: string): string {
+  const prefix = publicURL(base, '/v1/artifacts/')
   if (!value.startsWith(prefix)) {
     throw new Error('Runtime package URL is not owned by this marketplace artifact store')
   }
@@ -155,7 +155,7 @@ function artifactDigestFromUrl(value: string, base: string): string {
   if (suffix.includes('/') || suffix.includes('?')) {
     throw new Error('Runtime package URL must be an immutable marketplace artifact URL')
   }
-  return parseSha256Base64Url(suffix, 'runtime package artifact digest')
+  return parseSha256Base64URL(suffix, 'runtime package artifact digest')
 }
 
 function currentPublicationSequence(state: MarketplaceStateV1): number {
@@ -211,7 +211,7 @@ async function verifyRelease(
   state: MarketplaceStateV1,
   release: MarketplaceReleaseV1,
   artifacts: MarketplaceArtifactStore,
-  publicBaseUrl: string,
+  publicBaseURL: string,
   now: number
 ): Promise<VerifiedRelease | null> {
   if (
@@ -220,7 +220,7 @@ async function verifyRelease(
   ) {
     return null
   }
-  if (release.manifestUrl !== artifactUrl(publicBaseUrl, release.artifactDigest)) {
+  if (release.manifestUrl !== artifactURL(publicBaseURL, release.artifactDigest)) {
     throw new Error(
       `Release ${release.submissionId} manifest URL is not its immutable artifact URL`
     )
@@ -246,9 +246,9 @@ async function verifyRelease(
 
   let runtime: VerifiedRelease['runtime'] = null
   if (release.runtimeCoordinate) {
-    const runtimeArtifactDigest = artifactDigestFromUrl(
+    const runtimeArtifactDigest = artifactDigestFromURL(
       release.runtimeCoordinate.packageUrl,
-      publicBaseUrl
+      publicBaseURL
     )
     const runtimeArtifact = await requiredArtifact(
       artifacts,
@@ -286,11 +286,11 @@ async function verifyRelease(
 async function verifiedReleases(
   state: MarketplaceStateV1,
   artifacts: MarketplaceArtifactStore,
-  publicBaseUrl: string,
+  publicBaseURL: string,
   now: number
 ): Promise<readonly VerifiedRelease[]> {
   const releases = await Promise.all(
-    state.releases.map((release) => verifyRelease(state, release, artifacts, publicBaseUrl, now))
+    state.releases.map((release) => verifyRelease(state, release, artifacts, publicBaseURL, now))
   )
   return releases.filter((release): release is VerifiedRelease => release !== null)
 }
@@ -510,7 +510,7 @@ export async function prepareMarketplacePublication(
   artifacts: MarketplaceArtifactStore,
   config: MarketplacePublicationConfig
 ): Promise<PreparedMarketplacePublication> {
-  const publicBaseUrl = baseUrl(config.publicBaseUrl)
+  const publicBaseURL = baseURL(config.publicBaseUrl)
   const generatedAt = publicationTime(config)
   const generatedAtMilliseconds = Date.parse(generatedAt)
   const expiresAt = new Date(
@@ -522,7 +522,7 @@ export async function prepareMarketplacePublication(
     throw new Error('Marketplace publication requires a non-empty verified audit chain')
   }
   const sequence = currentPublicationSequence(state)
-  const releases = await verifiedReleases(state, artifacts, publicBaseUrl, generatedAtMilliseconds)
+  const releases = await verifiedReleases(state, artifacts, publicBaseURL, generatedAtMilliseconds)
   const catalogs = await prepareCatalogs(
     releases,
     artifacts,
@@ -553,19 +553,19 @@ export async function prepareMarketplacePublication(
         channel,
         catalogId: catalog.catalogId,
         keyId: config.rootKeyId,
-        url: artifactUrl(publicBaseUrl, artifact.digest),
+        url: artifactURL(publicBaseURL, artifact.digest),
         digest: catalog.integrity.digest
       })),
       listings: listings(state, releases),
       auditHead: {
         sequence: auditSequence,
         headDigest: auditHead,
-        url: publicUrl(publicBaseUrl, '/v1/audit')
+        url: publicURL(publicBaseURL, '/v1/audit')
       },
       ...(runtimeIndex
         ? {
             runtimeIndex: {
-              url: artifactUrl(publicBaseUrl, runtimeIndex.artifact.digest),
+              url: artifactURL(publicBaseURL, runtimeIndex.artifact.digest),
               indexId: runtimeIndex.index.indexId,
               keyId: config.rootKeyId,
               digest: runtimeIndex.index.integrity.digest

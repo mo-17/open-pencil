@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 import { validateStateName } from '@open-pencil/core/lowcode-validation'
 import type { DocumentStateDef, StateDef } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -78,7 +78,7 @@ function commit(patch: Partial<ListInteractiveProps>): void {
   const merged: ListInteractiveProps = { ...ip.value, ...patch }
   editor.updateNodeWithUndo(
     node.id,
-    { interactiveProps: merged as JsonObject },
+    { interactiveProps: merged as JSONObject },
     'Update list directive'
   )
 }

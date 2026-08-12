@@ -22,7 +22,7 @@ const SAFE_INLINE_IMAGE_MEDIA_TYPES = new Set([
   'image/webp'
 ])
 
-export interface ChatUrlSource {
+export interface ChatURLSource {
   kind: 'url'
   key: string
   sourceId: string
@@ -41,7 +41,7 @@ export interface ChatDocumentSource {
   mediaType: string
 }
 
-export type ChatSource = ChatUrlSource | ChatDocumentSource
+export type ChatSource = ChatURLSource | ChatDocumentSource
 
 export interface ChatPresentationLabels {
   document: string
@@ -156,7 +156,7 @@ export function parseAssistantFileArchive(metadata: unknown): AssistantFileArchi
  * Accepts only absolute HTTP(S) URLs that are safe to hand to an external-link opener.
  * Credentials are rejected so a provider cannot disguise an untrusted host behind user-info.
  */
-export function safeExternalHttpUrl(value: unknown): string | null {
+export function safeExternalHttpURL(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const candidate = value.trim()
   if (!candidate || candidate.length > MAX_URL_LENGTH) return null
@@ -171,7 +171,7 @@ export function safeExternalHttpUrl(value: unknown): string | null {
   }
 }
 
-function safeInlineImageDataUrl(value: unknown, mediaType: string): string | null {
+function safeInlineImageDataURL(value: unknown, mediaType: string): string | null {
   if (typeof value !== 'string' || !SAFE_INLINE_IMAGE_MEDIA_TYPES.has(mediaType)) return null
   if (value.length > MAX_INLINE_IMAGE_DATA_URL_LENGTH) return null
 
@@ -248,7 +248,7 @@ function planAssistantFiles(parts: readonly ChatPart[], metadata: unknown): Assi
 
   const retainedParts: AssistantFilePlan['retainedParts'] = []
   const archiveEntries: AssistantFileArchiveEntry[] = []
-  let inlineDataUrlChars = 0
+  let inlineDataURLChars = 0
   for (const candidate of plannedCandidates) {
     if (candidate.kind === 'archive') {
       archiveEntries.push(candidate.entry)
@@ -257,21 +257,21 @@ function planAssistantFiles(parts: readonly ChatPart[], metadata: unknown): Assi
 
     const mediaType = cleanMediaType(candidate.part.mediaType)
     const filename = cleanLabel(candidate.part.filename)
-    const httpUrl = safeExternalHttpUrl(candidate.part.url)
-    if (httpUrl) {
+    const httpURL = safeExternalHttpURL(candidate.part.url)
+    if (httpURL) {
       retainedParts.push({
         partIndex: candidate.partIndex,
-        part: sanitizedFilePart(candidate.part, mediaType, httpUrl)
+        part: sanitizedFilePart(candidate.part, mediaType, httpURL)
       })
       continue
     }
 
-    const inlineUrl = safeInlineImageDataUrl(candidate.part.url, mediaType)
-    if (inlineUrl && inlineDataUrlChars + inlineUrl.length <= MAX_ASSISTANT_INLINE_DATA_URL_CHARS) {
-      inlineDataUrlChars += inlineUrl.length
+    const inlineURL = safeInlineImageDataURL(candidate.part.url, mediaType)
+    if (inlineURL && inlineDataURLChars + inlineURL.length <= MAX_ASSISTANT_INLINE_DATA_URL_CHARS) {
+      inlineDataURLChars += inlineURL.length
       retainedParts.push({
         partIndex: candidate.partIndex,
-        part: sanitizedFilePart(candidate.part, mediaType, inlineUrl)
+        part: sanitizedFilePart(candidate.part, mediaType, inlineURL)
       })
       continue
     }
@@ -279,7 +279,7 @@ function planAssistantFiles(parts: readonly ChatPart[], metadata: unknown): Assi
     archiveEntries.push({
       filename,
       mediaType,
-      reason: inlineUrl ? 'inline-budget' : 'unsafe'
+      reason: inlineURL ? 'inline-budget' : 'unsafe'
     })
   }
   if (countArchive) archiveEntries.push(countArchive)
@@ -339,7 +339,7 @@ function urlSource(
   part: Extract<ChatPart, { type: 'source-url' }>,
   index: number
 ): RankedSource | null {
-  const url = safeExternalHttpUrl(part.url)
+  const url = safeExternalHttpURL(part.url)
   if (!url) return null
 
   const parsed = new URL(url)
@@ -413,13 +413,13 @@ export function presentAssistantFile(
   labels: ChatPresentationLabels
 ): AssistantFilePresentation {
   const mediaType = cleanMediaType(part.mediaType)
-  const httpUrl = safeExternalHttpUrl(part.url)
-  const inlineImageUrl = safeInlineImageDataUrl(part.url, mediaType)
+  const httpURL = safeExternalHttpURL(part.url)
+  const inlineImageURL = safeInlineImageDataURL(part.url, mediaType)
   // Never auto-fetch provider-controlled remote images from the renderer. A
   // public-looking URL can redirect or DNS-rebind to a private host and also
   // acts as a tracking pixel. Hosted files remain explicit external links.
-  const previewUrl = SAFE_INLINE_IMAGE_MEDIA_TYPES.has(mediaType) ? inlineImageUrl : null
-  const openUrl = httpUrl
+  const previewURL = SAFE_INLINE_IMAGE_MEDIA_TYPES.has(mediaType) ? inlineImageURL : null
+  const openUrl = httpURL
   const image = mediaType.startsWith('image/')
   const fallbackName = image ? labels.generatedImage : labels.file
 
@@ -427,9 +427,9 @@ export function presentAssistantFile(
     key: `assistant-file:${index}:${cleanLabel(part.filename) || mediaType}`,
     name: cleanLabel(part.filename) || `${cleanLabel(fallbackName) || mediaType} ${index + 1}`,
     mediaType,
-    previewUrl,
+    previewUrl: previewURL,
     openUrl,
-    blocked: !previewUrl && !openUrl
+    blocked: !previewURL && !openUrl
   }
 }
 

@@ -130,7 +130,7 @@ function buildPatch(url: string, anonKey: string, schema: string): SupabaseConfi
   return s ? { url: u, anonKey: k, schema: s } : { url: u, anonKey: k }
 }
 
-function updateUrl(value: string): void {
+function updateURL(value: string): void {
   commit(buildPatch(value, anonKeyInput.value, schemaInput.value))
   testStatus.value = 'idle'
   testError.value = ''
@@ -226,7 +226,7 @@ async function testConnection(): Promise<void> {
         spellcheck="false"
         :placeholder="panels.lowcodeSupabaseUrlPlaceholder"
         class="min-w-0 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
-        @change="updateUrl(($event.target as HTMLInputElement).value)"
+        @change="updateURL(($event.target as HTMLInputElement).value)"
       />
       <input
         :value="anonKeyTyped"

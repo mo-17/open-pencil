@@ -16,12 +16,12 @@ import {
   optionalNonNegativeInteger,
   outputArg,
   printArtifact,
-  printJson,
+  printJSON,
   privateKeyArgs,
   publicKeyArgs,
-  readBoundedJson,
+  readBoundedJSON,
   runPluginCommandSafely,
-  writeJsonOutput
+  writeJSONOutput
 } from './common'
 
 function catalogDetails(catalog: PluginCatalogPayloadV1, digest?: string) {
@@ -52,7 +52,7 @@ const build = defineCommand({
   },
   async run({ args }) {
     await runPluginCommandSafely(async () => {
-      const payload = await readBoundedJson(
+      const payload = await readBoundedJSON(
         args.payload,
         PLUGIN_CATALOG_LIMITS.maxJsonBytes,
         'Plugin catalog payload'
@@ -62,14 +62,14 @@ const build = defineCommand({
         await importPrivateKey(args),
         args['key-id'] ? { keyId: args['key-id'] } : {}
       )
-      const output = await writeJsonOutput(
+      const output = await writeJSONOutput(
         args.output,
         serializePluginCatalog(catalog),
         PLUGIN_CATALOG_LIMITS.maxJsonBytes,
         'Signed plugin catalog'
       )
       const report = { catalog, output }
-      if (args.json) printJson(report)
+      if (args.json) printJSON(report)
       else {
         printArtifact(
           'Built signed plugin catalog',
@@ -105,7 +105,7 @@ const verify = defineCommand({
   },
   async run({ args }) {
     await runPluginCommandSafely(async () => {
-      const catalog = await readBoundedJson(
+      const catalog = await readBoundedJSON(
         args.catalog,
         PLUGIN_CATALOG_LIMITS.maxJsonBytes,
         'Plugin catalog'
@@ -121,7 +121,7 @@ const verify = defineCommand({
         ...(now ? { now } : {}),
         ...(maxClockSkewMilliseconds === undefined ? {} : { maxClockSkewMilliseconds })
       })
-      if (args.json) printJson(snapshot)
+      if (args.json) printJSON(snapshot)
       else {
         printArtifact('Verified plugin catalog', snapshot.catalog.catalogId, {
           ...catalogDetails(snapshot.catalog, snapshot.verifiedDigest),

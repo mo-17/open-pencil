@@ -177,7 +177,7 @@ function canonicalManifest(manifest: SharedMotionPresetManifest): SharedMotionPr
   }
 }
 
-function canonicalJson(manifest: SharedMotionPresetManifest): string {
+function canonicalJSON(manifest: SharedMotionPresetManifest): string {
   return `${JSON.stringify(canonicalManifest(manifest), null, 2)}\n`
 }
 
@@ -185,7 +185,7 @@ function jsonByteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
 
-function assertManifestJsonSize(json: string): void {
+function assertManifestJSONSize(json: string): void {
   if (jsonByteLength(json) > SHARED_MOTION_PRESET_LIMITS.maxManifestJsonBytes) {
     invalid(
       'manifest',
@@ -232,7 +232,7 @@ export function parseSharedMotionPresetManifest(value: unknown): SharedMotionPre
     ),
     presets: parsePresets(required(record, 'presets', 'manifest'), 'manifest.presets')
   }
-  assertManifestJsonSize(canonicalJson(manifest))
+  assertManifestJSONSize(canonicalJSON(manifest))
   return manifest
 }
 
@@ -249,9 +249,9 @@ export function validateSharedMotionPresetManifest(
   }
 }
 
-export function parseSharedMotionPresetManifestJson(json: string): SharedMotionPresetManifest {
+export function parseSharedMotionPresetManifestJSON(json: string): SharedMotionPresetManifest {
   if (typeof json !== 'string') invalid('manifest', 'invalid_type', 'Expected JSON text')
-  assertManifestJsonSize(json)
+  assertManifestJSONSize(json)
   try {
     return parseSharedMotionPresetManifest(JSON.parse(json))
   } catch (error) {
@@ -261,7 +261,7 @@ export function parseSharedMotionPresetManifestJson(json: string): SharedMotionP
 }
 
 export function serializeSharedMotionPresetManifest(value: unknown): string {
-  return canonicalJson(parseSharedMotionPresetManifest(value))
+  return canonicalJSON(parseSharedMotionPresetManifest(value))
 }
 
 function sameSource(left: SharedMotionPresetSource, right: SharedMotionPresetSource): boolean {
@@ -327,7 +327,7 @@ export function checkSharedMotionPresetLibraryUpdate(
   const acceptedState = parseSharedMotionPresetLibraryState(current)
   assertMatchingIdentity(acceptedState.manifest, source)
   const updateAvailable = acceptedState.manifest.sourceVersion !== source.sourceVersion
-  if (!updateAvailable && canonicalJson(acceptedState.manifest) !== canonicalJson(source)) {
+  if (!updateAvailable && canonicalJSON(acceptedState.manifest) !== canonicalJSON(source)) {
     invalid(
       'manifest.sourceVersion',
       'invalid_value',

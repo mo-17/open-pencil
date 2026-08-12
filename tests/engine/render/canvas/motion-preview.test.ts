@@ -82,7 +82,8 @@ function createRenderer() {
       overlays,
       parentAbsX,
       parentAbsY,
-      ancestorHasMotionTransform
+      hasTransformedAncestor,
+      hasTransientTransformedAncestor
     ) {
       renderNode(
         this as SkiaRenderer,
@@ -92,7 +93,8 @@ function createRenderer() {
         overlays,
         parentAbsX,
         parentAbsY,
-        ancestorHasMotionTransform
+        hasTransformedAncestor,
+        hasTransientTransformedAncestor
       )
     }
   } as SkiaRenderer
@@ -100,6 +102,35 @@ function createRenderer() {
 
 function rendererFixture(value: object): SkiaRenderer {
   return value as SkiaRenderer
+}
+
+function isolatedRendererFixture(value: object): SkiaRenderer {
+  return rendererFixture({
+    imageCache: new Map(),
+    imageCacheByteSize: 0,
+    imageCacheByteBudget: 128 * 1024 * 1024,
+    imageCacheFrameDepth: 0,
+    imageCacheFrameUsed: new Set(),
+    pendingFontNodes: new Map(),
+    textPictureGenerations: new Map(),
+    imageFilterCache: new Map(),
+    maskFilterCache: new Map(),
+    renderCacheGraph: new SceneGraph(),
+    renderCachePageId: 'previous-page',
+    vectorPathCache: new Map(),
+    vectorStrokePathCache: new Map(),
+    vectorStrokeOutlineCache: new Map(),
+    fillGeometryCache: new Map(),
+    strokeGeometryCache: new Map(),
+    nodePictureCache: new Map(),
+    nodePictureCacheGenerations: new Map(),
+    effectLayerPaint: { setImageFilter: mock(() => undefined) },
+    auxFill: {
+      setImageFilter: mock(() => undefined),
+      setMaskFilter: mock(() => undefined)
+    },
+    ...value
+  })
 }
 
 function calls(fn: ReturnType<typeof mock>): unknown[][] {
@@ -294,7 +325,7 @@ describe('CanvasKit motion preview', () => {
       motion: authoredMotion()
     })
     const seen: unknown[] = []
-    const renderer = rendererFixture({
+    const renderer = isolatedRendererFixture({
       worldViewport: { x: 1, y: 2, w: 3, h: 4 },
       renderNode: mock((_canvas, _graph, _nodeId, overlays) => seen.push(overlays))
     })

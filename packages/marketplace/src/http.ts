@@ -111,7 +111,7 @@ function stringValue(value: unknown, path: string): string {
   return value
 }
 
-async function boundedJson(context: Context): Promise<ParsedBody> {
+async function boundedJSON(context: Context): Promise<ParsedBody> {
   const contentType = context.req.header('content-type')?.toLowerCase() ?? ''
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/.test(contentType)) {
     throw new TypeError('Request Content-Type must be application/json')
@@ -326,7 +326,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/v1/publishers/register', async (context) => {
-    const body = await boundedJson(context)
+    const body = await boundedJSON(context)
     const source = exactRecord(body.value, 'publisher registration', ['publisher', 'key'])
     const publisher = exactRecord(source.publisher, 'publisher registration.publisher', [
       'id',
@@ -363,7 +363,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/v1/ownerships', async (context) => {
-    const body = await boundedJson(context)
+    const body = await boundedJSON(context)
     const source = exactRecord(body.value, 'ownership request', ['pluginId', 'publisherId'])
     const authenticated = await authenticate(context, body.bytes, options)
     if (source.publisherId !== authenticated.publisherId) {
@@ -378,7 +378,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/v1/publisher-keys', async (context) => {
-    const body = await boundedJson(context)
+    const body = await boundedJSON(context)
     const input = parseRegisterMarketplacePublisherKeyInput(body.value)
     const authenticated = await authenticate(context, body.bytes, options)
     if (
@@ -398,7 +398,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/v1/submissions', async (context) => {
-    const body = await boundedJson(context)
+    const body = await boundedJSON(context)
     const source = exactRecord(
       body.value,
       'plugin submission',
@@ -426,7 +426,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/v1/submissions/:submissionId/withdraw', async (context) => {
-    const body = await boundedJson(context)
+    const body = await boundedJSON(context)
     const source = exactRecord(body.value, 'submission withdrawal', ['reason'])
     const authenticated = await authenticate(context, body.bytes, options)
     const submission = await options.service.withdrawSubmission(
@@ -441,7 +441,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   app.post('/admin/publishers/:publisherId/status', async (context) => {
     assertAdmin(context, options.admin)
     const body = exactRecord(
-      (await boundedJson(context)).value,
+      (await boundedJSON(context)).value,
       'publisher status',
       ['status', 'reason'],
       ['status']
@@ -458,7 +458,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   app.post('/admin/publisher-keys/:keyId/status', async (context) => {
     assertAdmin(context, options.admin)
     const body = exactRecord(
-      (await boundedJson(context)).value,
+      (await boundedJSON(context)).value,
       'publisher key status',
       ['status', 'reason'],
       ['status']
@@ -475,7 +475,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   app.post('/admin/ownerships/:pluginId/status', async (context) => {
     assertAdmin(context, options.admin)
     const body = exactRecord(
-      (await boundedJson(context)).value,
+      (await boundedJSON(context)).value,
       'ownership status',
       ['status', 'reason'],
       ['status']
@@ -492,7 +492,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   app.post('/admin/submissions/:submissionId/status', async (context) => {
     assertAdmin(context, options.admin)
     const body = exactRecord(
-      (await boundedJson(context)).value,
+      (await boundedJSON(context)).value,
       'submission status',
       ['status', 'reason'],
       ['status']
@@ -508,7 +508,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
 
   app.post('/admin/releases/yank', async (context) => {
     assertAdmin(context, options.admin)
-    const body = exactRecord((await boundedJson(context)).value, 'release yank', [
+    const body = exactRecord((await boundedJSON(context)).value, 'release yank', [
       'pluginId',
       'version',
       'channel',
@@ -531,7 +531,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
     if (!options.admin?.onlinePublishing) {
       throw new HttpError(404, 'Online marketplace signing is disabled')
     }
-    exactRecord((await boundedJson(context)).value, 'marketplace publication', [], [])
+    exactRecord((await boundedJSON(context)).value, 'marketplace publication', [], [])
     const result = await options.service.publish({ actor: 'admin:http' })
     return context.json(result.publication, 201)
   })

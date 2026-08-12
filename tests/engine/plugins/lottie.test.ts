@@ -5,7 +5,7 @@ import {
   LOTTIE_MODULE_DEFINITION,
   LOTTIE_MODULE_LIMITS,
   createLottieModuleInstance,
-  isCanonicalPublicLottieUrl,
+  isCanonicalPublicLottieURL,
   resolveLottieModule,
   validateLottieAnimationData,
   type LottieAnimationDataV1
@@ -75,7 +75,7 @@ describe('built-in Lottie plugin definition', () => {
       fit: 'cover'
     })
 
-    expect(isCanonicalPublicLottieUrl(url)).toBe(true)
+    expect(isCanonicalPublicLottieURL(url)).toBe(true)
     expect(resolveLottieModule(remote)?.ok).toBe(true)
     const resolved = resolveLottieModule(embedded)
     expect(resolved?.ok).toBe(true)
@@ -101,7 +101,7 @@ describe('built-in Lottie plugin definition', () => {
       'https://animations.example.com:443/demo.json'
     ]) {
       expect(() => createLottieModuleInstance({ url })).toThrow('canonical public HTTPS URL')
-      expect(isCanonicalPublicLottieUrl(url)).toBe(false)
+      expect(isCanonicalPublicLottieURL(url)).toBe(false)
     }
   })
 

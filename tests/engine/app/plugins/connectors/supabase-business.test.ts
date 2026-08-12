@@ -312,7 +312,7 @@ describe('Supabase Tables business connector', () => {
     const plugin = installedPlugin()
     authorization.authorize(SUPABASE_BUSINESS_CONNECTOR_CONTRACT, plugin.package.digest, 1)
     const audit = new RedactedConnectorAuditLog()
-    let capturedUrl = ''
+    let capturedURL = ''
     let capturedInit: RequestInit | undefined
     let capturedLimits: Readonly<{ maxResponseBytes: number; timeoutMs: number }> | undefined
     const broker = createConnectorExecutionBroker({
@@ -326,7 +326,7 @@ describe('Supabase Tables business connector', () => {
       },
       audit,
       fetch: async (input, init, limits) => {
-        capturedUrl = String(input)
+        capturedURL = String(input)
         capturedInit = init
         capturedLimits = limits
         return new Response(JSON.stringify([{ id: 1, title: 'Ship' }]))
@@ -350,7 +350,7 @@ describe('Supabase Tables business connector', () => {
         }
       ]
     })
-    expect(capturedUrl).toBe('https://project-ref.supabase.co/rest/v1/tasks?select=*&limit=1')
+    expect(capturedURL).toBe('https://project-ref.supabase.co/rest/v1/tasks?select=*&limit=1')
     const headers = new Headers(capturedInit?.headers)
     expect(headers.get('apikey')).toBe('sb_publishable_runtime_only')
     expect(headers.get('authorization')).toBe('Bearer user-access-runtime-only')
@@ -412,12 +412,12 @@ describe('Supabase Tables business connector', () => {
   })
 
   test('does not invoke forged contract or operation accessors', () => {
-    let toJsonCalls = 0
+    let toJSONCalls = 0
     let getterCalls = 0
     const forgedContract = {
       ...SUPABASE_BUSINESS_CONNECTOR_CONTRACT,
       toJSON() {
-        toJsonCalls += 1
+        toJSONCalls += 1
         return SUPABASE_BUSINESS_CONNECTOR_CONTRACT
       }
     }
@@ -437,7 +437,7 @@ describe('Supabase Tables business connector', () => {
         signal: new AbortController().signal
       })
     ).toThrow('authority does not match')
-    expect(toJsonCalls).toBe(0)
+    expect(toJSONCalls).toBe(0)
     expect(getterCalls).toBe(0)
   })
 })

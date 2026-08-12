@@ -16,7 +16,7 @@ function iframeMarkup(): string {
 describe('HTML module property editor', () => {
   test('uses the shared bounded sandbox document builder for synchronous srcdoc preview', () => {
     expect(source).toContain('HTML_MODULE_LIMITS.html')
-    expect(source).toContain("buildHtmlSandboxDocument(overLimit.value ? '' : source.value)")
+    expect(source).toContain("buildHTMLSandboxDocument(overLimit.value ? '' : source.value)")
     expect(source).toContain(':maxlength="maximumLength"')
     expect(source).toContain('@input="updateSource"')
   })

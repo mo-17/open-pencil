@@ -12,7 +12,7 @@ import {
   createDataGridModuleInstance,
   createLottieModuleInstance,
   createMarkdownModuleInstance,
-  createPdfViewerModuleInstance,
+  createPDFViewerModuleInstance,
   createQrBarcodeModuleInstance,
   createSlideMenuModuleFrameOverrides,
   createTabsModuleInstance
@@ -304,7 +304,7 @@ function compileNativeModuleFixture(target: 'expo' | 'flutter'): NativeModuleFix
     ),
     addFallback(
       'open-pencil.pdf-viewer/pdf-viewer',
-      createPdfViewerModuleInstance({ sourceUrl: PDF_PRIVATE_URL }),
+      createPDFViewerModuleInstance({ sourceUrl: PDF_PRIVATE_URL }),
       'Authored PDF fallback'
     ),
     addFallback(

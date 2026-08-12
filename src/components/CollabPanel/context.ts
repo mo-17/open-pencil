@@ -11,7 +11,7 @@ import { DEFAULT_COLLAB_STATE, useCollabInjected } from '@/app/collab/use'
 import type { RemotePeer } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import { toast } from '@/app/shell/ui'
-import { getShareUrl } from '@/constants'
+import { getShareURL } from '@/constants'
 
 function createCollabPanelContext() {
   const route = useRoute()
@@ -32,9 +32,9 @@ function createCollabPanelContext() {
   const followingPeer = computed(() => collab?.followingPeer.value ?? null)
   // Phase 3 §4.2 — the room key rides the URL fragment (`#k=…`) so it never
   // reaches a server; the bare roomId alone no longer grants access.
-  const shareUrl = computed(() => {
+  const shareURL = computed(() => {
     if (!state.value.roomId) return ''
-    return getShareUrl(state.value.roomId, state.value.roomKey || undefined)
+    return getShareURL(state.value.roomId, state.value.roomKey || undefined)
   })
   const isJoining = computed(() => !!pendingRoomId.value && !state.value.connected)
 
@@ -47,8 +47,8 @@ function createCollabPanelContext() {
   )
 
   function copyLink() {
-    if (!shareUrl.value) return
-    void copy(shareUrl.value)
+    if (!shareURL.value) return
+    void copy(shareURL.value)
     toast.info('Link copied to clipboard')
   }
 
@@ -57,7 +57,7 @@ function createCollabPanelContext() {
     collab.setLocalName(nameDraft.value.trim())
     const { roomId, key } = collab.shareCurrentDoc()
     void router.push(`/share/${roomId}`)
-    void copy(getShareUrl(roomId, key))
+    void copy(getShareURL(roomId, key))
     toast.info('Link copied to clipboard')
     popoverOpen.value = false
   }
@@ -150,7 +150,7 @@ function createCollabPanelContext() {
     state,
     peers,
     followingPeer,
-    shareUrl,
+    shareURL,
     isJoining,
     copyLink,
     share,

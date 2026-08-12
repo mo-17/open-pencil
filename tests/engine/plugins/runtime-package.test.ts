@@ -7,7 +7,7 @@ import {
   PLUGIN_RUNTIME_PACKAGE_SCHEMA_VERSION,
   createPluginRuntimeAsset,
   parsePluginRuntimePackageBytes,
-  parsePluginRuntimePackageJson,
+  parsePluginRuntimePackageJSON,
   parsePluginRuntimePackagePayload,
   pluginRuntimePackageCanonicalByteLength,
   serializePluginRuntimePackage,
@@ -152,7 +152,7 @@ describe('publisher-signed plugin runtime packages', () => {
     const runtimePackage = await signPluginRuntimePackage(payload, publisher.privateKey)
     const serialized = serializePluginRuntimePackage(runtimePackage)
 
-    expect(parsePluginRuntimePackageJson(serialized)).toEqual(runtimePackage)
+    expect(parsePluginRuntimePackageJSON(serialized)).toEqual(runtimePackage)
     expect(parsePluginRuntimePackageBytes(new TextEncoder().encode(serialized))).toEqual(
       runtimePackage
     )

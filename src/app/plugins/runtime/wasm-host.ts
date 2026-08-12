@@ -76,9 +76,9 @@ export async function executeWasmPluginCompute(options: {
         options.maxOutputBytes
       )
       const output = byteRange(exports.memory, outputPointer, outputLength)
-      const outputJson = new TextDecoder('utf-8', { fatal: true }).decode(output)
-      JSON.parse(outputJson)
-      return outputJson
+      const outputJSON = new TextDecoder('utf-8', { fatal: true }).decode(output)
+      JSON.parse(outputJSON)
+      return outputJSON
     } finally {
       exports.openpencil_dealloc(outputPointer, options.maxOutputBytes)
     }

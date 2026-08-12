@@ -227,12 +227,12 @@ function errorCode(cause: unknown): string | undefined {
 
 describe('connector execution broker', () => {
   test('executes a reviewed query with runtime credentials and fixed fetch policy', async () => {
-    let capturedUrl = ''
+    let capturedURL = ''
     let capturedInit: RequestInit | undefined
     let capturedLimits: ConnectorTransportLimits | undefined
     const state = runtime(connectorContract(), {
       fetch: async (input, init, limits) => {
-        capturedUrl = String(input)
+        capturedURL = String(input)
         capturedInit = init
         capturedLimits = limits
         return new Response(JSON.stringify({ ok: true }), { status: 200 })
@@ -244,13 +244,13 @@ describe('connector execution broker', () => {
 
     expect(result.data).toEqual({ ok: true })
     expect(state.resolverCalls()).toBe(1)
-    expect(capturedUrl).toBe('https://api.example.com/v1/Team%20Notes')
+    expect(capturedURL).toBe('https://api.example.com/v1/Team%20Notes')
     expect(capturedInit).toMatchObject({ method: 'GET', credentials: 'omit', redirect: 'error' })
     expect(capturedLimits).toEqual({ maxResponseBytes: 1_024, timeoutMs: 15_000 })
     expect(new Headers(capturedInit?.headers).get('authorization')).toBe('Bearer top-secret-token')
-    const auditJson = JSON.stringify(state.audit.snapshot())
-    expect(auditJson).not.toContain('top-secret-token')
-    expect(auditJson).not.toContain('Team Notes')
+    const auditJSON = JSON.stringify(state.audit.snapshot())
+    expect(auditJSON).not.toContain('top-secret-token')
+    expect(auditJSON).not.toContain('Team Notes')
     expect(state.audit.snapshot()[0]).toMatchObject({
       outcome: 'completed',
       operationId: 'list-records',
@@ -850,11 +850,11 @@ describe('connector execution broker', () => {
   test('never invokes accessors or toJSON on a forged caller contract', async () => {
     const state = runtime()
     let getterCalls = 0
-    let toJsonCalls = 0
+    let toJSONCalls = 0
     const forged = {
       ...state.contract,
       toJSON() {
-        toJsonCalls += 1
+        toJSONCalls += 1
         return state.contract
       }
     }
@@ -874,7 +874,7 @@ describe('connector execution broker', () => {
       .catch((error) => error)
     expect(errorCode(cause)).toBe('authority-mismatch')
     expect(getterCalls).toBe(0)
-    expect(toJsonCalls).toBe(0)
+    expect(toJSONCalls).toBe(0)
     expect(state.audit.snapshot()[0]).toMatchObject({
       pluginId: 'unknown',
       connectorId: 'unknown',
@@ -901,18 +901,18 @@ describe('connector adapter registration and activation compatibility', () => {
     expect(authorization.isAuthorized(contract, 'digest-a')).toBe(true)
     expect(authorization.isAuthorized(contract, 'digest-b')).toBe(false)
 
-    let toJsonCalls = 0
+    let toJSONCalls = 0
     const forged = {
       ...contract,
       toJSON() {
-        toJsonCalls += 1
+        toJSONCalls += 1
         return contract
       }
     }
     expect(() =>
       authorization.authorize(forged as PluginConnectorContractV1, 'digest-a', 1)
     ).toThrow()
-    expect(toJsonCalls).toBe(0)
+    expect(toJSONCalls).toBe(0)
   })
 
   test('notifies bounded authorization subscribers only when state changes', () => {

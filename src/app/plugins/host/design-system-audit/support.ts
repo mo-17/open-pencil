@@ -1,4 +1,4 @@
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { DESIGN_SYSTEM_AUDIT_COMMAND, type DESIGN_SYSTEM_AUDIT_PLUGIN_ID } from '../ids'
 
@@ -25,7 +25,7 @@ export const DESIGN_SYSTEM_AUDIT_LIMITS = Object.freeze({
 export type DesignSystemAuditCategory = 'tokens' | 'components' | 'spacing' | 'typography'
 export type DesignSystemAuditSeverity = 'warning' | 'info'
 
-export interface DesignSystemAuditIssue extends JsonObject {
+export interface DesignSystemAuditIssue extends JSONObject {
   category: DesignSystemAuditCategory
   code: string
   severity: DesignSystemAuditSeverity
@@ -34,7 +34,7 @@ export interface DesignSystemAuditIssue extends JsonObject {
   nodeName?: string
 }
 
-export interface DesignSystemAuditSummary extends JsonObject {
+export interface DesignSystemAuditSummary extends JSONObject {
   visitedNodeCount: number
   variableCount: number
   collectionCount: number
@@ -45,7 +45,7 @@ export interface DesignSystemAuditSummary extends JsonObject {
   textStyleCount: number
 }
 
-export interface StaticDesignSystemAuditResult extends JsonObject {
+export interface StaticDesignSystemAuditResult extends JSONObject {
   kind: 'static-design-system-audit'
   scope: 'document'
   pluginId: typeof DESIGN_SYSTEM_AUDIT_PLUGIN_ID
@@ -87,7 +87,7 @@ export interface DesignSystemAuditState {
 const encoder = new TextEncoder()
 const REPORT_RESERVED_BYTES = 16 * 1024
 
-export function designSystemAuditJsonBytes(value: unknown): number {
+export function designSystemAuditJSONBytes(value: unknown): number {
   return encoder.encode(JSON.stringify(value)).byteLength
 }
 
@@ -152,7 +152,7 @@ export function addDesignSystemAuditIssue(
     ...(issue.nodeId ? { nodeId: boundedAuditText(issue.nodeId, 256) } : {}),
     ...(issue.nodeName ? { nodeName: boundedAuditText(issue.nodeName, 256) } : {})
   }
-  const issueBytes = designSystemAuditJsonBytes(bounded) + 1
+  const issueBytes = designSystemAuditJSONBytes(bounded) + 1
   if (
     state.issueBytes + issueBytes >
     DESIGN_SYSTEM_AUDIT_LIMITS.reportBytes - REPORT_RESERVED_BYTES

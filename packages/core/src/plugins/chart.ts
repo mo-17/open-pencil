@@ -1,10 +1,10 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
@@ -19,7 +19,7 @@ export const CHART_MODULE_LIMITS = Object.freeze({
   value: 1_000_000
 })
 
-export interface ChartModuleConfigV1 extends JsonObject {
+export interface ChartModuleConfigV1 extends JSONObject {
   chartType: 'bar'
   values: number[]
   labels: string[]
@@ -79,7 +79,7 @@ function parseLabels(value: unknown, valueCount: number): string[] | null {
 }
 
 function parseChartConfig(value: unknown): ParseResult {
-  if (!isPlainJsonObject(value) || !exactKeys(value)) {
+  if (!isPlainJSONObject(value) || !exactKeys(value)) {
     return {
       ok: false,
       reason: 'chart config must contain exactly chartType, values, labels, color, and showValues'
@@ -122,7 +122,7 @@ function parseChartConfig(value: unknown): ParseResult {
 
 function mergeWithDefaults(config: unknown): unknown {
   if (config === undefined) return structuredClone(CHART_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
+  if (!isPlainJSONObject(config)) return config
   return { ...structuredClone(CHART_MODULE_DEFAULT_CONFIG), ...config }
 }
 

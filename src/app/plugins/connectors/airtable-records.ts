@@ -5,12 +5,12 @@ import {
   type PluginConnectorOperationV1,
   type PluginParameterValue
 } from '@open-pencil/core/plugins'
-import type { JsonObject, JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject, JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import {
   strictPlainDataRecord,
-  type JsonTraversalState,
-  type PluginJsonDataRecord
+  type JSONTraversalState,
+  type PluginJSONDataRecord
 } from '@/app/plugins/json-data'
 
 import type {
@@ -247,7 +247,7 @@ function exactDataRecord(
   path: string,
   allowed: ReadonlySet<string>,
   required: ReadonlySet<string>
-): PluginJsonDataRecord {
+): PluginJSONDataRecord {
   const source = strictPlainDataRecord(value, path)
   const keys = Object.keys(source)
   for (const key of keys) {
@@ -286,14 +286,14 @@ function plainDataArray(value: unknown, path: string, maximum: number): readonly
   return items
 }
 
-type JsonWalkState = JsonTraversalState
+type JSONWalkState = JSONTraversalState
 
-function normalizedJsonValue(
+function normalizedJSONValue(
   value: unknown,
   path: string,
   depth: number,
-  state: JsonWalkState
-): JsonValue {
+  state: JSONWalkState
+): JSONValue {
   if (depth > AIRTABLE_RECORDS_LIMITS.jsonDepth) {
     throw new TypeError(`${path} exceeds the Airtable field JSON depth limit`)
   }
@@ -307,7 +307,7 @@ function normalizedJsonValue(
     typeof value === 'boolean' ||
     (typeof value === 'number' && Number.isFinite(value))
   ) {
-    return value as JsonValue
+    return value as JSONValue
   }
   if (typeof value !== 'object') throw new TypeError(`${path} must contain JSON data`)
   if (state.ancestors.has(value)) throw new TypeError(`${path} must not contain cycles`)
@@ -316,7 +316,7 @@ function normalizedJsonValue(
     if (Array.isArray(value)) {
       const values = plainDataArray(value, path, AIRTABLE_RECORDS_LIMITS.jsonArrayItems)
       return values.map((entry, index) =>
-        normalizedJsonValue(entry, `${path}[${index}]`, depth + 1, state)
+        normalizedJSONValue(entry, `${path}[${index}]`, depth + 1, state)
       )
     }
     const source = strictPlainDataRecord(value, path)
@@ -324,9 +324,9 @@ function normalizedJsonValue(
     if (keys.length > AIRTABLE_RECORDS_LIMITS.jsonObjectProperties) {
       throw new TypeError(`${path} exceeds the Airtable field object property limit`)
     }
-    const normalized = Object.create(null) as Record<string, JsonValue>
+    const normalized = Object.create(null) as Record<string, JSONValue>
     for (const key of keys) {
-      normalized[key] = normalizedJsonValue(source[key], `${path}.${key}`, depth + 1, state)
+      normalized[key] = normalizedJSONValue(source[key], `${path}.${key}`, depth + 1, state)
     }
     return normalized
   } finally {
@@ -334,8 +334,8 @@ function normalizedJsonValue(
   }
 }
 
-function fieldValueJson(value: unknown, path: string, state: JsonWalkState): string {
-  const serialized = JSON.stringify(normalizedJsonValue(value, path, 0, state))
+function fieldValueJSON(value: unknown, path: string, state: JSONWalkState): string {
+  const serialized = JSON.stringify(normalizedJSONValue(value, path, 0, state))
   if (TEXT_ENCODER.encode(serialized).byteLength > AIRTABLE_RECORDS_LIMITS.fieldValueJsonBytes) {
     throw new TypeError(`${path} exceeds the Airtable field JSON byte limit`)
   }
@@ -357,8 +357,8 @@ function fieldName(value: string, path: string): string {
 function normalizedFields(
   value: unknown,
   path: string,
-  state: JsonWalkState
-): readonly JsonObject[] {
+  state: JSONWalkState
+): readonly JSONObject[] {
   const source = strictPlainDataRecord(value, path)
   const keys = Object.keys(source).sort()
   if (keys.length > AIRTABLE_RECORDS_LIMITS.fieldsPerRecord) {
@@ -371,7 +371,7 @@ function normalizedFields(
     names.add(name)
     return Object.freeze({
       name,
-      valueJson: fieldValueJson(source[key], `${path}.${key}`, state)
+      valueJson: fieldValueJSON(source[key], `${path}.${key}`, state)
     })
   })
   return Object.freeze(fields)
@@ -380,7 +380,7 @@ function normalizedFields(
 const RECORD_KEYS = new Set(['id', 'createdTime', 'fields'])
 const RESPONSE_KEYS = new Set(['records', 'offset'])
 
-function normalizedRecord(value: unknown, path: string, state: JsonWalkState): JsonObject {
+function normalizedRecord(value: unknown, path: string, state: JSONWalkState): JSONObject {
   const source = exactDataRecord(value, path, RECORD_KEYS, RECORD_KEYS)
   const id = stableAirtableId(source.id, RECORD_ID, `${path}.id`)
   if (typeof source.createdTime !== 'string' || !CREATED_TIME.test(source.createdTime)) {
@@ -411,7 +411,7 @@ export function normalizeAirtableListRecordsResponse(
     'Airtable list-records response.records',
     AIRTABLE_RECORDS_LIMITS.records
   )
-  const state: JsonWalkState = { nodes: 0, ancestors: new WeakSet() }
+  const state: JSONWalkState = { nodes: 0, ancestors: new WeakSet() }
   const normalizedRecords = records.map((record, index) =>
     normalizedRecord(record, `Airtable list-records response.records[${index}]`, state)
   )

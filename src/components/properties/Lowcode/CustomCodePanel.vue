@@ -34,7 +34,7 @@ const headMetadata = useSceneComputed<LowcodeHeadMetadata | undefined>(() => {
   return root?.lowcodeHeadMetadata
 })
 
-const customCss = useSceneComputed<string | undefined>(() => {
+const customCSS = useSceneComputed<string | undefined>(() => {
   const root = editor.graph.getNode(editor.graph.rootId)
   return root?.lowcodeCustomCss
 })
@@ -42,14 +42,14 @@ const customCss = useSceneComputed<string | undefined>(() => {
 const metaRows = ref<LowcodeHeadMeta[]>([])
 const linkRows = ref<LowcodeHeadLink[]>([])
 const stylesText = ref('')
-const customCssText = ref('')
+const customCSSText = ref('')
 
 const cspRisks = computed(() =>
   analyzeCustomCodeCspRisks({
     meta: metaRows.value,
     link: linkRows.value,
     stylesText: stylesText.value,
-    customCss: customCssText.value
+    customCss: customCSSText.value
   })
 )
 const localizedCspRisks = computed(() => cspRisks.value.map(localizeCspRisk))
@@ -108,13 +108,13 @@ function localizeCspRisk(risk: CustomCodeCspRisk): CustomCodeCspRisk {
 }
 
 watch(
-  [() => headMetadata.value, () => customCss.value],
+  [() => headMetadata.value, () => customCSS.value],
   ([head, css]) => {
     const draft = draftFromCustomCode(head, css)
     metaRows.value = draft.meta
     linkRows.value = draft.link
     stylesText.value = draft.stylesText
-    customCssText.value = draft.customCss
+    customCSSText.value = draft.customCss
   },
   { immediate: true }
 )
@@ -124,7 +124,7 @@ function commitDraft(): void {
     meta: metaRows.value,
     link: linkRows.value,
     stylesText: stylesText.value,
-    customCss: customCssText.value
+    customCss: customCSSText.value
   }
   if (hasIncompleteCustomCodeRows(draft) || hasUnsafeCustomCodeUrls(draft)) return
   const patch = buildCustomCodePatch(draft)
@@ -164,8 +164,8 @@ function updateStyles(value: string): void {
   commitDraft()
 }
 
-function updateCustomCss(value: string): void {
-  customCssText.value = value
+function updateCustomCSS(value: string): void {
+  customCSSText.value = value
   commitDraft()
 }
 
@@ -173,7 +173,7 @@ function clearAll(): void {
   metaRows.value = []
   linkRows.value = []
   stylesText.value = ''
-  customCssText.value = ''
+  customCSSText.value = ''
   commitDraft()
 }
 </script>
@@ -183,7 +183,7 @@ function clearAll(): void {
     <div class="mb-1.5 flex items-center justify-between">
       <label class="text-[11px] text-muted">{{ panels.lowcodeCustomCode }}</label>
       <button
-        v-if="headMetadata || customCss"
+        v-if="headMetadata || customCSS"
         type="button"
         data-test-id="lowcode-custom-code-clear"
         class="rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
@@ -372,13 +372,13 @@ function clearAll(): void {
       {{ panels.lowcodeCustomCodeAppCss }}
     </label>
     <textarea
-      :value="customCssText"
+      :value="customCSSText"
       :aria-label="panels.lowcodeCustomCodeAppCss"
       data-test-id="lowcode-custom-css"
       spellcheck="false"
       placeholder=".app-shell { scroll-behavior: smooth; }"
       class="min-h-24 w-full resize-y rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface outline-none focus:border-accent"
-      @change="updateCustomCss(($event.target as HTMLTextAreaElement).value)"
+      @change="updateCustomCSS(($event.target as HTMLTextAreaElement).value)"
     />
 
     <div

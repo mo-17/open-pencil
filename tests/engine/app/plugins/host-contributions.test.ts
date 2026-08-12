@@ -11,7 +11,7 @@ import type {
   PluginStorageProviderContributionV2
 } from '@open-pencil/core/plugins'
 import { SceneGraph } from '@open-pencil/scene-graph'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
 import {
@@ -23,7 +23,7 @@ import {
   createBundledPluginCatalog,
   inspectPluginCommandCompatibility,
   inspectPluginExporterCompatibility,
-  inspectPluginExporterMcpExposure,
+  inspectPluginExporterMCPExposure,
   inspectPluginHostContributionsCompatibility,
   inspectPluginStorageProviderCompatibility,
   resolveTrustedPluginExporterExecutor,
@@ -403,14 +403,14 @@ describe('app plugin host contribution trust', () => {
         bundledV1ExporterContribution(ELECTRON_EXPORTER_PLUGIN_ID, ELECTRON_EXPORTER.exporterId)
       ]
     ] as const) {
-      expect(inspectPluginExporterMcpExposure(pluginId, contribution)).toMatchObject({
+      expect(inspectPluginExporterMCPExposure(pluginId, contribution)).toMatchObject({
         ok: false,
         status: 'mcp-exposure-disabled'
       })
       expect(supportsPluginExporterCancellation(pluginId, contribution)).toBe(false)
     }
     expect(
-      inspectPluginExporterMcpExposure(DESIGN_TOKENS_EXPORTER_PLUGIN_ID, designTokensContribution())
+      inspectPluginExporterMCPExposure(DESIGN_TOKENS_EXPORTER_PLUGIN_ID, designTokensContribution())
     ).toEqual({ ok: true, status: 'compatible' })
     expect(
       supportsPluginExporterCancellation(
@@ -419,7 +419,7 @@ describe('app plugin host contribution trust', () => {
       )
     ).toBe(true)
     expect(
-      inspectPluginExporterMcpExposure(
+      inspectPluginExporterMCPExposure(
         VUE_EXPORTER_PLUGIN_ID,
         bundledV1ExporterContribution(VUE_EXPORTER_PLUGIN_ID, VUE_EXPORTER.exporterId)
       )
@@ -666,7 +666,7 @@ describe('app plugin host contribution trust', () => {
     const contribution = accessibilityContribution()
     const plugin = installedPlugin(bundledManifestV2(ACCESSIBILITY_AUDIT_PLUGIN_ID), true)
     const received: unknown[] = []
-    let resultData: JsonValue = {
+    let resultData: JSONValue = {
       kind: 'static-accessibility-audit',
       scope: 'document',
       errorCount: 0,
@@ -739,17 +739,17 @@ describe('app plugin host contribution trust', () => {
       runInstalledPluginCommand(EDITOR, plugin, widened, host, { secret: 'value' })
     ).rejects.toThrow('not declared')
 
-    let toJsonCalled = false
+    let toJSONCalled = false
     const forged = Object.assign(widened, {
       toJSON() {
-        toJsonCalled = true
+        toJSONCalled = true
         return contribution
       }
     })
     await expect(
       runInstalledPluginCommand(EDITOR, plugin, forged, host, { secret: 'value' })
     ).rejects.toThrow('not declared')
-    expect(toJsonCalled).toBe(false)
+    expect(toJSONCalled).toBe(false)
     expect(received).toHaveLength(receivedBeforeDeclarationTampering)
 
     let getterCalled = false

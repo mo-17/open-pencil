@@ -4,7 +4,7 @@ import {
   instantiateMotionRecipe,
   mergeMotionRecipeLibraries,
   parseMotionRecipe,
-  parseMotionRecipeLibraryJson,
+  parseMotionRecipeLibraryJSON,
   serializeMotionRecipeLibrary,
   type MotionRecipe,
   type MotionRecipeInstantiationInput,
@@ -85,9 +85,9 @@ function assertUniqueNames(library: MotionRecipeLibrary): void {
   }
 }
 
-function parseLibraryJson(json: string): MotionRecipeLibrary {
+function parseLibraryJSON(json: string): MotionRecipeLibrary {
   try {
-    const library = parseMotionRecipeLibraryJson(json)
+    const library = parseMotionRecipeLibraryJSON(json)
     assertUniqueNames(library)
     return library
   } catch (cause) {
@@ -135,7 +135,7 @@ export function createMotionRecipeLibraryStore(
       return snapshot()
     }
     try {
-      library = parseLibraryJson(stored)
+      library = parseLibraryJSON(stored)
       blocked = false
       error = null
     } catch (cause) {
@@ -226,11 +226,11 @@ export function createMotionRecipeLibraryStore(
     )
   }
 
-  function importJson(
+  function importJSON(
     json: string,
     policy: MotionRecipeMergePolicy = 'error'
   ): MotionRecipeLibraryStoreSnapshot {
-    const incoming = parseLibraryJson(json)
+    const incoming = parseLibraryJSON(json)
     const base = blocked ? createMotionRecipeLibrary() : library
     let merged: MotionRecipeLibrary
     try {
@@ -245,7 +245,7 @@ export function createMotionRecipeLibraryStore(
     return commit(merged, { allowBlockedRecovery: blocked })
   }
 
-  function exportJson(): string {
+  function exportJSON(): string {
     assertWritable()
     return serializeMotionRecipeLibrary(library)
   }
@@ -264,8 +264,8 @@ export function createMotionRecipeLibraryStore(
     addRecipe,
     updateRecipe,
     deleteRecipe,
-    importJson,
-    exportJson,
+    importJSON,
+    exportJSON,
     instantiate: (id: string, input: MotionRecipeInstantiationInput) =>
       instantiateMotionRecipe(requireRecipe(id), input)
   }

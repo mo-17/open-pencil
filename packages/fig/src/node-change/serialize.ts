@@ -34,7 +34,7 @@ export {
 import type { NodeChange, VariableConsumptionEntry } from '@open-pencil/kiwi/fig/codec'
 import { guidToString, stringToGuid } from '@open-pencil/kiwi/fig/guid'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
-import type { GUID, JsonObject, Matrix } from '@open-pencil/scene-graph/primitives'
+import type { GUID, JSONObject, Matrix } from '@open-pencil/scene-graph/primitives'
 
 import {
   buildAssetRefToVarGuidMap,
@@ -154,7 +154,7 @@ function serializeCornerRadii(node: SceneNode, nc: KiwiNodeChange): void {
     // the raw Figma data. Figma may emit per-corner radii without setting the
     // independent flag (preserve rectangleCornerRadiiIndependent).
     const rawIndependent = node.source.id
-      ? (effectiveFigmaRawNodeFields(node) as JsonObject | undefined)
+      ? (effectiveFigmaRawNodeFields(node) as JSONObject | undefined)
           ?.rectangleCornerRadiiIndependent
       : undefined
     nc.rectangleCornerRadiiIndependent =
@@ -469,8 +469,8 @@ function computeExportTransform(node: SceneNode): Matrix {
   const sin = Math.sin((node.rotation * Math.PI) / 180)
 
   const m00 = cos * sx
-  const m01 = -sin
-  const m10 = sin * sx
+  const m01 = -sin * sx
+  const m10 = sin
   const m11 = cos
   const corners = [
     { x: 0, y: 0 },

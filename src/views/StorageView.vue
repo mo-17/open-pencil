@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEventListener, useIntervalFn } from '@vueuse/core'
-import { useI18n } from '@open-pencil/vue'
+import { useDocumentWorkspace, useI18n } from '@open-pencil/vue'
 
 import {
   activeStorageProfileID,
@@ -46,7 +46,7 @@ import {
 } from '@/app/storage/local-store'
 import { withStorageProfileMutationLease } from '@/app/storage/mutation-drain'
 import { reconcileStorageDocuments } from '@/app/storage/reconcile'
-import { pendingSyncCount, syncUiState, uploadProgressByCanvas } from '@/app/storage/sync'
+import { pendingSyncCount, syncUIState, uploadProgressByCanvas } from '@/app/storage/sync'
 import { queueStorageDocumentDeletion } from '@/app/storage/workspace/delete'
 import {
   activeTab,
@@ -120,9 +120,9 @@ const deleteBlockedByOpenTab = computed(() => {
 })
 
 const syncSummary = computed(() => {
-  if (syncUiState.value === 'offline') return dialogs.value.storageSyncOffline
-  if (syncUiState.value === 'error') return dialogs.value.storageSyncNeedsAttention
-  if (syncUiState.value === 'syncing' || pendingSyncCount.value > 0) {
+  if (syncUIState.value === 'offline') return dialogs.value.storageSyncOffline
+  if (syncUIState.value === 'error') return dialogs.value.storageSyncNeedsAttention
+  if (syncUIState.value === 'syncing' || pendingSyncCount.value > 0) {
     return dialogs.value.storageSyncingCount({ count: pendingSyncCount.value })
   }
   return null
@@ -577,6 +577,43 @@ async function checkForRemoteChanges(): Promise<void> {
   }
 }
 
+async function loadWorkspacePreview(documentId: string): Promise<Uint8Array | null> {
+  const identity = currentWorkspaceIdentity()
+  if (identity.providerId === GOOGLE_DRIVE_PROVIDER_ID && !identity.authority) return null
+  const binding = bindingFor(identity, documentId)
+  const localStore = getLocalCanvasStore()
+  const local = await localStore.readThumb(binding)
+  if (local?.byteLength) return local
+  const adapter = createActiveStorageAdapter(identity.providerId, identity.profileId)
+  if (!adapter.getThumbnail) return null
+  const remote = await adapter.getThumbnail(
+    documentId,
+    identity.authority ? { expectedAuthority: identity.authority } : undefined
+  )
+  if (!remote?.byteLength) return null
+  if (identityIsCurrent(identity)) await localStore.writeThumb(binding, remote)
+  return remote
+}
+
+const previewWorkspace = useDocumentWorkspace<StorageDocument>({
+  source: {
+    async refresh() {
+      return documents.value
+    },
+    loadPreview: loadWorkspacePreview
+  },
+  refreshOnFocus: false,
+  refreshOnReconnect: false,
+  previewConcurrency: 6
+})
+const previewURL = previewWorkspace.previewURL
+const vWorkspacePreview = previewWorkspace.previewDirective
+
+function workspacePreviewStyle(documentId: string): Record<string, string> | undefined {
+  const url = previewURL(documentId)
+  return url ? { '--storage-workspace-preview': `url("${url}")` } : undefined
+}
+
 async function openDocument(document: StorageDocument): Promise<void> {
   if (
     openingDocumentId.value ||
@@ -695,6 +732,7 @@ useEventListener(document, 'visibilitychange', onVisibilityChange)
 useIntervalFn(() => void checkForRemoteChanges(), CHANGE_POLL_INTERVAL_MS)
 
 watch([activeStorageProviderID, activeStorageProfileID], () => {
+  previewWorkspace.clearPreviews()
   refreshController?.abort()
   changeController?.abort()
   openController?.abort()
@@ -723,6 +761,7 @@ watch(providerPluginState, (state, previous) => {
   connectionReady.value = false
   durabilityAvailable.value = null
   if (state === 'disabled') {
+    previewWorkspace.clearPreviews()
     updateActiveAuthority(null)
     documents.value = []
     statusesByKey.value = new Map()
@@ -732,9 +771,13 @@ watch(providerPluginState, (state, previous) => {
   }
 })
 
-watch([syncUiState, pendingSyncCount], ([state, count], [previousState, previousCount]) => {
+watch([syncUIState, pendingSyncCount], ([state, count], [previousState, previousCount]) => {
   const jobSettled = count < previousCount || (previousState === 'syncing' && state !== 'syncing')
   if (jobSettled) void repaintCurrentLocalDocuments()
+})
+
+watch(documents, () => {
+  void previewWorkspace.invalidate()
 })
 
 watch(settingsDialogOpen, (open, wasOpen) => {
@@ -762,12 +805,12 @@ onBeforeUnmount(() => {
           <span
             v-if="syncSummary"
             class="inline-flex items-center gap-1 rounded-full bg-hover px-1.5 py-0.5 text-[9px] text-muted"
-            :data-state="syncUiState"
+            :data-state="syncUIState"
             role="status"
             aria-live="polite"
           >
-            <icon-lucide-cloud-off v-if="syncUiState === 'offline'" class="size-2.5" />
-            <icon-lucide-triangle-alert v-else-if="syncUiState === 'error'" class="size-2.5" />
+            <icon-lucide-cloud-off v-if="syncUIState === 'offline'" class="size-2.5" />
+            <icon-lucide-triangle-alert v-else-if="syncUIState === 'error'" class="size-2.5" />
             <icon-lucide-loader-circle v-else class="size-2.5 animate-spin" />
             {{ syncSummary }}
           </span>
@@ -832,12 +875,15 @@ onBeforeUnmount(() => {
         <StorageWorkspaceDocumentCard
           v-for="document in documents"
           :key="document.id"
+          v-workspace-preview="document.id"
           :document="document"
           :sync-status="documentStatus(document)"
           :progress="documentProgress(document)"
           :preserved-copy="preservedCopyIds.has(document.id)"
           :busy="openingDocumentId === document.id || deletingDocumentId === document.id"
           :disabled="durabilityAvailable !== true"
+          :class="{ 'storage-workspace-document-card--preview': previewURL(document.id) }"
+          :style="workspacePreviewStyle(document.id)"
           @open="openDocument(document)"
           @delete="requestDeleteDocument(document)"
         />
@@ -925,3 +971,17 @@ onBeforeUnmount(() => {
     @confirm="confirmDeleteDocument"
   />
 </template>
+
+<style scoped>
+:deep(.storage-workspace-document-card--preview > button > div:first-child) {
+  background-image: var(--storage-workspace-preview);
+  background-position: center;
+  background-size: cover;
+}
+
+:deep(
+  .storage-workspace-document-card--preview > button > div:first-child > div[class~='size-11']
+) {
+  visibility: hidden;
+}
+</style>

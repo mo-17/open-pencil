@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { instrumentVectorMotionHtml } from '#compiler/adapters/react/motion/target'
+import { instrumentVectorMotionHTML } from '#compiler/adapters/react/motion/target'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
@@ -288,9 +288,9 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     const degeneratePath = degenerate.tracks[0]?.path
     if (!degeneratePath) throw new Error('expected degenerate motion path')
     degeneratePath.points = Array.from({ length: 128 }, () => ({ x: 4, y: 7 }))
-    const degenerateCss = compileMotion(degenerate).files.get('src/__motion.css') as string
-    expect(degenerateCss).not.toContain('NaN')
-    expect(degenerateCss).not.toContain('offset-path:')
+    const degenerateCSS = compileMotion(degenerate).files.get('src/__motion.css') as string
+    expect(degenerateCSS).not.toContain('NaN')
+    expect(degenerateCSS).not.toContain('offset-path:')
   })
 
   test('preserves every bounded auto-rotate corner and discontinuous path step', () => {
@@ -534,7 +534,7 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     expect(element.motion?.target?.fillIndex).toBe(1)
     expect(element.rawHtml).not.toContain('<feDropShadow')
     expect(element.rawHtml).toContain('<feGaussianBlur')
-    const instrumented = instrumentVectorMotionHtml(
+    const instrumented = instrumentVectorMotionHTML(
       element.rawHtml ?? '',
       requireMotion(element),
       vector.id
@@ -626,7 +626,7 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     expect(
       element.motion?.tracks[0]?.keyframes.every((frame) => frame.trimStart === undefined)
     ).toBe(true)
-    const instrumented = instrumentVectorMotionHtml(
+    const instrumented = instrumentVectorMotionHTML(
       element.rawHtml ?? '',
       requireMotion(element),
       vector.id
@@ -733,7 +733,7 @@ describe('compiler — MotionSpec v2 artifacts', () => {
       expect(keyframes.every((frame) => frame.trimStart === undefined)).toBe(true)
       expect(keyframes.every((frame) => frame.trimEnd === undefined)).toBe(true)
 
-      const instrumented = instrumentVectorMotionHtml(
+      const instrumented = instrumentVectorMotionHTML(
         element.rawHtml ?? '',
         requireMotion(element),
         vector.id
@@ -842,7 +842,7 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     expect(keyframes.every((frame) => frame.strokeColor !== undefined)).toBe(true)
     expect(keyframes.every((frame) => frame.strokeWidth !== undefined)).toBe(true)
     expect(keyframes.every((frame) => frame.trimEnd !== undefined)).toBe(true)
-    const instrumented = instrumentVectorMotionHtml(
+    const instrumented = instrumentVectorMotionHTML(
       element.rawHtml ?? '',
       requireMotion(element),
       boolean.id
@@ -953,7 +953,7 @@ describe('compiler — MotionSpec v2 artifacts', () => {
     const tree = collectTree(graph, pageId)
     for (const [index, node] of nodes.entries()) {
       const element = tree.children[index] as IRElement
-      const instrumented = instrumentVectorMotionHtml(
+      const instrumented = instrumentVectorMotionHTML(
         element.rawHtml ?? '',
         requireMotion(element),
         node.id

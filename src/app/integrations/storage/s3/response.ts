@@ -159,7 +159,7 @@ export function limitS3ResponseBody(
 }
 
 /** Reject malformed or non-list XML before the tolerant field extractor can see it. */
-export function assertS3ListObjectsXml(source: string): void {
+export function assertS3ListObjectsXML(source: string): void {
   let parseFailure: string | null = null
   let rootName: string | null = null
   try {

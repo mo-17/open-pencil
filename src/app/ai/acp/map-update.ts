@@ -1,7 +1,7 @@
 import type { SessionUpdate, ToolCall, ToolCallUpdate } from '@agentclientprotocol/sdk'
 import type { UIMessageChunk } from 'ai'
 
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 export interface MapResult {
   chunks: UIMessageChunk[]
@@ -15,7 +15,7 @@ interface AccumulatedToolCall {
   status?: ToolCall['status'] | null
   rawInput?: unknown
   rawOutput?: unknown
-  content?: JsonObject[]
+  content?: JSONObject[]
   hidden: boolean
   started: boolean
   inputEmitted: boolean
@@ -46,9 +46,9 @@ function isToolErrorEnvelope(value: unknown): value is ToolErrorEnvelope {
 function errorTextFromString(value: string, depth: number): string | undefined {
   const text = value.trim()
   if (!text) return undefined
-  const looksLikeJson =
+  const looksLikeJSON =
     (text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))
-  if (!looksLikeJson) return text
+  if (!looksLikeJSON) return text
   try {
     return errorTextFromUnknown(JSON.parse(text), depth + 1) ?? text
   } catch {
@@ -86,7 +86,7 @@ function errorTextFromUnknown(value: unknown, depth = 0): string | undefined {
 }
 
 function toolErrorText(update: { content?: unknown; rawOutput?: unknown }): string {
-  const content = Array.isArray(update.content) ? (update.content as JsonObject[]) : undefined
+  const content = Array.isArray(update.content) ? (update.content as JSONObject[]) : undefined
   return errorTextFromUnknown(update.rawOutput) ?? textFromContent(content) ?? 'Tool call failed'
 }
 
@@ -216,7 +216,7 @@ function mergeToolCall(state: AccumulatedToolCall, update: ToolCall | ToolCallUp
     state.terminalEmitted = false
   }
   if (update.content !== undefined) {
-    state.content = update.content as JsonObject[]
+    state.content = update.content as JSONObject[]
     state.terminalEmitted = false
   }
   state.hidden ||= isInternalGuardian(update)
@@ -391,12 +391,12 @@ export function createACPUpdateMapper(baseId: string): ACPUpdateMapper {
   }
 }
 
-export function textFromContent(content: JsonObject[] | undefined): string | undefined {
+export function textFromContent(content: JSONObject[] | undefined): string | undefined {
   if (!content) return undefined
   const parts: string[] = []
   for (const c of content) {
     if (c.type !== 'content') continue
-    const inner = c.content as JsonObject | undefined
+    const inner = c.content as JSONObject | undefined
     if (inner?.type === 'text' && typeof inner.text === 'string') {
       parts.push(inner.text)
     }

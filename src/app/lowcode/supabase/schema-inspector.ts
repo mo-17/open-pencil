@@ -16,13 +16,13 @@ import {
   supabaseManagementPatStatus
 } from './credentials'
 import {
-  fetchSupabaseDatabaseOpenApi,
+  fetchSupabaseDatabaseOpenAPI,
   normalizeSupabaseSchemaName,
-  projectRefFromSupabaseUrl,
+  projectRefFromSupabaseURL,
   SupabaseManagementError,
   type SupabaseManagementErrorCode,
-  type SupabaseOpenApiRequest,
-  type SupabaseOpenApiResponse
+  type SupabaseOpenAPIRequest,
+  type SupabaseOpenAPIResponse
 } from './management-client'
 import {
   parseSupabaseSchemaCatalog,
@@ -61,8 +61,8 @@ export interface SupabaseSchemaInspectorDependencies {
   setCredential(value: string): Promise<void>
   clearCredential(): Promise<void>
   resolveCredential(): Promise<string | null>
-  fetchOpenApi(request: SupabaseOpenApiRequest): Promise<SupabaseOpenApiResponse>
-  parseCatalog(openApi: unknown, identity: SupabaseSchemaCatalogIdentity): SupabaseSchemaCatalog
+  fetchOpenAPI(request: SupabaseOpenAPIRequest): Promise<SupabaseOpenAPIResponse>
+  parseCatalog(openAPI: unknown, identity: SupabaseSchemaCatalogIdentity): SupabaseSchemaCatalog
 }
 
 const DEFAULT_DEPENDENCIES: SupabaseSchemaInspectorDependencies = {
@@ -72,7 +72,7 @@ const DEFAULT_DEPENDENCIES: SupabaseSchemaInspectorDependencies = {
   setCredential: setSupabaseManagementPat,
   clearCredential: clearSupabaseManagementPat,
   resolveCredential: resolveSupabaseManagementPat,
-  fetchOpenApi: fetchSupabaseDatabaseOpenApi,
+  fetchOpenAPI: fetchSupabaseDatabaseOpenAPI,
   parseCatalog: parseSupabaseSchemaCatalog
 }
 
@@ -80,7 +80,7 @@ function configIdentity(config: SupabaseConfig | undefined): SupabaseSchemaCatal
   if (!config?.url) return null
   try {
     return {
-      projectRef: projectRefFromSupabaseUrl(config.url),
+      projectRef: projectRefFromSupabaseURL(config.url),
       schema: normalizeSupabaseSchemaName(config.schema)
     }
   } catch {
@@ -266,7 +266,7 @@ export function useSupabaseSchemaInspector(
     }
 
     let personalAccessToken: string | null = null
-    let response: SupabaseOpenApiResponse | null = null
+    let response: SupabaseOpenAPIResponse | null = null
     try {
       const cacheLoaded = await readCacheForRun(identity, version)
       if (!cacheLoaded || !isRunActive(version, controller)) return
@@ -275,7 +275,7 @@ export function useSupabaseSchemaInspector(
       personalAccessToken = await resolveCredentialForRun(version, controller)
       if (!personalAccessToken || !isRunActive(version, controller)) return
 
-      response = await dependencies.fetchOpenApi({
+      response = await dependencies.fetchOpenAPI({
         projectUrl: currentConfig.url,
         schema: identity.schema,
         personalAccessToken,

@@ -58,7 +58,7 @@ describe('Supabase schema inspector state', () => {
         calls.push('resolve')
         return secret
       },
-      fetchOpenApi: async (request) => {
+      fetchOpenAPI: async (request) => {
         calls.push('fetch')
         expect(request.personalAccessToken).toBe(secret)
         return {
@@ -106,7 +106,7 @@ describe('Supabase schema inspector state', () => {
       readCache: async () => ({ status: 'hit', catalog: cachedCatalog, cachedAt: 1000 }),
       credentialStatus: async () => 'missing',
       resolveCredential: async () => null,
-      fetchOpenApi: async () => {
+      fetchOpenAPI: async () => {
         fetchCalls += 1
         throw new Error('must not fetch without a credential')
       }
@@ -131,7 +131,7 @@ describe('Supabase schema inspector state', () => {
       readCache: async () => ({ status: 'miss' }),
       credentialStatus: async () => 'configured',
       resolveCredential: async () => 'transient-pat',
-      fetchOpenApi: (request) => {
+      fetchOpenAPI: (request) => {
         requestSignal = request.signal
         markStarted?.()
         return new Promise((_resolve, reject) => {
@@ -171,7 +171,7 @@ describe('Supabase schema inspector state', () => {
       readCache: async () => ({ status: 'miss' }),
       credentialStatus: async () => 'configured',
       resolveCredential: async () => 'transient-pat',
-      fetchOpenApi: (request) => {
+      fetchOpenAPI: (request) => {
         requestSignal = request.signal
         markStarted?.()
         return new Promise((_resolve, reject) => {

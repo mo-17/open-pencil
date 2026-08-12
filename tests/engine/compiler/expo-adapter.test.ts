@@ -54,7 +54,7 @@ describe('Expo React Native compiler adapter', () => {
 
     const output = compile({ graph, pageIds: [pageId], options: expoOptions() })
     const page = textFile(output.files, 'src/pages/index.tsx')
-    const packageJson = JSON.parse(textFile(output.files, 'package.json')) as {
+    const packageJSON = JSON.parse(textFile(output.files, 'package.json')) as {
       main: string
       dependencies: Record<string, string>
       engines: { node: string }
@@ -66,15 +66,15 @@ describe('Expo React Native compiler adapter', () => {
     expect(output.files.has('README.md')).toBe(true)
     expect(output.files.has('index.html')).toBe(false)
     expect(output.files.has('vite.config.ts')).toBe(false)
-    expect(packageJson.main).toBe('expo/AppEntry')
-    expect(packageJson.engines.node).toBe('>=22.13.0')
-    expect(packageJson.dependencies.expo).toBeDefined()
-    expect(packageJson.dependencies['react-native']).toBeDefined()
-    expect(packageJson.dependencies.expo).toBe('~57.0.10')
-    expect(packageJson.dependencies.react).toBe('19.2.3')
-    expect(packageJson.dependencies['react-native']).toBe('0.86.2')
-    expect(packageJson.dependencies['react-native-safe-area-context']).toBe('~5.7.0')
-    expect(packageJson.scripts.typecheck).toBe('tsc --noEmit')
+    expect(packageJSON.main).toBe('expo/AppEntry')
+    expect(packageJSON.engines.node).toBe('>=22.13.0')
+    expect(packageJSON.dependencies.expo).toBeDefined()
+    expect(packageJSON.dependencies['react-native']).toBeDefined()
+    expect(packageJSON.dependencies.expo).toBe('~57.0.10')
+    expect(packageJSON.dependencies.react).toBe('19.2.3')
+    expect(packageJSON.dependencies['react-native']).toBe('0.86.2')
+    expect(packageJSON.dependencies['react-native-safe-area-context']).toBe('~5.7.0')
+    expect(packageJSON.scripts.typecheck).toBe('tsc --noEmit')
     expect(page).toContain("from 'react-native'")
     expect(page).toContain('<SafeAreaView')
     expect(page).toContain('<KeyboardAvoidingView')
@@ -168,7 +168,7 @@ describe('Expo React Native compiler adapter', () => {
       })
     })
     const codes = output.warnings.map((warning) => warning.code)
-    const appJson = JSON.parse(textFile(output.files, 'app.json')) as {
+    const appJSON = JSON.parse(textFile(output.files, 'app.json')) as {
       expo: { scheme: string }
     }
 
@@ -189,7 +189,7 @@ describe('Expo React Native compiler adapter', () => {
         path.split('/').every((segment) => new TextEncoder().encode(segment).byteLength <= 255)
       )
     ).toBe(true)
-    expect(appJson.expo.scheme).toBe('openpencil-123-demo')
+    expect(appJSON.expo.scheme).toBe('openpencil-123-demo')
     expect(codes).toContain('expo-route-file-collision')
     expect(codes).toContain('expo-route-pattern-unsupported')
     expect(codes).toContain('expo-route-segment-truncated')
@@ -527,13 +527,13 @@ describe('Expo React Native compiler adapter', () => {
       options: expoOptions()
     })
     const fontLoader = textFile(output.files, 'src/generated-fonts.ts')
-    const packageJson = textFile(output.files, 'package.json')
+    const packageJSON = textFile(output.files, 'package.json')
 
     expect(output.files.get('assets/fonts/native-font.ttf')).toEqual(new Uint8Array([1, 2, 3]))
     expect(output.files.has('assets/fonts/web-font.woff')).toBe(false)
     expect(fontLoader).toContain("from 'expo-font'")
     expect(fontLoader).toContain('require("../assets/fonts/native-font.ttf")')
-    expect(packageJson).toContain('"expo-font"')
+    expect(packageJSON).toContain('"expo-font"')
     expect(output.warnings.map((warning) => warning.code)).toContain('expo-font-format-unsupported')
   })
 

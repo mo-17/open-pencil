@@ -62,8 +62,8 @@ function httpRequest(
   const url = valueSource(`${where}.url`, raw.url, scope)
   if (!url.ok) return url
   if (url.value.kind === 'expr') {
-    const parsedUrl = parseExpression(url.value.expr)
-    if (!parsedUrl.ok || parsedUrl.references.size > 0) {
+    const parsedURL = parseExpression(url.value.expr)
+    if (!parsedURL.ok || parsedURL.references.size > 0) {
       return fail(
         `${where}.url`,
         'must be an environment reference or a static expression without workflow values'

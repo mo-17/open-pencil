@@ -106,7 +106,7 @@ function payload(version = '1.0.0', durationMs = 320): TeamMotionLibraryPayload 
   }
 }
 
-const CANONICAL_FIXTURE_PRIVATE_KEY: JsonWebKey = {
+const CANONICAL_FIXTURE_PRIVATE_KEY: JSONWebKey = {
   crv: 'Ed25519',
   d: 'FxJOeRX9SK273eZkGQ8W5ohk1EFWP67CZCSzYL4cNbU',
   ext: true,
@@ -115,7 +115,7 @@ const CANONICAL_FIXTURE_PRIVATE_KEY: JsonWebKey = {
   x: '3kDZvtAZuYe78SGOC-rt_sgTMClbZoeR-KYMEAMHwnU'
 }
 
-const CANONICAL_FIXTURE_PUBLIC_KEY: JsonWebKey = {
+const CANONICAL_FIXTURE_PUBLIC_KEY: JSONWebKey = {
   crv: 'Ed25519',
   ext: true,
   key_ops: ['verify'],
@@ -167,7 +167,7 @@ function canonicalFixturePayload(): TeamMotionLibraryPayload {
   }
 }
 
-function base64UrlBytes(value: string): Uint8Array {
+function base64URLBytes(value: string): Uint8Array {
   const padded =
     value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4)
   return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0))
@@ -271,14 +271,14 @@ describe('signed team Motion libraries', () => {
         webCryptoBuffer(new TextEncoder().encode(CANONICAL_FIXTURE_PAYLOAD))
       )
     )
-    expect(base64UrlBytes(CANONICAL_FIXTURE_DIGEST)).toEqual(payloadDigest)
+    expect(base64URLBytes(CANONICAL_FIXTURE_DIGEST)).toEqual(payloadDigest)
 
     const signedEnvelope = `{"algorithm":"SHA-256","digest":"${CANONICAL_FIXTURE_DIGEST}","payload":${CANONICAL_FIXTURE_PAYLOAD}}`
     expect(
       await crypto.subtle.verify(
         'Ed25519',
         publicKey,
-        webCryptoBuffer(base64UrlBytes(CANONICAL_FIXTURE_SIGNATURE)),
+        webCryptoBuffer(base64URLBytes(CANONICAL_FIXTURE_SIGNATURE)),
         webCryptoBuffer(new TextEncoder().encode(signedEnvelope))
       )
     ).toBe(true)

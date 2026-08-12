@@ -25,7 +25,7 @@ function normalizedData(data: unknown): unknown {
   return data === undefined ? null : data
 }
 
-function stringifyJson(value: unknown): string | undefined {
+function stringifyJSON(value: unknown): string | undefined {
   return JSON.stringify(value)
 }
 
@@ -79,7 +79,7 @@ function errorMessage(error: unknown): string {
     if (typeof message === 'string') return message
   }
   try {
-    return stringifyJson(error) ?? String(error)
+    return stringifyJSON(error) ?? String(error)
   } catch {
     return String(error)
   }

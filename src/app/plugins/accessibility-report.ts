@@ -1,4 +1,4 @@
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 const MAX_VISIBLE_ISSUES = 100
 const MAX_REPORT_ISSUES = 2_000
@@ -72,7 +72,7 @@ function issue(value: unknown): StaticAccessibilityIssueView | null {
  * an unbounded settings panel.
  */
 export function parseStaticAccessibilityReport(
-  value: JsonValue | undefined
+  value: JSONValue | undefined
 ): StaticAccessibilityReportView | null {
   const source = record(value)
   if (!source) return null

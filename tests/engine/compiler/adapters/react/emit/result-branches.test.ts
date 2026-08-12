@@ -15,7 +15,7 @@ import type { ExprAst } from '@open-pencil/core/lowcode-validation'
  * Branch-less + capture-less calls stay byte-identical to the §2 output —
  * covered by the existing api-call / supabase emit suites.
  */
-function staticUrl(s: string): ExprAst {
+function staticURL(s: string): ExprAst {
   return { kind: 'template', quasis: [s], expressions: [] }
 }
 
@@ -28,7 +28,7 @@ describe('emit API result branches (Phase 3 §10 v9)', () => {
     const handler: IREventHandler = {
       kind: 'apiCall',
       method: 'GET',
-      url: staticUrl('https://x.test/save'),
+      url: staticURL('https://x.test/save'),
       body: undefined,
       docStateName: 'result',
       onSuccess: [toast('Saved', 'success')],
@@ -48,7 +48,7 @@ describe('emit API result branches (Phase 3 §10 v9)', () => {
     const handler: IREventHandler = {
       kind: 'apiCall',
       method: 'GET',
-      url: staticUrl('https://x.test/save'),
+      url: staticURL('https://x.test/save'),
       body: undefined,
       docStateName: 'result',
       errorTarget: 'lastError',
@@ -64,7 +64,7 @@ describe('emit API result branches (Phase 3 §10 v9)', () => {
     const handler: IREventHandler = {
       kind: 'apiCall',
       method: 'GET',
-      url: staticUrl('https://x.test/save'),
+      url: staticURL('https://x.test/save'),
       body: undefined,
       docStateName: 'result',
       onSuccess: [toast('OK', 'info')]
@@ -114,14 +114,14 @@ describe('emit API result branches (Phase 3 §10 v9)', () => {
     const handler: IREventHandler = {
       kind: 'apiCall',
       method: 'GET',
-      url: staticUrl('https://x.test/a'),
+      url: staticURL('https://x.test/a'),
       body: undefined,
       docStateName: 'a',
       onSuccess: [
         {
           kind: 'apiCall',
           method: 'GET',
-          url: staticUrl('https://x.test/b'),
+          url: staticURL('https://x.test/b'),
           body: undefined,
           docStateName: 'b'
         }

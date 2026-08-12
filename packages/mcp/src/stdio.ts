@@ -3,8 +3,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 import { MCP_VERSION, registerTools } from '#mcp/server'
-import { createStdioRpcBridge } from '#mcp/stdio/bridge'
-import { createPluginMcpController, registerPluginMcpTools } from '#mcp/tool/plugin/catalog'
+import { createStdioRPCBridge } from '#mcp/stdio/bridge'
+import { createPluginMCPController, registerPluginMCPTools } from '#mcp/tool/plugin/catalog'
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.stdout.write(
@@ -52,7 +52,7 @@ let refreshPluginTools = () => undefined
 // field records the override) via auto-discovery. Treating the env var as an
 // explicit pin would prevent the bridge from following discovery updates after
 // a server restart.
-const bridge = createStdioRpcBridge({
+const bridge = createStdioRPCBridge({
   authToken,
   onReady: () => {
     process.stderr.write(
@@ -69,19 +69,19 @@ const bridge = createStdioRpcBridge({
 })
 
 const mcpServer = new McpServer({ name: 'open-pencil', version: MCP_VERSION })
-registerTools(mcpServer, { enableEval, mcpRoot, sendRpc: bridge.sendRpc })
-const pluginMcp = createPluginMcpController({ sendRpc: bridge.sendRpc })
-registerPluginMcpTools(mcpServer, { catalog: pluginMcp.catalog, sendRpc: bridge.sendRpc })
+registerTools(mcpServer, { enableEval, mcpRoot, sendRPC: bridge.sendRPC })
+const pluginMCP = createPluginMCPController({ sendRPC: bridge.sendRPC })
+registerPluginMCPTools(mcpServer, { catalog: pluginMCP.catalog, sendRPC: bridge.sendRPC })
 refreshPluginTools = () => {
-  pluginMcp.startPolling()
-  void pluginMcp.refresh()
+  pluginMCP.startPolling()
+  void pluginMCP.refresh()
 }
-// Start discovery immediately. sendRpc waits for the bridge's in-flight
+// Start discovery immediately. sendRPC waits for the bridge's in-flight
 // connection, while onReady/onReconnect safely coalesce with this refresh.
 refreshPluginTools()
 
 process.once('exit', () => {
-  pluginMcp.close()
+  pluginMCP.close()
   bridge.close()
 })
 

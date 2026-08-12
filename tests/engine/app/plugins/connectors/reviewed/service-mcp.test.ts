@@ -5,20 +5,20 @@ import {
   appConnectorAuthorization,
   appConnectorCredentialReadiness,
   appConnectorHostAdapters,
-  isAppConnectorMcpExposed
+  isAppConnectorMCPExposed
 } from '@/app/plugins/connectors/app'
 import { connectorOperationHelp } from '@/app/plugins/connectors/operation/help'
 import { REVIEWED_EXTERNAL_SERVICE_CATALOG } from '@/app/plugins/connectors/services'
 import { pluginConnectorControls } from '@/app/plugins/connectors/settings-controls-model'
-import { listAppPluginMcpTools, resolveAppPluginMcpTool } from '@/app/plugins/mcp'
+import { listAppPluginMCPTools, resolveAppPluginMCPTool } from '@/app/plugins/mcp'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
 import { createCredentialServices } from '@/app/settings/credentials'
 import { MemoryCredentialStore } from '@/app/settings/credentials/memory'
 
 const EXPOSURE = Object.freeze({
-  connectorExposure: isAppConnectorMcpExposed,
-  connectorNonGetReadOnlyExposure: isAppConnectorMcpExposed
+  connectorExposure: isAppConnectorMCPExposed,
+  connectorNonGetReadOnlyExposure: isAppConnectorMCPExposed
 })
 
 function descriptor(key: string) {
@@ -86,7 +86,7 @@ describe('reviewed external service MCP lifecycle', () => {
       await store.load()
 
       expect(
-        listAppPluginMcpTools(store, EXPOSURE).tools.some(
+        listAppPluginMCPTools(store, EXPOSURE).tools.some(
           (tool) => tool.pluginId === contract.pluginId
         )
       ).toBe(false)
@@ -94,7 +94,7 @@ describe('reviewed external service MCP lifecycle', () => {
       await store.install(contract.pluginId)
       expect(store.installedConnectors()).toEqual([])
       expect(
-        listAppPluginMcpTools(store, EXPOSURE).tools.some(
+        listAppPluginMCPTools(store, EXPOSURE).tools.some(
           (tool) => tool.pluginId === contract.pluginId
         )
       ).toBe(false)
@@ -103,14 +103,14 @@ describe('reviewed external service MCP lifecycle', () => {
       const installed = store.connector(contract.pluginId, contract.connectorId)
       if (!installed) throw new Error(`Missing installed reviewed connector: ${key}`)
       expect(
-        listAppPluginMcpTools(store, EXPOSURE).tools.some(
+        listAppPluginMCPTools(store, EXPOSURE).tools.some(
           (tool) => tool.pluginId === contract.pluginId
         )
       ).toBe(false)
 
       appConnectorAuthorization.authorize(contract, installed.plugin.package.digest)
       expect(
-        listAppPluginMcpTools(store, EXPOSURE).tools.some(
+        listAppPluginMCPTools(store, EXPOSURE).tools.some(
           (tool) => tool.pluginId === contract.pluginId
         )
       ).toBe(false)
@@ -123,7 +123,7 @@ describe('reviewed external service MCP lifecycle', () => {
       await credentials.manager.set(reference, 'test-credential')
       await appConnectorCredentialReadiness.observe(credentials.manager, [reference])
 
-      const exposed = listAppPluginMcpTools(store, EXPOSURE)
+      const exposed = listAppPluginMCPTools(store, EXPOSURE)
       const tool = exposed.tools.find((candidate) => candidate.pluginId === contract.pluginId)
       expect(tool).toMatchObject({
         kind: 'connector',
@@ -131,7 +131,7 @@ describe('reviewed external service MCP lifecycle', () => {
         description: expect.stringContaining('untrusted external data')
       })
       if (!tool) throw new Error(`Missing authorized reviewed connector MCP tool: ${key}`)
-      expect(resolveAppPluginMcpTool(store, tool.name, contract.pluginId, EXPOSURE).kind).toBe(
+      expect(resolveAppPluginMCPTool(store, tool.name, contract.pluginId, EXPOSURE).kind).toBe(
         'connector'
       )
 
@@ -141,36 +141,36 @@ describe('reviewed external service MCP lifecycle', () => {
         appConnectorAuthorization.isAuthorized(contract, installed.plugin.package.digest)
       ).toBe(true)
       expect(
-        listAppPluginMcpTools(store, EXPOSURE).tools.some(
+        listAppPluginMCPTools(store, EXPOSURE).tools.some(
           (candidate) => candidate.pluginId === contract.pluginId
         )
       ).toBe(false)
-      expect(() => resolveAppPluginMcpTool(store, tool.name, contract.pluginId, EXPOSURE)).toThrow(
+      expect(() => resolveAppPluginMCPTool(store, tool.name, contract.pluginId, EXPOSURE)).toThrow(
         'is unavailable'
       )
 
       await credentials.manager.set(reference, 'replacement-credential')
       await appConnectorCredentialReadiness.observe(credentials.manager, [reference])
       expect(
-        listAppPluginMcpTools(store, EXPOSURE).tools.some(
+        listAppPluginMCPTools(store, EXPOSURE).tools.some(
           (candidate) => candidate.pluginId === contract.pluginId
         )
       ).toBe(true)
 
       await store.setEnabled(contract.pluginId, false)
       expect(
-        listAppPluginMcpTools(store, EXPOSURE).tools.some(
+        listAppPluginMCPTools(store, EXPOSURE).tools.some(
           (candidate) => candidate.pluginId === contract.pluginId
         )
       ).toBe(false)
-      expect(() => resolveAppPluginMcpTool(store, tool.name, contract.pluginId, EXPOSURE)).toThrow(
+      expect(() => resolveAppPluginMCPTool(store, tool.name, contract.pluginId, EXPOSURE)).toThrow(
         'is unavailable'
       )
 
       appConnectorAuthorization.revoke(contract.pluginId, contract.connectorId)
       await store.uninstall(contract.pluginId)
       expect(
-        listAppPluginMcpTools(store, EXPOSURE).tools.some(
+        listAppPluginMCPTools(store, EXPOSURE).tools.some(
           (candidate) => candidate.pluginId === contract.pluginId
         )
       ).toBe(false)

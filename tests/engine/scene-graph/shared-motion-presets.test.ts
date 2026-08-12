@@ -10,7 +10,7 @@ import {
   noteSharedMotionPresetLibraryUpdate,
   parseSharedMotionPresetLibraryState,
   parseSharedMotionPresetManifest,
-  parseSharedMotionPresetManifestJson,
+  parseSharedMotionPresetManifestJSON,
   serializeSharedMotionPresetManifest,
   validateSharedMotionPresetManifest,
   type SharedMotionPresetManifest
@@ -65,8 +65,8 @@ describe('shared motion preset manifests', () => {
     const parsed = parseSharedMotionPresetManifest(source)
     const json = serializeSharedMotionPresetManifest(parsed)
 
-    expect(parseSharedMotionPresetManifestJson(json)).toEqual(parsed)
-    expect(serializeSharedMotionPresetManifest(parseSharedMotionPresetManifestJson(json))).toBe(
+    expect(parseSharedMotionPresetManifestJSON(json)).toEqual(parsed)
+    expect(serializeSharedMotionPresetManifest(parseSharedMotionPresetManifestJSON(json))).toBe(
       json
     )
     expect(parsed).not.toBe(source)
@@ -172,7 +172,7 @@ describe('shared motion preset manifests', () => {
         SharedMotionPresetValidationError
       )
     }
-    expect(() => parseSharedMotionPresetManifestJson('{not json')).toThrow(
+    expect(() => parseSharedMotionPresetManifestJSON('{not json')).toThrow(
       SharedMotionPresetValidationError
     )
     expect(() => instantiateSharedMotionPreset(manifest(), 'user-missing')).toThrow(

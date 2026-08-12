@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 import { defineConfig } from 'tsdown'
 
-const packageJson = JSON.parse(
+const packageJSON = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8')
 ) as {
   dependencies?: Record<string, string>
@@ -17,7 +17,7 @@ export default defineConfig({
   clean: true,
   outDir: './dist',
   deps: {
-    neverBundle: [...Object.keys(packageJson.dependencies ?? {}), /^node:/, /^bun:/],
+    neverBundle: [...Object.keys(packageJSON.dependencies ?? {}), /^node:/, /^bun:/],
     onlyBundle: false
   }
 })

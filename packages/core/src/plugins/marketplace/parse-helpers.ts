@@ -57,7 +57,7 @@ export function compareMarketplaceText(left: string, right: string): number {
   return left < right ? -1 : 1
 }
 
-export function marketplacePublicHttpsUrl(value: unknown, path: string): string {
+export function marketplacePublicHttpsURL(value: unknown, path: string): string {
   if (typeof value !== 'string' || value.length > MARKETPLACE_SNAPSHOT_LIMITS.maxUrlLength) {
     throw new TypeError(`${path} must be a bounded public HTTPS URL`)
   }

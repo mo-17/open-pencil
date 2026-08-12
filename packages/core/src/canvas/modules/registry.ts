@@ -21,11 +21,11 @@ import {
   DROPDOWN_MENU_MODULE_CANVAS_ADAPTER,
   renderDropdownMenuModulePreview
 } from './dropdown-menu'
-import { HTML_MODULE_CANVAS_ADAPTER, renderHtmlModulePreview } from './html'
+import { HTML_MODULE_CANVAS_ADAPTER, renderHTMLModulePreview } from './html'
 import { LOTTIE_MODULE_CANVAS_ADAPTER, renderLottieModulePreview } from './lottie'
 import { MARKDOWN_MODULE_CANVAS_ADAPTER, renderMarkdownModulePreview } from './markdown'
 import { MODAL_MODULE_CANVAS_ADAPTER, renderModalModulePreview } from './modal'
-import { PDF_VIEWER_MODULE_CANVAS_ADAPTER, renderPdfViewerModulePreview } from './pdf-viewer'
+import { PDF_VIEWER_MODULE_CANVAS_ADAPTER, renderPDFViewerModulePreview } from './pdf-viewer'
 import { QR_BARCODE_MODULE_CANVAS_ADAPTER, renderQrBarcodeModulePreview } from './qr-barcode'
 import { RICH_TEXT_MODULE_CANVAS_ADAPTER, renderRichTextModulePreview } from './rich-text'
 import { SLIDE_MENU_MODULE_CANVAS_ADAPTER, renderSlideMenuModulePreview } from './slide-menu'
@@ -118,11 +118,11 @@ export {
   renderCodeBlockModulePreview,
   renderDataGridModulePreview,
   renderDropdownMenuModulePreview,
-  renderHtmlModulePreview,
+  renderHTMLModulePreview,
   renderLottieModulePreview,
   renderMarkdownModulePreview,
   renderModalModulePreview,
-  renderPdfViewerModulePreview,
+  renderPDFViewerModulePreview,
   renderQrBarcodeModulePreview,
   renderRichTextModulePreview,
   renderSlideMenuModulePreview,

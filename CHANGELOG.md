@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- Complete translated app, accessibility, font, color, collaboration, import, connection-test, and browser fallback text across all supported locales, and keep the document language synchronized with the selected locale.
+
+## 0.14.0 - 2026-08-10
+
 ### Breaking changes
 
-- **Core SDK:** Import scene graph types, geometry, coordinate, matrix, snapping, undo, and path helpers from `@open-pencil/scene-graph`; import `.pen` parsing from `@open-pencil/pen`; and import synchronous Kiwi decompression from `@open-pencil/kiwi` instead of the `@open-pencil/core` compatibility barrel.
+- **Core SDK:** Import scene graph types, geometry, coordinate, matrix, snapping, undo, and path helpers from `@open-pencil/scene-graph`; import `.pen` parsing from `@open-pencil/pen`; import synchronous Kiwi decompression from `@open-pencil/kiwi` instead of the `@open-pencil/core` compatibility barrel; use uppercase acronym casing in exported identifiers, including `JSONObject`, `JSONArray`, `JSONValue`, `RPCCommand`, and `executeRPCCommand`; and use the renamed tool exports `importSVG`, `exportSVG`, `exportPDF`, `getJSX`, `diffJSX`, and `setPexelsAPIKey`.
 - **Vue SDK:** Replace the removed color-picker model helpers with `useColorModel()`; replace the deprecated `FillPickerRoot` and `useFillPicker()` APIs with `FillRoot`, `FillSwatch`, `useFill()`, and a consumer-owned popover; rename `FontPickerUi` to `FontPickerUI`; and remove the exported `testId` prop helper types in favor of semantic component anatomy.
 - Keep core and Automation-tree JSX rendering on the same deterministic placement path, so
   `replace_id` and `insert_index` preserve the intended parent/order, report the applied placement,
@@ -84,6 +90,7 @@
 - Treat bound radio and checkbox groups as controlled validation fields, validate their complete
   state instead of a wrapper event target, and make `required` reject unchecked booleans and empty
   option arrays.
+- **CLI and MCP SDKs:** Use uppercase acronym casing in exported identifiers, including `AppTargetCLIArgs`, `appTargetRPCArgs`, `loadRPCData`, `prepareDocumentForRPC`, `RPCSender`, `createBrowserRPCBridge`, `createMCPSessionManager`, and `createStdioRPCBridge`.
 
 ### Added
 
@@ -552,10 +559,10 @@
   storage directly rather than falling back after a native-store failure, and do not read macOS
   Keychain by default. Existing Keychain items are neither migrated nor deleted, so users must
   reconnect integrations or enter their credentials once after upgrading.
-- Connect an S3-compatible storage workspace with local-first saves and background synchronization.
+- Connect an S3-compatible storage workspace with local-first saves, background synchronization, embedded `.fig` previews loaded without downloading full documents, and automatic refresh while the workspace is active.
 - Add Japanese localization and improve menu translations across the existing supported languages. (#367)
 - Author richer Design JSX with components, instances, variables, gradients, structured fills, shadows, blur effects, masks, and inline SVG vectors.
-- Build custom property panels with new Vue SDK number fields, bindable values, property sections, responsive grids, segmented controls, property lists, color models, fill controls, and gradient primitives.
+- Build custom property panels and document workspaces with new Vue SDK number fields, bindable values, property sections, responsive grids, segmented controls, property lists, color models, fill controls, gradient primitives, and the headless `useDocumentWorkspace()` composable.
 - Use `useColorModel()` in the Vue SDK for extensible color formats and shared RGB, HSL, HSB, and OkHCL channel behavior.
 - Add dedicated SceneGraph, Pen, Kiwi, Fig, and DOM/CSS packages with documented public entry points for building on OpenPencil.
 
@@ -799,6 +806,7 @@
 - Avoid emitting localStorage persistence helpers when no document state is marked persistent.
 - Choose Freeform, vertical, horizontal, or grid flow directly from the contextual Layout section, with sizing grouped alongside it and current Layout guide terminology.
 - Redesign the editor chrome and Design panel with denser aligned controls, clearer selection and section states, improved menus and overlays, consistent light/dark theming, and better keyboard and screen-reader behavior.
+- Simplify AI model setup with clearly separated model, connection, and advanced settings, automatic compatibility and output-limit defaults for recognized models, and an explicit custom-model option.
 - Choose Auto width, Auto height, or Fixed size directly from the Layout section for text layers.
 - Scale the Layers panel to documents with thousands of nodes through virtualized rows, faster incremental updates, stable expansion, range selection, and scroll-to-selection.
 - Open and save large `.fig` documents substantially faster while preserving original metadata and user edits, and switch between large pages with fewer Layers panel stalls. (#420)
@@ -807,6 +815,8 @@
 - Center empty and setup states consistently across panels, dialogs, and workspaces.
 
 ### Fixed
+
+- Keep desktop startup clean when optional MCP automation is unavailable, retain startup diagnostics for MCP-dependent features, and load JSX syntax highlighting without browser globals.
 
 - Preserve Figma’s imported glyph outlines through layout and appearance updates so text keeps its intended weight and shape.
 - Keep swapped image avatars and thin stepper dividers at their effective imported size and position.

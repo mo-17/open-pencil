@@ -19,7 +19,7 @@ import {
   REMARK_GFM_VERSION
 } from '#compiler/adapters/react/modules/markdown'
 import {
-  buildOpenPencilPdfViewerComponent,
+  buildOpenPencilPDFViewerComponent,
   PDF_VIEWER_REACT_MODULE_ADAPTER
 } from '#compiler/adapters/react/modules/pdf-viewer'
 import {
@@ -39,7 +39,7 @@ import { createAccordionModuleInstance } from '#core/plugins/accordion'
 import { createAudioPlayerModuleInstance } from '#core/plugins/audio-player'
 import { createCodeBlockModuleInstance } from '#core/plugins/code-block'
 import { createMarkdownModuleInstance } from '#core/plugins/markdown'
-import { createPdfViewerModuleInstance } from '#core/plugins/pdf-viewer'
+import { createPDFViewerModuleInstance } from '#core/plugins/pdf-viewer'
 import { createQrBarcodeModuleInstance } from '#core/plugins/qr-barcode'
 import { createTabsModuleInstance } from '#core/plugins/tabs'
 
@@ -61,7 +61,7 @@ const RUNTIMES = [
   buildOpenPencilQrBarcodeComponent(),
   buildOpenPencilMarkdownComponent(),
   buildOpenPencilCodeBlockComponent(),
-  buildOpenPencilPdfViewerComponent({ devMode: true }),
+  buildOpenPencilPDFViewerComponent({ devMode: true }),
   buildOpenPencilAudioPlayerComponent({ devMode: true })
 ] as const
 
@@ -140,8 +140,8 @@ describe('phase 6 React content module adapters', () => {
   })
 
   test('gates development PDF/audio requests and revokes consent whenever the source changes', () => {
-    const pdfDevelopment = buildOpenPencilPdfViewerComponent({ devMode: true })
-    const pdfProduction = buildOpenPencilPdfViewerComponent({ devMode: false })
+    const pdfDevelopment = buildOpenPencilPDFViewerComponent({ devMode: true })
+    const pdfProduction = buildOpenPencilPDFViewerComponent({ devMode: false })
     expect(pdfDevelopment).toContain("const [authorizedSource, setAuthorizedSource] = useState('')")
     expect(pdfDevelopment).toContain("setAuthorizedSource('')\n  }, [config.sourceUrl])")
     expect(pdfDevelopment).toContain('authorizedSource === config.sourceUrl')
@@ -184,7 +184,7 @@ describe('phase 6 React content module adapters', () => {
         flavor: 'gfm'
       }),
       createCodeBlockModuleInstance({ code: 'globalThis.compromised = true' }),
-      createPdfViewerModuleInstance({ sourceUrl: 'https://assets.example.com/document.pdf' }),
+      createPDFViewerModuleInstance({ sourceUrl: 'https://assets.example.com/document.pdf' }),
       createAudioPlayerModuleInstance({ src: 'https://assets.example.com/audio.mp3' })
     ]
     for (const [index, module] of modules.entries()) {
@@ -208,7 +208,7 @@ describe('phase 6 React content module adapters', () => {
       })
     })
     const app = String(output.files.get('src/App.tsx'))
-    const packageJson = JSON.parse(String(output.files.get('package.json'))) as {
+    const packageJSON = JSON.parse(String(output.files.get('package.json'))) as {
       dependencies: Record<string, string>
     }
 
@@ -217,7 +217,7 @@ describe('phase 6 React content module adapters', () => {
       expect(app).toContain(`import ${adapter.componentName}`)
       expect(app).toContain(`<${adapter.componentName} config={{`)
     }
-    expect(packageJson.dependencies).toMatchObject({
+    expect(packageJSON.dependencies).toMatchObject({
       jsbarcode: JSBARCODE_VERSION,
       qrcode: QRCODE_VERSION,
       'react-markdown': REACT_MARKDOWN_VERSION,

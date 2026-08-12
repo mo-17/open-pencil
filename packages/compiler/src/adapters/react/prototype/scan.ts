@@ -8,7 +8,7 @@ import type {
 } from '#compiler/ir/types'
 import type { CompileWarning } from '#compiler/types'
 
-import { easingCss } from '../motion/key'
+import { easingCSS } from '../motion/key'
 import type { PagePathInfo } from '../route-paths'
 import { buildPrototypeRuntime } from './runtime'
 import type {
@@ -336,5 +336,5 @@ function resolveRuntimeTargetId(
 
 function lowerTransition(transition: IRPrototypeTransition): ReactPrototypeTransition {
   if (transition.kind === 'instant') return transition
-  return { ...transition, easing: easingCss(transition.easing) }
+  return { ...transition, easing: easingCSS(transition.easing) }
 }

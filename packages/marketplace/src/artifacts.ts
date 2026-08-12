@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { parseSha256Base64Url } from '@open-pencil/scene-graph'
+import { parseSha256Base64URL } from '@open-pencil/scene-graph'
 
 export const MARKETPLACE_ARTIFACT_LIMITS = Object.freeze({
   maxBytes: 8 * 1024 * 1024,
@@ -57,7 +57,7 @@ export function createMemoryMarketplaceArtifactStore(): MarketplaceArtifactStore
       return artifact(entries.get(next.digest) as Uint8Array, next.digest)
     },
     async get(digestValue) {
-      const digest = parseSha256Base64Url(digestValue, 'marketplace artifact digest')
+      const digest = parseSha256Base64URL(digestValue, 'marketplace artifact digest')
       const bytes = entries.get(digest)
       return bytes ? artifact(bytes, digest) : null
     }
@@ -114,7 +114,7 @@ export function createFileMarketplaceArtifactStore(
       return (await verifiedFile(target, next.digest)) as MarketplaceArtifact
     },
     async get(digestValue) {
-      const digest = parseSha256Base64Url(digestValue, 'marketplace artifact digest')
+      const digest = parseSha256Base64URL(digestValue, 'marketplace artifact digest')
       return verifiedFile(targetFor(digest), digest)
     }
   }

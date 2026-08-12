@@ -148,7 +148,7 @@ export function defineReviewedService(
   })
 }
 
-export type ServiceJsonRecord = Readonly<Record<string, unknown>>
+export type ServiceJSONRecord = Readonly<Record<string, unknown>>
 
 export interface ServiceItemOptions {
   readonly type?: unknown
@@ -162,10 +162,10 @@ export interface ServiceListOptions {
   readonly truncated?: boolean
 }
 
-export function serviceRecord(value: unknown): ServiceJsonRecord | null {
+export function serviceRecord(value: unknown): ServiceJSONRecord | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
   const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null ? (value as ServiceJsonRecord) : null
+  return prototype === Object.prototype || prototype === null ? (value as ServiceJSONRecord) : null
 }
 
 export function serviceArray(value: unknown): readonly unknown[] {
@@ -194,7 +194,7 @@ export function serviceText(
   return normalized.length === 0 ? null : normalized.slice(0, maximum)
 }
 
-export function serviceHttpsUrl(value: unknown): string | null {
+export function serviceHttpsURL(value: unknown): string | null {
   const text = serviceText(value, REVIEWED_SERVICE_LIMITS.urlLength)
   if (!text) return null
   try {
@@ -230,7 +230,7 @@ export function serviceItem(
   const name = serviceText(nameValue, REVIEWED_SERVICE_LIMITS.nameLength) ?? id
   const type = serviceText(options.type, REVIEWED_SERVICE_LIMITS.typeLength)
   const summary = serviceText(options.summary, REVIEWED_SERVICE_LIMITS.summaryLength)
-  const url = serviceHttpsUrl(options.url)
+  const url = serviceHttpsURL(options.url)
   const timestamp = serviceTimestamp(options.timestamp)
   return Object.freeze({
     id,

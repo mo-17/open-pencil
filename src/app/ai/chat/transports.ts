@@ -13,7 +13,7 @@ import type { ComputedRef, Ref } from 'vue'
 import { ACP_AGENTS } from '@open-pencil/core/constants'
 import type { ACPAgentID, AIProviderID } from '@open-pencil/core/constants'
 
-import { resetAcpDiagnostics } from '@/app/ai/acp/diagnostics'
+import { resetACPDiagnostics } from '@/app/ai/acp/diagnostics'
 import type {
   ACPChatTransportOptions,
   ACPSessionCapabilities,
@@ -38,7 +38,7 @@ import {
   createVisionRoleAnalyzer,
   VisualReferenceChatTransport
 } from '@/app/ai/chat/visual-transport'
-import { buildRemoteMcpAcpServerConfigs } from '@/app/ai/mcp/acp'
+import { buildRemoteMCPACPServerConfigs } from '@/app/ai/mcp/acp'
 import { createAIModelRuntime, designModelProfile } from '@/app/ai/models'
 import type { ResolvedAIModelRole } from '@/app/ai/models'
 import type { AISessionStore } from '@/app/ai/sessions'
@@ -309,7 +309,7 @@ export async function createACPTransport(
 
   const { ACPChatTransport } = await import('@/app/ai/acp/transport')
   const { homeDir } = await import('@tauri-apps/api/path')
-  const mcpServers = await buildRemoteMcpAcpServerConfigs(
+  const mcpServers = await buildRemoteMCPACPServerConfigs(
     designModelProfile.value?.featurePolicy.mcpServerIds ?? []
   )
   const options =
@@ -724,7 +724,7 @@ export function createChatSessionManager({
   }
 
   async function createTransport(store: EditorStore) {
-    resetAcpDiagnostics()
+    resetACPDiagnostics()
     acpConfigOptions.value = []
     if (overrideTransport) return { transport: overrideTransport(), dispose: undefined }
 
@@ -803,7 +803,7 @@ export function createChatSessionManager({
     if (!isConfigured.value) return null
 
     const messages = currentChatMessages.get(store)
-    resetAcpDiagnostics()
+    resetACPDiagnostics()
 
     let transport: ChatTransport<UIMessage>
     let pendingDirectRuntime: Awaited<ReturnType<typeof createTransport>> | null = null

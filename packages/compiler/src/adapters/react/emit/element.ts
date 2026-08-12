@@ -22,8 +22,8 @@ import { requireReactModuleAdapter } from '../modules/registry'
 import type { ReactModuleAdapter } from '../modules/types'
 import { motionDriverToken } from '../motion/drivers'
 import { motionToken } from '../motion/key'
-import { instrumentVectorMotionHtml } from '../motion/target'
-import type { UiKitAdapter } from '../ui-kit/types'
+import { instrumentVectorMotionHTML } from '../motion/target'
+import type { UIKitAdapter } from '../ui-kit/types'
 import { emitEventHandler, emitFormSubmitHandler } from './event'
 import { setterName } from './state'
 
@@ -48,7 +48,7 @@ export function emitElement(
   node: IRNode,
   indent: number,
   devMode = false,
-  uiKit: UiKitAdapter | null = null
+  uiKit: UIKitAdapter | null = null
 ): string {
   const pad = '  '.repeat(indent)
 
@@ -102,7 +102,7 @@ function emitTagElement(
   node: IRElement,
   indent: number,
   devMode: boolean,
-  uiKit: UiKitAdapter | null
+  uiKit: UIKitAdapter | null
 ): string {
   if (node.validation) {
     const inner = emitTagElementCore(node, indent + 1, devMode, uiKit)
@@ -134,7 +134,7 @@ function emitTagElementCore(
   node: IRElement,
   indent: number,
   devMode: boolean,
-  uiKit: UiKitAdapter | null
+  uiKit: UIKitAdapter | null
 ): string {
   const pad = '  '.repeat(indent)
 
@@ -160,10 +160,10 @@ function emitTagElementCore(
   // dangerouslySetInnerHTML (React forbids combining it with children, so the
   // collect pass leaves `children` empty when `rawHtml` is set).
   if (node.rawHtml !== undefined) {
-    const rawHtml = node.motion
-      ? instrumentVectorMotionHtml(node.rawHtml, node.motion, node.sourceId)
+    const rawHTML = node.motion
+      ? instrumentVectorMotionHTML(node.rawHtml, node.motion, node.sourceId)
       : node.rawHtml
-    return `${pad}${opening} dangerouslySetInnerHTML={{ __html: ${JSON.stringify(rawHtml)} }} />`
+    return `${pad}${opening} dangerouslySetInnerHTML={{ __html: ${JSON.stringify(rawHTML)} }} />`
   }
 
   if (node.tag === 'img' && node.image?.sources && node.image.sources.length > 0) {
@@ -196,7 +196,7 @@ function emitModuleElement(
   adapter: ReactModuleAdapter,
   indent: number,
   devMode: boolean,
-  uiKit: UiKitAdapter | null
+  uiKit: UIKitAdapter | null
 ): string {
   const pad = '  '.repeat(indent)
   const { attrsStr } = tagOpenParts(node, devMode, null)
@@ -235,7 +235,7 @@ function emitValidationSummary(keys: readonly string[], title: string, indent: n
 function tagOpenParts(
   node: IRElement,
   devMode: boolean,
-  uiKit: UiKitAdapter | null
+  uiKit: UIKitAdapter | null
 ): { attrsStr: string; tagName: string } {
   const className = ensureCardClipClass(node)
   const standardAttrs = formatAttrs(
@@ -352,8 +352,8 @@ function ensureCardClipClass(node: IRElement): string {
 
 function kitTagName(
   node: IRElement,
-  uiKit: UiKitAdapter | null,
-  displayMapping: ReturnType<NonNullable<UiKitAdapter['mapDisplay']>> | undefined
+  uiKit: UIKitAdapter | null,
+  displayMapping: ReturnType<NonNullable<UIKitAdapter['mapDisplay']>> | undefined
 ): string {
   // Phase 3 §15: an interactive tag may map to a UI-kit component (`<Button>`),
   // keeping the same attrs/children. The underlying tag still drives void-ness
@@ -444,7 +444,7 @@ function emitOverlayElement(
   node: IRElement,
   indent: number,
   devMode: boolean,
-  uiKit: UiKitAdapter | null
+  uiKit: UIKitAdapter | null
 ): string {
   const overlay = node.overlay
   if (!overlay) return emitTagElementCore(node, indent, devMode, uiKit)
@@ -481,7 +481,7 @@ function tryEmitKitControl(
   node: IRElement,
   indent: number,
   devMode: boolean,
-  uiKit: UiKitAdapter | null
+  uiKit: UIKitAdapter | null
 ): string | null {
   if (!uiKit?.emitControl || !node.controlKind) return null
   return uiKit.emitControl(node, {
@@ -496,7 +496,7 @@ function tryEmitKitDisplay(
   node: IRElement,
   indent: number,
   devMode: boolean,
-  uiKit: UiKitAdapter | null
+  uiKit: UIKitAdapter | null
 ): string | null {
   if (!uiKit?.emitDisplay || !node.displayKind) return null
   return uiKit.emitDisplay(node, {

@@ -8,7 +8,7 @@ import { inspectConnectorManifestCompatibility } from './connectors/registry'
 import { inspectPluginHostContributionsCompatibility } from './host'
 import {
   createMarketplaceSnapshotClient,
-  parseMarketplaceTrustConfigJson,
+  parseMarketplaceTrustConfigJSON,
   type MarketplaceSnapshotLoadResult,
   type ResolvedMarketplaceTrustConfig
 } from './marketplace'
@@ -20,7 +20,7 @@ import {
   createIdbRemotePluginCacheStorage,
   createMemoryRemotePluginCacheStorage,
   createRemotePluginCatalogClient,
-  parseRemotePluginTrustConfigJson,
+  parseRemotePluginTrustConfigJSON,
   remotePluginCatalogEntries,
   type RemotePluginCatalogLoadResult,
   type ResolvedRemotePluginTrustConfig
@@ -41,12 +41,12 @@ const storage =
     ? createMemoryAppPluginStateStorage()
     : createIdbAppPluginStateStorage()
 
-const remoteTrustConfigJson = import.meta.env.VITE_OPENPENCIL_PLUGIN_TRUST_CONFIG?.trim() ?? ''
-const marketplaceTrustConfigJson =
+const remoteTrustConfigJSON = import.meta.env.VITE_OPENPENCIL_PLUGIN_TRUST_CONFIG?.trim() ?? ''
+const marketplaceTrustConfigJSON =
   import.meta.env.VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG?.trim() ?? ''
-export const appPluginMarketplaceConfigured = marketplaceTrustConfigJson.length > 0
+export const appPluginMarketplaceConfigured = marketplaceTrustConfigJSON.length > 0
 export const appPluginRemoteCatalogConfigured =
-  remoteTrustConfigJson.length > 0 || appPluginMarketplaceConfigured
+  remoteTrustConfigJSON.length > 0 || appPluginMarketplaceConfigured
 export const appPluginRemoteCatalogSnapshot = shallowRef<RemotePluginCatalogLoadResult | null>(null)
 export const appPluginMarketplaceSnapshot = shallowRef<MarketplaceSnapshotLoadResult | null>(null)
 const remoteCache =
@@ -87,8 +87,8 @@ function prepareCapturedPluginRuntimeInput(
 const MARKETPLACE_SNAPSHOT_REUSE_MILLISECONDS = 60_000
 
 function remoteConfig(): Promise<ResolvedRemotePluginTrustConfig | null> {
-  remoteConfigPromise ??= remoteTrustConfigJson
-    ? parseRemotePluginTrustConfigJson(remoteTrustConfigJson)
+  remoteConfigPromise ??= remoteTrustConfigJSON
+    ? parseRemotePluginTrustConfigJSON(remoteTrustConfigJSON)
     : Promise.resolve(null)
   return remoteConfigPromise
 }
@@ -114,8 +114,8 @@ function unavailableMarketplace(cause: unknown): MarketplaceSnapshotLoadResult {
 }
 
 function marketplaceConfig(): Promise<ResolvedMarketplaceTrustConfig | null> {
-  marketplaceConfigPromise ??= marketplaceTrustConfigJson
-    ? parseMarketplaceTrustConfigJson(marketplaceTrustConfigJson)
+  marketplaceConfigPromise ??= marketplaceTrustConfigJSON
+    ? parseMarketplaceTrustConfigJSON(marketplaceTrustConfigJSON)
     : Promise.resolve(null)
   return marketplaceConfigPromise
 }

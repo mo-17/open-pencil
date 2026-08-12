@@ -14,7 +14,7 @@ beforeAll(async () => {
   ck = await initCanvasKit()
 })
 
-function solidPng(red: number, green: number, blue: number): Uint8Array {
+function solidPNG(red: number, green: number, blue: number): Uint8Array {
   const surface = expectDefined(ck.MakeSurface(2, 2), 'source image surface')
   try {
     surface.getCanvas().clear(ck.Color4f(red, green, blue, 1))
@@ -74,8 +74,8 @@ function createImageRectangle(graph: SceneGraph, pageId: string, hash: string, x
 function imageGraph(): { graph: SceneGraph; pageId: string } {
   const graph = new SceneGraph()
   const page = graph.getPages()[0]
-  graph.images.set('red', solidPng(1, 0, 0))
-  graph.images.set('blue', solidPng(0, 0, 1))
+  graph.images.set('red', solidPNG(1, 0, 0))
+  graph.images.set('blue', solidPNG(0, 0, 1))
 
   for (const [index, hash] of ['red', 'blue'].entries()) {
     createImageRectangle(graph, page.id, hash, index * 4)
@@ -86,8 +86,8 @@ function imageGraph(): { graph: SceneGraph; pageId: string } {
 function visibleAndOffscreenImageGraph(): { graph: SceneGraph; pageId: string } {
   const graph = new SceneGraph()
   const page = graph.getPages()[0]
-  graph.images.set('visible', solidPng(1, 0, 0))
-  graph.images.set('offscreen', solidPng(0, 0, 1))
+  graph.images.set('visible', solidPNG(1, 0, 0))
+  graph.images.set('offscreen', solidPNG(0, 0, 1))
   createImageRectangle(graph, page.id, 'visible')
   createImageRectangle(graph, page.id, 'offscreen', 1_000)
   return { graph, pageId: page.id }
@@ -96,8 +96,8 @@ function visibleAndOffscreenImageGraph(): { graph: SceneGraph; pageId: string } 
 function visibleFrameWithOffscreenImageChildGraph(): { graph: SceneGraph; pageId: string } {
   const graph = new SceneGraph()
   const page = graph.getPages()[0]
-  graph.images.set('visible-child', solidPng(1, 0, 0))
-  graph.images.set('offscreen-child', solidPng(0, 0, 1))
+  graph.images.set('visible-child', solidPNG(1, 0, 0))
+  graph.images.set('offscreen-child', solidPNG(0, 0, 1))
   const frame = graph.createNode('FRAME', page.id, {
     width: 2_000,
     height: 4,
@@ -123,7 +123,7 @@ function fixedIdentityImageGraph(
   const pageId = 'shared-page'
   const nodeId = 'shared-image-node'
   graph.createNodeWithId(pageId, 'CANVAS', graph.rootId, { name: 'Shared page' })
-  graph.images.set(hash, solidPng(red, 0, blue))
+  graph.images.set(hash, solidPNG(red, 0, blue))
   const node = graph.createNodeWithId(nodeId, 'RECTANGLE', pageId, {
     width: 4,
     height: 4
@@ -242,7 +242,7 @@ test('scene backing allocation failure uses viewport-culling live rendering', ()
 test('stale scene backing allocation failure falls back to live viewport rendering', () => {
   const { graph, pageId } = visibleAndOffscreenImageGraph()
   const surface = expectDefined(ck.MakeSurface(8, 4), 'stale fallback surface')
-  const staleImage = expectDefined(ck.MakeImageFromEncoded(solidPng(0, 1, 0)), 'stale image')
+  const staleImage = expectDefined(ck.MakeImageFromEncoded(solidPNG(0, 1, 0)), 'stale image')
   Object.defineProperty(surface, 'makeSurface', { value: () => null })
   const renderer = new SkiaRenderer(ck, surface)
   configureInteractiveRenderer(renderer, pageId)
@@ -330,8 +330,8 @@ test('renderer page changes release old picture and decoded-image cache scope', 
   const graph = new SceneGraph()
   const firstPage = graph.getPages()[0]
   const secondPage = graph.addPage('Second')
-  graph.images.set('first', solidPng(1, 0, 0))
-  graph.images.set('second', solidPng(0, 0, 1))
+  graph.images.set('first', solidPNG(1, 0, 0))
+  graph.images.set('second', solidPNG(0, 0, 1))
   for (const [pageId, hash] of [
     [firstPage.id, 'first'],
     [secondPage.id, 'second']

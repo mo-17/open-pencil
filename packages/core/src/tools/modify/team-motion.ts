@@ -32,7 +32,7 @@ interface ManagedTeamMotionRegistry {
   registryJson: string
 }
 
-interface TeamMotionJsonObject {
+interface TeamMotionJSONObject {
   [key: string]: unknown
 }
 
@@ -48,11 +48,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function isJsonObject(value: unknown): value is TeamMotionJsonObject {
+function isJSONObject(value: unknown): value is TeamMotionJSONObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function parseJsonText(
+function parseJSONText(
   value: string,
   field: string,
   maxBytes: number = MAX_TEAM_TOOL_INPUT_BYTES
@@ -77,23 +77,23 @@ async function trustedPublicKey(publicKeyPem: string): Promise<CryptoKey> {
 function parseOptionalObject(
   value: string | undefined,
   field: string
-): TeamMotionToolResult<TeamMotionJsonObject | undefined> {
+): TeamMotionToolResult<TeamMotionJSONObject | undefined> {
   if (value === undefined) return { ok: true, data: undefined }
-  const parsed = parseJsonText(value, field)
+  const parsed = parseJSONText(value, field)
   if (!parsed.ok) return parsed
-  if (!isJsonObject(parsed.data)) {
+  if (!isJSONObject(parsed.data)) {
     return fail(`${field} must encode a JSON object`)
   }
   return { ok: true, data: parsed.data }
 }
 
 async function verifiedManifest(
-  manifestJson: string,
+  manifestJSON: string,
   publicKeyPem: string,
   engineVersion: string,
   expectedKeyId?: string
 ): Promise<TeamMotionToolResult<VerifiedTeamMotionLibrarySnapshot>> {
-  const parsed = parseJsonText(manifestJson, 'manifestJson')
+  const parsed = parseJSONText(manifestJSON, 'manifestJson')
   if (!parsed.ok) return parsed
   try {
     const publicKey = await trustedPublicKey(publicKeyPem)
@@ -110,12 +110,12 @@ async function verifiedManifest(
 }
 
 async function verifiedRegistryState(
-  registryJson: string,
+  registryJSON: string,
   publicKeyPem: string,
   engineVersion: string,
   expectedKeyId?: string
 ): Promise<TeamMotionToolResult<TeamMotionLibraryRegistryState>> {
-  const parsed = parseJsonText(registryJson, 'registryJson', MAX_TEAM_REGISTRY_TOOL_INPUT_BYTES)
+  const parsed = parseJSONText(registryJSON, 'registryJson', MAX_TEAM_REGISTRY_TOOL_INPUT_BYTES)
   if (!parsed.ok) return parsed
   try {
     const state = parseTeamMotionLibraryRegistryState(parsed.data)
@@ -143,14 +143,14 @@ async function verifiedRegistryState(
 }
 
 function serializeRegistry(state: TeamMotionLibraryRegistryState): TeamMotionToolResult<string> {
-  const registryJson = JSON.stringify(state)
-  const byteLength = new TextEncoder().encode(registryJson).byteLength
+  const registryJSON = JSON.stringify(state)
+  const byteLength = new TextEncoder().encode(registryJSON).byteLength
   if (byteLength > MAX_TEAM_REGISTRY_TOOL_INPUT_BYTES) {
     return fail(
       `Resulting Team Motion registry exceeds ${MAX_TEAM_REGISTRY_TOOL_INPUT_BYTES} UTF-8 bytes`
     )
   }
-  return { ok: true, data: registryJson }
+  return { ok: true, data: registryJSON }
 }
 
 function registryAction(
@@ -201,7 +201,7 @@ function transitionRegistry(
 function managedRegistryResult(
   action: TeamMotionRegistryAction,
   state: TeamMotionLibraryRegistryState,
-  registryJson: string
+  registryJSON: string
 ): ManagedTeamMotionRegistry {
   return {
     action,
@@ -213,7 +213,7 @@ function managedRegistryResult(
       version: snapshot.manifest.version,
       digest: snapshot.verifiedDigest
     })),
-    registryJson
+    registryJson: registryJSON
   }
 }
 
@@ -248,7 +248,7 @@ export const verifyTeamMotionLibrary = defineTool({
   },
   execute: async (
     _figma,
-    { manifestJson, publicKeyPem, engineVersion, expectedKeyId }
+    { manifestJson: manifestJSON, publicKeyPem, engineVersion, expectedKeyId }
   ): Promise<
     TeamMotionToolResult<{
       publisherId: string
@@ -262,7 +262,7 @@ export const verifyTeamMotionLibrary = defineTool({
     }>
   > => {
     const verified = await verifiedManifest(
-      manifestJson,
+      manifestJSON,
       publicKeyPem,
       engineVersion,
       expectedKeyId
@@ -323,9 +323,9 @@ export const reviewTeamMotionLibraryUpdate = defineTool({
   execute: async (
     _figma,
     {
-      acceptedManifestJson,
-      registryJson: currentRegistryJson,
-      candidateManifestJson,
+      acceptedManifestJson: acceptedManifestJSON,
+      registryJson: currentRegistryJSON,
+      candidateManifestJson: candidateManifestJSON,
       publicKeyPem,
       engineVersion,
       expectedKeyId
@@ -343,20 +343,20 @@ export const reviewTeamMotionLibraryUpdate = defineTool({
       registryJson: string
     }>
   > => {
-    if ((acceptedManifestJson === undefined) === (currentRegistryJson === undefined)) {
+    if ((acceptedManifestJSON === undefined) === (currentRegistryJSON === undefined)) {
       return fail('Provide exactly one of acceptedManifestJson or registryJson')
     }
     let current: TeamMotionToolResult<TeamMotionLibraryRegistryState>
-    if (currentRegistryJson !== undefined) {
+    if (currentRegistryJSON !== undefined) {
       current = await verifiedRegistryState(
-        currentRegistryJson,
+        currentRegistryJSON,
         publicKeyPem,
         engineVersion,
         expectedKeyId
       )
     } else {
       const accepted = await verifiedManifest(
-        acceptedManifestJson ?? '',
+        acceptedManifestJSON ?? '',
         publicKeyPem,
         engineVersion,
         expectedKeyId
@@ -367,7 +367,7 @@ export const reviewTeamMotionLibraryUpdate = defineTool({
     }
     if (!current.ok) return current
     const candidate = await verifiedManifest(
-      candidateManifestJson,
+      candidateManifestJSON,
       publicKeyPem,
       engineVersion,
       expectedKeyId
@@ -376,8 +376,8 @@ export const reviewTeamMotionLibraryUpdate = defineTool({
     try {
       const registry = reviewTeamMotionLibraryUpdateState(current.data, candidate.data)
       if (!registry.pending) return fail('Candidate does not create a pending Team Motion review')
-      const registryJson = serializeRegistry(registry)
-      if (!registryJson.ok) return registryJson
+      const registryJSON = serializeRegistry(registry)
+      if (!registryJSON.ok) return registryJSON
       return {
         ok: true,
         data: {
@@ -385,7 +385,7 @@ export const reviewTeamMotionLibraryUpdate = defineTool({
           acceptedDigest: current.data.accepted.verifiedDigest,
           candidateDigest: candidate.data.verifiedDigest,
           ...registry.pending.diff,
-          registryJson: registryJson.data
+          registryJson: registryJSON.data
         }
       }
     } catch (error) {
@@ -433,13 +433,13 @@ export const manageTeamMotionLibraryRegistry = defineTool({
   },
   execute: async (
     _figma,
-    { registryJson, publicKeyPem, engineVersion, expectedKeyId, action, digest }
+    { registryJson: registryJSON, publicKeyPem, engineVersion, expectedKeyId, action, digest }
   ): Promise<TeamMotionToolResult<ManagedTeamMotionRegistry>> => {
     const requested = registryAction(action, digest)
     if (!requested.ok) return requested
 
     const verified = await verifiedRegistryState(
-      registryJson,
+      registryJSON,
       publicKeyPem,
       engineVersion,
       expectedKeyId
@@ -447,29 +447,29 @@ export const manageTeamMotionLibraryRegistry = defineTool({
     if (!verified.ok) return verified
     const next = transitionRegistry(verified.data, requested.data.action, requested.data.digest)
     if (!next.ok) return next
-    const nextRegistryJson = serializeRegistry(next.data)
-    if (!nextRegistryJson.ok) return nextRegistryJson
+    const nextRegistryJSON = serializeRegistry(next.data)
+    if (!nextRegistryJSON.ok) return nextRegistryJSON
     return {
       ok: true,
-      data: managedRegistryResult(requested.data.action, next.data, nextRegistryJson.data)
+      data: managedRegistryResult(requested.data.action, next.data, nextRegistryJSON.data)
     }
   }
 })
 
 function inputForInstantiation(
-  roleMappingJson: string | undefined,
-  parametersJson: string | undefined,
-  tokensJson: string | undefined
+  roleMappingJSON: string | undefined,
+  parametersJSON: string | undefined,
+  tokensJSON: string | undefined
 ): TeamMotionToolResult<{
   roleMapping?: Record<string, readonly string[]>
   parameters?: Record<string, number>
   tokens?: Record<string, number>
 }> {
-  const roleMapping = parseOptionalObject(roleMappingJson, 'roleMappingJson')
+  const roleMapping = parseOptionalObject(roleMappingJSON, 'roleMappingJson')
   if (!roleMapping.ok) return roleMapping
-  const parameters = parseOptionalObject(parametersJson, 'parametersJson')
+  const parameters = parseOptionalObject(parametersJSON, 'parametersJson')
   if (!parameters.ok) return parameters
-  const tokens = parseOptionalObject(tokensJson, 'tokensJson')
+  const tokens = parseOptionalObject(tokensJSON, 'tokensJson')
   if (!tokens.ok) return tokens
   return {
     ok: true,
@@ -559,16 +559,16 @@ export const applyTeamMotionLibraryEntry = defineTool({
   execute: async (
     figma,
     {
-      manifestJson,
-      registryJson,
+      manifestJson: manifestJSON,
+      registryJson: registryJSON,
       publicKeyPem,
       engineVersion,
       expectedKeyId,
       entryId: requestedEntryId,
       nodeIds,
-      roleMappingJson,
-      parametersJson,
-      tokensJson
+      roleMappingJson: roleMappingJSON,
+      parametersJson: parametersJSON,
+      tokensJson: tokensJSON
     },
     ctx?: ToolCtx
   ): Promise<
@@ -582,13 +582,13 @@ export const applyTeamMotionLibraryEntry = defineTool({
       assignmentCount: number
     }>
   > => {
-    if ((manifestJson === undefined) === (registryJson === undefined)) {
+    if ((manifestJSON === undefined) === (registryJSON === undefined)) {
       return fail('Provide exactly one of manifestJson or registryJson')
     }
     let verified: TeamMotionToolResult<VerifiedTeamMotionLibrarySnapshot>
-    if (registryJson !== undefined) {
+    if (registryJSON !== undefined) {
       const state = await verifiedRegistryState(
-        registryJson,
+        registryJSON,
         publicKeyPem,
         engineVersion,
         expectedKeyId
@@ -596,14 +596,14 @@ export const applyTeamMotionLibraryEntry = defineTool({
       verified = state.ok ? { ok: true, data: state.data.accepted } : state
     } else {
       verified = await verifiedManifest(
-        manifestJson ?? '',
+        manifestJSON ?? '',
         publicKeyPem,
         engineVersion,
         expectedKeyId
       )
     }
     if (!verified.ok) return verified
-    const input = inputForInstantiation(roleMappingJson, parametersJson, tokensJson)
+    const input = inputForInstantiation(roleMappingJSON, parametersJSON, tokensJSON)
     if (!input.ok) return input
     let instantiated: TeamMotionLibraryInstantiation
     try {

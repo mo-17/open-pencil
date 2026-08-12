@@ -1,6 +1,6 @@
 import type { ArgsDef } from 'citty'
 
-import type { UiKitName } from '@open-pencil/compiler'
+import type { UIKitName } from '@open-pencil/compiler'
 
 /**
  * Phase 3 §15 — shared `--ui-kit` flag for the codegen commands (`compile`,
@@ -21,15 +21,15 @@ export const uiKitArgs: ArgsDef = {
 }
 
 /** The raw `--ui-kit` arg as citty parses it. */
-export interface RawUiKitArgs {
+export interface RawUIKitArgs {
   'ui-kit'?: string
 }
 
 /** Resolve `--ui-kit` to a kit name, or undefined when unset. An unknown value
  *  throws so a typo doesn't silently fall back to the plain-HTML emit. */
-export function resolveUiKitFlag(args: RawUiKitArgs): UiKitName | undefined {
+export function resolveUIKitFlag(args: RawUIKitArgs): UIKitName | undefined {
   const raw = args['ui-kit']
   if (raw === undefined || raw === '') return undefined
-  if ((UI_KITS as readonly string[]).includes(raw)) return raw as UiKitName
+  if ((UI_KITS as readonly string[]).includes(raw)) return raw as UIKitName
   throw new Error(`Unknown --ui-kit "${raw}". Supported: ${UI_KITS.join(', ')}.`)
 }

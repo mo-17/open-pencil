@@ -3,7 +3,7 @@ import { cloneMotionSpec, type MotionSpec, type SceneNode } from '@open-pencil/s
 
 import { printError } from '#cli/format'
 
-export function printMotionJson(value: unknown): void {
+export function printMotionJSON(value: unknown): void {
   console.log(JSON.stringify(value, null, 2))
 }
 

@@ -1,47 +1,47 @@
 import { ref, watch } from 'vue'
 
-import { readRemoteMcpSettingsStorage, writeRemoteMcpSettingsStorage } from '@/app/ai/mcp/storage'
+import { readRemoteMCPSettingsStorage, writeRemoteMCPSettingsStorage } from '@/app/ai/mcp/storage'
 import {
-  cloneRemoteMcpServer,
-  createRemoteMcpServerId,
-  isRemoteMcpServerId,
+  cloneRemoteMCPServer,
+  createRemoteMCPServerId,
+  isRemoteMCPServerId,
   MAX_REMOTE_MCP_SERVERS,
-  normalizeRemoteMcpServerInput,
-  normalizeRemoteMcpServerName,
-  normalizeRemoteMcpUrl,
+  normalizeRemoteMCPServerInput,
+  normalizeRemoteMCPServerName,
+  normalizeRemoteMCPURL,
   REMOTE_MCP_SETTINGS_VERSION,
-  validateRemoteMcpCredentialProfileId,
-  type RemoteMcpServer,
-  type RemoteMcpServerId,
-  type RemoteMcpServerInput,
-  type RemoteMcpSettings
+  validateRemoteMCPCredentialProfileId,
+  type RemoteMCPServer,
+  type RemoteMCPServerId,
+  type RemoteMCPServerInput,
+  type RemoteMCPSettings
 } from '@/app/ai/mcp/types'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function parseRemoteMcpServer(value: unknown): RemoteMcpServer | null {
-  if (!isRecord(value) || !isRemoteMcpServerId(value.id)) return null
+function parseRemoteMCPServer(value: unknown): RemoteMCPServer | null {
+  if (!isRecord(value) || !isRemoteMCPServerId(value.id)) return null
   if (!isRecord(value.transport) || value.transport.type !== 'streamable-http') return null
   if (!isRecord(value.auth) || (value.auth.type !== 'none' && value.auth.type !== 'bearer')) {
     return null
   }
 
   try {
-    const server: RemoteMcpServer = {
+    const server: RemoteMCPServer = {
       id: value.id,
-      name: normalizeRemoteMcpServerName(typeof value.name === 'string' ? value.name : ''),
+      name: normalizeRemoteMCPServerName(typeof value.name === 'string' ? value.name : ''),
       transport: {
         type: 'streamable-http',
-        url: normalizeRemoteMcpUrl(
+        url: normalizeRemoteMCPURL(
           typeof value.transport.url === 'string' ? value.transport.url : ''
         )
       },
       auth: { type: 'none' }
     }
     if (value.auth.type === 'bearer') {
-      const credentialProfileId = validateRemoteMcpCredentialProfileId(
+      const credentialProfileId = validateRemoteMCPCredentialProfileId(
         typeof value.auth.credentialProfileId === 'string' ? value.auth.credentialProfileId : ''
       )
       if (credentialProfileId !== value.id) return null
@@ -53,12 +53,12 @@ function parseRemoteMcpServer(value: unknown): RemoteMcpServer | null {
   }
 }
 
-export function parseRemoteMcpSettings(value: unknown): RemoteMcpSettings | null {
+export function parseRemoteMCPSettings(value: unknown): RemoteMCPSettings | null {
   if (!isRecord(value) || value.version !== REMOTE_MCP_SETTINGS_VERSION) return null
   const parsed = Array.isArray(value.servers)
-    ? value.servers.map(parseRemoteMcpServer).filter((server) => server !== null)
+    ? value.servers.map(parseRemoteMCPServer).filter((server) => server !== null)
     : []
-  const unique = new Map<RemoteMcpServerId, RemoteMcpServer>()
+  const unique = new Map<RemoteMCPServerId, RemoteMCPServer>()
   for (const server of parsed) {
     if (unique.size >= MAX_REMOTE_MCP_SERVERS) break
     if (!unique.has(server.id)) unique.set(server.id, server)
@@ -66,28 +66,28 @@ export function parseRemoteMcpSettings(value: unknown): RemoteMcpSettings | null
   return { version: REMOTE_MCP_SETTINGS_VERSION, servers: [...unique.values()] }
 }
 
-function defaultRemoteMcpSettings(): RemoteMcpSettings {
+function defaultRemoteMCPSettings(): RemoteMCPSettings {
   return { version: REMOTE_MCP_SETTINGS_VERSION, servers: [] }
 }
 
-function loadRemoteMcpSettings(): RemoteMcpSettings {
-  return parseRemoteMcpSettings(readRemoteMcpSettingsStorage()) ?? defaultRemoteMcpSettings()
+function loadRemoteMCPSettings(): RemoteMCPSettings {
+  return parseRemoteMCPSettings(readRemoteMCPSettingsStorage()) ?? defaultRemoteMCPSettings()
 }
 
-export const remoteMcpSettings = ref<RemoteMcpSettings>(loadRemoteMcpSettings())
+export const remoteMCPSettings = ref<RemoteMCPSettings>(loadRemoteMCPSettings())
 
-watch(remoteMcpSettings, (settings) => writeRemoteMcpSettingsStorage(settings), { deep: true })
+watch(remoteMCPSettings, (settings) => writeRemoteMCPSettingsStorage(settings), { deep: true })
 
-function nextRemoteMcpServerId(): RemoteMcpServerId {
+function nextRemoteMCPServerId(): RemoteMCPServerId {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const id = createRemoteMcpServerId()
-    if (!remoteMcpSettings.value.servers.some((server) => server.id === id)) return id
+    const id = createRemoteMCPServerId()
+    if (!remoteMCPSettings.value.servers.some((server) => server.id === id)) return id
   }
   throw new Error('Could not generate a unique remote MCP server ID')
 }
 
-function serverFromInput(id: RemoteMcpServerId, input: RemoteMcpServerInput): RemoteMcpServer {
-  const normalized = normalizeRemoteMcpServerInput(input)
+function serverFromInput(id: RemoteMCPServerId, input: RemoteMCPServerInput): RemoteMCPServer {
+  const normalized = normalizeRemoteMCPServerInput(input)
   return {
     id,
     name: normalized.name,
@@ -99,50 +99,50 @@ function serverFromInput(id: RemoteMcpServerId, input: RemoteMcpServerInput): Re
   }
 }
 
-export function addRemoteMcpServer(input: RemoteMcpServerInput): RemoteMcpServer {
-  if (remoteMcpSettings.value.servers.length >= MAX_REMOTE_MCP_SERVERS) {
+export function addRemoteMCPServer(input: RemoteMCPServerInput): RemoteMCPServer {
+  if (remoteMCPSettings.value.servers.length >= MAX_REMOTE_MCP_SERVERS) {
     throw new Error(`At most ${MAX_REMOTE_MCP_SERVERS} remote MCP servers can be configured`)
   }
-  const server = serverFromInput(nextRemoteMcpServerId(), input)
-  remoteMcpSettings.value.servers.push(server)
-  return cloneRemoteMcpServer(server)
+  const server = serverFromInput(nextRemoteMCPServerId(), input)
+  remoteMCPSettings.value.servers.push(server)
+  return cloneRemoteMCPServer(server)
 }
 
-export function updateRemoteMcpServerConfig(
-  id: RemoteMcpServerId,
-  input: RemoteMcpServerInput
-): RemoteMcpServer {
-  const index = remoteMcpSettings.value.servers.findIndex((server) => server.id === id)
+export function updateRemoteMCPServerConfig(
+  id: RemoteMCPServerId,
+  input: RemoteMCPServerInput
+): RemoteMCPServer {
+  const index = remoteMCPSettings.value.servers.findIndex((server) => server.id === id)
   if (index === -1) throw new Error(`Unknown remote MCP server: ${id}`)
-  const existing = remoteMcpSettings.value.servers[index]
+  const existing = remoteMCPSettings.value.servers[index]
   const updated = serverFromInput(id, input)
   if (updated.auth.type === 'bearer' && existing.auth.type === 'bearer') {
     updated.auth.credentialProfileId = existing.auth.credentialProfileId
   }
-  remoteMcpSettings.value.servers[index] = updated
-  return cloneRemoteMcpServer(updated)
+  remoteMCPSettings.value.servers[index] = updated
+  return cloneRemoteMCPServer(updated)
 }
 
-export function removeRemoteMcpServerConfig(id: RemoteMcpServerId): RemoteMcpServer | null {
-  const index = remoteMcpSettings.value.servers.findIndex((server) => server.id === id)
+export function removeRemoteMCPServerConfig(id: RemoteMCPServerId): RemoteMCPServer | null {
+  const index = remoteMCPSettings.value.servers.findIndex((server) => server.id === id)
   if (index === -1) return null
-  const [removed] = remoteMcpSettings.value.servers.splice(index, 1)
-  return cloneRemoteMcpServer(removed)
+  const [removed] = remoteMCPSettings.value.servers.splice(index, 1)
+  return cloneRemoteMCPServer(removed)
 }
 
-export function remoteMcpServer(id: string): RemoteMcpServer | null {
-  const server = remoteMcpSettings.value.servers.find((candidate) => candidate.id === id)
-  return server ? cloneRemoteMcpServer(server) : null
+export function remoteMCPServer(id: string): RemoteMCPServer | null {
+  const server = remoteMCPSettings.value.servers.find((candidate) => candidate.id === id)
+  return server ? cloneRemoteMCPServer(server) : null
 }
 
-export type RemoteMcpServerDisplayInfo = {
-  id: RemoteMcpServerId
+export type RemoteMCPServerDisplayInfo = {
+  id: RemoteMCPServerId
   name: string
   origin: string
 }
 
-export function remoteMcpServerDisplayInfo(id: string): RemoteMcpServerDisplayInfo | null {
-  const server = remoteMcpServer(id)
+export function remoteMCPServerDisplayInfo(id: string): RemoteMCPServerDisplayInfo | null {
+  const server = remoteMCPServer(id)
   if (!server) return null
   return {
     id: server.id,
@@ -151,22 +151,22 @@ export function remoteMcpServerDisplayInfo(id: string): RemoteMcpServerDisplayIn
   }
 }
 
-export function remoteMcpToolServerDisplayInfo(
+export function remoteMCPToolServerDisplayInfo(
   namespacedToolName: string
-): RemoteMcpServerDisplayInfo | null {
+): RemoteMCPServerDisplayInfo | null {
   const match = /^mcp__(mcp-[a-f0-9]{16})__/.exec(namespacedToolName)
-  return match ? remoteMcpServerDisplayInfo(match[1]) : null
+  return match ? remoteMCPServerDisplayInfo(match[1]) : null
 }
 
-export function remoteMcpSettingsSnapshot(): RemoteMcpSettings {
+export function remoteMCPSettingsSnapshot(): RemoteMCPSettings {
   return {
     version: REMOTE_MCP_SETTINGS_VERSION,
-    servers: remoteMcpSettings.value.servers.map(cloneRemoteMcpServer)
+    servers: remoteMCPSettings.value.servers.map(cloneRemoteMCPServer)
   }
 }
 
-export function replaceRemoteMcpSettings(value: RemoteMcpSettings): void {
-  const parsed = parseRemoteMcpSettings(value)
+export function replaceRemoteMCPSettings(value: RemoteMCPSettings): void {
+  const parsed = parseRemoteMCPSettings(value)
   if (!parsed) throw new Error('Remote MCP settings are invalid')
-  remoteMcpSettings.value = parsed
+  remoteMCPSettings.value = parsed
 }

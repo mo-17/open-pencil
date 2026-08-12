@@ -40,7 +40,7 @@ export function useTeamMotionLibrary() {
   const editor = useEditorStore()
   const { selectedIds } = useSelectionState()
   const { panels } = useI18n()
-  const manifestJson = ref('')
+  const manifestJSON = ref('')
   const publicKeyPem = ref('')
   const busyId = ref('')
   const localError = ref('')
@@ -80,12 +80,12 @@ export function useTeamMotionLibrary() {
   }
 
   async function stageManifest(): Promise<void> {
-    const manifest = manifestJson.value.trim()
+    const manifest = manifestJSON.value.trim()
     const key = publicKeyPem.value.trim()
     if (!manifest || !key) return
     await run('import', async () => {
       await appTeamMotionLibrary.stageManifest(manifest, key)
-      manifestJson.value = ''
+      manifestJSON.value = ''
       publicKeyPem.value = ''
     })
   }
@@ -150,7 +150,7 @@ export function useTeamMotionLibrary() {
   }
 
   return {
-    manifestJson,
+    manifestJSON,
     publicKeyPem,
     busyId,
     libraries,

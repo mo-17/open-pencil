@@ -1,7 +1,7 @@
 import {
   auditLowcodeNavigation,
   compactLowcodeHeadMetadata,
-  validateLowcodeCustomCss,
+  validateLowcodeCustomCSS,
   validateSupabaseConfig
 } from '@open-pencil/core/lowcode-validation'
 import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/scene-graph'
@@ -17,19 +17,19 @@ import { collectServerWorkflows } from './ir/collect/server-workflows'
 import { collectComponents, collectTree } from './ir/collect/tree'
 import type { IRMotion } from './ir/motion'
 import { selectAdapter } from './select-adapter'
-import { buildDesignTokenThemeCss } from './theme-css'
+import { buildDesignTokenThemeCSS } from './theme-css'
 import type {
   CompilerInput,
   CompilerOptions,
   CompilerOutput,
   CompileWarning,
-  HtmlMetadataOptions
+  HTMLMetadataOptions
 } from './types'
 
 export type {
   CompileWarning,
-  HtmlMetadata,
-  HtmlMetadataOptions,
+  HTMLMetadata,
+  HTMLMetadataOptions,
   CompilerInput,
   CompilerFontFaceAsset,
   CompilerFontFormat,
@@ -37,7 +37,7 @@ export type {
   CompilerFontManifest,
   CompilerOptions,
   CompilerOutput,
-  UiKitName
+  UIKitName
 } from './types'
 export {
   resolveCompilerLocalFonts,
@@ -64,7 +64,7 @@ export {
 export {
   validateStateName,
   validateExpression,
-  validateUrlTemplate,
+  validateURLTemplate,
   type ValidationResult
 } from '@open-pencil/core/lowcode-validation'
 // Phase 2 §7 — preview iframe needs pageId↔slug round-trip; the React adapter's
@@ -98,7 +98,7 @@ export function compile(input: CompilerInput): CompilerOutput {
     }
   }
 
-  const options = withPersistedThemeCss(
+  const options = withPersistedThemeCSS(
     input.graph,
     withPersistedMetadata(input.graph, input.pageIds, input.options)
   )
@@ -195,11 +195,11 @@ export function withDefaults(overrides: Partial<CompilerOptions> = {}): Compiler
   return { ...DEFAULT_OPTIONS, ...overrides }
 }
 
-function withPersistedThemeCss(graph: SceneGraph, options: CompilerOptions): CompilerOptions {
-  const generated = buildDesignTokenThemeCss(graph)
+function withPersistedThemeCSS(graph: SceneGraph, options: CompilerOptions): CompilerOptions {
+  const generated = buildDesignTokenThemeCSS(graph)
   const explicit = options.themeCss?.trim()
-  const themeCss = [generated.trim(), explicit].filter(Boolean).join('\n\n')
-  return themeCss ? { ...options, themeCss: `${themeCss}\n` } : options
+  const themeCSS = [generated.trim(), explicit].filter(Boolean).join('\n\n')
+  return themeCSS ? { ...options, themeCss: `${themeCSS}\n` } : options
 }
 
 function withPersistedMetadata(
@@ -214,7 +214,7 @@ function withPersistedMetadata(
 function metadataFromGraph(
   graph: SceneGraph,
   pageIds: readonly string[]
-): HtmlMetadataOptions | undefined {
+): HTMLMetadataOptions | undefined {
   const root = graph.getNode(graph.rootId)
   const rootMetadata = compactRootMetadata(
     root?.lowcodeSeoMetadata,
@@ -233,24 +233,24 @@ function metadataFromGraph(
 function compactRootMetadata(
   seo: SeoMetadata | undefined,
   head: LowcodeHeadMetadata | undefined,
-  customCss: string | undefined
-): HtmlMetadataOptions | undefined {
-  const metadata: HtmlMetadataOptions = { ...compactSeoMetadata(seo) }
+  customCSS: string | undefined
+): HTMLMetadataOptions | undefined {
+  const metadata: HTMLMetadataOptions = { ...compactSeoMetadata(seo) }
   const cleanHead = compactLowcodeHeadMetadata(head)
-  const cleanCss = customCss?.trim()
+  const cleanCSS = customCSS?.trim()
   if (cleanHead) metadata.head = cleanHead
-  if (cleanCss && validateLowcodeCustomCss(cleanCss).ok) metadata.customCss = cleanCss
+  if (cleanCSS && validateLowcodeCustomCSS(cleanCSS).ok) metadata.customCss = cleanCSS
   return Object.keys(metadata).length > 0 ? metadata : undefined
 }
 
 function mergeMetadataOptions(
-  persisted: HtmlMetadataOptions | undefined,
-  explicit: HtmlMetadataOptions | undefined
-): HtmlMetadataOptions | undefined {
+  persisted: HTMLMetadataOptions | undefined,
+  explicit: HTMLMetadataOptions | undefined
+): HTMLMetadataOptions | undefined {
   if (!persisted) return explicit
   if (!explicit) return persisted
   const pages = mergeMetadataPages(persisted.pages, explicit.pages)
-  const merged: HtmlMetadataOptions = { ...persisted, ...explicit }
+  const merged: HTMLMetadataOptions = { ...persisted, ...explicit }
   if (pages) merged.pages = pages
   else delete merged.pages
   return merged

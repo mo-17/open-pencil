@@ -104,7 +104,7 @@ export type {
   AIAdapterOptions,
   StepBudget
 } from './tools'
-export { executeRpcCommand, ALL_RPC_COMMANDS } from './rpc'
+export { executeRPCCommand, ALL_RPC_COMMANDS } from './rpc'
 export { queryByXPath, matchByXPath, nodeToXPath } from './xpath'
 export type { XPathQueryOptions } from './xpath'
 export {
@@ -219,7 +219,7 @@ export {
   resolveRGBAForPreview,
   resolveNodeFillColor,
   resolveNodeStrokeColor,
-  colorToDisplayCss,
+  colorToDisplayCSS,
   getDefaultRenderColorSpace,
   type RenderColorSpace,
   type ColorIntentSpace,
@@ -441,7 +441,7 @@ export {
   KIWI,
   SESSION_ID,
   ZSTD_MAGIC,
-  buildMultiplayerUrl,
+  buildMultiplayerURL,
   isZstdCompressed,
   hasFigWireHeader,
   skipFigWireHeader,
@@ -457,7 +457,7 @@ export * from './lint'
 export const CODEGEN_PROMPT: string = codegenPrompt
 export const JSX_REFERENCE: string = jsxReference
 export {
-  setPexelsApiKey,
+  setPexelsAPIKey,
   setUnsplashAccessKey,
   registerStockPhotoProvider,
   setActiveStockPhotoProvider,

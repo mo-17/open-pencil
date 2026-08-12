@@ -4,7 +4,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { ellipsizeLabelText } from '#core/canvas/labels/text'
 import type { SkiaRenderer } from '#core/canvas/renderer'
-import { HTML_MODULE_TYPE, HTML_PLUGIN_ID, resolveHtmlModule } from '#core/plugins/html'
+import { HTML_MODULE_TYPE, HTML_PLUGIN_ID, resolveHTMLModule } from '#core/plugins/html'
 
 import { configureModulePreviewPaint, modulePreviewFrame } from './preview'
 import type { ModuleCanvasAdapter } from './types'
@@ -36,14 +36,14 @@ export function htmlPreviewText(html: string): string {
 }
 
 /** Draw a deterministic offline summary; the real HTML renders only inside an isolated iframe. */
-export function renderHtmlModulePreview(
+export function renderHTMLModulePreview(
   renderer: SkiaRenderer,
   canvas: Canvas,
   node: SceneNode
 ): boolean {
   const frame = modulePreviewFrame(node)
   if (!frame) return false
-  const resolved = resolveHtmlModule(frame.node.interactiveProps?.module)
+  const resolved = resolveHTMLModule(frame.node.interactiveProps?.module)
   if (!resolved?.ok) return false
   if (frame.empty) return true
 
@@ -84,5 +84,5 @@ export function renderHtmlModulePreview(
 export const HTML_MODULE_CANVAS_ADAPTER: ModuleCanvasAdapter = Object.freeze({
   pluginId: HTML_PLUGIN_ID,
   moduleType: HTML_MODULE_TYPE,
-  render: renderHtmlModulePreview
+  render: renderHTMLModulePreview
 })

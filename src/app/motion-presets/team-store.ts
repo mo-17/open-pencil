@@ -17,7 +17,7 @@ import {
   type VerifiedTeamMotionLibrarySnapshot
 } from '@open-pencil/scene-graph'
 
-import packageJson from '../../../package.json'
+import packageJSON from '../../../package.json'
 import {
   browserMotionPresetStorage,
   readMotionPresetStorage,
@@ -173,11 +173,11 @@ async function defaultLoadSource(
   if (source.kind !== 'url') {
     throw new Error('Paste the next signed manifest to review file-based team libraries.')
   }
-  const sourceUrl = new URL(source.ref)
-  if (sourceUrl.protocol !== 'https:') {
+  const sourceURL = new URL(source.ref)
+  if (sourceURL.protocol !== 'https:') {
     throw new Error('Team Motion URL sources must use HTTPS.')
   }
-  const response = await fetchImpl(sourceUrl, {
+  const response = await fetchImpl(sourceURL, {
     redirect: 'error',
     signal: AbortSignal.timeout(10_000)
   })
@@ -227,7 +227,7 @@ function cloneLibrary(value: StoredTeamMotionLibrary): StoredTeamMotionLibrary {
 
 export function createTeamMotionLibraryStore(options: CreateTeamMotionLibraryStoreOptions = {}) {
   const storage = options.storage === undefined ? browserMotionPresetStorage() : options.storage
-  const engineVersion = options.engineVersion ?? packageJson.version
+  const engineVersion = options.engineVersion ?? packageJSON.version
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
   const loadSource =
     options.loadSource ??
@@ -371,17 +371,17 @@ export function createTeamMotionLibraryStore(options: CreateTeamMotionLibrarySto
   }
 
   async function stageManifest(
-    manifestJson: string,
+    manifestJSON: string,
     publicKeyPem: string
   ): Promise<TeamMotionLibraryRegistryState> {
     requireWritable()
     const expectedRevision = revision
-    if (jsonBytes(manifestJson) > TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes) {
+    if (jsonBytes(manifestJSON) > TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes) {
       throw new Error('Team Motion manifest exceeds the size limit.')
     }
     const publicKey = await importTeamMotionPublicKey(publicKeyPem)
     const canonicalKey = await exportTeamMotionPublicKey(publicKey)
-    const rawManifest: unknown = JSON.parse(manifestJson)
+    const rawManifest: unknown = JSON.parse(manifestJSON)
     const candidate = await verifyTeamMotionLibraryManifest(rawManifest, publicKey, {
       engineVersion
     })

@@ -216,7 +216,7 @@ function listStopClass(active: boolean) {
             <button
               v-if="root.stops.length > 2"
               class="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent p-0 text-muted hover:text-surface"
-              aria-label="Remove gradient stop"
+              :aria-label="dialogs.removeGradientStop"
               @click.stop="s.actions.remove"
             >
               <icon-lucide-minus class="size-3" />

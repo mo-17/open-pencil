@@ -175,7 +175,7 @@ function frameDelayCentiseconds(input: MotionAnimationEncoderInput, frameIndex: 
   return Math.max(1, end - start)
 }
 
-async function decodePngFrame(
+async function decodePNGFrame(
   bytes: Uint8Array,
   width: number,
   height: number
@@ -219,7 +219,7 @@ async function encodeGif(input: MotionAnimationEncoderInput): Promise<Uint8Array
 
   for (let frameIndex = 0; frameIndex < input.frames.length; frameIndex++) {
     throwIfCancelled(input.signal)
-    const indexed = await decodePngFrame(input.frames[frameIndex].bytes, width, height)
+    const indexed = await decodePNGFrame(input.frames[frameIndex].bytes, width, height)
     throwIfCancelled(input.signal)
 
     output.bytes(new Uint8Array([0x21, 0xf9, 0x04]))

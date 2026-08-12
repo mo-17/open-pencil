@@ -13,7 +13,7 @@ import {
   createBuildServerDeploymentNotice,
   printManualServerDeploymentNotice
 } from '#cli/server-deployment'
-import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
+import { resolveUIKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
 interface BuildArgs {
   file?: string
@@ -91,7 +91,7 @@ export default defineCommand({
     const { file, out, page, base } = args as BuildArgs
     const outDir = resolve(out)
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as BuildArgs)
-    const uiKit = resolveUiKitFlag(args as BuildArgs)
+    const uiKit = resolveUIKitFlag(args as BuildArgs)
     const target = resolveCodegenTarget(args as BuildArgs)
 
     const { compiled, packageName } = await loadAndCompile({

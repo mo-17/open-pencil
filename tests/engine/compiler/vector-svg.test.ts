@@ -66,11 +66,11 @@ describe('compile — vector shapes emit inline SVG (icons, not boxes)', () => {
 
     const tree = collectTree(graph, pageId)
     const element = tree.children[0] as IRElement
-    const rawHtml = element.rawHtml ?? ''
-    const rootGroup = rawHtml.match(
+    const rawHTML = element.rawHtml ?? ''
+    const rootGroup = rawHTML.match(
       new RegExp(`<g[^>]*data-op-node-group="${frame.id}"[^>]*>`)
     )?.[0]
-    const childGroup = rawHtml.match(
+    const childGroup = rawHTML.match(
       new RegExp(`<g[^>]*data-op-node-group="${child.id}"[^>]*>`)
     )?.[0]
     expect(rootGroup).toBeDefined()
@@ -79,8 +79,8 @@ describe('compile — vector shapes emit inline SVG (icons, not boxes)', () => {
     expect(rootGroup).not.toContain('mix-blend-mode')
     expect(childGroup).toContain('opacity="0.25"')
     expect(childGroup).toContain('rotate(10, 15, 10)')
-    expect(rawHtml).toContain('viewBox="0 0 30 20"')
-    expect(rawHtml).toContain('overflow="visible"')
+    expect(rawHTML).toContain('viewBox="0 0 30 20"')
+    expect(rawHTML).toContain('overflow="visible"')
     expect(element.className).toContain('opacity-50')
   })
 

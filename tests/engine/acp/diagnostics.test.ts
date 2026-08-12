@@ -1,23 +1,23 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import {
-  beginAcpDiagnostics,
-  formatAcpDiagnostics,
-  formatAcpRuntimeContext,
-  getAcpDiagnostics,
-  recordAcpNewSession,
-  recordAcpPrompt,
-  recordAcpSessionUpdate,
-  resetAcpDiagnostics
+  beginACPDiagnostics,
+  formatACPDiagnostics,
+  formatACPRuntimeContext,
+  getACPDiagnostics,
+  recordACPNewSession,
+  recordACPPrompt,
+  recordACPSessionUpdate,
+  resetACPDiagnostics
 } from '@/app/ai/acp/diagnostics'
 import { formatTokenUsage } from '@/app/ai/debug'
 
-beforeEach(() => resetAcpDiagnostics())
+beforeEach(() => resetACPDiagnostics())
 
 describe('ACP diagnostics', () => {
   test('records the agent, selected model, and thought level', () => {
-    beginAcpDiagnostics('Codex')
-    recordAcpNewSession({
+    beginACPDiagnostics('Codex')
+    recordACPNewSession({
       sessionId: 'session-1',
       models: {
         currentModelId: 'gpt-5.6-sol',
@@ -43,24 +43,24 @@ describe('ACP diagnostics', () => {
       ]
     })
 
-    expect(getAcpDiagnostics()).toMatchObject({
+    expect(getACPDiagnostics()).toMatchObject({
       active: true,
       agentName: 'Codex',
       modelId: 'fallback-model',
       thoughtLevel: 'high'
     })
-    expect(formatAcpRuntimeContext(getAcpDiagnostics())).toContain(
+    expect(formatACPRuntimeContext(getACPDiagnostics())).toContain(
       'The current model ID is "fallback-model".'
     )
   })
 
   test('keeps the latest prompt usage snapshot instead of summing turns', () => {
-    beginAcpDiagnostics('Codex')
-    recordAcpPrompt({
+    beginACPDiagnostics('Codex')
+    recordACPPrompt({
       stopReason: 'end_turn',
       usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 }
     })
-    recordAcpPrompt({
+    recordACPPrompt({
       stopReason: 'end_turn',
       usage: {
         inputTokens: 180,
@@ -71,7 +71,7 @@ describe('ACP diagnostics', () => {
       }
     })
 
-    expect(getAcpDiagnostics().usage).toEqual({
+    expect(getACPDiagnostics().usage).toEqual({
       inputTokens: 180,
       outputTokens: 35,
       cachedReadTokens: 40,
@@ -84,8 +84,8 @@ describe('ACP diagnostics', () => {
   })
 
   test('uses a safely reported prompt model even when usage is absent', () => {
-    beginAcpDiagnostics('Codex')
-    recordAcpNewSession({
+    beginACPDiagnostics('Codex')
+    recordACPNewSession({
       sessionId: 'session-1',
       models: {
         currentModelId: 'gpt-5.6-sol[high]',
@@ -103,9 +103,9 @@ describe('ACP diagnostics', () => {
       ]
     })
 
-    expect(getAcpDiagnostics().modelId).toBe('gpt-5.6-sol')
+    expect(getACPDiagnostics().modelId).toBe('gpt-5.6-sol')
 
-    recordAcpPrompt({
+    recordACPPrompt({
       stopReason: 'end_turn',
       _meta: {
         quota: {
@@ -114,12 +114,12 @@ describe('ACP diagnostics', () => {
       }
     })
 
-    expect(getAcpDiagnostics().modelId).toBe('gpt-5.6-terra')
+    expect(getACPDiagnostics().modelId).toBe('gpt-5.6-terra')
   })
 
   test('does not replace the selected model with malformed or ambiguous prompt metadata', () => {
-    beginAcpDiagnostics('Codex')
-    recordAcpNewSession({
+    beginACPDiagnostics('Codex')
+    recordACPNewSession({
       sessionId: 'session-1',
       models: {
         currentModelId: 'gpt-5.6-sol',
@@ -127,7 +127,7 @@ describe('ACP diagnostics', () => {
       }
     })
 
-    recordAcpPrompt({
+    recordACPPrompt({
       stopReason: 'end_turn',
       _meta: {
         quota: {
@@ -136,18 +136,18 @@ describe('ACP diagnostics', () => {
       }
     })
 
-    expect(getAcpDiagnostics().modelId).toBe('gpt-5.6-sol')
+    expect(getACPDiagnostics().modelId).toBe('gpt-5.6-sol')
   })
 
   test('records context utilization, cost, and later model changes', () => {
-    beginAcpDiagnostics('Codex')
-    recordAcpSessionUpdate({
+    beginACPDiagnostics('Codex')
+    recordACPSessionUpdate({
       sessionUpdate: 'usage_update',
       used: 12_000,
       size: 200_000,
       cost: { amount: 0, currency: 'USD' }
     })
-    recordAcpSessionUpdate({
+    recordACPSessionUpdate({
       sessionUpdate: 'config_option_update',
       configOptions: [
         {
@@ -161,7 +161,7 @@ describe('ACP diagnostics', () => {
       ]
     })
 
-    expect(getAcpDiagnostics()).toMatchObject({
+    expect(getACPDiagnostics()).toMatchObject({
       modelId: 'gpt-5.6-sol',
       context: {
         used: 12_000,
@@ -170,7 +170,7 @@ describe('ACP diagnostics', () => {
       }
     })
 
-    expect(formatAcpDiagnostics(getAcpDiagnostics())).toBe(
+    expect(formatACPDiagnostics(getACPDiagnostics())).toBe(
       [
         'Provider: ACP (Codex)',
         'Model: gpt-5.6-sol',

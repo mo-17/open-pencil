@@ -390,7 +390,7 @@ async function renderIconNode(
  * pipeline as iconify icons: the body may be passed as string children or a
  * `body`/`children` string prop, and is parsed with extractPaths + parseSVGPath.
  */
-async function renderSvgNode(
+async function renderSVGNode(
   graph: SceneGraph,
   tree: TreeNode,
   parentId: string
@@ -660,7 +660,7 @@ async function renderNode(
     return node
   }
   if (elementType === 'svg') {
-    const node = await renderSvgNode(graph, tree, parentId)
+    const node = await renderSVGNode(graph, tree, parentId)
     trackCreatedRoot(execution, parentId, node.id)
     await checkpointRender(execution)
     return node

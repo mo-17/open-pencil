@@ -5,7 +5,7 @@ import {
 import {
   parseBoundedManifestArray,
   parseExactManifestRecord,
-  parseSha256Base64Url,
+  parseSha256Base64URL,
   validateModuleIdentity
 } from '@open-pencil/scene-graph'
 
@@ -158,7 +158,7 @@ function auditEvent(
     sequence: source.sequence,
     occurredAt,
     action: source.action as PluginRuntimeAuditAction,
-    runtimePackageDigest: parseSha256Base64Url(
+    runtimePackageDigest: parseSha256Base64URL(
       source.runtimePackageDigest,
       `${path}.runtimePackageDigest`
     ),
@@ -233,7 +233,7 @@ export function parsePluginRuntimePolicyRecord(value: unknown): PluginRuntimePol
   }
   const firstAuditSequence = auditSequence - auditValues.length + 1
   const audit = auditValues.map((event, index) => auditEvent(event, index, firstAuditSequence))
-  const runtimePackageDigest = parseSha256Base64Url(
+  const runtimePackageDigest = parseSha256Base64URL(
     source.runtimePackageDigest,
     'pluginRuntimePolicy.runtimePackageDigest'
   )
@@ -241,7 +241,7 @@ export function parsePluginRuntimePolicyRecord(value: unknown): PluginRuntimePol
   return Object.freeze({
     schemaVersion: PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION,
     pluginId: identity(source.pluginId, 'pluginRuntimePolicy.pluginId'),
-    declarativeManifestDigest: parseSha256Base64Url(
+    declarativeManifestDigest: parseSha256Base64URL(
       source.declarativeManifestDigest,
       'pluginRuntimePolicy.declarativeManifestDigest'
     ),

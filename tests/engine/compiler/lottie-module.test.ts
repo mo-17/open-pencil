@@ -101,7 +101,7 @@ describe('compiler trusted Lottie module adapter', () => {
     })
     const app = output.files.get('src/App.tsx') as string
     const runtime = output.files.get('src/__openpencil_lottie.tsx') as string
-    const packageJson = JSON.parse(output.files.get('package.json') as string) as {
+    const packageJSON = JSON.parse(output.files.get('package.json') as string) as {
       dependencies: Record<string, string>
     }
 
@@ -109,7 +109,7 @@ describe('compiler trusted Lottie module adapter', () => {
     expect(app).toContain('<OpenPencilLottie config={{')
     expect(app).toContain('Authored Lottie fallback')
     expect(runtime).toContain('Load Lottie animation')
-    expect(packageJson.dependencies['lottie-web']).toBe(LOTTIE_WEB_VERSION)
+    expect(packageJSON.dependencies['lottie-web']).toBe(LOTTIE_WEB_VERSION)
     expect(output.warnings).toEqual([])
   })
 

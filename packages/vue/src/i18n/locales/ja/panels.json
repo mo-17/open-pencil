@@ -1364,5 +1364,18 @@
   "motionGeneratedEffectReducedStatic": "静止フレーム",
   "motionGeneratedEffectReducedDisable": "レイヤーを無効化",
   "motionGeneratedEffectRemove": "生成エフェクトを削除",
-  "motionGeneratedEffectAdd": "生成エフェクトを追加"
+  "motionGeneratedEffectAdd": "生成エフェクトを追加",
+  "noFontsFound": "フォントが見つかりません",
+  "noLocalFontsAvailable": "利用できるローカルフォントがありません。",
+  "localFontsAccessHint": "システムフォントにアクセスするには、デスクトップアプリまたはChrome/Edgeを使用してください。",
+  "editColor": "色を編集",
+  "red": "赤",
+  "green": "緑",
+  "blue": "青",
+  "hue": "色相",
+  "saturation": "彩度",
+  "brightness": "明度",
+  "lightness": "明度",
+  "chroma": "彩度",
+  "alpha": "アルファ"
 }

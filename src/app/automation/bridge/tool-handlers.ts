@@ -9,7 +9,7 @@ import type { Editor } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
 import { ALL_TOOLS, serializeToolMutation } from '@open-pencil/core/tools'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { AutomationRequestContext } from '@/app/automation/bridge/request-context'
 import type { AutomationTarget } from '@/app/automation/bridge/target'
@@ -316,14 +316,14 @@ function addResultItemIds(value: unknown, ids: Set<string>): void {
   if (!Array.isArray(value)) return
   for (const item of value) {
     if (!item || typeof item !== 'object') continue
-    const id = (item as JsonObject).id
+    const id = (item as JSONObject).id
     if (typeof id === 'string') ids.add(id)
   }
 }
 
 function extractNodeIds(result: unknown): string[] {
   if (!result || typeof result !== 'object') return []
-  const obj = result as JsonObject
+  const obj = result as JSONObject
   if (obj.ok === false) return []
   if (typeof obj.deleted === 'string') return []
   const ids = new Set<string>()

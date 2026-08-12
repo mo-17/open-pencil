@@ -38,7 +38,7 @@ function identity(value: string, path: string): string {
   return value
 }
 
-function base64UrlBytes(value: string, path: string, expectedLength?: number): Uint8Array {
+function base64URLBytes(value: string, path: string, expectedLength?: number): Uint8Array {
   if (
     typeof value !== 'string' ||
     value.length === 0 ||
@@ -157,7 +157,7 @@ export async function verifyMarketplaceRequest(
   if (publicKey?.type !== 'public' || publicKey.algorithm.name !== 'Ed25519') {
     throw new Error('Marketplace publisher key is not active')
   }
-  const signature = base64UrlBytes(input.headers.signature, 'marketplace request signature', 64)
+  const signature = base64URLBytes(input.headers.signature, 'marketplace request signature', 64)
   if (
     !(await crypto.subtle.verify(
       'Ed25519',

@@ -7,7 +7,7 @@ import type { IRAttrValue, IRControlledInput, IRElement, IRNode } from '#compile
 
 import { emitExpression } from '@open-pencil/core/lowcode-validation'
 
-import type { KitEmitCtx, UiKitAdapter, UiKitMapping } from '../types'
+import type { KitEmitCtx, UIKitAdapter, UIKitMapping } from '../types'
 import {
   ACCORDION_TSX,
   ALERT_TSX,
@@ -139,12 +139,12 @@ const COMPONENTS: Partial<Record<string, ShadcnComponent>> = {
 /** Phase 4 §15.1 — `containerKind` → the kit mapping for a card-like container
  *  FRAME. Card only renames the tag (`<div>` → `<Card>`) and keeps its children;
  *  no composed markup / extra imports. */
-const CONTAINER_TO_MAPPING: Partial<Record<NonNullable<IRElement['containerKind']>, UiKitMapping>> =
+const CONTAINER_TO_MAPPING: Partial<Record<NonNullable<IRElement['containerKind']>, UIKitMapping>> =
   {
     card: { component: 'Card', from: '@/components/ui/card' }
   }
 
-const DISPLAY_TO_MAPPING: Partial<Record<NonNullable<IRElement['displayKind']>, UiKitMapping>> = {
+const DISPLAY_TO_MAPPING: Partial<Record<NonNullable<IRElement['displayKind']>, UIKitMapping>> = {
   badge: { component: 'Badge', from: '@/components/ui/badge' },
   alert: { component: 'Alert', from: '@/components/ui/alert' },
   separator: { component: 'Separator', from: '@/components/ui/separator' },
@@ -169,7 +169,7 @@ const DISPLAY_TO_MAPPING: Partial<Record<NonNullable<IRElement['displayKind']>, 
 
 /** Phase B — `controlKind` → the kit mapping for a composed form control. The
  *  composed Select/RadioGroup pull several named exports from one module. */
-const CONTROL_TO_MAPPING: Partial<Record<NonNullable<IRElement['controlKind']>, UiKitMapping>> = {
+const CONTROL_TO_MAPPING: Partial<Record<NonNullable<IRElement['controlKind']>, UIKitMapping>> = {
   checkbox: { component: 'Checkbox', from: '@/components/ui/checkbox' },
   // Phase 4 §15 Phase C — the array multi-select group reuses the single
   // Checkbox component (one `<Checkbox>` per option); no native group component.
@@ -197,7 +197,7 @@ const TAG_TO_COMPONENT: Partial<Record<string, string>> = {
   label: 'Label'
 }
 
-function mappingFor(name: string): UiKitMapping {
+function mappingFor(name: string): UIKitMapping {
   const lower = name.toLowerCase()
   return { component: name, from: `@/components/ui/${lower}` }
 }
@@ -719,10 +719,10 @@ function checkboxToggleParts(
  *  distinct event APIs + composed markup). Phase 4 §15 Phase C adds the array
  *  multi-select checkbox-group (N `<Checkbox>` rows + manual array toggle, since
  *  shadcn has no native group component). */
-export const shadcnAdapter: UiKitAdapter = {
+export const shadcnAdapter: UIKitAdapter = {
   name: 'shadcn',
 
-  mapTag(tag: string, attrs: Readonly<Record<string, IRAttrValue>>): UiKitMapping | null {
+  mapTag(tag: string, attrs: Readonly<Record<string, IRAttrValue>>): UIKitMapping | null {
     const name = TAG_TO_COMPONENT[tag]
     if (name === undefined) return null
     // `input` covers text INPUT (mapped) plus CHECKBOX/SWITCH (type="checkbox")
@@ -735,15 +735,15 @@ export const shadcnAdapter: UiKitAdapter = {
     return mappingFor(name)
   },
 
-  mapControl(kind: NonNullable<IRElement['controlKind']>): UiKitMapping | null {
+  mapControl(kind: NonNullable<IRElement['controlKind']>): UIKitMapping | null {
     return CONTROL_TO_MAPPING[kind] ?? null
   },
 
-  mapContainer(kind: NonNullable<IRElement['containerKind']>): UiKitMapping | null {
+  mapContainer(kind: NonNullable<IRElement['containerKind']>): UIKitMapping | null {
     return CONTAINER_TO_MAPPING[kind] ?? null
   },
 
-  mapDisplay(kind: NonNullable<IRElement['displayKind']>): UiKitMapping | null {
+  mapDisplay(kind: NonNullable<IRElement['displayKind']>): UIKitMapping | null {
     return DISPLAY_TO_MAPPING[kind] ?? null
   },
 
@@ -806,7 +806,7 @@ export const shadcnAdapter: UiKitAdapter = {
     return out
   },
 
-  themeCss(): string {
+  themeCSS(): string {
     return SHADCN_THEME_CSS
   }
 }

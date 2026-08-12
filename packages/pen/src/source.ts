@@ -174,14 +174,14 @@ function sourceParentId(context: PenSourceContext, node: SceneNode): string | nu
   return node.parentId === context.pageId ? null : node.parentId
 }
 
-function equalJsonValue(left: unknown, right: unknown): boolean {
+function equalJSONValue(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true
   if (Array.isArray(left) || Array.isArray(right)) {
     return (
       Array.isArray(left) &&
       Array.isArray(right) &&
       left.length === right.length &&
-      left.every((value, index) => equalJsonValue(value, right[index]))
+      left.every((value, index) => equalJSONValue(value, right[index]))
     )
   }
   if (!isPlainPenRecord(left) || !isPlainPenRecord(right)) return false
@@ -189,7 +189,7 @@ function equalJsonValue(left: unknown, right: unknown): boolean {
   const rightKeys = Object.keys(right)
   return (
     leftKeys.length === rightKeys.length &&
-    leftKeys.every((key) => Object.hasOwn(right, key) && equalJsonValue(left[key], right[key]))
+    leftKeys.every((key) => Object.hasOwn(right, key) && equalJSONValue(left[key], right[key]))
   )
 }
 
@@ -213,7 +213,7 @@ function hasDerivedInstanceMotionOverride(node: SceneNode, mayWriteMotion: boole
     const value = node[field]
     return value === undefined
       ? node.overrides[field] === null
-      : equalJsonValue(node.overrides[field], value)
+      : equalJSONValue(node.overrides[field], value)
   })
 }
 

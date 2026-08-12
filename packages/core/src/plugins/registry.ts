@@ -7,13 +7,13 @@ function assertIdentity(value: string, path: string): void {
   if (reason) throw new TypeError(reason)
 }
 
-function deepFreezeJson<T>(value: T, seen = new WeakSet<object>()): T {
+function deepFreezeJSON<T>(value: T, seen = new WeakSet<object>()): T {
   if (value === null || typeof value !== 'object' || seen.has(value)) return value
   seen.add(value)
   if (Array.isArray(value)) {
-    value.forEach((entry) => deepFreezeJson(entry, seen))
+    value.forEach((entry) => deepFreezeJSON(entry, seen))
   } else {
-    Object.values(value).forEach((entry) => deepFreezeJson(entry, seen))
+    Object.values(value).forEach((entry) => deepFreezeJSON(entry, seen))
   }
   Object.freeze(value)
   return value
@@ -21,7 +21,7 @@ function deepFreezeJson<T>(value: T, seen = new WeakSet<object>()): T {
 
 function freezeModuleDefinition(definition: ModuleDefinition): ModuleDefinition {
   const defaultConfig = structuredClone(definition.defaultConfig)
-  deepFreezeJson(defaultConfig)
+  deepFreezeJSON(defaultConfig)
   return Object.freeze({
     ...definition,
     defaultSize: Object.freeze({ ...definition.defaultSize }),

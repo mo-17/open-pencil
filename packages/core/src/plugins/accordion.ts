@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import * as moduleContract from './module-contract'
 import { createModuleFrameOverrides } from './module-frame'
@@ -30,13 +30,13 @@ export const ACCORDION_MODULE_LIMITS = Object.freeze({
   configBytes: 32_768
 })
 
-export interface AccordionItemV1 extends JsonObject {
+export interface AccordionItemV1 extends JSONObject {
   id: string
   title: string
   content: string
 }
 
-export interface AccordionModuleConfigV1 extends JsonObject {
+export interface AccordionModuleConfigV1 extends JSONObject {
   label: string
   items: AccordionItemV1[]
   allowMultiple: boolean

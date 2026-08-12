@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import {
   APPLICATION_RUNTIME_GUIDE_LANGUAGE_STORAGE_KEY,
   applicationRuntimeGuideLanguagePreference,
-  applicationRuntimeGuideExternalUrl,
+  applicationRuntimeGuideExternalURL,
   applicationRuntimeGuideHeadings,
   applicationRuntimeGuideOpen,
   closeApplicationRuntimeGuide,
@@ -136,12 +136,12 @@ describe('bundled Application Runtime guide', () => {
   })
 
   test('allows only credential-free HTTPS references', () => {
-    expect(applicationRuntimeGuideExternalUrl('https://supabase.com/docs')).toBe(
+    expect(applicationRuntimeGuideExternalURL('https://supabase.com/docs')).toBe(
       'https://supabase.com/docs'
     )
-    expect(applicationRuntimeGuideExternalUrl('http://supabase.com/docs')).toBeNull()
-    expect(applicationRuntimeGuideExternalUrl('https://user:secret@example.com/docs')).toBeNull()
-    expect(applicationRuntimeGuideExternalUrl(['javascript', ':alert(1)'].join(''))).toBeNull()
-    expect(applicationRuntimeGuideExternalUrl('./lowcode-apps')).toBeNull()
+    expect(applicationRuntimeGuideExternalURL('http://supabase.com/docs')).toBeNull()
+    expect(applicationRuntimeGuideExternalURL('https://user:secret@example.com/docs')).toBeNull()
+    expect(applicationRuntimeGuideExternalURL(['javascript', ':alert(1)'].join(''))).toBeNull()
+    expect(applicationRuntimeGuideExternalURL('./lowcode-apps')).toBeNull()
   })
 })

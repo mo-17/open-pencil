@@ -15,7 +15,7 @@ import {
 import { credentialRef } from '@/app/settings/credentials/reference'
 import type { CredentialRef } from '@/app/settings/credentials/types'
 
-import type { JsonTraversalState } from '../json-data'
+import type { JSONTraversalState } from '../json-data'
 import { resolveConnectorOperationOrigin, resolveConnectorOperationPath } from './broker'
 import {
   ConnectorExecutionError,
@@ -70,14 +70,14 @@ export interface ReviewedRestQueryMapping {
   readonly array?: 'repeat' | 'comma'
 }
 
-export interface ReviewedRestJsonBodyMapping {
+export interface ReviewedRestJSONBodyMapping {
   readonly parameter: string
   readonly name?: string
 }
 
-export interface ReviewedRestJsonBodySpec {
+export interface ReviewedRestJSONBodySpec {
   /** Only explicitly reviewed parameter fields enter the request body. */
-  readonly fields?: readonly ReviewedRestJsonBodyMapping[]
+  readonly fields?: readonly ReviewedRestJSONBodyMapping[]
   /** Host-reviewed builder for APIs whose JSON envelope does not mirror parameter names. */
   readonly build?: (
     parameters: ConnectorParameterObject,
@@ -118,7 +118,7 @@ export interface ReviewedRestOperationSpec {
   /** Explicit host policy; only these operations may be exposed as read-only MCP tools. */
   readonly mcpReadOnly: boolean
   readonly query?: readonly ReviewedRestQueryMapping[]
-  readonly jsonBody?: ReviewedRestJsonBodySpec
+  readonly jsonBody?: ReviewedRestJSONBodySpec
   /** Static, non-sensitive headers only. Credential/reserved headers are rejected. */
   readonly headers?: Readonly<Record<string, string>>
   /** For mutations, insert the host-owned attempt UUID immediately before dispatch. */
@@ -194,7 +194,7 @@ interface NormalizedOperationSpec {
   readonly operationId: string
   readonly query: readonly NormalizedQueryMapping[]
   readonly body: readonly NormalizedBodyMapping[] | null
-  readonly buildBody?: ReviewedRestJsonBodySpec['build']
+  readonly buildBody?: ReviewedRestJSONBodySpec['build']
   readonly maxBodyBytes: number
   readonly headers: Readonly<Record<string, string>>
   readonly idempotencyHeader?: string
@@ -503,18 +503,18 @@ function assertReviewedAuthority(
   contract: PluginConnectorContractV1,
   operation: PluginConnectorOperationV1,
   reviewedContract: PluginConnectorContractV1,
-  reviewedContractJson: string,
-  reviewedOperationJson: Readonly<Record<string, string>>
+  reviewedContractJSON: string,
+  reviewedOperationJSON: Readonly<Record<string, string>>
 ): PluginConnectorOperationV1 {
   try {
-    if (JSON.stringify(parsePluginConnectorContract(contract)) !== reviewedContractJson) {
+    if (JSON.stringify(parsePluginConnectorContract(contract)) !== reviewedContractJSON) {
       throw new Error('contract mismatch')
     }
     const parsed = parsePluginConnectorContract({
       ...reviewedContract,
       operations: [operation]
     }).operations[0]
-    if (JSON.stringify(parsed) !== reviewedOperationJson[parsed.operationId]) {
+    if (JSON.stringify(parsed) !== reviewedOperationJSON[parsed.operationId]) {
       throw new Error('operation mismatch')
     }
     const reviewed = reviewedContract.operations.find(
@@ -602,10 +602,10 @@ function enumerableDataValue(value: object, key: string, path: string): unknown 
   return descriptor.value
 }
 
-function pureJsonArray(
+function pureJSONArray(
   value: unknown[],
   path: string,
-  state: JsonTraversalState
+  state: JSONTraversalState
 ): readonly PluginParameterValue[] {
   if (Object.getPrototypeOf(value) !== Array.prototype) {
     throw new TypeError(`${path} must contain plain arrays only`)
@@ -620,15 +620,15 @@ function pureJsonArray(
   const result: PluginParameterValue[] = []
   for (let index = 0; index < value.length; index += 1) {
     const itemPath = `${path}[${index}]`
-    result.push(pureJsonValue(enumerableDataValue(value, String(index), itemPath), itemPath, state))
+    result.push(pureJSONValue(enumerableDataValue(value, String(index), itemPath), itemPath, state))
   }
   return Object.freeze(result)
 }
 
-function pureJsonRecord(
+function pureJSONRecord(
   value: object,
   path: string,
-  state: JsonTraversalState
+  state: JSONTraversalState
 ): Readonly<Record<string, PluginParameterValue>> {
   const prototype = Object.getPrototypeOf(value)
   if (prototype !== Object.prototype && prototype !== null) {
@@ -643,31 +643,31 @@ function pureJsonRecord(
       throw new TypeError(`${path} contains an unsafe JSON property`)
     }
     const propertyPath = `${path}.${key}`
-    result[key] = pureJsonValue(enumerableDataValue(value, key, propertyPath), propertyPath, state)
+    result[key] = pureJSONValue(enumerableDataValue(value, key, propertyPath), propertyPath, state)
   }
   return Object.freeze(result)
 }
 
-function pureJsonContainer(
+function pureJSONContainer(
   value: object,
   path: string,
-  state: JsonTraversalState
+  state: JSONTraversalState
 ): PluginParameterValue {
   if (state.ancestors.has(value)) throw new TypeError(`${path} must not contain cycles`)
   state.ancestors.add(value)
   try {
     return Array.isArray(value)
-      ? pureJsonArray(value, path, state)
-      : pureJsonRecord(value, path, state)
+      ? pureJSONArray(value, path, state)
+      : pureJSONRecord(value, path, state)
   } finally {
     state.ancestors.delete(value)
   }
 }
 
-function pureJsonValue(
+function pureJSONValue(
   value: unknown,
   path: string,
-  state: JsonTraversalState
+  state: JSONTraversalState
 ): PluginParameterValue {
   state.nodes += 1
   if (state.nodes > REVIEWED_REST_CONNECTOR_LIMITS.maxJsonNodes) {
@@ -679,11 +679,11 @@ function pureJsonValue(
     return value
   }
   if (typeof value !== 'object') throw new TypeError(`${path} must contain JSON data only`)
-  return pureJsonContainer(value, path, state)
+  return pureJSONContainer(value, path, state)
 }
 
-function serializedJsonBody(value: unknown, maximum: number): string {
-  const safe = pureJsonValue(value, 'Reviewed REST JSON body', {
+function serializedJSONBody(value: unknown, maximum: number): string {
+  const safe = pureJSONValue(value, 'Reviewed REST JSON body', {
     nodes: 0,
     ancestors: new WeakSet()
   })
@@ -694,7 +694,7 @@ function serializedJsonBody(value: unknown, maximum: number): string {
   return serialized
 }
 
-function mappedJsonBody(
+function mappedJSONBody(
   mappings: readonly NormalizedBodyMapping[],
   parameters: ConnectorParameterObject,
   maximum: number
@@ -707,7 +707,7 @@ function mappedJsonBody(
     const value = parameters[mapping.parameter]
     if (value !== undefined) body[mapping.name] = value
   }
-  return serializedJsonBody(body, maximum)
+  return serializedJSONBody(body, maximum)
 }
 
 function pickedResponse(value: unknown, path: readonly string[]): unknown {
@@ -757,8 +757,8 @@ function prepareRequest(
         })
       : null
     body = normalized.buildBody
-      ? serializedJsonBody(bodyValue, normalized.maxBodyBytes)
-      : mappedJsonBody(normalized.body, parameters, normalized.maxBodyBytes)
+      ? serializedJSONBody(bodyValue, normalized.maxBodyBytes)
+      : mappedJSONBody(normalized.body, parameters, normalized.maxBodyBytes)
   }
   if (normalized.idempotencyHeader) {
     if (!context.mutationAttemptId) {
@@ -805,8 +805,8 @@ export function createReviewedRestConnector(
     credentialSlots: normalizedCredentials(spec),
     operations: spec.operations.map((operation) => contractOperation(spec, operation))
   })
-  const reviewedContractJson = JSON.stringify(contract)
-  const reviewedOperationJson = Object.freeze(
+  const reviewedContractJSON = JSON.stringify(contract)
+  const reviewedOperationJSON = Object.freeze(
     Object.fromEntries(
       contract.operations.map((operation) => [operation.operationId, JSON.stringify(operation)])
     )
@@ -890,8 +890,8 @@ export function createReviewedRestConnector(
           context.contract,
           context.operation,
           contract,
-          reviewedContractJson,
-          reviewedOperationJson
+          reviewedContractJSON,
+          reviewedOperationJSON
         )
         const operationSpec = normalized.get(operation.operationId)
         if (!operationSpec) {
@@ -909,15 +909,15 @@ export function createReviewedRestConnector(
         context.contract,
         context.operation,
         contract,
-        reviewedContractJson,
-        reviewedOperationJson
+        reviewedContractJSON,
+        reviewedOperationJSON
       )
       const operationSpec = normalized.get(operation.operationId)
       if (!operationSpec) {
         throw connectorError('authority-mismatch', 'Reviewed REST operation is unavailable')
       }
       const parameters = validatedParameters(context, operation, operationSpec)
-      let transformed: unknown = pureJsonValue(
+      let transformed: unknown = pureJSONValue(
         pickedResponse(value, operationSpec.responsePath),
         `Reviewed REST ${operation.operationId} upstream result`,
         { nodes: 0, ancestors: new WeakSet() }

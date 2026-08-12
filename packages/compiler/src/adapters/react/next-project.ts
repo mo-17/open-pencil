@@ -1,8 +1,8 @@
 import {
   appendReactProjectGitignore,
-  patchReactCompilerPackageJson,
+  patchReactCompilerPackageJSON,
   requireReactCompilerTextFile,
-  stripReactMainCssImports,
+  stripReactMainCSSImports,
   type ReactCompilerProjectFiles
 } from './source-project'
 
@@ -38,7 +38,7 @@ export function buildNextJsReactProjectFiles(
   compiledFiles: ReactCompilerProjectFiles,
   productName: string
 ): Map<string, string | Uint8Array> {
-  const files = patchReactCompilerPackageJson(compiledFiles, {
+  const files = patchReactCompilerPackageJSON(compiledFiles, {
     description: `Next.js project exported from ${productName} in OpenPencil`,
     removeScripts: ['dev', 'build', 'preview'],
     scripts: { dev: 'next dev', build: 'next build', start: 'next start' },
@@ -47,16 +47,16 @@ export function buildNextJsReactProjectFiles(
     removeDevDependencies: REMOVED_VITE_DEV_DEPENDENCIES
   })
   const main = requireReactCompilerTextFile(files, 'src/main.tsx')
-  files.set('src/main.tsx', stripReactMainCssImports(main))
+  files.set('src/main.tsx', stripReactMainCSSImports(main))
   adaptNextPublicEnvironment(files)
   files.delete('index.html')
   files.delete('vite.config.ts')
   files.delete('src/vite-env.d.ts')
 
-  const motionCssImport = files.has('src/__motion.css') ? `import '../src/__motion.css'\n` : ''
+  const motionCSSImport = files.has('src/__motion.css') ? `import '../src/__motion.css'\n` : ''
   files.set(
     'app/layout.tsx',
-    `import type { ReactNode } from 'react'\n\nimport '../src/index.css'\n${motionCssImport}\nexport const metadata = { title: ${JSON.stringify(productName)} }\n\nexport default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {\n  return (\n    <html lang="en">\n      <body>{children}</body>\n    </html>\n  )\n}\n`
+    `import type { ReactNode } from 'react'\n\nimport '../src/index.css'\n${motionCSSImport}\nexport const metadata = { title: ${JSON.stringify(productName)} }\n\nexport default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {\n  return (\n    <html lang="en">\n      <body>{children}</body>\n    </html>\n  )\n}\n`
   )
   files.set(
     'app/OpenPencilClient.tsx',

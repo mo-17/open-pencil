@@ -1,5 +1,5 @@
 import { createLinter, type LintMessage } from '@open-pencil/core/lint'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
 
@@ -19,7 +19,7 @@ const MAX_TOTAL_BOUND_VARIABLES = 16_384
 const MAX_TOTAL_STRUCTURED_PAYLOAD_NODES = 131_072
 const encoder = new TextEncoder()
 
-export interface StaticAccessibilityAuditResult extends JsonObject {
+export interface StaticAccessibilityAuditResult extends JSONObject {
   kind: 'static-accessibility-audit'
   scope: 'document'
   errorCount: number
@@ -27,7 +27,7 @@ export interface StaticAccessibilityAuditResult extends JsonObject {
   infoCount: number
   issueCount: number
   truncated: boolean
-  issues: JsonObject[]
+  issues: JSONObject[]
   notEvaluated: string[]
 }
 
@@ -43,7 +43,7 @@ function boundedText(value: string, maximum: number): string {
   return result
 }
 
-function serializeIssue(issue: LintMessage): JsonObject {
+function serializeIssue(issue: LintMessage): JSONObject {
   return {
     ruleId: issue.ruleId,
     severity: issue.severity,
@@ -74,7 +74,7 @@ export function runStaticAccessibilityAudit(editor: EditorStore): StaticAccessib
       maxStructuredMembersPerContainer: MAX_STRUCTURED_MEMBERS_PER_CONTAINER
     }
   }).lintGraph(editor.graph)
-  const issues: JsonObject[] = []
+  const issues: JSONObject[] = []
   let reportBytes = 512
   for (const message of result.messages.slice(0, MAX_ISSUES)) {
     const issue = serializeIssue(message)

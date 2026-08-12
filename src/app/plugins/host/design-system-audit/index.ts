@@ -8,7 +8,7 @@ import {
   boundedAuditText as boundedText,
   createDesignSystemAuditState as initialState,
   designSystemAuditCheckpoint as checkpoint,
-  designSystemAuditJsonBytes,
+  designSystemAuditJSONBytes,
   DESIGN_SYSTEM_AUDIT_COMMAND_ID,
   DESIGN_SYSTEM_AUDIT_LIMITS,
   markDesignSystemAuditBudgetExhausted as markBudgetExhausted,
@@ -448,7 +448,7 @@ export async function runStaticDesignSystemAudit(
     issues: state.issues,
     notEvaluated
   }
-  if (designSystemAuditJsonBytes(result) > DESIGN_SYSTEM_AUDIT_LIMITS.reportBytes) {
+  if (designSystemAuditJSONBytes(result) > DESIGN_SYSTEM_AUDIT_LIMITS.reportBytes) {
     result.truncated = true
     result.issues = []
     result.notEvaluated = [

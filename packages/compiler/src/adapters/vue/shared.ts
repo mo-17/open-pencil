@@ -230,7 +230,7 @@ function hasUnsafeHrefCharacter(value: string): boolean {
   return false
 }
 
-export function vueAssetUrl(value: string): string {
+export function vueAssetURL(value: string): string {
   if (value.startsWith('./assets/')) return `../assets/${value.slice('./assets/'.length)}`
   if (value.startsWith('src/assets/')) return `../assets/${value.slice('src/assets/'.length)}`
   return value
@@ -250,7 +250,7 @@ export function attrName(value: string): string | null {
   return /^[A-Za-z_:][A-Za-z0-9:._-]*$/.test(name) ? name : null
 }
 
-export function scriptJson(value: unknown): string {
+export function scriptJSON(value: unknown): string {
   if (
     value === undefined ||
     typeof value === 'function' ||

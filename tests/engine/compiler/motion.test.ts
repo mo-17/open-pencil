@@ -302,12 +302,12 @@ describe('compiler — MotionSpec v1 artifacts', () => {
     const css = out.files.get('src/__motion.css') as string
     const runtime = out.files.get('src/__motion-runtime.ts') as string
     const main = out.files.get('src/main.tsx') as string
-    const reducedCss = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'))
+    const reducedCSS = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'))
     expect(main).toContain("import './__motion.css'")
     expect(main).toContain("import './__motion-runtime'")
-    expect(reducedCss).toContain('animation-duration: 120ms')
-    expect(reducedCss).not.toContain('translate:')
-    expect(reducedCss).not.toContain('scale:')
+    expect(reducedCSS).toContain('animation-duration: 120ms')
+    expect(reducedCSS).not.toContain('translate:')
+    expect(reducedCSS).not.toContain('scale:')
     expect(runtime).toContain('Math.min(track.timing.duration, 120)')
     expect(runtime).toContain("if (policy === 'disable') return null")
   })

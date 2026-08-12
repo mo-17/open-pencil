@@ -1,55 +1,55 @@
 export {
-  clearRemoteMcpBearerToken,
-  remoteMcpBearerCredentialRef,
-  remoteMcpBearerCredentialStatus,
-  remoteMcpCredentialStatus,
-  remoteMcpCredentialRefs,
-  remoteMcpCredentialRevision,
-  removeRemoteMcpServer,
-  resolveRemoteMcpBearerToken,
-  setRemoteMcpBearerToken,
-  updateRemoteMcpServer
+  clearRemoteMCPBearerToken,
+  remoteMCPBearerCredentialRef,
+  remoteMCPBearerCredentialStatus,
+  remoteMCPCredentialStatus,
+  remoteMCPCredentialRefs,
+  remoteMCPCredentialRevision,
+  removeRemoteMCPServer,
+  resolveRemoteMCPBearerToken,
+  setRemoteMCPBearerToken,
+  updateRemoteMCPServer
 } from '@/app/ai/mcp/credentials'
-export type { RemoteMcpCredentialStatus } from '@/app/ai/mcp/credentials'
+export type { RemoteMCPCredentialStatus } from '@/app/ai/mcp/credentials'
 export {
-  createRemoteMcpRuntime,
-  createSdkRemoteMcpClient,
+  createRemoteMCPRuntime,
+  createSdkRemoteMCPClient,
   MAX_REMOTE_MCP_TOOL_PAGES,
   MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES,
-  mergeRemoteMcpTools,
-  namespacedRemoteMcpToolName,
+  mergeRemoteMCPTools,
+  namespacedRemoteMCPToolName,
   REMOTE_MCP_DISCOVERY_TIMEOUT_MS,
   REMOTE_MCP_INITIALIZATION_TIMEOUT_MS,
-  selectRemoteMcpServers
+  selectRemoteMCPServers
 } from '@/app/ai/mcp/runtime'
 export type {
-  RemoteMcpClient,
-  RemoteMcpClientFactoryOptions,
-  RemoteMcpRuntime,
-  RemoteMcpRuntimeDependencies
+  RemoteMCPClient,
+  RemoteMCPClientFactoryOptions,
+  RemoteMCPRuntime,
+  RemoteMCPRuntimeDependencies
 } from '@/app/ai/mcp/runtime'
 export {
-  addRemoteMcpServer,
-  parseRemoteMcpSettings,
-  remoteMcpServer,
-  remoteMcpServerDisplayInfo,
-  remoteMcpSettings,
-  remoteMcpSettingsSnapshot,
-  remoteMcpToolServerDisplayInfo,
-  replaceRemoteMcpSettings
+  addRemoteMCPServer,
+  parseRemoteMCPSettings,
+  remoteMCPServer,
+  remoteMCPServerDisplayInfo,
+  remoteMCPSettings,
+  remoteMCPSettingsSnapshot,
+  remoteMCPToolServerDisplayInfo,
+  replaceRemoteMCPSettings
 } from '@/app/ai/mcp/store'
-export type { RemoteMcpServerDisplayInfo } from '@/app/ai/mcp/store'
+export type { RemoteMCPServerDisplayInfo } from '@/app/ai/mcp/store'
 export {
-  createRemoteMcpServerId,
-  isRemoteMcpServerId,
+  createRemoteMCPServerId,
+  isRemoteMCPServerId,
   MAX_REMOTE_MCP_SERVERS,
   MAX_REMOTE_MCP_SERVERS_PER_MODEL,
-  normalizeRemoteMcpServerName,
-  normalizeRemoteMcpUrl
+  normalizeRemoteMCPServerName,
+  normalizeRemoteMCPURL
 } from '@/app/ai/mcp/types'
 export type {
-  RemoteMcpServer,
-  RemoteMcpServerId,
-  RemoteMcpServerInput,
-  RemoteMcpSettings
+  RemoteMCPServer,
+  RemoteMCPServerId,
+  RemoteMCPServerInput,
+  RemoteMCPSettings
 } from '@/app/ai/mcp/types'

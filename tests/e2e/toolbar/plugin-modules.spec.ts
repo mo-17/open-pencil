@@ -35,7 +35,7 @@ async function canvasPluginModules(page: Page) {
   })
 }
 
-async function selectedModuleJson(page: Page): Promise<string | null> {
+async function selectedModuleJSON(page: Page): Promise<string | null> {
   return page.evaluate(() => {
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
@@ -141,8 +141,8 @@ test('inserts and visually edits Rich Text only while its plugin is enabled', as
   await firstText.fill('Edited visually')
   await firstText.blur()
   await page.getByRole('button', { name: 'Italic' }).first().click()
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('Edited visually')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"type":"italic"')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('Edited visually')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"type":"italic"')
 
   await page.evaluate(async (pluginId) => {
     const { appPluginStore } = await import('/src/app/plugins/index.ts')
@@ -199,7 +199,7 @@ test('installs, inserts, and previews edited HTML only while its plugin is enabl
     page.frameLocator('[data-test-id="html-content-preview"]').locator('#edited-html')
   ).toHaveText('Edited HTML')
   await source.blur()
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('Edited HTML')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('Edited HTML')
 
   await page.evaluate(async (pluginId) => {
     const { appPluginStore } = await import('/src/app/plugins/index.ts')
@@ -240,7 +240,7 @@ test('installs and configures the reviewed Video module only while enabled', asy
   await source.fill('https://cdn.example.com/demo.mp4')
   await source.blur()
   await expect
-    .poll(async () => await selectedModuleJson(page))
+    .poll(async () => await selectedModuleJSON(page))
     .toContain('https://cdn.example.com/demo.mp4')
 
   const autoplay = page.getByRole('checkbox', { name: 'Autoplay' })
@@ -251,8 +251,8 @@ test('installs and configures the reviewed Video module only while enabled', asy
   await muted.check()
   await expect(page.getByText('video config autoplay requires muted to be true')).toHaveCount(0)
   await autoplay.check()
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"muted":true')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"autoplay":true')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"muted":true')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"autoplay":true')
 
   await page.evaluate(async (pluginId) => {
     const { appPluginStore } = await import('/src/app/plugins/index.ts')
@@ -301,8 +301,8 @@ test('edits bounded structured Table cells and dimensions in its custom property
 
   await canvas.undo()
   await expect(cellInputs.first()).toHaveValue('Landing page')
-  await expect.poll(async () => await selectedModuleJson(page)).not.toContain('Roadmap')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('Project')
+  await expect.poll(async () => await selectedModuleJSON(page)).not.toContain('Roadmap')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('Project')
 
   await cellInputs.first().fill('Roadmap')
   await cellInputs.first().blur()
@@ -319,9 +319,9 @@ test('edits bounded structured Table cells and dimensions in its custom property
   await page.getByTestId('table-delete-row').last().click()
   await expect(headerInputs).toHaveCount(11)
   await expect(cellInputs).toHaveCount(33)
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"columns"')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('Project')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('Roadmap')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"columns"')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('Project')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('Roadmap')
 
   await page.evaluate(async (pluginId) => {
     const { appPluginStore } = await import('/src/app/plugins/index.ts')
@@ -406,11 +406,11 @@ test('configures a four-direction Slide Menu only while its plugin is enabled', 
   await hrefs.first().blur()
   await expect(page.getByText(/must be a safe bounded href/)).toHaveCount(0)
 
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"presentation":"dialog"')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"direction":"bottom"')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('Open details')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('Documentation')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('/docs')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"presentation":"dialog"')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"direction":"bottom"')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('Open details')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('Documentation')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('/docs')
 
   await page.evaluate(async (pluginId) => {
     const { appPluginStore } = await import('/src/app/plugins/index.ts')
@@ -520,15 +520,15 @@ test('installs and edits a flat accessible Dropdown Menu only while enabled', as
   await expect(labels.first()).toHaveCSS('background-color', 'rgb(240, 240, 240)')
   await expect(labels.first()).toHaveCSS('color', 'rgb(30, 30, 30)')
 
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"triggerMode":"hover"')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"triggerMode":"hover"')
   await expect
-    .poll(async () => await selectedModuleJson(page))
+    .poll(async () => await selectedModuleJSON(page))
     .toContain('"placement":"rightBottom"')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('Billing')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('/billing')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"disabled":true')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"danger":true')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('⌘B')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('Billing')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('/billing')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"disabled":true')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"danger":true')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('⌘B')
 
   await separators.last().getByTestId('dropdown-menu-delete-entry').click()
   await expect(separators).toHaveCount(1)
@@ -585,11 +585,11 @@ test('installs and configures the bounded Modal module only while enabled', asyn
   await panelWidth.fill('480')
   await panelWidth.press('Enter')
 
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('A bounded multiline')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('A bounded multiline')
   await expect
-    .poll(async () => await selectedModuleJson(page))
+    .poll(async () => await selectedModuleJSON(page))
     .toContain('"showTriggerLabel":false')
-  await expect.poll(async () => await selectedModuleJson(page)).toContain('"panelWidth":480')
+  await expect.poll(async () => await selectedModuleJSON(page)).toContain('"panelWidth":480')
 
   await page.evaluate(async (pluginId) => {
     const { appPluginStore } = await import('/src/app/plugins/index.ts')

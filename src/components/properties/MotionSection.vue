@@ -53,7 +53,7 @@ const {
   errorMessage,
   authoringDisabled,
   authoringDisabledReason,
-  exportJson,
+  exportJSON,
   canSaveCurrent,
   selectedKey,
   staggerEnabled,
@@ -68,11 +68,11 @@ const {
   edit,
   updateFromCurrent,
   remove,
-  importJson,
-  exportLibraryJson,
+  importJSON,
+  exportLibraryJSON,
   importFile,
   exportFile,
-  acceptSharedJson,
+  acceptSharedJSON,
   checkSharedLibrary,
   acceptSharedUpdate,
   removeSharedLibrary
@@ -103,7 +103,7 @@ const {
           :selected-key="selectedKey"
           :error="errorMessage"
           :authoring-disabled="authoringDisabled"
-          :export-json="exportJson"
+          :export-json="exportJSON"
           :stagger-enabled="staggerEnabled"
           :stagger-step-ms="staggerStepMs"
           :stagger-direction="staggerDirection"
@@ -116,11 +116,11 @@ const {
           @edit="edit"
           @update-current="updateFromCurrent"
           @delete="remove"
-          @import-json="importJson"
-          @export-json="exportLibraryJson"
+          @import-json="importJSON"
+          @export-json="exportLibraryJSON"
           @import-file="importFile"
           @export-file="exportFile"
-          @accept-shared-json="acceptSharedJson"
+          @accept-shared-json="acceptSharedJSON"
           @check-shared="checkSharedLibrary"
           @accept-shared="acceptSharedUpdate"
           @remove-shared="removeSharedLibrary"

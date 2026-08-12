@@ -183,7 +183,7 @@ function importBrowserFile(event: Event): void {
 
     <div class="space-y-1.5 border-t border-border pt-2">
       <textarea
-        v-model="recipe.importJson.value"
+        v-model="recipe.importJSON.value"
         rows="3"
         :maxlength="MOTION_RECIPE_LIBRARY_LIMITS.maxJsonBytes"
         class="w-full resize-y rounded border border-border bg-input p-1.5 font-mono text-[10px] text-surface"
@@ -205,7 +205,7 @@ function importBrowserFile(event: Event): void {
         <button
           type="button"
           class="rounded border border-border bg-input px-2 py-1 text-[10px] text-surface disabled:opacity-50"
-          :disabled="!recipe.importJson.value.trim()"
+          :disabled="!recipe.importJSON.value.trim()"
           @click="recipe.importLibrary(conflictPolicy)"
         >
           {{ labels.importJson }}
@@ -233,8 +233,8 @@ function importBrowserFile(event: Event): void {
         </button>
       </div>
       <textarea
-        v-if="recipe.exportedJson.value"
-        :value="recipe.exportedJson.value"
+        v-if="recipe.exportedJSON.value"
+        :value="recipe.exportedJSON.value"
         readonly
         rows="3"
         class="w-full resize-y rounded border border-border bg-panel p-1.5 font-mono text-[10px] text-muted"

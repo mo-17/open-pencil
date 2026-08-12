@@ -49,7 +49,7 @@ function formattedOutput(value: unknown, label: string): string {
   return ok(`${label}: ${String(value)}`)
 }
 
-export function printMarketplaceCliOutput(
+export function printMarketplaceCLIOutput(
   json: boolean,
   value: unknown,
   label = 'Marketplace operation'

@@ -1,6 +1,6 @@
 import type { LowcodeHeadMetaKind, LowcodeHeadMetadata } from '@open-pencil/scene-graph'
 
-import { validateLowcodeCustomCss } from './custom-css'
+import { validateLowcodeCustomCSS } from './custom-css'
 import type { ValidationResult } from './validate'
 
 export function compactLowcodeHeadMetadata(
@@ -33,7 +33,7 @@ export function compactLowcodeHeadMetadata(
     )
   const styles = value.styles
     ?.map((style) => style.trim())
-    .filter((style) => style !== '' && validateLowcodeCustomCss(style).ok)
+    .filter((style) => style !== '' && validateLowcodeCustomCSS(style).ok)
   const compacted: LowcodeHeadMetadata = {}
   if (meta?.length) compacted.meta = meta
   if (link?.length) compacted.link = link
@@ -56,28 +56,28 @@ export function validateLowcodeHeadMeta(
   content: string
 ): ValidationResult {
   if (kind !== 'httpEquiv' || key.trim().toLowerCase() !== 'refresh') return { ok: true }
-  const url = refreshUrl(content)
-  if (!url || isSafeRefreshUrl(url)) return { ok: true }
+  const url = refreshURL(content)
+  if (!url || isSafeRefreshURL(url)) return { ok: true }
   return { ok: false, reason: `http-equiv refresh url must be http(s) or relative: ${url}` }
 }
 
-export function unsafeLowcodeHeadMetaRefreshUrl(
+export function unsafeLowcodeHeadMetaRefreshURL(
   kind: LowcodeHeadMetaKind,
   key: string,
   content: string
 ): string | undefined {
   const url =
-    kind === 'httpEquiv' && key.trim().toLowerCase() === 'refresh' ? refreshUrl(content) : undefined
-  return url && !isSafeRefreshUrl(url) ? url : undefined
+    kind === 'httpEquiv' && key.trim().toLowerCase() === 'refresh' ? refreshURL(content) : undefined
+  return url && !isSafeRefreshURL(url) ? url : undefined
 }
 
-function refreshUrl(content: string): string | undefined {
+function refreshURL(content: string): string | undefined {
   const match = content.match(/(?:^|;)\s*url\s*=\s*(.+)\s*$/i)
   const value = match?.[1]?.trim().replace(/^['"]|['"]$/g, '')
   return value || undefined
 }
 
-function isSafeRefreshUrl(value: string): boolean {
+function isSafeRefreshURL(value: string): boolean {
   const trimmed = value.trim()
   if (!trimmed || trimmed.startsWith('//')) return false
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return /^https?:/i.test(trimmed)

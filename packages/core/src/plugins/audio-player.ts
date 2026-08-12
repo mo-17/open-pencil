@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
   createContractModuleDefinition,
@@ -38,7 +38,7 @@ export const AUDIO_PLAYER_MODULE_LIMITS = Object.freeze({
 
 export type AudioPreloadV1 = 'none' | 'metadata'
 
-export interface AudioPlayerModuleConfigV1 extends JsonObject {
+export interface AudioPlayerModuleConfigV1 extends JSONObject {
   src: string
   title: string
   artist: string

@@ -12,11 +12,11 @@ import { derivePagePaths, type PagePathInfo } from '../react/route-paths'
 import { emitExpoComponent, emitExpoPage } from './emit'
 import { expoRoutePath } from './event'
 import {
-  buildExpoAppJson,
+  buildExpoAppJSON,
   buildExpoDocumentState,
   buildExpoFontStub,
   buildExpoGitignore,
-  buildExpoPackageJson,
+  buildExpoPackageJSON,
   buildExpoReadme,
   buildExpoRootApp,
   buildExpoRouteProxy,
@@ -78,8 +78,8 @@ function emitExpoProject(
   const routeRewrites = routerPlan?.routeRewrites ?? new Map<string, string>()
   const assetPlan = collectExpoAssets(selected, components, warn)
 
-  files.set('package.json', buildExpoPackageJson(options, router))
-  files.set('app.json', buildExpoAppJson(options, router))
+  files.set('package.json', buildExpoPackageJSON(options, router))
+  files.set('app.json', buildExpoAppJSON(options, router))
   files.set('tsconfig.json', buildExpoTsConfig())
   files.set('.gitignore', buildExpoGitignore())
   files.set('README.md', buildExpoReadme(router))

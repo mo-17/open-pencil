@@ -1193,7 +1193,20 @@ export const panelMessageDefaults = {
   motionGeneratedEffectReducedDisable: 'Disable layer',
   motionGeneratedEffectRemove: 'Remove generated effect',
   motionGeneratedEffectAdd: 'Add generated effect',
-  searchFonts: 'Search fonts...'
+  searchFonts: 'Search fonts...',
+  noFontsFound: 'No fonts found',
+  noLocalFontsAvailable: 'No local fonts available.',
+  localFontsAccessHint: 'Use the desktop app or Chrome/Edge to access system fonts.',
+  editColor: 'Edit color',
+  red: 'Red',
+  green: 'Green',
+  blue: 'Blue',
+  hue: 'Hue',
+  saturation: 'Saturation',
+  brightness: 'Brightness',
+  lightness: 'Lightness',
+  chroma: 'Chroma',
+  alpha: 'Alpha'
 } as const
 
 export const panelMessages = i18n('panels', panelMessageDefaults)

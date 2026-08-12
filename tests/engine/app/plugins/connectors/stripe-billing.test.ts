@@ -272,12 +272,12 @@ describe('Stripe Checkout and Billing reference connector', () => {
       'https://shop.acme.com:8443/success',
       'https://user@shop.acme.com/success'
     ]
-    for (const successUrl of invalidUrls) {
+    for (const successURL of invalidUrls) {
       await expect(
         STRIPE_BILLING_CONNECTOR_ADAPTER.prepare({
           contract: STRIPE_BILLING_CONNECTOR_CONTRACT,
           operation: STRIPE_CREATE_CHECKOUT_SESSION_OPERATION,
-          parameters: { ...checkoutParameters(), successUrl },
+          parameters: { ...checkoutParameters(), successUrl: successURL },
           signal: signal()
         })
       ).rejects.toThrow()
@@ -470,12 +470,12 @@ describe('Stripe Checkout and Billing reference connector', () => {
     ).rejects.toThrow('cancelled')
 
     let getterCalls = 0
-    let toJsonCalls = 0
+    let toJSONCalls = 0
     const forged = Object.defineProperty(
       {
         ...STRIPE_GET_PRODUCT_OPERATION,
         toJSON() {
-          toJsonCalls += 1
+          toJSONCalls += 1
           return STRIPE_GET_PRODUCT_OPERATION
         }
       },
@@ -497,6 +497,6 @@ describe('Stripe Checkout and Billing reference connector', () => {
       })
     ).rejects.toThrow()
     expect(getterCalls).toBe(0)
-    expect(toJsonCalls).toBe(0)
+    expect(toJSONCalls).toBe(0)
   })
 })

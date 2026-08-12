@@ -29,7 +29,7 @@ const UNSAFE_HTML = `<style>
   window.parent.__openPencilHtmlExecuted = true
 </script>`
 
-function buildHtmlPreviewFiles(): Map<string, string | Uint8Array> {
+function buildHTMLPreviewFiles(): Map<string, string | Uint8Array> {
   const graph = makeSceneGraph()
   const pageId = firstPageId(graph)
   const frame = graph.createNode('FRAME', pageId, {
@@ -72,7 +72,7 @@ describe('preview browser — compiled HTML sandbox', () => {
   let remoteResponses: string[] = []
 
   beforeEach(async () => {
-    server = await createPreviewServer({ initialFiles: buildHtmlPreviewFiles() })
+    server = await createPreviewServer({ initialFiles: buildHTMLPreviewFiles() })
     browser = await chromium.launch()
     page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 })
     remoteRequests = []

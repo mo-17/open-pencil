@@ -6,8 +6,8 @@ import type { SkiaRenderer } from '#core/canvas/renderer'
 import {
   PDF_VIEWER_MODULE_TYPE,
   PDF_VIEWER_PLUGIN_ID,
-  resolvePdfViewerModule,
-  type PdfViewerModuleConfigV1
+  resolvePDFViewerModule,
+  type PDFViewerModuleConfigV1
 } from '#core/plugins/pdf-viewer'
 
 import {
@@ -18,19 +18,19 @@ import {
 } from './preview'
 import type { ModuleCanvasAdapter } from './types'
 
-export function pdfViewerPreviewStatus(config: PdfViewerModuleConfigV1): string {
+export function pdfViewerPreviewStatus(config: PDFViewerModuleConfigV1): string {
   const total = config.pageCountHint > 0 ? ` / ${config.pageCountHint}` : ''
   const source = config.sourceUrl === '' ? 'No source' : config.sourceUrl
   return `${source} · Page ${config.initialPage}${total} · ${config.fit}`
 }
 
 /** Draw document metadata and a paper placeholder; PDF bytes are never loaded or parsed. */
-export function renderPdfViewerModulePreview(
+export function renderPDFViewerModulePreview(
   renderer: SkiaRenderer,
   canvas: Canvas,
   node: SceneNode
 ): boolean {
-  return renderResolvedModulePreview(node, resolvePdfViewerModule, (frame) => {
+  return renderResolvedModulePreview(node, resolvePDFViewerModule, (frame) => {
     const { width, height, config } = frame
     const toolbarHeight = config.showToolbar ? Math.min(42, Math.max(28, height * 0.08)) : 0
     const inset = Math.min(28, Math.max(8, Math.min(width, height) * 0.05))
@@ -80,5 +80,5 @@ export function renderPdfViewerModulePreview(
 export const PDF_VIEWER_MODULE_CANVAS_ADAPTER: ModuleCanvasAdapter = Object.freeze({
   pluginId: PDF_VIEWER_PLUGIN_ID,
   moduleType: PDF_VIEWER_MODULE_TYPE,
-  render: renderPdfViewerModulePreview
+  render: renderPDFViewerModulePreview
 })

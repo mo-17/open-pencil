@@ -33,8 +33,9 @@ import {
 } from '@/app/storage/sync/job-guard'
 import { getOutbox } from '@/app/storage/sync/outbox'
 import { setUploadProgress } from '@/app/storage/sync/progress'
-import { setPendingSyncCount, setSyncUi } from '@/app/storage/sync/status'
+import { setPendingSyncCount, setSyncUI } from '@/app/storage/sync/status'
 import type { OutboxJob, OutboxJobType } from '@/app/storage/sync/types'
+import { emitStorageWorkspaceEvent } from '@/app/storage/workspace/events'
 
 const MAX_ATTEMPTS = 8
 const BASE_BACKOFF_MS = 1500
@@ -284,6 +285,11 @@ async function runPutCanvasJob(store: LocalCanvasStore, job: OutboxJob): Promise
     )
     if (updated && !updated.tombstoned) {
       await evictLocalFigCache(new Set([progressKey]))
+      emitStorageWorkspaceEvent({
+        providerId: binding.providerId,
+        documentId: binding.documentId,
+        kind: 'synced'
+      })
     }
   } finally {
     setUploadProgress(progressKey, null)
@@ -316,17 +322,17 @@ async function pumpOnce(): Promise<void> {
   setPendingSyncCount(jobs.length)
 
   if (jobs.length === 0) {
-    if (isOnline()) setSyncUi('idle')
+    if (isOnline()) setSyncUI('idle')
     return
   }
 
   if (!isOnline()) {
-    setSyncUi('offline')
+    setSyncUI('offline')
     scheduleWake(5000)
     return
   }
 
-  setSyncUi('syncing')
+  setSyncUI('syncing')
   const now = Date.now()
   // Single-flight globally for simplicity (large figs)
   const job = jobs.find((j) => j.nextAttemptAt <= now)
@@ -341,7 +347,7 @@ async function pumpOnce(): Promise<void> {
     await outbox.remove(job.id)
     const remaining = await outbox.list()
     setPendingSyncCount(remaining.length)
-    if (remaining.length === 0) setSyncUi('idle')
+    if (remaining.length === 0) setSyncUI('idle')
     else scheduleWake(50)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -351,7 +357,7 @@ async function pumpOnce(): Promise<void> {
       const remaining = await outbox.list()
       setPendingSyncCount(remaining.length)
       if (remaining.length > 0) scheduleWake(50)
-      else setSyncUi('idle')
+      else setSyncUI('idle')
       return
     }
     if (error instanceof StorageSyncConflictError) {
@@ -361,7 +367,7 @@ async function pumpOnce(): Promise<void> {
         lastSyncError: message
       })
       await outbox.update({ ...job, nextAttemptAt: Number.MAX_SAFE_INTEGER })
-      setSyncUi('error', message)
+      setSyncUI('error', message)
       return
     }
     if (error instanceof StorageSyncBlockedError) {
@@ -369,7 +375,7 @@ async function pumpOnce(): Promise<void> {
         ...job,
         nextAttemptAt: Number.MAX_SAFE_INTEGER
       })
-      setSyncUi('error', message)
+      setSyncUI('error', message)
       return
     }
 
@@ -385,7 +391,7 @@ async function pumpOnce(): Promise<void> {
           syncStatus: 'error',
           lastSyncError: message
         })
-        setSyncUi('error', message.slice(0, 120))
+        setSyncUI('error', message.slice(0, 120))
       } else {
         // Keep a record without touching syncStatus so the stale remote
         // thumbnail is at least diagnosable.
@@ -396,7 +402,7 @@ async function pumpOnce(): Promise<void> {
         const remaining = await outbox.list()
         setPendingSyncCount(remaining.length)
         if (remaining.length > 0) scheduleWake(1000)
-        else setSyncUi('idle')
+        else setSyncUI('idle')
       } else {
         // Never discard a document mutation. Keep it durable until the user
         // repairs credentials/permissions and explicitly wakes synchronization.
@@ -441,11 +447,11 @@ function ensureOnlineListeners() {
   if (onlineBound || !IS_BROWSER) return
   onlineBound = true
   window.addEventListener('online', () => {
-    setSyncUi('syncing')
+    setSyncUI('syncing')
     void kickSyncEngine()
   })
   window.addEventListener('offline', () => {
-    setSyncUi('offline')
+    setSyncUI('offline')
   })
 }
 
@@ -566,7 +572,7 @@ export async function resumeStorageSync(): Promise<void> {
   const jobs = await outbox.list()
   const now = Date.now()
   await Promise.all(jobs.map((job) => outbox.update({ ...job, nextAttemptAt: now })))
-  if (jobs.length > 0) setSyncUi('syncing')
+  if (jobs.length > 0) setSyncUI('syncing')
   void kickSyncEngine()
 }
 
@@ -575,5 +581,5 @@ export async function clearStorageLocalMirror(): Promise<void> {
   await getLocalCanvasStore().clearAll()
   await getOutbox().clear()
   setPendingSyncCount(0)
-  setSyncUi('idle')
+  setSyncUI('idle')
 }

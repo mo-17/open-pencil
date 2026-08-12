@@ -2,15 +2,15 @@ import type { IRNode } from '#compiler/ir/types'
 import type { CompilerOptions } from '#compiler/types'
 
 import { shadcnAdapter } from './shadcn'
-import type { UiKitAdapter, UiKitMapping } from './types'
+import type { UIKitAdapter, UIKitMapping } from './types'
 
-const ADAPTERS: Partial<Record<string, UiKitAdapter>> = {
+const ADAPTERS: Partial<Record<string, UIKitAdapter>> = {
   shadcn: shadcnAdapter
 }
 
 /** Phase 3 §15 — resolve the configured UI kit, or null when unset/unknown
  *  (→ the self-contained Tailwind emit, byte-identical to pre-§15 output). */
-export function resolveUiKit(options: CompilerOptions): UiKitAdapter | null {
+export function resolveUIKit(options: CompilerOptions): UIKitAdapter | null {
   const name = options.uiKit
   if (name === undefined) return null
   return ADAPTERS[name] ?? null
@@ -21,8 +21,8 @@ export function resolveUiKit(options: CompilerOptions): UiKitAdapter | null {
  * Returns the unique `{ component, from }` mappings (sorted by component) so a
  * file can emit one import line each. Pure — mirrors `referencedComponentNames`.
  */
-export function collectKitImports(nodes: readonly IRNode[], kit: UiKitAdapter): UiKitMapping[] {
-  const byComponent = new Map<string, UiKitMapping>()
+export function collectKitImports(nodes: readonly IRNode[], kit: UIKitAdapter): UIKitMapping[] {
+  const byComponent = new Map<string, UIKitMapping>()
   for (const node of nodes) walkForKit(node, kit, byComponent)
   return [...byComponent.values()].sort((a, b) => a.component.localeCompare(b.component))
 }
@@ -30,7 +30,7 @@ export function collectKitImports(nodes: readonly IRNode[], kit: UiKitAdapter): 
 /** Collect just the used component names across an IR subtree (for emit + deps). */
 export function collectUsedKitComponents(
   nodes: readonly IRNode[],
-  kit: UiKitAdapter,
+  kit: UIKitAdapter,
   acc: Set<string> = new Set<string>()
 ): Set<string> {
   for (const node of nodes) walkForKit(node, kit, undefined, acc)
@@ -40,15 +40,15 @@ export function collectUsedKitComponents(
 /** Phase 3 §15 — one ES import line for a kit mapping. A composed control
  *  pulls several named exports from one module (`imports`); a Phase A 1:1
  *  component pulls just its own name. */
-export function kitImportLine(m: UiKitMapping): string {
+export function kitImportLine(m: UIKitMapping): string {
   const names = m.imports ? [...m.imports].join(', ') : m.component
   return `import { ${names} } from '${m.from}'`
 }
 
 function walkForKit(
   node: IRNode,
-  kit: UiKitAdapter,
-  imports?: Map<string, UiKitMapping>,
+  kit: UIKitAdapter,
+  imports?: Map<string, UIKitMapping>,
   names?: Set<string>
 ): void {
   if (node.kind === 'conditional') {
@@ -81,8 +81,8 @@ function walkForKit(
 
 function collectContainerMapping(
   node: Extract<IRNode, { kind: 'element' }>,
-  kit: UiKitAdapter,
-  imports?: Map<string, UiKitMapping>,
+  kit: UIKitAdapter,
+  imports?: Map<string, UIKitMapping>,
   names?: Set<string>
 ): void {
   // Phase 4 §15.1: a card-like container resolves via `mapContainer` and is
@@ -94,8 +94,8 @@ function collectContainerMapping(
 
 function collectDisplayMapping(
   node: Extract<IRNode, { kind: 'element' }>,
-  kit: UiKitAdapter,
-  imports?: Map<string, UiKitMapping>,
+  kit: UIKitAdapter,
+  imports?: Map<string, UIKitMapping>,
   names?: Set<string>
 ): void {
   // Phase 4 §22: display primitives (Badge/Alert/etc.) wrap or replace their
@@ -106,8 +106,8 @@ function collectDisplayMapping(
 }
 
 function addMapping(
-  mapping: UiKitMapping | null,
-  imports?: Map<string, UiKitMapping>,
+  mapping: UIKitMapping | null,
+  imports?: Map<string, UIKitMapping>,
   names?: Set<string>
 ): void {
   if (!mapping) return

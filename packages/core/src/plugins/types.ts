@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 export type ModulePropertyFieldKind = 'number' | 'boolean' | 'select' | 'json' | 'text' | 'color'
 
@@ -14,12 +14,12 @@ export interface ModulePropertyField {
   options?: readonly string[]
 }
 
-export type ModuleResolution<TConfig extends JsonObject = JsonObject> =
+export type ModuleResolution<TConfig extends JSONObject = JSONObject> =
   | null
   | { ok: false; reason: string }
   | { ok: true; instance: ModuleInstanceV1; config: TConfig }
 
-export interface ModuleDefinition<TConfig extends JsonObject = JsonObject> {
+export interface ModuleDefinition<TConfig extends JSONObject = JSONObject> {
   pluginId: string
   moduleType: string
   name: string

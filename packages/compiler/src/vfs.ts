@@ -249,8 +249,8 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
         let css = output.source
         for (const asset of assets) {
           const relative = posix.relative(posix.dirname(output.fileName), asset.outputPath)
-          const runtimeUrl = relative.startsWith('.') ? relative : `./${relative}`
-          css = css.replaceAll(asset.sourceUrl, runtimeUrl)
+          const runtimeURL = relative.startsWith('.') ? relative : `./${relative}`
+          css = css.replaceAll(asset.sourceUrl, runtimeURL)
         }
         output.source = css
       }

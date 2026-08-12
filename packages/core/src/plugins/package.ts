@@ -36,15 +36,15 @@ export interface PluginPackageVerificationOptions {
 
 const SNAPSHOT_KEYS = new Set(['manifest', 'verifiedDigest', 'verifiedKeyId'])
 
-export function parsePluginPackageJson(source: string): PluginManifestV1 {
-  return parsePluginManifest(decodePluginPackageJson(source))
+export function parsePluginPackageJSON(source: string): PluginManifestV1 {
+  return parsePluginManifest(decodePluginPackageJSON(source))
 }
 
 export function parsePluginPackageBytes(source: Uint8Array): PluginManifestV1 {
-  return parsePluginPackageJson(decodePluginPackageBytes(source))
+  return parsePluginPackageJSON(decodePluginPackageBytes(source))
 }
 
-function decodePluginPackageJson(source: string): unknown {
+function decodePluginPackageJSON(source: string): unknown {
   if (typeof source !== 'string') throw new TypeError('Plugin package JSON must be a string')
   if (new TextEncoder().encode(source).byteLength > PLUGIN_MANIFEST_LIMITS.maxJsonBytes) {
     throw new TypeError(
@@ -71,12 +71,12 @@ function decodePluginPackageBytes(source: Uint8Array): string {
   }
 }
 
-export function parseVersionedPluginPackageJson(source: string): PluginManifest {
-  return parseVersionedPluginManifest(decodePluginPackageJson(source))
+export function parseVersionedPluginPackageJSON(source: string): PluginManifest {
+  return parseVersionedPluginManifest(decodePluginPackageJSON(source))
 }
 
 export function parseVersionedPluginPackageBytes(source: Uint8Array): PluginManifest {
-  return parseVersionedPluginPackageJson(decodePluginPackageBytes(source))
+  return parseVersionedPluginPackageJSON(decodePluginPackageBytes(source))
 }
 
 export async function signPluginManifest(

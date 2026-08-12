@@ -1,7 +1,7 @@
 import {
   PAYLOAD_ENTRY_KEY_RE,
   validateExpression,
-  validateUrlTemplate
+  validateURLTemplate
 } from '@open-pencil/core/lowcode-validation'
 import type {
   ActionDef,
@@ -113,7 +113,7 @@ function apiCallErrors(
   ctx: ActionValidationCtx
 ): ActionErrors {
   const e: ActionErrors = {}
-  const urlResult = validateUrlTemplate(action.url)
+  const urlResult = validateURLTemplate(action.url)
   if (!urlResult.ok) e.url = urlResult.reason
   if (action.targetName.trim() === '') e.target = 'target required'
   else if (!ctx.validDocStateNames.has(action.targetName))
@@ -205,7 +205,7 @@ function stripeRedirectErrors(
   ctx: ActionValidationCtx
 ): ActionErrors {
   const e: ActionErrors = {}
-  const endpoint = validateUrlTemplate(action.endpoint ?? '')
+  const endpoint = validateURLTemplate(action.endpoint ?? '')
   if (!endpoint.ok) e.endpoint = endpoint.reason
   if (action.errorTarget && !ctx.validDocStateNames.has(action.errorTarget)) {
     e.target = 'error target no longer exists'

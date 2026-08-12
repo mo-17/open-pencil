@@ -12,7 +12,7 @@ import {
   noteSharedMotionPresetLibraryUpdate,
   parseSharedMotionPresetLibraryState,
   parseSharedMotionPresetManifest,
-  parseUserMotionPresetLibraryJson,
+  parseUserMotionPresetLibraryJSON,
   type SharedMotionPresetLibraryState,
   type SharedMotionPresetManifest,
   type SharedMotionPresetUpdateCheck
@@ -20,7 +20,7 @@ import {
 
 import { bold, fmtList, ok } from '#cli/format'
 
-import { printMotionJson as printJson, runMotionCommandSafely as runSafely } from './common'
+import { printMotionJSON as printJSON, runMotionCommandSafely as runSafely } from './common'
 import { parseMotionPresetSource, readSharedMotionPresetSource } from './presets-source'
 
 const jsonArg = { type: 'boolean', default: false, description: 'Output JSON' } as const
@@ -31,7 +31,7 @@ const outputArg = {
   description: 'Output JSON path'
 } as const
 
-async function readBoundedJson(path: string, maxBytes: number, label: string): Promise<string> {
+async function readBoundedJSON(path: string, maxBytes: number, label: string): Promise<string> {
   const absolute = resolve(path)
   const fileStat = await stat(absolute)
   if (fileStat.size > maxBytes) throw new Error(`${label} may not exceed ${maxBytes} bytes.`)
@@ -44,11 +44,11 @@ function serializeState(state: SharedMotionPresetLibraryState): string {
 
 async function readState(path: string): Promise<SharedMotionPresetLibraryState> {
   const maxBytes = SHARED_MOTION_PRESET_LIMITS.maxManifestJsonBytes + 8_192
-  const json = await readBoundedJson(path, maxBytes, 'Shared motion preset state')
+  const json = await readBoundedJSON(path, maxBytes, 'Shared motion preset state')
   return parseSharedMotionPresetLibraryState(JSON.parse(json))
 }
 
-async function writeJson(path: string, json: string): Promise<string> {
+async function writeJSON(path: string, json: string): Promise<string> {
   const output = resolve(path)
   await writeFile(output, json, 'utf8')
   return output
@@ -144,12 +144,12 @@ const publish = defineCommand({
   async run({ args }) {
     await runSafely(async () => {
       const output = resolve(args.output)
-      const libraryJson = await readBoundedJson(
+      const libraryJSON = await readBoundedJSON(
         args.file,
         SHARED_MOTION_PRESET_LIMITS.maxManifestJsonBytes,
         'Motion preset library'
       )
-      const library = parseUserMotionPresetLibraryJson(libraryJson)
+      const library = parseUserMotionPresetLibraryJSON(libraryJSON)
       const source = parseMotionPresetSource(args['source-kind'], args['source-ref'] ?? output)
       const manifest = parseSharedMotionPresetManifest({
         format: SHARED_MOTION_PRESET_MANIFEST_FORMAT,
@@ -161,8 +161,8 @@ const publish = defineCommand({
         sourceVersion: args['source-version'],
         presets: library.presets
       })
-      await writeJson(output, `${JSON.stringify(manifest, null, 2)}\n`)
-      if (args.json) printJson({ manifest, output })
+      await writeJSON(output, `${JSON.stringify(manifest, null, 2)}\n`)
+      if (args.json) printJSON({ manifest, output })
       else printManifest(manifest, output)
     })
   }
@@ -181,8 +181,8 @@ const importCommand = defineCommand({
       const source = parseMotionPresetSource(args['source-kind'], args.source)
       const manifest = await readSharedMotionPresetSource(source)
       const state = acceptSharedMotionPresetLibraryUpdate(null, manifest)
-      const output = await writeJson(args.output, serializeState(state))
-      if (args.json) printJson({ state, output })
+      const output = await writeJSON(args.output, serializeState(state))
+      if (args.json) printJSON({ state, output })
       else printState('Imported', state, output)
     })
   }
@@ -209,8 +209,8 @@ const check = defineCommand({
       const manifest = await readSharedMotionPresetSource(current.manifest.source)
       const result = checkSharedMotionPresetLibraryUpdate(current, manifest)
       const state = noteSharedMotionPresetLibraryUpdate(current, manifest)
-      const output = args.output ? await writeJson(args.output, serializeState(state)) : undefined
-      if (args.json) printJson({ check: result, state, output: output ?? null })
+      const output = args.output ? await writeJSON(args.output, serializeState(state)) : undefined
+      if (args.json) printJSON({ check: result, state, output: output ?? null })
       else printCheck(result, output)
     })
   }
@@ -232,8 +232,8 @@ const accept = defineCommand({
       const current = await readState(args.state)
       const manifest = await readSharedMotionPresetSource(current.manifest.source)
       const state = acceptSharedMotionPresetLibraryUpdate(current, manifest)
-      const output = await writeJson(args.output, serializeState(state))
-      if (args.json) printJson({ state, output })
+      const output = await writeJSON(args.output, serializeState(state))
+      if (args.json) printJSON({ state, output })
       else printState('Accepted', state, output)
     })
   }

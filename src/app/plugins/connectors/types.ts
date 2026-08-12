@@ -4,7 +4,7 @@ import type {
   PluginConnectorOperationV1,
   PluginParameterValue
 } from '@open-pencil/core/plugins'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import type { InstalledAppPlugin } from '@/app/plugins/types'
 import type { CredentialRef } from '@/app/settings/credentials'
@@ -129,7 +129,7 @@ export interface ExecuteConnectorRequest {
 }
 
 export interface ConnectorExecutionResult {
-  readonly data: JsonValue
+  readonly data: JSONValue
   readonly httpStatus: number
   readonly requestBytes: number
   readonly responseBytes: number

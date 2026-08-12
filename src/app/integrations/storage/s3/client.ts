@@ -9,13 +9,13 @@ import {
 import { inferS3Region } from '@/app/integrations/storage/s3/region'
 import {
   S3_RESPONSE_LIMITS,
-  assertS3ListObjectsXml,
+  assertS3ListObjectsXML,
   assertS3ListPagination
 } from '@/app/integrations/storage/s3/response'
 import type { S3CompatibleConfig } from '@/app/integrations/storage/s3/types'
 import {
   parseListObjectsV2Page,
-  parseS3ErrorXml,
+  parseS3ErrorXML,
   type ListedObject
 } from '@/app/integrations/storage/s3/xml'
 
@@ -45,7 +45,7 @@ export function normalizeEndpoint(endpoint: string): string {
 }
 
 /** Path-style object URL: {endpoint}/{bucket}/{key} — works with B2, MinIO, R2, AWS. */
-export function objectUrl(config: S3CompatibleConfig, key: string): string {
+export function objectURL(config: S3CompatibleConfig, key: string): string {
   const base = normalizeEndpoint(config.endpoint)
   const encodedKey = key
     .split('/')
@@ -65,7 +65,7 @@ export function createAwsClient(config: S3CompatibleConfig): AwsClient {
 
 async function readErrorBody(res: Response): Promise<{ message: string; code: string | null }> {
   const text = await res.text().catch(() => '')
-  return parseS3ErrorXml(text, res.status)
+  return parseS3ErrorXML(text, res.status)
 }
 
 /**
@@ -207,10 +207,10 @@ export async function s3Request(
     }
   } catch (error) {
     // Re-export as a typed error so UI can detect CORS/network blocks.
-    const { CloudCorsError, isLikelyCorsOrNetworkError, formatBrowserCorsHelpMessage } =
+    const { CloudCORSError, isLikelyCORSOrNetworkError, formatBrowserCORSHelpMessage } =
       await import('@/app/integrations/storage/s3/cors')
-    if (isLikelyCorsOrNetworkError(error)) {
-      throw new CloudCorsError(formatBrowserCorsHelpMessage())
+    if (isLikelyCORSOrNetworkError(error)) {
+      throw new CloudCORSError(formatBrowserCORSHelpMessage())
     }
     throw error
   }
@@ -230,13 +230,66 @@ export async function headObject(
 ): Promise<boolean> {
   const res = await s3Request(
     config,
-    objectUrl(config, key),
+    objectURL(config, key),
     { method: 'HEAD', signal },
     undefined,
-    S3_RESPONSE_LIMITS.metadataBytes
+    s3ObjectResponseLimit(key)
   )
   if (res.status === 404) return false
   return true
+}
+
+export async function headObjectSize(
+  config: S3CompatibleConfig,
+  key: string,
+  signal?: AbortSignal
+): Promise<number | null> {
+  const res = await s3Request(
+    config,
+    objectURL(config, key),
+    { method: 'HEAD', signal },
+    undefined,
+    s3ObjectResponseLimit(key)
+  )
+  if (res.status === 404) return null
+  const sizeHeader = res.headers.get('content-length')
+  if (sizeHeader == null) return null
+  const size = Number(sizeHeader)
+  return Number.isSafeInteger(size) && size >= 0 ? size : null
+}
+
+export async function getObjectRange(
+  config: S3CompatibleConfig,
+  key: string,
+  start: number,
+  endExclusive: number,
+  signal?: AbortSignal
+): Promise<Uint8Array | null> {
+  if (
+    !Number.isSafeInteger(start) ||
+    start < 0 ||
+    !Number.isSafeInteger(endExclusive) ||
+    endExclusive <= start
+  ) {
+    throw new Error('Invalid S3 byte range')
+  }
+  if (endExclusive - start > S3_RANGE_CHUNK_BYTES) {
+    throw new Error('S3 byte range exceeds the bounded preview chunk size')
+  }
+  const res = await s3Request(
+    config,
+    objectURL(config, key),
+    {
+      method: 'GET',
+      headers: { Range: `bytes=${start}-${endExclusive - 1}` },
+      signal
+    },
+    undefined,
+    S3_RANGE_CHUNK_BYTES
+  )
+  if (res.status === 404) return null
+  if (res.status !== 206) throw new Error('Storage provider did not honor the thumbnail byte range')
+  return new Uint8Array(await res.arrayBuffer())
 }
 
 export async function putObject(
@@ -255,7 +308,7 @@ export async function putObject(
   ) as ArrayBuffer
   const res = await s3Request(
     config,
-    objectUrl(config, key),
+    objectURL(config, key),
     {
       method: 'PUT',
       headers: {
@@ -289,7 +342,7 @@ export async function getObject(
   signal?: AbortSignal
 ): Promise<Uint8Array | null> {
   const maxResponseBytes = s3ObjectResponseLimit(key)
-  const url = objectUrl(config, key)
+  const url = objectURL(config, key)
   if (maxResponseBytes === S3_RESPONSE_LIMITS.documentBytes) {
     return downloadS3ObjectByRange(
       (range: S3RangeRequest) => {
@@ -351,7 +404,7 @@ export async function deleteObject(
 ): Promise<void> {
   const res = await s3Request(
     config,
-    objectUrl(config, key),
+    objectURL(config, key),
     { method: 'DELETE', signal },
     undefined,
     S3_RESPONSE_LIMITS.metadataBytes
@@ -391,7 +444,7 @@ export async function listObjects(
       throw new S3HttpError(res.status, 'Failed to list objects')
     }
     const xml = await res.text()
-    assertS3ListObjectsXml(xml)
+    assertS3ListObjectsXML(xml)
     const parsed = parseListObjectsV2Page(xml)
     all.push(...parsed.objects)
     assertS3ListPagination(parsed.isTruncated, parsed.nextContinuationToken)

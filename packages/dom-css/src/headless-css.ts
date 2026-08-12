@@ -74,11 +74,11 @@ function parseRules(cssText: string): ParsedHeadlessCSS {
   let order = 0
   const initialStyleRules = collectStyleRules(parse(cssText).cssRules)
   const initialCustomProperties = collectCustomProperties(initialStyleRules)
-  const normalizedCssText = normalizeUnsupportedCSSValues(cssText, initialCustomProperties)
+  const normalizedCSSText = normalizeUnsupportedCSSValues(cssText, initialCustomProperties)
   const styleRules =
-    normalizedCssText === cssText
+    normalizedCSSText === cssText
       ? initialStyleRules
-      : collectStyleRules(parse(normalizedCssText).cssRules)
+      : collectStyleRules(parse(normalizedCSSText).cssRules)
   const customProperties = collectCustomProperties(styleRules)
   const rules = styleRules.flatMap((rule) => {
     const style = styleToRecord(rule.style, customProperties)

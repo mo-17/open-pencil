@@ -50,6 +50,11 @@ fn take_pending_open(state: tauri::State<PendingOpen>) -> Vec<PendingOpenFile> {
         .unwrap_or_default()
 }
 
+#[tauri::command]
+fn mcp_executable_available() -> bool {
+    which::which("openpencil-mcp-http").is_ok()
+}
+
 fn file_association_path(path: PathBuf) -> Option<PathBuf> {
     let path = path.canonicalize().ok()?;
     if !path.is_file() {
@@ -151,6 +156,7 @@ pub fn run() {
             google_drive_oauth_refresh,
             google_drive_oauth_revoke,
             google_drive_transfer,
+            mcp_executable_available,
             list_system_fonts,
             load_system_font,
             proxy_http_request,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
-import { HTML_MODULE_LIMITS, buildHtmlSandboxDocument } from '@open-pencil/core/plugins'
+import { HTML_MODULE_LIMITS, buildHTMLSandboxDocument } from '@open-pencil/core/plugins'
 import { useI18n } from '@open-pencil/vue'
 
 const { modelValue, label, error } = defineProps<{
@@ -19,7 +19,7 @@ const source = ref(modelValue)
 const maximumLength = HTML_MODULE_LIMITS.html
 const overLimit = computed(() => source.value.length > maximumLength)
 const previewDocument = computed(() =>
-  buildHtmlSandboxDocument(overLimit.value ? '' : source.value)
+  buildHTMLSandboxDocument(overLimit.value ? '' : source.value)
 )
 const limitError = computed(() =>
   overLimit.value ? panels.value.lowcodeHtmlTooLong({ max: maximumLength }) : ''

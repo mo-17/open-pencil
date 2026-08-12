@@ -17,8 +17,8 @@ import {
   writeStoragePreference
 } from '@/app/integrations/storage'
 import {
-  buildCorsConfigurationJson,
-  collectCloudCorsOrigins
+  buildCORSConfigurationJSON,
+  collectCloudCORSOrigins
 } from '@/app/integrations/storage/s3/cors'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import { credentialRef } from '@/app/settings/credentials/reference'
@@ -325,7 +325,7 @@ async function testConnection(): Promise<void> {
     if (!currentGeneration(generation, profileId)) return
     let message: string = dialogs.value.storageConnectionFailed
     if (connection.ok) message = dialogs.value.storageConnectionReady
-    else if (connection.isCorsFailure) message = dialogs.value.storageS3CorsFailure
+    else if (connection.isCORSFailure) message = dialogs.value.storageS3CorsFailure
     result.value = {
       ok: connection.ok,
       message
@@ -370,8 +370,8 @@ async function removeProfile(profileId: string): Promise<void> {
 
 defineExpose({ removeProfile })
 
-function copyCorsConfiguration(): void {
-  void copy(buildCorsConfigurationJson(collectCloudCorsOrigins()))
+function copyCORSConfiguration(): void {
+  void copy(buildCORSConfigurationJSON(collectCloudCORSOrigins()))
 }
 
 watch(activeStorageProfileID, (profileId) => {
@@ -532,7 +532,7 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="rounded px-3 py-1.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
-        @click="copyCorsConfiguration"
+        @click="copyCORSConfiguration"
       >
         {{ copied ? dialogs.copied : dialogs.copyStorageCors }}
       </button>

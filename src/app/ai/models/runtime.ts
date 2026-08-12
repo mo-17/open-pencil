@@ -3,13 +3,13 @@ import { readonly, ref } from 'vue'
 
 import { createProviderModelRuntime } from '@/app/ai/chat/model'
 import {
-  createRemoteMcpRuntime,
+  createRemoteMCPRuntime,
   MAX_REMOTE_MCP_TOOL_PAGES,
   MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES,
-  mergeRemoteMcpTools,
+  mergeRemoteMCPTools,
   REMOTE_MCP_DISCOVERY_TIMEOUT_MS,
   REMOTE_MCP_INITIALIZATION_TIMEOUT_MS,
-  type RemoteMcpRuntime
+  type RemoteMCPRuntime
 } from '@/app/ai/mcp'
 import { modelConnection, resolveAIModelRole } from '@/app/ai/models/store'
 import type { AIModelConnection, AIModelRole, ResolvedAIModelRole } from '@/app/ai/models/types'
@@ -128,7 +128,7 @@ export async function createAIModelRuntime(role: AIModelRole): Promise<AIModelRu
       codeExecution: resolved.profile.featurePolicy.codeExecution
     }
   )
-  let remoteMcpRuntime: RemoteMcpRuntime | undefined
+  let remoteMCPRuntime: RemoteMCPRuntime | undefined
   let providerTools = providerRuntime.providerTools
   try {
     assertProviderFeatureSupport(
@@ -144,13 +144,13 @@ export async function createAIModelRuntime(role: AIModelRole): Promise<AIModelRu
       resolved.connection.providerID
     )
     if (role === 'design' && resolved.profile.featurePolicy.mcpServerIds.length > 0) {
-      remoteMcpRuntime = await createRemoteMcpRuntime(resolved.profile.featurePolicy.mcpServerIds)
-      providerTools = mergeRemoteMcpTools(providerTools, remoteMcpRuntime.tools)
+      remoteMCPRuntime = await createRemoteMCPRuntime(resolved.profile.featurePolicy.mcpServerIds)
+      providerTools = mergeRemoteMCPTools(providerTools, remoteMCPRuntime.tools)
     }
   } catch (error) {
     await Promise.allSettled([
       Promise.resolve().then(() => providerRuntime.dispose?.()),
-      Promise.resolve().then(() => remoteMcpRuntime?.dispose())
+      Promise.resolve().then(() => remoteMCPRuntime?.dispose())
     ])
     throw error
   }
@@ -158,9 +158,9 @@ export async function createAIModelRuntime(role: AIModelRole): Promise<AIModelRu
   const providerDispose = providerRuntime.dispose
   const dispose = combineRuntimeDisposers(
     providerDispose ? () => providerDispose() : undefined,
-    remoteMcpRuntime ? () => remoteMcpRuntime.dispose() : undefined
+    remoteMCPRuntime ? () => remoteMCPRuntime.dispose() : undefined
   )
-  const capabilities = remoteMcpRuntime
+  const capabilities = remoteMCPRuntime
     ? {
         ...providerRuntime.capabilities,
         mcpTools: {

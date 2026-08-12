@@ -9,17 +9,17 @@ import type {
 } from '#compiler/ir/types'
 import {
   buildGitignore,
-  buildIndexCss,
-  buildIndexHtml,
+  buildIndexCSS,
+  buildIndexHTML,
   buildMainTsx,
-  buildPackageJson,
+  buildPackageJSON,
   buildTsConfig,
   buildViteConfig
 } from '#compiler/project'
 import type {
   CompilerOptions,
   CompileWarning,
-  HtmlMetadata,
+  HTMLMetadata,
   LowcodeThemeSwitchPosition
 } from '#compiler/types'
 
@@ -48,7 +48,7 @@ import {
   buildLocaleSwitcher,
   buildLowcodeI18nRuntime,
   buildTranslatedCatalog,
-  isRtlLocale,
+  isRTLLocale,
   REACT_INTL_VERSION,
   sourceCatalogPath,
   SOURCE_LOCALE
@@ -75,8 +75,8 @@ import type { ReactMotionPlan } from './motion/types'
 import { buildPrototypePlan } from './prototype/scan'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import { buildAppTsx, buildPageModule, buildRouterApp, PAGE_WRAPPER_CLASSES } from './scaffold'
-import { collectUsedKitComponents, resolveUiKit } from './ui-kit/registry'
-import type { UiKitAdapter } from './ui-kit/types'
+import { collectUsedKitComponents, resolveUIKit } from './ui-kit/registry'
+import type { UIKitAdapter } from './ui-kit/types'
 
 /**
  * Pinned alongside `react: ^19.2.0` / `react: ^18.3.1` — `react-router-dom@6`
@@ -159,7 +159,7 @@ function emitComponentFiles(
   files: Map<string, string | Uint8Array>,
   components: readonly ComponentDef[],
   devMode: boolean,
-  uiKit: UiKitAdapter | null,
+  uiKit: UIKitAdapter | null,
   animatedComponentNames: ReadonlySet<string>,
   eventComponentNames: ReadonlySet<string>,
   motionScopeComponentNames: ReadonlySet<string>,
@@ -190,11 +190,11 @@ function emitComponentFiles(
  * nothing (and reports inactive) when no interactive node maps, so `--ui-kit`
  * on a kit-free doc stays byte-identical.
  */
-function applyUiKit(
+function applyUIKit(
   files: Map<string, string | Uint8Array>,
   irs: readonly IRTree[],
   components: readonly ComponentDef[],
-  uiKit: UiKitAdapter | null
+  uiKit: UIKitAdapter | null
 ): { deps: Record<string, string>; themeCss: string; active: boolean } {
   if (!uiKit) return { deps: {}, themeCss: '', active: false }
   const used = new Set<string>()
@@ -203,7 +203,7 @@ function applyUiKit(
   if (used.size === 0) return { deps: {}, themeCss: '', active: false }
   for (const [path, content] of uiKit.sharedFiles()) files.set(path, content)
   for (const [path, content] of uiKit.componentFiles(used)) files.set(path, content)
-  return { deps: uiKit.deps(used), themeCss: uiKit.themeCss(), active: true }
+  return { deps: uiKit.deps(used), themeCss: uiKit.themeCSS(), active: true }
 }
 
 /** Phase 3 §8 v10 — all body nodes of a component def. A COMPONENT_SET's body
@@ -303,8 +303,8 @@ function emitSinglePage(
   const prototype = buildPrototypePlan(derivePagePaths([cleaned]), components)
   // Phase 3 §15: emit the UI kit's inlined sources for the components rendered
   // here (sets files; returns deps + theme to fold in below).
-  const uiKit = resolveUiKit(options)
-  const kit = applyUiKit(files, [cleaned], components, uiKit)
+  const uiKit = resolveUIKit(options)
+  const kit = applyUIKit(files, [cleaned], components, uiKit)
   emitAssets(files, collectAssets([cleaned], components))
   // Phase 3 §9: i18n is active only when the flag is on AND there is text to
   // translate (an empty doc gets no runtime/dep/provider).
@@ -328,7 +328,7 @@ function emitSinglePage(
     ...moduleProject.dependencies,
     ...kit.deps
   }
-  files.set('package.json', buildPackageJson(options, extraDeps))
+  files.set('package.json', buildPackageJSON(options, extraDeps))
   // Phase 2 §2: emit the lowcode runtime alongside App.tsx when any
   // DocumentStateDef exists; the page module imports `useDocState` /
   // `setDocState` from `./` (single-page) or `../` (multi-page).
@@ -411,8 +411,8 @@ function emitMultiPage(
   const generatedEffect = buildGeneratedEffectPlan(irs, components)
   const prototype = buildPrototypePlan(infos, components)
   // Phase 3 §15: emit the UI kit's inlined sources across all pages.
-  const uiKit = resolveUiKit(options)
-  const kit = applyUiKit(files, irs, components, uiKit)
+  const uiKit = resolveUIKit(options)
+  const kit = applyUIKit(files, irs, components, uiKit)
   emitAssets(files, collectAssets(irs, components))
   const docStates = irs[0]?.docStates ?? []
   const supabaseConfig = irs[0]?.supabaseConfig
@@ -440,7 +440,7 @@ function emitMultiPage(
     ...moduleProject.dependencies,
     ...kit.deps
   }
-  files.set('package.json', buildPackageJson(options, extraDeps))
+  files.set('package.json', buildPackageJSON(options, extraDeps))
   emitLowcodeRuntimes(files, {
     packageName: options.packageName,
     docStates,
@@ -638,7 +638,7 @@ function emitRuntimeAndComponentFiles(
   files: Map<string, string | Uint8Array>,
   components: readonly ComponentDef[],
   devMode: boolean,
-  uiKit: UiKitAdapter | null,
+  uiKit: UIKitAdapter | null,
   e: RuntimeAndComponentEmit
 ): void {
   emitMotionFiles(files, e.motion)
@@ -798,7 +798,7 @@ function setSharedProjectFiles(
   motion: ReactMotionPlan,
   generatedEffectRuntime: boolean,
   kit: { themeCss: string; active: boolean },
-  metadata?: HtmlMetadata
+  metadata?: HTMLMetadata
 ): void {
   const themeActive = !!options.themeCss?.trim()
   // Phase 3 §10 v2 / v3 + §19: the toast / confirm / validation-error classes
@@ -812,7 +812,7 @@ function setSharedProjectFiles(
   ]
   const safelist =
     runtimeClasses.length > 0 ? [...new Set([...classNames, ...runtimeClasses])].sort() : classNames
-  const needsRuntimeThemeCss =
+  const needsRuntimeThemeCSS =
     runtimeClasses.length > 0 ||
     classNames.some((className) => LOWCODE_RUNTIME_THEME_UTILITY_RE.test(className))
   // Phase 3 §15: when a UI kit is active, the inlined `@/`-aliased imports need
@@ -824,7 +824,7 @@ function setSharedProjectFiles(
   const htmlLang = resolveSourceLocale(options)
   files.set(
     'index.html',
-    buildIndexHtml(options.packageName, htmlLang, isRtlLocale(htmlLang), metadata)
+    buildIndexHTML(options.packageName, htmlLang, isRTLLocale(htmlLang), metadata)
   )
   if (themeActive) files.set(LOWCODE_THEME_FILE, buildLowcodeThemeRuntime())
   files.set(
@@ -842,14 +842,14 @@ function setSharedProjectFiles(
       generatedEffectRuntime
     )
   )
-  const themeCss = [
+  const themeCSS = [
     options.themeCss,
-    needsRuntimeThemeCss ? LOWCODE_RUNTIME_THEME_CSS : '',
+    needsRuntimeThemeCSS ? LOWCODE_RUNTIME_THEME_CSS : '',
     kit.themeCss
   ]
     .filter(Boolean)
     .join('\n')
-  files.set('src/index.css', buildIndexCss(safelist, themeCss, metadata?.customCss))
+  files.set('src/index.css', buildIndexCSS(safelist, themeCSS, metadata?.customCss))
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {
     files.set('src/__preview-bridge.ts', buildPreviewBridge())
@@ -878,32 +878,39 @@ function emitPrototypeRuntime(
 function resolveIndexMetadata(
   irs: readonly IRTree[],
   options: CompilerOptions
-): HtmlMetadata | undefined {
+): HTMLMetadata | undefined {
   const base = cleanMetadata(options.metadata)
   const pageOverride =
     irs.length === 1 ? cleanMetadata(options.metadata?.pages?.[irs[0].pageId]) : undefined
   return mergeMetadata(base, pageOverride)
 }
 
-function cleanMetadata(metadata: HtmlMetadata | undefined): HtmlMetadata | undefined {
+function cleanMetadata(metadata: HTMLMetadata | undefined): HTMLMetadata | undefined {
   if (!metadata) return undefined
   const title = cleanMetadataText(metadata.title)
   const description = cleanMetadataText(metadata.description)
   const image = cleanMetadataText(metadata.image)
-  const canonicalUrl = cleanMetadataText(metadata.canonicalUrl)
+  const canonicalURL = cleanMetadataText(metadata.canonicalUrl)
   const head = compactLowcodeHeadMetadata(metadata.head)
-  const customCss = cleanMetadataText(metadata.customCss)
-  if (!title && !description && !image && !canonicalUrl && !head && !customCss) return undefined
-  return { title, description, image, canonicalUrl, head, customCss }
+  const customCSS = cleanMetadataText(metadata.customCss)
+  if (!title && !description && !image && !canonicalURL && !head && !customCSS) return undefined
+  return {
+    title,
+    description,
+    image,
+    canonicalUrl: canonicalURL,
+    head,
+    customCss: customCSS
+  }
 }
 
 function mergeMetadata(
-  base: HtmlMetadata | undefined,
-  override: HtmlMetadata | undefined
-): HtmlMetadata | undefined {
+  base: HTMLMetadata | undefined,
+  override: HTMLMetadata | undefined
+): HTMLMetadata | undefined {
   if (!base) return override
   if (!override) return base
-  const merged: HtmlMetadata = { ...base }
+  const merged: HTMLMetadata = { ...base }
   if (override.title) merged.title = override.title
   if (override.description) merged.description = override.description
   if (override.image) merged.image = override.image

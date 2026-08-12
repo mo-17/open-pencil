@@ -32,7 +32,7 @@ import {
   MARKETPLACE_RELEASE_CHANNELS,
   parseMarketplaceIdentity,
   parseMarketplaceListingMetadata,
-  parseMarketplacePublicUrl,
+  parseMarketplacePublicURL,
   parseMarketplaceReason,
   parseMarketplaceReleaseCoordinate,
   parseMarketplaceTimestamp,
@@ -172,16 +172,16 @@ function normalizedContext(
   return { ...context, time: context.time ?? fallbackTime }
 }
 
-function baseUrl(value: string): string {
-  const parsed = new URL(parseMarketplacePublicUrl(value, 'marketplace public base URL'))
+function baseURL(value: string): string {
+  const parsed = new URL(parseMarketplacePublicURL(value, 'marketplace public base URL'))
   if (parsed.pathname !== '/' || parsed.search !== '') {
     throw new TypeError('Marketplace public base URL must be an HTTPS origin')
   }
   return parsed.href
 }
 
-function artifactUrl(publicBaseUrl: string, digest: string): string {
-  return new URL(`v1/artifacts/${digest}`, publicBaseUrl).href
+function artifactURL(publicBaseURL: string, digest: string): string {
+  return new URL(`v1/artifacts/${digest}`, publicBaseURL).href
 }
 
 function assertCategory(value: string, index: number): void {
@@ -257,7 +257,7 @@ export function createMarketplaceService(
   options: CreateMarketplaceServiceOptions
 ): MarketplaceService {
   const marketplaceId = parseMarketplaceIdentity(options.marketplaceId, 'marketplace id')
-  const publicBaseUrl = baseUrl(options.publicBaseUrl)
+  const publicBaseURL = baseURL(options.publicBaseUrl)
   const root = options.root
     ? { ...options.root, keyId: parseMarketplaceIdentity(options.root.keyId, 'root key id') }
     : undefined
@@ -379,7 +379,7 @@ export function createMarketplaceService(
         )
         runtimeCoordinate = {
           packageDigest: verifiedRuntime.verifiedDigest,
-          packageUrl: artifactUrl(publicBaseUrl, runtimeArtifact.digest),
+          packageUrl: artifactURL(publicBaseURL, runtimeArtifact.digest),
           byteLength: pluginRuntimePackageCanonicalByteLength(runtimePackage),
           kind: runtimePackage.runtime.kind
         }
@@ -406,7 +406,7 @@ export function createMarketplaceService(
             coordinate,
             manifestDigest: verified.verifiedDigest,
             artifactDigest: manifestArtifact.digest,
-            manifestUrl: artifactUrl(publicBaseUrl, manifestArtifact.digest),
+            manifestUrl: artifactURL(publicBaseURL, manifestArtifact.digest),
             listing,
             runtimeCoordinate
           },
@@ -468,7 +468,7 @@ export function createMarketplaceService(
       const prepared = await prepareMarketplacePublication(
         state,
         options.artifacts,
-        publicationConfig({ ...options, marketplaceId, publicBaseUrl }, root)
+        publicationConfig({ ...options, marketplaceId, publicBaseUrl: publicBaseURL }, root)
       )
       await verifyMarketplaceSnapshot(prepared.snapshot, root.publicKey, {
         expectedMarketplaceId: marketplaceId,

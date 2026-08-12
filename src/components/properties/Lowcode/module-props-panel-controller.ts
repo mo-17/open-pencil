@@ -11,7 +11,7 @@ import {
   type TabsItemV1
 } from '@open-pencil/core/plugins'
 import { readModuleInstance } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSelectionState } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -31,10 +31,10 @@ function fieldKey(field: ModulePropertyField): string {
 }
 
 function withValueAtPath(
-  root: JsonObject,
+  root: JSONObject,
   path: readonly (string | number)[],
   value: unknown
-): JsonObject {
+): JSONObject {
   if (path.length === 0) throw new TypeError('Module property path must not be empty')
   const next = structuredClone(root)
   let current: object = next
@@ -75,7 +75,7 @@ export function useModulePropsPanelController() {
   })
   const resolution = computed(() => definition.value?.resolve(rawModule.value) ?? null)
   const fields = computed(() => definition.value?.fields ?? [])
-  const config = computed<JsonObject>(() => {
+  const config = computed<JSONObject>(() => {
     const current = resolution.value
     return current?.ok ? current.config : {}
   })
@@ -137,7 +137,7 @@ export function useModulePropsPanelController() {
     )
   }
 
-  function commitConfig(field: ModulePropertyField, nextConfig: JsonObject): boolean {
+  function commitConfig(field: ModulePropertyField, nextConfig: JSONObject): boolean {
     const node = selectedNode.value
     const moduleDefinition = definition.value
     if (!node || !moduleDefinition || !resolution.value?.ok) return false
@@ -218,7 +218,7 @@ export function useModulePropsPanelController() {
     commitConfig(field, { ...config.value, items: structuredClone(value), initialOpenIds })
   }
 
-  function commitJson(field: ModulePropertyField, source: string): void {
+  function commitJSON(field: ModulePropertyField, source: string): void {
     try {
       commitField(field, JSON.parse(source))
     } catch (error) {
@@ -242,7 +242,7 @@ export function useModulePropsPanelController() {
     commitAccordionItems,
     commitBooleanField,
     commitField,
-    commitJson,
+    commitJSON,
     commitTabsItems
   }
 }

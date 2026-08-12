@@ -32,7 +32,7 @@ const {
   disabled = false,
   authoringDisabled = false,
   error = '',
-  exportJson = '',
+  exportJson: exportJSON = '',
   staggerEnabled = false,
   staggerStepMs = 80,
   staggerDirection = 'forward',
@@ -131,7 +131,7 @@ function confirmDelete(): void {
   deletingItem.value = null
 }
 
-function importJson(json: string, policy: MotionPresetMergePolicy): void {
+function importJSON(json: string, policy: MotionPresetMergePolicy): void {
   emit('import-json', json, policy)
 }
 
@@ -184,8 +184,8 @@ function importFile(file: File | undefined, policy: MotionPresetMergePolicy): vo
 
     <MotionPresetTransfer
       :disabled="disabled"
-      :export-json="exportJson"
-      @import="importJson"
+      :export-json="exportJSON"
+      @import="importJSON"
       @export="emit('export-json')"
       @import-file="importFile"
       @export-file="emit('export-file')"

@@ -1,10 +1,10 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
@@ -32,11 +32,11 @@ export const HTML_MODULE_SANDBOX_CSP = [
   "style-src 'unsafe-inline'"
 ].join('; ')
 
-export interface HtmlModuleConfigV1 extends JsonObject {
+export interface HTMLModuleConfigV1 extends JSONObject {
   html: string
 }
 
-export type HtmlModuleConfig = HtmlModuleConfigV1
+export type HTMLModuleConfig = HTMLModuleConfigV1
 
 const DEFAULT_HTML = `<article>
   <header>
@@ -49,25 +49,25 @@ const DEFAULT_HTML = `<article>
   </section>
 </article>`
 
-export const HTML_MODULE_DEFAULT_CONFIG: Readonly<HtmlModuleConfigV1> = Object.freeze({
+export const HTML_MODULE_DEFAULT_CONFIG: Readonly<HTMLModuleConfigV1> = Object.freeze({
   html: DEFAULT_HTML
 })
 
-type ParseResult = { ok: true; config: HtmlModuleConfigV1 } | { ok: false; reason: string }
+type ParseResult = { ok: true; config: HTMLModuleConfigV1 } | { ok: false; reason: string }
 
-function parseHtmlSource(value: unknown): string | null {
+function parseHTMLSource(value: unknown): string | null {
   return typeof value === 'string' && value.length <= HTML_MODULE_LIMITS.html ? value : null
 }
 
-function parseHtmlConfig(value: unknown): ParseResult {
+function parseHTMLConfig(value: unknown): ParseResult {
   if (
-    !isPlainJsonObject(value) ||
+    !isPlainJSONObject(value) ||
     Object.keys(value).length !== 1 ||
     !Object.hasOwn(value, 'html')
   ) {
     return { ok: false, reason: 'HTML config must contain exactly html' }
   }
-  const html = parseHtmlSource(value.html)
+  const html = parseHTMLSource(value.html)
   if (html === null) {
     return {
       ok: false,
@@ -79,12 +79,12 @@ function parseHtmlConfig(value: unknown): ParseResult {
 
 function mergeWithDefaults(config: unknown): unknown {
   if (config === undefined) return structuredClone(HTML_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
+  if (!isPlainJSONObject(config)) return config
   return { ...structuredClone(HTML_MODULE_DEFAULT_CONFIG), ...config }
 }
 
-export function createHtmlModuleInstance(config?: unknown): ModuleInstanceV1 {
-  const parsed = parseHtmlConfig(mergeWithDefaults(config))
+export function createHTMLModuleInstance(config?: unknown): ModuleInstanceV1 {
+  const parsed = parseHTMLConfig(mergeWithDefaults(config))
   if (!parsed.ok) throw new TypeError(parsed.reason)
   return {
     version: 1,
@@ -95,17 +95,17 @@ export function createHtmlModuleInstance(config?: unknown): ModuleInstanceV1 {
   }
 }
 
-export function createHtmlModuleFrameOverrides(config?: unknown): Partial<SceneNode> {
+export function createHTMLModuleFrameOverrides(config?: unknown): Partial<SceneNode> {
   return createModuleFrameOverrides({
     name: '</> HTML',
     defaultSize: HTML_MODULE_DEFAULT_SIZE,
     fillColor: { r: 1, g: 1, b: 1, a: 1 },
     strokeColor: { r: 0.82, g: 0.84, b: 0.88, a: 1 },
-    module: createHtmlModuleInstance(config)
+    module: createHTMLModuleInstance(config)
   })
 }
 
-export function resolveHtmlModule(value: unknown): ModuleResolution<HtmlModuleConfigV1> {
+export function resolveHTMLModule(value: unknown): ModuleResolution<HTMLModuleConfigV1> {
   if (value === null || value === undefined) return null
   const instance = validateModuleInstance(value)
   if (!instance.ok) return { ok: false, reason: instance.reason }
@@ -118,14 +118,14 @@ export function resolveHtmlModule(value: unknown): ModuleResolution<HtmlModuleCo
   if (instance.value.configVersion !== HTML_MODULE_CONFIG_VERSION) {
     return { ok: false, reason: `unsupported HTML config version ${instance.value.configVersion}` }
   }
-  const config = parseHtmlConfig(instance.value.config)
+  const config = parseHTMLConfig(instance.value.config)
   if (!config.ok) return config
   return { ok: true, instance: { ...instance.value, config: config.config }, config: config.config }
 }
 
 /** Build CSP-prefixed srcdoc markup; callers must also use an empty iframe sandbox. */
-export function buildHtmlSandboxDocument(html: string): string {
-  const source = parseHtmlSource(html)
+export function buildHTMLSandboxDocument(html: string): string {
+  const source = parseHTMLSource(html)
   if (source === null) {
     throw new TypeError(
       `HTML source must be a string of at most ${HTML_MODULE_LIMITS.html} characters`
@@ -144,7 +144,7 @@ const HTML_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
   }
 ])
 
-export const HTML_MODULE_DEFINITION: ModuleDefinition<HtmlModuleConfigV1> = Object.freeze({
+export const HTML_MODULE_DEFINITION: ModuleDefinition<HTMLModuleConfigV1> = Object.freeze({
   pluginId: HTML_PLUGIN_ID,
   moduleType: HTML_MODULE_TYPE,
   name: '</> HTML',
@@ -155,9 +155,9 @@ export const HTML_MODULE_DEFINITION: ModuleDefinition<HtmlModuleConfigV1> = Obje
   defaultSize: HTML_MODULE_DEFAULT_SIZE,
   defaultConfig: structuredClone(HTML_MODULE_DEFAULT_CONFIG),
   fields: HTML_MODULE_FIELDS,
-  createInstance: createHtmlModuleInstance,
-  createFrameOverrides: createHtmlModuleFrameOverrides,
-  resolve: resolveHtmlModule
+  createInstance: createHTMLModuleInstance,
+  createFrameOverrides: createHTMLModuleFrameOverrides,
+  resolve: resolveHTMLModule
 })
 
 export const HTML_PLUGIN = Object.freeze({

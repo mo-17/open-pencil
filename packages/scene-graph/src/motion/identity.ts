@@ -1,12 +1,12 @@
 import type { MotionKeyframe, MotionSpec } from './types'
 import { cloneMotionSpec, parseMotionSpec } from './validation'
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+function canonicalJSON(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJSON).join(',')}]`
   if (value && typeof value === 'object') {
     return `{${Object.keys(value)
       .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(Reflect.get(value, key))}`)
+      .map((key) => `${JSON.stringify(key)}:${canonicalJSON(Reflect.get(value, key))}`)
       .join(',')}}`
   }
   const serialized = JSON.stringify(value)
@@ -24,7 +24,7 @@ function stableHash(value: string): string {
 
 function keyframeFingerprint(trackId: string, keyframe: MotionKeyframe): string {
   const { id: _, ...content } = keyframe
-  return `${trackId}:${canonicalJson(content)}`
+  return `${trackId}:${canonicalJSON(content)}`
 }
 
 /**

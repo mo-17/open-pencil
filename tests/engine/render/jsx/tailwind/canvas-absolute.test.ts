@@ -84,16 +84,16 @@ describe('Tailwind JSX export — canvas-direct absolute positioning (Phase 1 §
       height: 80
     })
 
-    const frameJsx = tw(graph, frame.id)
-    expect(frameJsx).toContain('absolute')
-    expect(frameJsx).toContain('left-10')
-    expect(frameJsx).toContain('top-15')
-    expect(frameJsx).toContain('flex ')
+    const frameJSX = tw(graph, frame.id)
+    expect(frameJSX).toContain('absolute')
+    expect(frameJSX).toContain('left-10')
+    expect(frameJSX).toContain('top-15')
+    expect(frameJSX).toContain('flex ')
 
-    const childJsx = tw(graph, child.id)
-    expect(childJsx).not.toContain('absolute')
-    expect(childJsx).not.toMatch(/\bleft-/)
-    expect(childJsx).not.toMatch(/\btop-/)
+    const childJSX = tw(graph, child.id)
+    expect(childJSX).not.toContain('absolute')
+    expect(childJSX).not.toMatch(/\bleft-/)
+    expect(childJSX).not.toMatch(/\btop-/)
   })
 
   test('canvas-direct HUG-sized child still gets explicit width/height fallback', () => {
@@ -136,14 +136,14 @@ describe('Tailwind JSX export — canvas-direct absolute positioning (Phase 1 §
       width: 50,
       height: 50
     })
-    const middleJsx = tw(graph, middle.id)
-    const middleOpeningTag = middleJsx.split('\n')[0] ?? ''
+    const middleJSX = tw(graph, middle.id)
+    const middleOpeningTag = middleJSX.split('\n')[0] ?? ''
     expect(middleOpeningTag).toContain('relative')
     expect(middleOpeningTag).not.toContain('absolute')
-    const innerJsx = tw(graph, inner.id)
-    expect(innerJsx).toContain('absolute')
-    expect(innerJsx).toContain('left-3')
-    expect(innerJsx).toContain('top-4')
+    const innerJSX = tw(graph, inner.id)
+    expect(innerJSX).toContain('absolute')
+    expect(innerJSX).toContain('left-3')
+    expect(innerJSX).toContain('top-4')
   })
 
   test('canvas-direct child preserves rotation transform alongside left/top', () => {

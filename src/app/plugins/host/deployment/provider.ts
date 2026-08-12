@@ -1,5 +1,5 @@
 import { parsePluginObjectParameterValue } from '@open-pencil/core/plugins'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
 import {
@@ -9,9 +9,9 @@ import {
   type DeployRuntimeConfig
 } from '@/app/lowcode/preview-pane/deploy/history'
 import {
-  runDeployCli,
+  runDeployCLI,
   type DeployI18n,
-  type DeployUiKit
+  type DeployUIKit
 } from '@/app/lowcode/preview-pane/deploy/runner'
 import { deployScopeForStore } from '@/app/lowcode/preview-pane/deploy/scope'
 import type { CredentialResolver } from '@/app/settings/credentials/types'
@@ -45,7 +45,7 @@ export class DeploymentPluginError extends Error {
 export interface DeploymentPluginParameters {
   readonly environment: DeployEnvironment
   readonly target?: string
-  readonly uiKit: DeployUiKit
+  readonly uiKit: DeployUIKit
   readonly locales: readonly string[]
   readonly runtimeConfig?: DeployRuntimeConfig
 }
@@ -56,7 +56,7 @@ export interface DeploymentPluginReview {
   readonly provider: DeploymentPluginProvider
   readonly environment: DeployEnvironment
   readonly target: string
-  readonly uiKit: DeployUiKit
+  readonly uiKit: DeployUIKit
   readonly locales: readonly string[]
   readonly hasRuntimeOverrides: boolean
   readonly environmentNotice: string
@@ -68,7 +68,7 @@ export interface DeploymentPluginReview {
   readonly documentIdentity: string
 }
 
-export interface DeploymentPluginPlan extends JsonObject {
+export interface DeploymentPluginPlan extends JSONObject {
   readonly provider: DeploymentPluginProvider
   readonly environment: DeployEnvironment
   readonly target: string
@@ -78,7 +78,7 @@ export interface DeploymentPluginPlan extends JsonObject {
   readonly sideEffects: readonly string[]
 }
 
-export interface DeploymentPluginResult extends JsonObject {
+export interface DeploymentPluginResult extends JSONObject {
   readonly provider: DeploymentPluginProvider
   readonly environment: DeployEnvironment
   readonly url: string
@@ -94,7 +94,7 @@ export interface DeploymentPluginExecutionOptions {
   readonly expectedReview?: DeploymentPluginReview
 }
 
-export type DeploymentPluginRunner = typeof runDeployCli
+export type DeploymentPluginRunner = typeof runDeployCLI
 
 export interface DeploymentPluginHostAdapter {
   readonly definition: DeploymentPluginDefinition
@@ -213,7 +213,7 @@ export function parseDeploymentPluginParameters(
     )
   }
   const environment = (parsed.environment ?? 'preview') as DeployEnvironment
-  const uiKit = (parsed.uiKit ?? 'none') as DeployUiKit
+  const uiKit = (parsed.uiKit ?? 'none') as DeployUIKit
   const target = normalizedTarget(definition, parsed.target)
   return Object.freeze({
     environment,
@@ -426,7 +426,7 @@ function validatedResult(
 export function createDeploymentPluginHostAdapter(
   definition: DeploymentPluginDefinition,
   credentials: CredentialResolver,
-  runner: DeploymentPluginRunner = runDeployCli
+  runner: DeploymentPluginRunner = runDeployCLI
 ): DeploymentPluginHostAdapter {
   return Object.freeze({
     definition,

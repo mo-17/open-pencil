@@ -1,10 +1,10 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { hasExactPluginKeys, mergePluginConfigWithDefaults } from './parse-helpers'
 import type {
@@ -14,11 +14,11 @@ import type {
   PluginDefinition
 } from './types'
 
-export type ModuleConfigParseResult<TConfig extends JsonObject> =
+export type ModuleConfigParseResult<TConfig extends JSONObject> =
   | { ok: true; config: TConfig }
   | { ok: false; reason: string }
 
-export interface ModuleContract<TConfig extends JsonObject> {
+export interface ModuleContract<TConfig extends JSONObject> {
   pluginId: string
   moduleType: string
   configVersion: number
@@ -27,7 +27,7 @@ export interface ModuleContract<TConfig extends JsonObject> {
   parseConfig: (value: unknown) => ModuleConfigParseResult<TConfig>
 }
 
-export interface ModuleDefinitionMetadata<TConfig extends JsonObject> {
+export interface ModuleDefinitionMetadata<TConfig extends JSONObject> {
   name: string
   description: string
   i18nNameKey: string
@@ -43,13 +43,13 @@ interface MutableModuleDataRecord {
   [key: string]: unknown
 }
 
-export function parseExactModuleConfig<TConfig extends JsonObject>(
+export function parseExactModuleConfig<TConfig extends JSONObject>(
   value: unknown,
   keys: ReadonlySet<string>,
   exactKeysReason: string,
   parse: (source: Readonly<Record<string, unknown>>) => TConfig
 ): ModuleConfigParseResult<TConfig> {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, keys)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, keys)) {
     return { ok: false, reason: exactKeysReason }
   }
   try {
@@ -75,7 +75,7 @@ export function parseBoundedModuleObjectArray<TValue>(
     if (
       !descriptor?.enumerable ||
       !('value' in descriptor) ||
-      !isPlainJsonObject(descriptor.value)
+      !isPlainJSONObject(descriptor.value)
     ) {
       throw new TypeError(itemReason(index))
     }
@@ -95,7 +95,7 @@ export function parseBoundedModuleObjectArray<TValue>(
   })
 }
 
-export function createContractModuleInstance<TConfig extends JsonObject>(
+export function createContractModuleInstance<TConfig extends JSONObject>(
   contract: ModuleContract<TConfig>,
   config?: unknown
 ): ModuleInstanceV1 {
@@ -110,7 +110,7 @@ export function createContractModuleInstance<TConfig extends JsonObject>(
   }
 }
 
-export function resolveContractModule<TConfig extends JsonObject>(
+export function resolveContractModule<TConfig extends JSONObject>(
   value: unknown,
   contract: ModuleContract<TConfig>
 ): ModuleResolution<TConfig> {
@@ -138,7 +138,7 @@ export function resolveContractModule<TConfig extends JsonObject>(
   }
 }
 
-export function createContractModuleDefinition<TConfig extends JsonObject>(
+export function createContractModuleDefinition<TConfig extends JSONObject>(
   contract: ModuleContract<TConfig>,
   metadata: ModuleDefinitionMetadata<TConfig>
 ): ModuleDefinition<TConfig> {

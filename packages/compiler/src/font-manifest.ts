@@ -128,7 +128,7 @@ function familyStackRule(primary: string, fallbacks: readonly string[]): string 
   return `.${cssClassName(familyClass(primary))}{font-family:${stack}}`
 }
 
-function fontCss(
+function fontCSS(
   faces: readonly CompilerFontFaceAsset[],
   families: readonly string[],
   fallbacks: string[]
@@ -276,7 +276,7 @@ export function applyCompilerFontManifest(
   if (typeof css === 'string') {
     files.set(
       'src/index.css',
-      css + fontCss(validFaces, requested.families, manifest.fallbackFamilies ?? [])
+      css + fontCSS(validFaces, requested.families, manifest.fallbackFamilies ?? [])
     )
   }
   warnings.push(...fontResolutionWarnings(requested.faces, validFaces))

@@ -13,30 +13,30 @@ import {
   AIRTABLE_RECORDS_PLUGIN_ID
 } from '@/app/plugins/connectors/airtable-records'
 import {
-  appPluginMcpConnectorContributionId,
-  appPluginMcpToolName,
-  listAppPluginMcpTools
+  appPluginMcpConnectorContributionId as appPluginMCPConnectorContributionID,
+  appPluginMcpToolName as appPluginMCPToolName,
+  listAppPluginMcpTools as listAppPluginMCPTools
 } from '@/app/plugins/mcp'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
 
 import {
   PLUGIN_MCP_CATALOG_LIMITS,
-  createPluginMcpCatalog,
-  createPluginMcpController,
-  parsePluginMcpCatalogResponse,
-  registerPluginMcpTools
+  createPluginMCPCatalog,
+  createPluginMCPController,
+  parsePluginMCPCatalogResponse,
+  registerPluginMCPTools
 } from '#mcp/tool/plugin/catalog'
 
-const SLIDE_MENU_TOOL_NAME = appPluginMcpToolName('open-pencil.slide-menu', 'module', 'slide-menu')
-const VIDEO_TOOL_NAME = appPluginMcpToolName('open-pencil.video', 'module', 'video')
-const AUDIT_TOOL_NAME = appPluginMcpToolName('acme.analytics', 'command', 'accessibility-audit')
-const TOKENS_TOOL_NAME = appPluginMcpToolName('acme.analytics', 'exporter', 'design-tokens')
-const AIRTABLE_CONNECTOR_CONTRIBUTION_ID = appPluginMcpConnectorContributionId(
+const SLIDE_MENU_TOOL_NAME = appPluginMCPToolName('open-pencil.slide-menu', 'module', 'slide-menu')
+const VIDEO_TOOL_NAME = appPluginMCPToolName('open-pencil.video', 'module', 'video')
+const AUDIT_TOOL_NAME = appPluginMCPToolName('acme.analytics', 'command', 'accessibility-audit')
+const TOKENS_TOOL_NAME = appPluginMCPToolName('acme.analytics', 'exporter', 'design-tokens')
+const AIRTABLE_CONNECTOR_CONTRIBUTION_ID = appPluginMCPConnectorContributionID(
   AIRTABLE_RECORDS_CONNECTOR_ID,
   AIRTABLE_LIST_RECORDS_OPERATION_ID
 )
-const AIRTABLE_TOOL_NAME = appPluginMcpToolName(
+const AIRTABLE_TOOL_NAME = appPluginMCPToolName(
   AIRTABLE_RECORDS_PLUGIN_ID,
   'connector',
   AIRTABLE_CONNECTOR_CONTRIBUTION_ID
@@ -148,9 +148,9 @@ function nestedArraySchema(depth: number): Record<string, unknown> {
 
 describe('plugin MCP catalog validation', () => {
   test('does not transfer a previous stable name to a sequential slug-colliding plugin', () => {
-    const catalog = createPluginMcpCatalog()
-    const firstName = appPluginMcpToolName('foo-bar', 'module', 'panel')
-    const replacementName = appPluginMcpToolName('foo_bar', 'module', 'panel')
+    const catalog = createPluginMCPCatalog()
+    const firstName = appPluginMCPToolName('foo-bar', 'module', 'panel')
+    const replacementName = appPluginMCPToolName('foo_bar', 'module', 'panel')
     catalog.replace(
       response(
         [descriptor({ name: firstName, pluginId: 'foo-bar', contributionId: 'panel' })],
@@ -176,7 +176,7 @@ describe('plugin MCP catalog validation', () => {
   })
 
   test('accepts the bounded host schema and sorts stable plugin tool names', () => {
-    const parsed = parsePluginMcpCatalogResponse(
+    const parsed = parsePluginMCPCatalogResponse(
       response([
         descriptor({
           name: VIDEO_TOOL_NAME,
@@ -195,7 +195,7 @@ describe('plugin MCP catalog validation', () => {
   })
 
   test('accepts strict bounded v2 command, exporter, and connector parameter schemas', () => {
-    const parsed = parsePluginMcpCatalogResponse(
+    const parsed = parsePluginMCPCatalogResponse(
       response([commandDescriptor(), exporterDescriptor(), connectorDescriptor()])
     )
 
@@ -236,8 +236,8 @@ describe('plugin MCP catalog validation', () => {
     await store.install(AIRTABLE_RECORDS_PLUGIN_ID)
     await store.setEnabled(AIRTABLE_RECORDS_PLUGIN_ID, true)
 
-    const live = listAppPluginMcpTools(store, { connectorExposure: () => true })
-    const parsed = parsePluginMcpCatalogResponse(response(live.tools, live.revision))
+    const live = listAppPluginMCPTools(store, { connectorExposure: () => true })
+    const parsed = parsePluginMCPCatalogResponse(response(live.tools, live.revision))
     expect(parsed.tools.some(({ kind }) => kind === 'module')).toBe(true)
     expect(parsed.tools.find(({ kind }) => kind === 'connector')).toMatchObject({
       pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
@@ -246,22 +246,22 @@ describe('plugin MCP catalog validation', () => {
   })
 
   test('rejects duplicate names, static-name collisions, reserved targets, and unsafe schemas', () => {
-    expect(() => parsePluginMcpCatalogResponse(response([descriptor(), descriptor()]))).toThrow(
+    expect(() => parsePluginMCPCatalogResponse(response([descriptor(), descriptor()]))).toThrow(
       'names must be unique'
     )
     expect(() =>
-      parsePluginMcpCatalogResponse(response([descriptor({ name: 'get_node' })]))
+      parsePluginMCPCatalogResponse(response([descriptor({ name: 'get_node' })]))
     ).toThrow('reserved plugin tool namespace')
     expect(() =>
-      parsePluginMcpCatalogResponse(
+      parsePluginMCPCatalogResponse(
         response([descriptor({ pluginId: 'open-pencil.replacement-slide-menu' })])
       )
     ).toThrow('identity suffix does not match its canonical contribution')
     expect(() =>
-      parsePluginMcpCatalogResponse(response([descriptor({ kind: 'command' })]))
+      parsePluginMCPCatalogResponse(response([descriptor({ kind: 'command' })]))
     ).toThrow('name action does not match')
     expect(() =>
-      parsePluginMcpCatalogResponse(
+      parsePluginMCPCatalogResponse(
         response([
           connectorDescriptor({
             ...connectorInputSchema(),
@@ -271,7 +271,7 @@ describe('plugin MCP catalog validation', () => {
       )
     ).toThrow()
     expect(() =>
-      parsePluginMcpCatalogResponse(
+      parsePluginMCPCatalogResponse(
         response([
           connectorDescriptor({
             type: 'object',
@@ -282,7 +282,7 @@ describe('plugin MCP catalog validation', () => {
       )
     ).toThrow('reserved automation target')
     expect(() =>
-      parsePluginMcpCatalogResponse(
+      parsePluginMCPCatalogResponse(
         response([
           connectorDescriptor(connectorInputSchema(), {
             name: AIRTABLE_TOOL_NAME.replace('__query_', '__run_')
@@ -291,7 +291,7 @@ describe('plugin MCP catalog validation', () => {
       )
     ).toThrow('name action does not match')
     expect(() =>
-      parsePluginMcpCatalogResponse(
+      parsePluginMCPCatalogResponse(
         response([
           descriptor({
             inputSchema: {
@@ -304,7 +304,7 @@ describe('plugin MCP catalog validation', () => {
       )
     ).toThrow('reserved automation target')
     expect(() =>
-      parsePluginMcpCatalogResponse(
+      parsePluginMCPCatalogResponse(
         response([
           descriptor({
             inputSchema: {
@@ -320,12 +320,12 @@ describe('plugin MCP catalog validation', () => {
   test('fails the whole catalog when the dynamic tool count exceeds the bound', () => {
     const tools = Array.from({ length: PLUGIN_MCP_CATALOG_LIMITS.maxTools + 1 }, (_, index) =>
       descriptor({
-        name: appPluginMcpToolName(`publisher-${index}`, 'module', `module-${index}`),
+        name: appPluginMCPToolName(`publisher-${index}`, 'module', `module-${index}`),
         pluginId: `publisher-${index}`,
         contributionId: `module-${index}`
       })
     )
-    expect(() => parsePluginMcpCatalogResponse(response(tools))).toThrow(
+    expect(() => parsePluginMCPCatalogResponse(response(tools))).toThrow(
       `at most ${PLUGIN_MCP_CATALOG_LIMITS.maxTools}`
     )
   })
@@ -341,12 +341,12 @@ describe('plugin MCP catalog validation', () => {
       { type: 'object', properties: { page_id: { type: 'string' } } }
     ]) {
       expect(() =>
-        parsePluginMcpCatalogResponse(response([commandDescriptor(invalidSchema)]))
+        parsePluginMCPCatalogResponse(response([commandDescriptor(invalidSchema)]))
       ).toThrow()
     }
 
     expect(() =>
-      parsePluginMcpCatalogResponse(
+      parsePluginMCPCatalogResponse(
         response([
           commandDescriptor({
             type: 'object',
@@ -359,7 +359,7 @@ describe('plugin MCP catalog validation', () => {
     ).toThrow('byte limit')
 
     expect(() =>
-      parsePluginMcpCatalogResponse(
+      parsePluginMCPCatalogResponse(
         response([
           commandDescriptor({
             type: 'object',
@@ -387,7 +387,7 @@ describe('plugin MCP catalog validation', () => {
       ])
     )
     expect(() =>
-      parsePluginMcpCatalogResponse(
+      parsePluginMCPCatalogResponse(
         response([
           commandDescriptor({
             type: 'object',
@@ -408,15 +408,15 @@ describe('dynamic plugin MCP registration', () => {
   })
 
   test('changes tools/list, emits list_changed, and revalidates calls through the app', async () => {
-    const catalog = createPluginMcpCatalog()
+    const catalog = createPluginMCPCatalog()
     const rpcCalls: Record<string, unknown>[] = []
     const server = new McpServer({ name: 'plugin-test-server', version: '0.0.0' })
     server.registerTool('static_tool', { inputSchema: z.object({}) }, async () => ({
       content: [{ type: 'text', text: '{}' }]
     }))
-    const registration = registerPluginMcpTools(server, {
+    const registration = registerPluginMCPTools(server, {
       catalog,
-      async sendRpc(body) {
+      async sendRPC(body) {
         rpcCalls.push(body)
         return { ok: true, result: { inserted: true } }
       }
@@ -559,8 +559,8 @@ describe('dynamic plugin MCP registration', () => {
 
   test('keeps the last verified list only on success and clears it on refresh failure', async () => {
     let responseMode: 'disconnected' | 'invalid' | 'valid' = 'valid'
-    const controller = createPluginMcpController({
-      async sendRpc(body) {
+    const controller = createPluginMCPController({
+      async sendRPC(body) {
         expect(body).toEqual({ command: 'plugin_mcp_tools', args: {} })
         if (responseMode === 'disconnected') throw new Error('app disconnected')
         if (responseMode === 'invalid') {
@@ -598,8 +598,8 @@ describe('dynamic plugin MCP registration', () => {
       resolveFirst = resolve
     })
     let calls = 0
-    const controller = createPluginMcpController({
-      sendRpc() {
+    const controller = createPluginMCPController({
+      sendRPC() {
         calls += 1
         if (calls === 1) return firstResponse
         return Promise.resolve(

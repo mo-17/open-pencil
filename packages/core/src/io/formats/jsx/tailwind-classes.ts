@@ -376,7 +376,7 @@ function collectGradientClasses(node: SceneNode): string[] {
         f.type === 'GRADIENT_DIAMOND')
   )
   if (!fill) return []
-  const css = gradientFillCss(fill, node.width, node.height)
+  const css = gradientFillCSS(fill, node.width, node.height)
   return css === null ? [] : [`bg-[${css.replace(/ /g, '_')}]`]
 }
 
@@ -385,7 +385,7 @@ function collectGradientClasses(node: SceneNode): string[] {
  *  positions are percentages. Linear/conic orientation is derived from
  *  Figma's gradientTransform. DIAMOND uses the same radial approximation as
  *  the Canvas/SVG fallback paths. */
-export function gradientFillCss(fill: Fill, width: number, height: number): string | null {
+export function gradientFillCSS(fill: Fill, width: number, height: number): string | null {
   const stops = fill.gradientStops
   const t = fill.gradientTransform
   if (!stops || stops.length === 0 || !t) return null

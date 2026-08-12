@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { PluginData } from '@open-pencil/kiwi/fig/codec'
-import type { ApiCallAction, PluginDataEntry, SceneNode } from '@open-pencil/scene-graph'
+import type { APICallAction, PluginDataEntry, SceneNode } from '@open-pencil/scene-graph'
 
 import {
   extractLowcodeAndPluginData,
@@ -11,7 +11,7 @@ import {
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
 /**
- * Phase 2 §3 step 1 — `ApiCallAction` persistence.
+ * Phase 2 §3 step 1 — `APICallAction` persistence.
  *
  * §3.2 #b: the new action kind rides the existing `lowcode/events`
  * pluginData channel (the events payload is schema-free JSON, so a new
@@ -40,7 +40,7 @@ function makeNc(pluginData: PluginData[]): { pluginData: PluginData[] } {
   return { pluginData }
 }
 
-const GET_ACTION: ApiCallAction = {
+const GET_ACTION: APICallAction = {
   id: 'a1',
   kind: 'apiCall',
   method: 'GET',
@@ -48,7 +48,7 @@ const GET_ACTION: ApiCallAction = {
   targetName: 'users'
 }
 
-const POST_ACTION: ApiCallAction = {
+const POST_ACTION: APICallAction = {
   id: 'a2',
   kind: 'apiCall',
   method: 'POST',
@@ -57,7 +57,7 @@ const POST_ACTION: ApiCallAction = {
   targetName: 'result'
 }
 
-describe('ApiCallAction persistence (Phase 2 §3)', () => {
+describe('APICallAction persistence (Phase 2 §3)', () => {
   test('a GET apiCall serialises into a single lowcode/events entry', () => {
     const node = makeNode({ events: { onClick: [GET_ACTION] } })
     const entries = serializeLowcodeFields(node)
@@ -94,7 +94,7 @@ describe('ApiCallAction persistence (Phase 2 §3)', () => {
   })
 
   test('Phase 3 §10 v9: apiCall onSuccess/onError + errorTarget round-trip', () => {
-    const action: ApiCallAction = {
+    const action: APICallAction = {
       id: 'a3',
       kind: 'apiCall',
       method: 'POST',

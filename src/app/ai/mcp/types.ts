@@ -7,10 +7,10 @@ export const MAX_REMOTE_MCP_URL_LENGTH = 2_048
 const REMOTE_MCP_SERVER_ID_PATTERN = /^mcp-[a-f0-9]{16}$/
 const CREDENTIAL_PROFILE_ID_PATTERN = /^[a-z0-9._-]{1,64}$/
 
-export type RemoteMcpServerId = `mcp-${string}`
+export type RemoteMCPServerId = `mcp-${string}`
 
-export type RemoteMcpServer = {
-  id: RemoteMcpServerId
+export type RemoteMCPServer = {
+  id: RemoteMCPServerId
   name: string
   transport: {
     type: 'streamable-http'
@@ -24,43 +24,43 @@ export type RemoteMcpServer = {
       }
 }
 
-export type RemoteMcpSettings = {
+export type RemoteMCPSettings = {
   version: typeof REMOTE_MCP_SETTINGS_VERSION
-  servers: RemoteMcpServer[]
+  servers: RemoteMCPServer[]
 }
 
-export type RemoteMcpServerInput = {
+export type RemoteMCPServerInput = {
   name: string
   url: string
-  authType: RemoteMcpServer['auth']['type']
+  authType: RemoteMCPServer['auth']['type']
 }
 
-export function normalizeRemoteMcpServerInput(input: {
+export function normalizeRemoteMCPServerInput(input: {
   name: unknown
   url: unknown
   authType: unknown
-}): RemoteMcpServerInput {
+}): RemoteMCPServerInput {
   if (input.authType !== 'none' && input.authType !== 'bearer') {
     throw new Error('Remote MCP authentication type is invalid')
   }
   return {
-    name: normalizeRemoteMcpServerName(typeof input.name === 'string' ? input.name : ''),
-    url: normalizeRemoteMcpUrl(typeof input.url === 'string' ? input.url : ''),
+    name: normalizeRemoteMCPServerName(typeof input.name === 'string' ? input.name : ''),
+    url: normalizeRemoteMCPURL(typeof input.url === 'string' ? input.url : ''),
     authType: input.authType
   }
 }
 
-export function isRemoteMcpServerId(value: unknown): value is RemoteMcpServerId {
+export function isRemoteMCPServerId(value: unknown): value is RemoteMCPServerId {
   return typeof value === 'string' && REMOTE_MCP_SERVER_ID_PATTERN.test(value)
 }
 
-export function createRemoteMcpServerId(): RemoteMcpServerId {
+export function createRemoteMCPServerId(): RemoteMCPServerId {
   const bytes = crypto.getRandomValues(new Uint8Array(8))
   const suffix = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
   return `mcp-${suffix}`
 }
 
-export function normalizeRemoteMcpServerName(value: string): string {
+export function normalizeRemoteMCPServerName(value: string): string {
   const name = value.trim()
   if (!name || name.length > MAX_REMOTE_MCP_SERVER_NAME_LENGTH) {
     throw new Error(
@@ -90,7 +90,7 @@ function isLoopbackHostname(hostname: string): boolean {
   )
 }
 
-export function normalizeRemoteMcpUrl(value: string): string {
+export function normalizeRemoteMCPURL(value: string): string {
   const input = value.trim()
   if (!input || input.length > MAX_REMOTE_MCP_URL_LENGTH) {
     throw new Error(`Remote MCP URL must be between 1 and ${MAX_REMOTE_MCP_URL_LENGTH} characters`)
@@ -116,14 +116,14 @@ export function normalizeRemoteMcpUrl(value: string): string {
   return url.toString()
 }
 
-export function validateRemoteMcpCredentialProfileId(value: string): string {
+export function validateRemoteMCPCredentialProfileId(value: string): string {
   if (!CREDENTIAL_PROFILE_ID_PATTERN.test(value)) {
     throw new Error('Remote MCP credential profile ID is invalid')
   }
   return value
 }
 
-export function cloneRemoteMcpServer(server: RemoteMcpServer): RemoteMcpServer {
+export function cloneRemoteMCPServer(server: RemoteMCPServer): RemoteMCPServer {
   return {
     ...server,
     transport: { ...server.transport },

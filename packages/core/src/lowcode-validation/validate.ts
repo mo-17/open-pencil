@@ -61,7 +61,7 @@ export function validateExpression(src: string): ValidationResult {
  *  non-empty, and the template parses. Identifier resolution stays a
  *  compile-time warning — the editor cannot see the full handler scope
  *  (page state + docState + LIST item|index). */
-export function validateUrlTemplate(src: string): ValidationResult {
+export function validateURLTemplate(src: string): ValidationResult {
   if (src.trim() === '') return { ok: false, reason: 'url is required' }
   const result = parseTemplate(src)
   if (result.ok) return { ok: true }
@@ -78,7 +78,7 @@ export function validateUrlTemplate(src: string): ValidationResult {
  * IR collect both call this) so the empty-object / empty-array
  * "deserialised to undefined" intent goes through as `undefined`
  * regardless of the source channel (decision §3.v2.2 #h). */
-export function normalizeSupabaseMutationPayloadJson(raw: string | undefined): string | undefined {
+export function normalizeSupabaseMutationPayloadJSON(raw: string | undefined): string | undefined {
   if (raw === undefined) return undefined
   const trimmed = raw.trim()
   if (trimmed === '' || trimmed === '{}' || trimmed === '[]') return ''

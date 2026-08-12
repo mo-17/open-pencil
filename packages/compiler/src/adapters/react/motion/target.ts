@@ -101,7 +101,7 @@ function textShadowBlur(blur: number, spread: number): number {
 }
 
 /** Bind every geometry path belonging to the animated source node. */
-export function instrumentVectorMotionHtml(
+export function instrumentVectorMotionHTML(
   html: string,
   motion: IRMotion,
   sourceId: string
@@ -117,7 +117,7 @@ export function instrumentVectorMotionHtml(
   result = instrumentVectorTrim(result, motion, sourceId)
   result = instrumentVectorMorph(result, motion, sourceId)
   if (motionHasChannel(motion, 'width') || motionHasChannel(motion, 'height')) {
-    result = setRootSvgAttribute(result, 'preserveAspectRatio', 'none')
+    result = setRootSVGAttribute(result, 'preserveAspectRatio', 'none')
   }
   return result
 }
@@ -296,7 +296,7 @@ function escapeAttribute(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 }
 
-function setRootSvgAttribute(html: string, name: string, value: string): string {
+function setRootSVGAttribute(html: string, name: string, value: string): string {
   return html.replace(/<svg\b[^>]*>/i, (tag) => setGeometryAttributes(tag, { [name]: value }))
 }
 

@@ -711,13 +711,13 @@ test('shared presets expose source status and require explicit acceptance before
   await createRectangles(1)
   await editor.canvas.waitForRender()
 
-  const sourceUrl = 'https://presets.example/travel-motion.json'
+  const sourceURL = 'https://presets.example/travel-motion.json'
   const manifest = (sourceVersion: string, durationMs: number) => ({
     format: 'openpencil-shared-motion-presets',
     schemaVersion: 1,
     publisher: { id: 'design-team', name: '设计团队' },
     library: { id: 'travel-motion', name: '旅行产品动效' },
-    source: { kind: 'url', ref: sourceUrl },
+    source: { kind: 'url', ref: sourceURL },
     readonly: true,
     sourceVersion,
     presets: [
@@ -746,7 +746,7 @@ test('shared presets expose source status and require explicit acceptance before
   })
 
   const currentManifest = manifest('v2', 480)
-  await editor.page.route(sourceUrl, async (route) => {
+  await editor.page.route(sourceURL, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -762,7 +762,7 @@ test('shared presets expose source status and require explicit acceptance before
 
   const library = section.getByTestId('motion-shared-library-travel-motion')
   await expect(library).toContainText('旅行产品动效')
-  await expect(section.getByTestId('motion-shared-source-travel-motion')).toContainText(sourceUrl)
+  await expect(section.getByTestId('motion-shared-source-travel-motion')).toContainText(sourceURL)
   await expect(section.getByTestId('motion-shared-status-travel-motion')).toContainText(
     'Up to date'
   )

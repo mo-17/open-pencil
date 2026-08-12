@@ -18,7 +18,7 @@ import { toolIcons } from '@/app/editor/icons'
 import { openFileDialog } from '@/app/shell/menu/use'
 import { toast } from '@/app/shell/ui'
 import type { ToolbarActionItem } from '@/components/Toolbar/types'
-import { getShareUrl } from '@/constants'
+import { getShareURL } from '@/constants'
 
 type MenuAction = ToolbarActionItem
 
@@ -62,7 +62,7 @@ function createMobileHudContext() {
     const { roomId, key } = collab.shareCurrentDoc()
     const path = key ? `/share/${roomId}#k=${key}` : `/share/${roomId}`
     void router.push(path)
-    void copy(getShareUrl(roomId, key || undefined))
+    void copy(getShareURL(roomId, key || undefined))
     toast.info('Link copied to clipboard')
   }
 

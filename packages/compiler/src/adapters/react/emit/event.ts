@@ -1,5 +1,5 @@
 import type {
-  IRApiCallHandler,
+  IRAPICallHandler,
   IRConfirmHandler,
   IREventHandler,
   IRInvokeServerWorkflowHandler,
@@ -235,7 +235,7 @@ function emitStripeCustomerPortal(h: IRStripeCustomerPortalHandler): string {
 
 function emitStripeRedirect(
   h: IRStripeCheckoutHandler | IRStripeCustomerPortalHandler,
-  namedUrlKey: 'checkoutUrl' | 'portalUrl',
+  namedURLKey: 'checkoutUrl' | 'portalUrl',
   actionName: 'stripeCheckout' | 'stripeCustomerPortal'
 ): string {
   const endpoint = emitExpression(h.endpoint)
@@ -245,7 +245,7 @@ function emitStripeRedirect(
         .join(', ')} }`
     : '{}'
   const errorWrite = h.errorTarget ? `setDocState(${JSON.stringify(h.errorTarget)}, err); ` : ''
-  const urlLocal = namedUrlKey
+  const urlLocal = namedURLKey
   const authSession = h.includeAuthToken
     ? 'const { data: { session } } = await getSupabaseClient().auth.getSession(); '
     : ''
@@ -262,7 +262,7 @@ function emitStripeRedirect(
     `const res = await fetch(${endpoint}, { method: "POST", headers: ${headers}, body: JSON.stringify(${payload}) }); ` +
     `const data = await res.json(); ` +
     `if (!res.ok) throw data; ` +
-    `const ${urlLocal} = data?.url ?? data?.${namedUrlKey}; ` +
+    `const ${urlLocal} = data?.url ?? data?.${namedURLKey}; ` +
     `if (typeof ${urlLocal} !== "string" || ${urlLocal} === "") throw new Error("${actionName} response missing url"); ` +
     `const nextUrl = new URL(${urlLocal}, window.location.href); ` +
     `if (nextUrl.protocol !== "https:" && nextUrl.protocol !== "http:") throw new Error("${actionName} response url must be http(s)"); ` +
@@ -289,7 +289,7 @@ function emitConfirm(h: IRConfirmHandler, motionScope?: string): string {
  *  spliced verbatim inside `JSON.stringify(...)`; `h.url` is a template AST (a
  *  static URL emits as a double-quoted string, an interpolated one as a
  *  backtick template). Result goes to `setDocState`; errors are logged. */
-function emitApiCall(h: IRApiCallHandler, motionScope?: string): string {
+function emitAPICall(h: IRAPICallHandler, motionScope?: string): string {
   const url = emitExpression(h.url)
   const fetchCall =
     h.method === 'POST'
@@ -404,7 +404,7 @@ function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
   if (h.kind === 'invokeServerWorkflow') return emitInvokeServerWorkflow(h, motionScope)
   switch (h.kind) {
     case 'apiCall':
-      return emitApiCall(h, motionScope)
+      return emitAPICall(h, motionScope)
     case 'stripeCheckout':
       return emitStripeCheckout(h)
     case 'stripeCustomerPortal':

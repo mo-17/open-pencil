@@ -20,14 +20,14 @@ function fail<T = never>(error: string): ModifyResult<T> {
   return { ok: false, error }
 }
 
-function parseSpecJson(specJson: string): ModifyResult<GeneratedEffectSpecV1> {
-  if (typeof specJson !== 'string') return fail('specJson must be a JSON string')
-  if (new TextEncoder().encode(specJson).byteLength > MAX_GENERATED_EFFECT_JSON_BYTES) {
+function parseSpecJSON(specJSON: string): ModifyResult<GeneratedEffectSpecV1> {
+  if (typeof specJSON !== 'string') return fail('specJson must be a JSON string')
+  if (new TextEncoder().encode(specJSON).byteLength > MAX_GENERATED_EFFECT_JSON_BYTES) {
     return fail(`specJson exceeds ${MAX_GENERATED_EFFECT_JSON_BYTES} bytes`)
   }
   let value: unknown
   try {
-    value = JSON.parse(specJson)
+    value = JSON.parse(specJSON)
   } catch (error) {
     return fail(
       `specJson is not valid JSON: ${error instanceof Error ? error.message : String(error)}`
@@ -87,7 +87,7 @@ export const updateGeneratedEffect = defineTool({
   },
   execute: (
     figma,
-    { nodeId, specJson },
+    { nodeId, specJson: specJSON },
     ctx
   ): ModifyResult<{
     nodeId: string
@@ -97,7 +97,7 @@ export const updateGeneratedEffect = defineTool({
   }> => {
     const node = figma.graph.getNode(nodeId)
     if (!node) return fail(`Scene node not found: ${nodeId}`)
-    const parsed = parseSpecJson(specJson)
+    const parsed = parseSpecJSON(specJSON)
     if (!parsed.ok) return parsed
     const spec = cloneGeneratedEffectSpec(parsed.data)
     applyGeneratedEffect(figma, node, spec, 'AI: update_generated_effect', ctx)

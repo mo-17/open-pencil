@@ -1,4 +1,4 @@
-export type RpcSendOptions = Partial<Pick<AbortController, 'signal'>> & {
+export type RPCSendOptions = Partial<Pick<AbortController, 'signal'>> & {
   onProgress?: (progress: unknown) => void
 }
 

@@ -102,12 +102,12 @@ describe('lowcode custom code panel state', () => {
   })
 
   test('drops unsafe custom CSS URL protocols from panel patches', () => {
-    const unsafeCss = `.hero { background-image: url(${`java${'script'}:alert(1)`}); }`
+    const unsafeCSS = `.hero { background-image: url(${`java${'script'}:alert(1)`}); }`
     const draft = {
       meta: [],
       link: [],
       stylesText: '',
-      customCss: unsafeCss
+      customCss: unsafeCSS
     }
     const patch = buildCustomCodePatch(draft)
 

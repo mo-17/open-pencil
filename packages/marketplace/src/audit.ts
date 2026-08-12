@@ -2,7 +2,7 @@ import {
   canonicalManifestBytes,
   digestCanonicalManifest,
   parseBoundedManifestArray,
-  parseSha256Base64Url,
+  parseSha256Base64URL,
   webCryptoBuffer
 } from '@open-pencil/scene-graph'
 
@@ -15,7 +15,7 @@ import {
   parseMarketplaceTimestamp,
   type MarketplaceAuditAction,
   type MarketplaceAuditEventV1,
-  type MarketplaceJsonValue
+  type MarketplaceJSONValue
 } from './types'
 
 export interface AppendMarketplaceAuditEventInput {
@@ -23,7 +23,7 @@ export interface AppendMarketplaceAuditEventInput {
   actor: string
   action: MarketplaceAuditAction
   subject: string
-  payload: MarketplaceJsonValue
+  payload: MarketplaceJSONValue
 }
 
 export interface AppendMarketplaceAuditEventResult {
@@ -56,7 +56,7 @@ function parsePayloadValue(
   path: string,
   depth: number,
   budget: PayloadBudget
-): MarketplaceJsonValue {
+): MarketplaceJSONValue {
   if (depth > MARKETPLACE_LIMITS.maxAuditPayloadDepth) {
     throw new TypeError(
       `${path} exceeds the audit payload depth limit of ${MARKETPLACE_LIMITS.maxAuditPayloadDepth}`
@@ -97,7 +97,7 @@ function parsePayloadValue(
   if (keys.some((key) => typeof key !== 'string')) {
     throw new TypeError(`${path} must not contain symbol keys`)
   }
-  const result: Record<string, MarketplaceJsonValue> = Object.create(null)
+  const result: Record<string, MarketplaceJSONValue> = Object.create(null)
   for (const key of keys as string[]) {
     if (FORBIDDEN_PAYLOAD_KEYS.has(key)) {
       throw new TypeError(`${path}.${key} is not allowed in an audit payload`)
@@ -114,7 +114,7 @@ function parsePayloadValue(
   return Object.freeze(result)
 }
 
-export function parseMarketplaceAuditPayload(value: unknown): MarketplaceJsonValue {
+export function parseMarketplaceAuditPayload(value: unknown): MarketplaceJSONValue {
   const parsed = parsePayloadValue(value, 'audit.payload', 0, { entries: 0 })
   if (canonicalManifestBytes(parsed).byteLength > MARKETPLACE_LIMITS.maxAuditPayloadBytes) {
     throw new TypeError(
@@ -149,11 +149,11 @@ export async function marketplaceAuditEventHash(
     actor: parseMarketplaceAuditActor(fields.actor),
     action: fields.action,
     subject: parseMarketplaceAuditSubject(fields.subject),
-    payloadDigest: parseSha256Base64Url(fields.payloadDigest, 'audit.payloadDigest'),
+    payloadDigest: parseSha256Base64URL(fields.payloadDigest, 'audit.payloadDigest'),
     previousHash:
       fields.previousHash === null
         ? null
-        : parseSha256Base64Url(fields.previousHash, 'audit.previousHash')
+        : parseSha256Base64URL(fields.previousHash, 'audit.previousHash')
   })
 }
 
@@ -262,7 +262,7 @@ export async function verifyMarketplaceAuditEventHash(
   return difference === 0
 }
 
-export async function rawSha256Base64Url(bytes: Uint8Array): Promise<string> {
+export async function rawSha256Base64URL(bytes: Uint8Array): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest('SHA-256', webCryptoBuffer(bytes))
   const base64 = btoa(String.fromCharCode(...new Uint8Array(digest)))
   return base64.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')

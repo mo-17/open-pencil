@@ -10,7 +10,7 @@ export type DeployCommandProvider = 'netlify' | 'vercel' | 'cloudflare'
 
 export type DeployServerDeploymentNotice = ServerDeploymentInstructions
 
-export interface DeployCliResult {
+export interface DeployCLIResult {
   provider: DeployCommandProvider
   url: string
   deployId: string
@@ -79,7 +79,7 @@ function parseServerDeployment(value: unknown): DeployServerDeploymentNotice | u
 /** Parse the CLI sidecar response before it reaches the UI. The desktop app
  * only accepts the documented, non-secret result shape and never executes
  * server deployment instructions returned by the child process. */
-export function parseDeployCliResult(raw: string): DeployCliResult {
+export function parseDeployCLIResult(raw: string): DeployCLIResult {
   if (raw.length === 0 || raw.length > 1024 * 1024) {
     throw new Error('Deploy output is empty or too large.')
   }
@@ -100,13 +100,13 @@ export function parseDeployCliResult(raw: string): DeployCliResult {
     throw new Error('Deploy output has an invalid environment.')
   }
   const url = boundedString(value.url, 'URL', 4096)
-  let parsedUrl: URL
+  let parsedURL: URL
   try {
-    parsedUrl = new URL(url)
+    parsedURL = new URL(url)
   } catch {
     throw new Error('Deploy output has an invalid URL.')
   }
-  if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+  if (parsedURL.protocol !== 'https:' && parsedURL.protocol !== 'http:') {
     throw new Error('Deploy output has an invalid URL protocol.')
   }
   const deployId = boundedString(value.deployId, 'deploy ID', 1024)

@@ -148,11 +148,11 @@ interface BaseMotionExportResult {
   readonly issues: readonly string[]
 }
 
-export interface MotionPngSequenceResult extends BaseMotionExportResult {
+export interface MotionPNGSequenceResult extends BaseMotionExportResult {
   readonly format: 'png-sequence'
   readonly mimeType: 'image/png'
   readonly frames: readonly MotionRenderedFrame[]
-  readonly manifest: MotionPngSequenceManifest
+  readonly manifest: MotionPNGSequenceManifest
 }
 
 export interface MotionEncodedAnimationResult extends BaseMotionExportResult {
@@ -166,9 +166,9 @@ export interface MotionEncodedAnimationResult extends BaseMotionExportResult {
   readonly determinism?: MotionAnimationEncoder['determinism']
 }
 
-export type MotionAnimationExportResult = MotionPngSequenceResult | MotionEncodedAnimationResult
+export type MotionAnimationExportResult = MotionPNGSequenceResult | MotionEncodedAnimationResult
 
-export interface MotionPngSequenceManifest {
+export interface MotionPNGSequenceManifest {
   readonly version: 1
   readonly format: 'png-sequence'
   readonly fps: number

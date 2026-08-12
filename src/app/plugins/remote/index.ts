@@ -1,10 +1,10 @@
 export {
   REMOTE_PLUGIN_TRANSPORT_LIMITS,
   createRemotePluginTransport,
-  parseRemotePluginUrl,
+  parseRemotePluginURL,
   type CreateRemotePluginTransportOptions,
   type RemotePluginCacheValidators,
-  type RemotePluginJsonResponse
+  type RemotePluginJSONResponse
 } from './transport'
 export {
   REMOTE_PLUGIN_CACHE_DATABASE_NAME,
@@ -32,6 +32,6 @@ export {
   REMOTE_PLUGIN_TRUST_CONFIG_LIMITS,
   REMOTE_PLUGIN_TRUST_CONFIG_SCHEMA_VERSION,
   parseRemotePluginTrustConfig,
-  parseRemotePluginTrustConfigJson,
+  parseRemotePluginTrustConfigJSON,
   type ResolvedRemotePluginTrustConfig
 } from './config'

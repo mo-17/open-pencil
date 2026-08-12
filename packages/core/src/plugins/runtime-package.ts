@@ -2,10 +2,10 @@
 import {
   canonicalManifestValue,
   createSignedManifestIntegrity,
-  decodeBase64Url,
-  encodeBase64Url,
+  decodeBase64URL,
+  encodeBase64URL,
   parseExactManifestRecord,
-  parseSha256Base64Url,
+  parseSha256Base64URL,
   parseSignedManifestIntegrity,
   parseStableSemver,
   validateModuleIdentity,
@@ -226,7 +226,7 @@ function decodedAssetData(value: unknown, path: string): { data: string; bytes: 
   }
   let bytes: Uint8Array
   try {
-    bytes = decodeBase64Url(value)
+    bytes = decodeBase64URL(value)
   } catch (cause) {
     throw new TypeError(`${path} must contain canonical base64url data`, { cause })
   }
@@ -269,7 +269,7 @@ function runtimeAsset(
     mediaType: expectedMediaType,
     encoding: 'base64url',
     byteLength,
-    digest: parseSha256Base64Url(source.digest, `${path}.digest`),
+    digest: parseSha256Base64URL(source.digest, `${path}.digest`),
     data: decoded.data
   })
 }
@@ -331,7 +331,7 @@ export function parsePluginRuntimePackagePayload(value: unknown): PluginRuntimeP
       id: identity(publisherSource.id, 'runtimePackage.publisher.id'),
       keyId: identity(publisherSource.keyId, 'runtimePackage.publisher.keyId')
     }),
-    declarativeManifestDigest: parseSha256Base64Url(
+    declarativeManifestDigest: parseSha256Base64URL(
       source.declarativeManifestDigest,
       'runtimePackage.declarativeManifestDigest'
     ),
@@ -358,7 +358,7 @@ export function parsePluginRuntimePackage(value: unknown): SignedPluginRuntimePa
   return runtimePackage
 }
 
-export function parsePluginRuntimePackageJson(source: string): SignedPluginRuntimePackageV1 {
+export function parsePluginRuntimePackageJSON(source: string): SignedPluginRuntimePackageV1 {
   if (
     typeof source !== 'string' ||
     new TextEncoder().encode(source).byteLength > PLUGIN_RUNTIME_PACKAGE_LIMITS.maxJsonBytes
@@ -384,7 +384,7 @@ export function parsePluginRuntimePackageBytes(source: Uint8Array): SignedPlugin
   } catch {
     throw new TypeError('Runtime package must contain valid UTF-8')
   }
-  return parsePluginRuntimePackageJson(text)
+  return parsePluginRuntimePackageJSON(text)
 }
 
 export function serializePluginRuntimePackage(value: unknown): string {
@@ -399,7 +399,7 @@ export function pluginRuntimePackageCanonicalByteLength(value: unknown): number 
 
 async function digestAsset(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', webCryptoBuffer(bytes))
-  return encodeBase64Url(new Uint8Array(digest))
+  return encodeBase64URL(new Uint8Array(digest))
 }
 
 export async function createPluginRuntimeAsset(
@@ -417,7 +417,7 @@ export async function createPluginRuntimeAsset(
     encoding: 'base64url',
     byteLength: copy.byteLength,
     digest: await digestAsset(copy),
-    data: encodeBase64Url(copy)
+    data: encodeBase64URL(copy)
   })
 }
 
@@ -725,7 +725,7 @@ export async function validateWasmComputeRuntimeAsset(
 async function validateEmbeddedAsset(
   payload: PluginRuntimePackagePayloadV1
 ): Promise<Readonly<{ bytes: Uint8Array; wasmSafety: WasmComputeRuntimeSafetyReport | null }>> {
-  const bytes = decodeBase64Url(payload.runtime.asset.data)
+  const bytes = decodeBase64URL(payload.runtime.asset.data)
   if ((await digestAsset(bytes)) !== payload.runtime.asset.digest) {
     throw new Error('Runtime asset digest mismatch')
   }
@@ -763,7 +763,7 @@ function assertExpectedCoordinates(
   const expectedDigest =
     options.expectedDigest === undefined
       ? undefined
-      : parseSha256Base64Url(options.expectedDigest, 'expected runtime package digest')
+      : parseSha256Base64URL(options.expectedDigest, 'expected runtime package digest')
   const expectedCanonicalByteLength = options.expectedCanonicalByteLength
   if (
     expectedCanonicalByteLength !== undefined &&

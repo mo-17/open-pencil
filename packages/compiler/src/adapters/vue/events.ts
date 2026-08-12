@@ -12,7 +12,7 @@ import {
   safeScript,
   sanitizeVueRouteTarget,
   scriptExpression,
-  scriptJson,
+  scriptJSON,
   withLocalAliases,
   type VueEmitContext,
   type VueLocalBinding
@@ -87,7 +87,7 @@ function controlledWriteStatement(
   raw: string
 ): string {
   if (controlled.write.kind === 'docState') {
-    return `__setDocState(${scriptJson(controlled.write.name)}, ${raw})`
+    return `__setDocState(${scriptJSON(controlled.write.name)}, ${raw})`
   }
   if (!context.writableStateNames.has(controlled.write.name)) {
     context.warnings.push({
@@ -135,7 +135,7 @@ function controlledOptionValue(
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     literal = value
   }
-  const source = scriptJson(literal)
+  const source = scriptJSON(literal)
   context.templateBindings.push(`const ${name} = ${source}`)
   return { template: name, script: source }
 }
@@ -208,7 +208,7 @@ export function emitValidatedSubmitAttribute(
   const keys = node.formValidationKeys ?? []
   const handlers = supportedHandlers(node.events?.onSubmit ?? [], context.routerAvailable)
   const functionName = eventFunctionName(context, node.sourceId, 'submit')
-  const keySource = keys.map((key) => scriptJson(key)).join(', ')
+  const keySource = keys.map((key) => scriptJSON(key)).join(', ')
   registerEventFunction(context, functionName, handlers, locals, [
     `if (!__validateFields([${keySource}])) return`
   ])
@@ -277,11 +277,11 @@ function emitHandler(
         expressionAliases.set('prev', '__opPrevious')
         const expression = scriptExpression(handler.ast, context.refNames, expressionAliases)
         return [
-          `{ const __opPrevious = __getDocState<${docStateTypeScript(context.docStateTypes.get(handler.docStateName))}>(${scriptJson(handler.docStateName)}); __setDocState(${scriptJson(handler.docStateName)}, ${expression}) }`
+          `{ const __opPrevious = __getDocState<${docStateTypeScript(context.docStateTypes.get(handler.docStateName))}>(${scriptJSON(handler.docStateName)}); __setDocState(${scriptJSON(handler.docStateName)}, ${expression}) }`
         ]
       }
       const expression = scriptExpression(handler.ast, context.refNames, expressionAliases)
-      return [`__setDocState(${scriptJson(handler.docStateName)}, ${expression})`]
+      return [`__setDocState(${scriptJSON(handler.docStateName)}, ${expression})`]
     }
     case 'navigate':
       return emitNavigate(handler, context, aliases)
@@ -303,10 +303,10 @@ function emitHandler(
       const success = emitHandlerList(handler.onSuccess ?? [], context, successAliases).join('; ')
       const failure = emitHandlerList(handler.onError ?? [], context, failureAliases).join('; ')
       const errorWrite = handler.errorTarget
-        ? `__setDocState(${scriptJson(handler.errorTarget)}, __opError); `
+        ? `__setDocState(${scriptJSON(handler.errorTarget)}, __opError); `
         : ''
       return [
-        `try { const __opResponse = await fetch(${url}${init}); const __opData = await __opResponse.json(); if (!__opResponse.ok) throw __opData; __setDocState(${scriptJson(handler.docStateName)}, __opData); ${success} } catch (__opError) { ${errorWrite}${failure || 'console.error(__opError)'} }`
+        `try { const __opResponse = await fetch(${url}${init}); const __opData = await __opResponse.json(); if (!__opResponse.ok) throw __opData; __setDocState(${scriptJSON(handler.docStateName)}, __opData); ${success} } catch (__opError) { ${errorWrite}${failure || 'console.error(__opError)'} }`
       ]
     }
     case 'condition': {
@@ -341,15 +341,15 @@ function emitToast(
 ): string {
   const message = scriptExpression(handler.ast, context.refNames, aliases)
   const options = objectLiteral([
-    ['position', handler.position === undefined ? undefined : scriptJson(handler.position)],
+    ['position', handler.position === undefined ? undefined : scriptJSON(handler.position)],
     ['durationMs', handler.durationMs === undefined ? undefined : String(handler.durationMs)]
   ])
   if (!options) {
     return handler.variant === 'info'
       ? `__opToast(${message})`
-      : `__opToast(${message}, ${scriptJson(handler.variant)})`
+      : `__opToast(${message}, ${scriptJSON(handler.variant)})`
   }
-  return `__opToast(${message}, ${scriptJson(handler.variant)}, ${options})`
+  return `__opToast(${message}, ${scriptJSON(handler.variant)}, ${options})`
 }
 
 function emitConfirm(
@@ -361,9 +361,9 @@ function emitConfirm(
   const options = objectLiteral([
     [
       'confirmLabel',
-      handler.confirmLabel === undefined ? undefined : scriptJson(handler.confirmLabel)
+      handler.confirmLabel === undefined ? undefined : scriptJSON(handler.confirmLabel)
     ],
-    ['cancelLabel', handler.cancelLabel === undefined ? undefined : scriptJson(handler.cancelLabel)]
+    ['cancelLabel', handler.cancelLabel === undefined ? undefined : scriptJSON(handler.cancelLabel)]
   ])
   const call = options ? `__opConfirm(${message}, ${options})` : `__opConfirm(${message})`
   const consequent = emitHandlerList(handler.consequent, context, aliases).join('; ')
@@ -417,17 +417,17 @@ function emitNavigate(
     })
     return []
   }
-  if (inspected.parameters.length === 0) return [`await __opRouter.push(${scriptJson(route)})`]
+  if (inspected.parameters.length === 0) return [`await __opRouter.push(${scriptJSON(route)})`]
   const values = [...new Set(inspected.parameters.map(({ name }) => name))]
     .filter((name) => params.has(name))
     .map((name) => {
       const param = params.get(name) as NonNullable<typeof handler.params>[number]
       const value = scriptExpression(param.ast, context.refNames, aliases)
-      return `${scriptJson(name)}: encodeURIComponent(String(${value}))`
+      return `${scriptJSON(name)}: encodeURIComponent(String(${value}))`
     })
     .join(', ')
   return [
-    `{ const __opRouteValues: Record<string, string> = { ${values} }; const __opPath = ${scriptJson(pathname)}.split('/').flatMap((__opSegment) => { const __opMatch = /^:([A-Za-z_][A-Za-z0-9_]*)(\\?)?$/.exec(__opSegment); if (!__opMatch) return [__opSegment]; if (Object.prototype.hasOwnProperty.call(__opRouteValues, __opMatch[1])) return [__opRouteValues[__opMatch[1]]]; return __opMatch[2] ? [] : [__opSegment] }).join('/'); await __opRouter.push(__opPath + ${scriptJson(suffix)}) }`
+    `{ const __opRouteValues: Record<string, string> = { ${values} }; const __opPath = ${scriptJSON(pathname)}.split('/').flatMap((__opSegment) => { const __opMatch = /^:([A-Za-z_][A-Za-z0-9_]*)(\\?)?$/.exec(__opSegment); if (!__opMatch) return [__opSegment]; if (Object.prototype.hasOwnProperty.call(__opRouteValues, __opMatch[1])) return [__opRouteValues[__opMatch[1]]]; return __opMatch[2] ? [] : [__opSegment] }).join('/'); await __opRouter.push(__opPath + ${scriptJSON(suffix)}) }`
   ]
 }
 

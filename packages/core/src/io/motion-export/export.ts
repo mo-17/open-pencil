@@ -31,7 +31,7 @@ import {
   type MotionGraphExportPlan,
   type MotionGraphExportSource,
   type PlanGraphMotionExportOptions,
-  type MotionPngSequenceManifest,
+  type MotionPNGSequenceManifest,
   type MotionRenderedFrame
 } from './types'
 
@@ -475,10 +475,10 @@ function assertEncodedSignature(encoder: MotionAnimationEncoder, bytes: Uint8Arr
   }
 }
 
-export function createMotionPngSequenceManifest(
+export function createMotionPNGSequenceManifest(
   plan: ReturnType<typeof planMotionFrames>,
   frames: readonly MotionRenderedFrame[]
-): MotionPngSequenceManifest {
+): MotionPNGSequenceManifest {
   return {
     version: 1,
     format: 'png-sequence',
@@ -569,7 +569,7 @@ export async function exportGraphMotion(
       format,
       mimeType: 'image/png',
       frames,
-      manifest: createMotionPngSequenceManifest(plan, frames)
+      manifest: createMotionPNGSequenceManifest(plan, frames)
     }
   }
   if (!encoder) {

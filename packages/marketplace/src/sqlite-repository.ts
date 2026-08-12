@@ -52,7 +52,7 @@ function busyTimeout(value: number | undefined): number {
   return resolved
 }
 
-function stateJson(value: unknown): string {
+function stateJSON(value: unknown): string {
   return JSON.stringify(canonicalManifestValue(parseMarketplaceState(value)))
 }
 
@@ -117,7 +117,7 @@ export function createSqliteMarketplaceRepository(
     .query(
       'INSERT OR IGNORE INTO marketplace_state (id, schema_version, state_json) VALUES (1, ?, ?)'
     )
-    .run(MARKETPLACE_SQLITE_SCHEMA_VERSION, stateJson(initialState))
+    .run(MARKETPLACE_SQLITE_SCHEMA_VERSION, stateJSON(initialState))
   if (path !== ':memory:') chmodSync(path, 0o600)
 
   const readStateRow = database.query<StateRow, []>(
@@ -190,7 +190,7 @@ export function createSqliteMarketplaceRepository(
           const memory = createMemoryMarketplaceRepository({ initialState: state })
           const result = await memory.transaction(operation)
           const next = await memory.snapshot()
-          updateStateRow.run(MARKETPLACE_SQLITE_SCHEMA_VERSION, stateJson(next))
+          updateStateRow.run(MARKETPLACE_SQLITE_SCHEMA_VERSION, stateJSON(next))
           database.exec('COMMIT')
           return structuredClone(result)
         } catch (error) {

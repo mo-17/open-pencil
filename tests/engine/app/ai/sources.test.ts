@@ -9,7 +9,7 @@ import {
   MAX_INLINE_IMAGE_DATA_URL_LENGTH,
   parseAssistantFileArchive,
   presentAssistantFile,
-  safeExternalHttpUrl,
+  safeExternalHttpURL,
   type ChatPresentationLabels
 } from '@/app/ai/chat/sources'
 
@@ -22,10 +22,10 @@ const LABELS: ChatPresentationLabels = {
 
 describe('chat source presentation', () => {
   test('accepts only absolute HTTP(S) URLs without embedded credentials', () => {
-    expect(safeExternalHttpUrl(' https://example.com/reference?q=1 ')).toBe(
+    expect(safeExternalHttpURL(' https://example.com/reference?q=1 ')).toBe(
       'https://example.com/reference?q=1'
     )
-    expect(safeExternalHttpUrl('http://example.com')).toBe('http://example.com/')
+    expect(safeExternalHttpURL('http://example.com')).toBe('http://example.com/')
 
     for (const value of [
       SCRIPT_URL,
@@ -35,7 +35,7 @@ describe('chat source presentation', () => {
       '/relative/path',
       'https://user:secret@example.com/private'
     ]) {
-      expect(safeExternalHttpUrl(value)).toBeNull()
+      expect(safeExternalHttpURL(value)).toBeNull()
     }
   })
 
@@ -200,7 +200,7 @@ describe('assistant file presentation', () => {
     ]) {
       expect(
         presentAssistantFile({ type: 'file', mediaType: 'image/png', url }, 0, LABELS)
-      ).toMatchObject({ previewUrl: null, openUrl: safeExternalHttpUrl(url), blocked: false })
+      ).toMatchObject({ previewUrl: null, openUrl: safeExternalHttpURL(url), blocked: false })
     }
   })
 

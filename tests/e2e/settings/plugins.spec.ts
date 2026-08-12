@@ -369,9 +369,9 @@ test('exposes reviewed command and exporter actions only after enabling their pl
   const exporterSwitch = page.getByTestId(`plugin-enabled-${TAURI_EXPORTER_PLUGIN_ID}`)
   const vueExporterSwitch = page.getByTestId(`plugin-enabled-${VUE_EXPORTER_PLUGIN_ID}`)
   const copyText = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-text`)
-  const copySvg = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-svg`)
-  const copyJsx = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-jsx`)
-  const copyPng = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-png`)
+  const copySVG = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-svg`)
+  const copyJSX = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-jsx`)
+  const copyPNG = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-png`)
   const exportProject = page.getByTestId(
     `plugin-exporter-${TAURI_EXPORTER_PLUGIN_ID}-tauri-react-source`
   )
@@ -380,7 +380,7 @@ test('exposes reviewed command and exporter actions only after enabling their pl
   await expect(clipboardSwitch).not.toBeChecked()
   await expect(exporterSwitch).not.toBeChecked()
   await expect(vueExporterSwitch).not.toBeChecked()
-  for (const action of [copyText, copySvg, copyJsx, copyPng, exportProject, exportVueProject]) {
+  for (const action of [copyText, copySVG, copyJSX, copyPNG, exportProject, exportVueProject]) {
     await expect(action).toBeDisabled()
   }
 
@@ -390,7 +390,7 @@ test('exposes reviewed command and exporter actions only after enabling their pl
   await expect(clipboardSwitch).toBeChecked()
   await expect(exporterSwitch).toBeChecked()
   await expect(vueExporterSwitch).toBeChecked()
-  for (const action of [copyText, copySvg, copyJsx, copyPng, exportProject, exportVueProject]) {
+  for (const action of [copyText, copySVG, copyJSX, copyPNG, exportProject, exportVueProject]) {
     await expect(action).toBeEnabled()
   }
 })

@@ -5,15 +5,15 @@ import type { Canvas } from 'canvaskit-wasm'
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
-import { htmlPreviewText, renderHtmlModulePreview } from '#core/canvas/modules'
+import { htmlPreviewText, renderHTMLModulePreview } from '#core/canvas/modules'
 import { renderShapeUncached } from '#core/canvas/scene'
-import { createHtmlModuleFrameOverrides } from '#core/plugins/html'
+import { createHTMLModuleFrameOverrides } from '#core/plugins/html'
 
 import { createMockCanvas, createMockRenderer } from './effects/helpers'
 
 function htmlFrame(overrides: Partial<SceneNode> = {}): SceneNode {
   return createDefaultNode(() => 'html-1', 'FRAME', {
-    ...createHtmlModuleFrameOverrides({
+    ...createHTMLModuleFrameOverrides({
       html: '<style>p{color:red}</style><main><h1>Guide</h1><p>Safe &amp; visible</p></main>'
     }),
     width: 640,
@@ -43,7 +43,7 @@ describe('HTML module canvas preview', () => {
     const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
     const renderer = rendererWithFont()
 
-    expect(renderHtmlModulePreview(renderer, canvas as Canvas, htmlFrame())).toBe(true)
+    expect(renderHTMLModulePreview(renderer, canvas as Canvas, htmlFrame())).toBe(true)
     expect(canvas.drawText.mock.calls.map((call) => call[0])).toEqual([
       '</> HTML',
       'Guide · Safe & visible'
@@ -71,7 +71,7 @@ describe('HTML module canvas preview', () => {
         }
       }
     })
-    expect(renderHtmlModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
+    expect(renderHTMLModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
     expect(invalidCanvas.drawText).not.toHaveBeenCalled()
   })
 })

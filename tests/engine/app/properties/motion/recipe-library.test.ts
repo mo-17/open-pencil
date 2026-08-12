@@ -88,8 +88,8 @@ describe('app personal Motion recipe authoring', () => {
     expect(blocked.snapshot().blocked).toBe(true)
     expect(() => blocked.addRecipe(parameterizedRecipe())).toThrow(/preserved/)
 
-    const empty = createMotionRecipeLibraryStore({ storage: null }).exportJson()
-    blocked.importJson(empty)
+    const empty = createMotionRecipeLibraryStore({ storage: null }).exportJSON()
+    blocked.importJSON(empty)
     expect(blocked.snapshot()).toMatchObject({ blocked: false, error: null })
   })
 

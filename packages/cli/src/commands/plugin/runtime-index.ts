@@ -16,12 +16,12 @@ import {
   optionalNonNegativeInteger,
   outputArg,
   printArtifact,
-  printJson,
+  printJSON,
   privateKeyArgs,
   publicKeyArgs,
-  readBoundedJson,
+  readBoundedJSON,
   runPluginCommandSafely,
-  writeJsonOutput
+  writeJSONOutput
 } from './common'
 
 function runtimeIndexDetails(runtimeIndex: PluginRuntimeIndexPayloadV1, digest?: string) {
@@ -52,7 +52,7 @@ const build = defineCommand({
   },
   async run({ args }) {
     await runPluginCommandSafely(async () => {
-      const payload = await readBoundedJson(
+      const payload = await readBoundedJSON(
         args.payload,
         PLUGIN_RUNTIME_INDEX_LIMITS.maxJsonBytes,
         'Plugin runtime index payload'
@@ -62,14 +62,14 @@ const build = defineCommand({
         await importPrivateKey(args),
         args['key-id'] ? { keyId: args['key-id'] } : {}
       )
-      const output = await writeJsonOutput(
+      const output = await writeJSONOutput(
         args.output,
         serializePluginRuntimeIndex(runtimeIndex),
         PLUGIN_RUNTIME_INDEX_LIMITS.maxJsonBytes,
         'Signed plugin runtime index'
       )
       const report = { runtimeIndex, output }
-      if (args.json) printJson(report)
+      if (args.json) printJSON(report)
       else {
         printArtifact(
           'Built signed plugin runtime index',
@@ -118,7 +118,7 @@ const verify = defineCommand({
   },
   async run({ args }) {
     await runPluginCommandSafely(async () => {
-      const runtimeIndex = await readBoundedJson(
+      const runtimeIndex = await readBoundedJSON(
         args.index,
         PLUGIN_RUNTIME_INDEX_LIMITS.maxJsonBytes,
         'Plugin runtime index'
@@ -135,7 +135,7 @@ const verify = defineCommand({
         ...(now ? { now } : {}),
         ...(maxClockSkewMilliseconds === undefined ? {} : { maxClockSkewMilliseconds })
       })
-      if (args.json) printJson(snapshot)
+      if (args.json) printJSON(snapshot)
       else {
         printArtifact('Verified plugin runtime index', snapshot.index.indexId, {
           ...runtimeIndexDetails(snapshot.index, snapshot.verifiedDigest),

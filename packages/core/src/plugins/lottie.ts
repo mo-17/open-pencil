@@ -1,16 +1,16 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
 import {
   hasDensePluginArrayKeys,
   hasExactPluginKeys,
-  parseCanonicalPublicHttpsUrl
+  parseCanonicalPublicHttpsURL
 } from './parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
@@ -43,7 +43,7 @@ export type LottieSourceV1 = 'url' | 'json'
 export type LottieDirectionV1 = 'forward' | 'reverse'
 export type LottieFitV1 = 'contain' | 'cover' | 'fill'
 
-export interface LottieAnimationDataV1 extends JsonObject {
+export interface LottieAnimationDataV1 extends JSONObject {
   v: string
   fr: number
   ip: number
@@ -53,7 +53,7 @@ export interface LottieAnimationDataV1 extends JsonObject {
   layers: unknown[]
 }
 
-export interface LottieModuleConfigV1 extends JsonObject {
+export interface LottieModuleConfigV1 extends JSONObject {
   source: LottieSourceV1
   url: string
   data: LottieAnimationDataV1
@@ -122,7 +122,7 @@ const DIRECTIONS = new Set<LottieDirectionV1>(['forward', 'reverse'])
 const FITS = new Set<LottieFitV1>(['contain', 'cover', 'fill'])
 const VERSION = /^\d+(?:\.\d+){1,3}$/
 
-interface JsonBudget {
+interface JSONBudget {
   entries: number
   arrayItems: number
   seen: WeakSet<object>
@@ -130,11 +130,11 @@ interface JsonBudget {
 
 type ParseResult = { ok: true; config: LottieModuleConfigV1 } | { ok: false; reason: string }
 
-function validateJsonValue(
+function validateJSONValue(
   value: unknown,
   path: string,
   depth: number,
-  budget: JsonBudget
+  budget: JSONBudget
 ): string | null {
   if (depth > LOTTIE_MODULE_LIMITS.dataDepth) {
     return `${path} exceeds the maximum Lottie JSON depth of ${LOTTIE_MODULE_LIMITS.dataDepth}`
@@ -150,15 +150,15 @@ function validateJsonValue(
   if (budget.seen.has(value)) return `${path} contains a circular reference`
   budget.seen.add(value)
   return Array.isArray(value)
-    ? validateJsonArray(value, path, depth, budget)
-    : validateJsonObject(value, path, depth, budget)
+    ? validateJSONArray(value, path, depth, budget)
+    : validateJSONObject(value, path, depth, budget)
 }
 
-function validateJsonArray(
+function validateJSONArray(
   value: unknown[],
   path: string,
   depth: number,
-  budget: JsonBudget
+  budget: JSONBudget
 ): string | null {
   if (!hasDensePluginArrayKeys(value)) {
     return `${path} must be a dense JSON array without custom properties`
@@ -172,19 +172,19 @@ function validateJsonArray(
     if (!descriptor?.enumerable || !('value' in descriptor)) {
       return `${path}[${index}] must be an enumerable data property`
     }
-    const reason = validateJsonValue(descriptor.value, `${path}[${index}]`, depth + 1, budget)
+    const reason = validateJSONValue(descriptor.value, `${path}[${index}]`, depth + 1, budget)
     if (reason) return reason
   }
   return null
 }
 
-function validateJsonObject(
+function validateJSONObject(
   value: object,
   path: string,
   depth: number,
-  budget: JsonBudget
+  budget: JSONBudget
 ): string | null {
-  if (!isPlainJsonObject(value)) return `${path} must be a plain JSON object`
+  if (!isPlainJSONObject(value)) return `${path} must be a plain JSON object`
   const keys = Reflect.ownKeys(value)
   if (keys.some((key) => typeof key !== 'string')) return `${path} must not contain symbol keys`
   budget.entries += keys.length
@@ -197,7 +197,7 @@ function validateJsonObject(
     if (!descriptor?.enumerable || !('value' in descriptor)) {
       return `${path}.${key} must be an enumerable data property`
     }
-    const reason = validateJsonValue(descriptor.value, `${path}.${key}`, depth + 1, budget)
+    const reason = validateJSONValue(descriptor.value, `${path}.${key}`, depth + 1, budget)
     if (reason) return reason
   }
   return null
@@ -211,7 +211,7 @@ function validateNoExpressions(value: unknown, path: string): string | null {
     }
     return null
   }
-  if (!isPlainJsonObject(value)) return null
+  if (!isPlainJSONObject(value)) return null
   for (const [key, child] of Object.entries(value)) {
     if (key === 'x' && typeof child === 'string' && child.trim() !== '') {
       return `${path}.${key} contains an unsupported Lottie expression`
@@ -228,7 +228,7 @@ function validateLayers(value: unknown, path: string): string | null {
   }
   for (let index = 0; index < value.length; index += 1) {
     const layer = value[index]
-    if (!isPlainJsonObject(layer)) return `${path}[${index}] must be a plain JSON object`
+    if (!isPlainJSONObject(layer)) return `${path}[${index}] must be a plain JSON object`
     if (layer.ty === 2) return `${path}[${index}] uses an unsupported image layer`
     if (layer.ty === 6) return `${path}[${index}] uses an unsupported audio layer`
   }
@@ -242,7 +242,7 @@ function validateAssets(value: unknown, path: string): string | null {
   for (let index = 0; index < value.length; index += 1) {
     const asset = value[index]
     const assetPath = `${path}[${index}]`
-    if (!isPlainJsonObject(asset)) return `${assetPath} must be a plain JSON object`
+    if (!isPlainJSONObject(asset)) return `${assetPath} must be a plain JSON object`
     if (Object.hasOwn(asset, 'p') || Object.hasOwn(asset, 'u')) {
       return `${assetPath} contains an unsupported external or embedded image asset`
     }
@@ -256,12 +256,12 @@ function validateAssets(value: unknown, path: string): string | null {
 }
 
 function validateFonts(value: unknown, path: string): string | null {
-  if (!isPlainJsonObject(value) || !Array.isArray(value.list)) {
+  if (!isPlainJSONObject(value) || !Array.isArray(value.list)) {
     return `${path} must contain a font list array`
   }
   for (let index = 0; index < value.list.length; index += 1) {
     const font = value.list[index]
-    if (!isPlainJsonObject(font)) return `${path}.list[${index}] must be a plain JSON object`
+    if (!isPlainJSONObject(font)) return `${path}.list[${index}] must be a plain JSON object`
     if (font.fPath !== undefined && font.fPath !== '') {
       return `${path}.list[${index}].fPath must not load an external font`
     }
@@ -327,13 +327,13 @@ function validateAnimationResources(value: Record<string, unknown>): string | nu
 
 /** Validate the supported, vector-only Lottie JSON subset without executing it. */
 export function validateLottieAnimationData(value: unknown): string | null {
-  const jsonReason = validateJsonValue(value, 'lottie data', 0, {
+  const jsonReason = validateJSONValue(value, 'lottie data', 0, {
     entries: 0,
     arrayItems: 0,
     seen: new WeakSet()
   })
   if (jsonReason) return jsonReason
-  if (!isPlainJsonObject(value)) return 'lottie data must be a plain JSON object'
+  if (!isPlainJSONObject(value)) return 'lottie data must be a plain JSON object'
   const metadataReason = validateAnimationMetadata(value)
   if (metadataReason) return metadataReason
   const resourcesReason = validateAnimationResources(value)
@@ -345,19 +345,19 @@ export function validateLottieAnimationData(value: unknown): string | null {
   return null
 }
 
-export function isCanonicalPublicLottieUrl(value: string): boolean {
+export function isCanonicalPublicLottieURL(value: string): boolean {
   if (value === '') return false
   try {
-    parseCanonicalPublicHttpsUrl(value, 'Lottie URL', LOTTIE_MODULE_LIMITS.url)
+    parseCanonicalPublicHttpsURL(value, 'Lottie URL', LOTTIE_MODULE_LIMITS.url)
     return true
   } catch {
     return false
   }
 }
 
-function optionalUrl(value: unknown): string {
+function optionalURL(value: unknown): string {
   if (value === '') return ''
-  return parseCanonicalPublicHttpsUrl(value, 'lottie config url', LOTTIE_MODULE_LIMITS.url)
+  return parseCanonicalPublicHttpsURL(value, 'lottie config url', LOTTIE_MODULE_LIMITS.url)
 }
 
 function parseLottieConfig(value: unknown): ParseResult {
@@ -382,13 +382,13 @@ function parseLottieConfig(value: unknown): ParseResult {
   }
   let url: string
   try {
-    url = optionalUrl(config.url)
+    url = optionalURL(config.url)
   } catch (cause) {
     return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) }
   }
   const dataReason = validateLottieAnimationData(config.data)
   if (dataReason) return { ok: false, reason: dataReason }
-  if (config.source === 'json' && !isPlainJsonObject(config.data)) {
+  if (config.source === 'json' && !isPlainJSONObject(config.data)) {
     return { ok: false, reason: 'lottie config data must be a plain JSON object' }
   }
   if (typeof config.autoplay !== 'boolean') {
@@ -434,8 +434,8 @@ function parseLottieConfig(value: unknown): ParseResult {
 
 function mergeWithDefaults(config: unknown): unknown {
   if (config === undefined) return structuredClone(LOTTIE_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
-  const next = structuredClone(LOTTIE_MODULE_DEFAULT_CONFIG) as JsonObject
+  if (!isPlainJSONObject(config)) return config
+  const next = structuredClone(LOTTIE_MODULE_DEFAULT_CONFIG) as JSONObject
   for (const key of Reflect.ownKeys(config)) {
     if (typeof key !== 'string') return config
     const descriptor = Object.getOwnPropertyDescriptor(config, key)

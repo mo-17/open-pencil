@@ -7,7 +7,7 @@ import {
   MotionRecipeLibraryValidationError,
   createMotionRecipeLibrary,
   mergeMotionRecipeLibraries,
-  parseMotionRecipeLibraryJson,
+  parseMotionRecipeLibraryJSON,
   serializeMotionRecipeLibrary,
   type MotionRecipe,
   type MotionSpec
@@ -49,7 +49,7 @@ describe('personal Motion recipe library', () => {
       recipe('motionV2', 2),
       recipe('motionV3', 3)
     ])
-    const restored = parseMotionRecipeLibraryJson(serializeMotionRecipeLibrary(source))
+    const restored = parseMotionRecipeLibraryJSON(serializeMotionRecipeLibrary(source))
 
     expect(restored).toEqual(source)
     expect(restored.recipes[0]).not.toBe(source.recipes[0])
@@ -63,13 +63,13 @@ describe('personal Motion recipe library', () => {
   test('fails closed for future versions, unknown fields, duplicates, and oversized JSON', () => {
     const valid = createMotionRecipeLibrary([recipe('only', 1)])
     expect(() =>
-      parseMotionRecipeLibraryJson(JSON.stringify({ ...valid, schemaVersion: 2 }))
+      parseMotionRecipeLibraryJSON(JSON.stringify({ ...valid, schemaVersion: 2 }))
     ).toThrow(/Unsupported/)
     expect(() =>
-      parseMotionRecipeLibraryJson(JSON.stringify({ ...valid, unexpected: true }))
+      parseMotionRecipeLibraryJSON(JSON.stringify({ ...valid, unexpected: true }))
     ).toThrow(/Unknown/)
     expect(() =>
-      parseMotionRecipeLibraryJson(
+      parseMotionRecipeLibraryJSON(
         JSON.stringify({
           format: MOTION_RECIPE_LIBRARY_FORMAT,
           schemaVersion: 1,
@@ -78,7 +78,7 @@ describe('personal Motion recipe library', () => {
       )
     ).toThrow(/Duplicate/)
     expect(() =>
-      parseMotionRecipeLibraryJson(' '.repeat(MOTION_RECIPE_LIBRARY_LIMITS.maxJsonBytes + 1))
+      parseMotionRecipeLibraryJSON(' '.repeat(MOTION_RECIPE_LIBRARY_LIMITS.maxJsonBytes + 1))
     ).toThrow(MotionRecipeLibraryValidationError)
   })
 

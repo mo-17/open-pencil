@@ -23,7 +23,7 @@ import {
   type StatusTransitionArguments,
   type StorageArguments
 } from './cli-args'
-import { printMarketplaceCliOutput as print } from './cli-output'
+import { printMarketplaceCLIOutput as print } from './cli-output'
 import { createMarketplaceHttpApp } from './http'
 import { positiveMarketplacePort, resolveMarketplaceServeMode } from './serve-mode'
 import { createMarketplaceService, type MarketplaceRootTrust } from './service'
@@ -70,7 +70,7 @@ async function boundedText(path: string, maximum: number, label: string): Promis
   }
 }
 
-async function boundedJson(path: string, label: string): Promise<unknown> {
+async function boundedJSON(path: string, label: string): Promise<unknown> {
   try {
     return JSON.parse(await boundedText(path, MAX_JSON_BYTES, label))
   } catch (error) {
@@ -355,12 +355,12 @@ const submissionImport = defineCommand({
     actor: { type: 'string' }
   },
   async run({ args }) {
-    const manifest = await boundedJson(args.manifest, 'plugin manifest')
+    const manifest = await boundedJSON(args.manifest, 'plugin manifest')
     const listing = parseMarketplaceListingMetadata(
-      await boundedJson(args.listing, 'plugin listing')
+      await boundedJSON(args.listing, 'plugin listing')
     )
     const runtimePackage = args.runtime
-      ? await boundedJson(args.runtime, 'plugin runtime package')
+      ? await boundedJSON(args.runtime, 'plugin runtime package')
       : undefined
     await withMarketplace(args, async ({ service }) => {
       print(

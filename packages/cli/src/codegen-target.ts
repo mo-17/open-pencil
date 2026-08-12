@@ -1,6 +1,6 @@
 import type { ArgsDef } from 'citty'
 
-import type { CompilerOptions, UiKitName } from '@open-pencil/compiler'
+import type { CompilerOptions, UIKitName } from '@open-pencil/compiler'
 
 export type CodegenWebTarget = Extract<CompilerOptions['target'], 'react' | 'vue'>
 
@@ -44,7 +44,7 @@ export function routerForCodegenTarget(
 export function validateCodegenTargetFeatures(input: {
   target: CodegenWebTarget
   i18n: boolean
-  uiKit?: UiKitName
+  uiKit?: UIKitName
 }): void {
   if (input.target !== 'vue') return
   if (input.i18n) {

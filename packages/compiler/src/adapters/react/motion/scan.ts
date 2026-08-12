@@ -1,6 +1,6 @@
 import type { ComponentDef, IREventHandler, IRNode, IRTree } from '#compiler/ir/types'
 
-import { buildMotionCss } from './css'
+import { buildMotionCSS } from './css'
 import {
   buildMotionDriversRuntime,
   motionDriverToken,
@@ -93,7 +93,7 @@ export function buildMotionPlan(
       usesMotionScenes
   )
   return {
-    css: buildMotionCss(sortedEntries),
+    css: buildMotionCSS(sortedEntries),
     runtime:
       baseRuntime === undefined
         ? undefined

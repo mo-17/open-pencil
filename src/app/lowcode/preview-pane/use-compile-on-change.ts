@@ -79,12 +79,12 @@ const SIDECAR_ENTRY = 'packages/compiler/src/dev-server.ts'
 const READY_TIMEOUT_MS = 15_000
 const NOOP = (): void => undefined
 
-export type PreviewUiKit = 'none' | 'shadcn'
+export type PreviewUIKit = 'none' | 'shadcn'
 export type PreviewTarget = 'react' | 'vue'
 
 export interface PreviewCompileSettings {
   target?: Ref<PreviewTarget>
-  uiKit: Ref<PreviewUiKit>
+  uiKit: Ref<PreviewUIKit>
   i18nEnabled: Ref<boolean>
   localesInput: Ref<string>
   refreshPolicy?: Ref<PreviewRefreshPolicy>

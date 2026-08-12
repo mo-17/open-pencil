@@ -155,7 +155,7 @@ function addSchemaInputBytes(state: SchemaInputWalkState, bytes: number, path: s
   }
 }
 
-function primitiveJsonBytes(value: PluginParameterSchemaPrimitive): number {
+function primitiveJSONBytes(value: PluginParameterSchemaPrimitive): number {
   return JSON_ENCODER.encode(JSON.stringify(value)).byteLength
 }
 
@@ -267,7 +267,7 @@ function cloneSchemaInputRecord(
       const descriptor = Object.getOwnPropertyDescriptor(value, key)
       if (!descriptor) throw new TypeError(`${path}.${key} is unavailable`)
       const entry = schemaInputDataProperty(descriptor, `${path}.${key}`)
-      addSchemaInputBytes(state, primitiveJsonBytes(key) + 1, `${path}.${key}`)
+      addSchemaInputBytes(state, primitiveJSONBytes(key) + 1, `${path}.${key}`)
       Object.defineProperty(cloned, key, {
         value: cloneSchemaInputNode(entry, `${path}.${key}`, depth + 1, state),
         enumerable: true,
@@ -295,14 +295,14 @@ function cloneSchemaInputNode(
     throw new TypeError(`${path} exceeds the JSON Schema node limit`)
   }
   if (value === null || typeof value === 'boolean') {
-    addSchemaInputBytes(state, primitiveJsonBytes(value), path)
+    addSchemaInputBytes(state, primitiveJSONBytes(value), path)
     return value
   }
   if (typeof value === 'string') {
     if (value.length > PLUGIN_PARAMETER_SCHEMA_LIMITS.maxBytes) {
       throw new TypeError(`${path} exceeds the JSON Schema byte limit`)
     }
-    addSchemaInputBytes(state, primitiveJsonBytes(value), path)
+    addSchemaInputBytes(state, primitiveJSONBytes(value), path)
     if (value.length > PLUGIN_PARAMETER_SCHEMA_LIMITS.maxStringLength) {
       throw new TypeError(`${path} exceeds the JSON Schema string length limit`)
     }
@@ -310,7 +310,7 @@ function cloneSchemaInputNode(
   }
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) throw new TypeError(`${path} must be a finite number`)
-    addSchemaInputBytes(state, primitiveJsonBytes(value), path)
+    addSchemaInputBytes(state, primitiveJSONBytes(value), path)
     return value
   }
   if (typeof value !== 'object') {

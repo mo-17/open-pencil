@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
   createContractModuleDefinition,
@@ -35,7 +35,7 @@ export const MARKDOWN_MODULE_LIMITS = Object.freeze({
 export type MarkdownFlavorV1 = 'commonmark' | 'gfm'
 export type MarkdownLinkTargetV1 = 'same-tab' | 'new-tab'
 
-export interface MarkdownModuleConfigV1 extends JsonObject {
+export interface MarkdownModuleConfigV1 extends JSONObject {
   source: string
   flavor: MarkdownFlavorV1
   linkTarget: MarkdownLinkTargetV1

@@ -9,7 +9,7 @@ import {
   assertMarketplaceSnapshotAdvance,
   createMarketplacePublisherKeyring,
   parseMarketplaceSnapshotBytes,
-  parseMarketplaceSnapshotJson,
+  parseMarketplaceSnapshotJSON,
   parseMarketplaceSnapshotPayload,
   resolveTrustedPluginKey,
   searchMarketplaceListings,
@@ -160,7 +160,7 @@ describe('root-signed marketplace snapshot', () => {
   test('round-trips, verifies the dynamic publisher directory, and binds its catalog', async () => {
     const data = await fixture({ runtimeIndex: true })
     const serialized = serializeMarketplaceSnapshot(data.snapshot)
-    expect(parseMarketplaceSnapshotJson(serialized)).toEqual(data.snapshot)
+    expect(parseMarketplaceSnapshotJSON(serialized)).toEqual(data.snapshot)
     expect(parseMarketplaceSnapshotBytes(new TextEncoder().encode(serialized))).toEqual(
       data.snapshot
     )

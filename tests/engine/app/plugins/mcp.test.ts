@@ -38,12 +38,12 @@ import {
   VUE_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import {
-  appPluginMcpConnectorContributionId,
-  appPluginMcpToolName,
-  listAppPluginMcpTools,
+  appPluginMCPConnectorContributionId,
+  appPluginMCPToolName,
+  listAppPluginMCPTools,
   PLUGIN_MCP_LIMITS,
-  resolveAppPluginMcpTool,
-  type AppPluginMcpStore
+  resolveAppPluginMCPTool,
+  type AppPluginMCPStore
 } from '@/app/plugins/mcp'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
@@ -74,7 +74,7 @@ describe('app plugin MCP catalog', () => {
       await store.setEnabled(pluginId, true)
     }
 
-    const tools = listAppPluginMcpTools(store).tools
+    const tools = listAppPluginMCPTools(store).tools
     expect(tools).toHaveLength(31)
     expect(tools.filter((tool) => tool.kind === 'module')).toHaveLength(20)
     expect(tools.filter((tool) => tool.kind === 'command')).toHaveLength(9)
@@ -82,13 +82,13 @@ describe('app plugin MCP catalog', () => {
   })
 
   test('permanently binds slug-colliding names to canonical plugin identity', () => {
-    const firstName = appPluginMcpToolName('foo-bar', 'module', 'panel')
-    const replacementName = appPluginMcpToolName('foo_bar', 'module', 'panel')
+    const firstName = appPluginMCPToolName('foo-bar', 'module', 'panel')
+    const replacementName = appPluginMCPToolName('foo_bar', 'module', 'panel')
 
     expect(firstName).toMatch(/^plugin__foo_bar__add_panel_[a-f0-9]{64}$/)
     expect(replacementName).toMatch(/^plugin__foo_bar__add_panel_[a-f0-9]{64}$/)
     expect(replacementName).not.toBe(firstName)
-    expect(appPluginMcpToolName('foo-bar', 'module', 'panel')).toBe(firstName)
+    expect(appPluginMCPToolName('foo-bar', 'module', 'panel')).toBe(firstName)
     expect(firstName.length).toBeLessThanOrEqual(PLUGIN_MCP_LIMITS.maxToolNameLength)
 
     // Model two sequential catalogs rather than a simultaneous collision. The
@@ -104,7 +104,7 @@ describe('app plugin MCP catalog', () => {
     const store = createStore()
     await store.load()
 
-    const enabled = listAppPluginMcpTools(store)
+    const enabled = listAppPluginMCPTools(store)
     expect(enabled.tools).toHaveLength(1)
     const mapTool = enabled.tools[0]
     expect(mapTool).toMatchObject({
@@ -122,21 +122,21 @@ describe('app plugin MCP catalog', () => {
       },
       additionalProperties: false
     })
-    expect(resolveAppPluginMcpTool(store, mapTool.name, MAP_PLUGIN_ID).kind).toBe('module')
+    expect(resolveAppPluginMCPTool(store, mapTool.name, MAP_PLUGIN_ID).kind).toBe('module')
 
     await store.setEnabled(MAP_PLUGIN_ID, false)
-    const disabled = listAppPluginMcpTools(store)
+    const disabled = listAppPluginMCPTools(store)
     expect(disabled.tools).toEqual([])
     expect(disabled.revision).not.toBe(enabled.revision)
-    expect(() => resolveAppPluginMcpTool(store, mapTool.name, MAP_PLUGIN_ID)).toThrow(
+    expect(() => resolveAppPluginMCPTool(store, mapTool.name, MAP_PLUGIN_ID)).toThrow(
       'Plugin MCP tool is unavailable'
     )
 
     await store.setEnabled(MAP_PLUGIN_ID, true)
-    expect(listAppPluginMcpTools(store).revision).toBe(enabled.revision)
+    expect(listAppPluginMCPTools(store).revision).toBe(enabled.revision)
     await store.uninstall(MAP_PLUGIN_ID)
-    expect(listAppPluginMcpTools(store).tools).toEqual([])
-    expect(() => resolveAppPluginMcpTool(store, mapTool.name, MAP_PLUGIN_ID)).toThrow(
+    expect(listAppPluginMCPTools(store).tools).toEqual([])
+    expect(() => resolveAppPluginMCPTool(store, mapTool.name, MAP_PLUGIN_ID)).toThrow(
       'Plugin MCP tool is unavailable'
     )
   })
@@ -147,13 +147,13 @@ describe('app plugin MCP catalog', () => {
     await store.install(CLIPBOARD_TOOLKIT_PLUGIN_ID)
 
     expect(
-      listAppPluginMcpTools(store).tools.some(
+      listAppPluginMCPTools(store).tools.some(
         (tool) => tool.pluginId === CLIPBOARD_TOOLKIT_PLUGIN_ID
       )
     ).toBe(false)
 
     await store.setEnabled(CLIPBOARD_TOOLKIT_PLUGIN_ID, true)
-    const commands = listAppPluginMcpTools(store).tools.filter(
+    const commands = listAppPluginMCPTools(store).tools.filter(
       (tool) => tool.pluginId === CLIPBOARD_TOOLKIT_PLUGIN_ID
     )
     expect(commands).toHaveLength(4)
@@ -164,34 +164,34 @@ describe('app plugin MCP catalog', () => {
     const store = createStore()
     await store.load()
     expect(
-      listAppPluginMcpTools(store).tools.some((tool) => tool.pluginId === MODAL_PLUGIN_ID)
+      listAppPluginMCPTools(store).tools.some((tool) => tool.pluginId === MODAL_PLUGIN_ID)
     ).toBe(false)
 
     await store.install(MODAL_PLUGIN_ID)
     expect(
-      listAppPluginMcpTools(store).tools.some((tool) => tool.pluginId === MODAL_PLUGIN_ID)
+      listAppPluginMCPTools(store).tools.some((tool) => tool.pluginId === MODAL_PLUGIN_ID)
     ).toBe(false)
 
     await store.setEnabled(MODAL_PLUGIN_ID, true)
-    const modal = listAppPluginMcpTools(store).tools.find(
+    const modal = listAppPluginMCPTools(store).tools.find(
       (tool) => tool.pluginId === MODAL_PLUGIN_ID
     )
     expect(modal).toMatchObject({ kind: 'module', contributionId: 'modal' })
     if (!modal) throw new Error('Expected Modal MCP descriptor')
-    expect(resolveAppPluginMcpTool(store, modal.name, MODAL_PLUGIN_ID).kind).toBe('module')
+    expect(resolveAppPluginMCPTool(store, modal.name, MODAL_PLUGIN_ID).kind).toBe('module')
 
     await store.setEnabled(MODAL_PLUGIN_ID, false)
     expect(
-      listAppPluginMcpTools(store).tools.some((tool) => tool.pluginId === MODAL_PLUGIN_ID)
+      listAppPluginMCPTools(store).tools.some((tool) => tool.pluginId === MODAL_PLUGIN_ID)
     ).toBe(false)
-    expect(() => resolveAppPluginMcpTool(store, modal.name, MODAL_PLUGIN_ID)).toThrow(
+    expect(() => resolveAppPluginMCPTool(store, modal.name, MODAL_PLUGIN_ID)).toThrow(
       'Plugin MCP tool is unavailable'
     )
 
     await store.setEnabled(MODAL_PLUGIN_ID, true)
     await store.uninstall(MODAL_PLUGIN_ID)
     expect(
-      listAppPluginMcpTools(store).tools.some((tool) => tool.pluginId === MODAL_PLUGIN_ID)
+      listAppPluginMCPTools(store).tools.some((tool) => tool.pluginId === MODAL_PLUGIN_ID)
     ).toBe(false)
   })
 
@@ -199,36 +199,36 @@ describe('app plugin MCP catalog', () => {
     const store = createStore()
     await store.load()
     expect(
-      listAppPluginMcpTools(store).tools.some((tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID)
+      listAppPluginMCPTools(store).tools.some((tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID)
     ).toBe(false)
 
     await store.install(DROPDOWN_MENU_PLUGIN_ID)
     expect(
-      listAppPluginMcpTools(store).tools.some((tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID)
+      listAppPluginMCPTools(store).tools.some((tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID)
     ).toBe(false)
 
     await store.setEnabled(DROPDOWN_MENU_PLUGIN_ID, true)
-    const dropdownMenu = listAppPluginMcpTools(store).tools.find(
+    const dropdownMenu = listAppPluginMCPTools(store).tools.find(
       (tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID
     )
     expect(dropdownMenu).toMatchObject({ kind: 'module', contributionId: 'dropdown-menu' })
     if (!dropdownMenu) throw new Error('Expected Dropdown Menu MCP descriptor')
-    expect(resolveAppPluginMcpTool(store, dropdownMenu.name, DROPDOWN_MENU_PLUGIN_ID).kind).toBe(
+    expect(resolveAppPluginMCPTool(store, dropdownMenu.name, DROPDOWN_MENU_PLUGIN_ID).kind).toBe(
       'module'
     )
 
     await store.setEnabled(DROPDOWN_MENU_PLUGIN_ID, false)
     expect(
-      listAppPluginMcpTools(store).tools.some((tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID)
+      listAppPluginMCPTools(store).tools.some((tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID)
     ).toBe(false)
     expect(() =>
-      resolveAppPluginMcpTool(store, dropdownMenu.name, DROPDOWN_MENU_PLUGIN_ID)
+      resolveAppPluginMCPTool(store, dropdownMenu.name, DROPDOWN_MENU_PLUGIN_ID)
     ).toThrow('Plugin MCP tool is unavailable')
 
     await store.setEnabled(DROPDOWN_MENU_PLUGIN_ID, true)
     await store.uninstall(DROPDOWN_MENU_PLUGIN_ID)
     expect(
-      listAppPluginMcpTools(store).tools.some((tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID)
+      listAppPluginMCPTools(store).tools.some((tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID)
     ).toBe(false)
   })
 
@@ -236,33 +236,33 @@ describe('app plugin MCP catalog', () => {
     const store = createStore()
     await store.load()
     const hasUploadButton = () =>
-      listAppPluginMcpTools(store).tools.some((tool) => tool.pluginId === UPLOAD_BUTTON_PLUGIN_ID)
+      listAppPluginMCPTools(store).tools.some((tool) => tool.pluginId === UPLOAD_BUTTON_PLUGIN_ID)
 
     expect(hasUploadButton()).toBe(false)
     await store.install(UPLOAD_BUTTON_PLUGIN_ID)
     expect(hasUploadButton()).toBe(false)
 
     await store.setEnabled(UPLOAD_BUTTON_PLUGIN_ID, true)
-    const uploadButton = listAppPluginMcpTools(store).tools.find(
+    const uploadButton = listAppPluginMCPTools(store).tools.find(
       (tool) => tool.pluginId === UPLOAD_BUTTON_PLUGIN_ID
     )
     expect(uploadButton).toMatchObject({ kind: 'module', contributionId: 'upload-button' })
     if (!uploadButton) throw new Error('Expected Upload Button MCP descriptor')
-    expect(resolveAppPluginMcpTool(store, uploadButton.name, UPLOAD_BUTTON_PLUGIN_ID).kind).toBe(
+    expect(resolveAppPluginMCPTool(store, uploadButton.name, UPLOAD_BUTTON_PLUGIN_ID).kind).toBe(
       'module'
     )
 
     await store.setEnabled(UPLOAD_BUTTON_PLUGIN_ID, false)
     expect(hasUploadButton()).toBe(false)
     expect(() =>
-      resolveAppPluginMcpTool(store, uploadButton.name, UPLOAD_BUTTON_PLUGIN_ID)
+      resolveAppPluginMCPTool(store, uploadButton.name, UPLOAD_BUTTON_PLUGIN_ID)
     ).toThrow('Plugin MCP tool is unavailable')
 
     await store.setEnabled(UPLOAD_BUTTON_PLUGIN_ID, true)
     await store.uninstall(UPLOAD_BUTTON_PLUGIN_ID)
     expect(hasUploadButton()).toBe(false)
     expect(() =>
-      resolveAppPluginMcpTool(store, uploadButton.name, UPLOAD_BUTTON_PLUGIN_ID)
+      resolveAppPluginMCPTool(store, uploadButton.name, UPLOAD_BUTTON_PLUGIN_ID)
     ).toThrow('Plugin MCP tool is unavailable')
   })
 
@@ -271,13 +271,13 @@ describe('app plugin MCP catalog', () => {
     await store.load()
     await store.install(ACCESSIBILITY_AUDIT_PLUGIN_ID)
     expect(
-      listAppPluginMcpTools(store).tools.some(
+      listAppPluginMCPTools(store).tools.some(
         (tool) => tool.pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID
       )
     ).toBe(false)
 
     await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, true)
-    const audit = listAppPluginMcpTools(store).tools.find(
+    const audit = listAppPluginMCPTools(store).tools.find(
       (tool) => tool.pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID
     )
     expect(audit).toMatchObject({
@@ -286,13 +286,13 @@ describe('app plugin MCP catalog', () => {
       inputSchema: { type: 'object', additionalProperties: false, maxProperties: 0 }
     })
     if (!audit) throw new Error('Expected accessibility MCP descriptor')
-    expect(resolveAppPluginMcpTool(store, audit.name, ACCESSIBILITY_AUDIT_PLUGIN_ID).kind).toBe(
+    expect(resolveAppPluginMCPTool(store, audit.name, ACCESSIBILITY_AUDIT_PLUGIN_ID).kind).toBe(
       'command'
     )
 
     await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, false)
     expect(
-      listAppPluginMcpTools(store).tools.some(
+      listAppPluginMCPTools(store).tools.some(
         (tool) => tool.pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID
       )
     ).toBe(false)
@@ -303,13 +303,13 @@ describe('app plugin MCP catalog', () => {
     await store.load()
     await store.install(DESIGN_SYSTEM_AUDIT_PLUGIN_ID)
     expect(
-      listAppPluginMcpTools(store).tools.some(
+      listAppPluginMCPTools(store).tools.some(
         (tool) => tool.pluginId === DESIGN_SYSTEM_AUDIT_PLUGIN_ID
       )
     ).toBe(false)
 
     await store.setEnabled(DESIGN_SYSTEM_AUDIT_PLUGIN_ID, true)
-    const audit = listAppPluginMcpTools(store).tools.find(
+    const audit = listAppPluginMCPTools(store).tools.find(
       (tool) => tool.pluginId === DESIGN_SYSTEM_AUDIT_PLUGIN_ID
     )
     expect(audit).toMatchObject({
@@ -318,13 +318,13 @@ describe('app plugin MCP catalog', () => {
       inputSchema: { type: 'object', additionalProperties: false, maxProperties: 0 }
     })
     if (!audit) throw new Error('Expected design-system MCP descriptor')
-    expect(resolveAppPluginMcpTool(store, audit.name, DESIGN_SYSTEM_AUDIT_PLUGIN_ID).kind).toBe(
+    expect(resolveAppPluginMCPTool(store, audit.name, DESIGN_SYSTEM_AUDIT_PLUGIN_ID).kind).toBe(
       'command'
     )
 
     await store.setEnabled(DESIGN_SYSTEM_AUDIT_PLUGIN_ID, false)
     expect(
-      listAppPluginMcpTools(store).tools.some(
+      listAppPluginMCPTools(store).tools.some(
         (tool) => tool.pluginId === DESIGN_SYSTEM_AUDIT_PLUGIN_ID
       )
     ).toBe(false)
@@ -340,16 +340,16 @@ describe('app plugin MCP catalog', () => {
     const options = {
       connectorExposure: () => authorized
     }
-    const before = listAppPluginMcpTools(store, options)
+    const before = listAppPluginMCPTools(store, options)
     expect(before.tools.some((tool) => tool.kind === 'connector')).toBe(false)
 
     authorized = true
-    const enabled = listAppPluginMcpTools(store, options)
+    const enabled = listAppPluginMCPTools(store, options)
     const connector = enabled.tools.find((tool) => tool.kind === 'connector')
     expect(connector).toMatchObject({
       pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
       kind: 'connector',
-      contributionId: appPluginMcpConnectorContributionId(
+      contributionId: appPluginMCPConnectorContributionId(
         AIRTABLE_RECORDS_CONNECTOR_ID,
         AIRTABLE_LIST_RECORDS_OPERATION_ID
       ),
@@ -362,7 +362,7 @@ describe('app plugin MCP catalog', () => {
     if (!connector) throw new Error('Expected authorized connector MCP descriptor')
     expect(connector.contributionId).toMatch(/^connector_[a-f0-9]{64}$/)
     expect(connector.name).toMatch(/^plugin__.+__query_.+_[a-f0-9]{64}$/)
-    const resolved = resolveAppPluginMcpTool(
+    const resolved = resolveAppPluginMCPTool(
       store,
       connector.name,
       AIRTABLE_RECORDS_PLUGIN_ID,
@@ -373,9 +373,9 @@ describe('app plugin MCP catalog', () => {
     expect(resolved.operation.operationId).toBe(AIRTABLE_LIST_RECORDS_OPERATION_ID)
 
     authorized = false
-    expect(listAppPluginMcpTools(store, options).revision).not.toBe(enabled.revision)
+    expect(listAppPluginMCPTools(store, options).revision).not.toBe(enabled.revision)
     expect(() =>
-      resolveAppPluginMcpTool(store, connector.name, AIRTABLE_RECORDS_PLUGIN_ID, options)
+      resolveAppPluginMCPTool(store, connector.name, AIRTABLE_RECORDS_PLUGIN_ID, options)
     ).toThrow('is unavailable')
   })
 
@@ -405,7 +405,7 @@ describe('app plugin MCP catalog', () => {
           : undefined
       }))
     })
-    const fakeStore: AppPluginMcpStore = {
+    const fakeStore: AppPluginMCPStore = {
       installedModules: () => [],
       installedCommands: () => [],
       installedExporters: () => [],
@@ -417,7 +417,7 @@ describe('app plugin MCP catalog', () => {
       ]
     }
 
-    const catalog = listAppPluginMcpTools(fakeStore, { connectorExposure: () => true })
+    const catalog = listAppPluginMCPTools(fakeStore, { connectorExposure: () => true })
     expect(catalog.tools).toEqual([])
     expect(
       catalog.tools.some(
@@ -425,7 +425,7 @@ describe('app plugin MCP catalog', () => {
       )
     ).toBe(false)
 
-    const explicitlyReviewed = listAppPluginMcpTools(fakeStore, {
+    const explicitlyReviewed = listAppPluginMCPTools(fakeStore, {
       connectorExposure: () => true,
       connectorNonGetReadOnlyExposure: () => true
     })
@@ -464,14 +464,14 @@ describe('app plugin MCP catalog', () => {
         }
       }
     }
-    const fakeStore: AppPluginMcpStore = {
+    const fakeStore: AppPluginMCPStore = {
       installedModules: () => [],
       installedCommands: () => [{ plugin: installed.plugin, contribution }],
       installedExporters: () => [],
       installedConnectors: () => []
     }
 
-    const [descriptor] = listAppPluginMcpTools(fakeStore).tools
+    const [descriptor] = listAppPluginMCPTools(fakeStore).tools
     expect(descriptor.inputSchema).toEqual(contribution.parameters.schema)
     expect(JSON.stringify(descriptor.inputSchema)).not.toContain('document_id')
     expect(JSON.stringify(descriptor.inputSchema)).not.toContain('page_id')
@@ -495,7 +495,7 @@ describe('app plugin MCP catalog', () => {
       await store.setEnabled(pluginId, true)
     }
 
-    const tools = listAppPluginMcpTools(store).tools
+    const tools = listAppPluginMCPTools(store).tools
     expect(tools.filter((tool) => tool.kind === 'exporter').map((tool) => tool.pluginId)).toEqual([
       DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
       VUE_EXPORTER_PLUGIN_ID
@@ -509,8 +509,8 @@ describe('app plugin MCP catalog', () => {
       [CAPACITOR_EXPORTER_PLUGIN_ID, CAPACITOR_EXPORTER],
       [ELECTRON_EXPORTER_PLUGIN_ID, ELECTRON_EXPORTER]
     ] as const) {
-      const unavailableName = appPluginMcpToolName(pluginId, 'exporter', exporter.exporterId)
-      expect(() => resolveAppPluginMcpTool(store, unavailableName, pluginId)).toThrow(
+      const unavailableName = appPluginMCPToolName(pluginId, 'exporter', exporter.exporterId)
+      expect(() => resolveAppPluginMCPTool(store, unavailableName, pluginId)).toThrow(
         'is unavailable'
       )
     }
@@ -519,18 +519,18 @@ describe('app plugin MCP catalog', () => {
   test('adds and revokes the Vue exporter MCP tool with plugin lifecycle state', async () => {
     const store = createStore()
     await store.load()
-    const toolName = appPluginMcpToolName(
+    const toolName = appPluginMCPToolName(
       VUE_EXPORTER_PLUGIN_ID,
       'exporter',
       VUE_EXPORTER.exporterId
     )
 
-    expect(listAppPluginMcpTools(store).tools.some(({ name }) => name === toolName)).toBe(false)
+    expect(listAppPluginMCPTools(store).tools.some(({ name }) => name === toolName)).toBe(false)
     await store.install(VUE_EXPORTER_PLUGIN_ID)
-    expect(listAppPluginMcpTools(store).tools.some(({ name }) => name === toolName)).toBe(false)
+    expect(listAppPluginMCPTools(store).tools.some(({ name }) => name === toolName)).toBe(false)
 
     await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, true)
-    expect(resolveAppPluginMcpTool(store, toolName, VUE_EXPORTER_PLUGIN_ID)).toMatchObject({
+    expect(resolveAppPluginMCPTool(store, toolName, VUE_EXPORTER_PLUGIN_ID)).toMatchObject({
       kind: 'exporter',
       descriptor: {
         pluginId: VUE_EXPORTER_PLUGIN_ID,
@@ -539,13 +539,13 @@ describe('app plugin MCP catalog', () => {
     })
 
     await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, false)
-    expect(() => resolveAppPluginMcpTool(store, toolName, VUE_EXPORTER_PLUGIN_ID)).toThrow(
+    expect(() => resolveAppPluginMCPTool(store, toolName, VUE_EXPORTER_PLUGIN_ID)).toThrow(
       'is unavailable'
     )
 
     await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, true)
     await store.uninstall(VUE_EXPORTER_PLUGIN_ID)
-    expect(() => resolveAppPluginMcpTool(store, toolName, VUE_EXPORTER_PLUGIN_ID)).toThrow(
+    expect(() => resolveAppPluginMCPTool(store, toolName, VUE_EXPORTER_PLUGIN_ID)).toThrow(
       'is unavailable'
     )
   })
@@ -571,14 +571,14 @@ describe('app plugin MCP catalog', () => {
       plugin: command.plugin,
       contribution: { ...command.contribution, name: poison, description: poison }
     }
-    const fakeStore: AppPluginMcpStore = {
+    const fakeStore: AppPluginMCPStore = {
       installedModules: () => [poisonedModule],
       installedCommands: () => [poisonedCommand],
       installedExporters: () => [],
       installedConnectors: () => []
     }
 
-    const serialized = JSON.stringify(listAppPluginMcpTools(fakeStore))
+    const serialized = JSON.stringify(listAppPluginMCPTools(fakeStore))
     expect(serialized).not.toContain(poison)
     expect(serialized).toContain('Run trusted installed-plugin command')
   })
@@ -587,12 +587,12 @@ describe('app plugin MCP catalog', () => {
     const store = createStore()
     await store.load()
     const module = store.installedModules()[0]
-    const oversized: AppPluginMcpStore = {
+    const oversized: AppPluginMCPStore = {
       installedModules: () => Array.from({ length: PLUGIN_MCP_LIMITS.maxTools + 1 }, () => module),
       installedCommands: () => [],
       installedExporters: () => [],
       installedConnectors: () => []
     }
-    expect(() => listAppPluginMcpTools(oversized)).toThrow('tool limit')
+    expect(() => listAppPluginMCPTools(oversized)).toThrow('tool limit')
   })
 })

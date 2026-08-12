@@ -1,6 +1,6 @@
 export type ReactCompilerProjectFiles = ReadonlyMap<string, string | Uint8Array>
 
-interface ReactPackageJsonPatch {
+interface ReactPackageJSONPatch {
   description: string
   main?: string
   scripts?: Readonly<Record<string, string>>
@@ -11,13 +11,13 @@ interface ReactPackageJsonPatch {
   removeDevDependencies?: readonly string[]
 }
 
-interface ReactPackageJsonRecord {
+interface ReactPackageJSONRecord {
   [key: string]: unknown
 }
 
 const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
-function isPlainPackageObject(value: unknown): value is ReactPackageJsonRecord {
+function isPlainPackageObject(value: unknown): value is ReactPackageJSONRecord {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   const prototype = Object.getPrototypeOf(value)
   return prototype === Object.prototype || prototype === null
@@ -69,35 +69,35 @@ export function requireReactCompilerTextFile(
   return value
 }
 
-export function patchReactCompilerPackageJson(
+export function patchReactCompilerPackageJSON(
   compiledFiles: ReactCompilerProjectFiles,
-  patch: ReactPackageJsonPatch
+  patch: ReactPackageJSONPatch
 ): Map<string, string | Uint8Array> {
   const source = requireReactCompilerTextFile(compiledFiles, 'package.json')
   const parsed: unknown = JSON.parse(source)
   if (!isPlainPackageObject(parsed))
     throw new TypeError('React compiler package.json must be an object')
 
-  const packageJson: ReactPackageJsonRecord = {}
+  const packageJSON: ReactPackageJSONRecord = {}
   for (const [key, value] of Object.entries(parsed)) {
     assertSafeObjectKey(key, 'package.json')
-    packageJson[key] = value
+    packageJSON[key] = value
   }
-  packageJson.description = patch.description
-  if (patch.main) packageJson.main = patch.main
-  packageJson.scripts = mergeStringRecord(
+  packageJSON.description = patch.description
+  if (patch.main) packageJSON.main = patch.main
+  packageJSON.scripts = mergeStringRecord(
     parsed.scripts,
     'package.json.scripts',
     patch.scripts,
     patch.removeScripts
   )
-  packageJson.dependencies = mergeStringRecord(
+  packageJSON.dependencies = mergeStringRecord(
     parsed.dependencies,
     'package.json.dependencies',
     patch.dependencies,
     patch.removeDependencies
   )
-  packageJson.devDependencies = mergeStringRecord(
+  packageJSON.devDependencies = mergeStringRecord(
     parsed.devDependencies,
     'package.json.devDependencies',
     patch.devDependencies,
@@ -105,7 +105,7 @@ export function patchReactCompilerPackageJson(
   )
 
   const files = new Map(compiledFiles)
-  files.set('package.json', `${JSON.stringify(packageJson, null, 2)}\n`)
+  files.set('package.json', `${JSON.stringify(packageJSON, null, 2)}\n`)
   return files
 }
 
@@ -142,7 +142,7 @@ export function configureReactViteRelativeBase(files: Map<string, string | Uint8
   files.set('vite.config.ts', config.replace(marker, `defineConfig({\n  base: './',`))
 }
 
-export function stripReactMainCssImports(source: string): string {
+export function stripReactMainCSSImports(source: string): string {
   return source.replace(/^import ['"]\.\/[^'"]+\.css['"]\s*;?\r?\n/gm, '')
 }
 

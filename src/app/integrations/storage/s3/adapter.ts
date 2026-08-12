@@ -1,3 +1,5 @@
+import { extractFigThumbnailFromReader } from '@open-pencil/fig'
+
 import { isTauri } from '@/app/tauri/env'
 
 import {
@@ -23,13 +25,15 @@ import {
   S3HttpError,
   deleteObject,
   getObject,
+  getObjectRange,
   headObject,
+  headObjectSize,
   listObjects,
   putObject,
   type DownloadProgress,
   type UploadProgress
 } from './client'
-import { CloudCorsError, formatBrowserCorsHelpMessage, isLikelyCorsOrNetworkError } from './cors'
+import { CloudCORSError, formatBrowserCORSHelpMessage, isLikelyCORSOrNetworkError } from './cors'
 import { assertS3LegacyMigrationComplete } from './legacy-migration-state'
 import type { S3CompatibleConfig, S3ConnectionResult } from './types'
 
@@ -92,8 +96,8 @@ function parseMetadata(
   }
 }
 
-function connectionErrorMessage(error: unknown, isCors: boolean): string {
-  if (isCors) return formatBrowserCorsHelpMessage()
+function connectionErrorMessage(error: unknown, isCORS: boolean): string {
+  if (isCORS) return formatBrowserCORSHelpMessage()
   return error instanceof Error ? error.message : String(error)
 }
 
@@ -162,13 +166,13 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
         await listObjects(config, STORAGE_DOCUMENTS_PREFIX, options?.signal)
       } catch (error) {
         if (options?.signal?.aborted) throw error
-        const isCors =
-          error instanceof CloudCorsError || (!isTauri() && isLikelyCorsOrNetworkError(error))
+        const isCORS =
+          error instanceof CloudCORSError || (!isTauri() && isLikelyCORSOrNetworkError(error))
         return {
           ok: false,
-          message: connectionErrorMessage(error, isCors),
+          message: connectionErrorMessage(error, isCORS),
           corsApplied: false,
-          isCorsFailure: isCors,
+          isCORSFailure: isCORS,
           corsError: null
         }
       }
@@ -177,7 +181,7 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
         ok: true,
         message: 'Connected. Storage namespace is ready.',
         corsApplied: false,
-        isCorsFailure: false,
+        isCORSFailure: false,
         corsError: null
       }
     },
@@ -318,7 +322,18 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
 
     async getThumbnail(id, options) {
       const config = await resolveConfig(runtime, options?.expectedAuthority)
-      return getObject(config, documentThumbnailKey(id), undefined, options?.signal)
+      const figKey = documentFigKey(id)
+      const size = await headObjectSize(config, figKey, options?.signal)
+      if (size == null) return null
+      return extractFigThumbnailFromReader({
+        size,
+        async read(start: number, endExclusive: number) {
+          return (
+            (await getObjectRange(config, figKey, start, endExclusive, options?.signal)) ??
+            new Uint8Array()
+          )
+        }
+      })
     }
   }
 }

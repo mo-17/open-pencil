@@ -21,7 +21,7 @@ const {
   commitAccordionItems,
   commitBooleanField,
   commitField,
-  commitJson,
+  commitJSON,
   commitTabsItems
 } = useModulePropsPanelController()
 </script>
@@ -57,7 +57,7 @@ const {
       :option-label="optionLabel"
       @commit="commitField(field, $event)"
       @commit-boolean="commitBooleanField(field, $event)"
-      @commit-json="commitJson(field, $event)"
+      @commit-json="commitJSON(field, $event)"
       @commit-tabs="commitTabsItems(field, $event)"
       @commit-accordion="commitAccordionItems(field, $event)"
     />

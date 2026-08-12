@@ -133,7 +133,7 @@ export function applyFigmaNativeMotionTransaction(
 ): FigmaNativeMotionTransactionResult {
   const epsilon = 0.000001
   const ownershipLimit = 100_000
-  const expectedApiRevision = 130
+  const expectedAPIRevision = 130
   const expectedSchema = 'openpencil.figma-native-motion-applicator'
   const expectedOwnershipNamespace = 'openpencil'
   const expectedOwnershipKey = 'nativeMotionAdapterV1'
@@ -345,7 +345,7 @@ export function applyFigmaNativeMotionTransaction(
         'version'
       ]) ||
       value.version !== 1 ||
-      value.apiRevision !== expectedApiRevision ||
+      value.apiRevision !== expectedAPIRevision ||
       typeof value.sourceSignature !== 'string' ||
       value.sourceSignature.length === 0 ||
       value.sourceSignature.length > ownershipLimit ||
@@ -370,7 +370,7 @@ export function applyFigmaNativeMotionTransaction(
     }
     const ownership: FigmaNativeMotionOwnershipRecord = {
       version: 1,
-      apiRevision: expectedApiRevision,
+      apiRevision: expectedAPIRevision,
       sourceSignature: value.sourceSignature,
       durationSeconds: value.durationSeconds,
       operations
@@ -414,7 +414,7 @@ export function applyFigmaNativeMotionTransaction(
       ]) ||
       value.schema !== expectedSchema ||
       value.version !== 1 ||
-      value.apiRevision !== expectedApiRevision ||
+      value.apiRevision !== expectedAPIRevision ||
       (value.conflictPolicy !== 'replace-owned' && value.conflictPolicy !== 'replace-all') ||
       typeof value.allowTimelineGrowth !== 'boolean' ||
       value.ownershipNamespace !== expectedOwnershipNamespace ||
@@ -431,7 +431,7 @@ export function applyFigmaNativeMotionTransaction(
     return {
       schema: expectedSchema,
       version: 1,
-      apiRevision: expectedApiRevision,
+      apiRevision: expectedAPIRevision,
       conflictPolicy: value.conflictPolicy,
       allowTimelineGrowth: value.allowTimelineGrowth,
       ownershipNamespace: expectedOwnershipNamespace,

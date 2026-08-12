@@ -60,7 +60,7 @@ function resolveComponentRef(graph: SceneGraph, ref: string): string {
   return ref
 }
 
-function printJson(data: unknown): void {
+function printJSON(data: unknown): void {
   console.log(JSON.stringify(data, null, 2))
 }
 
@@ -165,7 +165,7 @@ async function finishConsumerMutation(
   }
   const output = await saveConsumerDocument(args, graph)
   if (args.json) {
-    printJson({ ...result, output })
+    printJSON({ ...result, output })
     return
   }
   console.log(ok(successMessage(result.component.key, output)))
@@ -240,7 +240,7 @@ const publish = defineCommand({
     const documentOutput = args['document-output'] ? resolve(args['document-output']) : undefined
     if (documentOutput) await saveDocument(documentFormat(documentOutput), graph, documentOutput)
     if (args.json) {
-      printJson({ ...result, documentOutput })
+      printJSON({ ...result, documentOutput })
       return
     }
 
@@ -308,7 +308,7 @@ const check = defineCommand({
     const manifest = await readManifest(requireFile(args.manifest))
     const checks = checkLibraryUpdates({ targetGraph, manifest })
     if (args.json) {
-      printJson({ checks })
+      printJSON({ checks })
       return
     }
     printChecks(checks)

@@ -16,7 +16,7 @@ import {
 } from '../lowcode/validation'
 import { buildReactModuleImports } from '../modules/registry'
 import { collectKitImports, kitImportLine } from '../ui-kit/registry'
-import type { UiKitAdapter } from '../ui-kit/types'
+import type { UIKitAdapter } from '../ui-kit/types'
 import { emitElement } from './element'
 
 /**
@@ -34,7 +34,7 @@ import { emitElement } from './element'
 export function buildComponentModule(
   def: ComponentDef,
   devMode: boolean,
-  uiKit: UiKitAdapter | null = null,
+  uiKit: UIKitAdapter | null = null,
   motionBoundary = false,
   rootEventsBoundary = false,
   motionScopeBoundary = false,
@@ -117,7 +117,7 @@ function buildComponentBody(
   def: ComponentDef,
   devMode: boolean,
   usesIntl: boolean,
-  uiKit: UiKitAdapter | null,
+  uiKit: UIKitAdapter | null,
   motionBoundary: boolean,
   rootEventsBoundary: boolean,
   motionScopeBoundary: boolean,
@@ -188,7 +188,7 @@ function buildVariantModule(
   def: ComponentDef,
   devMode: boolean,
   hookBlock: string,
-  uiKit: UiKitAdapter | null,
+  uiKit: UIKitAdapter | null,
   motionBoundary: boolean,
   rootEventsBoundary: boolean,
   motionScopeBoundary: boolean,
@@ -401,7 +401,7 @@ function buildComponentHookBlock(
 function variantBody(
   variant: VariantCase,
   devMode: boolean,
-  uiKit: UiKitAdapter | null,
+  uiKit: UIKitAdapter | null,
   motionBoundary: boolean,
   rootEventsBoundary: boolean,
   motionScopeBoundary: boolean,

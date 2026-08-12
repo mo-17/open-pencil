@@ -183,6 +183,6 @@ export function connectorOperationHelp(
     locale
   )
   const example = definition?.example ?? reviewedServiceExample
-  const exampleJson = example ? JSON.stringify(example, null, 2) : null
-  return Object.freeze({ ...flattened, exampleJson })
+  const exampleJSON = example ? JSON.stringify(example, null, 2) : null
+  return Object.freeze({ ...flattened, exampleJson: exampleJSON })
 }

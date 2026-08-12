@@ -301,12 +301,12 @@ describe('CORE_TOOLS render lowcode → compiler → Figma-compatible .fig', () 
     }
 
     const button = getNodeByName(graph, 'E2E button')
-    const buttonJsx = getTool('get_jsx').execute(figma, { id: button.id }) as { jsx: string }
-    expect(buttonJsx.jsx).toContain('<Button')
-    expect(buttonJsx.jsx).toContain('>Save changes</Button>')
-    expect(buttonJsx.jsx).not.toContain('events=')
-    expect(buttonJsx.jsx).not.toContain('renderCondition=')
-    expect(buttonJsx.jsx).not.toContain('stateOverrides=')
+    const buttonJSX = getTool('get_jsx').execute(figma, { id: button.id }) as { jsx: string }
+    expect(buttonJSX.jsx).toContain('<Button')
+    expect(buttonJSX.jsx).toContain('>Save changes</Button>')
+    expect(buttonJSX.jsx).not.toContain('events=')
+    expect(buttonJSX.jsx).not.toContain('renderCondition=')
+    expect(buttonJSX.jsx).not.toContain('stateOverrides=')
 
     const input = getNodeByName(graph, 'E2E input')
     graph.updateNode(input.id, {
@@ -316,11 +316,11 @@ describe('CORE_TOOLS render lowcode → compiler → Figma-compatible .fig', () 
         placeholderColor: '#8B8B93'
       }
     })
-    const inputJsx = getTool('get_jsx').execute(figma, { id: input.id }) as { jsx: string }
-    expect(inputJsx.jsx).toContain('textColor="#F7F4EE"')
-    expect(inputJsx.jsx).toContain('placeholderColor="#8B8B93"')
-    expect(inputJsx.jsx).toContain('interactiveProps={{"validation":{"required":true}}}')
-    expect(inputJsx.jsx).not.toContain('bindings=')
+    const inputJSX = getTool('get_jsx').execute(figma, { id: input.id }) as { jsx: string }
+    expect(inputJSX.jsx).toContain('textColor="#F7F4EE"')
+    expect(inputJSX.jsx).toContain('placeholderColor="#8B8B93"')
+    expect(inputJSX.jsx).toContain('interactiveProps={{"validation":{"required":true}}}')
+    expect(inputJSX.jsx).not.toContain('bindings=')
 
     const textarea = getNodeByName(graph, 'E2E textarea')
     graph.updateNode(textarea.id, {
@@ -330,9 +330,9 @@ describe('CORE_TOOLS render lowcode → compiler → Figma-compatible .fig', () 
         placeholderColor: '#6B7280'
       }
     })
-    const textareaJsx = getTool('get_jsx').execute(figma, { id: textarea.id }) as { jsx: string }
-    expect(textareaJsx.jsx).toContain('textColor="#111827"')
-    expect(textareaJsx.jsx).toContain('placeholderColor="#6B7280"')
+    const textareaJSX = getTool('get_jsx').execute(figma, { id: textarea.id }) as { jsx: string }
+    expect(textareaJSX.jsx).toContain('textColor="#111827"')
+    expect(textareaJSX.jsx).toContain('placeholderColor="#6B7280"')
 
     expect(graph.getChildren(getNodeByName(graph, 'E2E button').id)).toEqual([])
     expect(graph.getChildren(getNodeByName(graph, 'E2E form').id).map((node) => node.name)).toEqual(

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -99,7 +99,7 @@ function commitInteractiveProps(next: Props): void {
   if (!node) return
   editor.updateNodeWithUndo(
     node.id,
-    { interactiveProps: next as JsonObject },
+    { interactiveProps: next as JSONObject },
     isForm.value ? 'Update validation summary' : 'Update validation'
   )
 }

@@ -131,7 +131,7 @@ export type StorageRemoteRevision = Readonly<Record<string, string>>
 export type StorageDocument = StorageDocumentMetadata & {
   id: string
   remoteRevision?: StorageRemoteRevision | null
-  thumbnailUrl?: string | null
+  thumbnailURL?: string | null
   metadataAuthoritative?: boolean
 }
 

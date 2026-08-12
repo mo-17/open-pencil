@@ -30,14 +30,14 @@ export class SupabaseManagementError extends Error {
   }
 }
 
-export interface SupabaseOpenApiRequest {
+export interface SupabaseOpenAPIRequest {
   projectUrl: string
   schema?: string
   personalAccessToken: string
   signal?: AbortSignal
 }
 
-export interface SupabaseOpenApiResponse {
+export interface SupabaseOpenAPIResponse {
   projectRef: string
   schema: string
   openApi: unknown
@@ -60,10 +60,10 @@ function hasControlCharacters(value: string): boolean {
   return false
 }
 
-export function projectRefFromSupabaseUrl(rawUrl: string): string {
+export function projectRefFromSupabaseURL(rawURL: string): string {
   let url: URL
   try {
-    url = new URL(rawUrl.trim())
+    url = new URL(rawURL.trim())
   } catch {
     throw new SupabaseManagementError(
       'invalid-project-url',
@@ -104,7 +104,7 @@ export function normalizeSupabaseSchemaName(rawSchema: string | undefined): stri
   return schema
 }
 
-export function supabaseOpenApiUrl(projectRef: string, schema: string): string {
+export function supabaseOpenAPIURL(projectRef: string, schema: string): string {
   const url = new URL(
     `/v1/projects/${encodeURIComponent(projectRef)}/database/openapi`,
     SUPABASE_MANAGEMENT_API_ORIGIN
@@ -229,11 +229,11 @@ function defaultFetch(
     : globalThis.fetch(input, init)
 }
 
-export async function fetchSupabaseDatabaseOpenApi(
-  request: SupabaseOpenApiRequest,
+export async function fetchSupabaseDatabaseOpenAPI(
+  request: SupabaseOpenAPIRequest,
   options: SupabaseManagementClientOptions = {}
-): Promise<SupabaseOpenApiResponse> {
-  const projectRef = projectRefFromSupabaseUrl(request.projectUrl)
+): Promise<SupabaseOpenAPIResponse> {
+  const projectRef = projectRefFromSupabaseURL(request.projectUrl)
   const schema = normalizeSupabaseSchemaName(request.schema)
   const token = request.personalAccessToken.trim()
   if (!token) {
@@ -255,7 +255,7 @@ export async function fetchSupabaseDatabaseOpenApi(
   }, timeoutMs)
 
   try {
-    const input = supabaseOpenApiUrl(projectRef, schema)
+    const input = supabaseOpenAPIURL(projectRef, schema)
     const init: RequestInit = {
       method: 'GET',
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
@@ -268,9 +268,9 @@ export async function fetchSupabaseDatabaseOpenApi(
       : await defaultFetch(input, init, maxResponseBytes, timeoutMs)
     if (!response.ok) await throwForStatus(response)
     const text = await readBoundedResponseText(response, maxResponseBytes)
-    let openApi: unknown
+    let openAPI: unknown
     try {
-      openApi = JSON.parse(text) as unknown
+      openAPI = JSON.parse(text) as unknown
     } catch (error) {
       throw new SupabaseManagementError(
         'invalid-response',
@@ -279,7 +279,7 @@ export async function fetchSupabaseDatabaseOpenApi(
         { cause: error }
       )
     }
-    return { projectRef, schema, openApi }
+    return { projectRef, schema, openApi: openAPI }
   } catch (error) {
     if (error instanceof SupabaseManagementError) throw error
     if (controller.signal.aborted && controller.signal.reason === timeoutReason) {

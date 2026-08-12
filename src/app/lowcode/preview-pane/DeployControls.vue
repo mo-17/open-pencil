@@ -14,7 +14,7 @@ import Tip from '@/components/ui/Tip.vue'
 import {
   deployArtifactLabel,
   deployBuildOptionsSnapshot,
-  deployDashboardUrl,
+  deployDashboardURL,
   deployRollbackContract,
   deployRollbackContractLabel,
   deployRollbackContractTitle,
@@ -28,7 +28,7 @@ import {
   type DeployRuntimeConfig
 } from './deploy/history'
 import { deployScopeForStore } from './deploy/scope'
-import { useDeploy, type DeployProvider, type DeployUiKit } from './deploy/use'
+import { useDeploy, type DeployProvider, type DeployUIKit } from './deploy/use'
 
 /** Split the comma/space-separated locale field into clean target codes. */
 function parseLocales(raw: string): string[] {
@@ -53,11 +53,11 @@ const environment = ref<DeployEnvironment>('preview')
 const token = ref('')
 const site = ref('')
 // Phase 3 §15: code UI kit for the emitted project ('none' → plain Tailwind).
-const uiKit = ref<DeployUiKit>('none')
+const uiKit = ref<DeployUIKit>('none')
 // Phase 3 §9: enable the i18n runtime + a comma-separated target-locale list.
 const i18nEnabled = ref(false)
 const localesInput = ref('')
-const supabaseUrl = ref('')
+const supabaseURL = ref('')
 const supabaseAnonKey = ref('')
 const supabaseSchema = ref('')
 const runtimeError = ref<string | null>(null)
@@ -73,14 +73,14 @@ function currentDocumentScope(): string | undefined {
 
 function currentRuntimeConfig(): DeployRuntimeConfig | undefined {
   return deployRuntimeConfigSnapshot({
-    supabaseUrl: supabaseUrl.value,
+    supabaseUrl: supabaseURL.value,
     supabaseAnonKey: supabaseAnonKey.value,
     supabaseSchema: supabaseSchema.value
   })
 }
 
 function clearRuntimeOverrides(): void {
-  supabaseUrl.value = ''
+  supabaseURL.value = ''
   supabaseAnonKey.value = ''
   supabaseSchema.value = ''
 }
@@ -95,7 +95,7 @@ function resetTargetFields(): void {
 }
 
 function applyRuntimeConfig(config: DeployRuntimeConfig | undefined): void {
-  supabaseUrl.value = config?.supabaseUrl ?? ''
+  supabaseURL.value = config?.supabaseUrl ?? ''
   supabaseAnonKey.value = config?.supabaseAnonKey ?? ''
   supabaseSchema.value = config?.supabaseSchema ?? ''
 }
@@ -352,7 +352,7 @@ onBeforeUnmount(() => {
         </p>
         <label class="mb-1 mt-2 block text-[11px] text-muted">Supabase URL</label>
         <input
-          v-model="supabaseUrl"
+          v-model="supabaseURL"
           type="url"
           data-test-id="lowcode-deploy-supabase-url"
           placeholder="https://project.supabase.co"
@@ -593,12 +593,12 @@ onBeforeUnmount(() => {
                 redeploy this environment
               </button>
               <template v-else>redeploy this environment</template>
-              <template v-if="deployDashboardUrl(entry)">
+              <template v-if="deployDashboardURL(entry)">
                 or
                 <button
                   type="button"
                   class="text-accent underline"
-                  @click="openDeployed(deployDashboardUrl(entry)!)"
+                  @click="openDeployed(deployDashboardURL(entry)!)"
                 >
                   open dashboard
                 </button>

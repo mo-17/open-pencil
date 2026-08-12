@@ -9,7 +9,7 @@ import type { AIProviderID } from '@open-pencil/core/constants'
 import { collectAssistantFiles, MAX_ASSISTANT_INLINE_DATA_URL_CHARS } from '@/app/ai/chat/sources'
 import { createChatSessionManager, trimChatHistory } from '@/app/ai/chat/transports'
 import type { AIModelRuntime } from '@/app/ai/models'
-import * as automationMcp from '@/app/automation/mcp/spawn'
+import * as automationMCP from '@/app/automation/mcp/spawn'
 import type { getActiveEditorStore } from '@/app/editor/active-store'
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
@@ -17,7 +17,7 @@ import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 type EditorStore = ReturnType<typeof getActiveEditorStore>
 
 beforeEach(() => {
-  vi.spyOn(automationMcp, 'getAutomationAuthToken').mockResolvedValue('test-automation-token')
+  vi.spyOn(automationMCP, 'getAutomationAuthToken').mockResolvedValue('test-automation-token')
 })
 
 afterEach(async () => {
@@ -104,7 +104,7 @@ describe('chat history bounds', () => {
   })
 
   test('archives thumbnail metadata once and never keeps an assistant-only visual turn', () => {
-    const thumbnailUrl = `data:image/png;base64,${'A'.repeat(131_072)}`
+    const thumbnailURL = `data:image/png;base64,${'A'.repeat(131_072)}`
     const visualUser = {
       id: 'visual-user',
       role: 'user' as const,
@@ -114,7 +114,7 @@ describe('chat history bounds', () => {
           name: `reference-${index}.png`,
           mediaType: 'image/png',
           source: 'file',
-          thumbnail: { url: thumbnailUrl, sizeBytes: 96 * 1024, width: 320, height: 320 }
+          thumbnail: { url: thumbnailURL, sizeBytes: 96 * 1024, width: 320, height: 320 }
         }))
       },
       parts: Array.from({ length: 4 }, (_, index) => ({
@@ -143,12 +143,12 @@ describe('chat history bounds', () => {
       }
     })
     expect(
-      bounded[0]?.parts.every((part) => part.type !== 'file' || part.url === thumbnailUrl)
+      bounded[0]?.parts.every((part) => part.type !== 'file' || part.url === thumbnailURL)
     ).toBe(true)
   })
 
   test('keeps a four-thumbnail user turn when an assistant inline file exceeds its budget', () => {
-    const thumbnailUrl = `data:image/png;base64,${'A'.repeat(131_072)}`
+    const thumbnailURL = `data:image/png;base64,${'A'.repeat(131_072)}`
     const oversizedPayload = `data:image/png;base64,${'PAYLOAD'.repeat(
       Math.ceil(MAX_ASSISTANT_INLINE_DATA_URL_CHARS / 7)
     )}`
@@ -161,7 +161,7 @@ describe('chat history bounds', () => {
           name: `reference-${index}.png`,
           mediaType: 'image/png',
           source: 'file',
-          thumbnail: { url: thumbnailUrl, sizeBytes: 96 * 1024, width: 320, height: 320 }
+          thumbnail: { url: thumbnailURL, sizeBytes: 96 * 1024, width: 320, height: 320 }
         }))
       },
       parts: Array.from({ length: 4 }, (_, index) => ({
@@ -734,7 +734,7 @@ describe('ACP chat session manager', () => {
     const [firstChat, secondChat] = await Promise.all([first, second])
     expect(firstChat).toBe(secondChat)
     expect(spawnCount).toBe(1)
-    expect(automationMcp.getAutomationAuthToken).toHaveBeenCalledTimes(1)
+    expect(automationMCP.getAutomationAuthToken).toHaveBeenCalledTimes(1)
     expect(methods).toEqual(['initialize', 'session/new'])
     expect(manager.acpConfigOptions.value).toEqual(initialOptions)
 

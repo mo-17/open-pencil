@@ -49,16 +49,16 @@ describe('plugin parameter schema', () => {
   })
 
   test('rejects schema accessors and toJSON without executing them', () => {
-    let toJsonCalled = false
-    const withToJson = {
+    let toJSONCalled = false
+    const withToJSON = {
       type: 'string',
       toJSON() {
-        toJsonCalled = true
+        toJSONCalled = true
         return { type: 'string' }
       }
     }
-    expect(() => parsePluginParameterSchema(withToJson)).toThrow('only JSON values')
-    expect(toJsonCalled).toBe(false)
+    expect(() => parsePluginParameterSchema(withToJSON)).toThrow('only JSON values')
+    expect(toJSONCalled).toBe(false)
 
     let getterCalled = false
     const withGetter: Record<string, unknown> = {}

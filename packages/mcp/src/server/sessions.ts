@@ -15,7 +15,7 @@ type MCPSession = {
   lastSeen: number
 }
 
-type McpSessionManagerOptions = {
+type MCPSessionManagerOptions = {
   serverVersion: string
   registerTools: (server: McpServer) => void
   registerPluginTools?: (server: McpServer) => { dispose: () => void }
@@ -71,11 +71,11 @@ async function closeSession(session: MCPSession): Promise<void> {
   }
 }
 
-export function createMcpSessionManager({
+export function createMCPSessionManager({
   serverVersion,
   registerTools,
   registerPluginTools
-}: McpSessionManagerOptions) {
+}: MCPSessionManagerOptions) {
   const sessions = new Map<string, MCPSession>()
   const closing = new Set<Promise<void>>()
 

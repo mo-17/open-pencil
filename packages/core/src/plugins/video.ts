@@ -1,13 +1,13 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
-import { hasExactPluginKeys, parseCanonicalPublicHttpsUrl } from './parse-helpers'
+import { hasExactPluginKeys, parseCanonicalPublicHttpsURL } from './parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
 export const VIDEO_PLUGIN_ID = 'open-pencil.video'
@@ -18,7 +18,7 @@ export const VIDEO_MODULE_LIMITS = Object.freeze({ url: 2_048 })
 
 export type VideoFitV1 = 'contain' | 'cover' | 'fill'
 
-export interface VideoModuleConfigV1 extends JsonObject {
+export interface VideoModuleConfigV1 extends JSONObject {
   src: string
   poster: string
   controls: boolean
@@ -45,23 +45,23 @@ const FITS = new Set<VideoFitV1>(['contain', 'cover', 'fill'])
 
 type ParseResult = { ok: true; config: VideoModuleConfigV1 } | { ok: false; reason: string }
 
-export function isCanonicalPublicHttpsUrl(value: string): boolean {
+export function isCanonicalPublicHttpsURL(value: string): boolean {
   if (value === '') return false
   try {
-    parseCanonicalPublicHttpsUrl(value, 'video URL', VIDEO_MODULE_LIMITS.url)
+    parseCanonicalPublicHttpsURL(value, 'video URL', VIDEO_MODULE_LIMITS.url)
     return true
   } catch {
     return false
   }
 }
 
-function optionalUrl(value: unknown, path: string): string {
+function optionalURL(value: unknown, path: string): string {
   if (value === '') return ''
-  return parseCanonicalPublicHttpsUrl(value, path, VIDEO_MODULE_LIMITS.url)
+  return parseCanonicalPublicHttpsURL(value, path, VIDEO_MODULE_LIMITS.url)
 }
 
 function parseVideoConfig(value: unknown): ParseResult {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
     return {
       ok: false,
       reason:
@@ -71,8 +71,8 @@ function parseVideoConfig(value: unknown): ParseResult {
   let src: string
   let poster: string
   try {
-    src = optionalUrl(value.src, 'video config src')
-    poster = optionalUrl(value.poster, 'video config poster')
+    src = optionalURL(value.src, 'video config src')
+    poster = optionalURL(value.poster, 'video config poster')
   } catch (cause) {
     return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) }
   }
@@ -111,7 +111,7 @@ function parseVideoConfig(value: unknown): ParseResult {
 
 function mergeWithDefaults(config: unknown): unknown {
   if (config === undefined) return structuredClone(VIDEO_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
+  if (!isPlainJSONObject(config)) return config
   return { ...structuredClone(VIDEO_MODULE_DEFAULT_CONFIG), ...config }
 }
 

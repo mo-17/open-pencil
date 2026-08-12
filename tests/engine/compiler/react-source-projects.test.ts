@@ -16,7 +16,7 @@ import {
 } from '@open-pencil/compiler/adapters/react/next-project'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
-interface GeneratedPackageJson {
+interface GeneratedPackageJSON {
   name: string
   main?: string
   scripts: Record<string, string>
@@ -25,7 +25,7 @@ interface GeneratedPackageJson {
   customMetadata: { preserved: boolean }
 }
 
-type ElectronNavigationGuard = (value: string, entryUrl: URL) => boolean
+type ElectronNavigationGuard = (value: string, entryURL: URL) => boolean
 
 interface ElectronNavigationModule {
   exports: {
@@ -80,8 +80,8 @@ function fixture(): Map<string, string | Uint8Array> {
   ])
 }
 
-function packageJson(files: ReadonlyMap<string, string | Uint8Array>): GeneratedPackageJson {
-  return JSON.parse(String(files.get('package.json'))) as GeneratedPackageJson
+function packageJSON(files: ReadonlyMap<string, string | Uint8Array>): GeneratedPackageJSON {
+  return JSON.parse(String(files.get('package.json'))) as GeneratedPackageJSON
 }
 
 function expectPortablePaths(files: ReadonlyMap<string, string | Uint8Array>): void {
@@ -128,11 +128,11 @@ describe('React source project builders', () => {
 
   test('adapts React compiler output to a client-only Next.js App Router project', () => {
     const compiled = fixture()
-    const originalPackageJson = compiled.get('package.json')
+    const originalPackageJSON = compiled.get('package.json')
     const files = buildNextJsReactProjectFiles(compiled, 'Product Demo')
-    const generated = packageJson(files)
+    const generated = packageJSON(files)
 
-    expect(compiled.get('package.json')).toBe(originalPackageJson)
+    expect(compiled.get('package.json')).toBe(originalPackageJSON)
     expect(compiled.has('app/layout.tsx')).toBe(false)
     expect(generated).toMatchObject({
       name: 'compiled-app',
@@ -162,7 +162,7 @@ describe('React source project builders', () => {
 
   test('adds a source-only Capacitor scaffold and file-origin-safe routing', () => {
     const files = buildCapacitorReactProjectFiles(fixture(), '7-demo-app', 'Mobile Demo')
-    const generated = packageJson(files)
+    const generated = packageJSON(files)
 
     expect(generated.dependencies).toMatchObject({
       '@capacitor/android': CAPACITOR_VERSION,
@@ -185,7 +185,7 @@ describe('React source project builders', () => {
 
   test('adds a sandboxed Electron main process without native binaries', () => {
     const files = buildElectronReactProjectFiles(fixture(), 'Desktop Demo')
-    const generated = packageJson(files)
+    const generated = packageJSON(files)
     const main = String(files.get('electron/main.cjs'))
     const navigation = String(files.get('electron/navigation.cjs'))
 
@@ -210,12 +210,12 @@ describe('React source project builders', () => {
     const { isLocalEntryNavigation } = navigationModule.exports
     expect(isLocalEntryNavigation).toBeFunction()
     if (!isLocalEntryNavigation) throw new TypeError('Generated navigation guard was not exported')
-    const entryUrl = new URL('file:///Applications/OpenPencil/dist/index.html')
-    expect(isLocalEntryNavigation(`${entryUrl.href}#/page`, entryUrl)).toBe(true)
+    const entryURL = new URL('file:///Applications/OpenPencil/dist/index.html')
+    expect(isLocalEntryNavigation(`${entryURL.href}#/page`, entryURL)).toBe(true)
     expect(
-      isLocalEntryNavigation('file://evil-host/Applications/OpenPencil/dist/index.html', entryUrl)
+      isLocalEntryNavigation('file://evil-host/Applications/OpenPencil/dist/index.html', entryURL)
     ).toBe(false)
-    expect(isLocalEntryNavigation('https://example.com/', entryUrl)).toBe(false)
+    expect(isLocalEntryNavigation('https://example.com/', entryURL)).toBe(false)
     expect(
       [...files.values()].some((value) => value instanceof Uint8Array && value.length > 3)
     ).toBe(false)

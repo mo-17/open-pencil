@@ -15,7 +15,7 @@ export function motionToken(motion: IRMotion): string {
   return token
 }
 
-export function easingCss(easing: IRMotionEasing): string {
+export function easingCSS(easing: IRMotionEasing): string {
   if (typeof easing === 'string') return easing
   if (easing.type === 'cubicBezier') {
     return `cubic-bezier(${easing.x1}, ${easing.y1}, ${easing.x2}, ${easing.y2})`
@@ -26,13 +26,13 @@ export function easingCss(easing: IRMotionEasing): string {
 }
 
 /** CSS animation identifiers shared by the stylesheet and WAAPI runtime. */
-export function motionCssAnimationName(token: string, index: number, reduced = false): string {
+export function motionCSSAnimationName(token: string, index: number, reduced = false): string {
   return `op-${token}-${index}${reduced ? '-reduced' : ''}`
 }
 
 /** Per-track custom property used by the runtime to suppress one declarative
  * animation without disabling sibling tracks on the same element. */
-export function motionCssVariableName(token: string, index: number): string {
+export function motionCSSVariableName(token: string, index: number): string {
   return `--op-${token}-${index}-name`
 }
 

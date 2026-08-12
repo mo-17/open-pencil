@@ -210,7 +210,7 @@ function readUint32LE(bytes: Uint8Array, offset: number): number {
   )
 }
 
-function parsePngDimensions(bytes: Uint8Array): Dimensions | undefined {
+function parsePNGDimensions(bytes: Uint8Array): Dimensions | undefined {
   if (
     bytes.byteLength < 24 ||
     readUint32BE(bytes, 8) !== 13 ||
@@ -313,7 +313,7 @@ export function readVisualAttachmentDimensions(
   bytes: Uint8Array,
   mediaType: VisualAttachmentMediaType
 ): Dimensions | undefined {
-  if (mediaType === 'image/png') return parsePngDimensions(bytes)
+  if (mediaType === 'image/png') return parsePNGDimensions(bytes)
   if (mediaType === 'image/jpeg') return parseJpegDimensions(bytes)
   return parseWebpDimensions(bytes)
 }
@@ -504,7 +504,7 @@ function safeAttachmentName(
   return `${stem || 'image'}.${extension}`
 }
 
-function toDataUrl(bytes: Uint8Array, mediaType: VisualAttachmentMediaType): string {
+function toDataURL(bytes: Uint8Array, mediaType: VisualAttachmentMediaType): string {
   return `data:${mediaType};base64,${encodeBase64(bytes)}`
 }
 
@@ -780,7 +780,7 @@ export async function normalizeVisualChatAttachment(
       id: input.id ?? (options.createId ?? createAttachmentId)(),
       name: safeAttachmentName(input.name, mediaType),
       mediaType,
-      url: toDataUrl(output.bytes, mediaType),
+      url: toDataURL(output.bytes, mediaType),
       sizeBytes: output.bytes.byteLength,
       width: output.width,
       height: output.height,
@@ -789,7 +789,7 @@ export async function normalizeVisualChatAttachment(
       sourceWidth: sourceDimensions.width,
       sourceHeight: sourceDimensions.height,
       thumbnail: {
-        url: toDataUrl(thumbnail.bytes, mediaType),
+        url: toDataURL(thumbnail.bytes, mediaType),
         sizeBytes: thumbnail.bytes.byteLength,
         width: thumbnail.width,
         height: thumbnail.height

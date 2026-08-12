@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test'
 import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { SceneGraph } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
@@ -1220,11 +1220,11 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
     expect(result.ok).toBe(true)
     expect(editor.undo.canUndo).toBe(true)
     expect(editor.undo.undoLabel).toBe('AI: update_lowcode_node')
-    const after = graph.getNode(rect.id) as JsonObject
+    const after = graph.getNode(rect.id) as JSONObject
     expect((after.interactiveProps as { text?: string })?.text).toBe('Submit')
     const label = editor.undo.undo()
     expect(label).toBe('AI: update_lowcode_node')
-    const reverted = graph.getNode(rect.id) as JsonObject
+    const reverted = graph.getNode(rect.id) as JSONObject
     expect(reverted.interactiveProps).toBeUndefined()
     expect(reverted.renderCondition).toBeUndefined()
   })
@@ -1238,7 +1238,7 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
       patch_json: JSON.stringify({ interactiveProps: { text: 'Submit' } })
     }) as Result<{ id: string; updated: string[] }>
     expect(result.ok).toBe(true)
-    const after = graph.getNode(rect.id) as JsonObject
+    const after = graph.getNode(rect.id) as JSONObject
     expect((after.interactiveProps as { text?: string })?.text).toBe('Submit')
     expect(editor.undo.canUndo).toBe(false)
   })

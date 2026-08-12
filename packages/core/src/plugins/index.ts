@@ -32,12 +32,12 @@ export {
   HTML_MODULE_TYPE,
   HTML_PLUGIN,
   HTML_PLUGIN_ID,
-  buildHtmlSandboxDocument,
-  createHtmlModuleFrameOverrides,
-  createHtmlModuleInstance,
-  resolveHtmlModule,
-  type HtmlModuleConfig,
-  type HtmlModuleConfigV1
+  buildHTMLSandboxDocument,
+  createHTMLModuleFrameOverrides,
+  createHTMLModuleInstance,
+  resolveHTMLModule,
+  type HTMLModuleConfig,
+  type HTMLModuleConfigV1
 } from './html'
 export {
   cloneModuleInstance,
@@ -149,7 +149,7 @@ export {
   VIDEO_PLUGIN_ID,
   createVideoModuleFrameOverrides,
   createVideoModuleInstance,
-  isCanonicalPublicHttpsUrl,
+  isCanonicalPublicHttpsURL,
   resolveVideoModule,
   type VideoFitV1,
   type VideoModuleConfig,

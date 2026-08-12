@@ -27,8 +27,8 @@ function plainMarkdownLine(value: string): MarkdownPreviewLine | null {
   const trimmed = value.trim()
   if (trimmed === '') return null
   const heading = /^#{1,6}\s/.test(trimmed)
-  const withoutHtml = trimmed.replace(/<[^>]{0,256}>/g, '')
-  const text = withoutHtml
+  const withoutHTML = trimmed.replace(/<[^>]{0,256}>/g, '')
+  const text = withoutHTML
     .replace(/^#{1,6}\s+/, '')
     .replace(/^>\s?/, '')
     .replace(/^[-*+]\s+/, '• ')

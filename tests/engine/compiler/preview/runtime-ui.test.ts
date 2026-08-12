@@ -43,7 +43,7 @@ function addRuntimeThemeVariables(graph: SceneGraph): void {
   })
 }
 
-function buildRuntimeUiSmokeFiles(): Map<string, string | Uint8Array> {
+function buildRuntimeUISmokeFiles(): Map<string, string | Uint8Array> {
   const graph = makeSceneGraph()
   const pageId = firstPageId(graph)
   addRuntimeThemeVariables(graph)
@@ -171,7 +171,7 @@ describe('preview browser runtime UI smoke (Phase 5 §5)', () => {
   }, hookTimeoutMs)
 
   test('renders theme switch, toast, and confirm token surfaces', async () => {
-    const currentPage = await loadRuntimeUi(server, page)
+    const currentPage = await loadRuntimeUI(server, page)
 
     await currentPage.getByRole('button', { name: 'Dark' }).click()
     expect(await currentPage.locator('html').getAttribute('data-theme')).toBe('dark')
@@ -190,7 +190,7 @@ describe('preview browser runtime UI smoke (Phase 5 §5)', () => {
   }, 30_000)
 
   test('renders validation invalid state and overlay backdrop tokens', async () => {
-    const currentPage = await loadRuntimeUi(server, page)
+    const currentPage = await loadRuntimeUI(server, page)
 
     const email = currentPage.getByPlaceholder('Email')
     await email.focus()
@@ -209,7 +209,7 @@ describe('preview browser runtime UI smoke (Phase 5 §5)', () => {
   }, 30_000)
 
   test('renders switch and radio semantic control tokens', async () => {
-    const currentPage = await loadRuntimeUi(server, page)
+    const currentPage = await loadRuntimeUI(server, page)
 
     await currentPage.getByRole('button', { name: 'Dark' }).click()
     const switchInput = currentPage.getByRole('switch')
@@ -219,9 +219,9 @@ describe('preview browser runtime UI smoke (Phase 5 §5)', () => {
   }, 30_000)
 })
 
-async function loadRuntimeUi(server: PreviewServer | null, page: Page | null): Promise<Page> {
+async function loadRuntimeUI(server: PreviewServer | null, page: Page | null): Promise<Page> {
   if (!server || !page) throw new Error('missing preview test runtime')
-  server.updateFiles(buildRuntimeUiSmokeFiles())
+  server.updateFiles(buildRuntimeUISmokeFiles())
   await page.goto(server.url, { waitUntil: 'networkidle' })
   await page.getByRole('button', { name: 'Toast' }).waitFor()
   await page.waitForTimeout(300)

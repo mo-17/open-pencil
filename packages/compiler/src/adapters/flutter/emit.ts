@@ -547,7 +547,7 @@ function emitImage(node: IRElement, style: FlutterStyle, environment: NodeEnviro
     })
     return 'const SizedBox.shrink()'
   }
-  if (source && !safeRemoteImageUrl(source)) {
+  if (source && !safeRemoteImageURL(source)) {
     environment.warn({
       code: 'flutter-image-url-scheme-unsupported',
       message: `Flutter blocked remote image URL ${JSON.stringify(source)}; only credential-free HTTPS URLs with a host are allowed`,
@@ -1030,7 +1030,7 @@ function unsupportedControlLabel(node: IRElement): string {
   return type ? `${node.tag}:${type}` : node.tag
 }
 
-function safeRemoteImageUrl(value: string): boolean {
+function safeRemoteImageURL(value: string): boolean {
   try {
     const url = new URL(value)
     return (

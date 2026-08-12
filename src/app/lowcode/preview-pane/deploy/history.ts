@@ -8,7 +8,7 @@ import { readLocalStorageText, writeLocalStorageText } from '@/app/cache'
 
 export type { DeployEnvironment }
 export type DeployHistoryProvider = 'netlify' | 'vercel' | 'cloudflare'
-export type DeployHistoryUiKit = 'none' | 'shadcn'
+export type DeployHistoryUIKit = 'none' | 'shadcn'
 
 export interface DeployHistoryEntry {
   id: string
@@ -19,7 +19,7 @@ export interface DeployHistoryEntry {
   fileCount: number
   createdAt: string
   site?: string
-  uiKit?: DeployHistoryUiKit
+  uiKit?: DeployHistoryUIKit
   i18nEnabled?: boolean
   locales?: string[]
   buildOptions?: DeployBuildOptions
@@ -29,7 +29,7 @@ export interface DeployHistoryEntry {
 }
 
 export interface DeployBuildOptions {
-  uiKit: DeployHistoryUiKit
+  uiKit: DeployHistoryUIKit
   i18nEnabled: boolean
   locales: string[]
 }
@@ -55,7 +55,7 @@ export interface DeployRollbackDraft {
   provider: DeployHistoryProvider
   environment: DeployEnvironment
   site?: string
-  uiKit: DeployHistoryUiKit
+  uiKit: DeployHistoryUIKit
   i18nEnabled: boolean
   locales: string[]
   runtimeConfig?: DeployRuntimeConfig
@@ -371,10 +371,10 @@ export function deployRuntimeConfigSnapshot(
   return validated.value
 }
 
-function validateRuntimeSupabaseUrl(supabaseUrl: string | undefined): string | undefined {
-  if (!supabaseUrl) return undefined
+function validateRuntimeSupabaseURL(supabaseURL: string | undefined): string | undefined {
+  if (!supabaseURL) return undefined
   try {
-    const parsed = new URL(supabaseUrl)
+    const parsed = new URL(supabaseURL)
     if (
       (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') ||
       parsed.username ||
@@ -392,17 +392,17 @@ export function validateDeployRuntimeConfig(
   config: DeployRuntimeConfig | undefined
 ): DeployRuntimeConfigValidation {
   if (!config) return { ok: true, value: undefined }
-  const supabaseUrl = config.supabaseUrl?.trim()
+  const supabaseURL = config.supabaseUrl?.trim()
   const supabaseAnonKey = config.supabaseAnonKey?.trim()
   const supabaseSchema = config.supabaseSchema?.trim()
-  if (!supabaseUrl && !supabaseAnonKey && !supabaseSchema) return { ok: true, value: undefined }
-  if (!!supabaseUrl !== !!supabaseAnonKey) {
+  if (!supabaseURL && !supabaseAnonKey && !supabaseSchema) return { ok: true, value: undefined }
+  if (!!supabaseURL !== !!supabaseAnonKey) {
     return {
       ok: false,
       reason: 'Supabase URL and publishable/anon key must be overridden together.'
     }
   }
-  const urlError = validateRuntimeSupabaseUrl(supabaseUrl)
+  const urlError = validateRuntimeSupabaseURL(supabaseURL)
   if (urlError) return { ok: false, reason: urlError }
   if (supabaseAnonKey && detectSupabaseSecretKey(supabaseAnonKey)) {
     return {
@@ -417,7 +417,7 @@ export function validateDeployRuntimeConfig(
     }
   }
   const value: DeployRuntimeConfig = {
-    ...(supabaseUrl ? { supabaseUrl } : {}),
+    ...(supabaseURL ? { supabaseUrl: supabaseURL } : {}),
     ...(supabaseAnonKey ? { supabaseAnonKey } : {}),
     ...(supabaseSchema ? { supabaseSchema } : {})
   }
@@ -425,7 +425,7 @@ export function validateDeployRuntimeConfig(
 }
 
 export function deployBuildOptionsSnapshot(entry: {
-  uiKit?: DeployHistoryUiKit
+  uiKit?: DeployHistoryUIKit
   i18nEnabled?: boolean
   locales?: readonly string[]
   buildOptions?: DeployBuildOptions
@@ -442,7 +442,7 @@ export function deployArtifactLabel(entry: {
   environment: DeployEnvironment
   site?: string
   buildOptions?: DeployBuildOptions
-  uiKit?: DeployHistoryUiKit
+  uiKit?: DeployHistoryUIKit
   i18nEnabled?: boolean
   locales?: readonly string[]
 }): string {
@@ -476,7 +476,7 @@ export function deployRollbackDraft(entry: DeployHistoryEntry): DeployRollbackDr
   }
 }
 
-export function deployDashboardUrl(
+export function deployDashboardURL(
   entry: Pick<DeployHistoryEntry, 'provider' | 'deployId' | 'site'>
 ): string | null {
   if (entry.provider === 'netlify') {
@@ -539,7 +539,7 @@ export function parseVercelProjectTarget(site?: string): VercelProjectTargetMeta
 export function deployRollbackContract(
   entry: Pick<DeployHistoryEntry, 'provider' | 'deployId' | 'site'>
 ): DeployRollbackContract {
-  const dashboardUrl = deployDashboardUrl(entry)
+  const dashboardURL = deployDashboardURL(entry)
   if (entry.provider === 'netlify') {
     const hasTarget = typeof entry.site === 'string' && entry.site.trim() !== ''
     return {
@@ -549,7 +549,7 @@ export function deployRollbackContract(
       requiredFields: ['token', 'site', 'deployId'],
       missingFields: hasTarget ? [] : ['site'],
       reason: hasTarget ? undefined : 'Netlify restore needs a site id or site slug.',
-      dashboardUrl
+      dashboardUrl: dashboardURL
     }
   }
   if (entry.provider === 'cloudflare') {
@@ -562,7 +562,7 @@ export function deployRollbackContract(
       requiredFields: ['token', 'accountId', 'projectName', 'deployId'],
       missingFields: target.missingFields,
       reason: hasTarget ? undefined : target.reason,
-      dashboardUrl
+      dashboardUrl: dashboardURL
     }
   }
   if (entry.provider === 'vercel') {
@@ -575,7 +575,7 @@ export function deployRollbackContract(
       requiredFields: ['token', 'deployId', 'projectName', 'productionAlias', 'projectOwner'],
       missingFields,
       reason: `Vercel rollback needs ${missingFields.join(', ')} metadata not stored locally yet.`,
-      dashboardUrl
+      dashboardUrl: dashboardURL
     }
   }
   return {
@@ -585,7 +585,7 @@ export function deployRollbackContract(
     requiredFields: [],
     missingFields: [],
     reason: 'No rollback contract is defined for this provider.',
-    dashboardUrl
+    dashboardUrl: dashboardURL
   }
 }
 
@@ -628,11 +628,11 @@ export async function restoreNetlifyDeploy(
   const text = await res.text()
   const deploy = text ? objectFields(JSON.parse(text)) : null
   const restoredId = typeof deploy?.id === 'string' ? deploy.id : deployId
-  const url = restoreDeployUrl(deploy)
+  const url = restoreDeployURL(deploy)
   return { provider: 'netlify', deployId: restoredId, url }
 }
 
-function restoreDeployUrl(deploy: UnknownFields | null): string | undefined {
+function restoreDeployURL(deploy: UnknownFields | null): string | undefined {
   if (typeof deploy?.ssl_url === 'string') return deploy.ssl_url
   if (typeof deploy?.url === 'string') return deploy.url
   return undefined

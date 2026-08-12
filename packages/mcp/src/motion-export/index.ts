@@ -4,4 +4,4 @@ export {
   type FfmpegMotionEncoderDiscoveryOptions
 } from './ffmpeg'
 export { publishDirectoryNoClobber, publishFileNoClobber } from './no-clobber'
-export { encodeMotionPngSequenceToolResult } from './tool-result'
+export { encodeMotionPNGSequenceToolResult } from './tool-result'

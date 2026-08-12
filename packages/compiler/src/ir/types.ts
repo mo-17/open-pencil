@@ -663,7 +663,7 @@ export type IREventHandler =
   | IRSetStateHandler
   | IRNavigateHandler
   | IRSetVariableHandler
-  | IRApiCallHandler
+  | IRAPICallHandler
   | IRSupabaseQueryHandler
   | IRSupabaseMutationHandler
   | IRSupabaseAuthHandler
@@ -739,7 +739,7 @@ export interface IRSetVariableHandler {
  *  a Document State via `setDocState(name, data)`. The adapter emits an
  *  async fetch wrapped in try/catch. Resolved against `IRTree.docStates`;
  *  unknown `docStateName` / empty `url` is dropped with a warning. */
-export interface IRApiCallHandler {
+export interface IRAPICallHandler {
   kind: 'apiCall'
   method: 'GET' | 'POST'
   /** Phase 2 §4: parsed request-URL template (a `kind:'template'` ExprAst).

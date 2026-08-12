@@ -60,19 +60,19 @@ export {
   type AppPluginModuleCompatibilityStatus
 } from './modules'
 export {
-  listAppPluginMcpTools,
+  listAppPluginMCPTools,
   PLUGIN_MCP_LIMITS,
-  resolveAppPluginMcpTool,
-  type AppPluginMcpStore,
-  type AppPluginMcpToolCatalog,
-  type AppPluginMcpToolDescriptor,
-  type AppPluginMcpToolKind,
-  type ResolvedAppPluginMcpTool
+  resolveAppPluginMCPTool,
+  type AppPluginMCPStore,
+  type AppPluginMCPToolCatalog,
+  type AppPluginMCPToolDescriptor,
+  type AppPluginMCPToolKind,
+  type ResolvedAppPluginMCPTool
 } from './mcp'
 export {
   inspectPluginCommandCompatibility,
   inspectPluginExporterCompatibility,
-  inspectPluginExporterMcpExposure,
+  inspectPluginExporterMCPExposure,
   inspectPluginHostContributionsCompatibility,
   inspectPluginStorageProviderCompatibility,
   resolveTrustedPluginExporterExecutor,

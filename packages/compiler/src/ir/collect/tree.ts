@@ -1,10 +1,10 @@
 import { BUILTIN_COMPILER_MODULE_REGISTRY } from '#compiler/modules/builtin'
 import { collectCompilerModule } from '#compiler/modules/collect'
-import { designTokenCssVariableName } from '#compiler/theme-css'
+import { designTokenCSSVariableName } from '#compiler/theme-css'
 import lucideIcons from '@iconify-json/lucide/icons.json' with { type: 'json' }
 
 import { colorToHex8 } from '@open-pencil/core/color'
-import { gradientFillCss } from '@open-pencil/core/io/formats/jsx'
+import { gradientFillCSS } from '@open-pencil/core/io/formats/jsx'
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
   type DatePickerIssueCode,
@@ -395,22 +395,22 @@ function compactAnalyticsConsentCopy(
   if (!value) return undefined
   const bannerText = value.bannerText?.trim()
   const analyticsDescription = value.analyticsDescription?.trim()
-  const rawPrivacyPolicyUrl = value.privacyPolicyUrl?.trim()
-  const privacyPolicyUrl =
-    rawPrivacyPolicyUrl && isSafeAnalyticsPolicyUrl(rawPrivacyPolicyUrl)
-      ? rawPrivacyPolicyUrl
+  const rawPrivacyPolicyURL = value.privacyPolicyUrl?.trim()
+  const privacyPolicyURL =
+    rawPrivacyPolicyURL && isSafeAnalyticsPolicyURL(rawPrivacyPolicyURL)
+      ? rawPrivacyPolicyURL
       : undefined
   const privacyPolicyLabel = value.privacyPolicyLabel?.trim()
   const copy = {
     ...(bannerText ? { bannerText } : {}),
     ...(analyticsDescription ? { analyticsDescription } : {}),
-    ...(privacyPolicyUrl ? { privacyPolicyUrl } : {}),
+    ...(privacyPolicyURL ? { privacyPolicyUrl: privacyPolicyURL } : {}),
     ...(privacyPolicyLabel ? { privacyPolicyLabel } : {})
   }
   return Object.keys(copy).length > 0 ? copy : undefined
 }
 
-function isSafeAnalyticsPolicyUrl(value: string): boolean {
+function isSafeAnalyticsPolicyURL(value: string): boolean {
   if (value.startsWith('/')) return !value.startsWith('//')
   try {
     const url = new URL(value)
@@ -1227,7 +1227,7 @@ function subtreeRequiresRuntimeElement(node: SceneNode, graph: SceneGraph): bool
  * dimensions). `preserveAspectRatio="none"` makes responsive flex/grid or
  * animated dimensions scale intrinsic geometry instead of letterboxing it.
  */
-function buildVectorSvg(node: SceneNode, graph: SceneGraph): string | undefined {
+function buildVectorSVG(node: SceneNode, graph: SceneGraph): string | undefined {
   const animatedEffects = animatedEffectIndices(node)
   const svg = renderNodesToSVG(graph, '', [node.id], {
     xmlDeclaration: false,
@@ -1288,14 +1288,14 @@ function stripPaintClasses(className: string): string {
  * Registered module hosts preserve their box boundary because their adapter
  * owns the background layer while authored vector children remain DOM overlays.
  */
-function resolveVectorSvg(
+function resolveVectorSVG(
   node: SceneNode,
   graph: SceneGraph,
   className: string,
   preserveContainer = false
 ): { className: string; extra: { rawHtml?: string } } {
   if (preserveContainer || !isVectorIcon(node, graph)) return { className, extra: {} }
-  const svg = buildVectorSvg(node, graph)
+  const svg = buildVectorSVG(node, graph)
   if (svg === undefined) return { className, extra: {} }
   return { className: stripPaintClasses(className), extra: { rawHtml: svg } }
 }
@@ -1502,10 +1502,10 @@ function collectElementChildren(
   node: SceneNode,
   ctx: WalkCtx,
   children: IRNode[],
-  rawHtml: string | undefined,
+  rawHTML: string | undefined,
   module: IRModule | null
 ): void {
-  if (rawHtml !== undefined && !module) return
+  if (rawHTML !== undefined && !module) return
   collectChildNodes(node, ctx, children)
 }
 
@@ -1557,7 +1557,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // is rendered whole by renderNodesToSVG). The branching lives in
   // resolveVectorSvg / collectChildNodes so nodeToIR stays under the complexity
   // gate.
-  const vector = resolveVectorSvg(node, ctx.graph, className, module !== null)
+  const vector = resolveVectorSVG(node, ctx.graph, className, module !== null)
   className = vector.className
   collectElementChildren(node, ctx, children, vector.extra.rawHtml, module)
 
@@ -1756,7 +1756,7 @@ function backgroundFillLayerWithTokens(
 ): BackgroundLayer | undefined {
   if (fill.type === 'SOLID') return solidFillLayerWithColor(cssColorForFill(node, ctx, index, fill))
   if (fill.type === 'IMAGE') return imageFillLayer(fill, node, ctx)
-  const css = gradientFillCssWithTokens(fill, index, node, ctx)
+  const css = gradientFillCSSWithTokens(fill, index, node, ctx)
   if (css === null) return undefined
   return { image: css, size: 'auto', position: '0%_0%', repeat: 'no-repeat' }
 }
@@ -1777,24 +1777,24 @@ function cssColorForFill(node: SceneNode, ctx: WalkCtx, index: number, fill: Fil
   )
 }
 
-function gradientFillCssWithTokens(
+function gradientFillCSSWithTokens(
   fill: Fill,
   index: number,
   node: SceneNode,
   ctx: WalkCtx
 ): string | null {
-  let css = gradientFillCss(fill, node.width, node.height)
+  let css = gradientFillCSS(fill, node.width, node.height)
   if (css === null) return null
-  const fillCssVar = cssVarForBinding(node, ctx, `fills/${index}/color`)
+  const fillCSSVar = cssVarForBinding(node, ctx, `fills/${index}/color`)
   if (!fill.gradientStops) return css
   for (let stopIndex = 0; stopIndex < fill.gradientStops.length; stopIndex++) {
     const stop = fill.gradientStops[stopIndex]
-    const stopCssVar = cssVarForBinding(
+    const stopCSSVar = cssVarForBinding(
       node,
       ctx,
       `fills/${index}/gradientStops/${stopIndex}/color`
     )
-    const cssVar = stopCssVar ?? fillCssVar
+    const cssVar = stopCSSVar ?? fillCSSVar
     if (cssVar) {
       css = replaceFirst(
         css,
@@ -1972,7 +1972,7 @@ function cssVarForBinding(node: SceneNode, ctx: WalkCtx, path: string): string |
     })
     return undefined
   }
-  const cssVar = designTokenCssVariableName(ctx.graph, variableId)
+  const cssVar = designTokenCSSVariableName(ctx.graph, variableId)
   if (cssVar) return cssVar
   ctx.warnings.push({
     code: 'design-token-binding-missing',
@@ -2144,7 +2144,7 @@ function resolveElementSemantics(
   }
 }
 
-interface UiKitPrimitiveConfig {
+interface UIKitPrimitiveConfig {
   primitive?: unknown
   kind?: unknown
   component?: unknown
@@ -2160,7 +2160,7 @@ interface UiKitPrimitiveConfig {
   items?: unknown
 }
 
-interface UiKitValueBindingConfig {
+interface UIKitValueBindingConfig {
   kind?: unknown
   stateId?: unknown
   docStateName?: unknown
@@ -2186,7 +2186,7 @@ function resolveDisplayPrimitive(
 ):
   | { kind: NonNullable<IRElement['displayKind']>; config: NonNullable<IRElement['display']> }
   | undefined {
-  const ip = node.interactiveProps as { uiKit?: UiKitPrimitiveConfig } | undefined
+  const ip = node.interactiveProps as { uiKit?: UIKitPrimitiveConfig } | undefined
   const raw = ip?.uiKit
   if (!raw || typeof raw !== 'object') return undefined
   const kind = displayPrimitiveKind(raw.primitive ?? raw.kind ?? raw.component)
@@ -2246,7 +2246,7 @@ function resolveDisplayValueBinding(
     })
     return undefined
   }
-  const binding = raw as UiKitValueBindingConfig
+  const binding = raw as UIKitValueBindingConfig
   const targetType = kind === 'accordion' && type === 'multiple' ? 'array' : 'string'
   if (binding.kind === 'docState') {
     const name = typeof binding.docStateName === 'string' ? binding.docStateName : ''
@@ -2677,7 +2677,7 @@ function warnUnsupportedVisualSemantics(node: SceneNode, ctx: WalkCtx): void {
   if (
     node.blendMode !== 'PASS_THROUGH' &&
     node.blendMode !== 'NORMAL' &&
-    !isCssBlendMode(node.blendMode)
+    !isCSSBlendMode(node.blendMode)
   ) {
     ctx.warnings.push({
       code: 'visual-blend-mode-unsupported',
@@ -2692,7 +2692,7 @@ function warnUnsupportedVisualSemantics(node: SceneNode, ctx: WalkCtx): void {
   }
 }
 
-function isCssBlendMode(mode: string): boolean {
+function isCSSBlendMode(mode: string): boolean {
   return (
     mode === 'DARKEN' ||
     mode === 'MULTIPLY' ||
@@ -2746,7 +2746,7 @@ function backgroundFillLayer(
 ): BackgroundLayer | undefined {
   if (fill.type === 'SOLID') return solidFillLayer(fill)
   if (fill.type === 'IMAGE') return imageFillLayer(fill, node, ctx)
-  const css = gradientFillCss(fill, node.width, node.height)
+  const css = gradientFillCSS(fill, node.width, node.height)
   if (css === null) return undefined
   return { image: css, size: 'auto', position: '0%_0%', repeat: 'no-repeat' }
 }
@@ -2764,7 +2764,7 @@ function solidFillLayer(fill: Fill): BackgroundLayer {
 function imageFillLayer(fill: Fill, node: SceneNode, ctx: WalkCtx): BackgroundLayer | undefined {
   const asset = registerImageFillAsset(fill, node, ctx)
   if (!asset) return undefined
-  const image = `url(${assetCssUrl(asset.path)})`
+  const image = `url(${assetCSSURL(asset.path)})`
   if (fill.imageScaleMode === 'FIT') {
     return { image, size: 'contain', position: 'center', repeat: 'no-repeat' }
   }
@@ -2781,7 +2781,7 @@ function cropImageTransformLayer(
   image: string,
   transform: NonNullable<Fill['imageTransform']>
 ): BackgroundLayer {
-  if (!isCssRepresentableImageTransform(transform)) {
+  if (!isCSSRepresentableImageTransform(transform)) {
     return { image, size: 'cover', position: 'center', repeat: 'no-repeat' }
   }
   const width = cssPercent(transform.m00 * 100)
@@ -2858,8 +2858,8 @@ function registerImageFillAsset(fill: Fill, node: SceneNode, ctx: WalkCtx): IRAs
 }
 
 function imageFillClasses(fill: Fill, assetPath: string): string {
-  const cssUrl = assetCssUrl(assetPath)
-  const classes = [`bg-[url(${cssUrl})]`, 'bg-center']
+  const cssURL = assetCSSURL(assetPath)
+  const classes = [`bg-[url(${cssURL})]`, 'bg-center']
   if (fill.imageScaleMode === 'FIT') {
     classes.push('bg-contain', 'bg-no-repeat')
   } else if (fill.imageScaleMode === 'TILE') {
@@ -2872,12 +2872,12 @@ function imageFillClasses(fill: Fill, assetPath: string): string {
   return classes.join(' ')
 }
 
-function assetCssUrl(assetPath: string): string {
+function assetCSSURL(assetPath: string): string {
   return `./assets/${assetPath.split('/').at(-1) ?? assetPath}`
 }
 
 function cropImageTransformClasses(transform: NonNullable<Fill['imageTransform']>): string[] {
-  if (!isCssRepresentableImageTransform(transform)) return ['bg-cover', 'bg-no-repeat']
+  if (!isCSSRepresentableImageTransform(transform)) return ['bg-cover', 'bg-no-repeat']
   const width = cssPercent(transform.m00 * 100)
   const height = cssPercent(transform.m11 * 100)
   const left = cssPercent(transform.m02 * 100)
@@ -2889,7 +2889,7 @@ function cropImageTransformClasses(transform: NonNullable<Fill['imageTransform']
   ]
 }
 
-function isCssRepresentableImageTransform(transform: NonNullable<Fill['imageTransform']>): boolean {
+function isCSSRepresentableImageTransform(transform: NonNullable<Fill['imageTransform']>): boolean {
   return (
     transform.m00 > 0 &&
     transform.m11 > 0 &&

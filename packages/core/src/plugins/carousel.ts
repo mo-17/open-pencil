@@ -1,10 +1,10 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
 import {
@@ -14,7 +14,7 @@ import {
   mergePluginConfigWithDefaults,
   parseBoundedPluginText as boundedText,
   parseCanonicalPluginColor as canonicalColor,
-  parseCanonicalPublicHttpsUrl
+  parseCanonicalPublicHttpsURL
 } from './parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
@@ -37,7 +37,7 @@ export const CAROUSEL_MODULE_LIMITS = Object.freeze({
 
 export type CarouselTransitionV1 = 'slide' | 'fade'
 
-export interface CarouselSlideV1 extends JsonObject {
+export interface CarouselSlideV1 extends JSONObject {
   title: string
   description: string
   imageUrl: string
@@ -45,7 +45,7 @@ export interface CarouselSlideV1 extends JsonObject {
   href: string
 }
 
-export interface CarouselModuleConfigV1 extends JsonObject {
+export interface CarouselModuleConfigV1 extends JSONObject {
   label: string
   slides: CarouselSlideV1[]
   initialIndex: number
@@ -128,9 +128,9 @@ export function isSafeCarouselHref(value: unknown): value is string {
   return isSafePluginHref(value, 'carousel slide href', CAROUSEL_MODULE_LIMITS.href, true)
 }
 
-function parseImageUrl(value: unknown, path: string): string {
+function parseImageURL(value: unknown, path: string): string {
   if (value === '') return ''
-  return parseCanonicalPublicHttpsUrl(value, path, CAROUSEL_MODULE_LIMITS.imageUrl)
+  return parseCanonicalPublicHttpsURL(value, path, CAROUSEL_MODULE_LIMITS.imageUrl)
 }
 
 function parseSlides(value: unknown): CarouselSlideV1[] {
@@ -143,7 +143,7 @@ function parseSlides(value: unknown): CarouselSlideV1[] {
     if (!Object.hasOwn(value, index)) {
       throw new TypeError(`carousel config slides[${index}] must be a slide object`)
     }
-    if (!isPlainJsonObject(entry) || !hasExactPluginKeys(entry, SLIDE_KEYS)) {
+    if (!isPlainJSONObject(entry) || !hasExactPluginKeys(entry, SLIDE_KEYS)) {
       throw new TypeError(
         `carousel config slides[${index}] must contain exactly title, description, imageUrl, alt, and href`
       )
@@ -160,25 +160,25 @@ function parseSlides(value: unknown): CarouselSlideV1[] {
       0,
       CAROUSEL_MODULE_LIMITS.description
     )
-    const imageUrl = parseImageUrl(entry.imageUrl, `carousel config slides[${index}].imageUrl`)
+    const imageURL = parseImageURL(entry.imageUrl, `carousel config slides[${index}].imageUrl`)
     const alt = boundedText(
       entry.alt,
       `carousel config slides[${index}].alt`,
-      imageUrl === '' ? 0 : 1,
+      imageURL === '' ? 0 : 1,
       CAROUSEL_MODULE_LIMITS.alt
     )
-    if (imageUrl === '' && alt !== '') {
+    if (imageURL === '' && alt !== '') {
       throw new TypeError(`carousel config slides[${index}].alt must be empty without an imageUrl`)
     }
     if (!isSafeCarouselHref(entry.href)) {
       throw new TypeError(`carousel config slides[${index}].href must be a safe bounded href`)
     }
-    return { title, description, imageUrl, alt, href: entry.href }
+    return { title, description, imageUrl: imageURL, alt, href: entry.href }
   })
 }
 
 function parseCarouselConfig(value: unknown): ParseResult {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
     return {
       ok: false,
       reason:

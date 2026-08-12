@@ -1,12 +1,12 @@
 import { request } from 'node:http'
 import type { ClientRequest, RequestOptions } from 'node:http'
 
-import { resolveStdioRpcTimeoutMs, rpcTimeoutMessage } from '#mcp/rpc-timeout'
-import type { RpcSendOptions } from '#mcp/rpc-types'
+import { resolveStdioRPCTimeoutMs, rpcTimeoutMessage } from '#mcp/rpc-timeout'
+import type { RPCSendOptions } from '#mcp/rpc-types'
 import { readDiscoveryFile } from '#mcp/transport/discovery'
 import { getSocketPath, platformHasUnixSockets } from '#mcp/transport/paths'
 
-type StdioRpcBridgeOptions = {
+type StdioRPCBridgeOptions = {
   /** Override socket path (if known). Auto-discovered if omitted. */
   socketPath?: string | null
   /** Auth token for /rpc Bearer header. */
@@ -67,13 +67,13 @@ function waitWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T>
  * This replaces the previous WebSocket-based bridge with a simpler
  * HTTP approach that natively supports Unix domain sockets.
  */
-export function createStdioRpcBridge({
+export function createStdioRPCBridge({
   socketPath: socketPathOverride,
   authToken,
   reconnectDelayMs = 2000,
   onReady,
   onReconnect
-}: StdioRpcBridgeOptions) {
+}: StdioRPCBridgeOptions) {
   let resolvedSocketPath: string | null = socketPathOverride ?? null
   let resolvedHttpPort: number | null = null
   let transportMode: TransportMode | null = null
@@ -173,13 +173,13 @@ export function createStdioRpcBridge({
     method: string,
     path: string,
     body?: Record<string, unknown>,
-    timeoutMs = resolveStdioRpcTimeoutMs(body ?? {}),
+    timeoutMs = resolveStdioRPCTimeoutMs(body ?? {}),
     onRequest?: (req: ClientRequest) => void
   ): Promise<{ status: number; data: unknown; req: ClientRequest }> {
     return new Promise((resolve, reject) => {
-      const bodyJson = body ? JSON.stringify(body) : undefined
+      const bodyJSON = body ? JSON.stringify(body) : undefined
       const headers: Record<string, string> = {
-        ...(bodyJson ? { 'Content-Type': 'application/json' } : {}),
+        ...(bodyJSON ? { 'Content-Type': 'application/json' } : {}),
         ...(resolvedAuthToken ? { Authorization: `Bearer ${resolvedAuthToken}` } : {})
       }
 
@@ -217,12 +217,12 @@ export function createStdioRpcBridge({
       // unresponsive connections. Set 5s shorter than the resolved outer
       // deadline so this fires deterministically first, producing a clear
       // "server unreachable" signal rather than racing with the outer timer.
-      // If the outer sendRpc timer already rejected, the error handler
+      // If the outer sendRPC timer already rejected, the error handler
       // is a no-op (settled guard in attempt()).
       req.setTimeout(Math.max(1, timeoutMs - SOCKET_TIMEOUT_HEADROOM_MS), () => {
         req.destroy(new Error('Socket timeout'))
       })
-      if (bodyJson) req.write(bodyJson)
+      if (bodyJSON) req.write(bodyJSON)
       req.end()
     })
   }
@@ -344,9 +344,9 @@ export function createStdioRpcBridge({
    * caller. This makes server restarts with a new auto-generated token
    * seamless to the AI agent.
    */
-  async function sendRpc(
+  async function sendRPC(
     body: Record<string, unknown>,
-    options: RpcSendOptions = {}
+    options: RPCSendOptions = {}
   ): Promise<unknown> {
     const signal = options.signal
     throwIfAborted(signal)
@@ -365,7 +365,7 @@ export function createStdioRpcBridge({
     return new Promise((resolve, reject) => {
       let settled = false
       let activeRequest: ClientRequest | null = null
-      const timeoutMs = resolveStdioRpcTimeoutMs(body)
+      const timeoutMs = resolveStdioRPCTimeoutMs(body)
       let cleanupAbort: () => void = () => undefined
 
       const settle = (action: () => void, destroyWith?: Error) => {
@@ -541,5 +541,5 @@ export function createStdioRpcBridge({
   // Start connection
   connectPromise = connect()
 
-  return { sendRpc, close }
+  return { sendRPC, close }
 }

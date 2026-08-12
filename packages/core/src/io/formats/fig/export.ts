@@ -42,6 +42,7 @@ import {
   makeDocumentNodeChange,
   makeCanvasNodeChange
 } from '#core/kiwi/fig/node-change/serialize'
+import { deserializeSceneGraph, serializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
 import {
   FIGMA_CANVAS_METADATA_FIELD_KEYS,
   FIGMA_DOCUMENT_METADATA_FIELD_KEYS
@@ -597,13 +598,13 @@ export type ExportFigFileOptions = FigWriteOptions & IOContext
  * roundtrip profile; Figma-targeted callers use exportFigFileWithOptions.
  */
 export function exportFigFile(
-  graph: SceneGraph,
+  sourceGraph: SceneGraph,
   ck?: CanvasKit,
   renderer?: SkiaRenderer,
   pageId?: string,
   renderHeadlessThumbnail = false
 ): Promise<Uint8Array> {
-  return exportFigFileWithOptions(graph, {
+  return exportFigFileWithOptions(sourceGraph, {
     canvasKit: ck,
     renderer,
     thumbnailPageId: pageId,
@@ -613,7 +614,7 @@ export function exportFigFile(
 }
 
 export async function exportFigFileWithOptions(
-  graph: SceneGraph,
+  sourceGraph: SceneGraph,
   options: ExportFigFileOptions = {}
 ): Promise<Uint8Array> {
   const {
@@ -623,6 +624,9 @@ export async function exportFigFileWithOptions(
     renderThumbnail: renderHeadlessThumbnail = false
   } = options
   const profile = options.profile ?? 'roundtrip'
+  // Lazy population synchronizes component trees and therefore mutates its graph. Saving must not
+  // rewrite the live editor document or restore component values over edits made by the user.
+  const graph = deserializeSceneGraph(structuredClone(serializeSceneGraph(sourceGraph)))
   populateAllLazyFigImportRoots(graph)
   await initCodec()
 
@@ -761,7 +765,7 @@ export async function exportFigFileWithOptions(
   const kiwiData = compiled.encodeMessage(msg)
 
   const currentPageId = pageId ?? pages[0]?.id
-  const thumbnailPng = await renderFigThumbnail(
+  const thumbnailPNG = await renderFigThumbnail(
     graph,
     currentPageId,
     ck,
@@ -769,7 +773,7 @@ export async function exportFigFileWithOptions(
     renderHeadlessThumbnail
   )
 
-  const metaJson = JSON.stringify({
+  const metaJSON = JSON.stringify({
     version: 1,
     app: 'OpenPencil',
     createdAt: new Date().toISOString()
@@ -786,8 +790,8 @@ export async function exportFigFileWithOptions(
       encodeNativeFigBuildPayload({
         schemaDeflated,
         kiwiData,
-        thumbnailPng,
-        metaJson,
+        thumbnailPng: thumbnailPNG,
+        metaJson: metaJSON,
         images: imageEntries,
         figKiwiVersion: version
       })
@@ -799,7 +803,7 @@ export async function exportFigFileWithOptions(
     return Uint8Array.from(response)
   }
 
-  return compressFigData(schemaDeflated, kiwiData, thumbnailPng, metaJson, imageEntries, version)
+  return compressFigData(schemaDeflated, kiwiData, thumbnailPNG, metaJSON, imageEntries, version)
 }
 
 export { compressFigDataSync } from '@open-pencil/fig'
@@ -811,8 +815,8 @@ function canUseWorker(): boolean {
 function compressViaWorker(
   schemaDeflated: Uint8Array,
   kiwiData: Uint8Array,
-  thumbnailPng: Uint8Array,
-  metaJson: string,
+  thumbnailPNG: Uint8Array,
+  metaJSON: string,
   imageEntries: Array<{ name: string; data: Uint8Array }>,
   figKiwiVersion?: number
 ): Promise<Uint8Array> {
@@ -837,8 +841,8 @@ function compressViaWorker(
     worker.postMessage({
       schemaDeflated,
       kiwiData,
-      thumbnailPng,
-      metaJson,
+      thumbnailPNG,
+      metaJSON,
       images: imageEntries,
       figKiwiVersion
     })
@@ -848,8 +852,8 @@ function compressViaWorker(
 export function compressFigData(
   schemaDeflated: Uint8Array,
   kiwiData: Uint8Array,
-  thumbnailPng: Uint8Array,
-  metaJson: string,
+  thumbnailPNG: Uint8Array,
+  metaJSON: string,
   imageEntries: Array<{ name: string; data: Uint8Array }>,
   figKiwiVersion?: number
 ): Promise<Uint8Array> {
@@ -857,8 +861,8 @@ export function compressFigData(
     return compressViaWorker(
       schemaDeflated,
       kiwiData,
-      thumbnailPng,
-      metaJson,
+      thumbnailPNG,
+      metaJSON,
       imageEntries,
       figKiwiVersion
     )
@@ -867,8 +871,8 @@ export function compressFigData(
     compressFigDataSync(
       schemaDeflated,
       kiwiData,
-      thumbnailPng,
-      metaJson,
+      thumbnailPNG,
+      metaJSON,
       imageEntries,
       figKiwiVersion
     )

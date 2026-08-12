@@ -4,7 +4,7 @@ import {
   BUILTIN_PLUGIN_REGISTRY,
   VIDEO_MODULE_DEFAULT_SIZE,
   createVideoModuleInstance,
-  isCanonicalPublicHttpsUrl,
+  isCanonicalPublicHttpsURL,
   resolveVideoModule
 } from '@open-pencil/core/plugins'
 
@@ -45,7 +45,7 @@ describe('built-in video plugin', () => {
     })
     const resolved = resolveVideoModule(instance)
 
-    expect(isCanonicalPublicHttpsUrl(src)).toBe(true)
+    expect(isCanonicalPublicHttpsURL(src)).toBe(true)
     expect(resolved?.ok).toBe(true)
     if (!resolved?.ok) throw new Error('expected video module to resolve')
     expect(resolved.config.src).toBe(src)
@@ -69,7 +69,7 @@ describe('built-in video plugin', () => {
       'https://media.example.com:443/video.mp4'
     ]) {
       expect(() => createVideoModuleInstance({ src })).toThrow('canonical public HTTPS URL')
-      expect(isCanonicalPublicHttpsUrl(src)).toBe(false)
+      expect(isCanonicalPublicHttpsURL(src)).toBe(false)
     }
   })
 

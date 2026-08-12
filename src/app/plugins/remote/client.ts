@@ -21,7 +21,7 @@ import {
 import {
   createRemotePluginTransport,
   type CreateRemotePluginTransportOptions,
-  type RemotePluginJsonResponse
+  type RemotePluginJSONResponse
 } from './transport'
 
 export type RemotePluginCatalogLoadStatus = 'fresh' | 'cached' | 'stale' | 'unavailable'
@@ -119,7 +119,7 @@ async function cached(
   }
 }
 
-function cachedJson(record: RemotePluginCacheRecordV1): unknown {
+function cachedJSON(record: RemotePluginCacheRecordV1): unknown {
   try {
     return JSON.parse(record.rawJson)
   } catch {
@@ -129,16 +129,16 @@ function cachedJson(record: RemotePluginCacheRecordV1): unknown {
 
 function cacheRecord(
   kind: RemotePluginCacheRecordV1['kind'],
-  sourceUrl: string,
-  response: Extract<RemotePluginJsonResponse, { status: 'fresh' }>,
+  sourceURL: string,
+  response: Extract<RemotePluginJSONResponse, { status: 'fresh' }>,
   now: number,
   expiresAt: number | null
 ): RemotePluginCacheRecordV1 {
   return {
     schemaVersion: REMOTE_PLUGIN_CACHE_SCHEMA_VERSION,
-    cacheKey: sourceUrl,
+    cacheKey: sourceURL,
     kind,
-    sourceUrl,
+    sourceUrl: sourceURL,
     rawJson: response.rawJson,
     etag: response.etag,
     lastModified: response.lastModified,
@@ -181,7 +181,7 @@ export function createRemotePluginCatalogClient(options: CreateRemotePluginCatal
       if (response.status === 'not-modified') {
         if (!cache) throw new Error('Remote plugin catalog returned 304 without a cached catalog')
         return {
-          catalog: await verifyCatalog(cachedJson(cache), at),
+          catalog: await verifyCatalog(cachedJSON(cache), at),
           source: 'cache',
           refreshError: null
         }
@@ -199,7 +199,7 @@ export function createRemotePluginCatalogClient(options: CreateRemotePluginCatal
       return { catalog, source: 'network', refreshError: null }
     } catch (cause) {
       if (!cache) throw cause
-      const catalog = await verifyCatalog(cachedJson(cache), at)
+      const catalog = await verifyCatalog(cachedJSON(cache), at)
       return { catalog, source: 'cache', refreshError: asError(cause) }
     }
   }
@@ -236,7 +236,7 @@ export function createRemotePluginCatalogClient(options: CreateRemotePluginCatal
       if (response.status === 'not-modified') {
         if (!cache) throw new Error('Remote plugin manifest returned 304 without a cached manifest')
         return {
-          verification: await verifyEntry(entry, cachedJson(cache), at, catalog),
+          verification: await verifyEntry(entry, cachedJSON(cache), at, catalog),
           source: 'cache',
           refreshError: null
         }
@@ -255,7 +255,7 @@ export function createRemotePluginCatalogClient(options: CreateRemotePluginCatal
     } catch (cause) {
       if (!cache) throw cause
       return {
-        verification: await verifyEntry(entry, cachedJson(cache), at, catalog),
+        verification: await verifyEntry(entry, cachedJSON(cache), at, catalog),
         source: 'cache',
         refreshError: asError(cause)
       }

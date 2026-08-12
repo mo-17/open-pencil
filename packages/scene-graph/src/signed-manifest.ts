@@ -232,12 +232,12 @@ export function canonicalManifestValue(value: unknown, seen = new WeakSet<object
   return canonical
 }
 
-export function canonicalManifestJson(value: unknown): string {
+export function canonicalManifestJSON(value: unknown): string {
   return JSON.stringify(canonicalManifestValue(value))
 }
 
 export function canonicalManifestBytes(value: unknown): Uint8Array {
-  return new TextEncoder().encode(canonicalManifestJson(value))
+  return new TextEncoder().encode(canonicalManifestJSON(value))
 }
 
 export function signedManifestBytes(payload: unknown, digest: string): Uint8Array {
@@ -250,13 +250,13 @@ export function webCryptoBuffer(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer
 }
 
-export function encodeBase64Url(bytes: Uint8Array): string {
+export function encodeBase64URL(bytes: Uint8Array): string {
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
   return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
 }
 
-export function decodeBase64Url(value: string): Uint8Array {
+export function decodeBase64URL(value: string): Uint8Array {
   if (!BASE64URL.test(value)) throw new TypeError('Expected non-empty base64url data')
   const padded =
     value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4)
@@ -267,15 +267,15 @@ export function decodeBase64Url(value: string): Uint8Array {
     throw new TypeError('Expected valid base64url data')
   }
   const decoded = Uint8Array.from(binary, (character) => character.charCodeAt(0))
-  if (encodeBase64Url(decoded) !== value) throw new TypeError('Expected canonical base64url data')
+  if (encodeBase64URL(decoded) !== value) throw new TypeError('Expected canonical base64url data')
   return decoded
 }
 
-export function parseSha256Base64Url(value: unknown, path = 'digest'): string {
+export function parseSha256Base64URL(value: unknown, path = 'digest'): string {
   if (typeof value !== 'string' || !SHA_256_BASE64URL.test(value)) {
     throw new TypeError(`${path} must be a SHA-256 base64url digest`)
   }
-  if (decodeBase64Url(value).byteLength !== 32) {
+  if (decodeBase64URL(value).byteLength !== 32) {
     throw new TypeError(`${path} must encode a 32-byte SHA-256 digest`)
   }
   return value
@@ -294,7 +294,7 @@ export function parseSignedManifestIntegrity(
   if (source.algorithm !== 'SHA-256') {
     throw new TypeError(`${path}.algorithm must be SHA-256`)
   }
-  const digest = parseSha256Base64Url(source.digest, `${path}.digest`)
+  const digest = parseSha256Base64URL(source.digest, `${path}.digest`)
   const signaturePath = `${path}.signature`
   const signature = parseExactManifestRecord(
     source.signature,
@@ -313,7 +313,7 @@ export function parseSignedManifestIntegrity(
   if (typeof signature.value !== 'string' || !ED25519_BASE64URL.test(signature.value)) {
     throw new TypeError(`${signaturePath}.value must be an Ed25519 base64url signature`)
   }
-  if (decodeBase64Url(signature.value).byteLength !== 64) {
+  if (decodeBase64URL(signature.value).byteLength !== 64) {
     throw new TypeError(`${signaturePath}.value must encode a 64-byte Ed25519 signature`)
   }
   return {
@@ -328,7 +328,7 @@ export async function digestCanonicalManifest(value: unknown): Promise<string> {
     'SHA-256',
     webCryptoBuffer(canonicalManifestBytes(value))
   )
-  return encodeBase64Url(new Uint8Array(digest))
+  return encodeBase64URL(new Uint8Array(digest))
 }
 
 export function assertEd25519PrivateKey(privateKey: CryptoKey): void {
@@ -403,7 +403,7 @@ export async function exportEd25519PublicKeyPem(value: CryptoKey): Promise<strin
 export async function signEd25519(data: Uint8Array, privateKey: CryptoKey): Promise<string> {
   assertEd25519PrivateKey(privateKey)
   const signature = await crypto.subtle.sign('Ed25519', privateKey, webCryptoBuffer(data))
-  return encodeBase64Url(new Uint8Array(signature))
+  return encodeBase64URL(new Uint8Array(signature))
 }
 
 export async function verifyEd25519(
@@ -415,7 +415,7 @@ export async function verifyEd25519(
   return crypto.subtle.verify(
     'Ed25519',
     publicKey,
-    webCryptoBuffer(decodeBase64Url(signature)),
+    webCryptoBuffer(decodeBase64URL(signature)),
     webCryptoBuffer(data)
   )
 }

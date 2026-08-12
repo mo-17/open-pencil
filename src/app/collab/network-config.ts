@@ -107,10 +107,10 @@ export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkCo
   // configured; an incomplete selection falls back to mqtt so collab still
   // works (transport, not auth — room.ts warns about the mismatch).
   const wantsSupabase = nonEmpty(env.VITE_COLLAB_STRATEGY)?.toLowerCase() === 'supabase'
-  const supabaseUrl = nonEmpty(env.VITE_COLLAB_SUPABASE_URL)
+  const supabaseURL = nonEmpty(env.VITE_COLLAB_SUPABASE_URL)
   const supabaseKey = nonEmpty(env.VITE_COLLAB_SUPABASE_KEY)
-  if (wantsSupabase && supabaseUrl && supabaseKey) {
-    return { strategy: 'supabase', appId: supabaseUrl, supabaseKey, iceServers }
+  if (wantsSupabase && supabaseURL && supabaseKey) {
+    return { strategy: 'supabase', appId: supabaseURL, supabaseKey, iceServers }
   }
 
   const appId = nonEmpty(env.VITE_COLLAB_APP_ID) ?? TRYSTERO_APP_ID

@@ -4,14 +4,14 @@ import {
   PLUGIN_MANIFEST_LIMITS,
   parsePluginManifestPayload,
   parsePluginPackageBytes,
-  parsePluginPackageJson,
+  parsePluginPackageJSON,
   serializePluginManifest,
   signPluginManifest,
   validatePluginManifest,
   verifyPluginPackage
 } from '@open-pencil/core/plugins'
 import {
-  canonicalManifestJson,
+  canonicalManifestJSON,
   compareStableSemver,
   exportEd25519PublicKeyPem,
   importEd25519PublicKeyPem,
@@ -26,7 +26,7 @@ async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
 }
 
-const V1_GOLDEN_PRIVATE_KEY: JsonWebKey = {
+const V1_GOLDEN_PRIVATE_KEY: JSONWebKey = {
   crv: 'Ed25519',
   d: 'FxJOeRX9SK273eZkGQ8W5ohk1EFWP67CZCSzYL4cNbU',
   ext: true,
@@ -40,7 +40,7 @@ const V1_GOLDEN_SIGNATURE =
 
 describe('shared signed manifest primitives', () => {
   test('canonicalizes keys and implements bounded stable SemVer ranges', () => {
-    expect(canonicalManifestJson({ z: 1, a: { d: 2, b: 1 } })).toBe('{"a":{"b":1,"d":2},"z":1}')
+    expect(canonicalManifestJSON({ z: 1, a: { d: 2, b: 1 } })).toBe('{"a":{"b":1,"d":2},"z":1}')
     expect(normalizeStableEngineRange('  >=0.13.0   <1.0.0  ')).toBe('>=0.13.0 <1.0.0')
     expect(satisfiesStableEngineRange('0.13.2', '^0.13.0')).toBe(true)
     expect(satisfiesStableEngineRange('0.14.0', '^0.13.0')).toBe(false)
@@ -75,7 +75,7 @@ describe('signed declarative plugin packages', () => {
     const keyPair = await keys()
     const manifest = await signPluginManifest(pluginPayload(), keyPair.privateKey)
     const serialized = serializePluginManifest(manifest)
-    expect(parsePluginPackageJson(serialized)).toEqual(manifest)
+    expect(parsePluginPackageJSON(serialized)).toEqual(manifest)
     expect(parsePluginPackageBytes(new TextEncoder().encode(serialized))).toEqual(manifest)
     const verified = await verifyPluginPackage(manifest, keyPair.publicKey, {
       expectedKeyId: 'acme.release',
@@ -157,7 +157,7 @@ describe('signed declarative plugin packages', () => {
     expect(parsed.contributions).toEqual(payload.contributions)
     const keyPair = await keys()
     const manifest = await signPluginManifest(payload, keyPair.privateKey)
-    expect(parsePluginPackageJson(serializePluginManifest(manifest))).toEqual(manifest)
+    expect(parsePluginPackageJSON(serializePluginManifest(manifest))).toEqual(manifest)
     await expect(verifyPluginPackage(manifest, keyPair.publicKey)).resolves.toMatchObject({
       manifest: { contributions: payload.contributions }
     })

@@ -12,7 +12,7 @@ import {
   createMarketplaceSnapshotClient,
   createMemoryRemotePluginCacheStorage,
   parseMarketplaceTrustConfig,
-  parseMarketplaceTrustConfigJson
+  parseMarketplaceTrustConfigJSON
 } from '@/app/plugins'
 
 const URL = 'https://plugins.example.com/marketplace.json'
@@ -67,7 +67,7 @@ describe('marketplace trust configuration', () => {
   test('imports a pinned Ed25519 root and rejects extra or insecure configuration', async () => {
     const root = await keys()
     const publicKeyPem = await exportEd25519PublicKeyPem(root.publicKey)
-    const config = await parseMarketplaceTrustConfigJson(
+    const config = await parseMarketplaceTrustConfigJSON(
       JSON.stringify({
         schemaVersion: 1,
         url: URL,

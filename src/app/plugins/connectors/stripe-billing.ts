@@ -7,7 +7,7 @@ import {
   type PluginParameterValue
 } from '@open-pencil/core/plugins'
 
-import { strictPlainDataRecord, type PluginJsonDataRecord } from '@/app/plugins/json-data'
+import { strictPlainDataRecord, type PluginJSONDataRecord } from '@/app/plugins/json-data'
 
 import type {
   ConnectorHostAdapter,
@@ -330,7 +330,7 @@ const NON_PUBLIC_TLDS = new Set([
 ])
 const TEXT_ENCODER = new TextEncoder()
 
-function stripeResponseRecord(value: unknown, path: string): PluginJsonDataRecord {
+function stripeResponseRecord(value: unknown, path: string): PluginJSONDataRecord {
   return strictPlainDataRecord(
     value,
     path,
@@ -339,7 +339,7 @@ function stripeResponseRecord(value: unknown, path: string): PluginJsonDataRecor
   )
 }
 
-function assertObjectType(source: PluginJsonDataRecord, expected: string, path: string): void {
+function assertObjectType(source: PluginJSONDataRecord, expected: string, path: string): void {
   if (source.object !== expected) throw new TypeError(`${path}.object must be ${expected}`)
 }
 
@@ -407,7 +407,7 @@ function publicDnsHostname(hostname: string, path: string): void {
   }
 }
 
-function canonicalPublicHttpsUrl(value: unknown, path: string, maximum: number): string {
+function canonicalPublicHttpsURL(value: unknown, path: string, maximum: number): string {
   const source = boundedString(value, path, maximum)
   let parsed: URL
   try {
@@ -428,8 +428,8 @@ function canonicalPublicHttpsUrl(value: unknown, path: string, maximum: number):
   return parsed.href
 }
 
-function stripeCheckoutUrl(value: unknown, path: string): string {
-  const url = canonicalPublicHttpsUrl(value, path, STRIPE_BILLING_LIMITS.checkoutUrlLength)
+function stripeCheckoutURL(value: unknown, path: string): string {
+  const url = canonicalPublicHttpsURL(value, path, STRIPE_BILLING_LIMITS.checkoutUrlLength)
   if (new URL(url).hostname !== 'checkout.stripe.com') {
     throw new TypeError(`${path} must use the Stripe Checkout host`)
   }
@@ -500,12 +500,12 @@ function prepareCheckoutSession(
     STRIPE_BILLING_LIMITS.quantity
   )
   const mode = checkoutMode(parameters.mode, 'Stripe checkout mode')
-  const successUrl = canonicalPublicHttpsUrl(
+  const successURL = canonicalPublicHttpsURL(
     parameters.successUrl,
     'Stripe checkout successUrl',
     STRIPE_BILLING_LIMITS.publicUrlLength
   )
-  const cancelUrl = canonicalPublicHttpsUrl(
+  const cancelURL = canonicalPublicHttpsURL(
     parameters.cancelUrl,
     'Stripe checkout cancelUrl',
     STRIPE_BILLING_LIMITS.publicUrlLength
@@ -514,8 +514,8 @@ function prepareCheckoutSession(
   body.set('mode', mode)
   body.set('line_items[0][price]', priceId)
   body.set('line_items[0][quantity]', String(quantity))
-  body.set('success_url', successUrl)
-  body.set('cancel_url', cancelUrl)
+  body.set('success_url', successURL)
+  body.set('cancel_url', cancelURL)
   const encoded = body.toString()
   if (TEXT_ENCODER.encode(encoded).byteLength > STRIPE_BILLING_LIMITS.requestBodyBytes) {
     throw new TypeError('Stripe Checkout Session request exceeds the body limit')
@@ -672,7 +672,7 @@ export function normalizeStripeCheckoutSessionResponse(
   return output(
     {
       id: patternedString(source.id, CHECKOUT_SESSION_ID, 'Stripe Checkout Session response.id'),
-      url: stripeCheckoutUrl(source.url, 'Stripe Checkout Session response.url'),
+      url: stripeCheckoutURL(source.url, 'Stripe Checkout Session response.url'),
       status: enumString(
         source.status,
         CHECKOUT_STATUSES,

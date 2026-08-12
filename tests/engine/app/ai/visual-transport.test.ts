@@ -54,7 +54,7 @@ function sourceContextsText(
 function userMessage(
   id: string,
   text: string,
-  imageUrl?: string,
+  imageURL?: string,
   source: 'file' | 'selection' = 'file',
   canvasNodeIds?: string[]
 ): UIMessage {
@@ -63,25 +63,25 @@ function userMessage(
     role: 'user',
     parts: [
       { type: 'text', text },
-      ...(imageUrl
+      ...(imageURL
         ? [
             {
               type: 'file' as const,
               mediaType: 'image/png',
               filename: `${id}.png`,
-              url: imageUrl
+              url: imageURL
             }
           ]
         : [])
     ]
   }
-  if (imageUrl) {
+  if (imageURL) {
     message.metadata = {
       visualAttachments: [
         {
           source,
           ...(canvasNodeIds?.length ? { canvasNodeIds } : {}),
-          thumbnail: { url: `${imageUrl}-thumbnail`, width: 32, height: 32, sizeBytes: 32 }
+          thumbnail: { url: `${imageURL}-thumbnail`, width: 32, height: 32, sizeBytes: 32 }
         }
       ]
     }

@@ -16,7 +16,7 @@ import {
 import {
   createRemotePluginTransport,
   type CreateRemotePluginTransportOptions,
-  type RemotePluginJsonResponse
+  type RemotePluginJSONResponse
 } from '../remote/transport'
 
 export type MarketplaceSnapshotLoadStatus = 'fresh' | 'cached' | 'stale' | 'unavailable'
@@ -43,13 +43,13 @@ function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value))
 }
 
-function cachedJson(record: RemotePluginCacheRecordV1): unknown {
+function cachedJSON(record: RemotePluginCacheRecordV1): unknown {
   return JSON.parse(record.rawJson)
 }
 
 function cacheRecord(
   url: string,
-  response: Extract<RemotePluginJsonResponse, { status: 'fresh' }>,
+  response: Extract<RemotePluginJSONResponse, { status: 'fresh' }>,
   verifiedAt: number,
   expiresAt: number
 ): RemotePluginCacheRecordV1 {
@@ -100,14 +100,14 @@ export function createMarketplaceSnapshotClient(options: CreateMarketplaceSnapsh
         if (!cached) throw new Error('Marketplace snapshot returned 304 without a verified cache')
         return {
           status: 'cached',
-          snapshot: await verify(cachedJson(cached), at),
+          snapshot: await verify(cachedJSON(cached), at),
           source: 'cache',
           refreshError: null
         }
       }
       const snapshot = await verify(response.json, at)
       if (cached) {
-        const previous = await verify(cachedJson(cached), cached.verifiedAt)
+        const previous = await verify(cachedJSON(cached), cached.verifiedAt)
         if (previous.verifiedDigest !== snapshot.verifiedDigest) {
           assertMarketplaceSnapshotAdvance(previous, snapshot)
         }
@@ -123,7 +123,7 @@ export function createMarketplaceSnapshotClient(options: CreateMarketplaceSnapsh
       try {
         return {
           status: 'cached',
-          snapshot: await verify(cachedJson(cached), at),
+          snapshot: await verify(cachedJSON(cached), at),
           source: 'cache',
           refreshError: asError(cause)
         }

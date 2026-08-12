@@ -176,7 +176,7 @@ describe('Vue compiler adapter', () => {
 
     const output = compile({ graph, pageIds: [pageId], options: vueOptions(), fontManifest })
     const page = textFile(output.files, 'src/pages/index.vue')
-    const packageJson = JSON.parse(textFile(output.files, 'package.json')) as {
+    const packageJSON = JSON.parse(textFile(output.files, 'package.json')) as {
       dependencies: Record<string, string>
       scripts: Record<string, string>
     }
@@ -185,8 +185,8 @@ describe('Vue compiler adapter', () => {
     )
 
     expect(output.warnings.map((warning) => warning.code)).not.toContain('target-not-implemented')
-    expect(packageJson.dependencies.vue).toBeDefined()
-    expect(packageJson.scripts.build).toContain('vue-tsc')
+    expect(packageJSON.dependencies.vue).toBeDefined()
+    expect(packageJSON.scripts.build).toContain('vue-tsc')
     expect(page).toContain('__vueRef<number>(0)')
     expect(page).toContain('__vueRef<string>("")')
     expect(page).toMatch(/:value="__opState_name_[a-z0-9]+"/)

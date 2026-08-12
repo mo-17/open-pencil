@@ -13,7 +13,7 @@ export interface RemotePluginCacheValidators {
   lastModified?: string
 }
 
-export type RemotePluginJsonResponse =
+export type RemotePluginJSONResponse =
   | Readonly<{
       status: 'not-modified'
       url: string
@@ -45,7 +45,7 @@ function isLoopbackHostname(hostname: string): boolean {
   )
 }
 
-export function parseRemotePluginUrl(
+export function parseRemotePluginURL(
   value: string,
   options: { allowLoopbackHttp?: boolean } = {}
 ): URL {
@@ -124,25 +124,25 @@ export function createRemotePluginTransport(options: CreateRemotePluginTransport
   const timeoutMs = options.timeoutMs ?? REMOTE_PLUGIN_TRANSPORT_LIMITS.timeoutMs
   const urlOptions = { allowLoopbackHttp: options.allowLoopbackHttp }
 
-  async function loadJson(
+  async function loadJSON(
     urlValue: string,
     maxBytes: number,
     validators: RemotePluginCacheValidators = {}
-  ): Promise<RemotePluginJsonResponse> {
-    const requestedUrl = parseRemotePluginUrl(urlValue, urlOptions)
-    const response = await fetchImpl(requestedUrl, {
+  ): Promise<RemotePluginJSONResponse> {
+    const requestedURL = parseRemotePluginURL(urlValue, urlOptions)
+    const response = await fetchImpl(requestedURL, {
       method: 'GET',
       headers: conditionalHeaders(validators),
       credentials: 'omit',
       redirect: 'error',
       signal: AbortSignal.timeout(timeoutMs)
     })
-    const finalUrl = parseRemotePluginUrl(response.url || requestedUrl.href, urlOptions)
-    if (response.url && finalUrl.href !== requestedUrl.href) {
+    const finalURL = parseRemotePluginURL(response.url || requestedURL.href, urlOptions)
+    if (response.url && finalURL.href !== requestedURL.href) {
       throw new Error('Remote plugin source redirects are not allowed')
     }
     const metadata = {
-      url: finalUrl.href,
+      url: finalURL.href,
       etag: response.headers.get('etag'),
       lastModified: response.headers.get('last-modified')
     }
@@ -151,26 +151,26 @@ export function createRemotePluginTransport(options: CreateRemotePluginTransport
     if (!jsonContentType(response)) {
       throw new Error('Remote plugin source must return an application/json content type')
     }
-    const rawJson = await boundedResponseText(response, maxBytes)
+    const rawJSON = await boundedResponseText(response, maxBytes)
     let json: unknown
     try {
-      json = JSON.parse(rawJson)
+      json = JSON.parse(rawJSON)
     } catch {
       throw new Error('Remote plugin source returned invalid JSON')
     }
-    return { status: 'fresh', ...metadata, rawJson, json }
+    return { status: 'fresh', ...metadata, rawJson: rawJSON, json }
   }
 
   return {
     loadCatalog: (url: string, validators: RemotePluginCacheValidators = {}) =>
-      loadJson(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxCatalogBytes, validators),
+      loadJSON(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxCatalogBytes, validators),
     loadMarketplace: (url: string, validators: RemotePluginCacheValidators = {}) =>
-      loadJson(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxMarketplaceBytes, validators),
+      loadJSON(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxMarketplaceBytes, validators),
     loadRuntimeIndex: (url: string, validators: RemotePluginCacheValidators = {}) =>
-      loadJson(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxRuntimeIndexBytes, validators),
+      loadJSON(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxRuntimeIndexBytes, validators),
     loadRuntimePackage: (url: string, validators: RemotePluginCacheValidators = {}) =>
-      loadJson(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxRuntimePackageBytes, validators),
+      loadJSON(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxRuntimePackageBytes, validators),
     loadManifest: (url: string, validators: RemotePluginCacheValidators = {}) =>
-      loadJson(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxManifestBytes, validators)
+      loadJSON(url, REMOTE_PLUGIN_TRANSPORT_LIMITS.maxManifestBytes, validators)
   }
 }

@@ -11,7 +11,7 @@ import {
   inspectPluginExporterCompatibility,
   resolveTrustedPluginExporterExecutor
 } from '@/app/plugins'
-import { inspectPluginExporterMcpExposure } from '@/app/plugins/host'
+import { inspectPluginExporterMCPExposure } from '@/app/plugins/host'
 import { exportCurrentDocumentDesignTokens } from '@/app/plugins/host/design-tokens-exporter'
 import { exportCurrentDocumentAsFigmaProjection } from '@/app/plugins/host/figma-projection-exporter'
 import {
@@ -71,12 +71,12 @@ describe('productivity plugin host contributions', () => {
       ok: true,
       status: 'compatible'
     })
-    expect(inspectPluginExporterMcpExposure(DESIGN_TOKENS_EXPORTER_PLUGIN_ID, tokens)).toEqual({
+    expect(inspectPluginExporterMCPExposure(DESIGN_TOKENS_EXPORTER_PLUGIN_ID, tokens)).toEqual({
       ok: true,
       status: 'compatible'
     })
     expect(
-      inspectPluginExporterMcpExposure(FIGMA_PROJECTION_EXPORTER_PLUGIN_ID, figma)
+      inspectPluginExporterMCPExposure(FIGMA_PROJECTION_EXPORTER_PLUGIN_ID, figma)
     ).toMatchObject({ ok: false, status: 'mcp-exposure-disabled' })
     expect(resolveTrustedPluginExporterExecutor(tokens.adapterId)).toBeFunction()
     expect(resolveTrustedPluginExporterExecutor(figma.adapterId)).toBeFunction()

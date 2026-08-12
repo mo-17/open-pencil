@@ -53,7 +53,7 @@ function jsonByteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
 
-function assertJsonSize(value: string): void {
+function assertJSONSize(value: string): void {
   if (jsonByteLength(value) > MOTION_RECIPE_LIBRARY_LIMITS.maxJsonBytes) {
     invalid(
       `Motion recipe library may not exceed ${MOTION_RECIPE_LIBRARY_LIMITS.maxJsonBytes} UTF-8 bytes.`
@@ -89,12 +89,12 @@ export function parseMotionRecipeLibrary(value: unknown): MotionRecipeLibrary {
     schemaVersion: MOTION_RECIPE_LIBRARY_SCHEMA_VERSION,
     recipes
   }
-  assertJsonSize(JSON.stringify(library))
+  assertJSONSize(JSON.stringify(library))
   return library
 }
 
-export function parseMotionRecipeLibraryJson(json: string): MotionRecipeLibrary {
-  assertJsonSize(json)
+export function parseMotionRecipeLibraryJSON(json: string): MotionRecipeLibrary {
+  assertJSONSize(json)
   let value: unknown
   try {
     value = JSON.parse(json)

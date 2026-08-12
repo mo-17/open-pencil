@@ -7,7 +7,7 @@ import {
   type PluginConnectorOperationRequestV1,
   type PluginParameterValue
 } from '@open-pencil/core/plugins'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import type { InstalledAppPlugin } from '@/app/plugins/types'
 import type { CredentialResolver } from '@/app/settings/credentials'
@@ -615,14 +615,14 @@ function decodedResponse(bytes: Uint8Array): unknown {
   }
 }
 
-function validatedResponse(value: unknown, operation: PluginConnectorOperationV1): JsonValue {
+function validatedResponse(value: unknown, operation: PluginConnectorOperationV1): JSONValue {
   try {
     return parsePluginObjectParameterValue(
       value,
       operation.result.schema,
       operation.result.maxBytes,
       'Connector operation result'
-    ) as JsonValue
+    ) as JSONValue
   } catch (cause) {
     throw executionError(
       'invalid-response',

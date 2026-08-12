@@ -38,9 +38,9 @@ import {
   mapGridTrack,
   mapJustify
 } from './layout/yoga-helpers'
+import type { MotionVisualState } from './motion'
 
 const LAYOUT_ABORT_MESSAGE = 'Layout cancelled'
-import type { MotionVisualState } from './motion'
 
 export type LayoutWorkPriority = 'interactive' | 'normal' | 'idle'
 
@@ -85,13 +85,28 @@ export function getDefaultLayoutTimeSliceMs(): number {
 }
 
 export function computeLayout(graph: LayoutGraph, frameId: string): void {
-  const steps = computeLayoutSteps(graph, frameId)
-  let state = steps.next()
-  while (!state.done) state = steps.next()
+  runWithLayoutMutations(graph, () => {
+    const steps = computeLayoutSteps(graph, frameId)
+    let state = steps.next()
+    while (!state.done) state = steps.next()
+  })
 }
 
 type LayoutStep = LayoutApplyStep
 type LayoutSteps<T = void> = Generator<LayoutStep, T, void>
+
+function runWithLayoutMutations<T>(graph: LayoutGraph, operation: () => T): T {
+  const mutationGraph = graph as LayoutGraph & {
+    withLayoutMutations?: (operation: () => void) => void
+  }
+  if (!mutationGraph.withLayoutMutations) return operation()
+
+  let result!: T
+  mutationGraph.withLayoutMutations(() => {
+    result = operation()
+  })
+  return result
+}
 
 function* computeLayoutSteps(graph: LayoutGraph, frameId: string): LayoutSteps {
   const frame = graph.getNode(frameId)
@@ -144,12 +159,14 @@ function resolveComputedLayoutDirection(
 }
 
 export function computeAllLayouts(graph: SceneGraph, scopeId?: string): void {
-  const rootId = scopeId ?? graph.rootId
-  const visited = new Set<string>()
-  computeLayoutsBottomUp(graph, rootId, visited)
-  if (applyEffectiveGeneratedTextLayout(graph, rootId)) {
-    computeLayoutsBottomUp(graph, rootId, new Set())
-  }
+  graph.withLayoutMutations(() => {
+    const rootId = scopeId ?? graph.rootId
+    const visited = new Set<string>()
+    computeLayoutsBottomUp(graph, rootId, visited)
+    if (applyEffectiveGeneratedTextLayout(graph, rootId)) {
+      computeLayoutsBottomUp(graph, rootId, new Set())
+    }
+  })
 }
 
 /**
@@ -171,7 +188,7 @@ export async function computeAllLayoutsAsync(
   const rootId = scopeId ?? graph.rootId
   await computeAllLayoutsPassAsync(graph, rootId, execution)
   throwIfAborted(signal, LAYOUT_ABORT_MESSAGE)
-  if (applyEffectiveGeneratedTextLayout(graph, rootId)) {
+  if (runWithLayoutMutations(graph, () => applyEffectiveGeneratedTextLayout(graph, rootId))) {
     await computeAllLayoutsPassAsync(graph, rootId, execution)
   }
   throwIfAborted(signal, LAYOUT_ABORT_MESSAGE)
@@ -231,16 +248,16 @@ async function computeLayoutCooperatively(
   const steps = computeLayoutSteps(graph, frameId)
   let completed = false
   try {
-    let state = steps.next()
+    let state = runWithLayoutMutations(graph, () => steps.next())
     while (!state.done) {
       await checkpointLayout(execution, state.value === 'atomic')
-      state = steps.next()
+      state = runWithLayoutMutations(graph, () => steps.next())
     }
     completed = true
   } finally {
     // Closing a suspended generator runs the Yoga-tree finally blocks and
     // frees every partially-built WASM node after cancellation or failure.
-    if (!completed) steps.return(undefined)
+    if (!completed) runWithLayoutMutations(graph, () => steps.return(undefined))
   }
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
-  normalizeSupabaseMutationPayloadJson,
+  normalizeSupabaseMutationPayloadJSON,
   validateStateName,
   validateExpression
 } from '@open-pencil/core/lowcode-validation'
@@ -100,34 +100,34 @@ describe('validateExpression', () => {
  */
 describe('normalizeSupabaseMutationPayloadJson', () => {
   test('preserves undefined as undefined', () => {
-    expect(normalizeSupabaseMutationPayloadJson(undefined)).toBeUndefined()
+    expect(normalizeSupabaseMutationPayloadJSON(undefined)).toBeUndefined()
   })
 
   test('empty string stays empty (no-op)', () => {
-    expect(normalizeSupabaseMutationPayloadJson('')).toBe('')
-    expect(normalizeSupabaseMutationPayloadJson('   ')).toBe('')
+    expect(normalizeSupabaseMutationPayloadJSON('')).toBe('')
+    expect(normalizeSupabaseMutationPayloadJSON('   ')).toBe('')
   })
 
   test('`{}` (and whitespace-padded variants) normalises to empty', () => {
-    expect(normalizeSupabaseMutationPayloadJson('{}')).toBe('')
-    expect(normalizeSupabaseMutationPayloadJson('  {}  ')).toBe('')
-    expect(normalizeSupabaseMutationPayloadJson('\n{}\t')).toBe('')
+    expect(normalizeSupabaseMutationPayloadJSON('{}')).toBe('')
+    expect(normalizeSupabaseMutationPayloadJSON('  {}  ')).toBe('')
+    expect(normalizeSupabaseMutationPayloadJSON('\n{}\t')).toBe('')
   })
 
   test('`[]` normalises to empty (delete + empty array footgun)', () => {
-    expect(normalizeSupabaseMutationPayloadJson('[]')).toBe('')
-    expect(normalizeSupabaseMutationPayloadJson(' [] ')).toBe('')
+    expect(normalizeSupabaseMutationPayloadJSON('[]')).toBe('')
+    expect(normalizeSupabaseMutationPayloadJSON(' [] ')).toBe('')
   })
 
   test('real JSON literal payloads pass through unchanged', () => {
-    expect(normalizeSupabaseMutationPayloadJson('{"name":"Alice"}')).toBe('{"name":"Alice"}')
-    expect(normalizeSupabaseMutationPayloadJson('[{"id":1}]')).toBe('[{"id":1}]')
+    expect(normalizeSupabaseMutationPayloadJSON('{"name":"Alice"}')).toBe('{"name":"Alice"}')
+    expect(normalizeSupabaseMutationPayloadJSON('[{"id":1}]')).toBe('[{"id":1}]')
   })
 
   test('does NOT normalise `{ }` with inner whitespace — only exact `{}` / `[]`', () => {
     // `{ }` is still a valid empty JSON object that JSON.parse accepts;
     // the AI footgun pattern was literal `{}` / `[]`, so the helper stays
     // narrow. If we ever see this in real Tauri data, widen + retest.
-    expect(normalizeSupabaseMutationPayloadJson('{ }')).toBe('{ }')
+    expect(normalizeSupabaseMutationPayloadJSON('{ }')).toBe('{ }')
   })
 })

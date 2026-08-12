@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
 import { collectTree } from '#compiler/ir/collect/tree'
-import type { IRApiCallHandler } from '#compiler/ir/types'
+import type { IRAPICallHandler } from '#compiler/ir/types'
 
 import { SceneGraph, initCodec } from '@open-pencil/core'
 import type { ActionDef } from '@open-pencil/scene-graph'
@@ -36,7 +36,7 @@ describe('resolveApiCall — URL template (Phase 2 §4)', () => {
     return { graph, pageId: page.id }
   }
 
-  function handlerOf(graph: SceneGraph, pageId: string): IRApiCallHandler | undefined {
+  function handlerOf(graph: SceneGraph, pageId: string): IRAPICallHandler | undefined {
     const ir = collectTree(graph, pageId)
     const button = ir.children[0]
     if (button.kind !== 'element') throw new Error('expected element')

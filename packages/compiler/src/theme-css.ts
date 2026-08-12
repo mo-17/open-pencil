@@ -24,7 +24,7 @@ function hasVariableObjectKey(value: VariableValue, key: string): boolean {
   return typeof value === 'object' && Object.hasOwn(value, key)
 }
 
-function isCssColorValue(value: VariableValue): value is Color {
+function isCSSColorValue(value: VariableValue): value is Color {
   return (
     hasVariableObjectKey(value, 'r') &&
     hasVariableObjectKey(value, 'g') &&
@@ -72,14 +72,14 @@ function aliasTargetModeId(
   return targetCollection?.defaultModeId || targetCollection?.modes[0]?.modeId || sourceModeId
 }
 
-function formatCssValue(
+function formatCSSValue(
   value: VariableValue,
   graph: SceneGraph,
   modeId: string,
   modeName: string
 ): string | null {
   const resolved = resolveValue(value, graph, modeId, modeName)
-  if (isCssColorValue(resolved)) return colorToHex(resolved)
+  if (isCSSColorValue(resolved)) return colorToHex(resolved)
   if (typeof resolved === 'number') return String(resolved)
   if (typeof resolved === 'string') return resolved
   if (typeof resolved === 'boolean') return resolved ? '1' : '0'
@@ -109,7 +109,7 @@ function normalizedVariableName(variable: Variable): string {
 function findRuntimeColorToken(variables: readonly Variable[], graph: SceneGraph): string | null {
   const colorVariables = variables.filter((variable) =>
     Object.values(variable.valuesByMode).some((value) =>
-      isCssColorValue(resolveValue(value, graph, '', ''))
+      isCSSColorValue(resolveValue(value, graph, '', ''))
     )
   )
   if (colorVariables.length === 0) return null
@@ -118,7 +118,7 @@ function findRuntimeColorToken(variables: readonly Variable[], graph: SceneGraph
     colorVariables.find((variable) => normalizedVariableName(variable).includes('primary')) ??
     colorVariables.find((variable) => normalizedVariableName(variable).includes('accent')) ??
     colorVariables[0]
-  return designTokenCssVariableName(graph, preferred.id)
+  return designTokenCSSVariableName(graph, preferred.id)
 }
 
 function findRuntimeRadiusToken(variables: readonly Variable[], graph: SceneGraph): string | null {
@@ -126,7 +126,7 @@ function findRuntimeRadiusToken(variables: readonly Variable[], graph: SceneGrap
     const name = normalizedVariableName(variable)
     return name.includes('radius') || name.includes('corner')
   })
-  return preferred ? designTokenCssVariableName(graph, preferred.id) : null
+  return preferred ? designTokenCSSVariableName(graph, preferred.id) : null
 }
 
 function lowcodeRuntimeThemeAliases(variables: readonly Variable[], graph: SceneGraph): string[] {
@@ -142,7 +142,7 @@ function lowcodeRuntimeThemeAliases(variables: readonly Variable[], graph: Scene
   return lines
 }
 
-export function designTokenCssVariableName(graph: SceneGraph, variableId: string): string | null {
+export function designTokenCSSVariableName(graph: SceneGraph, variableId: string): string | null {
   const variable = graph.variables.get(variableId)
   if (!variable) return null
   const collection = graph.variableCollections.get(variable.collectionId)
@@ -173,12 +173,12 @@ function appendVariableThemeLines(
   rootLines: string[],
   modeLines: ThemeModeLines
 ): void {
-  const cssVar = designTokenCssVariableName(graph, variable.id)
+  const cssVar = designTokenCSSVariableName(graph, variable.id)
   if (!cssVar) return
   const valuesByMode: Partial<Record<string, VariableValue>> = variable.valuesByMode
   const defaultValue = valuesByMode[defaultModeId]
   if (defaultValue !== undefined) {
-    const formatted = formatCssValue(
+    const formatted = formatCSSValue(
       defaultValue,
       graph,
       defaultModeId,
@@ -191,7 +191,7 @@ function appendVariableThemeLines(
     if (mode.modeId === defaultModeId) continue
     const value = valuesByMode[mode.modeId]
     if (value === undefined) continue
-    const formatted = formatCssValue(value, graph, mode.modeId, mode.name)
+    const formatted = formatCSSValue(value, graph, mode.modeId, mode.name)
     if (formatted !== null) {
       appendModeLine(modeLines, mode.modeId, mode.name, `  ${cssVar}: ${formatted};`)
     }
@@ -212,7 +212,7 @@ function appendCollectionThemeLines(
   }
 }
 
-export function buildDesignTokenThemeCss(graph: SceneGraph): string {
+export function buildDesignTokenThemeCSS(graph: SceneGraph): string {
   const collections = [...graph.variableCollections.values()]
     .filter((collection) => collection.variableIds.length > 0)
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))

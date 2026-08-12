@@ -5,7 +5,7 @@ import {
   createSignedManifestIntegrity,
   parseBoundedManifestArray,
   parseExactManifestRecord,
-  parseSha256Base64Url,
+  parseSha256Base64URL,
   parseSignedManifestIntegrity,
   parseStableSemver,
   validateModuleIdentity,
@@ -30,7 +30,7 @@ import {
 } from './package'
 import {
   comparePluginVersionCoordinates,
-  parseCanonicalPublicHttpsUrl,
+  parseCanonicalPublicHttpsURL,
   parsePluginVersionCoordinate
 } from './parse-helpers'
 import {
@@ -205,17 +205,17 @@ export function parsePluginRuntimeIndexEntry(
     version: coordinate[1],
     publisherId: identity(source.publisherId, `${path}.publisherId`),
     keyId: identity(source.keyId, `${path}.keyId`),
-    declarativeManifestDigest: parseSha256Base64Url(
+    declarativeManifestDigest: parseSha256Base64URL(
       source.declarativeManifestDigest,
       `${path}.declarativeManifestDigest`
     ),
     runtimeKind: runtimeKind(source.runtimeKind, `${path}.runtimeKind`),
-    runtimePackageUrl: parseCanonicalPublicHttpsUrl(
+    runtimePackageUrl: parseCanonicalPublicHttpsURL(
       source.runtimePackageUrl,
       `${path}.runtimePackageUrl`,
       PLUGIN_RUNTIME_INDEX_LIMITS.maxUrlLength
     ),
-    runtimePackageDigest: parseSha256Base64Url(
+    runtimePackageDigest: parseSha256Base64URL(
       source.runtimePackageDigest,
       `${path}.runtimePackageDigest`
     ),
@@ -236,7 +236,10 @@ function runtimeIndexEntries(value: unknown): readonly PluginRuntimeIndexEntryV1
   if (new Set(coordinates).size !== entries.length) {
     throw new TypeError('runtimeIndex.entries contains duplicate plugin versions')
   }
-  if (new Set(entries.map(({ runtimePackageUrl }) => runtimePackageUrl)).size !== entries.length) {
+  if (
+    new Set(entries.map(({ runtimePackageUrl: runtimePackageURL }) => runtimePackageURL)).size !==
+    entries.length
+  ) {
     throw new TypeError('runtimeIndex.entries contains duplicate runtime package URLs')
   }
   if (
@@ -312,7 +315,7 @@ export function parsePluginRuntimeIndex(value: unknown): SignedPluginRuntimeInde
   return index
 }
 
-export function parsePluginRuntimeIndexJson(source: string): SignedPluginRuntimeIndexV1 {
+export function parsePluginRuntimeIndexJSON(source: string): SignedPluginRuntimeIndexV1 {
   if (
     typeof source !== 'string' ||
     new TextEncoder().encode(source).byteLength > PLUGIN_RUNTIME_INDEX_LIMITS.maxJsonBytes
@@ -338,7 +341,7 @@ export function parsePluginRuntimeIndexBytes(source: Uint8Array): SignedPluginRu
   } catch {
     throw new TypeError('Runtime index must contain valid UTF-8')
   }
-  return parsePluginRuntimeIndexJson(text)
+  return parsePluginRuntimeIndexJSON(text)
 }
 
 export function serializePluginRuntimeIndex(value: unknown): string {

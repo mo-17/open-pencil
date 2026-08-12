@@ -25,7 +25,7 @@ import {
   unsplashKeyStatus
 } from '@/app/ai/chat/storage'
 import { createChatSessionManager } from '@/app/ai/chat/transports'
-import { remoteMcpSettingsSnapshot } from '@/app/ai/mcp'
+import { remoteMCPSettingsSnapshot } from '@/app/ai/mcp'
 import { resolveAIModelRole } from '@/app/ai/models'
 import { getAISessionStore } from '@/app/ai/sessions'
 import { exposeChatTransportOverride } from '@/app/browser-bridge'
@@ -35,7 +35,7 @@ const activeTab = ref<'design' | 'code' | 'ai'>('design')
 
 function resolveACPConfigurationContext(role: NonNullable<ReturnType<typeof resolveAIModelRole>>) {
   const selected = new Set(role.profile.featurePolicy.mcpServerIds)
-  return remoteMcpSettingsSnapshot()
+  return remoteMCPSettingsSnapshot()
     .servers.filter((server) => selected.has(server.id))
     .sort((first, second) => first.id.localeCompare(second.id))
     .map((server) => ({

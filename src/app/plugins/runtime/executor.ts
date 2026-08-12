@@ -4,7 +4,7 @@ import {
 } from '@open-pencil/core/plugins'
 import { randomHex } from '@open-pencil/core/random'
 import { canonicalManifestValue } from '@open-pencil/scene-graph'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import {
   PLUGIN_RUNTIME_WORKER_PROTOCOL_VERSION,
@@ -30,7 +30,7 @@ export interface PluginRuntimeWorkerLike {
 
 export interface ExecuteWasmPluginOptions {
   wasmBytes: Uint8Array
-  input: JsonValue
+  input: JSONValue
   timeoutMs?: number
   maxInputBytes?: number
   maxOutputBytes?: number
@@ -89,7 +89,7 @@ function boundedMemoryPageLimit(value: number | undefined): number {
   return resolved
 }
 
-function boundedInput(value: JsonValue, maximum: number): string {
+function boundedInput(value: JSONValue, maximum: number): string {
   const json = JSON.stringify(canonicalManifestValue(value))
   if (new TextEncoder().encode(json).byteLength > maximum) {
     throw new TypeError('Plugin runtime input exceeds the byte limit')
@@ -97,11 +97,11 @@ function boundedInput(value: JsonValue, maximum: number): string {
   return json
 }
 
-function parseOutput(value: string, maximum: number): JsonValue {
+function parseOutput(value: string, maximum: number): JSONValue {
   if (new TextEncoder().encode(value).byteLength > maximum) {
     throw new Error('Plugin runtime output exceeds the byte limit')
   }
-  return canonicalManifestValue(JSON.parse(value)) as JsonValue
+  return canonicalManifestValue(JSON.parse(value)) as JSONValue
 }
 
 function validateRequestBytes(value: Uint8Array): Uint8Array {
@@ -133,7 +133,7 @@ function workerResponse(value: unknown, requestId: string): PluginRuntimeWorkerR
 
 export function createWasmPluginExecutor(options: CreateWasmPluginExecutorOptions = {}) {
   const workerFactory = options.workerFactory ?? defaultWorkerFactory
-  async function execute(execution: ExecuteWasmPluginOptions): Promise<JsonValue> {
+  async function execute(execution: ExecuteWasmPluginOptions): Promise<JSONValue> {
     const wasmBytes = validateRequestBytes(execution.wasmBytes)
     const maxInputBytes = boundedByteLimit(
       execution.maxInputBytes,
@@ -145,7 +145,7 @@ export function createWasmPluginExecutor(options: CreateWasmPluginExecutorOption
       PLUGIN_WASM_EXECUTOR_LIMITS.maxOutputBytes,
       'Plugin runtime output limit'
     )
-    const inputJson = boundedInput(execution.input, maxInputBytes)
+    const inputJSON = boundedInput(execution.input, maxInputBytes)
     const maxMemoryPages = boundedMemoryPageLimit(execution.maxMemoryPages)
     const timeoutMs = boundedTimeout(execution.timeoutMs)
     const requestId = randomHex(16)
@@ -166,9 +166,9 @@ export function createWasmPluginExecutor(options: CreateWasmPluginExecutorOption
         maxMemoryPages
       },
       wasmBytes: buffer,
-      inputJson
+      inputJson: inputJSON
     }
-    return new Promise<JsonValue>((resolve, reject) => {
+    return new Promise<JSONValue>((resolve, reject) => {
       let settled = false
       const finish = (operation: () => void) => {
         if (settled) return

@@ -145,12 +145,12 @@ describe('Supabase Schema Inspector reference connector', () => {
   })
 
   test('canonicalizes authority without invoking forged getters or toJSON hooks', () => {
-    let toJsonCalls = 0
+    let toJSONCalls = 0
     let getterCalls = 0
     const forgedContract = {
       ...SUPABASE_SCHEMA_INSPECTOR_CONTRACT,
       toJSON() {
-        toJsonCalls += 1
+        toJSONCalls += 1
         return SUPABASE_SCHEMA_INSPECTOR_CONTRACT
       }
     }
@@ -171,12 +171,12 @@ describe('Supabase Schema Inspector reference connector', () => {
         signal: new AbortController().signal
       })
     ).toThrow('authority does not match')
-    expect(toJsonCalls).toBe(0)
+    expect(toJSONCalls).toBe(0)
     expect(getterCalls).toBe(0)
   })
 
   test('converts OpenAPI to the existing bounded schema catalog', () => {
-    const openApi = {
+    const openAPI = {
       definitions: {
         todos: {
           required: ['id'],
@@ -187,13 +187,13 @@ describe('Supabase Schema Inspector reference connector', () => {
         }
       }
     }
-    const catalog = parseSupabaseSchemaInspectorResponse(openApi, {
+    const catalog = parseSupabaseSchemaInspectorResponse(openAPI, {
       projectRef: 'project-ref',
       schema: 'public'
     })
 
     expect(
-      SUPABASE_SCHEMA_INSPECTOR_ADAPTER.transformResponse?.(openApi, {
+      SUPABASE_SCHEMA_INSPECTOR_ADAPTER.transformResponse?.(openAPI, {
         contract: SUPABASE_SCHEMA_INSPECTOR_CONTRACT,
         operation: SUPABASE_SCHEMA_INSPECTOR_CONTRACT.operations[0],
         parameters: { projectRef: 'project-ref', schema: 'public' },

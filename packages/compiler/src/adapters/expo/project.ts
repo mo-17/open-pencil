@@ -8,7 +8,7 @@ const REACT_VERSION = '19.2.3'
 const REACT_NATIVE_VERSION = '0.86.2'
 const EXPO_ROUTER_VERSION = '~57.0.10'
 
-export function buildExpoPackageJson(options: CompilerOptions, router: boolean): string {
+export function buildExpoPackageJSON(options: CompilerOptions, router: boolean): string {
   const dependencies: Record<string, string> = {
     expo: EXPO_VERSION,
     react: REACT_VERSION,
@@ -43,7 +43,7 @@ export function buildExpoPackageJson(options: CompilerOptions, router: boolean):
   )}\n`
 }
 
-export function buildExpoAppJson(options: CompilerOptions, router: boolean): string {
+export function buildExpoAppJSON(options: CompilerOptions, router: boolean): string {
   const packageName = safePackageName(options.packageName)
   const scheme = safeExpoScheme(packageName)
   const productName = options.productName?.trim() || options.packageName.trim() || 'OpenPencil App'

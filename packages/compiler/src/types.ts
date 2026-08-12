@@ -129,14 +129,14 @@ export interface CompilerOptions {
    * `className`. Default unset → output is byte-identical to the self-contained
    * Tailwind emit. Optional so existing call sites / `withDefaults` stay unbroken.
    */
-  uiKit?: UiKitName
+  uiKit?: UIKitName
   /**
    * Phase 5 §3 — static HTML metadata for the generated SPA shell. Document-level
    * fields apply to `index.html`; `pages` lets a single-page compile override
    * them for the compiled page. Multi-page SPA output still has one HTML shell,
    * so route-specific metadata is intentionally not promised here.
    */
-  metadata?: HtmlMetadataOptions
+  metadata?: HTMLMetadataOptions
   /**
    * Phase 5 §5 — optional CSS custom-property theme block appended to
    * `src/index.css` after the Tailwind import. `compile()` auto-populates this
@@ -154,7 +154,7 @@ export interface CompilerOptions {
 }
 
 /** Phase 3 §15 — supported code-UI-kit identifiers. */
-export type UiKitName = 'shadcn'
+export type UIKitName = 'shadcn'
 
 export type LowcodeThemeSwitchPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
@@ -163,7 +163,7 @@ export interface LowcodeThemeSwitchOptions {
   position?: LowcodeThemeSwitchPosition
 }
 
-export interface HtmlMetadata {
+export interface HTMLMetadata {
   title?: string
   description?: string
   image?: string
@@ -172,8 +172,8 @@ export interface HtmlMetadata {
   customCss?: string
 }
 
-export interface HtmlMetadataOptions extends HtmlMetadata {
-  pages?: Record<string, HtmlMetadata>
+export interface HTMLMetadataOptions extends HTMLMetadata {
+  pages?: Record<string, HTMLMetadata>
 }
 
 export type LowcodeHeadMetaKind = 'name' | 'property' | 'httpEquiv'

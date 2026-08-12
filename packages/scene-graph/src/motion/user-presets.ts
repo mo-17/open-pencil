@@ -197,7 +197,7 @@ function assertUniquePresets(presets: readonly UserMotionPreset[]): void {
   })
 }
 
-function canonicalJson(library: UserMotionPresetLibrary): string {
+function canonicalJSON(library: UserMotionPresetLibrary): string {
   return JSON.stringify(
     {
       format: USER_MOTION_PRESET_FORMAT,
@@ -222,7 +222,7 @@ function jsonByteLength(json: string): number {
   return new TextEncoder().encode(json).byteLength
 }
 
-function assertJsonSize(json: string): void {
+function assertJSONSize(json: string): void {
   if (jsonByteLength(json) > USER_MOTION_PRESET_LIMITS.maxJsonBytes) {
     invalid(
       'library',
@@ -266,7 +266,7 @@ export function parseUserMotionPresetLibrary(value: unknown): UserMotionPresetLi
     schemaVersion: USER_MOTION_PRESET_SCHEMA_VERSION,
     presets
   }
-  assertJsonSize(canonicalJson(library))
+  assertJSONSize(canonicalJSON(library))
   return library
 }
 
@@ -281,9 +281,9 @@ export function validateUserMotionPresetLibrary(value: unknown): UserMotionPrese
   }
 }
 
-export function parseUserMotionPresetLibraryJson(json: string): UserMotionPresetLibrary {
+export function parseUserMotionPresetLibraryJSON(json: string): UserMotionPresetLibrary {
   if (typeof json !== 'string') invalid('library', 'invalid_type', 'Expected JSON text')
-  assertJsonSize(json)
+  assertJSONSize(json)
   let value: unknown
   try {
     value = JSON.parse(json)
@@ -295,7 +295,7 @@ export function parseUserMotionPresetLibraryJson(json: string): UserMotionPreset
 
 /** Serialize a canonical, stable-key-order v1 file. */
 export function serializeUserMotionPresetLibrary(value: unknown): string {
-  return canonicalJson(parseUserMotionPresetLibrary(value))
+  return canonicalJSON(parseUserMotionPresetLibrary(value))
 }
 
 export function createUserMotionPresetLibrary(

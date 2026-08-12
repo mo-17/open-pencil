@@ -1,8 +1,8 @@
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { AppPluginExporterExecutionResult } from './exporter-types'
 
-function exportWarningData(value: unknown): JsonObject | null {
+function exportWarningData(value: unknown): JSONObject | null {
   if (
     typeof value !== 'object' ||
     value === null ||
@@ -33,7 +33,7 @@ function exportWarningData(value: unknown): JsonObject | null {
   }
 }
 
-export function createPluginExportResultData(result: AppPluginExporterExecutionResult): JsonObject {
+export function createPluginExportResultData(result: AppPluginExporterExecutionResult): JSONObject {
   const warnings = result.warnings
     .slice(0, 100)
     .flatMap((warning) => exportWarningData(warning) ?? [])

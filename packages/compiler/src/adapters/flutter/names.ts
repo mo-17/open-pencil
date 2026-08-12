@@ -98,11 +98,11 @@ const RUNTIME_IDENTIFIERS = new Set([
 const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|clock\$|com[1-9]|lpt[1-9])(?:\..*)?$/i
 
 export function dartString(value: string): string {
-  return escapeJsonUnsafe(JSON.stringify(wellFormedString(value))).replaceAll('$', '\\$')
+  return escapeJSONUnsafe(JSON.stringify(wellFormedString(value))).replaceAll('$', '\\$')
 }
 
 export function yamlString(value: string): string {
-  return escapeJsonUnsafe(JSON.stringify(wellFormedString(value)))
+  return escapeJSONUnsafe(JSON.stringify(wellFormedString(value)))
 }
 
 export function dartPackageName(value: string): string {
@@ -200,18 +200,18 @@ function withStableSuffix(
   return `${value.slice(0, Math.max(1, maxLength - suffix.length))}${suffix}`
 }
 
-function escapeJsonUnsafe(value: string): string {
+function escapeJSONUnsafe(value: string): string {
   let escaped = ''
   for (const character of value) {
     const codePoint = character.codePointAt(0) ?? 0
-    escaped += isUnsafeJsonCodePoint(codePoint)
+    escaped += isUnsafeJSONCodePoint(codePoint)
       ? `\\u${codePoint.toString(16).padStart(4, '0')}`
       : character
   }
   return escaped
 }
 
-function isUnsafeJsonCodePoint(codePoint: number): boolean {
+function isUnsafeJSONCodePoint(codePoint: number): boolean {
   return (
     (codePoint >= 0x7f && codePoint <= 0x9f) ||
     (codePoint >= 0x200b && codePoint <= 0x200f) ||

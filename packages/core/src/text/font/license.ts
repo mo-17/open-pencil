@@ -158,14 +158,14 @@ export function embeddedFontLicenseMetadata(
     const trademark = cleanMetadata(localizedValue(names, 'trademark'), 300)
     const manufacturer = cleanMetadata(localizedValue(names, 'manufacturer'), 200)
     const licenseDescription = cleanMetadata(localizedValue(names, 'license'), 500)
-    const licenseUrl = cleanMetadata(localizedValue(names, 'licenseURL'), 300)
-    const reportedLicenseId = candidateLicenseId(licenseDescription, licenseUrl)
+    const licenseURL = cleanMetadata(localizedValue(names, 'licenseURL'), 300)
+    const reportedLicenseId = candidateLicenseId(licenseDescription, licenseURL)
     const metadata: EmbeddedFontLicenseMetadata = {
       ...(copyright ? { copyright } : {}),
       ...(trademark ? { trademark } : {}),
       ...(manufacturer ? { manufacturer } : {}),
       ...(licenseDescription ? { licenseDescription } : {}),
-      ...(licenseUrl ? { licenseUrl } : {}),
+      ...(licenseURL ? { licenseUrl: licenseURL } : {}),
       ...(reportedLicenseId ? { candidateLicenseId: reportedLicenseId } : {}),
       ...(font.tables?.os2?.fsType === undefined ? {} : { fsType: font.tables.os2.fsType }),
       embedding: embeddingMetadata(font.tables?.os2?.fsType)

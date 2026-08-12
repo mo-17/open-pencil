@@ -34,14 +34,14 @@ import { loadDocument, populateWholeDocument, saveDocument } from '#cli/headless
 import {
   assertMotionTargetsCompatible,
   motionNodeChanges as motionChanges,
-  printMotionJson as printJson,
+  printMotionJSON as printJSON,
   runMotionCommandSafely as runSafely
 } from './common'
 
 const { version: ENGINE_VERSION } = await import('../../../package.json')
 const MAX_TEAM_REGISTRY_JSON_BYTES = 16_777_216
 
-interface TeamMotionJsonArgument {
+interface TeamMotionJSONArgument {
   [key: string]: unknown
 }
 
@@ -65,7 +65,7 @@ async function readBounded(path: string, maxBytes: number, label: string): Promi
   return new Uint8Array(await readFile(absolute))
 }
 
-async function readJson(
+async function readJSON(
   path: string,
   label: string,
   maxBytes: number = TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes
@@ -88,7 +88,7 @@ async function importPublicKey(path: string): Promise<CryptoKey> {
   return importTeamMotionPublicKey(text)
 }
 
-async function writeJson(path: string, value: unknown): Promise<string> {
+async function writeJSON(path: string, value: unknown): Promise<string> {
   const output = resolve(path)
   await writeFile(output, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
   return output
@@ -143,7 +143,7 @@ async function readVerifiedRegistry(
   expectedKeyId?: string
 ): Promise<TeamMotionLibraryRegistryState> {
   return verifyRegistry(
-    await readJson(path, 'Team Motion registry', MAX_TEAM_REGISTRY_JSON_BYTES),
+    await readJSON(path, 'Team Motion registry', MAX_TEAM_REGISTRY_JSON_BYTES),
     keyPath,
     expectedKeyId
   )
@@ -153,7 +153,7 @@ function jsonByteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
 
-async function writeRegistryJson(
+async function writeRegistryJSON(
   path: string,
   state: TeamMotionLibraryRegistryState
 ): Promise<string> {
@@ -174,7 +174,7 @@ async function writeRegistryJson(
   return output
 }
 
-function parseObjectArgument(value: string | undefined, label: string): TeamMotionJsonArgument {
+function parseObjectArgument(value: string | undefined, label: string): TeamMotionJSONArgument {
   if (value === undefined) return {}
   if (jsonByteLength(value) > TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes) {
     throw new Error(
@@ -185,7 +185,7 @@ function parseObjectArgument(value: string | undefined, label: string): TeamMoti
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error(`${label} must encode a JSON object.`)
   }
-  return parsed as TeamMotionJsonArgument
+  return parsed as TeamMotionJSONArgument
 }
 
 function parseNodeIds(value: string | undefined): string[] {
@@ -360,7 +360,7 @@ const sign = defineCommand({
   async run({ args }) {
     await runSafely(async () => {
       const payload = parseTeamMotionLibraryPayload(
-        await readJson(args.payload, 'Team Motion payload')
+        await readJSON(args.payload, 'Team Motion payload')
       )
       const manifest = await signTeamMotionLibraryManifest(
         payload,
@@ -368,7 +368,7 @@ const sign = defineCommand({
       )
       const output = resolve(args.output)
       await writeFile(output, serializeTeamMotionLibraryManifest(manifest), 'utf8')
-      if (args.json) printJson({ manifest, output })
+      if (args.json) printJSON({ manifest, output })
       else {
         printSnapshot('Signed', {
           manifest,
@@ -392,11 +392,11 @@ const verify = defineCommand({
   async run({ args }) {
     await runSafely(async () => {
       const snapshot = await verifyManifest(
-        await readJson(args.manifest, 'Team Motion manifest'),
+        await readJSON(args.manifest, 'Team Motion manifest'),
         args['public-key'],
         args['key-id']
       )
-      if (args.json) printJson(snapshot)
+      if (args.json) printJSON(snapshot)
       else printSnapshot('Verified', snapshot)
     })
   }
@@ -414,13 +414,13 @@ const importCommand = defineCommand({
   async run({ args }) {
     await runSafely(async () => {
       const snapshot = await verifyManifest(
-        await readJson(args.manifest, 'Team Motion manifest'),
+        await readJSON(args.manifest, 'Team Motion manifest'),
         args['public-key'],
         args['key-id']
       )
       const state = createTeamMotionLibraryRegistry(snapshot)
-      const output = await writeRegistryJson(args.output, state)
-      if (args.json) printJson({ state, output })
+      const output = await writeRegistryJSON(args.output, state)
+      if (args.json) printJSON({ state, output })
       else printRegistry('Imported', state, output)
     })
   }
@@ -440,13 +440,13 @@ const review = defineCommand({
     await runSafely(async () => {
       const state = await readVerifiedRegistry(args.state, args['public-key'], args['key-id'])
       const candidate = await verifyManifest(
-        await readJson(args.manifest, 'Team Motion manifest'),
+        await readJSON(args.manifest, 'Team Motion manifest'),
         args['public-key'],
         args['key-id'] ?? state.accepted.manifest.publisher.keyId
       )
       const next = reviewTeamMotionLibraryUpdate(state, candidate)
-      const output = await writeRegistryJson(args.output, next)
-      if (args.json) printJson({ state: next, output })
+      const output = await writeRegistryJSON(args.output, next)
+      if (args.json) printJSON({ state: next, output })
       else printRegistry('Reviewed', next, output)
     })
   }
@@ -477,8 +477,8 @@ function registryMutationCommand(
       await runSafely(async () => {
         const state = await readVerifiedRegistry(args.state, args['public-key'], args['key-id'])
         const next = mutate(state, typeof args.digest === 'string' ? args.digest : undefined)
-        const output = await writeRegistryJson(args.output, next)
-        if (args.json) printJson({ state: next, output })
+        const output = await writeRegistryJSON(args.output, next)
+        if (args.json) printJSON({ state: next, output })
         else printRegistry(action, next, output)
       })
     }
@@ -523,8 +523,8 @@ const instantiate = defineCommand({
         args.entry,
         instantiationInput(args)
       )
-      const output = await writeJson(args.output, result)
-      if (args.json) printJson({ result, output })
+      const output = await writeJSON(args.output, result)
+      if (args.json) printJSON({ result, output })
       else {
         console.log(ok(`Instantiated ${result.entryId} to ${output}`))
       }
@@ -606,7 +606,7 @@ const apply = defineCommand({
         nodeIds: targets.map(({ nodeId }) => nodeId),
         output
       }
-      if (args.json) printJson(report)
+      if (args.json) printJSON(report)
       else {
         console.log(
           ok(

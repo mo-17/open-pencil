@@ -1,6 +1,6 @@
 import type { IRElement } from '#compiler/ir/types'
 
-import { scriptJson, type VueEmitContext } from '../shared'
+import { scriptJSON, type VueEmitContext } from '../shared'
 import type { VueModuleAdapter } from './types'
 
 interface VueModuleElementParts {
@@ -19,7 +19,7 @@ export function emitVueModuleElement(
   context.expressionIndex += 1
   const configName = `__opModuleConfig_${context.expressionIndex}`
   context.templateBindings.push(
-    `const ${configName} = ${scriptJson(node.module?.payload ?? {})} as const`
+    `const ${configName} = ${scriptJSON(node.module?.payload ?? {})} as const`
   )
   const attrs = [`:config="${configName}"`, ...parts.attrs]
   const opening = `${pad}<${adapter.componentName} ${attrs.join(' ')}`

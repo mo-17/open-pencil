@@ -10,17 +10,17 @@ import type {
 } from '@open-pencil/core/io/motion-export'
 import { ALL_TOOLS, CODEGEN_PROMPT } from '@open-pencil/core/tools'
 
-import type { RpcJsonObject } from '#mcp/json'
+import type { RPCJSONObject } from '#mcp/json'
 import {
   discoverFfmpegMotionEncoders,
-  encodeMotionPngSequenceToolResult
+  encodeMotionPNGSequenceToolResult
 } from '#mcp/motion-export/index'
 import { MAX_RESULT_BYTES, fail, getDomainFailure, ok, resultTooLargeMessage } from '#mcp/result'
 import type { MCPResult } from '#mcp/result'
 import { resolveSafePath, writeToolOutput } from '#mcp/tool/output'
 import { paramToZod } from '#mcp/tool/schema'
 
-export type RpcSender = (
+export type RPCSender = (
   body: Record<string, unknown>,
   options?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void }
 ) => Promise<unknown>
@@ -100,7 +100,7 @@ function splitAutomationTarget(args: Record<string, unknown>): {
 export interface RegisterToolsOptions {
   enableEval: boolean
   mcpRoot?: string | null
-  sendRpc: RpcSender
+  sendRPC: RPCSender
 }
 
 interface PreparedMotionToolCall {
@@ -141,7 +141,7 @@ interface CompleteToolCallOptions {
   requestBytes: number
 }
 
-interface RpcToolResponse {
+interface RPCToolResponse {
   ok?: boolean
   result?: unknown
   error?: string
@@ -149,13 +149,13 @@ interface RpcToolResponse {
   target?: Record<string, unknown>
 }
 
-function stringifyJson(value: unknown): string | undefined {
+function stringifyJSON(value: unknown): string | undefined {
   return JSON.stringify(value)
 }
 
 function jsonBytes(value: unknown): number {
   try {
-    return Buffer.byteLength(stringifyJson(value) ?? '', 'utf8')
+    return Buffer.byteLength(stringifyJSON(value) ?? '', 'utf8')
   } catch {
     return 0
   }
@@ -163,7 +163,7 @@ function jsonBytes(value: unknown): number {
 
 function callMeta(
   options: CompleteToolCallOptions,
-  response: RpcToolResponse,
+  response: RPCToolResponse,
   result: unknown
 ): Record<string, unknown> {
   return {
@@ -183,7 +183,7 @@ function attachMeta(result: MCPResult, meta: Record<string, unknown>): MCPResult
   return { ...result, _meta: { ...result._meta, ...meta } }
 }
 
-function imageToolResult(toolName: string, result: RpcJsonObject): MCPResult | undefined {
+function imageToolResult(toolName: string, result: RPCJSONObject): MCPResult | undefined {
   if (!('base64' in result) || !('mimeType' in result)) return undefined
   const base64 = String(result.base64)
   const bytes = Buffer.byteLength(base64, 'utf8')
@@ -215,7 +215,7 @@ function imageToolResult(toolName: string, result: RpcJsonObject): MCPResult | u
 
 async function completeToolCall(options: CompleteToolCallOptions): Promise<MCPResult> {
   const { toolName, requestedPath, resolvedRoot, prepared, signal, onProgress } = options
-  const response = options.response as RpcToolResponse
+  const response = options.response as RPCToolResponse
   if (response.ok === false) {
     return fail(
       response.error ?? 'OpenPencil RPC failed',
@@ -228,13 +228,13 @@ async function completeToolCall(options: CompleteToolCallOptions): Promise<MCPRe
   }
 
   const result = prepared.encoder
-    ? ((await encodeMotionPngSequenceToolResult(
+    ? ((await encodeMotionPNGSequenceToolResult(
         response.result,
         prepared.encoder,
         signal,
         onProgress
-      )) as RpcJsonObject)
-    : (response.result as RpcJsonObject | undefined)
+      )) as RPCJSONObject)
+    : (response.result as RPCJSONObject | undefined)
   const meta = callMeta(options, response, result)
   if (result && requestedPath && resolvedRoot) {
     const written = await writeToolOutput(toolName, result, requestedPath, resolvedRoot, signal)
@@ -245,7 +245,7 @@ async function completeToolCall(options: CompleteToolCallOptions): Promise<MCPRe
 }
 
 export function registerTools(mcpServer: McpServer, options: RegisterToolsOptions) {
-  const { enableEval, sendRpc } = options
+  const { enableEval, sendRPC } = options
   const resolvedRoot = options.mcpRoot ? resolve(options.mcpRoot) : null
   const register = mcpServer.registerTool.bind(mcpServer) as (...a: unknown[]) => void
 
@@ -282,7 +282,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
           requestBytes = jsonBytes({ target, args: prepared.args })
           const onProgress =
             def.name === 'export_motion_animation' ? motionProgressReporter(extra) : undefined
-          const result = await sendRpc(
+          const result = await sendRPC(
             {
               command: 'tool',
               args: {
@@ -329,7 +329,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
     },
     async (_args: Record<string, never>, extra?: ToolRequestExtra) => {
       try {
-        const result = await sendRpc(
+        const result = await sendRPC(
           { command: 'list_documents', args: {} },
           { signal: extra?.signal }
         )
@@ -370,7 +370,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
             ? await resolveSafePath(args.path, resolvedRoot)
             : undefined
         const { target } = splitAutomationTarget(args)
-        const result = await sendRpc(
+        const result = await sendRPC(
           {
             command: 'save_file',
             args: { ...target, path: safePath?.realPath }
@@ -411,7 +411,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
         try {
           const safe = await resolveSafePath(args.path, resolvedRoot)
           const { target } = splitAutomationTarget(args)
-          const result = await sendRpc(
+          const result = await sendRPC(
             {
               command: 'open_file',
               args: { ...target, path: safe.realPath }
@@ -449,7 +449,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
           const safePath =
             args.path !== undefined ? await resolveSafePath(args.path, resolvedRoot) : undefined
           const { target } = splitAutomationTarget(args)
-          const result = await sendRpc(
+          const result = await sendRPC(
             {
               command: 'new_document',
               args: { ...target, path: safePath?.realPath }

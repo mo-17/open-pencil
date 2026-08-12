@@ -1,5 +1,5 @@
 import {
-  canonicalManifestJson,
+  canonicalManifestJSON,
   compareStableSemver,
   parseBoundedManifestArray as array,
   parseExactManifestRecord as record,
@@ -222,7 +222,7 @@ function contributionMap(
   return new Map(
     entries?.map((entry) => [
       Reflect.get(entry, identityKey) as string,
-      canonicalManifestJson(entry)
+      canonicalManifestJSON(entry)
     ])
   )
 }
@@ -476,7 +476,7 @@ export function parseInstalledPluginState(
     requireConsistentHistoricalVersion(history, candidate)
     const expectedDiff = diffPluginPackages(accepted, candidate)
     if (
-      canonicalManifestJson(updateDiff(pendingSource.diff)) !== canonicalManifestJson(expectedDiff)
+      canonicalManifestJSON(updateDiff(pendingSource.diff)) !== canonicalManifestJSON(expectedDiff)
     ) {
       throw new TypeError('installedPlugin.pending.diff does not match its snapshots')
     }

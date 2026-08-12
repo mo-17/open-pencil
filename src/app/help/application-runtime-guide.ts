@@ -180,7 +180,7 @@ export function applicationRuntimeGuideHeadings(
   }))
 }
 
-export function applicationRuntimeGuideExternalUrl(raw: string): string | null {
+export function applicationRuntimeGuideExternalURL(raw: string): string | null {
   try {
     const url = new URL(raw)
     return url.protocol === 'https:' && !url.username && !url.password ? url.href : null

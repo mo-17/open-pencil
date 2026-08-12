@@ -11,7 +11,7 @@ import {
   type MotionExportFormat,
   type MotionExportReducedMotion,
   type MotionGraphExportSource,
-  type MotionPngSequenceResult
+  type MotionPNGSequenceResult
 } from '@open-pencil/core/io'
 import {
   discoverFfmpegMotionEncoders,
@@ -73,9 +73,9 @@ async function prepareTemporaryOutput(output: string): Promise<{
   return { directory, file: join(directory, basename(output)) }
 }
 
-async function writePngSequenceAtomic(
+async function writePNGSequenceAtomic(
   output: string,
-  result: MotionPngSequenceResult,
+  result: MotionPNGSequenceResult,
   signal: AbortSignal
 ): Promise<{ output: string; byteLength: number }> {
   const { directory: temporary } = await prepareTemporaryOutput(output)
@@ -268,7 +268,7 @@ export default defineCommand({
       })
       const written =
         result.format === 'png-sequence'
-          ? await writePngSequenceAtomic(outputPath, result, controller.signal)
+          ? await writePNGSequenceAtomic(outputPath, result, controller.signal)
           : await writeEncodedAnimationAtomic(outputPath, result, controller.signal)
       const report = {
         version: 1 as const,

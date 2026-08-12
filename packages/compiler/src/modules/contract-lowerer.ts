@@ -1,10 +1,10 @@
 import type { ModuleResolution } from '@open-pencil/core/plugins'
 import type { NodeType } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { CompilerModuleLowerer, CompilerModulePayload } from './types'
 
-interface ContractModuleLowererOptions<TConfig extends JsonObject> {
+interface ContractModuleLowererOptions<TConfig extends JSONObject> {
   readonly pluginId: string
   readonly moduleType: string
   readonly warningCodePrefix: string
@@ -15,7 +15,7 @@ interface ContractModuleLowererOptions<TConfig extends JsonObject> {
 }
 
 /** Build a defensive compiler lowerer around a Core-owned strict module resolver. */
-export function createContractModuleLowerer<TConfig extends JsonObject>(
+export function createContractModuleLowerer<TConfig extends JSONObject>(
   options: ContractModuleLowererOptions<TConfig>
 ): CompilerModuleLowerer {
   return Object.freeze({

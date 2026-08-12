@@ -12,9 +12,9 @@ import {
   generatedAlias,
   sanitizeVueHrefLiteral,
   scopedIdentifier,
-  scriptJson,
+  scriptJSON,
   templateExpression,
-  vueAssetUrl,
+  vueAssetURL,
   type VueEmitContext,
   type VueLocalBinding
 } from './shared'
@@ -28,7 +28,7 @@ export function emitVueElementAttributes(
   const attrs: string[] = []
   if (node.classNameProp) {
     const prop = scopedIdentifier(node.classNameProp, context.identAliases, locals)
-    const fallback = node.classNamePropFallback ? ` ?? ${scriptJson(node.className)}` : ''
+    const fallback = node.classNamePropFallback ? ` ?? ${scriptJSON(node.className)}` : ''
     attrs.push(`:class="${escapeAttr(`${prop}${fallback}`)}"`)
   } else if (node.className) {
     attrs.push(`class="${escapeAttr(node.className)}"`)
@@ -81,7 +81,7 @@ export function emitVueElementAttributes(
   }
   if (node.image) {
     if (node.image.srcLiteral !== undefined) {
-      attrs.push(`src="${escapeAttr(vueAssetUrl(node.image.srcLiteral))}"`)
+      attrs.push(`src="${escapeAttr(vueAssetURL(node.image.srcLiteral))}"`)
     } else if (node.image.srcExpr) {
       attrs.push(
         `:src="${escapeAttr(templateExpression(node.image.srcExpr, context.identAliases, locals))}"`
@@ -108,7 +108,7 @@ export function emitVueStyleExpression(style: IRStyleAttr, context: VueEmitConte
   const declarations = Object.entries(style.declarations).map(([property, value]) => {
     const emitted = styleValueExpression(value, context)
     return {
-      source: `${scriptJson(property)}: ${emitted.source}`,
+      source: `${scriptJSON(property)}: ${emitted.source}`,
       usesAsset: emitted.usesAsset
     }
   })
@@ -130,27 +130,27 @@ function styleValueExpression(
 ): { source: string; usesAsset: boolean } {
   const pattern = /url\(\s*(['"]?)(\.\/assets\/[^'"\s)]+|src\/assets\/[^'"\s)]+)\1\s*\)/g
   const matches = [...value.matchAll(pattern)]
-  if (matches.length === 0) return { source: scriptJson(value), usesAsset: false }
+  if (matches.length === 0) return { source: scriptJSON(value), usesAsset: false }
   const parts: string[] = []
   let cursor = 0
   for (const match of matches) {
     const index = match.index
-    const path = vueAssetUrl(match[2])
+    const path = vueAssetURL(match[2])
     let alias = context.assetImports.get(path)
     if (!alias) {
       alias = generatedAlias('Asset', path)
       context.assetImports.set(path, alias)
     }
-    parts.push(scriptJson(`${value.slice(cursor, index)}url(`), alias, scriptJson(')'))
+    parts.push(scriptJSON(`${value.slice(cursor, index)}url(`), alias, scriptJSON(')'))
     cursor = index + match[0].length
   }
   const tail = value.slice(cursor)
-  if (tail) parts.push(scriptJson(tail))
+  if (tail) parts.push(scriptJSON(tail))
   return { source: parts.join(' + '), usesAsset: true }
 }
 
 export function vueStyleAssetImportLines(context: VueEmitContext): string[] {
   return [...context.assetImports.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([path, alias]) => `import ${alias} from ${scriptJson(path)}`)
+    .map(([path, alias]) => `import ${alias} from ${scriptJSON(path)}`)
 }

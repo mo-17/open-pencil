@@ -18,7 +18,7 @@ import {
   createSlice,
   createVector,
   fetchIconsTool,
-  importSvg,
+  importSVG,
   insertIcon,
   searchIconsTool
 } from './create'
@@ -41,7 +41,7 @@ import {
 import {
   checkFont,
   auditFontRendering,
-  diffJsx,
+  diffJSX,
   getComponents,
   getCurrentPage,
   getPageTree,
@@ -90,8 +90,8 @@ import {
   booleanSubtract,
   booleanUnion,
   exportImage,
-  exportPdf,
-  exportSvg,
+  exportPDF,
+  exportSVG,
   pathFlip,
   pathGet,
   pathMove,
@@ -119,7 +119,7 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   listAvailableFonts,
   checkFont,
   auditFontRendering,
-  diffJsx,
+  diffJSX,
   // Create (advanced)
   createShape,
   searchIconsTool,
@@ -130,7 +130,7 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   createPage,
   createVector,
   createSlice,
-  importSvg,
+  importSVG,
   // Modify (advanced)
   setEffects,
   setOpacity,
@@ -186,8 +186,8 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   pathMove,
   viewportGet,
   viewportSet,
-  exportSvg,
-  exportPdf,
+  exportSVG,
+  exportPDF,
   exportImage,
   // Analyze & diff
   analyzeColors,

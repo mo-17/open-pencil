@@ -211,7 +211,7 @@ function buildMotionTargets(
   }
 }
 
-function parseBoundedJson<T>(
+function parseBoundedJSON<T>(
   value: string,
   fieldName: string,
   label: string,
@@ -236,8 +236,8 @@ function parseBoundedJson<T>(
   }
 }
 
-function parseSpecJson(specJson: string): ModifyResult<MotionSpec> {
-  return parseBoundedJson(specJson, 'specJson', 'MotionSpec', parseMotionSpec)
+function parseSpecJSON(specJSON: string): ModifyResult<MotionSpec> {
+  return parseBoundedJSON(specJSON, 'specJson', 'MotionSpec', parseMotionSpec)
 }
 
 export function validateMotionNodeCapabilities(
@@ -252,38 +252,38 @@ export function validateMotionNodeCapabilities(
     : { ok: true, data: undefined }
 }
 
-function parseSceneSpecJson(specJson: string): ModifyResult<MotionSceneSpec> {
-  return parseBoundedJson(specJson, 'specJson', 'MotionSceneSpec', parseMotionSceneSpec)
+function parseSceneSpecJSON(specJSON: string): ModifyResult<MotionSceneSpec> {
+  return parseBoundedJSON(specJSON, 'specJson', 'MotionSceneSpec', parseMotionSceneSpec)
 }
 
-function parseDriverSpecJson(specJson: string): ModifyResult<MotionDriverSpecV1> {
-  return parseBoundedJson(specJson, 'specJson', 'MotionDriverSpec', parseMotionDriverSpec)
+function parseDriverSpecJSON(specJSON: string): ModifyResult<MotionDriverSpecV1> {
+  return parseBoundedJSON(specJSON, 'specJson', 'MotionDriverSpec', parseMotionDriverSpec)
 }
 
-function parsePrototypeSpecJson(specJson: string): ModifyResult<PrototypeSpecV1> {
-  return parseBoundedJson(specJson, 'specJson', 'PrototypeSpec', parsePrototypeSpec)
+function parsePrototypeSpecJSON(specJSON: string): ModifyResult<PrototypeSpecV1> {
+  return parseBoundedJSON(specJSON, 'specJson', 'PrototypeSpec', parsePrototypeSpec)
 }
 
-function parseRecipeJson(recipeJson: string): ModifyResult<MotionRecipe> {
-  return parseBoundedJson(recipeJson, 'recipeJson', 'Motion Recipe', parseMotionRecipe)
+function parseRecipeJSON(recipeJSON: string): ModifyResult<MotionRecipe> {
+  return parseBoundedJSON(recipeJSON, 'recipeJson', 'Motion Recipe', parseMotionRecipe)
 }
 
-function parseRecipeInputJson(
-  roleMappingJson: string,
-  parametersJson: string | undefined
+function parseRecipeInputJSON(
+  roleMappingJSON: string,
+  parametersJSON: string | undefined
 ): ModifyResult<MotionRecipeInstantiationInput> {
-  const parsedRoleMapping = parseBoundedJson(
-    roleMappingJson,
+  const parsedRoleMapping = parseBoundedJSON(
+    roleMappingJSON,
     'roleMappingJson',
     'Motion Recipe role mapping',
     (value) => value
   )
   if (!parsedRoleMapping.ok) return parsedRoleMapping
   const parsedParameters =
-    parametersJson === undefined
+    parametersJSON === undefined
       ? ({ ok: true, data: undefined } as const)
-      : parseBoundedJson(
-          parametersJson,
+      : parseBoundedJSON(
+          parametersJSON,
           'parametersJson',
           'Motion Recipe parameters',
           (value) => value
@@ -552,7 +552,7 @@ export const applyMotionSpec = defineTool({
   execute: (figma, args, ctx): ModifyResult<{ nodeIds: string[]; trackCount: number }> => {
     const targets = resolveTargetIds(figma, args)
     if (!targets.ok) return targets
-    const motion = parseSpecJson(args.specJson)
+    const motion = parseSpecJSON(args.specJson)
     if (!motion.ok) return motion
     for (const nodeId of targets.data) {
       const node = figma.graph.getNode(nodeId)
@@ -589,7 +589,7 @@ export const updateMotion = defineTool({
   execute: (figma, args, ctx): ModifyResult<{ nodeId: string; trackCount: number }> => {
     const targets = resolveTargetIds(figma, { nodeId: args.nodeId })
     if (!targets.ok) return targets
-    const motion = parseSpecJson(args.specJson)
+    const motion = parseSpecJSON(args.specJson)
     if (!motion.ok) return motion
     const node = figma.graph.getNode(args.nodeId)
     if (!node) return fail(`Node "${args.nodeId}" not found`)
@@ -656,12 +656,12 @@ export const applyMotionRecipe = defineTool({
   },
   execute: (
     figma,
-    { recipeJson, roleMappingJson, parametersJson },
+    { recipeJson: recipeJSON, roleMappingJson: roleMappingJSON, parametersJson: parametersJSON },
     ctx
   ): ModifyResult<{ recipeId: string; nodeIds: string[]; assignmentCount: number }> => {
-    const recipe = parseRecipeJson(recipeJson)
+    const recipe = parseRecipeJSON(recipeJSON)
     if (!recipe.ok) return recipe
-    const input = parseRecipeInputJson(roleMappingJson, parametersJson)
+    const input = parseRecipeInputJSON(roleMappingJSON, parametersJSON)
     if (!input.ok) return input
     let instantiated
     try {
@@ -712,12 +712,12 @@ export const updateMotionScene = defineTool({
   },
   execute: (
     figma,
-    { nodeId, specJson },
+    { nodeId, specJson: specJSON },
     ctx
   ): ModifyResult<{ nodeId: string; sequenceCount: number; cueCount: number }> => {
     const owner = figma.graph.getNode(nodeId)
     if (!owner) return fail(`Motion scene owner not found: ${nodeId}`)
-    const parsed = parseSceneSpecJson(specJson)
+    const parsed = parseSceneSpecJSON(specJSON)
     if (!parsed.ok) return parsed
     const targetValidation = validateSceneTargets(figma, owner, parsed.data)
     if (!targetValidation.ok) return targetValidation
@@ -771,12 +771,12 @@ export const updateMotionDrivers = defineTool({
   },
   execute: (
     figma,
-    { nodeId, specJson },
+    { nodeId, specJson: specJSON },
     ctx
   ): ModifyResult<{ nodeId: string; driverCount: number }> => {
     const owner = figma.graph.getNode(nodeId)
     if (!owner) return fail(`Motion driver owner not found: ${nodeId}`)
-    const parsed = parseDriverSpecJson(specJson)
+    const parsed = parseDriverSpecJSON(specJSON)
     if (!parsed.ok) return parsed
     const targetValidation = validateDriverTargets(figma, owner, parsed.data)
     if (!targetValidation.ok) return targetValidation
@@ -819,12 +819,12 @@ export const updatePrototype = defineTool({
   },
   execute: (
     figma,
-    { nodeId, specJson },
+    { nodeId, specJson: specJSON },
     ctx
   ): ModifyResult<{ nodeId: string; connectionCount: number }> => {
     const owner = figma.graph.getNode(nodeId)
     if (!owner) return fail(`Prototype source not found: ${nodeId}`)
-    const parsed = parsePrototypeSpecJson(specJson)
+    const parsed = parsePrototypeSpecJSON(specJSON)
     if (!parsed.ok) return parsed
     const targetValidation = validatePrototypeTargets(figma, owner, parsed.data)
     if (!targetValidation.ok) return targetValidation

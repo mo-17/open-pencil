@@ -4,9 +4,9 @@ import { createBundledPluginCatalog } from '@/app/plugins/catalog'
 import { APPLICATION_SECURITY_READINESS_HOST_CONTRACT } from '@/app/plugins/host/application-security-readiness'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import {
-  appPluginMcpToolName,
-  listAppPluginMcpTools,
-  resolveAppPluginMcpTool
+  appPluginMCPToolName,
+  listAppPluginMCPTools,
+  resolveAppPluginMCPTool
 } from '@/app/plugins/mcp'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
@@ -38,7 +38,7 @@ const OPT_IN_COMMANDS = Object.freeze([
 ])
 
 function toolsForPlugin(store: ReturnType<typeof createStore>, pluginId: string) {
-  return listAppPluginMcpTools(store).tools.filter((tool) => tool.pluginId === pluginId)
+  return listAppPluginMCPTools(store).tools.filter((tool) => tool.pluginId === pluginId)
 }
 
 describe('opt-in readiness and deployment-plan MCP tools', () => {
@@ -53,7 +53,7 @@ describe('opt-in readiness and deployment-plan MCP tools', () => {
       expect(toolsForPlugin(store, candidate.pluginId)).toEqual([])
 
       await store.setEnabled(candidate.pluginId, true)
-      const enabledCatalog = listAppPluginMcpTools(store)
+      const enabledCatalog = listAppPluginMCPTools(store)
       const enabledTools = enabledCatalog.tools.filter(
         (tool) => tool.pluginId === candidate.pluginId
       )
@@ -68,15 +68,15 @@ describe('opt-in readiness and deployment-plan MCP tools', () => {
       const [enabledTool] = enabledTools
       if (!enabledTool) throw new Error(`Expected enabled MCP tool for ${candidate.pluginId}`)
       expect(enabledTool.description).toContain(candidate.expectedDescription)
-      expect(resolveAppPluginMcpTool(store, enabledTool.name, candidate.pluginId)).toMatchObject({
+      expect(resolveAppPluginMCPTool(store, enabledTool.name, candidate.pluginId)).toMatchObject({
         kind: 'command'
       })
 
       await store.setEnabled(candidate.pluginId, false)
-      const disabledCatalog = listAppPluginMcpTools(store)
+      const disabledCatalog = listAppPluginMCPTools(store)
       expect(toolsForPlugin(store, candidate.pluginId)).toEqual([])
       expect(disabledCatalog.revision).not.toBe(enabledCatalog.revision)
-      expect(() => resolveAppPluginMcpTool(store, enabledTool.name, candidate.pluginId)).toThrow(
+      expect(() => resolveAppPluginMCPTool(store, enabledTool.name, candidate.pluginId)).toThrow(
         'Plugin MCP tool is unavailable'
       )
 
@@ -86,7 +86,7 @@ describe('opt-in readiness and deployment-plan MCP tools', () => {
 
       await store.uninstall(candidate.pluginId)
       expect(toolsForPlugin(store, candidate.pluginId)).toEqual([])
-      expect(() => resolveAppPluginMcpTool(store, enabledTool.name, candidate.pluginId)).toThrow(
+      expect(() => resolveAppPluginMCPTool(store, enabledTool.name, candidate.pluginId)).toThrow(
         'Plugin MCP tool is unavailable'
       )
     }
@@ -125,13 +125,13 @@ describe('opt-in readiness and deployment-plan MCP tools', () => {
       ])
       expect(tools.some((tool) => tool.contributionId === definition.contributionId)).toBe(false)
 
-      const forbiddenDeployToolName = appPluginMcpToolName(
+      const forbiddenDeployToolName = appPluginMCPToolName(
         definition.pluginId,
         'command',
         definition.contributionId
       )
       expect(() =>
-        resolveAppPluginMcpTool(store, forbiddenDeployToolName, definition.pluginId)
+        resolveAppPluginMCPTool(store, forbiddenDeployToolName, definition.pluginId)
       ).toThrow('Plugin MCP tool is unavailable')
 
       await store.uninstall(definition.pluginId)

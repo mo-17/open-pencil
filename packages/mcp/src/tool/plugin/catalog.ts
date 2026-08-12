@@ -1,29 +1,32 @@
 import { createHash } from 'node:crypto'
 
-import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type {
+  McpServer as MCPServer,
+  RegisteredTool
+} from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 
 import { fail, getDomainFailure, ok } from '#mcp/result'
 import type { MCPResult } from '#mcp/result'
 import {
   PLUGIN_MCP_CATALOG_LIMITS,
-  type PluginMcpCatalogSnapshot,
-  type PluginMcpToolDescriptor,
-  type PluginMcpToolKind
+  type PluginMCPCatalogSnapshot,
+  type PluginMCPToolDescriptor,
+  type PluginMCPToolKind
 } from '#mcp/tool/plugin/contract'
-import { parsePluginMcpInputSchema } from '#mcp/tool/plugin/schema'
-import type { RpcSender, ToolRequestExtra } from '#mcp/tool/registration'
+import { parsePluginMCPInputSchema } from '#mcp/tool/plugin/schema'
+import type { RPCSender, ToolRequestExtra } from '#mcp/tool/registration'
 
 export { PLUGIN_MCP_CATALOG_LIMITS }
-export type { PluginMcpCatalogSnapshot, PluginMcpToolDescriptor, PluginMcpToolKind }
+export type { PluginMCPCatalogSnapshot, PluginMCPToolDescriptor, PluginMCPToolKind }
 
 interface CatalogRecord {
   [key: string]: unknown
 }
 
-type CatalogListener = (snapshot: PluginMcpCatalogSnapshot) => void
+type CatalogListener = (snapshot: PluginMCPCatalogSnapshot) => void
 
-const EMPTY_SNAPSHOT: PluginMcpCatalogSnapshot = Object.freeze({
+const EMPTY_SNAPSHOT: PluginMCPCatalogSnapshot = Object.freeze({
   revision: '',
   tools: Object.freeze([])
 })
@@ -50,7 +53,7 @@ const AUTOMATION_TARGET_PROPERTIES = Object.freeze({
   })
 })
 
-function jsonBytes(value: unknown): number {
+function JSONBytes(value: unknown): number {
   try {
     return new TextEncoder().encode(JSON.stringify(value)).byteLength
   } catch {
@@ -112,7 +115,7 @@ function identity(value: unknown, path: string): string {
 
 function pluginToolIdentityDigest(
   pluginId: string,
-  kind: PluginMcpToolKind,
+  kind: PluginMCPToolKind,
   contributionId: string
 ): string {
   return createHash('sha256')
@@ -120,7 +123,7 @@ function pluginToolIdentityDigest(
     .digest('hex')
 }
 
-function parseDescriptor(value: unknown, index: number): PluginMcpToolDescriptor {
+function parseDescriptor(value: unknown, index: number): PluginMCPToolDescriptor {
   const path = `pluginMcpCatalog.tools[${index}]`
   const source = exactRecord(value, path, DESCRIPTOR_REQUIRED_KEYS, DESCRIPTOR_OPTIONAL_KEYS)
   const kind = source.kind
@@ -164,15 +167,15 @@ function parseDescriptor(value: unknown, index: number): PluginMcpToolDescriptor
       `${path}.description`,
       PLUGIN_MCP_CATALOG_LIMITS.maxDescriptionLength
     ),
-    inputSchema: parsePluginMcpInputSchema(source.inputSchema, `${path}.inputSchema`, kind),
+    inputSchema: parsePluginMCPInputSchema(source.inputSchema, `${path}.inputSchema`, kind),
     pluginId,
     kind,
     contributionId
   })
 }
 
-export function parsePluginMcpCatalogResponse(value: unknown): PluginMcpCatalogSnapshot {
-  if (jsonBytes(value) > PLUGIN_MCP_CATALOG_LIMITS.maxCatalogBytes) {
+export function parsePluginMCPCatalogResponse(value: unknown): PluginMCPCatalogSnapshot {
+  if (JSONBytes(value) > PLUGIN_MCP_CATALOG_LIMITS.maxCatalogBytes) {
     throw new TypeError('pluginMcpCatalog exceeds the catalog byte limit')
   }
   const envelope = exactRecord(value, 'pluginMcpCatalog', ['ok', 'result'], ['error'])
@@ -201,21 +204,21 @@ export function parsePluginMcpCatalogResponse(value: unknown): PluginMcpCatalogS
   return Object.freeze({ revision, tools: Object.freeze(tools) })
 }
 
-function snapshotFingerprint(snapshot: PluginMcpCatalogSnapshot): string {
+function snapshotFingerprint(snapshot: PluginMCPCatalogSnapshot): string {
   return JSON.stringify(snapshot)
 }
 
-export function createPluginMcpCatalog() {
+export function createPluginMCPCatalog() {
   let snapshot = EMPTY_SNAPSHOT
   let fingerprint = snapshotFingerprint(snapshot)
   const listeners = new Set<CatalogListener>()
 
-  function current(): PluginMcpCatalogSnapshot {
+  function current(): PluginMCPCatalogSnapshot {
     return snapshot
   }
 
   function replace(value: unknown): boolean {
-    const next = parsePluginMcpCatalogResponse(value)
+    const next = parsePluginMCPCatalogResponse(value)
     const nextFingerprint = snapshotFingerprint(next)
     if (nextFingerprint === fingerprint) return false
     snapshot = next
@@ -232,7 +235,7 @@ export function createPluginMcpCatalog() {
     return true
   }
 
-  function get(name: string): PluginMcpToolDescriptor | undefined {
+  function get(name: string): PluginMCPToolDescriptor | undefined {
     return snapshot.tools.find((tool) => tool.name === name)
   }
 
@@ -244,13 +247,13 @@ export function createPluginMcpCatalog() {
   return { clear, current, get, replace, subscribe }
 }
 
-export type PluginMcpCatalog = ReturnType<typeof createPluginMcpCatalog>
+export type PluginMCPCatalog = ReturnType<typeof createPluginMCPCatalog>
 
-export function createPluginMcpController(options: {
-  sendRpc: RpcSender
+export function createPluginMCPController(options: {
+  sendRPC: RPCSender
   pollIntervalMs?: number
 }) {
-  const catalog = createPluginMcpCatalog()
+  const catalog = createPluginMCPCatalog()
   const pollIntervalMs = options.pollIntervalMs ?? 2_000
   let refreshGeneration = 0
   let inFlight: Promise<boolean> | null = null
@@ -270,7 +273,7 @@ export function createPluginMcpController(options: {
     }
     const generation = ++refreshGeneration
     const task = options
-      .sendRpc({ command: 'plugin_mcp_tools', args: {} })
+      .sendRPC({ command: 'plugin_mcp_tools', args: {} })
       .then((response) => {
         if (generation !== refreshGeneration) return false
         return catalog.replace(response)
@@ -320,7 +323,7 @@ export function createPluginMcpController(options: {
   return { catalog, clear, close, refresh, startPolling, stopPolling }
 }
 
-function toolInputSchema(descriptor: PluginMcpToolDescriptor): z.ZodType {
+function toolInputSchema(descriptor: PluginMCPToolDescriptor): z.ZodType {
   const properties = record(
     descriptor.inputSchema.properties ?? {},
     'pluginTool.inputSchema.properties'
@@ -349,7 +352,7 @@ function splitAutomationTarget(args: Record<string, unknown>): {
 }
 
 function pluginCallMeta(
-  descriptor: PluginMcpToolDescriptor,
+  descriptor: PluginMCPToolDescriptor,
   target: { document_id?: string; page_id?: string }
 ): Record<string, unknown> {
   return {
@@ -364,8 +367,8 @@ function pluginCallMeta(
 }
 
 async function callPluginTool(
-  catalog: PluginMcpCatalog,
-  sendRpc: RpcSender,
+  catalog: PluginMCPCatalog,
+  sendRPC: RPCSender,
   registeredName: string,
   args: Record<string, unknown>,
   extra?: ToolRequestExtra
@@ -379,7 +382,7 @@ async function callPluginTool(
   try {
     // The app resolves the installed/enabled contribution again immediately before
     // execution. This closes the uninstall/disable race between tools/list and tools/call.
-    const response = (await sendRpc(
+    const response = (await sendRPC(
       {
         command: 'plugin_mcp_tool',
         args: {
@@ -403,13 +406,13 @@ async function callPluginTool(
   }
 }
 
-export function registerPluginMcpTools(
-  mcpServer: McpServer,
-  options: { catalog: PluginMcpCatalog; sendRpc: RpcSender }
+export function registerPluginMCPTools(
+  mcpServer: MCPServer,
+  options: { catalog: PluginMCPCatalog; sendRPC: RPCSender }
 ): { dispose: () => void } {
   const registered = new Map<string, { fingerprint: string; tool: RegisteredTool }>()
 
-  function reconcile(snapshot: PluginMcpCatalogSnapshot): void {
+  function reconcile(snapshot: PluginMCPCatalogSnapshot): void {
     const nextNames = new Set(snapshot.tools.map((tool) => tool.name))
     for (const [name, registration] of registered) {
       if (nextNames.has(name)) continue
@@ -445,7 +448,7 @@ export function registerPluginMcpTools(
         (args, extra) =>
           callPluginTool(
             options.catalog,
-            options.sendRpc,
+            options.sendRPC,
             descriptor.name,
             record(args, `pluginTool.${descriptor.name}.args`),
             { signal: extra.signal }

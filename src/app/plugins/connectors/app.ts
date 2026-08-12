@@ -171,7 +171,7 @@ export function refreshAppConnectorCredentialReadiness(
   return readiness.observe(manager, references)
 }
 
-export function isAppConnectorMcpExposed(
+export function isAppConnectorMCPExposed(
   connector: InstalledPluginConnector,
   operation: PluginConnectorOperationV1
 ): boolean {

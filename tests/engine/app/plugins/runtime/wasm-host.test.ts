@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import * as pluginRuntimePublicApi from '@/app/plugins/runtime'
+import * as pluginRuntimePublicAPI from '@/app/plugins/runtime'
 import { executeWasmPluginCompute } from '@/app/plugins/runtime/wasm-host'
 
 function unsignedLeb(value: number): number[] {
@@ -38,8 +38,8 @@ function section(id: number, payload: number[]): number[] {
   return [id, ...unsignedLeb(payload.length), ...payload]
 }
 
-function jsonRuntime(outputJson: string, allocationPointer = 1_024): ArrayBuffer {
-  const output = [...new TextEncoder().encode(outputJson)]
+function jsonRuntime(outputJSON: string, allocationPointer = 1_024): ArrayBuffer {
+  const output = [...new TextEncoder().encode(outputJSON)]
   const typeSection = section(
     1,
     [3, 0x60, 1, 0x7f, 1, 0x7f, 0x60, 2, 0x7f, 0x7f, 0, 0x60, 4, 0x7f, 0x7f, 0x7f, 0x7f, 1, 0x7f]
@@ -91,7 +91,7 @@ function jsonRuntime(outputJson: string, allocationPointer = 1_024): ArrayBuffer
 
 describe('WASM plugin compute host', () => {
   test('keeps the low-level WASM host out of the public runtime barrel', () => {
-    expect(Object.hasOwn(pluginRuntimePublicApi, 'executeWasmPluginCompute')).toBe(false)
+    expect(Object.hasOwn(pluginRuntimePublicAPI, 'executeWasmPluginCompute')).toBe(false)
   })
 
   test('executes the documented UTF-8 JSON ABI against bounded linear memory', async () => {

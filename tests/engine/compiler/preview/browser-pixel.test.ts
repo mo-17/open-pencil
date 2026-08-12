@@ -13,7 +13,7 @@ const SVG_GREEN = new TextEncoder().encode(
   '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="#00ff00"/></svg>'
 )
 
-function svgDataUrl(color: string): string {
+function svgDataURL(color: string): string {
   return `data:image/svg+xml,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="${color}"/></svg>`
   )}`
@@ -32,12 +32,12 @@ function buildBrowserSmokeFiles(): { files: Map<string, string | Uint8Array>; id
     height: 80,
     interactiveProps: {
       image: {
-        src: svgDataUrl('#ff0000'),
+        src: svgDataURL('#ff0000'),
         alt: 'Picture smoke',
         objectFit: 'cover',
         sources: [
           {
-            srcSet: svgDataUrl('#0000ff'),
+            srcSet: svgDataURL('#0000ff'),
             media: '(max-width: 640px)',
             type: 'image/svg+xml'
           }
@@ -252,7 +252,7 @@ describe('preview browser pixels — image and visual fills (Phase 4 §24)', () 
     expect(colorAt(imageFill, 40, 40)).toEqual([0, 255, 0, 255])
 
     const blended = await elementImage(page, ids.blended)
-    expectRgbNear(colorAt(blended, 40, 40), [0, 0, 0], 4)
+    expectRGBNear(colorAt(blended, 40, 40), [0, 0, 0], 4)
 
     const blendMode = await page.locator(nodeSelector(ids.blended)).evaluate((el) => {
       return getComputedStyle(el as HTMLElement).mixBlendMode
@@ -316,12 +316,12 @@ async function waitForImages(page: Page): Promise<void> {
   )
 }
 
-async function elementImage(page: Page, nodeId: string): Promise<PngImage> {
+async function elementImage(page: Page, nodeId: string): Promise<PNGImage> {
   const locator = page.locator(nodeSelector(nodeId))
   await locator.waitFor({ state: 'visible' })
   const box = await locator.boundingBox()
   if (!box) throw new Error(`node ${nodeId} has no bounding box`)
-  return decodePng(new Uint8Array(await page.screenshot({ clip: box })))
+  return decodePNG(new Uint8Array(await page.screenshot({ clip: box })))
 }
 
 function nodeSelector(nodeId: string): string {
@@ -332,13 +332,13 @@ function cssEscape(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
-interface PngImage {
+interface PNGImage {
   width: number
   height: number
   data: Uint8Array
 }
 
-function colorAt(image: PngImage, x: number, y: number): [number, number, number, number] {
+function colorAt(image: PNGImage, x: number, y: number): [number, number, number, number] {
   const clampedX = Math.max(0, Math.min(image.width - 1, Math.round(x)))
   const clampedY = Math.max(0, Math.min(image.height - 1, Math.round(y)))
   const index = (clampedY * image.width + clampedX) * 4
@@ -350,7 +350,7 @@ function colorAt(image: PngImage, x: number, y: number): [number, number, number
   ]
 }
 
-function expectRgbNear(
+function expectRGBNear(
   actual: [number, number, number, number],
   expected: [number, number, number],
   tolerance: number
@@ -361,8 +361,8 @@ function expectRgbNear(
   expect(actual[3]).toBe(255)
 }
 
-function decodePng(bytes: Uint8Array): PngImage {
-  assertPngSignature(bytes)
+function decodePNG(bytes: Uint8Array): PNGImage {
+  assertPNGSignature(bytes)
   let offset = 8
   let width = 0
   let height = 0
@@ -389,15 +389,15 @@ function decodePng(bytes: Uint8Array): PngImage {
     offset = dataEnd + 4
   }
   if (width <= 0 || height <= 0 || idat.length === 0) throw new Error('invalid PNG screenshot')
-  return unfilterPng(width, height, colorType, concat(idat))
+  return unfilterPNG(width, height, colorType, concat(idat))
 }
 
-function unfilterPng(
+function unfilterPNG(
   width: number,
   height: number,
   colorType: number,
   compressed: Uint8Array
-): PngImage {
+): PNGImage {
   const channels = colorType === 6 ? 4 : 3
   const stride = width * channels
   const inflated = unzlibSync(compressed)
@@ -447,7 +447,7 @@ function toRgba(raw: Uint8Array, colorType: number): Uint8Array {
   return out
 }
 
-function assertPngSignature(bytes: Uint8Array): void {
+function assertPNGSignature(bytes: Uint8Array): void {
   const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
   for (let i = 0; i < signature.length; i++) {
     if (bytes[i] !== signature[i]) throw new Error('not a PNG screenshot')

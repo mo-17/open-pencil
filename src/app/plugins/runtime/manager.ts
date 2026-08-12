@@ -4,7 +4,7 @@ import {
   type VerifiedIndexedPluginRuntimePackage,
   type VerifiedPluginPackage
 } from '@open-pencil/core/plugins'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import type { InstalledAppPlugin } from '../types'
 import { createWasmPluginExecutor } from './executor'
@@ -51,9 +51,9 @@ export interface CreatePluginRuntimeManagerOptions {
   }>
   prepareInput?(
     capabilities: readonly PluginRuntimeCapabilityV1[],
-    userInput: JsonValue,
+    userInput: JSONValue,
     capturedContext: unknown
-  ): Promise<JsonValue>
+  ): Promise<JSONValue>
   captureInputContext?(): unknown
   executor?: ReturnType<typeof createWasmPluginExecutor>
   now?: () => number
@@ -368,7 +368,7 @@ export function createPluginRuntimeManager(options: CreatePluginRuntimeManagerOp
     await persist(policy)
   }
 
-  async function execute(pluginId: string, userInput: JsonValue): Promise<JsonValue> {
+  async function execute(pluginId: string, userInput: JSONValue): Promise<JSONValue> {
     const capturedContext = options.captureInputContext?.()
     return mutation(async () => {
       if (pendingUninstalls.has(pluginId)) {
@@ -393,7 +393,7 @@ export function createPluginRuntimeManager(options: CreatePluginRuntimeManagerOp
       const controller = new AbortController()
       activeExecutions.set(pluginId, controller)
       try {
-        let output: JsonValue
+        let output: JSONValue
         try {
           let input = userInput
           if (options.prepareInput) {

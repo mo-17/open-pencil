@@ -15,14 +15,14 @@ import type { ExprAst } from '@open-pencil/core/lowcode-validation'
  */
 
 /** A static URL — a degenerate zero-expression template (Phase 2 §4). */
-function staticUrl(s: string): ExprAst {
+function staticURL(s: string): ExprAst {
   return { kind: 'template', quasis: [s], expressions: [] }
 }
 
 const GET_HANDLER: IREventHandler = {
   kind: 'apiCall',
   method: 'GET',
-  url: staticUrl('https://x.test/users'),
+  url: staticURL('https://x.test/users'),
   body: undefined,
   docStateName: 'users'
 }
@@ -42,7 +42,7 @@ describe('emit apiCall handler (Phase 2 §3)', () => {
     const handler: IREventHandler = {
       kind: 'apiCall',
       method: 'POST',
-      url: staticUrl('https://x.test/users'),
+      url: staticURL('https://x.test/users'),
       body: '{"name":"Alice"}',
       docStateName: 'users'
     }
@@ -59,7 +59,7 @@ describe('emit apiCall handler (Phase 2 §3)', () => {
     const handler: IREventHandler = {
       kind: 'apiCall',
       method: 'POST',
-      url: staticUrl('https://x.test'),
+      url: staticURL('https://x.test'),
       body: undefined,
       docStateName: 'users'
     }

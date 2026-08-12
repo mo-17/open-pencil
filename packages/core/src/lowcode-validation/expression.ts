@@ -22,7 +22,7 @@
  *   `result.references` to decide which state names are required in scope.
  * - Phase 2 §4: `parseExpression`'s grammar is FROZEN — the `template` AST
  *   kind is produced ONLY by the separate `parseTemplate` scanner (raw
- *   strings with `${ … }` interpolation, used for `ApiCallAction.url`).
+ *   strings with `${ … }` interpolation, used for `APICallAction.url`).
  *   `parseExpression` itself never emits a `template` node.
  */
 
@@ -363,7 +363,7 @@ export function parseExpression(src: string): ParseResult {
  * backticks. The whole input IS the template: literal text plus zero or more
  * `${ … }` interpolations, each parsed by `parseExpression`. A raw string with
  * no `${` yields a degenerate single-quasi, zero-expression template (a plain
- * static string). Used for `ApiCallAction.url`.
+ * static string). Used for `APICallAction.url`.
  *
  * This is a standalone scanner — it does NOT touch `parseExpression`'s grammar
  * or tokenizer. Failures: an unterminated `${`, or an interpolation whose
@@ -513,7 +513,7 @@ function emitWithPrec(ast: ExprAst, parentPrec: number): string {
     }
     case 'template': {
       // A zero-expression template is a plain string — emit it as a
-      // double-quoted literal so static `ApiCallAction.url`s stay
+      // double-quoted literal so static `APICallAction.url`s stay
       // byte-identical to the Phase 2 §3 `JSON.stringify(url)` output.
       if (ast.expressions.length === 0) return JSON.stringify(ast.quasis[0])
       let out = '`'

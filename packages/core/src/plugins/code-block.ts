@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
   createContractModuleDefinition,
@@ -46,7 +46,7 @@ export type CodeBlockLanguageV1 =
   | 'dart'
 export type CodeBlockThemeV1 = 'light' | 'dark'
 
-export interface CodeBlockModuleConfigV1 extends JsonObject {
+export interface CodeBlockModuleConfigV1 extends JSONObject {
   label: string
   code: string
   language: CodeBlockLanguageV1

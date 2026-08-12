@@ -9,7 +9,7 @@ import {
   type ModulePropertyField,
   type TabsItemV1
 } from '@open-pencil/core/plugins'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n } from '@open-pencil/vue'
 
 import type { AppPluginModuleEditorText } from '@/app/plugins/localization'
@@ -22,7 +22,7 @@ import { specializedModuleFieldKind } from './module-property-field'
 const { field, definition, config, label, error, moduleEditorText, optionLabel } = defineProps<{
   field: ModulePropertyField
   definition?: ModuleDefinition
-  config: JsonObject
+  config: JSONObject
   label: string
   error?: string
   moduleEditorText: AppPluginModuleEditorText
@@ -54,7 +54,7 @@ const uploadSingleFileMode = computed(() => isUploadMaxFiles.value && config.mul
 const numberMin = computed(() =>
   isUploadMaxFiles.value && config.multiple === true ? Math.max(2, field.min ?? 2) : field.min
 )
-const uploadNumberFieldUi = { root: 'h-11 min-h-11' }
+const uploadNumberFieldUI = { root: 'h-11 min-h-11' }
 
 function currentValue(): unknown {
   return valueAtPath(config, field.path)
@@ -95,7 +95,7 @@ function jsonValue(): string {
         :step="field.step"
         :label="label"
         :disabled="uploadSingleFileMode"
-        :ui="isUploadNumberField ? uploadNumberFieldUi : undefined"
+        :ui="isUploadNumberField ? uploadNumberFieldUI : undefined"
         data-test-id="module-property-input"
         :data-module-path="field.path.map(String).join('.')"
         @commit="emit('commit', $event)"

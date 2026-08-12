@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import { colorToHex, parseColor } from '@open-pencil/core/color'
-import type { Color, JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { Color, JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import ColorInput from '@/components/ColorPicker/ColorInput.vue'
 import { useSectionUI } from '@/components/ui/section'
@@ -63,7 +63,7 @@ function t(key: string | undefined): string {
 function replaceProps(next: Props): void {
   const node = selectedNode.value
   if (!node) return
-  editor.updateNodeWithUndo(node.id, { interactiveProps: next as JsonObject }, 'Update properties')
+  editor.updateNodeWithUndo(node.id, { interactiveProps: next as JSONObject }, 'Update properties')
 }
 
 function commit(patch: Props): void {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
-import { buildDesignTokenThemeCss } from '@open-pencil/compiler/theme-css'
+import { buildDesignTokenThemeCSS } from '@open-pencil/compiler/theme-css'
 import type { Effect, Fill, Stroke } from '@open-pencil/scene-graph'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
@@ -167,7 +167,7 @@ function dropShadow(): Effect {
 
 describe('Phase 5 §5 design token theme CSS', () => {
   test('builds :root and dark mode CSS variables from graph variables', () => {
-    const css = buildDesignTokenThemeCss(addThemeVariables())
+    const css = buildDesignTokenThemeCSS(addThemeVariables())
 
     expect(css).toContain('/* OpenPencil design tokens */')
     expect(css).toContain(':root {')
@@ -187,11 +187,11 @@ describe('Phase 5 §5 design token theme CSS', () => {
   })
 
   test('returns empty css when a graph has no variables', () => {
-    expect(buildDesignTokenThemeCss(makeSceneGraph())).toBe('')
+    expect(buildDesignTokenThemeCSS(makeSceneGraph())).toBe('')
   })
 
   test('runtime theme aliases stay sparse when optional token roles are absent', () => {
-    const css = buildDesignTokenThemeCss(addColorOnlyThemeVariables())
+    const css = buildDesignTokenThemeCSS(addColorOnlyThemeVariables())
 
     expect(css).toContain('--op-lowcode-theme-accent: var(--op-brand-theme-color-primary);')
     expect(css).toContain('--op-lowcode-theme-surface:')
@@ -200,7 +200,7 @@ describe('Phase 5 §5 design token theme CSS', () => {
 
   test('resolves cross-collection aliases by matching mode names', () => {
     const graph = addCrossCollectionAliasThemeVariables()
-    const css = buildDesignTokenThemeCss(graph)
+    const css = buildDesignTokenThemeCSS(graph)
 
     expect(css).toContain('--op-semantic-color-accent: #3366CC;')
     expect(css).toContain(':root[data-theme="dark"], .dark {')
@@ -209,9 +209,9 @@ describe('Phase 5 §5 design token theme CSS', () => {
     const palette = graph.variables.get('var-palette-primary')
     if (!palette) throw new Error('palette variable missing')
     palette.hiddenFromPublishing = true
-    const hiddenCss = buildDesignTokenThemeCss(graph)
-    expect(hiddenCss).not.toContain('--op-palette-primary:')
-    expect(hiddenCss).toContain('--op-semantic-color-accent: #CCE6FF;')
+    const hiddenCSS = buildDesignTokenThemeCSS(graph)
+    expect(hiddenCSS).not.toContain('--op-palette-primary:')
+    expect(hiddenCSS).toContain('--op-semantic-color-accent: #CCE6FF;')
   })
 
   test('compile injects design token theme css into index.css', () => {

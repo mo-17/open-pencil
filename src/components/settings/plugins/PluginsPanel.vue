@@ -2,7 +2,7 @@
 /* eslint-disable max-lines -- Plugin settings coordinates lifecycle, runtime, host actions, and dependency review. */
 import { computed, nextTick, ref } from 'vue'
 import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'reka-ui'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -93,7 +93,7 @@ const runtimeOutputs = ref<Record<string, string | undefined>>({})
 const hostBusyKey = ref<string | null>(null)
 const hostActionMessage = ref<string | null>(null)
 const hostActionStatus = ref<'completed' | 'cancelled' | null>(null)
-const hostActionData = ref<JsonValue>()
+const hostActionData = ref<JSONValue>()
 const hostActionResult = ref<HTMLElement | null>(null)
 
 const viewOptions = computed(() => [
@@ -688,7 +688,7 @@ async function runHostContribution(
   operation: () => Promise<{
     status: 'completed' | 'cancelled'
     message: string
-    data?: JsonValue
+    data?: JSONValue
   }>,
   cancelledMessage?: string
 ): Promise<void> {
@@ -747,7 +747,7 @@ function withoutPluginRuntimeValue<Value>(
   return remaining
 }
 
-function clearPluginRuntimeUi(pluginIdValue: string): void {
+function clearPluginRuntimeUI(pluginIdValue: string): void {
   runtimeReviews.value = withoutPluginRuntimeValue(runtimeReviews.value, pluginIdValue)
   runtimeOutputs.value = withoutPluginRuntimeValue(runtimeOutputs.value, pluginIdValue)
   runtimeErrors.value = withoutPluginRuntimeValue(runtimeErrors.value, pluginIdValue)
@@ -765,7 +765,7 @@ function confirmUninstall(): void {
   void mutate(id, async () => {
     await uninstallAppPlugin(id)
     clearDeploymentPluginSession(id)
-    clearPluginRuntimeUi(id)
+    clearPluginRuntimeUI(id)
   })
 }
 

@@ -1,16 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
-  resolveBrowserRpcTimeoutMs,
-  resolveStdioRpcTimeoutMs,
+  resolveBrowserRPCTimeoutMs,
+  resolveStdioRPCTimeoutMs,
   rpcTimeoutMessage
 } from '#mcp/rpc-timeout'
 
 describe('MCP RPC timeout policy', () => {
   test('keeps ordinary requests bounded and gives stdio extra time', () => {
     const request = { command: 'get_selection', args: {} }
-    const browserTimeoutMs = resolveBrowserRpcTimeoutMs(request)
-    const stdioTimeoutMs = resolveStdioRpcTimeoutMs(request)
+    const browserTimeoutMs = resolveBrowserRPCTimeoutMs(request)
+    const stdioTimeoutMs = resolveStdioRPCTimeoutMs(request)
 
     expect(browserTimeoutMs).toBe(30_000)
     expect(stdioTimeoutMs).toBe(50_000)
@@ -28,8 +28,8 @@ describe('MCP RPC timeout policy', () => {
         args: { name: 'installed-plugin-exporter', pluginId: 'example.plugin', args: {} }
       }
     ]) {
-      const browserTimeoutMs = resolveBrowserRpcTimeoutMs(request)
-      const stdioTimeoutMs = resolveStdioRpcTimeoutMs(request)
+      const browserTimeoutMs = resolveBrowserRPCTimeoutMs(request)
+      const stdioTimeoutMs = resolveStdioRPCTimeoutMs(request)
 
       expect(browserTimeoutMs).toBe(120_000)
       expect(browserTimeoutMs).toBeGreaterThanOrEqual(60_000)
@@ -39,10 +39,10 @@ describe('MCP RPC timeout policy', () => {
   })
 
   test('reports the resolved deadline in seconds', () => {
-    expect(rpcTimeoutMessage(resolveBrowserRpcTimeoutMs({ command: 'tool' }))).toBe(
+    expect(rpcTimeoutMessage(resolveBrowserRPCTimeoutMs({ command: 'tool' }))).toBe(
       'RPC timeout (120s)'
     )
-    expect(rpcTimeoutMessage(resolveStdioRpcTimeoutMs({ command: 'tool' }))).toBe(
+    expect(rpcTimeoutMessage(resolveStdioRPCTimeoutMs({ command: 'tool' }))).toBe(
       'RPC timeout (140s)'
     )
   })

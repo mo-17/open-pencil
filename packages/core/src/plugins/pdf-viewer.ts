@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import * as moduleContract from './module-contract'
 import { createModuleFrameOverrides } from './module-frame'
@@ -25,23 +25,23 @@ export const PDF_VIEWER_MODULE_LIMITS = Object.freeze({
   configBytes: 8_192
 })
 
-export type PdfViewerFitV1 = 'width' | 'page'
+export type PDFViewerFitV1 = 'width' | 'page'
 
-export interface PdfViewerModuleConfigV1 extends JsonObject {
+export interface PDFViewerModuleConfigV1 extends JSONObject {
   sourceUrl: string
   title: string
   initialPage: number
   pageCountHint: number
-  fit: PdfViewerFitV1
+  fit: PDFViewerFitV1
   showToolbar: boolean
   allowDownload: boolean
   backgroundColor: string
   accentColor: string
 }
 
-export type PdfViewerModuleConfig = PdfViewerModuleConfigV1
+export type PDFViewerModuleConfig = PDFViewerModuleConfigV1
 
-export const PDF_VIEWER_MODULE_DEFAULT_CONFIG: Readonly<PdfViewerModuleConfigV1> = Object.freeze({
+export const PDF_VIEWER_MODULE_DEFAULT_CONFIG: Readonly<PDFViewerModuleConfigV1> = Object.freeze({
   sourceUrl: '',
   title: 'Document',
   initialPage: 1,
@@ -64,14 +64,14 @@ const CONFIG_KEYS = new Set([
   'backgroundColor',
   'accentColor'
 ])
-const FITS = new Set<PdfViewerFitV1>(['width', 'page'])
+const FITS = new Set<PDFViewerFitV1>(['width', 'page'])
 
-function parsePdfViewerConfig(value: unknown) {
+function parsePDFViewerConfig(value: unknown) {
   return moduleContract.parseExactModuleConfig(
     value,
     CONFIG_KEYS,
     'PDF viewer config must contain exactly sourceUrl, title, initialPage, pageCountHint, fit, showToolbar, allowDownload, backgroundColor, and accentColor',
-    (source): PdfViewerModuleConfigV1 => {
+    (source): PDFViewerModuleConfigV1 => {
       const initialPage = parseBoundedPluginInteger(
         source.initialPage,
         'PDF viewer config initialPage',
@@ -87,7 +87,7 @@ function parsePdfViewerConfig(value: unknown) {
       if (pageCountHint > 0 && initialPage > pageCountHint) {
         throw new TypeError('PDF viewer config initialPage must not exceed pageCountHint')
       }
-      const config: PdfViewerModuleConfigV1 = {
+      const config: PDFViewerModuleConfigV1 = {
         sourceUrl: parseSafePluginAssetSource(
           source.sourceUrl,
           'PDF viewer config sourceUrl',
@@ -120,30 +120,30 @@ function parsePdfViewerConfig(value: unknown) {
   )
 }
 
-const PDF_VIEWER_MODULE_CONTRACT: moduleContract.ModuleContract<PdfViewerModuleConfigV1> = {
+const PDF_VIEWER_MODULE_CONTRACT: moduleContract.ModuleContract<PDFViewerModuleConfigV1> = {
   pluginId: PDF_VIEWER_PLUGIN_ID,
   moduleType: PDF_VIEWER_MODULE_TYPE,
   configVersion: PDF_VIEWER_MODULE_CONFIG_VERSION,
   displayName: 'PDF viewer',
   defaultConfig: PDF_VIEWER_MODULE_DEFAULT_CONFIG,
-  parseConfig: parsePdfViewerConfig
+  parseConfig: parsePDFViewerConfig
 }
 
-export function createPdfViewerModuleInstance(config?: unknown): ModuleInstanceV1 {
+export function createPDFViewerModuleInstance(config?: unknown): ModuleInstanceV1 {
   return moduleContract.createContractModuleInstance(PDF_VIEWER_MODULE_CONTRACT, config)
 }
 
-export function createPdfViewerModuleFrameOverrides(config?: unknown): Partial<SceneNode> {
+export function createPDFViewerModuleFrameOverrides(config?: unknown): Partial<SceneNode> {
   return createModuleFrameOverrides({
     name: 'PDF Viewer',
     defaultSize: PDF_VIEWER_MODULE_DEFAULT_SIZE,
     fillColor: { r: 0.9, g: 0.91, b: 0.92, a: 1 },
     strokeColor: { r: 0.61, g: 0.64, b: 0.69, a: 1 },
-    module: createPdfViewerModuleInstance(config)
+    module: createPDFViewerModuleInstance(config)
   })
 }
 
-export function resolvePdfViewerModule(value: unknown): ModuleResolution<PdfViewerModuleConfigV1> {
+export function resolvePDFViewerModule(value: unknown): ModuleResolution<PDFViewerModuleConfigV1> {
   return moduleContract.resolveContractModule(value, PDF_VIEWER_MODULE_CONTRACT)
 }
 
@@ -220,9 +220,9 @@ export const PDF_VIEWER_MODULE_DEFINITION = moduleContract.createContractModuleD
     i18nDescriptionKey: 'lowcodeModulePdfViewerDescription',
     defaultSize: PDF_VIEWER_MODULE_DEFAULT_SIZE,
     fields: PDF_VIEWER_MODULE_FIELDS,
-    createInstance: createPdfViewerModuleInstance,
-    createFrameOverrides: createPdfViewerModuleFrameOverrides,
-    resolve: resolvePdfViewerModule
+    createInstance: createPDFViewerModuleInstance,
+    createFrameOverrides: createPDFViewerModuleFrameOverrides,
+    resolve: resolvePDFViewerModule
   }
 )
 

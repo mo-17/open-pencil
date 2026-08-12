@@ -45,8 +45,8 @@ function section(id: number, payload: number[]): number[] {
   return [id, ...unsignedLeb(payload.length), ...payload]
 }
 
-function jsonRuntime(outputJson: string): ArrayBuffer {
-  const output = [...new TextEncoder().encode(outputJson)]
+function jsonRuntime(outputJSON: string): ArrayBuffer {
+  const output = [...new TextEncoder().encode(outputJSON)]
   const typeSection = section(
     1,
     [3, 0x60, 1, 0x7f, 1, 0x7f, 0x60, 2, 0x7f, 0x7f, 0, 0x60, 4, 0x7f, 0x7f, 0x7f, 0x7f, 1, 0x7f]

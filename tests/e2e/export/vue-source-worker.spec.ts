@@ -40,8 +40,8 @@ test('compiles Vue in a real module Worker and terminates it on abort', async ({
 
     try {
       const importViteRuntimeModule = async <T>(absolutePath: string): Promise<T> => {
-        const moduleUrl = new URL(absolutePath, window.location.origin).href
-        return import(/* @vite-ignore */ moduleUrl) as Promise<T>
+        const moduleURL = new URL(absolutePath, window.location.origin).href
+        return import(/* @vite-ignore */ moduleURL) as Promise<T>
       }
       const [
         { SceneGraph },

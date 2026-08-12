@@ -8,7 +8,7 @@ import type {
   PluginStorageProviderContributionV2
 } from '@open-pencil/core/plugins'
 import { parsePluginObjectParameterValue } from '@open-pencil/core/plugins'
-import type { JsonObject, JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject, JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
 
@@ -26,7 +26,7 @@ import { exportCurrentDocumentAsCapacitorSource } from './capacitor-exporter'
 import { executeClipboardCommand } from './clipboard'
 import {
   plainDataContribution,
-  sameJsonAuthority,
+  sameJSONAuthority,
   type PluginContributionDataRecord
 } from './contribution-authority'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from './deployment/contract'
@@ -113,7 +113,7 @@ export interface AppPluginHostContributionCompatibilityFailure {
 export interface AppPluginHostExecutionResult {
   status: 'completed' | 'cancelled'
   message: string
-  data?: JsonValue
+  data?: JSONValue
 }
 
 interface TrustedCommandAdapter {
@@ -139,12 +139,12 @@ interface TrustedExporterAdapter {
 export type AppPluginExporterExecutor = (
   editor: EditorStore,
   signal?: AbortSignal,
-  args?: JsonObject
+  args?: JSONObject
 ) => Promise<AppPluginExporterExecutionResult>
 
 export type AppPluginCommandExecutor = (
   editor: EditorStore,
-  args: JsonObject,
+  args: JSONObject,
   signal?: AbortSignal
 ) => Promise<AppPluginHostExecutionResult> | AppPluginHostExecutionResult
 
@@ -445,7 +445,7 @@ export function inspectPluginCommandCompatibility(
   return { ok: true, status: 'compatible' }
 }
 
-export function trustedPluginCommandMcpText(
+export function trustedPluginCommandMCPText(
   pluginId: string,
   contribution: AppPluginCommandContribution
 ): Readonly<{ title: string; description: string }> | null {
@@ -518,7 +518,7 @@ export function inspectPluginExporterCompatibility(
   return { ok: true, status: 'compatible' }
 }
 
-export function inspectPluginExporterMcpExposure(
+export function inspectPluginExporterMCPExposure(
   pluginId: string,
   contribution: AppPluginExporterContribution
 ): AppPluginHostContributionCompatibility {
@@ -656,7 +656,7 @@ function requireDeclaredCommand(
   if (
     !declared ||
     declared.adapterId !== adapterId ||
-    (plugin.package.manifest.schemaVersion === 2 && !sameJsonAuthority(source, declared))
+    (plugin.package.manifest.schemaVersion === 2 && !sameJSONAuthority(source, declared))
   ) {
     throw new Error(`Command is not declared by the installed plugin: ${commandId}`)
   }
@@ -678,7 +678,7 @@ function requireDeclaredExporter(
     declared.adapterId !== adapterId ||
     (plugin.package.manifest.schemaVersion === 1 &&
       source.fileExtension !== (declared as DeclarativeExporterContributionV1).fileExtension) ||
-    (plugin.package.manifest.schemaVersion === 2 && !sameJsonAuthority(source, declared))
+    (plugin.package.manifest.schemaVersion === 2 && !sameJSONAuthority(source, declared))
   ) {
     throw new Error(`Exporter is not declared by the installed plugin: ${exporterId}`)
   }
@@ -695,7 +695,7 @@ const EMPTY_ARGUMENT_SCHEMA: PluginObjectParameterSchemaV2 = Object.freeze({
 function contributionArguments(
   contribution: AppPluginCommandContribution | AppPluginExporterContribution,
   args: unknown
-): JsonObject {
+): JSONObject {
   const schemaVersion = Object.hasOwn(contribution, 'parameters') ? 2 : 1
   const value =
     schemaVersion === 2
@@ -706,7 +706,7 @@ function contributionArguments(
           'Plugin contribution arguments'
         )
       : parsePluginObjectParameterValue(args, EMPTY_ARGUMENT_SCHEMA, 2, 'Plugin v1 arguments')
-  return value as JsonObject
+  return value as JSONObject
 }
 
 function validatedExecutionResult(
@@ -721,7 +721,7 @@ function validatedExecutionResult(
     contract.maxBytes,
     'Plugin contribution result'
   )
-  return execution.data === undefined ? execution : { ...execution, data: data as JsonValue }
+  return execution.data === undefined ? execution : { ...execution, data: data as JSONValue }
 }
 
 export async function runInstalledPluginCommand(

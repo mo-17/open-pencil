@@ -7,41 +7,41 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod'
 
 import {
-  addRemoteMcpServer,
-  clearRemoteMcpBearerToken,
-  parseRemoteMcpSettings,
-  remoteMcpBearerCredentialRef,
-  remoteMcpCredentialStatus,
-  remoteMcpCredentialRefs,
-  remoteMcpServerDisplayInfo,
-  remoteMcpSettingsSnapshot,
-  remoteMcpToolServerDisplayInfo,
-  replaceRemoteMcpSettings,
-  setRemoteMcpBearerToken,
-  updateRemoteMcpServer
+  addRemoteMCPServer,
+  clearRemoteMCPBearerToken,
+  parseRemoteMCPSettings,
+  remoteMCPBearerCredentialRef,
+  remoteMCPCredentialStatus,
+  remoteMCPCredentialRefs,
+  remoteMCPServerDisplayInfo,
+  remoteMCPSettingsSnapshot,
+  remoteMCPToolServerDisplayInfo,
+  replaceRemoteMCPSettings,
+  setRemoteMCPBearerToken,
+  updateRemoteMCPServer
 } from '@/app/ai/mcp'
-import { buildRemoteMcpAcpServerConfigs } from '@/app/ai/mcp/acp'
+import { buildRemoteMCPACPServerConfigs } from '@/app/ai/mcp/acp'
 import {
-  createRemoteMcpRuntime,
+  createRemoteMCPRuntime,
   MAX_REMOTE_MCP_TOOL_PAGES,
   MAX_REMOTE_MCP_TOOL_RESULT_BYTES,
   MAX_REMOTE_MCP_TOOLS_PER_SERVER,
-  namespacedRemoteMcpToolName,
-  type RemoteMcpClient
+  namespacedRemoteMCPToolName,
+  type RemoteMCPClient
 } from '@/app/ai/mcp/runtime'
 import {
   MAX_REMOTE_MCP_SERVERS,
-  normalizeRemoteMcpServerInput,
-  normalizeRemoteMcpUrl,
+  normalizeRemoteMCPServerInput,
+  normalizeRemoteMCPURL,
   REMOTE_MCP_SETTINGS_VERSION,
-  type RemoteMcpServer,
-  type RemoteMcpSettings
+  type RemoteMCPServer,
+  type RemoteMCPSettings
 } from '@/app/ai/mcp/types'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import { appCredentialRefs } from '@/app/settings/credentials/persistence'
 import { credentialKey } from '@/app/settings/credentials/reference'
 
-const PUBLIC_SERVER: RemoteMcpServer = {
+const PUBLIC_SERVER: RemoteMCPServer = {
   id: 'mcp-0123456789abcdef',
   name: 'Public docs',
   transport: { type: 'streamable-http', url: 'https://mcp.example.com/tools' },
@@ -50,7 +50,7 @@ const PUBLIC_SERVER: RemoteMcpServer = {
 
 const PRIVATE_SERVER_ID = 'mcp-fedcba9876543210'
 
-const PRIVATE_SERVER: RemoteMcpServer = {
+const PRIVATE_SERVER: RemoteMCPServer = {
   id: PRIVATE_SERVER_ID,
   name: 'Private docs',
   transport: { type: 'streamable-http', url: 'https://private.example.com/mcp' },
@@ -77,7 +77,7 @@ function toolDefinition(name: string): ToolDefinition {
   }
 }
 
-class FakeRemoteMcpClient implements RemoteMcpClient {
+class FakeRemoteMCPClient implements RemoteMCPClient {
   connectCount = 0
   closeCount = 0
   listToolsCount = 0
@@ -113,31 +113,31 @@ class FakeRemoteMcpClient implements RemoteMcpClient {
   }
 }
 
-let originalSettings: RemoteMcpSettings
+let originalSettings: RemoteMCPSettings
 
 beforeEach(() => {
-  originalSettings = remoteMcpSettingsSnapshot()
+  originalSettings = remoteMCPSettingsSnapshot()
 })
 
 afterEach(() => {
-  replaceRemoteMcpSettings(originalSettings)
+  replaceRemoteMCPSettings(originalSettings)
 })
 
 describe('remote MCP settings', () => {
   test('accepts HTTPS and loopback HTTP while rejecting insecure remote URLs', () => {
-    expect(normalizeRemoteMcpUrl('https://mcp.example.com/tools')).toBe(
+    expect(normalizeRemoteMCPURL('https://mcp.example.com/tools')).toBe(
       'https://mcp.example.com/tools'
     )
-    expect(normalizeRemoteMcpUrl('http://127.0.0.1:3000/mcp')).toBe('http://127.0.0.1:3000/mcp')
-    expect(normalizeRemoteMcpUrl('http://[::1]:3000/mcp')).toBe('http://[::1]:3000/mcp')
-    expect(() => normalizeRemoteMcpUrl('http://mcp.example.com/tools')).toThrow(
+    expect(normalizeRemoteMCPURL('http://127.0.0.1:3000/mcp')).toBe('http://127.0.0.1:3000/mcp')
+    expect(normalizeRemoteMCPURL('http://[::1]:3000/mcp')).toBe('http://[::1]:3000/mcp')
+    expect(() => normalizeRemoteMCPURL('http://mcp.example.com/tools')).toThrow(
       'HTTP is allowed only for loopback hosts'
     )
-    expect(() => normalizeRemoteMcpUrl('https://token@mcp.example.com/tools')).toThrow(
+    expect(() => normalizeRemoteMCPURL('https://token@mcp.example.com/tools')).toThrow(
       'must not contain embedded credentials'
     )
     expect(() =>
-      normalizeRemoteMcpServerInput({
+      normalizeRemoteMCPServerInput({
         name: 'Invalid auth',
         url: 'https://mcp.example.com/tools',
         authType: 'oauth'
@@ -146,7 +146,7 @@ describe('remote MCP settings', () => {
   })
 
   test('parses v1 settings with stable unique IDs and a bounded server list', () => {
-    const parsed = parseRemoteMcpSettings({
+    const parsed = parseRemoteMCPSettings({
       version: REMOTE_MCP_SETTINGS_VERSION,
       servers: [
         PUBLIC_SERVER,
@@ -160,11 +160,11 @@ describe('remote MCP settings', () => {
 
     expect(parsed?.servers).toHaveLength(MAX_REMOTE_MCP_SERVERS)
     expect(new Set(parsed?.servers.map((server) => server.id)).size).toBe(MAX_REMOTE_MCP_SERVERS)
-    expect(parseRemoteMcpSettings({ version: 2, servers: [] })).toBeNull()
+    expect(parseRemoteMCPSettings({ version: 2, servers: [] })).toBeNull()
   })
 
   test('rejects bearer credential profile IDs that do not match their server ID', () => {
-    const parsed = parseRemoteMcpSettings({
+    const parsed = parseRemoteMCPSettings({
       version: REMOTE_MCP_SETTINGS_VERSION,
       servers: [
         {
@@ -178,8 +178,8 @@ describe('remote MCP settings', () => {
   })
 
   test('creates stable IDs and keeps bearer references out of non-secret settings', () => {
-    replaceRemoteMcpSettings({ version: REMOTE_MCP_SETTINGS_VERSION, servers: [] })
-    const server = addRemoteMcpServer({
+    replaceRemoteMCPSettings({ version: REMOTE_MCP_SETTINGS_VERSION, servers: [] })
+    const server = addRemoteMCPServer({
       name: 'Internal',
       url: 'https://internal.example.com/mcp',
       authType: 'bearer'
@@ -187,16 +187,16 @@ describe('remote MCP settings', () => {
 
     expect(server.id).toMatch(/^mcp-[a-f0-9]{16}$/)
     expect(server.auth).toEqual({ type: 'bearer', credentialProfileId: server.id })
-    expect(JSON.stringify(remoteMcpSettingsSnapshot())).not.toContain('secret')
+    expect(JSON.stringify(remoteMCPSettingsSnapshot())).not.toContain('secret')
   })
 
   test('includes bearer references in credential persistence migration', () => {
-    replaceRemoteMcpSettings({
+    replaceRemoteMCPSettings({
       version: REMOTE_MCP_SETTINGS_VERSION,
       servers: [PUBLIC_SERVER, PRIVATE_SERVER]
     })
 
-    expect(remoteMcpCredentialRefs().map(credentialKey)).toEqual([
+    expect(remoteMCPCredentialRefs().map(credentialKey)).toEqual([
       'v1:remote-mcp:mcp-fedcba9876543210:bearer-token'
     ])
     expect(appCredentialRefs().map(credentialKey)).toContain(
@@ -205,43 +205,43 @@ describe('remote MCP settings', () => {
   })
 
   test('exposes display metadata and bearer credential status without revealing the token', async () => {
-    replaceRemoteMcpSettings({
+    replaceRemoteMCPSettings({
       version: REMOTE_MCP_SETTINGS_VERSION,
       servers: [PUBLIC_SERVER, PRIVATE_SERVER]
     })
-    await clearRemoteMcpBearerToken(PRIVATE_SERVER.id)
+    await clearRemoteMCPBearerToken(PRIVATE_SERVER.id)
 
     try {
-      expect(remoteMcpServerDisplayInfo(PRIVATE_SERVER.id)).toEqual({
+      expect(remoteMCPServerDisplayInfo(PRIVATE_SERVER.id)).toEqual({
         id: PRIVATE_SERVER.id,
         name: 'Private docs',
         origin: 'https://private.example.com'
       })
       expect(
-        remoteMcpToolServerDisplayInfo(
-          namespacedRemoteMcpToolName(PRIVATE_SERVER.id, 'read.private')
+        remoteMCPToolServerDisplayInfo(
+          namespacedRemoteMCPToolName(PRIVATE_SERVER.id, 'read.private')
         )
-      ).toEqual(remoteMcpServerDisplayInfo(PRIVATE_SERVER.id))
-      expect(await remoteMcpCredentialStatus(PUBLIC_SERVER.id)).toBe('not-required')
-      expect(await remoteMcpCredentialStatus(PRIVATE_SERVER.id)).toBe('missing')
+      ).toEqual(remoteMCPServerDisplayInfo(PRIVATE_SERVER.id))
+      expect(await remoteMCPCredentialStatus(PUBLIC_SERVER.id)).toBe('not-required')
+      expect(await remoteMCPCredentialStatus(PRIVATE_SERVER.id)).toBe('missing')
 
-      await setRemoteMcpBearerToken(PRIVATE_SERVER.id, 'runtime-only-secret')
-      expect(await remoteMcpCredentialStatus(PRIVATE_SERVER.id)).toBe('configured')
-      expect(JSON.stringify(remoteMcpSettingsSnapshot())).not.toContain('runtime-only-secret')
+      await setRemoteMCPBearerToken(PRIVATE_SERVER.id, 'runtime-only-secret')
+      expect(await remoteMCPCredentialStatus(PRIVATE_SERVER.id)).toBe('configured')
+      expect(JSON.stringify(remoteMCPSettingsSnapshot())).not.toContain('runtime-only-secret')
     } finally {
-      await clearRemoteMcpBearerToken(PRIVATE_SERVER.id)
+      await clearRemoteMCPBearerToken(PRIVATE_SERVER.id)
     }
   })
 
   test('builds bounded ACP HTTP configs with credentials resolved only for session setup', async () => {
-    replaceRemoteMcpSettings({
+    replaceRemoteMCPSettings({
       version: REMOTE_MCP_SETTINGS_VERSION,
       servers: [PUBLIC_SERVER, PRIVATE_SERVER]
     })
-    await setRemoteMcpBearerToken(PRIVATE_SERVER.id, 'acp-runtime-secret')
+    await setRemoteMCPBearerToken(PRIVATE_SERVER.id, 'acp-runtime-secret')
 
     try {
-      expect(await buildRemoteMcpAcpServerConfigs([PUBLIC_SERVER.id, PRIVATE_SERVER.id])).toEqual([
+      expect(await buildRemoteMCPACPServerConfigs([PUBLIC_SERVER.id, PRIVATE_SERVER.id])).toEqual([
         {
           type: 'http',
           name: `remote-${PUBLIC_SERVER.id}`,
@@ -255,41 +255,41 @@ describe('remote MCP settings', () => {
           headers: [{ name: 'Authorization', value: 'Bearer acp-runtime-secret' }]
         }
       ])
-      expect(JSON.stringify(remoteMcpSettingsSnapshot())).not.toContain('acp-runtime-secret')
+      expect(JSON.stringify(remoteMCPSettingsSnapshot())).not.toContain('acp-runtime-secret')
     } finally {
-      await clearRemoteMcpBearerToken(PRIVATE_SERVER.id)
+      await clearRemoteMCPBearerToken(PRIVATE_SERVER.id)
     }
   })
 
   test('clears a saved bearer token before changing a server to no authentication', async () => {
-    replaceRemoteMcpSettings({
+    replaceRemoteMCPSettings({
       version: REMOTE_MCP_SETTINGS_VERSION,
       servers: [PRIVATE_SERVER]
     })
-    const reference = remoteMcpBearerCredentialRef(PRIVATE_SERVER)
-    await setRemoteMcpBearerToken(PRIVATE_SERVER.id, 'remove-on-auth-change')
+    const reference = remoteMCPBearerCredentialRef(PRIVATE_SERVER)
+    await setRemoteMCPBearerToken(PRIVATE_SERVER.id, 'remove-on-auth-change')
 
-    await updateRemoteMcpServer(PRIVATE_SERVER.id, {
+    await updateRemoteMCPServer(PRIVATE_SERVER.id, {
       name: PRIVATE_SERVER.name,
       url: PRIVATE_SERVER.transport.url,
       authType: 'none'
     })
 
     expect(await appCredentialServices.manager.status(reference)).toBe('missing')
-    expect(remoteMcpSettingsSnapshot().servers[0]?.auth).toEqual({ type: 'none' })
+    expect(remoteMCPSettingsSnapshot().servers[0]?.auth).toEqual({ type: 'none' })
   })
 
   test('keeps bearer credentials for same-origin paths but clears them before an origin change', async () => {
-    replaceRemoteMcpSettings({
+    replaceRemoteMCPSettings({
       version: REMOTE_MCP_SETTINGS_VERSION,
       servers: [PRIVATE_SERVER]
     })
-    const reference = remoteMcpBearerCredentialRef(PRIVATE_SERVER)
-    await setRemoteMcpBearerToken(PRIVATE_SERVER.id, 'origin-bound-secret')
+    const reference = remoteMCPBearerCredentialRef(PRIVATE_SERVER)
+    await setRemoteMCPBearerToken(PRIVATE_SERVER.id, 'origin-bound-secret')
 
     try {
       await expect(
-        updateRemoteMcpServer(PRIVATE_SERVER.id, {
+        updateRemoteMCPServer(PRIVATE_SERVER.id, {
           name: PRIVATE_SERVER.name,
           url: 'not a valid URL',
           authType: 'none'
@@ -297,14 +297,14 @@ describe('remote MCP settings', () => {
       ).rejects.toThrow('URL is invalid')
       expect(await appCredentialServices.manager.status(reference)).toBe('configured')
 
-      await updateRemoteMcpServer(PRIVATE_SERVER.id, {
+      await updateRemoteMCPServer(PRIVATE_SERVER.id, {
         name: PRIVATE_SERVER.name,
         url: 'https://private.example.com/another-mcp-path',
         authType: 'bearer'
       })
       expect(await appCredentialServices.manager.status(reference)).toBe('configured')
 
-      await updateRemoteMcpServer(PRIVATE_SERVER.id, {
+      await updateRemoteMCPServer(PRIVATE_SERVER.id, {
         name: PRIVATE_SERVER.name,
         url: 'https://replacement.example.com/mcp',
         authType: 'bearer'
@@ -355,7 +355,7 @@ describe('remote MCP runtime', () => {
         response.end()
       })
     })
-    let runtime: Awaited<ReturnType<typeof createRemoteMcpRuntime>> | undefined
+    let runtime: Awaited<ReturnType<typeof createRemoteMCPRuntime>> | undefined
     let executionError: unknown
     const cleanupErrors: unknown[] = []
 
@@ -370,7 +370,7 @@ describe('remote MCP runtime', () => {
         })
       })
       const address = httpServer.address() as AddressInfo
-      const loopbackServer: RemoteMcpServer = {
+      const loopbackServer: RemoteMCPServer = {
         id: 'mcp-1111111111111111',
         name: 'Loopback protocol test',
         transport: {
@@ -379,11 +379,11 @@ describe('remote MCP runtime', () => {
         },
         auth: { type: 'none' }
       }
-      runtime = await createRemoteMcpRuntime([loopbackServer.id], {
+      runtime = await createRemoteMCPRuntime([loopbackServer.id], {
         servers: [loopbackServer],
         resolveBearerToken: () => Promise.resolve(null)
       })
-      const toolName = namespacedRemoteMcpToolName(loopbackServer.id, 'echo.value')
+      const toolName = namespacedRemoteMCPToolName(loopbackServer.id, 'echo.value')
       const remoteTool = runtime.tools[toolName]
 
       expect(remoteTool.needsApproval).toBeTrue()
@@ -442,13 +442,13 @@ describe('remote MCP runtime', () => {
   })
 
   test('discovers namespaced tools, requires approval, bounds calls, and disposes once', async () => {
-    const client = new FakeRemoteMcpClient([toolDefinition('echo.value')])
-    const runtime = await createRemoteMcpRuntime([PUBLIC_SERVER.id], {
+    const client = new FakeRemoteMCPClient([toolDefinition('echo.value')])
+    const runtime = await createRemoteMCPRuntime([PUBLIC_SERVER.id], {
       servers: [PUBLIC_SERVER],
       createClient: () => client,
       resolveBearerToken: () => Promise.resolve(null)
     })
-    const toolName = namespacedRemoteMcpToolName(PUBLIC_SERVER.id, 'echo.value')
+    const toolName = namespacedRemoteMCPToolName(PUBLIC_SERVER.id, 'echo.value')
     const remoteTool = runtime.tools[toolName]
 
     expect(toolName).toBe('mcp__mcp-0123456789abcdef__echo_value')
@@ -471,9 +471,9 @@ describe('remote MCP runtime', () => {
   })
 
   test('resolves bearer credentials only at runtime', async () => {
-    const client = new FakeRemoteMcpClient([])
+    const client = new FakeRemoteMCPClient([])
     const factoryOptions: unknown[] = []
-    const runtime = await createRemoteMcpRuntime([PRIVATE_SERVER.id], {
+    const runtime = await createRemoteMCPRuntime([PRIVATE_SERVER.id], {
       servers: [PRIVATE_SERVER],
       resolveBearerToken: () => Promise.resolve('runtime-secret'),
       createClient: (options) => {
@@ -487,12 +487,12 @@ describe('remote MCP runtime', () => {
   })
 
   test('closes every opened client when a later connection fails', async () => {
-    const first = new FakeRemoteMcpClient([])
-    const second = new FakeRemoteMcpClient([])
+    const first = new FakeRemoteMCPClient([])
+    const second = new FakeRemoteMCPClient([])
     second.connectError = new Error('offline')
 
     await expect(
-      createRemoteMcpRuntime([PUBLIC_SERVER.id, PRIVATE_SERVER.id], {
+      createRemoteMCPRuntime([PUBLIC_SERVER.id, PRIVATE_SERVER.id], {
         servers: [PUBLIC_SERVER, PRIVATE_SERVER],
         resolveBearerToken: () => Promise.resolve('token'),
         createClient: ({ server }) => (server.id === PUBLIC_SERVER.id ? first : second)
@@ -504,12 +504,12 @@ describe('remote MCP runtime', () => {
   })
 
   test('preserves initialization and cleanup failures in the error cause', async () => {
-    const first = new FakeRemoteMcpClient([])
+    const first = new FakeRemoteMCPClient([])
     first.closeError = new Error('close failed')
-    const second = new FakeRemoteMcpClient([])
+    const second = new FakeRemoteMCPClient([])
     second.connectError = new Error('offline')
 
-    const failure = await createRemoteMcpRuntime([PUBLIC_SERVER.id, PRIVATE_SERVER.id], {
+    const failure = await createRemoteMCPRuntime([PUBLIC_SERVER.id, PRIVATE_SERVER.id], {
       servers: [PUBLIC_SERVER, PRIVATE_SERVER],
       resolveBearerToken: () => Promise.resolve('token'),
       createClient: ({ server }) => (server.id === PUBLIC_SERVER.id ? first : second)
@@ -528,13 +528,13 @@ describe('remote MCP runtime', () => {
   })
 
   test('fails closed on normalized tool-name collisions', async () => {
-    const client = new FakeRemoteMcpClient([
+    const client = new FakeRemoteMCPClient([
       toolDefinition('read.item'),
       toolDefinition('read/item')
     ])
 
     await expect(
-      createRemoteMcpRuntime([PUBLIC_SERVER.id], {
+      createRemoteMCPRuntime([PUBLIC_SERVER.id], {
         servers: [PUBLIC_SERVER],
         resolveBearerToken: () => Promise.resolve(null),
         createClient: () => client
@@ -544,13 +544,13 @@ describe('remote MCP runtime', () => {
   })
 
   test('rejects excessive tool counts and oversized results', async () => {
-    const excessive = new FakeRemoteMcpClient(
+    const excessive = new FakeRemoteMCPClient(
       Array.from({ length: MAX_REMOTE_MCP_TOOLS_PER_SERVER + 1 }, (_, index) =>
         toolDefinition(`tool_${index}`)
       )
     )
     await expect(
-      createRemoteMcpRuntime([PUBLIC_SERVER.id], {
+      createRemoteMCPRuntime([PUBLIC_SERVER.id], {
         servers: [PUBLIC_SERVER],
         resolveBearerToken: () => Promise.resolve(null),
         createClient: () => excessive
@@ -558,16 +558,16 @@ describe('remote MCP runtime', () => {
     ).rejects.toThrow(`more than ${MAX_REMOTE_MCP_TOOLS_PER_SERVER} tools`)
     expect(excessive.closeCount).toBe(1)
 
-    const oversized = new FakeRemoteMcpClient([toolDefinition('large_result')])
+    const oversized = new FakeRemoteMCPClient([toolDefinition('large_result')])
     oversized.result = {
       content: [{ type: 'text', text: 'x'.repeat(MAX_REMOTE_MCP_TOOL_RESULT_BYTES) }]
     }
-    const runtime = await createRemoteMcpRuntime([PUBLIC_SERVER.id], {
+    const runtime = await createRemoteMCPRuntime([PUBLIC_SERVER.id], {
       servers: [PUBLIC_SERVER],
       resolveBearerToken: () => Promise.resolve(null),
       createClient: () => oversized
     })
-    const remoteTool = runtime.tools[namespacedRemoteMcpToolName(PUBLIC_SERVER.id, 'large_result')]
+    const remoteTool = runtime.tools[namespacedRemoteMCPToolName(PUBLIC_SERVER.id, 'large_result')]
     await expect(
       remoteTool.execute?.({}, { toolCallId: 'tool-large', messages: [] })
     ).rejects.toThrow(`more than ${MAX_REMOTE_MCP_TOOL_RESULT_BYTES} bytes`)
@@ -575,11 +575,11 @@ describe('remote MCP runtime', () => {
   })
 
   test('rejects endless tools pagination with unique cursors', async () => {
-    const client = new FakeRemoteMcpClient([])
+    const client = new FakeRemoteMCPClient([])
     client.nextCursor = (requestCount) => `cursor-${requestCount}`
 
     await expect(
-      createRemoteMcpRuntime([PUBLIC_SERVER.id], {
+      createRemoteMCPRuntime([PUBLIC_SERVER.id], {
         servers: [PUBLIC_SERVER],
         resolveBearerToken: () => Promise.resolve(null),
         createClient: () => client
@@ -592,12 +592,12 @@ describe('remote MCP runtime', () => {
   test('rejects unknown configured IDs before creating a client', async () => {
     let factoryCalls = 0
     await expect(
-      createRemoteMcpRuntime(['mcp-aaaaaaaaaaaaaaaa'], {
+      createRemoteMCPRuntime(['mcp-aaaaaaaaaaaaaaaa'], {
         servers: [PUBLIC_SERVER],
         resolveBearerToken: () => Promise.resolve(null),
         createClient: () => {
           factoryCalls += 1
-          return new FakeRemoteMcpClient([])
+          return new FakeRemoteMCPClient([])
         }
       })
     ).rejects.toThrow('Unknown remote MCP server selected by model')

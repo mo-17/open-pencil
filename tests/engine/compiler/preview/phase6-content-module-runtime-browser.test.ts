@@ -4,7 +4,7 @@ import { buildOpenPencilAccordionComponent } from '#compiler/adapters/react/modu
 import { buildOpenPencilAudioPlayerComponent } from '#compiler/adapters/react/modules/audio-player'
 import { buildOpenPencilCodeBlockComponent } from '#compiler/adapters/react/modules/code-block'
 import { buildOpenPencilMarkdownComponent } from '#compiler/adapters/react/modules/markdown'
-import { buildOpenPencilPdfViewerComponent } from '#compiler/adapters/react/modules/pdf-viewer'
+import { buildOpenPencilPDFViewerComponent } from '#compiler/adapters/react/modules/pdf-viewer'
 import { buildOpenPencilTabsComponent } from '#compiler/adapters/react/modules/tabs'
 import { chromium, type Browser, type Page } from '@playwright/test'
 
@@ -28,7 +28,7 @@ function buildRuntimeFiles(): Map<string, string | Uint8Array> {
     ['src/__openpencil_accordion.tsx', buildOpenPencilAccordionComponent()],
     ['src/__openpencil_code_block.tsx', buildOpenPencilCodeBlockComponent()],
     ['src/__openpencil_markdown.tsx', buildOpenPencilMarkdownComponent()],
-    ['src/__openpencil_pdf_viewer.tsx', buildOpenPencilPdfViewerComponent({ devMode: true })],
+    ['src/__openpencil_pdf_viewer.tsx', buildOpenPencilPDFViewerComponent({ devMode: true })],
     ['src/__openpencil_audio_player.tsx', buildOpenPencilAudioPlayerComponent({ devMode: true })],
     [
       'src/main.tsx',
@@ -329,13 +329,13 @@ describe('preview browser — phase 6 content module runtimes', () => {
         page.waitForRequest((request) => request.url().startsWith(ORIGINAL_AUDIO_URL)),
         audioPlayer.getByRole('button', { name: 'Load audio preview' }).click()
       ])
-      const originalPdfRequests = assetRequests.filter((url) =>
+      const originalPDFRequests = assetRequests.filter((url) =>
         url.startsWith(ORIGINAL_PDF_URL)
       ).length
       const originalAudioRequests = assetRequests.filter((url) =>
         url.startsWith(ORIGINAL_AUDIO_URL)
       ).length
-      expect(originalPdfRequests).toBeGreaterThan(0)
+      expect(originalPDFRequests).toBeGreaterThan(0)
       expect(originalAudioRequests).toBeGreaterThan(0)
 
       await page.getByRole('button', { name: 'Use alternate sources' }).click()
@@ -350,7 +350,7 @@ describe('preview browser — phase 6 content module runtimes', () => {
       await expect(page.getByLabel('Source revision').textContent()).resolves.toBe('2')
       await page.waitForTimeout(150)
       expect(assetRequests.filter((url) => url.startsWith(ORIGINAL_PDF_URL))).toHaveLength(
-        originalPdfRequests
+        originalPDFRequests
       )
       expect(assetRequests.filter((url) => url.startsWith(ORIGINAL_AUDIO_URL))).toHaveLength(
         originalAudioRequests

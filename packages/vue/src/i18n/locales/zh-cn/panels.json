@@ -1364,5 +1364,18 @@
   "motionGeneratedEffectReducedStatic": "静态帧",
   "motionGeneratedEffectReducedDisable": "禁用图层",
   "motionGeneratedEffectRemove": "移除生成式效果",
-  "motionGeneratedEffectAdd": "添加生成式效果"
+  "motionGeneratedEffectAdd": "添加生成式效果",
+  "noFontsFound": "未找到字体",
+  "noLocalFontsAvailable": "没有可用的本地字体。",
+  "localFontsAccessHint": "请使用桌面应用或 Chrome/Edge 访问系统字体。",
+  "editColor": "编辑颜色",
+  "red": "红色",
+  "green": "绿色",
+  "blue": "蓝色",
+  "hue": "色相",
+  "saturation": "饱和度",
+  "brightness": "亮度",
+  "lightness": "明度",
+  "chroma": "色度",
+  "alpha": "透明度"
 }

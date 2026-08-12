@@ -35,8 +35,8 @@ import {
   PDF_VIEWER_MODULE_DEFINITION,
   PDF_VIEWER_MODULE_TYPE,
   PDF_VIEWER_PLUGIN_ID,
-  createPdfViewerModuleInstance,
-  resolvePdfViewerModule
+  createPDFViewerModuleInstance,
+  resolvePDFViewerModule
 } from '#core/plugins/pdf-viewer'
 import {
   QR_BARCODE_MODULE_DEFINITION,
@@ -100,8 +100,8 @@ const MODULES = [
     pluginId: PDF_VIEWER_PLUGIN_ID,
     moduleType: PDF_VIEWER_MODULE_TYPE,
     definition: PDF_VIEWER_MODULE_DEFINITION,
-    create: createPdfViewerModuleInstance,
-    resolve: resolvePdfViewerModule,
+    create: createPDFViewerModuleInstance,
+    resolve: resolvePDFViewerModule,
     size: { width: 640, height: 720 }
   },
   {
@@ -248,7 +248,7 @@ describe('phase 6 bounded content module contracts', () => {
       'https://cdn.example.com/manual.pdf?version=1'
     ]
     for (const source of accepted) {
-      expect(resolvePdfViewerModule(createPdfViewerModuleInstance({ sourceUrl: source }))?.ok).toBe(
+      expect(resolvePDFViewerModule(createPDFViewerModuleInstance({ sourceUrl: source }))?.ok).toBe(
         true
       )
       expect(resolveAudioPlayerModule(createAudioPlayerModuleInstance({ src: source }))?.ok).toBe(
@@ -270,10 +270,10 @@ describe('phase 6 bounded content module contracts', () => {
       'https://cdn.example.com/file.pdf#page=2'
     ]
     for (const source of rejected) {
-      expect(() => createPdfViewerModuleInstance({ sourceUrl: source })).toThrow()
+      expect(() => createPDFViewerModuleInstance({ sourceUrl: source })).toThrow()
       expect(() => createAudioPlayerModuleInstance({ src: source })).toThrow()
     }
-    expect(() => createPdfViewerModuleInstance({ initialPage: 4, pageCountHint: 3 })).toThrow(
+    expect(() => createPDFViewerModuleInstance({ initialPage: 4, pageCountHint: 3 })).toThrow(
       'must not exceed'
     )
     expect(() => createAudioPlayerModuleInstance({ autoplay: true, muted: false })).toThrow(

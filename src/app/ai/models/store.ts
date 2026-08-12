@@ -7,7 +7,7 @@ import {
   type AIProviderID
 } from '@open-pencil/core/constants'
 
-import { isRemoteMcpServerId, MAX_REMOTE_MCP_SERVERS_PER_MODEL } from '@/app/ai/mcp/types'
+import { isRemoteMCPServerId, MAX_REMOTE_MCP_SERVERS_PER_MODEL } from '@/app/ai/mcp/types'
 import {
   readAIModelSettingsStorage,
   readLegacyAIModelStorage,
@@ -75,7 +75,7 @@ function parseFeatureEnabled(value: unknown): boolean {
 function parseFeaturePolicy(value: unknown): AIModelFeaturePolicy {
   if (!isRecord(value)) return createDefaultAIModelFeaturePolicy()
   const mcpServerIds = Array.isArray(value.mcpServerIds)
-    ? [...new Set(value.mcpServerIds.filter(isRemoteMcpServerId))].slice(
+    ? [...new Set(value.mcpServerIds.filter(isRemoteMCPServerId))].slice(
         0,
         MAX_REMOTE_MCP_SERVERS_PER_MODEL
       )
@@ -437,7 +437,7 @@ export function removeModelProfile(profileId: string): void {
   }
 }
 
-export function removeRemoteMcpServerFromModelProfiles(serverId: string): number {
+export function removeRemoteMCPServerFromModelProfiles(serverId: string): number {
   let changed = 0
   for (const profile of aiModelSettings.value.models) {
     const next = profile.featurePolicy.mcpServerIds.filter((id) => id !== serverId)

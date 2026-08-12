@@ -1,7 +1,12 @@
 /* eslint-disable max-lines -- scene dispatch stays together while shape domains live in sibling modules */
 import type { Canvas, Path } from 'canvaskit-wasm'
 
-import type { SceneNode, SceneGraph, Fill } from '@open-pencil/scene-graph'
+import {
+  getAbsolutePositionFull,
+  type SceneNode,
+  type SceneGraph,
+  type Fill
+} from '@open-pencil/scene-graph'
 import { computeDescendantVisualBounds, polygonVertices } from '@open-pencil/scene-graph/geometry'
 import type { Color, Rect } from '@open-pencil/scene-graph/primitives'
 
@@ -103,12 +108,57 @@ function subtreeHasMotionGeometry(
   return false
 }
 
+function hasNodeTransform(node: SceneNode): boolean {
+  return node.rotation !== 0 || node.flipX || node.flipY
+}
+
+function effectiveNodeRotation(node: SceneNode, nodeId: string, overlays: RenderOverlays): number {
+  return overlays.rotationPreview?.nodeId === nodeId
+    ? overlays.rotationPreview.angle
+    : node.rotation
+}
+
+function hasTransientNodeTransform(
+  authoredNode: SceneNode,
+  renderedNode: SceneNode,
+  nodeId: string,
+  overlays: RenderOverlays,
+  visual: MotionVisualState
+): boolean {
+  const previewRotation = overlays.rotationPreview?.nodeId === nodeId
+  return (
+    hasMotionScaleOrRotation(visual) ||
+    (previewRotation && overlays.rotationPreview?.angle !== authoredNode.rotation) ||
+    (hasNodeTransform(renderedNode) &&
+      (renderedNode.width !== authoredNode.width || renderedNode.height !== authoredNode.height))
+  )
+}
+
+function isRectOutsideViewport(
+  viewport: SkiaRenderer['worldViewport'],
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): boolean {
+  return (
+    x > viewport.x + viewport.w ||
+    y > viewport.y + viewport.h ||
+    x + width < viewport.x ||
+    y + height < viewport.y
+  )
+}
+
 function isCulled(
   r: SkiaRenderer,
+  graph: SceneGraph,
   node: SceneNode,
   absX: number,
   absY: number,
-  visual: MotionVisualState
+  visual: MotionVisualState,
+  effectiveRotation: number,
+  hasTransformedAncestor: boolean,
+  hasTransientTransformedAncestor: boolean
 ): boolean {
   const canCull =
     node.childIds.length === 0 ||
@@ -117,24 +167,29 @@ function isCulled(
   if (!canCull) return false
 
   const vp = r.worldViewport
+  // The authored world matrix cannot represent ancestor Motion/preview transforms. Culling is an
+  // optimization, so retain correctness by drawing the subtree while such a transform is active.
+  if (hasTransientTransformedAncestor) return false
+  if (hasTransformedAncestor) {
+    if (hasMotionScaleOrRotation(visual) || effectiveRotation !== node.rotation) return false
+    const transformedNode =
+      visual.x === 0 && visual.y === 0
+        ? node
+        : { ...node, x: node.x + visual.x, y: node.y + visual.y }
+    const bounds = getAbsolutePositionFull(transformedNode, graph)
+    return isRectOutsideViewport(vp, bounds.boundX, bounds.boundY, bounds.width, bounds.height)
+  }
   const bw = node.width * Math.abs(visual.scaleX)
   const bh = node.height * Math.abs(visual.scaleY)
   const scaledX = absX + (node.width - bw) / 2
   const scaledY = absY + (node.height - bh) / 2
-  if (node.rotation + visual.rotate !== 0) {
+  if (effectiveRotation + visual.rotate !== 0) {
     const diag = Math.hypot(bw, bh)
     const cx = absX + node.width / 2
     const cy = absY + node.height / 2
-    return (
-      cx - diag / 2 > vp.x + vp.w ||
-      cy - diag / 2 > vp.y + vp.h ||
-      cx + diag / 2 < vp.x ||
-      cy + diag / 2 < vp.y
-    )
+    return isRectOutsideViewport(vp, cx - diag / 2, cy - diag / 2, diag, diag)
   }
-  return (
-    scaledX > vp.x + vp.w || scaledY > vp.y + vp.h || scaledX + bw < vp.x || scaledY + bh < vp.y
-  )
+  return isRectOutsideViewport(vp, scaledX, scaledY, bw, bh)
 }
 
 function applyNodeTransforms(
@@ -145,16 +200,16 @@ function applyNodeTransforms(
   overlays: RenderOverlays,
   visual: MotionVisualState
 ): void {
-  const rotation =
-    overlays.rotationPreview?.nodeId === nodeId ? overlays.rotationPreview.angle : node.rotation
-  if (rotation !== 0) {
-    if (node.type === 'LINE') canvas.rotate(rotation, 0, 0)
-    else canvas.rotate(rotation, node.width / 2, node.height / 2)
-  }
-
+  const rotation = effectiveNodeRotation(node, nodeId, overlays)
   if (node.flipX || node.flipY) {
     canvas.translate(node.flipX ? node.width : 0, node.flipY ? node.height : 0)
     canvas.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1)
+  }
+
+  // Match getNodeLocalMatrix and Figma's raw matrix: reflection precedes authored rotation.
+  if (rotation !== 0) {
+    if (node.type === 'LINE') canvas.rotate(rotation, 0, 0)
+    else canvas.rotate(rotation, node.width / 2, node.height / 2)
   }
 
   const originX = node.width * (visual.originX ?? 0.5)
@@ -530,7 +585,8 @@ function renderChildIds(
   overlays: RenderOverlays,
   absX: number,
   absY: number,
-  ancestorHasMotionTransform: boolean
+  hasTransformedAncestor: boolean,
+  hasTransientTransformedAncestor: boolean
 ): void {
   renderMaskedChildIds(
     r,
@@ -541,7 +597,16 @@ function renderChildIds(
       return child?.visible && child.isMask ? child.maskType : null
     },
     (childId) =>
-      r.renderNode(canvas, graph, childId, overlays, absX, absY, ancestorHasMotionTransform),
+      r.renderNode(
+        canvas,
+        graph,
+        childId,
+        overlays,
+        absX,
+        absY,
+        hasTransformedAncestor,
+        hasTransientTransformedAncestor
+      ),
     (childId) => {
       const child = graph.getNode(childId)
       if (child) renderMaskNodeContent(r, canvas, graph, child, childId, overlays)
@@ -562,7 +627,8 @@ function renderChildren(
   overlays: RenderOverlays,
   absX: number,
   absY: number,
-  ancestorHasMotionTransform: boolean
+  hasTransformedAncestor: boolean,
+  hasTransientTransformedAncestor: boolean
 ): void {
   if (node.type === 'BOOLEAN_OPERATION') return
   const isClippableContainer =
@@ -590,7 +656,8 @@ function renderChildren(
       overlays,
       absX,
       absY,
-      ancestorHasMotionTransform
+      hasTransformedAncestor,
+      hasTransientTransformedAncestor
     )
     canvas.restore()
   } else {
@@ -602,7 +669,8 @@ function renderChildren(
       overlays,
       absX,
       absY,
-      ancestorHasMotionTransform
+      hasTransformedAncestor,
+      hasTransientTransformedAncestor
     )
   }
 }
@@ -697,7 +765,8 @@ export function renderNode(
   overlays: RenderOverlays,
   parentAbsX = 0,
   parentAbsY = 0,
-  ancestorHasMotionTransform = false
+  hasTransformedAncestor = false,
+  hasTransientTransformedAncestor = false
 ): void {
   const authoredNode = graph.getNode(nodeId)
   if (
@@ -720,8 +789,21 @@ export function renderNode(
   const renderedNode = motionNode(node, visual)
   const absX = parentAbsX + node.x + visual.x
   const absY = parentAbsY + node.y + visual.y
+  const effectiveRotation = effectiveNodeRotation(renderedNode, nodeId, overlays)
 
-  if (!ancestorHasMotionTransform && isCulled(r, renderedNode, absX, absY, visual)) {
+  if (
+    isCulled(
+      r,
+      graph,
+      renderedNode,
+      absX,
+      absY,
+      visual,
+      effectiveRotation,
+      hasTransformedAncestor,
+      hasTransientTransformedAncestor
+    )
+  ) {
     r._culledCount++
     return
   }
@@ -752,7 +834,9 @@ export function renderNode(
     overlays,
     absX,
     absY,
-    ancestorHasMotionTransform || hasMotionScaleOrRotation(visual)
+    hasTransformedAncestor || hasNodeTransform(renderedNode),
+    hasTransientTransformedAncestor ||
+      hasTransientNodeTransform(authoredNode, renderedNode, nodeId, overlays, visual)
   )
   drawGeneratedEffect(r, canvas, renderedNode, overlays)
 

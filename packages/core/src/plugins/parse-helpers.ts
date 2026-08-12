@@ -1,6 +1,6 @@
 import {
   compareStableSemver,
-  isPlainJsonObject,
+  isPlainJSONObject,
   parseBoundedManifestArray,
   parseStableSemver,
   stableSemverParts,
@@ -133,7 +133,7 @@ export function isSafePluginHref(
   if (value.startsWith('/') && !value.startsWith('//')) return true
   if (value.startsWith('#') && value.length > 1) return true
   try {
-    parseCanonicalPublicHttpsUrl(value, path, maximumLength)
+    parseCanonicalPublicHttpsURL(value, path, maximumLength)
     return true
   } catch {
     return false
@@ -198,7 +198,7 @@ function clonePluginConfigValue(
       }
       return cloned
     }
-    if (!isPlainJsonObject(value)) throw new TypeError(`${path} must be a plain JSON object`)
+    if (!isPlainJSONObject(value)) throw new TypeError(`${path} must be a plain JSON object`)
     const cloned = Object.create(Object.getPrototypeOf(value)) as MutablePluginConfigRecord
     for (const key of Reflect.ownKeys(value)) {
       if (typeof key !== 'string') throw new TypeError(`${path} must not contain symbol keys`)
@@ -225,7 +225,7 @@ export function mergePluginConfigWithDefaults(
 ): unknown {
   const merged = structuredClone(defaults)
   if (config === undefined) return merged
-  if (!isPlainJsonObject(config)) return config
+  if (!isPlainJSONObject(config)) return config
   const ancestors = new WeakSet<object>([config])
   for (const key of Reflect.ownKeys(config)) {
     if (typeof key !== 'string') {
@@ -305,7 +305,7 @@ export function parsePluginTrustValidityWindow(
   return { notBefore, notAfter }
 }
 
-export function parseCanonicalPublicHttpsUrl(
+export function parseCanonicalPublicHttpsURL(
   value: unknown,
   path: string,
   maximumLength: number
@@ -405,7 +405,7 @@ export function parseSafePluginAssetSource(
     throw new TypeError(`${path} must not be empty`)
   }
   if (value.startsWith('/')) return parseCanonicalRootRelativePath(value, path)
-  return parseCanonicalPublicHttpsUrl(value, path, maximumLength)
+  return parseCanonicalPublicHttpsURL(value, path, maximumLength)
 }
 
 export function comparePluginVersionCoordinates(

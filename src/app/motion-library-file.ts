@@ -11,25 +11,25 @@ function motionLibraryLabel(kind: MotionLibraryKind): string {
 function assertMotionLibraryFileSize(
   size: number,
   kind: MotionLibraryKind,
-  maxJsonBytes: number
+  maxJSONBytes: number
 ): void {
-  if (!Number.isFinite(size) || size < 0 || size > maxJsonBytes) {
-    throw new Error(`${motionLibraryLabel(kind)} files may not exceed ${maxJsonBytes} bytes.`)
+  if (!Number.isFinite(size) || size < 0 || size > maxJSONBytes) {
+    throw new Error(`${motionLibraryLabel(kind)} files may not exceed ${maxJSONBytes} bytes.`)
   }
 }
 
 export async function readBrowserMotionLibraryFile(
   file: File,
   kind: MotionLibraryKind,
-  maxJsonBytes: number
+  maxJSONBytes: number
 ): Promise<string> {
-  assertMotionLibraryFileSize(file.size, kind, maxJsonBytes)
+  assertMotionLibraryFileSize(file.size, kind, maxJSONBytes)
   return file.text()
 }
 
 export async function chooseTauriMotionLibraryFile(
   kind: MotionLibraryKind,
-  maxJsonBytes: number
+  maxJSONBytes: number
 ): Promise<string | null> {
   if (!isTauri()) return null
   const [{ open }, { readTextFile, stat }] = await Promise.all([
@@ -42,7 +42,7 @@ export async function chooseTauriMotionLibraryFile(
     filters: [{ name: motionLibraryLabel(kind), extensions: ['json'] }]
   })
   if (typeof path !== 'string') return null
-  assertMotionLibraryFileSize((await stat(path)).size, kind, maxJsonBytes)
+  assertMotionLibraryFileSize((await stat(path)).size, kind, maxJSONBytes)
   return readTextFile(path)
 }
 

@@ -2,15 +2,15 @@
 import { computed } from 'vue'
 import { NodeList, type LinkNodeRendererProps } from 'vue-stream-markdown'
 
-import { applicationRuntimeGuideExternalUrl } from '@/app/help/application-runtime-guide'
+import { applicationRuntimeGuideExternalURL } from '@/app/help/application-runtime-guide'
 import { openExternalLink } from '@/app/shell/ui'
 
 const { markdownParser, nodeRenderers, node, nodeKey, blockIndex, prevNode, nextNode, deep } =
   defineProps<LinkNodeRendererProps>()
-const externalUrl = computed(() => applicationRuntimeGuideExternalUrl(node.url))
+const externalURL = computed(() => applicationRuntimeGuideExternalURL(node.url))
 
 function openLink(): void {
-  if (externalUrl.value) void openExternalLink(externalUrl.value)
+  if (externalURL.value) void openExternalLink(externalURL.value)
 }
 </script>
 
@@ -18,7 +18,7 @@ function openLink(): void {
   <button
     type="button"
     class="inline cursor-pointer bg-transparent p-0 text-accent underline decoration-accent/50 underline-offset-2 hover:decoration-accent disabled:cursor-default disabled:text-muted disabled:no-underline"
-    :disabled="!externalUrl"
+    :disabled="!externalURL"
     @click="openLink"
   >
     <NodeList

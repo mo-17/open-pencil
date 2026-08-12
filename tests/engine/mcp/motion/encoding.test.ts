@@ -8,14 +8,14 @@ import { join } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import {
-  createMotionPngSequenceManifest,
+  createMotionPngSequenceManifest as createMotionPNGSequenceManifest,
   MotionExportCancelledError,
   planMotionFrames,
   type MotionRenderedFrame
 } from '@open-pencil/core/io/motion-export'
 import {
   discoverFfmpegMotionEncoders,
-  encodeMotionPngSequenceToolResult
+  encodeMotionPNGSequenceToolResult
 } from '@open-pencil/mcp/motion-export'
 
 import { writeToolOutput } from '#mcp/tool/output'
@@ -27,11 +27,11 @@ const PNG = Buffer.from(
   'base64'
 )
 
-function pngSequenceResult(): Record<string, unknown> {
-  const { plan, frames } = renderedPngSequence()
+function PNGSequenceResult(): Record<string, unknown> {
+  const { plan, frames } = renderedPNGSequence()
   return {
     format: 'png-sequence',
-    manifest: createMotionPngSequenceManifest(plan, frames),
+    manifest: createMotionPNGSequenceManifest(plan, frames),
     frames: frames.map((frame) => ({
       file: frame.fileName,
       base64: PNG.toString('base64'),
@@ -41,7 +41,7 @@ function pngSequenceResult(): Record<string, unknown> {
   }
 }
 
-function renderedPngSequence(
+function renderedPNGSequence(
   durationMs = 100,
   fps = 20
 ): {
@@ -145,7 +145,7 @@ setInterval(() => undefined, 1_000)`
     const abort = setTimeout(() => controller.abort(), 25)
     try {
       await expect(
-        encoder?.encode({ ...renderedPngSequence(), signal: controller.signal })
+        encoder?.encode({ ...renderedPNGSequence(), signal: controller.signal })
       ).rejects.toBeInstanceOf(MotionExportCancelledError)
     } finally {
       clearTimeout(abort)
@@ -179,7 +179,7 @@ process.exit(1)`
     const timeout = Symbol('encode-timeout')
     let timer: ReturnType<typeof setTimeout> | undefined
     const result = await Promise.race([
-      encoder?.encode(renderedPngSequence()).then(
+      encoder?.encode(renderedPNGSequence()).then(
         () => null,
         (error: unknown) => error
       ),
@@ -196,9 +196,9 @@ process.exit(1)`
     const discovery = await discoverFfmpegMotionEncoders()
     const encoder = discovery.encoders.find((candidate) => candidate.format === 'webm')
     if (!encoder) return
-    const malformed = pngSequenceResult()
+    const malformed = PNGSequenceResult()
     ;(malformed.manifest as { totalDurationUs: number }).totalDurationUs++
-    await expect(encodeMotionPngSequenceToolResult(malformed, encoder)).rejects.toThrow(
+    await expect(encodeMotionPNGSequenceToolResult(malformed, encoder)).rejects.toThrow(
       'timing does not match'
     )
   })
@@ -210,7 +210,7 @@ process.exit(1)`
     const controller = new AbortController()
     controller.abort()
     await expect(
-      encodeMotionPngSequenceToolResult(pngSequenceResult(), encoder, controller.signal)
+      encodeMotionPNGSequenceToolResult(PNGSequenceResult(), encoder, controller.signal)
     ).rejects.toBeInstanceOf(MotionExportCancelledError)
   })
 
@@ -218,7 +218,7 @@ process.exit(1)`
     const discovery = await discoverFfmpegMotionEncoders()
     const encoder = discovery.encoders.find((candidate) => candidate.format === 'webm')
     if (!encoder) return
-    const { plan, frames } = renderedPngSequence()
+    const { plan, frames } = renderedPNGSequence()
     const controller = new AbortController()
     let reported = false
     await expect(
@@ -242,7 +242,7 @@ process.exit(1)`
     const encoder = discovery.encoders.find((candidate) => candidate.format === 'webm')
     if (!encoder) return
     await mkdir(root, { recursive: true })
-    const encoded = await encodeMotionPngSequenceToolResult(pngSequenceResult(), encoder)
+    const encoded = await encodeMotionPNGSequenceToolResult(PNGSequenceResult(), encoder)
     const result = await writeToolOutput('export_motion_animation', encoded, 'animation.webm', root)
 
     expect(result?.isError).toBeUndefined()
@@ -279,7 +279,7 @@ process.exit(1)`
     const discovery = await discoverFfmpegMotionEncoders()
     const encoder = discovery.encoders.find((candidate) => candidate.format === 'webm')
     if (!encoder) return
-    const { plan, frames } = renderedPngSequence(110, 20)
+    const { plan, frames } = renderedPNGSequence(110, 20)
     const bytes = await encoder.encode({ plan, frames })
     await mkdir(root, { recursive: true })
     const output = join(root, 'partial-frame.webm')
@@ -316,7 +316,7 @@ process.exit(1)`
     const discovery = await discoverFfmpegMotionEncoders()
     const encoder = discovery.encoders.find((candidate) => candidate.format === 'mp4')
     if (!encoder) return
-    const { plan, frames } = renderedPngSequence(110, 20)
+    const { plan, frames } = renderedPNGSequence(110, 20)
     await expect(encoder.encode({ plan, frames })).rejects.toThrow(
       'requires a duration aligned to a whole frame'
     )
@@ -328,7 +328,7 @@ process.exit(1)`
       (candidate) => candidate.format === 'mp4' && candidate.capability.includes('libx264')
     )
     if (!encoder) return
-    const { plan, frames } = renderedPngSequence()
+    const { plan, frames } = renderedPNGSequence()
     const bytes = await encoder.encode({ plan, frames })
     await mkdir(root, { recursive: true })
     const output = join(root, 'odd.mp4')
@@ -387,9 +387,9 @@ process.exit(1)`
     registerTools(server, {
       enableEval: false,
       mcpRoot: root,
-      async sendRpc(body: Record<string, unknown>) {
+      async sendRPC(body: Record<string, unknown>) {
         rpcArgs = body
-        return { ok: true, result: pngSequenceResult() }
+        return { ok: true, result: PNGSequenceResult() }
       }
     })
     const handler = handlers.get('export_motion_animation')
@@ -436,10 +436,10 @@ process.exit(1)`
     registerTools(server, {
       enableEval: false,
       mcpRoot: root,
-      async sendRpc(_body, options) {
+      async sendRPC(_body, options) {
         rpcSignal = options?.signal
         options?.onProgress?.({ phase: 'render', completed: 1, total: 2, frameIndex: 0 })
-        return { ok: true, result: pngSequenceResult() }
+        return { ok: true, result: PNGSequenceResult() }
       }
     })
 
@@ -493,7 +493,7 @@ process.exit(1)`
     let forwardedSignal: AbortSignal | undefined
     registerTools(server, {
       enableEval: false,
-      async sendRpc(_body, options) {
+      async sendRPC(_body, options) {
         forwardedSignal = options?.signal
         throw cancellation
       }

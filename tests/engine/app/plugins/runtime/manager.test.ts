@@ -13,7 +13,7 @@ import {
   type PluginRuntimePackagePayloadV1,
   type VerifiedIndexedPluginRuntimePackage
 } from '@open-pencil/core/plugins'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import {
   createMemoryPluginRuntimePolicyStorage,
@@ -195,7 +195,7 @@ describe('plugin runtime policy manager', () => {
       capabilities: ['document.selection.read']
     })
     const storage = createMemoryPluginRuntimePolicyStorage()
-    const executedInputs: JsonValue[] = []
+    const executedInputs: JSONValue[] = []
     let now = Date.parse('2026-08-05T00:00:00.000Z')
     const manager = createPluginRuntimeManager({
       storage,
@@ -335,7 +335,7 @@ describe('plugin runtime policy manager', () => {
       loadRuntime: async () => ({ runtime, source: 'network', refreshError: null }),
       executor: {
         execute: ({ signal }) =>
-          new Promise<JsonValue>((_resolve, reject) => {
+          new Promise<JSONValue>((_resolve, reject) => {
             workerStarted?.()
             signal?.addEventListener(
               'abort',
@@ -413,7 +413,7 @@ describe('plugin runtime policy manager', () => {
         execute: ({ signal }) => {
           executorCalls += 1
           if (!blockExecution) return Promise.resolve({ ok: true })
-          return new Promise<JsonValue>((_resolve, reject) => {
+          return new Promise<JSONValue>((_resolve, reject) => {
             workerStarted?.()
             signal?.addEventListener(
               'abort',

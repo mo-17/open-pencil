@@ -1,9 +1,9 @@
 import {
-  validateLowcodeCustomCss,
+  validateLowcodeCustomCSS,
   validateLowcodeHeadMeta
 } from '@open-pencil/core/lowcode-validation'
 
-import type { CompilerOptions, HtmlMetadata, LowcodeThemeSwitchPosition } from './types'
+import type { CompilerOptions, HTMLMetadata, LowcodeThemeSwitchPosition } from './types'
 
 const REACT_DEP_VERSIONS = {
   '18': { react: '^18.3.1', reactDom: '^18.3.1', reactTypes: '^18.3.12', reactDomTypes: '^18.3.5' },
@@ -16,7 +16,7 @@ const REACT_DEP_VERSIONS = {
  * `dependencies` after the React baseline so adapter-specific entries are
  * grouped together but sort-stable across emits.
  */
-export function buildPackageJson(
+export function buildPackageJSON(
   options: CompilerOptions,
   extraDeps: Readonly<Record<string, string>> = {}
 ): string {
@@ -76,10 +76,10 @@ export default defineConfig({
 /** Phase 3 §15: `themeCss` (the UI kit's Tailwind v4 theme block) is inserted
  *  right after the Tailwind import so the kit's semantic color utilities
  *  (`bg-primary`, …) resolve. Empty → byte-identical. */
-export function buildIndexCss(
+export function buildIndexCSS(
   safelistClasses: readonly string[] = [],
-  themeCss = '',
-  customCss = ''
+  themeCSS = '',
+  customCSS = ''
 ): string {
   // Tailwind v4's content auto-detection relies on Vite's module graph and a
   // filesystem glob under the project root. Our preview dev-server serves the
@@ -92,8 +92,8 @@ export function buildIndexCss(
   // codegen output.
   // Phase 3 §15: the theme block goes right after the import so its `@theme`
   // tokens register before any `@source inline` utility generation.
-  const head = `@import "tailwindcss";\n` + (themeCss ? `\n${themeCss}` : '')
-  const tail = customCss ? `\n${customCss}\n` : ''
+  const head = `@import "tailwindcss";\n` + (themeCSS ? `\n${themeCSS}` : '')
+  const tail = customCSS ? `\n${customCSS}\n` : ''
   if (safelistClasses.length === 0) return `${head}${tail}`
   const joined = safelistClasses.join(' ').replace(/"/g, '\\"')
   return `${head}@source inline("${joined}");\n${tail}`
@@ -124,11 +124,11 @@ export function buildTsConfig(withAlias = false): string {
   return JSON.stringify({ compilerOptions, include: ['src'] }, null, 2) + '\n'
 }
 
-export function buildIndexHtml(
+export function buildIndexHTML(
   packageName: string,
   lang = 'en',
   rtl = false,
-  metadata?: HtmlMetadata
+  metadata?: HTMLMetadata
 ): string {
   // Phase 3 §9 v12: reflect the source locale on <html lang> (a11y / SEO) and
   // pre-set dir="rtl" for an RTL source so the page doesn't flash LTR before the
@@ -136,11 +136,11 @@ export function buildIndexHtml(
   const title = cleanMetadataText(metadata?.title) ?? packageName
   const meta = buildMetadataTags(metadata)
   return `<!doctype html>
-<html lang="${escapeHtml(lang)}"${rtl ? ' dir="rtl"' : ''}>
+<html lang="${escapeHTML(lang)}"${rtl ? ' dir="rtl"' : ''}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escapeHtml(title)}</title>
+    <title>${escapeHTML(title)}</title>
 ${meta}  </head>
   <body>
     <div id="root"></div>
@@ -150,14 +150,14 @@ ${meta}  </head>
 `
 }
 
-export function buildMetadataTags(metadata: HtmlMetadata | undefined): string {
+export function buildMetadataTags(metadata: HTMLMetadata | undefined): string {
   if (!metadata) return ''
   const title = cleanMetadataText(metadata.title)
   const description = cleanMetadataText(metadata.description)
   const image = cleanMetadataText(metadata.image)
-  const rawCanonicalUrl = cleanMetadataText(metadata.canonicalUrl)
-  const canonicalUrl =
-    rawCanonicalUrl && isSafeCanonicalUrl(rawCanonicalUrl) ? rawCanonicalUrl : undefined
+  const rawCanonicalURL = cleanMetadataText(metadata.canonicalUrl)
+  const canonicalURL =
+    rawCanonicalURL && isSafeCanonicalURL(rawCanonicalURL) ? rawCanonicalURL : undefined
   const lines: string[] = []
   if (description) {
     lines.push(metaTag('name', 'description', description))
@@ -165,9 +165,9 @@ export function buildMetadataTags(metadata: HtmlMetadata | undefined): string {
   }
   if (title) lines.push(metaTag('property', 'og:title', title))
   if (image) lines.push(metaTag('property', 'og:image', image))
-  if (canonicalUrl) {
-    lines.push(`    <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`)
-    lines.push(metaTag('property', 'og:url', canonicalUrl))
+  if (canonicalURL) {
+    lines.push(`    <link rel="canonical" href="${escapeHTML(canonicalURL)}" />`)
+    lines.push(metaTag('property', 'og:url', canonicalURL))
   }
   lines.push(...customHeadTags(metadata))
   if (lines.length === 0) return ''
@@ -175,10 +175,10 @@ export function buildMetadataTags(metadata: HtmlMetadata | undefined): string {
 }
 
 function metaTag(kind: 'name' | 'property', key: string, content: string): string {
-  return `    <meta ${kind}="${escapeHtml(key)}" content="${escapeHtml(content)}" />`
+  return `    <meta ${kind}="${escapeHTML(key)}" content="${escapeHTML(content)}" />`
 }
 
-function customHeadTags(metadata: HtmlMetadata): string[] {
+function customHeadTags(metadata: HTMLMetadata): string[] {
   const head = metadata.head
   if (!head) return []
   const lines: string[] = []
@@ -188,7 +188,7 @@ function customHeadTags(metadata: HtmlMetadata): string[] {
     if (!key || !content) continue
     if (!validateLowcodeHeadMeta(meta.kind, key, content).ok) continue
     const attr = meta.kind === 'httpEquiv' ? 'http-equiv' : meta.kind
-    lines.push(`    <meta ${attr}="${escapeHtml(key)}" content="${escapeHtml(content)}" />`)
+    lines.push(`    <meta ${attr}="${escapeHTML(key)}" content="${escapeHTML(content)}" />`)
   }
   for (const link of head.link ?? []) {
     const rel = cleanMetadataText(link.rel)
@@ -202,11 +202,11 @@ function customHeadTags(metadata: HtmlMetadata): string[] {
       ['media', cleanMetadataText(link.media)],
       ['crossorigin', link.crossorigin]
     ].filter((entry): entry is [string, string] => typeof entry[1] === 'string')
-    lines.push(`    <link ${attrs.map(([k, v]) => `${k}="${escapeHtml(v)}"`).join(' ')} />`)
+    lines.push(`    <link ${attrs.map(([k, v]) => `${k}="${escapeHTML(v)}"`).join(' ')} />`)
   }
   for (const style of head.styles ?? []) {
     const css = style.trim()
-    if (css && validateLowcodeCustomCss(css).ok) {
+    if (css && validateLowcodeCustomCSS(css).ok) {
       lines.push(`    <style>${escapeStyleText(css)}</style>`)
     }
   }
@@ -229,7 +229,7 @@ function isSafeHeadLinkHref(value: string): boolean {
   return true
 }
 
-function isSafeCanonicalUrl(value: string): boolean {
+function isSafeCanonicalURL(value: string): boolean {
   if (/^https?:/i.test(value)) return true
   if (value.startsWith('/')) return !value.startsWith('//')
   return false
@@ -252,7 +252,7 @@ export function buildMainTsx(
   themeSwitchPosition?: LowcodeThemeSwitchPosition | false,
   analytics = false,
   analyticsConsentBanner = false,
-  motionCss = false,
+  motionCSS = false,
   motionRuntime = false,
   generatedEffectRuntime = false
 ): string {
@@ -262,7 +262,7 @@ export function buildMainTsx(
   const themeSwitchEnabled = theme && themeSwitchPosition !== false
   const themeImport = buildMainThemeImport(theme, themeSwitchEnabled)
   const analyticsImport = buildAnalyticsImport(analytics, analyticsConsentBanner)
-  const motionImports = buildMotionImports(motionCss, motionRuntime)
+  const motionImports = buildMotionImports(motionCSS, motionRuntime)
   const generatedEffectImport = generatedEffectRuntime
     ? `import './__generated-effect-runtime'\n`
     : ''
@@ -342,7 +342,7 @@ dist
 `
 }
 
-function escapeHtml(s: string): string {
+function escapeHTML(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {
     if (c === '&') return '&amp;'
     if (c === '<') return '&lt;'

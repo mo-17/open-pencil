@@ -5,7 +5,7 @@ import { storageFetch } from '@/app/integrations/storage/s3/fetch'
 import {
   S3_RESPONSE_LIMITS,
   S3ResponseTooLargeError,
-  assertS3ListObjectsXml,
+  assertS3ListObjectsXML,
   assertS3ListPagination,
   limitS3ResponseBody
 } from '@/app/integrations/storage/s3/response'
@@ -123,14 +123,14 @@ describe('S3 response boundaries', () => {
   })
 
   test('rejects malformed and non-list 200 XML responses', () => {
-    expect(() => assertS3ListObjectsXml('<ListBucketResult><Contents>')).toThrow(
+    expect(() => assertS3ListObjectsXML('<ListBucketResult><Contents>')).toThrow(
       'malformed ListObjectsV2 XML'
     )
-    expect(() => assertS3ListObjectsXml('<Error><Code>AccessDenied</Code></Error>')).toThrow(
+    expect(() => assertS3ListObjectsXML('<Error><Code>AccessDenied</Code></Error>')).toThrow(
       'malformed ListObjectsV2 XML'
     )
     expect(() =>
-      assertS3ListObjectsXml(
+      assertS3ListObjectsXML(
         '<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>'
       )
     ).not.toThrow()

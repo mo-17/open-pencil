@@ -1,4 +1,4 @@
-import { parse as parseCssColor } from 'culori'
+import { parse as parseCSSColor } from 'culori'
 
 import type {
   ActionDef,
@@ -55,19 +55,19 @@ import { parseColor } from '#core/color'
 import type { FigmaAPI } from '#core/figma-api'
 import {
   countServerWorkflowActions,
-  isSafeAnalyticsPolicyUrl,
-  normalizeSupabaseMutationPayloadJson,
+  isSafeAnalyticsPolicyURL,
+  normalizeSupabaseMutationPayloadJSON,
   validateAnalyticsConfig,
   validateExpression,
   validateInteractiveProps,
   validateInvokeServerWorkflowAction,
-  validateLowcodeCustomCss,
+  validateLowcodeCustomCSS,
   validateLowcodeHeadMeta,
   validateStateName,
   validateSupabaseConfig,
   validateSupabasePayloadEntries,
   validateServerWorkflows,
-  validateUrlTemplate
+  validateURLTemplate
 } from '#core/lowcode-validation'
 
 type BindingKind = BindingExpr['kind']
@@ -193,7 +193,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-function parseJson(
+function parseJSON(
   src: string,
   what: string
 ): { ok: true; value: unknown } | { ok: false; error: string } {
@@ -261,13 +261,13 @@ function validateValueExpr(
   return { ok: true }
 }
 
-function validateApiCallUrl(
+function validateAPICallURL(
   where: string,
   raw: Record<string, unknown>
 ): { ok: true } | { ok: false; error: string } {
   const url = raw.url
   if (typeof url !== 'string') return failAt(where, '.url must be a string')
-  const r = validateUrlTemplate(url)
+  const r = validateURLTemplate(url)
   if (!r.ok) return failAt(where, `.url — ${r.reason}`)
   return { ok: true }
 }
@@ -396,7 +396,7 @@ function validatePerKindFields(
 ): { ok: true } | { ok: false; error: string } {
   if (kind === 'setState' || kind === 'setVariable') return validateValueExpr(where, value)
   if (kind === 'navigate') return validateNavigateAction(where, value)
-  if (kind === 'apiCall') return validateApiCallAction(where, value)
+  if (kind === 'apiCall') return validateAPICallAction(where, value)
   if (kind === 'supabaseQuery' || kind === 'supabaseMutation') {
     const r = validateSupabaseAction(where, kind, value)
     if (!r.ok) return r
@@ -658,7 +658,7 @@ function validateStripeRedirectAction(
   if (typeof value.endpoint !== 'string' || value.endpoint.trim() === '') {
     return failAt(where, '.endpoint must be a non-empty string')
   }
-  const endpoint = validateUrlTemplate(value.endpoint)
+  const endpoint = validateURLTemplate(value.endpoint)
   if (!endpoint.ok) return failAt(where, `.endpoint — ${endpoint.reason}`)
   const entries = validateSupabasePayloadEntries(where, value.payloadEntries)
   if (!entries.ok) return entries
@@ -710,14 +710,14 @@ function validateResultBranches(
 /** Phase 3 §10 v9: validate an `apiCall` action — its URL, optional string
  *  `errorTarget` (error-capture docState), and `onSuccess` / `onError`
  *  result-branches. */
-function validateApiCallAction(
+function validateAPICallAction(
   where: string,
   value: Record<string, unknown>
 ): { ok: true } | { ok: false; error: string } {
   if (value.errorTarget !== undefined && typeof value.errorTarget !== 'string') {
     return failAt(where, '.errorTarget must be a string')
   }
-  const urlR = validateApiCallUrl(where, value)
+  const urlR = validateAPICallURL(where, value)
   if (!urlR.ok) return urlR
   return validateResultBranches(where, value)
 }
@@ -848,7 +848,7 @@ function buildActionFromValidated(
         kind,
         operation: raw.operation as 'insert' | 'update' | 'delete' | 'upsert',
         table: raw.table as string,
-        payloadJson: normalizeSupabaseMutationPayloadJson(raw.payloadJson as string | undefined),
+        payloadJson: normalizeSupabaseMutationPayloadJSON(raw.payloadJson as string | undefined),
         payloadEntries: raw.payloadEntries as SupabasePayloadEntry[] | undefined,
         filters: raw.filters as SupabaseFilter[] | undefined,
         resultTarget: raw.resultTarget as string | undefined,
@@ -1205,7 +1205,7 @@ function validateCanonicalColor(value: unknown, path: string): FieldResult {
 }
 
 function parseShorthandColor(value: unknown, path: string): ValueResult<Fill['color']> {
-  if (typeof value !== 'string' || value.trim() === '' || !parseCssColor(value)) {
+  if (typeof value !== 'string' || value.trim() === '' || !parseCSSColor(value)) {
     return fail(`${path} must be a valid CSS color string`)
   }
   const color = parseColor(value)
@@ -1635,7 +1635,7 @@ function parseAnalyticsConsentCopy(
     const trimmed = value.trim()
     if (trimmed) copy[key as keyof NonNullable<AnalyticsConfig['consentCopy']>] = trimmed
   }
-  if (copy.privacyPolicyUrl && !isSafeAnalyticsPolicyUrl(copy.privacyPolicyUrl)) {
+  if (copy.privacyPolicyUrl && !isSafeAnalyticsPolicyURL(copy.privacyPolicyUrl)) {
     return fail(`${what}.privacyPolicyUrl must be http(s) or root-relative`)
   }
   return { ok: true, copy }
@@ -1700,7 +1700,7 @@ function parseHeadStyleEntries(
     if (typeof entry !== 'string') return fail(`${what}[${index}] must be a string`)
     const style = entry.trim()
     if (!style) continue
-    const result = validateLowcodeCustomCss(style)
+    const result = validateLowcodeCustomCSS(style)
     if (!result.ok) return fail(`${what}[${index}] ${result.reason ?? 'is unsafe'}`)
     styles.push(style)
   }
@@ -1817,7 +1817,7 @@ function applyHeadMetadataField(
   }
 }
 
-function applyCustomCssField(raw: Record<string, unknown>, patch: Partial<SceneNode>): FieldResult {
+function applyCustomCSSField(raw: Record<string, unknown>, patch: Partial<SceneNode>): FieldResult {
   if (!('lowcodeCustomCss' in raw)) return { ok: true }
   if (raw.lowcodeCustomCss === null) {
     patch.lowcodeCustomCss = undefined
@@ -1827,7 +1827,7 @@ function applyCustomCssField(raw: Record<string, unknown>, patch: Partial<SceneN
     return fail('lowcodeCustomCss must be a string or null')
   const css = raw.lowcodeCustomCss.trim()
   if (css) {
-    const result = validateLowcodeCustomCss(css)
+    const result = validateLowcodeCustomCSS(css)
     if (!result.ok) return fail(`lowcodeCustomCss ${result.reason ?? 'is unsafe'}`)
   }
   patch.lowcodeCustomCss = css ? css : undefined
@@ -1846,7 +1846,7 @@ const FIELD_APPLIERS = [
   applySeoMetadataField,
   applyAnalyticsConfigField,
   applyHeadMetadataField,
-  applyCustomCssField
+  applyCustomCSSField
 ]
 
 /**
@@ -1968,7 +1968,7 @@ export const updateLowcodeNode = defineTool({
       if (!isPlainObject(args.patch)) return fail('patch must be a JSON object')
       rawPatch = args.patch
     } else {
-      const parsed = parseJson(args.patch_json ?? '', 'patch_json')
+      const parsed = parseJSON(args.patch_json ?? '', 'patch_json')
       if (!parsed.ok) return fail(parsed.error)
       if (!isPlainObject(parsed.value)) return fail('patch_json must be a JSON object')
       rawPatch = parsed.value
@@ -2061,7 +2061,7 @@ export const setDocStates = defineTool({
     }
   },
   execute: (figma, args, ctx): ModifyResult<{ count: number }> => {
-    const parsed = parseJson(args.states_json, 'states_json')
+    const parsed = parseJSON(args.states_json, 'states_json')
     if (!parsed.ok) return fail(parsed.error)
     const validated = validateStateDecls('states_json', parsed.value, true, {
       allowPersistence: true
@@ -2092,7 +2092,7 @@ export const setSupabaseConfig = defineTool({
     }
   },
   execute: (figma, args, ctx): ModifyResult<{ cleared: boolean }> => {
-    const parsed = parseJson(args.config_json, 'config_json')
+    const parsed = parseJSON(args.config_json, 'config_json')
     if (!parsed.ok) return fail(parsed.error)
     if (parsed.value === null) {
       applyPatchWithUndo(
@@ -2160,7 +2160,7 @@ export const setTranslations = defineTool({
     }
   },
   execute: (figma, args, ctx): ModifyResult<{ locales: number; entries: number }> => {
-    const parsed = parseJson(args.translations_json, 'translations_json')
+    const parsed = parseJSON(args.translations_json, 'translations_json')
     if (!parsed.ok) return fail(parsed.error)
     if (parsed.value === null) {
       applyPatchWithUndo(
@@ -2355,7 +2355,7 @@ export const setWorkflows = defineTool({
     }
   },
   execute: (figma, args, ctx): ModifyResult<{ workflows: number; actions: number }> => {
-    const parsed = parseJson(args.workflows_json, 'workflows_json')
+    const parsed = parseJSON(args.workflows_json, 'workflows_json')
     if (!parsed.ok) return fail(parsed.error)
     if (parsed.value === null) {
       applyPatchWithUndo(
@@ -2410,7 +2410,7 @@ export const setServerWorkflows = defineTool({
     }
     let raw: unknown = args.server_workflows
     if (args.server_workflows_json !== undefined) {
-      const parsed = parseJson(args.server_workflows_json, 'server_workflows_json')
+      const parsed = parseJSON(args.server_workflows_json, 'server_workflows_json')
       if (!parsed.ok) return fail(parsed.error)
       raw = parsed.value
     }

@@ -51,7 +51,7 @@ function concatenateBytes(chunks: readonly Uint8Array[]): Uint8Array {
   return result
 }
 
-function decodeGeneratedRgbaPng(bytes: Uint8Array): { width: number; height: number } {
+function decodeGeneratedRgbaPNG(bytes: Uint8Array): { width: number; height: number } {
   expect(bytes.subarray(0, PNG_SIGNATURE.byteLength)).toEqual(PNG_SIGNATURE)
   const imageData: Uint8Array[] = []
   let width = 0
@@ -98,7 +98,7 @@ function expoExportEditor(documentName = 'Mobile Demo'): ExpoReactNativeExportEd
   }
 }
 
-interface GeneratedPackageJson {
+interface GeneratedPackageJSON {
   name: string
   private: boolean
   description: string
@@ -239,8 +239,8 @@ describe('Tauri React project builder', () => {
     expect(files.get('src/main.tsx')).toBe('export const boot = true\n')
     expect(files.get('public/icon.bin')).toEqual(binary)
 
-    const packageJson: GeneratedPackageJson = JSON.parse(String(files.get('package.json')))
-    expect(packageJson).toMatchObject({
+    const packageJSON: GeneratedPackageJSON = JSON.parse(String(files.get('package.json')))
+    expect(packageJSON).toMatchObject({
       name: 'compiled-app',
       private: true,
       description: 'Tauri desktop project exported from Demo Desktop App in OpenPencil',
@@ -302,7 +302,7 @@ describe('Tauri React project builder', () => {
     expect(icon).toBeInstanceOf(Uint8Array)
     if (!(icon instanceof Uint8Array)) throw new Error('Expected a binary Tauri icon')
     expect(icon.byteLength).toBeLessThan(64 * 1024)
-    expect(decodeGeneratedRgbaPng(icon)).toEqual({ width: 512, height: 512 })
+    expect(decodeGeneratedRgbaPNG(icon)).toEqual({ width: 512, height: 512 })
     expect(
       buildTauriReactProjectFiles(
         new Map([['package.json', `${JSON.stringify(sourcePackage)}\n`]]),
@@ -313,7 +313,7 @@ describe('Tauri React project builder', () => {
 
     const archived = unzipSync(await archiveProjectFiles(files))
     expect(archived[iconPath]).toEqual(icon)
-    expect(decodeGeneratedRgbaPng(archived[iconPath])).toEqual({ width: 512, height: 512 })
+    expect(decodeGeneratedRgbaPNG(archived[iconPath])).toEqual({ width: 512, height: 512 })
   })
 
   test('requires compiler output to include a text package.json', () => {
@@ -584,14 +584,14 @@ describe('Expo React Native project export', () => {
     const result = await exportCurrentDocumentAsExpoReactNativeSource(editor, dependencies)
     if (!written) throw new Error('Expected the Expo project archive to be written')
     const files = unzipSync(written)
-    const packageJson = JSON.parse(text(files, 'package.json')) as {
+    const packageJSON = JSON.parse(text(files, 'package.json')) as {
       dependencies: Record<string, string>
     }
     const pageSource = text(files, 'src/pages/index.tsx')
 
     expect(result.saved).toBe(true)
     expect(result.fileName).toMatch(/^openpencil-app-[a-z0-9]+-expo\.zip$/)
-    expect(packageJson.dependencies.expo).toBe('~57.0.10')
+    expect(packageJSON.dependencies.expo).toBe('~57.0.10')
     expect(pageSource).toContain("from 'react-native'")
     expect(pageSource).toContain('Hello mobile')
     expect(files['index.html']).toBeUndefined()

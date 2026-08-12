@@ -17,7 +17,7 @@ async function canvasPluginModules(page: Page) {
   })
 }
 
-async function selectedModuleJson(page: Page): Promise<string | null> {
+async function selectedModuleJSON(page: Page): Promise<string | null> {
   return page.evaluate(() => {
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
@@ -107,32 +107,32 @@ test('installs and configures local-only file selection without invalid drafts',
   let inputs = page.getByTestId('upload-accept-input')
   await inputs.first().fill('.PNG')
   await inputs.first().press('Enter')
-  await expect.poll(() => selectedModuleJson(page)).toContain('"accept":[".png"]')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"accept":[".png"]')
 
   await addType.click()
   inputs = page.getByTestId('upload-accept-input')
   await inputs.last().fill('image/*')
   await inputs.last().press('Enter')
-  await expect.poll(() => selectedModuleJson(page)).toContain('"accept":[".png","image/*"]')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"accept":[".png","image/*"]')
 
   await addType.click()
   await expect(page.getByTestId('upload-accept-row')).toHaveCount(3)
   await page.getByTestId('upload-accept-remove').last().click()
   await expect(page.getByTestId('upload-accept-row')).toHaveCount(2)
   await expect(page.getByTestId('upload-accept-input').last()).toBeFocused()
-  await expect.poll(() => selectedModuleJson(page)).toContain('"accept":[".png","image/*"]')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"accept":[".png","image/*"]')
 
   inputs = page.getByTestId('upload-accept-input')
   await inputs.last().fill('not-a-type')
   await inputs.last().blur()
   await expect(page.getByTestId('upload-accept-local-error')).toBeVisible()
-  await expect.poll(() => selectedModuleJson(page)).toContain('"accept":[".png","image/*"]')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"accept":[".png","image/*"]')
   await inputs.last().fill('.PNG')
   await inputs.last().press('Enter')
   await expect(page.getByTestId('upload-accept-local-error')).toContainText('must be unique')
   await inputs.last().fill('application/pdf')
   await inputs.last().press('Enter')
-  await expect.poll(() => selectedModuleJson(page)).toContain('"accept":[".png","application/pdf"]')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"accept":[".png","application/pdf"]')
 
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'))
   await expect(inputs.first()).toHaveCSS('background-color', 'rgb(31, 35, 40)')
@@ -167,8 +167,8 @@ test('installs and configures local-only file selection without invalid drafts',
 
   await multipleControl.click()
   await expect(multiple).toBeChecked()
-  await expect.poll(() => selectedModuleJson(page)).toContain('"multiple":true')
-  await expect.poll(() => selectedModuleJson(page)).toContain('"maxFiles":2')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"multiple":true')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"maxFiles":2')
   await expect(maxFiles).toBeEnabled()
   await multiple.focus()
   await expect(multiple).toBeFocused()
@@ -178,11 +178,11 @@ test('installs and configures local-only file selection without invalid drafts',
   await maxFiles.focus()
   await maxFiles.fill('4')
   await maxFiles.press('Enter')
-  await expect.poll(() => selectedModuleJson(page)).toContain('"maxFiles":4')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"maxFiles":4')
   await multiple.focus()
   await multiple.press('Space')
-  await expect.poll(() => selectedModuleJson(page)).toContain('"multiple":false')
-  await expect.poll(() => selectedModuleJson(page)).toContain('"maxFiles":1')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"multiple":false')
+  await expect.poll(() => selectedModuleJSON(page)).toContain('"maxFiles":1')
   await expect(maxFiles).toBeDisabled()
 
   await page.evaluate(async (pluginId) => {

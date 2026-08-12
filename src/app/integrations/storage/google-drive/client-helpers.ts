@@ -335,7 +335,7 @@ export async function discard(response: Response): Promise<void> {
   await response.body?.cancel().catch(() => undefined)
 }
 
-export function allowedGoogleUrl(value: string, uploadSession = false): string {
+export function allowedGoogleURL(value: string, uploadSession = false): string {
   let url: URL
   try {
     url = new URL(value)

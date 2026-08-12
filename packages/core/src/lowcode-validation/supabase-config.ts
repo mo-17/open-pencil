@@ -9,7 +9,7 @@
  * one source.
  */
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { ValidationResult } from './validate'
 
@@ -27,7 +27,7 @@ export function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   try {
     const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const json = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4))
-    return JSON.parse(json) as JsonObject
+    return JSON.parse(json) as JSONObject
   } catch {
     return null
   }

@@ -4,5 +4,5 @@ export { pathFlip, pathGet, pathMove, pathScale, pathSet } from './vector/path'
 
 export { viewportGet, viewportSet, viewportZoomToFit } from './vector/viewport'
 
-export { exportImage, exportPdf, exportSvg } from './vector/export'
+export { exportImage, exportPDF, exportSVG } from './vector/export'
 export { exportMotionAnimation } from './vector/motion-export'

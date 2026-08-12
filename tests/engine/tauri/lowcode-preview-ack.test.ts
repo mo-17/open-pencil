@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { AckDeps, SpawnOutput } from '#tools/lowcode/src/tauri-lowcode-preview-ack'
-import { commandText, parseArgs, runCli } from '#tools/lowcode/src/tauri-lowcode-preview-ack'
+import { commandText, parseArgs, runCLI } from '#tools/lowcode/src/tauri-lowcode-preview-ack'
 
 function output(stdout = '', stderr = '', success = true): SpawnOutput {
   return {
@@ -102,7 +102,7 @@ describe('Tauri lowcode preview ACK helper', () => {
     })
 
     const deps = makeDeps({})
-    expect(runCli(['--help'], deps)).toBe(0)
+    expect(runCLI(['--help'], deps)).toBe(0)
     expect(deps.commands).toHaveLength(0)
     expect(deps.logs[0]).toContain('Usage: bun run tauri:mcp:lowcode-preview-ack')
   })
@@ -110,7 +110,7 @@ describe('Tauri lowcode preview ACK helper', () => {
   test('falls back to bunx tauri-mcp and can skip screenshots', () => {
     const deps = makeDeps({ missingLocalBin: true })
 
-    expect(runCli(['--skip-screenshot'], deps)).toBe(0)
+    expect(runCLI(['--skip-screenshot'], deps)).toBe(0)
 
     expect(deps.commands.some((command) => command[0] === 'tauri-mcp')).toBe(true)
     expect(deps.commands.some((command) => commandText(command).startsWith('bunx tauri-mcp'))).toBe(
@@ -129,7 +129,7 @@ describe('Tauri lowcode preview ACK helper', () => {
       }
     })
 
-    expect(runCli(['--screenshot', '/private/tmp/open-pencil/ack.png'], deps)).toBe(0)
+    expect(runCLI(['--screenshot', '/private/tmp/open-pencil/ack.png'], deps)).toBe(0)
 
     expect(deps.commands.every((command) => command[0] === '/tmp/tauri mcp')).toBe(true)
     expect(deps.mkdirs).toEqual(['/private/tmp/open-pencil'])
@@ -149,7 +149,7 @@ describe('Tauri lowcode preview ACK helper', () => {
       }
     })
 
-    expect(runCli(['--skip-screenshot'], deps)).toBe(0)
+    expect(runCLI(['--skip-screenshot'], deps)).toBe(0)
 
     expect(
       deps.commands.some(
@@ -168,7 +168,7 @@ describe('Tauri lowcode preview ACK helper', () => {
       }
     })
 
-    expect(runCli(['--skip-screenshot'], deps)).toBe(0)
+    expect(runCLI(['--skip-screenshot'], deps)).toBe(0)
 
     expect(
       deps.commands.some(
@@ -190,7 +190,7 @@ describe('Tauri lowcode preview ACK helper', () => {
       }
     })
 
-    expect(runCli([], deps)).toBe(1)
+    expect(runCLI([], deps)).toBe(1)
     expect(deps.errors).toEqual(['Error: Tauri MCP driver session is not connected.'])
   })
 })

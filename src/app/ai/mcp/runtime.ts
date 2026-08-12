@@ -3,12 +3,12 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { dynamicTool, jsonSchema } from 'ai'
 import type { ToolSet } from 'ai'
 
-import { resolveRemoteMcpBearerToken } from '@/app/ai/mcp/credentials'
-import { remoteMcpSettings } from '@/app/ai/mcp/store'
+import { resolveRemoteMCPBearerToken } from '@/app/ai/mcp/credentials'
+import { remoteMCPSettings } from '@/app/ai/mcp/store'
 import {
   MAX_REMOTE_MCP_SERVERS_PER_MODEL,
-  type RemoteMcpServer,
-  type RemoteMcpServerId
+  type RemoteMCPServer,
+  type RemoteMCPServerId
 } from '@/app/ai/mcp/types'
 import { settleRuntimeDisposals } from '@/app/ai/runtime-disposal'
 
@@ -30,31 +30,31 @@ export const REMOTE_MCP_CLOSE_TIMEOUT_MS = 5_000
 type SdkListToolsResult = Awaited<ReturnType<Client['listTools']>>
 type SdkToolDefinition = SdkListToolsResult['tools'][number]
 
-export interface RemoteMcpClient {
+export interface RemoteMCPClient {
   connect(signal: AbortSignal): Promise<void>
   listTools(cursor: string | undefined, signal: AbortSignal): Promise<SdkListToolsResult>
   callTool(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown>
   close(): Promise<void>
 }
 
-export type RemoteMcpClientFactoryOptions = {
-  server: RemoteMcpServer
+export type RemoteMCPClientFactoryOptions = {
+  server: RemoteMCPServer
   bearerToken: string | null
 }
 
-export type RemoteMcpRuntimeDependencies = {
-  servers?: readonly RemoteMcpServer[]
+export type RemoteMCPRuntimeDependencies = {
+  servers?: readonly RemoteMCPServer[]
   signal?: AbortSignal
-  resolveBearerToken?: (server: RemoteMcpServer) => Promise<string | null>
-  createClient?: (options: RemoteMcpClientFactoryOptions) => RemoteMcpClient
+  resolveBearerToken?: (server: RemoteMCPServer) => Promise<string | null>
+  createClient?: (options: RemoteMCPClientFactoryOptions) => RemoteMCPClient
 }
 
-export type RemoteMcpRuntime = {
+export type RemoteMCPRuntime = {
   tools: ToolSet
   dispose(): Promise<void>
 }
 
-type RemoteMcpToolArguments = Record<string, unknown>
+type RemoteMCPToolArguments = Record<string, unknown>
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -163,7 +163,7 @@ function withBoundedResponseBody(response: Response): Response {
   })
 }
 
-function createRemoteMcpFetch(fetchImpl: typeof fetch): typeof fetch {
+function createRemoteMCPFetch(fetchImpl: typeof fetch): typeof fetch {
   return async (input, init) => {
     const response = await fetchImpl(input, { ...init, redirect: 'error' })
     const contentLength = parseContentLength(response)
@@ -176,15 +176,15 @@ function createRemoteMcpFetch(fetchImpl: typeof fetch): typeof fetch {
   }
 }
 
-export function createSdkRemoteMcpClient(
-  { server, bearerToken }: RemoteMcpClientFactoryOptions,
+export function createSdkRemoteMCPClient(
+  { server, bearerToken }: RemoteMCPClientFactoryOptions,
   fetchImpl: typeof fetch = globalThis.fetch
-): RemoteMcpClient {
+): RemoteMCPClient {
   const headers = new Headers()
   if (bearerToken) headers.set('Authorization', `Bearer ${bearerToken}`)
   const transport = new StreamableHTTPClientTransport(new URL(server.transport.url), {
     requestInit: { headers, redirect: 'error' },
-    fetch: createRemoteMcpFetch(fetchImpl),
+    fetch: createRemoteMCPFetch(fetchImpl),
     reconnectionOptions: {
       initialReconnectionDelay: 1_000,
       maxReconnectionDelay: 5_000,
@@ -223,7 +223,7 @@ function serializedBytes(value: unknown, label: string): number {
   return new TextEncoder().encode(serialized).byteLength
 }
 
-function assertBoundedToolResult(server: RemoteMcpServer, toolName: string, result: unknown): void {
+function assertBoundedToolResult(server: RemoteMCPServer, toolName: string, result: unknown): void {
   if (
     serializedBytes(result, `Remote MCP tool result for ${toolName}`) >
     MAX_REMOTE_MCP_TOOL_RESULT_BYTES
@@ -242,12 +242,12 @@ function safeRemoteToolSegment(remoteName: string): string {
     .replace(/^[-_]+|[-_]+$/g, '')
 }
 
-function isRemoteMcpToolArguments(value: unknown): value is RemoteMcpToolArguments {
+function isRemoteMCPToolArguments(value: unknown): value is RemoteMCPToolArguments {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export function namespacedRemoteMcpToolName(
-  serverId: RemoteMcpServerId,
+export function namespacedRemoteMCPToolName(
+  serverId: RemoteMCPServerId,
   remoteName: string
 ): string {
   const prefix = `mcp__${serverId}__`
@@ -264,8 +264,8 @@ function toolSchema(definition: SdkToolDefinition): Parameters<typeof jsonSchema
 }
 
 async function discoverTools(
-  client: RemoteMcpClient,
-  server: RemoteMcpServer,
+  client: RemoteMCPClient,
+  server: RemoteMCPServer,
   signal: AbortSignal | undefined
 ): Promise<SdkToolDefinition[]> {
   const definitions: SdkToolDefinition[] = []
@@ -315,8 +315,8 @@ async function discoverTools(
 }
 
 function createTool(
-  client: RemoteMcpClient,
-  server: RemoteMcpServer,
+  client: RemoteMCPClient,
+  server: RemoteMCPServer,
   definition: SdkToolDefinition,
   disposed: () => boolean
 ) {
@@ -327,7 +327,7 @@ function createTool(
     needsApproval: true,
     execute: async (input, options) => {
       if (disposed()) throw new Error(`Remote MCP server "${server.name}" is closed`)
-      if (!isRemoteMcpToolArguments(input)) {
+      if (!isRemoteMCPToolArguments(input)) {
         throw new Error(`Remote MCP tool "${definition.name}" requires an object input`)
       }
       const result = await runWithTimeout(
@@ -342,10 +342,10 @@ function createTool(
   })
 }
 
-export function selectRemoteMcpServers(
+export function selectRemoteMCPServers(
   serverIds: readonly string[],
-  configuredServers: readonly RemoteMcpServer[]
-): RemoteMcpServer[] {
+  configuredServers: readonly RemoteMCPServer[]
+): RemoteMCPServer[] {
   const uniqueIds = [...new Set(serverIds)]
   if (uniqueIds.length > MAX_REMOTE_MCP_SERVERS_PER_MODEL) {
     throw new Error(
@@ -354,13 +354,13 @@ export function selectRemoteMcpServers(
   }
   const byId = new Map(configuredServers.map((server) => [server.id, server] as const))
   return uniqueIds.map((id) => {
-    const server = byId.get(id as RemoteMcpServerId)
+    const server = byId.get(id as RemoteMCPServerId)
     if (!server) throw new Error(`Unknown remote MCP server selected by model: ${id}`)
     return server
   })
 }
 
-function createDisposer(clients: RemoteMcpClient[], markDisposed: () => void): () => Promise<void> {
+function createDisposer(clients: RemoteMCPClient[], markDisposed: () => void): () => Promise<void> {
   let promise: Promise<void> | undefined
   return () => {
     if (promise) return promise
@@ -378,17 +378,17 @@ function createDisposer(clients: RemoteMcpClient[], markDisposed: () => void): (
   }
 }
 
-export async function createRemoteMcpRuntime(
+export async function createRemoteMCPRuntime(
   serverIds: readonly string[],
-  dependencies: RemoteMcpRuntimeDependencies = {}
-): Promise<RemoteMcpRuntime> {
-  const servers = selectRemoteMcpServers(
+  dependencies: RemoteMCPRuntimeDependencies = {}
+): Promise<RemoteMCPRuntime> {
+  const servers = selectRemoteMCPServers(
     serverIds,
-    dependencies.servers ?? remoteMcpSettings.value.servers
+    dependencies.servers ?? remoteMCPSettings.value.servers
   )
-  const resolveBearerToken = dependencies.resolveBearerToken ?? resolveRemoteMcpBearerToken
-  const createClient = dependencies.createClient ?? createSdkRemoteMcpClient
-  const clients: RemoteMcpClient[] = []
+  const resolveBearerToken = dependencies.resolveBearerToken ?? resolveRemoteMCPBearerToken
+  const createClient = dependencies.createClient ?? createSdkRemoteMCPClient
+  const clients: RemoteMCPClient[] = []
   const tools: ToolSet = {}
   let disposed = false
   const isDisposed = () => disposed
@@ -430,7 +430,7 @@ export async function createRemoteMcpRuntime(
             )
           }
           for (const definition of definitions) {
-            const name = namespacedRemoteMcpToolName(server.id, definition.name)
+            const name = namespacedRemoteMCPToolName(server.id, definition.name)
             if (name in tools) {
               throw new Error(
                 `Remote MCP tool name collision after normalization: "${definition.name}" on "${server.name}"`
@@ -458,7 +458,7 @@ export async function createRemoteMcpRuntime(
   }
 }
 
-export function mergeRemoteMcpTools(baseTools: ToolSet, remoteTools: ToolSet): ToolSet {
+export function mergeRemoteMCPTools(baseTools: ToolSet, remoteTools: ToolSet): ToolSet {
   const conflicts = Object.keys(remoteTools).filter((name) => name in baseTools)
   if (conflicts.length > 0) {
     throw new Error(`Remote MCP tool name conflicts with an existing tool: ${conflicts.join(', ')}`)

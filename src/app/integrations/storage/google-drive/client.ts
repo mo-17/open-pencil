@@ -5,7 +5,7 @@ import type {
 } from '../types'
 import {
   FILE_FIELDS,
-  allowedGoogleUrl,
+  allowedGoogleURL,
   boundedString,
   contentDispositionName,
   defaultSleep,
@@ -134,7 +134,7 @@ export class GoogleDriveClient {
     options: RequestOptions = {},
     uploadSession = false
   ): Promise<Response> {
-    const safeUrl = allowedGoogleUrl(url, uploadSession)
+    const safeURL = allowedGoogleURL(url, uploadSession)
     const attempts = options.retryTransient === false ? 1 : this.#limits.maxRequestAttempts
     for (let attempt = 1; attempt <= attempts; attempt++) {
       throwIfAborted(options.signal)
@@ -144,7 +144,7 @@ export class GoogleDriveClient {
       headers.set('Accept', 'application/json')
       let response: Response
       try {
-        response = await this.#transport(safeUrl, {
+        response = await this.#transport(safeURL, {
           ...init,
           headers,
           signal: options.signal,
@@ -434,7 +434,7 @@ export class GoogleDriveClient {
         'Google Drive did not return a resumable upload location'
       )
     }
-    return allowedGoogleUrl(location, true)
+    return allowedGoogleURL(location, true)
   }
 
   async #upload(
@@ -459,8 +459,8 @@ export class GoogleDriveClient {
     const response = await uploadResumable({
       bytes: options.bytes,
       createSession,
-      request: (sessionUrl, init) =>
-        this.#request(sessionUrl, init, { ...context, retryTransient: false }, true),
+      request: (sessionURL, init) =>
+        this.#request(sessionURL, init, { ...context, retryTransient: false }, true),
       responseError: (uploadResponse) => this.responseError(uploadResponse),
       signal: options.signal,
       onProgress: options.onProgress,

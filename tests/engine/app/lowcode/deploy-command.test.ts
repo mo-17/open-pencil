@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   buildDeployProcessEnv,
-  parseDeployCliResult
+  parseDeployCLIResult
 } from '@/app/lowcode/preview-pane/deploy/command'
 
 describe('lowcode deploy command environment', () => {
@@ -44,7 +44,7 @@ describe('lowcode deploy command environment', () => {
 describe('lowcode deploy command output', () => {
   test('accepts the bounded static deploy result and manual server recipe', () => {
     expect(
-      parseDeployCliResult(
+      parseDeployCLIResult(
         JSON.stringify({
           provider: 'netlify',
           url: 'https://example.netlify.app',
@@ -72,7 +72,7 @@ describe('lowcode deploy command output', () => {
 
   test('rejects malformed or unrecognized output before rendering it', () => {
     expect(() =>
-      parseDeployCliResult(
+      parseDeployCLIResult(
         JSON.stringify({
           provider: 'netlify',
           url: ['java', 'script:alert(1)'].join(''),
@@ -84,7 +84,7 @@ describe('lowcode deploy command output', () => {
     ).toThrow('URL protocol')
 
     expect(() =>
-      parseDeployCliResult(
+      parseDeployCLIResult(
         JSON.stringify({
           provider: 'netlify',
           url: 'https://example.netlify.app',

@@ -17,12 +17,12 @@ import {
   jsonArg,
   outputArg,
   printArtifact,
-  printJson,
+  printJSON,
   privateKeyArgs,
   publicKeyArgs,
-  readBoundedJson,
+  readBoundedJSON,
   runPluginCommandSafely,
-  writeJsonOutput
+  writeJSONOutput
 } from './common'
 
 const { version: DEFAULT_ENGINE_VERSION } = await import('../../../package.json')
@@ -71,7 +71,7 @@ const validate = defineCommand({
   async run({ args }) {
     await runPluginCommandSafely(async () => {
       const parsed = parseManifestOrPayload(
-        await readBoundedJson(args.manifest, PLUGIN_MANIFEST_LIMITS.maxJsonBytes, 'Plugin manifest')
+        await readBoundedJSON(args.manifest, PLUGIN_MANIFEST_LIMITS.maxJsonBytes, 'Plugin manifest')
       )
       const report = {
         valid: true,
@@ -79,7 +79,7 @@ const validate = defineCommand({
         schemaVersion: parsed.manifest.schemaVersion,
         manifest: parsed.manifest
       }
-      if (args.json) printJson(report)
+      if (args.json) printJSON(report)
       else {
         printArtifact(
           parsed.signed ? 'Valid signed plugin manifest' : 'Valid plugin manifest payload',
@@ -108,20 +108,20 @@ const sign = defineCommand({
   },
   async run({ args }) {
     await runPluginCommandSafely(async () => {
-      const payload = await readBoundedJson(
+      const payload = await readBoundedJSON(
         args.payload,
         PLUGIN_MANIFEST_LIMITS.maxJsonBytes,
         'Plugin manifest payload'
       )
       const manifest = await signVersionedPluginManifest(payload, await importPrivateKey(args))
-      const output = await writeJsonOutput(
+      const output = await writeJSONOutput(
         args.output,
         serializeVersionedPluginManifest(manifest),
         PLUGIN_MANIFEST_LIMITS.maxJsonBytes,
         'Signed plugin manifest'
       )
       const report = { schemaVersion: manifest.schemaVersion, manifest, output }
-      if (args.json) printJson(report)
+      if (args.json) printJSON(report)
       else {
         printArtifact(
           'Signed plugin manifest',
@@ -153,7 +153,7 @@ const verify = defineCommand({
   },
   async run({ args }) {
     await runPluginCommandSafely(async () => {
-      const manifest = await readBoundedJson(
+      const manifest = await readBoundedJSON(
         args.manifest,
         PLUGIN_MANIFEST_LIMITS.maxJsonBytes,
         'Plugin manifest'
@@ -162,7 +162,7 @@ const verify = defineCommand({
         engineVersion: args['engine-version'],
         ...(args['key-id'] ? { expectedKeyId: args['key-id'] } : {})
       })
-      if (args.json) printJson({ schemaVersion: snapshot.manifest.schemaVersion, ...snapshot })
+      if (args.json) printJSON({ schemaVersion: snapshot.manifest.schemaVersion, ...snapshot })
       else {
         printArtifact(
           'Verified plugin manifest',

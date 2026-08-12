@@ -28,10 +28,10 @@ const emit = defineEmits<{
 
 const { panels } = useI18n()
 const open = ref(false)
-const manifestJson = ref('')
+const manifestJSON = ref('')
 
-function acceptJson(): void {
-  const json = manifestJson.value.trim()
+function acceptJSON(): void {
+  const json = manifestJSON.value.trim()
   if (json) emit('accept-json', json)
 }
 </script>
@@ -51,7 +51,7 @@ function acceptJson(): void {
 
     <div v-if="open" class="mt-1.5 space-y-1.5">
       <textarea
-        v-model="manifestJson"
+        v-model="manifestJSON"
         rows="3"
         :maxlength="SHARED_MOTION_PRESET_LIMITS.maxManifestJsonBytes"
         class="w-full resize-y rounded border border-border bg-input p-1.5 font-mono text-[10px] text-surface outline-none focus:border-accent"
@@ -63,8 +63,8 @@ function acceptJson(): void {
         type="button"
         class="w-full rounded border border-border bg-input px-2 py-1 text-[10px] text-surface hover:bg-hover disabled:opacity-50"
         data-test-id="motion-shared-accept-json"
-        :disabled="disabled || !manifestJson.trim()"
-        @click="acceptJson"
+        :disabled="disabled || !manifestJSON.trim()"
+        @click="acceptJSON"
       >
         {{ panels.motionPresetSharedAcceptManifest }}
       </button>

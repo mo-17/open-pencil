@@ -10,11 +10,11 @@ export function createClipboardCopyActions(ctx: EditorContext) {
     const names = selectedNodes.map((n) => n.name).join('\n')
     clipboardData.setData('text/plain', names)
 
-    const openPencilHtml = buildOpenPencilClipboardHTML(selectedNodes, ctx.graph)
-    const figmaHtml = await buildFigmaClipboardHTML(selectedNodes, ctx.graph)
+    const openPencilHTML = buildOpenPencilClipboardHTML(selectedNodes, ctx.graph)
+    const figmaHTML = await buildFigmaClipboardHTML(selectedNodes, ctx.graph)
     // Keep both payloads in one HTML value: OpenPencil prefers its lossless
     // tree, while Figma can still discover its figmeta/figma markers.
-    clipboardData.setData('text/html', figmaHtml ? `${openPencilHtml}${figmaHtml}` : openPencilHtml)
+    clipboardData.setData('text/html', figmaHTML ? `${openPencilHTML}${figmaHTML}` : openPencilHTML)
   }
 
   return { writeCopyData }

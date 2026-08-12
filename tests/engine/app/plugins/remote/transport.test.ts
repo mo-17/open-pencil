@@ -3,25 +3,25 @@ import { describe, expect, test } from 'bun:test'
 import {
   REMOTE_PLUGIN_TRANSPORT_LIMITS,
   createRemotePluginTransport,
-  parseRemotePluginUrl
+  parseRemotePluginURL
 } from '@/app/plugins'
 
 describe('remote plugin transport', () => {
   test('requires HTTPS and rejects credentials and fragments', () => {
-    expect(() => parseRemotePluginUrl('http://plugins.example/catalog.json')).toThrow('HTTPS')
-    expect(() => parseRemotePluginUrl('https://user:secret@plugins.example/catalog.json')).toThrow(
+    expect(() => parseRemotePluginURL('http://plugins.example/catalog.json')).toThrow('HTTPS')
+    expect(() => parseRemotePluginURL('https://user:secret@plugins.example/catalog.json')).toThrow(
       'credentials'
     )
-    expect(() => parseRemotePluginUrl('https://plugins.example/catalog.json#unsigned')).toThrow(
+    expect(() => parseRemotePluginURL('https://plugins.example/catalog.json#unsigned')).toThrow(
       'fragment'
     )
     expect(
-      parseRemotePluginUrl('http://127.0.0.1:4173/catalog.json', {
+      parseRemotePluginURL('http://127.0.0.1:4173/catalog.json', {
         allowLoopbackHttp: true
       }).href
     ).toBe('http://127.0.0.1:4173/catalog.json')
     expect(() =>
-      parseRemotePluginUrl('http://192.168.1.10/catalog.json', { allowLoopbackHttp: true })
+      parseRemotePluginURL('http://192.168.1.10/catalog.json', { allowLoopbackHttp: true })
     ).toThrow('HTTPS')
   })
 

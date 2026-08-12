@@ -6,7 +6,7 @@ import {
   type GoogleDriveSleep
 } from './types'
 
-export type ResumableUploadRequest = (sessionUrl: string, init: RequestInit) => Promise<Response>
+export type ResumableUploadRequest = (sessionURL: string, init: RequestInit) => Promise<Response>
 
 export type ResumableUploadOptions = {
   bytes: Uint8Array
@@ -92,7 +92,7 @@ export async function uploadResumable(options: ResumableUploadOptions): Promise<
   validateAttemptLimits(maxAttempts, maxSessionRestarts)
 
   const totalBytes = bytes.byteLength
-  let sessionUrl = await createSession()
+  let sessionURL = await createSession()
   let offset = 0
   let attempts = 0
   let restarts = 0
@@ -107,7 +107,7 @@ export async function uploadResumable(options: ResumableUploadOptions): Promise<
       )
     }
     restarts += 1
-    sessionUrl = await createSession()
+    sessionURL = await createSession()
     offset = 0
     noProgressResponses = 0
     onProgress?.({ transferredBytes: 0, totalBytes })
@@ -129,7 +129,7 @@ export async function uploadResumable(options: ResumableUploadOptions): Promise<
     }
     attempts += 1
     try {
-      return await request(sessionUrl, { ...init, signal })
+      return await request(sessionURL, { ...init, signal })
     } catch (error) {
       if (isAbortError(error) || signal?.aborted) {
         throw new GoogleDriveError('aborted', 'Google Drive operation was cancelled', {

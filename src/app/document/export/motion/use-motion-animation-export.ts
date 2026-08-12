@@ -12,7 +12,7 @@ import {
   type MotionGraphExportSource,
   type MotionExportProgress,
   type MotionExportReducedMotion,
-  type MotionPngSequenceResult
+  type MotionPNGSequenceResult
 } from '@open-pencil/core/io/motion-export'
 
 import { chooseTauriExportPath } from '@/app/document/export/files'
@@ -48,7 +48,7 @@ function safeFileStem(value: string): string {
   return stem || 'Motion'
 }
 
-function pngSequenceZip(result: MotionPngSequenceResult): Uint8Array {
+function pngSequenceZip(result: MotionPNGSequenceResult): Uint8Array {
   const entries: Zippable = {
     'manifest.json': new TextEncoder().encode(`${JSON.stringify(result.manifest, null, 2)}\n`)
   }

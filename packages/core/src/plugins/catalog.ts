@@ -4,7 +4,7 @@ import {
   createSignedManifestIntegrity,
   parseBoundedManifestArray,
   parseExactManifestRecord,
-  parseSha256Base64Url,
+  parseSha256Base64URL,
   parseSignedManifestIntegrity,
   parseStableSemver,
   satisfiesStableEngineRange,
@@ -27,7 +27,7 @@ import { parseVersionedPluginManifest, type PluginManifest } from './manifest'
 import { verifyVersionedPluginPackage, type VerifiedPluginPackage } from './package'
 import {
   comparePluginVersionCoordinates,
-  parseCanonicalPublicHttpsUrl,
+  parseCanonicalPublicHttpsURL,
   parsePluginVersionCoordinate
 } from './parse-helpers'
 
@@ -138,8 +138,8 @@ export function parsePluginCatalogEntry(
   return Object.freeze({
     pluginId,
     version,
-    digest: parseSha256Base64Url(source.digest, `${path}.digest`),
-    manifestUrl: parseCanonicalPublicHttpsUrl(
+    digest: parseSha256Base64URL(source.digest, `${path}.digest`),
+    manifestUrl: parseCanonicalPublicHttpsURL(
       source.manifestUrl,
       `${path}.manifestUrl`,
       PLUGIN_CATALOG_LIMITS.maxUrlLength
@@ -159,7 +159,7 @@ function parseEntries(value: unknown): readonly PluginCatalogEntryV1[] {
   if (new Set(coordinates).size !== coordinates.length) {
     throw new TypeError('pluginCatalog.entries contains duplicate plugin versions')
   }
-  if (new Set(entries.map(({ manifestUrl }) => manifestUrl)).size !== entries.length) {
+  if (new Set(entries.map(({ manifestUrl: manifestURL }) => manifestURL)).size !== entries.length) {
     throw new TypeError('pluginCatalog.entries contains duplicate manifest URLs')
   }
   if (new Set(entries.map(({ digest }) => digest)).size !== entries.length) {
@@ -238,7 +238,7 @@ export function validatePluginCatalog(value: unknown): PluginCatalogValidationRe
   }
 }
 
-export function parsePluginCatalogJson(source: string): SignedPluginCatalogV1 {
+export function parsePluginCatalogJSON(source: string): SignedPluginCatalogV1 {
   if (typeof source !== 'string') throw new TypeError('Plugin catalog JSON must be a string')
   if (new TextEncoder().encode(source).byteLength > PLUGIN_CATALOG_LIMITS.maxJsonBytes) {
     throw new TypeError(
@@ -264,7 +264,7 @@ export function parsePluginCatalogBytes(source: Uint8Array): SignedPluginCatalog
   } catch {
     throw new TypeError('Plugin catalog must contain valid UTF-8')
   }
-  return parsePluginCatalogJson(decoded)
+  return parsePluginCatalogJSON(decoded)
 }
 
 export function serializePluginCatalog(value: unknown): string {

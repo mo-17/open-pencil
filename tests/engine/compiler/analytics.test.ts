@@ -260,7 +260,7 @@ describe('compile — analytics runtime wiring (Phase 5 §10)', () => {
   test('consent copy drops unsafe policy URLs from imported or stale documents', () => {
     const graph = makeSceneGraph('Analytics')
     const pageId = firstPageId(graph)
-    const unsafePolicyUrl = ['java', 'script:alert(1)'].join('')
+    const unsafePolicyURL = ['java', 'script:alert(1)'].join('')
     graph.updateNode(graph.rootId, {
       lowcodeAnalyticsConfig: {
         provider: 'plausible',
@@ -268,7 +268,7 @@ describe('compile — analytics runtime wiring (Phase 5 §10)', () => {
         consentRequired: true,
         consentCopy: {
           bannerText: 'Acme uses analytics.',
-          privacyPolicyUrl: unsafePolicyUrl,
+          privacyPolicyUrl: unsafePolicyURL,
           privacyPolicyLabel: 'Privacy notice'
         }
       }
@@ -279,7 +279,7 @@ describe('compile — analytics runtime wiring (Phase 5 §10)', () => {
 
     expect(runtime).toContain('"bannerText": "Acme uses analytics."')
     expect(runtime).toContain('"privacyPolicyLabel": "Privacy notice"')
-    expect(runtime).not.toContain(unsafePolicyUrl)
+    expect(runtime).not.toContain(unsafePolicyURL)
     expect(runtime).not.toContain('"privacyPolicyUrl"')
   })
 

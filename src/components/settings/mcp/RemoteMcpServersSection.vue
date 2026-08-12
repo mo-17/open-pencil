@@ -9,27 +9,27 @@ import {
 import { useI18n } from '@open-pencil/vue'
 
 import {
-  addRemoteMcpServer,
-  clearRemoteMcpBearerToken,
-  createRemoteMcpRuntime,
+  addRemoteMCPServer,
+  clearRemoteMCPBearerToken,
+  createRemoteMCPRuntime,
   MAX_REMOTE_MCP_SERVERS,
-  remoteMcpCredentialRevision,
-  remoteMcpCredentialStatus,
-  remoteMcpSettings,
-  removeRemoteMcpServer,
-  setRemoteMcpBearerToken,
-  updateRemoteMcpServer,
-  type RemoteMcpCredentialStatus,
-  type RemoteMcpServer,
-  type RemoteMcpServerId
+  remoteMCPCredentialRevision,
+  remoteMCPCredentialStatus,
+  remoteMCPSettings,
+  removeRemoteMCPServer,
+  setRemoteMCPBearerToken,
+  updateRemoteMCPServer,
+  type RemoteMCPCredentialStatus,
+  type RemoteMCPServer,
+  type RemoteMCPServerId
 } from '@/app/ai/mcp'
-import { removeRemoteMcpServerFromModelProfiles } from '@/app/ai/models'
+import { removeRemoteMCPServerFromModelProfiles } from '@/app/ai/models'
 import AppInput from '@/components/ui/AppInput.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
 
 const { dialogs } = useI18n()
-const editingId = ref<RemoteMcpServerId | null>(null)
+const editingId = ref<RemoteMCPServerId | null>(null)
 const formOpen = ref(false)
 const name = ref('')
 const url = ref('')
@@ -37,13 +37,13 @@ const authType = ref<'none' | 'bearer'>('none')
 const token = ref('')
 const busy = ref(false)
 const formError = ref<string | null>(null)
-const pendingDeleteId = ref<RemoteMcpServerId | null>(null)
-const statuses = ref<Record<string, RemoteMcpCredentialStatus>>({})
+const pendingDeleteId = ref<RemoteMCPServerId | null>(null)
+const statuses = ref<Record<string, RemoteMCPCredentialStatus>>({})
 const testResults = ref<
   Record<string, { state: 'testing' | 'success' | 'error'; message?: string }>
 >({})
 
-const servers = computed(() => remoteMcpSettings.value.servers)
+const servers = computed(() => remoteMCPSettings.value.servers)
 const editingServer = computed(
   () => servers.value.find((server) => server.id === editingId.value) ?? null
 )
@@ -58,7 +58,7 @@ const canSave = computed(
   () => Boolean(name.value.trim()) && Boolean(url.value.trim()) && !busy.value
 )
 
-function origin(server: RemoteMcpServer): string {
+function origin(server: RemoteMCPServer): string {
   return new URL(server.transport.url).origin
 }
 
@@ -77,7 +77,7 @@ function addServer(): void {
   formOpen.value = true
 }
 
-function editServer(server: RemoteMcpServer): void {
+function editServer(server: RemoteMCPServer): void {
   editingId.value = server.id
   name.value = server.name
   url.value = server.transport.url
@@ -91,7 +91,7 @@ async function refreshStatuses(): Promise<void> {
   const entries = await Promise.all(
     servers.value.map(async (server) => {
       try {
-        return [server.id, await remoteMcpCredentialStatus(server.id)] as const
+        return [server.id, await remoteMCPCredentialStatus(server.id)] as const
       } catch {
         return [server.id, 'unavailable' as const] as const
       }
@@ -100,7 +100,7 @@ async function refreshStatuses(): Promise<void> {
   statuses.value = Object.fromEntries(entries)
 }
 
-function statusLabel(server: RemoteMcpServer): string {
+function statusLabel(server: RemoteMCPServer): string {
   const status = statuses.value[server.id]
   if (status === 'not-required') return dialogs.value.remoteMcpAuthNone
   if (status === 'configured') return dialogs.value.connected
@@ -115,17 +115,17 @@ async function saveServer(): Promise<void> {
   try {
     const currentId = editingId.value
     const server = currentId
-      ? await updateRemoteMcpServer(currentId, {
+      ? await updateRemoteMCPServer(currentId, {
           name: name.value,
           url: url.value,
           authType: authType.value
         })
-      : addRemoteMcpServer({ name: name.value, url: url.value, authType: authType.value })
+      : addRemoteMCPServer({ name: name.value, url: url.value, authType: authType.value })
     // If credential persistence fails after creating the non-secret config,
     // retries must update this server instead of adding duplicates.
     editingId.value = server.id
     if (server.auth.type === 'bearer' && token.value.trim()) {
-      await setRemoteMcpBearerToken(server.id, token.value)
+      await setRemoteMCPBearerToken(server.id, token.value)
     }
     closeForm()
     await refreshStatuses()
@@ -142,7 +142,7 @@ async function clearToken(): Promise<void> {
   busy.value = true
   formError.value = null
   try {
-    await clearRemoteMcpBearerToken(server.id)
+    await clearRemoteMCPBearerToken(server.id)
     token.value = ''
     await refreshStatuses()
   } catch (error) {
@@ -152,14 +152,14 @@ async function clearToken(): Promise<void> {
   }
 }
 
-async function testServer(server: RemoteMcpServer): Promise<void> {
+async function testServer(server: RemoteMCPServer): Promise<void> {
   testResults.value = {
     ...testResults.value,
     [server.id]: { state: 'testing' }
   }
-  let runtime: Awaited<ReturnType<typeof createRemoteMcpRuntime>> | null = null
+  let runtime: Awaited<ReturnType<typeof createRemoteMCPRuntime>> | null = null
   try {
-    runtime = await createRemoteMcpRuntime([server.id])
+    runtime = await createRemoteMCPRuntime([server.id])
     testResults.value = {
       ...testResults.value,
       [server.id]: { state: 'success', message: dialogs.value.connectionTestSuccess }
@@ -183,8 +183,8 @@ async function confirmDelete(): Promise<void> {
   busy.value = true
   formError.value = null
   try {
-    if (await removeRemoteMcpServer(id)) {
-      removeRemoteMcpServerFromModelProfiles(id)
+    if (await removeRemoteMCPServer(id)) {
+      removeRemoteMCPServerFromModelProfiles(id)
       if (editingId.value === id) closeForm()
     }
     pendingDeleteId.value = null
@@ -198,7 +198,7 @@ async function confirmDelete(): Promise<void> {
 
 watch(
   () => [
-    remoteMcpCredentialRevision.value,
+    remoteMCPCredentialRevision.value,
     ...servers.value.map((server) => `${server.id}:${server.auth.type}`)
   ],
   () => void refreshStatuses(),

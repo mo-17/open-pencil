@@ -12,7 +12,7 @@ import {
   type TableDataV1,
   type TabsItemV1
 } from '@open-pencil/core/plugins'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { AppPluginModuleEditorText } from '@/app/plugins/localization'
 
@@ -31,7 +31,7 @@ import type { SpecializedModuleFieldKind } from './module-property-field'
 
 const { field, config, kind, label, error, moduleEditorText } = defineProps<{
   field: ModulePropertyField
-  config: JsonObject
+  config: JSONObject
   kind: SpecializedModuleFieldKind
   label: string
   error?: string

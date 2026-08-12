@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
   createContractModuleDefinition,
@@ -36,7 +36,7 @@ export const QR_BARCODE_MODULE_LIMITS = Object.freeze({
 export type QrBarcodeFormatV1 = 'qr' | 'code128'
 export type QrErrorCorrectionV1 = 'low' | 'medium' | 'quartile' | 'high'
 
-export interface QrBarcodeModuleConfigV1 extends JsonObject {
+export interface QrBarcodeModuleConfigV1 extends JSONObject {
   format: QrBarcodeFormatV1
   value: string
   caption: string

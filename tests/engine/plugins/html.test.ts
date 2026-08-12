@@ -4,16 +4,16 @@ import {
   BUILTIN_PLUGIN_REGISTRY,
   HTML_MODULE_LIMITS,
   HTML_MODULE_SANDBOX_CSP,
-  buildHtmlSandboxDocument,
-  createHtmlModuleInstance,
-  resolveHtmlModule
+  buildHTMLSandboxDocument,
+  createHTMLModuleInstance,
+  resolveHTMLModule
 } from '@open-pencil/core/plugins'
 
 describe('built-in HTML plugin', () => {
   test('registers an opt-in compatible module with a bounded editable source', () => {
     const definition = BUILTIN_PLUGIN_REGISTRY.getModule('open-pencil.html', 'html')
-    const instance = createHtmlModuleInstance({ html: '<main><h1>Edited HTML</h1></main>' })
-    const resolved = resolveHtmlModule(instance)
+    const instance = createHTMLModuleInstance({ html: '<main><h1>Edited HTML</h1></main>' })
+    const resolved = resolveHTMLModule(instance)
 
     expect(definition?.name).toBe('</> HTML')
     expect(definition?.defaultSize).toEqual({ width: 640, height: 400 })
@@ -24,7 +24,7 @@ describe('built-in HTML plugin', () => {
 
   test('builds CSP-first srcdoc while preserving authored static markup and CSS', () => {
     const html = '<style>strong{color:red}</style><strong>Visible</strong><script>x()</script>'
-    const document = buildHtmlSandboxDocument(html)
+    const document = buildHTMLSandboxDocument(html)
 
     expect(document.startsWith('<!doctype html><meta http-equiv="Content-Security-Policy"')).toBe(
       true
@@ -38,18 +38,18 @@ describe('built-in HTML plugin', () => {
   })
 
   test('rejects unknown fields, wrong types, unsupported versions, and oversized source', () => {
-    expect(() => createHtmlModuleInstance({ html: '<p>x</p>', script: 'x()' })).toThrow(
+    expect(() => createHTMLModuleInstance({ html: '<p>x</p>', script: 'x()' })).toThrow(
       'exactly html'
     )
-    expect(() => createHtmlModuleInstance({ html: 7 })).toThrow('at most')
+    expect(() => createHTMLModuleInstance({ html: 7 })).toThrow('at most')
     expect(() =>
-      createHtmlModuleInstance({ html: 'x'.repeat(HTML_MODULE_LIMITS.html + 1) })
+      createHTMLModuleInstance({ html: 'x'.repeat(HTML_MODULE_LIMITS.html + 1) })
     ).toThrow(`at most ${HTML_MODULE_LIMITS.html}`)
-    expect(() => buildHtmlSandboxDocument('x'.repeat(HTML_MODULE_LIMITS.html + 1))).toThrow(
+    expect(() => buildHTMLSandboxDocument('x'.repeat(HTML_MODULE_LIMITS.html + 1))).toThrow(
       `at most ${HTML_MODULE_LIMITS.html}`
     )
     expect(
-      resolveHtmlModule({
+      resolveHTMLModule({
         version: 1,
         pluginId: 'open-pencil.html',
         moduleType: 'html',

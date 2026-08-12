@@ -533,27 +533,27 @@ describe('reviewed deployment plugin wrappers', () => {
       )
     ).toBe('result-mismatch')
 
-    const unsafeUrl: DeploymentPluginRunner = async () => ({
+    const unsafeURL: DeploymentPluginRunner = async () => ({
       provider: 'vercel',
       environment: 'preview',
       url: 'http://example.com',
       deployId: 'dep',
       fileCount: 1
     })
-    const unsafeUrlAdapter = createDeploymentPluginHostAdapter(
+    const unsafeURLAdapter = createDeploymentPluginHostAdapter(
       VERCEL_DEPLOYMENT_PLUGIN,
       resolver('token'),
-      unsafeUrl
+      unsafeURL
     )
-    const unsafeUrlStore = editor()
+    const unsafeURLStore = editor()
     expect(
       await errorCode(
-        unsafeUrlAdapter.execute(
-          unsafeUrlStore,
+        unsafeURLAdapter.execute(
+          unsafeURLStore,
           {},
           {
             confirm: async () => true,
-            expectedReview: expectedReview(unsafeUrlAdapter, unsafeUrlStore)
+            expectedReview: expectedReview(unsafeURLAdapter, unsafeURLStore)
           }
         )
       )

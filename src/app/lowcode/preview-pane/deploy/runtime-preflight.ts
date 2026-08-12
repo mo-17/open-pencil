@@ -9,7 +9,7 @@ import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { readCachedSupabaseSchemaCatalog } from '@/app/lowcode/supabase/cache'
 import {
   normalizeSupabaseSchemaName,
-  projectRefFromSupabaseUrl
+  projectRefFromSupabaseURL
 } from '@/app/lowcode/supabase/management-client'
 
 import type { DeployEnvironment, DeployRuntimeConfig } from './history'
@@ -48,7 +48,7 @@ export async function readDeployKnownTables(
   if (!config || !validateSupabaseConfig(config).ok) return undefined
   try {
     const catalog = await readCachedSupabaseSchemaCatalog({
-      projectRef: projectRefFromSupabaseUrl(config.url),
+      projectRef: projectRefFromSupabaseURL(config.url),
       schema: normalizeSupabaseSchemaName(config.schema)
     })
     return catalog?.tables.map((table) => table.name)

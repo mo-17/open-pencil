@@ -1,10 +1,10 @@
-import type { JsonTraversalState } from '@/app/plugins/json-data'
+import type { JSONTraversalState } from '@/app/plugins/json-data'
 
 export interface PluginContributionDataRecord {
   [key: string]: unknown
 }
 
-type JsonAuthorityComparisonState = JsonTraversalState
+type JSONAuthorityComparisonState = JSONTraversalState
 
 export function plainDataContribution(
   value: unknown,
@@ -57,7 +57,7 @@ function authorityChildrenMatch(
   expected: object,
   keys: readonly string[],
   isArray: boolean,
-  state: JsonAuthorityComparisonState
+  state: JSONAuthorityComparisonState
 ): boolean {
   for (const key of keys) {
     if (isArray && key === 'length') continue
@@ -68,7 +68,7 @@ function authorityChildrenMatch(
       !Object.hasOwn(descriptor, 'value') ||
       !expectedDescriptor ||
       !Object.hasOwn(expectedDescriptor, 'value') ||
-      !sameJsonAuthority(descriptor.value, expectedDescriptor.value, state)
+      !sameJSONAuthority(descriptor.value, expectedDescriptor.value, state)
     ) {
       return false
     }
@@ -76,10 +76,10 @@ function authorityChildrenMatch(
   return true
 }
 
-export function sameJsonAuthority(
+export function sameJSONAuthority(
   actual: unknown,
   expected: unknown,
-  state: JsonAuthorityComparisonState = { nodes: 0, ancestors: new WeakSet() }
+  state: JSONAuthorityComparisonState = { nodes: 0, ancestors: new WeakSet() }
 ): boolean {
   state.nodes += 1
   if (state.nodes > 4_096) return false

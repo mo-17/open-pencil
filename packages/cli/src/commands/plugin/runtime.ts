@@ -18,13 +18,13 @@ import {
   jsonArg,
   outputArg,
   printArtifact,
-  printJson,
+  printJSON,
   privateKeyArgs,
   publicKeyArgs,
-  readBoundedJson,
+  readBoundedJSON,
   requiredPositiveInteger,
   runPluginCommandSafely,
-  writeJsonOutput
+  writeJSONOutput
 } from './common'
 
 function runtimeDetails(runtimePackage: PluginRuntimePackagePayloadV1, digest?: string) {
@@ -85,7 +85,7 @@ const validate = defineCommand({
   async run({ args }) {
     await runPluginCommandSafely(async () => {
       const parsed = parseRuntimeOrPayload(
-        await readBoundedJson(
+        await readBoundedJSON(
           args.runtime,
           PLUGIN_RUNTIME_PACKAGE_LIMITS.maxJsonBytes,
           'Plugin runtime package'
@@ -99,7 +99,7 @@ const validate = defineCommand({
         runtimePackage: parsed.runtimePackage,
         wasmSafety
       }
-      if (args.json) printJson(report)
+      if (args.json) printJSON(report)
       else {
         printArtifact(
           'Valid runtime asset envelope (signature not checked)',
@@ -129,20 +129,20 @@ const sign = defineCommand({
   },
   async run({ args }) {
     await runPluginCommandSafely(async () => {
-      const payload = await readBoundedJson(
+      const payload = await readBoundedJSON(
         args.payload,
         PLUGIN_RUNTIME_PACKAGE_LIMITS.maxJsonBytes,
         'Plugin runtime package payload'
       )
       const runtimePackage = await signPluginRuntimePackage(payload, await importPrivateKey(args))
-      const output = await writeJsonOutput(
+      const output = await writeJSONOutput(
         args.output,
         serializePluginRuntimePackage(runtimePackage),
         PLUGIN_RUNTIME_PACKAGE_LIMITS.maxJsonBytes,
         'Signed plugin runtime package'
       )
       const report = { runtimePackage, output }
-      if (args.json) printJson(report)
+      if (args.json) printJSON(report)
       else {
         printArtifact(
           'Signed plugin runtime package',
@@ -199,7 +199,7 @@ const verify = defineCommand({
   },
   async run({ args }) {
     await runPluginCommandSafely(async () => {
-      const runtimePackage = await readBoundedJson(
+      const runtimePackage = await readBoundedJSON(
         args.runtime,
         PLUGIN_RUNTIME_PACKAGE_LIMITS.maxJsonBytes,
         'Plugin runtime package'
@@ -217,7 +217,7 @@ const verify = defineCommand({
           expectedCanonicalByteLength: requiredPositiveInteger(args['byte-length'], '--byte-length')
         }
       )
-      if (args.json) printJson(snapshot)
+      if (args.json) printJSON(snapshot)
       else {
         printArtifact(
           'Verified plugin runtime package',

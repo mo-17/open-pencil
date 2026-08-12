@@ -3,7 +3,7 @@ import {
   canonicalManifestValue,
   parseBoundedManifestArray,
   parseExactManifestRecord,
-  parseSha256Base64Url,
+  parseSha256Base64URL,
   parseStableSemver,
   validateModuleIdentity
 } from '@open-pencil/scene-graph'
@@ -90,13 +90,13 @@ export type MarketplaceReleaseChannel = (typeof MARKETPLACE_RELEASE_CHANNELS)[nu
 export type MarketplaceRuntimeKind = (typeof MARKETPLACE_RUNTIME_KINDS)[number]
 export type MarketplaceAuditAction = (typeof MARKETPLACE_AUDIT_ACTIONS)[number]
 
-export type MarketplaceJsonValue =
+export type MarketplaceJSONValue =
   | null
   | boolean
   | number
   | string
-  | readonly MarketplaceJsonValue[]
-  | Readonly<{ [key: string]: MarketplaceJsonValue }>
+  | readonly MarketplaceJSONValue[]
+  | Readonly<{ [key: string]: MarketplaceJSONValue }>
 
 export interface MarketplacePublisherV1 {
   schemaVersion: typeof MARKETPLACE_SCHEMA_VERSION
@@ -496,7 +496,7 @@ export function parseMarketplaceTimestamp(value: unknown, path: string): string 
   return value
 }
 
-export function parseMarketplacePublicUrl(value: unknown, path: string): string {
+export function parseMarketplacePublicURL(value: unknown, path: string): string {
   if (typeof value !== 'string' || byteLength(value) > MARKETPLACE_LIMITS.maxUrlBytes) {
     throw new TypeError(`${path} must be a bounded canonical public HTTPS URL`)
   }
@@ -529,8 +529,8 @@ export function parseMarketplacePublicUrl(value: unknown, path: string): string 
   return value
 }
 
-function nullablePublicUrl(value: unknown, path: string): string | null {
-  return value === null ? null : parseMarketplacePublicUrl(value, path)
+function nullablePublicURL(value: unknown, path: string): string | null {
+  return value === null ? null : parseMarketplacePublicURL(value, path)
 }
 
 function enumValue<const Value extends string>(
@@ -712,8 +712,8 @@ export function parseMarketplaceRuntimeCoordinate(
 ): MarketplaceRuntimeCoordinateV1 {
   const source = parseExactManifestRecord(value, path, RUNTIME_COORDINATE_KEYS)
   return Object.freeze({
-    packageDigest: parseSha256Base64Url(source.packageDigest, `${path}.packageDigest`),
-    packageUrl: parseMarketplacePublicUrl(source.packageUrl, `${path}.packageUrl`),
+    packageDigest: parseSha256Base64URL(source.packageDigest, `${path}.packageDigest`),
+    packageUrl: parseMarketplacePublicURL(source.packageUrl, `${path}.packageUrl`),
     byteLength: positiveSafeInteger(
       source.byteLength,
       `${path}.byteLength`,
@@ -751,8 +751,8 @@ export function parseMarketplaceListingMetadata(
       MARKETPLACE_LIMITS.maxDescriptionBytes
     ),
     categories: Object.freeze(categories),
-    iconUrl: nullablePublicUrl(source.iconUrl, `${path}.iconUrl`),
-    homepageUrl: nullablePublicUrl(source.homepageUrl, `${path}.homepageUrl`)
+    iconUrl: nullablePublicURL(source.iconUrl, `${path}.iconUrl`),
+    homepageUrl: nullablePublicURL(source.homepageUrl, `${path}.homepageUrl`)
   })
 }
 
@@ -772,9 +772,9 @@ export function parseMarketplaceSubmission(
     id: parseMarketplaceIdentity(source.id, `${path}.id`),
     publisherId: parseMarketplaceIdentity(source.publisherId, `${path}.publisherId`),
     coordinate: parseMarketplaceReleaseCoordinate(source.coordinate, `${path}.coordinate`),
-    manifestDigest: parseSha256Base64Url(source.manifestDigest, `${path}.manifestDigest`),
-    artifactDigest: parseSha256Base64Url(source.artifactDigest, `${path}.artifactDigest`),
-    manifestUrl: parseMarketplacePublicUrl(source.manifestUrl, `${path}.manifestUrl`),
+    manifestDigest: parseSha256Base64URL(source.manifestDigest, `${path}.manifestDigest`),
+    artifactDigest: parseSha256Base64URL(source.artifactDigest, `${path}.artifactDigest`),
+    manifestUrl: parseMarketplacePublicURL(source.manifestUrl, `${path}.manifestUrl`),
     listing: parseMarketplaceListingMetadata(source.listing, `${path}.listing`),
     runtimeCoordinate:
       source.runtimeCoordinate === null
@@ -805,9 +805,9 @@ export function parseMarketplaceRelease(
     coordinate: parseMarketplaceReleaseCoordinate(source.coordinate, `${path}.coordinate`),
     submissionId: parseMarketplaceIdentity(source.submissionId, `${path}.submissionId`),
     publisherId: parseMarketplaceIdentity(source.publisherId, `${path}.publisherId`),
-    manifestDigest: parseSha256Base64Url(source.manifestDigest, `${path}.manifestDigest`),
-    artifactDigest: parseSha256Base64Url(source.artifactDigest, `${path}.artifactDigest`),
-    manifestUrl: parseMarketplacePublicUrl(source.manifestUrl, `${path}.manifestUrl`),
+    manifestDigest: parseSha256Base64URL(source.manifestDigest, `${path}.manifestDigest`),
+    artifactDigest: parseSha256Base64URL(source.artifactDigest, `${path}.artifactDigest`),
+    manifestUrl: parseMarketplacePublicURL(source.manifestUrl, `${path}.manifestUrl`),
     runtimeCoordinate:
       source.runtimeCoordinate === null
         ? null
@@ -825,8 +825,8 @@ function parseMarketplacePublicationCatalog(
   const source = parseExactManifestRecord(value, path, PUBLICATION_CATALOG_KEYS)
   return Object.freeze({
     channel: enumValue(source.channel, MARKETPLACE_RELEASE_CHANNELS, `${path}.channel`),
-    catalogDigest: parseSha256Base64Url(source.catalogDigest, `${path}.catalogDigest`),
-    artifactDigest: parseSha256Base64Url(source.artifactDigest, `${path}.artifactDigest`)
+    catalogDigest: parseSha256Base64URL(source.catalogDigest, `${path}.catalogDigest`),
+    artifactDigest: parseSha256Base64URL(source.artifactDigest, `${path}.artifactDigest`)
   })
 }
 
@@ -849,7 +849,7 @@ function parsePublicationCatalogs(
 }
 
 function nullableDigest(value: unknown, path: string): string | null {
-  return value === null ? null : parseSha256Base64Url(value, path)
+  return value === null ? null : parseSha256Base64URL(value, path)
 }
 
 function nonNegativeSafeInteger(value: unknown, path: string): number {
@@ -880,8 +880,8 @@ export function parseMarketplacePublication(
   return Object.freeze({
     schemaVersion: schemaVersion(source.schemaVersion, `${path}.schemaVersion`),
     sequence: positiveSafeInteger(source.sequence, `${path}.sequence`, Number.MAX_SAFE_INTEGER),
-    snapshotDigest: parseSha256Base64Url(source.snapshotDigest, `${path}.snapshotDigest`),
-    snapshotArtifactDigest: parseSha256Base64Url(
+    snapshotDigest: parseSha256Base64URL(source.snapshotDigest, `${path}.snapshotDigest`),
+    snapshotArtifactDigest: parseSha256Base64URL(
       source.snapshotArtifactDigest,
       `${path}.snapshotArtifactDigest`
     ),
@@ -918,12 +918,12 @@ export function parseMarketplaceAuditEvent(
     actor: parseMarketplaceAuditActor(source.actor, `${path}.actor`),
     action: enumValue(source.action, MARKETPLACE_AUDIT_ACTIONS, `${path}.action`),
     subject: parseMarketplaceAuditSubject(source.subject, `${path}.subject`),
-    payloadDigest: parseSha256Base64Url(source.payloadDigest, `${path}.payloadDigest`),
+    payloadDigest: parseSha256Base64URL(source.payloadDigest, `${path}.payloadDigest`),
     previousHash:
       source.previousHash === null
         ? null
-        : parseSha256Base64Url(source.previousHash, `${path}.previousHash`),
-    eventHash: parseSha256Base64Url(source.eventHash, `${path}.eventHash`)
+        : parseSha256Base64URL(source.previousHash, `${path}.previousHash`),
+    eventHash: parseSha256Base64URL(source.eventHash, `${path}.eventHash`)
   })
 }
 
@@ -1242,11 +1242,11 @@ export function parseRecordMarketplacePublicationInput(
     )
   }
   return Object.freeze({
-    snapshotDigest: parseSha256Base64Url(
+    snapshotDigest: parseSha256Base64URL(
       source.snapshotDigest,
       'recordMarketplacePublicationInput.snapshotDigest'
     ),
-    snapshotArtifactDigest: parseSha256Base64Url(
+    snapshotArtifactDigest: parseSha256Base64URL(
       source.snapshotArtifactDigest,
       'recordMarketplacePublicationInput.snapshotArtifactDigest'
     ),
@@ -1360,15 +1360,15 @@ export function parseCreateMarketplaceSubmissionInput(
       source.coordinate,
       'createMarketplaceSubmissionInput.coordinate'
     ),
-    manifestDigest: parseSha256Base64Url(
+    manifestDigest: parseSha256Base64URL(
       source.manifestDigest,
       'createMarketplaceSubmissionInput.manifestDigest'
     ),
-    artifactDigest: parseSha256Base64Url(
+    artifactDigest: parseSha256Base64URL(
       source.artifactDigest,
       'createMarketplaceSubmissionInput.artifactDigest'
     ),
-    manifestUrl: parseMarketplacePublicUrl(
+    manifestUrl: parseMarketplacePublicURL(
       source.manifestUrl,
       'createMarketplaceSubmissionInput.manifestUrl'
     ),

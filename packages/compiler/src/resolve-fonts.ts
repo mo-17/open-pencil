@@ -246,10 +246,10 @@ async function locallyAvailableFaceAssets(
   const cached = await loadedFaceAssets(family, style)
   if (cached.length > 0) return cached
 
-  const bundledUrl = BUNDLED_FONT_URLS[`${family}|${style}`]
-  if (!bundledUrl) return []
+  const bundledURL = BUNDLED_FONT_URLS[`${family}|${style}`]
+  if (!bundledURL) return []
   try {
-    const bundled = await fontManager.fetchBundledFont(bundledUrl)
+    const bundled = await fontManager.fetchBundledFont(bundledURL)
     if (bundled) fontManager.markLoaded(family, style, bundled)
     return await loadedFaceAssets(family, style)
   } catch {

@@ -126,13 +126,13 @@ describe('Vue source project release archive', () => {
     const directory = mkdtempSync(join(tmpdir(), 'openpencil-vue-release-'))
     try {
       const files = writeArchive(directory, archive)
-      const packageJson = JSON.parse(new TextDecoder().decode(files['package.json'])) as {
+      const packageJSON = JSON.parse(new TextDecoder().decode(files['package.json'])) as {
         scripts: Record<string, string>
         dependencies: Record<string, string>
         devDependencies: Record<string, string>
       }
-      expect(packageJson.scripts.build).toBe('vue-tsc --noEmit && vite build')
-      expect(packageJson.dependencies.vue).toBeDefined()
+      expect(packageJSON.scripts.build).toBe('vue-tsc --noEmit && vite build')
+      expect(packageJSON.dependencies.vue).toBeDefined()
       for (const dependency of [
         '@tailwindcss/vite',
         '@vitejs/plugin-vue',
@@ -141,7 +141,7 @@ describe('Vue source project release archive', () => {
         'vite',
         'vue-tsc'
       ]) {
-        expect(packageJson.devDependencies[dependency]).toBeDefined()
+        expect(packageJSON.devDependencies[dependency]).toBeDefined()
       }
       expect(files['src/assets/fonts/inter-regular.ttf']).toEqual(font)
       expect(files['src/assets/openpencil-image-release-image.png']).toEqual(IMAGE)

@@ -1,29 +1,29 @@
 import { decodeTauriStderr } from '@/app/shell/ui'
 
-import { buildDeployProcessEnv, parseDeployCliResult, type DeployCliResult } from './command'
+import { buildDeployProcessEnv, parseDeployCLIResult, type DeployCLIResult } from './command'
 import type { DeployEnvironment, DeployRuntimeConfig } from './history'
 
 const DEPLOY_COMMAND = 'lowcode-preview'
 const CLI_ENTRY = 'packages/cli/src/index.ts'
 
 export type DeployProvider = 'netlify' | 'vercel' | 'cloudflare'
-export type DeployUiKit = 'none' | 'shadcn'
+export type DeployUIKit = 'none' | 'shadcn'
 
 export interface DeployI18n {
   enabled: boolean
   locales: string[]
 }
 
-export async function runDeployCli(
+export async function runDeployCLI(
   filePath: string,
   token: string,
   provider: DeployProvider,
   environment: DeployEnvironment,
   site?: string,
-  uiKit: DeployUiKit = 'none',
+  uiKit: DeployUIKit = 'none',
   i18n?: DeployI18n,
   runtimeConfig?: DeployRuntimeConfig
-): Promise<DeployCliResult> {
+): Promise<DeployCLIResult> {
   const { Command } = await import('@tauri-apps/plugin-shell')
   const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
   const args = [
@@ -56,7 +56,7 @@ export async function runDeployCli(
     stderrTail.push(decodeTauriStderr(raw))
   })
 
-  return new Promise<DeployCliResult>((resolve, reject) => {
+  return new Promise<DeployCLIResult>((resolve, reject) => {
     command.on('close', (data: { code: number | null }) => {
       if (data.code !== 0) {
         const detail = stderrTail.join('').trim()
@@ -64,7 +64,7 @@ export async function runDeployCli(
         return
       }
       try {
-        resolve(parseDeployCliResult(stdout.trim()))
+        resolve(parseDeployCLIResult(stdout.trim()))
       } catch (error) {
         reject(error instanceof Error ? error : new Error(String(error)))
       }

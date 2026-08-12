@@ -1,10 +1,10 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
 import {
@@ -36,12 +36,12 @@ export const SLIDE_MENU_MODULE_LIMITS = Object.freeze({
 export type SlideMenuPresentationV1 = 'menu' | 'dialog'
 export type SlideMenuDirectionV1 = 'left' | 'right' | 'top' | 'bottom'
 
-export interface SlideMenuItemV1 extends JsonObject {
+export interface SlideMenuItemV1 extends JSONObject {
   label: string
   href: string
 }
 
-export interface SlideMenuModuleConfigV1 extends JsonObject {
+export interface SlideMenuModuleConfigV1 extends JSONObject {
   presentation: SlideMenuPresentationV1
   direction: SlideMenuDirectionV1
   triggerLabel: string
@@ -132,7 +132,7 @@ function parseItems(value: unknown): SlideMenuItemV1[] {
       throw new TypeError(`slide menu config items[${index}] must be a menu item object`)
     }
     const item = value[index]
-    if (!isPlainJsonObject(item) || !hasExactPluginKeys(item, ITEM_KEYS)) {
+    if (!isPlainJSONObject(item) || !hasExactPluginKeys(item, ITEM_KEYS)) {
       throw new TypeError(`slide menu config items[${index}] must contain exactly label and href`)
     }
     const label = boundedText(
@@ -151,7 +151,7 @@ function parseItems(value: unknown): SlideMenuItemV1[] {
 
 function parseSlideMenuConfig(value: unknown, configVersion: SupportedConfigVersion): ParseResult {
   const keys = configVersion === 1 ? LEGACY_CONFIG_KEYS : CONFIG_KEYS
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, keys)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, keys)) {
     return {
       ok: false,
       reason:

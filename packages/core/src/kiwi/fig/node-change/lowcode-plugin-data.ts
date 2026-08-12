@@ -59,7 +59,7 @@ import type {
   SupabaseConfig,
   WorkflowDef
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { compactLowcodeHeadMetadata, validateServerWorkflows } from '#core/lowcode-validation'
 
@@ -525,8 +525,8 @@ function serializeDocumentConfigFields(node: SceneNode): PluginDataEntry[] {
   return entries
 }
 
-function libraryComponentPayload(node: SceneNode): JsonObject | null {
-  const payload: JsonObject = {}
+function libraryComponentPayload(node: SceneNode): JSONObject | null {
+  const payload: JSONObject = {}
   if (typeof node.libraryComponentKey === 'string' && node.libraryComponentKey !== '') {
     payload.key = node.libraryComponentKey
   }
@@ -822,7 +822,7 @@ function fillAxisSizing(node: SceneNode): { primary?: 'FILL'; counter?: 'FILL' }
 
 function isSupabaseConfig(value: unknown): value is SupabaseConfig {
   if (value === null || typeof value !== 'object') return false
-  const v = value as JsonObject
+  const v = value as JSONObject
   return (
     typeof v.url === 'string' && v.url !== '' && typeof v.anonKey === 'string' && v.anonKey !== ''
   )
@@ -1243,7 +1243,7 @@ function assignLowcodeField(
       target.events = value as Partial<Record<EventName, ActionDef[]>>
       return
     case LOWCODE_INTERACTIVE_PROPS_KEY:
-      target.interactiveProps = value as JsonObject
+      target.interactiveProps = value as JSONObject
       return
     case LOWCODE_RENDER_CONDITION_KEY:
       if (typeof value === 'string') target.renderCondition = value
@@ -1485,7 +1485,7 @@ function optionalBoolean(value: unknown): boolean {
  *  malformed value is treated as absent (child stays auto-placed). */
 function isGridPosition(value: unknown): value is GridPosition {
   if (value === null || typeof value !== 'object') return false
-  const v = value as JsonObject
+  const v = value as JSONObject
   return (
     typeof v.column === 'number' &&
     typeof v.row === 'number' &&
@@ -1499,7 +1499,7 @@ function isGridPosition(value: unknown): value is GridPosition {
  *  sizing untouched. */
 function assignFillAxisSizing(target: ExtractedLowcodeAndPluginData, value: unknown): void {
   if (value === null || typeof value !== 'object') return
-  const v = value as JsonObject
+  const v = value as JSONObject
   if (v.primary === 'FILL') target.primaryAxisSizingOverride = 'FILL'
   if (v.counter === 'FILL') target.counterAxisSizingOverride = 'FILL'
 }

@@ -9,7 +9,7 @@ import { basename, extname } from 'node:path'
 import process from 'node:process'
 
 import { compile, resolveCompilerWebFonts, withDefaults } from '@open-pencil/compiler'
-import type { CompileWarning, CompilerOutput, UiKitName } from '@open-pencil/compiler'
+import type { CompileWarning, CompilerOutput, UIKitName } from '@open-pencil/compiler'
 import type { BuildOptions } from '@open-pencil/compiler/build'
 import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
 import type { SceneNode } from '@open-pencil/scene-graph'
@@ -73,13 +73,13 @@ function validateSupabaseBuildFlags(flags: SupabaseBuildFlags): void {
       'Supabase URL and publishable/anon key overrides must be provided together to avoid mixing projects.'
     )
   }
-  if (url !== undefined) validateSupabaseBuildUrl(url)
+  if (url !== undefined) validateSupabaseBuildURL(url)
   if (schema !== undefined && !/^[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(schema)) {
     throw new Error('Supabase schema override must be a plain identifier up to 63 characters.')
   }
 }
 
-function validateSupabaseBuildUrl(url: string): void {
+function validateSupabaseBuildURL(url: string): void {
   let parsed: URL
   try {
     parsed = new URL(url)
@@ -175,7 +175,7 @@ export async function loadAndCompile(opts: {
   sourceLocale?: string
   /** Phase 3 §15: emit interactive nodes with a code UI kit (e.g. 'shadcn')
    *  instead of hand-rolled Tailwind HTML. Undefined → plain HTML. */
-  uiKit?: UiKitName
+  uiKit?: UIKitName
   /** Web framework target. Defaults to React for CLI compatibility. */
   target?: CodegenWebTarget
 }): Promise<CompiledDocument> {

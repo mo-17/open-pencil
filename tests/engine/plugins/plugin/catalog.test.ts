@@ -6,7 +6,7 @@ import {
   PluginTrustError,
   TRUSTED_PLUGIN_KEYRING_SCHEMA_VERSION,
   parsePluginCatalogBytes,
-  parsePluginCatalogJson,
+  parsePluginCatalogJSON,
   parsePluginCatalogPayload,
   parseTrustedPluginKeyring,
   resolveTrustedPluginKey,
@@ -107,7 +107,7 @@ describe('signed remote plugin catalog', () => {
     )
 
     const serialized = serializePluginCatalog(catalog)
-    expect(parsePluginCatalogJson(serialized)).toEqual(catalog)
+    expect(parsePluginCatalogJSON(serialized)).toEqual(catalog)
     expect(parsePluginCatalogBytes(new TextEncoder().encode(serialized))).toEqual(catalog)
     const verifiedCatalog = await verifyPluginCatalog(catalog, root.publicKey, {
       expectedCatalogId: 'openpencil.marketplace',
@@ -220,16 +220,16 @@ describe('signed remote plugin catalog', () => {
         catalogPayload([second, { ...first, publisherId: 'hostile.publisher' }])
       )
     ).toThrow('publisher ownership')
-    for (const manifestUrl of [
+    for (const manifestURL of [
       'http://plugins.example.com/manifest.json',
       'https://user:secret@plugins.example.com/manifest.json',
       'https://localhost/manifest.json',
       'https://127.0.0.1/manifest.json',
       'https://plugins.example.com/manifest.json#unsigned-fragment'
     ]) {
-      expect(() => parsePluginCatalogPayload(catalogPayload([{ ...first, manifestUrl }]))).toThrow(
-        'canonical public HTTPS URL'
-      )
+      expect(() =>
+        parsePluginCatalogPayload(catalogPayload([{ ...first, manifestUrl: manifestURL }]))
+      ).toThrow('canonical public HTTPS URL')
     }
 
     const malformed = { ...catalogPayload([first]), executable: 'https://evil.example/code.js' }

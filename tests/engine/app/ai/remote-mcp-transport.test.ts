@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
-  createSdkRemoteMcpClient,
+  createSdkRemoteMCPClient,
   MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES
 } from '@/app/ai/mcp/runtime'
-import type { RemoteMcpServer } from '@/app/ai/mcp/types'
+import type { RemoteMCPServer } from '@/app/ai/mcp/types'
 
-const SERVER: RemoteMcpServer = {
+const SERVER: RemoteMCPServer = {
   id: 'mcp-0123456789abcdef',
   name: 'Transport bounds',
   transport: { type: 'streamable-http', url: 'https://mcp.example.com/tools' },
@@ -14,7 +14,7 @@ const SERVER: RemoteMcpServer = {
 }
 
 async function expectOversizedResponse(fetchImpl: typeof fetch): Promise<void> {
-  const client = createSdkRemoteMcpClient({ server: SERVER, bearerToken: null }, fetchImpl)
+  const client = createSdkRemoteMCPClient({ server: SERVER, bearerToken: null }, fetchImpl)
   try {
     await expect(client.connect(new AbortController().signal)).rejects.toThrow(
       `exceeds ${MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES} bytes`

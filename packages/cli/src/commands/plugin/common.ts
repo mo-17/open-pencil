@@ -64,7 +64,7 @@ export async function readBoundedBytes(
   return bytes
 }
 
-export async function readBoundedJson(
+export async function readBoundedJSON(
   path: string,
   maximum: number,
   label: string
@@ -132,7 +132,7 @@ export async function importPublicKey(args: KeyReference): Promise<CryptoKey> {
   }
 }
 
-export async function writeJsonOutput(
+export async function writeJSONOutput(
   path: string,
   source: string,
   maximum: number,
@@ -146,7 +146,7 @@ export async function writeJsonOutput(
   return output
 }
 
-export function printJson(value: unknown): void {
+export function printJSON(value: unknown): void {
   console.log(JSON.stringify(value, null, 2))
 }
 

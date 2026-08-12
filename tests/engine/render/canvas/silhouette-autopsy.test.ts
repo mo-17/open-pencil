@@ -43,6 +43,7 @@ const convertPath = repoPath('packages/fig/src/node-change/paint.ts')
 const schemaPath = repoPath('packages/kiwi/src/fig/schema/fig.kiwi')
 const codecPath = repoPath('packages/kiwi/src/fig/codec.ts')
 const lifecyclePath = coreSourcePath('canvas/renderer/lifecycle.ts')
+const rendererStatePath = coreSourcePath('canvas/renderer/state.ts')
 
 function readSource(path: string): string {
   return readFileSync(path, 'utf-8')
@@ -560,11 +561,35 @@ describe('Doc 02/03 — Cache Infrastructure Verification', () => {
     const destroyMatch = rendererSrc.match(/destroy\(\)[\s\S]*?(?=\n  \w|\n\})/)
     expect(destroyMatch).toBeTruthy()
     const body = expectDefined(destroyMatch, 'destroyMatch')[0]
-    // destroy() delegates to destroyRenderer — verify the lifecycle module cleans caches
+    // destroy() delegates to destroyRenderer, which delegates document-scoped cache cleanup.
     expect(body).toContain('destroyRenderer')
     const lifecycleSrc = readSource(lifecyclePath)
-    expect(lifecycleSrc).toContain('imageFilterCache')
-    expect(lifecycleSrc).toContain('maskFilterCache')
+    expect(lifecycleSrc).toContain('clearDocumentCaches(r)')
+
+    const stateSrc = readSource(rendererStatePath)
+    const documentCleanupMatch = stateSrc.match(
+      /export function clearDocumentCaches[\s\S]*?(?=\nexport function|\n\/\*\*|\n$)/
+    )
+    expect(documentCleanupMatch).toBeTruthy()
+    expect(expectDefined(documentCleanupMatch, 'documentCleanupMatch')[0]).toContain(
+      'clearNodeRenderCaches(r)'
+    )
+
+    const nodeCleanupMatch = stateSrc.match(
+      /function clearNodeRenderCaches[\s\S]*?(?=\nfunction |\nexport )/
+    )
+    expect(nodeCleanupMatch).toBeTruthy()
+    expect(expectDefined(nodeCleanupMatch, 'nodeCleanupMatch')[0]).toContain(
+      'clearEffectFilterCaches(r)'
+    )
+
+    const filterCleanupMatch = stateSrc.match(
+      /function clearEffectFilterCaches[\s\S]*?(?=\nfunction |\nexport )/
+    )
+    expect(filterCleanupMatch).toBeTruthy()
+    const filterCleanup = expectDefined(filterCleanupMatch, 'filterCleanupMatch')[0]
+    expect(filterCleanup).toContain('r.imageFilterCache.clear()')
+    expect(filterCleanup).toContain('r.maskFilterCache.clear()')
   })
 
   test('C-CACHE-05: nodePictureCache exists for effect caching', () => {

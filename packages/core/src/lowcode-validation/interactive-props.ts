@@ -228,10 +228,10 @@ function validationMessagesIssue(raw: unknown): InteractivePropsIssue | undefine
   return undefined
 }
 
-function asyncValidationUrlIssue(raw: Record<string, unknown>): InteractivePropsIssue | undefined {
+function asyncValidationURLIssue(raw: Record<string, unknown>): InteractivePropsIssue | undefined {
   const path = 'interactiveProps.validation.async'
-  const hasUrl = typeof raw.url === 'string' && raw.url.trim() !== ''
-  const hasUrlExpr = typeof raw.urlExpr === 'string' && raw.urlExpr.trim() !== ''
+  const hasURL = typeof raw.url === 'string' && raw.url.trim() !== ''
+  const hasURLExpr = typeof raw.urlExpr === 'string' && raw.urlExpr.trim() !== ''
   if (raw.url !== undefined && raw.url !== null && typeof raw.url !== 'string') {
     return error(
       'interactive-validation-async-url-type',
@@ -246,21 +246,21 @@ function asyncValidationUrlIssue(raw: Record<string, unknown>): InteractiveProps
       `${path}.urlExpr must be a string`
     )
   }
-  if (hasUrl && hasUrlExpr) {
+  if (hasURL && hasURLExpr) {
     return error(
       'interactive-validation-async-url-conflict',
       path,
       `${path} must use either url or urlExpr, not both`
     )
   }
-  if (!hasUrl && !hasUrlExpr) {
+  if (!hasURL && !hasURLExpr) {
     return error(
       'interactive-validation-async-url-required',
       path,
       `${path} requires a non-empty url or urlExpr`
     )
   }
-  if (!hasUrlExpr) return undefined
+  if (!hasURLExpr) return undefined
   const result = validateExpression(String(raw.urlExpr))
   return result.ok
     ? undefined
@@ -287,7 +287,7 @@ function asyncValidationIssue(raw: unknown): InteractivePropsIssue | undefined {
       )
     }
   }
-  const urlIssue = asyncValidationUrlIssue(raw)
+  const urlIssue = asyncValidationURLIssue(raw)
   if (urlIssue) return urlIssue
   if (raw.method !== undefined && raw.method !== null) {
     if (

@@ -81,7 +81,7 @@ async function fetchText(url: string): Promise<string> {
   return await (await fetchOk(url)).text()
 }
 
-async function fetchCss(server: PreviewServer): Promise<string> {
+async function fetchCSS(server: PreviewServer): Promise<string> {
   const body = await fetchText(`${server.url}src/index.css?t=${Date.now()}`)
   const match = body.match(/const __vite__css = "((?:[^"\\]|\\.)*)"/)
   if (!match) throw new Error('index.css did not transform to a Vite CSS module')
@@ -112,7 +112,7 @@ describe('preview runtime — image fills and responsive images (Phase 4 §24)',
     expect(appSource).toContain('https://example.test/desktop.jpg')
     expect(appSource).toContain('Hero')
 
-    const css = await fetchCss(server)
+    const css = await fetchCSS(server)
     expect(css).toContain('aspect-ratio: 16/9')
     expect(css).toContain('background-image: url(./assets/openpencil-image-runtime-image.png)')
     expect(css).toContain('linear-gradient(180deg, #FF0000 0%, #0000FF 100%)')

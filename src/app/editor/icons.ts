@@ -30,7 +30,7 @@ import IconType from '~icons/lucide/type'
 
 import { resolveMapModule } from '@open-pencil/core/plugins'
 import { isAutoLayoutMode, type LayoutMode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { Tool } from '@/app/editor/session'
 
@@ -86,7 +86,7 @@ export { IconFrame, IconSquare }
 interface NodeIconSource {
   type: string
   layoutMode: LayoutMode
-  interactiveProps?: JsonObject
+  interactiveProps?: JSONObject
 }
 
 export function nodeIcon(node: NodeIconSource) {

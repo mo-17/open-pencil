@@ -9,11 +9,11 @@ import {
 
 import {
   readCacheBytes,
-  readCacheJson,
+  readCacheJSON,
   removeCacheEntry,
   removeCachePrefix,
   writeCacheBytes,
-  writeCacheJson
+  writeCacheJSON
 } from '@/app/cache'
 import { preferredFontStyle } from '@/app/editor/fonts/style-selection'
 
@@ -214,13 +214,13 @@ function hexDigest(data: ArrayBuffer) {
 }
 
 async function readManifest(): Promise<FontCacheManifest> {
-  const manifest = await readCacheJson<Partial<FontCacheManifest>>(MANIFEST_PATH)
+  const manifest = await readCacheJSON<Partial<FontCacheManifest>>(MANIFEST_PATH)
   if (manifest?.version !== 1 || !manifest.entries) return emptyManifest()
   return { version: 1, entries: manifest.entries }
 }
 
 async function writeManifest(manifest: FontCacheManifest) {
-  await writeCacheJson(MANIFEST_PATH, manifest)
+  await writeCacheJSON(MANIFEST_PATH, manifest)
 }
 
 export async function downloadedFontCacheSummary(): Promise<DownloadedFontCacheSummary> {

@@ -312,7 +312,7 @@ function emitExpoNode(node: IRNode, indent: number, environment: ElementEnvironm
   const pad = '  '.repeat(indent)
   if (node.kind === 'text') {
     const value = node.messageId ? node.value : node.value
-    const text = escapeJsxText(value)
+    const text = escapeJSXText(value)
     const style = inheritedTextStyleAttr(environment)
     return environment.textContext ? `${pad}${text}` : `${pad}<Text${style}>${text}</Text>`
   }
@@ -577,7 +577,7 @@ function emitStaticModuleTrigger(
   }
   if (trigger.showLabel) {
     children.push(
-      `<Text numberOfLines={1} ellipsizeMode="tail" style={${labelStyle}}>${escapeJsxText(trigger.label)}</Text>`
+      `<Text numberOfLines={1} ellipsizeMode="tail" style={${labelStyle}}>${escapeJSXText(trigger.label)}</Text>`
     )
   }
   if (icon === 'upload') {
@@ -1101,7 +1101,7 @@ function warnFeature(warn: ExpoWarningSink, code: string, feature: string, nodeI
   })
 }
 
-function escapeJsxText(value: string): string {
+function escapeJSXText(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')

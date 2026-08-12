@@ -74,7 +74,7 @@ export const ROOM_KEY_LENGTH = 26
 
 export const WEB_APP_ORIGIN = 'https://app.openpencil.dev'
 
-export function getShareUrl(roomId: string, roomKey?: string): string {
+export function getShareURL(roomId: string, roomKey?: string): string {
   const base = IS_TAURI || !IS_BROWSER ? WEB_APP_ORIGIN : window.location.origin
   const url = `${base}/share/${roomId}`
   return roomKey ? `${url}#k=${roomKey}` : url

@@ -12,7 +12,7 @@ import {
   appConnectorHostAdapters,
   appConnectorOutcomeUnknownNotices,
   createAppConnectorFetch,
-  isAppConnectorMcpExposed
+  isAppConnectorMCPExposed
 } from '@/app/plugins/connectors/app'
 import {
   RESEND_EMAIL_CONNECTOR_CONTRACT,
@@ -140,7 +140,7 @@ describe('app connector integration', () => {
 
       expect(
         candidate.contract.operations.every(
-          (operation) => !isAppConnectorMcpExposed(connector, operation)
+          (operation) => !isAppConnectorMCPExposed(connector, operation)
         )
       ).toBe(true)
       appConnectorCredentialReadiness.update(
@@ -154,7 +154,7 @@ describe('app connector integration', () => {
       appConnectorAuthorization.authorize(candidate.contract, connector.plugin.package.digest)
 
       for (const operation of candidate.contract.operations) {
-        expect(isAppConnectorMcpExposed(connector, operation)).toBe(
+        expect(isAppConnectorMCPExposed(connector, operation)).toBe(
           operation.kind === 'query' && operation.request?.method === 'GET'
         )
       }
@@ -162,7 +162,7 @@ describe('app connector integration', () => {
       appConnectorAuthorization.revoke(candidate.pluginId, candidate.connectorId)
       expect(
         candidate.contract.operations.every(
-          (operation) => !isAppConnectorMcpExposed(connector, operation)
+          (operation) => !isAppConnectorMCPExposed(connector, operation)
         )
       ).toBe(true)
     }

@@ -268,7 +268,7 @@ function motionSequenceFrames(value: unknown): MotionSequenceFrameOutput[] | nul
   return frames
 }
 
-async function writeMotionPngSequence(
+async function writeMotionPNGSequence(
   result: Record<string, unknown>,
   resolved: string,
   realPath: string,
@@ -400,7 +400,7 @@ export async function writeToolOutput(
   // here — realpath follows the ancestor symlink and resolves outside root.
   await resolveSafePath(parentDir, root)
   if (toolName === 'export_motion_animation') {
-    const sequence = await writeMotionPngSequence(result, resolved, realPath, root, signal)
+    const sequence = await writeMotionPNGSequence(result, resolved, realPath, root, signal)
     if (sequence) return sequence
     const encoded = await writeEncodedMotionAtomic(result, resolved, realPath, root, signal)
     if (encoded) return encoded

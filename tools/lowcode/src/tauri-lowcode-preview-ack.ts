@@ -105,7 +105,7 @@ function run(command: string[], deps: AckDeps): string {
   return stdout.trim()
 }
 
-function runTauriMcp(args: string[], deps: AckDeps): string {
+function runTauriMCP(args: string[], deps: AckDeps): string {
   const bin = deps.env.TAURI_MCP_BIN
   if (bin) return run([bin, ...args], deps)
   try {
@@ -117,7 +117,7 @@ function runTauriMcp(args: string[], deps: AckDeps): string {
   }
 }
 
-function parseJson<T>(label: string, output: string): T {
+function parseJSON<T>(label: string, output: string): T {
   const start = output.indexOf('{')
   const end = output.lastIndexOf('}')
   if (start === -1 || end < start) throw new Error(`${label} did not return JSON:\n${output}`)
@@ -134,9 +134,9 @@ function logStep(message: string, deps: AckDeps): void {
 
 function readElementStyles(selector: string, deps: AckDeps): Record<string, string> {
   try {
-    return parseJson<Record<string, string>>(
+    return parseJSON<Record<string, string>>(
       'webview-get-styles',
-      runTauriMcp(
+      runTauriMCP(
         [
           'webview-get-styles',
           '--selector',
@@ -149,25 +149,25 @@ function readElementStyles(selector: string, deps: AckDeps): Record<string, stri
     )
   } catch {
     const styleScript = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { display: 'none', visibility: 'hidden', width: '0px', height: '0px' }; const s = getComputedStyle(el); const r = el.getBoundingClientRect(); return { display: s.display, visibility: s.visibility, width: s.width || String(r.width) + 'px', height: s.height || String(r.height) + 'px' }; })()`
-    return parseJson<Record<string, string>>(
+    return parseJSON<Record<string, string>>(
       'webview-execute-js styles fallback',
-      runTauriMcp(['webview-execute-js', '--script', styleScript], deps)
+      runTauriMCP(['webview-execute-js', '--script', styleScript], deps)
     )
   }
 }
 
 function waitForSelector(selector: string, deps: AckDeps): void {
   try {
-    const waitOutput = runTauriMcp(
+    const waitOutput = runTauriMCP(
       ['webview-wait-for', '--type', 'selector', '--value', selector, '--timeout', '5000'],
       deps
     )
     assert(waitOutput.includes('Element found'), `Selector wait failed:\n${waitOutput}`)
   } catch {
     const waitScript = `(() => ({ found: Boolean(document.querySelector(${JSON.stringify(selector)})) }))()`
-    const fallback = parseJson<{ found?: boolean }>(
+    const fallback = parseJSON<{ found?: boolean }>(
       'webview-execute-js selector wait fallback',
-      runTauriMcp(['webview-execute-js', '--script', waitScript], deps)
+      runTauriMCP(['webview-execute-js', '--script', waitScript], deps)
     )
     assert(fallback.found, `Selector wait failed: ${selector} was not found.`)
   }
@@ -176,11 +176,11 @@ function waitForSelector(selector: string, deps: AckDeps): void {
 export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   deps.log(`OpenPencil Tauri lowcode preview ACK (port ${options.port})`)
 
-  runTauriMcp(['driver-session', 'start', '--port', options.port], deps)
+  runTauriMCP(['driver-session', 'start', '--port', options.port], deps)
 
-  const status = parseJson<{ connected?: boolean; identifier?: string; port?: number }>(
+  const status = parseJSON<{ connected?: boolean; identifier?: string; port?: number }>(
     'driver-session status',
-    runTauriMcp(['driver-session', 'status'], deps)
+    runTauriMCP(['driver-session', 'status'], deps)
   )
   assert(status.connected, 'Tauri MCP driver session is not connected.')
   assert(
@@ -189,12 +189,12 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   )
   logStep(`driver session connected to ${status.identifier} on ${status.port}`, deps)
 
-  const backend = parseJson<{
+  const backend = parseJSON<{
     app?: { name?: string; version?: string }
     environment?: { debug?: boolean; os?: string }
     tauri?: { version?: string }
     window_count?: number
-  }>('ipc-get-backend-state', runTauriMcp(['ipc-get-backend-state'], deps))
+  }>('ipc-get-backend-state', runTauriMCP(['ipc-get-backend-state'], deps))
   assert(backend.app?.name === 'OpenPencil', `Unexpected Tauri app: ${backend.app?.name}`)
   assert(backend.environment?.debug, 'Expected a debug Tauri automation build.')
   assert((backend.window_count ?? 0) > 0, 'Expected at least one Tauri window.')
@@ -203,9 +203,9 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
     deps
   )
 
-  const windows = parseJson<{
+  const windows = parseJSON<{
     windows?: Array<{ label?: string; url?: string; visible?: boolean }>
-  }>('manage-window list', runTauriMcp(['manage-window', '--action', 'list'], deps))
+  }>('manage-window list', runTauriMCP(['manage-window', '--action', 'list'], deps))
   const mainWindow = windows.windows?.find((window) => window.label === 'main')
   assert(mainWindow?.visible, 'Main Tauri window is not visible.')
   assert(
@@ -214,7 +214,7 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   )
   logStep(`main window visible at ${mainWindow.url}`, deps)
 
-  const domSnapshot = runTauriMcp(['webview-dom-snapshot', '--type', 'structure'], deps)
+  const domSnapshot = runTauriMCP(['webview-dom-snapshot', '--type', 'structure'], deps)
   assert(
     domSnapshot.includes(options.selector),
     `DOM snapshot does not include ${options.selector}.`
@@ -222,11 +222,11 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   logStep(`${options.selector} present in webview DOM snapshot`, deps)
 
   const probeScript = `(() => ({ hasTauri: Boolean(window.__TAURI__), hasLowcodePreview: Boolean(document.querySelector('${options.selector}')), toolbarText: document.querySelector('${options.selector}')?.textContent?.slice(0, 200) ?? null }))()`
-  const probe = parseJson<{
+  const probe = parseJSON<{
     hasTauri?: boolean
     hasLowcodePreview?: boolean
     toolbarText?: string | null
-  }>('webview-execute-js', runTauriMcp(['webview-execute-js', '--script', probeScript], deps))
+  }>('webview-execute-js', runTauriMCP(['webview-execute-js', '--script', probeScript], deps))
   assert(probe.hasTauri, 'window.__TAURI__ is not available in the webview.')
   assert(probe.hasLowcodePreview, `${options.selector} was not found by webview JS.`)
   assert(
@@ -253,7 +253,7 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   if (!options.skipScreenshot) {
     const screenshotPath = resolve(options.screenshot)
     deps.mkdirSync(dirname(screenshotPath), { recursive: true })
-    const screenshotOutput = runTauriMcp(['webview-screenshot', '--file', screenshotPath], deps)
+    const screenshotOutput = runTauriMCP(['webview-screenshot', '--file', screenshotPath], deps)
     assert(
       screenshotOutput.includes('Wrote image'),
       `Screenshot did not report a written file:\n${screenshotOutput}`
@@ -264,7 +264,7 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   deps.log('Tauri lowcode preview ACK passed.')
 }
 
-export function runCli(argv: string[] = Bun.argv.slice(2), deps: AckDeps = defaultDeps()): number {
+export function runCLI(argv: string[] = Bun.argv.slice(2), deps: AckDeps = defaultDeps()): number {
   try {
     const options = parseArgs(argv)
     if (options.help) {
@@ -280,5 +280,5 @@ export function runCli(argv: string[] = Bun.argv.slice(2), deps: AckDeps = defau
 }
 
 if (import.meta.main) {
-  process.exit(runCli())
+  process.exit(runCLI())
 }

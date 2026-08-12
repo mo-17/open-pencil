@@ -5,14 +5,14 @@ import { TRANSPARENT } from '@open-pencil/core/constants'
 
 import {
   compareMotionTrackComposition,
-  easingCss,
+  easingCSS,
   motionCompositionClockVariableName,
   motionCompositionChannels,
   type MotionCompositionChannel,
   motionCompositionVariableName,
   motionCompositionWeightVariableName,
-  motionCssAnimationName,
-  motionCssVariableName
+  motionCSSAnimationName,
+  motionCSSVariableName
 } from './key'
 import {
   motionTargetKind,
@@ -27,7 +27,7 @@ import {
 } from './target'
 import type { ReactMotionEntry } from './types'
 
-export function buildMotionCss(entries: readonly ReactMotionEntry[]): string | undefined {
+export function buildMotionCSS(entries: readonly ReactMotionEntry[]): string | undefined {
   const active = entries
     .filter((entry) => entry.motion.version !== 3)
     .map((entry) => ({
@@ -68,7 +68,7 @@ export function buildMotionCss(entries: readonly ReactMotionEntry[]): string | u
   for (const entry of active) {
     for (const item of entry.tracks) {
       blocks.push(
-        keyframesBlock(motionCssAnimationName(entry.token, item.index), item.track, entry.motion)
+        keyframesBlock(motionCSSAnimationName(entry.token, item.index), item.track, entry.motion)
       )
     }
     blocks.push(animationRule(entry.token, entry.tracks))
@@ -86,7 +86,7 @@ export function buildMotionCss(entries: readonly ReactMotionEntry[]): string | u
         if (!hasOpacity(item.track)) continue
         media.push(
           keyframesBlock(
-            motionCssAnimationName(entry.token, item.index, true),
+            motionCSSAnimationName(entry.token, item.index, true),
             opacityOnlyTrack(item.track),
             entry.motion
           )
@@ -218,12 +218,12 @@ function animationRule(token: string, tracks: readonly IndexedTrack[]): string {
       'animation-name',
       tracks,
       ({ index }) =>
-        `var(${motionCssVariableName(token, index)}, ${motionCssAnimationName(token, index)})`
+        `var(${motionCSSVariableName(token, index)}, ${motionCSSAnimationName(token, index)})`
     ),
     propertyList('animation-duration', tracks, ({ track }) => `${track.timing.durationMs}ms`),
     propertyList('animation-delay', tracks, ({ track }) => `${track.timing.delayMs}ms`),
     propertyList('animation-timing-function', tracks, ({ track }) =>
-      easingCss(track.timing.easing)
+      easingCSS(track.timing.easing)
     ),
     propertyList('animation-iteration-count', tracks, ({ track }) =>
       String(track.timing.iterations)
@@ -239,7 +239,7 @@ function reducedAnimationRule(token: string, tracks: readonly IndexedTrack[]): s
     `[data-op-motion="${token}"] {`,
     propertyList('animation-name', tracks, (item) =>
       hasOpacity(item.track)
-        ? `var(${motionCssVariableName(token, item.index)}, ${motionCssAnimationName(token, item.index, true)})`
+        ? `var(${motionCSSVariableName(token, item.index)}, ${motionCSSAnimationName(token, item.index, true)})`
         : 'none'
     ),
     propertyList(
@@ -283,7 +283,7 @@ function keyframeDeclarations(
     ...effectDeclarations(frame, motion),
     ...pathDeclarations(frame, track, motion),
     ...layoutDeclarations(frame),
-    ...(frame.easing ? [`animation-timing-function: ${easingCss(frame.easing)};`] : [])
+    ...(frame.easing ? [`animation-timing-function: ${easingCSS(frame.easing)};`] : [])
   ]
 }
 

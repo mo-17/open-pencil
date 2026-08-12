@@ -4,7 +4,7 @@ import { compile, withDefaults } from '@open-pencil/compiler'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
-function compileIndexHtml(opts: Parameters<typeof withDefaults>[0] = {}) {
+function compileIndexHTML(opts: Parameters<typeof withDefaults>[0] = {}) {
   const graph = makeSceneGraph()
   const pageId = firstPageId(graph)
   const out = compile({
@@ -17,7 +17,7 @@ function compileIndexHtml(opts: Parameters<typeof withDefaults>[0] = {}) {
 
 describe('compile — static SEO metadata (Phase 5 §3)', () => {
   test('omits optional metadata tags when no metadata is configured', () => {
-    const { html } = compileIndexHtml()
+    const { html } = compileIndexHTML()
 
     expect(html).toContain('<title>seo-app</title>')
     expect(html).not.toContain('name="description"')
@@ -26,7 +26,7 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
   })
 
   test('emits document-level title, description, canonical, and Open Graph tags', () => {
-    const { html } = compileIndexHtml({
+    const { html } = compileIndexHTML({
       metadata: {
         title: 'Launch Page',
         description: 'A fast generated landing page.',
@@ -158,7 +158,7 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
   })
 
   test('escapes metadata values in HTML attributes', () => {
-    const { html } = compileIndexHtml({
+    const { html } = compileIndexHTML({
       metadata: {
         title: 'A&B <Launch>',
         description: 'Use "quotes" and <tags>.'
@@ -211,7 +211,7 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
   })
 
   test('skips unsafe custom head link href protocols at emit time', () => {
-    const { html } = compileIndexHtml({
+    const { html } = compileIndexHTML({
       metadata: {
         head: {
           link: [
@@ -228,7 +228,7 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
 
   test('skips unsafe custom head meta refresh URLs at emit time', () => {
     const unsafeRefresh = `0;url=${['java', 'script:alert(1)'].join('')}`
-    const { html } = compileIndexHtml({
+    const { html } = compileIndexHTML({
       metadata: {
         head: {
           meta: [
@@ -271,7 +271,7 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
 
   test('skips unsafe custom head style URLs at emit time', () => {
     const unsafeStyle = `.hero { background-image: url(${['java', 'script:alert(1)'].join('')}); }`
-    const { html } = compileIndexHtml({
+    const { html } = compileIndexHTML({
       metadata: {
         head: {
           styles: [unsafeStyle, ':root { color-scheme: light; }']
@@ -285,16 +285,16 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
   })
 
   test('skips unsafe canonical URLs at emit time', () => {
-    const unsafeCanonicalUrl = ['java', 'script:alert(1)'].join('')
-    const { html } = compileIndexHtml({
+    const unsafeCanonicalURL = ['java', 'script:alert(1)'].join('')
+    const { html } = compileIndexHTML({
       metadata: {
         title: 'Launch Page',
-        canonicalUrl: unsafeCanonicalUrl
+        canonicalUrl: unsafeCanonicalURL
       }
     })
 
     expect(html).toContain('<title>Launch Page</title>')
-    expect(html).not.toContain(unsafeCanonicalUrl)
+    expect(html).not.toContain(unsafeCanonicalURL)
     expect(html).not.toContain('rel="canonical"')
     expect(html).not.toContain('property="og:url"')
   })
@@ -302,9 +302,9 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
   test('skips unsafe persisted custom CSS URLs at compile time', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    const unsafeCss = `.hero { background-image: url(${['java', 'script:alert(1)'].join('')}); }`
+    const unsafeCSS = `.hero { background-image: url(${['java', 'script:alert(1)'].join('')}); }`
     graph.updateNode(graph.rootId, {
-      lowcodeCustomCss: unsafeCss
+      lowcodeCustomCss: unsafeCSS
     })
 
     const out = compile({
@@ -314,7 +314,7 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
     })
     const css = out.files.get('src/index.css') as string
 
-    expect(css).not.toContain(unsafeCss)
+    expect(css).not.toContain(unsafeCSS)
     expect(css).not.toContain('alert(1)')
   })
 })

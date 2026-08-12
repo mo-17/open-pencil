@@ -1,7 +1,7 @@
 import {
   type ExprAst,
   hasPrevReference,
-  normalizeSupabaseMutationPayloadJson,
+  normalizeSupabaseMutationPayloadJSON,
   parseExpression,
   parseTemplate,
   PAYLOAD_ENTRY_KEY_RE,
@@ -20,7 +20,7 @@ import {
 } from '@open-pencil/scene-graph'
 
 import type {
-  IRApiCallHandler,
+  IRAPICallHandler,
   IRAwaitMotionHandler,
   IRClipboardHandler,
   IRConditionalHandler,
@@ -496,7 +496,7 @@ function resolveBranch(actions: ActionDef[], ctx: ResolveCtx): IREventHandler[] 
  *  dropped branches stay unset → byte-identical to a branch-less action. */
 function withResultBranches<
   H extends
-    | IRApiCallHandler
+    | IRAPICallHandler
     | IRSupabaseQueryHandler
     | IRSupabaseMutationHandler
     | IRInvokeServerWorkflowHandler
@@ -716,7 +716,7 @@ function dispatchResultBranchAction(
   switch (action.kind) {
     case 'apiCall':
       return withResultBranches(
-        resolveApiCall(
+        resolveAPICall(
           ctx.node,
           ctx.eventName,
           action,
@@ -1356,7 +1356,7 @@ function resolveSetVariable(
  *  parses as JSON. Any failure drops the handler with a warning so the
  *  emitted code stays compilable. The stored `body` is the re-serialised
  *  (compact, guaranteed-valid) JSON so emit can splice it as a JS literal. */
-function resolveApiCall(
+function resolveAPICall(
   node: SceneNode,
   eventName: EventName,
   action: Extract<ActionDef, { kind: 'apiCall' }>,
@@ -1365,9 +1365,9 @@ function resolveApiCall(
   docStates: ReadonlyMap<string, IRDocStateDecl>,
   docStateReads: Set<string> | undefined,
   warnings: IRWarning[]
-): IRApiCallHandler | null {
-  const rawUrl = action.url.trim()
-  if (rawUrl === '') {
+): IRAPICallHandler | null {
+  const rawURL = action.url.trim()
+  if (rawURL === '') {
     warnings.push({
       code: 'action-apicall-missing-url',
       message: `node ${node.id} ${eventName} apiCall has no url`,
@@ -1377,11 +1377,11 @@ function resolveApiCall(
   }
   // Phase 2 §4: the URL is a `${}` template. A static URL is a degenerate
   // zero-expression template.
-  const urlTemplate = parseTemplate(rawUrl)
+  const urlTemplate = parseTemplate(rawURL)
   if (!urlTemplate.ok) {
     warnings.push({
       code: 'action-apicall-invalid-url',
-      message: `node ${node.id} ${eventName} apiCall url "${rawUrl}" → ${urlTemplate.error}`,
+      message: `node ${node.id} ${eventName} apiCall url "${rawURL}" → ${urlTemplate.error}`,
       nodeId: node.id
     })
     return null
@@ -2109,8 +2109,8 @@ function resolveSupabaseMutation(
     return null
   }
   const hasEntries = (action.payloadEntries?.length ?? 0) > 0
-  const normalizedJson = normalizeSupabaseMutationPayloadJson(action.payloadJson)
-  if (hasEntries && (normalizedJson ?? '') !== '') {
+  const normalizedJSON = normalizeSupabaseMutationPayloadJSON(action.payloadJson)
+  if (hasEntries && (normalizedJSON ?? '') !== '') {
     warnings.push({
       code: 'action-supabase-mutation-payload-source-conflict',
       message: `node ${node.id} ${eventName} supabaseMutation has both payloadEntries and payloadJson — payloadEntries wins, payloadJson dropped (decision §3.v2.2 #e)`,
@@ -2494,7 +2494,7 @@ function resolveMutationPayload(
   action: Extract<ActionDef, { kind: 'supabaseMutation' }>,
   warnings: IRWarning[]
 ): string | undefined | null {
-  const raw = (normalizeSupabaseMutationPayloadJson(action.payloadJson) ?? '').trim()
+  const raw = (normalizeSupabaseMutationPayloadJSON(action.payloadJson) ?? '').trim()
   if (action.operation === 'delete') {
     if (raw !== '') {
       warnings.push({

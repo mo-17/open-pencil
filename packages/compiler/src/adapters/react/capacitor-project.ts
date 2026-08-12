@@ -1,7 +1,7 @@
 import {
   appendReactProjectGitignore,
   configureReactViteRelativeBase,
-  patchReactCompilerPackageJson,
+  patchReactCompilerPackageJSON,
   rewriteReactProjectForHashRouting,
   safeReverseDomainAppId,
   type ReactCompilerProjectFiles
@@ -14,7 +14,7 @@ export function buildCapacitorReactProjectFiles(
   packageName: string,
   productName: string
 ): Map<string, string | Uint8Array> {
-  const files = patchReactCompilerPackageJson(compiledFiles, {
+  const files = patchReactCompilerPackageJSON(compiledFiles, {
     description: `Capacitor project exported from ${productName} in OpenPencil`,
     scripts: {
       'cap:sync': 'npx cap sync',

@@ -1004,7 +1004,7 @@ export interface SetVariableAction {
 /** Phase 2 §3: fire an HTTP request on an event and write the parsed JSON
  *  response into a Document State (§2). GET + POST only. Phase 2 §4: the URL
  *  may carry `${ … }` interpolation — the compiler parses it as a template. */
-export interface ApiCallAction {
+export interface APICallAction {
   id: string
   kind: 'apiCall'
   method: 'GET' | 'POST'
@@ -1057,7 +1057,7 @@ export interface SupabaseQueryAction {
   resultTarget: string
   /** Name of the DocumentStateDef the error is written into, if any. */
   errorTarget?: string
-  /** Phase 3 §10 v9 — result-branch sub-workflows; see {@link ApiCallAction}.
+  /** Phase 3 §10 v9 — result-branch sub-workflows; see {@link APICallAction}.
    *  `onSuccess` runs in the no-error branch, `onError` on a returned error. */
   onSuccess?: ActionDef[]
   onError?: ActionDef[]
@@ -1080,7 +1080,7 @@ export interface SupabasePayloadEntry {
  *     column, supports docState / page-state references. Preferred when
  *     present.
  *   - `payloadJson` — Phase 3 §2 JSON literal string parsed + validated
- *     like `ApiCallAction.bodyJson`. Static values only.
+ *     like `APICallAction.bodyJson`. Static values only.
  *  When both are set, IR collect emits a `payload-source-conflict`
  *  warning and prefers `payloadEntries` (decision §3.v2.2 #e).
  *  `filters` is required for update/delete (where clause). Result and
@@ -1096,7 +1096,7 @@ export interface SupabaseMutationAction {
   filters?: SupabaseFilter[]
   resultTarget?: string
   errorTarget?: string
-  /** Phase 3 §10 v9 — result-branch sub-workflows; see {@link ApiCallAction}.
+  /** Phase 3 §10 v9 — result-branch sub-workflows; see {@link APICallAction}.
    *  `onSuccess` runs in the no-error branch, `onError` on a returned error. */
   onSuccess?: ActionDef[]
   onError?: ActionDef[]
@@ -1350,7 +1350,7 @@ export interface AwaitMotionAction {
 
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
  *  dispatch on `kind` and the editor UI can render per-kind inputs.
- *  Phase 2 §3 adds `ApiCallAction`; Phase 3 §2 adds Supabase {Query,Mutation};
+ *  Phase 2 §3 adds `APICallAction`; Phase 3 §2 adds Supabase {Query,Mutation};
  *  Phase 3 §2.v2 adds `SupabaseAuthAction` (overturns §2 decision #5's
  *  6-kind lock). Phase 3 §10 adds workflow-orchestration kinds
  *  `ConditionalAction` / `DelayAction` / `StopAction`; §10 v2 adds
@@ -1360,7 +1360,7 @@ export type ActionDef =
   | SetStateAction
   | NavigateAction
   | SetVariableAction
-  | ApiCallAction
+  | APICallAction
   | SupabaseQueryAction
   | SupabaseMutationAction
   | SupabaseAuthAction

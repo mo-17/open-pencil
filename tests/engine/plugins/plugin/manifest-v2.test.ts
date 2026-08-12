@@ -5,7 +5,7 @@ import {
   PLUGIN_MANIFEST_LIMITS,
   parsePluginManifestPayload,
   parseVersionedPluginPackageBytes,
-  parseVersionedPluginPackageJson,
+  parseVersionedPluginPackageJSON,
   parseVersionedPluginManifestPayload,
   parseVerifiedPluginPackageSnapshot,
   serializeVersionedPluginManifest,
@@ -134,7 +134,7 @@ describe('plugin manifest schema version 2', () => {
       throw new Error('Expected schema-v2 manifest')
     }
     const serialized = serializeVersionedPluginManifest(manifest)
-    expect(parseVersionedPluginPackageJson(serialized)).toEqual(manifest)
+    expect(parseVersionedPluginPackageJSON(serialized)).toEqual(manifest)
     expect(parseVersionedPluginPackageBytes(new TextEncoder().encode(serialized))).toEqual(manifest)
     const verified = await verifyVersionedPluginPackage(manifest, keyPair.publicKey, {
       expectedKeyId: 'acme.release',

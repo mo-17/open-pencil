@@ -9,7 +9,7 @@
 
 import { blake3 } from '@noble/hashes/blake3'
 
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 export interface DeployTarget {
   provider: 'netlify' | 'vercel' | 'cloudflare'
@@ -143,7 +143,7 @@ async function apiFetch(
   // These endpoints return JSON; tolerate an empty body.
   const text = await res.text()
   if (!text) return {}
-  return JSON.parse(text) as JsonObject
+  return JSON.parse(text) as JSONObject
 }
 
 type ProgressFn = ((p: DeployProgress) => void) | undefined
@@ -182,7 +182,7 @@ async function digestPayload(
 }
 
 /** Prefer the HTTPS deploy URL, fall back to the plain URL. */
-function pickUrl(obj: Record<string, unknown>): string | undefined {
+function pickURL(obj: Record<string, unknown>): string | undefined {
   const ssl = obj.ssl_url
   if (typeof ssl === 'string') return ssl
   const url = obj.url
@@ -297,8 +297,8 @@ async function deployNetlify(
   onProgress?.({ stage: 'done' })
 
   const url =
-    pickUrl(deploy) ??
-    (createdSite ? pickUrl(createdSite) : undefined) ??
+    pickURL(deploy) ??
+    (createdSite ? pickURL(createdSite) : undefined) ??
     `https://app.netlify.com/deploys/${deployId}`
   return { provider: 'netlify', url, deployId, fileCount: entries.length }
 }
@@ -372,9 +372,9 @@ interface CloudflareAsset extends DigestedFile {
   contentType: string
 }
 
-type CloudflareApiResult = JsonObject | unknown[]
+type CloudflareAPIResult = JSONObject | unknown[]
 
-function isCloudflareApiResult(value: unknown): value is CloudflareApiResult {
+function isCloudflareAPIResult(value: unknown): value is CloudflareAPIResult {
   return Array.isArray(value) || (typeof value === 'object' && value !== null)
 }
 
@@ -413,7 +413,7 @@ async function cloudflareFetch(
     jsonBody?: unknown
     formBody?: FormData
   }
-): Promise<CloudflareApiResult> {
+): Promise<CloudflareAPIResult> {
   const headers: Record<string, string> = { Authorization: `Bearer ${init.token}` }
   let body: BodyInit | undefined
   if (init.jsonBody !== undefined) {
@@ -435,8 +435,8 @@ async function cloudflareFetch(
       `Cloudflare API ${path} failed: ${res.status}${hint}${detail ? ` — ${detail}` : ''}`
     )
   }
-  const parsed = (await res.json()) as JsonObject
-  return 'result' in parsed && isCloudflareApiResult(parsed.result) ? parsed.result : parsed
+  const parsed = (await res.json()) as JSONObject
+  return 'result' in parsed && isCloudflareAPIResult(parsed.result) ? parsed.result : parsed
 }
 
 async function getCloudflareUploadToken(

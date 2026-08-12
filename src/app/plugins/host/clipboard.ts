@@ -6,14 +6,14 @@ import { CLIPBOARD_COMMANDS } from './ids'
 
 export interface ClipboardHost {
   writeText(value: string): Promise<void>
-  writePng(value: Uint8Array): Promise<void>
+  writePNG(value: Uint8Array): Promise<void>
 }
 
 async function writeBrowserClipboardText(value: string): Promise<void> {
   await navigator.clipboard.writeText(value)
 }
 
-async function writeBrowserClipboardPng(value: Uint8Array): Promise<void> {
+async function writeBrowserClipboardPNG(value: Uint8Array): Promise<void> {
   if (isTauri()) {
     throw new Error('PNG clipboard export is not supported by this desktop build')
   }
@@ -28,7 +28,7 @@ export const SYSTEM_CLIPBOARD_HOST: ClipboardHost = Object.freeze({
     if (isTauri()) await writeTauriClipboardText(value)
     else await writeBrowserClipboardText(value)
   },
-  writePng: writeBrowserClipboardPng
+  writePNG: writeBrowserClipboardPNG
 })
 
 function selectedIds(editor: EditorStore): string[] {
@@ -63,7 +63,7 @@ export async function executeClipboardCommand(
   if (commandId === CLIPBOARD_COMMANDS.png.commandId) {
     const data = await editor.renderExportImage(ids, 2, 'PNG')
     if (!data) throw new Error('The current selection could not be rendered as PNG')
-    await clipboard.writePng(data)
+    await clipboard.writePNG(data)
     return 'Copied selection as PNG'
   }
   throw new Error(`Unsupported clipboard command: ${commandId}`)

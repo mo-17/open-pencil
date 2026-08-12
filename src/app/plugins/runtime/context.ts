@@ -1,6 +1,6 @@
 import type { PluginRuntimeCapabilityV1 } from '@open-pencil/core/plugins'
 import type { SceneNode } from '@open-pencil/scene-graph'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import { getActiveEditorStoreOrNull, type EditorStore } from '@/app/editor/active-store'
 
@@ -121,18 +121,18 @@ function selectionContext(editor: EditorStore) {
  */
 export async function preparePluginRuntimeInput(
   capabilities: readonly PluginRuntimeCapabilityV1[],
-  userInput: JsonValue,
+  userInput: JSONValue,
   editor: EditorStore | null = getActiveEditorStoreOrNull()
-): Promise<JsonValue> {
+): Promise<JSONValue> {
   if (capabilities.length === 0) return userInput
   if (!editor) throw new Error('No active document is available for plugin runtime capabilities')
 
-  const context: Record<string, JsonValue> = {}
+  const context: Record<string, JSONValue> = {}
   if (capabilities.includes('document.nodes.read')) {
-    context.documentNodes = documentContext(editor) as JsonValue
+    context.documentNodes = documentContext(editor) as JSONValue
   }
   if (capabilities.includes('document.selection.read')) {
-    context.documentSelection = selectionContext(editor) as JsonValue
+    context.documentSelection = selectionContext(editor) as JSONValue
   }
   return { input: userInput, capabilities: context }
 }

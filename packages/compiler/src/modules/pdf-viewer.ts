@@ -1,7 +1,7 @@
 import {
   PDF_VIEWER_MODULE_TYPE,
   PDF_VIEWER_PLUGIN_ID,
-  resolvePdfViewerModule
+  resolvePDFViewerModule
 } from '@open-pencil/core/plugins'
 
 import { createContractModuleLowerer } from './contract-lowerer'
@@ -11,6 +11,6 @@ export const PDF_VIEWER_COMPILER_MODULE_LOWERER = createContractModuleLowerer({
   moduleType: PDF_VIEWER_MODULE_TYPE,
   warningCodePrefix: 'pdf-viewer-module',
   displayName: 'PDF Viewer',
-  resolve: resolvePdfViewerModule,
+  resolve: resolvePDFViewerModule,
   payload: (config) => ({ ...config })
 })

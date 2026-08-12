@@ -9,13 +9,13 @@ import { ACP_AGENTS } from '@open-pencil/core/constants'
 
 import {
   ACPChatTransport,
-  buildAcpMcpServerConfigs,
-  buildOpenPencilMcpServerConfig,
+  buildACPMCPServerConfigs,
+  buildOpenPencilMCPServerConfig,
   type ACPSessionOpenedEvent,
   type ACPSessionSetupEvent
 } from '@/app/ai/acp/transport'
 import { createACPTransport } from '@/app/ai/chat/transports'
-import * as automationMcp from '@/app/automation/mcp/spawn'
+import * as automationMCP from '@/app/automation/mcp/spawn'
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
@@ -26,7 +26,7 @@ const TEST_CODEX_AGENT = ACP_AGENTS.find((agent) => agent.id === 'codex')
 if (!TEST_CODEX_AGENT) throw new Error('Missing Codex ACP agent fixture')
 
 beforeEach(() => {
-  vi.spyOn(automationMcp, 'getAutomationAuthToken').mockResolvedValue(TEST_AUTOMATION_AUTH_TOKEN)
+  vi.spyOn(automationMCP, 'getAutomationAuthToken').mockResolvedValue(TEST_AUTOMATION_AUTH_TOKEN)
 })
 
 afterEach(async () => {
@@ -35,21 +35,21 @@ afterEach(async () => {
   Reflect.deleteProperty(globalThis, 'window')
 })
 
-type JsonRpcRequest = {
+type JSONRPCRequest = {
   id: number
   method: string
   params: Record<string, unknown>
 }
 
-type JsonRpcReply = {
+type JSONRPCReply = {
   respond(result: unknown): void
   reject(message: string): void
 }
 
 async function installFakeACPAgent() {
-  const requests: JsonRpcRequest[] = []
+  const requests: JSONRPCRequest[] = []
   let onEvent: ((event: unknown) => void) | null = null
-  let requestHandler: (request: JsonRpcRequest, reply: JsonRpcReply) => void = () => undefined
+  let requestHandler: (request: JSONRPCRequest, reply: JSONRPCReply) => void = () => undefined
   let pid = 100
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
@@ -72,7 +72,7 @@ async function installFakeACPAgent() {
       const target = onEvent
       const raw = decoder.decode(new Uint8Array((args as { buffer: number[] }).buffer))
       for (const line of raw.trim().split('\n').filter(Boolean)) {
-        const request = JSON.parse(line) as JsonRpcRequest
+        const request = JSON.parse(line) as JSONRPCRequest
         requests.push(request)
         requestHandler(request, {
           respond: (result) => emit({ id: request.id, result }, target),
@@ -98,10 +98,10 @@ async function installFakeACPAgent() {
 }
 
 async function waitForRequest(
-  requests: readonly JsonRpcRequest[],
+  requests: readonly JSONRPCRequest[],
   method: string,
   occurrence = 1
-): Promise<JsonRpcRequest> {
+): Promise<JSONRPCRequest> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const matches = requests.filter((request) => request.method === method)
     const request = matches[occurrence - 1]
@@ -149,7 +149,7 @@ function userMessage(text: string, abortSignal?: AbortSignal) {
   }
 }
 
-function dataUrl(mediaType: string, bytes: Uint8Array): string {
+function dataURL(mediaType: string, bytes: Uint8Array): string {
   return `data:${mediaType};base64,${encodeBase64(bytes)}`
 }
 
@@ -164,7 +164,7 @@ function filePart(overrides: Partial<FileUIPart> = {}): FileUIPart {
     type: 'file',
     mediaType: 'image/png',
     filename: 'reference.png',
-    url: dataUrl('image/png', PNG_SIGNATURE),
+    url: dataURL('image/png', PNG_SIGNATURE),
     ...overrides
   }
 }
@@ -216,7 +216,7 @@ const TEST_CONFIG_OPTIONS: SessionConfigOption[] = [
 
 describe('Tauri ACP transport', () => {
   test('connects ACP agents to the authenticated desktop HTTP MCP server', () => {
-    expect(buildOpenPencilMcpServerConfig(TEST_AUTOMATION_AUTH_TOKEN)).toEqual({
+    expect(buildOpenPencilMCPServerConfig(TEST_AUTOMATION_AUTH_TOKEN)).toEqual({
       type: 'http',
       name: 'open-pencil',
       url: 'http://127.0.0.1:7600/mcp',
@@ -225,7 +225,7 @@ describe('Tauri ACP transport', () => {
   })
 
   test('omits the authorization header when MCP authentication is disabled', () => {
-    expect(buildOpenPencilMcpServerConfig(null)).toEqual({
+    expect(buildOpenPencilMCPServerConfig(null)).toEqual({
       type: 'http',
       name: 'open-pencil',
       url: 'http://127.0.0.1:7600/mcp',
@@ -240,8 +240,8 @@ describe('Tauri ACP transport', () => {
       url: 'https://mcp.example.com/tools',
       headers: [{ name: 'Authorization', value: 'Bearer runtime-only' }]
     }
-    expect(buildAcpMcpServerConfigs(TEST_AUTOMATION_AUTH_TOKEN, [remote])).toEqual([
-      buildOpenPencilMcpServerConfig(TEST_AUTOMATION_AUTH_TOKEN),
+    expect(buildACPMCPServerConfigs(TEST_AUTOMATION_AUTH_TOKEN, [remote])).toEqual([
+      buildOpenPencilMCPServerConfig(TEST_AUTOMATION_AUTH_TOKEN),
       remote
     ])
   })
@@ -619,7 +619,7 @@ describe('Tauri ACP transport', () => {
     ])
     expect(agent.requests.at(-1)?.params).toEqual({
       cwd: '/Users/tester/project',
-      mcpServers: [buildOpenPencilMcpServerConfig(TEST_AUTOMATION_AUTH_TOKEN)],
+      mcpServers: [buildOpenPencilMCPServerConfig(TEST_AUTOMATION_AUTH_TOKEN)],
       sessionId: 'persisted-session'
     })
     expect(configSnapshots.at(-1)).toEqual(TEST_CONFIG_OPTIONS)
@@ -935,11 +935,11 @@ describe('Tauri ACP transport', () => {
     })
 
     await transport.connect()
-    expect(automationMcp.getAutomationAuthToken).toHaveBeenCalledTimes(1)
+    expect(automationMCP.getAutomationAuthToken).toHaveBeenCalledTimes(1)
     expect(requests.map((request) => request.method)).toEqual(['initialize', 'session/new'])
     expect(requests.find((request) => request.method === 'session/new')?.params).toMatchObject({
       cwd: '/Users/tester',
-      mcpServers: [buildOpenPencilMcpServerConfig(TEST_AUTOMATION_AUTH_TOKEN)]
+      mcpServers: [buildOpenPencilMCPServerConfig(TEST_AUTOMATION_AUTH_TOKEN)]
     })
     expect(configSnapshots.at(-1)).toEqual(startupUpdateOptions)
 
@@ -1017,7 +1017,7 @@ describe('Tauri ACP transport', () => {
     const jpeg = filePart({
       filename: 'paperclip.jpg',
       mediaType: 'image/jpeg',
-      url: dataUrl('image/jpeg', JPEG_SIGNATURE)
+      url: dataURL('image/jpeg', JPEG_SIGNATURE)
     })
     await readChunks(
       await transport.sendMessages(
@@ -1118,12 +1118,12 @@ describe('Tauri ACP transport', () => {
       },
       {
         name: 'MIME mismatch',
-        part: filePart({ url: dataUrl('image/jpeg', JPEG_SIGNATURE) }),
+        part: filePart({ url: dataURL('image/jpeg', JPEG_SIGNATURE) }),
         error: 'data URL contains "image/jpeg"'
       },
       {
         name: 'magic mismatch',
-        part: filePart({ url: dataUrl('image/png', JPEG_SIGNATURE) }),
+        part: filePart({ url: dataURL('image/png', JPEG_SIGNATURE) }),
         error: 'contents do not match its declared media type'
       },
       {
@@ -1165,17 +1165,17 @@ describe('Tauri ACP transport', () => {
 
     const oversized = filePart({
       filename: 'oversized.png',
-      url: dataUrl('image/png', pngBytes(2 * 1024 * 1024 + 1))
+      url: dataURL('image/png', pngBytes(2 * 1024 * 1024 + 1))
     })
     await expect(
       transport.sendMessages(imageUserMessage('Oversized image', [oversized]))
     ).rejects.toThrow('exceeds the 2 MiB ACP image limit')
 
-    const maximumImageUrl = dataUrl('image/png', pngBytes(2 * 1024 * 1024))
+    const maximumImageURL = dataURL('image/png', pngBytes(2 * 1024 * 1024))
     const overCombinedLimit = [
-      filePart({ filename: 'maximum-1.png', url: maximumImageUrl }),
-      filePart({ filename: 'maximum-2.png', url: maximumImageUrl }),
-      filePart({ filename: 'maximum-3.png', url: maximumImageUrl }),
+      filePart({ filename: 'maximum-1.png', url: maximumImageURL }),
+      filePart({ filename: 'maximum-2.png', url: maximumImageURL }),
+      filePart({ filename: 'maximum-3.png', url: maximumImageURL }),
       filePart({ filename: 'extra.png' })
     ]
     await expect(
@@ -1242,7 +1242,7 @@ describe('Tauri ACP transport', () => {
 
   test('drains the cancelled prompt before closing its stream or starting the next turn', async () => {
     const agent = await installFakeACPAgent()
-    let firstPromptReply: JsonRpcReply | null = null
+    let firstPromptReply: JSONRPCReply | null = null
     let promptCount = 0
     agent.handleRequests((request, reply) => {
       if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })

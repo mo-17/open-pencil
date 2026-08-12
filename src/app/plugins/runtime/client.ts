@@ -23,7 +23,7 @@ import {
   createRemotePluginTransport,
   type CreateRemotePluginTransportOptions,
   type RemotePluginCacheValidators,
-  type RemotePluginJsonResponse
+  type RemotePluginJSONResponse
 } from '../remote/transport'
 
 export interface CreatePluginRuntimeClientOptions {
@@ -50,7 +50,7 @@ export interface PluginRuntimeLoadResult {
   refreshError: Error | null
 }
 
-type FreshResponse = Extract<RemotePluginJsonResponse, { status: 'fresh' }>
+type FreshResponse = Extract<RemotePluginJSONResponse, { status: 'fresh' }>
 type LoadVerifiedResult<T> = {
   value: T
   source: PluginRuntimeLoadSource
@@ -98,12 +98,12 @@ async function cachedRecord(
   }
 }
 
-async function loadVerifiedJson<T>(options: {
+async function loadVerifiedJSON<T>(options: {
   url: string
   kind: Extract<RemotePluginCacheKind, 'runtime-index' | 'runtime-package'>
   storage: RemotePluginCacheStorage
   now(): number
-  load(validators: RemotePluginCacheValidators): Promise<RemotePluginJsonResponse>
+  load(validators: RemotePluginCacheValidators): Promise<RemotePluginJSONResponse>
   verify(value: unknown): Promise<T>
   expiresAt(value: T): number
 }): Promise<LoadVerifiedResult<T>> {
@@ -172,7 +172,7 @@ export function createPluginRuntimeClient(options: CreatePluginRuntimeClientOpti
     })
     const reference = marketplace.snapshot.runtimeIndex
     if (!reference) throw new Error('Marketplace does not publish an executable runtime index')
-    const indexResult = await loadVerifiedJson({
+    const indexResult = await loadVerifiedJSON({
       url: reference.url,
       kind: 'runtime-index',
       storage,
@@ -187,7 +187,7 @@ export function createPluginRuntimeClient(options: CreatePluginRuntimeClientOpti
         Math.min(Date.parse(marketplace.snapshot.expiresAt), Date.parse(value.index.expiresAt))
     })
     const entry = runtimeEntry(indexResult.value, loadOptions.declarativePackage)
-    const runtimeResult = await loadVerifiedJson({
+    const runtimeResult = await loadVerifiedJSON({
       url: entry.runtimePackageUrl,
       kind: 'runtime-package',
       storage,

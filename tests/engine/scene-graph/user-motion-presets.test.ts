@@ -10,7 +10,7 @@ import {
   instantiateUserMotionPreset,
   mergeUserMotionPresetLibraries,
   parseUserMotionPresetLibrary,
-  parseUserMotionPresetLibraryJson,
+  parseUserMotionPresetLibraryJSON,
   removeUserMotionPreset,
   renameUserMotionPreset,
   serializeUserMotionPresetLibrary,
@@ -89,7 +89,7 @@ describe('portable user motion presets', () => {
     expect(parsed.presets[0].description).toBe('中文说明')
 
     const first = serializeUserMotionPresetLibrary(parsed)
-    const second = serializeUserMotionPresetLibrary(parseUserMotionPresetLibraryJson(first))
+    const second = serializeUserMotionPresetLibrary(parseUserMotionPresetLibraryJSON(first))
     expect(second).toBe(first)
     expect(first.indexOf('"format"')).toBeLessThan(first.indexOf('"schemaVersion"'))
     expect(first.indexOf('"description"')).toBeLessThan(first.indexOf('"category"'))
@@ -225,14 +225,14 @@ describe('portable user motion presets', () => {
       schemaVersion: 1,
       presets: []
     })
-    const pollutedJson = JSON.parse(
+    const pollutedJSON = JSON.parse(
       '{"format":"openpencil-motion-presets","schemaVersion":1,"presets":[],"__proto__":{}}'
     )
 
     expect(() => parseUserMotionPresetLibrary(customPrototype)).toThrow(
       UserMotionPresetValidationError
     )
-    expect(() => parseUserMotionPresetLibrary(pollutedJson)).toThrow(
+    expect(() => parseUserMotionPresetLibrary(pollutedJSON)).toThrow(
       UserMotionPresetValidationError
     )
   })
@@ -255,7 +255,7 @@ describe('portable user motion presets', () => {
     }
 
     const oversized = `${' '.repeat(USER_MOTION_PRESET_LIMITS.maxJsonBytes)}{}`
-    expect(() => parseUserMotionPresetLibraryJson(oversized)).toThrow(
+    expect(() => parseUserMotionPresetLibraryJSON(oversized)).toThrow(
       UserMotionPresetValidationError
     )
   })
@@ -276,7 +276,7 @@ describe('portable user motion presets', () => {
         { category: 'custom' }
       )
     ).toThrow(UserMotionPresetValidationError)
-    expect(() => parseUserMotionPresetLibraryJson('{not json')).toThrow(
+    expect(() => parseUserMotionPresetLibraryJSON('{not json')).toThrow(
       UserMotionPresetValidationError
     )
   })

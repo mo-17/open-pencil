@@ -269,10 +269,10 @@ function uniqueRelations(relations: readonly SupabaseSchemaRelation[]): Supabase
   return result
 }
 
-function definitionMap(openApi: UnknownRecord): UnknownRecord {
-  const definitions = asRecord(openApi.definitions)
+function definitionMap(openAPI: UnknownRecord): UnknownRecord {
+  const definitions = asRecord(openAPI.definitions)
   if (definitions) return definitions
-  const components = asRecord(openApi.components)
+  const components = asRecord(openAPI.components)
   const schemas = asRecord(components?.schemas)
   if (schemas) return schemas
   throw new Error('Supabase OpenAPI response does not contain definitions or components.schemas.')
@@ -340,10 +340,10 @@ function parseTable(name: string, value: unknown): SupabaseSchemaTable | null {
 }
 
 export function parseSupabaseSchemaCatalog(
-  openApi: unknown,
+  openAPI: unknown,
   identity: SupabaseSchemaCatalogIdentity
 ): SupabaseSchemaCatalog {
-  const root = asRecord(openApi)
+  const root = asRecord(openAPI)
   if (!root) throw new Error('Supabase OpenAPI response must be an object.')
   const projectRef = boundedName(identity.projectRef, 'Project reference')
   const schema = boundedName(identity.schema, 'Schema name')

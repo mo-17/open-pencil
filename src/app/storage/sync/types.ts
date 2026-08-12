@@ -20,7 +20,7 @@ export type OutboxJob = {
   expectedRemoteRevision: StorageRemoteRevision | null
 }
 
-export type SyncUiState = 'idle' | 'syncing' | 'offline' | 'error'
+export type SyncUIState = 'idle' | 'syncing' | 'offline' | 'error'
 
 /** Pure helper: drop older putCanvas jobs for same canvas when a newer revision is enqueued. */
 export function supersedePutCanvasJobs(

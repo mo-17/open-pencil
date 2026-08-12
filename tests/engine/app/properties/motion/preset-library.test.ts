@@ -7,7 +7,7 @@ import {
   USER_MOTION_PRESET_LIMITS,
   USER_MOTION_PRESET_SCHEMA_VERSION,
   createMotionPreset,
-  parseUserMotionPresetLibraryJson
+  parseUserMotionPresetLibraryJSON
 } from '@open-pencil/scene-graph'
 
 import {
@@ -186,15 +186,15 @@ describe('app motion preset library store', () => {
     source.toggleFavorite(userMotionPresetKey('user-shared'))
     source.toggleFavorite(builtinMotionPresetKey('slide-up'))
 
-    const firstExport = source.exportJson()
-    expect(source.exportJson()).toBe(firstExport)
-    expect(parseUserMotionPresetLibraryJson(firstExport).presets[0]?.name).toBe('共享预设')
+    const firstExport = source.exportJSON()
+    expect(source.exportJSON()).toBe(firstExport)
+    expect(parseUserMotionPresetLibraryJSON(firstExport).presets[0]?.name).toBe('共享预设')
     expect(JSON.parse(firstExport)).not.toHaveProperty('favorites')
 
     const storage = new MemoryStorage()
     const target = createMotionPresetLibraryStore({ storage })
-    target.importJson(firstExport, 'error')
-    expect(target.exportJson()).toBe(firstExport)
+    target.importJSON(firstExport, 'error')
+    expect(target.exportJSON()).toBe(firstExport)
     expect(target.snapshot().favorites).toEqual([])
     expect(target.instantiatePreset('user-shared').preset).toEqual({
       id: 'user-shared',
@@ -202,10 +202,10 @@ describe('app motion preset library store', () => {
       parameters: {}
     })
 
-    expect(() => target.importJson(firstExport, 'error')).toThrow(/conflict/i)
-    const beforeSkip = target.exportJson()
-    target.importJson(firstExport, 'skip')
-    expect(target.exportJson()).toBe(beforeSkip)
+    expect(() => target.importJSON(firstExport, 'error')).toThrow(/conflict/i)
+    const beforeSkip = target.exportJSON()
+    target.importJSON(firstExport, 'skip')
+    expect(target.exportJSON()).toBe(beforeSkip)
   })
 
   test('migrates the legacy app envelope while keeping portable exports interoperable', () => {
@@ -223,7 +223,7 @@ describe('app motion preset library store', () => {
     const store = createMotionPresetLibraryStore({ storage })
     expect(store.snapshot().blocked).toBe(false)
     expect(store.snapshot().favorites).toEqual([builtinMotionPresetKey('slide-up')])
-    expect(parseUserMotionPresetLibraryJson(store.exportJson())).toEqual(portable)
+    expect(parseUserMotionPresetLibraryJSON(store.exportJSON())).toEqual(portable)
 
     store.toggleFavorite(builtinMotionPresetKey('fade-in'))
     expect(JSON.parse(storedValue(storage)).format).toBe('openpencil-motion-preset-settings')
@@ -242,7 +242,7 @@ describe('app motion preset library store', () => {
       JSON.stringify({
         format: 'openpencil-motion-preset-settings',
         schemaVersion: 1,
-        library: JSON.parse(source.exportJson()),
+        library: JSON.parse(source.exportJSON()),
         favorites: [userMotionPresetKey('user-local-v1')]
       })
     )
@@ -350,7 +350,7 @@ describe('app motion preset library store', () => {
       restored.snapshot().sharedLibraries[0].manifest.presets[0].motion.tracks[0].keyframes[0]
         .opacity
     ).toBe(0)
-    expect(JSON.parse(restored.exportJson())).not.toHaveProperty('sharedLibraries')
+    expect(JSON.parse(restored.exportJSON())).not.toHaveProperty('sharedLibraries')
   })
 
   test('bounds and strictly validates local and imported JSON before accepting it', () => {
@@ -362,9 +362,9 @@ describe('app motion preset library store', () => {
     expect(blocked.snapshot().error?.message).toMatch(/may not exceed/)
 
     const store = createMotionPresetLibraryStore({ storage: null })
-    expect(() => store.importJson(oversized)).toThrow(/may not exceed/)
+    expect(() => store.importJSON(oversized)).toThrow(/may not exceed/)
     expect(() =>
-      store.importJson(
+      store.importJSON(
         JSON.stringify({
           format: USER_MOTION_PRESET_FORMAT,
           schemaVersion: USER_MOTION_PRESET_SCHEMA_VERSION,
@@ -374,7 +374,7 @@ describe('app motion preset library store', () => {
       )
     ).toThrow(/Unknown motion preset library field/)
     expect(() =>
-      store.importJson(
+      store.importJSON(
         JSON.stringify({
           format: USER_MOTION_PRESET_FORMAT,
           schemaVersion: USER_MOTION_PRESET_SCHEMA_VERSION,
@@ -384,7 +384,7 @@ describe('app motion preset library store', () => {
       )
     ).toThrow(/at most 108/)
     expect(() =>
-      store.importJson(
+      store.importJSON(
         JSON.stringify({
           format: USER_MOTION_PRESET_FORMAT,
           schemaVersion: USER_MOTION_PRESET_SCHEMA_VERSION,

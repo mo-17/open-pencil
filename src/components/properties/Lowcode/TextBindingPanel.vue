@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 import { validateExpression } from '@open-pencil/core/lowcode-validation'
 import type { BindingExpr } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -90,7 +90,7 @@ function onButtonTextChange(event: Event): void {
   const node = selectedNode.value
   if (!node) return
   const next = (event.target as HTMLInputElement).value
-  const ipPrev = (node.interactiveProps ?? {}) as JsonObject
+  const ipPrev = (node.interactiveProps ?? {}) as JSONObject
   // Empty input clears the field → emit falls back to default 'Button' literal.
   // Aligns with §3.2 "set null/undefined to clear" semantics.
   const ipNext: Record<string, unknown> = { ...ipPrev }

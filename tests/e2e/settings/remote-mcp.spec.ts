@@ -64,9 +64,9 @@ test('configures a remote MCP server and enables it for one model', async ({ pag
   await canvas.waitForInit()
 
   await page.getByTestId('app-settings-trigger').click()
-  const remoteMcpSection = page.getByTestId('settings-remote-mcp')
-  await expect(remoteMcpSection).toBeVisible()
-  await expect(remoteMcpSection).toContainText('No remote MCP servers configured.')
+  const remoteMCPSection = page.getByTestId('settings-remote-mcp')
+  await expect(remoteMCPSection).toBeVisible()
+  await expect(remoteMCPSection).toContainText('No remote MCP servers configured.')
 
   await page.getByTestId('settings-add-remote-mcp').click()
   const serverEditor = page.getByTestId('settings-remote-mcp-editor')
@@ -76,9 +76,9 @@ test('configures a remote MCP server and enables it for one model', async ({ pag
   await serverEditor.getByRole('button', { name: 'Save' }).click()
 
   await expect(serverEditor).toBeHidden()
-  await expect(remoteMcpSection).toContainText('Local MCP')
-  await expect(remoteMcpSection).toContainText('http://127.0.0.1:4711')
-  await expect(remoteMcpSection).toContainText('No authentication')
+  await expect(remoteMCPSection).toContainText('Local MCP')
+  await expect(remoteMCPSection).toContainText('http://127.0.0.1:4711')
+  await expect(remoteMCPSection).toContainText('No authentication')
 
   await page.getByTestId('settings-add-model').click()
   await page.getByLabel('Name').fill('MCP model')
@@ -86,9 +86,9 @@ test('configures a remote MCP server and enables it for one model', async ({ pag
   await page.getByRole('option', { name: 'Google AI' }).click()
   await page.getByLabel('Model ID').click()
   await page.getByRole('option', { name: 'Gemini 3 Flash' }).click()
-  const modelRemoteMcp = page.getByTestId('settings-model-remote-mcp')
-  await expect(modelRemoteMcp).toContainText('Local MCP')
-  const serverSwitch = modelRemoteMcp.getByRole('switch', { name: 'Local MCP' })
+  const modelRemoteMCP = page.getByTestId('settings-model-remote-mcp')
+  await expect(modelRemoteMCP).toContainText('Local MCP')
+  const serverSwitch = modelRemoteMCP.getByRole('switch', { name: 'Local MCP' })
   await expect(serverSwitch).not.toBeChecked()
   await serverSwitch.click()
   await expect(serverSwitch).toBeChecked()

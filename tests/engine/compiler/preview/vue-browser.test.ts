@@ -372,7 +372,7 @@ describe('Vue compiler preview browser', () => {
   const hookTimeoutMs = 30_000
   let directory: string | null = null
   let server: PreviewServer | null = null
-  let serverUrl: string | null = null
+  let serverURL: string | null = null
   let browser: Browser | null = null
   let pageHandle: Page | null = null
 
@@ -392,8 +392,8 @@ describe('Vue compiler preview browser', () => {
       preview: { host: '127.0.0.1', port: 0 },
       logLevel: 'error'
     })
-    serverUrl = server.resolvedUrls?.local[0] ?? null
-    if (!serverUrl) throw new Error('Vue Vite server did not expose a local URL')
+    serverURL = server.resolvedUrls?.local[0] ?? null
+    if (!serverURL) throw new Error('Vue Vite server did not expose a local URL')
     browser = await chromium.launch()
     pageHandle = await browser.newPage({ viewport: { width: 640, height: 480 } })
   }, hookTimeoutMs)
@@ -408,7 +408,7 @@ describe('Vue compiler preview browser', () => {
         if (server) await server.close()
         if (directory) rmSync(directory, { recursive: true, force: true })
         directory = null
-        serverUrl = null
+        serverURL = null
         pageHandle = null
         browser = null
         server = null
@@ -417,12 +417,12 @@ describe('Vue compiler preview browser', () => {
   }, hookTimeoutMs)
 
   test('runs state, assets, router, variant fallback, and injection guards', async () => {
-    if (!serverUrl || !pageHandle) throw new Error('missing Vue preview test runtime')
+    if (!serverURL || !pageHandle) throw new Error('missing Vue preview test runtime')
     const failedResponses: string[] = []
     pageHandle.on('response', (response) => {
       if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`)
     })
-    await pageHandle.goto(serverUrl, { waitUntil: 'networkidle' })
+    await pageHandle.goto(serverURL, { waitUntil: 'networkidle' })
 
     expect(
       await pageHandle.evaluate(() => Reflect.get(globalThis, '__VUE_TEXT_PWN'))

@@ -1,10 +1,10 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
 import { hasExactPluginKeys } from './parse-helpers'
@@ -36,52 +36,52 @@ export const RICH_TEXT_MODULE_LIMITS = Object.freeze({
 export type RichTextAlignmentV1 = 'left' | 'center' | 'right'
 export type RichTextSimpleMarkTypeV1 = 'bold' | 'italic' | 'underline' | 'strike' | 'code'
 
-export interface RichTextSimpleMarkV1 extends JsonObject {
+export interface RichTextSimpleMarkV1 extends JSONObject {
   type: RichTextSimpleMarkTypeV1
 }
 
-export interface RichTextLinkMarkV1 extends JsonObject {
+export interface RichTextLinkMarkV1 extends JSONObject {
   type: 'link'
   href: string
 }
 
 export type RichTextMarkV1 = RichTextSimpleMarkV1 | RichTextLinkMarkV1
 
-export interface RichTextInlineV1 extends JsonObject {
+export interface RichTextInlineV1 extends JSONObject {
   type: 'text'
   text: string
   marks: RichTextMarkV1[]
 }
 
-export interface RichTextParagraphV1 extends JsonObject {
+export interface RichTextParagraphV1 extends JSONObject {
   type: 'paragraph'
   align: RichTextAlignmentV1
   children: RichTextInlineV1[]
 }
 
-export interface RichTextHeadingV1 extends JsonObject {
+export interface RichTextHeadingV1 extends JSONObject {
   type: 'heading'
   level: 1 | 2 | 3
   align: RichTextAlignmentV1
   children: RichTextInlineV1[]
 }
 
-export interface RichTextBlockquoteV1 extends JsonObject {
+export interface RichTextBlockquoteV1 extends JSONObject {
   type: 'blockquote'
   children: RichTextInlineV1[]
 }
 
-export interface RichTextCodeBlockV1 extends JsonObject {
+export interface RichTextCodeBlockV1 extends JSONObject {
   type: 'codeBlock'
   language: string
   text: string
 }
 
-export interface RichTextListItemV1 extends JsonObject {
+export interface RichTextListItemV1 extends JSONObject {
   children: RichTextInlineV1[]
 }
 
-export interface RichTextListV1 extends JsonObject {
+export interface RichTextListV1 extends JSONObject {
   type: 'bulletList' | 'orderedList'
   items: RichTextListItemV1[]
 }
@@ -93,12 +93,12 @@ export type RichTextBlockV1 =
   | RichTextCodeBlockV1
   | RichTextListV1
 
-export interface RichTextDocumentV1 extends JsonObject {
+export interface RichTextDocumentV1 extends JSONObject {
   type: 'doc'
   blocks: RichTextBlockV1[]
 }
 
-export interface RichTextModuleConfigV1 extends JsonObject {
+export interface RichTextModuleConfigV1 extends JSONObject {
   content: RichTextDocumentV1
   textColor: string
   linkColor: string
@@ -202,7 +202,7 @@ export function isSafeRichTextHref(value: unknown): value is string {
 }
 
 function parseMark(value: unknown, path: string, state: ParseState): ParseResult<RichTextMarkV1> {
-  if (!isPlainJsonObject(value) || typeof value.type !== 'string') {
+  if (!isPlainJSONObject(value) || typeof value.type !== 'string') {
     return fail(`${path} must be a rich text mark object`)
   }
   state.marks += 1
@@ -227,7 +227,7 @@ function parseInline(
   state: ParseState
 ): ParseResult<RichTextInlineV1> {
   if (
-    !isPlainJsonObject(value) ||
+    !isPlainJSONObject(value) ||
     !hasExactPluginKeys(value, INLINE_KEYS) ||
     value.type !== 'text'
   ) {
@@ -347,7 +347,7 @@ function parseListBlock(
   const items: RichTextListItemV1[] = []
   for (let itemIndex = 0; itemIndex < value.items.length; itemIndex += 1) {
     const item = value.items[itemIndex]
-    if (!isPlainJsonObject(item) || !hasExactPluginKeys(item, LIST_ITEM_KEYS)) {
+    if (!isPlainJSONObject(item) || !hasExactPluginKeys(item, LIST_ITEM_KEYS)) {
       return fail(`${path}.items[${itemIndex}] must contain only children`)
     }
     state.listItems += 1
@@ -369,7 +369,7 @@ function parseBlock(
   index: number,
   state: ParseState
 ): ParseResult<RichTextBlockV1> {
-  if (!isPlainJsonObject(value) || typeof value.type !== 'string') {
+  if (!isPlainJSONObject(value) || typeof value.type !== 'string') {
     return fail(`rich text block ${index} must be an object with a supported type`)
   }
   if (value.type === 'paragraph' || value.type === 'heading' || value.type === 'blockquote') {
@@ -405,7 +405,7 @@ function parseBlock(
 
 function parseDocument(value: unknown): ParseResult<RichTextDocumentV1> {
   if (
-    !isPlainJsonObject(value) ||
+    !isPlainJSONObject(value) ||
     !hasExactPluginKeys(value, DOCUMENT_KEYS) ||
     value.type !== 'doc'
   ) {
@@ -429,7 +429,7 @@ function finiteInRange(value: unknown, min: number, max: number): value is numbe
 }
 
 function parseRichTextConfig(value: unknown): ParseResult<RichTextModuleConfigV1> {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
     return fail(
       'rich text config must contain exactly content, textColor, linkColor, fontSize, and lineHeight'
     )
@@ -478,7 +478,7 @@ function parseRichTextConfig(value: unknown): ParseResult<RichTextModuleConfigV1
 
 function mergeWithDefaults(config: unknown): unknown {
   if (config === undefined) return structuredClone(RICH_TEXT_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
+  if (!isPlainJSONObject(config)) return config
   return { ...structuredClone(RICH_TEXT_MODULE_DEFAULT_CONFIG), ...config }
 }
 

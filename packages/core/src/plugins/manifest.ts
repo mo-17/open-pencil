@@ -8,7 +8,7 @@ import {
   validateModuleIdentity,
   validateModuleInstance
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { parsePluginConnectorContract, type PluginConnectorContractV1 } from './connector-contract'
 import {
@@ -88,7 +88,7 @@ export interface DeclarativeModuleContributionV1 {
   adapterId: string
   configVersion: number
   defaultSize: { width: number; height: number }
-  defaultConfig: JsonObject
+  defaultConfig: JSONObject
   fields: readonly DeclarativeModuleFieldV1[]
 }
 
@@ -347,7 +347,7 @@ function positiveInteger(value: unknown, path: string): number {
   return value as number
 }
 
-function jsonConfig(value: unknown, path: string): JsonObject {
+function jsonConfig(value: unknown, path: string): JSONObject {
   const result = validateModuleInstance({
     version: 1,
     pluginId: 'manifest',
@@ -429,7 +429,7 @@ function field(value: unknown, path: string): DeclarativeModuleFieldV1 {
   return parsed
 }
 
-function resolvePath(config: JsonObject, path: readonly (string | number)[]): unknown {
+function resolvePath(config: JSONObject, path: readonly (string | number)[]): unknown {
   let current: unknown = config
   for (const segment of path) {
     if (typeof segment === 'number') {

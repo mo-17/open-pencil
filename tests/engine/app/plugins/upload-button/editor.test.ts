@@ -58,8 +58,8 @@ describe('Upload Button accept editor', () => {
     expect(fieldSource).toMatch(
       /data-test-id="upload-boolean-control"[\s\S]*?class="[^"]*min-h-11[^"]*focus-within:ring-2[^"]*"/
     )
-    expect(fieldSource).toContain("const uploadNumberFieldUi = { root: 'h-11 min-h-11' }")
-    expect(fieldSource).toContain(':ui="isUploadNumberField ? uploadNumberFieldUi : undefined"')
+    expect(fieldSource).toContain("const uploadNumberFieldUI = { root: 'h-11 min-h-11' }")
+    expect(fieldSource).toContain(':ui="isUploadNumberField ? uploadNumberFieldUI : undefined"')
   })
 
   test('atomically couples multiple and maxFiles without an invalid transient state', () => {

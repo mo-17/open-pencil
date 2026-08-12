@@ -268,11 +268,11 @@ describe('cross-walker — supabase handlers + config survive every walker', () 
     const idxSet = app.indexOf('setDocState("count"')
     const idxQuery = app.indexOf('getSupabaseClient().from("rows").select("*")')
     const idxMut = app.indexOf('.insert({"a":1})')
-    const idxApi = app.indexOf('await fetch("https://x.test/last")')
+    const idxAPI = app.indexOf('await fetch("https://x.test/last")')
     expect(idxSet).toBeGreaterThan(-1)
     expect(idxQuery).toBeGreaterThan(idxSet)
     expect(idxMut).toBeGreaterThan(idxQuery)
-    expect(idxApi).toBeGreaterThan(idxMut)
+    expect(idxAPI).toBeGreaterThan(idxMut)
   })
 
   test('zero regression: document without supabaseConfig emits no supabase runtime + no dep', () => {

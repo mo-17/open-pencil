@@ -1,15 +1,15 @@
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 
 import { createAutomationEvalHandler } from '@/app/automation/bridge/eval-handler'
-import { handleExport, handleExportJsx } from '@/app/automation/bridge/export-handlers'
+import { handleExport, handleExportJSX } from '@/app/automation/bridge/export-handlers'
 import {
   handleNewDocument,
   handleOpenFile,
   handleSaveFile
 } from '@/app/automation/bridge/file-handlers'
-import { createAutomationPluginMcpHandlers } from '@/app/automation/bridge/plugin-mcp-handler'
+import { createAutomationPluginMCPHandlers } from '@/app/automation/bridge/plugin-mcp-handler'
 import type { AutomationRequestContext } from '@/app/automation/bridge/request-context'
-import { handleRpcFallback } from '@/app/automation/bridge/rpc-handler'
+import { handleRPCFallback } from '@/app/automation/bridge/rpc-handler'
 import { handleSelection } from '@/app/automation/bridge/selection-handler'
 import {
   isUnknownRecord,
@@ -32,15 +32,15 @@ type CommandHandler = (
 export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
   const handleEval = createAutomationEvalHandler(makeFigma)
   const handleTool = createAutomationToolHandler(makeFigma)
-  const { handleList: handlePluginMcpTools, handleCall: handlePluginMcpTool } =
-    createAutomationPluginMcpHandlers(handleTool)
+  const { handleList: handlePluginMCPTools, handleCall: handlePluginMCPTool } =
+    createAutomationPluginMCPHandlers(handleTool)
 
   const commandHandlers: Partial<Record<string, CommandHandler>> = {
     eval: handleEval,
     tool: handleTool,
-    plugin_mcp_tool: handlePluginMcpTool,
+    plugin_mcp_tool: handlePluginMCPTool,
     export: handleExport,
-    export_jsx: handleExportJsx,
+    export_jsx: handleExportJSX,
     selection: handleSelection,
     save_file: handleSaveFile,
     new_document: handleNewDocument,
@@ -59,7 +59,7 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
 
     // Plugin tool discovery is document-independent. Calls still flow through the normal target
     // resolver below so document_id/page_id remain host-owned and cannot be supplied by a plugin.
-    if (command === 'plugin_mcp_tools') return handlePluginMcpTools()
+    if (command === 'plugin_mcp_tools') return handlePluginMCPTools()
 
     if (command === 'open_file' || command === 'new_document') {
       const handler = commandHandlers[command]
@@ -72,7 +72,7 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     const handler = commandHandlers[command]
     const result = handler
       ? await handler(target, targetArgs, context)
-      : await handleRpcFallback(target, command, targetArgs)
+      : await handleRPCFallback(target, command, targetArgs)
     return responseWithTarget(result, target)
   }
 

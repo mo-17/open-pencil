@@ -15,7 +15,7 @@ import {
   readDeployHistory,
   type DeployEnvironment,
   type DeployHistoryEntry,
-  type DeployHistoryUiKit
+  type DeployHistoryUIKit
 } from '@/app/lowcode/preview-pane/deploy/history'
 import { deployScopeForStore } from '@/app/lowcode/preview-pane/deploy/scope'
 import {
@@ -45,7 +45,7 @@ type Operation = 'status' | 'save-token' | 'clear-token' | 'review' | 'deploy'
 
 const environment = ref<DeployEnvironment>('preview')
 const target = ref('')
-const uiKit = ref<DeployHistoryUiKit>('none')
+const uiKit = ref<DeployHistoryUIKit>('none')
 const locales = ref('')
 const credentialStatus = ref<CredentialStatus>('missing')
 const operation = ref<Operation | null>(null)

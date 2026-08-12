@@ -1,10 +1,10 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from '#core/plugins/module-frame'
 import {
@@ -62,7 +62,7 @@ export type DataGridSelectionModeV1 = 'none' | 'single' | 'multiple'
 export type DataGridDensityV1 = 'compact' | 'comfortable'
 export type DataGridCellV1 = string | number | boolean | null
 
-export interface DataGridColumnV1 extends JsonObject {
+export interface DataGridColumnV1 extends JSONObject {
   id: string
   label: string
   type: DataGridColumnTypeV1
@@ -72,28 +72,28 @@ export interface DataGridColumnV1 extends JsonObject {
   filterable: boolean
 }
 
-export interface DataGridRowV1 extends JsonObject {
+export interface DataGridRowV1 extends JSONObject {
   id: string
   cells: DataGridCellV1[]
 }
 
-export interface DataGridDataV1 extends JsonObject {
+export interface DataGridDataV1 extends JSONObject {
   columns: DataGridColumnV1[]
   rows: DataGridRowV1[]
 }
 
-export interface DataGridSortV1 extends JsonObject {
+export interface DataGridSortV1 extends JSONObject {
   columnId: string
   direction: DataGridSortDirectionV1
 }
 
-export interface DataGridFilterV1 extends JsonObject {
+export interface DataGridFilterV1 extends JSONObject {
   columnId: string
   operator: DataGridFilterOperatorV1
   value: DataGridCellV1
 }
 
-export interface DataGridModuleConfigV1 extends JsonObject {
+export interface DataGridModuleConfigV1 extends JSONObject {
   data: DataGridDataV1
   initialSort: DataGridSortV1 | null
   filters: DataGridFilterV1[]
@@ -192,7 +192,7 @@ function parseColumns(value: unknown): DataGridColumnV1[] {
     if (!Object.hasOwn(value, index)) {
       throw new TypeError(`data grid columns[${index}] must be a column object`)
     }
-    if (!isPlainJsonObject(entry) || !hasExactPluginKeys(entry, COLUMN_KEYS)) {
+    if (!isPlainJSONObject(entry) || !hasExactPluginKeys(entry, COLUMN_KEYS)) {
       throw new TypeError(
         `data grid columns[${index}] must contain exactly id, label, type, align, width, sortable, and filterable`
       )
@@ -275,7 +275,7 @@ function parseRows(value: unknown, columns: DataGridColumnV1[]): DataGridRowV1[]
     if (!Object.hasOwn(value, rowIndex)) {
       throw new TypeError(`data grid rows[${rowIndex}] must be a row object`)
     }
-    if (!isPlainJsonObject(entry) || !hasExactPluginKeys(entry, ROW_KEYS)) {
+    if (!isPlainJSONObject(entry) || !hasExactPluginKeys(entry, ROW_KEYS)) {
       throw new TypeError(`data grid rows[${rowIndex}] must contain exactly id and cells`)
     }
     const id = identifier(entry.id, `data grid rows[${rowIndex}].id`)
@@ -309,7 +309,7 @@ function parseRows(value: unknown, columns: DataGridColumnV1[]): DataGridRowV1[]
 }
 
 function parseData(value: unknown): DataGridDataV1 {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, DATA_KEYS)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, DATA_KEYS)) {
     throw new TypeError('data grid data must contain exactly columns and rows')
   }
   const columns = parseColumns(value.columns)
@@ -343,7 +343,7 @@ function columnById(columns: DataGridColumnV1[], value: unknown, path: string): 
 
 function parseInitialSort(value: unknown, columns: DataGridColumnV1[]): DataGridSortV1 | null {
   if (value === null) return null
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, SORT_KEYS)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, SORT_KEYS)) {
     throw new TypeError(
       'data grid initialSort must be null or contain exactly columnId and direction'
     )
@@ -373,7 +373,7 @@ function parseFilters(value: unknown, columns: DataGridColumnV1[]): DataGridFilt
     if (!Object.hasOwn(value, index)) {
       throw new TypeError(`data grid filters[${index}] must be a filter object`)
     }
-    if (!isPlainJsonObject(entry) || !hasExactPluginKeys(entry, FILTER_KEYS)) {
+    if (!isPlainJSONObject(entry) || !hasExactPluginKeys(entry, FILTER_KEYS)) {
       throw new TypeError(
         `data grid filters[${index}] must contain exactly columnId, operator, and value`
       )
@@ -402,7 +402,7 @@ function parseFilters(value: unknown, columns: DataGridColumnV1[]): DataGridFilt
 }
 
 function parseDataGridConfig(value: unknown): ParseResult {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
     return {
       ok: false,
       reason:

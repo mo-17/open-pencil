@@ -7,7 +7,7 @@ import {
   type PluginParameterValue
 } from '@open-pencil/core/plugins'
 import { parseBoundedManifestArray, parseExactManifestRecord } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { credentialRef } from '@/app/settings/credentials/reference'
 
@@ -314,10 +314,10 @@ function reviewedOperation(
       operations: [operation]
     })
     const parsedOperation = envelope.operations.at(0)
-    const reviewedJson = parsedOperation
+    const reviewedJSON = parsedOperation
       ? REVIEWED_OPERATION_JSON.get(parsedOperation.operationId)
       : undefined
-    if (!parsedOperation || !reviewedJson || JSON.stringify(parsedOperation) !== reviewedJson) {
+    if (!parsedOperation || !reviewedJSON || JSON.stringify(parsedOperation) !== reviewedJSON) {
       throw new TypeError('operation mismatch')
     }
     return requiredOperation(parsedOperation.operationId)
@@ -413,7 +413,7 @@ function parsedParameters(
   }
 }
 
-function normalizedSendBody(parameters: ConnectorParameterObject): JsonObject {
+function normalizedSendBody(parameters: ConnectorParameterObject): JSONObject {
   const source = parsedParameters(parameters, RESEND_SEND_EMAIL_OPERATION)
   try {
     const from = sender(source.from)
@@ -441,7 +441,7 @@ function normalizedSendBody(parameters: ConnectorParameterObject): JsonObject {
       subject,
       ...(text !== undefined ? { text } : {}),
       ...(html !== undefined ? { html } : {})
-    }) as JsonObject
+    }) as JSONObject
   } catch (cause) {
     if (cause instanceof ConnectorExecutionError) throw cause
     throw invalidParameters('Resend email parameters are invalid.', cause)
@@ -486,7 +486,7 @@ export function prepareResendEmailRequest(
 }
 
 function resultValue(
-  value: JsonObject,
+  value: JSONObject,
   operation: PluginConnectorOperationV1
 ): Readonly<{ [key: string]: PluginParameterValue }> {
   const json = JSON.stringify(value)
@@ -573,7 +573,7 @@ function normalizedGetResponse(value: unknown): Readonly<{ [key: string]: Plugin
       lastEvent,
       ...(text === undefined ? {} : { text }),
       ...(html === undefined ? {} : { html })
-    }) as JsonObject
+    }) as JSONObject
     return resultValue(normalized, RESEND_GET_EMAIL_OPERATION)
   } catch (cause) {
     if (cause instanceof ConnectorExecutionError) throw cause

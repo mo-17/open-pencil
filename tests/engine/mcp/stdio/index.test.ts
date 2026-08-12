@@ -8,7 +8,7 @@ import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdi
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
-import { appPluginMcpToolName } from '@/app/plugins/mcp'
+import { appPluginMcpToolName as appPluginMCPToolName } from '@/app/plugins/mcp'
 
 import { startServer, type ServerHandle } from '#mcp/server'
 
@@ -219,7 +219,7 @@ describe('MCP stdio transport', () => {
   test('discovers installed plugin tools and removes them after disable without restarting stdio', async () => {
     const activeBrowser = browser
     if (!activeBrowser) throw new Error('browser not initialized')
-    const toolName = appPluginMcpToolName('open-pencil.slide-menu', 'module', 'slide-menu')
+    const toolName = appPluginMCPToolName('open-pencil.slide-menu', 'module', 'slide-menu')
     let enabled = true
     let revision = 'plugin-revision-1'
     const pluginCalls: unknown[] = []

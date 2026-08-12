@@ -31,7 +31,7 @@ import {
   SAFE_HREF_RUNTIME,
   scopedIdentifier,
   scriptExpression,
-  scriptJson,
+  scriptJSON,
   templateExpression,
   withLocalAliases,
   type VueEmitContext,
@@ -152,7 +152,7 @@ export function buildVuePageModule(
   for (const name of docStateReads) {
     if (pageStateNames.has(name)) continue
     scriptLines.push(
-      `const ${identAliases.get(name)} = __useDocState<${docStateTypeScript(docStateTypes.get(name))}>(${scriptJson(name)})`
+      `const ${identAliases.get(name)} = __useDocState<${docStateTypeScript(docStateTypes.get(name))}>(${scriptJSON(name)})`
     )
   }
   appendVueContextRuntime(scriptLines, validatedFields, context)
@@ -275,7 +275,7 @@ export function buildVueComponentModule(
         scriptLines.push(`const ${alias} = __vueComputed(() => __opProps.${alias})`)
       } else {
         scriptLines.push(
-          `const ${alias} = __vueComputed(() => __opProps.${alias} ?? ${scriptJson(prop.defaultValue)})`
+          `const ${alias} = __vueComputed(() => __opProps.${alias} ?? ${scriptJSON(prop.defaultValue)})`
         )
       }
     }
@@ -283,7 +283,7 @@ export function buildVueComponentModule(
   for (const name of docStateReads) {
     if (propNames.has(name)) continue
     scriptLines.push(
-      `const ${identAliases.get(name)} = __useDocState<${docStateTypeScript(docStateTypes.get(name))}>(${scriptJson(name)})`
+      `const ${identAliases.get(name)} = __useDocState<${docStateTypeScript(docStateTypes.get(name))}>(${scriptJSON(name)})`
     )
   }
 
@@ -304,7 +304,7 @@ export function buildVueComponentModule(
         ...guarded.map((variant, index) => {
           const directive = index === 0 ? 'v-if' : 'v-else-if'
           const nodes = emitNodes(variant.children, context, 2, [])
-          return `    <template ${directive}="__variantKey === ${escapeAttr(scriptJson(variant.key))}">\n${nodes}    </template>\n`
+          return `    <template ${directive}="__variantKey === ${escapeAttr(scriptJSON(variant.key))}">\n${nodes}    </template>\n`
         }),
         `    <template v-else>\n${emitNodes(fallback.children, context, 2, [])}    </template>\n`
       ].join('')
@@ -361,7 +361,7 @@ function emitNode(
     case 'expression': {
       context.expressionIndex += 1
       const name = `__opTextExpr_${context.expressionIndex}`
-      const fallback = node.fallback === undefined ? '' : ` ?? ${scriptJson(node.fallback)}`
+      const fallback = node.fallback === undefined ? '' : ` ?? ${scriptJSON(node.fallback)}`
       const aliases = withLocalAliases(context.identAliases, locals)
       const expression = scriptExpression(node.ast, context.refNames, aliases)
       if (locals.length === 0) {
@@ -414,7 +414,7 @@ function emitNode(
             )}"`
           )
         } else {
-          attrs.push(`:${propName}="${escapeAttr(scriptJson(prop.value))}"`)
+          attrs.push(`:${propName}="${escapeAttr(scriptJSON(prop.value))}"`)
         }
       }
       attrs.push(...emitEventAttributes(node.events, context, node.sourceId, locals))
@@ -491,7 +491,7 @@ function emitValidationSummary(
   const itemPad = '  '.repeat(indent + 2)
   context.expressionIndex += 1
   const binding = `__opValidationSummaryKeys_${context.expressionIndex}`
-  context.templateBindings.push(`const ${binding} = ${scriptJson(keys)}`)
+  context.templateBindings.push(`const ${binding} = ${scriptJSON(keys)}`)
   return [
     `${pad}<div v-if="${binding}.some((id) => __fieldErrors[id])" class="openpencil-validation-error" role="alert">`,
     `${innerPad}<p>${escapeStaticText(title)}</p>`,
@@ -524,12 +524,12 @@ function pageRootAttrs(ir: IRTree, devMode: boolean): string {
 }
 
 function serializeDefault(value: unknown, type: IRTree['states'][number]['type']): string {
-  if (type === 'string') return scriptJson(typeof value === 'string' ? value : '')
+  if (type === 'string') return scriptJSON(typeof value === 'string' ? value : '')
   if (type === 'number')
     return typeof value === 'number' && Number.isFinite(value) ? String(value) : '0'
   if (type === 'boolean') return value === true ? 'true' : 'false'
-  if (type === 'array') return scriptJson(Array.isArray(value) ? value : [])
-  return scriptJson(
+  if (type === 'array') return scriptJSON(Array.isArray(value) ? value : [])
+  return scriptJSON(
     value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {}
   )
 }

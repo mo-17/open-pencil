@@ -32,7 +32,7 @@ import {
   type CreateMarketplaceSubmissionInput,
   type MarketplaceAuditAction,
   type MarketplaceAuditEventV1,
-  type MarketplaceJsonValue,
+  type MarketplaceJSONValue,
   type MarketplaceMutationContext,
   type MarketplaceOwnershipStatus,
   type MarketplaceOwnershipV1,
@@ -223,7 +223,7 @@ async function commitMutation<Value>(
   audit: {
     action: MarketplaceAuditAction
     subject: string
-    payload: MarketplaceJsonValue
+    payload: MarketplaceJSONValue
     context: ReturnType<typeof resolveMarketplaceMutationContext>
   }
 ): Promise<MarketplaceMutationResult<Value>> {

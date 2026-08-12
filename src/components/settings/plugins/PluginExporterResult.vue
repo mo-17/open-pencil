@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 import { useI18n } from '@open-pencil/vue'
 
 interface ExportWarningView {
@@ -17,7 +17,7 @@ interface ExportResultView {
   warningsTruncated: boolean
 }
 
-const { data } = defineProps<{ data?: JsonValue }>()
+const { data } = defineProps<{ data?: JSONValue }>()
 const { dialogs } = useI18n()
 
 function isRecord(value: unknown): value is Record<string, unknown> {

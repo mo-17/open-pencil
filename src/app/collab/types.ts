@@ -53,14 +53,14 @@ export interface RemotePeer {
 /** Phase 3 §4.6 — preview runtime-state collaboration. JSON-serializable so it
  *  rides a Trystero room action (DataPayload). docState values are always JSON
  *  (string/number/boolean/array/object). */
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue }
+export type JSONValue = string | number | boolean | null | JSONValue[] | { [k: string]: JSONValue }
 
 /** A single runtime docState key change mirrored across a preview session.
  *  A type literal (not an interface) so it satisfies Trystero's DataPayload
  *  index-signature constraint. */
 export type PreviewDocStatePayload = {
   name: string
-  value: JsonValue
+  value: JSONValue
 }
 
 export interface CollabState {

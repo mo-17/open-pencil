@@ -5,7 +5,7 @@ import { createServer, type Server, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { createStdioRpcBridge } from '#mcp/stdio/bridge'
+import { createStdioRPCBridge } from '#mcp/stdio/bridge'
 import { getDiscoveryPath } from '#mcp/transport/paths'
 
 const isUnix = process.platform !== 'win32'
@@ -43,7 +43,7 @@ async function writeMockDiscovery(
  * Minimal HTTP server on a Unix socket that mimics the MCP /health
  * and /rpc endpoints.
  */
-function createMockMcpServer(
+function createMockMCPServer(
   socketPath: string,
   options: { authToken?: string | null; label?: string } = {}
 ): Promise<Server> {
@@ -87,23 +87,23 @@ function createMockMcpServer(
  * fires (meaning the initial health check passed).
  */
 async function createBridgeAndWaitForReady(
-  options: Parameters<typeof createStdioRpcBridge>[0]
-): Promise<ReturnType<typeof createStdioRpcBridge>> {
+  options: Parameters<typeof createStdioRPCBridge>[0]
+): Promise<ReturnType<typeof createStdioRPCBridge>> {
   const TIMEOUT_MS = 5_000
 
   return new Promise((resolve, reject) => {
-    let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+    let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
 
     const timer = setTimeout(() => {
       bridge?.close()
       reject(new Error('Bridge never became ready'))
     }, TIMEOUT_MS)
 
-    bridge = createStdioRpcBridge({
+    bridge = createStdioRPCBridge({
       ...options,
       onReady: () => {
         clearTimeout(timer)
-        resolve(bridge as ReturnType<typeof createStdioRpcBridge>)
+        resolve(bridge as ReturnType<typeof createStdioRPCBridge>)
       }
     })
   })
@@ -126,7 +126,7 @@ async function closeMockServer(server: Server | null, socketPath?: string): Prom
   }
 }
 
-async function createMockTcpMcpServer(
+async function createMockTcpMCPServer(
   authToken: string
 ): Promise<{ server: Server; port: number }> {
   const server = createServer((request, response) => {
@@ -178,13 +178,13 @@ describe('stdio-bridge transport reconnection', () => {
 
   test.skipIf(!isUnix)('falls back to TCP when the discovered socket is unavailable', async () => {
     let tcpServer: Server | null = null
-    let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+    let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
     try {
-      const tcp = await createMockTcpMcpServer(AUTH_TOKEN)
+      const tcp = await createMockTcpMCPServer(AUTH_TOKEN)
       tcpServer = tcp.server
       await writeMockDiscovery(SOCKET_PATH, AUTH_TOKEN, tcp.port)
       bridge = await createBridgeAndWaitForReady({ reconnectDelayMs: 20 })
-      await expect(bridge.sendRpc({ command: 'test' })).resolves.toEqual({
+      await expect(bridge.sendRPC({ command: 'test' })).resolves.toEqual({
         result: 'ok-tcp'
       })
     } finally {
@@ -195,10 +195,10 @@ describe('stdio-bridge transport reconnection', () => {
 
   test.skipIf(!isUnix)('rejects a pre-cancelled RPC without opening a request', async () => {
     let server: Server | null = null
-    let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+    let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
     try {
       await mkdir(TEST_DIR, { recursive: true })
-      server = await createMockMcpServer(SOCKET_PATH, { authToken: AUTH_TOKEN })
+      server = await createMockMCPServer(SOCKET_PATH, { authToken: AUTH_TOKEN })
       bridge = await createBridgeAndWaitForReady({
         socketPath: SOCKET_PATH,
         authToken: AUTH_TOKEN
@@ -207,7 +207,7 @@ describe('stdio-bridge transport reconnection', () => {
       controller.abort()
 
       await expect(
-        bridge.sendRpc({ command: 'test' }, { signal: controller.signal })
+        bridge.sendRPC({ command: 'test' }, { signal: controller.signal })
       ).rejects.toMatchObject({ name: 'AbortError' })
     } finally {
       bridge?.close()
@@ -217,7 +217,7 @@ describe('stdio-bridge transport reconnection', () => {
 
   test.skipIf(!isUnix)('cancels while waiting for the initial health check', async () => {
     let server: Server | null = null
-    let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+    let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
     let healthResponse: ServerResponse | null = null
     let resolveHealthSeen = () => undefined
     const healthSeen = new Promise<void>((resolve) => {
@@ -234,13 +234,13 @@ describe('stdio-bridge transport reconnection', () => {
       await new Promise<void>((resolve) => {
         server?.listen(SOCKET_PATH, resolve)
       })
-      bridge = createStdioRpcBridge({
+      bridge = createStdioRPCBridge({
         socketPath: SOCKET_PATH,
         authToken: AUTH_TOKEN,
         reconnectDelayMs: 20
       })
       const controller = new AbortController()
-      const pending = bridge.sendRpc({ command: 'test' }, { signal: controller.signal })
+      const pending = bridge.sendRPC({ command: 'test' }, { signal: controller.signal })
       await healthSeen
       controller.abort()
 
@@ -256,7 +256,7 @@ describe('stdio-bridge transport reconnection', () => {
 
   test.skipIf(!isUnix)('destroys the active retried HTTP request when cancelled', async () => {
     let server: Server | null = null
-    let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+    let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
     let rpcCount = 0
     let resolveRetrySeen = () => undefined
     let resolveRetryClosed = () => undefined
@@ -291,7 +291,7 @@ describe('stdio-bridge transport reconnection', () => {
       })
       bridge = await createBridgeAndWaitForReady({ socketPath: SOCKET_PATH })
       const controller = new AbortController()
-      const pending = bridge.sendRpc({ command: 'test' }, { signal: controller.signal })
+      const pending = bridge.sendRPC({ command: 'test' }, { signal: controller.signal })
       await retrySeen
       controller.abort()
 
@@ -309,7 +309,7 @@ describe('stdio-bridge transport reconnection', () => {
     async () => {
       let server1: Server | null = null
       let server2: Server | null = null
-      let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+      let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
 
       try {
         await mkdir(TEST_DIR, { recursive: true })
@@ -317,7 +317,7 @@ describe('stdio-bridge transport reconnection', () => {
         process.env.OPENPENCIL_MCP_SOCKET = SOCKET_PATH
 
         // Start server
-        server1 = await createMockMcpServer(SOCKET_PATH, {
+        server1 = await createMockMCPServer(SOCKET_PATH, {
           authToken: AUTH_TOKEN,
           label: 'first'
         })
@@ -330,7 +330,7 @@ describe('stdio-bridge transport reconnection', () => {
         })
 
         // Verify initial connection
-        const result1 = await bridge.sendRpc({ command: 'test' })
+        const result1 = await bridge.sendRPC({ command: 'test' })
         expect(result1).toEqual({ result: 'ok-first' })
 
         // Kill server
@@ -338,19 +338,19 @@ describe('stdio-bridge transport reconnection', () => {
         server1 = null
 
         // RPC should fail (connection refused)
-        await expect(bridge.sendRpc({ command: 'test' })).rejects.toThrow()
+        await expect(bridge.sendRPC({ command: 'test' })).rejects.toThrow()
 
         // Restart server on the same socket
-        server2 = await createMockMcpServer(SOCKET_PATH, {
+        server2 = await createMockMCPServer(SOCKET_PATH, {
           authToken: AUTH_TOKEN,
           label: 'second'
         })
 
-        // Wait for the bridge to reconnect by polling sendRpc
+        // Wait for the bridge to reconnect by polling sendRPC
         let reconnected = false
         for (let i = 0; i < 20; i++) {
           try {
-            const result = await bridge.sendRpc({ command: 'test' })
+            const result = await bridge.sendRPC({ command: 'test' })
             expect(result).toEqual({ result: 'ok-second' })
             reconnected = true
             break
@@ -363,7 +363,6 @@ describe('stdio-bridge transport reconnection', () => {
         expect(reconnected).toBe(true)
       } finally {
         bridge?.close()
-        bridge = null
         await closeMockServer(server1, SOCKET_PATH)
         await closeMockServer(server2, SOCKET_PATH)
       }
@@ -376,7 +375,7 @@ describe('stdio-bridge transport reconnection', () => {
     async () => {
       let server1: Server | null = null
       let server2: Server | null = null
-      let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+      let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
 
       try {
         await mkdir(TEST_DIR, { recursive: true })
@@ -386,7 +385,7 @@ describe('stdio-bridge transport reconnection', () => {
         process.env.OPENPENCIL_MCP_SOCKET = SOCKET_PATH
 
         // Start server
-        server1 = await createMockMcpServer(SOCKET_PATH, {
+        server1 = await createMockMCPServer(SOCKET_PATH, {
           authToken: AUTH_TOKEN,
           label: 'first'
         })
@@ -400,7 +399,7 @@ describe('stdio-bridge transport reconnection', () => {
         })
 
         // Verify initial connection
-        const result1 = await bridge.sendRpc({ command: 'test' })
+        const result1 = await bridge.sendRPC({ command: 'test' })
         expect(result1).toEqual({ result: 'ok-first' })
 
         // Kill server
@@ -408,10 +407,10 @@ describe('stdio-bridge transport reconnection', () => {
         server1 = null
 
         // RPC should fail (transport error resets transportMode to null)
-        await expect(bridge.sendRpc({ command: 'test' })).rejects.toThrow()
+        await expect(bridge.sendRPC({ command: 'test' })).rejects.toThrow()
 
         // Restart server on the same socket path
-        server2 = await createMockMcpServer(SOCKET_PATH, {
+        server2 = await createMockMCPServer(SOCKET_PATH, {
           authToken: AUTH_TOKEN,
           label: 'second'
         })
@@ -421,7 +420,7 @@ describe('stdio-bridge transport reconnection', () => {
         let reconnected = false
         for (let i = 0; i < 20; i++) {
           try {
-            const result = await bridge.sendRpc({ command: 'test' })
+            const result = await bridge.sendRPC({ command: 'test' })
             expect(result).toEqual({ result: 'ok-second' })
             reconnected = true
             break
@@ -434,7 +433,6 @@ describe('stdio-bridge transport reconnection', () => {
         expect(reconnected).toBe(true)
       } finally {
         bridge?.close()
-        bridge = null
         await closeMockServer(server1, SOCKET_PATH)
         await closeMockServer(server2, SOCKET_PATH)
       }
@@ -447,14 +445,14 @@ describe('stdio-bridge transport reconnection', () => {
     async () => {
       let server1: Server | null = null
       let server2: Server | null = null
-      let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+      let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
 
       try {
         await mkdir(TEST_DIR, { recursive: true })
         await writeMockDiscovery(SOCKET_PATH, AUTH_TOKEN)
         process.env.OPENPENCIL_MCP_SOCKET = SOCKET_PATH
 
-        server1 = await createMockMcpServer(SOCKET_PATH, {
+        server1 = await createMockMCPServer(SOCKET_PATH, {
           authToken: AUTH_TOKEN,
           label: 'explicit1'
         })
@@ -466,13 +464,13 @@ describe('stdio-bridge transport reconnection', () => {
           reconnectDelayMs: 300
         })
 
-        const result1 = await bridge.sendRpc({ command: 'test' })
+        const result1 = await bridge.sendRPC({ command: 'test' })
         expect(result1).toEqual({ result: 'ok-explicit1' })
 
         // Kill and restart on same socket
         await closeMockServer(server1, SOCKET_PATH)
         server1 = null
-        server2 = await createMockMcpServer(SOCKET_PATH, {
+        server2 = await createMockMCPServer(SOCKET_PATH, {
           authToken: AUTH_TOKEN,
           label: 'explicit2'
         })
@@ -481,7 +479,7 @@ describe('stdio-bridge transport reconnection', () => {
         let reconnected = false
         for (let i = 0; i < 20; i++) {
           try {
-            const result = await bridge.sendRpc({ command: 'test' })
+            const result = await bridge.sendRPC({ command: 'test' })
             expect(result).toEqual({ result: 'ok-explicit2' })
             reconnected = true
             break
@@ -494,7 +492,6 @@ describe('stdio-bridge transport reconnection', () => {
         expect(reconnected).toBe(true)
       } finally {
         bridge?.close()
-        bridge = null
         await closeMockServer(server1, SOCKET_PATH)
         await closeMockServer(server2, SOCKET_PATH)
       }
@@ -507,7 +504,7 @@ describe('stdio-bridge transport reconnection', () => {
     async () => {
       let server1: Server | null = null
       let server2: Server | null = null
-      let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+      let bridge: ReturnType<typeof createStdioRPCBridge> | null = null
 
       try {
         await mkdir(TEST_DIR, { recursive: true })
@@ -515,7 +512,7 @@ describe('stdio-bridge transport reconnection', () => {
         process.env.OPENPENCIL_MCP_SOCKET = SOCKET_PATH
 
         // Start server on SOCKET_PATH
-        server1 = await createMockMcpServer(SOCKET_PATH, {
+        server1 = await createMockMCPServer(SOCKET_PATH, {
           authToken: AUTH_TOKEN,
           label: 'old-socket'
         })
@@ -528,7 +525,7 @@ describe('stdio-bridge transport reconnection', () => {
         })
 
         // Verify initial connection to old socket
-        const result1 = await bridge.sendRpc({ command: 'test' })
+        const result1 = await bridge.sendRPC({ command: 'test' })
         expect(result1).toEqual({ result: 'ok-old-socket' })
 
         // Kill server on old socket
@@ -536,13 +533,13 @@ describe('stdio-bridge transport reconnection', () => {
         server1 = null
 
         // RPC should fail (triggers transportMode reset + clears resolvedSocketPath)
-        await expect(bridge.sendRpc({ command: 'test' })).rejects.toThrow()
+        await expect(bridge.sendRPC({ command: 'test' })).rejects.toThrow()
 
         // Simulate server restart on a NEW socket path:
         // 1. Update the discovery file to point to the new socket
         // 2. Start a new server on the new socket
         await writeMockDiscovery(SOCKET_PATH_2, AUTH_TOKEN)
-        server2 = await createMockMcpServer(SOCKET_PATH_2, {
+        server2 = await createMockMCPServer(SOCKET_PATH_2, {
           authToken: AUTH_TOKEN,
           label: 'new-socket'
         })
@@ -554,7 +551,7 @@ describe('stdio-bridge transport reconnection', () => {
         let reconnected = false
         for (let i = 0; i < 20; i++) {
           try {
-            const result = await bridge.sendRpc({ command: 'test' })
+            const result = await bridge.sendRPC({ command: 'test' })
             expect(result).toEqual({ result: 'ok-new-socket' })
             reconnected = true
             break
@@ -567,7 +564,6 @@ describe('stdio-bridge transport reconnection', () => {
         expect(reconnected).toBe(true)
       } finally {
         bridge?.close()
-        bridge = null
         await closeMockServer(server1, SOCKET_PATH)
         await closeMockServer(server2, SOCKET_PATH_2)
       }

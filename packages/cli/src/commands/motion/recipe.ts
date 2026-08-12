@@ -18,13 +18,13 @@ import { loadDocument, populateWholeDocument, saveDocument } from '#cli/headless
 import {
   assertMotionTargetsCompatible,
   motionNodeChanges as motionChanges,
-  printMotionJson as printJson,
+  printMotionJSON as printJSON,
   runMotionCommandSafely as runSafely
 } from './common'
 
 const MAX_RECIPE_JSON_BYTES = 1024 * 1024
 const jsonArg = { type: 'boolean', default: false, description: 'Output JSON' } as const
-const outputJsonArg = {
+const outputJSONArg = {
   type: 'string',
   alias: 'o',
   description: 'Optional output JSON path'
@@ -90,7 +90,7 @@ async function atomicWrite(path: string, data: string | Uint8Array): Promise<str
   return output
 }
 
-async function atomicWriteJson(path: string, value: unknown): Promise<string> {
+async function atomicWriteJSON(path: string, value: unknown): Promise<string> {
   return atomicWrite(path, `${JSON.stringify(value, null, 2)}\n`)
 }
 
@@ -144,7 +144,7 @@ const validate = defineCommand({
   async run({ args }) {
     await runSafely(async () => {
       const recipe = await readRecipe(args.recipe)
-      if (args.json) printJson({ valid: true, recipe })
+      if (args.json) printJSON({ valid: true, recipe })
       else printRecipe(recipe)
     })
   }
@@ -156,7 +156,7 @@ const instantiate = defineCommand({
     recipe: { type: 'positional', required: true, description: 'Motion recipe JSON path' },
     roles: rolesArg,
     parameters: parametersArg,
-    output: outputJsonArg,
+    output: outputJSONArg,
     json: jsonArg
   },
   async run({ args }) {
@@ -165,8 +165,8 @@ const instantiate = defineCommand({
         await readRecipe(args.recipe),
         instantiationInput(args.roles, args.parameters)
       )
-      const output = args.output ? await atomicWriteJson(args.output, result) : null
-      if (args.json || output === null) printJson({ result, output })
+      const output = args.output ? await atomicWriteJSON(args.output, result) : null
+      if (args.json || output === null) printJSON({ result, output })
       else console.log(ok(`Instantiated ${result.recipeId} to ${output}`))
     })
   }
@@ -221,7 +221,7 @@ const apply = defineCommand({
         nodeIds: instance.assignments.map(({ nodeId }) => nodeId),
         output
       }
-      if (args.json) printJson(report)
+      if (args.json) printJSON(report)
       else
         console.log(ok(`Applied ${recipe.name} to ${report.assignmentCount} node(s) → ${output}`))
     })

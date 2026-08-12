@@ -1,5 +1,5 @@
 import {
-  canonicalManifestJson as canonicalJson,
+  canonicalManifestJSON as canonicalJSON,
   canonicalManifestValue as canonicalValue,
   compareStableSemver as compareSemver,
   assertSignedManifestVerificationPolicy,
@@ -159,7 +159,7 @@ function jsonByteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
 
-function assertJsonSize(value: string, path = 'manifest'): void {
+function assertJSONSize(value: string, path = 'manifest'): void {
   if (jsonByteLength(value) > TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes) {
     invalid(
       path,
@@ -489,7 +489,7 @@ function integrity(
 export function parseTeamMotionLibraryPayload(value: unknown): TeamMotionLibraryPayload {
   assertMotionPortableValue(value, 'manifest', { invalid, plainRecord })
   const payload = parsePayload(value)
-  assertJsonSize(canonicalJson(payload), 'manifest')
+  assertJSONSize(canonicalJSON(payload), 'manifest')
   return payload
 }
 
@@ -519,7 +519,7 @@ export function parseTeamMotionLibraryManifest(value: unknown): TeamMotionLibrar
       payload.publisher.keyId
     )
   }
-  assertJsonSize(canonicalJson(manifest))
+  assertJSONSize(canonicalJSON(manifest))
   return manifest
 }
 
@@ -600,7 +600,7 @@ function snapshot(value: VerifiedTeamMotionLibrarySnapshot): VerifiedTeamMotionL
 
 function snapshotEntryMap(value: VerifiedTeamMotionLibrarySnapshot | null): Map<string, string> {
   return new Map(
-    value?.manifest.entries.map((candidate) => [entryId(candidate), canonicalJson(candidate)])
+    value?.manifest.entries.map((candidate) => [entryId(candidate), canonicalJSON(candidate)])
   )
 }
 
@@ -785,7 +785,7 @@ export function parseTeamMotionLibraryRegistryState(
     matchingLibrary(accepted, candidate)
     requireForwardLibraryVersion(accepted, candidate)
     const expectedDiff = diffTeamMotionLibraries(accepted, candidate)
-    if (canonicalJson(pendingRecord.diff) !== canonicalJson(expectedDiff)) {
+    if (canonicalJSON(pendingRecord.diff) !== canonicalJSON(expectedDiff)) {
       return invalid(
         'registry.pending.diff',
         'invalid_value',

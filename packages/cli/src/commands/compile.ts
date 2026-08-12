@@ -5,7 +5,7 @@ import { defineCommand } from 'citty'
 import { loadAndCompile, reportCodegenResult } from '#cli/codegen'
 import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
-import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
+import { resolveUIKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
 interface CompileArgs {
   file?: string
@@ -69,7 +69,7 @@ export default defineCommand({
     const { file, out, page } = args as CompileArgs
     const outDir = resolve(out)
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as CompileArgs)
-    const uiKit = resolveUiKitFlag(args as CompileArgs)
+    const uiKit = resolveUIKitFlag(args as CompileArgs)
     const target = resolveCodegenTarget(args as CompileArgs)
 
     const { compiled, packageName } = await loadAndCompile({

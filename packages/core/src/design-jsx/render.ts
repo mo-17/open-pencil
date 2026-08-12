@@ -135,7 +135,7 @@ const SUPPORTED_PROPS = new Set([
   ...LOWCODE_SUPPORTED_PROP_NAMES
 ])
 
-function stripHtmlComments(jsxString: string): string {
+function stripHTMLComments(jsxString: string): string {
   return jsxString.replace(/<!--[\s\S]*?-->/g, '')
 }
 
@@ -157,7 +157,7 @@ async function unsupportedPropWarnings(tree: TreeNode, signal?: AbortSignal): Pr
       }
     }
 
-    // SVG descendants are parsed as markup by renderSvgNode rather than as
+    // SVG descendants are parsed as markup by renderSVGNode rather than as
     // Design JSX nodes. Only the SVG root participates in prop diagnostics.
     if (current.type !== 'svg') {
       for (let index = current.children.length - 1; index >= 0; index--) {
@@ -172,7 +172,7 @@ async function unsupportedPropWarnings(tree: TreeNode, signal?: AbortSignal): Pr
 }
 
 export function buildComponent(jsxString: string): React.ComponentType {
-  const trimmed = stripHtmlComments(jsxString).trim()
+  const trimmed = stripHTMLComments(jsxString).trim()
 
   const aliases = `
     const __h = React.createElement

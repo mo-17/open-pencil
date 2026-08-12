@@ -16,7 +16,7 @@ import {
   modelSettingsSnapshot,
   parseAIModelSettings,
   removeModelProfile,
-  removeRemoteMcpServerFromModelProfiles,
+  removeRemoteMCPServerFromModelProfiles,
   replaceAIModelSettings,
   resolveAIModelRole,
   saveModelProfileDraft,
@@ -271,7 +271,7 @@ describe('AI model profiles and role assignments', () => {
     expect(parsed?.models[0].featurePolicy.mcpServerIds).toEqual(serverIds.slice(0, 8))
     if (!parsed) throw new Error('Expected parsed settings')
     replaceAIModelSettings(parsed)
-    expect(removeRemoteMcpServerFromModelProfiles(serverIds[0])).toBe(1)
+    expect(removeRemoteMCPServerFromModelProfiles(serverIds[0])).toBe(1)
     expect(modelSettingsSnapshot().models[0].featurePolicy.mcpServerIds).toEqual(
       serverIds.slice(1, 8)
     )

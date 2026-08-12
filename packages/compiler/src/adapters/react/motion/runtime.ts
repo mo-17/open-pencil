@@ -7,13 +7,13 @@ import { buildMotionRuntimeKernelSource } from '@open-pencil/motion-runtime/kern
 
 import {
   compareMotionTrackComposition,
-  easingCss,
+  easingCSS,
   motionCompositionClockVariableName,
   motionCompositionChannels,
   motionCompositionVariableName,
   motionCompositionWeightVariableName,
-  motionCssAnimationName,
-  motionCssVariableName
+  motionCSSAnimationName,
+  motionCSSVariableName
 } from './key'
 import {
   motionTargetKind,
@@ -2294,7 +2294,7 @@ function runtimeTrack(
     timing: {
       duration: track.timing.durationMs,
       delay: track.timing.delayMs,
-      easing: easingCss(track.timing.easing),
+      easing: easingCSS(track.timing.easing),
       iterations: track.timing.iterations,
       direction: track.timing.direction,
       fill: track.timing.fill
@@ -2305,10 +2305,10 @@ function runtimeTrack(
     (track.trigger === 'mount' || track.trigger === 'pageEnter' || track.trigger === 'loop')
       ? {
           css: {
-            variable: motionCssVariableName(token, index),
+            variable: motionCSSVariableName(token, index),
             animationNames: [
-              motionCssAnimationName(token, index),
-              motionCssAnimationName(token, index, true)
+              motionCSSAnimationName(token, index),
+              motionCSSAnimationName(token, index, true)
             ]
           }
         }
@@ -2377,7 +2377,7 @@ function runtimeKeyframe(
     ...runtimePaintFrame(frame, motion),
     ...runtimePathFrame(frame, track, motion),
     ...runtimeLayoutFrame(frame),
-    ...(frame.easing ? { easing: easingCss(frame.easing) } : {})
+    ...(frame.easing ? { easing: easingCSS(frame.easing) } : {})
   }
 }
 

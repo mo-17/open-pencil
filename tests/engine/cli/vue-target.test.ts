@@ -24,7 +24,7 @@ async function writeDocument(path: string): Promise<void> {
   await Bun.write(path, written.data as Uint8Array)
 }
 
-async function runCli(args: string[]): Promise<{
+async function runCLI(args: string[]): Promise<{
   exitCode: number
   stdout: string
   stderr: string
@@ -45,7 +45,7 @@ test('compile/build CLI emits Vue source and a deployable Vue static bundle', as
   const dist = join(directory, 'dist')
   try {
     await writeDocument(document)
-    const compiled = await runCli(['compile', document, '--target', 'vue', '--json', '-o', source])
+    const compiled = await runCLI(['compile', document, '--target', 'vue', '--json', '-o', source])
     expect(compiled.exitCode).toBe(0)
     const summary = JSON.parse(compiled.stdout) as {
       target?: unknown
@@ -59,7 +59,7 @@ test('compile/build CLI emits Vue source and a deployable Vue static bundle', as
     expect(await Bun.file(join(source, 'src/router.ts')).exists()).toBe(true)
     expect(await Bun.file(join(source, 'src/App.tsx')).exists()).toBe(false)
 
-    const built = await runCli(['build', document, '--target', 'vue', '--json', '-o', dist])
+    const built = await runCLI(['build', document, '--target', 'vue', '--json', '-o', dist])
     expect(built.exitCode).toBe(0)
     expect((JSON.parse(built.stdout) as { target?: unknown }).target).toBe('vue')
     expect(await Bun.file(join(dist, 'index.html')).exists()).toBe(true)
@@ -77,7 +77,7 @@ test('Vue CLI rejects unsupported flags before writing source output', async () 
   const source = join(directory, 'source')
   try {
     await writeDocument(document)
-    const result = await runCli(['compile', document, '--target', 'vue', '--i18n', '-o', source])
+    const result = await runCLI(['compile', document, '--target', 'vue', '--i18n', '-o', source])
     expect(result.exitCode).not.toBe(0)
     expect(`${result.stdout}\n${result.stderr}`).toContain('Vue v1 does not support --i18n')
     expect(await Bun.file(source).exists()).toBe(false)
@@ -91,7 +91,7 @@ test('deploy applies the same Vue target feature policy before contacting a prov
   const document = join(directory, 'document.fig')
   try {
     await writeDocument(document)
-    const result = await runCli([
+    const result = await runCLI([
       'deploy',
       document,
       '--provider',

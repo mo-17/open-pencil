@@ -12,9 +12,9 @@ import type { IRAttrValue, IRElement, IRNode } from '#compiler/ir/types'
  */
 
 /** The supported kit identifiers (`CompilerOptions.uiKit` / CLI `--ui-kit`). */
-export type UiKitName = 'shadcn'
+export type UIKitName = 'shadcn'
 
-export interface UiKitMapping {
+export interface UIKitMapping {
   /** JSX component name emitted in place of the HTML tag, e.g. `Button`. Also
    *  the key into the kit's component-file/deps registry (drives which source
    *  files + npm deps the kit emits). */
@@ -46,8 +46,8 @@ export interface KitEmitCtx {
   escapeAttr(value: string): string
 }
 
-export interface UiKitAdapter {
-  readonly name: UiKitName
+export interface UIKitAdapter {
+  readonly name: UIKitName
   /**
    * Map an interactive element's HTML `tag` to a kit component, or return null
    * to keep the plain HTML tag. `attrs` disambiguates tags that several node
@@ -55,7 +55,7 @@ export interface UiKitAdapter {
    * SWITCH and DATEPICKER; Phase A maps only text-like inputs and leaves
    * checkbox/radio inputs as plain HTML.
    */
-  mapTag(tag: string, attrs: Readonly<Record<string, IRAttrValue>>): UiKitMapping | null
+  mapTag(tag: string, attrs: Readonly<Record<string, IRAttrValue>>): UIKitMapping | null
   /**
    * Phase 3 §15 Phase B — resolve a marked form control (`node.controlKind`) to
    * its kit component mapping (for import + file/dep collection), or null to
@@ -63,7 +63,7 @@ export interface UiKitAdapter {
    * identified by their semantic `controlKind` (a RADIO/checkbox-group wrapper
    * is an unmarked `<div>`), not their HTML tag.
    */
-  mapControl?(kind: NonNullable<IRElement['controlKind']>): UiKitMapping | null
+  mapControl?(kind: NonNullable<IRElement['controlKind']>): UIKitMapping | null
   /**
    * Phase 3 §15 Phase B — emit the full JSX for a marked control as a composed
    * kit component (e.g. `<Select><SelectTrigger>…`). Returns null to fall back
@@ -77,11 +77,11 @@ export interface UiKitAdapter {
    * `mapControl`, a container only renames the tag (`<div>` → `<Card>`) and
    * keeps emitting its children inside — there is no composed-markup hook.
    */
-  mapContainer?(kind: NonNullable<IRElement['containerKind']>): UiKitMapping | null
+  mapContainer?(kind: NonNullable<IRElement['containerKind']>): UIKitMapping | null
   /** Phase 4 §22 — resolve a display primitive hint to a kit component mapping.
    *  Simple primitives only rename the tag; composed primitives can additionally
    *  be emitted through `emitDisplay`. */
-  mapDisplay?(kind: NonNullable<IRElement['displayKind']>): UiKitMapping | null
+  mapDisplay?(kind: NonNullable<IRElement['displayKind']>): UIKitMapping | null
   /** Phase 4 §22 — emit a display primitive with custom composition, such as
    *  AvatarImage/Fallback or Progress value. Return null to use normal tag
    *  replacement through `mapDisplay`. */
@@ -99,5 +99,5 @@ export interface UiKitAdapter {
   deps(used: ReadonlySet<string>): Record<string, string>
   /** Tailwind v4 theme CSS (CSS variables + `@theme` mapping + base layer) merged
    *  into `src/index.css` so the kit's semantic color utilities resolve. */
-  themeCss(): string
+  themeCSS(): string
 }

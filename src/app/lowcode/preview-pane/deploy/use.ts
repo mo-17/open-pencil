@@ -18,7 +18,7 @@ import type { ApplicationRuntimeAudit } from '@open-pencil/core/lowcode-validati
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import { isTauri } from '@/app/tauri/env'
 
-import type { DeployCliResult } from './command'
+import type { DeployCLIResult } from './command'
 import {
   recordDeployHistory,
   readDeployHistory,
@@ -26,7 +26,7 @@ import {
   type DeployHistoryEntry,
   type DeployRuntimeConfig
 } from './history'
-import { runDeployCli, type DeployI18n, type DeployProvider, type DeployUiKit } from './runner'
+import { runDeployCLI, type DeployI18n, type DeployProvider, type DeployUIKit } from './runner'
 import {
   auditDeployRuntime,
   readDeployKnownTables,
@@ -34,11 +34,11 @@ import {
 } from './runtime-preflight'
 import { deployScopeForStore } from './scope'
 
-export type { DeployI18n, DeployProvider, DeployUiKit } from './runner'
+export type { DeployI18n, DeployProvider, DeployUIKit } from './runner'
 export type DeployStatus =
   | { kind: 'idle' }
   | { kind: 'deploying' }
-  | { kind: 'done'; url: string; result: DeployCliResult }
+  | { kind: 'done'; url: string; result: DeployCLIResult }
   | { kind: 'error'; message: string }
 
 interface UseDeployResult {
@@ -52,7 +52,7 @@ interface UseDeployResult {
     provider: DeployProvider,
     environment: DeployEnvironment,
     site?: string,
-    uiKit?: DeployUiKit,
+    uiKit?: DeployUIKit,
     i18n?: DeployI18n,
     runtimeConfig?: DeployRuntimeConfig
   ) => Promise<void>
@@ -83,7 +83,7 @@ export function useDeploy(): UseDeployResult {
     provider: DeployProvider,
     environment: DeployEnvironment,
     site?: string,
-    uiKit: DeployUiKit = 'none',
+    uiKit: DeployUIKit = 'none',
     i18n?: DeployI18n,
     runtimeConfig?: DeployRuntimeConfig
   ): Promise<void> {
@@ -139,7 +139,7 @@ export function useDeploy(): UseDeployResult {
 
     status.value = { kind: 'deploying' }
     try {
-      const result = await runDeployCli(
+      const result = await runDeployCLI(
         path,
         trimmed,
         provider,

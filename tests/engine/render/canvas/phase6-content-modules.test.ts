@@ -24,7 +24,7 @@ import {
 } from '#core/canvas/modules/markdown'
 import {
   PDF_VIEWER_MODULE_CANVAS_ADAPTER,
-  renderPdfViewerModulePreview
+  renderPDFViewerModulePreview
 } from '#core/canvas/modules/pdf-viewer'
 import {
   QR_BARCODE_MODULE_CANVAS_ADAPTER,
@@ -35,7 +35,7 @@ import { createAccordionModuleFrameOverrides } from '#core/plugins/accordion'
 import { createAudioPlayerModuleFrameOverrides } from '#core/plugins/audio-player'
 import { createCodeBlockModuleFrameOverrides } from '#core/plugins/code-block'
 import { createMarkdownModuleFrameOverrides } from '#core/plugins/markdown'
-import { createPdfViewerModuleFrameOverrides } from '#core/plugins/pdf-viewer'
+import { createPDFViewerModuleFrameOverrides } from '#core/plugins/pdf-viewer'
 import { createQrBarcodeModuleFrameOverrides } from '#core/plugins/qr-barcode'
 import { createTabsModuleFrameOverrides } from '#core/plugins/tabs'
 
@@ -103,11 +103,11 @@ const CASES = [
   {
     name: 'PDF viewer',
     adapter: PDF_VIEWER_MODULE_CANVAS_ADAPTER,
-    render: renderPdfViewerModulePreview,
+    render: renderPDFViewerModulePreview,
     frame: () =>
       moduleFrame(
         'pdf-viewer',
-        createPdfViewerModuleFrameOverrides({ sourceUrl: 'https://cdn.example.com/manual.pdf' })
+        createPDFViewerModuleFrameOverrides({ sourceUrl: 'https://cdn.example.com/manual.pdf' })
       )
   },
   {

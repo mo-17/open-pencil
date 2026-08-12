@@ -16,7 +16,7 @@ async function acquireFetchProxy(): Promise<() => void> {
   return release
 }
 
-function requestUrl(input: RequestInfo | URL): string {
+function requestURL(input: RequestInfo | URL): string {
   if (typeof input === 'string' || input instanceof URL) return input.toString()
   return input.url
 }
@@ -36,7 +36,7 @@ export async function withWebFontFetchProxy<T>(
   const originalFetch = globalThis.fetch
   if (fetcher) {
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = requestUrl(input)
+      const url = requestURL(input)
       if (/^https?:\/\//.test(url)) return fetcher(url, init)
       return originalFetch(input, init)
     }) as typeof fetch

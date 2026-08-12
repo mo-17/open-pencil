@@ -2,7 +2,7 @@ import { buildPreviewBridge } from '#compiler/adapters/preview-bridge'
 import { derivePagePaths } from '#compiler/adapters/react/route-paths'
 import type { AdapterEmission, FrameworkAdapter } from '#compiler/adapters/types'
 import type { ComponentDef, IREventHandler, IRNode, IRTree } from '#compiler/ir/types'
-import type { CompileWarning, CompilerOptions, HtmlMetadata } from '#compiler/types'
+import type { CompileWarning, CompilerOptions, HTMLMetadata } from '#compiler/types'
 
 import { buildVueComponentModule, buildVuePageModule, sanitizeVueHrefLiteral } from './emit'
 import {
@@ -19,7 +19,7 @@ import {
 } from './lowcode/toast'
 import { collectVueProjectLowcodeUsage, type VueLowcodeUsage } from './lowcode/usage'
 import {
-  buildVueValidationCss,
+  buildVueValidationCSS,
   buildVueValidationRuntime,
   VUE_VALIDATION_CSS_FILE,
   VUE_VALIDATION_RUNTIME_FILE
@@ -31,10 +31,10 @@ import {
 } from './modules/registry'
 import {
   buildVueApp,
-  buildVueIndexCssFile,
-  buildVueIndexHtml,
+  buildVueIndexCSSFile,
+  buildVueIndexHTML,
   buildVueMain,
-  buildVuePackageJson,
+  buildVuePackageJSON,
   buildVueReadme,
   buildVueRouter,
   buildVueTsConfig,
@@ -85,13 +85,13 @@ function emitVueProject(
   }
 
   const firstComponent = infos[0]?.component ?? 'PageIndex'
-  files.set('package.json', buildVuePackageJson(options, router))
+  files.set('package.json', buildVuePackageJSON(options, router))
   files.set('vite.config.ts', buildVueViteConfig())
   files.set('tsconfig.json', buildVueTsConfig())
   files.set('src/env.d.ts', '/// <reference types="vite/client" />\n')
   files.set('src/main.ts', buildVueMain(router, lowcode, options.devMode))
   files.set('src/App.vue', buildVueApp(router, firstComponent, lowcode))
-  files.set('src/index.css', buildVueIndexCssFile(collectClassNames(irs, components), options))
+  files.set('src/index.css', buildVueIndexCSSFile(collectClassNames(irs, components), options))
   files.set(
     'src/lowcode-state.ts',
     buildVueDocStateRuntime(irs[0]?.docStates ?? [], options.devMode)
@@ -100,7 +100,7 @@ function emitVueProject(
   if (router) files.set('src/router.ts', buildVueRouter(infos))
   files.set(
     'index.html',
-    buildVueIndexHtml(options.packageName, indexMetadata(irs, options), options.sourceLocale)
+    buildVueIndexHTML(options.packageName, indexMetadata(irs, options), options.sourceLocale)
   )
   files.set('README.md', buildVueReadme(router))
   files.set('.gitignore', 'node_modules\ndist\n*.local\n')
@@ -121,7 +121,7 @@ function emitVueLowcodeRuntimes(
   }
   if (usage.validation) {
     files.set(VUE_VALIDATION_RUNTIME_FILE, buildVueValidationRuntime())
-    files.set(VUE_VALIDATION_CSS_FILE, buildVueValidationCss())
+    files.set(VUE_VALIDATION_CSS_FILE, buildVueValidationCSS())
   }
 }
 
@@ -132,7 +132,7 @@ function buildVueDocStateRuntime(
   const initializers = states
     .map(
       (state) =>
-        `state[${safeScriptJson(state.name)}] = ${stateDefault(state.defaultValue, state.type)}`
+        `state[${safeScriptJSON(state.name)}] = ${stateDefault(state.defaultValue, state.type)}`
     )
     .join('\n')
   const previewRuntime = devMode
@@ -560,7 +560,7 @@ function asyncValidationWarning(
   )
 }
 
-function indexMetadata(irs: readonly IRTree[], options: CompilerOptions): HtmlMetadata | undefined {
+function indexMetadata(irs: readonly IRTree[], options: CompilerOptions): HTMLMetadata | undefined {
   const base = options.metadata
   if (irs.length !== 1) return base
   const page = base?.pages?.[irs[0].pageId]
@@ -568,15 +568,15 @@ function indexMetadata(irs: readonly IRTree[], options: CompilerOptions): HtmlMe
 }
 
 function stateDefault(value: unknown, type: IRTree['docStates'][number]['type']): string {
-  if (type === 'string') return safeScriptJson(typeof value === 'string' ? value : '')
+  if (type === 'string') return safeScriptJSON(typeof value === 'string' ? value : '')
   if (type === 'number')
     return typeof value === 'number' && Number.isFinite(value) ? String(value) : '0'
   if (type === 'boolean') return value === true ? 'true' : 'false'
-  if (type === 'array') return safeScriptJson(Array.isArray(value) ? value : [])
-  return safeScriptJson(value !== null && typeof value === 'object' ? value : {})
+  if (type === 'array') return safeScriptJSON(Array.isArray(value) ? value : [])
+  return safeScriptJSON(value !== null && typeof value === 'object' ? value : {})
 }
 
-function safeScriptJson(value: unknown): string {
+function safeScriptJSON(value: unknown): string {
   return JSON.stringify(value).replace(/<\/script/gi, '<\\/script')
 }
 

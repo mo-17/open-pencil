@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
   createContractModuleDefinition,
@@ -41,13 +41,13 @@ export const TABS_MODULE_LIMITS = Object.freeze({
 export type TabsOrientationV1 = 'horizontal' | 'vertical'
 export type TabsActivationModeV1 = 'automatic' | 'manual'
 
-export interface TabsItemV1 extends JsonObject {
+export interface TabsItemV1 extends JSONObject {
   id: string
   label: string
   content: string
 }
 
-export interface TabsModuleConfigV1 extends JsonObject {
+export interface TabsModuleConfigV1 extends JSONObject {
   label: string
   tabs: TabsItemV1[]
   initialTabId: string

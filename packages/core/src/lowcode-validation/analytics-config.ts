@@ -10,7 +10,7 @@ export function validateAnalyticsConfig(config: AnalyticsConfig): ValidationResu
     return { ok: false, reason: 'provider must be one of ga4 / plausible / posthog' }
   }
   if (config.id.trim() === '') return { ok: false, reason: 'id is required' }
-  if (config.endpoint && !isHttpUrl(config.endpoint)) {
+  if (config.endpoint && !isHttpURL(config.endpoint)) {
     return { ok: false, reason: 'endpoint must be http(s)' }
   }
   if (
@@ -19,19 +19,19 @@ export function validateAnalyticsConfig(config: AnalyticsConfig): ValidationResu
   ) {
     return { ok: false, reason: 'consentRegionPreset must be one of eea' }
   }
-  const policyUrl = config.consentCopy?.privacyPolicyUrl?.trim()
-  if (policyUrl && !isSafeAnalyticsPolicyUrl(policyUrl)) {
+  const policyURL = config.consentCopy?.privacyPolicyUrl?.trim()
+  if (policyURL && !isSafeAnalyticsPolicyURL(policyURL)) {
     return { ok: false, reason: 'consentCopy.privacyPolicyUrl must be http(s) or root-relative' }
   }
   return { ok: true }
 }
 
-export function isSafeAnalyticsPolicyUrl(value: string): boolean {
+export function isSafeAnalyticsPolicyURL(value: string): boolean {
   if (value.startsWith('/')) return !value.startsWith('//')
-  return isHttpUrl(value)
+  return isHttpURL(value)
 }
 
-function isHttpUrl(value: string): boolean {
+function isHttpURL(value: string): boolean {
   try {
     const url = new URL(value)
     return url.protocol === 'http:' || url.protocol === 'https:'

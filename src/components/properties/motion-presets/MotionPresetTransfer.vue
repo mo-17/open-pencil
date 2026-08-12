@@ -7,7 +7,7 @@ import { useI18n } from '@open-pencil/vue'
 import { isTauri } from '@/app/tauri/env'
 import AppSelect from '@/components/ui/AppSelect.vue'
 
-const { disabled = false, exportJson = '' } = defineProps<{
+const { disabled = false, exportJson: exportJSON = '' } = defineProps<{
   disabled?: boolean
   exportJson?: string
 }>()
@@ -21,7 +21,7 @@ const emit = defineEmits<{
 
 const { panels } = useI18n()
 const open = ref(false)
-const importJson = ref('')
+const importJSON = ref('')
 const importPolicy = ref<MotionPresetMergePolicy>('error')
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
 const policyOptions = computed<Array<{ value: MotionPresetMergePolicy; label: string }>>(() => [
@@ -31,7 +31,7 @@ const policyOptions = computed<Array<{ value: MotionPresetMergePolicy; label: st
 ])
 
 function submitImport(): void {
-  const json = importJson.value.trim()
+  const json = importJSON.value.trim()
   if (json) emit('import', json, importPolicy.value)
 }
 
@@ -49,7 +49,7 @@ function importBrowserFile(event: Event): void {
 }
 
 watch(
-  () => exportJson,
+  () => exportJSON,
   (value) => {
     if (value) open.value = true
   }
@@ -71,7 +71,7 @@ watch(
 
     <div v-if="open" class="mt-1.5 space-y-1.5" data-test-id="motion-preset-json-panel">
       <textarea
-        v-model="importJson"
+        v-model="importJSON"
         rows="4"
         :maxlength="USER_MOTION_PRESET_LIMITS.maxJsonBytes"
         class="w-full resize-y rounded border border-border bg-input p-1.5 font-mono text-[10px] text-surface outline-none focus:border-accent"
@@ -99,7 +99,7 @@ watch(
           type="button"
           class="rounded border border-border bg-input px-2 text-[10px] text-surface hover:bg-hover disabled:opacity-50"
           data-test-id="motion-preset-import-json"
-          :disabled="disabled || !importJson.trim()"
+          :disabled="disabled || !importJSON.trim()"
           @click="submitImport"
         >
           {{ panels.motionPresetImport }}

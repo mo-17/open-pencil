@@ -1,7 +1,7 @@
 import { zlibSync } from 'fflate'
 
 import { withDefaults } from '@open-pencil/compiler'
-import { isPlainJsonObject } from '@open-pencil/scene-graph'
+import { isPlainJSONObject } from '@open-pencil/scene-graph'
 
 import { saveExportedFile } from '@/app/document/export/files'
 import { downloadBlob } from '@/app/document/io/browser'
@@ -83,7 +83,7 @@ function isInsideRoundedIcon(x: number, y: number): boolean {
 }
 
 /** Build a deterministic 512px RGBA PNG without relying on a data URL or an external file. */
-function createDefaultTauriIconPng(): Uint8Array {
+function createDefaultTauriIconPNG(): Uint8Array {
   const rowBytes = TAURI_ICON_SIZE * 4 + 1
   const pixels = new Uint8Array(rowBytes * TAURI_ICON_SIZE)
   for (let y = 0; y < TAURI_ICON_SIZE; y += 1) {
@@ -126,12 +126,12 @@ function bundleIdentifier(packageName: string): string {
   return `dev.openpencil.${tail || 'app'}`
 }
 
-function updatePackageJson(source: string, productName: string): string {
+function updatePackageJSON(source: string, productName: string): string {
   const parsed: unknown = JSON.parse(source)
-  if (!isPlainJsonObject(parsed)) throw new TypeError('Compiler package.json must be an object')
-  const scripts = isPlainJsonObject(parsed.scripts) ? parsed.scripts : {}
-  const dependencies = isPlainJsonObject(parsed.dependencies) ? parsed.dependencies : {}
-  const devDependencies = isPlainJsonObject(parsed.devDependencies) ? parsed.devDependencies : {}
+  if (!isPlainJSONObject(parsed)) throw new TypeError('Compiler package.json must be an object')
+  const scripts = isPlainJSONObject(parsed.scripts) ? parsed.scripts : {}
+  const dependencies = isPlainJSONObject(parsed.dependencies) ? parsed.dependencies : {}
+  const devDependencies = isPlainJSONObject(parsed.devDependencies) ? parsed.devDependencies : {}
   return `${JSON.stringify(
     {
       ...parsed,
@@ -150,14 +150,14 @@ export function buildTauriReactProjectFiles(
   packageName: string,
   productName: string
 ): Map<string, string | Uint8Array> {
-  const packageJson = compiledFiles.get('package.json')
-  if (typeof packageJson !== 'string') {
+  const packageJSON = compiledFiles.get('package.json')
+  if (typeof packageJSON !== 'string') {
     throw new TypeError('Compiler output is missing a text package.json')
   }
   const crateName = rustCrateName(packageName)
   const files = new Map(compiledFiles)
-  files.set('package.json', updatePackageJson(packageJson, productName))
-  files.set(TAURI_ICON_ARCHIVE_PATH, createDefaultTauriIconPng())
+  files.set('package.json', updatePackageJSON(packageJSON, productName))
+  files.set(TAURI_ICON_ARCHIVE_PATH, createDefaultTauriIconPNG())
   files.set(
     'src-tauri/Cargo.toml',
     `[package]\nname = "${crateName}"\nversion = "0.1.0"\ndescription = "Tauri desktop project exported from OpenPencil"\nauthors = []\nedition = "2021"\n\n[lib]\nname = "${crateName}_lib"\ncrate-type = ["staticlib", "cdylib", "rlib"]\n\n[build-dependencies]\ntauri-build = { version = "2", features = [] }\n\n[dependencies]\nserde = { version = "1", features = ["derive"] }\nserde_json = "1"\ntauri = { version = "2", features = [] }\n`

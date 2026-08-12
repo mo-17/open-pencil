@@ -36,10 +36,10 @@ export {
 
 export {
   type ValidationResult,
-  normalizeSupabaseMutationPayloadJson,
+  normalizeSupabaseMutationPayloadJSON,
   validateExpression,
   validateStateName,
-  validateUrlTemplate
+  validateURLTemplate
 } from './validate'
 
 export {
@@ -69,18 +69,18 @@ export {
   validateSupabaseConfig
 } from './supabase-config'
 
-export { isSafeAnalyticsPolicyUrl, validateAnalyticsConfig } from './analytics-config'
+export { isSafeAnalyticsPolicyURL, validateAnalyticsConfig } from './analytics-config'
 
 export {
-  lowcodeCustomCssUrls,
-  unsafeLowcodeCustomCssUrls,
-  validateLowcodeCustomCss
+  lowcodeCustomCSSURLs,
+  unsafeLowcodeCustomCSSURLs,
+  validateLowcodeCustomCSS
 } from './custom-css'
 
 export {
   compactLowcodeHeadMetadata,
   isSafeLowcodeHeadLinkHref,
-  unsafeLowcodeHeadMetaRefreshUrl,
+  unsafeLowcodeHeadMetaRefreshURL,
   validateLowcodeHeadMeta
 } from './head-metadata'
 

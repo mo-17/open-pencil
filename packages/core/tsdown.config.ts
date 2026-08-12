@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { defineConfig } from 'tsdown'
 import type { Rolldown } from 'tsdown'
 
-const packageJson = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+const packageJSON = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
   dependencies?: Record<string, string>
 }
 
@@ -51,7 +51,7 @@ export default defineConfig({
   clean: true,
   outDir: './dist',
   deps: {
-    neverBundle: [...Object.keys(packageJson.dependencies ?? {}), /^node:/],
+    neverBundle: [...Object.keys(packageJSON.dependencies ?? {}), /^node:/],
     onlyBundle: false
   }
 })

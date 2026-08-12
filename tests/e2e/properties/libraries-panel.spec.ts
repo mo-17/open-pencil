@@ -49,7 +49,7 @@ test.beforeAll(async () => {
     await writeGraph(${JSON.stringify(join(fixtureDir, 'library.fig'))}, library);
     await writeGraph(${JSON.stringify(join(fixtureDir, 'consumer.fig'))}, new SceneGraph());
   `)
-  runCli([
+  runCLI([
     'library',
     'publish',
     join(fixtureDir, 'library.fig'),
@@ -69,7 +69,7 @@ test.beforeAll(async () => {
     '-o',
     join(fixtureDir, 'manifest-v1.json')
   ])
-  runCli([
+  runCLI([
     'library',
     'import',
     join(fixtureDir, 'consumer.fig'),
@@ -106,7 +106,7 @@ test.beforeAll(async () => {
     graph.updateNode(title.id, { text: "Updated" });
     await writeGraph(${JSON.stringify(join(fixtureDir, 'library.fig'))}, graph);
   `)
-  runCli([
+  runCLI([
     'library',
     'publish',
     join(fixtureDir, 'library.fig'),
@@ -202,7 +202,7 @@ function runBunEval(code: string): void {
   }
 }
 
-function runCli(args: string[]): void {
+function runCLI(args: string[]): void {
   const result = spawnSync('bun', [CLI, ...args], {
     cwd: process.cwd(),
     encoding: 'utf8'

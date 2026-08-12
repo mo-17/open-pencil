@@ -1,6 +1,6 @@
 import {
   SHARED_MOTION_PRESET_LIMITS,
-  parseSharedMotionPresetManifestJson,
+  parseSharedMotionPresetManifestJSON,
   type SharedMotionPresetManifest,
   type SharedMotionPresetSource
 } from './shared-presets'
@@ -149,7 +149,7 @@ export async function loadSharedMotionPresetManifestSource(
       : await urlBytes(source, dependencies)
   let manifest: SharedMotionPresetManifest
   try {
-    manifest = parseSharedMotionPresetManifestJson(decode(source, bytes))
+    manifest = parseSharedMotionPresetManifestJSON(decode(source, bytes))
   } catch (cause) {
     if (cause instanceof SharedMotionPresetSourceError) throw cause
     throw sourceError(source, cause instanceof Error ? cause.message : String(cause), cause)

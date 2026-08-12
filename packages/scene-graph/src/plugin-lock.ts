@@ -1,7 +1,7 @@
 import { validateModuleIdentity } from './module'
 import {
   canonicalManifestValue,
-  decodeBase64Url,
+  decodeBase64URL,
   parseBoundedManifestArray,
   parseExactManifestRecord,
   parseStableSemver
@@ -48,7 +48,7 @@ function lockEntry(value: unknown, index: number): PluginDocumentLockEntryV1 {
   if (typeof entry.manifestDigest !== 'string' || !SHA_256_BASE64URL.test(entry.manifestDigest)) {
     throw new TypeError(`${path}.manifestDigest must be a SHA-256 base64url digest`)
   }
-  if (decodeBase64Url(entry.manifestDigest).byteLength !== 32) {
+  if (decodeBase64URL(entry.manifestDigest).byteLength !== 32) {
     throw new TypeError(`${path}.manifestDigest must encode a 32-byte SHA-256 digest`)
   }
   return {

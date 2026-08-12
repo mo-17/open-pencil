@@ -9,8 +9,8 @@ import {
 } from '@open-pencil/core/plugins'
 
 import {
-  createAutomationPluginMcpHandlers,
-  type AutomationPluginMcpDependencies
+  createAutomationPluginMCPHandlers,
+  type AutomationPluginMCPDependencies
 } from '@/app/automation/bridge/plugin-mcp-handler'
 import type { AutomationTarget } from '@/app/automation/bridge/target'
 import { createEditorStore } from '@/app/editor/session'
@@ -62,12 +62,12 @@ describe('automation plugin MCP handler', () => {
       dispatches.push(args)
       return { ok: true, result: { created: true } }
     }
-    const dependencies: AutomationPluginMcpDependencies = {
+    const dependencies: AutomationPluginMCPDependencies = {
       store,
       runCommand: async () => ({ status: 'completed', message: 'command' }),
       runExporter: async () => ({ status: 'completed', message: 'export' })
     }
-    const handlers = createAutomationPluginMcpHandlers(handleAutomationTool, dependencies)
+    const handlers = createAutomationPluginMCPHandlers(handleAutomationTool, dependencies)
     const descriptor = (await handlers.handleList()).result.tools[0]
 
     const response = await handlers.handleCall(target(), {
@@ -158,7 +158,7 @@ describe('automation plugin MCP handler', () => {
     const store = createStore()
     await store.load()
     const dispatches: unknown[] = []
-    const handlers = createAutomationPluginMcpHandlers(
+    const handlers = createAutomationPluginMCPHandlers(
       async (_target, args) => {
         dispatches.push(args)
         return { ok: true, result: { created: true } }
@@ -227,7 +227,7 @@ describe('automation plugin MCP handler', () => {
     const store = createStore()
     await store.load()
     const dispatches: unknown[] = []
-    const handlers = createAutomationPluginMcpHandlers(
+    const handlers = createAutomationPluginMCPHandlers(
       async (_target, args) => {
         dispatches.push(args)
         return { ok: true, result: { created: true } }
@@ -334,7 +334,7 @@ describe('automation plugin MCP handler', () => {
     const controller = new AbortController()
     let commandSignal: AbortSignal | undefined
     let exporterSignal: AbortSignal | undefined
-    const dependencies: AutomationPluginMcpDependencies = {
+    const dependencies: AutomationPluginMCPDependencies = {
       store,
       runCommand: async (_editor, plugin, contribution, _args, signal) => {
         commandSignal = signal
@@ -347,7 +347,7 @@ describe('automation plugin MCP handler', () => {
         return { status: 'cancelled', message: 'Export cancelled' }
       }
     }
-    const handlers = createAutomationPluginMcpHandlers(async () => {
+    const handlers = createAutomationPluginMCPHandlers(async () => {
       throw new Error('Host contribution must not dispatch a core module tool')
     }, dependencies)
     const tools = (await handlers.handleList()).result.tools
@@ -424,7 +424,7 @@ describe('automation plugin MCP handler', () => {
     await store.load()
     await store.install(VUE_EXPORTER_PLUGIN_ID)
     const calls: string[] = []
-    const dependencies: AutomationPluginMcpDependencies = {
+    const dependencies: AutomationPluginMCPDependencies = {
       store,
       runCommand: async () => ({ status: 'completed', message: 'command' }),
       runExporter: async (_editor, plugin, contribution, signal, args) => {
@@ -434,7 +434,7 @@ describe('automation plugin MCP handler', () => {
         return { status: 'completed', message: 'Vue project exported' }
       }
     }
-    const handlers = createAutomationPluginMcpHandlers(async () => {
+    const handlers = createAutomationPluginMCPHandlers(async () => {
       throw new Error('Vue export must not dispatch a core module tool')
     }, dependencies)
 
@@ -484,7 +484,7 @@ describe('automation plugin MCP handler', () => {
     await store.install(ACCESSIBILITY_AUDIT_PLUGIN_ID)
     await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, true)
     const received: unknown[] = []
-    const dependencies: AutomationPluginMcpDependencies = {
+    const dependencies: AutomationPluginMCPDependencies = {
       store,
       runCommand: async (_editor, _plugin, _contribution, args) => {
         received.push(args)
@@ -492,7 +492,7 @@ describe('automation plugin MCP handler', () => {
       },
       runExporter: async () => ({ status: 'cancelled', message: 'unused' })
     }
-    const handlers = createAutomationPluginMcpHandlers(async () => {
+    const handlers = createAutomationPluginMCPHandlers(async () => {
       throw new Error('Command must not dispatch a core module tool')
     }, dependencies)
     const descriptor = (await handlers.handleList()).result.tools.find(
@@ -546,7 +546,7 @@ describe('automation plugin MCP handler', () => {
     let authorized = true
     const received: unknown[] = []
     const controller = new AbortController()
-    const dependencies: AutomationPluginMcpDependencies = {
+    const dependencies: AutomationPluginMCPDependencies = {
       store,
       mcpOptions: { connectorExposure: () => authorized },
       runCommand: async () => ({ status: 'cancelled', message: 'unused' }),
@@ -561,7 +561,7 @@ describe('automation plugin MCP handler', () => {
         }
       }
     }
-    const handlers = createAutomationPluginMcpHandlers(async () => {
+    const handlers = createAutomationPluginMCPHandlers(async () => {
       throw new Error('Connector query must not dispatch a core module tool')
     }, dependencies)
     const descriptor = (await handlers.handleList()).result.tools.find(

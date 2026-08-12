@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import * as moduleContract from './module-contract'
 import { createModuleFrameOverrides } from './module-frame'
@@ -46,7 +46,7 @@ export type DropdownMenuPlacementV1 =
   | 'right'
   | 'rightBottom'
 
-export interface DropdownMenuItemV1 extends JsonObject {
+export interface DropdownMenuItemV1 extends JSONObject {
   type: 'item'
   label: string
   href: string
@@ -55,13 +55,13 @@ export interface DropdownMenuItemV1 extends JsonObject {
   shortcut: string
 }
 
-export interface DropdownMenuSeparatorV1 extends JsonObject {
+export interface DropdownMenuSeparatorV1 extends JSONObject {
   type: 'separator'
 }
 
 export type DropdownMenuEntryV1 = DropdownMenuItemV1 | DropdownMenuSeparatorV1
 
-export interface DropdownMenuModuleConfigV1 extends JsonObject {
+export interface DropdownMenuModuleConfigV1 extends JSONObject {
   triggerLabel: string
   showTriggerLabel: boolean
   showTriggerChevron: boolean

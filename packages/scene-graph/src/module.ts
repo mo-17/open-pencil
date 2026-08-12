@@ -1,11 +1,11 @@
-import type { JsonObject } from './primitives'
+import type { JSONObject } from './primitives'
 
 export interface ModuleInstanceV1 {
   version: 1
   pluginId: string
   moduleType: string
   configVersion: number
-  config: JsonObject
+  config: JSONObject
 }
 
 export const MODULE_INSTANCE_LIMITS = Object.freeze({
@@ -32,13 +32,13 @@ const MODULE_INSTANCE_KEYS = new Set([
 const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 const MODULE_IDENTITY = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/
 
-interface JsonValidationState {
+interface JSONValidationState {
   entries: number
   arrayItems: number
   seen: WeakSet<object>
 }
 
-export function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
+export function isPlainJSONObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   const prototype = Object.getPrototypeOf(value)
   return prototype === Object.prototype || prototype === null
@@ -58,11 +58,11 @@ function ownDataEntries(value: object, path: string): [string, unknown][] | stri
   return entries
 }
 
-function validateJsonArray(
+function validateJSONArray(
   value: unknown[],
   path: string,
   depth: number,
-  state: JsonValidationState
+  state: JSONValidationState
 ): string | null {
   state.arrayItems += value.length
   if (state.arrayItems > MODULE_INSTANCE_LIMITS.maxArrayItems) {
@@ -82,19 +82,19 @@ function validateJsonArray(
     if (!descriptor?.enumerable || !('value' in descriptor)) {
       return `${path} must be a dense JSON array`
     }
-    const reason = validateJson(descriptor.value, `${path}[${index}]`, depth + 1, state)
+    const reason = validateJSON(descriptor.value, `${path}[${index}]`, depth + 1, state)
     if (reason) return reason
   }
   return null
 }
 
-function validateJsonObject(
+function validateJSONObject(
   value: object,
   path: string,
   depth: number,
-  state: JsonValidationState
+  state: JSONValidationState
 ): string | null {
-  if (!isPlainJsonObject(value)) return `${path} must be a plain JSON object`
+  if (!isPlainJSONObject(value)) return `${path} must be a plain JSON object`
   const entries = ownDataEntries(value, path)
   if (typeof entries === 'string') return entries
   state.entries += entries.length
@@ -106,17 +106,17 @@ function validateJsonObject(
     if (key.length > MODULE_INSTANCE_LIMITS.maxKeyLength) {
       return `${path} contains a key longer than ${MODULE_INSTANCE_LIMITS.maxKeyLength}`
     }
-    const reason = validateJson(entry, `${path}.${key}`, depth + 1, state)
+    const reason = validateJSON(entry, `${path}.${key}`, depth + 1, state)
     if (reason) return reason
   }
   return null
 }
 
-function validateJson(
+function validateJSON(
   value: unknown,
   path: string,
   depth: number,
-  state: JsonValidationState
+  state: JSONValidationState
 ): string | null {
   if (depth > MODULE_INSTANCE_LIMITS.maxDepth) {
     return `${path} exceeds the maximum JSON depth of ${MODULE_INSTANCE_LIMITS.maxDepth}`
@@ -135,8 +135,8 @@ function validateJson(
   if (state.seen.has(value)) return `${path} contains a circular reference`
   state.seen.add(value)
   return Array.isArray(value)
-    ? validateJsonArray(value, path, depth, state)
-    : validateJsonObject(value, path, depth, state)
+    ? validateJSONArray(value, path, depth, state)
+    : validateJSONObject(value, path, depth, state)
 }
 
 export function validateModuleIdentity(value: unknown, path = 'module identity'): string | null {
@@ -160,10 +160,10 @@ export function moduleInstanceKey(
 }
 
 export function validateModuleInstance(value: unknown): ModuleInstanceValidationResult {
-  if (!isPlainJsonObject(value)) {
+  if (!isPlainJSONObject(value)) {
     return { ok: false, reason: 'module must be a plain JSON object' }
   }
-  const jsonReason = validateJson(value, 'module', 0, {
+  const jsonReason = validateJSON(value, 'module', 0, {
     entries: 0,
     arrayItems: 0,
     seen: new WeakSet()
@@ -187,7 +187,7 @@ export function validateModuleInstance(value: unknown): ModuleInstanceValidation
   if (!Number.isSafeInteger(value.configVersion) || (value.configVersion as number) < 1) {
     return { ok: false, reason: 'module.configVersion must be a positive safe integer' }
   }
-  if (!isPlainJsonObject(value.config)) {
+  if (!isPlainJSONObject(value.config)) {
     return { ok: false, reason: 'module.config must be a plain JSON object' }
   }
   const serialized = JSON.stringify(value)

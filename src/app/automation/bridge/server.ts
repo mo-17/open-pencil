@@ -14,14 +14,14 @@ import { appPluginStore } from '@/app/plugins/app'
 import {
   appConnectorAuthorization,
   appConnectorCredentialReadiness,
-  isAppConnectorMcpExposed,
+  isAppConnectorMCPExposed,
   refreshAppConnectorCredentialReadiness
 } from '@/app/plugins/connectors/app'
-import { listAppPluginMcpTools } from '@/app/plugins/mcp'
+import { listAppPluginMCPTools } from '@/app/plugins/mcp'
 
 const PLUGIN_MCP_OPTIONS = Object.freeze({
-  connectorExposure: isAppConnectorMcpExposed,
-  connectorNonGetReadOnlyExposure: isAppConnectorMcpExposed
+  connectorExposure: isAppConnectorMCPExposed,
+  connectorNonGetReadOnlyExposure: isAppConnectorMCPExposed
 })
 
 export function connectAutomation(getStore: () => EditorStore, authToken: string | null = null) {
@@ -38,7 +38,7 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
   function announcePluginTools(socket: WebSocket): void {
     if (socket !== ws || socket.readyState !== WebSocket.OPEN) return
     try {
-      const revision = listAppPluginMcpTools(appPluginStore, PLUGIN_MCP_OPTIONS).revision
+      const revision = listAppPluginMCPTools(appPluginStore, PLUGIN_MCP_OPTIONS).revision
       if (revision === lastPluginToolsRevision) return
       lastPluginToolsRevision = revision
       socket.send(JSON.stringify({ type: 'plugin_tools_changed', revision }))

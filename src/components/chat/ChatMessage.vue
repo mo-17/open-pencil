@@ -14,7 +14,7 @@ import {
   type AssistantFilePresentation
 } from '@/app/ai/chat/sources'
 import { hasErrorOutput, toolErrorText, toolState } from '@/app/ai/chat/tool-presentation'
-import { remoteMcpToolServerDisplayInfo } from '@/app/ai/mcp'
+import { remoteMCPToolServerDisplayInfo } from '@/app/ai/mcp'
 import { openExternalLink } from '@/app/shell/ui'
 import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.vue'
 
@@ -62,7 +62,7 @@ function toolDisplayName(part: ToolPart): string {
 }
 
 function remoteToolServer(part: ToolPart) {
-  return remoteMcpToolServerDisplayInfo(getToolName(part))
+  return remoteMCPToolServerDisplayInfo(getToolName(part))
 }
 
 function approvalId(part: ToolPart): string | null {
@@ -90,7 +90,7 @@ function fileName(part: FileUIPart, index: number): string {
   return part.filename?.trim() || `${dialogs.value.imageAttachment} ${index + 1}`
 }
 
-function filePreviewUrl(part: FileUIPart, index: number): string {
+function filePreviewURL(part: FileUIPart, index: number): string {
   const metadata = message.metadata
   if (!metadata || typeof metadata !== 'object' || !('visualAttachments' in metadata)) {
     return part.url
@@ -108,7 +108,7 @@ function filePreviewUrl(part: FileUIPart, index: number): string {
   return typeof thumbnail.url === 'string' && thumbnail.url ? thumbnail.url : part.url
 }
 
-function openSafeExternalUrl(url: string): void {
+function openSafeExternalURL(url: string): void {
   void openExternalLink(url)
 }
 
@@ -177,7 +177,7 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
                       : toolState(part) === 'approval'
                         ? dialogs.toolApprovalRequired
                         : toolState(part) === 'done'
-                          ? dialogs.done
+                          ? dialogs.toolFinished
                           : toolState(part) === 'cancelled'
                             ? dialogs.toolCancelled
                             : toolState(part) === 'denied'
@@ -266,7 +266,7 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
               type="button"
               data-test-id="chat-assistant-file-link"
               class="flex w-full items-center gap-2 rounded-lg border border-border bg-panel-field px-2 py-2 text-left hover:bg-hover focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none"
-              @click="openSafeExternalUrl(file.openUrl)"
+              @click="openSafeExternalURL(file.openUrl)"
             >
               <icon-lucide-file class="size-4 shrink-0 text-muted" aria-hidden="true" />
               <span class="min-w-0">
@@ -300,7 +300,7 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
               type="button"
               data-test-id="chat-assistant-file-link"
               class="mt-1 flex w-full items-center justify-center gap-1 rounded px-1.5 py-1 text-[9px] text-muted hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none"
-              @click="openSafeExternalUrl(file.openUrl)"
+              @click="openSafeExternalURL(file.openUrl)"
             >
               <icon-lucide-external-link class="size-3" aria-hidden="true" />
               {{ dialogs.chatOpenFile }}
@@ -325,7 +325,7 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
                 type="button"
                 data-test-id="chat-source-link"
                 class="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-hover focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none"
-                @click="openSafeExternalUrl(source.url)"
+                @click="openSafeExternalURL(source.url)"
               >
                 <span
                   class="flex size-4 shrink-0 items-center justify-center rounded bg-hover text-[8px] text-muted"
@@ -383,7 +383,7 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
             v-for="(part, index) in userFiles"
             :key="partKey(part, index)"
             compact
-            :url="filePreviewUrl(part, index)"
+            :url="filePreviewURL(part, index)"
             :name="fileName(part, index)"
             :media-type="part.mediaType"
           />

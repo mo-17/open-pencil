@@ -255,7 +255,7 @@ function isKnownFavoriteKey(key: string, library: UserMotionPresetLibrary): bool
   )
 }
 
-function assertLocalJsonSize(json: string): void {
+function assertLocalJSONSize(json: string): void {
   if (new TextEncoder().encode(json).byteLength > LOCAL_MOTION_PRESET_STORAGE_MAX_BYTES) {
     throw storeError(
       'invalid-library',
@@ -264,12 +264,12 @@ function assertLocalJsonSize(json: string): void {
   }
 }
 
-function localJsonByteLength(json: string): number {
+function localJSONByteLength(json: string): number {
   return new TextEncoder().encode(json).byteLength
 }
 
-function assertLegacyLocalJsonSize(json: string): void {
-  if (localJsonByteLength(json) > LEGACY_LOCAL_MOTION_PRESET_STORAGE_MAX_BYTES) {
+function assertLegacyLocalJSONSize(json: string): void {
+  if (localJSONByteLength(json) > LEGACY_LOCAL_MOTION_PRESET_STORAGE_MAX_BYTES) {
     throw storeError(
       'invalid-library',
       `Motion preset data may not exceed ${LEGACY_LOCAL_MOTION_PRESET_STORAGE_MAX_BYTES} bytes.`
@@ -365,12 +365,12 @@ function parseStoredUserLibrary(
 }
 
 function parseStoredLibrary(json: string): ParsedStoredLibrary {
-  assertLocalJsonSize(json)
+  assertLocalJSONSize(json)
   let value: unknown
   try {
     value = JSON.parse(json)
   } catch (cause) {
-    assertLegacyLocalJsonSize(json)
+    assertLegacyLocalJSONSize(json)
     throw storeError('invalid-json', 'The saved motion preset library is not valid JSON.', cause)
   }
 
@@ -382,7 +382,7 @@ function parseStoredLibrary(json: string): ParsedStoredLibrary {
   const localEnvelope = candidate.format === LOCAL_MOTION_PRESET_STORAGE_FORMAT
   const localSchema = localEnvelope ? candidate.schemaVersion : undefined
   if (!localEnvelope || localSchema !== LOCAL_MOTION_PRESET_STORAGE_SCHEMA_VERSION) {
-    assertLegacyLocalJsonSize(json)
+    assertLegacyLocalJSONSize(json)
   }
   const record = strictRecord(
     candidate,
@@ -622,7 +622,7 @@ export function createMotionPresetLibraryStore(
     return commit(library, next)
   }
 
-  function importJson(
+  function importJSON(
     json: string,
     policy: MotionPresetMergePolicy = 'error'
   ): MotionPresetLibraryStoreSnapshot {
@@ -643,7 +643,7 @@ export function createMotionPresetLibraryStore(
     return commit(merged, mergedFavorites)
   }
 
-  function exportJson(): string {
+  function exportJSON(): string {
     assertWritable()
     return serializeUserMotionPresetLibrary(library)
   }
@@ -734,8 +734,8 @@ export function createMotionPresetLibraryStore(
     renamePreset,
     deletePreset,
     toggleFavorite,
-    importJson,
-    exportJson,
+    importJSON,
+    exportJSON,
     instantiatePreset,
     checkSharedLibrary,
     acceptSharedLibrary,

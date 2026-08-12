@@ -1,6 +1,6 @@
 import {
   canonicalManifestValue,
-  parseSha256Base64Url,
+  parseSha256Base64URL,
   parseSignedManifestIntegrity,
   parseStableSemver
 } from '@open-pencil/scene-graph'
@@ -15,7 +15,7 @@ import {
   marketplaceChannelRank,
   marketplaceIdentity,
   marketplacePositiveInteger,
-  marketplacePublicHttpsUrl,
+  marketplacePublicHttpsURL,
   marketplaceStringList,
   marketplaceText,
   parseBoundedManifestArray,
@@ -76,8 +76,8 @@ function catalogReference(value: unknown, index: number): MarketplaceCatalogRefe
     channel: marketplaceChannel(source.channel, `${path}.channel`),
     catalogId: marketplaceIdentity(source.catalogId, `${path}.catalogId`),
     keyId: marketplaceIdentity(source.keyId, `${path}.keyId`),
-    url: marketplacePublicHttpsUrl(source.url, `${path}.url`),
-    digest: parseSha256Base64Url(source.digest, `${path}.digest`)
+    url: marketplacePublicHttpsURL(source.url, `${path}.url`),
+    digest: parseSha256Base64URL(source.digest, `${path}.digest`)
   })
 }
 
@@ -104,7 +104,7 @@ function listingRelease(value: unknown, path: string): MarketplaceListingRelease
   return Object.freeze({
     channel: marketplaceChannel(source.channel, `${path}.channel`),
     version: parseStableSemver(source.version, `${path}.version`),
-    digest: parseSha256Base64Url(source.digest, `${path}.digest`)
+    digest: parseSha256Base64URL(source.digest, `${path}.digest`)
   })
 }
 
@@ -166,8 +166,8 @@ function auditHead(value: unknown): MarketplaceAuditHeadV1 {
   const source = parseExactManifestRecord(value, path, AUDIT_KEYS, AUDIT_KEYS)
   return Object.freeze({
     sequence: marketplacePositiveInteger(source.sequence, `${path}.sequence`),
-    headDigest: parseSha256Base64Url(source.headDigest, `${path}.headDigest`),
-    url: marketplacePublicHttpsUrl(source.url, `${path}.url`)
+    headDigest: parseSha256Base64URL(source.headDigest, `${path}.headDigest`),
+    url: marketplacePublicHttpsURL(source.url, `${path}.url`)
   })
 }
 
@@ -175,10 +175,10 @@ function runtimeIndex(value: unknown): MarketplaceRuntimeIndexReferenceV1 {
   const path = 'marketplaceSnapshot.runtimeIndex'
   const source = parseExactManifestRecord(value, path, RUNTIME_INDEX_KEYS, RUNTIME_INDEX_KEYS)
   return Object.freeze({
-    url: marketplacePublicHttpsUrl(source.url, `${path}.url`),
+    url: marketplacePublicHttpsURL(source.url, `${path}.url`),
     indexId: marketplaceIdentity(source.indexId, `${path}.indexId`),
     keyId: marketplaceIdentity(source.keyId, `${path}.keyId`),
-    digest: parseSha256Base64Url(source.digest, `${path}.digest`)
+    digest: parseSha256Base64URL(source.digest, `${path}.digest`)
   })
 }
 
@@ -288,7 +288,7 @@ export function validateMarketplaceSnapshot(value: unknown): MarketplaceSnapshot
   }
 }
 
-export function parseMarketplaceSnapshotJson(source: string): SignedMarketplaceSnapshotV1 {
+export function parseMarketplaceSnapshotJSON(source: string): SignedMarketplaceSnapshotV1 {
   if (
     typeof source !== 'string' ||
     new TextEncoder().encode(source).byteLength > MARKETPLACE_SNAPSHOT_LIMITS.maxJsonBytes
@@ -314,7 +314,7 @@ export function parseMarketplaceSnapshotBytes(source: Uint8Array): SignedMarketp
   } catch {
     throw new TypeError('Marketplace snapshot must contain valid UTF-8')
   }
-  return parseMarketplaceSnapshotJson(json)
+  return parseMarketplaceSnapshotJSON(json)
 }
 
 export function serializeMarketplaceSnapshot(value: unknown): string {

@@ -24,7 +24,7 @@ import {
   hasSameCopySource,
   markCopySource
 } from '@open-pencil/scene-graph/copy'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { applyComponentProperties } from './component-props'
 import { applyConstraintScaling } from './constraints'
@@ -62,7 +62,7 @@ function buildKiwiPropertyNodes(
 ): Set<string> {
   const result = new Set<string>()
   for (const [nodeId, change] of changedNodeEntries(changeMap, guidToNodeId)) {
-    const nc = change as JsonObject
+    const nc = change as JSONObject
     const node = graph.getNode(nodeId)
     if (!node?.componentId) continue
     const comp = graph.getNode(node.componentId)
@@ -73,7 +73,14 @@ function buildKiwiPropertyNodes(
     const hasDiffVisible = nc.visible === false && comp.visible
     const hasDiffFills = nc.fillPaints !== undefined && !isEqual(node.fills, comp.fills)
     const hasDiffStrokes = nc.strokePaints !== undefined && !isEqual(node.strokes, comp.strokes)
-    if (hasDiffRadius || hasDiffVisible || hasDiffFills || hasDiffStrokes) result.add(nodeId)
+    const hasDiffText =
+      nc.textData !== undefined &&
+      node.type === 'TEXT' &&
+      comp.type === 'TEXT' &&
+      node.text !== comp.text
+    if (hasDiffRadius || hasDiffVisible || hasDiffFills || hasDiffStrokes || hasDiffText) {
+      result.add(nodeId)
+    }
   }
   return result
 }

@@ -9,15 +9,15 @@ import {
   type PluginObjectParameterSchemaV2,
   type PluginParameterValue
 } from '@open-pencil/core/plugins'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
   SUPABASE_MANAGEMENT_API_ORIGIN,
   SUPABASE_OPENAPI_MAX_RESPONSE_BYTES,
   SUPABASE_OPENAPI_REQUEST_TIMEOUT_MS,
   normalizeSupabaseSchemaName,
-  projectRefFromSupabaseUrl,
-  supabaseOpenApiUrl
+  projectRefFromSupabaseURL,
+  supabaseOpenAPIURL
 } from '@/app/lowcode/supabase/management-client'
 import {
   SUPABASE_SCHEMA_CATALOG_LIMITS,
@@ -241,7 +241,7 @@ function normalizedParameters(parameters: unknown): SupabaseSchemaInspectorParam
   }
 
   try {
-    const projectRef = projectRefFromSupabaseUrl(`https://${rawProjectRef}.supabase.co`)
+    const projectRef = projectRefFromSupabaseURL(`https://${rawProjectRef}.supabase.co`)
     const schema = normalizeSupabaseSchemaName(rawSchema)
     if (projectRef !== rawProjectRef || (rawSchema !== undefined && schema !== rawSchema)) {
       throw invalidParameters('Supabase project reference and schema must be canonical.')
@@ -296,7 +296,7 @@ export function prepareSupabaseSchemaInspectorRequest(
   const parameters = normalizedParameters(context.parameters)
   throwIfAborted(context.signal)
   return Object.freeze({
-    url: supabaseOpenApiUrl(parameters.projectRef, parameters.schema),
+    url: supabaseOpenAPIURL(parameters.projectRef, parameters.schema),
     headers: Object.freeze({ Accept: 'application/json' })
   })
 }
@@ -307,13 +307,13 @@ export function prepareSupabaseSchemaInspectorRequest(
  * result contract is validated.
  */
 export function parseSupabaseSchemaInspectorResponse(
-  openApi: unknown,
-  parameters: Readonly<JsonObject>
+  openAPI: unknown,
+  parameters: Readonly<JSONObject>
 ): SupabaseSchemaCatalog {
   const identity = normalizedParameters(parameters)
   let catalog: SupabaseSchemaCatalog
   try {
-    catalog = parseSupabaseSchemaCatalog(openApi, identity)
+    catalog = parseSupabaseSchemaCatalog(openAPI, identity)
   } catch (cause) {
     throw new ConnectorExecutionError(
       'invalid-response',

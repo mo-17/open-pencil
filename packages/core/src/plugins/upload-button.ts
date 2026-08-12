@@ -1,5 +1,5 @@
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import * as moduleContract from './module-contract'
 import { createModuleFrameOverrides } from './module-frame'
@@ -29,7 +29,7 @@ export const UPLOAD_BUTTON_MODULE_LIMITS = Object.freeze({
   configBytes: 8_192
 })
 
-export interface UploadButtonModuleConfigV1 extends JsonObject {
+export interface UploadButtonModuleConfigV1 extends JSONObject {
   triggerLabel: string
   showTriggerIcon: boolean
   showTriggerLabel: boolean

@@ -227,7 +227,7 @@ export function normalizedMotionText(
   return normalized
 }
 
-function parseMotionHttpUrl(
+function parseMotionHttpURL(
   ref: string,
   path: string,
   invalid: MotionPortableValidationHelpers['invalid'],
@@ -259,7 +259,7 @@ export function parseMotionSourceReference(
   if (kind !== 'url') return invalid(`${path}.kind`, 'invalid_value', 'Expected file or url')
   return {
     kind,
-    ref: parseMotionHttpUrl(ref, `${path}.ref`, invalid, credentialsMessage)
+    ref: parseMotionHttpURL(ref, `${path}.ref`, invalid, credentialsMessage)
   }
 }
 

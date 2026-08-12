@@ -55,7 +55,7 @@ const consentRequiredDraft = ref(effectiveConsentRequired(config.value))
 const consentAnalyticsDefaultDraft = ref(effectiveConsentAnalyticsDefault(config.value))
 const consentBannerTextDraft = ref(config.value?.consentCopy?.bannerText ?? '')
 const consentAnalyticsDescriptionDraft = ref(config.value?.consentCopy?.analyticsDescription ?? '')
-const consentPolicyUrlDraft = ref(config.value?.consentCopy?.privacyPolicyUrl ?? '')
+const consentPolicyURLDraft = ref(config.value?.consentCopy?.privacyPolicyUrl ?? '')
 const consentPolicyLabelDraft = ref(config.value?.consentCopy?.privacyPolicyLabel ?? '')
 
 const idPlaceholder = computed(() => {
@@ -125,10 +125,10 @@ const endpointError = computed(() => {
   }
 })
 
-const consentPolicyUrlError = computed(() => {
-  const url = consentPolicyUrlDraft.value.trim()
+const consentPolicyURLError = computed(() => {
+  const url = consentPolicyURLDraft.value.trim()
   if (!url) return ''
-  return isSafePolicyUrl(url) ? '' : panels.value.lowcodeAnalyticsPolicyUrlError
+  return isSafePolicyURL(url) ? '' : panels.value.lowcodeAnalyticsPolicyUrlError
 })
 
 watch(
@@ -146,7 +146,7 @@ watch(
     consentAnalyticsDefaultDraft.value = draft.consentAnalyticsDefault
     consentBannerTextDraft.value = draft.bannerText
     consentAnalyticsDescriptionDraft.value = draft.analyticsDescription
-    consentPolicyUrlDraft.value = draft.policyUrl
+    consentPolicyURLDraft.value = draft.policyUrl
     consentPolicyLabelDraft.value = draft.policyLabel
   }
 )
@@ -166,7 +166,7 @@ function commitDraft(): void {
     commit(undefined)
     return
   }
-  if (idError.value || endpointError.value || consentPolicyUrlError.value) return
+  if (idError.value || endpointError.value || consentPolicyURLError.value) return
   const consentCopy = buildConsentCopy()
   const preset = consentRegionPresetDraft.value || undefined
   const presetRequiresConsent = preset === 'eea'
@@ -246,7 +246,7 @@ function clearConfig(): void {
   consentAnalyticsDefaultDraft.value = true
   consentBannerTextDraft.value = ''
   consentAnalyticsDescriptionDraft.value = ''
-  consentPolicyUrlDraft.value = ''
+  consentPolicyURLDraft.value = ''
   consentPolicyLabelDraft.value = ''
   commit(undefined)
 }
@@ -255,18 +255,18 @@ function buildConsentCopy(): AnalyticsConfig['consentCopy'] | undefined {
   if (!consentRequiredDraft.value) return undefined
   const bannerText = consentBannerTextDraft.value.trim()
   const analyticsDescription = consentAnalyticsDescriptionDraft.value.trim()
-  const privacyPolicyUrl = consentPolicyUrlDraft.value.trim()
+  const privacyPolicyURL = consentPolicyURLDraft.value.trim()
   const privacyPolicyLabel = consentPolicyLabelDraft.value.trim()
   const copy: NonNullable<AnalyticsConfig['consentCopy']> = {
     ...(bannerText ? { bannerText } : {}),
     ...(analyticsDescription ? { analyticsDescription } : {}),
-    ...(privacyPolicyUrl ? { privacyPolicyUrl } : {}),
+    ...(privacyPolicyURL ? { privacyPolicyURL } : {}),
     ...(privacyPolicyLabel ? { privacyPolicyLabel } : {})
   }
   return Object.keys(copy).length > 0 ? copy : undefined
 }
 
-function isSafePolicyUrl(value: string): boolean {
+function isSafePolicyURL(value: string): boolean {
   if (value.startsWith('/')) return !value.startsWith('//')
   try {
     const url = new URL(value)
@@ -417,15 +417,15 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
         />
         <div class="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-1">
           <input
-            v-model="consentPolicyUrlDraft"
+            v-model="consentPolicyURLDraft"
             :aria-label="panels.lowcodeAnalyticsConsentPolicyUrl"
-            :aria-invalid="consentPolicyUrlError ? 'true' : undefined"
+            :aria-invalid="consentPolicyURLError ? 'true' : undefined"
             data-test-id="lowcode-analytics-consent-policy-url"
             spellcheck="false"
             placeholder="/privacy"
             :class="[
               'min-w-0 rounded border bg-input px-2 py-1 text-[11px] text-surface outline-none focus:border-accent',
-              consentPolicyUrlError ? 'border-red-500' : 'border-border'
+              consentPolicyURLError ? 'border-red-500' : 'border-border'
             ]"
             @change="updateConsentCopy"
           />
@@ -514,11 +514,11 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
       {{ endpointError }}
     </p>
     <p
-      v-if="consentPolicyUrlError"
+      v-if="consentPolicyURLError"
       data-test-id="lowcode-analytics-consent-policy-url-error"
       class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
     >
-      {{ consentPolicyUrlError }}
+      {{ consentPolicyURLError }}
     </p>
 
     <p data-test-id="lowcode-analytics-note" class="mt-1.5 text-[10px] text-muted">

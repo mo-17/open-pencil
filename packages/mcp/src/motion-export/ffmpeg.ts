@@ -253,7 +253,7 @@ async function waitForDrain(
   })
 }
 
-async function feedPngFrames(
+async function feedPNGFrames(
   input: MotionAnimationEncoderInput,
   stdin: NodeJS.WritableStream,
   completion: Promise<ChildCompletion>
@@ -428,7 +428,7 @@ async function encodeWithFfmpeg(
     child.stdin.on('error', ignoreStdinError)
 
     try {
-      await feedPngFrames(input, child.stdin, completion)
+      await feedPNGFrames(input, child.stdin, completion)
       const outcome = await completion
       const aborted = cancellationError(input.signal)
       if (aborted) throw aborted

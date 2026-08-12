@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import { parsePluginObjectParameterValue } from '@open-pencil/core/plugins'
-import type { JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 import { useI18n } from '@open-pencil/vue'
 
 import {
@@ -13,7 +13,7 @@ import {
 } from '@/app/plugins/host/application-security-readiness'
 import AppBadge from '@/components/ui/AppBadge.vue'
 
-const { data } = defineProps<{ data?: JsonValue }>()
+const { data } = defineProps<{ data?: JSONValue }>()
 const { locale } = useI18n()
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

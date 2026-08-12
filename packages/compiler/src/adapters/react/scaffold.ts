@@ -30,7 +30,7 @@ import { motionDriverToken } from './motion/drivers'
 import { motionToken } from './motion/key'
 import type { PagePathInfo } from './route-paths'
 import { collectKitImports, kitImportLine } from './ui-kit/registry'
-import type { UiKitAdapter } from './ui-kit/types'
+import type { UIKitAdapter } from './ui-kit/types'
 
 /**
  * Classes the page wrapper carries on every compiled page. They never appear
@@ -88,7 +88,7 @@ interface BuildPageOptions {
   componentImportPrefix: string
   /** Phase 3 §15: the active UI kit (or null). Rewrites interactive tags to kit
    *  components + emits their imports. */
-  uiKit: UiKitAdapter | null
+  uiKit: UIKitAdapter | null
   /** Phase 4 §16.1: true when this page is rendered inside the multi-page
    *  `<BrowserRouter>` (so `useParams()` has a router context). Route-param
    *  reads (`$params`) only emit when true — single-page `App.tsx` has no
@@ -133,7 +133,7 @@ interface BuildAppOptions {
    *  `'./components/'` (single-page); multi-page pages pass `'../components/'`. */
   componentImportPrefix?: string
   /** Phase 3 §15: the active UI kit (or null → plain HTML, byte-identical). */
-  uiKit?: UiKitAdapter | null
+  uiKit?: UIKitAdapter | null
   /** Phase 4 §16.1: see `BuildPageOptions.routerAvailable`. Defaults to false
    *  (single-page `App.tsx` has no router); `buildPageModule` passes true. */
   routerAvailable?: boolean
@@ -553,7 +553,7 @@ function buildLowcodeStateImport(ir: IRTree, path: string): string {
  * for every kit component the subtree renders. Returns '' (→ byte-identical)
  * when no kit is active or no interactive node maps.
  */
-export function buildKitImports(nodes: readonly IRNode[], uiKit: UiKitAdapter | null): string {
+export function buildKitImports(nodes: readonly IRNode[], uiKit: UIKitAdapter | null): string {
   if (!uiKit) return ''
   const mappings = collectKitImports(nodes, uiKit)
   if (mappings.length === 0) return ''

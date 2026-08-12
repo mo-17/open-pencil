@@ -1,10 +1,10 @@
 import {
-  isPlainJsonObject,
+  isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
 import { hasExactPluginKeys } from './parse-helpers'
@@ -22,14 +22,14 @@ export const MAP_MODULE_LIMITS = Object.freeze({
   zoom: 19
 })
 
-export interface MapMarkerV1 extends JsonObject {
+export interface MapMarkerV1 extends JSONObject {
   id: string
   lng: number
   lat: number
   label?: string
 }
 
-export interface MapModuleConfigV1 extends JsonObject {
+export interface MapModuleConfigV1 extends JSONObject {
   provider: 'openstreetmap'
   style: 'standard' | 'light' | 'dark'
   center: [number, number]
@@ -113,7 +113,7 @@ function validMarkerId(value: unknown): value is string {
 }
 
 function parseMarker(value: unknown, index: number): ParseResult<MapMarkerV1> {
-  if (!isPlainJsonObject(value)) {
+  if (!isPlainJSONObject(value)) {
     return { ok: false, reason: `map marker ${index} must be an object` }
   }
   if (!markerHasExpectedKeys(value)) {
@@ -170,7 +170,7 @@ function parseMarkers(value: unknown): ParseResult<MapMarkerV1[]> {
 function parseMapConfig(
   value: unknown
 ): { ok: true; config: MapModuleConfigV1 } | { ok: false; reason: string } {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, MAP_CONFIG_KEYS)) {
+  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, MAP_CONFIG_KEYS)) {
     return {
       ok: false,
       reason:
@@ -225,7 +225,7 @@ function parseMapConfig(
 
 function mergeWithDefaults(config: unknown): unknown {
   if (config === undefined) return structuredClone(MAP_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
+  if (!isPlainJSONObject(config)) return config
   return { ...structuredClone(MAP_MODULE_DEFAULT_CONFIG), ...config }
 }
 

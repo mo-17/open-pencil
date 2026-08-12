@@ -11,8 +11,8 @@ import {
   type PluginParameterValue
 } from '@open-pencil/core/plugins'
 
-import { projectRefFromSupabaseUrl } from '@/app/lowcode/supabase/management-client'
-import type { JsonTraversalState } from '@/app/plugins/json-data'
+import { projectRefFromSupabaseURL } from '@/app/lowcode/supabase/management-client'
+import type { JSONTraversalState } from '@/app/plugins/json-data'
 import { credentialRef } from '@/app/settings/credentials/reference'
 
 import { resolveConnectorOperationOrigin, resolveConnectorOperationPath } from './broker'
@@ -376,7 +376,7 @@ interface FieldValue {
   readonly value: unknown
 }
 
-interface SupabaseJsonRecord {
+interface SupabaseJSONRecord {
   [key: string]: unknown
 }
 
@@ -412,7 +412,7 @@ function assertIdentifier(value: unknown, path: string): string {
 function canonicalProjectRef(value: unknown): string {
   if (typeof value !== 'string') throw invalidParameters('Supabase projectRef is invalid.')
   try {
-    const projectRef = projectRefFromSupabaseUrl(`https://${value}.supabase.co`)
+    const projectRef = projectRefFromSupabaseURL(`https://${value}.supabase.co`)
     if (projectRef !== value) throw invalidParameters('Supabase projectRef must be canonical.')
     return projectRef
   } catch (cause) {
@@ -421,7 +421,7 @@ function canonicalProjectRef(value: unknown): string {
   }
 }
 
-function parseCanonicalJson(value: unknown, path: string): unknown {
+function parseCanonicalJSON(value: unknown, path: string): unknown {
   if (typeof value !== 'string') throw invalidParameters(`${path} must be canonical JSON.`)
   let parsed: unknown
   try {
@@ -444,7 +444,7 @@ function normalizeFields(value: PluginParameterValue, path: string): readonly Fi
     const name = assertIdentifier(entry.name, `${path}[${index}].name`)
     return Object.freeze({
       name,
-      value: parseCanonicalJson(entry.valueJson, `${path}[${index}].valueJson`)
+      value: parseCanonicalJSON(entry.valueJson, `${path}[${index}].valueJson`)
     })
   })
   if (new Set(fields.map((field) => field.name)).size !== fields.length) {
@@ -463,7 +463,7 @@ function normalizeFilter(entry: PluginParameterValue, path: string): FilterValue
   if (!isFilterOperator(operator)) {
     throw invalidParameters(`${path}.operator is not supported.`)
   }
-  const parsed = parseCanonicalJson(source.valueJson, `${path}.valueJson`)
+  const parsed = parseCanonicalJSON(source.valueJson, `${path}.valueJson`)
   if (
     parsed !== null &&
     typeof parsed !== 'string' &&
@@ -563,7 +563,7 @@ function throwIfAborted(signal: AbortSignal): void {
   }
 }
 
-function tableUrl(
+function tableURL(
   operationValue: PluginConnectorOperationV1,
   parameters: ConnectorParameterObject
 ): URL {
@@ -579,8 +579,8 @@ function appendFilters(url: URL, filters: readonly FilterValue[]): void {
   }
 }
 
-function fieldsRecord(fields: readonly FieldValue[]): SupabaseJsonRecord {
-  const result = Object.create(null) as SupabaseJsonRecord
+function fieldsRecord(fields: readonly FieldValue[]): SupabaseJSONRecord {
+  const result = Object.create(null) as SupabaseJSONRecord
   for (const field of fields) result[field.name] = field.value
   return result
 }
@@ -589,7 +589,7 @@ function prepareQuery(
   operationValue: PluginConnectorOperationV1,
   parameters: ConnectorParameterObject
 ): PreparedConnectorRequest {
-  const url = tableUrl(operationValue, parameters)
+  const url = tableURL(operationValue, parameters)
   const columns = Object.hasOwn(parameters, 'columns') ? parameters.columns : undefined
   if (columns !== undefined) {
     if (!Array.isArray(columns)) throw invalidParameters('Supabase columns must be an array.')
@@ -618,7 +618,7 @@ function prepareInsert(
   operationValue: PluginConnectorOperationV1,
   parameters: ConnectorParameterObject
 ): PreparedConnectorRequest {
-  const url = tableUrl(operationValue, parameters)
+  const url = tableURL(operationValue, parameters)
   const records = parameters.records
   if (!Array.isArray(records)) throw invalidParameters('Supabase records must be an array.')
   const body = records.map((record, index) => {
@@ -641,7 +641,7 @@ function prepareUpdate(
   operationValue: PluginConnectorOperationV1,
   parameters: ConnectorParameterObject
 ): PreparedConnectorRequest {
-  const url = tableUrl(operationValue, parameters)
+  const url = tableURL(operationValue, parameters)
   appendFilters(url, normalizeFilters(parameters.filters, 'Supabase filters', true))
   if (parameters.fields === undefined) {
     throw invalidParameters('Supabase fields are required for update operations.')
@@ -660,7 +660,7 @@ function prepareDelete(
   operationValue: PluginConnectorOperationV1,
   parameters: ConnectorParameterObject
 ): PreparedConnectorRequest {
-  const url = tableUrl(operationValue, parameters)
+  const url = tableURL(operationValue, parameters)
   appendFilters(url, normalizeFilters(parameters.filters, 'Supabase filters', true))
   return Object.freeze({
     url: url.href,
@@ -690,9 +690,9 @@ export function prepareSupabaseBusinessRequest(
   throw new ConnectorExecutionError('authority-mismatch', 'Supabase Tables operation is unknown.')
 }
 
-type JsonWalkState = JsonTraversalState
+type JSONWalkState = JSONTraversalState
 
-function responseDataRecord(value: unknown, path: string): Readonly<SupabaseJsonRecord> {
+function responseDataRecord(value: unknown, path: string): Readonly<SupabaseJSONRecord> {
   if (
     typeof value !== 'object' ||
     value === null ||
@@ -708,7 +708,7 @@ function responseDataRecord(value: unknown, path: string): Readonly<SupabaseJson
   ) {
     throw invalidResponse(`${path} exceeds the field limit.`)
   }
-  const result = Object.create(null) as SupabaseJsonRecord
+  const result = Object.create(null) as SupabaseJSONRecord
   for (const key of keys as string[]) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key)
     if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
@@ -719,11 +719,11 @@ function responseDataRecord(value: unknown, path: string): Readonly<SupabaseJson
   return result
 }
 
-function cloneResponseJson(
+function cloneResponseJSON(
   value: unknown,
   path: string,
   depth: number,
-  state: JsonWalkState
+  state: JSONWalkState
 ): unknown {
   state.nodes += 1
   if (
@@ -746,11 +746,11 @@ function cloneResponseJson(
         throw invalidResponse(`${path} contains an invalid array.`)
       }
       return value.map((entry, index) =>
-        cloneResponseJson(entry, `${path}[${index}]`, depth + 1, state)
+        cloneResponseJSON(entry, `${path}[${index}]`, depth + 1, state)
       )
     }
     const source = responseDataRecord(value, path)
-    const result = Object.create(null) as SupabaseJsonRecord
+    const result = Object.create(null) as SupabaseJSONRecord
     for (const key of Object.keys(source).sort()) {
       if (
         key.length === 0 ||
@@ -760,7 +760,7 @@ function cloneResponseJson(
       ) {
         throw invalidResponse(`${path} contains an invalid JSON property name.`)
       }
-      result[key] = cloneResponseJson(source[key], `${path}.${key}`, depth + 1, state)
+      result[key] = cloneResponseJSON(source[key], `${path}.${key}`, depth + 1, state)
     }
     return result
   } finally {
@@ -768,8 +768,8 @@ function cloneResponseJson(
   }
 }
 
-function responseValueJson(value: unknown, path: string, state: JsonWalkState): string {
-  const source = JSON.stringify(cloneResponseJson(value, path, 0, state))
+function responseValueJSON(value: unknown, path: string, state: JSONWalkState): string {
+  const source = JSON.stringify(cloneResponseJSON(value, path, 0, state))
   if (TEXT_ENCODER.encode(source).byteLength > SUPABASE_BUSINESS_LIMITS.maxJsonValueBytes) {
     throw invalidResponse(`${path} exceeds the JSON value limit.`)
   }
@@ -785,14 +785,14 @@ export function normalizeSupabaseRowsResponse(
   if (value.length > SUPABASE_BUSINESS_LIMITS.maxRows) {
     throw invalidResponse('Supabase query response exceeds the row limit.')
   }
-  const state: JsonWalkState = { nodes: 0, ancestors: new WeakSet() }
+  const state: JSONWalkState = { nodes: 0, ancestors: new WeakSet() }
   const rows = value.map((row, rowIndex) => {
     const source = responseDataRecord(row, `Supabase rows[${rowIndex}]`)
     const fields = Object.keys(source)
       .sort()
       .map((name) => ({
         name: responseIdentifier(name, `Supabase rows[${rowIndex}] field`),
-        valueJson: responseValueJson(source[name], `Supabase rows[${rowIndex}].${name}`, state)
+        valueJson: responseValueJSON(source[name], `Supabase rows[${rowIndex}].${name}`, state)
       }))
     return Object.freeze({ fields: Object.freeze(fields) })
   })

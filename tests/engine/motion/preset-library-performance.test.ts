@@ -4,7 +4,7 @@ import {
   USER_MOTION_PRESET_FORMAT,
   mergeUserMotionPresetLibraries,
   parseUserMotionPresetLibrary,
-  parseUserMotionPresetLibraryJson,
+  parseUserMotionPresetLibraryJSON,
   serializeUserMotionPresetLibrary,
   withMotionStagger,
   type MotionSpec,
@@ -109,33 +109,33 @@ function runLibraryBaseline(
   incoming: UserMotionPresetLibrary
 ): LibraryBenchmarkResult {
   let checksum = 0
-  let currentJson = ''
-  let migratedJson = ''
-  let mergedJson = ''
+  let currentJSON = ''
+  let migratedJSON = ''
+  let mergedJSON = ''
   const startedAt = performance.now()
   for (let round = 0; round < LIBRARY_ROUNDS; round++) {
     const current = parseUserMotionPresetLibrary(currentRaw)
     const migrated = parseUserMotionPresetLibrary(legacyRaw)
-    currentJson = serializeUserMotionPresetLibrary(current)
-    migratedJson = serializeUserMotionPresetLibrary(migrated)
-    const reparsed = parseUserMotionPresetLibraryJson(currentJson)
+    currentJSON = serializeUserMotionPresetLibrary(current)
+    migratedJSON = serializeUserMotionPresetLibrary(migrated)
+    const reparsed = parseUserMotionPresetLibraryJSON(currentJSON)
     const merged = mergeUserMotionPresetLibraries(base, incoming)
-    mergedJson = serializeUserMotionPresetLibrary(merged)
+    mergedJSON = serializeUserMotionPresetLibrary(merged)
     checksum +=
       current.presets.length +
       migrated.presets.length +
       reparsed.presets.length +
       merged.presets.length +
-      currentJson.length +
-      migratedJson.length +
-      mergedJson.length
+      currentJSON.length +
+      migratedJSON.length +
+      mergedJSON.length
   }
   return {
     elapsedMs: performance.now() - startedAt,
     checksum,
-    currentJson,
-    migratedJson,
-    mergedJson
+    currentJson: currentJSON,
+    migratedJson: migratedJSON,
+    mergedJson: mergedJSON
   }
 }
 
@@ -179,9 +179,9 @@ describe('Motion preset library performance baselines', () => {
     expect(first.currentJson).toBe(second.currentJson)
     expect(first.migratedJson).toBe(second.migratedJson)
     expect(first.mergedJson).toBe(second.mergedJson)
-    expect(parseUserMotionPresetLibraryJson(first.currentJson).presets).toHaveLength(LIBRARY_SIZE)
-    expect(parseUserMotionPresetLibraryJson(first.migratedJson).presets).toHaveLength(LIBRARY_SIZE)
-    expect(parseUserMotionPresetLibraryJson(first.mergedJson).presets).toHaveLength(LIBRARY_SIZE)
+    expect(parseUserMotionPresetLibraryJSON(first.currentJson).presets).toHaveLength(LIBRARY_SIZE)
+    expect(parseUserMotionPresetLibraryJSON(first.migratedJson).presets).toHaveLength(LIBRARY_SIZE)
+    expect(parseUserMotionPresetLibraryJSON(first.mergedJson).presets).toHaveLength(LIBRARY_SIZE)
     // Seconds-wide and repeated: robust on shared CI, but catches validation or merge blowups.
     expect(Math.max(first.elapsedMs, second.elapsedMs)).toBeLessThan(LIBRARY_CEILING_MS)
   })

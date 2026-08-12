@@ -20,7 +20,7 @@ import {
   createDeployServerDeploymentNotice,
   printManualServerDeploymentNotice
 } from '#cli/server-deployment'
-import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
+import { resolveUIKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
 interface DeployArgs {
   file?: string
@@ -161,7 +161,7 @@ export default defineCommand({
   },
   async run({ args }) {
     const { file, page, base } = args as DeployArgs
-    const uiKit = resolveUiKitFlag(args as DeployArgs)
+    const uiKit = resolveUIKitFlag(args as DeployArgs)
     const target = resolveCodegenTarget(args as DeployArgs)
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as DeployArgs)
     let provider: DeployProvider

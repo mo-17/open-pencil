@@ -119,7 +119,7 @@ function unavailable(signature: string, mimeType: string, reason: string): Image
   return { signature, mimeType, headerValidation: 'valid', dimensionStatus: 'unavailable', reason }
 }
 
-function inspectPng(bytes: Uint8Array): ImageByteInspection {
+function inspectPNG(bytes: Uint8Array): ImageByteInspection {
   const signature = 'png'
   const mimeType = 'image/png'
   if (bytes.byteLength < 33 || readUint32BE(bytes, 8) !== 13 || ascii(bytes, 12, 4) !== 'IHDR') {
@@ -355,7 +355,7 @@ function inspectIsoImage(bytes: Uint8Array): ImageByteInspection | undefined {
 export function inspectImageBytes(bytes: Uint8Array): ImageByteInspection {
   if (bytes.byteLength === 0) return invalid(null, null, 'Stored image has zero bytes')
   if (hasBytes(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
-    return inspectPng(bytes)
+    return inspectPNG(bytes)
   }
   if (hasBytes(bytes, 0, [0xff, 0xd8, 0xff])) return inspectJpeg(bytes)
   if (

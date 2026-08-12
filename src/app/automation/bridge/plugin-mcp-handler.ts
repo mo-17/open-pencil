@@ -5,7 +5,7 @@ import {
   type PluginConnectorOperationV1
 } from '@open-pencil/core/plugins'
 import { canonicalManifestValue } from '@open-pencil/scene-graph'
-import type { JsonObject, JsonValue } from '@open-pencil/scene-graph/primitives'
+import type { JSONObject, JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import type { AutomationRequestContext } from '@/app/automation/bridge/request-context'
 import { isUnknownRecord, type AutomationTarget } from '@/app/automation/bridge/target'
@@ -13,7 +13,7 @@ import type { EditorStore } from '@/app/editor/active-store'
 import { appPluginStore } from '@/app/plugins/app'
 import {
   executeInstalledAppConnector,
-  isAppConnectorMcpExposed,
+  isAppConnectorMCPExposed,
   refreshAppConnectorCredentialReadiness
 } from '@/app/plugins/connectors/app'
 import type { ConnectorParameterObject } from '@/app/plugins/connectors/types'
@@ -23,11 +23,11 @@ import {
   type AppPluginHostExecutionResult
 } from '@/app/plugins/host'
 import {
-  listAppPluginMcpTools,
+  listAppPluginMCPTools,
   PLUGIN_MCP_LIMITS,
-  resolveAppPluginMcpTool,
-  type AppPluginMcpOptions,
-  type AppPluginMcpStore
+  resolveAppPluginMCPTool,
+  type AppPluginMCPOptions,
+  type AppPluginMCPStore
 } from '@/app/plugins/mcp'
 import { inspectInstalledPluginModuleCompatibility } from '@/app/plugins/modules'
 import type {
@@ -50,14 +50,14 @@ type AutomationToolHandler = (
   context?: AutomationRequestContext
 ) => Promise<unknown>
 
-export interface AutomationPluginMcpDependencies {
-  store: AppPluginMcpStore
-  mcpOptions?: AppPluginMcpOptions
+export interface AutomationPluginMCPDependencies {
+  store: AppPluginMCPStore
+  mcpOptions?: AppPluginMCPOptions
   runCommand(
     editor: EditorStore,
     plugin: InstalledPluginCommand['plugin'],
     contribution: InstalledPluginCommand['contribution'],
-    args: JsonObject,
+    args: JSONObject,
     signal?: AbortSignal
   ): Promise<AppPluginHostExecutionResult>
   runExporter(
@@ -65,7 +65,7 @@ export interface AutomationPluginMcpDependencies {
     plugin: InstalledPluginExporter['plugin'],
     contribution: InstalledPluginExporter['contribution'],
     signal?: AbortSignal,
-    args?: JsonObject
+    args?: JSONObject
   ): Promise<AppPluginHostExecutionResult>
   runConnector?(
     connector: InstalledPluginConnector,
@@ -76,7 +76,7 @@ export interface AutomationPluginMcpDependencies {
   refreshConnectorCredentialReadiness?(): Promise<void>
 }
 
-const runDefaultExporter: AutomationPluginMcpDependencies['runExporter'] = (
+const runDefaultExporter: AutomationPluginMCPDependencies['runExporter'] = (
   editor,
   plugin,
   contribution,
@@ -84,7 +84,7 @@ const runDefaultExporter: AutomationPluginMcpDependencies['runExporter'] = (
   args
 ) => runInstalledPluginExporter(editor, plugin, contribution, undefined, signal, args)
 
-const runDefaultCommand: AutomationPluginMcpDependencies['runCommand'] = (
+const runDefaultCommand: AutomationPluginMCPDependencies['runCommand'] = (
   editor,
   plugin,
   contribution,
@@ -92,18 +92,18 @@ const runDefaultCommand: AutomationPluginMcpDependencies['runCommand'] = (
   signal
 ) => runInstalledPluginCommand(editor, plugin, contribution, undefined, args, signal)
 
-const runDefaultConnector: NonNullable<AutomationPluginMcpDependencies['runConnector']> = (
+const runDefaultConnector: NonNullable<AutomationPluginMCPDependencies['runConnector']> = (
   connector,
   operation,
   args,
   signal
 ) => executeInstalledAppConnector(connector, operation.operationId, args, { signal })
 
-const DEFAULT_DEPENDENCIES: AutomationPluginMcpDependencies = Object.freeze({
+const DEFAULT_DEPENDENCIES: AutomationPluginMCPDependencies = Object.freeze({
   store: appPluginStore,
   mcpOptions: Object.freeze({
-    connectorExposure: isAppConnectorMcpExposed,
-    connectorNonGetReadOnlyExposure: isAppConnectorMcpExposed
+    connectorExposure: isAppConnectorMCPExposed,
+    connectorNonGetReadOnlyExposure: isAppConnectorMCPExposed
   }),
   runCommand: runDefaultCommand,
   runExporter: runDefaultExporter,
@@ -114,7 +114,7 @@ const DEFAULT_DEPENDENCIES: AutomationPluginMcpDependencies = Object.freeze({
     )
 })
 
-interface PluginMcpRequestRecord {
+interface PluginMCPRequestRecord {
   [key: string]: unknown
 }
 
@@ -122,7 +122,7 @@ function exactRecord(
   value: unknown,
   label: string,
   allowedKeys: ReadonlySet<string>
-): PluginMcpRequestRecord {
+): PluginMCPRequestRecord {
   if (!isUnknownRecord(value)) throw new TypeError(`${label} must be an object`)
   const prototype = Object.getPrototypeOf(value)
   if (prototype !== Object.prototype && prototype !== null) {
@@ -132,7 +132,7 @@ function exactRecord(
   if (keys.some((key) => typeof key !== 'string')) {
     throw new TypeError(`${label} must not contain symbol fields`)
   }
-  const normalized = Object.create(null) as PluginMcpRequestRecord
+  const normalized = Object.create(null) as PluginMCPRequestRecord
   for (const key of keys as string[]) {
     if (!allowedKeys.has(key)) throw new TypeError(`${label} contains unsupported field: ${key}`)
     const descriptor = Object.getOwnPropertyDescriptor(value, key)
@@ -164,7 +164,7 @@ function boundedNumber(value: unknown, label: string, minimum: number, maximum: 
   return value
 }
 
-function jsonValue(value: unknown, state: { count: number }, depth = 0): JsonValue {
+function jsonValue(value: unknown, state: { count: number }, depth = 0): JSONValue {
   state.count += 1
   if (state.count > MAX_JSON_VALUES) throw new TypeError('Plugin MCP config is too complex')
   if (depth > MAX_JSON_DEPTH) throw new TypeError('Plugin MCP config is too deeply nested')
@@ -179,7 +179,7 @@ function jsonValue(value: unknown, state: { count: number }, depth = 0): JsonVal
   if (prototype !== Object.prototype && prototype !== null) {
     throw new TypeError('Plugin MCP config must contain plain objects')
   }
-  const result: JsonObject = {}
+  const result: JSONObject = {}
   for (const [key, nested] of Object.entries(value)) {
     if (UNSAFE_JSON_KEYS.has(key))
       throw new TypeError(`Plugin MCP config contains unsafe key: ${key}`)
@@ -188,10 +188,10 @@ function jsonValue(value: unknown, state: { count: number }, depth = 0): JsonVal
   return result
 }
 
-function boundedConfig(value: unknown): JsonObject {
+function boundedConfig(value: unknown): JSONObject {
   const normalized = jsonValue(value, { count: 0 })
   if (!isUnknownRecord(normalized)) throw new TypeError('Plugin MCP config must be an object')
-  const canonical = canonicalManifestValue(normalized) as JsonObject
+  const canonical = canonicalManifestValue(normalized) as JSONObject
   const bytes = new TextEncoder().encode(JSON.stringify(canonical)).byteLength
   if (bytes > PLUGIN_MCP_LIMITS.maxConfigBytes) {
     throw new TypeError(
@@ -259,7 +259,7 @@ function emptyArguments(value: unknown): void {
 function contributionArguments(
   contribution: AppPluginCommandContribution | AppPluginExporterContribution,
   value: unknown
-): JsonObject {
+): JSONObject {
   if (!isV2Contribution(contribution)) {
     emptyArguments(value)
     return {}
@@ -269,7 +269,7 @@ function contributionArguments(
     contribution.parameters.schema,
     contribution.parameters.maxBytes,
     'Plugin MCP contribution arguments'
-  ) as JsonObject
+  ) as JSONObject
 }
 
 function isV2Contribution(
@@ -298,18 +298,18 @@ function throwIfAborted(signal?: AbortSignal): void {
   throw error
 }
 
-export function createAutomationPluginMcpHandlers(
+export function createAutomationPluginMCPHandlers(
   handleAutomationTool: AutomationToolHandler,
-  dependencies: AutomationPluginMcpDependencies = DEFAULT_DEPENDENCIES
+  dependencies: AutomationPluginMCPDependencies = DEFAULT_DEPENDENCIES
 ) {
   async function handleList(): Promise<{
     ok: true
-    result: ReturnType<typeof listAppPluginMcpTools>
+    result: ReturnType<typeof listAppPluginMCPTools>
   }> {
     await dependencies.refreshConnectorCredentialReadiness?.()
     return {
       ok: true,
-      result: listAppPluginMcpTools(dependencies.store, dependencies.mcpOptions)
+      result: listAppPluginMCPTools(dependencies.store, dependencies.mcpOptions)
     }
   }
 
@@ -324,7 +324,7 @@ export function createAutomationPluginMcpHandlers(
     throwIfAborted(context?.signal)
     // Rebuild and resolve from current installed state for every invocation. A descriptor cached by
     // an MCP client cannot outlive disable/uninstall or a trust/compatibility change.
-    const resolved = resolveAppPluginMcpTool(
+    const resolved = resolveAppPluginMCPTool(
       dependencies.store,
       call.name,
       call.pluginId,

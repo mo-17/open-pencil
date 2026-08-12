@@ -15,7 +15,7 @@ const { panels } = useI18n()
 const open = ref(false)
 const tokenValues = reactive<Record<string, Record<string, number>>>({})
 const {
-  manifestJson,
+  manifestJSON,
   publicKeyPem,
   busyId,
   libraries,
@@ -75,7 +75,7 @@ onBeforeUnmount(stopPreview)
 
     <div v-if="open" class="mt-1.5 space-y-1.5">
       <textarea
-        v-model="manifestJson"
+        v-model="manifestJSON"
         rows="3"
         :maxlength="TEAM_MOTION_LIBRARY_LIMITS.maxJsonBytes"
         class="w-full resize-y rounded border border-border bg-input p-1.5 font-mono text-[10px] text-surface outline-none focus:border-accent"
@@ -93,7 +93,7 @@ onBeforeUnmount(stopPreview)
       <button
         type="button"
         class="w-full rounded border border-border bg-input px-2 py-1 text-[10px] text-surface hover:bg-hover disabled:opacity-50"
-        :disabled="disabled || Boolean(busyId) || !manifestJson.trim() || !publicKeyPem.trim()"
+        :disabled="disabled || Boolean(busyId) || !manifestJSON.trim() || !publicKeyPem.trim()"
         data-test-id="motion-team-stage"
         @click="stageManifest"
       >

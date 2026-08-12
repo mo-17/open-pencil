@@ -1,3 +1,3 @@
-import { runCli } from './tauri-lowcode-preview-ack.ts'
+import { runCLI } from './tauri-lowcode-preview-ack.ts'
 
-process.exit(runCli())
+process.exit(runCLI())
