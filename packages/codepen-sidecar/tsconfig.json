@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../..",
+    "types": ["node", "bun"]
+  },
+  "include": ["../core/src/global.d.ts", "src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
+}

@@ -1,3 +1,7 @@
+mod ai_window;
+#[cfg(test)]
+mod app_commands;
+mod codepen;
 mod credentials;
 mod fig_container;
 mod fonts;
@@ -6,10 +10,16 @@ mod http;
 mod menu;
 mod menu_events;
 mod motion_export;
+mod preview_window;
 mod source_export;
 #[cfg(target_os = "macos")]
 mod window;
 
+use ai_window::{
+    close_ai_window, focus_ai_editor_window, get_ai_window_latest_payload, open_ai_window,
+    send_ai_window_intent, set_ai_window_always_on_top, update_ai_window, AIWindowState,
+};
+use codepen::{cleanup_stale_codepen_files, fetch_codepen_sources, open_codepen_prefill};
 use credentials::{
     credential_read, credential_remove, credential_status, credential_store_availability,
     credential_write,
@@ -24,6 +34,11 @@ use http::proxy_http_request;
 use menu::install_app_menu;
 use menu_events::handle_menu_event;
 use motion_export::write_motion_export_noclobber;
+use preview_window::{
+    close_preview_window, focus_preview_editor_window, get_preview_window_latest_payload,
+    open_preview_window, send_preview_window_intent, set_preview_window_always_on_top,
+    update_preview_window, PreviewWindowState,
+};
 use source_export::commit_source_export_file;
 use std::{
     path::{Path, PathBuf},
@@ -143,24 +158,42 @@ pub fn run() {
     builder
         .manage(PendingOpen(Mutex::new(Vec::new())))
         .manage(GoogleDriveOAuthOperations::default())
+        .manage(AIWindowState::default())
+        .manage(PreviewWindowState::default())
         .invoke_handler(tauri::generate_handler![
             build_fig_file,
+            close_ai_window,
             credential_read,
             credential_remove,
             credential_status,
             credential_store_availability,
             credential_write,
             commit_source_export_file,
+            fetch_codepen_sources,
             google_drive_oauth_authorize,
             google_drive_oauth_cancel,
             google_drive_oauth_refresh,
             google_drive_oauth_revoke,
             google_drive_transfer,
             mcp_executable_available,
+            close_preview_window,
+            focus_ai_editor_window,
+            focus_preview_editor_window,
+            get_ai_window_latest_payload,
+            get_preview_window_latest_payload,
             list_system_fonts,
             load_system_font,
             proxy_http_request,
+            open_ai_window,
+            open_codepen_prefill,
+            open_preview_window,
+            send_ai_window_intent,
+            send_preview_window_intent,
+            set_ai_window_always_on_top,
+            set_preview_window_always_on_top,
             take_pending_open,
+            update_ai_window,
+            update_preview_window,
             write_motion_export_noclobber
         ])
         .plugin(tauri_plugin_opener::init())
@@ -174,6 +207,7 @@ pub fn run() {
             handle_menu_event(app, event.id().0.as_str());
         })
         .setup(|app| {
+            cleanup_stale_codepen_files();
             queue_open_paths(app.handle(), startup_open_paths());
             Ok(install_app_menu(app)?)
         })

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-ai-window-latest-payload"
+description = "Enables the get_ai_window_latest_payload command without any pre-configured scope."
+commands.allow = ["get_ai_window_latest_payload"]
+
+[[permission]]
+identifier = "deny-get-ai-window-latest-payload"
+description = "Denies the get_ai_window_latest_payload command without any pre-configured scope."
+commands.deny = ["get_ai_window_latest_payload"]

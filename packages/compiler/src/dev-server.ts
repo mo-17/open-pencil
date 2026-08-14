@@ -8,13 +8,15 @@
 //   - CLI/sidecar: `bun packages/compiler/src/dev-server.ts [--port N]`
 //     stdin reads newline-delimited JSON commands; stdout emits NDJSON events.
 
+import { realpathSync } from 'node:fs'
 import { createServer as createNetServer } from 'node:net'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import vue from '@vitejs/plugin-vue'
-import { createServer, type PluginOption, type Update, type ViteDevServer } from 'vite'
+import { createServer, type Plugin, type PluginOption, type Update, type ViteDevServer } from 'vite'
 
 import { reactModuleOptimizeDepsForFiles } from './adapters/react/modules/registry'
 import { createSupabaseBuildDefines } from './build'
@@ -124,6 +126,119 @@ export interface PreviewServer {
   close(): Promise<void>
 }
 
+/**
+ * The preview serves generated files from memory. Disk access is needed only
+ * for its planted tsconfig and installed dependencies; the workspace itself
+ * must not become readable through Vite's `/@fs/` endpoint.
+ */
+export function previewFileSystemAllowlist(workspaceRoot: string, scanRoot: string): string[] {
+  return [
+    scanRoot,
+    join(workspaceRoot, 'node_modules'),
+    join(workspaceRoot, 'packages/compiler/node_modules')
+  ]
+}
+
+/**
+ * Vite's dependency roots contain workspace symlinks under `@open-pencil`.
+ * `server.fs.strict` alone therefore cannot distinguish an installed package
+ * from private workspace source after symlink resolution. Reject those
+ * workspace-package URLs before Vite can resolve them. Do not reject `/@fs/`
+ * itself: Vite 8 legitimately uses it for optimized dependencies outside the
+ * virtual app root, and its own strict allowlist rejects every other path.
+ */
+function decodePreviewRequestPathname(requestURL: string | undefined): string | null {
+  if (!requestURL) return ''
+  let pathname: string
+  try {
+    pathname = new URL(requestURL, 'http://preview.invalid').pathname
+  } catch {
+    return null
+  }
+
+  for (let pass = 0; pass < 4; pass++) {
+    const normalized = pathname.replaceAll('\\', '/')
+    let decoded: string
+    try {
+      decoded = decodeURIComponent(normalized)
+    } catch {
+      return null
+    }
+    if (decoded === normalized) return normalized
+    pathname = decoded
+  }
+  return null
+}
+
+export function isForbiddenPreviewFileRequest(requestURL: string | undefined): boolean {
+  const pathname = decodePreviewRequestPathname(requestURL)
+  return pathname === null || pathname.toLowerCase().includes('@open-pencil')
+}
+
+function previewFileSystemPath(requestURL: string | undefined): string | null {
+  const pathname = decodePreviewRequestPathname(requestURL)
+  if (pathname === null || !pathname.toLowerCase().startsWith('/@fs/')) return null
+  const filePath = pathname.slice('/@fs'.length)
+  // Vite encodes Windows drive paths as `/@fs/C:/…`.
+  return process.platform === 'win32' && /^\/[a-z]:\//i.test(filePath)
+    ? filePath.slice(1)
+    : filePath
+}
+
+function isPathWithin(root: string, target: string): boolean {
+  const pathFromRoot = relative(root, target)
+  return (
+    pathFromRoot === '' ||
+    (pathFromRoot !== '..' && !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot))
+  )
+}
+
+function canonicalizePreviewRequestPath(filePath: string): string {
+  let candidate = filePath
+  const missingSegments: string[] = []
+  for (;;) {
+    try {
+      return resolve(realpathSync.native(candidate), ...missingSegments)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error
+      const parent = dirname(candidate)
+      if (parent === candidate) throw error
+      missingSegments.unshift(basename(candidate))
+      candidate = parent
+    }
+  }
+}
+
+function previewFileBoundaryPlugin(allowlist: readonly string[]): Plugin {
+  const canonicalRoots = allowlist.map((root) => realpathSync.native(root))
+  return {
+    name: 'openpencil-preview-file-boundary',
+    enforce: 'pre',
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const filePath = previewFileSystemPath(request.url)
+        let forbidden = isForbiddenPreviewFileRequest(request.url)
+        if (!forbidden && filePath !== null) {
+          try {
+            const canonicalTarget = canonicalizePreviewRequestPath(filePath)
+            forbidden = !canonicalRoots.some((root) => isPathWithin(root, canonicalTarget))
+          } catch {
+            forbidden = true
+          }
+        }
+        if (!forbidden) {
+          next()
+          return
+        }
+        response.statusCode = 403
+        response.setHeader('Content-Type', 'text/plain; charset=utf-8')
+        response.end('Preview filesystem access is forbidden')
+      })
+    }
+  }
+}
+
 const PREVIEW_BASE_OPTIMIZE_DEPS = [
   'react',
   'react-dom',
@@ -181,6 +296,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
   // JSX-mode tsconfig (the VFS prefix sits inside scanRoot so npm resolution
   // walks up to the workspace's hoisted node_modules).
   const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot, target)
+  const fileSystemAllowlist = previewFileSystemAllowlist(workspaceRoot, scanRoot)
   const vfs = inMemoryVFS(state, vfsPrefix)
   const frameworkPlugins: PluginOption[] =
     target === 'vue' ? [vue() as PluginOption] : (react() as PluginOption[])
@@ -201,7 +317,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       port: chosenPort,
       host: '127.0.0.1',
       strictPort: false,
-      fs: { strict: false, allow: [workspaceRoot] }
+      fs: { strict: true, allow: fileSystemAllowlist }
     },
     optimizeDeps: {
       // Skip Vite's html crawler; we pre-declare the npm deps the emitted
@@ -213,13 +329,20 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
     // React's in-memory TSX needs an explicit JSX override (shared with the
     // static build — see VITE_JSX_ESBUILD). Vue SFCs stay on plugin-vue's path.
     ...(target === 'react' ? { esbuild: VITE_JSX_ESBUILD } : {}),
-    plugins: [vfs, ...frameworkPlugins, ...tailwindcss()]
+    plugins: [
+      previewFileBoundaryPlugin(fileSystemAllowlist),
+      vfs,
+      ...frameworkPlugins,
+      ...tailwindcss()
+    ]
   })
 
   trace('listen…')
   await server.listen()
   const port = server.config.server.port
-  const url = `http://localhost:${port}/`
+  // Keep the advertised origin identical to the loopback interface Vite binds.
+  // The desktop preview window validates this exact host before navigating.
+  const url = `http://127.0.0.1:${port}/`
   trace(`listening on ${url}`)
 
   return {

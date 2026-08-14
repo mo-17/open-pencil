@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-codepen-prefill"
+description = "Enables the open_codepen_prefill command without any pre-configured scope."
+commands.allow = ["open_codepen_prefill"]
+
+[[permission]]
+identifier = "deny-open-codepen-prefill"
+description = "Denies the open_codepen_prefill command without any pre-configured scope."
+commands.deny = ["open_codepen_prefill"]

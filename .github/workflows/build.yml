@@ -19,18 +19,23 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             label: macos-arm64
-          - platform: macos-latest
+            nativeSmoke: true
+          - platform: macos-15-intel
             target: x86_64-apple-darwin
             label: macos-x64
+            nativeSmoke: true
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x64
+            nativeSmoke: true
           - platform: windows-latest
             target: aarch64-pc-windows-msvc
             label: windows-arm64
+            nativeSmoke: false
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: linux-x64
+            nativeSmoke: true
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -52,6 +57,15 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - uses: ./.github/actions/setup-bun
+
+      - name: Build and verify CodePen sidecar
+        run: |
+          bun run build:codepen-sidecar --target=${{ matrix.target }}
+          bun run build:codepen-sidecar --target=${{ matrix.target }} --verify-only
+
+      - name: Smoke CodePen sidecar protocol
+        if: matrix.nativeSmoke
+        run: bun run smoke:codepen-sidecar --target=${{ matrix.target }}
 
       - name: Extract release notes
         id: changelog
@@ -108,6 +122,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          OPENPENCIL_CODEPEN_SIDECAR_PREBUILT: '1'
         with:
           tauriScript: bunx tauri
           args: --target ${{ matrix.target }}
@@ -117,6 +132,16 @@ jobs:
           releaseDraft: true
           uploadUpdaterJson: true
           uploadUpdaterSignatures: true
+
+      - name: Verify signed macOS CodePen sidecar
+        if: startsWith(matrix.target, 'aarch64-apple-') || startsWith(matrix.target, 'x86_64-apple-')
+        shell: bash
+        run: |
+          app_path="desktop/target/${{ matrix.target }}/release/bundle/macos/OpenPencil.app"
+          sidecar_path="$app_path/Contents/MacOS/openpencil-codepen-sidecar"
+          codesign --verify --deep --strict "$app_path"
+          codesign --verify --strict "$sidecar_path"
+          bun run smoke:codepen-sidecar --target=${{ matrix.target }} --binary="$sidecar_path"
 
   publish-npm:
     if: startsWith(github.ref, 'refs/tags/v')

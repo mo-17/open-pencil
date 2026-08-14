@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-update-preview-window"
+description = "Enables the update_preview_window command without any pre-configured scope."
+commands.allow = ["update_preview_window"]
+
+[[permission]]
+identifier = "deny-update-preview-window"
+description = "Denies the update_preview_window command without any pre-configured scope."
+commands.deny = ["update_preview_window"]

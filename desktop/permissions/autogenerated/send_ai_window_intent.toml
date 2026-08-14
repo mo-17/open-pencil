@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-send-ai-window-intent"
+description = "Enables the send_ai_window_intent command without any pre-configured scope."
+commands.allow = ["send_ai_window_intent"]
+
+[[permission]]
+identifier = "deny-send-ai-window-intent"
+description = "Denies the send_ai_window_intent command without any pre-configured scope."
+commands.deny = ["send_ai_window_intent"]

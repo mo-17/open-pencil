@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: './src/index.ts',
     browser: './src/browser.ts',
+    'static-export': './src/static-export.ts',
     'jsx-runtime': './src/jsx/runtime.ts',
     'jsx-dev-runtime': './src/jsx/dev-runtime.ts'
   },
@@ -25,6 +26,10 @@ export default defineConfig({
     minifyInternalExports: false,
     codeSplitting: {
       groups: [
+        {
+          test: /(?:^|[\\/])src[\\/]static-layout\.ts$/,
+          name: 'chunks/static-layout'
+        },
         {
           test: /(?<!\.d\.c?ts)$/,
           name: (id) => {

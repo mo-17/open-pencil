@@ -40,6 +40,9 @@
       "#compiler/*": [
         "./packages/compiler/src/*"
       ],
+      "#codepen-sidecar/*": [
+        "./packages/codepen-sidecar/*"
+      ],
       "#mcp/*": [
         "./packages/mcp/src/*"
       ],

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-ai-window"
+description = "Enables the close_ai_window command without any pre-configured scope."
+commands.allow = ["close_ai_window"]
+
+[[permission]]
+identifier = "deny-close-ai-window"
+description = "Denies the close_ai_window command without any pre-configured scope."
+commands.deny = ["close_ai_window"]

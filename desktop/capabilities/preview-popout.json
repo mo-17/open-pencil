@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "preview-popout-controls",
+  "description": "Narrow native controls for the compiler preview popout",
+  "windows": ["lowcode-preview-popout"],
+  "permissions": [
+    "allow-focus-preview-editor-window",
+    "allow-get-preview-window-latest-payload",
+    "allow-send-preview-window-intent",
+    "allow-set-preview-window-always-on-top"
+  ]
+}

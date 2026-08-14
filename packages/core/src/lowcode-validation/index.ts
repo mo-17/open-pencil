@@ -87,6 +87,12 @@ export {
 export { PAYLOAD_ENTRY_KEY_RE, validateSupabasePayloadEntries } from './supabase-payload-entries'
 
 export {
+  type CodePenSecretKind,
+  containsCodePenSecret,
+  findCodePenSecretKinds
+} from './codepen-secrets'
+
+export {
   type DatePickerIssue,
   type DatePickerIssueCode,
   isIsoDate,

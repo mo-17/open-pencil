@@ -58,6 +58,16 @@
       "bun": "./src/microfrontend/index.ts",
       "default": "./dist/microfrontend/index.mjs"
     },
+    "./codepen/static": {
+      "types": "./src/codepen/static.ts",
+      "bun": "./src/codepen/static.ts",
+      "default": "./dist/codepen/static.mjs"
+    },
+    "./codepen/sidecar-wire": {
+      "types": "./src/codepen/sidecar-wire.ts",
+      "bun": "./src/codepen/sidecar-wire.ts",
+      "default": "./dist/codepen/sidecar-wire.mjs"
+    },
     "./deploy": {
       "types": "./src/deploy.ts",
       "bun": "./src/deploy.ts",
@@ -76,6 +86,7 @@
     "@iconify-json/lucide": "^1.2.94",
     "@noble/hashes": "^1.8.0",
     "@open-pencil/core": "workspace:*",
+    "@open-pencil/dom-css": "workspace:*",
     "@open-pencil/motion-runtime": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "@tailwindcss/vite": "^4.2.1",

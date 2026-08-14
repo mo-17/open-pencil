@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-commit-source-export-file"
+description = "Enables the commit_source_export_file command without any pre-configured scope."
+commands.allow = ["commit_source_export_file"]
+
+[[permission]]
+identifier = "deny-commit-source-export-file"
+description = "Denies the commit_source_export_file command without any pre-configured scope."
+commands.deny = ["commit_source_export_file"]

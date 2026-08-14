@@ -11,7 +11,11 @@ import {
 } from '../src/shards'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
-const REQUIRED_UNIT_TEST_ROOTS = ['tests/engine', 'packages/motion-runtime/tests'] as const
+const REQUIRED_UNIT_TEST_ROOTS = [
+  'tests/engine',
+  'packages/motion-runtime/tests',
+  'packages/codepen-sidecar/tests'
+] as const
 
 async function repositoryTestFiles(path: string): Promise<string[]> {
   const entries = await readdir(resolve(REPO_ROOT, path), { withFileTypes: true })

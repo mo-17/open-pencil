@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "ai-popout-controls",
+  "description": "Narrow native controls for the app-owned AI chat popout",
+  "windows": ["ai-chat-popout"],
+  "permissions": [
+    "allow-focus-ai-editor-window",
+    "allow-get-ai-window-latest-payload",
+    "allow-send-ai-window-intent",
+    "allow-set-ai-window-always-on-top"
+  ]
+}

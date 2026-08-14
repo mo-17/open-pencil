@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-google-drive-transfer"
+description = "Enables the google_drive_transfer command without any pre-configured scope."
+commands.allow = ["google_drive_transfer"]
+
+[[permission]]
+identifier = "deny-google-drive-transfer"
+description = "Denies the google_drive_transfer command without any pre-configured scope."
+commands.deny = ["google_drive_transfer"]

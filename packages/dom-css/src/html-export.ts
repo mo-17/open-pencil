@@ -10,7 +10,8 @@ import {
 } from '@open-pencil/core/text/web-font/assets'
 
 import { mergeClassNames, serializeHTML, splitWhitespace } from './serialize'
-import type { DesignDocument, DesignElement, DesignNode, DesignStyleDeclaration } from './types'
+import { normalizeStaticDocument, staticDocumentBounds } from './static-layout'
+import type { DesignDocument, DesignNode, DesignStyleDeclaration } from './types'
 
 export interface ExportHTMLBundleOptions {
   html?: 'fragment' | 'standalone'
@@ -30,13 +31,6 @@ export interface ExportHTMLBundle {
   files: ExportHTMLFile[]
 }
 
-interface StandaloneBounds {
-  minX: number
-  minY: number
-  width: number
-  height: number
-}
-
 type ParseNode = DefaultTreeAdapterTypes.Node
 type ParseParent = DefaultTreeAdapterTypes.ParentNode
 type ParseElement = DefaultTreeAdapterTypes.Element
@@ -49,75 +43,6 @@ function styleToCSS(style: DesignStyleDeclaration): string {
     .filter(([, value]) => value !== '')
     .map(([property, value]) => `${property}: ${value}`)
     .join('; ')
-}
-
-function cloneNode(node: DesignNode): DesignNode {
-  if (node.type === 'text') return { ...node }
-  return {
-    ...node,
-    attrs: { ...node.attrs },
-    inlineStyle: node.inlineStyle ? { ...node.inlineStyle } : undefined,
-    children: node.children.map(cloneNode)
-  }
-}
-
-function standaloneStyleForNode(
-  node: DesignElement,
-  parent: DesignElement | undefined,
-  origin: StandaloneBounds
-): DesignStyleDeclaration {
-  const style = { ...node.inlineStyle }
-  const source = node.sourceSceneNode
-  if (!source) return style
-
-  style.position = 'absolute'
-  style.left = `${source.x - (parent ? 0 : origin.minX)}px`
-  style.top = `${source.y - (parent ? 0 : origin.minY)}px`
-  return style
-}
-
-function standaloneNode(
-  node: DesignNode,
-  origin: StandaloneBounds,
-  parent?: DesignElement
-): DesignNode {
-  if (node.type === 'text') return cloneNode(node)
-  const standalone: DesignElement = {
-    ...node,
-    attrs: { ...node.attrs },
-    inlineStyle: standaloneStyleForNode(node, parent, origin),
-    children: []
-  }
-  standalone.children = node.children.map((child) => standaloneNode(child, origin, node))
-  return standalone
-}
-
-function nodeBounds(node: DesignNode): StandaloneBounds | undefined {
-  if (node.type === 'text' || !node.sourceSceneNode) return undefined
-  return {
-    minX: node.sourceSceneNode.x,
-    minY: node.sourceSceneNode.y,
-    width: node.sourceSceneNode.width,
-    height: node.sourceSceneNode.height
-  }
-}
-
-function standaloneSize(document: DesignDocument): StandaloneBounds {
-  const bounds = document.children
-    .map(nodeBounds)
-    .filter((value): value is NonNullable<typeof value> => value !== undefined)
-  const minX = bounds.length > 0 ? Math.min(...bounds.map((bound) => bound.minX)) : 0
-  const minY = bounds.length > 0 ? Math.min(...bounds.map((bound) => bound.minY)) : 0
-  const maxX = bounds.length > 0 ? Math.max(...bounds.map((bound) => bound.minX + bound.width)) : 1
-  const maxY = bounds.length > 0 ? Math.max(...bounds.map((bound) => bound.minY + bound.height)) : 1
-  return { minX, minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) }
-}
-
-function standaloneDocument(document: DesignDocument, size: StandaloneBounds): DesignDocument {
-  return {
-    ...document,
-    children: document.children.map((node) => standaloneNode(node, size))
-  }
 }
 
 function cssClassName(index: number): string {
@@ -302,8 +227,8 @@ async function exportStandaloneHTML(
   document: DesignDocument,
   options: Required<ExportHTMLBundleOptions>
 ): Promise<ExportHTMLBundle> {
-  const size = standaloneSize(document)
-  const doc = standaloneDocument(document, size)
+  const size = staticDocumentBounds(document)
+  const doc = normalizeStaticDocument(document, size)
   const stageCSS = `.op-stage{position:relative;width:${size.width}px;height:${size.height}px;overflow:hidden;background:transparent}`
   let body: string
   let css = `${RESET_CSS}${stageCSS}`
