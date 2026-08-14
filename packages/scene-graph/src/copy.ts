@@ -8,6 +8,7 @@
  * no shared references between source and copy.
  */
 
+/* eslint-disable max-lines -- Deep-copy and reference-remapping helpers share one ownership boundary. */
 import type {
   ArcData,
   ComponentPropertyDefinition,
@@ -130,6 +131,104 @@ export function copyGeometryPaths(paths: GeometryPath[]): GeometryPath[] {
   }))
 }
 
+function remapFillNodeReferences(
+  fills: readonly Fill[] | undefined,
+  resolveNodeId: LowcodeNodeIdResolver
+): Fill[] | undefined {
+  const remapped = fills?.map((fill) => {
+    if (!fill.sourceNodeId) return fill
+    const nodeId = resolveNodeId(fill.sourceNodeId)
+    if (!nodeId || nodeId === fill.sourceNodeId) return fill
+    return { ...fill, sourceNodeId: nodeId }
+  })
+  return remapped?.some((fill, index) => fill !== fills?.[index]) ? remapped : undefined
+}
+
+/** Remap PATTERN paint targets whose source nodes were cloned in the same operation. */
+export function remapNodePaintReferences(
+  node: SceneNode,
+  resolveNodeId: LowcodeNodeIdResolver
+): Partial<SceneNode> | null {
+  const updates: Partial<SceneNode> = {}
+  const fills = remapFillNodeReferences(node.fills, resolveNodeId)
+  if (fills) updates.fills = fills
+  const textDecorationFills = remapFillNodeReferences(node.textDecorationFills, resolveNodeId)
+  if (textDecorationFills) updates.textDecorationFills = textDecorationFills
+
+  const styleRuns = node.styleRuns.map((run) => {
+    const styleFills = remapFillNodeReferences(run.style.fills, resolveNodeId)
+    const decorationFills = remapFillNodeReferences(run.style.textDecorationFills, resolveNodeId)
+    if (!styleFills && !decorationFills) return run
+    return {
+      ...run,
+      style: {
+        ...run.style,
+        ...(styleFills ? { fills: styleFills } : {}),
+        ...(decorationFills ? { textDecorationFills: decorationFills } : {})
+      }
+    }
+  })
+  if (styleRuns.some((run, index) => run !== node.styleRuns[index])) updates.styleRuns = styleRuns
+
+  for (const [field, geometry] of [
+    ['fillGeometry', node.fillGeometry],
+    ['strokeGeometry', node.strokeGeometry]
+  ] as const) {
+    const paths = geometry.map((path) => {
+      const pathFills = remapFillNodeReferences(path.fills, resolveNodeId)
+      if (!pathFills) return path
+      return { ...path, fills: pathFills }
+    })
+    if (paths.some((path, index) => path !== geometry[index])) updates[field] = paths
+  }
+
+  const overrideEntries = Object.entries(node.stateOverrides ?? {})
+  const stateOverrideEntries = overrideEntries.map(([state, override]) => {
+    const overrideFills = remapFillNodeReferences(override.fills, resolveNodeId)
+    if (!overrideFills) return [state, override]
+    return [state, { ...override, fills: overrideFills }]
+  })
+  if (stateOverrideEntries.some((entry, index) => entry[1] !== overrideEntries[index]?.[1])) {
+    updates.stateOverrides = Object.fromEntries(stateOverrideEntries)
+  }
+  return Object.keys(updates).length > 0 ? updates : null
+}
+
+/** Remap component-property INSTANCE_SWAP values that name cloned graph nodes. */
+export function remapNodeComponentPropertyReferences(
+  node: SceneNode,
+  resolveNodeId: LowcodeNodeIdResolver,
+  instanceSwapPropertyIds: ReadonlySet<string>
+): Partial<SceneNode> | null {
+  const componentPropertyDefinitions = node.componentPropertyDefinitions.map((definition) => {
+    if (definition.type !== 'INSTANCE_SWAP' || !definition.defaultValue) return definition
+    const nodeId = resolveNodeId(definition.defaultValue)
+    if (!nodeId || nodeId === definition.defaultValue) return definition
+    return { ...definition, defaultValue: nodeId }
+  })
+
+  const assignmentEntries = Object.entries(node.componentPropertyAssignments)
+  const componentPropertyAssignmentEntries = assignmentEntries.map(([propertyId, value]) => {
+    if (!instanceSwapPropertyIds.has(propertyId)) return [propertyId, value]
+    const nodeId = resolveNodeId(value)
+    if (!nodeId || nodeId === value) return [propertyId, value]
+    return [propertyId, nodeId]
+  })
+  const definitionsChanged = componentPropertyDefinitions.some(
+    (definition, index) => definition !== node.componentPropertyDefinitions[index]
+  )
+  const assignmentsChanged = componentPropertyAssignmentEntries.some(
+    (entry, index) => entry[1] !== assignmentEntries[index]?.[1]
+  )
+  if (!definitionsChanged && !assignmentsChanged) return null
+  return {
+    ...(definitionsChanged ? { componentPropertyDefinitions } : {}),
+    ...(assignmentsChanged
+      ? { componentPropertyAssignments: Object.fromEntries(componentPropertyAssignmentEntries) }
+      : {})
+  }
+}
+
 /** Scale geometry path coordinates while preserving independent path fills. */
 export function scaleGeometryPaths(paths: GeometryPath[], scaleX: number, scaleY: number) {
   const copies = copyGeometryPaths(paths)
@@ -194,6 +293,7 @@ function copyLibraryRefs(libraries: LibraryRef[] | undefined): LibraryRef[] | un
   return libraries?.map((library) => ({
     ...library,
     source: { ...library.source },
+    ...(library.manifestSource ? { manifestSource: { ...library.manifestSource } } : {}),
     importedComponents: library.importedComponents.map((component) => ({ ...component }))
   }))
 }
@@ -369,6 +469,10 @@ function remapInstanceOverrideValue(
   resolveNodeId: LowcodeNodeIdResolver
 ): { changed: boolean; value: unknown } {
   if (value === null) return { changed: false, value }
+  if ((field === 'componentId' || field === 'sourceComponentId') && typeof value === 'string') {
+    const nodeId = resolveNodeId(value)
+    return nodeId ? { changed: nodeId !== value, value: nodeId } : { changed: false, value }
+  }
   if (field === 'motionScene') {
     const validated = validateMotionSceneSpec(value)
     if (!validated.success) return { changed: false, value }
@@ -409,14 +513,13 @@ function remapInstanceOverrideKey(
   key: string,
   idMap: ReadonlyMap<string, string>
 ): { field: string; key: string; changed: boolean } {
-  for (const [sourceId, cloneId] of idMap) {
-    const prefix = `${sourceId}:`
-    if (!key.startsWith(prefix)) continue
-    return {
-      field: key.slice(prefix.length),
-      key: `${cloneId}:${key.slice(prefix.length)}`,
-      changed: sourceId !== cloneId
-    }
+  const separator = key.lastIndexOf(':')
+  if (separator === -1) return { field: key, key, changed: false }
+  const sourceId = key.slice(0, separator)
+  const cloneId = idMap.get(sourceId)
+  if (cloneId) {
+    const field = key.slice(separator + 1)
+    return { field, key: `${cloneId}:${field}`, changed: sourceId !== cloneId }
   }
   return { field: key, key, changed: false }
 }

@@ -47,6 +47,8 @@ export interface LibraryRef {
   libraryId: string
   name: string
   source: LibrarySource
+  /** Location of the manifest when it is distinct from the document artifact. */
+  manifestSource?: LibrarySource
   importedComponents: LibraryImportedComponent[]
 }
 
@@ -683,6 +685,8 @@ export interface SceneNode {
   pluginRelaunchData: PluginRelaunchDataEntry[]
 
   internalOnly: boolean
+  /** Marks the hidden CANVAS used to retain imported library component masters. */
+  lowcodeLibraryCache?: boolean
 
   flipX: boolean
   flipY: boolean

@@ -247,6 +247,52 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
       assert.match(oomFailure.message, /fallback was skipped/)
       assert.equal(oomFailure.cause?.message, 'Out of memory while parsing .fig')
 
+      // Untrusted remote input never retries on the main thread after a worker failure.
+      globalThis.Worker = FailingAfterTransferWorker
+      afterTransferFailure = 'synthetic untrusted worker failure'
+      let untrustedReads = 0
+      await assert.rejects(
+        readFigSource(
+          {
+            async read() {
+              untrustedReads++
+              return fixtureBlob.arrayBuffer()
+            }
+          },
+          { populate: 'all', allowMainThreadFallback: false }
+        ),
+        /fallback is disabled for untrusted/
+      )
+      assert.equal(untrustedReads, 1)
+
+      // Aborting an active untrusted parse terminates its dedicated worker.
+      let abortTerminations = 0
+      class PendingWorker {
+        onmessage = null
+        onmessageerror = null
+        onerror = null
+        postMessage(message, transfer) {
+          structuredClone(message, { transfer })
+        }
+        terminate() {
+          abortTerminations++
+        }
+      }
+      globalThis.Worker = PendingWorker
+      const controller = new AbortController()
+      const pending = readFigSource(
+        { read: () => fixtureBlob.arrayBuffer() },
+        {
+          populate: 'all',
+          signal: controller.signal,
+          allowMainThreadFallback: false
+        }
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      controller.abort(new DOMException('remote parse cancelled', 'AbortError'))
+      await assert.rejects(pending, /remote parse cancelled/)
+      assert.equal(abortTerminations, 1)
+
       globalThis.Worker = NativeWorker
     `
 

@@ -1,4 +1,4 @@
-import { parseFigBuffer } from '@open-pencil/fig'
+import { parseFigBuffer, type FigArchiveLimits } from '@open-pencil/fig'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { DynamicConcurrencyLimiter, type ConcurrencyLimiterState } from '#core/async-work'
@@ -10,6 +10,12 @@ import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
 
 export interface ParseFigFileOptions {
   populate?: 'all' | 'first-page' | 'none'
+  /** Apply archive and decompression quotas when parsing untrusted remote input. */
+  archiveLimits?: FigArchiveLimits
+  /** Cancel queued or active dedicated-worker parsing. */
+  signal?: AbortSignal
+  /** Disable the UI-thread recovery path for untrusted remote input. */
+  allowMainThreadFallback?: boolean
 }
 
 export const MAX_FIG_PARSE_WORKER_CONCURRENCY = 2
@@ -37,8 +43,12 @@ function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}
     figKiwiVersion,
     figSchemaDeflated,
     objectAnimations
-  } = parseFigBuffer(buffer)
-  const graph = importNodeChanges(nodeChanges, blobs, new Map(imageEntries), options)
+  } = parseFigBuffer(buffer, { limits: options.archiveLimits })
+  const graph = importNodeChanges(nodeChanges, blobs, new Map(imageEntries), {
+    populate: options.populate,
+    maxGraphNodes: options.archiveLimits?.maxGraphNodes,
+    maxTreeDepth: options.archiveLimits?.maxTreeDepth
+  })
   graph.figKiwiVersion = figKiwiVersion
   graph.figSchemaDeflated = figSchemaDeflated
   graph.figMessageObjectAnimations = objectAnimations
@@ -122,7 +132,11 @@ function transferableFigBuffer(data: FigSourceData): ArrayBuffer {
 }
 
 function parseViaWorker(buffer: ArrayBuffer, options: ParseFigFileOptions): Promise<SceneGraph> {
-  return figParseWorkerLimiter.run(() => parseViaStartedWorker(buffer, options))
+  const pending = figParseWorkerLimiter.run(() => {
+    throwIfFigParseAborted(options.signal)
+    return parseViaStartedWorker(buffer, options)
+  })
+  return abortableFigParse(pending, options.signal)
 }
 
 function parseViaStartedWorker(
@@ -135,10 +149,16 @@ function parseViaStartedWorker(
     })
 
     let settled = false
+    const abort = () => fail(figParseAbortReason(options.signal))
+
+    const cleanup = () => {
+      options.signal?.removeEventListener('abort', abort)
+    }
 
     const fail = (error: unknown) => {
       if (settled) return
       settled = true
+      cleanup()
       worker.terminate()
       reject(workerParseError(error))
     }
@@ -154,6 +174,7 @@ function parseViaStartedWorker(
         worker.terminate()
       }
       settled = true
+      cleanup()
       resolve(graph)
     }
 
@@ -185,8 +206,18 @@ function parseViaStartedWorker(
       fail(new Error('Worker .fig parse response could not be deserialized'))
     }
 
+    if (options.signal?.aborted) {
+      fail(figParseAbortReason(options.signal))
+      return
+    }
+    options.signal?.addEventListener('abort', abort, { once: true })
+
     try {
-      worker.postMessage({ buffer, options }, [buffer])
+      const workerOptions = {
+        populate: options.populate,
+        archiveLimits: options.archiveLimits
+      }
+      worker.postMessage({ buffer, options: workerOptions }, [buffer])
     } catch (error) {
       fail(error)
     }
@@ -202,7 +233,14 @@ async function parseFigFileWithFallback(
     return await parseViaWorker(buffer, options)
   } catch (error) {
     const workerError = workerParseError(error)
+    if (options.signal?.aborted) throw figParseAbortReason(options.signal)
     if (workerError instanceof DeterministicFigWorkerError) throw workerError
+    if (options.allowMainThreadFallback === false) {
+      throw new Error(
+        `${workerError.message}. Main-thread fallback is disabled for untrusted .fig input`,
+        { cause: workerError }
+      )
+    }
     if (isExplicitOutOfMemoryError(workerError)) {
       throw new Error(
         `${workerError.message}. Main-thread fallback was skipped to avoid increasing memory pressure`,
@@ -248,6 +286,10 @@ export async function parseFigFile(
   if (typeof Worker !== 'undefined' && IS_BROWSER) {
     return parseFigFileWithFallback(buffer, options)
   }
+  if (IS_BROWSER && options.allowMainThreadFallback === false) {
+    throw new Error('A dedicated Worker is required to parse untrusted .fig input')
+  }
+  throwIfFigParseAborted(options.signal)
   return parseFigFileSync(buffer, options)
 }
 
@@ -260,6 +302,10 @@ export async function readFigSource(
   if (typeof Worker !== 'undefined' && IS_BROWSER) {
     return parseFigFileWithFallback(buffer, options, readBuffer)
   }
+  if (IS_BROWSER && options.allowMainThreadFallback === false) {
+    throw new Error('A dedicated Worker is required to parse untrusted .fig input')
+  }
+  throwIfFigParseAborted(options.signal)
   return parseFigFileSync(buffer, options)
 }
 
@@ -268,4 +314,28 @@ export async function readFigFile(
   options: ParseFigFileOptions = {}
 ): Promise<SceneGraph> {
   return readFigSource({ read: () => file.arrayBuffer() }, options)
+}
+
+function figParseAbortReason(signal: AbortSignal | undefined): Error {
+  const reason = signal?.reason
+  return reason instanceof Error
+    ? reason
+    : new DOMException('FIG parsing was aborted', 'AbortError')
+}
+
+function throwIfFigParseAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw figParseAbortReason(signal)
+}
+
+function abortableFigParse<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise
+  if (signal.aborted) return Promise.reject(figParseAbortReason(signal))
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(figParseAbortReason(signal))
+    signal.addEventListener('abort', abort, { once: true })
+    void promise
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', abort))
+      .catch(reject)
+  })
 }

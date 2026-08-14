@@ -1,19 +1,41 @@
 import { ByteBuffer } from './bb'
+import { normalizeKiwiRuntimeLimits, type KiwiRuntimeLimits } from './limits'
 import { Schema, Field, Definition, DefinitionKind } from './schema'
 
 let types: (string | null)[] = ['bool', 'byte', 'int', 'uint', 'float', 'string', 'int64', 'uint64']
 let kinds: DefinitionKind[] = ['ENUM', 'STRUCT', 'MESSAGE']
 
-export function decodeBinarySchema(buffer: Uint8Array | ByteBuffer): Schema {
+export function decodeBinarySchema(
+  buffer: Uint8Array | ByteBuffer,
+  limits?: KiwiRuntimeLimits
+): Schema {
+  const normalizedLimits = normalizeKiwiRuntimeLimits(limits)
   let bb = buffer instanceof ByteBuffer ? buffer : new ByteBuffer(buffer)
   let definitionCount = bb.readVarUint()
+  const maxSchemaDefinitions = normalizedLimits?.maxSchemaDefinitions
+  if (maxSchemaDefinitions !== undefined && definitionCount > maxSchemaDefinitions) {
+    throw new Error(`Kiwi schema definition limit exceeded (${maxSchemaDefinitions})`)
+  }
   let definitions: Definition[] = []
+  let totalFieldCount = 0
 
   // Read in the schema
   for (let i = 0; i < definitionCount; i++) {
     let definitionName = bb.readString()
     let kind = bb.readByte()
+    if (kind >= kinds.length) throw new Error(`Invalid definition kind ${kind}`)
     let fieldCount = bb.readVarUint()
+    const maxFieldsPerDefinition = normalizedLimits?.maxFieldsPerDefinition
+    if (maxFieldsPerDefinition !== undefined && fieldCount > maxFieldsPerDefinition) {
+      throw new Error(
+        `Kiwi schema field limit exceeded for ${JSON.stringify(definitionName)} (${maxFieldsPerDefinition})`
+      )
+    }
+    totalFieldCount += fieldCount
+    const maxSchemaFields = normalizedLimits?.maxSchemaFields
+    if (maxSchemaFields !== undefined && totalFieldCount > maxSchemaFields) {
+      throw new Error(`Kiwi schema total field limit exceeded (${maxSchemaFields})`)
+    }
     let fields: Field[] = []
 
     for (let j = 0; j < fieldCount; j++) {
@@ -72,7 +94,7 @@ export function decodeBinarySchema(buffer: Uint8Array | ByteBuffer): Schema {
 export function encodeBinarySchema(schema: Schema): Uint8Array {
   let bb = new ByteBuffer()
   let definitions = schema.definitions
-  let definitionIndex: { [name: string]: number } = {}
+  let definitionIndex: { [name: string]: number } = Object.create(null)
 
   bb.writeVarUint(definitions.length)
 

@@ -77,6 +77,16 @@ function textNode(
 }
 
 describe('FIG text sizing import', () => {
+  test('enforces isolated graph node and parent-depth budgets', () => {
+    const changes = [documentNode(), canvasNode(), stackFrame(2), textNode(3, 2)]
+    expect(() =>
+      importNodeChanges(changes, [], undefined, { populate: 'none', maxGraphNodes: 3 })
+    ).toThrow('SceneGraph node limit exceeded (3)')
+    expect(() =>
+      importNodeChanges(changes, [], undefined, { populate: 'none', maxTreeDepth: 2 })
+    ).toThrow('.fig graph exceeds the 2 level depth limit')
+  })
+
   test('imports Figma auto-layout text matching derived layout as auto-size', () => {
     const graph = importNodeChanges([documentNode(), canvasNode(), stackFrame(2), textNode(3, 2)])
 

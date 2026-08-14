@@ -1,20 +1,14 @@
-import { toRaw } from 'vue'
-
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import {
   checkLibraryUpdates,
-  SceneGraph,
   type LibraryComponentManifestEntry,
   type LibraryManifest,
   type LibraryRef,
-  type LibraryUpdateStatus
+  type LibraryUpdateStatus,
+  type SceneGraph
 } from '@open-pencil/scene-graph'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
-
-type RawObject = {
-  [key: string]: unknown
-}
 
 export type LibraryPanelStatus = LibraryUpdateStatus | 'unknown'
 
@@ -126,61 +120,6 @@ export async function readLibraryGraphFile(file: File): Promise<SceneGraph> {
   const data = new Uint8Array(await file.arrayBuffer())
   const { graph } = await io.readDocument({ name: file.name, mimeType: file.type, data })
   return graph
-}
-
-export function cloneSceneGraphForLibraryUndo(graph: SceneGraph): SceneGraph {
-  const rawGraph = toRaw(graph)
-  const clone = new SceneGraph()
-  clone.nodes = new Map([...rawGraph.nodes].map(([id, node]) => [id, cloneRaw(node)]))
-  clone.images = new Map(
-    [...rawGraph.images].map(([id, data]) => [id, new Uint8Array(toRaw(data))])
-  )
-  clone.variables = new Map(
-    [...rawGraph.variables].map(([id, variable]) => [id, cloneRaw(variable)])
-  )
-  clone.variableCollections = new Map(
-    [...rawGraph.variableCollections].map(([id, collection]) => [id, cloneRaw(collection)])
-  )
-  clone.activeMode = new Map(rawGraph.activeMode)
-  clone.rootId = rawGraph.rootId
-  clone.figKiwiVersion = rawGraph.figKiwiVersion
-  clone.figSchemaDeflated = rawGraph.figSchemaDeflated
-    ? new Uint8Array(toRaw(rawGraph.figSchemaDeflated))
-    : null
-  clone.documentColorSpace = rawGraph.documentColorSpace
-  clone.instanceIndex = new Map()
-  for (const node of clone.nodes.values()) {
-    if (node.type !== 'INSTANCE' || !node.componentId) continue
-    const ids = clone.instanceIndex.get(node.componentId) ?? new Set<string>()
-    ids.add(node.id)
-    clone.instanceIndex.set(node.componentId, ids)
-  }
-  return clone
-}
-
-function cloneRaw<T>(value: T): T {
-  return structuredClone(deepToRaw(value)) as T
-}
-
-function deepToRaw(value: unknown): unknown {
-  if (value === null || typeof value !== 'object') return value
-
-  const raw = toRaw(value)
-  if (raw instanceof Uint8Array) return new Uint8Array(raw)
-  if (Array.isArray(raw)) return raw.map(deepToRaw)
-
-  if (!isRawObject(raw)) return raw
-
-  const copy: RawObject = {}
-  for (const [key, child] of Object.entries(raw)) {
-    copy[key] = deepToRaw(child)
-  }
-  return copy
-}
-
-function isRawObject(value: object): value is RawObject {
-  const proto = Object.getPrototypeOf(value)
-  return proto === Object.prototype || proto === null
 }
 
 function sourceLabel(library: LibraryRef): string {

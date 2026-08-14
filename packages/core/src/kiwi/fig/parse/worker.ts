@@ -1,4 +1,5 @@
 import { parseFigBuffer } from '@open-pencil/fig'
+import type { FigArchiveLimits } from '@open-pencil/fig'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { importNodeChanges } from '#core/kiwi/fig/import'
@@ -11,7 +12,7 @@ import { buildFigPopulationDelta, installFigMutationJournal } from '#core/kiwi/f
 
 interface WorkerParseRequest {
   buffer: ArrayBuffer
-  options?: { populate?: 'all' | 'first-page' }
+  options?: { populate?: 'all' | 'first-page' | 'none'; archiveLimits?: FigArchiveLimits }
 }
 interface PopulateRequest {
   type: 'populate'
@@ -73,7 +74,9 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
     request instanceof ArrayBuffer ? { buffer: request } : request
   let parsed: ReturnType<typeof parseFigBuffer>
   try {
-    parsed = parseFigBuffer(parseRequest.buffer)
+    parsed = parseFigBuffer(parseRequest.buffer, {
+      limits: parseRequest.options?.archiveLimits
+    })
   } catch (error) {
     postError(error, 'parse')
     return
@@ -83,7 +86,11 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   try {
     const { nodeChanges, blobs, images, figKiwiVersion, figSchemaDeflated, objectAnimations } =
       parsed
-    parsedGraph = importNodeChanges(nodeChanges, blobs, new Map(images), parseRequest.options)
+    parsedGraph = importNodeChanges(nodeChanges, blobs, new Map(images), {
+      populate: parseRequest.options?.populate,
+      maxGraphNodes: parseRequest.options?.archiveLimits?.maxGraphNodes,
+      maxTreeDepth: parseRequest.options?.archiveLimits?.maxTreeDepth
+    })
     parsedGraph.figKiwiVersion = figKiwiVersion
     parsedGraph.figSchemaDeflated = figSchemaDeflated
     parsedGraph.figMessageObjectAnimations = objectAnimations

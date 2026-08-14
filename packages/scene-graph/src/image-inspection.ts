@@ -1,4 +1,4 @@
-import type { Size } from '@open-pencil/scene-graph/primitives'
+import type { Size } from './primitives'
 
 const MAX_HEADER_SCAN_BYTES = 1024 * 1024
 const MAX_HEADER_SEGMENTS = 4_096

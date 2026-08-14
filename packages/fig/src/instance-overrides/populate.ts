@@ -26,29 +26,62 @@ export function populateInstances(
   graph: SceneGraph,
   rootIds?: Iterable<string>
 ): Set<string> | undefined {
-  const visiting = new Set<string>()
+  const processed = new Set<string>()
 
+  // eslint-disable-next-line complexity -- the explicit phases keep untrusted dependency walks iterative
   function ensurePopulated(nodeId: string): void {
-    const node = graph.getNode(nodeId)
-    if (node?.type !== 'INSTANCE' || !node.componentId || node.childIds.length > 0) return
-    if (visiting.has(nodeId)) return
-    visiting.add(nodeId)
+    const active = new Set<string>()
+    const stack: Array<{ nodeId: string; phase: 'component' | 'children' | 'populate' }> = [
+      { nodeId, phase: 'component' }
+    ]
 
-    const comp = graph.getNode(node.componentId)
-    if (!comp) return
+    while (stack.length > 0) {
+      const entry = stack.pop()
+      if (!entry) break
+      const node = graph.getNode(entry.nodeId)
 
-    if (comp.type === 'INSTANCE' && comp.componentId && comp.childIds.length === 0) {
-      ensurePopulated(comp.id)
-    }
-    for (const childId of comp.childIds) {
-      const child = graph.getNode(childId)
-      if (child?.type === 'INSTANCE' && child.componentId && child.childIds.length === 0) {
-        ensurePopulated(childId)
+      if (entry.phase === 'component') {
+        if (processed.has(entry.nodeId)) continue
+        if (node?.type !== 'INSTANCE' || !node.componentId || node.childIds.length > 0) {
+          processed.add(entry.nodeId)
+          continue
+        }
+        // A cyclic component dependency cannot be populated, but it must not recurse forever.
+        if (active.has(entry.nodeId)) continue
+        active.add(entry.nodeId)
+        stack.push({ nodeId: entry.nodeId, phase: 'children' })
+        const component = graph.getNode(node.componentId)
+        if (
+          component?.type === 'INSTANCE' &&
+          component.componentId &&
+          component.childIds.length === 0
+        ) {
+          stack.push({ nodeId: component.id, phase: 'component' })
+        }
+        continue
       }
-    }
 
-    if (comp.childIds.length > 0 && node.childIds.length === 0) {
-      graph.populateInstanceChildren(nodeId, node.componentId, 'fig-import')
+      const componentId = node?.type === 'INSTANCE' ? node.componentId : null
+      const component = componentId ? graph.getNode(componentId) : undefined
+      if (entry.phase === 'children') {
+        stack.push({ nodeId: entry.nodeId, phase: 'populate' })
+        if (!component) continue
+        for (let index = component.childIds.length - 1; index >= 0; index -= 1) {
+          const child = graph.getNode(component.childIds[index])
+          if (child?.type === 'INSTANCE' && child.componentId && child.childIds.length === 0) {
+            stack.push({ nodeId: child.id, phase: 'component' })
+          }
+        }
+        continue
+      }
+
+      if (node?.type === 'INSTANCE' && component && node.childIds.length === 0) {
+        if (component.childIds.length > 0) {
+          graph.populateInstanceChildren(node.id, component.id, 'fig-import')
+        }
+      }
+      active.delete(entry.nodeId)
+      processed.add(entry.nodeId)
     }
   }
 

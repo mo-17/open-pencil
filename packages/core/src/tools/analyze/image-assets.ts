@@ -1,13 +1,14 @@
-import type { Fill, SceneGraph, SceneNode } from '@open-pencil/scene-graph'
-
-import { defineTool } from '#core/tools/schema'
-
 import {
   IMAGE_INSPECTION_LIMITS,
   inspectImageBytes,
+  type Fill,
   type ImageByteInspection,
-  type ImageDimensions
-} from './image-asset-inspection'
+  type ImageDimensions,
+  type SceneGraph,
+  type SceneNode
+} from '@open-pencil/scene-graph'
+
+import { defineTool } from '#core/tools/schema'
 
 const DEFAULT_MAX_ASSET_BYTES = 20 * 1024 * 1024
 const DEFAULT_MAX_PIXELS = 50_000_000

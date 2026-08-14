@@ -1,9 +1,12 @@
 export {
   compressFigDataSync,
   parseFigBuffer,
+  REMOTE_FIG_ARCHIVE_LIMITS,
   writeFigArchive,
+  type FigArchiveLimits,
   type FigImageEntry,
   type FigParseResult,
+  type ParseFigBufferOptions,
   type WriteFigArchiveInput
 } from './archive'
 export {

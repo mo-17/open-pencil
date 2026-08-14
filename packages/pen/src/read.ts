@@ -30,7 +30,19 @@ import {
   type PenNode,
   type VarContext
 } from './convert'
+import {
+  assertExpandedGraphShape,
+  assertExpandedNodeCapacity,
+  assertInstanceExpansionCapacity
+} from './graph-limits'
+import {
+  assertPenByteLength,
+  resolvePenParseLimits,
+  type PenParseLimits,
+  type ResolvedPenParseLimits
+} from './limits'
 import { applyPenMetadata, applyPenOverrideMetadata, inheritPenMotion } from './read-metadata'
+import { applyPenTheme, resolveThemeVariables } from './read-variables'
 import { registerPenSource } from './source'
 import { parsePenDocument } from './validation'
 
@@ -221,11 +233,6 @@ function applyAllRefProps(
   }
 }
 
-function applyTheme(theme: Record<string, string>, ctx: VarContext): void {
-  const themeName = Object.values(theme)[0]
-  if (themeName) ctx.setActiveTheme(themeName)
-}
-
 // eslint-disable-next-line complexity -- .pen node mapping touches many format-specific fields
 function createSceneNode(
   pen: PenNode,
@@ -236,7 +243,7 @@ function createSceneNode(
   penSources: Map<string, PenNode>
 ): string | null {
   if (pen.type === 'prompt') return null
-  if (pen.theme) applyTheme(pen.theme, ctx)
+  if (pen.theme) applyPenTheme(pen.theme, ctx)
 
   const { w, h, layout, isTextLike } = resolveSizing(pen, ctx)
   const overrides = buildBaseOverrides(pen)
@@ -378,11 +385,15 @@ function descendantIdFromPath(path: string): string {
   return separator === -1 ? path : path.slice(separator + 1)
 }
 
-function populateInstances(graph: SceneGraph): void {
+function populateInstances(graph: SceneGraph, limits?: ResolvedPenParseLimits): void {
   for (const node of graph.getAllNodes()) {
     if (node.type === 'INSTANCE' && node.componentId && node.childIds.length === 0) {
       const component = graph.getNode(node.componentId)
-      if (component) populateInstanceChildren(graph, node.id, node.componentId)
+      if (component) {
+        assertInstanceExpansionCapacity(graph, node.id, component.id, limits)
+        populateInstanceChildren(graph, node.id, node.componentId)
+        assertExpandedNodeCapacity(graph, 0, limits)
+      }
     }
   }
 }
@@ -449,35 +460,6 @@ function collectComponentIds(nodes: PenNode[], map: Map<string, string>): void {
   }
 }
 
-function resolveNodeVars(node: SceneNode, graph: SceneGraph, ctx: VarContext): void {
-  for (const [key, varId] of Object.entries(node.boundVariables)) {
-    const variable = graph.variables.get(varId)
-    if (!variable) continue
-    const modeVal =
-      variable.valuesByMode[ctx.activeModeId] ?? Object.values(variable.valuesByMode)[0]
-    if (key.startsWith('fills[') && typeof modeVal === 'object' && 'r' in modeVal) {
-      const idx = Number.parseInt(key.match(/\d+/)?.[0] ?? '0', 10)
-      if (node.fills[idx]) node.fills[idx].color = modeVal
-    } else if (key.startsWith('strokes[') && typeof modeVal === 'object' && 'r' in modeVal) {
-      const idx = Number.parseInt(key.match(/\d+/)?.[0] ?? '0', 10)
-      if (node.strokes[idx]) node.strokes[idx].color = modeVal
-    }
-  }
-  for (const childId of node.childIds) {
-    const child = graph.getNode(childId)
-    if (child) resolveNodeVars(child, graph, ctx)
-  }
-}
-
-function resolveThemeVariables(penNodes: PenNode[], graph: SceneGraph, ctx: VarContext): void {
-  for (const pen of penNodes) {
-    if (pen.theme) applyTheme(pen.theme, ctx)
-    const node = graph.getNode(pen.id)
-    if (node) resolveNodeVars(node, graph, ctx)
-    if (pen.children) resolveThemeVariables(pen.children, graph, ctx)
-  }
-}
-
 function fixInstanceWidths(graph: SceneGraph): void {
   for (const node of graph.getAllNodes()) {
     if (node.type !== 'INSTANCE' || !node.componentId) continue
@@ -501,9 +483,14 @@ function fixTextWidths(graph: SceneGraph): void {
   }
 }
 
-export function parsePenFile(json: string): SceneGraph {
-  const doc = parsePenDocument(json)
-  const graph = new SceneGraph()
+export interface ParsePenFileOptions {
+  limits?: PenParseLimits
+}
+
+export function parsePenFile(json: string, options: ParsePenFileOptions = {}): SceneGraph {
+  const limits = options.limits ? resolvePenParseLimits(options.limits) : undefined
+  const doc = parsePenDocument(json, limits)
+  const graph = new SceneGraph(limits ? { maxNodes: limits.maxExpandedNodes } : {})
 
   for (const page of graph.getPages(true)) {
     graph.deleteNode(page.id)
@@ -524,11 +511,14 @@ export function parsePenFile(json: string): SceneGraph {
   for (const child of doc.children) {
     createSceneNode(child, page.id, graph, ctx, componentIds, penSources)
   }
+  assertExpandedNodeCapacity(graph, 0, limits)
 
   applyAllRefProps(doc.children, graph, componentIds, penSources, ctx)
-  populateInstances(graph)
+  populateInstances(graph, limits)
   walkAndApplyOverrides(doc.children, graph, ctx, componentIds, penSources)
-  populateInstances(graph)
+  assertExpandedNodeCapacity(graph, 0, limits)
+  populateInstances(graph, limits)
+  assertExpandedGraphShape(graph, limits)
   resolveThemeVariables(doc.children, graph, ctx)
   fixInstanceWidths(graph)
   fixTextWidths(graph)
@@ -568,6 +558,12 @@ function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string'
 }
 
-export async function readPenFile(file: File): Promise<SceneGraph> {
-  return parsePenFile(await file.text())
+export async function readPenFile(
+  file: File,
+  options: ParsePenFileOptions = {}
+): Promise<SceneGraph> {
+  if (options.limits) {
+    assertPenByteLength(file.size, resolvePenParseLimits(options.limits))
+  }
+  return parsePenFile(await file.text(), options)
 }

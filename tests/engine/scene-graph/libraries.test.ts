@@ -6,8 +6,20 @@ import {
   componentSubtreeVersion,
   importLibraryComponent,
   publishLibraryComponent,
-  SceneGraph
+  SceneGraph,
+  type Fill
 } from '@open-pencil/scene-graph'
+
+function nestedImageFill(imageHash: string): Fill {
+  return {
+    type: 'IMAGE',
+    color: { r: 0, g: 0, b: 0, a: 1 },
+    opacity: 1,
+    visible: true,
+    imageHash,
+    imageScaleMode: 'FILL'
+  }
+}
 
 describe('team-library scene-graph helpers (Phase 4 §14)', () => {
   test('publishes a component with a deterministic subtree version', () => {
@@ -96,7 +108,8 @@ describe('team-library scene-graph helpers (Phase 4 §14)', () => {
       sourceGraph,
       targetGraph,
       manifest: published.manifest,
-      componentKey: 'component-card'
+      componentKey: 'component-card',
+      manifestSource: { kind: 'url', ref: 'https://example.com/design-system.json' }
     })
     expect('error' in result).toBe(false)
     if ('error' in result) return
@@ -121,6 +134,7 @@ describe('team-library scene-graph helpers (Phase 4 §14)', () => {
         libraryId: 'design-system',
         name: 'Design System',
         source: { kind: 'file', ref: './design-system.fig' },
+        manifestSource: { kind: 'url', ref: 'https://example.com/design-system.json' },
         importedComponents: [{ key: 'component-card', version: published.component.version }]
       }
     ])
@@ -216,6 +230,145 @@ describe('team-library scene-graph helpers (Phase 4 §14)', () => {
 
     expect(Array.from(targetGraph.images.get('hero-hash') ?? [])).toEqual([1, 2, 3])
     expect(targetGraph.images.get('hero-hash')).not.toBe(sourceGraph.images.get('hero-hash'))
+  })
+
+  test('copies geometry and state-override images on import and update', () => {
+    const sourceGraph = new SceneGraph()
+    const component = sourceGraph.createNode('COMPONENT', sourceGraph.getPages()[0].id, {
+      name: 'Nested Paint Card'
+    })
+    const paintNode = sourceGraph.createNode('RECTANGLE', component.id, {
+      fillGeometry: [
+        {
+          windingRule: 'NONZERO',
+          commandsBlob: new Uint8Array(),
+          fills: [nestedImageFill('geometry-v1')]
+        }
+      ],
+      stateOverrides: { hover: { fills: [nestedImageFill('state-v1')] } }
+    })
+    sourceGraph.images.set('geometry-v1', new Uint8Array([1]))
+    sourceGraph.images.set('state-v1', new Uint8Array([2]))
+    const first = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      componentKey: 'nested-paint-card',
+      source: { kind: 'file', ref: './nested-paint-card.fig' }
+    })
+    expect('error' in first).toBe(false)
+    if ('error' in first) return
+    const targetGraph = new SceneGraph()
+    const imported = importLibraryComponent({
+      sourceGraph,
+      targetGraph,
+      manifest: first.manifest,
+      componentKey: 'nested-paint-card'
+    })
+    expect('error' in imported).toBe(false)
+    if ('error' in imported) return
+    expect(Array.from(targetGraph.images.get('geometry-v1') ?? [])).toEqual([1])
+    expect(Array.from(targetGraph.images.get('state-v1') ?? [])).toEqual([2])
+
+    sourceGraph.updateNode(paintNode.id, {
+      strokeGeometry: [
+        {
+          windingRule: 'NONZERO',
+          commandsBlob: new Uint8Array(),
+          fills: [nestedImageFill('geometry-v2')]
+        }
+      ]
+    })
+    sourceGraph.images.set('geometry-v2', new Uint8Array([3]))
+    const second = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      componentKey: 'nested-paint-card',
+      source: { kind: 'file', ref: './nested-paint-card.fig' }
+    })
+    expect('error' in second).toBe(false)
+    if ('error' in second) return
+    const accepted = acceptLibraryUpdate({
+      sourceGraph,
+      targetGraph,
+      manifest: second.manifest,
+      componentKey: 'nested-paint-card'
+    })
+    expect('error' in accepted).toBe(false)
+    expect(Array.from(targetGraph.images.get('geometry-v2') ?? [])).toEqual([3])
+  })
+
+  test('rejects image-key collisions before importing or accepting an update', () => {
+    const sourceGraph = new SceneGraph()
+    const sourcePage = sourceGraph.getPages()[0]
+    const component = sourceGraph.createNode('COMPONENT', sourcePage.id, { name: 'Image Card' })
+    const image = sourceGraph.createNode('RECTANGLE', component.id, {
+      name: 'Hero',
+      fills: [
+        {
+          type: 'IMAGE',
+          visible: true,
+          opacity: 1,
+          imageHash: 'shared-hash',
+          scaleMode: 'FILL'
+        }
+      ]
+    })
+    sourceGraph.images.set('shared-hash', new Uint8Array([1, 2, 3]))
+    const first = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      componentKey: 'image-card',
+      source: { kind: 'file', ref: './design-system.fig' }
+    })
+    expect('error' in first).toBe(false)
+    if ('error' in first) return
+
+    const conflictingTarget = new SceneGraph()
+    conflictingTarget.images.set('shared-hash', new Uint8Array([9, 9, 9]))
+    const targetNodeCount = conflictingTarget.getNodeCount()
+    expect(
+      importLibraryComponent({
+        sourceGraph,
+        targetGraph: conflictingTarget,
+        manifest: first.manifest,
+        componentKey: 'image-card'
+      })
+    ).toEqual({ error: 'Image asset "shared-hash" conflicts with existing target image data' })
+    expect(conflictingTarget.getNodeCount()).toBe(targetNodeCount)
+    expect(Array.from(conflictingTarget.images.get('shared-hash') ?? [])).toEqual([9, 9, 9])
+    expect(conflictingTarget.getNode(conflictingTarget.rootId)?.lowcodeLibraries).toBeUndefined()
+
+    const targetGraph = new SceneGraph()
+    const imported = importLibraryComponent({
+      sourceGraph,
+      targetGraph,
+      manifest: first.manifest,
+      componentKey: 'image-card'
+    })
+    expect('error' in imported).toBe(false)
+    if ('error' in imported) return
+    const cachedBefore = structuredClone(targetGraph.getNode(imported.importedNodeId))
+    sourceGraph.images.set('shared-hash', new Uint8Array([4, 5, 6]))
+    sourceGraph.updateNode(image.id, { opacity: 0.5 })
+    const second = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      componentKey: 'image-card',
+      source: { kind: 'file', ref: './design-system.fig' }
+    })
+    expect('error' in second).toBe(false)
+    if ('error' in second) return
+
+    expect(
+      acceptLibraryUpdate({
+        sourceGraph,
+        targetGraph,
+        manifest: second.manifest,
+        componentKey: 'image-card'
+      })
+    ).toEqual({ error: 'Image asset "shared-hash" conflicts with existing target image data' })
+    expect(targetGraph.getNode(imported.importedNodeId)).toEqual(cachedBefore)
+    expect(Array.from(targetGraph.images.get('shared-hash') ?? [])).toEqual([1, 2, 3])
   })
 
   test('rejects import requests without a resolvable component or source', () => {
@@ -409,6 +562,86 @@ describe('team-library scene-graph helpers (Phase 4 §14)', () => {
       'Component structure changed; existing instance overrides were not remapped'
     ])
     expect(targetGraph.getNode(importedNodeId)?.childIds).toHaveLength(2)
+  })
+
+  test('remaps internal action targets across matching and structure-changing updates', () => {
+    const sourceGraph = new SceneGraph()
+    const sourcePage = sourceGraph.getPages()[0]
+    const component = sourceGraph.createNode('COMPONENT', sourcePage.id, { name: 'Action Card' })
+    const target = sourceGraph.createNode('RECTANGLE', component.id, { name: 'Motion target' })
+    const button = sourceGraph.createNode('BUTTON', component.id, {
+      name: 'Controller',
+      events: {
+        onClick: [{ id: 'play', kind: 'playMotion', targetNodeId: target.id }]
+      }
+    })
+    const first = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      componentKey: 'action-card',
+      source: { kind: 'file', ref: './design-system.fig' }
+    })
+    expect('error' in first).toBe(false)
+    if ('error' in first) return
+    const targetGraph = new SceneGraph()
+    const imported = importLibraryComponent({
+      sourceGraph,
+      targetGraph,
+      manifest: first.manifest,
+      componentKey: 'action-card'
+    })
+    expect('error' in imported).toBe(false)
+    if ('error' in imported) return
+
+    const assertCachedTarget = () => {
+      const children = targetGraph.getChildren(imported.importedNodeId)
+      const cachedTarget = children.find((node) => node.name === target.name)
+      const cachedButton = children.find((node) => node.type === 'BUTTON')
+      expect(cachedButton?.events?.onClick?.[0]).toMatchObject({
+        kind: 'playMotion',
+        targetNodeId: cachedTarget?.id
+      })
+      expect(cachedTarget?.id).not.toBe(target.id)
+    }
+    assertCachedTarget()
+
+    sourceGraph.updateNode(button.id, { name: 'Updated controller' })
+    const matching = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      componentKey: 'action-card',
+      source: { kind: 'file', ref: './design-system.fig' }
+    })
+    expect('error' in matching).toBe(false)
+    if ('error' in matching) return
+    expect(
+      acceptLibraryUpdate({
+        sourceGraph,
+        targetGraph,
+        manifest: matching.manifest,
+        componentKey: 'action-card'
+      })
+    ).not.toHaveProperty('error')
+    assertCachedTarget()
+
+    sourceGraph.createNode('TEXT', component.id, { name: 'New child', text: 'Structure change' })
+    const changed = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      componentKey: 'action-card',
+      source: { kind: 'file', ref: './design-system.fig' }
+    })
+    expect('error' in changed).toBe(false)
+    if ('error' in changed) return
+    expect(
+      acceptLibraryUpdate({
+        sourceGraph,
+        targetGraph,
+        manifest: changed.manifest,
+        componentKey: 'action-card'
+      })
+    ).not.toHaveProperty('error')
+    assertCachedTarget()
   })
 
   test('rejects library update requests without matching source or cached master', () => {

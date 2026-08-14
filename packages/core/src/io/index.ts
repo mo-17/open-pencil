@@ -61,6 +61,7 @@ export type {
   IOTextData,
   IOData,
   ReadDocumentInput,
+  ReadDocumentOptions,
   ReadDocumentResult,
   ExportTarget,
   ExportRequest,

@@ -1,11 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { Fill } from '@open-pencil/scene-graph'
-
-import {
-  IMAGE_INSPECTION_LIMITS,
-  inspectImageBytes
-} from '#core/tools/analyze/image-asset-inspection'
+import { IMAGE_INSPECTION_LIMITS, inspectImageBytes, type Fill } from '@open-pencil/scene-graph'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 

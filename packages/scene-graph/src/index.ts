@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- SceneGraph exposes a stable facade over domain modules */
 export * from './images'
+export * from './image-inspection'
 export * from './copy'
 export { copyInstanceComponentProps } from './instances'
 export * from './snap'
@@ -12,6 +13,7 @@ export * from './shared-styles'
 export * from './motion'
 export * from './module'
 export * from './plugin-lock'
+export * from './remote-library-manifest'
 export * from './signed-manifest'
 export { default as TransformMatrix } from './matrix'
 export type { Mat3 } from './matrix'
@@ -24,9 +26,11 @@ import {
   cloneNodeProps,
   remapClonedInstanceOverrides,
   remapPendingInstanceOverrideReferences,
+  remapNodeComponentPropertyReferences,
   remapNodeLowcodeMotionActionTargets,
   remapNodeMotionDriverReferences,
   remapNodeMotionSceneTargets,
+  remapNodePaintReferences,
   remapNodePrototypeTargets
 } from './copy'
 import { bindNodeEvents } from './events'
@@ -73,13 +77,21 @@ export {
   acceptLibraryUpdate,
   checkLibraryUpdates,
   componentSubtreeVersion,
+  ensureLibraryCachePage,
   importLibraryComponent,
+  LIBRARY_CACHE_PAGE_NAME,
   publishLibraryComponent,
+  REMOTE_LIBRARY_IMAGE_LIMITS,
+  REMOTE_LIBRARY_VALIDATION_LIMITS,
+  validateLibraryArtifact,
   type AcceptLibraryUpdateOptions,
   type AcceptLibraryUpdateResult,
   type CheckLibraryUpdatesOptions,
   type ImportLibraryComponentOptions,
   type ImportLibraryComponentResult,
+  type LibraryArtifactValidationIssue,
+  type LibraryArtifactValidationIssueCode,
+  type LibraryArtifactValidationResult,
   type LibraryComponentManifestEntry,
   type LibraryManifest,
   type LibraryUpdateCheck,
@@ -92,6 +104,31 @@ let nextLocalID = 1
 
 export function generateId(): string {
   return `0:${nextLocalID++}`
+}
+
+function collectInstanceSwapPropertyIds(
+  nodes: ReadonlyMap<string, SceneNode>,
+  node: SceneNode
+): Set<string> {
+  const propertyIds = new Set<string>()
+  if (node.type !== 'INSTANCE' || !node.componentId) return propertyIds
+
+  const component = nodes.get(node.componentId)
+  const parent = component?.parentId ? nodes.get(component.parentId) : undefined
+  const owners = parent?.type === 'COMPONENT_SET' ? [parent, component] : [component]
+  for (const owner of owners) {
+    for (const definition of owner?.componentPropertyDefinitions ?? []) {
+      if (definition.type === 'INSTANCE_SWAP') propertyIds.add(definition.id)
+    }
+  }
+  return propertyIds
+}
+
+export interface SceneGraphOptions {
+  /** Fail before creating more than this many nodes. Intended for isolated untrusted imports. */
+  maxNodes?: number
+  /** Fail before creating a node below this parent-chain depth. */
+  maxDepth?: number
 }
 
 export class SceneGraph {
@@ -112,10 +149,26 @@ export class SceneGraph {
   private previewMutationDepth = 0
   private sourceMetadataPreservationDepth = 0
   private layoutMutationDepth = 0
+  private readonly maxNodes: number | null
+  private readonly maxDepth: number | null
   positionPreviewVersion = 0
   instanceIndex = new Map<string, Set<string>>()
 
-  constructor() {
+  constructor(options: SceneGraphOptions = {}) {
+    if (
+      options.maxNodes !== undefined &&
+      (!Number.isSafeInteger(options.maxNodes) || options.maxNodes < 2)
+    ) {
+      throw new RangeError('SceneGraph maxNodes must be a safe integer of at least 2')
+    }
+    if (
+      options.maxDepth !== undefined &&
+      (!Number.isSafeInteger(options.maxDepth) || options.maxDepth < 1)
+    ) {
+      throw new RangeError('SceneGraph maxDepth must be a positive safe integer')
+    }
+    this.maxNodes = options.maxNodes ?? null
+    this.maxDepth = options.maxDepth ?? null
     const root = createDefaultNode(generateId, 'FRAME', {
       name: 'Document',
       width: 0,
@@ -324,7 +377,28 @@ export class SceneGraph {
     while (this.nodes.has(id)) id = generateId()
     return id
   }
+  private assertNodeCapacity(id: string): void {
+    if (!this.nodes.has(id) && this.maxNodes !== null && this.nodes.size >= this.maxNodes) {
+      throw new RangeError(`SceneGraph node limit exceeded (${this.maxNodes})`)
+    }
+  }
+  private assertParentDepth(parentId: string | null): void {
+    if (this.maxDepth === null || parentId === null) return
+    const visited = new Set<string>()
+    let currentId: string | null = parentId
+    let depth = 1
+    while (currentId !== null) {
+      if (depth > this.maxDepth) {
+        throw new RangeError(`SceneGraph depth limit exceeded (${this.maxDepth})`)
+      }
+      if (visited.has(currentId)) throw new RangeError('SceneGraph parent cycle detected')
+      visited.add(currentId)
+      currentId = this.nodes.get(currentId)?.parentId ?? null
+      depth += 1
+    }
+  }
   private registerNode(node: SceneNode, parentId: string | null): SceneNode {
+    this.assertNodeCapacity(node.id)
     node.parentId = parentId
     this.nodes.set(node.id, node)
     if (node.type === 'INSTANCE' && node.componentId) {
@@ -340,6 +414,8 @@ export class SceneGraph {
   }
   createNode(type: NodeType, parentId: string, overrides: Partial<SceneNode> = {}): SceneNode {
     const node = createDefaultNode(() => this.generateNodeId(), type, overrides)
+    this.assertNodeCapacity(node.id)
+    this.assertParentDepth(parentId)
     this.nodes.get(parentId)?.childIds.push(node.id)
     return this.registerNode(node, parentId)
   }
@@ -351,6 +427,8 @@ export class SceneGraph {
   ): SceneNode {
     const node = createDefaultNode(() => id, type, overrides)
     node.id = id
+    this.assertNodeCapacity(node.id)
+    this.assertParentDepth(parentId)
     const parent = parentId ? this.nodes.get(parentId) : undefined
     if (parent && !parent.childIds.includes(id)) parent.childIds.push(id)
     return this.registerNode(node, parentId)
@@ -666,6 +744,12 @@ export class SceneGraph {
       const sceneUpdates = remapNodeMotionSceneTargets(node, resolveNodeId)
       const driverUpdates = remapNodeMotionDriverReferences(node, resolveNodeId)
       const prototypeUpdates = remapNodePrototypeTargets(node, resolveNodeId)
+      const paintUpdates = remapNodePaintReferences(node, resolveNodeId)
+      const componentPropertyUpdates = remapNodeComponentPropertyReferences(
+        node,
+        resolveNodeId,
+        collectInstanceSwapPropertyIds(this.nodes, node)
+      )
       const overrideUpdates = remapClonedInstanceOverrides(node, idMap)
       const pendingOverrideUpdates = remapPendingInstanceOverrideReferences(node, idMap)
       if (
@@ -673,6 +757,8 @@ export class SceneGraph {
         sceneUpdates ||
         driverUpdates ||
         prototypeUpdates ||
+        paintUpdates ||
+        componentPropertyUpdates ||
         overrideUpdates ||
         pendingOverrideUpdates
       ) {
@@ -681,6 +767,8 @@ export class SceneGraph {
           ...sceneUpdates,
           ...driverUpdates,
           ...prototypeUpdates,
+          ...paintUpdates,
+          ...componentPropertyUpdates,
           ...overrideUpdates,
           ...pendingOverrideUpdates
         })

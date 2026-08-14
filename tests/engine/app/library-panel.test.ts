@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
-
-import { reactive } from 'vue'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import {
   importLibraryComponent,
@@ -9,11 +9,15 @@ import {
   type LibraryManifest
 } from '@open-pencil/scene-graph'
 
-import {
-  cloneSceneGraphForLibraryUndo,
-  libraryPanelRows,
-  parseLibraryManifestText
-} from '@/app/lowcode/libraries'
+import { libraryPanelRows, parseLibraryManifestText } from '@/app/lowcode/libraries'
+
+const panelSource = [
+  '../../../src/app/lowcode/use-libraries-panel.ts',
+  '../../../src/components/properties/Lowcode/LibrariesCandidate.vue',
+  '../../../src/components/properties/Lowcode/LibrariesImportedList.vue'
+]
+  .map((file) => readFileSync(resolve(import.meta.dir, file), 'utf8'))
+  .join('\n')
 
 test('parseLibraryManifestText validates the manifest shape', () => {
   const manifest = parseLibraryManifestText(
@@ -83,58 +87,32 @@ test('libraryPanelRows reports imported component update status', () => {
   ])
 })
 
-test('cloneSceneGraphForLibraryUndo preserves root library refs and instance index', () => {
-  const graph = new SceneGraph()
-  const page = firstPage(graph)
-  const component = graph.createNode('COMPONENT', page.id, {
-    name: 'Card',
-    libraryComponentKey: 'component-card',
-    libraryId: 'design-system',
-    libraryVersion: 'v1',
-    libraryReadonly: true
-  })
-  const instance = graph.createInstance(component.id, page.id)
-  graph.updateNode(graph.rootId, {
-    lowcodeLibraries: [
-      {
-        libraryId: 'design-system',
-        name: 'Design System',
-        source: { kind: 'file', ref: 'library.fig' },
-        importedComponents: [{ key: 'component-card', version: 'v1' }]
-      }
-    ]
-  })
-
-  const clone = cloneSceneGraphForLibraryUndo(graph)
-  expect(clone).not.toBe(graph)
-  expect(clone.getNode(clone.rootId)?.lowcodeLibraries).toEqual(
-    graph.getNode(graph.rootId)?.lowcodeLibraries
+test('LibrariesPanel lists every unimported remote candidate component', () => {
+  expect(panelSource).toMatch(
+    /candidate\.manifest\.components\.filter\([\s\S]*!isComponentImported\(candidate\.manifest\.libraryId, component\.key\)/
   )
-  expect(clone.getNode(component.id)?.libraryComponentKey).toBe('component-card')
-  expect(clone.getInstances(component.id).map((node) => node.id)).toEqual([instance.id])
+  expect(panelSource).toContain('v-for="component in candidateComponents"')
+  expect(panelSource).toContain('data-test-id="lowcode-library-import"')
+  expect(panelSource).toContain('@click="importCandidateComponent(component)"')
+  expect(panelSource).toContain('parentId: cachePage.id')
 })
 
-test('cloneSceneGraphForLibraryUndo unwraps reactive graph nodes', () => {
-  const graph = new SceneGraph()
-  const page = firstPage(graph)
-  const component = graph.createNode('COMPONENT', page.id, {
-    name: 'Card',
-    libraryComponentKey: 'component-card',
-    libraryId: 'design-system',
-    libraryVersion: 'v1',
-    libraryReadonly: true
-  })
-  const componentNode = graph.getNode(component.id)
-  if (!componentNode) throw new Error('Expected component node')
-  graph.nodes.set(component.id, reactive(componentNode))
+test('LibrariesPanel scopes remote update checks and candidate status to the selected library', () => {
+  expect(panelSource).toMatch(
+    /function manifestSourceURL\(libraryId: string\)[\s\S]*\.find\([\s\S]*library\.libraryId === libraryId[\s\S]*\)\?\.manifestSource/
+  )
+  expect(panelSource).toContain('v-if="manifestSourceURL(row.libraryId)"')
+  expect(panelSource).toContain('@click="checkLibrary(row.libraryId)"')
+  expect(panelSource).toContain('candidate.manifest.libraryId !== expectedLibraryId')
+  expect(panelSource).toContain('row.libraryId !== active.libraryId')
+  expect(panelSource).toContain("status: 'unknown' as const")
+})
 
-  const clone = cloneSceneGraphForLibraryUndo(graph)
-
-  expect(clone.getNode(component.id)).toMatchObject({
-    name: 'Card',
-    libraryComponentKey: 'component-card',
-    libraryVersion: 'v1'
-  })
+test('LibrariesPanel clears staged candidates when the active document changes', () => {
+  expect(panelSource).toContain('useActiveEditorStoreRef()')
+  expect(panelSource).toMatch(
+    /watch\([\s\S]*activeEditor[\s\S]*cancelActiveOperation\(\)[\s\S]*clearStagedSources\(\)/
+  )
 })
 
 function createLibrarySource(text: string): { graph: SceneGraph; componentId: string } {

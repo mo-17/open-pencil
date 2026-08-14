@@ -1,3 +1,5 @@
+import { normalizeKiwiRuntimeLimits, type KiwiRuntimeLimits } from './limits'
+
 let int32 = new Int32Array(1)
 let float32 = new Float32Array(int32.buffer)
 const textDecoder = new TextDecoder()
@@ -5,14 +7,20 @@ const textDecoder = new TextDecoder()
 export class ByteBuffer {
   private _data: Uint8Array
   private _index: number
+  private _limits: Readonly<KiwiRuntimeLimits> | undefined
+  private _arrayItems: number
+  private _decodeDepth: number
   length: number
 
-  constructor(data?: Uint8Array) {
+  constructor(data?: Uint8Array, limits?: KiwiRuntimeLimits) {
     if (data && !(data instanceof Uint8Array)) {
       throw new Error('Must initialize a ByteBuffer with a Uint8Array')
     }
     this._data = data || new Uint8Array(256)
     this._index = 0
+    this._limits = normalizeKiwiRuntimeLimits(limits)
+    this._arrayItems = 0
+    this._decodeDepth = 0
     this.length = data ? data.length : 0
   }
 
@@ -29,25 +37,56 @@ export class ByteBuffer {
   }
 
   readByte(): number {
+    this._requireReadable(1, 'byte')
     return this._data[this._index++]
   }
 
   readByteArray(): Uint8Array {
     const length = this.readVarUint()
     const start = this._index
+    this._requireReadable(length, 'byte array')
     this._index = start + length
     return this._data.slice(start, start + length)
+  }
+
+  readArrayLength(): number {
+    const length = this.readVarUint()
+    const maximum = this._limits?.maxArrayItems
+    if (maximum !== undefined) {
+      if (length > maximum - this._arrayItems) {
+        throw new Error(`Kiwi array item limit exceeded (${maximum} per message)`)
+      }
+      this._arrayItems += length
+    }
+    return length
+  }
+
+  enterDecode(): void {
+    const maximum = this._limits?.maxDecodeDepth
+    if (maximum === undefined) return
+    if (this._decodeDepth >= maximum) {
+      throw new Error(`Kiwi decode nesting limit exceeded (${maximum})`)
+    }
+    this._decodeDepth += 1
+  }
+
+  leaveDecode(): void {
+    if (this._limits?.maxDecodeDepth !== undefined && this._decodeDepth > 0) {
+      this._decodeDepth -= 1
+    }
   }
 
   readVarFloat(): number {
     const index = this._index
     const data = this._data
+    this._requireReadable(1, 'varfloat')
     const first = data[index]
     if (first === 0) {
       this._index = index + 1
       return 0
     }
 
+    this._requireReadable(4, 'varfloat')
     let bits = first | (data[index + 1] << 8) | (data[index + 2] << 16) | (data[index + 3] << 24)
     this._index = index + 4
     bits = (bits << 23) | (bits >>> 9)
@@ -57,35 +96,25 @@ export class ByteBuffer {
 
   readVarUint(): number {
     const data = this._data
-    let i = this._index
-    let b = data[i++]
-    let value = b & 127
-    if (b < 128) {
-      this._index = i
-      return value
+    let index = this._index
+    let value = 0
+
+    for (let byteIndex = 0; byteIndex < 5; byteIndex++) {
+      if (index >= this.length) {
+        throw new Error('Unexpected end of ByteBuffer while reading varuint')
+      }
+      const byte = data[index++]
+      if (byteIndex === 4 && (byte & 0xf0) !== 0) {
+        throw new Error('Varuint exceeds the 32-bit range')
+      }
+      value += (byte & 0x7f) * 2 ** (byteIndex * 7)
+      if ((byte & 0x80) === 0) {
+        this._index = index
+        return value >>> 0
+      }
     }
-    b = data[i++]
-    value |= (b & 127) << 7
-    if (b < 128) {
-      this._index = i
-      return value
-    }
-    b = data[i++]
-    value |= (b & 127) << 14
-    if (b < 128) {
-      this._index = i
-      return value
-    }
-    b = data[i++]
-    value |= (b & 127) << 21
-    if (b < 128) {
-      this._index = i
-      return value
-    }
-    b = data[i++]
-    value |= (b & 127) << 28
-    this._index = i
-    return value >>> 0
+
+    throw new Error('Varuint exceeds the 32-bit range')
   }
 
   readVarInt(): number {
@@ -94,15 +123,31 @@ export class ByteBuffer {
   }
 
   readVarUint64(): bigint {
-    let value = BigInt(0)
-    let shift = BigInt(0)
-    let seven = BigInt(7)
-    let byte: number
-    while ((byte = this.readByte()) & 128 && shift < 56) {
-      value |= BigInt(byte & 127) << shift
-      shift += seven
+    const data = this._data
+    let index = this._index
+    let value = 0n
+    let shift = 0n
+
+    // Kiwi's uint64 wire format uses up to eight 7-bit continuation bytes,
+    // followed by one final byte containing all remaining eight bits.
+    for (let byteIndex = 0; byteIndex < 8; byteIndex++) {
+      if (index >= this.length) {
+        throw new Error('Unexpected end of ByteBuffer while reading varuint64')
+      }
+      const byte = data[index++]
+      if ((byte & 0x80) === 0) {
+        this._index = index
+        return value | (BigInt(byte) << shift)
+      }
+      value |= BigInt(byte & 0x7f) << shift
+      shift += 7n
     }
-    value |= BigInt(byte) << shift
+
+    if (index >= this.length) {
+      throw new Error('Unexpected end of ByteBuffer while reading varuint64')
+    }
+    value |= BigInt(data[index++]) << 56n
+    this._index = index
     return value
   }
 
@@ -117,10 +162,18 @@ export class ByteBuffer {
   readString(): string {
     const data = this._data
     const start = this._index
-    let i = start
-    while (data[i] !== 0) i++
-    this._index = i + 1
-    return textDecoder.decode(data.subarray(start, i))
+    const end = data.indexOf(0, start)
+    if (end === -1 || end >= this.length) {
+      throw new Error('Unexpected end of ByteBuffer while reading null-terminated string')
+    }
+    this._index = end + 1
+    return textDecoder.decode(data.subarray(start, end))
+  }
+
+  private _requireReadable(amount: number, label: string): void {
+    if (!Number.isSafeInteger(amount) || amount < 0 || amount > this.length - this._index) {
+      throw new Error(`Unexpected end of ByteBuffer while reading ${label}`)
+    }
   }
 
   private _growBy(amount: number): void {

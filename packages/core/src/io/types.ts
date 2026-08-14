@@ -1,5 +1,7 @@
 import type { CanvasKit } from 'canvaskit-wasm'
 
+import type { FigArchiveLimits } from '@open-pencil/fig'
+import type { PenParseLimits } from '@open-pencil/pen'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas'
@@ -22,6 +24,18 @@ export interface ReadDocumentInput {
   name?: string
   mimeType?: string
   data: Uint8Array
+}
+
+export interface ReadDocumentOptions {
+  populate?: 'all' | 'first-page' | 'none'
+  /** Optional quotas for decoding untrusted `.fig` archives. */
+  archiveLimits?: FigArchiveLimits
+  /** Optional quotas for decoding untrusted `.pen` JSON. */
+  penLimits?: PenParseLimits
+  /** Cancel queued or active dedicated-worker parsing. */
+  signal?: AbortSignal
+  /** Allow bounded synchronous recovery when a dedicated parser Worker is unavailable. */
+  allowMainThreadFallback?: boolean
 }
 
 export interface ReadDocumentResult {
@@ -125,7 +139,11 @@ export interface IOFormatAdapter {
 
   matchesFile?(fileName: string, mimeType?: string): boolean
 
-  readDocument?(input: ReadDocumentInput, context?: IOContext): Promise<ReadDocumentResult>
+  readDocument?(
+    input: ReadDocumentInput,
+    context?: IOContext,
+    options?: ReadDocumentOptions
+  ): Promise<ReadDocumentResult>
   writeDocument?(graph: SceneGraph, options?: unknown, context?: IOContext): Promise<ExportResult>
   exportContent?(
     request: ExportRequest,

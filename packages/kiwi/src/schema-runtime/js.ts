@@ -1,6 +1,18 @@
 import { ByteBuffer } from './bb'
+import { normalizeKiwiRuntimeLimits, type KiwiRuntimeLimits } from './limits'
 import { Schema, Definition } from './schema'
 import { error, quote } from './util'
+import {
+  assertSchemaBudgets,
+  validateDynamicSchema as validateUntrustedDynamicSchema
+} from './validate'
+
+export interface CompileSchemaOptions {
+  /** Optional per-codec limits. Omit to preserve the legacy local-file behavior. */
+  limits?: KiwiRuntimeLimits
+  /** Validate untrusted binary schema names and identifiers before code generation. */
+  validateDynamicSchema?: boolean
+}
 
 function compileDecode(
   definition: Definition,
@@ -12,9 +24,11 @@ function compileDecode(
   lines.push('function (bb) {')
   lines.push('  var result = {};')
   lines.push('  if (!(bb instanceof this.ByteBuffer)) {')
-  lines.push('    bb = new this.ByteBuffer(bb);')
+  lines.push('    bb = new this.ByteBuffer(bb, typeof limits === "undefined" ? void 0 : limits);')
   lines.push('  }')
   lines.push('')
+  lines.push('  bb.enterDecode();')
+  lines.push('  try {')
 
   if (definition.kind === 'MESSAGE') {
     lines.push('  while (true) {')
@@ -95,14 +109,14 @@ function compileDecode(
         if (field.type === 'byte') {
           lines.push(indent + 'bb.readByteArray();')
         } else {
-          lines.push(indent + 'var length = bb.readVarUint();')
+          lines.push(indent + 'var length = bb.readArrayLength();')
           lines.push(indent + 'while (length-- > 0) ' + code + ';')
         }
       } else {
         if (field.type === 'byte') {
           lines.push(indent + 'result[' + quote(field.name) + '] = bb.readByteArray();')
         } else {
-          lines.push(indent + 'var length = bb.readVarUint();')
+          lines.push(indent + 'var length = bb.readArrayLength();')
           lines.push(indent + 'var values = result[' + quote(field.name) + '] = Array(length);')
           lines.push(indent + 'for (var i = 0; i < length; i++) values[i] = ' + code + ';')
         }
@@ -130,6 +144,9 @@ function compileDecode(
     lines.push('  return result;')
   }
 
+  lines.push('  } finally {')
+  lines.push('    bb.leaveDecode();')
+  lines.push('  }')
   lines.push('}')
 
   return lines.join('\n')
@@ -258,8 +275,13 @@ function compileEncode(
   return lines.join('\n')
 }
 
-export function compileSchemaJS(schema: Schema): string {
-  let definitions: { [name: string]: Definition } = {}
+export function compileSchemaJS(schema: Schema, options: CompileSchemaOptions = {}): string {
+  if (options.validateDynamicSchema) {
+    validateUntrustedDynamicSchema(schema, options.limits)
+  } else {
+    assertSchemaBudgets(schema, options.limits)
+  }
+  let definitions: { [name: string]: Definition } = Object.create(null)
   let name = schema.package
   let js: string[] = []
 
@@ -282,7 +304,7 @@ export function compileSchemaJS(schema: Schema): string {
 
     switch (definition.kind) {
       case 'ENUM': {
-        let value: any = {}
+        let value: any = Object.create(null)
         for (let j = 0; j < definition.fields.length; j++) {
           let field = definition.fields[j]
           value[field.name] = field.value
@@ -330,10 +352,11 @@ export function compileSchemaJS(schema: Schema): string {
   return js.join('\n')
 }
 
-export function compileSchema(schema: Schema): any {
+export function compileSchema(schema: Schema, options: CompileSchemaOptions = {}): any {
+  const limits = normalizeKiwiRuntimeLimits(options.limits)
   let result = {
     ByteBuffer: ByteBuffer
   }
-  new Function('exports', compileSchemaJS(schema))(result)
+  new Function('exports', 'limits', compileSchemaJS(schema, { ...options, limits }))(result, limits)
   return result
 }

@@ -27,6 +27,7 @@ import {
   FIGMA_CANVAS_METADATA_FIELD_KEYS,
   FIGMA_DOCUMENT_METADATA_FIELD_KEYS
 } from '#core/kiwi/fig/root-metadata'
+import { assertParentChainDepth } from '#core/kiwi/fig/tree-depth'
 
 type AssetRef = { key: string; version?: string }
 type AliasRef = { guid?: GUID; assetRef?: AssetRef }
@@ -428,6 +429,10 @@ function applyStyleRefs(
 
 export interface FigImportOptions {
   populate?: 'all' | 'first-page' | 'none'
+  /** Maximum nodes created, including populated instance descendants. */
+  maxGraphNodes?: number
+  /** Maximum parent-chain depth accepted during and after graph construction. */
+  maxTreeDepth?: number
 }
 
 function rememberLazyFigImportContext(
@@ -464,7 +469,10 @@ export function importNodeChanges(
   images?: Map<string, Uint8Array>,
   options: FigImportOptions = {}
 ): SceneGraph {
-  const graph = new SceneGraph()
+  const graph = new SceneGraph({
+    ...(options.maxGraphNodes === undefined ? {} : { maxNodes: options.maxGraphNodes }),
+    ...(options.maxTreeDepth === undefined ? {} : { maxDepth: options.maxTreeDepth })
+  })
   graph.documentColorSpace = parseDocumentColorSpace(nodeChanges)
 
   if (images) {
@@ -478,113 +486,134 @@ export function importNodeChanges(
   }
 
   const { changeMap, parentMap, childrenMap } = buildChangeMaps(nodeChanges)
+  assertParentChainDepth(
+    changeMap.keys(),
+    (nodeId) => {
+      const parentId = parentMap.get(nodeId)
+      return parentId !== undefined && changeMap.has(parentId) ? parentId : undefined
+    },
+    options.maxTreeDepth,
+    '.fig node-change tree contains a cycle'
+  )
   const assetRefs = buildAssetRefMap(changeMap)
   applyStyleRefs(changeMap, assetRefs)
   setVariableColorResolver(buildVariableColorResolver(changeMap, assetRefs))
+  try {
+    const canvasIdToPageId = new Map<string, string>()
+    const created = new Set<string>()
+    const guidToNodeId = new Map<string, string>()
+    const getChildren = (ncId: string): string[] => childrenMap.get(ncId) ?? []
 
-  const canvasIdToPageId = new Map<string, string>()
-  const created = new Set<string>()
-  const guidToNodeId = new Map<string, string>()
-  const getChildren = (ncId: string): string[] => childrenMap.get(ncId) ?? []
+    function createSceneNode(ncId: string, graphParentId: string) {
+      if (created.has(ncId)) return
+      created.add(ncId)
 
-  function createSceneNode(ncId: string, graphParentId: string) {
-    if (created.has(ncId)) return
-    created.add(ncId)
+      const nc = changeMap.get(ncId)
+      if (!nc) return
 
-    const nc = changeMap.get(ncId)
-    if (!nc) return
-
-    const { nodeType: figNodeType, ...figProps } = nodeChangeToProps(nc, blobs)
-    const lowcode = extractImportedLowcodeProps(nc)
-    const nodeType = lowcode.nodeTypeOverride ?? figNodeType
-    const projection = collapseFigmaProjectionChildren(
-      nodeType,
-      getChildren(ncId),
-      {
-        getNode: (id) => changeMap.get(id),
-        getChildren
-      },
-      lowcode.props.interactiveProps
-    )
-    const hasInteractivePropsPatch = Object.keys(projection.interactivePropsPatch).length > 0
-    const props = {
-      ...figProps,
-      ...lowcode.props,
-      ...(hasInteractivePropsPatch
-        ? {
-            interactiveProps: {
-              ...lowcode.props.interactiveProps,
-              ...projection.interactivePropsPatch
-            }
-          }
-        : {})
-    }
-    if (props.sharedStyleType) props.internalOnly = true
-    if (nodeType === 'DOCUMENT' || nodeType === 'VARIABLE' || nc.type === 'VARIABLE_SET') return
-    if (shouldImportTextAsAutoSize(nc, changeMap.get(parentMap.get(ncId) ?? ''))) {
-      props.textAutoResize = 'WIDTH_AND_HEIGHT'
-    }
-
-    const parentId = canvasIdToPageId.get(graphParentId) ?? graphParentId
-    const node = graph.createNode(nodeType, parentId, props)
-    guidToNodeId.set(ncId, node.id)
-
-    for (const childId of projection.childIds) {
-      createSceneNode(childId, node.id)
-    }
-  }
-
-  importPages(
-    graph,
-    changeMap,
-    parentMap,
-    childrenMap,
-    created,
-    canvasIdToPageId,
-    guidToNodeId,
-    createSceneNode,
-    blobs
-  )
-
-  importCollections(changeMap, graph)
-  importVariableEntries(changeMap, parentMap, graph, assetRefs)
-  importVariableBindings(changeMap, guidToNodeId, graph)
-  graph.preserveSourceMetadataDuring(() => {
-    remapComponentIds(graph, guidToNodeId)
-    graph.remapClonedNodeReferences(guidToNodeId)
-  })
-  applyVariantPropSpecs(graph)
-
-  const firstPageId = graph.getPages()[0]?.id
-  const componentPageIds =
-    options.populate === 'first-page' ? componentPageIdsForLazyPopulation(graph) : new Set<string>()
-  const activeRootIds =
-    options.populate === 'first-page'
-      ? [firstPageId, ...componentPageIds].filter(isNotNil)
-      : undefined
-
-  if (options.populate !== 'none') {
-    graph.preserveSourceMetadataDuring(() => {
-      populateAndApplyOverrides(
-        graph,
-        changeMap as Map<string, InstanceNodeChange>,
-        guidToNodeId,
-        blobs,
-        activeRootIds
+      const { nodeType: figNodeType, ...figProps } = nodeChangeToProps(nc, blobs)
+      const lowcode = extractImportedLowcodeProps(nc)
+      const nodeType = lowcode.nodeTypeOverride ?? figNodeType
+      const projection = collapseFigmaProjectionChildren(
+        nodeType,
+        getChildren(ncId),
+        {
+          getNode: (id) => changeMap.get(id),
+          getChildren
+        },
+        lowcode.props.interactiveProps
       )
-      reapplyInstanceOverrides(graph)
+      const hasInteractivePropsPatch = Object.keys(projection.interactivePropsPatch).length > 0
+      const props = {
+        ...figProps,
+        ...lowcode.props,
+        ...(hasInteractivePropsPatch
+          ? {
+              interactiveProps: {
+                ...lowcode.props.interactiveProps,
+                ...projection.interactivePropsPatch
+              }
+            }
+          : {})
+      }
+      if (props.sharedStyleType) props.internalOnly = true
+      if (nodeType === 'DOCUMENT' || nodeType === 'VARIABLE' || nc.type === 'VARIABLE_SET') return
+      if (shouldImportTextAsAutoSize(nc, changeMap.get(parentMap.get(ncId) ?? ''))) {
+        props.textAutoResize = 'WIDTH_AND_HEIGHT'
+      }
+
+      const parentId = canvasIdToPageId.get(graphParentId) ?? graphParentId
+      const node = graph.createNode(nodeType, parentId, props)
+      guidToNodeId.set(ncId, node.id)
+
+      for (const childId of projection.childIds) {
+        createSceneNode(childId, node.id)
+      }
+    }
+
+    importPages(
+      graph,
+      changeMap,
+      parentMap,
+      childrenMap,
+      created,
+      canvasIdToPageId,
+      guidToNodeId,
+      createSceneNode,
+      blobs
+    )
+
+    importCollections(changeMap, graph)
+    importVariableEntries(changeMap, parentMap, graph, assetRefs)
+    importVariableBindings(changeMap, guidToNodeId, graph)
+    graph.preserveSourceMetadataDuring(() => {
+      remapComponentIds(graph, guidToNodeId)
       graph.remapClonedNodeReferences(guidToNodeId)
     })
+    applyVariantPropSpecs(graph)
+
+    const firstPageId = graph.getPages()[0]?.id
+    const componentPageIds =
+      options.populate === 'first-page'
+        ? componentPageIdsForLazyPopulation(graph)
+        : new Set<string>()
+    const activeRootIds =
+      options.populate === 'first-page'
+        ? [firstPageId, ...componentPageIds].filter(isNotNil)
+        : undefined
+
+    if (options.populate !== 'none') {
+      graph.preserveSourceMetadataDuring(() => {
+        populateAndApplyOverrides(
+          graph,
+          changeMap as Map<string, InstanceNodeChange>,
+          guidToNodeId,
+          blobs,
+          activeRootIds
+        )
+        reapplyInstanceOverrides(graph)
+        graph.remapClonedNodeReferences(guidToNodeId)
+      })
+    }
+
+    if (activeRootIds)
+      rememberLazyFigImportContext(graph, changeMap, guidToNodeId, blobs, activeRootIds)
+
+    if (graph.getPages(true).length === 0) {
+      graph.addPage('Page 1')
+    }
+    assertParentChainDepth(
+      graph.nodes.keys(),
+      (nodeId) => {
+        const parentId = graph.getNode(nodeId)?.parentId
+        return parentId && graph.getNode(parentId) ? parentId : undefined
+      },
+      options.maxTreeDepth,
+      '.fig graph contains a parent cycle'
+    )
+
+    return graph
+  } finally {
+    setVariableColorResolver(null)
   }
-
-  if (activeRootIds)
-    rememberLazyFigImportContext(graph, changeMap, guidToNodeId, blobs, activeRootIds)
-
-  setVariableColorResolver(null)
-
-  if (graph.getPages(true).length === 0) {
-    graph.addPage('Page 1')
-  }
-
-  return graph
 }

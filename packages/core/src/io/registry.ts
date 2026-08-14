@@ -1,6 +1,12 @@
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
-import type { ExportRequest, IOContext, IOFormatAdapter, ReadDocumentInput } from './types'
+import type {
+  ExportRequest,
+  IOContext,
+  IOFormatAdapter,
+  ReadDocumentInput,
+  ReadDocumentOptions
+} from './types'
 
 export class IORegistry {
   constructor(private readonly adapters: IOFormatAdapter[]) {}
@@ -55,6 +61,19 @@ export class IORegistry {
       throw new Error(`Unsupported document format: ${input.name ?? 'unknown'}`)
     }
     return reader.readDocument(input, context)
+  }
+
+  async readDocumentAs(
+    formatId: string,
+    input: ReadDocumentInput,
+    options?: ReadDocumentOptions,
+    context?: IOContext
+  ) {
+    const adapter = this.getFormat(formatId)
+    if (!adapter?.readDocument) {
+      throw new Error(`Format does not support readDocument: ${formatId}`)
+    }
+    return adapter.readDocument(input, context, options)
   }
 
   async writeDocument(formatId: string, graph: SceneGraph, options?: unknown, context?: IOContext) {

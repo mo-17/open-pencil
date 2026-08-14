@@ -44,6 +44,24 @@ export function isPlainJSONObject(value: unknown): value is Record<string, unkno
   return prototype === Object.prototype || prototype === null
 }
 
+export function requireExactJSONObject(
+  value: unknown,
+  keys: readonly string[],
+  path: string
+): JSONObject {
+  if (!isPlainJSONObject(value)) throw new TypeError(`${path} must be an object`)
+  const remaining = new Set(keys)
+  for (const key of Object.keys(value)) {
+    if (!remaining.delete(key)) {
+      throw new TypeError(`${path} must contain exactly: ${keys.join(', ')}`)
+    }
+  }
+  if (remaining.size > 0) {
+    throw new TypeError(`${path} must contain exactly: ${keys.join(', ')}`)
+  }
+  return value
+}
+
 function ownDataEntries(value: object, path: string): [string, unknown][] | string {
   const keys = Reflect.ownKeys(value)
   if (keys.some((key) => typeof key !== 'string')) return `${path} must not contain symbol keys`

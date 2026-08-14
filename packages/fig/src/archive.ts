@@ -2,7 +2,7 @@ import { unzipSync, zipSync, type Zippable } from 'fflate'
 
 import type { FigmaObjectAnimationList, NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { buildFigKiwi } from '@open-pencil/kiwi/fig/container'
-import { decodeFigKiwiCanvas } from '@open-pencil/kiwi/fig/parse'
+import { decodeFigKiwiCanvas, type FigKiwiDecodeLimits } from '@open-pencil/kiwi/fig/parse'
 
 export interface FigImageEntry {
   name: string
@@ -31,6 +31,54 @@ export interface FigParseResult {
   metaJSON: string | null
 }
 
+export interface FigArchiveLimits extends FigKiwiDecodeLimits {
+  /** Maximum number of entries in the outer ZIP archive. */
+  maxEntries?: number
+  /** Maximum uncompressed size of one outer ZIP entry. */
+  maxEntryBytes?: number
+  /** Maximum combined uncompressed size of all outer ZIP entries. */
+  maxTotalEntryBytes?: number
+  /** Maximum uncompressed size of one image entry. */
+  maxImageBytes?: number
+  /** Maximum combined uncompressed size of all image entries. */
+  maxTotalImageBytes?: number
+  /** Maximum SceneGraph nodes after instance population in the isolated parser. */
+  maxGraphNodes?: number
+  /** Maximum parent-chain depth after graph construction. */
+  maxTreeDepth?: number
+}
+
+export const REMOTE_FIG_ARCHIVE_LIMITS: Readonly<Required<FigArchiveLimits>> = Object.freeze({
+  maxEntries: 2_048,
+  maxEntryBytes: 64 * 1024 * 1024,
+  maxTotalEntryBytes: 256 * 1024 * 1024,
+  maxImageBytes: 32 * 1024 * 1024,
+  maxTotalImageBytes: 192 * 1024 * 1024,
+  maxSchemaBytes: 16 * 1024 * 1024,
+  maxDataBytes: 192 * 1024 * 1024,
+  maxNodeChanges: 200_000,
+  maxArrayItems: 1_000_000,
+  maxDecodeDepth: 64,
+  maxSchemaDefinitions: 4_096,
+  maxFieldsPerDefinition: 4_096,
+  maxSchemaFields: 65_536,
+  maxGraphNodes: 100_000,
+  maxTreeDepth: 256
+})
+
+export interface ParseFigBufferOptions {
+  /** Omit for the legacy local-file path. Remote/untrusted callers must provide limits. */
+  limits?: FigArchiveLimits
+}
+
+function checkedLimit(value: number | undefined, label: string): number {
+  if (value === undefined) return Number.POSITIVE_INFINITY
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${label} must be a positive safe integer`)
+  }
+  return value
+}
+
 function isLikelyAsset(name: string): boolean {
   const lower = name.toLowerCase()
   return lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.json')
@@ -49,8 +97,81 @@ function findCanvasData(entries: Partial<Record<string, Uint8Array>>): Uint8Arra
 }
 
 /** Parse a complete zipped `.fig` file into its Figma protocol payload and binary resources. */
-export function parseFigBuffer(buffer: ArrayBuffer): FigParseResult {
-  const archive = unzipSync(new Uint8Array(buffer))
+export function parseFigBuffer(
+  buffer: ArrayBuffer,
+  options: ParseFigBufferOptions = {}
+): FigParseResult {
+  const limits = options.limits
+  let entryCount = 0
+  let totalEntryBytes = 0
+  let totalImageBytes = 0
+  const maxEntries = checkedLimit(limits?.maxEntries, 'maxEntries')
+  const maxEntryBytes = checkedLimit(limits?.maxEntryBytes, 'maxEntryBytes')
+  const maxTotalEntryBytes = checkedLimit(limits?.maxTotalEntryBytes, 'maxTotalEntryBytes')
+  const maxImageBytes = checkedLimit(limits?.maxImageBytes, 'maxImageBytes')
+  const maxTotalImageBytes = checkedLimit(limits?.maxTotalImageBytes, 'maxTotalImageBytes')
+  const archive = unzipSync(new Uint8Array(buffer), {
+    filter(entry) {
+      entryCount += 1
+      if (entryCount > maxEntries) {
+        throw new Error(`.fig archive exceeds the ${maxEntries} entry limit`)
+      }
+      if (entry.originalSize > maxEntryBytes) {
+        throw new Error(
+          `.fig archive entry "${entry.name}" exceeds the ${maxEntryBytes} byte limit`
+        )
+      }
+      totalEntryBytes += entry.originalSize
+      if (totalEntryBytes > maxTotalEntryBytes) {
+        throw new Error(
+          `.fig archive exceeds the ${maxTotalEntryBytes} total uncompressed byte limit`
+        )
+      }
+      if (entry.name.startsWith('images/') && entry.name !== 'images/') {
+        if (entry.originalSize > maxImageBytes) {
+          throw new Error(`.fig image "${entry.name}" exceeds the ${maxImageBytes} byte limit`)
+        }
+        totalImageBytes += entry.originalSize
+        if (totalImageBytes > maxTotalImageBytes) {
+          throw new Error(
+            `.fig images exceed the ${maxTotalImageBytes} total uncompressed byte limit`
+          )
+        }
+      }
+      return true
+    }
+  })
+  // Recheck the actual output as well as ZIP metadata. A hostile archive may
+  // announce inconsistent sizes; only the decompressed byte arrays are
+  // authoritative after extraction.
+  const actualEntries = Object.entries(archive)
+  if (actualEntries.length > maxEntries) {
+    throw new Error(`.fig archive exceeds the ${maxEntries} entry limit`)
+  }
+  let actualTotalEntryBytes = 0
+  let actualTotalImageBytes = 0
+  for (const [name, data] of actualEntries) {
+    if (data.byteLength > maxEntryBytes) {
+      throw new Error(`.fig archive entry "${name}" exceeds the ${maxEntryBytes} byte limit`)
+    }
+    actualTotalEntryBytes += data.byteLength
+    if (actualTotalEntryBytes > maxTotalEntryBytes) {
+      throw new Error(
+        `.fig archive exceeds the ${maxTotalEntryBytes} total uncompressed byte limit`
+      )
+    }
+    if (name.startsWith('images/') && name !== 'images/') {
+      if (data.byteLength > maxImageBytes) {
+        throw new Error(`.fig image "${name}" exceeds the ${maxImageBytes} byte limit`)
+      }
+      actualTotalImageBytes += data.byteLength
+      if (actualTotalImageBytes > maxTotalImageBytes) {
+        throw new Error(
+          `.fig images exceed the ${maxTotalImageBytes} total uncompressed byte limit`
+        )
+      }
+    }
+  }
   const canvasData = findCanvasData(archive)
   if (!canvasData) {
     throw new Error(
@@ -58,7 +179,21 @@ export function parseFigBuffer(buffer: ArrayBuffer): FigParseResult {
     )
   }
 
-  const decoded = decodeFigKiwiCanvas(canvasData)
+  const decoded = decodeFigKiwiCanvas(
+    canvasData,
+    limits
+      ? {
+          maxSchemaBytes: limits.maxSchemaBytes,
+          maxDataBytes: limits.maxDataBytes,
+          maxNodeChanges: limits.maxNodeChanges,
+          maxArrayItems: limits.maxArrayItems,
+          maxDecodeDepth: limits.maxDecodeDepth,
+          maxSchemaDefinitions: limits.maxSchemaDefinitions,
+          maxFieldsPerDefinition: limits.maxFieldsPerDefinition,
+          maxSchemaFields: limits.maxSchemaFields
+        }
+      : undefined
+  )
   const metaBytes = archive['meta.json']
   const images = Object.entries(archive)
     .filter(([name]) => name.startsWith('images/') && name !== 'images/')

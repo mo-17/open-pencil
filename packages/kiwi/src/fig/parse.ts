@@ -1,7 +1,12 @@
-import { inflateSync } from 'fflate'
-import { decompress as zstdDecompress } from 'fzstd'
+import { Inflate, inflateSync } from 'fflate'
+import { Decompress as ZstdDecompress, decompress as zstdDecompress } from 'fzstd'
 
-import { decodeBinarySchema, compileSchema, ByteBuffer } from '../schema-runtime'
+import {
+  compileSchema,
+  decodeBinarySchema,
+  KIWI_RUNTIME_LIMITS,
+  type KiwiRuntimeLimits
+} from '../schema-runtime'
 import type { FigmaMessage, FigmaObjectAnimationList, NodeChange } from './codec'
 import { isZstdCompressed } from './protocol'
 
@@ -42,11 +47,259 @@ interface FigKiwiPayload {
   version: number
 }
 
+export interface FigKiwiDecodeLimits extends KiwiRuntimeLimits {
+  /** Maximum decompressed binary schema size. Omit for the legacy unbounded path. */
+  maxSchemaBytes?: number
+  /** Maximum decompressed Kiwi message size. Omit for the legacy unbounded path. */
+  maxDataBytes?: number
+  /** Maximum raw node-change records decoded before graph construction. */
+  maxNodeChanges?: number
+}
+
+function remoteRuntimeLimits(limits: FigKiwiDecodeLimits): KiwiRuntimeLimits {
+  const maxNodeChanges = checkedLimit(limits.maxNodeChanges, 'maxNodeChanges')
+  let maxArrayItems =
+    checkedLimit(limits.maxArrayItems, 'maxArrayItems') ?? KIWI_RUNTIME_LIMITS.maxArrayItems
+  // nodeChanges itself is a Kiwi array. Apply this bound before generated code
+  // calls Array(length), instead of relying only on the post-decode check.
+  if (maxNodeChanges !== undefined) maxArrayItems = Math.min(maxArrayItems, maxNodeChanges)
+
+  return {
+    maxArrayItems,
+    maxSchemaDefinitions:
+      checkedLimit(limits.maxSchemaDefinitions, 'maxSchemaDefinitions') ??
+      KIWI_RUNTIME_LIMITS.maxSchemaDefinitions,
+    maxFieldsPerDefinition:
+      checkedLimit(limits.maxFieldsPerDefinition, 'maxFieldsPerDefinition') ??
+      KIWI_RUNTIME_LIMITS.maxFieldsPerDefinition,
+    maxSchemaFields:
+      checkedLimit(limits.maxSchemaFields, 'maxSchemaFields') ??
+      KIWI_RUNTIME_LIMITS.maxSchemaFields,
+    maxDecodeDepth:
+      checkedLimit(limits.maxDecodeDepth, 'maxDecodeDepth') ?? KIWI_RUNTIME_LIMITS.maxDecodeDepth
+  }
+}
+
+class FigKiwiLimitError extends Error {
+  override name = 'FigKiwiLimitError'
+}
+
+function checkedLimit(value: number | undefined, label: string): number | undefined {
+  if (value === undefined) return undefined
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${label} must be a positive safe integer`)
+  }
+  return value
+}
+
+function joinBoundedChunks(
+  chunks: readonly Uint8Array[],
+  byteLength: number,
+  maximum: number,
+  label: string
+): Uint8Array {
+  if (byteLength > maximum) {
+    throw new FigKiwiLimitError(`${label} exceeds the ${maximum} byte limit`)
+  }
+  const result = new Uint8Array(byteLength)
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return result
+}
+
+function boundedInflate(data: Uint8Array, maximum: number, label: string): Uint8Array {
+  const chunks: Uint8Array[] = []
+  let byteLength = 0
+  const inflater = new Inflate((chunk) => {
+    byteLength += chunk.byteLength
+    if (byteLength > maximum) {
+      throw new FigKiwiLimitError(`${label} exceeds the ${maximum} byte limit`)
+    }
+    chunks.push(chunk)
+  })
+  inflater.push(data, true)
+  return joinBoundedChunks(chunks, byteLength, maximum, label)
+}
+
+const ZSTD_FRAME_MAGIC = 0xfd2fb528
+const ZSTD_SKIPPABLE_MAGIC = 0x184d2a50
+const ZSTD_SKIPPABLE_MAGIC_MASK = 0xfffffff0
+const ZSTD_DICTIONARY_ID_BYTES = [0, 1, 2, 4] as const
+
+function requireZstdBytes(
+  data: Uint8Array,
+  offset: number,
+  byteLength: number,
+  label: string
+): void {
+  if (offset < 0 || byteLength < 0 || byteLength > data.byteLength - offset) {
+    throw new Error(`${label} contains a truncated Zstandard frame`)
+  }
+}
+
+function zstdUint32(data: Uint8Array, offset: number, label: string): number {
+  requireZstdBytes(data, offset, 4, label)
+  return (
+    (data[offset] |
+      (data[offset + 1] << 8) |
+      (data[offset + 2] << 16) |
+      (data[offset + 3] << 24)) >>>
+    0
+  )
+}
+
+function zstdLittleEndianBigInt(
+  data: Uint8Array,
+  offset: number,
+  byteLength: number,
+  label: string
+): bigint {
+  requireZstdBytes(data, offset, byteLength, label)
+  let value = 0n
+  for (let index = 0; index < byteLength; index++) {
+    value |= BigInt(data[offset + index]) << BigInt(index * 8)
+  }
+  return value
+}
+
+function boundedZstdFrameEnd(
+  data: Uint8Array,
+  frameOffset: number,
+  maximum: number,
+  label: string
+): { end: number; contentSize?: bigint } {
+  requireZstdBytes(data, frameOffset, 5, label)
+  if (zstdUint32(data, frameOffset, label) !== ZSTD_FRAME_MAGIC) {
+    throw new Error(`${label} contains invalid Zstandard frame magic`)
+  }
+
+  const descriptor = data[frameOffset + 4]
+  if ((descriptor & 0x08) !== 0) {
+    throw new Error(`${label} contains a reserved Zstandard frame-header bit`)
+  }
+  const singleSegment = (descriptor & 0x20) !== 0
+  const checksum = (descriptor & 0x04) !== 0
+  const dictionaryIdBytes = ZSTD_DICTIONARY_ID_BYTES[descriptor & 0x03]
+  const contentSizeFlag = descriptor >>> 6
+  const contentSizeBytes = contentSizeFlag === 0 ? (singleSegment ? 1 : 0) : 1 << contentSizeFlag
+
+  let offset = frameOffset + 5
+  let windowSize: bigint
+  if (singleSegment) {
+    windowSize = 0n
+  } else {
+    requireZstdBytes(data, offset, 1, label)
+    const windowDescriptor = data[offset++]
+    const windowBase = 1n << BigInt(10 + (windowDescriptor >>> 3))
+    windowSize = windowBase + (windowBase >> 3n) * BigInt(windowDescriptor & 0x07)
+  }
+
+  requireZstdBytes(data, offset, dictionaryIdBytes, label)
+  offset += dictionaryIdBytes
+  const contentSize =
+    contentSizeBytes === 0
+      ? undefined
+      : zstdLittleEndianBigInt(data, offset, contentSizeBytes, label) +
+        (contentSizeFlag === 1 ? 256n : 0n)
+  offset += contentSizeBytes
+  if (singleSegment) windowSize = contentSize ?? 0n
+
+  const maximumBigInt = BigInt(maximum)
+  if (contentSize !== undefined && contentSize > maximumBigInt) {
+    throw new FigKiwiLimitError(
+      `${label} Zstandard frame content size exceeds the ${maximum} byte limit`
+    )
+  }
+  if (windowSize > maximumBigInt) {
+    throw new FigKiwiLimitError(
+      `${label} Zstandard frame window size exceeds the ${maximum} byte limit`
+    )
+  }
+
+  let lastBlock = false
+  while (!lastBlock) {
+    requireZstdBytes(data, offset, 3, label)
+    const blockHeader = data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16)
+    offset += 3
+    lastBlock = (blockHeader & 1) !== 0
+    const blockType = (blockHeader >>> 1) & 0x03
+    const blockSize = blockHeader >>> 3
+    if (blockType === 3) {
+      throw new Error(`${label} contains a reserved Zstandard block type`)
+    }
+    if ((blockType === 0 || blockType === 1) && blockSize > maximum) {
+      throw new FigKiwiLimitError(
+        `${label} Zstandard block output exceeds the ${maximum} byte limit`
+      )
+    }
+    const storedSize = blockType === 1 ? 1 : blockSize
+    requireZstdBytes(data, offset, storedSize, label)
+    offset += storedSize
+  }
+
+  if (checksum) {
+    requireZstdBytes(data, offset, 4, label)
+    offset += 4
+  }
+  return { end: offset, contentSize }
+}
+
+function assertBoundedZstdFrames(data: Uint8Array, maximum: number, label: string): void {
+  let offset = 0
+  let declaredContentSize = 0n
+  const maximumBigInt = BigInt(maximum)
+
+  while (offset < data.byteLength) {
+    const magic = zstdUint32(data, offset, label)
+    if ((magic & ZSTD_SKIPPABLE_MAGIC_MASK) === ZSTD_SKIPPABLE_MAGIC) {
+      requireZstdBytes(data, offset, 8, label)
+      const skippableSize = zstdUint32(data, offset + 4, label)
+      requireZstdBytes(data, offset + 8, skippableSize, label)
+      offset += 8 + skippableSize
+      continue
+    }
+    const frame = boundedZstdFrameEnd(data, offset, maximum, label)
+    if (frame.contentSize !== undefined) {
+      declaredContentSize += frame.contentSize
+      if (declaredContentSize > maximumBigInt) {
+        throw new FigKiwiLimitError(
+          `${label} declared Zstandard content exceeds the ${maximum} byte limit`
+        )
+      }
+    }
+    offset = frame.end
+  }
+}
+
+function boundedZstdDecompress(data: Uint8Array, maximum: number, label: string): Uint8Array {
+  // fzstd allocates the frame window while parsing the header, before it emits
+  // an output chunk. Preflight every frame so the callback limit cannot be
+  // bypassed by a malicious window or declared content size.
+  assertBoundedZstdFrames(data, maximum, label)
+  const chunks: Uint8Array[] = []
+  let byteLength = 0
+  const decompressor = new ZstdDecompress((chunk) => {
+    byteLength += chunk.byteLength
+    if (byteLength > maximum) {
+      throw new FigKiwiLimitError(`${label} exceeds the ${maximum} byte limit`)
+    }
+    chunks.push(chunk)
+  })
+  decompressor.push(data, true)
+  return joinBoundedChunks(chunks, byteLength, maximum, label)
+}
+
 interface CompiledKiwiSchema {
   decodeMessage(data: Uint8Array): unknown
 }
 
-export function parseFigKiwiContainer(data: Uint8Array): FigKiwiPayload | null {
+export function parseFigKiwiContainer(
+  data: Uint8Array,
+  limits: FigKiwiDecodeLimits = {}
+): FigKiwiPayload | null {
   const header = new TextDecoder().decode(data.slice(0, 8))
   if (header !== 'fig-kiwi') return null
 
@@ -70,18 +323,27 @@ export function parseFigKiwiContainer(data: Uint8Array): FigKiwiPayload | null {
   if (chunks.length < 2) return null
 
   const compressed = chunks[1]
+  const maxDataBytes = checkedLimit(limits.maxDataBytes, 'maxDataBytes')
   let dataRaw: Uint8Array
   if (isZstdCompressed(compressed)) {
-    dataRaw = zstdDecompress(compressed)
+    dataRaw = maxDataBytes
+      ? boundedZstdDecompress(compressed, maxDataBytes, 'Decompressed fig-kiwi data')
+      : zstdDecompress(compressed)
   } else {
     try {
-      dataRaw = inflateSync(compressed)
-    } catch {
+      dataRaw = maxDataBytes
+        ? boundedInflate(compressed, maxDataBytes, 'Decompressed fig-kiwi data')
+        : inflateSync(compressed)
+    } catch (error) {
+      if (error instanceof FigKiwiLimitError) throw error
       // Legacy fig-kiwi payloads may store the data chunk uncompressed.
       // Only recover from the ambiguous deflate branch: zstd corruption and
       // container framing errors must continue to surface to the caller.
       dataRaw = compressed
     }
+  }
+  if (maxDataBytes && dataRaw.byteLength > maxDataBytes) {
+    throw new FigKiwiLimitError(`Decompressed fig-kiwi data exceeds the ${maxDataBytes} byte limit`)
   }
 
   return { schemaDeflated: chunks[0], dataRaw, version }
@@ -98,18 +360,32 @@ export interface FigKiwiDecodeResult {
 }
 
 /** Decode one raw `fig-kiwi` canvas payload. Outer `.fig` archive handling lives in `@open-pencil/fig`. */
-export function decodeFigKiwiCanvas(data: Uint8Array): FigKiwiDecodeResult {
-  const payload = parseFigKiwiContainer(data)
+export function decodeFigKiwiCanvas(
+  data: Uint8Array,
+  limits?: FigKiwiDecodeLimits
+): FigKiwiDecodeResult {
+  const payload = parseFigKiwiContainer(data, limits)
   if (!payload) throw new Error('Invalid fig-kiwi container')
 
-  const schemaBytes = inflateSync(payload.schemaDeflated)
-  const schema = decodeBinarySchema(new ByteBuffer(schemaBytes))
-  const compiled = compileSchema(schema) as CompiledKiwiSchema
+  const maxSchemaBytes = checkedLimit(limits?.maxSchemaBytes, 'maxSchemaBytes')
+  const schemaBytes = maxSchemaBytes
+    ? boundedInflate(payload.schemaDeflated, maxSchemaBytes, 'Decompressed fig-kiwi schema')
+    : inflateSync(payload.schemaDeflated)
+  const runtimeLimits = limits === undefined ? undefined : remoteRuntimeLimits(limits)
+  const schema = decodeBinarySchema(schemaBytes, runtimeLimits)
+  const compiled = compileSchema(schema, {
+    limits: runtimeLimits,
+    validateDynamicSchema: runtimeLimits !== undefined
+  }) as CompiledKiwiSchema
   const message = compiled.decodeMessage(payload.dataRaw) as FigmaMessage
 
   const nodeChanges = message.nodeChanges
   if (!nodeChanges || nodeChanges.length === 0) {
     throw new Error('No nodes found in .fig file')
+  }
+  const maxNodeChanges = checkedLimit(limits?.maxNodeChanges, 'maxNodeChanges')
+  if (maxNodeChanges && nodeChanges.length > maxNodeChanges) {
+    throw new FigKiwiLimitError(`.fig node changes exceed the ${maxNodeChanges} record limit`)
   }
 
   deduplicateNodeChangePluginData(nodeChanges)

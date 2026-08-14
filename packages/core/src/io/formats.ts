@@ -1,8 +1,9 @@
-import { parsePenFile, serializePenFile } from '@open-pencil/pen'
+import { serializePenFile } from '@open-pencil/pen'
 
 import { sceneNodeToJSX, selectionToJSX } from '#core/design-jsx'
 
-import { exportFigFileWithOptions, parseFigFile } from './formats/fig'
+import { exportFigFileWithOptions, readFigSource } from './formats/fig'
+import { readPenDocument } from './formats/pen/read'
 import type { PPTXExportOptions } from './formats/pptx'
 import { headlessRenderNodes, renderNodesToImage, type RasterExportFormat } from './formats/raster'
 import { renderNodesToSVG } from './formats/svg'
@@ -160,9 +161,16 @@ export const figFormat: IOFormatAdapter = {
   matchesFile(fileName) {
     return lowerExt(fileName) === 'fig'
   },
-  async readDocument(input) {
-    const data = input.data.slice().buffer
-    const graph = await parseFigFile(data, { populate: 'first-page' })
+  async readDocument(input, _context, options) {
+    const graph = await readFigSource(
+      { read: async () => input.data.slice() },
+      {
+        populate: options?.populate ?? 'first-page',
+        archiveLimits: options?.archiveLimits,
+        signal: options?.signal,
+        allowMainThreadFallback: options?.allowMainThreadFallback
+      }
+    )
     return { graph, sourceFormat: 'fig' }
   },
   async writeDocument(graph, options?: FigWriteOptions, context?: IOContext) {
@@ -209,9 +217,12 @@ export const penFormat: IOFormatAdapter = {
   matchesFile(fileName, mimeType) {
     return lowerExt(fileName) === 'pen' || mimeType === 'application/json'
   },
-  async readDocument(input) {
-    const text = new TextDecoder().decode(input.data)
-    const graph = parsePenFile(text)
+  async readDocument(input, _context, options) {
+    const graph = await readPenDocument(input.data, {
+      limits: options?.penLimits,
+      signal: options?.signal,
+      allowMainThreadFallback: options?.allowMainThreadFallback
+    })
     return { graph, sourceFormat: 'pen' }
   },
   async writeDocument(graph) {

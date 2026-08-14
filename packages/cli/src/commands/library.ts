@@ -1,15 +1,26 @@
+import { isIP } from 'node:net'
 import { extname, resolve } from 'node:path'
 
 import { defineCommand } from 'citty'
 
+import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
+import { REMOTE_FIG_ARCHIVE_LIMITS } from '@open-pencil/fig'
+import { REMOTE_PEN_PARSE_LIMITS } from '@open-pencil/pen'
 import {
   acceptLibraryUpdate,
   checkLibraryUpdates,
+  encodeBase64URL,
   importLibraryComponent,
+  parseRemoteComponentLibraryDescriptor,
   publishLibraryComponent,
+  REMOTE_COMPONENT_LIBRARY_FORMAT,
+  REMOTE_COMPONENT_LIBRARY_SCHEMA_VERSION,
+  validateLibraryArtifact,
+  webCryptoBuffer,
   type LibraryManifest,
   type LibraryRef,
   type LibraryUpdateCheck,
+  type RemoteComponentLibraryDescriptor,
   type SceneGraph,
   type SceneNode
 } from '@open-pencil/scene-graph'
@@ -17,6 +28,37 @@ import {
 import { requireFile } from '#cli/app-client'
 import { bold, fmtList, ok, printError } from '#cli/format'
 import { loadDocument, saveDocument } from '#cli/headless'
+
+const MAX_REMOTE_ARTIFACT_BYTES = 64 * 1024 * 1024
+const MAX_REMOTE_URL_LENGTH = 2048
+const remoteArtifactIO = new IORegistry(BUILTIN_IO_FORMATS)
+const SPECIAL_USE_HOST_SUFFIXES = [
+  '.alt',
+  '.arpa',
+  '.example',
+  '.home',
+  '.internal',
+  '.invalid',
+  '.lan',
+  '.local',
+  '.localhost',
+  '.onion',
+  '.test'
+] as const
+
+type RemoteLibraryArtifactFormat = 'fig' | 'pen'
+
+interface RemoteLibraryManifestV1 extends RemoteComponentLibraryDescriptor {
+  format: typeof REMOTE_COMPONENT_LIBRARY_FORMAT
+  schemaVersion: typeof REMOTE_COMPONENT_LIBRARY_SCHEMA_VERSION
+  source: { kind: 'url'; ref: string }
+  artifact: {
+    format: RemoteLibraryArtifactFormat
+    mediaType: 'application/octet-stream' | 'application/json'
+    byteLength: number
+    integrity: { algorithm: 'SHA-256'; digest: string }
+  }
+}
 
 function documentFormat(file: string): string {
   const ext = extname(file).slice(1).toLowerCase()
@@ -27,8 +69,101 @@ async function readManifest(file: string): Promise<LibraryManifest> {
   return JSON.parse(await Bun.file(file).text()) as LibraryManifest
 }
 
+async function readRemoteLibraryDescriptor(
+  file: string
+): Promise<RemoteComponentLibraryDescriptor> {
+  const value = JSON.parse(await Bun.file(file).text()) as unknown
+  return parseRemoteComponentLibraryDescriptor(value, 'manifest', { allowExtraKeys: true })
+}
+
 async function writeManifest(file: string, manifest: LibraryManifest): Promise<void> {
   await Bun.write(file, `${JSON.stringify(manifest, null, 2)}\n`)
+}
+
+function remoteArtifactFormat(file: string): RemoteLibraryArtifactFormat {
+  const format = documentFormat(file)
+  if (format !== 'fig' && format !== 'pen') {
+    printError('Remote component-library artifacts must use the .fig or .pen extension.')
+    process.exit(1)
+  }
+  return format
+}
+
+function parsePublicArtifactURL(value: string, format: RemoteLibraryArtifactFormat): string {
+  if (value.length > MAX_REMOTE_URL_LENGTH) {
+    printError(`Artifact URL must be at most ${MAX_REMOTE_URL_LENGTH} characters.`)
+    process.exit(1)
+  }
+
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    printError('Artifact URL must be an absolute canonical public HTTPS URL.')
+    process.exit(1)
+  }
+  const hostname = url.hostname.toLowerCase()
+  if (hasUnsafeArtifactURLParts(url, value) || hasInvalidPublicHostname(hostname)) {
+    printError(
+      'Artifact URL must be canonical public HTTPS without credentials, query, fragment, custom port, IP, or private hostname.'
+    )
+    process.exit(1)
+  }
+  if (!url.pathname.toLowerCase().endsWith(`.${format}`)) {
+    printError(`Artifact URL pathname must end in .${format}.`)
+    process.exit(1)
+  }
+  return url.href
+}
+
+function hasUnsafeArtifactURLParts(url: URL, original: string): boolean {
+  return [
+    url.protocol !== 'https:',
+    Boolean(url.username),
+    Boolean(url.password),
+    url.href.includes('#'),
+    url.href.includes('?'),
+    Boolean(url.port),
+    url.href !== original
+  ].includes(true)
+}
+
+function hasInvalidPublicHostname(hostname: string): boolean {
+  const addressHost = hostname.startsWith('[') ? hostname.slice(1, -1) : hostname
+  const labels = hostname.split('.')
+  return [
+    hostname.startsWith('xn--'),
+    hostname.includes('.xn--'),
+    !hostname.includes('.'),
+    hostname.endsWith('.'),
+    isIP(addressHost) !== 0,
+    labels.some(hasInvalidHostnameLabel),
+    /^\d+$/.test(labels.at(-1) ?? ''),
+    SPECIAL_USE_HOST_SUFFIXES.some(
+      (suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix)
+    )
+  ].includes(true)
+}
+
+function hasInvalidHostnameLabel(label: string): boolean {
+  return [
+    label.length === 0,
+    label.length > 63,
+    label.startsWith('-'),
+    label.endsWith('-'),
+    !/^[a-z0-9-]+$/.test(label)
+  ].includes(true)
+}
+
+async function artifactDigest(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', webCryptoBuffer(bytes))
+  return encodeBase64URL(new Uint8Array(digest))
+}
+
+function remoteArtifactMediaType(
+  format: RemoteLibraryArtifactFormat
+): RemoteLibraryManifestV1['artifact']['mediaType'] {
+  return format === 'fig' ? 'application/octet-stream' : 'application/json'
 }
 
 function parseSource(kind: string, ref?: string): LibraryRef['source'] | undefined {
@@ -342,12 +477,113 @@ const accept = defineCommand({
   }
 })
 
+const remotePrepare = defineCommand({
+  meta: {
+    description:
+      'Bind a published library artifact to a public HTTPS URL and emit a digest-pinned remote manifest'
+  },
+  args: {
+    file: {
+      type: 'positional',
+      description: 'Published .fig or .pen library artifact path',
+      required: true
+    },
+    manifest: manifestArg,
+    'artifact-url': {
+      type: 'string',
+      description: 'Canonical public HTTPS URL where the artifact will be hosted',
+      required: true
+    },
+    output: {
+      type: 'string',
+      alias: 'o',
+      description: 'Write the remote manifest JSON to this path',
+      required: true
+    },
+    json: jsonArg
+  },
+  async run({ args }) {
+    const file = requireFile(args.file)
+    const format = remoteArtifactFormat(file)
+    const artifactURL = parsePublicArtifactURL(args['artifact-url'], format)
+    const bytes = new Uint8Array(await Bun.file(file).arrayBuffer())
+    const maximumArtifactBytes =
+      format === 'pen' ? REMOTE_PEN_PARSE_LIMITS.maxBytes : MAX_REMOTE_ARTIFACT_BYTES
+    if (bytes.byteLength < 1 || bytes.byteLength > maximumArtifactBytes) {
+      printError(
+        `Remote ${format} library artifact must be between 1 byte and ${maximumArtifactBytes} bytes.`
+      )
+      process.exit(1)
+    }
+
+    const { graph: sourceGraph } = await remoteArtifactIO.readDocumentAs(
+      format,
+      { name: file, mimeType: remoteArtifactMediaType(format), data: bytes },
+      format === 'fig'
+        ? {
+            populate: 'all',
+            archiveLimits: REMOTE_FIG_ARCHIVE_LIMITS,
+            allowMainThreadFallback: true
+          }
+        : {
+            populate: 'all',
+            penLimits: REMOTE_PEN_PARSE_LIMITS,
+            allowMainThreadFallback: true
+          }
+    )
+    let manifest: RemoteComponentLibraryDescriptor
+    try {
+      manifest = await readRemoteLibraryDescriptor(requireFile(args.manifest))
+    } catch (error) {
+      printError(error)
+      process.exit(1)
+    }
+    const validation = validateLibraryArtifact(sourceGraph, manifest)
+    if (!validation.ok) {
+      printError(
+        `Library artifact does not match its manifest: ${validation.issues
+          .map((issue) => issue.message)
+          .join('; ')}`
+      )
+      process.exit(1)
+    }
+
+    const remoteManifest: RemoteLibraryManifestV1 = {
+      format: REMOTE_COMPONENT_LIBRARY_FORMAT,
+      schemaVersion: REMOTE_COMPONENT_LIBRARY_SCHEMA_VERSION,
+      libraryId: manifest.libraryId,
+      name: manifest.name,
+      components: structuredClone(manifest.components),
+      source: { kind: 'url', ref: artifactURL },
+      artifact: {
+        format,
+        mediaType: remoteArtifactMediaType(format),
+        byteLength: bytes.byteLength,
+        integrity: { algorithm: 'SHA-256', digest: await artifactDigest(bytes) }
+      }
+    }
+    const output = resolve(args.output)
+    await Bun.write(output, `${JSON.stringify(remoteManifest, null, 2)}\n`)
+    if (args.json) {
+      printJSON({ manifest: remoteManifest, output })
+      return
+    }
+    console.log(ok(`Wrote digest-pinned remote library manifest to ${output}`))
+  }
+})
+
+const remote = defineCommand({
+  meta: { description: 'Prepare remote component-library distribution artifacts' },
+  subCommands: { prepare: remotePrepare }
+})
+
 export default defineCommand({
-  meta: { description: 'Publish, import, check, and accept team library components' },
+  meta: { description: 'Publish, import, check, accept, and distribute library components' },
   subCommands: {
     publish,
     import: importCmd,
     check,
-    accept
+    accept,
+    remote
   }
 })

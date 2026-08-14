@@ -160,6 +160,15 @@ export const LOWCODE_LIBRARY_COMPONENT_KEY = 'lowcode/libraryComponent'
  *  key/version pairs. Value is a JSON-encoded `LibraryRef[]`. */
 export const LOWCODE_LIBRARIES_KEY = 'lowcode/libraries'
 
+/** Marks the hidden CANVAS that stores imported library component masters. */
+export const LOWCODE_LIBRARY_CACHE_KEY = 'lowcode/libraryCache'
+
+const LOWCODE_LIBRARY_PLUGIN_KEYS: ReadonlySet<string> = new Set([
+  LOWCODE_LIBRARY_COMPONENT_KEY,
+  LOWCODE_LIBRARIES_KEY,
+  LOWCODE_LIBRARY_CACHE_KEY
+])
+
 /** Phase 4 §16.1: page-level (CANVAS) route pattern, e.g. `/product/:id`. A
  *  non-empty string on a page node; absent → slug-derived route. */
 export const LOWCODE_ROUTE_PATTERN_KEY = 'lowcode/routePattern'
@@ -240,6 +249,7 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_OVERRIDES_KEY,
   LOWCODE_LIBRARY_COMPONENT_KEY,
   LOWCODE_LIBRARIES_KEY,
+  LOWCODE_LIBRARY_CACHE_KEY,
   LOWCODE_ROUTE_PATTERN_KEY,
   LOWCODE_REQUIRES_AUTH_KEY,
   LOWCODE_AUTH_REDIRECT_KEY,
@@ -503,6 +513,9 @@ function serializeLibraryFields(node: SceneNode): PluginDataEntry[] {
   if (libraryComponent) entries.push(makeEntry(LOWCODE_LIBRARY_COMPONENT_KEY, libraryComponent))
   if (isNonEmpty(node.lowcodeLibraries)) {
     entries.push(makeEntry(LOWCODE_LIBRARIES_KEY, node.lowcodeLibraries))
+  }
+  if (node.lowcodeLibraryCache === true) {
+    entries.push(makeEntry(LOWCODE_LIBRARY_CACHE_KEY, true))
   }
   return entries
 }
@@ -1039,6 +1052,8 @@ export interface ExtractedLowcodeAndPluginData {
   /** Phase 4 §14: root-level imported library refs restored from
    *  `lowcode/libraries`. */
   lowcodeLibraries?: LibraryRef[]
+  /** Hidden library-cache CANVAS marker restored from `lowcode/libraryCache`. */
+  lowcodeLibraryCache?: boolean
   /** Phase 3 §8 v11: per-instance override snapshot (keyed by master-child id).
    *  Flows onto the node via `...lowcodeRest` as `pendingInstanceOverrides`, then
    *  `reapplyInstanceOverrides` remaps it after populate. */
@@ -1341,6 +1356,9 @@ function assignLowcodeLibraryField(
       return
     case LOWCODE_LIBRARIES_KEY:
       if (isLibraryRefs(value)) target.lowcodeLibraries = value
+      return
+    case LOWCODE_LIBRARY_CACHE_KEY:
+      if (value === true) target.lowcodeLibraryCache = true
   }
 }
 
@@ -1349,6 +1367,10 @@ function assignLowcodeLayoutFix(
   key: string,
   value: unknown
 ): void {
+  if (LOWCODE_LIBRARY_PLUGIN_KEYS.has(key)) {
+    assignLowcodeLibraryField(target, key, value)
+    return
+  }
   switch (key) {
     case LOWCODE_AXIS_SIZING_KEY:
       assignFillAxisSizing(target, value)
@@ -1370,10 +1392,6 @@ function assignLowcodeLayoutFix(
       // Light guard (non-null, non-array object); remapped onto cloned children by
       // `reapplyInstanceOverrides` after populate, where unknown paths just no-op.
       if (isPlainRecord(value)) target.pendingInstanceOverrides = value
-      return
-    case LOWCODE_LIBRARY_COMPONENT_KEY:
-    case LOWCODE_LIBRARIES_KEY:
-      assignLowcodeLibraryField(target, key, value)
       return
     case LOWCODE_ROUTE_PATTERN_KEY:
       // Phase 4 §16.1: page-level route pattern. Light guard (string). Pattern
@@ -1457,6 +1475,7 @@ function isLibraryRef(value: unknown): value is LibraryRef {
     typeof value.libraryId === 'string' &&
     typeof value.name === 'string' &&
     isLibrarySource(value.source) &&
+    (value.manifestSource === undefined || isLibrarySource(value.manifestSource)) &&
     Array.isArray(value.importedComponents) &&
     value.importedComponents.every(isLibraryImportedComponent)
   )

@@ -1,4 +1,5 @@
-export { parsePenFile, readPenFile } from './read'
+export { parsePenFile, readPenFile, type ParsePenFileOptions } from './read'
 export { serializePenFile, writePenFile } from './write'
 export * from './convert'
+export * from './limits'
 export * from './metadata'
