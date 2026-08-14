@@ -256,6 +256,56 @@ test('attaches a normalized image reference and sends it as a file part', async 
   await expect(page.locator('html')).toHaveAttribute('data-last-chat-files', 'image/png:data')
 })
 
+test('multiple images appear inside the composer and can be removed', async () => {
+  await chatInput().fill('')
+  await page
+    .getByTestId('chat-attachment-file-input')
+    .setInputFiles([
+      'tests/fixtures/vectorize/pilot_avatar.png',
+      'tests/fixtures/vectorize/python_logo.png'
+    ])
+
+  const draftAttachments = page
+    .getByTestId('chat-draft-attachments')
+    .getByTestId('chat-visual-attachment')
+  await expect(draftAttachments).toHaveCount(2)
+  await expect(draftAttachments.nth(0)).toContainText('pilot_avatar.png')
+  await expect(draftAttachments.nth(1)).toContainText('python_logo.png')
+
+  await draftAttachments.nth(0).getByTestId('chat-attachment-remove').click()
+  await expect(page.getByText('pilot_avatar.png', { exact: true })).toBeHidden()
+  await expect(page.getByText('python_logo.png', { exact: true })).toBeVisible()
+  await draftAttachments.nth(0).getByTestId('chat-attachment-remove').click()
+})
+
+test('sending images shows the complete user message immediately', async () => {
+  await chatInput().fill('Use these images for the new layout')
+  await page
+    .getByTestId('chat-attachment-file-input')
+    .setInputFiles([
+      'tests/fixtures/vectorize/pilot_avatar.png',
+      'tests/fixtures/vectorize/python_logo.png'
+    ])
+
+  await page.getByTestId('chat-send-button').click()
+
+  const userMessage = page.getByTestId('chat-message-user').last()
+  await expect(userMessage).toContainText('Use these images for the new layout', { timeout: 500 })
+  const sentAttachments = userMessage.getByTestId('chat-visual-attachment')
+  await expect(sentAttachments).toHaveCount(2, { timeout: 500 })
+  await expect(sentAttachments.nth(0)).toContainText('pilot_avatar.png')
+  await expect(sentAttachments.nth(1)).toContainText('python_logo.png')
+})
+
+test('Shift+Enter inserts a line break without submitting', async () => {
+  await chatInput().fill('First line')
+  await chatInput().press('Shift+Enter')
+  await chatInput().type('Second line')
+
+  await expect(chatInput()).toHaveValue('First line\nSecond line')
+  await expect(page.getByText('First line', { exact: true })).toBeHidden()
+})
+
 test('Enter submits message and clears input', async () => {
   await chatInput().fill('Hello there')
   await chatInput().press('Enter')
@@ -348,13 +398,13 @@ test('OpenRouter accepts a custom model ID from provider settings', async () => 
   await expect(page.getByTestId('chat-model-selector')).toBeVisible()
 })
 
-test('transport errors show an actionable toast', async () => {
+test('transport errors show a safe localized toast', async () => {
   await chatInput().fill('Trigger missing agent error')
   await chatInput().press('Enter')
 
   await expect(
     page.getByTestId('toast-item').filter({
-      hasText: 'Install it with: npm i -g @agentclientprotocol/claude-agent-acp'
+      hasText: 'The model request failed. Check the provider settings and try again.'
     })
   ).toBeVisible({ timeout: 5000 })
 })

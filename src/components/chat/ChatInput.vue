@@ -2,22 +2,21 @@
 import { TooltipProvider } from 'reka-ui'
 import { computed, ref } from 'vue'
 
-import { useChatDraft } from '@/app/ai/chat/drafts'
+import { ACP_AGENTS } from '@open-pencil/core/constants'
+import { useI18n } from '@open-pencil/vue'
+
 import type { VisualChatAttachment } from '@/app/ai/chat/attachments'
+import { useChatDraft } from '@/app/ai/chat/drafts'
+import { useAIChat } from '@/app/ai/chat/use'
+import { designModelProfile, designModelProfiles } from '@/app/ai/models'
+import { openSettingsDialog } from '@/app/settings/dialog'
+import { activeTab } from '@/app/tabs'
 import AcpConfigSelect from '@/components/chat/AcpConfigSelect.vue'
 import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.vue'
 import ChatProfileSelect from '@/components/chat/ChatProfileSelect.vue'
 import ProviderModelSelect from '@/components/chat/ProviderModelSelect.vue'
-import AppInput from '@/components/ui/AppInput.vue'
 import Tip from '@/components/ui/Tip.vue'
 import { useButtonUI } from '@/components/ui/button'
-import { useAIChat } from '@/app/ai/chat/use'
-import { designModelProfile, designModelProfiles } from '@/app/ai/models'
-import { openSettingsDialog } from '@/app/settings/dialog'
-import { useI18n } from '@open-pencil/vue'
-
-import { ACP_AGENTS } from '@open-pencil/core/constants'
-import { activeTab } from '@/app/tabs'
 
 const { providerID, providerDef, modelID, customModelID } = useAIChat()
 const { dialogs } = useI18n()
@@ -64,7 +63,7 @@ const isBusy = computed(() => initializing || isStreaming.value)
 const isACPProvider = computed(() => providerID.value.startsWith('acp:'))
 const acpAgentName = computed(() => {
   const agentId = providerID.value.replace('acp:', '')
-  return ACP_AGENTS.find((a) => a.id === agentId)?.name ?? agentId
+  return ACP_AGENTS.find((agent) => agent.id === agentId)?.name ?? agentId
 })
 const isCustomProvider = computed(
   () => providerID.value === 'openai-compatible' || providerID.value === 'anthropic-compatible'
@@ -89,7 +88,7 @@ const usesCustomModel = computed(
 const selectedModelName = computed(() => {
   if (usesCustomModel.value) return customModelName.value
   if (isCustomProvider.value) return 'No model'
-  return providerDef.value.models.find((m) => m.id === modelID.value)?.name ?? modelID.value
+  return providerDef.value.models.find((model) => model.id === modelID.value)?.name ?? modelID.value
 })
 const attachmentActionsDisabled = computed(() => isBusy.value || attachmentsDisabled)
 const attachmentTarget = computed(() => {
@@ -113,6 +112,23 @@ function handleFilesSelected(event: Event) {
   if (files.length) emit('select-files', files)
 }
 
+function handlePaste(event: ClipboardEvent) {
+  if (attachmentActionsDisabled.value || !visualAttachmentsEnabled) return
+  const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
+    file.type.startsWith('image/')
+  )
+  if (files.length === 0) return
+  event.preventDefault()
+  emit('select-files', allowMultipleAttachments ? files : files.slice(0, 1))
+}
+
+function handleInputKeydown(event: KeyboardEvent) {
+  if (event.code !== 'Enter' || event.shiftKey || event.isComposing) return
+  event.preventDefault()
+  const target = event.currentTarget
+  if (target instanceof HTMLElement) target.closest('form')?.requestSubmit()
+}
+
 // Switching between saved profiles only makes sense once more than one can drive the design agent.
 const switchableProfiles = computed(designModelProfiles)
 const canSwitchProfile = computed(() => switchableProfiles.value.length > 1)
@@ -120,8 +136,8 @@ const selectedProfileName = computed(
   () => designModelProfile.value?.name ?? selectedModelName.value
 )
 
-function handleSubmit(e: Event) {
-  e.preventDefault()
+function handleSubmit(event: Event) {
+  event.preventDefault()
   if (attachmentActionsDisabled.value) return
   const requestedInput = useChatDraft(activeTab.value?.store)
   const text = requestedInput.value.trim()
@@ -137,7 +153,6 @@ function handleSubmit(e: Event) {
 <template>
   <TooltipProvider>
     <div class="shrink-0 border-t border-border px-3 py-2">
-      <!-- Model selector & settings -->
       <div class="mb-1.5 flex items-center gap-1">
         <template v-if="isACPProvider">
           <div
@@ -261,15 +276,16 @@ function handleSubmit(e: Event) {
         </div>
       </div>
 
-      <!-- Input form -->
       <form class="flex gap-1.5" @submit="handleSubmit">
-        <AppInput
+        <textarea
           v-model="input"
           data-test-id="chat-input"
           :placeholder="dialogs.describeChange"
-          class="min-w-0 flex-1 placeholder:text-muted"
           :disabled="attachmentActionsDisabled"
-          @paste.stop
+          rows="2"
+          class="min-h-8 min-w-0 flex-1 resize-none rounded border border-border bg-transparent px-2 py-1.5 text-xs leading-relaxed text-surface outline-none placeholder:text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+          @keydown="handleInputKeydown"
+          @paste.stop="handlePaste"
           @copy.stop
           @cut.stop
         />

@@ -13,7 +13,7 @@ import {
   previewPanelDefaultSize,
   saveEditorLayout
 } from '@/app/shell/layout-storage'
-import { openFileFromPath, useMenu } from '@/app/shell/menu/use'
+import { openFileFromPath, useEditorMenu } from '@/app/shell/menu/use'
 import { toast } from '@/app/shell/ui'
 import { useCollab, COLLAB_KEY } from '@/app/collab/use'
 import { connectAutomation } from '@/app/automation/bridge/server'
@@ -28,6 +28,7 @@ import { createTab, activeTab, getActiveStore, tabCount } from '@/app/tabs'
 
 import CollabPanel from '@/components/CollabPanel/CollabPanel.vue'
 import EditorCanvas from '@/components/EditorCanvas.vue'
+import FontStatusBanner from '@/components/font-status/FontStatusBanner.vue'
 import LayersPanel from '@/components/LayersPanel.vue'
 import MobileDrawer from '@/components/MobileDrawer.vue'
 import MobileHud from '@/components/MobileHud/MobileHud.vue'
@@ -54,7 +55,7 @@ if (createdInitialTab && route.meta.demo && !('test' in params)) {
 
 useHead({ title: route.meta.demo ? 'Demo' : undefined })
 useKeyboard()
-useMenu()
+useEditorMenu()
 
 const collab = useCollab(getActiveStore)
 provide(COLLAB_KEY, collab)
@@ -143,6 +144,7 @@ onUnmounted(() => {
 <template>
   <div data-test-id="editor-root" class="flex h-screen w-screen flex-col">
     <SafariBanner />
+    <FontStatusBanner />
     <RenameSelectionDialog />
     <TabBar />
 

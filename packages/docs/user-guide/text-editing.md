@@ -77,12 +77,19 @@ Change the font weight in the Typography section of the properties panel. Availa
 ## Font Sources
 
 - **Default font** — Inter is loaded automatically
-- **Desktop app** — all system fonts are available
+- **Desktop app** — system fonts plus enabled Google Fonts, Fontsource, Bunny Fonts, and Fontshare catalogs
 - **Imported font files** — in the desktop app, open **Font settings** beside the family picker and
   import a TTF, OTF, or WOFF file. OpenPencil reads the font's internal family and style, validates
   it before CanvasKit registration, records available license evidence, and stores a checksummed
   local copy for restart and offline use.
-- **Browser** — system fonts are available in Chrome and Edge
+- **Browser** — system fonts are available in Chrome and Edge; online font catalogs require the desktop app
+- **Downloaded fonts** — the desktop app caches downloaded faces for reuse on the same machine
+
+## Missing Fonts and Substitutions
+
+When a requested family or style cannot be loaded, OpenPencil displays a warning above the editor instead of silently treating fallback rendering as faithful typography.
+
+Expand the warning to see every affected face and its active substitute. Use **Select layers** to locate all affected text nodes or **Retry fonts** after changing network access, local-font permission, or provider settings. A style may be synthesized from another loaded face in the same family; a missing family falls back to Inter when available.
 
 An imported face takes priority over a same-named system or downloaded face. The lowcode preview
 then embeds the same loaded bytes in Compiler output, so the canvas and preview do not silently use

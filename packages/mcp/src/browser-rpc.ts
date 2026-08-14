@@ -19,6 +19,8 @@ type BrowserRPCBridgeOptions = {
   resolveTimeoutMs?: (body: Record<string, unknown>) => number
 }
 
+type ConnectionListener = (connected: boolean) => void
+
 type BrowserMessage = {
   type: string
   id?: string
@@ -78,12 +80,25 @@ export function createBrowserRPCBridge({
   // register message. Unauthenticated clients can only send register;
   // all other message types (request, response) are rejected.
   const authenticatedClients = new Set<WebSocket>()
+  const connectionListeners = new Set<ConnectionListener>()
   let browserWs: WebSocket | null = null
   let browserRegistered = false
   let bridgeClosed = false
 
   function isConnected(): boolean {
     return Boolean(browserWs && browserRegistered)
+  }
+
+  function notifyConnectionChange() {
+    const connected = isConnected()
+    onConnectionChange(connected)
+    for (const listener of connectionListeners) listener(connected)
+  }
+
+  function subscribeConnectionChange(listener: ConnectionListener): () => void {
+    connectionListeners.add(listener)
+    listener(isConnected())
+    return () => connectionListeners.delete(listener)
   }
 
   function notifyConnectionWaiters() {
@@ -281,7 +296,7 @@ export function createBrowserRPCBridge({
       }
     }
     notifyConnectionWaiters()
-    onConnectionChange(true)
+    notifyConnectionChange()
     broadcastRegisterPrompt()
   }
 
@@ -374,7 +389,7 @@ export function createBrowserRPCBridge({
     // CLOSING→CLOSED transition), the waiter should keep waiting the full
     // APP_WAIT_TIMEOUT for a reconnect. registerBrowser will resolve it
     // via notifyConnectionWaiters if the browser reconnects in time.
-    onConnectionChange(false)
+    notifyConnectionChange()
   }
 
   function handleConnection(ws: WebSocket) {
@@ -398,11 +413,13 @@ export function createBrowserRPCBridge({
     browserRegistered = false
     clients.clear()
     authenticatedClients.clear()
+    connectionListeners.clear()
   }
 
   return {
     close,
     isConnected,
+    subscribeConnectionChange,
     sendRPC,
     handleConnection,
     handleMessage,

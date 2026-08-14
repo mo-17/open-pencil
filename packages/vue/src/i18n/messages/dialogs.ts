@@ -45,11 +45,26 @@ export const dialogMessageDefaults = {
   importToCanvas: 'Import to canvas',
   newTab: 'New tab',
   closeTab: params('Close {name}'),
+  recoverUnsavedWork: 'Recover unsaved work',
+  recoverUnsavedWorkDescription: 'OpenPencil found documents from a previous session.',
+  restore: 'Restore',
+  discard: 'Discard',
+  recoveryFailed: 'Could not restore this document.',
   showUI: params('Show UI ({shortcut})'),
   canvasFontsLoading: params('Preparing font resources {completed}/{total}'),
   canvasFontsReady: 'Fonts ready',
   canvasFontCheckComplete: 'Font check complete',
   fontSettings: 'Font settings',
+  fontIssueFound: '1 font face is unavailable or substituted',
+  fontIssuesFound: params('{count} font faces are unavailable or substituted'),
+  selectAffectedLayers: 'Select layers',
+  retryFonts: 'Retry fonts',
+  retryingFonts: 'Retrying…',
+  expandFontIssues: 'Show font issues',
+  collapseFontIssues: 'Hide font issues',
+  noFontSubstitute: 'no substitute available',
+  affectedLayer: '1 affected layer',
+  affectedLayerCount: params('{count} affected layers'),
   fontSettingsDesktopDescription:
     'Access system fonts, imported files, online providers, fallback packs, and the font cache.',
   fontSettingsBrowserDescription:
@@ -125,6 +140,8 @@ export const dialogMessageDefaults = {
   connectionTestInvalidBaseURL:
     'Base URL is invalid. Use a full URL like https://api.example.com/v1.',
   connectionTestAuthFailed: 'Authentication failed. Check your API key.',
+  connectionTestInsufficientCredit:
+    'The provider account has insufficient credit or quota. Top it up and try again.',
   connectionTestModelNotFound: 'Model not found. Check the model ID.',
   connectionTestAPITypeMismatch:
     'This endpoint does not appear to support the selected API type. Try Completions or Responses.',
@@ -760,9 +777,17 @@ export const dialogMessageDefaults = {
   advancedModelSettings: 'Advanced settings',
   outputLimit: 'Output limit',
   outputLimitAutomatic: 'Automatic recommendation',
+  reasoningEffort: 'Reasoning effort',
+  reasoningEffortPlaceholder: 'e.g. low, high, none',
+  reasoningEffortDescription: 'Optional provider-specific value.',
   supported: 'Supported',
   unsupported: 'Not supported',
   tokens: 'tokens',
+  chatInsufficientCredit:
+    'The provider account has insufficient credit or quota. Top it up and try again.',
+  chatOutputLimit:
+    'The model ran out of output tokens while reasoning. Raise Max output tokens or lower reasoning effort.',
+  chatRequestFailed: 'The model request failed. Check the provider settings and try again.',
   maxOutputTokens: 'Max output tokens',
   clear: 'Clear',
   keySavedReplace: 'Key saved — enter new to replace',

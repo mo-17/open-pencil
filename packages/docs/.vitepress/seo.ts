@@ -193,8 +193,8 @@ export function applyPageSeoUsing(
       {
         rel: 'alternate',
         hreflang: localeOption.hreflang,
-        href: localizedUrl(slug, localeOption.prefix)
-      }
+        href: localizedUrl(slug, localeOption.prefix),
+      },
     ])
   }
   if (availableLocaleKeys.includes('en')) {

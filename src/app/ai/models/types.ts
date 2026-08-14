@@ -34,6 +34,7 @@ export type AIModelProfile = {
   modelID: string
   customModelID: string
   maxOutputTokens: number
+  reasoningEffort?: string
   capabilities: AIModelCapability[]
   featurePolicy: AIModelFeaturePolicy
 }
@@ -62,6 +63,7 @@ export type AIModelProfileDraft = {
   customBaseURL: string
   customAPIType: 'completions' | 'responses'
   maxOutputTokens: number
+  reasoningEffort: string
   capabilities: AIModelCapability[]
   featurePolicy: AIModelFeaturePolicy
 }

@@ -23,6 +23,8 @@ type SaveActionsOptions = Omit<DocumentSourceAccess, 'getSavedVersion'> & {
   state: SaveDocumentState
   buildFigFile: () => BuiltFigFile | Promise<BuiltFigFile>
   startWatchingFile: () => void
+  onWriteSuccess?: (version: number) => void | Promise<void>
+  onDownloadSuccess?: (version: number) => void | Promise<void>
 }
 
 export function createSaveActions({
@@ -41,7 +43,9 @@ export function createSaveActions({
   markSourceChanged,
   setSavedVersion,
   setLastWriteTime,
-  startWatchingFile
+  startWatchingFile,
+  onWriteSuccess,
+  onDownloadSuccess
 }: SaveActionsOptions) {
   const writeFile = createDocumentWriter()
   let saveQueue = Promise.resolve()
@@ -90,6 +94,23 @@ export function createSaveActions({
     )
   }
 
+  async function notifyWriteSuccess(version: number): Promise<void> {
+    setSavedVersion(version)
+    try {
+      await onWriteSuccess?.(version)
+    } catch (error) {
+      console.warn('[Recovery] Cleanup after document write failed:', error)
+    }
+  }
+
+  async function notifyDownloadSuccess(version: number): Promise<void> {
+    try {
+      await onDownloadSuccess?.(version)
+    } catch (error) {
+      console.warn('[Recovery] Cleanup after document download failed:', error)
+    }
+  }
+
   async function saveFigFileNow(sourceRevision: number, options?: DocumentWriteOptions) {
     if (!sourceIsUnchanged(sourceRevision)) return
     const target = getCurrentWriteTarget()
@@ -101,16 +122,17 @@ export function createSaveActions({
       await writeFile(target, data, options)
       if (!sourceIsUnchanged(sourceRevision, target)) return
       setLastWriteTime(Date.now())
-      setSavedVersion(sceneVersion)
+      await notifyWriteSuccess(sceneVersion)
       if (target.kind === 'tauri-path') {
         setSourceIdentity({ handle: null, path: target.path })
       } else if (target.kind === 'browser-handle') {
         setSourceIdentity({ handle: target.handle, path: null })
       }
     } else if (downloadName) {
-      const { data } = await buildFigFile()
+      const { data, sceneVersion } = await buildFigFile()
       if (!sourceIsUnchanged(sourceRevision)) return
       downloadBlob(new Uint8Array(data), downloadName, 'application/octet-stream')
+      await notifyDownloadSuccess(sceneVersion)
     } else {
       await saveFigFileAsNow(sourceRevision)
     }
@@ -133,7 +155,7 @@ export function createSaveActions({
       setSourceIdentity({ handle: null, path })
       markSourceChanged()
       setLastWriteTime(Date.now())
-      setSavedVersion(built.sceneVersion)
+      await notifyWriteSuccess(built.sceneVersion)
       startWatchingFile()
       return
     }
@@ -152,7 +174,7 @@ export function createSaveActions({
       setSourceIdentity({ handle, path: null })
       markSourceChanged()
       setLastWriteTime(Date.now())
-      setSavedVersion(built.sceneVersion)
+      await notifyWriteSuccess(built.sceneVersion)
       startWatchingFile()
       return
     }
@@ -170,6 +192,7 @@ export function createSaveActions({
     setSourceIdentity({ handle: null, path: null })
     markSourceChanged()
     setLastWriteTime(0)
+    await notifyDownloadSuccess(built.sceneVersion)
   }
 
   function saveFigFile(options?: DocumentWriteOptions): Promise<void> {

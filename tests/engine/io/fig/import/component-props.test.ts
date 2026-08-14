@@ -97,6 +97,9 @@ describe('Figma component property import', () => {
       (node) => node.name === 'Menu item instance'
     )
     expect(instance?.componentPropertyAssignments).toEqual({ '3:1': 'Profile Item' })
+    if (!component || !instance) throw new Error('Expected imported component and instance')
+    expect(graph.getInstances(component.id).map((node) => node.id)).toContain(instance.id)
+    expect(graph.instanceIndex.get('1:1')?.has(instance.id)).toBeFalsy()
 
     const unpopulated = importNodeChanges(nodeChanges, [], undefined, { populate: 'none' })
     const unpopulatedInstance = Array.from(unpopulated.getAllNodes()).find(
@@ -329,21 +332,25 @@ describe('Figma component property import', () => {
     ]
 
     const graph = importNodeChanges(nodeChanges, [], undefined, { populate: 'all' })
-    const component = Array.from(graph.getAllNodes()).find((node) => node.name === 'Menu item')
-    expect(component?.componentPropertyDefinitions).toEqual([
+    const nodes = Array.from(graph.getAllNodes())
+    const component = nodes.find((node) => node.name === 'Menu item')
+    const mailIcon = nodes.find((node) => node.type === 'COMPONENT' && node.source.id === '4:1')
+    const userIcon = nodes.find((node) => node.type === 'COMPONENT' && node.source.id === '4:3')
+    const sourceInstance = nodes.find((node) => node.name === 'Menu item source')
+    if (!component || !mailIcon || !userIcon || !sourceInstance) {
+      throw new Error('Expected imported component property fixture nodes')
+    }
+    expect(component.componentPropertyDefinitions).toEqual([
       {
         id: '3:2',
         name: 'icon',
         type: 'INSTANCE_SWAP',
-        defaultValue: '4:1',
+        defaultValue: mailIcon.id,
         preferredValues: ['icon/user-key']
       }
     ])
-    const sourceInstance = Array.from(graph.getAllNodes()).find(
-      (node) => node.name === 'Menu item source'
-    )
-    expect(sourceInstance?.componentPropertyAssignments).toEqual({ '3:2': '4:3' })
-    const clone = Array.from(graph.getAllNodes()).find((node) => node.name === 'Menu item clone')
+    expect(sourceInstance.componentPropertyAssignments).toEqual({ '3:2': userIcon.id })
+    const clone = nodes.find((node) => node.name === 'Menu item clone')
     const icon = clone?.childIds
       .map((id) => graph.getNode(id))
       .find((node) => node?.type === 'INSTANCE')

@@ -271,6 +271,15 @@ export const checkFont = defineTool({
     inspectNodeFontRendering(figma, args.id, args.expected_family, args.expected_style)
 })
 
+export const getFontStatus = defineTool({
+  name: 'get_font_status',
+  description:
+    'Report whether fonts used on the current page are faithfully available. Returns requested ' +
+    'faces, their loaded source, active substitutions, and affected nodes.',
+  params: {},
+  execute: (figma) => figma.getFontStatus()
+})
+
 export const listFonts = defineTool({
   name: 'list_fonts',
   description:

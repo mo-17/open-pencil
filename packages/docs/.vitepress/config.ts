@@ -2,6 +2,7 @@ import { readdirSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 import { transformerTwoslash } from '@shikijs/vitepress-twoslash'
+import { createFileSystemTypesCache } from '@shikijs/vitepress-twoslash/cache-fs'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vitepress'
 
@@ -94,6 +95,9 @@ export default defineConfig({
     codeTransformers: enableTwoslash
       ? [
           transformerTwoslash({
+            typesCache: createFileSystemTypesCache({
+              dir: fileURLToPath(new URL('./cache/twoslash', import.meta.url))
+            }),
             twoslashOptions: {
               compilerOptions: {
                 baseUrl: repoRoot,

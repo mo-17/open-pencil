@@ -49,6 +49,8 @@ export function requiredNodeFontFaces(node: SceneNode): NodeFontFace[] {
   return requiredNodeFontFaceUsages(node).map(({ family, style }) => ({ family, style }))
 }
 
+export { requiredNodeFontFaces as collectNodeFontFaces }
+
 export function collectGraphFontKeys(
   graph: SceneGraph,
   nodeIds: readonly string[]

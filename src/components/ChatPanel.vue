@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
 import { refAutoReset, useClipboard } from '@vueuse/core'
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+
+import { useI18n } from '@open-pencil/vue'
 
 import { clearACPDebugLog, getACPDebugText, hasACPDebugEntries } from '@/app/ai/acp/transport'
+import { useAIChat } from '@/app/ai/chat/use'
 import { copyChatLog } from '@/app/ai/debug'
 import { chatPanelController } from '@/app/ai/popout/chat-host-controller'
 import { toast } from '@/app/shell/ui'
@@ -15,7 +18,6 @@ import CodePenAIReview from '@/components/chat/CodePenAIReview.vue'
 import ProviderSetup from '@/components/chat/ProviderSetup.vue'
 import AppPlaceholder from '@/components/ui/AppPlaceholder.vue'
 import AppTextButton from '@/components/ui/AppTextButton.vue'
-import { useI18n } from '@open-pencil/vue'
 
 const IS_DEV = import.meta.env.DEV
 const {
@@ -41,7 +43,7 @@ const {
   attachmentBusy,
   stopRequested,
   stopRetryAvailable,
-  handleSubmit,
+  handleSubmit: submitChatMessage,
   addVisualAttachments,
   handleAttachSelection,
   handleRemoveAttachment,
@@ -49,6 +51,7 @@ const {
   handleRestoreACPSession,
   handleToolApproval
 } = chatPanelController
+const { chatFailure, clearChatFailure } = useAIChat()
 const { copy } = useClipboard()
 const { dialogs } = useI18n()
 
@@ -56,6 +59,19 @@ const messagesEnd = ref<HTMLDivElement>()
 const debugCopied = refAutoReset(false, 1500)
 const acpLogCopied = refAutoReset(false, 1500)
 let scrollTimer: ReturnType<typeof setTimeout> | undefined
+
+const failureMessage = computed(() => {
+  switch (chatFailure.value?.reason) {
+    case 'insufficient-credit':
+      return dialogs.value.chatInsufficientCredit
+    case 'output-limit':
+      return dialogs.value.chatOutputLimit
+    case 'request-failed':
+      return dialogs.value.chatRequestFailed
+    default:
+      return null
+  }
+})
 
 function scheduleScrollToBottom(): void {
   if (scrollTimer) return
@@ -79,10 +95,21 @@ watch(
     }
   }
 )
+watch(
+  () => chatFailure.value?.reason,
+  (reason) => {
+    if (reason) toast.error(failureMessage.value ?? dialogs.value.chatRequestFailed)
+  }
+)
 onBeforeUnmount(() => clearTimeout(scrollTimer))
 
+async function handleSubmit(text: string, restoreInput: () => void = () => undefined) {
+  clearChatFailure()
+  return submitChatMessage(text, restoreInput)
+}
+
 async function handleCopyDebug(): Promise<void> {
-  await copyChatLog(messages.value)
+  await copyChatLog(messages.value, chatFailure.value)
   debugCopied.value = true
 }
 
@@ -94,6 +121,7 @@ async function handleCopyACPLog(): Promise<void> {
 }
 
 async function handleClearChat(): Promise<void> {
+  clearChatFailure()
   if (await chatPanelController.handleClearChat()) return
   toast.error(dialogs.value.aiSessionClearFailed)
   clearACPDebugLog()
@@ -120,11 +148,11 @@ async function handleClearChat(): Promise<void> {
 
           <div v-else data-test-id="chat-messages" class="flex flex-col gap-3">
             <ChatMessage
-              v-for="msg in messages"
-              :key="msg.id"
-              :message="msg"
+              v-for="message in messages"
+              :key="message.id"
+              :message="message"
               :pending-approval-ids="pendingApprovalIds"
-              :approval-enabled="msg.id === actionableApprovalMessageId"
+              :approval-enabled="message.id === actionableApprovalMessageId"
               @tool-approval="handleToolApproval"
             />
 

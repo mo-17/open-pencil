@@ -3,7 +3,7 @@ import { tool } from 'ai'
 import * as v from 'valibot'
 
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
-import { CORE_TOOLS, toolsToAI } from '@open-pencil/core/tools'
+import { CORE_TOOLS, EXTENDED_TOOLS, toolsToAI } from '@open-pencil/core/tools'
 import type { StepBudget, ToolLogEntry } from '@open-pencil/core/tools'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
@@ -14,6 +14,8 @@ import type { EditorStore } from '@/app/editor/active-store'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 import { resolveEditorMutationScope } from '@/app/editor/mutation-scope'
 import { canCreatePluginModule } from '@/app/plugins'
+
+import { createVisualInspectionTool } from './vision'
 
 export const MAX_AGENT_STEPS = 50
 const MAX_TOOL_LOG_ENTRIES = 200
@@ -81,6 +83,8 @@ type SuccessfulSnapshot =
       snapshot: DocumentHistorySnapshot
       undoRevision: number
     }
+
+const VISUAL_INSPECTION_TOOL_NAMES = new Set(['export_image'])
 
 export interface StepUsage {
   inputTokens: number
@@ -273,10 +277,19 @@ export function createAITools(store: EditorStore) {
   let activeMutation: MutationTransaction | undefined
   let lastSuccessfulSnapshot: SuccessfulSnapshot | undefined
   const runState = getRunState(store)
-  const codePenManager = getCodePenAIManager(store)
-  const toolDefinitions = [...CORE_TOOLS, ...createCodePenAITools(store)]
+  // CodePen shadow tools require the full app EditorStore lifecycle. Keeping
+  // them out of deliberately minimal headless/test stores also prevents a
+  // failed optional tool setup from blocking disposal of the model runtime.
+  const codePenToolsEnabled =
+    typeof store.onSourceChanged === 'function' && typeof store.onEditorEvent === 'function'
+  const codePenManager = codePenToolsEnabled ? getCodePenAIManager(store) : null
+  const toolDefinitions = [
+    ...CORE_TOOLS,
+    ...EXTENDED_TOOLS.filter((definition) => VISUAL_INSPECTION_TOOL_NAMES.has(definition.name)),
+    ...(codePenToolsEnabled ? createCodePenAITools(store) : [])
+  ]
 
-  return toolsToAI(
+  const applicationTools = toolsToAI(
     toolDefinitions,
     {
       mutationKey: store,
@@ -292,7 +305,7 @@ export function createAITools(store: EditorStore) {
         return undefined
       },
       onBeforeExecute: (def, { args, signal }) => {
-        if (def.mutates && codePenManager.hasActiveReconstruction()) {
+        if (def.mutates && codePenManager?.hasActiveReconstruction()) {
           throw new Error(
             'Live-document mutation tools are disabled while a CodePen shadow reconstruction is active. Seal, review, or discard the shadow draft first.'
           )
@@ -384,6 +397,8 @@ export function createAITools(store: EditorStore) {
     },
     { v, valibotSchema, tool }
   )
+
+  return { ...applicationTools, inspect_visual: createVisualInspectionTool(store) }
 }
 
 function throwIfAborted(signal?: AbortSignal): void {

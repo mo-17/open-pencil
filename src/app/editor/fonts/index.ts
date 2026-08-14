@@ -1,7 +1,7 @@
 import { useLocalStorage } from '@vueuse/core'
 import { ref, watch } from 'vue'
 
-import { IS_BROWSER } from '@open-pencil/core/constants'
+import { IS_BROWSER, IS_TAURI } from '@open-pencil/core/constants'
 import {
   DEFAULT_WEB_FONT_PROVIDER_SETTINGS,
   WEB_FONT_PROVIDER_IDS,
@@ -257,7 +257,9 @@ export async function ensureGraphFonts(
     await Promise.all(
       fontKeys.map(([family, style]) => loadFont(family, style, characters, options))
     )
-    const fallbackScripts = missingGraphFontScripts(requirements)
+    const fallbackScripts = missingGraphFontScripts(requirements, {
+      treatUnknownCoverageAsMissing: IS_TAURI
+    })
     if (fallbackScripts.length > 0) {
       const fallbackFamiliesBefore = new Set([
         ...fontManager.getCJKFallbackFamilies(),
@@ -274,7 +276,7 @@ export async function ensureGraphFonts(
     }
     return fontsChanged
   } finally {
-    if (fontsChanged) renderer?.invalidateAllPictures()
+    renderer?.invalidateAllPictures()
   }
 }
 

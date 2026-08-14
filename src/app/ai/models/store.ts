@@ -128,6 +128,7 @@ function parseProfile(
     modelID: stringValue(value.modelID),
     customModelID: stringValue(value.customModelID),
     maxOutputTokens: normalizedMaxOutputTokens(value.maxOutputTokens),
+    reasoningEffort: stringValue(value.reasoningEffort).trim() || undefined,
     capabilities: [...new Set(capabilities)],
     // Version 1 predates optional network/code capabilities. Ignore any
     // unexpected forward fields so migration can never silently enable them.
@@ -332,6 +333,7 @@ function draftForProfile(
     customBaseURL: connection.customBaseURL,
     customAPIType: connection.customAPIType,
     maxOutputTokens: profile.maxOutputTokens,
+    reasoningEffort: profile.reasoningEffort ?? '',
     capabilities: [...profile.capabilities],
     featurePolicy: cloneFeaturePolicy(profile.featurePolicy)
   }
@@ -350,6 +352,7 @@ function newProfileDraft(connection: AIModelConnection | null): AIModelProfileDr
     customBaseURL: connection?.customBaseURL ?? '',
     customAPIType: connection?.customAPIType ?? 'completions',
     maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+    reasoningEffort: '',
     capabilities: ['tools'],
     featurePolicy: createDefaultAIModelFeaturePolicy()
   }
@@ -384,6 +387,7 @@ export function saveModelProfileDraft(draft: AIModelProfileDraft): AIModelProfil
     modelID: draft.modelID.trim() || provider?.defaultModel || '',
     customModelID: draft.customModelID.trim(),
     maxOutputTokens: normalizedMaxOutputTokens(draft.maxOutputTokens),
+    reasoningEffort: draft.reasoningEffort.trim() || undefined,
     capabilities: [...new Set(draft.capabilities)],
     featurePolicy: cloneFeaturePolicy(draft.featurePolicy)
   }

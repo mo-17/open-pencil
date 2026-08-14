@@ -42,7 +42,7 @@ La CLI si connette anche all'app desktop in esecuzione tramite RPC, così puoi s
 
 Connetti Claude Code, Cursor, Windsurf o qualsiasi client compatibile con MCP a OpenPencil. Il server espone oltre 140 operazioni di design più operazioni MCP per il ciclo di vita di documenti e file. La chat integrata usa deliberatamente un insieme più piccolo di oltre 50 strumenti selezionati. Funziona tramite stdio o HTTP con supporto alle sessioni.
 
-[Server MCP →](./mcp-server)
+[Server MCP →](/programmable/mcp-server)
 
 ## Perché Open?
 

@@ -4,6 +4,7 @@ export { auditFormControls } from './read/form-controls'
 export { auditFontRendering } from './read/font-rendering'
 export {
   checkFont,
+  getFontStatus,
   inspectNodeFontRendering,
   listAvailableFonts,
   listFonts,

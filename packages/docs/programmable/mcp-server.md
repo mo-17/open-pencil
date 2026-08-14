@@ -206,6 +206,8 @@ Works with Claude Code, Cursor, Windsurf, Codex, and any agent that supports [sk
 
 ## Tools
 
+OpenPencil currently registers 100+ shared design tools, plus MCP-only document and prompt operations when applicable.
+
 ### Document
 
 | Tool             | Description                                  |
@@ -229,7 +231,8 @@ Works with Claude Code, Cursor, Windsurf, Codex, and any agent that supports [sk
 | `list_variables`            | List design variables                                                       |
 | `list_collections`          | List variable collections                                                   |
 | `list_fonts`                | List fonts used in the current page                                         |
-| `list_available_fonts`      | List font families the connected host can render                            |
+| `list_available_fonts`      | List font families the current host can render                              |
+| `get_font_status`           | Report requested faces, loaded sources, active substitutions, and affected nodes |
 | `check_font`                | Verify assignment, exact face loading, fallback readiness, and glyph state  |
 | `audit_font_rendering`      | Audit bounded live font effectiveness across subtrees, pages, or a document |
 | `audit_form_controls`       | Audit validated controls with bounded results (50 default, 200 max)         |

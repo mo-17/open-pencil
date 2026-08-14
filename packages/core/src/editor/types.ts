@@ -22,6 +22,7 @@ import type {
 } from '#core/motion'
 import type { TextEditor } from '#core/text/editor'
 import type { FontLoadOptions } from '#core/text/fonts'
+import type { FontResolutionEvent, FontResolutionSnapshot } from '#core/text/resolver'
 
 export type Tool =
   | 'SELECT'
@@ -193,6 +194,7 @@ export interface EditorEvents extends SceneGraphEvents {
   'page:changed': (pageId: string, previousPageId: string) => void
   'font:load-progress': (progress: FontLoadProgress) => void
   'clipboard:images-missing': (resolution: ClipboardImageResolution) => void
+  'font:resolution-changed': (event: FontResolutionEvent, snapshot: FontResolutionSnapshot) => void
   'viewport:changed': (
     viewport: { panX: number; panY: number; zoom: number },
     previous: { panX: number; panY: number; zoom: number }

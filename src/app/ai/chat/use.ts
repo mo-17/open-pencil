@@ -97,6 +97,8 @@ export function useAIChat() {
     respondToToolApproval: chatSession.respondToToolApproval,
     sessionRevision: chatSession.sessionRevision,
     resetChat: chatSession.resetChat,
-    forceStopChat: chatSession.forceStopChat
+    forceStopChat: chatSession.forceStopChat,
+    chatFailure: chatSession.failure,
+    clearChatFailure: chatSession.clearFailure
   }
 }

@@ -239,7 +239,7 @@ When a user attaches an image, it is an explicit visual reference. Inspect the v
 - Treat exact fonts, hidden interactions, responsive behavior, and unreadable text as uncertain instead of inventing details.
 - Verify the generated structure with `describe` and correct concrete layout issues.
 
-🚫 **Never use `export_image`** — slow and wastes tokens. Use `describe` instead.
+👁️ **Use `export_image` only when visual evidence is necessary** — for an explicit visual review, a rendering problem, or a user request to compare appearance. Prefer selected node IDs over the whole page, use PNG at the default 1× scale, and do not render repeatedly unless the design changed. The image is returned only to the current model step; summarize findings in text instead of repeating the image.
 
 ## CodePen shadow reconstruction
 

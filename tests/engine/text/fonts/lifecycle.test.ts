@@ -275,7 +275,7 @@ describe('font lifecycle', () => {
     }
   })
 
-  test('resolves twenty CJK fallback requests through one host face', async () => {
+  test('resolves twenty Simplified Chinese fallback requests after one host probe', async () => {
     const manager = new FontManager()
     const registrations: string[] = []
     const provider = {
@@ -297,10 +297,10 @@ describe('font lifecycle', () => {
       results.push(await manager.ensureFallbackPack(['cjk-sc'], '中文'))
     }
 
-    expect(results.every((result) => result['cjk-sc']?.[0] === 'PingFang SC')).toBe(true)
+    expect(results.every((result) => result['cjk-sc']?.[0] === 'Noto Sans SC')).toBe(true)
     expect(hostLoads).toBe(1)
-    expect(registrations).toEqual(['PingFang SC'])
-    expect(manager.retainedDataCount('PingFang SC')).toBe(1)
+    expect(registrations).toEqual(['Noto Sans SC'])
+    expect(manager.retainedDataCount('Noto Sans SC')).toBe(1)
   })
 
   test('resolves Simplified Chinese and Korean through independent single flights', async () => {
@@ -317,10 +317,10 @@ describe('font lifecycle', () => {
     const simplified = await manager.ensureFallbackPack(['cjk-sc'], '中文')
     const korean = await manager.ensureFallbackPack(['cjk-kr'], '환경설정')
 
-    expect(simplified['cjk-sc']).toEqual(['PingFang SC'])
+    expect(simplified['cjk-sc']).toEqual(['Noto Sans SC'])
     expect(korean['cjk-kr']).toEqual(['Apple SD Gothic Neo'])
-    expect(loadedFamilies).toEqual(['PingFang SC', 'Apple SD Gothic Neo'])
-    expect(manager.getCJKFallbackFamilies()).toEqual(['PingFang SC', 'Apple SD Gothic Neo'])
+    expect(loadedFamilies).toEqual(['Noto Sans SC', 'Apple SD Gothic Neo'])
+    expect(manager.getCJKFallbackFamilies()).toEqual(['Noto Sans SC', 'Apple SD Gothic Neo'])
   })
 
   test('finishes a missing remote coverage extension without recursive retries', async () => {

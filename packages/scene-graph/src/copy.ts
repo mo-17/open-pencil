@@ -281,10 +281,10 @@ function copyPropertyDefs(
   defs: ComponentPropertyDefinition[] | undefined
 ): ComponentPropertyDefinition[] {
   return (
-    defs?.map((d) => ({
-      ...d,
-      variantOptions: d.variantOptions ? [...d.variantOptions] : undefined,
-      preferredValues: d.preferredValues ? [...d.preferredValues] : undefined
+    defs?.map(({ variantOptions, preferredValues, ...definition }) => ({
+      ...definition,
+      ...(variantOptions ? { variantOptions: [...variantOptions] } : {}),
+      ...(preferredValues ? { preferredValues: [...preferredValues] } : {})
     })) ?? []
   )
 }

@@ -121,7 +121,7 @@ export function useAppMenu() {
       formatError: (error) => dialogs.value.pluginOperationFailed({ error })
     }),
     close: () => {
-      if (activeTab.value) closeTab(activeTab.value.id)
+      if (activeTab.value) void closeTab(activeTab.value.id)
     },
     settings: openSettingsDialog,
     'export-png': () => exportSelection('png'),

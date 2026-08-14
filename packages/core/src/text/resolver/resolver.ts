@@ -1,5 +1,6 @@
 import type {
   FontResolutionDemand,
+  FontResolutionListener,
   FontResolutionLoader,
   FontResolutionSettled,
   FontResolutionSnapshot
@@ -19,8 +20,14 @@ function idleSnapshot(key: string): FontResolutionSnapshot {
 
 export class FontResolver {
   private readonly entries = new Map<string, FontResolutionEntry>()
+  private readonly listeners = new Set<FontResolutionListener>()
 
   constructor(private readonly load: FontResolutionLoader) {}
+
+  subscribe(listener: FontResolutionListener): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
 
   state(demand: FontResolutionDemand | string): FontResolutionSnapshot {
     const key = typeof demand === 'string' ? demand : demand.key
@@ -83,15 +90,31 @@ export class FontResolver {
   reset(demand?: FontResolutionDemand | string): void {
     if (demand === undefined) {
       this.cancelEntries([...this.entries.entries()])
+      this.emit('reset', idleSnapshot('*'))
       return
     }
     const key = typeof demand === 'string' ? demand : demand.key
     const entry = this.entries.get(key)
     if (entry) this.cancelEntries([[key, entry]])
+    this.emit('reset', idleSnapshot(key))
   }
 
   resetMatching(predicate: (demand: FontResolutionDemand) => boolean): void {
-    this.cancelEntries([...this.entries.entries()].filter(([, entry]) => predicate(entry.demand)))
+    const entries = [...this.entries.entries()].filter(([, entry]) => predicate(entry.demand))
+    this.cancelEntries(entries)
+    for (const [key] of entries) this.emit('reset', idleSnapshot(key))
+  }
+
+  private notifyConsumers(entry: FontResolutionEntry, snapshot: FontResolutionSnapshot): void {
+    for (const [callback, nodeIds] of entry.callbacks) {
+      try {
+        callback(snapshot, [...nodeIds])
+      } catch (error) {
+        console.error('Font resolution callback failed:', error)
+      }
+    }
+    entry.callbacks.clear()
+    entry.nodeIds.clear()
   }
 
   private request(
@@ -115,6 +138,7 @@ export class FontResolver {
     }
     this.addConsumer(entry, onSettled, nodeId)
     this.entries.set(demand.key, entry)
+    this.emit('started', snapshot)
     entry.promise = this.resolve(entry)
     return entry.promise
   }
@@ -137,7 +161,7 @@ export class FontResolver {
       const snapshot = idleSnapshot(key)
       entry.snapshot = snapshot
       this.entries.delete(key)
-      this.notify(entry, snapshot)
+      this.notifyConsumers(entry, snapshot)
     }
   }
 
@@ -174,19 +198,12 @@ export class FontResolver {
   ): FontResolutionSnapshot {
     if (this.entries.get(entry.demand.key) !== entry) return idleSnapshot(entry.demand.key)
     entry.snapshot = snapshot
-    this.notify(entry, snapshot)
+    this.emit('settled', snapshot)
+    this.notifyConsumers(entry, snapshot)
     return snapshot
   }
 
-  private notify(entry: FontResolutionEntry, snapshot: FontResolutionSnapshot): void {
-    for (const [callback, nodeIds] of entry.callbacks) {
-      try {
-        callback(snapshot, [...nodeIds])
-      } catch (error) {
-        console.error('Font resolution callback failed:', error)
-      }
-    }
-    entry.callbacks.clear()
-    entry.nodeIds.clear()
+  private emit(event: Parameters<FontResolutionListener>[0], snapshot: FontResolutionSnapshot) {
+    for (const listener of this.listeners) listener(event, snapshot)
   }
 }

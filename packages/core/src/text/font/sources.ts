@@ -10,6 +10,7 @@ export interface FontInfo {
 
 export type LocalFontAccessState = 'unsupported' | 'prompt' | 'granted' | 'denied'
 export type FontFamilySource = 'local' | 'imported' | 'bundled' | 'fallback' | WebFontProviderId
+export type FontLoadedSource = FontFamilySource | 'cache' | 'registered'
 
 export interface FontFamilyOption {
   family: string

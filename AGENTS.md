@@ -21,7 +21,7 @@ Bun workspace with focused packages:
 - `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + Streamable HTTP (Hono) + browser WebSocket RPC. Reuses core ToolDefs.
 - `packages/marketplace` — private self-hostable plugin-marketplace control plane. Owns publisher/key/ownership/submission/release state, SQLite persistence, immutable artifacts, signed publication, public/publisher HTTP APIs, admin CLI, and append-only audit checkpoints.
 - `packages/figma-motion-plugin` — private development Figma plugin that consumes OpenPencil's strict shared Motion envelope and applies the verified official Motion Plugin API subset through the shared `@open-pencil/fig` applicator.
-- `packages/docs` — `@open-pencil/docs`: VitePress documentation site. Run with `bun run docs:dev`.
+- `packages/docs` — `@open-pencil/docs`: published VitePress documentation site. Run `bun run docs:dev` for authoring, `bun run docs:build` for the default local render check, and `bun run docs:build:production` for complete deployment output.
 - `packages/demos` — demo media/assets only, not a published workspace package.
 
 The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, lowcode preview, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/scene-graph`, `@open-pencil/core`, `@open-pencil/compiler`, and `@open-pencil/vue` through public workspace exports.
@@ -291,11 +291,11 @@ bun run test           # Playwright E2E
 - `CHANGELOG.md` — all user-facing changes, grouped by version. "Unreleased" section at top for in-progress work.
 - `README.md` — user-facing: features, getting started, CLI, project structure. No implementation details.
 - `AGENTS.md` (this file) — contributor/agent reference: architecture, conventions, how to release.
-- `packages/docs/` — VitePress site deployed at `openpencil.dev`. User guide, SDK, automation, reference, and development docs. Do not create English placeholder copies under locale directories; until a real translation exists, localized navigation should link to the canonical English page.
+- `packages/docs/` — VitePress site deployed at `openpencil.dev`. Keep its public information architecture explicit: `/getting-started` for installation, `/overview/**` for product overview and comparisons, `/user-guide/**` for editor workflows, `/programmable/**` for automation and SDK docs, `/reference/**` for compatibility and technical reference, and `/development/**` for contributor internals and the roadmap. Do not reintroduce a generic `/guide/**` section. Preserve moved public routes in `packages/docs/public/_redirects`. Do not create English placeholder copies under locale directories; until a real translation exists, localized navigation should link to the canonical English page.
 - `docs/lowcode-phase-*.md` — implementation/design notes for the lowcode compiler phases. Keep durable public docs in `packages/docs/**`; only add root-level Markdown by deliberately updating the Steiger allowlist.
 - `docs/tauri-gui-automation.md` — local Tauri GUI automation setup for hypothesi MCP bridge and tauri-webdriver.
 
-When adding features, update `CHANGELOG.md` (Unreleased section) and `README.md` (if user-facing). Update `AGENTS.md` when architecture or conventions change.
+When adding features, update `CHANGELOG.md` (Unreleased section) and `README.md` (if user-facing). Changelog entries use the public categories `Breaking changes`, `Added`, `Changed`, `Fixed`, `Performance`, and `Security`; omit empty categories. Use `## x.y.z — YYYY-MM-DD` for release headings, describe one user-visible outcome per bullet in present tense, end complete sentences with periods, and append related issue or PR references such as `(#395)`. Avoid implementation details, test counts, and internal refactors unless they affect users or package consumers. Update `AGENTS.md` when architecture or conventions change. Do not put speculative/internal implementation plans in `packages/docs/**`; VitePress docs are published. Keep temporary plans in ignored `scratch/` or distill durable public direction into the canonical roadmap.
 
 ## Commit messages
 

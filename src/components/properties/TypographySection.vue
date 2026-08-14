@@ -207,7 +207,7 @@ async function handleFontImported(retryMissingFonts: () => Promise<void>) {
         >
           <IconButton
             :label="`${menu.bold} (${appMenuShortcutLabel('text.bold')})`"
-            size="md"
+            size="xs"
             :active="ctx.activeFormatting.value.includes('bold')"
             @click="ctx.actions.toggleBold"
           >
@@ -215,7 +215,7 @@ async function handleFontImported(retryMissingFonts: () => Promise<void>) {
           </IconButton>
           <IconButton
             :label="`${menu.italic} (${appMenuShortcutLabel('text.italic')})`"
-            size="md"
+            size="xs"
             :active="ctx.activeFormatting.value.includes('italic')"
             @click="ctx.actions.toggleItalic"
           >
@@ -223,7 +223,7 @@ async function handleFontImported(retryMissingFonts: () => Promise<void>) {
           </IconButton>
           <IconButton
             :label="`${menu.underline} (${appMenuShortcutLabel('text.underline')})`"
-            size="md"
+            size="xs"
             :active="ctx.activeFormatting.value.includes('underline')"
             @click="ctx.actions.toggleDecoration('UNDERLINE')"
           >
@@ -231,7 +231,7 @@ async function handleFontImported(retryMissingFonts: () => Promise<void>) {
           </IconButton>
           <IconButton
             :label="menu.strikethrough"
-            size="md"
+            size="xs"
             :active="ctx.activeFormatting.value.includes('strikethrough')"
             @click="ctx.actions.toggleDecoration('STRIKETHROUGH')"
           >

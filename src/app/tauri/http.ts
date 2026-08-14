@@ -1,12 +1,15 @@
-export interface TauriHttpHeader {
+export interface ProxyHttpHeader {
   name: string
   value: string
 }
 
-interface ProxyHttpRequest {
+// Compatibility alias for storage adapters that predate the generic proxy naming.
+export type TauriHttpHeader = ProxyHttpHeader
+
+export interface ProxyHttpRequest {
   url: string
   method?: string
-  headers?: TauriHttpHeader[]
+  headers?: ProxyHttpHeader[]
   body?: number[]
   max_response_bytes?: number
   max_error_response_bytes?: number
@@ -14,14 +17,14 @@ interface ProxyHttpRequest {
   timeout_ms?: number
 }
 
-interface ProxyHttpResponse {
+export interface ProxyHttpResponse {
   status: number
-  headers: TauriHttpHeader[]
+  headers: ProxyHttpHeader[]
   body: number[]
   url: string
 }
 
-function headersToProxyHeaders(headers: Headers): TauriHttpHeader[] {
+function headersToProxyHeaders(headers: Headers): ProxyHttpHeader[] {
   return [...headers.entries()].map(([name, value]) => ({ name, value }))
 }
 
@@ -72,6 +75,15 @@ export function withAbortSignal<T>(
   })
 }
 
+export interface TauriFetchOptions {
+  timeoutMs?: number
+  maxResponseBytes?: number
+}
+
+export function createTauriFetch(options: TauriFetchOptions = {}): typeof fetch {
+  return (input, init) => tauriFetch(input, init, options.maxResponseBytes, options.timeoutMs)
+}
+
 export async function tauriFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -83,6 +95,7 @@ export async function tauriFetch(
   const request = new Request(input, init)
   request.signal.throwIfAborted()
   const { invoke } = await import('@tauri-apps/api/core')
+  request.signal.throwIfAborted()
   const payload: ProxyHttpRequest = {
     url: request.url,
     method: request.method,

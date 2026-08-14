@@ -9,10 +9,12 @@
   },
   "scripts": {
     "dev": "vitepress dev",
-    "build": "bun run build:site && bun run build:llms",
+    "build": "DOCS_TWOSLASH=0 bun run build:site",
     "build:site": "bun .vitepress/build/site.ts",
     "build:partition": "vitepress build",
     "build:llms": "bun .vitepress/llms/build.ts",
+    "build:production": "bun run build:site && bun run build:llms",
+    "check": "bun ../../tools/docs/src/check.ts",
     "preview": "vitepress preview",
     "test": "bun test tests"
   },

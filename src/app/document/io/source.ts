@@ -1,5 +1,5 @@
 import type { Editor, EditorState } from '@open-pencil/core/editor'
-import { exportFigFileWithOptions } from '@open-pencil/core/io/formats/fig'
+import { exportFigFile, exportFigFileWithOptions } from '@open-pencil/core/io/formats/fig'
 
 import { createAutosave } from '@/app/document/autosave'
 import {
@@ -10,6 +10,7 @@ import {
 import { createSaveActions } from '@/app/document/io/save'
 import { createDocumentSourceState } from '@/app/document/io/source-state'
 import type { DocumentSourceAccess } from '@/app/document/io/types'
+import { createDocumentRecovery } from '@/app/document/recovery'
 import {
   resolveStorageDocumentBinding,
   type StorageDocumentBindingInput
@@ -61,6 +62,16 @@ export function createDocumentSourceActions({
     return { data, sceneVersion }
   }
 
+  function buildRecoveryFigFile() {
+    return exportFigFile(editor.graph, undefined, undefined, state.currentPageId)
+  }
+
+  const recovery = createDocumentRecovery({
+    state,
+    buildFigFile: buildRecoveryFigFile,
+    hasWritableSource: () => !!getFileHandle() || !!getFilePath() || !!getStorageBinding()
+  })
+
   const { saveFigFile, saveFigFileAs } = createSaveActions({
     state,
     buildFigFile,
@@ -79,7 +90,9 @@ export function createDocumentSourceActions({
     setLastWriteTime,
     startWatchingFile: () => {
       void startWatchingFile()
-    }
+    },
+    onWriteSuccess: (version) => recovery.markProtectedVersion(version),
+    onDownloadSuccess: (version) => recovery.markProtectedVersion(version)
   })
 
   const { disposeAutosave } = createAutosave({
@@ -105,9 +118,8 @@ export function createDocumentSourceActions({
     markSourceChanged()
     setLastWriteTime(0)
     setSavedVersion(state.sceneVersion)
-    if (isFig && (handle || path)) {
-      void startWatchingFile()
-    }
+    void recovery.markProtectedVersion(state.sceneVersion)
+    if (isFig && (handle || path)) void startWatchingFile()
   }
 
   function setStorageDocumentSource(binding: StorageDocumentBindingInput, documentName: string) {
@@ -122,6 +134,7 @@ export function createDocumentSourceActions({
     markSourceChanged()
     setLastWriteTime(0)
     setSavedVersion(state.sceneVersion)
+    void recovery.markProtectedVersion(state.sceneVersion)
   }
 
   function setPlannedFilePath(path: string) {
@@ -143,6 +156,7 @@ export function createDocumentSourceActions({
   function disposeDocumentIO() {
     stopWatchingFile()
     disposeAutosave()
+    recovery.disposeRecovery()
   }
 
   return {
@@ -153,6 +167,11 @@ export function createDocumentSourceActions({
     disposeDocumentIO,
     saveFigFile,
     saveFigFileAs,
-    getStorageBinding
+    getStorageBinding,
+    getRecoveryId: () => recovery.getRecoveryId(),
+    adoptRecoverySnapshot: (id: string, version: number) =>
+      recovery.adoptRecoverySnapshot(id, version),
+    persistRecoveryNow: () => recovery.persistNow(),
+    discardRecovery: () => recovery.discardRecovery()
   }
 }

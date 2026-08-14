@@ -126,7 +126,7 @@ watch(
         :force-mount="true"
         :hidden="activeTab !== 'code'"
       >
-        <CodePanel />
+        <CodePanel :active="activeTab === 'code'" />
       </TabsContent>
 
       <TabsContent

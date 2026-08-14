@@ -64,6 +64,7 @@ export function createEditorStoreModules(
 
   function dispose() {
     disposeFlash()
+    editor.dispose()
     editor.clearPageViewports()
     documentIO.disposeDocumentIO()
   }
@@ -83,6 +84,10 @@ export function createEditorStoreModules(
     getSourceIdentity: documentIO.getSourceIdentity,
     onSourceChanged: documentIO.onSourceChanged,
     getStorageBinding: documentIO.getStorageBinding,
+    getRecoveryId: documentIO.getRecoveryId,
+    adoptRecoverySnapshot: documentIO.adoptRecoverySnapshot,
+    persistRecoveryNow: documentIO.persistRecoveryNow,
+    discardRecovery: documentIO.discardRecovery,
     setDocumentSource: documentIO.setDocumentSource,
     getDocumentPath: documentIO.getDocumentPath,
     setStorageDocumentSource: documentIO.setStorageDocumentSource,

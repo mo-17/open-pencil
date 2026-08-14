@@ -23,6 +23,7 @@ import type {
   RasterRenderOptions
 } from '#core/io/formats/raster'
 import type { MotionVisualState } from '#core/motion'
+import { documentFontStatus, type DocumentFontStatus } from '#core/text/font/status'
 import { buttonLabelTextNode } from '#core/text/lowcode'
 
 import type {
@@ -546,6 +547,10 @@ export class FigmaAPI implements NodeProxyHost {
     // Default: pure browser / test contexts have no enumeration surface.
     // Desktop hosts override this to return system + bundled fonts.
     return []
+  }
+
+  getFontStatus(): DocumentFontStatus {
+    return documentFontStatus(this.graph, this.currentPageId)
   }
 
   base64Encode(data: Uint8Array): string {

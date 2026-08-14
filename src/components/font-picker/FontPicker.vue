@@ -26,8 +26,8 @@ import {
 import { WEB_FONT_PROVIDER_IDS } from '@open-pencil/core/text'
 
 const { panels } = useI18n()
-const { label: providedLabel } = defineProps<{ label?: string }>()
-const label = computed(() => providedLabel ?? panels.value.fontFamily)
+const { label: labelProp } = defineProps<{ label?: string }>()
+const label = computed(() => labelProp ?? panels.value.fontFamily)
 const modelValue = defineModel<string>({ required: true })
 const emit = defineEmits<{ select: [family: string] }>()
 

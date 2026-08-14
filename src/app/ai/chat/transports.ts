@@ -6,7 +6,14 @@ import {
   stepCountIs,
   ToolLoopAgent
 } from 'ai'
-import type { ChatTransport, LanguageModel, ToolLoopAgentSettings, ToolSet, UIMessage } from 'ai'
+import type {
+  ChatTransport,
+  FinishReason,
+  LanguageModel,
+  ToolLoopAgentSettings,
+  ToolSet,
+  UIMessage
+} from 'ai'
 import { readonly, ref, shallowRef } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 
@@ -28,10 +35,16 @@ import {
 import { hasPendingToolApproval } from '@/app/ai/chat/approval'
 import { archiveVisualChatMessages } from '@/app/ai/chat/attachments'
 import {
+  classifyAIChatError,
+  classifyAIChatFinish,
+  type AIChatFailure
+} from '@/app/ai/chat/failure'
+import {
   finalizeInterruptedToolParts,
   finalizeUnfinishedToolParts
 } from '@/app/ai/chat/interruption'
 import { resolveLanguageModelID } from '@/app/ai/chat/model'
+import { buildReasoningProviderOptions, type AIProviderOptions } from '@/app/ai/chat/reasoning'
 import { archiveAssistantFileMessages } from '@/app/ai/chat/sources'
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
 import {
@@ -111,6 +124,7 @@ type ToolLoopTransportOptions = {
   maxOutputTokens: number
   providerTools?: ToolSet
   providerOptions?: ToolLoopAgentSettings['providerOptions']
+  reasoningEffort: string
 }
 
 export interface ACPSessionStatus {
@@ -297,6 +311,15 @@ export function mergeAIToolSets(applicationTools: ToolSet, providerTools: ToolSe
   return { ...applicationTools, ...providerTools }
 }
 
+function mergeProviderOptions(
+  runtimeOptions: ToolLoopAgentSettings['providerOptions'] | undefined,
+  cacheOptions: typeof ANTHROPIC_CACHE_CONTROL | undefined,
+  reasoningOptions: AIProviderOptions | undefined
+): ToolLoopAgentSettings['providerOptions'] | undefined {
+  if (!runtimeOptions && !cacheOptions && !reasoningOptions) return undefined
+  return { ...runtimeOptions, ...cacheOptions, ...reasoningOptions }
+}
+
 export async function createACPTransport(
   providerID: AIProviderID,
   optionsOrConfigCallback?:
@@ -331,16 +354,18 @@ export function createToolLoopTransport({
   effectiveModelID,
   maxOutputTokens,
   providerTools,
-  providerOptions: runtimeProviderOptions
+  providerOptions: runtimeProviderOptions,
+  reasoningEffort
 }: ToolLoopTransportOptions) {
   const tools = mergeAIToolSets(createAITools(store), providerTools)
   const cacheProviderOptions = supportsAnthropicCaching(providerID, effectiveModelID)
     ? ANTHROPIC_CACHE_CONTROL
     : undefined
-  const providerOptions =
-    runtimeProviderOptions || cacheProviderOptions
-      ? { ...runtimeProviderOptions, ...cacheProviderOptions }
-      : undefined
+  const providerOptions = mergeProviderOptions(
+    runtimeProviderOptions,
+    cacheProviderOptions,
+    buildReasoningProviderOptions(providerID, reasoningEffort)
+  )
 
   const agent = new ToolLoopAgent({
     model,
@@ -387,6 +412,7 @@ export function createChatSessionManager({
   resolveACPModelRole,
   resolveACPConfigurationContext
 }: ChatSessionOptions) {
+  const failure = ref<AIChatFailure | null>(null)
   let transportDirty = false
   let currentChatStore: EditorStore | null = null
   let currentChatMessages = new WeakMap<EditorStore, UIMessage[]>()
@@ -443,6 +469,22 @@ export function createChatSessionManager({
     acpSessionHistoryGeneration++
     readyACPSessionHistory = undefined
     acpSessionHistory.value = idleACPSessionHistory()
+  }
+
+  function handleChatFinish({
+    finishReason,
+    isAbort,
+    isError
+  }: {
+    finishReason?: FinishReason
+    isAbort: boolean
+    isError: boolean
+  }): void {
+    if (!isAbort && !isError) failure.value = classifyAIChatFinish(finishReason)
+  }
+
+  function clearFailure(): void {
+    failure.value = null
   }
 
   function resetACPSessionState() {
@@ -744,7 +786,8 @@ export function createChatSessionManager({
         }),
         maxOutputTokens: runtime.role.profile.maxOutputTokens,
         providerTools: runtime.providerTools,
-        providerOptions: runtime.providerOptions
+        providerOptions: runtime.providerOptions,
+        reasoningEffort: runtime.role.profile.reasoningEffort ?? ''
       })
       return {
         transport: new VisualReferenceChatTransport({
@@ -775,14 +818,26 @@ export function createChatSessionManager({
         currentChatStore === store &&
         getActiveEditorStore() === store &&
         lastAssistantMessageIsCompleteWithApprovalResponses(options),
-      onFinish: ({ messages: finishedMessages, isAbort, isError }) => {
+      onError: (error) => {
+        failure.value = classifyAIChatError(error)
+        // Preserve the original detail in the bounded/redacted debug failure,
+        // but never expose provider text through Chat.error consumers.
+        try {
+          error.message = 'AI request failed'
+        } catch (redactionError) {
+          // Some provider error objects expose a read-only message.
+          void redactionError
+        }
+      },
+      onFinish: ({ messages: finishedMessages, finishReason, isAbort, isError }) => {
+        handleChatFinish({ finishReason, isAbort, isError })
         let settledMessages = finishedMessages
         if (isAbort) {
           settledMessages = finalizeInterruptedToolParts(finishedMessages)
         } else if (isError) {
           settledMessages = finalizeUnfinishedToolParts(
             finishedMessages,
-            createdChat.error?.message || 'AI request failed'
+            failure.value?.detail || createdChat.error?.message || 'AI request failed'
           )
         }
         createdChat.messages = trimChatHistory(settledMessages)
@@ -891,6 +946,7 @@ export function createChatSessionManager({
   }
 
   async function resetChat(): Promise<void> {
+    failure.value = null
     const resetStore = getActiveEditorStore()
     const expectedProviderID = providerID.value
     const knownBinding =
@@ -930,6 +986,7 @@ export function createChatSessionManager({
   }
 
   async function forceStopChat(): Promise<void> {
+    failure.value = null
     const resumableACPSessionBinding = activeACPSessionBinding
     const discardedChat = chat
     if (discardedChat) {
@@ -1367,6 +1424,8 @@ export function createChatSessionManager({
     acpSessionRestoreNotice,
     refreshACPSessionHistory,
     restoreACPSession,
-    setACPConfigOption
+    setACPConfigOption,
+    failure,
+    clearFailure
   }
 }

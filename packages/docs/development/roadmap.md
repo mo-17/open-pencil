@@ -14,9 +14,21 @@ separate external-API compatibility track.
 ## Current focus
 
 - Improve `.fig` import/export fidelity against real Figma files and Figma's own rendering.
+- Make saves, recovery, storage synchronization, and automation resilient to crashes, interrupted writes, expired credentials, and temporary provider failures.
 - Keep large design systems responsive in the browser and desktop app.
+- Make international text reliable across platforms, starting with non-Latin font discovery, Arabic/Persian shaping, RTL layout, and broader CJK fixtures.
 - Treat the scene graph as a programmable design document: every important read, write, export, diff, and validation operation should be reachable through UI, CLI, MCP, and SDK surfaces.
-- Keep files on the user's machine unless collaboration is explicitly enabled.
+- Keep local files and local-first workflows first-class while making an optional OpenPencil Cloud backend and self-hosted deployments practical.
+
+## Recently delivered
+
+v0.14.0 established several foundations that earlier versions of this roadmap treated as future work:
+
+- A searchable Assets panel, component details, instance insertion, frame presets, richer component properties, layout grids, constraints, and deeper typography controls.
+- A local-first Storage Workspace for S3-compatible providers with background synchronization and remote document previews.
+- Editable PowerPoint export; editable HTML, CSS, Tailwind, JSX, SVG, and image-vectorization workflows.
+- Private local MCP transport discovery, an installable OpenPencil agent skill, and stronger CLI/MCP support for large and multi-document sessions.
+- Published `@open-pencil/scene-graph`, `@open-pencil/pen`, `@open-pencil/kiwi`, `@open-pencil/fig`, `@open-pencil/dom-css`, and `@open-pencil/vue` packages with documented public boundaries.
 
 ## Near-term work
 
@@ -30,14 +42,44 @@ separate external-API compatibility track.
 ### Editor depth
 
 - Complete variable inspector coverage for common numeric/text/layout fields.
-- Improve component and instance editing: variant switching, property editing, and override inspection.
-- Add first-class layout grid and guide rendering/editing.
+- Improve component and instance authoring: component-set definitions, override inspection, slots, and shared-library workflows. Common variant, text, boolean, and instance-swap properties are already editable on instances.
+- Treat variables, styles, components, and libraries as governed design-system assets with proposal, review, publish, update, migration, and conformance workflows.
+- Complete page-guide creation/editing and layout-grid style parity. Layout-grid rendering and common inspector editing are already supported.
+- Add Figma-style inspection aids for distances, spacing, bounds, and alignment, including modifier-key measurement between selected and hovered layers.
 - Expand vector editing workflows without regressing imported vector fidelity.
+
+### Reliability and international text
+
+- Make document saves atomic and recoverable, including unsaved documents created through MCP and interrupted local or remote writes.
+- Surface provider, model-budget, renderer, and automation failures with actionable recovery paths instead of silent stalls.
+- Make desktop automation recover from orphaned processes and renderer crashes without manual cleanup.
+- Prevent non-Latin font discovery and rendering crashes across platforms; add Arabic/Persian shaping and RTL layout, then broaden CJK and mixed-script visual fixtures.
+- Define a portable-font strategy for reproducible documents across machines, including curated redistributable fonts, embedded or linked document fonts, licensing metadata, fallback visibility, and agent-readable font availability ([#502](https://github.com/open-pencil/open-pencil/issues/502), [#503](https://github.com/open-pencil/open-pencil/issues/503)).
+
+### Cloud and self-hosting
+
+- Provide an optional OpenPencil Cloud backend for account-based workspace sync, sharing, collaboration, comments, and managed team libraries without making cloud accounts mandatory for the editor.
+- Support organizations and teams with invitations, viewer/editor/admin roles, link-sharing policies, service accounts, API tokens, and enterprise identity through standard OIDC/SSO integrations.
+- Publish documented backend APIs and webhooks for workspace, document, membership, comment, version, and automation events so Cloud and self-hosted deployments integrate with existing developer workflows.
+- Add workspace organization for projects, folders, templates, search, indexing, and server-generated previews while preserving stable document identity.
+- Add version history with automatic snapshots, named checkpoints, restore, retention controls, and an auditable record of important document and membership changes.
+- Provide a durable collaboration relay for deterministic initial sync, presence, reconnects, and restricted-network environments while keeping direct local/P2P workflows available where practical.
+- Publish a production-ready self-hosted deployment for teams that need their own storage, identity, network boundary, data location, and retention policy.
+- Make self-hosting maintainable with guided deployment, upgrades, backups, health monitoring, observability, and documented recovery procedures.
+- Provide explicit data-governance controls for export, deletion, encryption, retention, auditability, and deployment-region or residency requirements.
+- Keep AI and media capabilities BYOK so Cloud and self-hosted users connect and control their own model and provider credentials.
+- Let documents move between device-only, OpenPencil Cloud, self-hosted, and user-owned storage without losing identity or history.
+- Add explicit conflict, offline, sync-health, migration, backup, quota, and recovery UX for every remote deployment mode.
 
 ### Agent workflows
 
 - Polish the official `SKILL.md` guidance for OpenPencil so agents use the full inspect → act → render/measure → compare → iterate loop instead of relying on one-shot prompting.
 - Publish tested AI workflow recipes for common tasks: create from prompt, edit a selected design, compare against a screenshot or Figma reference, fix visual regressions, extract tokens, and batch-migrate files.
+- Accept screenshots and reference images as first-class agent inputs, and return selection/page/viewport renders as native image content to vision-capable MCP and chat clients.
+- Support opt-in web retrieval, external MCP connectors, and sandboxed code execution through explicit capability and permission boundaries rather than granting every model ambient access.
+- Make structured node-tree diffs a first-class, Git-friendly review artifact for UI, CLI, MCP, SDK, and CI edits instead of relying only on screenshot comparisons.
+- Expand design lint findings with expected/actual evidence and safe autofixes; measure rule precision before enabling lint rules as blocking gates.
+- Keep deterministic golden renders and replayable edit-operation histories so regressions can be reproduced from document state and actions, not only from final pixels.
 - Make agent workflows measurable by default: every substantial operation should be able to produce a render, structured diff, lint result, or comparison artifact.
 - Keep MCP, CLI, and SDK operations aligned so agent skills can run the same workflow in desktop, browser, CI, or headless file mode.
 
@@ -48,6 +90,9 @@ separate external-API compatibility track.
 - Keep tool outputs structured enough for agents to chain safely: node IDs, bounds, diffs, render artifacts, diagnostics, and machine-readable error details.
 - Improve deterministic CLI/MCP export and comparison tools for CI.
 - Add more design linting and migration helpers for batch `.fig` and `.pen` workflows.
+- Make `.pen` a first-class editable save target across app, CLI, MCP, and SDK workflows rather than an import-only or automation-specific format.
+- Extend HTML, CSS, Tailwind, and JSX support from editable import toward URL-based website capture, direct JSX paste/edit workflows, and component-aware design↔code updates that preserve intentional code structure instead of regenerating whole files.
+- Provide an adapter contract for additional design sources such as Stitch and Pixso, prioritizing formats with documented or testable semantics over brittle UI scraping.
 - Package desktop-side MCP integration so local agent workflows do not require global installs.
 
 ### Performance and scale
@@ -92,21 +137,28 @@ separate external-API compatibility track.
 
 ### SDK and embedded editor
 
-- Document the Vue SDK and core subpath exports as a platform for custom editor shells, embedded design surfaces, and automation-specific UIs.
-- Provide examples for embedding OpenPencil in product tools: read-only previews, editable canvases, design review surfaces, and agent-controlled editors.
+- Expand the documented Vue SDK and core package platform with complete example applications for custom editor shells, embedded design surfaces, and automation-specific UIs.
+- Provide maintained examples for read-only previews, editable canvases, design review surfaces, and agent-controlled editors.
+- Ship an official VS Code/Cursor extension ([#81](https://github.com/open-pencil/open-pencil/issues/81)) for previewing and opening `.fig`/`.pen` documents, connecting to the running editor, invoking CLI/MCP workflows, handing selections between code and canvas, and navigating between generated code and design nodes. Reuse the app, SDK, and automation bridge rather than implementing a second editor inside the extension.
+- Define public API stability and migration expectations across the reusable npm packages.
 - Keep the renderer, editor core, and tool registry framework-agnostic enough for headless and embedded use.
 
 ### Product depth
 
 - Deepen OpenPencil prototyping with conditionals, variable actions, scroll-to, richer overlay
   positioning, interactive-component states, and a dedicated full-screen preview mode.
+- Motion: reusable code-authored animation presets, timelines, easing, and deterministic playback/export that compose with prototype interactions and shader inputs.
+- Tables and data grids: structured rows, columns, headers, resizing, merged cells, and normal scene nodes inside cells instead of drawing tables as unrelated rectangles.
 - Comments: pins, threads, resolution state, and collaboration-aware display.
 - Shared libraries: publish, consume, and update components/styles across files.
+- Platform asset libraries: use licensed system-native and third-party icon sources, including SF Symbols where platform and redistribution rules allow, alongside the existing Iconify/Lucide workflow.
+- Figma Slides (`.deck`) interoperability: import/export, slide editing, presentation, speaker notes, and filmstrip workflows. This ranks below core Figma Design fidelity, reliability, Cloud/self-hosting, and international-text work.
 - Platform polish: Windows code signing, PWA support, packaged updater improvements, and desktop-side MCP bundling.
 
 ## Non-goals
 
-- Cloud-first storage or mandatory accounts.
+- Mandatory accounts or a cloud-only document model. OpenPencil Cloud, self-hosted backends, and user-owned remote storage must remain optional alongside local files.
+- A hosted service that requires OpenPencil to proxy users' AI provider keys; AI and media integrations remain BYOK even when a backend provides identity, sync, or collaboration.
 - Read-only automation surfaces that cannot modify documents.
 - Feature work that sacrifices `.fig` import/export fidelity for convenience.
 
@@ -258,7 +310,7 @@ These are parsed or visible in Figma docs and most likely to cause visible diffe
 3. **Pattern/noise/custom fills** — tune first-class pattern rendering for nested/effectful pattern sources and exact Figma hex spacing. `tests/fixtures/figma-oracles/pattern-noise-custom-paints.json` captures a real async Figma `PATTERN` payload and Figma-authored noise/texture/glass effect payloads; real `NOISE` / `CUSTOM` paint payloads remain blocked on Figma-authored samples.
 4. **Variable-font and rich text fixtures** — broaden real-file coverage for variable axes, derived text data, leading trim, decoration style, underline offset/skip-ink, semantic font metadata, and raw OpenType feature metadata; `tests/fixtures/figma-oracles/rich-text-decoration.json` captures the first live Figma rich-text oracle.
 5. **Boolean operation editing** — improve inspector/tooling workflows for imported boolean-operation nodes.
-6. **Layout grids and guides** — add editing and fuller alignment/style parity for rendered imported page guides and Figma layout grids.
+6. **Layout grids and guides** — complete page-guide creation/editing and fuller grid style parity; common imported layout grids already render and have inspector controls.
 7. **Full component property and slot workflows** — support authoring, not just preserving imported payloads.
 8. **Figma prototype/media/interaction semantics** — OpenPencil now has a separate bounded
    prototype and Motion runtime. Native Figma interaction, media, and timeline fields continue to

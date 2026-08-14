@@ -42,7 +42,7 @@ import {
   makeDocumentNodeChange,
   makeCanvasNodeChange
 } from '#core/kiwi/fig/node-change/serialize'
-import { deserializeSceneGraph, serializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
+import { cloneSceneGraphForFigExport } from '#core/kiwi/fig/parse/transfer'
 import {
   FIGMA_CANVAS_METADATA_FIELD_KEYS,
   FIGMA_DOCUMENT_METADATA_FIELD_KEYS
@@ -626,7 +626,10 @@ export async function exportFigFileWithOptions(
   const profile = options.profile ?? 'roundtrip'
   // Lazy population synchronizes component trees and therefore mutates its graph. Saving must not
   // rewrite the live editor document or restore component values over edits made by the user.
-  const graph = deserializeSceneGraph(structuredClone(serializeSceneGraph(sourceGraph)))
+  const graph = cloneSceneGraphForFigExport(sourceGraph)
+  // The upstream lightweight clone predates OpenPencil's message-level Motion round-trip field.
+  // Preserve the same reference semantics as the previous serialize/deserialize export clone.
+  graph.figMessageObjectAnimations = sourceGraph.figMessageObjectAnimations
   populateAllLazyFigImportRoots(graph)
   await initCodec()
 
