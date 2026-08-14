@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { trustedNativeModalTrigger } from '#compiler/adapters/native-shared'
+import { buildOpenPencilModalComponent } from '#compiler/adapters/react/modules/modal'
 import type { IRElement } from '#compiler/ir/types'
 
 import { compile, withDefaults, type CompilerOutput } from '@open-pencil/compiler'
@@ -99,6 +100,7 @@ describe('compiler trusted Modal module adapter', () => {
     expect(app).toContain('<OpenPencilModal config={{')
     expect(app).toContain('Authored modal trigger')
     expect(runtime).toContain("import { createPortal } from 'react-dom'")
+    expect(runtime).not.toContain('microfrontendPortalTarget')
     expect(runtime).toContain('<dialog')
     expect(runtime).toContain('dialog.showModal()')
     expect(runtime).toContain('role="dialog"')
@@ -127,6 +129,23 @@ describe('compiler trusted Modal module adapter', () => {
     expect(pkg.dependencies['focus-trap-react']).toBeUndefined()
     expect(pkg.dependencies['@radix-ui/react-dialog']).toBeUndefined()
     expect(output.warnings).toEqual([expect.objectContaining({ code: 'button-no-events' })])
+  })
+
+  test('keeps the standalone portal byte path while routing microfrontend overlays to the host target', () => {
+    const standaloneRuntime = buildOpenPencilModalComponent({ devMode: false })
+    const microfrontendRuntime = buildOpenPencilModalComponent({
+      devMode: false,
+      microfrontend: true
+    })
+
+    expect(standaloneRuntime).toContain('        document.body\n      )')
+    expect(standaloneRuntime).not.toContain('microfrontendPortalTarget')
+    expect(microfrontendRuntime).toContain(
+      "import { microfrontendPortalTarget } from './__microfrontend-context'"
+    )
+    expect(microfrontendRuntime).toContain(
+      '        microfrontendPortalTarget() ?? document.body\n      )'
+    )
   })
 
   test('accepts only complete empty native trigger payloads', () => {

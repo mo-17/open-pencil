@@ -4,11 +4,13 @@ import { defineCommand } from 'citty'
 
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import type { BuildResult } from '@open-pencil/compiler/build'
+import { buildMicrofrontendProject } from '@open-pencil/compiler/microfrontend'
 
 import { loadAndCompile, reportCodegenResult, resolveBuildEnv } from '#cli/codegen'
 import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
 import { printError } from '#cli/format'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
+import { microfrontendPackagingArgs, resolveMicrofrontendPackaging } from '#cli/microfrontend-args'
 import {
   createBuildServerDeploymentNotice,
   printManualServerDeploymentNotice
@@ -30,6 +32,9 @@ interface BuildArgs {
   'ui-kit'?: string
   json?: boolean
   target?: string
+  packaging?: string
+  'app-id'?: string
+  'app-version'?: string
 }
 
 export default defineCommand({
@@ -85,6 +90,7 @@ export default defineCommand({
     },
     ...i18nArgs,
     ...uiKitArgs,
+    ...microfrontendPackagingArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
   },
   async run({ args }) {
@@ -93,6 +99,13 @@ export default defineCommand({
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as BuildArgs)
     const uiKit = resolveUIKitFlag(args as BuildArgs)
     const target = resolveCodegenTarget(args as BuildArgs)
+    let packaging
+    try {
+      packaging = resolveMicrofrontendPackaging(args as BuildArgs)
+    } catch (error) {
+      printError(error)
+      process.exit(1)
+    }
 
     const { compiled, packageName } = await loadAndCompile({
       file,
@@ -104,7 +117,8 @@ export default defineCommand({
       locales,
       sourceLocale,
       uiKit,
-      target
+      target,
+      packaging
     })
 
     let env: ReturnType<typeof resolveBuildEnv>
@@ -120,8 +134,23 @@ export default defineCommand({
     }
 
     let result: BuildResult
+    let microfrontendManifest: { digest: string; byteLength: number } | undefined
     try {
-      result = await buildPreviewProject({ files: compiled.files, outDir, base, env, target })
+      if (packaging) {
+        const microfrontendResult = await buildMicrofrontendProject({
+          output: compiled,
+          outDir,
+          base,
+          env
+        })
+        result = microfrontendResult
+        microfrontendManifest = {
+          digest: microfrontendResult.manifestDigest,
+          byteLength: microfrontendResult.manifestByteLength
+        }
+      } else {
+        result = await buildPreviewProject({ files: compiled.files, outDir, base, env, target })
+      }
     } catch (e) {
       // Surface the Vite/build failure rather than swallowing it (经验 C).
       printError(e)
@@ -129,6 +158,16 @@ export default defineCommand({
     }
 
     const serverNotice = createBuildServerDeploymentNotice(result)
+    let nextLine = `Done. Deploy ${outDir} to any static host (multi-page apps need an SPA fallback to index.html).`
+    if (serverNotice) {
+      nextLine =
+        `Done. Deploy the browser files in ${outDir} to any static host ` +
+        '(exclude openpencil-server/; multi-page apps need an SPA fallback to index.html).'
+    } else if (packaging) {
+      nextLine =
+        `Done. Reference ${outDir}/openpencil.microfrontend.json from an ` +
+        '`openpencil microfrontend compose` manifest.'
+    }
     reportCodegenResult({
       json: args.json,
       outDir,
@@ -136,11 +175,9 @@ export default defineCommand({
       files: result.files,
       warnings: compiled.warnings,
       verb: 'Built',
-      nextLine: serverNotice
-        ? `Done. Deploy the browser files in ${outDir} to any static host ` +
-          '(exclude openpencil-server/; multi-page apps need an SPA fallback to index.html).'
-        : `Done. Deploy ${outDir} to any static host (multi-page apps need an SPA fallback to index.html).`,
-      target
+      nextLine,
+      target,
+      microfrontendManifest
     })
 
     if (serverNotice && !args.json) printManualServerDeploymentNotice(serverNotice)

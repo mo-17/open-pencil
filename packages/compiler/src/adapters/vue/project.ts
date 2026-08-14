@@ -1,7 +1,8 @@
 import type { PagePathInfo } from '#compiler/adapters/react/route-paths'
 import { buildIndexCSS, buildMetadataTags } from '#compiler/project'
-import type { CompilerOptions, HTMLMetadata } from '#compiler/types'
+import type { CompilerMicrofrontendPackaging, CompilerOptions, HTMLMetadata } from '#compiler/types'
 
+import { scopeMicrofrontendCSS } from '../microfrontend-css'
 import type { VueLowcodeUsage } from './lowcode/usage'
 
 const VUE_VERSION = '^3.5.29'
@@ -101,16 +102,26 @@ ${extra}  </head>
 export function buildVueMain(
   router: boolean,
   lowcode: VueLowcodeUsage = { toast: false, confirm: false, validation: false },
-  devMode = false
+  devMode = false,
+  microfrontend = false
 ): string {
-  const routerImport = router ? `import { router } from './router'\n` : ''
+  let routerImport = ''
+  if (router) {
+    routerImport = microfrontend
+      ? `import { createMicrofrontendRouter } from './router'\n`
+      : `import { router } from './router'\n`
+  }
+  const routerDeclaration =
+    router && microfrontend
+      ? `const { router } = createMicrofrontendRouter(import.meta.env.BASE_URL)\n`
+      : ''
   const routerUse = router ? '.use(router)' : ''
   const validationCSS = lowcode.validation ? `import './lowcode-validation.css'\n` : ''
   const previewImports = devMode ? `import './lowcode-state'\nimport './__preview-bridge'\n` : ''
   return `import { createApp } from 'vue'
 ${routerImport}import App from './App.vue'
 import './index.css'
-${validationCSS}${previewImports}
+${validationCSS}${previewImports}${routerDeclaration}
 createApp(App)${routerUse}.mount('#app')
 `
 }
@@ -140,7 +151,7 @@ ${content}
 `
 }
 
-export function buildVueRouter(infos: readonly PagePathInfo[]): string {
+export function buildVueRouter(infos: readonly PagePathInfo[], microfrontend = false): string {
   const imports = infos
     .map((info) => `import ${info.component} from './pages/${info.slug}.vue'`)
     .join('\n')
@@ -150,6 +161,22 @@ export function buildVueRouter(infos: readonly PagePathInfo[]): string {
         `  { path: ${JSON.stringify(info.route)}, component: ${info.component}, name: ${JSON.stringify(info.slug)} }`
     )
     .join(',\n')
+  if (microfrontend) {
+    return `import { createRouter, createWebHistory } from 'vue-router'
+
+${imports}
+
+const routes = [
+${routes}
+]
+
+export function createMicrofrontendRouter(basePath: string) {
+  const history = createWebHistory(basePath)
+  const router = createRouter({ history, routes })
+  return { router, dispose: () => history.destroy() }
+}
+`
+  }
   return `import { createRouter, createWebHistory } from 'vue-router'
 
 ${imports}
@@ -163,6 +190,128 @@ ${routes}
 `
 }
 
+export function buildVueMicrofrontendContext(): string {
+  return `import type { OpenPencilMicrofrontendHostContextV1 } from './__microfrontend-abi'
+
+let currentContext: OpenPencilMicrofrontendHostContextV1 | null = null
+let mountTarget: HTMLElement | null = null
+
+export function setMicrofrontendContext(
+  value: OpenPencilMicrofrontendHostContextV1 | null
+): void {
+  currentContext = value
+}
+
+export function setMicrofrontendMountTarget(value: HTMLElement | null): void {
+  mountTarget = value
+}
+
+export function microfrontendHostContext(): OpenPencilMicrofrontendHostContextV1 | null {
+  return currentContext
+}
+
+export function microfrontendPortalTarget(): HTMLElement | null {
+  if (currentContext?.portalTarget) return currentContext.portalTarget
+  const root = mountTarget?.getRootNode()
+  return root instanceof Document || root instanceof ShadowRoot
+    ? root.querySelector<HTMLElement>('[data-openpencil-portal]')
+    : null
+}
+`
+}
+
+export function buildVueMicrofrontendEntry(
+  packaging: CompilerMicrofrontendPackaging,
+  router: boolean,
+  lowcode: VueLowcodeUsage,
+  devMode: boolean
+): string {
+  const routerImport = router ? `import { createMicrofrontendRouter } from './router'\n` : ''
+  const validationCSS = lowcode.validation ? `import './lowcode-validation.css'\n` : ''
+  const previewImports = devMode ? `import './lowcode-state'\nimport './__preview-bridge'\n` : ''
+  const routingDeclaration = router
+    ? `let routing: ReturnType<typeof createMicrofrontendRouter> | null = null\n`
+    : ''
+  const routingMount = router
+    ? `  routing = createMicrofrontendRouter(context.basePath)\n  application.use(routing.router)\n`
+    : ''
+  const routingUpdate = router
+    ? `  if (routing) await routing.router.replace(relativeLocation(context))\n`
+    : `  const next = hostLocation(context)\n  const current = \`\${window.location.pathname}\${window.location.search}\${window.location.hash}\`\n  if (next !== current) window.history.replaceState(window.history.state, '', next)\n`
+  const routingDispose = router ? `  routing?.dispose()\n  routing = null\n` : ''
+  return `import { createApp, type App as VueApp } from 'vue'
+import type { OpenPencilMicrofrontendHostContextV1 } from './__microfrontend-abi'
+import App from './App.vue'
+import {
+  setMicrofrontendContext,
+  setMicrofrontendMountTarget
+} from './__microfrontend-context'
+${routerImport}import './index.css'
+${validationCSS}${previewImports}
+const APP_ID = ${JSON.stringify(packaging.appId)}
+
+let application: VueApp<Element> | null = null
+let container: HTMLElement | null = null
+${routingDeclaration}
+function assertContext(context: OpenPencilMicrofrontendHostContextV1): void {
+  if (context.appId !== APP_ID) {
+    throw new Error(\`Microfrontend context appId must be "\${APP_ID}"\`)
+  }
+  if (!context.basePath.startsWith('/')) {
+    throw new Error('Microfrontend basePath must start with /')
+  }
+}
+
+function hostLocation(context: OpenPencilMicrofrontendHostContextV1): string {
+  return \`\${context.location.pathname}\${context.location.search}\${context.location.hash}\`
+}
+
+function relativeLocation(context: OpenPencilMicrofrontendHostContextV1): string {
+  const base = context.basePath === '/' ? '' : context.basePath.replace(/\\/$/, '')
+  const pathname = context.location.pathname
+  const relative = base && (pathname === base || pathname.startsWith(base + '/'))
+    ? pathname.slice(base.length) || '/'
+    : pathname
+  return \`\${relative}\${context.location.search}\${context.location.hash}\`
+}
+
+async function applyContext(context: OpenPencilMicrofrontendHostContextV1): Promise<void> {
+  assertContext(context)
+  setMicrofrontendContext(context)
+${routingUpdate}}
+
+export async function bootstrap(): Promise<void> {}
+
+export async function mount(
+  target: HTMLElement,
+  context: OpenPencilMicrofrontendHostContextV1
+): Promise<void> {
+  if (application) throw new Error('Microfrontend is already mounted')
+  assertContext(context)
+  application = createApp(App)
+${routingMount}  await applyContext(context)
+  container = target
+  setMicrofrontendMountTarget(target)
+  application.mount(target)
+}
+
+export async function update(context: OpenPencilMicrofrontendHostContextV1): Promise<void> {
+  if (!application) return
+  await applyContext(context)
+}
+
+export async function unmount(): Promise<void> {
+  if (!application) return
+  application.unmount()
+${routingDispose}  if (container) container.replaceChildren()
+  application = null
+  container = null
+  setMicrofrontendMountTarget(null)
+  setMicrofrontendContext(null)
+}
+`
+}
+
 export function buildVueIndexCSSFile(
   classNames: readonly string[],
   options: CompilerOptions
@@ -170,7 +319,11 @@ export function buildVueIndexCSSFile(
   const custom = [options.themeCss?.trim(), options.metadata?.customCss?.trim()]
     .filter(Boolean)
     .join('\n\n')
-  return buildIndexCSS(classNames, '', custom)
+  return buildIndexCSS(
+    classNames,
+    '',
+    options.packaging?.kind === 'microfrontend' ? scopeMicrofrontendCSS(custom) : custom
+  )
 }
 
 export function buildVueReadme(router: boolean): string {

@@ -91,7 +91,10 @@ export interface UIKitAdapter {
    * keyed by output path (`src/components/ui/button.tsx`). Only the components
    * actually rendered are emitted.
    */
-  componentFiles(used: ReadonlySet<string>): Map<string, string>
+  componentFiles(
+    used: ReadonlySet<string>,
+    options?: { readonly microfrontend?: boolean }
+  ): Map<string, string>
   /** Files always emitted when the kit is active (lib/utils.ts, components.json). */
   sharedFiles(): Map<string, string>
   /** npm dependencies for the used components + shared helpers, merged into the

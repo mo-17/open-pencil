@@ -122,6 +122,18 @@ export function createSupabaseBuildDefines(env: BuildOptions['env']): Record<str
   }
 }
 
+/** Reject secrets before any client build starts writing output. */
+export function assertSafeClientBuildEnvironment(env: BuildOptions['env']): void {
+  if (
+    env?.VITE_SUPABASE_ANON_KEY !== undefined &&
+    detectSupabaseSecretKey(env.VITE_SUPABASE_ANON_KEY)
+  ) {
+    throw new Error(
+      'Refusing to embed a Supabase secret/service_role key in a client bundle; use a publishable or legacy anon key.'
+    )
+  }
+}
+
 function copyServerArtifacts(files: PreviewFiles, outDir: string): void {
   for (const [path, contents] of files) {
     if (!isServerArtifactSourcePath(path)) continue
@@ -251,6 +263,34 @@ function writeBuildOutputManifest(outDir: string, files: readonly string[]): voi
 }
 
 /**
+ * Finish an OpenPencil-owned build directory after Vite has written its browser
+ * bundle. Server sources bypass Rollup, then the complete output is recorded in
+ * the ownership marker used by the next safe rebuild.
+ *
+ * Microfrontend library builds share this exact boundary with standalone SPA
+ * builds so neither path grows a subtly different cleanup or server-artifact
+ * policy.
+ */
+export function completeManagedBuildOutput(files: PreviewFiles, outDir: string): BuildResult {
+  copyServerArtifacts(files, outDir)
+  return recordManagedBuildOutput(outDir)
+}
+
+/** Record a build whose additional verified artifacts were already written by
+ * an owning compiler pipeline (for example copied local microfrontends). */
+export function recordManagedBuildOutput(outDir: string): BuildResult {
+  const written = listFiles(outDir).map(portableBuildPath).sort()
+  writeBuildOutputManifest(outDir, written)
+  const serverFiles = written.filter(isServerArtifactOutputPath)
+  return {
+    outDir,
+    files: written,
+    staticFiles: written.filter((path) => !isServerArtifactOutputPath(path)),
+    serverFiles
+  }
+}
+
+/**
  * Build the emitted project into a static `dist/` bundle. Resolves a free
  * Vite build against the in-memory VFS (no files written for the source);
  * only the final bundle lands on disk under `outDir`.
@@ -263,14 +303,7 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
 
   assertSafeBuildOutputDirectory(outDir)
 
-  if (
-    opts.env?.VITE_SUPABASE_ANON_KEY !== undefined &&
-    detectSupabaseSecretKey(opts.env.VITE_SUPABASE_ANON_KEY)
-  ) {
-    throw new Error(
-      'Refusing to embed a Supabase secret/service_role key in a client bundle; use a publishable or legacy anon key.'
-    )
-  }
+  assertSafeClientBuildEnvironment(opts.env)
 
   // Shared with the dev-server: a quiet workspace sub-dir as Vite's root (deps
   // resolve up to the hoisted node_modules; the VFS plugin supplies all source)
@@ -309,15 +342,5 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
   // Server workflows are emitted beside the browser project in the VFS, but
   // they must not enter Rollup or a static-host upload. Preserve them as a
   // separate operator-owned bundle instead.
-  copyServerArtifacts(files, outDir)
-
-  const written = listFiles(outDir).map(portableBuildPath).sort()
-  writeBuildOutputManifest(outDir, written)
-  const serverFiles = written.filter(isServerArtifactOutputPath)
-  return {
-    outDir,
-    files: written,
-    staticFiles: written.filter((path) => !isServerArtifactOutputPath(path)),
-    serverFiles
-  }
+  return completeManagedBuildOutput(files, outDir)
 }

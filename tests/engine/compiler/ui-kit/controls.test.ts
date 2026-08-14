@@ -113,6 +113,41 @@ describe('compile — shadcn Radix controls (Phase 3 §15 Phase B)', () => {
     expect(out.warnings).toEqual([])
   })
 
+  test('microfrontend SELECT portals into the host-owned shadow portal and scopes theme tokens', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [{ id: 'd1', name: 'country', type: 'string', defaultValue: '' }]
+    })
+    graph.createNode('SELECT', page.id, {
+      interactiveProps: { options: ['US', 'CN'] },
+      bindings: { value: { kind: 'docState', docStateName: 'country' } }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({
+        packageName: 'kb-select-microfrontend',
+        uiKit: 'shadcn',
+        devMode: false,
+        packaging: { kind: 'microfrontend', appId: 'com.example.select' }
+      })
+    })
+    const select = out.files.get('src/components/ui/select.tsx') as string
+    const css = out.files.get('src/index.css') as string
+
+    expect(select).toContain(
+      'import { microfrontendPortalTarget } from "../../__microfrontend-context"'
+    )
+    expect(select).toContain(
+      '<SelectPrimitive.Portal container={microfrontendPortalTarget() ?? undefined}>'
+    )
+    expect(css).toContain(':host {')
+    expect(css).toContain(':host(.dark), .dark {')
+    expect(css).not.toContain(':root {')
+  })
+
   test('RADIO → <RadioGroup value onValueChange> + RadioGroupItem + <label htmlFor> per option', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

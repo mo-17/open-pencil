@@ -7,6 +7,7 @@ import type {
   IRTranslations,
   IRTree
 } from '#compiler/ir/types'
+import { buildOpenPencilMicrofrontendTypes } from '#compiler/microfrontend/runtime'
 import {
   buildGitignore,
   buildIndexCSS,
@@ -25,6 +26,7 @@ import type {
 
 import { compactLowcodeHeadMetadata } from '@open-pencil/core/lowcode-validation'
 
+import { scopeMicrofrontendCSS } from '../microfrontend-css'
 import { buildPreviewBridge } from '../preview-bridge'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 import { buildComponentModule } from './emit/component'
@@ -97,6 +99,9 @@ const LOWCODE_THEME_FILE = 'src/_lowcode_theme.tsx'
 const LOWCODE_ANALYTICS_FILE = 'src/_lowcode_analytics.ts'
 const PROTOTYPE_RUNTIME_FILE = 'src/__prototype-runtime.ts'
 const GENERATED_EFFECT_RUNTIME_FILE = 'src/__generated-effect-runtime.ts'
+const MICROFRONTEND_CONTEXT_FILE = 'src/__microfrontend-context.ts'
+const MICROFRONTEND_ABI_FILE = 'src/__microfrontend-abi.ts'
+const MICROFRONTEND_ENTRY_FILE = 'src/microfrontend.tsx'
 const LOWCODE_RUNTIME_THEME_UTILITY_RE =
   /(?:^|:)(?:accent|bg|text|border|ring)-(?:background|foreground|primary|primary-foreground|secondary|secondary-foreground|muted-foreground|destructive|destructive-foreground|border|ring)(?:\/|$)/
 const LOWCODE_RUNTIME_THEME_CSS = `@layer base {
@@ -194,7 +199,8 @@ function applyUIKit(
   files: Map<string, string | Uint8Array>,
   irs: readonly IRTree[],
   components: readonly ComponentDef[],
-  uiKit: UIKitAdapter | null
+  uiKit: UIKitAdapter | null,
+  microfrontend = false
 ): { deps: Record<string, string>; themeCss: string; active: boolean } {
   if (!uiKit) return { deps: {}, themeCss: '', active: false }
   const used = new Set<string>()
@@ -202,7 +208,9 @@ function applyUIKit(
   for (const def of components) collectUsedKitComponents(componentBodyNodes(def), uiKit, used)
   if (used.size === 0) return { deps: {}, themeCss: '', active: false }
   for (const [path, content] of uiKit.sharedFiles()) files.set(path, content)
-  for (const [path, content] of uiKit.componentFiles(used)) files.set(path, content)
+  for (const [path, content] of uiKit.componentFiles(used, { microfrontend })) {
+    files.set(path, content)
+  }
   return { deps: uiKit.deps(used), themeCss: uiKit.themeCSS(), active: true }
 }
 
@@ -304,7 +312,13 @@ function emitSinglePage(
   // Phase 3 §15: emit the UI kit's inlined sources for the components rendered
   // here (sets files; returns deps + theme to fold in below).
   const uiKit = resolveUIKit(options)
-  const kit = applyUIKit(files, [cleaned], components, uiKit)
+  const kit = applyUIKit(
+    files,
+    [cleaned],
+    components,
+    uiKit,
+    options.packaging?.kind === 'microfrontend'
+  )
   emitAssets(files, collectAssets([cleaned], components))
   // Phase 3 §9: i18n is active only when the flag is on AND there is text to
   // translate (an empty doc gets no runtime/dep/provider).
@@ -346,10 +360,14 @@ function emitSinglePage(
     validationActive,
     analyticsActive,
     analyticsConfig: cleaned.analyticsConfig,
-    analyticsConsentBanner
+    analyticsConsentBanner,
+    microfrontend: options.packaging?.kind === 'microfrontend'
   })
   emitServerWorkflowFiles(files, serverWorkflows)
-  emitReactModuleRuntimes(files, moduleProject, { devMode: options.devMode })
+  emitReactModuleRuntimes(files, moduleProject, {
+    devMode: options.devMode,
+    microfrontend: options.packaging?.kind === 'microfrontend'
+  })
   emitRuntimeAndComponentFiles(files, components, options.devMode, uiKit, {
     motion,
     generatedEffect,
@@ -412,7 +430,7 @@ function emitMultiPage(
   const prototype = buildPrototypePlan(infos, components)
   // Phase 3 §15: emit the UI kit's inlined sources across all pages.
   const uiKit = resolveUIKit(options)
-  const kit = applyUIKit(files, irs, components, uiKit)
+  const kit = applyUIKit(files, irs, components, uiKit, options.packaging?.kind === 'microfrontend')
   emitAssets(files, collectAssets(irs, components))
   const docStates = irs[0]?.docStates ?? []
   const supabaseConfig = irs[0]?.supabaseConfig
@@ -456,10 +474,14 @@ function emitMultiPage(
     analyticsActive,
     analyticsConfig,
     analyticsRouteTracking,
-    analyticsConsentBanner
+    analyticsConsentBanner,
+    microfrontend: options.packaging?.kind === 'microfrontend'
   })
   emitServerWorkflowFiles(files, serverWorkflows)
-  emitReactModuleRuntimes(files, moduleProject, { devMode: options.devMode })
+  emitReactModuleRuntimes(files, moduleProject, {
+    devMode: options.devMode,
+    microfrontend: options.packaging?.kind === 'microfrontend'
+  })
   emitRuntimeAndComponentFiles(files, components, options.devMode, uiKit, {
     motion,
     generatedEffect,
@@ -471,7 +493,8 @@ function emitMultiPage(
     buildRouterApp(infos, {
       devMode: options.devMode,
       analyticsRouteTracking,
-      prototypeRuntime: prototype.runtime !== undefined
+      prototypeRuntime: prototype.runtime !== undefined,
+      microfrontend: options.packaging?.kind === 'microfrontend'
     })
   )
   for (const info of infos) {
@@ -589,6 +612,7 @@ interface LowcodeRuntimeEmit {
   analyticsConfig: IRTree['analyticsConfig']
   analyticsRouteTracking?: boolean
   analyticsConsentBanner?: boolean
+  microfrontend: boolean
 }
 
 interface RuntimeAndComponentEmit {
@@ -605,7 +629,7 @@ interface RuntimeAndComponentEmit {
  *  i18n, toast, confirm, validation). Shared by the single-page and multi-page
  *  emitters so the identical call sequence stays in one place (and clone-free). */
 function emitLowcodeRuntimes(files: Map<string, string | Uint8Array>, e: LowcodeRuntimeEmit): void {
-  maybeEmitLowcodeRuntime(files, e.docStates, e.packageName)
+  maybeEmitLowcodeRuntime(files, e.docStates, e.packageName, e.microfrontend)
   maybeEmitLowcodeSupabaseRuntime(files, e.supabaseConfig)
   maybeEmitI18n(files, e.i18nActive, e.messages, e.sourceLocale, e.targetLocales, e.translations)
   maybeEmitLowcodeToastRuntime(files, e.toastActive)
@@ -715,10 +739,11 @@ function resolveTargetLocales(
 function maybeEmitLowcodeRuntime(
   files: Map<string, string | Uint8Array>,
   docStates: readonly IRTree['docStates'][number][],
-  packageName: string
+  packageName: string,
+  microfrontend: boolean
 ): void {
   if (docStates.length === 0) return
-  files.set(LOWCODE_STATE_FILE, buildLowcodeStateRuntime(docStates, packageName))
+  files.set(LOWCODE_STATE_FILE, buildLowcodeStateRuntime(docStates, packageName, { microfrontend }))
 }
 
 /** Phase 3 §10 v2: emit the toast runtime (`_lowcode_toast.tsx`) when any page
@@ -849,11 +874,262 @@ function setSharedProjectFiles(
   ]
     .filter(Boolean)
     .join('\n')
-  files.set('src/index.css', buildIndexCSS(safelist, themeCSS, metadata?.customCss))
+  const microfrontend = options.packaging?.kind === 'microfrontend'
+  files.set(
+    'src/index.css',
+    buildIndexCSS(
+      safelist,
+      microfrontend ? scopeMicrofrontendCSS(themeCSS) : themeCSS,
+      microfrontend ? scopeMicrofrontendCSS(metadata?.customCss ?? '') : metadata?.customCss
+    )
+  )
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {
     files.set('src/__preview-bridge.ts', buildPreviewBridge())
   }
+  if (options.packaging?.kind === 'microfrontend') {
+    files.set(MICROFRONTEND_ABI_FILE, buildOpenPencilMicrofrontendTypes())
+    files.set(MICROFRONTEND_CONTEXT_FILE, buildReactMicrofrontendContext())
+    files.set(
+      MICROFRONTEND_ENTRY_FILE,
+      buildReactMicrofrontendEntry(options, {
+        i18n,
+        toast,
+        confirm,
+        theme: themeActive,
+        themeSwitchPosition: resolveThemeSwitchPosition(options),
+        analytics,
+        analyticsConsentBanner,
+        motionCSS: motion.css !== undefined,
+        motionRuntime: motion.runtime !== undefined,
+        generatedEffectRuntime
+      })
+    )
+  }
+}
+
+function buildReactMicrofrontendContext(): string {
+  return `import { useSyncExternalStore } from 'react'
+import type { OpenPencilMicrofrontendHostContextV1 } from './__microfrontend-abi'
+
+let currentContext: OpenPencilMicrofrontendHostContextV1 | null = null
+let mountTarget: HTMLElement | null = null
+const listeners = new Set<() => void>()
+
+export function setMicrofrontendContext(
+  value: OpenPencilMicrofrontendHostContextV1 | null
+): void {
+  currentContext = value
+  for (const listener of listeners) listener()
+}
+
+export function setMicrofrontendMountTarget(value: HTMLElement | null): void {
+  mountTarget = value
+}
+
+export function microfrontendBasePath(): string {
+  return currentContext?.basePath ?? '/'
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+function contextSnapshot(): OpenPencilMicrofrontendHostContextV1 | null {
+  return currentContext
+}
+
+export function useMicrofrontendRouting(): { basePath: string; location: string } {
+  const context = useSyncExternalStore(subscribe, contextSnapshot, contextSnapshot)
+  const basePath = context?.basePath ?? '/'
+  const location = context?.location
+  const base = basePath === '/' ? '' : basePath.endsWith('/') ? basePath.slice(0, -1) : basePath
+  const pathname = location?.pathname ?? '/'
+  const relativePathname = base && (pathname === base || pathname.startsWith(base + '/'))
+    ? pathname.slice(base.length) || '/'
+    : pathname
+  return {
+    basePath,
+    location: location
+      ? \`\${relativePathname}\${location.search}\${location.hash}\`
+      : relativePathname
+  }
+}
+
+export function microfrontendHostContext(): OpenPencilMicrofrontendHostContextV1 | null {
+  return currentContext
+}
+
+export function microfrontendPortalTarget(): HTMLElement | null {
+  if (currentContext?.portalTarget) return currentContext.portalTarget
+  const root = mountTarget?.getRootNode()
+  return root instanceof Document || root instanceof ShadowRoot
+    ? root.querySelector<HTMLElement>('[data-openpencil-portal]')
+    : null
+}
+`
+}
+
+interface ReactMicrofrontendRuntimeOptions {
+  i18n: boolean
+  toast: boolean
+  confirm: boolean
+  theme: boolean
+  themeSwitchPosition?: LowcodeThemeSwitchPosition | false
+  analytics: boolean
+  analyticsConsentBanner: boolean
+  motionCSS: boolean
+  motionRuntime: boolean
+  generatedEffectRuntime: boolean
+}
+
+function buildReactMicrofrontendEntry(
+  options: CompilerOptions,
+  runtime: ReactMicrofrontendRuntimeOptions
+): string {
+  const packaging = options.packaging
+  if (!packaging) {
+    throw new TypeError('React microfrontend entry requires microfrontend packaging')
+  }
+  const appId = JSON.stringify(packaging.appId)
+  const i18nImport = runtime.i18n ? `import { I18nProvider } from './_lowcode_i18n'\n` : ''
+  const toastImport = runtime.toast ? `import { ToastHost } from './_lowcode_toast'\n` : ''
+  const confirmImport = runtime.confirm ? `import { ConfirmHost } from './_lowcode_confirm'\n` : ''
+  const themeSwitchEnabled = runtime.theme && runtime.themeSwitchPosition !== false
+  const themeImport = buildMicrofrontendThemeImport(runtime.theme, themeSwitchEnabled)
+  const analyticsImport = buildMicrofrontendAnalyticsImport(
+    runtime.analytics,
+    runtime.analyticsConsentBanner
+  )
+  const motionImports = buildMicrofrontendMotionImports(runtime.motionCSS, runtime.motionRuntime)
+  const effectImport = runtime.generatedEffectRuntime
+    ? `import './__generated-effect-runtime'\n`
+    : ''
+  const runtimeCleanup = buildMicrofrontendRuntimeCleanup(runtime)
+  let app = '<App />'
+  if (runtime.i18n) app = `<I18nProvider>\n      ${app}\n    </I18nProvider>`
+  const themeSwitch =
+    typeof runtime.themeSwitchPosition === 'string'
+      ? `<LowcodeThemeSwitch position="${runtime.themeSwitchPosition}" />`
+      : '<LowcodeThemeSwitch />'
+  if (runtime.theme) {
+    app = `<LowcodeThemeProvider>\n      ${app}${
+      themeSwitchEnabled ? `\n      ${themeSwitch}` : ''
+    }\n    </LowcodeThemeProvider>`
+  }
+  const runtimeChildren = [
+    runtime.toast ? '<ToastHost />' : '',
+    runtime.confirm ? '<ConfirmHost />' : '',
+    runtime.analyticsConsentBanner ? '<LowcodeAnalyticsConsentBanner />' : ''
+  ]
+    .filter(Boolean)
+    .map((child) => `\n    ${child}`)
+    .join('')
+  return `import { StrictMode } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import type { OpenPencilMicrofrontendHostContextV1 } from './__microfrontend-abi'
+import App from './App'
+import {
+  setMicrofrontendContext,
+  setMicrofrontendMountTarget
+} from './__microfrontend-context'
+${i18nImport}${toastImport}${confirmImport}${themeImport}${analyticsImport}${motionImports}${effectImport}import './index.css'
+
+const APP_ID = ${appId}
+
+let root: Root | null = null
+let container: HTMLElement | null = null
+
+function assertContext(context: OpenPencilMicrofrontendHostContextV1): void {
+  if (context.appId !== APP_ID) {
+    throw new Error(\`Microfrontend context appId must be "\${APP_ID}"\`)
+  }
+  if (!context.basePath.startsWith('/')) {
+    throw new Error('Microfrontend basePath must start with /')
+  }
+}
+
+function hostLocation(context: OpenPencilMicrofrontendHostContextV1): string {
+  return \`\${context.location.pathname}\${context.location.search}\${context.location.hash}\`
+}
+
+function applyContext(context: OpenPencilMicrofrontendHostContextV1): void {
+  assertContext(context)
+  setMicrofrontendContext(context)
+  const next = hostLocation(context)
+  const current = \`\${window.location.pathname}\${window.location.search}\${window.location.hash}\`
+  if (next !== current) {
+    window.history.replaceState(window.history.state, '', next)
+  }
+}
+
+export async function bootstrap(): Promise<void> {}
+
+export async function mount(
+  target: HTMLElement,
+  context: OpenPencilMicrofrontendHostContextV1
+): Promise<void> {
+  if (root) throw new Error('Microfrontend is already mounted')
+  applyContext(context)
+  container = target
+  setMicrofrontendMountTarget(target)
+  root = createRoot(target)
+  root.render(
+    <StrictMode>
+      ${app}${runtimeChildren}
+    </StrictMode>
+  )
+}
+
+export async function update(context: OpenPencilMicrofrontendHostContextV1): Promise<void> {
+  if (!root) return
+  applyContext(context)
+}
+
+export async function unmount(): Promise<void> {
+  if (!root) return
+  root.unmount()
+${runtimeCleanup}  if (container) container.replaceChildren()
+  root = null
+  container = null
+  setMicrofrontendMountTarget(null)
+  setMicrofrontendContext(null)
+}
+`
+}
+
+function buildMicrofrontendRuntimeCleanup(runtime: ReactMicrofrontendRuntimeOptions): string {
+  return [
+    runtime.motionRuntime
+      ? `  ;(globalThis as typeof globalThis & { __OPENPENCIL_MOTION_RUNTIME__?: { dispose(): void } })\n    .__OPENPENCIL_MOTION_RUNTIME__?.dispose()`
+      : '',
+    runtime.generatedEffectRuntime
+      ? `  ;(window as Window & { __OPENPENCIL_GENERATED_EFFECT_RUNTIME__?: { dispose(): void } })\n    .__OPENPENCIL_GENERATED_EFFECT_RUNTIME__?.dispose()`
+      : ''
+  ]
+    .filter(Boolean)
+    .map((line) => `${line}\n`)
+    .join('')
+}
+
+function buildMicrofrontendThemeImport(theme: boolean, themeSwitchEnabled: boolean): string {
+  if (!theme) return ''
+  const switchImport = themeSwitchEnabled ? ', LowcodeThemeSwitch' : ''
+  return `import { LowcodeThemeProvider${switchImport} } from './_lowcode_theme'\n`
+}
+
+function buildMicrofrontendMotionImports(css: boolean, runtime: boolean): string {
+  return `${css ? `import './__motion.css'\n` : ''}${
+    runtime ? `import './__motion-runtime'\n` : ''
+  }`
+}
+
+function buildMicrofrontendAnalyticsImport(analytics: boolean, consentBanner: boolean): string {
+  if (consentBanner) {
+    return `import { LowcodeAnalyticsConsentBanner } from './_lowcode_analytics'\n`
+  }
+  return analytics ? `import './_lowcode_analytics'\n` : ''
 }
 
 function emitMotionFiles(files: Map<string, string | Uint8Array>, motion: ReactMotionPlan): void {

@@ -1,5 +1,6 @@
 export interface ReactModuleRuntimeOptions {
   devMode: boolean
+  microfrontend?: boolean
 }
 
 export interface ReactModuleAdapter {

@@ -3,6 +3,9 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { vueAdapter } from '#compiler/adapters/vue'
+import { buildOpenPencilVueDropdownMenu } from '#compiler/adapters/vue/modules/dropdown-menu'
+import { buildOpenPencilVueModal } from '#compiler/adapters/vue/modules/modal'
+import { buildOpenPencilVueSlideMenu } from '#compiler/adapters/vue/modules/slide-menu'
 import type { IRElement, IRTree } from '#compiler/ir/types'
 import { compileScript, compileTemplate, parse as parseVueSfc } from 'vue/compiler-sfc'
 
@@ -110,6 +113,24 @@ describe('Vue trusted module runtimes', () => {
     expect(page).toContain('</OpenPencilModal>')
     expectCompilableSfc(page, 'src/pages/index.vue')
     maybeWriteVerificationProject(output.files)
+  })
+
+  test('keeps standalone Teleports unchanged and targets the host portal in microfrontend output', () => {
+    for (const [path, buildRuntime] of [
+      ['src/__openpencil_modal.vue', buildOpenPencilVueModal],
+      ['src/__openpencil_dropdown_menu.vue', buildOpenPencilVueDropdownMenu],
+      ['src/__openpencil_slide_menu.vue', buildOpenPencilVueSlideMenu]
+    ] as const) {
+      const standaloneRuntime = buildRuntime()
+      const microfrontendRuntime = buildRuntime({ microfrontend: true })
+      expect(standaloneRuntime).toContain('<Teleport to="body">')
+      expect(standaloneRuntime).not.toContain('microfrontendPortalTarget')
+      expect(microfrontendRuntime).toContain(
+        "import { microfrontendPortalTarget } from './__microfrontend-context'"
+      )
+      expect(microfrontendRuntime).toContain('<Teleport :to="portalTarget">')
+      expectCompilableSfc(microfrontendRuntime, path)
+    }
   })
 
   test('emits accessible focus-managed overlays and a local-only upload boundary', () => {

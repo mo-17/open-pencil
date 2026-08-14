@@ -2,6 +2,7 @@ import { buildPreviewBridge } from '#compiler/adapters/preview-bridge'
 import { derivePagePaths } from '#compiler/adapters/react/route-paths'
 import type { AdapterEmission, FrameworkAdapter } from '#compiler/adapters/types'
 import type { ComponentDef, IREventHandler, IRNode, IRTree } from '#compiler/ir/types'
+import { buildOpenPencilMicrofrontendTypes } from '#compiler/microfrontend/runtime'
 import type { CompileWarning, CompilerOptions, HTMLMetadata } from '#compiler/types'
 
 import { buildVueComponentModule, buildVuePageModule, sanitizeVueHrefLiteral } from './emit'
@@ -34,6 +35,8 @@ import {
   buildVueIndexCSSFile,
   buildVueIndexHTML,
   buildVueMain,
+  buildVueMicrofrontendContext,
+  buildVueMicrofrontendEntry,
   buildVuePackageJSON,
   buildVueReadme,
   buildVueRouter,
@@ -71,7 +74,9 @@ function emitVueProject(
   )
 
   emitAssets(files, irs, components)
-  emitVueModuleRuntimes(files, moduleProject)
+  emitVueModuleRuntimes(files, moduleProject, {
+    microfrontend: options.packaging?.kind === 'microfrontend'
+  })
   emitVueLowcodeRuntimes(files, lowcode)
   for (const definition of components) {
     const emitted = buildVueComponentModule(definition, options, router, docStateTypes)
@@ -89,7 +94,10 @@ function emitVueProject(
   files.set('vite.config.ts', buildVueViteConfig())
   files.set('tsconfig.json', buildVueTsConfig())
   files.set('src/env.d.ts', '/// <reference types="vite/client" />\n')
-  files.set('src/main.ts', buildVueMain(router, lowcode, options.devMode))
+  files.set(
+    'src/main.ts',
+    buildVueMain(router, lowcode, options.devMode, options.packaging?.kind === 'microfrontend')
+  )
   files.set('src/App.vue', buildVueApp(router, firstComponent, lowcode))
   files.set('src/index.css', buildVueIndexCSSFile(collectClassNames(irs, components), options))
   files.set(
@@ -97,7 +105,17 @@ function emitVueProject(
     buildVueDocStateRuntime(irs[0]?.docStates ?? [], options.devMode)
   )
   if (options.devMode) files.set('src/__preview-bridge.ts', buildPreviewBridge())
-  if (router) files.set('src/router.ts', buildVueRouter(infos))
+  if (router) {
+    files.set('src/router.ts', buildVueRouter(infos, options.packaging?.kind === 'microfrontend'))
+  }
+  if (options.packaging?.kind === 'microfrontend') {
+    files.set('src/__microfrontend-abi.ts', buildOpenPencilMicrofrontendTypes())
+    files.set('src/__microfrontend-context.ts', buildVueMicrofrontendContext())
+    files.set(
+      'src/microfrontend.ts',
+      buildVueMicrofrontendEntry(options.packaging, router, lowcode, options.devMode)
+    )
+  }
   files.set(
     'index.html',
     buildVueIndexHTML(options.packageName, indexMetadata(irs, options), options.sourceLocale)

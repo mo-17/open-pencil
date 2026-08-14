@@ -53,6 +53,11 @@
       "bun": "./src/build.ts",
       "default": "./dist/build.mjs"
     },
+    "./microfrontend": {
+      "types": "./src/microfrontend/index.ts",
+      "bun": "./src/microfrontend/index.ts",
+      "default": "./dist/microfrontend/index.mjs"
+    },
     "./deploy": {
       "types": "./src/deploy.ts",
       "bun": "./src/deploy.ts",

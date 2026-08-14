@@ -4,7 +4,9 @@ import { defineCommand } from 'citty'
 
 import { loadAndCompile, reportCodegenResult } from '#cli/codegen'
 import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
+import { printError } from '#cli/format'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
+import { microfrontendPackagingArgs, resolveMicrofrontendPackaging } from '#cli/microfrontend-args'
 import { resolveUIKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
 interface CompileArgs {
@@ -18,6 +20,9 @@ interface CompileArgs {
   'ui-kit'?: string
   json?: boolean
   target?: string
+  packaging?: string
+  'app-id'?: string
+  'app-version'?: string
 }
 
 async function writeFiles(
@@ -63,6 +68,7 @@ export default defineCommand({
     ...codegenTargetArgs,
     ...i18nArgs,
     ...uiKitArgs,
+    ...microfrontendPackagingArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
   },
   async run({ args }) {
@@ -71,6 +77,13 @@ export default defineCommand({
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as CompileArgs)
     const uiKit = resolveUIKitFlag(args as CompileArgs)
     const target = resolveCodegenTarget(args as CompileArgs)
+    let packaging
+    try {
+      packaging = resolveMicrofrontendPackaging(args as CompileArgs)
+    } catch (error) {
+      printError(error)
+      process.exit(1)
+    }
 
     const { compiled, packageName } = await loadAndCompile({
       file,
@@ -82,7 +95,8 @@ export default defineCommand({
       locales,
       sourceLocale,
       uiKit,
-      target
+      target,
+      packaging
     })
 
     const written = await writeFiles(outDir, compiled.files)

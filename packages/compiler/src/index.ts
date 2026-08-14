@@ -6,6 +6,7 @@ import {
 } from '@open-pencil/core/lowcode-validation'
 import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/scene-graph'
 
+import { derivePagePaths } from './adapters/react/route-paths'
 import {
   applyCompilerFontManifest,
   applyExpoCompilerFontManifest,
@@ -16,10 +17,19 @@ import type { MotionLoweringCache } from './ir/collect/motion'
 import { collectServerWorkflows } from './ir/collect/server-workflows'
 import { collectComponents, collectTree } from './ir/collect/tree'
 import type { IRMotion } from './ir/motion'
+import {
+  parseOpenPencilMicrofrontendRuntimeApp,
+  parseOpenPencilMicrofrontendRuntimeRoutes
+} from './microfrontend/manifest'
+import {
+  assertMicrofrontendFeaturePolicy,
+  parseCompilerMicrofrontendPackaging
+} from './microfrontend/policy'
 import { selectAdapter } from './select-adapter'
 import { buildDesignTokenThemeCSS } from './theme-css'
 import type {
   CompilerInput,
+  CompilerMicrofrontendBuildDescriptor,
   CompilerOptions,
   CompilerOutput,
   CompileWarning,
@@ -35,8 +45,11 @@ export type {
   CompilerFontFormat,
   CompilerFontLicenseEvidence,
   CompilerFontManifest,
+  CompilerMicrofrontendBuildDescriptor,
+  CompilerMicrofrontendPackaging,
   CompilerOptions,
   CompilerOutput,
+  CompilerPackaging,
   UIKitName
 } from './types'
 export {
@@ -91,6 +104,7 @@ const DEFAULT_OPTIONS: CompilerOptions = {
  * apps; Expo and Flutter emit source-only native static MVPs.
  */
 export function compile(input: CompilerInput): CompilerOutput {
+  validatePackaging(input.options)
   if (input.pageIds.length === 0) {
     return {
       files: new Map(),
@@ -140,6 +154,7 @@ export function compile(input: CompilerInput): CompilerOutput {
   const irs = input.pageIds.map((id) =>
     collectTree(input.graph, id, registry, i18n, styleOptions, motionCache, serverWorkflows ?? null)
   )
+  assertMicrofrontendFeaturePolicy(options, irs, components)
   const { files, warnings: adapterWarnings } = adapter.emit(irs, options, components)
   let fontWarnings: CompileWarning[] = []
   if (input.fontManifest) {
@@ -177,6 +192,7 @@ export function compile(input: CompilerInput): CompilerOutput {
       message: issue.message,
       ...(issue.nodeId || issue.pageId ? { nodeId: issue.nodeId ?? issue.pageId } : {})
     }))
+  const microfrontend = buildMicrofrontendDescriptor(options, irs)
   return {
     files,
     warnings: [
@@ -187,7 +203,39 @@ export function compile(input: CompilerInput): CompilerOutput {
       ...adapterWarnings,
       ...navigationWarnings,
       ...fontWarnings
-    ]
+    ],
+    ...(microfrontend ? { microfrontend } : {})
+  }
+}
+
+function buildMicrofrontendDescriptor(
+  options: CompilerOptions,
+  irs: Parameters<typeof derivePagePaths>[0]
+): CompilerMicrofrontendBuildDescriptor | undefined {
+  const packaging = options.packaging
+  if (!packaging) return undefined
+  const app = parseOpenPencilMicrofrontendRuntimeApp({
+    id: packaging.appId,
+    name: options.productName ?? options.packageName,
+    version: packaging.version ?? '0.0.0',
+    framework: options.target
+  })
+  const routes = parseOpenPencilMicrofrontendRuntimeRoutes(
+    derivePagePaths(irs).map((info) => info.route)
+  )
+  return Object.freeze({ app, routes })
+}
+
+function validatePackaging(options: CompilerOptions): void {
+  const packaging = parseCompilerMicrofrontendPackaging(options.packaging)
+  if (!packaging) return
+  if (options.target !== 'react' && options.target !== 'vue') {
+    throw new TypeError('Microfrontend packaging supports only React and Vue targets')
+  }
+  if (options.devMode) {
+    throw new TypeError(
+      'Microfrontend packaging v1 does not support the development preview bridge'
+    )
   }
 }
 

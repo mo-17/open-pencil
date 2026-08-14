@@ -9,7 +9,12 @@ import { basename, extname } from 'node:path'
 import process from 'node:process'
 
 import { compile, resolveCompilerWebFonts, withDefaults } from '@open-pencil/compiler'
-import type { CompileWarning, CompilerOutput, UIKitName } from '@open-pencil/compiler'
+import type {
+  CompileWarning,
+  CompilerMicrofrontendPackaging,
+  CompilerOutput,
+  UIKitName
+} from '@open-pencil/compiler'
 import type { BuildOptions } from '@open-pencil/compiler/build'
 import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
 import type { SceneNode } from '@open-pencil/scene-graph'
@@ -178,6 +183,8 @@ export async function loadAndCompile(opts: {
   uiKit?: UIKitName
   /** Web framework target. Defaults to React for CLI compatibility. */
   target?: CodegenWebTarget
+  /** Explicitly opt into the lifecycle/manifest packaging contract. */
+  packaging?: CompilerMicrofrontendPackaging
 }): Promise<CompiledDocument> {
   if (!opts.file) {
     printError('A document file path is required.')
@@ -234,7 +241,8 @@ export async function loadAndCompile(opts: {
         ...(opts.locales && opts.locales.length > 0 ? { locales: [...opts.locales] } : {}),
         ...(opts.sourceLocale ? { sourceLocale: opts.sourceLocale } : {}),
         // Phase 3 §15: opt-in UI kit (else byte-identical to before).
-        ...(opts.uiKit ? { uiKit: opts.uiKit } : {})
+        ...(opts.uiKit ? { uiKit: opts.uiKit } : {}),
+        ...(opts.packaging ? { packaging: opts.packaging } : {})
       })
     })
     if (target === 'vue') {
@@ -296,6 +304,10 @@ export function reportCodegenResult(opts: {
   verb: string
   nextLine: string
   target?: CodegenWebTarget
+  microfrontendManifest?: {
+    digest: string
+    byteLength: number
+  }
 }): void {
   if (opts.json) {
     console.log(
@@ -304,6 +316,9 @@ export function reportCodegenResult(opts: {
           outDir: opts.outDir,
           packageName: opts.packageName,
           ...(opts.target ? { target: opts.target } : {}),
+          ...(opts.microfrontendManifest
+            ? { microfrontend: { manifest: opts.microfrontendManifest } }
+            : {}),
           files: opts.files,
           warnings: opts.warnings
         },
@@ -324,6 +339,16 @@ export function reportCodegenResult(opts: {
     console.log(bold(`  ${opts.warnings.length} warning(s):`))
     console.log('')
     console.log(fmtList(opts.warnings.map((w) => ({ header: formatWarning(w) }))))
+  }
+
+  if (opts.microfrontendManifest) {
+    console.log('')
+    console.log(
+      bold(
+        `  Runtime manifest: sha256-${opts.microfrontendManifest.digest} ` +
+          `(${opts.microfrontendManifest.byteLength} bytes)`
+      )
+    )
   }
 
   console.log('')

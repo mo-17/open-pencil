@@ -209,6 +209,18 @@ function restoreAlias(source: string): string {
   return source.replaceAll('__AT__/', '@/')
 }
 
+function scopeSelectPortal(source: string): string {
+  return source
+    .replace(
+      'import { cn } from "@/lib/utils"',
+      'import { cn } from "@/lib/utils"\nimport { microfrontendPortalTarget } from "../../__microfrontend-context"'
+    )
+    .replace(
+      '<SelectPrimitive.Portal>',
+      '<SelectPrimitive.Portal container={microfrontendPortalTarget() ?? undefined}>'
+    )
+}
+
 /** Space-prefixed attribute list, or '' when empty. */
 function attrSuffix(parts: readonly string[]): string {
   return parts.length > 0 ? ' ' + parts.join(' ') : ''
@@ -779,11 +791,20 @@ export const shadcnAdapter: UIKitAdapter = {
     }
   },
 
-  componentFiles(used: ReadonlySet<string>): Map<string, string> {
+  componentFiles(
+    used: ReadonlySet<string>,
+    options?: { readonly microfrontend?: boolean }
+  ): Map<string, string> {
     const files = new Map<string, string>()
     for (const name of used) {
       const comp = COMPONENTS[name]
-      if (comp) files.set(comp.file, restoreAlias(comp.source))
+      if (comp) {
+        const source = restoreAlias(comp.source)
+        files.set(
+          comp.file,
+          name === 'Select' && options?.microfrontend ? scopeSelectPortal(source) : source
+        )
+      }
     }
     return files
   },

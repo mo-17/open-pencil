@@ -139,6 +139,8 @@ interface BuildAppOptions {
   routerAvailable?: boolean
   /** Generated project includes `src/__prototype-runtime.ts`. */
   prototypeRuntime?: boolean
+  /** Read the orchestrator-provided basename in explicit microfrontend output. */
+  microfrontend?: boolean
 }
 
 /**
@@ -199,24 +201,51 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
 export function buildRouterApp(infos: readonly PagePathInfo[], options: BuildAppOptions): string {
   const bridgeImport = options.devMode ? `import './__preview-bridge'\n` : ''
   const prototypeImport = options.prototypeRuntime ? `import './__prototype-runtime'\n` : ''
-  const routerImport = `import { BrowserRouter, Route, Routes } from 'react-router-dom'\n`
+  const reactImport = options.microfrontend ? `import { useEffect } from 'react'\n` : ''
+  const routerImport = options.microfrontend
+    ? `import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'\n`
+    : `import { BrowserRouter, Route, Routes } from 'react-router-dom'\n`
+  const microfrontendImport = options.microfrontend
+    ? `import { useMicrofrontendRouting } from './__microfrontend-context'\n`
+    : ''
   const analyticsImport = options.analyticsRouteTracking
     ? `import { LowcodeAnalyticsRouteTracker } from './_lowcode_analytics'\n`
     : ''
   const pageImports = infos
     .map((info) => `import ${info.component} from './pages/${info.slug}'`)
     .join('\n')
-  const importBlock = `${bridgeImport}${prototypeImport}${routerImport}${analyticsImport}${pageImports}\n\n`
+  const importBlock = `${bridgeImport}${prototypeImport}${reactImport}${routerImport}${microfrontendImport}${analyticsImport}${pageImports}\n\n`
   const routes = infos
     .map((info) => `        <Route path="${info.route}" element={<${info.component} />} />`)
     .join('\n')
   const analyticsTracker = options.analyticsRouteTracking
     ? `      <LowcodeAnalyticsRouteTracker />\n`
     : ''
-  return `${importBlock}export default function App() {
-  return (
-    <BrowserRouter>
-${analyticsTracker}
+  const locationSynchronizer = options.microfrontend
+    ? `function HostLocationSynchronizer({ hostLocation }: { hostLocation: string }) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const current = \`\${location.pathname}\${location.search}\${location.hash}\`
+
+  useEffect(() => {
+    if (current !== hostLocation) void navigate(hostLocation, { replace: true })
+  }, [current, hostLocation, navigate])
+  return null
+}
+
+`
+    : ''
+  const microfrontendRouting = options.microfrontend
+    ? `  const { basePath, location } = useMicrofrontendRouting()\n`
+    : ''
+  const browserRouterProps = options.microfrontend ? ' basename={basePath}' : ''
+  const locationSync = options.microfrontend
+    ? `      <HostLocationSynchronizer hostLocation={location} />\n`
+    : ''
+  return `${importBlock}${locationSynchronizer}export default function App() {
+${microfrontendRouting}  return (
+    <BrowserRouter${browserRouterProps}>
+${locationSync}${analyticsTracker}
       <Routes>
 ${routes}
       </Routes>

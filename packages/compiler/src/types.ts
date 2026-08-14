@@ -1,5 +1,7 @@
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import type { OpenPencilMicrofrontendAppV1 } from './microfrontend/types'
+
 export interface CompilerInput {
   graph: SceneGraph
   /**
@@ -151,7 +153,23 @@ export interface CompilerOptions {
    * omitted or repositioned at publish time.
    */
   themeSwitch?: boolean | LowcodeThemeSwitchOptions
+  /**
+   * Optional project packaging contract. Unset keeps the legacy standalone
+   * React/Vue project byte-for-byte unchanged. The microfrontend variant adds
+   * a side-effect-free ESM lifecycle entry for an orchestrator-owned build.
+   */
+  packaging?: CompilerPackaging
 }
+
+export interface CompilerMicrofrontendPackaging {
+  kind: 'microfrontend'
+  /** Stable application identity expected from the host lifecycle context. */
+  appId: string
+  /** Optional publisher version surfaced by the generated lifecycle descriptor. */
+  version?: string
+}
+
+export type CompilerPackaging = CompilerMicrofrontendPackaging
 
 /** Phase 3 §15 — supported code-UI-kit identifiers. */
 export type UIKitName = 'shadcn'
@@ -211,4 +229,15 @@ export interface CompilerOutput {
   /** Relative path → file content. Text files use string; binary use Uint8Array. */
   files: Map<string, string | Uint8Array>
   warnings: CompileWarning[]
+  /**
+   * Present only for an explicit microfrontend compile. The build layer must
+   * consume this compiler-owned identity instead of accepting a second set of
+   * caller overrides that could make the manifest disagree with the bundle.
+   */
+  microfrontend?: CompilerMicrofrontendBuildDescriptor
+}
+
+export interface CompilerMicrofrontendBuildDescriptor {
+  app: OpenPencilMicrofrontendAppV1
+  routes: readonly string[]
 }

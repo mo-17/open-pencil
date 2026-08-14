@@ -161,6 +161,19 @@ describe('buildLowcodeStateRuntime (Phase 2 §2)', () => {
     expect(out).toContain("new Event('op-docstore-ready')")
     expect(out).toContain("typeof window !== 'undefined'")
   })
+
+  test('microfrontend state stays module-local and does not publish global runtime events', () => {
+    const decls: IRDocStateDecl[] = [
+      { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
+    ]
+    const out = buildLowcodeStateRuntime(decls, 'shop', { microfrontend: true })
+
+    expect(out).not.toContain('__opDocStore')
+    expect(out).not.toContain('op-docstore-ready')
+    expect(out).not.toContain('__OPENPENCIL_MOTION_DRIVERS__')
+    expect(out).not.toContain('op-motion-drivers-ready')
+    expect(out).toContain('const store = createStore<DocState>(() => initial)')
+  })
 })
 
 describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)', () => {

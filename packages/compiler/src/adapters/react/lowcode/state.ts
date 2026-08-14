@@ -33,7 +33,8 @@ const TS_TYPE_BY_STATE_VALUE_TYPE: Record<IRDocStateDecl['type'], string> = {
  */
 export function buildLowcodeStateRuntime(
   decls: readonly IRDocStateDecl[],
-  packageName = 'app'
+  packageName = 'app',
+  options: { readonly microfrontend?: boolean } = {}
 ): string {
   if (decls.length === 0) return ''
   // Stable order so two compiles of the same scene graph produce identical
@@ -54,7 +55,18 @@ export function buildLowcodeStateRuntime(
 subscribePersistedDocState(store)
 `
       : ''
-  const motionDriverBlock = buildDocumentMotionDriverBlock(sorted)
+  const motionDriverBlock = options.microfrontend ? '' : buildDocumentMotionDriverBlock(sorted)
+  const previewBridgeBlock = options.microfrontend
+    ? ''
+    : `
+// Phase 3 §4.6 — expose the store so the dev-mode preview bridge can mirror
+// runtime docState across collaborators. Harmless in prod (no bridge reads it).
+// The ready event lets the bridge wire up regardless of module eval order.
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { __opDocStore?: unknown }).__opDocStore = store
+  window.dispatchEvent(new Event('op-docstore-ready'))
+}
+`
   const initialFields = sorted
     .map((d) => {
       const value =
@@ -83,14 +95,7 @@ ${initialFields}
 const store = createStore<DocState>(() => initial)
 ${persistSubscribe}
 ${motionDriverBlock}
-
-// Phase 3 §4.6 — expose the store so the dev-mode preview bridge can mirror
-// runtime docState across collaborators. Harmless in prod (no bridge reads it).
-// The ready event lets the bridge wire up regardless of module eval order.
-if (typeof window !== 'undefined') {
-  ;(window as unknown as { __opDocStore?: unknown }).__opDocStore = store
-  window.dispatchEvent(new Event('op-docstore-ready'))
-}
+${previewBridgeBlock}
 
 export function useDocState<K extends keyof DocState>(name: K): DocState[K] {
   return useStore(store, (s) => s[name])

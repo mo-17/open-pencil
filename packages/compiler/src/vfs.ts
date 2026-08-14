@@ -157,7 +157,10 @@ function binaryBuildAssets(files: PreviewFiles): BinaryBuildAsset[] {
   return assets
 }
 
-export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): Plugin {
+export function inMemoryVFS(
+  state: { files: PreviewFiles; inlineBinaryAssets?: boolean; inlineBinaryCSSAssets?: boolean },
+  vfsPrefix: string
+): Plugin {
   return {
     name: 'openpencil-lowcode-vfs',
     enforce: 'pre',
@@ -217,6 +220,9 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
       const content = state.files.get(rel)
       if (content === undefined) return null
       if (typeof content === 'string') return content
+      if (state.inlineBinaryAssets) {
+        return `export default ${JSON.stringify(binaryAssetDataURL(rel, content))}\n`
+      }
       // Imported VFS binaries cannot fall through to Vite's disk asset plugin
       // because no source file exists on disk. Emit a tiny URL module; the
       // middleware serves that stable path in dev and generateBundle writes the
@@ -230,24 +236,35 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
       const assets = binaryBuildAssets(state.files)
       if (assets.length === 0) return
 
-      for (const asset of assets) {
-        this.emitFile({
-          type: 'asset',
-          fileName: asset.outputPath,
-          source: asset.bytes
-        })
+      if (!state.inlineBinaryAssets) {
+        for (const asset of assets) {
+          this.emitFile({
+            type: 'asset',
+            fileName: asset.outputPath,
+            source: asset.bytes
+          })
+        }
       }
 
-      // Tailwind emits image-fill URLs from the virtual src/index.css. Vite
-      // cannot read the referenced bytes from disk, so it leaves those URLs
-      // untouched while moving the built stylesheet under assets/. Keep the
-      // class selector stable, but rewrite each declaration relative to the
-      // final CSS asset and emit the matching bytes beside it.
       for (const output of Object.values(bundle)) {
         if (output.type !== 'asset' || !output.fileName.endsWith('.css')) continue
-        if (typeof output.source !== 'string') continue
-        let css = output.source
+        let source: string | null = null
+        if (typeof output.source === 'string') {
+          source = output.source
+        } else if (output.source instanceof Uint8Array) {
+          source = new TextDecoder().decode(output.source)
+        }
+        if (source === null) continue
+        let css = source
         for (const asset of assets) {
+          if (state.inlineBinaryCSSAssets) {
+            const runtimeURL = binaryAssetDataURL(asset.outputPath, asset.bytes)
+            const authoredURL = `./assets/${posix.basename(asset.outputPath)}`
+            css = css.replaceAll(asset.sourceUrl, runtimeURL)
+            css = css.replaceAll(authoredURL, runtimeURL)
+            css = css.replaceAll(authoredURL.replaceAll('/', '\\/'), runtimeURL)
+            continue
+          }
           const relative = posix.relative(posix.dirname(output.fileName), asset.outputPath)
           const runtimeURL = relative.startsWith('.') ? relative : `./${relative}`
           css = css.replaceAll(asset.sourceUrl, runtimeURL)
@@ -287,6 +304,10 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
       })
     }
   }
+}
+
+function binaryAssetDataURL(path: string, bytes: Uint8Array): string {
+  return `data:${contentTypeForPath(path)};base64,${Buffer.from(bytes).toString('base64')}`
 }
 
 function lookupBinaryAsset(

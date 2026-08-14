@@ -15,6 +15,7 @@ import importCmd from './commands/import'
 import info from './commands/info'
 import library from './commands/library'
 import lint from './commands/lint'
+import microfrontend from './commands/microfrontend'
 import motion from './commands/motion'
 import node from './commands/node'
 import pages from './commands/pages'
@@ -48,6 +49,7 @@ const main = defineCommand({
     library,
     lint,
     motion,
+    microfrontend,
     query,
     node,
     pages,

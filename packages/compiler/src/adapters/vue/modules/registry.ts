@@ -101,7 +101,8 @@ export function collectVueModuleProject(
 
 export function emitVueModuleRuntimes(
   files: Map<string, string | Uint8Array>,
-  contribution: VueModuleProjectContribution
+  contribution: VueModuleProjectContribution,
+  options: { microfrontend?: boolean } = {}
 ): void {
   if (contribution.usesLayerRuntime) {
     if (files.has(VUE_LAYER_RUNTIME_PATH)) {
@@ -115,6 +116,6 @@ export function emitVueModuleRuntimes(
     if (files.has(adapter.runtimePath)) {
       throw new Error(`Vue module runtime would overwrite generated file: ${adapter.runtimePath}`)
     }
-    files.set(adapter.runtimePath, adapter.buildRuntime())
+    files.set(adapter.runtimePath, adapter.buildRuntime(options))
   }
 }
