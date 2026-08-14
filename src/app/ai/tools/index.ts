@@ -7,6 +7,7 @@ import { CORE_TOOLS, toolsToAI } from '@open-pencil/core/tools'
 import type { StepBudget, ToolLogEntry } from '@open-pencil/core/tools'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
+import { createCodePenAITools, getCodePenAIManager } from '@/app/codepen/ai/tools'
 import { saveMotionAnimationResult } from '@/app/document/export/motion/use-motion-animation-export'
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import type { EditorStore } from '@/app/editor/active-store'
@@ -272,9 +273,11 @@ export function createAITools(store: EditorStore) {
   let activeMutation: MutationTransaction | undefined
   let lastSuccessfulSnapshot: SuccessfulSnapshot | undefined
   const runState = getRunState(store)
+  const codePenManager = getCodePenAIManager(store)
+  const toolDefinitions = [...CORE_TOOLS, ...createCodePenAITools(store)]
 
   return toolsToAI(
-    CORE_TOOLS,
+    toolDefinitions,
     {
       mutationKey: store,
       getFigma: () => makeFigmaFromStore(store),
@@ -289,6 +292,11 @@ export function createAITools(store: EditorStore) {
         return undefined
       },
       onBeforeExecute: (def, { args, signal }) => {
+        if (def.mutates && codePenManager.hasActiveReconstruction()) {
+          throw new Error(
+            'Live-document mutation tools are disabled while a CodePen shadow reconstruction is active. Seal, review, or discard the shadow draft first.'
+          )
+        }
         if (def.mutates && !NON_GRAPH_MUTATION_TOOLS.has(def.name) && !signal?.aborted) {
           const { pageId, scope } = resolveEditorMutationScope(store, args, {
             forceDocument: DOCUMENT_SCOPE_TOOLS.has(def.name)

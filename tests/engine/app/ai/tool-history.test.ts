@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { createAITools, resetRunSteps } from '@/app/ai/tools'
+import { createCodePenStaticEvidence, getCodePenAIManager } from '@/app/codepen'
 import { createEditorStore } from '@/app/editor/session'
 
 type ExecutableTool = {
@@ -27,6 +28,38 @@ function executable(tools: ReturnType<typeof createAITools>, name: string): Exec
 }
 
 describe('AI tool history', () => {
+  test('blocks live mutation tools while a CodePen shadow reconstruction is active', async () => {
+    const store = createEditorStore()
+    store.aiFlashDone = () => undefined
+    const manager = getCodePenAIManager(store)
+    const evidence = await createCodePenStaticEvidence({
+      penURL: 'https://codepen.io/openpencil/pen/safeshadow',
+      sources: {
+        html: '<main><h1>Reference</h1></main>',
+        css: 'main { display: block; }',
+        js: ''
+      }
+    })
+    const registered = await manager.registerEvidence(evidence)
+    const draft = await manager.createShadowDraft(registered.evidenceDigest)
+    const render = executable(createAITools(store), 'render')
+
+    await expect(
+      render.execute({ jsx: '<Rectangle name="Must stay detached" w={100} h={80} />' })
+    ).resolves.toEqual({
+      error:
+        'Live-document mutation tools are disabled while a CodePen shadow reconstruction is active. Seal, review, or discard the shadow draft first.'
+    })
+    expect(store.graph.getNode(store.state.currentPageId)?.childIds).toEqual([])
+
+    await manager.discardShadowDraft({
+      draftId: draft.draftId,
+      evidenceDigest: draft.evidenceDigest
+    })
+    await render.execute({ jsx: '<Rectangle name="Allowed after discard" w={100} h={80} />' })
+    expect(store.graph.getNode(store.state.currentPageId)?.childIds).toHaveLength(1)
+  })
+
   test('coalesces all mutating tools in one model turn into one page snapshot entry', async () => {
     const store = createEditorStore()
     store.aiFlashDone = () => undefined

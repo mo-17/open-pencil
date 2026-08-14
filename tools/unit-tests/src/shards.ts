@@ -7,13 +7,14 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 export const UNIT_TEST_GROUPS = {
   app: [
     'tests/engine/acp',
+    'tests/engine/ai',
     'tests/engine/app',
     'tests/engine/cli',
     'tests/engine/marketplace',
     'tests/engine/plugins',
     'tests/engine/tauri'
   ],
-  compiler: ['tests/engine/compiler'],
+  compiler: ['tests/engine/compiler', 'packages/codepen-sidecar/tests'],
   'compiler-browser': ['tests/engine/compiler/preview'],
   dom: [
     'tests/engine/docs',

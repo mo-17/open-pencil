@@ -5,6 +5,7 @@
   "ignoreUnresolved": [
     "~icons/*",
     "/src/app/editor/fonts/index.ts",
+    "/src/app/codepen/visual-compare.ts",
     "/src/app/plugins/index.ts",
     "/src/app/plugins/app.ts",
     "#core/*"

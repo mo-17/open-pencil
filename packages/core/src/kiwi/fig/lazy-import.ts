@@ -43,6 +43,11 @@ export function getLazyFigImportContext(graph: SceneGraph): LazyFigImportContext
   return lazyFigImportContexts.get(graph)
 }
 
+/** Drop detached import state when a host atomically replaces every graph collection. */
+export function clearLazyFigImportContext(graph: SceneGraph): void {
+  lazyFigImportContexts.delete(graph)
+}
+
 function applyPopulation(
   graph: SceneGraph,
   context: LazyFigImportContext,

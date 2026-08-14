@@ -86,6 +86,11 @@
       "import": "./dist/tools/index.js",
       "default": "./dist/tools/index.js"
     },
+    "./ai-draft": {
+      "types": "./dist/ai-draft/index.d.ts",
+      "import": "./dist/ai-draft/index.js",
+      "default": "./dist/ai-draft/index.js"
+    },
     "./profiler": {
       "types": "./dist/profiler/index.d.ts",
       "import": "./dist/profiler/index.js",
