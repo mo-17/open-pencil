@@ -27,6 +27,7 @@ import {
   type CreateAppPluginStoreOptions,
   type PersistedAppPluginStateV2
 } from '@/app/plugins'
+import { AI_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_PLUGIN_ID } from '@/app/plugins/host/ids'
 
 import { pluginPayload } from '#tests/engine/plugins/helpers'
 
@@ -98,7 +99,7 @@ describe('app plugin store', () => {
 
     const loaded = await store.load()
     expect(loaded.error).toBeNull()
-    expect(loaded.installed).toHaveLength(2)
+    expect(loaded.installed).toHaveLength(4)
     expect(
       loaded.installed.find(({ package: value }) => value.manifest.plugin.id === MAP_PLUGIN_ID)
     ).toMatchObject({
@@ -108,6 +109,16 @@ describe('app plugin store', () => {
     expect(
       loaded.installed.find(
         ({ package: value }) => value.manifest.plugin.id === GOOGLE_DRIVE_STORAGE_PLUGIN_ID
+      )
+    ).toMatchObject({ enabled: true })
+    expect(
+      loaded.installed.find(
+        ({ package: value }) => value.manifest.plugin.id === COMPILER_PREVIEW_POPOUT_PLUGIN_ID
+      )
+    ).toMatchObject({ enabled: true })
+    expect(
+      loaded.installed.find(
+        ({ package: value }) => value.manifest.plugin.id === AI_POPOUT_PLUGIN_ID
       )
     ).toMatchObject({ enabled: true })
     expect(store.canCreateModule(MAP_PLUGIN_ID, MAP_MODULE_TYPE)).toBe(true)
@@ -138,13 +149,23 @@ describe('app plugin store', () => {
     await store.uninstall(CHART_PLUGIN_ID)
     expect(
       store.snapshot().installed.map(({ package: value }) => value.manifest.plugin.id)
-    ).toEqual([GOOGLE_DRIVE_STORAGE_PLUGIN_ID, MAP_PLUGIN_ID])
+    ).toEqual([
+      AI_POPOUT_PLUGIN_ID,
+      COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      MAP_PLUGIN_ID
+    ])
 
     const reloaded = createAppPluginStore({ storage, catalog, engineVersion: ENGINE_VERSION })
     await reloaded.load()
     expect(
       reloaded.snapshot().installed.map(({ package: value }) => value.manifest.plugin.id)
-    ).toEqual([GOOGLE_DRIVE_STORAGE_PLUGIN_ID, MAP_PLUGIN_ID])
+    ).toEqual([
+      AI_POPOUT_PLUGIN_ID,
+      COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      MAP_PLUGIN_ID
+    ])
   })
 
   test('migrates an unpinned app-bundle digest without changing installed or enabled state', async () => {
@@ -305,8 +326,11 @@ describe('app plugin store', () => {
     const loaded = await store.load()
     expect(loaded.error?.message).toContain('unsupported schema version')
     expect(loaded.recordIssues).toEqual([{ pluginId: MAP_PLUGIN_ID, kind: 'unsupported-schema' }])
-    expect(loaded.installed).toHaveLength(1)
-    expect(loaded.installed[0]?.package.manifest.plugin.id).toBe(GOOGLE_DRIVE_STORAGE_PLUGIN_ID)
+    expect(loaded.installed.map(({ package: value }) => value.manifest.plugin.id)).toEqual([
+      AI_POPOUT_PLUGIN_ID,
+      COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      GOOGLE_DRIVE_STORAGE_PLUGIN_ID
+    ])
 
     const reset = await store.resetLocalState(MAP_PLUGIN_ID)
     expect(reset.error).toBeNull()
@@ -402,8 +426,11 @@ describe('app plugin store', () => {
     const loaded = await store.load()
 
     expect(loaded.error).toBeNull()
-    expect(loaded.installed).toHaveLength(1)
-    expect(loaded.installed[0]?.package.manifest.plugin.id).toBe(GOOGLE_DRIVE_STORAGE_PLUGIN_ID)
+    expect(loaded.installed.map(({ package: value }) => value.manifest.plugin.id)).toEqual([
+      AI_POPOUT_PLUGIN_ID,
+      COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      GOOGLE_DRIVE_STORAGE_PLUGIN_ID
+    ])
     expect(store.canCreateModule(MAP_PLUGIN_ID, MAP_MODULE_TYPE)).toBe(false)
   })
 

@@ -51,7 +51,10 @@ import {
   type PreviewCompileSchedulerState,
   type PreviewRefreshPolicy
 } from './compile-scheduler'
+import { parsePreviewSidecarReady, type PreviewSidecarReady } from './sidecar-ready'
 import { createPreviewStartupEventBuffer, waitForPreviewUpdateAck } from './update-ack'
+
+export { parsePreviewSidecarReady, type PreviewSidecarReady } from './sidecar-ready'
 
 interface SidecarReadyEvent {
   type: 'ready'
@@ -118,12 +121,29 @@ export function previewCompilerOverrides(
 
 interface PreviewSidecar {
   url: string
+  port: number
+  readonly terminal: Promise<{ code: number | null; message: string }>
+  isAlive(): boolean
   update(files: Map<string, string | Uint8Array>): Promise<void>
   dispose(): Promise<void>
 }
 
 export function previewSidecarCommandArgs(projectRoot: string, target: PreviewTarget): string[] {
   return [SIDECAR_ENTRY, '--root', projectRoot, '--target', target]
+}
+
+function parsePreviewSidecarEvent(line: string): SidecarEvent {
+  const value: unknown = JSON.parse(line)
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Preview sidecar event must be an object')
+  }
+  const type = (value as { type?: unknown }).type
+  if (type === 'ready') return { type, ...parsePreviewSidecarReady(value) }
+  if (type === 'updated' || type === 'closing') return { type }
+  if (type === 'error' && typeof (value as { message?: unknown }).message === 'string') {
+    return { type, message: (value as { message: string }).message }
+  }
+  throw new Error('Unsupported preview sidecar event')
 }
 
 async function startPreviewSidecar(target: PreviewTarget): Promise<PreviewSidecar> {
@@ -137,9 +157,26 @@ async function startPreviewSidecar(target: PreviewTarget): Promise<PreviewSideca
   let stdoutBuffer = ''
   const stderrTail: string[] = []
   const listeners = new Set<(event: SidecarEvent) => void>()
-  let exited = false
-  let exitCode: number | null = null
+  const processState: {
+    closed: boolean
+    unhealthy: boolean
+    exitCode: number | null
+    terminalMessage: string | null
+  } = { closed: false, unhealthy: false, exitCode: null, terminalMessage: null }
+  let resolveTerminal: (value: { code: number | null; message: string }) => void = NOOP
+  const terminal = new Promise<{ code: number | null; message: string }>((resolve) => {
+    resolveTerminal = resolve
+  })
   const startupEvents = createPreviewStartupEventBuffer()
+  const processIsClosed = (): boolean => processState.closed
+  const processIsAlive = (): boolean => !processState.closed && !processState.unhealthy
+
+  const settleTerminal = (message: string, code: number | null): void => {
+    processState.unhealthy = true
+    if (processState.terminalMessage !== null) return
+    processState.terminalMessage = message
+    resolveTerminal({ code, message })
+  }
 
   const dispatch = (event: SidecarEvent): void => {
     startupEvents.capture(event)
@@ -156,7 +193,7 @@ async function startPreviewSidecar(target: PreviewTarget): Promise<PreviewSideca
       nl = stdoutBuffer.indexOf('\n')
       if (!line) continue
       try {
-        dispatch(JSON.parse(line) as SidecarEvent)
+        dispatch(parsePreviewSidecarEvent(line))
       } catch (e) {
         console.warn('[preview] non-JSON stdout:', line, e)
       }
@@ -175,9 +212,15 @@ async function startPreviewSidecar(target: PreviewTarget): Promise<PreviewSideca
   })
 
   command.on('close', (data: { code: number | null }) => {
-    exited = true
-    exitCode = data.code
-    dispatch({ type: 'error', message: `dev-server exited (code ${data.code ?? 'null'})` })
+    processState.closed = true
+    processState.exitCode = data.code
+    const message = `dev-server exited (code ${data.code ?? 'null'})`
+    settleTerminal(message, data.code)
+    dispatch({ type: 'error', message })
+  })
+  command.on('error', (message: string) => {
+    settleTerminal(message, null)
+    dispatch({ type: 'error', message })
   })
 
   let child: Awaited<ReturnType<typeof command.spawn>>
@@ -190,52 +233,97 @@ async function startPreviewSidecar(target: PreviewTarget): Promise<PreviewSideca
     throw new Error(`${e instanceof Error ? e.message : String(e)} — ${hint}`)
   }
 
-  const ready = await new Promise<SidecarReadyEvent>((resolve, reject) => {
-    const fail = (msg: string): void => {
-      clearTimeout(timer)
-      listeners.delete(handle)
-      const stderr = stderrTail.join('').trim()
-      reject(new Error(stderr ? `${msg}\n--- stderr ---\n${stderr}` : msg))
-    }
-    const timer = setTimeout(() => {
-      if (exited) {
-        fail(`dev-server exited (code ${exitCode ?? 'null'}) before ready`)
-      } else {
-        fail(`Preview server did not become ready within ${READY_TIMEOUT_MS}ms`)
-      }
-    }, READY_TIMEOUT_MS)
-    const handle = (event: SidecarEvent): void => {
-      if (event.type === 'ready') {
+  let ready: PreviewSidecarReady
+  try {
+    ready = await new Promise<PreviewSidecarReady>((resolve, reject) => {
+      const fail = (msg: string): void => {
         clearTimeout(timer)
         listeners.delete(handle)
-        resolve(event)
-      } else if (event.type === 'error') {
-        fail(event.message)
+        const stderr = stderrTail.join('').trim()
+        reject(new Error(stderr ? `${msg}\n--- stderr ---\n${stderr}` : msg))
+      }
+      const timer = setTimeout(() => {
+        if (processIsClosed()) {
+          fail(`dev-server exited (code ${processState.exitCode ?? 'null'}) before ready`)
+        } else {
+          fail(`Preview server did not become ready within ${READY_TIMEOUT_MS}ms`)
+        }
+      }, READY_TIMEOUT_MS)
+      const handle = (event: SidecarEvent): void => {
+        if (event.type === 'ready') {
+          try {
+            const parsed = parsePreviewSidecarReady(event)
+            clearTimeout(timer)
+            listeners.delete(handle)
+            resolve(parsed)
+          } catch (cause) {
+            fail(cause instanceof Error ? cause.message : String(cause))
+          }
+        } else if (event.type === 'error') {
+          fail(event.message)
+        }
+      }
+      listeners.add(handle)
+      startupEvents.replay(handle)
+    })
+    if (!processIsAlive()) {
+      throw new Error(
+        processState.terminalMessage ?? 'Preview sidecar stopped before startup completed'
+      )
+    }
+  } catch (error) {
+    if (!processIsClosed()) {
+      try {
+        await child.kill()
+      } catch (killError) {
+        console.warn('[preview] startup cleanup failed:', killError)
       }
     }
-    listeners.add(handle)
-    startupEvents.replay(handle)
-  })
-  startupEvents.settle()
+    throw error
+  } finally {
+    startupEvents.settle()
+  }
 
   const encodeCache = createPreviewFileEncodeCache()
   let updateQueue: Promise<void> = Promise.resolve()
   let disposed = false
   return {
     url: ready.url,
+    port: ready.port,
+    terminal,
+    isAlive: () => !disposed && processIsAlive(),
     async update(files: Map<string, string | Uint8Array>): Promise<void> {
       if (disposed) return
       const pending = updateQueue.then(async () => {
         if (disposed) return undefined
+        if (!processIsAlive()) {
+          throw new Error(processState.terminalMessage ?? 'Preview sidecar is not running')
+        }
         const acknowledgement = waitForPreviewUpdateAck(listeners)
         try {
           const serializable = serializePreviewFiles(files, encodeCache)
           const line = JSON.stringify({ type: 'update', files: serializable }) + '\n'
           await child.write(line)
           await acknowledgement.promise
+          if (!processIsAlive()) {
+            throw new Error(
+              processState.terminalMessage ?? 'Preview sidecar stopped after the update'
+            )
+          }
           return undefined
         } catch (cause) {
           resetPreviewFileEncodeCache(encodeCache)
+          settleTerminal(
+            cause instanceof Error ? cause.message : 'Preview sidecar update failed',
+            processState.exitCode
+          )
+          if (!processIsClosed()) {
+            try {
+              await child.kill()
+            } catch (killError) {
+              console.warn('[preview] update failure cleanup failed:', killError)
+            }
+          }
           throw cause
         } finally {
           acknowledgement.cancel()
@@ -265,7 +353,7 @@ async function startPreviewSidecar(target: PreviewTarget): Promise<PreviewSideca
 export type PreviewStatus =
   | { kind: 'idle' }
   | { kind: 'starting' }
-  | { kind: 'ready'; url: string }
+  | { kind: 'ready'; url: string; port: number }
   | { kind: 'error'; message: string }
   | { kind: 'disabled'; reason: string }
 
@@ -367,6 +455,23 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
         console.warn(`[preview] ${w.code}: ${w.message}`)
       }
       await activeSidecar.update(out.files)
+      if (!request.isCurrent() || sidecar !== activeSidecar) {
+        return 'superseded' as const
+      }
+      if (!activeSidecar.isAlive()) {
+        throw new Error('Preview sidecar stopped before the initial preview was ready')
+      }
+      // Do not mount the iframe while the sidecar still has an empty VFS.
+      // A first request made before this acknowledged push receives Vite's
+      // disk 404 page, which has no HMR client and therefore cannot observe
+      // the full-reload emitted by the initial update.
+      if (status.value.kind !== 'ready' || status.value.port !== activeSidecar.port) {
+        status.value = {
+          kind: 'ready',
+          url: activeSidecar.url,
+          port: activeSidecar.port
+        }
+      }
       return 'pushed' as const
     } catch (e) {
       if (!request.isCurrent()) return 'superseded' as const
@@ -375,6 +480,9 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
       compileError.value = message
       motionWarnings.value = []
       motionCompileError.value = message
+      if (status.value.kind === 'starting' && sidecar === activeSidecar) {
+        status.value = { kind: 'error', message }
+      }
       console.warn('[preview] compile failed:', e)
       return 'failed' as const
     }
@@ -402,7 +510,15 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
         await handle.dispose()
       } else {
         sidecar = handle
-        status.value = { kind: 'ready', url: handle.url }
+        void handle.terminal.then((terminal) => {
+          if (cancelled || generation !== sidecarGeneration || sidecar !== handle) return undefined
+          sidecar = null
+          status.value = { kind: 'error', message: terminal.message }
+          return undefined
+        })
+        // `compileAndPush` promotes this launch to ready only after the first
+        // VFS update is acknowledged, so the iframe never mounts against the
+        // sidecar's intentionally empty startup state.
         scheduler.requestInitial()
       }
     } catch (e: unknown) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { useSceneComputed } from '@open-pencil/vue'
@@ -10,6 +11,11 @@ import {
 } from '@/app/editor/active-store'
 import { openExternalLink } from '@/app/shell/ui'
 import Tip from '@/components/ui/Tip.vue'
+
+const { iconOnly = false, showIcon = false } = defineProps<{
+  iconOnly?: boolean
+  showIcon?: boolean
+}>()
 
 import {
   deployArtifactLabel,
@@ -119,9 +125,9 @@ const targetPlaceholder = computed(() => {
   return 'existing site id / subdomain'
 })
 
-function toggle(): void {
-  open.value = !open.value
-  if (!open.value) {
+function setOpen(nextOpen: boolean): void {
+  open.value = nextOpen
+  if (!nextOpen) {
     token.value = ''
     reset()
     return
@@ -130,6 +136,12 @@ function toggle(): void {
   targetPresets.value = readDeployTargetPresets(currentDocumentScope())
   applyEnvironmentPreset(environment.value)
 }
+
+function openDeploy(): void {
+  setOpen(true)
+}
+
+defineExpose({ openDeploy })
 
 function currentBuildOptions() {
   return deployBuildOptionsSnapshot({
@@ -296,318 +308,323 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative">
-    <Tip label="Deploy">
+  <PopoverRoot :open="open" @update:open="setOpen">
+    <PopoverTrigger as-child>
       <button
         type="button"
         data-test-id="lowcode-deploy-toggle"
-        class="rounded px-2 py-0.5 text-xs text-muted hover:bg-hover hover:text-surface"
-        @click="toggle"
+        aria-label="Deploy"
+        class="flex h-7 shrink-0 items-center gap-1 rounded px-2 text-xs text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent"
       >
-        Deploy
+        <icon-lucide-rocket v-if="showIcon || iconOnly" class="size-3.5" />
+        <span v-if="!iconOnly">Deploy</span>
       </button>
-    </Tip>
+    </PopoverTrigger>
 
-    <div
-      v-if="open"
-      class="absolute right-0 top-7 z-10 w-64 rounded border border-border bg-panel p-3 shadow-lg"
-      data-test-id="lowcode-deploy-panel"
-    >
-      <label class="mb-1 block text-xs text-muted">Provider</label>
-      <select
-        v-model="provider"
-        data-test-id="lowcode-deploy-provider"
-        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
-        :disabled="status.kind === 'deploying'"
+    <PopoverPortal>
+      <PopoverContent
+        class="z-[120] max-h-[calc(100vh-4rem)] w-64 overflow-y-auto rounded border border-border bg-panel p-3 shadow-lg"
+        data-test-id="lowcode-deploy-panel"
+        :side-offset="6"
+        side="bottom"
+        align="end"
       >
-        <option value="netlify">Netlify</option>
-        <option value="vercel">Vercel</option>
-        <option value="cloudflare">Cloudflare</option>
-      </select>
-
-      <label class="mb-1 block text-xs text-muted">Environment</label>
-      <select
-        v-model="environment"
-        data-test-id="lowcode-deploy-environment"
-        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
-        :disabled="status.kind === 'deploying'"
-      >
-        <option value="preview">Preview</option>
-        <option value="staging">Staging</option>
-        <option value="production">Production</option>
-      </select>
-
-      <details class="mb-2 rounded border border-border px-2 py-1.5">
-        <summary class="cursor-pointer text-xs text-muted">Runtime overrides</summary>
-        <p class="mt-1 text-[10px] text-muted">
-          Leave blank to use the design-time Supabase configuration.
-        </p>
-        <p
-          v-if="designSupabaseConfig"
-          class="mt-1 truncate font-mono text-[10px] text-muted"
-          data-test-id="lowcode-deploy-runtime-fallback"
+        <label class="mb-1 block text-xs text-muted">Provider</label>
+        <select
+          v-model="provider"
+          data-test-id="lowcode-deploy-provider"
+          class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
+          :disabled="status.kind === 'deploying'"
         >
-          Fallback: {{ designSupabaseConfig.url }} ·
-          {{ designSupabaseConfig.schema || 'public' }}
-        </p>
-        <label class="mb-1 mt-2 block text-[11px] text-muted">Supabase URL</label>
-        <input
-          v-model="supabaseURL"
-          type="url"
-          data-test-id="lowcode-deploy-supabase-url"
-          placeholder="https://project.supabase.co"
-          spellcheck="false"
-          autocomplete="off"
-          class="mb-1.5 w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
+          <option value="netlify">Netlify</option>
+          <option value="vercel">Vercel</option>
+          <option value="cloudflare">Cloudflare</option>
+        </select>
+
+        <label class="mb-1 block text-xs text-muted">Environment</label>
+        <select
+          v-model="environment"
+          data-test-id="lowcode-deploy-environment"
+          class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
           :disabled="status.kind === 'deploying'"
-        />
-        <label class="mb-1 block text-[11px] text-muted">Publishable / anon key</label>
-        <input
-          v-model="supabaseAnonKey"
-          type="password"
-          data-test-id="lowcode-deploy-supabase-anon-key"
-          placeholder="sb_publishable_… or anon JWT"
-          spellcheck="false"
-          autocomplete="off"
-          class="mb-1.5 w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
+        >
+          <option value="preview">Preview</option>
+          <option value="staging">Staging</option>
+          <option value="production">Production</option>
+        </select>
+
+        <details class="mb-2 rounded border border-border px-2 py-1.5">
+          <summary class="cursor-pointer text-xs text-muted">Runtime overrides</summary>
+          <p class="mt-1 text-[10px] text-muted">
+            Leave blank to use the design-time Supabase configuration.
+          </p>
+          <p
+            v-if="designSupabaseConfig"
+            class="mt-1 truncate font-mono text-[10px] text-muted"
+            data-test-id="lowcode-deploy-runtime-fallback"
+          >
+            Fallback: {{ designSupabaseConfig.url }} ·
+            {{ designSupabaseConfig.schema || 'public' }}
+          </p>
+          <label class="mb-1 mt-2 block text-[11px] text-muted">Supabase URL</label>
+          <input
+            v-model="supabaseURL"
+            type="url"
+            data-test-id="lowcode-deploy-supabase-url"
+            placeholder="https://project.supabase.co"
+            spellcheck="false"
+            autocomplete="off"
+            class="mb-1.5 w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
+            :disabled="status.kind === 'deploying'"
+          />
+          <label class="mb-1 block text-[11px] text-muted">Publishable / anon key</label>
+          <input
+            v-model="supabaseAnonKey"
+            type="password"
+            data-test-id="lowcode-deploy-supabase-anon-key"
+            placeholder="sb_publishable_… or anon JWT"
+            spellcheck="false"
+            autocomplete="off"
+            class="mb-1.5 w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
+            :disabled="status.kind === 'deploying'"
+          />
+          <label class="mb-1 block text-[11px] text-muted">Database schema</label>
+          <input
+            v-model="supabaseSchema"
+            type="text"
+            data-test-id="lowcode-deploy-supabase-schema"
+            placeholder="public"
+            spellcheck="false"
+            autocomplete="off"
+            class="w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
+            :disabled="status.kind === 'deploying'"
+          />
+          <p
+            v-if="runtimeError"
+            role="alert"
+            data-test-id="lowcode-deploy-runtime-error"
+            class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+          >
+            {{ runtimeError }}
+          </p>
+        </details>
+
+        <label class="mb-1 block text-xs text-muted">UI components</label>
+        <select
+          v-model="uiKit"
+          data-test-id="lowcode-deploy-uikit"
+          class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
           :disabled="status.kind === 'deploying'"
-        />
-        <label class="mb-1 block text-[11px] text-muted">Database schema</label>
+        >
+          <option value="none">Tailwind (self-contained)</option>
+          <option value="shadcn">shadcn/ui</option>
+        </select>
+
+        <label class="mb-2 flex items-center gap-2 text-xs text-muted">
+          <input
+            v-model="i18nEnabled"
+            type="checkbox"
+            data-test-id="lowcode-deploy-i18n"
+            :disabled="status.kind === 'deploying'"
+          />
+          Multi-language (i18n)
+        </label>
         <input
-          v-model="supabaseSchema"
+          v-if="i18nEnabled"
+          v-model="localesInput"
           type="text"
-          data-test-id="lowcode-deploy-supabase-schema"
-          placeholder="public"
-          spellcheck="false"
-          autocomplete="off"
-          class="w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
+          data-test-id="lowcode-deploy-locales"
+          placeholder="target locales, e.g. ar, fr, ja"
+          class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
           :disabled="status.kind === 'deploying'"
+          @keydown.enter="submit"
         />
-        <p
-          v-if="runtimeError"
-          role="alert"
-          data-test-id="lowcode-deploy-runtime-error"
-          class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
-        >
-          {{ runtimeError }}
-        </p>
-      </details>
 
-      <label class="mb-1 block text-xs text-muted">UI components</label>
-      <select
-        v-model="uiKit"
-        data-test-id="lowcode-deploy-uikit"
-        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
-        :disabled="status.kind === 'deploying'"
-      >
-        <option value="none">Tailwind (self-contained)</option>
-        <option value="shadcn">shadcn/ui</option>
-      </select>
-
-      <label class="mb-2 flex items-center gap-2 text-xs text-muted">
+        <label class="mb-1 block text-xs text-muted">{{ tokenLabel }}</label>
         <input
-          v-model="i18nEnabled"
-          type="checkbox"
-          data-test-id="lowcode-deploy-i18n"
+          v-model="token"
+          type="password"
+          data-test-id="lowcode-deploy-token"
+          placeholder="Personal access token"
+          class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
           :disabled="status.kind === 'deploying'"
+          @keydown.enter="submit"
         />
-        Multi-language (i18n)
-      </label>
-      <input
-        v-if="i18nEnabled"
-        v-model="localesInput"
-        type="text"
-        data-test-id="lowcode-deploy-locales"
-        placeholder="target locales, e.g. ar, fr, ja"
-        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
-        :disabled="status.kind === 'deploying'"
-        @keydown.enter="submit"
-      />
+        <label class="mb-1 block text-xs text-muted">{{ targetLabel }}</label>
+        <input
+          v-model="site"
+          type="text"
+          data-test-id="lowcode-deploy-site"
+          :placeholder="targetPlaceholder"
+          class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
+          :disabled="status.kind === 'deploying'"
+          @keydown.enter="submit"
+        />
 
-      <label class="mb-1 block text-xs text-muted">{{ tokenLabel }}</label>
-      <input
-        v-model="token"
-        type="password"
-        data-test-id="lowcode-deploy-token"
-        placeholder="Personal access token"
-        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
-        :disabled="status.kind === 'deploying'"
-        @keydown.enter="submit"
-      />
-      <label class="mb-1 block text-xs text-muted">{{ targetLabel }}</label>
-      <input
-        v-model="site"
-        type="text"
-        data-test-id="lowcode-deploy-site"
-        :placeholder="targetPlaceholder"
-        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
-        :disabled="status.kind === 'deploying'"
-        @keydown.enter="submit"
-      />
-
-      <button
-        type="button"
-        data-test-id="lowcode-deploy-save-target"
-        class="mb-2 w-full rounded border border-border px-2 py-1 text-xs text-muted hover:bg-hover hover:text-surface"
-        :disabled="status.kind === 'deploying'"
-        @click="saveCurrentTarget"
-      >
-        Save {{ environment }} target
-      </button>
-
-      <p
-        v-if="targetNotice"
-        class="mb-2 break-words text-[11px] text-muted"
-        data-test-id="lowcode-deploy-target-preset"
-      >
-        {{ targetNotice }}
-      </p>
-
-      <button
-        type="button"
-        data-test-id="lowcode-deploy-submit"
-        class="w-full rounded bg-accent px-2 py-1 text-xs text-white hover:opacity-90 disabled:opacity-50"
-        :disabled="status.kind === 'deploying'"
-        @click="submit"
-      >
-        {{ status.kind === 'deploying' ? 'Deploying…' : 'Build & Deploy' }}
-      </button>
-
-      <p
-        v-if="rollbackNotice"
-        class="mt-2 break-words text-xs text-muted"
-        data-test-id="lowcode-deploy-rollback-draft"
-      >
-        {{ rollbackNotice }}
-      </p>
-
-      <p
-        v-if="status.kind === 'done'"
-        class="mt-2 text-xs text-muted"
-        data-test-id="lowcode-deploy-done"
-      >
-        ✓ Deployed —
-        <button type="button" class="text-accent underline" @click="openDeployed(status.url)">
-          open site
-        </button>
-        <span class="block">
-          {{ status.result.environment }} · {{ status.result.provider }} ·
-          {{ status.result.deployId }}
-        </span>
-      </p>
-      <div
-        v-if="status.kind === 'done' && status.result.serverDeployment"
-        class="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-muted"
-        data-test-id="lowcode-deploy-server-manual"
-      >
-        <div class="font-medium text-surface">Manual server deployment required</div>
-        <p class="mt-1 break-words">{{ status.result.serverDeployment.warning }}</p>
-        <p class="mt-1 break-all font-mono text-[10px]">
-          Artifact: {{ status.result.serverDeployment.artifactDirectory }}
-        </p>
-        <ol class="mt-1 list-decimal space-y-1 pl-4">
-          <li v-for="command in status.result.serverDeployment.commands" :key="command">
-            <code class="select-all break-all text-[10px] text-surface">{{ command }}</code>
-          </li>
-        </ol>
-      </div>
-      <p
-        v-else-if="status.kind === 'error'"
-        class="mt-2 break-words text-xs text-red-500"
-        data-test-id="lowcode-deploy-error"
-      >
-        {{ status.message }}
-      </p>
-
-      <div
-        v-if="runtimeAudit && runtimeAudit.issues.length > 0"
-        class="mt-2 rounded border border-border px-2 py-1 text-[11px] text-muted"
-        data-test-id="lowcode-deploy-runtime-audit"
-      >
-        <div class="font-medium text-surface">Runtime preflight</div>
-        <ul class="mt-1 list-disc space-y-0.5 pl-4">
-          <li
-            v-for="issue in runtimeAudit.issues"
-            :key="issue.code"
-            :class="issue.severity === 'error' ? 'text-red-500' : ''"
-          >
-            {{ issue.message }}
-          </li>
-        </ul>
-      </div>
-
-      <div v-if="history.length > 0" class="mt-3 border-t border-border pt-2">
-        <div class="mb-1 text-[11px] font-medium text-muted">Recent deploys</div>
-        <ul
-          class="flex max-h-32 flex-col gap-1 overflow-y-auto"
-          data-test-id="lowcode-deploy-history"
+        <button
+          type="button"
+          data-test-id="lowcode-deploy-save-target"
+          class="mb-2 w-full rounded border border-border px-2 py-1 text-xs text-muted hover:bg-hover hover:text-surface"
+          :disabled="status.kind === 'deploying'"
+          @click="saveCurrentTarget"
         >
-          <li
-            v-for="entry in history"
-            :key="entry.id"
-            class="rounded border border-border px-2 py-1 text-[11px] text-muted"
-            data-test-id="lowcode-deploy-history-item"
+          Save {{ environment }} target
+        </button>
+
+        <p
+          v-if="targetNotice"
+          class="mb-2 break-words text-[11px] text-muted"
+          data-test-id="lowcode-deploy-target-preset"
+        >
+          {{ targetNotice }}
+        </p>
+
+        <button
+          type="button"
+          data-test-id="lowcode-deploy-submit"
+          class="w-full rounded bg-accent px-2 py-1 text-xs text-white hover:opacity-90 disabled:opacity-50"
+          :disabled="status.kind === 'deploying'"
+          @click="submit"
+        >
+          {{ status.kind === 'deploying' ? 'Deploying…' : 'Build & Deploy' }}
+        </button>
+
+        <p
+          v-if="rollbackNotice"
+          class="mt-2 break-words text-xs text-muted"
+          data-test-id="lowcode-deploy-rollback-draft"
+        >
+          {{ rollbackNotice }}
+        </p>
+
+        <p
+          v-if="status.kind === 'done'"
+          class="mt-2 text-xs text-muted"
+          data-test-id="lowcode-deploy-done"
+        >
+          ✓ Deployed —
+          <button type="button" class="text-accent underline" @click="openDeployed(status.url)">
+            open site
+          </button>
+          <span class="block">
+            {{ status.result.environment }} · {{ status.result.provider }} ·
+            {{ status.result.deployId }}
+          </span>
+        </p>
+        <div
+          v-if="status.kind === 'done' && status.result.serverDeployment"
+          class="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-muted"
+          data-test-id="lowcode-deploy-server-manual"
+        >
+          <div class="font-medium text-surface">Manual server deployment required</div>
+          <p class="mt-1 break-words">{{ status.result.serverDeployment.warning }}</p>
+          <p class="mt-1 break-all font-mono text-[10px]">
+            Artifact: {{ status.result.serverDeployment.artifactDirectory }}
+          </p>
+          <ol class="mt-1 list-decimal space-y-1 pl-4">
+            <li v-for="command in status.result.serverDeployment.commands" :key="command">
+              <code class="select-all break-all text-[10px] text-surface">{{ command }}</code>
+            </li>
+          </ol>
+        </div>
+        <p
+          v-else-if="status.kind === 'error'"
+          class="mt-2 break-words text-xs text-red-500"
+          data-test-id="lowcode-deploy-error"
+        >
+          {{ status.message }}
+        </p>
+
+        <div
+          v-if="runtimeAudit && runtimeAudit.issues.length > 0"
+          class="mt-2 rounded border border-border px-2 py-1 text-[11px] text-muted"
+          data-test-id="lowcode-deploy-runtime-audit"
+        >
+          <div class="font-medium text-surface">Runtime preflight</div>
+          <ul class="mt-1 list-disc space-y-0.5 pl-4">
+            <li
+              v-for="issue in runtimeAudit.issues"
+              :key="issue.code"
+              :class="issue.severity === 'error' ? 'text-red-500' : ''"
+            >
+              {{ issue.message }}
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="history.length > 0" class="mt-3 border-t border-border pt-2">
+          <div class="mb-1 text-[11px] font-medium text-muted">Recent deploys</div>
+          <ul
+            class="flex max-h-32 flex-col gap-1 overflow-y-auto"
+            data-test-id="lowcode-deploy-history"
           >
-            <div class="flex items-center gap-1">
-              <span class="font-medium text-surface">{{ entry.environment }}</span>
-              <span>· {{ entry.provider }}</span>
-              <button
-                type="button"
-                class="ml-auto text-accent underline"
-                @click="openDeployed(entry.url)"
-              >
-                open
-              </button>
-            </div>
-            <Tip :label="artifactLabel(entry)">
-              <div class="truncate">{{ artifactLabel(entry) }}</div>
-            </Tip>
-            <div class="truncate">{{ buildOptionsLabel(entry) }}</div>
-            <Tip :label="rollbackContractTitle(entry)">
-              <div class="truncate">
-                {{ rollbackContractLabel(entry) }}
-              </div>
-            </Tip>
-            <div class="truncate">Deploy {{ entry.deployId }}</div>
-            <div class="truncate">
-              Rollback:
-              <button
-                v-if="
-                  entry.provider === 'netlify' &&
-                  deployRollbackContract(entry).support === 'api-candidate'
-                "
-                type="button"
-                class="text-accent underline"
-                data-test-id="lowcode-deploy-history-restore"
-                @click="restoreProviderDeploy(entry)"
-              >
-                restore deploy
-              </button>
-              <button
-                v-if="deployRollbackDraft(entry)"
-                type="button"
-                class="ml-1 text-accent underline"
-                data-test-id="lowcode-deploy-history-redeploy"
-                @click="restoreForRollback(entry)"
-              >
-                redeploy this environment
-              </button>
-              <template v-else>redeploy this environment</template>
-              <template v-if="deployDashboardURL(entry)">
-                or
+            <li
+              v-for="entry in history"
+              :key="entry.id"
+              class="rounded border border-border px-2 py-1 text-[11px] text-muted"
+              data-test-id="lowcode-deploy-history-item"
+            >
+              <div class="flex items-center gap-1">
+                <span class="font-medium text-surface">{{ entry.environment }}</span>
+                <span>· {{ entry.provider }}</span>
                 <button
                   type="button"
-                  class="text-accent underline"
-                  @click="openDeployed(deployDashboardURL(entry)!)"
+                  class="ml-auto text-accent underline"
+                  @click="openDeployed(entry.url)"
                 >
-                  open dashboard
+                  open
                 </button>
-              </template>
-              <template v-else>or use the provider dashboard.</template>
-            </div>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </div>
+              </div>
+              <Tip :label="artifactLabel(entry)">
+                <div class="truncate">{{ artifactLabel(entry) }}</div>
+              </Tip>
+              <div class="truncate">{{ buildOptionsLabel(entry) }}</div>
+              <Tip :label="rollbackContractTitle(entry)">
+                <div class="truncate">
+                  {{ rollbackContractLabel(entry) }}
+                </div>
+              </Tip>
+              <div class="truncate">Deploy {{ entry.deployId }}</div>
+              <div class="truncate">
+                Rollback:
+                <button
+                  v-if="
+                    entry.provider === 'netlify' &&
+                    deployRollbackContract(entry).support === 'api-candidate'
+                  "
+                  type="button"
+                  class="text-accent underline"
+                  data-test-id="lowcode-deploy-history-restore"
+                  @click="restoreProviderDeploy(entry)"
+                >
+                  restore deploy
+                </button>
+                <button
+                  v-if="deployRollbackDraft(entry)"
+                  type="button"
+                  class="ml-1 text-accent underline"
+                  data-test-id="lowcode-deploy-history-redeploy"
+                  @click="restoreForRollback(entry)"
+                >
+                  redeploy this environment
+                </button>
+                <template v-else>redeploy this environment</template>
+                <template v-if="deployDashboardURL(entry)">
+                  or
+                  <button
+                    type="button"
+                    class="text-accent underline"
+                    @click="openDeployed(deployDashboardURL(entry)!)"
+                  >
+                    open dashboard
+                  </button>
+                </template>
+                <template v-else>or use the provider dashboard.</template>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </PopoverContent>
+    </PopoverPortal>
+  </PopoverRoot>
 </template>

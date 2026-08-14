@@ -7,6 +7,7 @@ import { IS_TAURI } from '@open-pencil/core/constants'
 import { useAIChat } from '@/app/ai/chat/use'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import { settingsDialogOpen, settingsDialogSection } from '@/app/settings/dialog'
+import AppearanceSettingsPanel from '@/components/settings/appearance/AppearanceSettingsPanel.vue'
 import ModelsPanel from '@/components/settings/models/ModelsPanel.vue'
 import CanvasPerformancePanel from '@/components/settings/performance/CanvasPerformancePanel.vue'
 import PluginsPanel from '@/components/settings/plugins/PluginsPanel.vue'
@@ -59,6 +60,16 @@ const navigationClass =
 
     <div class="flex min-h-0 flex-1">
       <nav class="w-40 shrink-0 border-r border-border p-2" :aria-label="dialogs.settings">
+        <button
+          type="button"
+          :class="navigationClass"
+          :data-state="settingsDialogSection === 'appearance' ? 'active' : 'inactive'"
+          data-test-id="settings-section-appearance"
+          @click="settingsDialogSection = 'appearance'"
+        >
+          <icon-lucide-layout-panel-top class="size-3.5" />
+          {{ dialogs.settingsAppearance }}
+        </button>
         <button
           type="button"
           :class="navigationClass"
@@ -119,6 +130,8 @@ const navigationClass =
         >
           <ModelsPanel />
         </section>
+
+        <AppearanceSettingsPanel v-else-if="settingsDialogSection === 'appearance'" />
 
         <CanvasPerformancePanel v-else-if="settingsDialogSection === 'performance'" />
 

@@ -10,6 +10,8 @@ export const NEXTJS_EXPORTER_PLUGIN_ID = 'open-pencil.nextjs-exporter'
 export const CAPACITOR_EXPORTER_PLUGIN_ID = 'open-pencil.capacitor-exporter'
 export const ELECTRON_EXPORTER_PLUGIN_ID = 'open-pencil.electron-exporter'
 export const VUE_EXPORTER_PLUGIN_ID = 'open-pencil.vue-exporter'
+export const COMPILER_PREVIEW_POPOUT_PLUGIN_ID = 'open-pencil.compiler-preview-popout'
+export const AI_POPOUT_PLUGIN_ID = 'open-pencil.ai-popout'
 
 export const GOOGLE_DRIVE_STORAGE_CONFIG_VERSION = 1
 export const GOOGLE_DRIVE_STORAGE_CAPABILITIES = Object.freeze([
@@ -67,6 +69,18 @@ export const DESIGN_SYSTEM_AUDIT_COMMAND = Object.freeze({
   commandId: 'run-design-system-audit',
   adapterId: 'open-pencil.audit.design-system',
   permissions: Object.freeze(['document.read', 'document.variables.read'] as const)
+})
+
+export const COMPILER_PREVIEW_POPOUT_COMMAND = Object.freeze({
+  commandId: 'open-compiler-preview-popout',
+  adapterId: 'open-pencil.preview.open-popout',
+  permissions: Object.freeze([] as const)
+})
+
+export const AI_POPOUT_COMMAND = Object.freeze({
+  commandId: 'open-ai-popout',
+  adapterId: 'open-pencil.ai.open-popout',
+  permissions: Object.freeze([] as const)
 })
 
 export const DESIGN_TOKENS_EXPORTER = Object.freeze({

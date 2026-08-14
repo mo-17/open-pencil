@@ -74,10 +74,14 @@ import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contr
 import {
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  AI_POPOUT_COMMAND,
+  AI_POPOUT_PLUGIN_ID,
   CAPACITOR_EXPORTER,
   CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
+  COMPILER_PREVIEW_POPOUT_COMMAND,
+  COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
   DESIGN_TOKENS_EXPORTER,
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
   DESIGN_SYSTEM_AUDIT_COMMAND,
@@ -111,7 +115,7 @@ function bundledManifest(pluginId: string) {
 }
 
 describe('bundled plugin catalog contributions', () => {
-  test('publishes the fifty-eight reviewed built-in plugin identities', () => {
+  test('publishes the sixty reviewed built-in plugin identities', () => {
     const catalog = createBundledPluginCatalog()
     const ids = catalog.map((entry) => entry.manifest.plugin.id)
 
@@ -143,6 +147,8 @@ describe('bundled plugin catalog contributions', () => {
       ACCESSIBILITY_AUDIT_PLUGIN_ID,
       DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
       APPLICATION_SECURITY_READINESS_PLUGIN_ID,
+      COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      AI_POPOUT_PLUGIN_ID,
       DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
       FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
       NEXTJS_EXPORTER_PLUGIN_ID,
@@ -173,7 +179,7 @@ describe('bundled plugin catalog contributions', () => {
             : 0),
         0
       )
-    ).toBe(61)
+    ).toBe(63)
     for (const descriptor of REVIEWED_EXTERNAL_SERVICE_CATALOG) {
       const entry = catalog.find(
         (candidate) => candidate.manifest.plugin.id === descriptor.connector.contract.pluginId
@@ -190,6 +196,96 @@ describe('bundled plugin catalog contributions', () => {
     expect(
       catalog.find((entry) => entry.manifest.plugin.id === GOOGLE_DRIVE_STORAGE_PLUGIN_ID)
     ).toMatchObject({ installedByDefault: true, enabledByDefault: true })
+  })
+
+  test('ships the compiler preview popout as a default-enabled zero-argument v2 command', () => {
+    const entry = createBundledPluginCatalog().find(
+      (candidate) => candidate.manifest.plugin.id === COMPILER_PREVIEW_POPOUT_PLUGIN_ID
+    )
+
+    expect(entry).toMatchObject({
+      trustSource: 'app-bundle',
+      installedByDefault: true,
+      enabledByDefault: true,
+      manifest: {
+        schemaVersion: 2,
+        capabilities: [],
+        plugin: {
+          id: COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+          name: 'Compiler Preview Popout',
+          version: '1.0.0'
+        },
+        contributions: {
+          modules: [],
+          commands: [
+            {
+              ...COMPILER_PREVIEW_POPOUT_COMMAND,
+              parameters: {
+                schema: {
+                  type: 'object',
+                  properties: {},
+                  additionalProperties: false,
+                  maxProperties: 0
+                },
+                maxBytes: 2
+              },
+              result: {
+                schema: {
+                  type: 'object',
+                  properties: {},
+                  additionalProperties: false,
+                  maxProperties: 0
+                },
+                maxBytes: 2
+              }
+            }
+          ]
+        }
+      }
+    })
+  })
+
+  test('ships the AI popout as a default-enabled zero-argument v2 command', () => {
+    const entry = createBundledPluginCatalog().find(
+      (candidate) => candidate.manifest.plugin.id === AI_POPOUT_PLUGIN_ID
+    )
+
+    expect(entry).toMatchObject({
+      trustSource: 'app-bundle',
+      installedByDefault: true,
+      enabledByDefault: true,
+      manifest: {
+        schemaVersion: 2,
+        capabilities: [],
+        plugin: { id: AI_POPOUT_PLUGIN_ID, name: 'AI Popout', version: '1.0.0' },
+        contributions: {
+          modules: [],
+          commands: [
+            {
+              ...AI_POPOUT_COMMAND,
+              parameters: {
+                schema: {
+                  type: 'object',
+                  properties: {},
+                  additionalProperties: false,
+                  maxProperties: 0
+                },
+                maxBytes: 2
+              },
+              result: {
+                schema: {
+                  type: 'object',
+                  properties: {},
+                  additionalProperties: false,
+                  maxProperties: 0
+                },
+                maxBytes: 2
+              }
+            }
+          ]
+        }
+      }
+    })
   })
 
   test('keeps the reviewed HTML module opt-in and bound to its trusted adapter', () => {
@@ -490,7 +586,14 @@ describe('bundled plugin catalog contributions', () => {
     })
 
     await store.load()
-    expect(store.installedCommands()).toEqual([])
+    expect(store.installedCommands()).toHaveLength(2)
+    expect(
+      store.command(COMPILER_PREVIEW_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_COMMAND.commandId)
+        ?.contribution
+    ).toMatchObject(COMPILER_PREVIEW_POPOUT_COMMAND)
+    expect(
+      store.command(AI_POPOUT_PLUGIN_ID, AI_POPOUT_COMMAND.commandId)?.contribution
+    ).toMatchObject(AI_POPOUT_COMMAND)
     expect(store.installedExporters()).toEqual([])
     expect(store.installedConnectors()).toEqual([])
     expect(store.installedStorageProviders()).toHaveLength(1)
@@ -507,17 +610,17 @@ describe('bundled plugin catalog contributions', () => {
     expect(store.installedStorageProviders()).toHaveLength(1)
 
     await store.install(CLIPBOARD_TOOLKIT_PLUGIN_ID)
-    expect(store.installedCommands()).toEqual([])
+    expect(store.installedCommands()).toHaveLength(2)
     expect(store.command(CLIPBOARD_TOOLKIT_PLUGIN_ID, CLIPBOARD_COMMANDS.text.commandId)).toBeNull()
 
     await store.setEnabled(CLIPBOARD_TOOLKIT_PLUGIN_ID, true)
-    expect(store.installedCommands()).toHaveLength(Object.keys(CLIPBOARD_COMMANDS).length)
+    expect(store.installedCommands()).toHaveLength(Object.keys(CLIPBOARD_COMMANDS).length + 2)
     expect(
       store.command(CLIPBOARD_TOOLKIT_PLUGIN_ID, CLIPBOARD_COMMANDS.svg.commandId)?.contribution
     ).toMatchObject(CLIPBOARD_COMMANDS.svg)
 
     await store.setEnabled(CLIPBOARD_TOOLKIT_PLUGIN_ID, false)
-    expect(store.installedCommands()).toEqual([])
+    expect(store.installedCommands()).toHaveLength(2)
     expect(store.command(CLIPBOARD_TOOLKIT_PLUGIN_ID, CLIPBOARD_COMMANDS.svg.commandId)).toBeNull()
 
     await store.install(TAURI_REACT_EXPORTER_PLUGIN_ID)

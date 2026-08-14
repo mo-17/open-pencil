@@ -130,6 +130,22 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         'copy-as-png': contribution('复制为 PNG', '以 2 倍分辨率渲染选择内容并复制为 PNG。')
       }
     ),
+    'open-pencil.compiler-preview-popout': plugin(
+      '编译器预览悬浮窗',
+      '由宿主在独立窗口中打开当前编译器预览。',
+      {
+        'open-compiler-preview-popout': contribution(
+          '打开独立预览窗口',
+          '不向插件开放 URL、窗口标签或原生窗口参数，仅由宿主打开当前预览。'
+        )
+      }
+    ),
+    'open-pencil.ai-popout': plugin('AI 独立窗口', '由宿主在独立窗口中打开当前 AI 对话。', {
+      'open-ai-popout': contribution(
+        '打开 AI 独立窗口',
+        '不向插件开放对话内容、窗口标签或原生窗口参数，仅由宿主打开当前 AI 对话。'
+      )
+    }),
     'open-pencil.tauri-react-exporter': plugin(
       'Tauri React 导出器',
       '将当前文档打包为 Tauri 2 与 React 源码项目。',

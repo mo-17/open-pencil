@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { ref } from 'vue'
 
 import {
+  parsePreviewSidecarReady,
   previewCompilerOverrides,
   previewSidecarCommandArgs
 } from '@/app/lowcode/preview-pane/use-compile-on-change'
@@ -55,5 +56,28 @@ describe('compiler preview target controller', () => {
       '--target',
       'vue'
     ])
+  })
+
+  test('accepts only a canonical loopback ready origin with the declared port', () => {
+    expect(
+      parsePreviewSidecarReady({
+        type: 'ready',
+        url: 'http://127.0.0.1:60140/',
+        port: 60140
+      })
+    ).toEqual({ url: 'http://127.0.0.1:60140/', port: 60140 })
+
+    for (const value of [
+      { type: 'ready', url: 'https://127.0.0.1:60140/', port: 60140 },
+      { type: 'ready', url: 'http://example.com:60140/', port: 60140 },
+      { type: 'ready', url: 'http://127.0.0.1:60141/', port: 60140 },
+      { type: 'ready', url: 'http://user@127.0.0.1:60140/', port: 60140 },
+      { type: 'ready', url: 'http://127.0.0.1:60140/?token=x', port: 60140 },
+      { type: 'ready', url: 'http://127.0.0.1:60140/#preview', port: 60140 },
+      { type: 'ready', url: 'http://127.0.0.1:60140/app', port: 60140 },
+      { type: 'ready', url: 'http://127.0.0.1:60140/', port: 60140, extra: true }
+    ]) {
+      expect(() => parsePreviewSidecarReady(value)).toThrow()
+    }
   })
 })

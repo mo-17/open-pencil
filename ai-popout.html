@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="stylesheet" href="/src/app/ai-popout/style.css" />
+    <title>OpenPencil AI</title>
+  </head>
+  <body>
+    <header id="ai-popout-toolbar" hidden>
+      <div class="brand" aria-hidden="true">AI</div>
+      <div class="heading">
+        <strong>OpenPencil AI</strong>
+        <span id="ai-popout-document">Connecting…</span>
+      </div>
+      <div class="toolbar-actions" role="toolbar" aria-label="AI window controls">
+        <button
+          id="ai-popout-focus-editor"
+          type="button"
+          class="icon-button"
+          aria-label="Focus OpenPencil editor"
+          title="Focus editor"
+          hidden
+        >
+          Editor
+        </button>
+        <button
+          id="ai-popout-always-on-top"
+          type="button"
+          class="icon-button"
+          aria-label="Keep AI window always on top"
+          aria-pressed="false"
+          title="Always on top"
+          hidden
+        >
+          Pin
+        </button>
+        <div id="ai-popout-more-root" class="more-root" hidden>
+          <button
+            id="ai-popout-more"
+            type="button"
+            class="icon-button"
+            aria-label="More AI window actions"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="ai-popout-more-menu"
+            title="More actions"
+          >
+            More
+          </button>
+          <div id="ai-popout-more-menu" class="more-menu" role="menu" hidden>
+            <button id="ai-popout-clear" type="button" role="menuitem" tabindex="-1" hidden>
+              Clear conversation
+            </button>
+            <button id="ai-popout-settings" type="button" role="menuitem" tabindex="-1" hidden>
+              AI settings
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main id="ai-popout-shell" tabindex="-1">
+      <div id="ai-popout-connection" class="connection" role="status" aria-live="polite">
+        Connecting to the editor AI…
+      </div>
+
+      <section id="ai-popout-messages" aria-label="AI conversation" aria-busy="true" tabindex="0">
+        <div id="ai-popout-empty" class="empty-state" hidden>
+          <div class="empty-mark" aria-hidden="true">✦</div>
+          <h1>Ask OpenPencil AI</h1>
+          <p id="ai-popout-empty-copy">Work with the active design without covering the canvas.</p>
+        </div>
+        <ol id="ai-popout-message-list"></ol>
+      </section>
+
+      <button id="ai-popout-jump" type="button" class="jump" hidden>Jump to latest</button>
+
+      <section class="composer-shell" aria-label="AI message composer">
+        <div id="ai-popout-error" class="error" role="alert" hidden></div>
+        <div id="ai-popout-context" class="context-line">
+          <span id="ai-popout-provider">AI</span>
+          <span aria-hidden="true">·</span>
+          <span id="ai-popout-status">Connecting</span>
+        </div>
+        <form id="ai-popout-form">
+          <label class="visually-hidden" for="ai-popout-input">Message OpenPencil AI</label>
+          <textarea
+            id="ai-popout-input"
+            rows="2"
+            maxlength="32768"
+            placeholder="Ask about the active design…"
+            disabled
+          ></textarea>
+          <div class="composer-actions">
+            <button id="ai-popout-continue" type="button" class="quiet" hidden>Continue</button>
+            <button id="ai-popout-retry" type="button" class="quiet" hidden>Retry</button>
+            <button id="ai-popout-stop" type="button" class="danger" hidden>Stop</button>
+            <button id="ai-popout-send" type="submit" class="primary" disabled>Send</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <span
+      id="ai-popout-toolbar-status"
+      class="visually-hidden"
+      role="status"
+      aria-live="polite"
+    ></span>
+    <script type="module" src="/src/app/ai-popout/main.ts"></script>
+  </body>
+</html>

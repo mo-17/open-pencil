@@ -42,10 +42,14 @@ import type { AppPluginExporterExecutionResult } from './exporter-types'
 import { exportCurrentDocumentAsFigmaProjection } from './figma-projection-exporter'
 import { exportCurrentDocumentAsFlutterSource } from './flutter-exporter'
 import {
+  AI_POPOUT_COMMAND,
+  AI_POPOUT_PLUGIN_ID,
   CAPACITOR_EXPORTER,
   CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
+  COMPILER_PREVIEW_POPOUT_COMMAND,
+  COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
   DESIGN_SYSTEM_AUDIT_COMMAND,
@@ -121,6 +125,7 @@ interface TrustedCommandAdapter {
   commandId: string
   schemaVersion: 1 | 2
   permissions?: readonly PluginHostPermissionV2[]
+  mcpExposure: 'enabled' | 'disabled'
   mcpText?: Readonly<{ title: string; description: string }>
 }
 
@@ -163,7 +168,15 @@ function sourceProjectExporterExecutor(
 const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
   ...Object.values(CLIPBOARD_COMMANDS).map(
     ({ commandId, adapterId }) =>
-      [adapterId, { pluginId: CLIPBOARD_TOOLKIT_PLUGIN_ID, commandId, schemaVersion: 1 }] as const
+      [
+        adapterId,
+        {
+          pluginId: CLIPBOARD_TOOLKIT_PLUGIN_ID,
+          commandId,
+          schemaVersion: 1,
+          mcpExposure: 'enabled'
+        }
+      ] as const
   ),
   [
     ACCESSIBILITY_AUDIT_COMMAND.adapterId,
@@ -171,7 +184,8 @@ const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
       pluginId: ACCESSIBILITY_AUDIT_PLUGIN_ID,
       commandId: ACCESSIBILITY_AUDIT_COMMAND.commandId,
       schemaVersion: 2,
-      permissions: ACCESSIBILITY_AUDIT_COMMAND.permissions
+      permissions: ACCESSIBILITY_AUDIT_COMMAND.permissions,
+      mcpExposure: 'enabled'
     }
   ] as const,
   [
@@ -180,7 +194,8 @@ const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
       pluginId: DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
       commandId: DESIGN_SYSTEM_AUDIT_COMMAND.commandId,
       schemaVersion: 2,
-      permissions: DESIGN_SYSTEM_AUDIT_COMMAND.permissions
+      permissions: DESIGN_SYSTEM_AUDIT_COMMAND.permissions,
+      mcpExposure: 'enabled'
     }
   ] as const,
   [
@@ -190,11 +205,32 @@ const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
       commandId: APPLICATION_SECURITY_READINESS_HOST_CONTRACT.command.commandId,
       schemaVersion: 2,
       permissions: APPLICATION_SECURITY_READINESS_HOST_CONTRACT.command.permissions,
+      mcpExposure: 'enabled',
       mcpText: Object.freeze({
         title: 'Run application security readiness audit',
         description:
           'Run a bounded, local, read-only static production-readiness review. It does not modify the document or any remote system and does not return document content or secrets.'
       })
+    }
+  ] as const,
+  [
+    COMPILER_PREVIEW_POPOUT_COMMAND.adapterId,
+    {
+      pluginId: COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      commandId: COMPILER_PREVIEW_POPOUT_COMMAND.commandId,
+      schemaVersion: 2,
+      permissions: COMPILER_PREVIEW_POPOUT_COMMAND.permissions,
+      mcpExposure: 'disabled'
+    }
+  ] as const,
+  [
+    AI_POPOUT_COMMAND.adapterId,
+    {
+      pluginId: AI_POPOUT_PLUGIN_ID,
+      commandId: AI_POPOUT_COMMAND.commandId,
+      schemaVersion: 2,
+      permissions: AI_POPOUT_COMMAND.permissions,
+      mcpExposure: 'disabled'
     }
   ] as const,
   ...REVIEWED_DEPLOYMENT_PLUGINS.map(
@@ -206,6 +242,7 @@ const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
           commandId: definition.mcpSafePlan.commandId,
           schemaVersion: 2 as const,
           permissions: definition.mcpSafePlan.permissions,
+          mcpExposure: 'enabled' as const,
           mcpText: Object.freeze({
             title: definition.mcpSafePlan.name,
             description: definition.mcpSafePlan.description
@@ -368,6 +405,27 @@ function resolveTrustedPluginCommandExecutor(
       }
     }
   }
+  if (adapterId === COMPILER_PREVIEW_POPOUT_COMMAND.adapterId) {
+    return async () => {
+      const { openActiveCompilerPreviewPopout } =
+        await import('@/app/lowcode/preview-pane/popout/session')
+      await openActiveCompilerPreviewPopout()
+      return {
+        status: 'completed',
+        message: 'Opened the active compiler preview in a separate window.'
+      }
+    }
+  }
+  if (adapterId === AI_POPOUT_COMMAND.adapterId) {
+    return async () => {
+      const { openActiveAIPopout } = await import('@/app/ai/popout/session')
+      await openActiveAIPopout()
+      return {
+        status: 'completed',
+        message: 'Opened the active AI chat in a separate window.'
+      }
+    }
+  }
   const deployment = REVIEWED_DEPLOYMENT_PLUGINS.find(
     (definition) => definition.mcpSafePlan.adapterId === adapterId
   )
@@ -459,6 +517,22 @@ export function trustedPluginCommandMCPText(
     return null
   }
   return adapter.mcpText ?? null
+}
+
+export function inspectPluginCommandMCPExposure(
+  pluginId: string,
+  contribution: AppPluginCommandContribution
+): AppPluginHostContributionCompatibility {
+  const compatibility = inspectPluginCommandCompatibility(pluginId, contribution)
+  if (!compatibility.ok) return compatibility
+  const adapter = TRUSTED_COMMAND_ADAPTERS.get(contribution.adapterId)
+  if (adapter?.mcpExposure !== 'enabled') {
+    return incompatible(
+      'mcp-exposure-disabled',
+      `Plugin command adapter is not available to MCP: ${contribution.adapterId}`
+    )
+  }
+  return { ok: true, status: 'compatible' }
 }
 
 export function inspectPluginExporterCompatibility(

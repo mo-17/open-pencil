@@ -1,16 +1,62 @@
 <script setup lang="ts">
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
+import { computed, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
+import {
+  aiPopoutBusy,
+  aiPopoutOpen,
+  focusActiveAIPopout,
+  setAIPopoutDisabled
+} from '@/app/ai/popout/session'
 import { useAIChat } from '@/app/ai/chat/use'
+import { useEditorStore } from '@/app/editor/active-store'
+import { appPluginStore, appPluginStoreSnapshot } from '@/app/plugins/app'
+import { runInstalledPluginCommand } from '@/app/plugins/host'
+import { AI_POPOUT_COMMAND, AI_POPOUT_PLUGIN_ID } from '@/app/plugins/host/ids'
+import { toast } from '@/app/shell/ui'
+import { isTauri } from '@/app/tauri/env'
 
 import ChatPanel from './ChatPanel.vue'
 import CodePanel from './CodePanel.vue'
 import DesignPanel from './DesignPanel.vue'
 import ZoomDropdown from './editor/ZoomDropdown.vue'
+import Tip from './ui/Tip.vue'
 
 const { activeTab } = useAIChat()
-const { panels } = useI18n()
+const store = useEditorStore()
+const { dialogs, panels } = useI18n()
+const desktopAvailable = isTauri()
+const aiPopoutCommand = computed(() => {
+  void appPluginStoreSnapshot.value
+  return appPluginStore.command(AI_POPOUT_PLUGIN_ID, AI_POPOUT_COMMAND.commandId)
+})
+const aiPopoutReady = computed(() => aiPopoutCommand.value !== null && !aiPopoutBusy.value)
+const aiPopoutLabel = computed(() =>
+  aiPopoutOpen.value ? dialogs.value.aiPopoutFocus : dialogs.value.aiPopoutOpen
+)
+
+async function openOrFocusAIPopout(): Promise<void> {
+  const installed = aiPopoutCommand.value
+  if (!installed || aiPopoutBusy.value) return
+  try {
+    if (aiPopoutOpen.value) {
+      await focusActiveAIPopout()
+      return
+    }
+    await runInstalledPluginCommand(store, installed.plugin, installed.contribution)
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : String(cause))
+  }
+}
+
+watch(
+  aiPopoutCommand,
+  (command) => {
+    void setAIPopoutDisabled(command === null)
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -45,6 +91,24 @@ const { panels } = useI18n()
           {{ panels.ai }}
         </TabsTrigger>
         <ZoomDropdown v-if="activeTab === 'design'" />
+        <Tip
+          v-if="desktopAvailable && activeTab === 'ai' && aiPopoutCommand"
+          :label="aiPopoutLabel"
+        >
+          <button
+            type="button"
+            data-test-id="ai-popout-toggle"
+            :aria-label="aiPopoutLabel"
+            :aria-pressed="aiPopoutOpen"
+            class="ml-auto flex size-7 shrink-0 items-center justify-center rounded text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-40"
+            :class="aiPopoutOpen ? 'bg-hover text-surface' : undefined"
+            :disabled="!aiPopoutReady"
+            @click="openOrFocusAIPopout"
+          >
+            <icon-lucide-loader-circle v-if="aiPopoutBusy" class="size-3.5 animate-spin" />
+            <icon-lucide-picture-in-picture-2 v-else class="size-3.5" />
+          </button>
+        </Tip>
       </TabsList>
 
       <TabsContent

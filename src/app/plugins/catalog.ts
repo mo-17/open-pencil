@@ -82,10 +82,14 @@ import { REVIEWED_DEPLOYMENT_PLUGINS } from './host/deployment/contract'
 import {
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  AI_POPOUT_COMMAND,
+  AI_POPOUT_PLUGIN_ID,
   CAPACITOR_EXPORTER,
   CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
+  COMPILER_PREVIEW_POPOUT_COMMAND,
+  COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
   DESIGN_TOKENS_EXPORTER,
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
   DESIGN_SYSTEM_AUDIT_COMMAND,
@@ -545,6 +549,49 @@ function applicationSecurityReadinessManifest(): PluginManifestPayloadV2 {
   )
 }
 
+function compilerPreviewPopoutManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      name: 'Compiler Preview Popout',
+      version: '1.0.0'
+    },
+    {
+      commands: [
+        {
+          ...COMPILER_PREVIEW_POPOUT_COMMAND,
+          name: 'Open compiler preview window',
+          description:
+            'Ask the trusted host to open the active compiler preview in a separate window.',
+          parameters: EMPTY_DATA_CONTRACT,
+          result: EMPTY_DATA_CONTRACT
+        }
+      ]
+    }
+  )
+}
+
+function aiPopoutManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: AI_POPOUT_PLUGIN_ID,
+      name: 'AI Popout',
+      version: '1.0.0'
+    },
+    {
+      commands: [
+        {
+          ...AI_POPOUT_COMMAND,
+          name: 'Open AI window',
+          description: 'Ask the trusted host to open the active AI chat in a separate window.',
+          parameters: EMPTY_DATA_CONTRACT,
+          result: EMPTY_DATA_CONTRACT
+        }
+      ]
+    }
+  )
+}
+
 function designTokensExporterManifest(): PluginManifestPayloadV2 {
   return bundledUtilityManifestV2(
     {
@@ -790,6 +837,18 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     {
       trustSource: 'app-bundle',
       manifest: applicationSecurityReadinessManifest()
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: compilerPreviewPopoutManifest(),
+      installedByDefault: true,
+      enabledByDefault: true
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: aiPopoutManifest(),
+      installedByDefault: true,
+      enabledByDefault: true
     },
     {
       trustSource: 'app-bundle',

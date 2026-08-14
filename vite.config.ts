@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import process from 'node:process'
 
 import tailwindcss from '@tailwindcss/vite'
@@ -42,7 +43,14 @@ export default defineConfig(async ({ command }) => ({
   ],
   clearScreen: false,
   build: {
-    chunkSizeWarningLimit: 2500
+    chunkSizeWarningLimit: 2500,
+    rollupOptions: {
+      input: {
+        app: resolve(__dirname, 'index.html'),
+        aiPopout: resolve(__dirname, 'ai-popout.html'),
+        previewPopout: resolve(__dirname, 'preview-popout.html')
+      }
+    }
   },
   worker: {
     format: 'es'

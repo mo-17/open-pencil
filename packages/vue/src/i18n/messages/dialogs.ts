@@ -232,6 +232,48 @@ export const dialogMessageDefaults = {
   applicationRuntimeGuideContents: 'Contents',
   applicationRuntimeGuideFollowApp: 'Follow application language',
   settingsAIAndAgents: 'AI & agents',
+  settingsAppearance: 'Appearance',
+  designPanelWorkspace: 'Design panel workspace',
+  designPanelWorkspaceDescription:
+    'Choose how property sections are organized. This changes only the workspace UI, not your document or exports.',
+  designPanelWorkspaceClassic: 'Classic',
+  designPanelWorkspaceClassicHint:
+    'Preserves the current section order, visibility, and remembered collapse state.',
+  designPanelWorkspaceFocused: 'Focused',
+  designPanelWorkspaceFocusedHint:
+    'Keeps common design controls visible while advanced sections stay out of the way.',
+  designPanelWorkspaceStudio: 'Studio',
+  designPanelWorkspaceStudioHint:
+    'Adds Photoshop-style section visibility and ordering controls for a customizable workspace.',
+  designPanelWorkspaceRecommended: 'Recommended',
+  designPanelWorkspaceShowAllSections: 'Show all sections',
+  designPanelWorkspaceContextSingle: 'single selection',
+  designPanelWorkspaceContextMulti: 'multiple selection',
+  designPanelWorkspaceContextEmpty: 'no selection',
+  designPanelWorkspaceConfigureSections: params('Configure {context} sections'),
+  designPanelWorkspaceStudioPanelTitle: 'Studio panel',
+  designPanelWorkspaceStudioPanelDescription: params(
+    'Choose and arrange the sections shown for {context}.'
+  ),
+  designPanelWorkspaceStudioSections: 'Studio sections',
+  designPanelWorkspaceHideSection: params('Hide {section}'),
+  designPanelWorkspaceShowSection: params('Show {section}'),
+  designPanelWorkspaceMoveSectionUp: params('Move {section} up'),
+  designPanelWorkspaceMoveSectionDown: params('Move {section} down'),
+  designPanelWorkspaceResetStudioLayout: 'Reset Studio layout',
+  previewToolbarLayout: 'Preview toolbar layout',
+  previewToolbarLayoutDescription:
+    'Choose how compiler preview actions are arranged. This changes only the toolbar, not compiler or export output.',
+  previewToolbarLayoutAdaptive: 'Grouped',
+  previewToolbarLayoutAdaptiveHint:
+    'Keeps primary actions visible and groups UI, theme, refresh, and i18n settings in a responsive popover.',
+  previewToolbarLayoutCompact: 'Compact',
+  previewToolbarLayoutCompactHint:
+    'Uses icons and the More menu for secondary actions to preserve the most preview space.',
+  previewToolbarLayoutClassic: 'Classic',
+  previewToolbarLayoutClassicHint:
+    'Keeps every compiler preview control expanded in the original single-row toolbar.',
+  previewToolbarLayoutRecommended: 'Recommended',
   settingsCanvasPerformance: 'Canvas performance',
   canvasPerformanceDescription:
     'Choose how OpenPencil balances resource use and visual responsiveness.',
@@ -408,6 +450,28 @@ export const dialogMessageDefaults = {
     'Enable this plugin to add new modules. Existing modules remain unchanged when it is disabled.',
   pluginDisabledContributionHint:
     'Enable this plugin to use its commands, exporters, connectors, or storage providers.',
+  pluginCompilerPreviewPopoutControls: 'Separate window controls',
+  pluginCompilerPreviewPopoutControlsDescription:
+    'Choose which host controls appear in the compiler preview window. These settings do not change compiler output.',
+  pluginCompilerPreviewPopoutToolbar: 'Show control bar',
+  pluginCompilerPreviewPopoutReload: 'Show reload button',
+  pluginCompilerPreviewPopoutFocusEditor: 'Show return-to-editor button',
+  pluginCompilerPreviewPopoutAlwaysOnTop: 'Show always-on-top button',
+  pluginCompilerPreviewPopoutDiagnostics: 'Show diagnostics action',
+  pluginCompilerPreviewPopoutExportMicrofrontend: 'Show microfrontend export action',
+  pluginCompilerPreviewPopoutDeploy: 'Show deploy action',
+  pluginCompilerPreviewPopoutReset: 'Restore defaults',
+  pluginAIPopoutControls: 'Separate AI window controls',
+  pluginAIPopoutControlsDescription:
+    'Choose which host controls appear in the separate AI window. These settings do not change AI providers or conversations.',
+  pluginAIPopoutToolbar: 'Show control bar',
+  pluginAIPopoutFocusEditor: 'Show return-to-editor button',
+  pluginAIPopoutAlwaysOnTop: 'Show always-on-top button',
+  pluginAIPopoutClearChat: 'Show clear-conversation action',
+  pluginAIPopoutSettings: 'Show AI settings action',
+  pluginAIPopoutReset: 'Restore defaults',
+  aiPopoutOpen: 'Open AI in a separate window',
+  aiPopoutFocus: 'Focus separate AI window',
   pluginExportChoosingDestination: 'Choose where to save…',
   pluginExportPreparing: 'Preparing export…',
   pluginExportCompiling: 'Compiling project…',

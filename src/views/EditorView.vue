@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, provide, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref } from 'vue'
 import { useEventListener, useUrlSearchParams } from '@vueuse/core'
 import { useRoute } from 'vue-router'
 import { useHead } from '@unhead/vue'
@@ -23,6 +23,7 @@ import { appMenuShortcut } from '@/app/shell/menu/shortcut'
 import { createDemoShapes } from '@/app/demo/document'
 import { useEditorStore } from '@/app/editor/active-store'
 import PreviewPane from '@/app/lowcode/preview-pane/PreviewPane.vue'
+import { compilerPreviewPopoutOpen } from '@/app/lowcode/preview-pane/popout/session'
 import { createTab, activeTab, getActiveStore, tabCount } from '@/app/tabs'
 
 import CollabPanel from '@/components/CollabPanel/CollabPanel.vue'
@@ -89,6 +90,11 @@ const editorPanelSizes = computed(() =>
 function handleEditorLayout(layout: number[]): void {
   editorLayout.value = [...layout]
   saveEditorLayout(layout)
+}
+
+function expandPreviewForAction(expand: () => void, complete: () => void): void {
+  expand()
+  void nextTick(complete)
 }
 
 type PendingOpenFile = {
@@ -218,7 +224,12 @@ onUnmounted(() => {
                 </button>
               </Tip>
             </div>
-            <PreviewPane v-else @close="collapse" />
+            <PreviewPane
+              v-if="!isCollapsed || compilerPreviewPopoutOpen"
+              :embedded-visible="!isCollapsed"
+              @close="collapse"
+              @request-expand="expandPreviewForAction(expand, $event)"
+            />
           </template>
         </SplitterPanel>
       </template>

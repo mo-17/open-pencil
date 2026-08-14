@@ -33,13 +33,18 @@ import {
   type AppPluginHostExecutors,
   type InstalledAppPlugin
 } from '@/app/plugins'
+import { inspectPluginCommandMCPExposure } from '@/app/plugins/host'
 import { exportCurrentDocumentAsExpoReactNativeSource } from '@/app/plugins/host/expo-react-native-exporter'
 import { exportCurrentDocumentAsFlutterSource } from '@/app/plugins/host/flutter-exporter'
 import {
+  AI_POPOUT_COMMAND,
+  AI_POPOUT_PLUGIN_ID,
   CAPACITOR_EXPORTER,
   CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
+  COMPILER_PREVIEW_POPOUT_COMMAND,
+  COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
   DESIGN_TOKENS_EXPORTER,
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
@@ -91,6 +96,19 @@ function accessibilityContribution(): DeclarativeCommandContributionV2 {
 function designSystemContribution(): DeclarativeCommandContributionV2 {
   const contribution = bundledManifestV2(DESIGN_SYSTEM_AUDIT_PLUGIN_ID).contributions.commands?.[0]
   if (!contribution) throw new Error('Missing bundled design-system command')
+  return contribution
+}
+
+function compilerPreviewPopoutContribution(): DeclarativeCommandContributionV2 {
+  const contribution = bundledManifestV2(COMPILER_PREVIEW_POPOUT_PLUGIN_ID).contributions
+    .commands?.[0]
+  if (!contribution) throw new Error('Missing bundled compiler preview popout command')
+  return contribution
+}
+
+function aiPopoutContribution(): DeclarativeCommandContributionV2 {
+  const contribution = bundledManifestV2(AI_POPOUT_PLUGIN_ID).contributions.commands?.[0]
+  if (!contribution) throw new Error('Missing bundled AI popout command')
   return contribution
 }
 
@@ -249,6 +267,117 @@ describe('app plugin host contribution trust', () => {
     expect(
       inspectPluginCommandCompatibility(ACCESSIBILITY_AUDIT_PLUGIN_ID, designSystemContribution())
     ).toMatchObject({ ok: false, status: 'plugin-identity-mismatch' })
+  })
+
+  test('keeps compiler preview popout host-owned, zero-argument, and unavailable to MCP', async () => {
+    const manifest = bundledManifestV2(COMPILER_PREVIEW_POPOUT_PLUGIN_ID)
+    const contribution = compilerPreviewPopoutContribution()
+    const calls: unknown[] = []
+    const host: AppPluginHostExecutors = {
+      async clipboard() {
+        throw new Error('Clipboard fallback must not run for a v2 command')
+      },
+      resolveCommand(adapterId) {
+        expect(adapterId).toBe(COMPILER_PREVIEW_POPOUT_COMMAND.adapterId)
+        return (_editor, args) => {
+          calls.push(structuredClone(args))
+          return {
+            status: 'completed',
+            message: 'Opened the active compiler preview in a separate window.'
+          }
+        }
+      },
+      resolveExporter() {
+        return undefined
+      }
+    }
+
+    expect(
+      inspectPluginCommandCompatibility(COMPILER_PREVIEW_POPOUT_PLUGIN_ID, contribution)
+    ).toEqual({ ok: true, status: 'compatible' })
+    expect(inspectPluginCommandCompatibility('publisher.other', contribution)).toMatchObject({
+      ok: false,
+      status: 'plugin-identity-mismatch'
+    })
+    expect(
+      inspectPluginCommandCompatibility(COMPILER_PREVIEW_POPOUT_PLUGIN_ID, {
+        ...contribution,
+        permissions: ['document.read']
+      })
+    ).toMatchObject({ ok: false, status: 'permissions-mismatch' })
+    expect(
+      inspectPluginCommandMCPExposure(COMPILER_PREVIEW_POPOUT_PLUGIN_ID, contribution)
+    ).toMatchObject({ ok: false, status: 'mcp-exposure-disabled' })
+
+    await expect(
+      runInstalledPluginCommand(EDITOR, installedPlugin(manifest, true), contribution, host)
+    ).resolves.toMatchObject({ status: 'completed' })
+    expect(calls).toEqual([{}])
+
+    await expect(
+      runInstalledPluginCommand(EDITOR, installedPlugin(manifest, true), contribution, host, {
+        url: 'https://attacker.example',
+        label: 'forged',
+        windowOptions: {}
+      })
+    ).rejects.toThrow('2-byte contract limit')
+    expect(calls).toEqual([{}])
+  })
+
+  test('keeps AI popout host-owned, zero-argument, and unavailable to MCP', async () => {
+    const manifest = bundledManifestV2(AI_POPOUT_PLUGIN_ID)
+    const contribution = aiPopoutContribution()
+    const calls: unknown[] = []
+    const host: AppPluginHostExecutors = {
+      async clipboard() {
+        throw new Error('Clipboard fallback must not run for a v2 command')
+      },
+      resolveCommand(adapterId) {
+        expect(adapterId).toBe(AI_POPOUT_COMMAND.adapterId)
+        return (_editor, args) => {
+          calls.push(structuredClone(args))
+          return {
+            status: 'completed',
+            message: 'Opened the active AI chat in a separate window.'
+          }
+        }
+      },
+      resolveExporter() {
+        return undefined
+      }
+    }
+
+    expect(inspectPluginCommandCompatibility(AI_POPOUT_PLUGIN_ID, contribution)).toEqual({
+      ok: true,
+      status: 'compatible'
+    })
+    expect(inspectPluginCommandCompatibility('publisher.other', contribution)).toMatchObject({
+      ok: false,
+      status: 'plugin-identity-mismatch'
+    })
+    expect(
+      inspectPluginCommandCompatibility(AI_POPOUT_PLUGIN_ID, {
+        ...contribution,
+        permissions: ['document.read']
+      })
+    ).toMatchObject({ ok: false, status: 'permissions-mismatch' })
+    expect(inspectPluginCommandMCPExposure(AI_POPOUT_PLUGIN_ID, contribution)).toMatchObject({
+      ok: false,
+      status: 'mcp-exposure-disabled'
+    })
+
+    await expect(
+      runInstalledPluginCommand(EDITOR, installedPlugin(manifest, true), contribution, host)
+    ).resolves.toMatchObject({ status: 'completed' })
+    expect(calls).toEqual([{}])
+
+    await expect(
+      runInstalledPluginCommand(EDITOR, installedPlugin(manifest, true), contribution, host, {
+        prompt: 'forged',
+        transcript: []
+      })
+    ).rejects.toThrow('2-byte contract limit')
+    expect(calls).toEqual([{}])
   })
 
   test('binds storage providers to the exact host-owned adapter contract', () => {

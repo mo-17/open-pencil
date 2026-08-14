@@ -45,6 +45,7 @@ import {
   localizedAppPluginText
 } from '@/app/plugins/localization'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
+import { AI_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_PLUGIN_ID } from '@/app/plugins/host/ids'
 import {
   clearDeploymentPluginSession,
   isDeploymentPluginSessionActive
@@ -66,7 +67,9 @@ import AppSwitch from '@/components/ui/AppSwitch.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
 import AccessibilityAuditReport from './AccessibilityAuditReport.vue'
+import AIPopoutControls from './AIPopoutControls.vue'
 import ApplicationSecurityReadinessReport from './ApplicationSecurityReadinessReport.vue'
+import CompilerPreviewPopoutControls from './CompilerPreviewPopoutControls.vue'
 import PluginConnectorControls from './PluginConnectorControls.vue'
 import PluginDeploymentControls from './PluginDeploymentControls.vue'
 import PluginExporterResult from './PluginExporterResult.vue'
@@ -1139,6 +1142,22 @@ function confirmResetLocalState(): void {
 
           <PluginConnectorControls :plugin="plugin" />
           <PluginDeploymentControls :plugin="plugin" />
+          <CompilerPreviewPopoutControls
+            v-if="pluginId(plugin) === COMPILER_PREVIEW_POPOUT_PLUGIN_ID"
+            :disabled="
+              !plugin.enabled ||
+              Boolean(plugin.blockedReason) ||
+              busyPluginId === COMPILER_PREVIEW_POPOUT_PLUGIN_ID
+            "
+          />
+          <AIPopoutControls
+            v-if="pluginId(plugin) === AI_POPOUT_PLUGIN_ID"
+            :disabled="
+              !plugin.enabled ||
+              Boolean(plugin.blockedReason) ||
+              busyPluginId === AI_POPOUT_PLUGIN_ID
+            "
+          />
 
           <div
             v-if="plugin.installedState?.pending"

@@ -12,7 +12,7 @@ import { canonicalManifestValue } from '@open-pencil/scene-graph'
 import type { JSONObject, JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import {
-  inspectPluginCommandCompatibility,
+  inspectPluginCommandMCPExposure,
   inspectPluginExporterMCPExposure,
   trustedPluginCommandMCPText
 } from './host'
@@ -388,7 +388,7 @@ function activeCandidates(
   }
   for (const command of store.installedCommands()) {
     const pluginId = command.plugin.package.manifest.plugin.id
-    if (!inspectPluginCommandCompatibility(pluginId, command.contribution).ok) continue
+    if (!inspectPluginCommandMCPExposure(pluginId, command.contribution).ok) continue
     const contributionId = command.contribution.commandId
     const trustedText = trustedPluginCommandMCPText(pluginId, command.contribution)
     candidates.push({

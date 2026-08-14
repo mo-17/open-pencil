@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; frame-src http:; img-src 'self' data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="stylesheet" href="/src/app/lowcode/preview-popout/style.css" />
+    <title>OpenPencil Compiler Preview</title>
+  </head>
+  <body>
+    <header
+      id="compiler-preview-toolbar"
+      role="toolbar"
+      aria-label="Compiler preview window controls"
+      hidden
+    >
+      <button id="compiler-preview-reload" type="button" aria-label="Reload compiler preview">
+        Reload
+      </button>
+      <button id="compiler-preview-focus-editor" type="button" aria-label="Focus OpenPencil editor">
+        Editor
+      </button>
+      <button
+        id="compiler-preview-always-on-top"
+        type="button"
+        aria-label="Keep compiler preview window always on top"
+        aria-pressed="false"
+      >
+        Always on top
+      </button>
+      <details id="compiler-preview-more-menu" hidden>
+        <summary id="compiler-preview-more-menu-summary" aria-label="More compiler preview actions">
+          More
+        </summary>
+        <div aria-label="More compiler preview actions">
+          <button id="compiler-preview-diagnostics" type="button" hidden>Diagnostics</button>
+          <button id="compiler-preview-export-microfrontend" type="button" hidden>
+            Export microfrontend…
+          </button>
+          <button id="compiler-preview-deploy" type="button" hidden>Deploy…</button>
+        </div>
+      </details>
+      <span
+        id="compiler-preview-toolbar-status"
+        class="visually-hidden"
+        role="status"
+        aria-live="polite"
+      ></span>
+    </header>
+    <main id="compiler-preview-shell" tabindex="-1">
+      <p id="compiler-preview-status" role="status" aria-live="polite">Connecting…</p>
+      <iframe
+        id="compiler-preview"
+        title="Compiler preview"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"
+        referrerpolicy="no-referrer"
+        hidden
+      ></iframe>
+    </main>
+    <script type="module" src="/src/app/lowcode/preview-popout/main.ts"></script>
+  </body>
+</html>

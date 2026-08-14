@@ -31,6 +31,10 @@ import {
 } from '@/app/plugins'
 import {
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  AI_POPOUT_COMMAND,
+  AI_POPOUT_PLUGIN_ID,
+  COMPILER_PREVIEW_POPOUT_COMMAND,
+  COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
   GOOGLE_DRIVE_STORAGE_CAPABILITIES,
   GOOGLE_DRIVE_STORAGE_CONFIG_VERSION
@@ -181,6 +185,26 @@ describe('plugin settings marketplace view model', () => {
         resultMaxBytes: 2
       }
     ])
+    expect(pluginV2ContractSummaries(manifest(COMPILER_PREVIEW_POPOUT_PLUGIN_ID))).toEqual([
+      {
+        kind: 'command',
+        contributionId: COMPILER_PREVIEW_POPOUT_COMMAND.commandId,
+        permissions: [],
+        outputs: [],
+        parameterMaxBytes: 2,
+        resultMaxBytes: 2
+      }
+    ])
+    expect(pluginV2ContractSummaries(manifest(AI_POPOUT_PLUGIN_ID))).toEqual([
+      {
+        kind: 'command',
+        contributionId: AI_POPOUT_COMMAND.commandId,
+        permissions: [],
+        outputs: [],
+        parameterMaxBytes: 2,
+        resultMaxBytes: 2
+      }
+    ])
     expect(pluginV2ContractSummaries(manifest(PLUGIN_ID))).toEqual([])
     expect(pluginV2ContractSummaries(manifest(GOOGLE_DRIVE_STORAGE_PLUGIN_ID))).toEqual([
       {
@@ -242,6 +266,28 @@ describe('plugin settings marketplace view model', () => {
     })
     expect(localizedAppPluginContributionText(MODAL_PLUGIN_ID, 'modal', 'zh-CN')).toMatchObject({
       name: '模态弹窗'
+    })
+    expect(localizedAppPluginText(COMPILER_PREVIEW_POPOUT_PLUGIN_ID, 'zh-CN')).toMatchObject({
+      name: '编译器预览悬浮窗'
+    })
+    expect(
+      localizedAppPluginContributionText(
+        COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+        COMPILER_PREVIEW_POPOUT_COMMAND.commandId,
+        'zh-CN'
+      )
+    ).toMatchObject({
+      name: '打开独立预览窗口',
+      description: expect.stringContaining('不向插件开放 URL')
+    })
+    expect(localizedAppPluginText(AI_POPOUT_PLUGIN_ID, 'zh-CN')).toMatchObject({
+      name: 'AI 独立窗口'
+    })
+    expect(
+      localizedAppPluginContributionText(AI_POPOUT_PLUGIN_ID, AI_POPOUT_COMMAND.commandId, 'zh-CN')
+    ).toMatchObject({
+      name: '打开 AI 独立窗口',
+      description: expect.stringContaining('不向插件开放对话内容')
     })
     expect(filterPluginDiscoverCatalog(mapCatalog(), null, '可编辑地图')).toHaveLength(1)
     expect(localizedAppPluginText(SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID, 'zh-CN')).toMatchObject({
