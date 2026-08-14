@@ -35,5 +35,6 @@ Throughout this guide, keyboard shortcuts use Mac notation: <kbd>⌘</kbd> = <kb
 - [Components](./components) — reusable components, instances, and overrides
 - [Variables](./variables) — design variables, collections, modes, and fill bindings
 - [Lowcode Apps](./lowcode-apps) — preview, build, and deploy React apps from design pages
+- [Microfrontend Composition](./microfrontends) — combine independently built React and Vue exports in a verified route-and-slot shell
 - [Plugin Marketplace](./plugins) — install reviewed modules such as HTML, Video, Table, and Slide Menu, and verify, audit, update, or roll back signed plugins
 - [Application Runtime](./application-runtime) — configure Supabase, review RLS, deploy authenticated server workflows, and operate production environments

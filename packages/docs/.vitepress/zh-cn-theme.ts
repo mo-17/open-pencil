@@ -6,6 +6,7 @@ export const ZH_CN_TRANSLATED_ROUTES = [
   '/zh-cn/guide/features',
   '/zh-cn/user-guide/',
   '/zh-cn/user-guide/lowcode-apps',
+  '/zh-cn/user-guide/microfrontends',
   '/zh-cn/user-guide/plugins',
   '/zh-cn/user-guide/application-runtime',
   '/zh-cn/programmable/ai-chat',
@@ -49,6 +50,7 @@ const userGuideSidebar: DefaultTheme.SidebarItem[] = [
     text: '低代码与扩展',
     items: [
       { text: '低代码应用', link: '/zh-cn/user-guide/lowcode-apps' },
+      { text: '微前端组合', link: '/zh-cn/user-guide/microfrontends' },
       { text: '插件市场', link: '/zh-cn/user-guide/plugins' },
       { text: '应用运行时', link: '/zh-cn/user-guide/application-runtime' }
     ]

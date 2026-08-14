@@ -131,6 +131,10 @@ openpencil build app.fig -o dist
 openpencil build app.fig -o dist --base /my-app/
 ```
 
+如果要组合多个独立发布的 React 与 Vue 导出，请使用显式微前端打包参数，并参考
+[微前端组合](./microfrontends)构建路由与插槽 Shell；没有这些参数时，原有 standalone
+构建路径保持不变。
+
 Supabase 的生产环境公开值应来自环境变量或命令行，而不是依赖设计时回退值：
 
 ```sh

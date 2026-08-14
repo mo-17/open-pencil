@@ -61,6 +61,43 @@ For a first test, keep the app tiny:
 
 This path proves the core loop before you add Supabase, workflows, multiple pages, or i18n.
 
+## Remote Component Libraries
+
+OpenPencil can load a data-only component library from a public HTTPS manifest. Remote libraries do
+not execute JavaScript and are separate from runtime plugins or micro-frontends. The manifest pins
+one same-origin `.fig` or `.pen` artifact by exact byte length and SHA-256 digest, and the editor
+validates every declared component before showing it for import.
+
+Publish and host a library as follows:
+
+1. Use `open-pencil library publish` to write publish metadata into the library document and create
+   the local component manifest.
+2. Use `open-pencil library remote prepare <published.fig> --manifest <manifest.json>
+--artifact-url https://libraries.example.com/design-system.fig -o remote-library.json`.
+3. Serve the remote manifest and artifact from the same public HTTPS origin. Browser deployments
+   need CORS headers that allow the OpenPencil app origin. Do not put credentials or access tokens in
+   either URL; query strings, fragments, redirects, custom ports, IP literals, and private hostnames
+   are rejected.
+
+To consume it, open **Design → Assets & Variables → Libraries**, paste the remote manifest URL, and
+choose **Load**. Loading only stages and verifies the candidate; it does not change the document.
+Choose **Import** for each component you want. The accepted master is retained on an internal cache
+page inside the document, so existing imported components remain available offline.
+
+Use **Check** on an imported library to fetch and verify its persisted manifest URL. A newer version
+is shown as pending and does not change the document until you choose **Accept update**. Import and
+accept are undoable. OpenPencil never checks remote libraries automatically when a document opens.
+
+The direct-URL flow currently supports public, unauthenticated libraries only. `.fig` artifacts are
+limited to 64 MiB and `.pen` artifacts to 16 MiB before their format-specific decode quotas run.
+Referenced images must be complete PNG, JPEG, or WebP files, with at most 32,768 pixels per side and
+50 million total pixels. Component and version validation also has aggregate node, binary, string,
+depth, and value-work limits.
+Component subtrees with external component/prototype/Motion references, bound variables, missing
+image assets, event actions, workflows, API/Supabase/Stripe/analytics behavior, or custom CSS are
+rejected instead of being imported partially. A signed marketplace/catalog, trusted lowcode
+capability packages, and styles or token libraries are separate future distribution layers.
+
 ## Map Module
 
 Choose **Map** from the Interactive tool group, then click or drag on the canvas. OpenPencil stores
@@ -360,6 +397,10 @@ For sub-path hosting:
 ```sh
 openpencil build app.fig -o dist --base /my-app/
 ```
+
+To combine independently released React and Vue exports, use the explicit microfrontend packaging
+flags and the route-and-slot Shell described in [Microfrontend Composition](./microfrontends).
+Without those flags this standalone build path is unchanged.
 
 For Supabase-backed apps, production public runtime values should come from the environment or command flags:
 

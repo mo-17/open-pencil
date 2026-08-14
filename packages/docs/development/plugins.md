@@ -17,14 +17,14 @@ publishes root-signed discovery state. The optional executable channel runs only
 root-indexed, import-free WASM compute packages after an exact local grant. No manifest path or URL
 is dynamically imported as JavaScript, HTML, CSS, native code, or privileged host functionality.
 
-The current **Unreleased** source line contains 58 reviewed plugins and 61 contributions: 20 module
-contributions; nine commands (four Clipboard Toolkit commands, Static Accessibility Audit, Static
-Design System Audit, Application Security Readiness, and safe Vercel and Cloudflare deployment-plan
-reviews); nine exporters (Tauri React, Next.js, Vue, Capacitor, Electron, Expo React Native, Flutter,
-Design Tokens JSON, and Figma Editable Projection); 22 connectors; and one Google Drive storage
-provider. Map and Google Drive Storage are installed and enabled by default. Catalog count is an
-application snapshot, not a promise that a signed remote manifest can introduce a new host
-implementation.
+The current **Unreleased** source line contains 60 reviewed plugins and 63 contributions: 20 module
+contributions; 11 commands (four Clipboard Toolkit commands, Compiler Preview Popout, AI Popout,
+Static Accessibility Audit, Static Design System Audit, Application Security Readiness, and safe
+Vercel and Cloudflare deployment-plan reviews); nine exporters (Tauri React, Next.js, Vue, Capacitor,
+Electron, Expo React Native, Flutter, Design Tokens JSON, and Figma Editable Projection); 22
+connectors; and one Google Drive storage provider. Map, Google Drive Storage, Compiler Preview
+Popout, and AI Popout are installed and enabled by default. Catalog count is an application snapshot,
+not a promise that a signed remote manifest can introduce a new host implementation.
 
 ## Package and trust model
 
@@ -597,6 +597,23 @@ their authored shell and an explicit `vue-module-unsupported` warning. Expo and 
 execute plugin module runtimes or insert a WebView: for all 20 modules they emit an unsupported-module
 warning and retain the authored static fallback until a reviewed native adapter exists.
 
+Compiler Preview Popout is a default-installed and default-enabled command-only built-in for the
+Tauri desktop application. Its toolbar action re-enters the exact reviewed host command with an empty
+Schema v2 parameter object; the plugin cannot provide a URL, window label, or native window options.
+The host derives the URL from the active loopback Compiler Preview server and current route, then uses
+its fixed window identity and native options. The command is UI-only and explicitly excluded from MCP.
+Disabling or uninstalling the plugin removes the Pop out entry and closes an open compiler-preview
+window.
+
+AI Popout follows the same default-installed, command-only plugin model, but uses an independent
+app-owned window and native capability. The main WebView remains the sole owner of AI transports,
+ACP processes, credentials, editor context, approvals, and tool execution. The popup receives only a
+strict, bounded, redacted projection of the active conversation and returns a closed set of typed
+actions through a popup-only command; it cannot mount a second Chat runtime or invoke filesystem,
+shell, credential, proxy, opener, or Compiler Preview commands. AI text is carried in a base64 JSON
+envelope before it reaches native initialization or eval scripts. Disabling the plugin closes the
+window without clearing or stopping the main AI session, and the command is excluded from MCP.
+
 The Clipboard Toolkit is a command-only built-in. Its reviewed host adapters copy the active
 selection as text, SVG, JSX, or PNG and reject invocation when no selection is active. The manifest
 does not receive the selected nodes or clipboard API; the application action performs the bounded
@@ -690,6 +707,29 @@ replaces a directory whose valid, regular-file `.openpencil-build-output.json` m
 preceding OpenPencil build and whose complete path set still exactly matches that manifest. An
 unmarked non-empty directory, untrusted marker, or any missing/extra path fails closed; never weaken
 this check or rely on Vite's destructive `emptyOutDir` default.
+
+### Generated microfrontend composition
+
+Microfrontend packaging is a compiler/build concern, not a new executable plugin surface. An
+explicit `CompilerOptions.packaging.kind === 'microfrontend'` adds a self-contained lifecycle entry
+to React or Vue output; an absent packaging option keeps the historical standalone file map. The
+compiler owns the resulting app identity, framework, and route descriptor, and the library-mode
+builder consumes that descriptor directly so caller overrides cannot make the runtime manifest lie
+about the bundled lifecycle.
+
+`@open-pencil/compiler/microfrontend` owns the v1 ABI, strict runtime/composition manifest parsers,
+digest helpers, build, and composition Shell. The Shell verifies bytes before evaluating them,
+mounts each app into an open Shadow Root, provides a Shadow-local portal target, and reconciles named
+slots by longest static route prefix. Generated runtime globals and lifecycle cleanup must remain
+app-scoped: a second mounted bundle may never dispose the first bundle's Motion, prototype,
+generated-effect, state, theme, focus, or scroll-lock state. Default-output hash tests and a real
+mixed React/Vue browser composition are release gates for changes in this area.
+
+The direct ESM ABI is same-realm trusted composition, not iframe/process isolation or Module
+Federation. Digest pinning detects changed bytes but is not publisher authentication. Remote v1
+coordinates are public HTTPS, no-credential, redirect-free, bounded and CORS-dependent; private
+registries and publisher signatures need a later trust protocol. The current verified Blob import
+also requires a deployment CSP that permits `blob:` scripts.
 
 The Static Accessibility Audit command runs the host accessibility lint preset and returns a bounded
 report. It is not complete WCAG conformance or certification: screen-reader naming/alternatives,

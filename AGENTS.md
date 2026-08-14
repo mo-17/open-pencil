@@ -129,6 +129,21 @@ Headless SDK fields compose variable/token binding through `BindingProvider` and
 
 Property-panel anatomy in `packages/vue/src/primitives/PropertySection/`, `SegmentedControl/`, and `PropertyList/` is controlled and editor-agnostic. Connect PropertyList events to OpenPencil selection and undo through `useEditorPropertyList()` or an app adapter; never call `useEditor()` from these primitives.
 
+Remote component libraries use a strict data-only direct-HTTPS flow. A v1 manifest and its same-origin
+`.fig`/`.pen` artifact are fetched only after an explicit Load or Check action; the manifest pins the
+artifact's exact byte length and raw-byte SHA-256 digest. Keep network policy, bounded response reads,
+abort/timeout handling, and untrusted archive quotas in `src/app/lowcode/remote-library-source.ts` and
+the owning IO packages. Never auto-fetch a library while opening a document, execute remote code,
+put secrets in a library URL, or route arbitrary library URLs through the generic Tauri HTTP proxy.
+`LibraryRef.manifestSource` is the persisted update locator while `source` identifies the artifact;
+reject silent manifest-source rebinding. Accepted masters belong on the `internalOnly` library cache
+page and remain explicit undoable document mutations. Remote validation fails closed for bound
+variables, missing images, component/prototype/Motion references outside the declared subtree, and
+active lowcode behavior such as event actions, workflows, remote calls, analytics, or custom CSS.
+Referenced images must be complete PNG, JPEG, or WebP assets and stay within the shared remote
+dimension and pixel limits; canonical version work is also aggregate-bounded before legacy hashing.
+The direct-URL v1 format is a design-asset channel, not a way to distribute executable lowcode.
+
 ### Settings and credentials
 
 Credential persistence lives under `src/app/settings/credentials/`. Settings components receive `CredentialManager` and may inspect status, replace, or clear credentials; runtime adapters receive `CredentialResolver`. Components must not read saved secrets or keep them in long-lived reactive refs. Non-secret provider preferences remain in normal settings storage.
@@ -199,8 +214,10 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun open-pencil variables <file>` — list design variables
 - `bun open-pencil lint <file>` — run design linter rules
 - `bun open-pencil export <file>` — headless render to PNG/JPG/WEBP
-- `bun open-pencil compile <file> -o <dir> [--target react|vue]` — compile `.pen`/`.fig` to a runnable Vite + React or Vue 3 + TypeScript project; React is the default
-- `bun open-pencil build <file> -o <dir> [--target react|vue]` — compile and Vite-build a static SPA bundle for either web target
+- `bun open-pencil compile <file> -o <dir> [--target react|vue] [--packaging microfrontend --app-id <id> --app-version <semver>]` — compile `.pen`/`.fig` to a runnable Vite + React or Vue 3 + TypeScript project; React and standalone packaging remain the defaults
+- `bun open-pencil build <file> -o <dir> [--target react|vue] [--packaging microfrontend --app-id <id> --app-version <semver>]` — build either the existing static SPA or an explicit lifecycle ESM microfrontend plus its verified runtime manifest
+- `bun open-pencil microfrontend compose <composition.json> -o <dir> [--base /suite/] [--json]` — assemble verified local or digest-pinned remote React/Vue microfrontends into the route/slot composition shell
+- `bun open-pencil microfrontend preview <dir> [--base /suite/] [--host 127.0.0.1] [--port 4173]` — preview a built composition through the loopback-only SPA server
 - `bun open-pencil deploy <file> --provider netlify|vercel|cloudflare [--target react|vue]` — build and deploy either web target; token comes from a CLI arg or provider environment variable
 - `bun open-pencil analyze colors <file>` — color palette usage
 - `bun open-pencil analyze typography <file>` — font/size/weight stats
@@ -223,6 +240,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun open-pencil motion clear [snapshot.json]` — compare/plan a clear or emit a guarded clear snapshot without raw timeline writes
 - `bun open-pencil motion export <file> --node <id> -o <path>` — export deterministic PNG/GIF or capability-gated WebM/MP4 animation
 - `bun open-pencil motion presets publish|import|check|accept ...` — manage readonly shared Motion preset manifests with explicit update acceptance
+- `bun open-pencil library remote prepare <published.fig|pen> --manifest <local.json> --artifact-url <https-url> -o <remote.json>` — validate a component-library artifact and emit a length/SHA-256-pinned direct-HTTPS manifest
 
 ## Releases & CI
 

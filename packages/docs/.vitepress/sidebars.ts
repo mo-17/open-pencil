@@ -53,6 +53,7 @@ export const userGuideSidebar = (
       ...(includeLowcodeApps
         ? [
             { text: 'Lowcode Apps', link: `${prefix}/user-guide/lowcode-apps` },
+            { text: 'Microfrontends', link: `${prefix}/user-guide/microfrontends` },
             { text: 'Plugin Marketplace', link: `${prefix}/user-guide/plugins` },
             {
               text: 'Application Runtime',

@@ -31,17 +31,30 @@ or beta channel, publisher/key identity, snapshot status, the audit head, and wh
 authorizes an executable runtime index. Search matches the signed name, summary, category, keyword,
 plugin ID, and publisher metadata; it does not trust an unsigned search-service response.
 
-The current **Unreleased** source line contains 58 reviewed plugins with 61 contributions: 20
-modules, nine commands, nine exporters, 22 connectors, and one storage provider. A definition,
+The current **Unreleased** source line contains 60 reviewed plugins with 63 contributions: 20
+modules, 11 commands, nine exporters, 22 connectors, and one storage provider. A definition,
 renderer, contract, or exporter source file alone does not make a plugin available; the contribution
-must also have its reviewed central host registration. Map and Google Drive Storage are installed and
-enabled on a new profile; every other bundled plugin is opt-in.
+must also have its reviewed central host registration. Map, Google Drive Storage, and Compiler Preview
+Popout, and AI Popout are installed and enabled on a new profile; every other bundled plugin is
+opt-in.
 
 - **Map** is installed and enabled on a new profile. It creates a native editable map `FRAME` and
   compiles to the reviewed MapLibre-based React adapter.
 - **Google Drive Storage** is an installed-and-enabled, host-owned storage-provider declaration. Its
   manifest supplies no network, OAuth, or executable implementation; connect the reviewed desktop
   adapter from **Settings → Storage**.
+- **Compiler Preview Popout** is installed and enabled on a new profile and is available only in the
+  Tauri desktop application. Use **Pop out** in the Compiler Preview toolbar to open the active local
+  preview in a separate window. The plugin receives no URL, window label, or native window options:
+  the host derives the URL from the current loopback preview server and route and uses fixed window
+  parameters. This UI command is not exposed to MCP. Disabling or uninstalling the plugin removes the
+  entry and closes an open compiler-preview window.
+- **AI Popout** is installed and enabled on a new profile and is available only in the Tauri desktop
+  application. Use the pop-out control in the **AI** tab to open the active conversation in a separate
+  window. The main editor remains the only owner of the AI transport, ACP process, credentials,
+  document context, and tool execution; the window receives only a bounded, redacted message
+  projection and sends a closed set of actions back to the host. Disable the plugin to remove the
+  entry and close its window. This UI command is not exposed to MCP.
 - **Chart** is an installable reference module with deterministic Canvas and Compiler adapters.
 - **Rich Text** is an installable editable content module with reviewed Canvas and Compiler
   adapters.

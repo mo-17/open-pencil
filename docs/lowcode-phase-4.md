@@ -1332,8 +1332,52 @@ bun test \
 
 **剩余**:
 
-1. Remote registry/url fetch。
+1. Signed remote registry/catalog 与 publisher identity/revocation。
 2. 更细粒度 subtree undo / override remap。
+
+### §14 Phase A7 direct HTTPS remote Libraries 交付(2026-08-12)
+
+**锁定范围**:公共、无需认证的 HTTPS manifest + 同源 `.fig/.pen` artifact。远程内容只承载
+SceneGraph 数据,不执行远程 JavaScript;Load/Check 仅暂存候选,首次 Import 与 Accept update 都是
+显式、可 undo 的文档 mutation。文档打开时不自动联网。签名 marketplace/catalog、私有 registry、
+styles/tokens 和跨组件/variables dependency closure 不在本增量。
+
+**实现**:
+
+- 新增严格 v1 envelope:`format=openpencil.component-library`,`schemaVersion=1`,legacy
+  `LibraryManifest` 字段,artifact format/media type/exact byteLength 与 raw-byte SHA-256 base64url。
+- manifest/artifact URL 必须是 canonical public HTTPS、同源、无 credentials/query/hash/redirect/
+  custom port/IP/private or special-use hostname;browser fetch 固定 `credentials:omit`,CORS,
+  `redirect:error`,`no-referrer`,`no-store`,支持 caller abort 与 30s timeout。
+- manifest 1 MiB、`.fig` artifact 64 MiB、`.pen` artifact 16 MiB hard limit;`.fig` 另外限制
+  outer ZIP entry/size/image totals、inner Kiwi schema/data 解压输出、动态 schema/array/decode
+  深度、raw nodeChanges、expanded graph nodes/tree depth;`.pen` 在 dedicated worker 内限制
+  JSON bytes/string/value/authored+expanded node/depth,防 zip/decompression bomb、OOM 与 UI 卡死。
+- remote decode 通过 `IORegistry.readDocumentAs(format, ..., {populate:'all'})`,不信响应文件名或
+  Content-Type 猜格式;exact length + SHA-256 +全量 component key/type/version/image/dependency 校验
+  全通过后才返回 candidate。
+- `LibraryRef.manifestSource` 单独持久化 manifest URL;artifact URL 继续留在 `source`。同一 library
+  已绑定不同 manifestSource 时 fail closed,避免 silent source rebinding。
+- `ensureLibraryCachePage()` 把接受的 readonly master 存在 `internalOnly` cache canvas;marker 与
+  manifestSource 经 `.fig` pluginData round-trip,普通 pages/hit-test 不暴露 cache page。
+- Libraries panel 新增 URL form、busy/error/status live region、首次 Import、按库 Check 与显式
+  Accept;异步操作用 AbortController + operation token 防止迟到结果覆盖当前 candidate。
+- CLI 新增 `library remote prepare <published.fig|pen> --manifest <local.json>
+--artifact-url <https-url> -o <remote.json>`,先验证 artifact/manifest 对应关系再写 digest-pinned
+  envelope。
+
+**安全/产品边界**:
+
+- 不支持 URL token、认证 header、Tauri generic HTTP proxy 或启动时后台刷新。
+- boundVariables、missing images、subtree 外 component/prototype/Motion/override 引用均拒绝;
+  events/workflows/API/Supabase/Stripe/analytics/custom CSS 等 active lowcode behavior 也拒绝,
+  direct URL v1 只承载设计资源,不会静默导入破损或带主动行为的组件。
+- 远程引用图片仅接受完整 PNG/JPEG/WebP,单边不超过 32768px、总像素不超过 5000 万;
+  component version 旧 hash 前先执行聚合 node/binary/string/value/depth work budget,不改变 legacy
+  `v1-*` version 输出。
+- accepted master 随消费文档持久化,所以已有内容可离线使用;Check/新 Import 仍需远端与 CORS。
+- direct HTTPS 的 digest 防 manifest/artifact 请求混配与传输损坏,但 manifest 本身不是发布者签名;
+  需要 publisher identity/revocation 时应接后续 signed registry/catalog。
 
 **风险**:**override 跨版本 index-path 错位** —— 库组件更新后,实例的 child-override key(`<childId>:<prop>`)可能指向已变的子树结构。设计阶段必须定 index 稳定性策略。**待锁**:库存储/引用机制(componentKey 注册表 vs 文件路径);版本/更新传播策略;关键 fork 走 AskUserQuestion。
 

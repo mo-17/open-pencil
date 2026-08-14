@@ -37,5 +37,6 @@ OpenPencil 是一款兼容 Figma 的开源设计编辑器，完全在本地运�
 - [组件（英文）](/user-guide/components)——可复用组件、实例和覆盖
 - [变量（英文）](/user-guide/variables)——设计变量、集合、模式和填充绑定
 - [低代码应用](/zh-cn/user-guide/lowcode-apps)——从设计页面预览、构建和部署 React 应用
+- [微前端组合](/zh-cn/user-guide/microfrontends)——将独立构建的 React 与 Vue 导出组合到可校验的路由与插槽 Shell
 - [插件市场](/zh-cn/user-guide/plugins)——安装 HTML、Video、Table、Slide Menu 等经过审查的模块，并验证、审计、更新或回滚已签名插件
 - [应用运行时](/zh-cn/user-guide/application-runtime)——配置 Supabase、审查 RLS、部署带身份认证的服务端工作流，并运维生产环境
