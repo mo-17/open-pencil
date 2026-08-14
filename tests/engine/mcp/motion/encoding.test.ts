@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import {
-  createMotionPngSequenceManifest as createMotionPNGSequenceManifest,
+  createMotionPNGSequenceManifest,
   MotionExportCancelledError,
   planMotionFrames,
   type MotionRenderedFrame

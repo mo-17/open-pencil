@@ -8,7 +8,7 @@ import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdi
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
-import { appPluginMcpToolName as appPluginMCPToolName } from '@/app/plugins/mcp'
+import { appPluginMCPToolName } from '@/app/plugins/mcp'
 
 import { startServer, type ServerHandle } from '#mcp/server'
 

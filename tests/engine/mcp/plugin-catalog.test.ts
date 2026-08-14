@@ -13,9 +13,9 @@ import {
   AIRTABLE_RECORDS_PLUGIN_ID
 } from '@/app/plugins/connectors/airtable-records'
 import {
-  appPluginMcpConnectorContributionId as appPluginMCPConnectorContributionID,
-  appPluginMcpToolName as appPluginMCPToolName,
-  listAppPluginMcpTools as listAppPluginMCPTools
+  appPluginMCPConnectorContributionId as appPluginMCPConnectorContributionID,
+  appPluginMCPToolName,
+  listAppPluginMCPTools
 } from '@/app/plugins/mcp'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
