@@ -13,6 +13,7 @@ import {
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const REQUIRED_UNIT_TEST_ROOTS = [
   'tests/engine',
+  'packages/lowcode/tests',
   'packages/motion-runtime/tests',
   'packages/codepen-sidecar/tests'
 ] as const
@@ -39,6 +40,7 @@ test('unit test groups cover all declared shards', () => {
   expect(pathsForUnitTestGroup('all')).toContain('tests/engine/io')
   expect(pathsForUnitTestGroup('compiler-browser')).toEqual(['tests/engine/compiler/preview'])
   expect(pathsForUnitTestGroup('motion')).toContain('packages/motion-runtime/tests')
+  expect(pathsForUnitTestGroup('scene')).toContain('packages/lowcode/tests')
 })
 
 test('compiler browser tests are isolated from the non-browser compiler shard', async () => {

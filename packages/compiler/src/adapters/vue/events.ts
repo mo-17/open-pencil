@@ -1,9 +1,6 @@
 import type { IRElement, IREventHandler, IREventName } from '#compiler/ir/types'
 
-import {
-  inspectLowcodeRouteParameters,
-  lowcodeNavigationPathname
-} from '@open-pencil/core/lowcode-validation'
+import { inspectLowcodeRouteParameters, lowcodeNavigationPathname } from '@open-pencil/lowcode'
 
 import { vueValidationErrorId, vueValidationKeyBinding } from './lowcode/validation'
 import {

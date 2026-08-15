@@ -1,10 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import {
-  type DatePickerIssueCode,
-  isIsoDate,
-  validateDatePickerProps
-} from '@open-pencil/core/lowcode-validation'
+import { type DatePickerIssueCode, isIsoDate, validateDatePickerProps } from '@open-pencil/lowcode'
 
 /**
  * Phase 3 §3.v7 step 1 — direct unit coverage at the shared location.

@@ -1,8 +1,8 @@
-import { findCodePenSecretKinds } from '@open-pencil/core/lowcode-validation'
 import {
   createStaticHTMLShowcaseFragment,
   sceneGraphToDesignDocument
 } from '@open-pencil/dom-css/static-export'
+import { findCodePenSecretKinds } from '@open-pencil/lowcode'
 import { inspectImageBytes, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { CodePenShowcaseError } from './error'

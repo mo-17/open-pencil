@@ -1,9 +1,10 @@
-import type { FigmaAPI } from '#core/figma-api'
 import {
   FORM_VALUE_BINDING_MAX_REPAIRS,
   planValidatedFormValueBindings,
   type FormControlsAudit
-} from '#core/lowcode-validation'
+} from '@open-pencil/lowcode'
+
+import type { FigmaAPI } from '#core/figma-api'
 import { defineTool } from '#core/tools/schema'
 
 import { updateLowcodeNodes } from './lowcode'

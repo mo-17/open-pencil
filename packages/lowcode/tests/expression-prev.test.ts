@@ -6,7 +6,7 @@ import {
   parseExpression,
   PREV_IDENT,
   substitutePrev
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 
 function parse(src: string) {
   const r = parseExpression(src)

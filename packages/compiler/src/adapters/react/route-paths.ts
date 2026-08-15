@@ -1,6 +1,6 @@
 import type { IRTree } from '#compiler/ir/types'
 
-import { deriveLowcodePageRoutes } from '@open-pencil/core/lowcode-validation'
+import { deriveLowcodePageRoutes } from '@open-pencil/lowcode'
 
 /**
  * Per-page routing metadata derived from a list of page IRs. Pure helper —

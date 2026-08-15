@@ -5,7 +5,7 @@ import { motionDriverToken } from '#compiler/adapters/react/motion/drivers'
 import { motionToken } from '#compiler/adapters/react/motion/key'
 import type { IRAttrValue, IRControlledInput, IRElement, IRNode } from '#compiler/ir/types'
 
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
+import { emitExpression } from '@open-pencil/lowcode'
 
 import type { KitEmitCtx, UIKitAdapter, UIKitMapping } from '../types'
 import {

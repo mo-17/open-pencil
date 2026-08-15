@@ -21,6 +21,7 @@ import {
 } from '@open-pencil/fig'
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import { compactLowcodeHeadMetadata, validateServerWorkflows } from '@open-pencil/lowcode'
 import {
   remapMotionDriverNodeReferences,
   remapMotionSceneNodeReferences,
@@ -60,8 +61,6 @@ import type {
   WorkflowDef
 } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
-
-import { compactLowcodeHeadMetadata, validateServerWorkflows } from '#core/lowcode-validation'
 
 export const LOWCODE_STATE_KEY = 'lowcode/state'
 export const LOWCODE_BINDINGS_KEY = 'lowcode/bindings'

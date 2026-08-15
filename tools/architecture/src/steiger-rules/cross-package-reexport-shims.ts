@@ -2,8 +2,14 @@ import ts from 'typescript'
 
 import { createTextRule, type Rule } from './support.ts'
 
+const ESTABLISHED_COMPATIBILITY_BARRELS = new Set([
+  'packages/core/src/lowcode-validation/index.ts',
+  'packages/core/src/lowcode-validation/application-runtime.ts'
+])
+
 export function isCrossPackageReexportShim(sourceRel: string, content: string): boolean {
   if (!/^packages\/[^/]+\/src\/.*\.[cm]?tsx?$/u.test(sourceRel)) return false
+  if (ESTABLISHED_COMPATIBILITY_BARRELS.has(sourceRel)) return false
   const source = ts.createSourceFile(sourceRel, content, ts.ScriptTarget.Latest, false)
   if (source.statements.length === 0) return false
   return source.statements.every(

@@ -28,6 +28,15 @@ export function createOpenPencilAliases(rootDir: string) {
       replacement: resolve(rootDir, 'packages/dom-css/src/index.ts')
     },
     {
+      find: /^@open-pencil\/lowcode\/application-runtime$/,
+      replacement: resolve(rootDir, 'packages/lowcode/src/application-runtime.ts')
+    },
+    {
+      find: /^@open-pencil\/lowcode$/,
+      replacement: resolve(rootDir, 'packages/lowcode/src/index.ts')
+    },
+    { find: '@open-pencil/lowcode', replacement: resolve(rootDir, 'packages/lowcode/src') },
+    {
       find: /^@open-pencil\/scene-graph$/,
       replacement: resolve(rootDir, 'packages/scene-graph/src/index.ts')
     },

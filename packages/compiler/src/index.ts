@@ -3,7 +3,7 @@ import {
   compactLowcodeHeadMetadata,
   validateLowcodeCustomCSS,
   validateSupabaseConfig
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/scene-graph'
 
 import { derivePagePaths } from './adapters/react/route-paths'
@@ -70,7 +70,7 @@ export {
   type SerializedPreviewFile
 } from './preview-protocol'
 // Phase 3 §3: validator + expression sublanguage live in
-// `@open-pencil/core/lowcode-validation` so the lowcode AI tool surface
+// `@open-pencil/lowcode` so the lowcode AI tool surface
 // (which sits in core) can share one source with editor + compiler.
 // Re-exported here so existing consumers (`import { validateStateName }
 // from '@open-pencil/compiler'`) stay unbroken.
@@ -79,7 +79,7 @@ export {
   validateExpression,
   validateURLTemplate,
   type ValidationResult
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 // Phase 2 §7 — preview iframe needs pageId↔slug round-trip; the React adapter's
 // route derivation is the single source of truth, so we lift it to the public
 // surface (and an editor-side helper) instead of replicating the algorithm.

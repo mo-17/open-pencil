@@ -15,7 +15,7 @@ import type {
   IRUpload
 } from '#compiler/ir/types'
 
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
+import { emitExpression } from '@open-pencil/lowcode'
 
 import { VALIDATION_ERROR_CLASS, VALIDATION_INVALID_FIELD_CLASS } from '../lowcode/validation'
 import { requireReactModuleAdapter } from '../modules/registry'

@@ -1,5 +1,5 @@
-import { parseExpression, validateServerWorkflows } from '@open-pencil/core/lowcode-validation'
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
+import { parseExpression, validateServerWorkflows } from '@open-pencil/lowcode'
+import type { ExprAst } from '@open-pencil/lowcode'
 import type {
   ServerActionDef,
   ServerValueSource,

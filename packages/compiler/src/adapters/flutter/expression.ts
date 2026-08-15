@@ -1,4 +1,4 @@
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
+import type { ExprAst } from '@open-pencil/lowcode'
 
 import { dartString } from './names'
 import type { FlutterWarningSink } from './types'

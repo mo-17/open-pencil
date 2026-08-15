@@ -1,5 +1,21 @@
 import { parse as parseCSSColor } from 'culori'
 
+import {
+  countServerWorkflowActions,
+  isSafeAnalyticsPolicyURL,
+  normalizeSupabaseMutationPayloadJSON,
+  validateAnalyticsConfig,
+  validateExpression,
+  validateInteractiveProps,
+  validateInvokeServerWorkflowAction,
+  validateLowcodeCustomCSS,
+  validateLowcodeHeadMeta,
+  validateStateName,
+  validateSupabaseConfig,
+  validateSupabasePayloadEntries,
+  validateServerWorkflows,
+  validateURLTemplate
+} from '@open-pencil/lowcode'
 import type {
   ActionDef,
   ActionKind,
@@ -44,7 +60,7 @@ import type {
  *     hard-rejects a service_role JWT before it can persist (decision
  *     §3.2 #h + §2.7 risk row 1).
  *
- * Validation paths reuse `@open-pencil/core/lowcode-validation`
+ * Validation paths reuse `@open-pencil/lowcode`
  * (validateStateName / validateExpression / validateUrlTemplate /
  * validateSupabaseConfig) so editor + tool can never drift. Per-binding
  * and per-action shape checks live inline here for now — extraction
@@ -53,22 +69,6 @@ import type {
  */
 import { parseColor } from '#core/color'
 import type { FigmaAPI } from '#core/figma-api'
-import {
-  countServerWorkflowActions,
-  isSafeAnalyticsPolicyURL,
-  normalizeSupabaseMutationPayloadJSON,
-  validateAnalyticsConfig,
-  validateExpression,
-  validateInteractiveProps,
-  validateInvokeServerWorkflowAction,
-  validateLowcodeCustomCSS,
-  validateLowcodeHeadMeta,
-  validateStateName,
-  validateSupabaseConfig,
-  validateSupabasePayloadEntries,
-  validateServerWorkflows,
-  validateURLTemplate
-} from '#core/lowcode-validation'
 
 type BindingKind = BindingExpr['kind']
 // `SupabaseFilter.op` is an inline literal union on the interface; mirror

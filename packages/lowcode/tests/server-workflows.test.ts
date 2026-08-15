@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { validateServerWorkflows } from '@open-pencil/core/lowcode-validation'
+import { validateServerWorkflows } from '@open-pencil/lowcode'
+import type { ServerWorkflowDef } from '@open-pencil/scene-graph'
 
 const TRIGGER = { kind: 'http', method: 'POST', auth: 'supabase-user' } as const
 
@@ -36,7 +37,7 @@ describe('validateServerWorkflows', () => {
           }
         ]
       }
-    ]
+    ] satisfies ServerWorkflowDef[]
 
     expect(validateServerWorkflows(input)).toEqual({ ok: true, workflows: input })
   })

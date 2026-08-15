@@ -427,6 +427,7 @@
     {
       "files": [
         "packages/compiler/src/**",
+        "packages/lowcode/tests/**",
         "tests/engine/compiler/**",
         "tests/engine/lowcode-validation/**",
         "src/components/properties/Lowcode/**"

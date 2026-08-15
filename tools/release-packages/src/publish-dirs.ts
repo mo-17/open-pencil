@@ -28,6 +28,7 @@ const PUBLISH_CONFIG_FIELDS = new Set(['access', 'provenance', 'registry'])
 
 export const DEFAULT_PACKAGES: PackagePublishConfig[] = [
   { dir: 'packages/scene-graph', include: ['dist'], extraFiles: ['README.md'] },
+  { dir: 'packages/lowcode', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/pen', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/kiwi', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/fig', include: ['dist'], extraFiles: ['README.md'] },

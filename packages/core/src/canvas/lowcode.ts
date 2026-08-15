@@ -1,14 +1,14 @@
 import type { Canvas } from 'canvaskit-wasm'
 
-import type { SceneNode } from '@open-pencil/scene-graph'
-import type { Vector } from '@open-pencil/scene-graph/primitives'
-
-import { parseColor } from '#core/color'
 import {
   DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
   DEFAULT_LOWCODE_TEXT_COLOR,
   normalizeLowcodeTextColor
-} from '#core/lowcode-validation'
+} from '@open-pencil/lowcode'
+import type { SceneNode } from '@open-pencil/scene-graph'
+import type { Vector } from '@open-pencil/scene-graph/primitives'
+
+import { parseColor } from '#core/color'
 import { resolveMapModule, type MapModuleConfig } from '#core/plugins'
 import { buttonLabelTextNode, lowcodeTextNode, lowcodeTextProjection } from '#core/text/lowcode'
 

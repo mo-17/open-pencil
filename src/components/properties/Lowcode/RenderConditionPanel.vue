@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { validateExpression } from '@open-pencil/core/lowcode-validation'
+import { validateExpression } from '@open-pencil/lowcode'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 

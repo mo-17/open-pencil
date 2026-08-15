@@ -1,7 +1,8 @@
 import {
   auditApplicationRuntime,
   type ApplicationRuntimeEnvironment
-} from '#core/lowcode-validation/application-runtime'
+} from '@open-pencil/lowcode/application-runtime'
+
 import { defineTool } from '#core/tools/schema'
 
 const RUNTIME_ENVIRONMENTS: readonly ApplicationRuntimeEnvironment[] = [

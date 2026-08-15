@@ -1,9 +1,10 @@
-import type { FigmaAPI } from '#core/figma-api'
 import {
   FORM_CONTROLS_AUDIT_DEFAULT_LIMIT,
   FORM_CONTROLS_AUDIT_MAX_LIMIT,
   auditValidatedFormControls
-} from '#core/lowcode-validation'
+} from '@open-pencil/lowcode'
+
+import type { FigmaAPI } from '#core/figma-api'
 import { defineTool } from '#core/tools/schema'
 
 function scopeId(figma: FigmaAPI, requested?: string): string {

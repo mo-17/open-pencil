@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { validateInteractiveProps } from '@open-pencil/core/lowcode-validation'
+import { validateInteractiveProps } from '@open-pencil/lowcode'
 
 const INVALID_KNOWN_FIELDS = [
   ['BUTTON', 'text', 42, 'a string'],

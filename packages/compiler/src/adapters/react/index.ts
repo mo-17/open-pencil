@@ -24,7 +24,7 @@ import type {
   LowcodeThemeSwitchPosition
 } from '#compiler/types'
 
-import { compactLowcodeHeadMetadata } from '@open-pencil/core/lowcode-validation'
+import { compactLowcodeHeadMetadata } from '@open-pencil/lowcode'
 
 import { scopeMicrofrontendCSS } from '../microfrontend-css'
 import { buildPreviewBridge } from '../preview-bridge'

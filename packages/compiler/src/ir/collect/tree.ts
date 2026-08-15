@@ -19,7 +19,7 @@ import {
   validateLowcodeRoutePattern,
   validateStateName,
   validateSupabaseConfig
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 import {
   isAutoLayoutMode,
   getMotionChannels,

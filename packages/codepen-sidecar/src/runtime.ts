@@ -5,7 +5,7 @@ import { posix } from 'node:path'
 import { compileScript, compileStyle, parse } from '#vue-compiler-sfc-browser'
 import { compile as compileTailwind } from 'tailwindcss'
 
-import { findCodePenSecretKinds } from '@open-pencil/core/lowcode-validation'
+import { findCodePenSecretKinds } from '@open-pencil/lowcode'
 
 import {
   CodePenCSSAssetError,

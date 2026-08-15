@@ -4,7 +4,8 @@ import {
   inspectLowcodeRouteParameters,
   lowcodeRouteCollisionKey,
   type NavigationRouteEntry
-} from '#core/lowcode-validation'
+} from '@open-pencil/lowcode'
+
 import { defineTool } from '#core/tools/schema'
 
 type ReadResult<T> = { ok: true; data: T } | { ok: false; error: string }

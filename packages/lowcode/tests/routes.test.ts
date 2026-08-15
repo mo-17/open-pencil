@@ -7,7 +7,7 @@ import {
   lowcodeRouteCollisionKey,
   lowcodeRouteMatches,
   validateLowcodeRoutePattern
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 
 describe('lowcode route helpers', () => {
   test('derives the compiler route contract including deterministic slug collisions', () => {

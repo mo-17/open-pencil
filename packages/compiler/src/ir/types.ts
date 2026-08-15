@@ -3,7 +3,7 @@
  * `adapters/**`; the data flow is one-way (SceneGraph → IR → adapter).
  */
 
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
+import type { ExprAst } from '@open-pencil/lowcode'
 
 import type { IRMotionDriverSpec } from './drivers'
 import type { IRGeneratedEffect } from './generated-effect'

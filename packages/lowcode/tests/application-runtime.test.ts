@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { auditApplicationRuntime } from '@open-pencil/core/lowcode-validation/application-runtime'
+import { auditApplicationRuntime } from '@open-pencil/lowcode/application-runtime'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 const TRIGGER = { kind: 'http', method: 'POST', auth: 'supabase-user' } as const
@@ -49,7 +49,7 @@ describe('auditApplicationRuntime', () => {
     const page = graph.getPages()[0]
     graph.createNode('BUTTON', page.id, {
       events: {
-        click: [
+        onClick: [
           {
             id: 'invoke-missing-workflow',
             kind: 'invokeServerWorkflow',

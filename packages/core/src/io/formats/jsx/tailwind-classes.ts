@@ -1,6 +1,11 @@
 import { twirl } from 'twirlwind'
 
 import {
+  DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
+  DEFAULT_LOWCODE_TEXT_COLOR,
+  normalizeLowcodeTextColor
+} from '@open-pencil/lowcode'
+import {
   isAutoLayoutMode,
   normalizeFontFamily,
   type Fill,
@@ -15,11 +20,6 @@ import {
 
 import { colorToCSSCompact, colorToFill } from '#core/color'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
-import {
-  DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
-  DEFAULT_LOWCODE_TEXT_COLOR,
-  normalizeLowcodeTextColor
-} from '#core/lowcode-validation'
 import { resolveNodeTextDirection } from '#core/text/direction'
 import { lowcodeTextNode } from '#core/text/lowcode'
 

@@ -1,4 +1,4 @@
-import { validateExpression } from '@open-pencil/core/lowcode-validation'
+import { validateExpression } from '@open-pencil/lowcode'
 import type { ActionDef, EventName, SceneNode, WorkflowDef } from '@open-pencil/scene-graph'
 
 export interface WorkflowGraphEdge {

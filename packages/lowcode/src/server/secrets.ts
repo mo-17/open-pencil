@@ -1,4 +1,4 @@
-import { detectServiceRole } from '#core/lowcode-validation/supabase-config'
+import { detectServiceRole } from '../supabase-config'
 
 const HIGH_CONFIDENCE_SECRET_PATTERNS = [
   /\bsb_secret_[A-Za-z0-9_-]*/i,

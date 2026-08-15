@@ -6,11 +6,7 @@ import type {
   IRServerWorkflow
 } from '#compiler/ir/types'
 
-import {
-  emitExpression,
-  substituteIdents,
-  type ExprAst
-} from '@open-pencil/core/lowcode-validation'
+import { emitExpression, substituteIdents, type ExprAst } from '@open-pencil/lowcode'
 
 interface EmitScope {
   bindings: Map<string, ExprAst>

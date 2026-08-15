@@ -3,7 +3,7 @@ import {
   unsafeLowcodeCustomCSSURLs,
   unsafeLowcodeHeadMetaRefreshURL,
   validateLowcodeCustomCSS
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 import type {
   LowcodeHeadLink,
   LowcodeHeadLinkCrossOrigin,

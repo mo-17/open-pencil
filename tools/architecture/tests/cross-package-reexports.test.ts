@@ -32,4 +32,19 @@ describe('cross-package re-export shims', () => {
       )
     ).toBe(false)
   })
+
+  test('allows only the established core lowcode compatibility entry points', () => {
+    expect(
+      isCrossPackageReexportShim(
+        'packages/core/src/lowcode-validation/index.ts',
+        "export * from '@open-pencil/lowcode'\n"
+      )
+    ).toBe(false)
+    expect(
+      isCrossPackageReexportShim(
+        'packages/core/src/another-compatibility/index.ts',
+        "export * from '@open-pencil/lowcode'\n"
+      )
+    ).toBe(true)
+  })
 })

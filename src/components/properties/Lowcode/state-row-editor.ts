@@ -9,7 +9,7 @@
  */
 import { computed, ref, type ComputedRef } from 'vue'
 
-import { validateStateName } from '@open-pencil/core/lowcode-validation'
+import { validateStateName } from '@open-pencil/lowcode'
 import type { StateDef, StateValueType } from '@open-pencil/scene-graph'
 
 export const STATE_VALUE_TYPES: StateValueType[] = [

@@ -1,8 +1,4 @@
-import {
-  PAYLOAD_ENTRY_KEY_RE,
-  validateExpression,
-  validateURLTemplate
-} from '@open-pencil/core/lowcode-validation'
+import { PAYLOAD_ENTRY_KEY_RE, validateExpression, validateURLTemplate } from '@open-pencil/lowcode'
 import type {
   ActionDef,
   SupabaseFilter,

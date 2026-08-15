@@ -1,6 +1,6 @@
 import type { IRStateDecl } from '#compiler/ir/types'
 
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
+import { emitExpression } from '@open-pencil/lowcode'
 
 /**
  * Emit a single `useState` declaration. The setter is conventionally named

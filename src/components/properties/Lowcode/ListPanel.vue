@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { validateStateName } from '@open-pencil/core/lowcode-validation'
+import { validateStateName } from '@open-pencil/lowcode'
 import type { DocumentStateDef, StateDef } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'

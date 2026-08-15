@@ -1,5 +1,9 @@
 /* eslint-disable max-lines -- The fixed result schema, static finding copy, bounded scanner, and host authority stay one reviewable security boundary. */
 
+import type {
+  PluginContributionDataContractV2,
+  PluginObjectParameterSchemaV2
+} from '@open-pencil/core/plugins'
 import {
   auditApplicationRuntime,
   detectSupabaseSecretKey,
@@ -7,12 +11,8 @@ import {
   unsafeLowcodeCustomCSSURLs,
   unsafeLowcodeHeadMetaRefreshURL,
   validateAnalyticsConfig
-} from '@open-pencil/core/lowcode-validation'
-import type { ApplicationRuntimeIssue } from '@open-pencil/core/lowcode-validation'
-import type {
-  PluginContributionDataContractV2,
-  PluginObjectParameterSchemaV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/lowcode'
+import type { ApplicationRuntimeIssue } from '@open-pencil/lowcode'
 import type {
   ActionDef,
   AnalyticsConfig,

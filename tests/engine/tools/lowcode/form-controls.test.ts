@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
-import type { FormControlsAudit } from '@open-pencil/core/lowcode-validation'
+import type { FormControlsAudit } from '@open-pencil/lowcode'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { getTool } from '#tests/helpers/tools'

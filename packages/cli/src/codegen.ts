@@ -16,7 +16,7 @@ import type {
   UIKitName
 } from '@open-pencil/compiler'
 import type { BuildOptions } from '@open-pencil/compiler/build'
-import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
+import { detectSupabaseSecretKey } from '@open-pencil/lowcode'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import {

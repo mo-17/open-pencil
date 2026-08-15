@@ -4,7 +4,7 @@ import {
   normalizeSupabaseMutationPayloadJSON,
   validateStateName,
   validateExpression
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 
 /**
  * Phase 1 §7.3 — these helpers back the StatePanel / EventsPanel inline

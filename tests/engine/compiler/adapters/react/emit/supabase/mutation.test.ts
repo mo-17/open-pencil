@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
 import type { IREventHandler, IRSupabaseFilter } from '@open-pencil/compiler/ir/types'
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
+import type { ExprAst } from '@open-pencil/lowcode'
 
 /**
  * Phase 3 §2 step 2 — `supabaseMutation` handler emit. Insert / upsert /

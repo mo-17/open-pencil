@@ -19,6 +19,7 @@
   "dependencies": {
     "@open-pencil/compiler": "workspace:*",
     "@open-pencil/core": "workspace:*",
+    "@open-pencil/lowcode": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "@vue/compiler-sfc": "^3.5.29",
     "tailwindcss": "^4.2.1"

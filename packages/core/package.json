@@ -206,6 +206,7 @@
     "@iconify/utils": "^3.1.0",
     "@open-pencil/fig": "workspace:*",
     "@open-pencil/kiwi": "workspace:*",
+    "@open-pencil/lowcode": "workspace:*",
     "@open-pencil/pen": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "@tauri-apps/api": "^2",

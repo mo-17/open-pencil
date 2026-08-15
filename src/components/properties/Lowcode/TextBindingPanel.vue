@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { validateExpression } from '@open-pencil/core/lowcode-validation'
+import { validateExpression } from '@open-pencil/lowcode'
 import type { BindingExpr } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'

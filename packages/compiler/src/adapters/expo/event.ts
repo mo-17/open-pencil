@@ -1,6 +1,6 @@
 import type { IREventHandler, IRNavigateHandler } from '#compiler/ir/types'
 
-import { emitExpression, lowcodeNavigationPathname } from '@open-pencil/core/lowcode-validation'
+import { emitExpression, lowcodeNavigationPathname } from '@open-pencil/lowcode'
 
 import type { ExpoWarningSink } from './types'
 

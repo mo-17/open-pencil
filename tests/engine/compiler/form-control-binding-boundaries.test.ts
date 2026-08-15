@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
-import { planValidatedFormValueBindings } from '@open-pencil/core/lowcode-validation'
+import { planValidatedFormValueBindings } from '@open-pencil/lowcode'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 

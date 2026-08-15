@@ -1,3 +1,4 @@
+import { validateServerWorkflows } from '@open-pencil/lowcode'
 import { cloneMotionSpec } from '@open-pencil/scene-graph'
 import type {
   ActionDef,
@@ -32,7 +33,6 @@ import type {
  * of `tools/read/**` uses.
  */
 import type { FigmaAPI } from '#core/figma-api'
-import { validateServerWorkflows } from '#core/lowcode-validation'
 import { defineTool } from '#core/tools/schema'
 
 import type { BatchReadResult } from './batch-result'

@@ -5,7 +5,7 @@ import {
   findComponentMasterAncestor,
   isCheckboxGroupControl,
   planValidatedFormValueBindings
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 import type { BindingExpr, NodeType } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'

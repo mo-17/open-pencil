@@ -5,8 +5,8 @@ import {
   buildRlsPolicySql,
   detectSupabaseSecretKey,
   type RlsTableRequirement
-} from '@open-pencil/core/lowcode-validation'
-import { auditApplicationRuntime } from '@open-pencil/core/lowcode-validation/application-runtime'
+} from '@open-pencil/lowcode'
+import { auditApplicationRuntime } from '@open-pencil/lowcode/application-runtime'
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
@@ -104,7 +104,7 @@ function maybeFireRlsToast(): void {
 
 // Phase 3 §2.7 risk row 1 — secret/service_role keys carry full DB privileges and
 // MUST never land in .fig / pluginData / git. The detector lives in
-// `@open-pencil/core/lowcode-validation` so the editor UI here and the
+// `@open-pencil/lowcode` so the editor UI here and the
 // lowcode AI tool (Phase 3 §3) share one source — a divergence between
 // the two would be silent on this side (banner still shows) and dangerous
 // on the tool side (key would persist).

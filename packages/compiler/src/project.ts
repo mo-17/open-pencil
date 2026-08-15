@@ -1,7 +1,4 @@
-import {
-  validateLowcodeCustomCSS,
-  validateLowcodeHeadMeta
-} from '@open-pencil/core/lowcode-validation'
+import { validateLowcodeCustomCSS, validateLowcodeHeadMeta } from '@open-pencil/lowcode'
 
 import type { CompilerOptions, HTMLMetadata, LowcodeThemeSwitchPosition } from './types'
 

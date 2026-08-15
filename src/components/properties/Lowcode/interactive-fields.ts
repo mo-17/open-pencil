@@ -3,7 +3,7 @@ import {
   DEFAULT_LOWCODE_TEXT_COLOR,
   type DatePickerIssue,
   validateDatePickerProps
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 // Phase 3 §3.v6 — declarative schema for the generic InteractiveProps editor.
@@ -117,7 +117,7 @@ export const INTERACTIVE_PROP_FIELDS: Partial<Record<SceneNode['type'], Interact
 // Phase 3 §3.v7 — per-NodeType interactiveProps validators. The panel runs
 // the one registered for the selected node type and renders the returned
 // issues as a warning bar (node-type-gated, so the generic field renderer
-// stays untouched). The validators live in `@open-pencil/core/lowcode-validation`
+// stays untouched). The validators live in `@open-pencil/lowcode`
 // so the AI tool boundary and the compiler IR pass share them (经验 I).
 export const INTERACTIVE_PROP_VALIDATORS: Partial<
   Record<SceneNode['type'], (ip: Record<string, unknown>) => DatePickerIssue[]>

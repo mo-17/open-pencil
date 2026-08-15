@@ -5,8 +5,7 @@ import type {
   SupabasePayloadEntry
 } from '@open-pencil/scene-graph'
 
-import { parseExpression } from '#core/lowcode-validation/expression'
-
+import { parseExpression } from '../expression'
 import { findServerWorkflowSecretLiteral, serverWorkflowSafePathKey } from './secrets'
 import {
   type ServerValidationResult as Result,

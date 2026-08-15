@@ -19,7 +19,7 @@ import react from '@vitejs/plugin-react'
 import vue from '@vitejs/plugin-vue'
 import { build, type PluginOption } from 'vite'
 
-import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
+import { detectSupabaseSecretKey } from '@open-pencil/lowcode'
 
 import {
   inMemoryVFS,

@@ -1,4 +1,4 @@
-import { containsCodePenSecret } from '@open-pencil/core/lowcode-validation'
+import { containsCodePenSecret } from '@open-pencil/lowcode'
 
 import {
   CODEPEN_STATIC_EVIDENCE_LIMITS,

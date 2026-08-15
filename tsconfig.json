@@ -36,6 +36,8 @@
       "@open-pencil/compiler": ["./packages/compiler/src/index.ts"],
       "@open-pencil/compiler/*": ["./packages/compiler/src/*"],
       "@open-pencil/dom-css": ["./packages/dom-css/src/index.ts"],
+      "@open-pencil/lowcode": ["./packages/lowcode/src/index.ts"],
+      "@open-pencil/lowcode/*": ["./packages/lowcode/src/*"],
       "#scene-graph/*": ["./packages/scene-graph/src/*"],
       "@open-pencil/scene-graph": ["./packages/scene-graph/src/index.ts"],
       "@open-pencil/scene-graph/*": ["./packages/scene-graph/src/*"],

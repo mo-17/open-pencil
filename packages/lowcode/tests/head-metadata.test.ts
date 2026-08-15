@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { compactLowcodeHeadMetadata } from '@open-pencil/core/lowcode-validation'
+import { compactLowcodeHeadMetadata } from '@open-pencil/lowcode'
 
 describe('compactLowcodeHeadMetadata', () => {
   test('normalizes safe entries and drops empty or unsafe metadata', () => {

@@ -2,7 +2,7 @@ import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
 
 import type { DeployEnvironment } from '@open-pencil/core/lowcode-deployment'
-import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
+import { detectSupabaseSecretKey } from '@open-pencil/lowcode'
 
 import { readLocalStorageText, writeLocalStorageText } from '@/app/cache'
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { emitExpression, parseTemplate } from '@open-pencil/core/lowcode-validation'
+import { emitExpression, parseTemplate } from '@open-pencil/lowcode'
 
 /** Parse a raw template string and emit it back to a JS string, failing the
  *  test if the scanner rejects the input. */

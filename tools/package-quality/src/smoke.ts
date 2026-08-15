@@ -69,10 +69,13 @@ function writeTypeConsumer(cwd: string): void {
   writeFileSync(
     join(cwd, 'package-type-consumer.ts'),
     `import { createEditor, type Editor } from '@open-pencil/core'
+import { parseExpression as parseExpressionCompat } from '@open-pencil/core/lowcode-validation'
+import type { ApplicationRuntimeAudit as ApplicationRuntimeAuditCompat } from '@open-pencil/core/lowcode-validation/application-runtime'
 import { htmlToDesignDocument, type DesignDocument } from '@open-pencil/dom-css'
 import { FIG_PACKAGE_STATUS, type FigContainerDocument } from '@open-pencil/fig'
 import { FIG_KIWI_DEFAULT_VERSION, buildFigKiwi } from '@open-pencil/kiwi/fig/container'
 import { type GUID as KiwiGUID } from '@open-pencil/kiwi/fig'
+import { parseExpression, type ExprAst } from '@open-pencil/lowcode'
 import { parsePenFile, type PenDocument } from '@open-pencil/pen'
 import { SceneGraph, type Color, type SceneNode, type Vector } from '@open-pencil/scene-graph'
 import { testIdSelector } from '@open-pencil/vue'
@@ -81,6 +84,8 @@ const graph = new SceneGraph()
 const editorFactory: typeof createEditor = createEditor
 declare const editor: Editor
 declare const designDocument: DesignDocument
+declare const expression: ExprAst
+declare const applicationRuntimeAudit: ApplicationRuntimeAuditCompat
 
 const color: Color = { r: 1, g: 0.5, b: 0, a: 1 }
 const vector: Vector = { x: 1, y: 2 }
@@ -95,6 +100,8 @@ const kiwiGuid: KiwiGUID = { sessionID: 1, localID: 2 }
 void editorFactory
 void editor
 void designDocument
+void expression
+void applicationRuntimeAudit
 void color
 void vector
 void maybeNode
@@ -104,6 +111,8 @@ void kiwiGuid
 void FIG_PACKAGE_STATUS
 void FIG_KIWI_DEFAULT_VERSION
 void buildFigKiwi
+void parseExpression
+void parseExpressionCompat
 void parsePenFile
 void htmlToDesignDocument
 void testIdSelector
@@ -323,6 +332,14 @@ globalThis.__OPENPENCIL_MOTION_RUNTIME__?.dispose()
   )
   nodeEval(
     "const { SceneGraph } = await import('@open-pencil/scene-graph'); const graph = new SceneGraph(); if (graph.getPages().length !== 1) throw new Error('SceneGraph package smoke failed')",
+    tempDir
+  )
+  nodeEval(
+    "const { parseExpression } = await import('@open-pencil/lowcode'); const parsed = parseExpression('count + 1'); if (!parsed.ok || !parsed.references.has('count')) throw new Error('Lowcode package smoke failed')",
+    tempDir
+  )
+  nodeEval(
+    "const owner = await import('@open-pencil/lowcode'); const ownerRuntime = await import('@open-pencil/lowcode/application-runtime'); const compat = await import('@open-pencil/core/lowcode-validation'); const compatRuntime = await import('@open-pencil/core/lowcode-validation/application-runtime'); if (compat.parseExpression !== owner.parseExpression || compatRuntime.auditApplicationRuntime !== ownerRuntime.auditApplicationRuntime) throw new Error('Core lowcode compatibility export failed')",
     tempDir
   )
   nodeEval(

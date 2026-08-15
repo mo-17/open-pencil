@@ -1,9 +1,9 @@
-import { validateSupabaseConfig } from '@open-pencil/core/lowcode-validation'
+import { validateSupabaseConfig } from '@open-pencil/lowcode'
 import {
   auditApplicationRuntime,
   type ApplicationRuntimeAudit,
   type ApplicationRuntimeGraph
-} from '@open-pencil/core/lowcode-validation/application-runtime'
+} from '@open-pencil/lowcode/application-runtime'
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
 
 import { readCachedSupabaseSchemaCatalog } from '@/app/lowcode/supabase/cache'

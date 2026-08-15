@@ -1,4 +1,9 @@
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
+import {
+  DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
+  DEFAULT_LOWCODE_TEXT_COLOR,
+  normalizeLowcodeTextColor
+} from '@open-pencil/lowcode'
 import type { Fill, NodeType, SceneNode, Stroke } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 import type { Color } from '@open-pencil/scene-graph/primitives'
@@ -9,11 +14,6 @@ import {
   FIGMA_PROJECTION_VERSION
 } from '#core/kiwi/fig/node-change/figma-projection'
 import { LOWCODE_NODE_TYPE_KEY } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
-import {
-  DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
-  DEFAULT_LOWCODE_TEXT_COLOR,
-  normalizeLowcodeTextColor
-} from '#core/lowcode-validation'
 
 export const FIGMA_PROJECTABLE_LOWCODE_TYPES = [
   'BUTTON',

@@ -10,7 +10,7 @@ import type {
   IRTree
 } from '#compiler/ir/types'
 
-import { lowcodeNavigationPathname } from '@open-pencil/core/lowcode-validation'
+import { lowcodeNavigationPathname } from '@open-pencil/lowcode'
 
 import {
   isNativeSwitch as isSwitch,

@@ -13,7 +13,7 @@
 
 import { ref, type Ref } from 'vue'
 
-import type { ApplicationRuntimeAudit } from '@open-pencil/core/lowcode-validation/application-runtime'
+import type { ApplicationRuntimeAudit } from '@open-pencil/lowcode/application-runtime'
 
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import { isTauri } from '@/app/tauri/env'

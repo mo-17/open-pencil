@@ -1,4 +1,4 @@
-import { findCodePenSecretKinds } from '@open-pencil/core/lowcode-validation'
+import { findCodePenSecretKinds } from '@open-pencil/lowcode'
 
 import type { PreviewFiles } from '../vfs'
 import type { CodePenShowcaseDiagnostic, CodePenShowcaseOptions } from './types'

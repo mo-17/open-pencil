@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { emitExpression, parseExpression } from '@open-pencil/core/lowcode-validation'
+import { emitExpression, parseExpression } from '@open-pencil/lowcode'
 
 function emit(src: string): string {
   const r = parseExpression(src)

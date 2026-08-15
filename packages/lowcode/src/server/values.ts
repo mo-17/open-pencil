@@ -5,9 +5,8 @@ import type {
   SupabasePayloadEntry
 } from '@open-pencil/scene-graph'
 
-import { parseExpression } from '#core/lowcode-validation/expression'
-import { isSafeLowcodeIdentifier } from '#core/lowcode-validation/identifiers'
-
+import { parseExpression } from '../expression'
+import { isSafeLowcodeIdentifier } from '../identifiers'
 import { findServerWorkflowSecretLiteral, isSensitiveServerHeader } from './secrets'
 
 export type ServerValidationResult<T> = { ok: true; value: T } | { ok: false; error: string }

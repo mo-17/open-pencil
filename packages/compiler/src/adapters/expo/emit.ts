@@ -12,7 +12,7 @@ import type {
   IRTree
 } from '#compiler/ir/types'
 
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
+import { emitExpression } from '@open-pencil/lowcode'
 
 import {
   isNativeSwitch as isSwitch,

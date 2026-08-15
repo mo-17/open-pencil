@@ -4,7 +4,7 @@ import {
   type RlsTableRequirement,
   buildRlsPolicySql,
   collectRlsRequirements
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 import type { ActionDef } from '@open-pencil/scene-graph'
 
 /**

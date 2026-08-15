@@ -1,8 +1,4 @@
-import {
-  type ExprAst,
-  collectReferences,
-  substituteIdents
-} from '@open-pencil/core/lowcode-validation'
+import { type ExprAst, collectReferences, substituteIdents } from '@open-pencil/lowcode'
 
 import type {
   IRStripeCheckoutHandler,

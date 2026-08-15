@@ -1,12 +1,12 @@
-import type { SceneNode } from '@open-pencil/scene-graph'
-
-import type { FigmaAPI } from '#core/figma-api'
 import {
   deriveLowcodePageRoutes,
   inspectLowcodeRouteParameters,
   lowcodeRouteCollisionKey,
   validateLowcodeRoutePattern
-} from '#core/lowcode-validation'
+} from '@open-pencil/lowcode'
+import type { SceneNode } from '@open-pencil/scene-graph'
+
+import type { FigmaAPI } from '#core/figma-api'
 import { defineTool, type ToolCtx } from '#core/tools/schema'
 
 type ModifyResult<T> = { ok: true; data: T } | { ok: false; error: string }

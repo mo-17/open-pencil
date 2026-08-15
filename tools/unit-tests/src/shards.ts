@@ -36,6 +36,7 @@ export const UNIT_TEST_GROUPS = {
     'tests/engine/async-work',
     'tests/engine/bytes',
     'tests/engine/lint',
+    'packages/lowcode/tests',
     'tests/engine/lowcode-validation',
     'tests/engine/random',
     'tests/engine/scene-graph',

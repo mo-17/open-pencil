@@ -3,7 +3,7 @@ import {
   lowcodeStateSetterName,
   PREV_IDENT,
   validateStateName
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 import type { SceneNode, StateDef } from '@open-pencil/scene-graph'
 
 import type { IRDocStateDecl, IRStateDecl, IRWarning } from '../types'

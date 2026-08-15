@@ -1,6 +1,5 @@
+import { isInteractivePropsObject, validateInteractiveProps } from '@open-pencil/lowcode'
 import type { NodeType } from '@open-pencil/scene-graph'
-
-import { isInteractivePropsObject, validateInteractiveProps } from '#core/lowcode-validation'
 
 export type LowcodeNodeType = Extract<
   NodeType,

@@ -2,7 +2,7 @@ import { stableNameSuffix } from '#compiler/ir/stable-name'
 import { tailwindClassName, type CompilerStyleOptions } from '#compiler/ir/style'
 import type { ComponentProp, VariantAxis } from '#compiler/ir/types'
 
-import { LOWCODE_GENERATED_RUNTIME_IDENTIFIERS } from '@open-pencil/core/lowcode-validation'
+import { LOWCODE_GENERATED_RUNTIME_IDENTIFIERS } from '@open-pencil/lowcode'
 import { parseVariantName, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 export const COMPONENT_FIXED_PROP_NAMES = [

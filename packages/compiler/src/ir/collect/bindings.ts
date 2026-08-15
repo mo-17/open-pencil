@@ -8,7 +8,7 @@ import {
   PREV_IDENT,
   substitutePrev,
   validateInvokeServerWorkflowAction
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 import {
   type ActionDef,
   type CallWorkflowAction,

@@ -1,8 +1,8 @@
 import type { IRTree } from '#compiler/ir/types'
 import type { CompileWarning } from '#compiler/types'
 
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
+import { emitExpression } from '@open-pencil/lowcode'
+import type { ExprAst } from '@open-pencil/lowcode'
 
 export const SAFE_HREF_RUNTIME = `function __safeHref(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined

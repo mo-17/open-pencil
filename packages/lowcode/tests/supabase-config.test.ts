@@ -5,7 +5,7 @@ import {
   detectServiceRole,
   detectSupabaseSecretKey,
   validateSupabaseConfig
-} from '@open-pencil/core/lowcode-validation'
+} from '@open-pencil/lowcode'
 
 /**
  * Phase 3 §3 step 1 — supabase-config validators were lifted from

@@ -24,7 +24,7 @@
 
 import type { IRFieldValidation } from '#compiler/ir/types'
 
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
+import { emitExpression } from '@open-pencil/lowcode'
 
 /** The fixed Tailwind utilities the per-field error `<p>` renders. They never
  *  appear in the IR, so the React adapter must seed them into the

@@ -1,9 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import {
-  PAYLOAD_ENTRY_KEY_RE,
-  validateSupabasePayloadEntries
-} from '@open-pencil/core/lowcode-validation'
+import { PAYLOAD_ENTRY_KEY_RE, validateSupabasePayloadEntries } from '@open-pencil/lowcode'
 
 /**
  * Phase 3 §3.v3 step 1 — direct unit coverage at the new shared
