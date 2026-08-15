@@ -44,11 +44,11 @@ Component API tables are extracted from Vue source and JSDoc with `vue-component
 
 ### Tooling
 
-| Tool | Command | Purpose |
-|------|---------|---------|
-| oxlint | `bun run lint` | Linting (Rust-based, fast) |
-| oxfmt | `bun run format` | Code formatting |
-| tsgo | `bun run typecheck` | Type checking (Go-based TypeScript checker) |
+| Tool   | Command             | Purpose                                     |
+| ------ | ------------------- | ------------------------------------------- |
+| oxlint | `bun run lint`      | Linting (Rust-based, fast)                  |
+| oxfmt  | `bun run format`    | Code formatting                             |
+| tsgo   | `bun run typecheck` | Type checking (Go-based TypeScript checker) |
 
 Run all checks:
 
@@ -87,26 +87,27 @@ Developers and AI agents working on the codebase should read `AGENTS.md` in the 
 
 ## Key Files
 
-Core engine source lives in `packages/core/src/`. Framework-agnostic low-code validation and runtime audit contracts live in `packages/lowcode/src/`. App-specific editor, document, AI, collaboration, shell, demo, and automation code lives under `src/app/*`; the Vue SDK owns reusable canvas/composable code under `packages/vue/src/`.
+Core engine and host-owned plugin behavior live in `packages/core/src/`. Framework-agnostic low-code validation and runtime audit contracts live in `packages/lowcode/src/`; portable declarative plugin, trust, runtime-index, and marketplace contracts live in `packages/plugin-contracts/src/`. App-specific editor, document, AI, collaboration, shell, demo, and automation code lives under `src/app/*`; the Vue SDK owns reusable canvas/composable code under `packages/vue/src/`.
 
-| File | Purpose |
-|------|---------|
-| `packages/scene-graph/src/` | Scene graph: nodes, variables, instances, hit testing, undo |
-| `packages/core/src/canvas/renderer.ts` | CanvasKit rendering pipeline |
-| `packages/core/src/layout/` | Yoga layout adapter |
-| `packages/core/src/clipboard.ts` | Figma-compatible clipboard |
-| `packages/core/src/vector/` | Vector network model |
-| `packages/core/src/io/formats/raster/render.ts` | Offscreen image export (PNG/JPG/WEBP) |
-| `packages/kiwi/src/schema-runtime/` | Kiwi schema runtime and binary codec |
-| `packages/fig/src/node-change/` | SceneGraph and Figma NodeChange conversion policy |
-| `packages/lowcode/src/` | Low-code expressions, validators, routes, workflows, and runtime audits |
-| `packages/core/src/io/formats/fig/` | App-facing .fig read/write orchestration |
-| `packages/cli/src/index.ts` | CLI entry point |
-| `packages/core/src/tools/` | Unified tool definitions split by domain (read, create, modify, structure, variables, vector, analyze) |
-| `packages/core/src/figma-api/` | Figma Plugin API implementation |
-| `packages/mcp/src/server.ts` | MCP server factory |
-| `packages/cli/src/commands/` | CLI commands (info, tree, find, export, eval, analyze) |
-| `src/app/editor/session/create.ts` | Editor session assembly |
-| `packages/vue/src/canvas/CanvasRoot.vue` | Canvas rendering composable |
-| `packages/vue/src/canvas/useCanvasInput.ts` | Mouse/touch input handling |
-| `src/app/shell/keyboard/use.ts` | Keyboard shortcut handling |
+| File                                            | Purpose                                                                                                |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `packages/scene-graph/src/`                     | Scene graph: nodes, variables, instances, hit testing, undo                                            |
+| `packages/core/src/canvas/renderer.ts`          | CanvasKit rendering pipeline                                                                           |
+| `packages/core/src/layout/`                     | Yoga layout adapter                                                                                    |
+| `packages/core/src/clipboard.ts`                | Figma-compatible clipboard                                                                             |
+| `packages/core/src/vector/`                     | Vector network model                                                                                   |
+| `packages/core/src/io/formats/raster/render.ts` | Offscreen image export (PNG/JPG/WEBP)                                                                  |
+| `packages/kiwi/src/schema-runtime/`             | Kiwi schema runtime and binary codec                                                                   |
+| `packages/fig/src/node-change/`                 | SceneGraph and Figma NodeChange conversion policy                                                      |
+| `packages/lowcode/src/`                         | Low-code expressions, validators, routes, workflows, and runtime audits                                |
+| `packages/plugin-contracts/src/`                | Declarative plugin schemas, signing/trust, runtime, and marketplace contracts                          |
+| `packages/core/src/io/formats/fig/`             | App-facing .fig read/write orchestration                                                               |
+| `packages/cli/src/index.ts`                     | CLI entry point                                                                                        |
+| `packages/core/src/tools/`                      | Unified tool definitions split by domain (read, create, modify, structure, variables, vector, analyze) |
+| `packages/core/src/figma-api/`                  | Figma Plugin API implementation                                                                        |
+| `packages/mcp/src/server.ts`                    | MCP server factory                                                                                     |
+| `packages/cli/src/commands/`                    | CLI commands (info, tree, find, export, eval, analyze)                                                 |
+| `src/app/editor/session/create.ts`              | Editor session assembly                                                                                |
+| `packages/vue/src/canvas/CanvasRoot.vue`        | Canvas rendering composable                                                                            |
+| `packages/vue/src/canvas/useCanvasInput.ts`     | Mouse/touch input handling                                                                             |
+| `src/app/shell/keyboard/use.ts`                 | Keyboard shortcut handling                                                                             |

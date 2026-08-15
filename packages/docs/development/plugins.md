@@ -68,6 +68,11 @@ the application has registered the exact reviewed host adapter for that plugin a
 
 ### Manifest API v2 safety contract
 
+Portable manifests, parameter and connector schemas, signed package/catalog formats, publisher
+trust, runtime package/index contracts, and marketplace snapshot verification are public through
+`@open-pencil/plugin-contracts`. The host-owned registry, built-in module definitions, persistence,
+and execution remain in `@open-pencil/core/plugins` and the application.
+
 Schema v2 keeps module contributions declarative and adds closed parameter/result JSON schemas,
 declared host permissions, explicit output extension/MIME pairs to commands and exporters, and
 bounded connector contracts under `contributions.connectors`. The

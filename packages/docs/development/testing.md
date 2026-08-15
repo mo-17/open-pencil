@@ -2,10 +2,10 @@
 
 ## Overview
 
-| Type                  | Framework  | Command              | Location        |
-| --------------------- | ---------- | -------------------- | --------------- |
-| E2E visual regression | Playwright | `bun run test`       | `tests/e2e/`    |
-| Figma CDP reference   | Playwright | `bun run test:figma` | `tests/figma/`  |
+| Type                  | Framework  | Command              | Location                             |
+| --------------------- | ---------- | -------------------- | ------------------------------------ |
+| E2E visual regression | Playwright | `bun run test`       | `tests/e2e/`                         |
+| Figma CDP reference   | Playwright | `bun run test:figma` | `tests/figma/`                       |
 | Unit tests            | bun:test   | `bun run test:unit`  | `tests/engine/`, `packages/*/tests/` |
 
 ## Documentation Build Memory
@@ -115,6 +115,7 @@ bun run test:unit
 Tests cover:
 
 - Scene graph CRUD operations, parent-child relationships, z-ordering, hit testing
+- Public package contracts under `packages/*/tests/`, including low-code validation and portable plugin trust/runtime schemas
 - **Fig-import pipeline** — node type mapping, transforms, fills/strokes/effects, gradients, images, arcs, nested hierarchies (`tests/engine/io/fig/import/legacy/*.test.ts`)
 - **Layout computation** — Yoga auto-layout: direction, gap, padding, justify, align, child sizing (fixed/fill/hug), cross-axis sizing, wrap, nested layouts (`tests/engine/layout/`)
 

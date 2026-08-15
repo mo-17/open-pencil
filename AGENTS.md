@@ -10,67 +10,71 @@ Bun workspace with focused packages:
 
 - `packages/scene-graph` — `@open-pencil/scene-graph`: framework-agnostic node types, graph storage, variables, libraries, copy/snap/undo, and geometry primitives.
 - `packages/lowcode` — `@open-pencil/lowcode`: framework-agnostic lowcode expressions, validation, routing, forms, Supabase/server-workflow policy, and application-runtime audits shared by core, compiler, app, CLI, and external consumers.
+- `packages/plugin-contracts` — `@open-pencil/plugin-contracts`: portable declarative plugin manifests, parameter and connector schemas, signed packages/catalogs, publisher trust, runtime package/index contracts, and marketplace snapshot verification. Host registries, built-in modules, persistence, and execution remain in core or the app.
 - `packages/pen` — `@open-pencil/pen`: Pencil.dev `.pen` document model, parser, SceneGraph import adapter, and source-preserving MotionSpec writer. The writer accepts imported `.pen` graphs and rejects non-Motion edits rather than emitting a lossy document.
 - `packages/kiwi` — `@open-pencil/kiwi`: pure Kiwi schema/runtime/protocol package. Owns low-level Figma Kiwi codec/container/parse helpers and stays SceneGraph-agnostic.
 - `packages/fig` — `@open-pencil/fig`: `.fig` archive/parser package owning Figma-specific SceneGraph conversion, raw metadata policy, and component/instance interpretation. Core keeps format-neutral IO registration and runtime rendering/font integration.
-- `packages/core` — `@open-pencil/core`: renderer, layout, editor core, Figma API, tools, clipboard, vector conversion, and app/CLI-facing document I/O. Keeps browser DOM out of core and consumes lowcode policy through `@open-pencil/lowcode`.
+- `packages/core` — `@open-pencil/core`: renderer, layout, editor core, Figma API, tools, clipboard, vector conversion, and app/CLI-facing document I/O. Keeps browser DOM out of core and consumes lowcode policy through `@open-pencil/lowcode` plus portable plugin contracts through `@open-pencil/plugin-contracts`.
 - `packages/motion-runtime` — `@open-pencil/motion-runtime`: public SSR-safe Motion playback SDK. Owns the shared scheduler, manual clock, reversible DOM projection, and Vanilla/Vue lifecycle adapters while reusing `@open-pencil/core/motion` prepared plans.
 - `packages/dom-css` — `@open-pencil/dom-css`: DOM/CSS/Tailwind/JSX import and HTML export pipelines.
 - `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
 - `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React or Vite + Vue 3 TypeScript + Tailwind projects, plus source-only Expo React Native and Flutter projects. Both web targets support the preview VFS, static builds, and deploy bundles; Vue v1 emits editable SFCs, Vue Router v4, route/query bindings, a bounded lowcode subset, and explicit warnings for unsupported advanced runtimes. Expo and Flutter remain explicit static native MVPs with fail-closed warnings, not WebViews or React Native Web wrappers.
 - `packages/cli` — `@open-pencil/cli`: headless CLI for `.fig`/`.pen` inspection, conversion, export, linting, XPath query, and compiler build/deploy flows. Uses `citty` + `agentfmt`.
 - `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + Streamable HTTP (Hono) + browser WebSocket RPC. Reuses core ToolDefs.
-- `packages/marketplace` — private self-hostable plugin-marketplace control plane. Owns publisher/key/ownership/submission/release state, SQLite persistence, immutable artifacts, signed publication, public/publisher HTTP APIs, admin CLI, and append-only audit checkpoints.
+- `packages/marketplace` — private self-hostable plugin-marketplace control plane. Owns publisher/key/ownership/submission/release state, SQLite persistence, immutable artifacts, signed publication, public/publisher HTTP APIs, admin CLI, and append-only audit checkpoints while consuming the public data-only contracts.
 - `packages/figma-motion-plugin` — private development Figma plugin that consumes OpenPencil's strict shared Motion envelope and applies the verified official Motion Plugin API subset through the shared `@open-pencil/fig` applicator.
 - `packages/docs` — `@open-pencil/docs`: published VitePress documentation site. Run `bun run docs:dev` for authoring, `bun run docs:build` for the default local render check, and `bun run docs:build:production` for complete deployment output.
 - `packages/demos` — demo media/assets only, not a published workspace package.
 
-The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, lowcode preview, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/scene-graph`, `@open-pencil/lowcode`, `@open-pencil/core`, `@open-pencil/compiler`, and `@open-pencil/vue` through public workspace exports.
+The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, lowcode preview, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/scene-graph`, `@open-pencil/lowcode`, `@open-pencil/plugin-contracts`, `@open-pencil/core`, `@open-pencil/compiler`, and `@open-pencil/vue` through public workspace exports.
 
 ### Public engine exports
 
-`@open-pencil/scene-graph` owns graph data and geometry. `@open-pencil/core` builds editor, renderer, IO, and automation behavior on top and exposes targeted subpaths.
+`@open-pencil/scene-graph` owns graph data and geometry. `@open-pencil/plugin-contracts` owns portable plugin data and trust validation. `@open-pencil/core` builds editor, renderer, IO, automation, and host-owned plugin behavior on top and exposes targeted subpaths.
 
 Use public package exports across package/app boundaries. Do not import workspace package internals from app code. Do not create cross-package re-export shim files whose only purpose is forwarding another package's API. Import the owning package directly at call sites; public compatibility barrels may re-export the owner directly when preserving an established package API.
 
-| Subpath                                | What                                                                                  | Heavy dep isolated        |
-| -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------- |
-| `@open-pencil/core`                    | everything (barrel)                                                                   | all                       |
-| `@open-pencil/scene-graph`             | SceneGraph, node/domain types, variables, libraries, hit-test, copy                   | —                         |
-| `@open-pencil/scene-graph/primitives`  | shared primitive types: `GUID`, `Color`, `Vector`, `Matrix`, `Rect`                   | —                         |
-| `@open-pencil/scene-graph/geometry`    | geometry and math helpers                                                             | —                         |
-| `@open-pencil/scene-graph/snap`        | snapping helpers and types                                                            | —                         |
-| `@open-pencil/scene-graph/undo`        | SceneGraph undo manager                                                               | —                         |
-| `@open-pencil/lowcode`                 | expressions, validation, routes, forms, Supabase/server and security audit contracts  | —                         |
-| `@open-pencil/lowcode/application-runtime` | focused application runtime readiness audit                                       | —                         |
-| `@open-pencil/core/color`              | parseColor, colorToHex, color management, OkHCL                                       | culori                    |
-| `@open-pencil/core/text`               | fonts, text editor, style runs, direction                                             | —                         |
-| `@open-pencil/core/vector`             | vector network encode/decode, bezier math                                             | —                         |
-| `@open-pencil/core/figma-api`          | FigmaAPI, FigmaNodeProxy                                                              | —                         |
-| `@open-pencil/core/icons`              | Iconify API client, icon rendering                                                    | @iconify/utils            |
-| `@open-pencil/core/canvas`             | SkiaRenderer (Skia/CanvasKit painting engine)                                         | —                         |
-| `@open-pencil/core/design-jsx`         | JSX-to-design renderer                                                                | sucrase                   |
-| `@open-pencil/core/editor`             | createEditor, Editor, EditorState                                                     | —                         |
-| `@open-pencil/core/motion`             | prepared MotionSpec sampling, per-track diagnostics, easing, and timeline timing      | —                         |
-| `@open-pencil/core/tools`              | ToolDef, ALL_TOOLS, AI adapter                                                        | diff                      |
-| `@open-pencil/core/kiwi`               | .fig parse/serialize, codec, protocol                                                 | fflate, fzstd             |
-| `@open-pencil/core/clipboard`          | Figma/OpenPencil clipboard parsing and import helpers                                 | —                         |
-| `@open-pencil/core/rpc`                | RPC commands for CLI                                                                  | —                         |
-| `@open-pencil/core/lint`               | design linter rules and presets                                                       | —                         |
-| `@open-pencil/core/lowcode-validation` | compatibility export for `@open-pencil/lowcode`; new code imports the owner directly | —                         |
-| `@open-pencil/core/io`                 | IORegistry, builtin read/write/export formats, headless raster/SVG/JSX helpers        | CanvasKit, jspdf, svg2pdf |
-| `@open-pencil/core/io/motion-export`   | deterministic Motion frame planning, PNG sequences, and encoder capabilities          | CanvasKit                 |
-| `@open-pencil/core/io/formats/fig`     | .fig read/write helpers                                                               | fflate, fzstd             |
-| `@open-pencil/core/io/formats/pen`     | .pen read/write helpers                                                               | —                         |
-| `@open-pencil/core/io/formats/jsx`     | selection/node JSX export helpers                                                     | —                         |
-| `@open-pencil/core/io/formats/raster`  | PNG/JPG/WEBP export helpers                                                           | CanvasKit                 |
-| `@open-pencil/core/io/formats/svg`     | SVG export and vector geometry conversion helpers                                     | svgpath                   |
-| `@open-pencil/core/profiler`           | render profiling                                                                      | —                         |
-| `@open-pencil/core/canvaskit`          | getCanvasKit loader                                                                   | canvaskit-wasm            |
-| `@open-pencil/core/layout`             | computeLayout                                                                         | yoga-layout               |
-| `@open-pencil/core/constants`          | shared runtime constants such as `IS_TAURI`                                           | —                         |
-| `@open-pencil/core/random`             | crypto-backed random helpers                                                          | —                         |
-| `@open-pencil/core/xpath`              | XPath selector support for querying design nodes                                      | fontoxpath                |
+| Subpath                                         | What                                                                                 | Heavy dep isolated        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------- |
+| `@open-pencil/core`                             | everything (barrel)                                                                  | all                       |
+| `@open-pencil/scene-graph`                      | SceneGraph, node/domain types, variables, libraries, hit-test, copy                  | —                         |
+| `@open-pencil/scene-graph/primitives`           | shared primitive types: `GUID`, `Color`, `Vector`, `Matrix`, `Rect`                  | —                         |
+| `@open-pencil/scene-graph/geometry`             | geometry and math helpers                                                            | —                         |
+| `@open-pencil/scene-graph/snap`                 | snapping helpers and types                                                           | —                         |
+| `@open-pencil/scene-graph/undo`                 | SceneGraph undo manager                                                              | —                         |
+| `@open-pencil/lowcode`                          | expressions, validation, routes, forms, Supabase/server and security audit contracts | —                         |
+| `@open-pencil/lowcode/application-runtime`      | focused application runtime readiness audit                                          | —                         |
+| `@open-pencil/plugin-contracts`                 | declarative plugin manifests, catalogs, trust, runtime, and marketplace contracts    | —                         |
+| `@open-pencil/plugin-contracts/adapter-helpers` | bounded data parsers for reviewed host adapters                                      | —                         |
+| `@open-pencil/core/color`                       | parseColor, colorToHex, color management, OkHCL                                      | culori                    |
+| `@open-pencil/core/text`                        | fonts, text editor, style runs, direction                                            | —                         |
+| `@open-pencil/core/vector`                      | vector network encode/decode, bezier math                                            | —                         |
+| `@open-pencil/core/figma-api`                   | FigmaAPI, FigmaNodeProxy                                                             | —                         |
+| `@open-pencil/core/icons`                       | Iconify API client, icon rendering                                                   | @iconify/utils            |
+| `@open-pencil/core/canvas`                      | SkiaRenderer (Skia/CanvasKit painting engine)                                        | —                         |
+| `@open-pencil/core/design-jsx`                  | JSX-to-design renderer                                                               | sucrase                   |
+| `@open-pencil/core/editor`                      | createEditor, Editor, EditorState                                                    | —                         |
+| `@open-pencil/core/motion`                      | prepared MotionSpec sampling, per-track diagnostics, easing, and timeline timing     | —                         |
+| `@open-pencil/core/tools`                       | ToolDef, ALL_TOOLS, AI adapter                                                       | diff                      |
+| `@open-pencil/core/kiwi`                        | .fig parse/serialize, codec, protocol                                                | fflate, fzstd             |
+| `@open-pencil/core/clipboard`                   | Figma/OpenPencil clipboard parsing and import helpers                                | —                         |
+| `@open-pencil/core/rpc`                         | RPC commands for CLI                                                                 | —                         |
+| `@open-pencil/core/lint`                        | design linter rules and presets                                                      | —                         |
+| `@open-pencil/core/lowcode-validation`          | compatibility export for `@open-pencil/lowcode`; new code imports the owner directly | —                         |
+| `@open-pencil/core/plugins`                     | host plugin registry/built-ins plus compatibility exports for plugin contracts       | —                         |
+| `@open-pencil/core/io`                          | IORegistry, builtin read/write/export formats, headless raster/SVG/JSX helpers       | CanvasKit, jspdf, svg2pdf |
+| `@open-pencil/core/io/motion-export`            | deterministic Motion frame planning, PNG sequences, and encoder capabilities         | CanvasKit                 |
+| `@open-pencil/core/io/formats/fig`              | .fig read/write helpers                                                              | fflate, fzstd             |
+| `@open-pencil/core/io/formats/pen`              | .pen read/write helpers                                                              | —                         |
+| `@open-pencil/core/io/formats/jsx`              | selection/node JSX export helpers                                                    | —                         |
+| `@open-pencil/core/io/formats/raster`           | PNG/JPG/WEBP export helpers                                                          | CanvasKit                 |
+| `@open-pencil/core/io/formats/svg`              | SVG export and vector geometry conversion helpers                                    | svgpath                   |
+| `@open-pencil/core/profiler`                    | render profiling                                                                     | —                         |
+| `@open-pencil/core/canvaskit`                   | getCanvasKit loader                                                                  | canvaskit-wasm            |
+| `@open-pencil/core/layout`                      | computeLayout                                                                        | yoga-layout               |
+| `@open-pencil/core/constants`                   | shared runtime constants such as `IS_TAURI`                                          | —                         |
+| `@open-pencil/core/random`                      | crypto-backed random helpers                                                         | —                         |
+| `@open-pencil/core/xpath`                       | XPath selector support for querying design nodes                                     | fontoxpath                |
 
 Runtime `canvaskit-wasm` import exists only in `canvaskit.ts` — all other files use `import type`. CanvasKit instance is passed as a parameter everywhere.
 
@@ -181,7 +185,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun run tauri:mcp:screenshot` — capture a webview screenshot through the hypothesi Tauri MCP CLI
 - `bun run tauri:webdriver:install` — install `tauri-wd` from `tauri-webdriver-automation`
 - `bun run tauri:webdriver` — start the `tauri-wd` WebDriver server on port 4444
-- `bun run build:packages` — build `@open-pencil/core`, `@open-pencil/vue`, `@open-pencil/mcp`, `@open-pencil/cli`, and private `@open-pencil/compiler`
+- `bun run build:packages` — build workspace packages in dependency order, including public contract/SDK packages plus private app-support packages
 - `bun run lint` — structure lint + type-aware oxlint over app, packages, compiler, tests, scripts, tools
 - `bun run lint:structure` — fast structural oxlint pass
 - `bun run check` — full pre-commit gate: package build, lint, `tsgo`, Vue typecheck, i18n/package/arch checks, type-shape/tool/dupe tests
@@ -191,8 +195,8 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun run check:packages` — public package metadata must point to built `dist/`, not runtime TypeScript
 - `bun run format` — oxfmt with import sorting
 - `bun run format:check` — run formatter and fail if it leaves a git diff
-- `bun run test:unit` — Bun unit/engine tests under `tests/engine`
-- `bun run test:coverage` — Bun coverage for `tests/engine`
+- `bun run test:unit` — Bun unit/engine tests under `tests/engine` and package-local `packages/*/tests`
+- `bun run test:coverage` — Bun coverage for engine and package-local unit tests
 - `bun run test` — Playwright app/visual regression (`--project=openpencil`)
 - `bun run test:update` — update Playwright snapshots for the OpenPencil project
 - `bun run test:figma` — Playwright Figma automation project
@@ -364,25 +368,31 @@ Release commits are the exception: keep using `Release v0.x.y`.
 
 ## Plugins and modules
 
+- Portable declarative manifests, parameter/connector schemas, signed packages and catalogs,
+  keyring/trust rules, runtime package/index contracts, and marketplace snapshots live in
+  `@open-pencil/plugin-contracts`. Cross-package consumers import that owner directly. Core keeps
+  `@open-pencil/core/plugins` as the mixed host API and compatibility barrel; do not add per-file
+  forwarding shims or move host registries, built-in module definitions, persistence, or execution
+  into the portable package.
 - Trusted module adapters remain a startup-only, frozen registry under `packages/core/src/plugins/`.
   Marketplace manifests never load arbitrary scripts or adapters. Every `adapterId` must resolve to
   compatible Canvas and Compiler code already shipped by the host; register that code during app
   construction, then freeze before documents are opened.
 - Phase 3 marketplace snapshot, dynamic publisher directory, stable/beta discovery, rollback checks,
-  and root trust configuration live under `packages/core/src/plugins/marketplace/` and
-  `src/app/plugins/marketplace/`. The self-hosted mutable control plane lives only in
+  and root trust contracts live under `packages/plugin-contracts/src/marketplace/`; app transport
+  and state live under `src/app/plugins/marketplace/`. The self-hosted mutable control plane lives only in
   `packages/marketplace/`; keep it out of the browser bundle. Publication must write immutable
   content-addressed artifacts and bind exact catalog/runtime/audit coordinates in the root-signed
   snapshot.
 - Phase 4 executable packages are a separate trust chain under
-  `packages/core/src/plugins/runtime-{package,index}.ts` and `src/app/plugins/runtime/`. Production
+  `packages/plugin-contracts/src/runtime-{package,index}.ts` and `src/app/plugins/runtime/`. Production
   execution is import-free WASM compute only, one disposable Worker per invocation, exact
   digest/capability grants, bounded read-only host context, and local machine-code audit. JavaScript
   packages remain `runtime-unavailable`; never expose Tauri, DOM, network, filesystem, shell,
   credentials, document writes, or host functions to a plugin runtime.
 - Remote catalog transport, reverified cache, and build-time public-key configuration live under
   `src/app/plugins/remote/`. Catalog-root verification and publisher ownership/key
-  rotation/revocation live in `@open-pencil/core/plugins`. Never treat parsed JSON, cached content,
+  rotation/revocation live in `@open-pencil/plugin-contracts`. Never treat parsed JSON, cached content,
   or a self-consistent persisted snapshot as verified provenance.
 - `src/app/plugins/store.ts` owns versioned local install state. Publisher updates must remain
   pending until explicit acceptance, pins block accept/rollback, and accepted/history/pending
@@ -426,7 +436,7 @@ Release commits are the exception: keep using `Release v0.x.y`.
   validation remains mandatory. For server uploads, keep using the existing low-code `INPUT` plus
   Supabase upload path. Dynamic MCP exposes only its declarative add-module tool while the plugin is
   installed and enabled; file names and bytes never belong in MCP arguments or results.
-- Phase 2 connector declarations live in `packages/core/src/plugins/connector-contract.ts`. The
+- Phase 2 connector declarations live in `packages/plugin-contracts/src/connector-contract.ts`. The
   contract registry is descriptive and host-reviewed only: it owns no executor, performs no network
   request, and resolves no secret. Future connector adapters must keep credential references in the
   centralized settings store, resolve them at operation time through `CredentialResolver`, and route
@@ -489,6 +499,7 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - Preset-card previews use the editor's ephemeral Motion preview state and must not mutate nodes or create undo entries. Multi-node preset/spec application validates every staggered snapshot first, then commits one instance-aware undo batch.
 - Validate lowcode mutations through `@open-pencil/lowcode` and the lowcode ToolDefs in `packages/core/src/tools/modify/lowcode.ts`; do not hand-assign unvalidated action/state JSON in app UI or compiler code. Keep the SceneGraph document schema in `@open-pencil/scene-graph` so the dependency remains one-way into lowcode.
 - Lowcode domain tests belong under `packages/lowcode/tests/**`; integration coverage belongs under `tests/engine/compiler/**`, `tests/engine/lowcode-validation/**`, `tests/engine/tools/lowcode/**`, `tests/engine/kiwi/lowcode/**`, or UI-facing E2E specs when behavior is visible in the app.
+- Portable plugin contract tests belong under `packages/plugin-contracts/tests/**`; host registry, installed-state, CLI, marketplace-service, app-adapter, and document-lock integration tests remain under `tests/engine/**`.
 
 ## ACP (Agent Client Protocol)
 
