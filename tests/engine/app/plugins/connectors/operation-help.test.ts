@@ -4,7 +4,7 @@ import type {
   PluginConnectorContractV1,
   PluginConnectorOperationV1,
   PluginObjectParameterSchemaV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   AIRTABLE_RECORDS_CONNECTOR_ADAPTER,

@@ -1,19 +1,19 @@
 import {
+  authorizeTrustedPluginKeyTransition,
+  parseVerifiedPluginPackageSnapshot,
+  resolveTrustedPluginKey,
+  traceTrustedPluginKeyTransition,
+  type PluginTrustTimeOptions,
+  type TrustedPluginKeyringV1,
+  type VerifiedPluginPackage
+} from '@open-pencil/plugin-contracts'
+import {
   canonicalManifestJSON,
   compareStableSemver,
   parseBoundedManifestArray as array,
   parseExactManifestRecord as record,
   stableSemverParts
 } from '@open-pencil/scene-graph'
-
-import {
-  authorizeTrustedPluginKeyTransition,
-  resolveTrustedPluginKey,
-  traceTrustedPluginKeyTransition,
-  type PluginTrustTimeOptions,
-  type TrustedPluginKeyringV1
-} from './keyring'
-import { parseVerifiedPluginPackageSnapshot, type VerifiedPluginPackage } from './package'
 
 export const PLUGIN_INSTALLED_STATE_VERSION = 1 as const
 export const PLUGIN_INSTALLED_HISTORY_LIMIT = 8

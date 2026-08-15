@@ -1,4 +1,4 @@
-import type { PLUGIN_RUNTIME_COMPUTE_ABI } from '@open-pencil/core/plugins'
+import type { PLUGIN_RUNTIME_COMPUTE_ABI } from '@open-pencil/plugin-contracts'
 
 export const PLUGIN_RUNTIME_WORKER_PROTOCOL_VERSION = 2 as const
 

@@ -1,8 +1,3 @@
-import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JSONObject } from '@open-pencil/scene-graph/primitives'
-
-import * as moduleContract from './module-contract'
-import { createModuleFrameOverrides } from './module-frame'
 import {
   assertBoundedPluginConfigBytes,
   hasExactPluginKeys,
@@ -12,7 +7,12 @@ import {
   parseCanonicalPluginColor,
   parsePluginBoolean,
   parsePluginStringEnum
-} from './parse-helpers'
+} from '@open-pencil/plugin-contracts/adapter-helpers'
+import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
+
+import * as moduleContract from './module-contract'
+import { createModuleFrameOverrides } from './module-frame'
 import type { ModulePropertyField, ModuleResolution } from './types'
 
 export const DROPDOWN_MENU_PLUGIN_ID = 'open-pencil.dropdown-menu'

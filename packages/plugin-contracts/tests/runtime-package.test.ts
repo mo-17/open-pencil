@@ -19,7 +19,7 @@ import {
   type PluginRuntimeAssetV1,
   type PluginRuntimeKindV1,
   type PluginRuntimePackagePayloadV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])

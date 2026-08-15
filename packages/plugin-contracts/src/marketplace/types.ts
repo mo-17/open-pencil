@@ -1,7 +1,7 @@
 import type { SignedManifestIntegrity } from '@open-pencil/scene-graph'
 
-import type { VerifiedPluginCatalog } from '#core/plugins/catalog'
-import type { TrustedPluginKeyringV1 } from '#core/plugins/keyring'
+import type { VerifiedPluginCatalog } from '../catalog'
+import type { TrustedPluginKeyringV1 } from '../keyring'
 
 export const MARKETPLACE_SNAPSHOT_FORMAT = 'openpencil-marketplace-snapshot' as const
 export const MARKETPLACE_SNAPSHOT_SCHEMA_VERSION = 1 as const

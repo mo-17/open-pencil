@@ -1,4 +1,7 @@
-import type { PluginObjectParameterSchemaV2, PluginParameterValue } from '@open-pencil/core/plugins'
+import type {
+  PluginObjectParameterSchemaV2,
+  PluginParameterValue
+} from '@open-pencil/plugin-contracts'
 
 import {
   createReviewedRestConnector,

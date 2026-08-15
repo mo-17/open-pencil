@@ -1,4 +1,9 @@
 import {
+  hasDensePluginArrayKeys,
+  hasExactPluginKeys,
+  parseCanonicalPublicHttpsURL
+} from '@open-pencil/plugin-contracts/adapter-helpers'
+import {
   isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
@@ -7,11 +12,6 @@ import {
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
-import {
-  hasDensePluginArrayKeys,
-  hasExactPluginKeys,
-  parseCanonicalPublicHttpsURL
-} from './parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
 export const LOTTIE_PLUGIN_ID = 'open-pencil.lottie'

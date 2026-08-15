@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import { parsePluginTrustTimestamp } from '@open-pencil/core/plugins'
+import { parsePluginTrustTimestamp } from '@open-pencil/plugin-contracts'
 import { validateModuleIdentity, webCryptoBuffer } from '@open-pencil/scene-graph'
 
 export const MARKETPLACE_REQUEST_AUTH_VERSION = 1 as const

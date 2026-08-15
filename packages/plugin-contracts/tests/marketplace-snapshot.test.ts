@@ -6,6 +6,8 @@ import {
   MarketplaceSnapshotTrustError,
   PLUGIN_CATALOG_FORMAT,
   PLUGIN_CATALOG_SCHEMA_VERSION,
+  PLUGIN_RUNTIME_INDEX_FORMAT,
+  PLUGIN_RUNTIME_INDEX_SCHEMA_VERSION,
   assertMarketplaceSnapshotAdvance,
   createMarketplacePublisherKeyring,
   parseMarketplaceSnapshotBytes,
@@ -17,13 +19,15 @@ import {
   signMarketplaceSnapshot,
   signPluginCatalog,
   signPluginManifest,
+  signPluginRuntimeIndex,
   validateMarketplaceSnapshot,
   verifyMarketplaceCatalog,
+  verifyMarketplaceRuntimeIndex,
   verifyMarketplaceSnapshot,
   type MarketplaceSnapshotPayloadV1,
   type PluginCatalogPayloadV1,
   type PluginManifestV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import { digestCanonicalManifest, exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 import { pluginPayload } from './helpers'
@@ -244,6 +248,66 @@ describe('root-signed marketplace snapshot', () => {
       }),
       'marketplace-catalog-mismatch'
     )
+  })
+
+  test('binds the separately signed runtime index and its validity to the root snapshot', async () => {
+    const data = await fixture({ runtimeIndex: true })
+    const runtimeIndex = await signPluginRuntimeIndex(
+      {
+        format: PLUGIN_RUNTIME_INDEX_FORMAT,
+        schemaVersion: PLUGIN_RUNTIME_INDEX_SCHEMA_VERSION,
+        indexId: 'openpencil.marketplace.runtime',
+        version: '1.0.0',
+        generatedAt: GENERATED_AT,
+        expiresAt: EXPIRES_AT,
+        entries: []
+      },
+      data.root.privateKey,
+      { keyId: ROOT_KEY_ID }
+    )
+    const payload = structuredClone(data.payload)
+    if (!payload.runtimeIndex) throw new Error('Expected runtime index reference')
+    payload.runtimeIndex.digest = runtimeIndex.integrity.digest
+    const snapshot = await signMarketplaceSnapshot(payload, data.root.privateKey, {
+      keyId: ROOT_KEY_ID
+    })
+    const verifiedSnapshot = await verifyMarketplaceSnapshot(snapshot, data.root.publicKey, {
+      now: NOW
+    })
+
+    await expect(
+      verifyMarketplaceRuntimeIndex(runtimeIndex, { snapshot: verifiedSnapshot, now: NOW })
+    ).resolves.toMatchObject({
+      index: { indexId: 'openpencil.marketplace.runtime' },
+      verifiedDigest: runtimeIndex.integrity.digest,
+      verifiedKeyId: ROOT_KEY_ID
+    })
+
+    const unsignedOverlongRuntimeIndex = structuredClone(runtimeIndex)
+    unsignedOverlongRuntimeIndex.expiresAt = '2026-08-11T00:00:00.000Z'
+    Reflect.deleteProperty(unsignedOverlongRuntimeIndex, 'integrity')
+    const overlongRuntimeIndex = await signPluginRuntimeIndex(
+      unsignedOverlongRuntimeIndex,
+      data.root.privateKey,
+      { keyId: ROOT_KEY_ID }
+    )
+    const overlongPayload = structuredClone(payload)
+    const overlongRuntimeIndexReference = overlongPayload.runtimeIndex
+    if (!overlongRuntimeIndexReference) throw new Error('Expected runtime index fixture')
+    overlongRuntimeIndexReference.digest = overlongRuntimeIndex.integrity.digest
+    const overlongSnapshot = await verifyMarketplaceSnapshot(
+      await signMarketplaceSnapshot(overlongPayload, data.root.privateKey, {
+        keyId: ROOT_KEY_ID
+      }),
+      data.root.publicKey,
+      { now: NOW }
+    )
+    await expect(
+      verifyMarketplaceRuntimeIndex(overlongRuntimeIndex, {
+        snapshot: overlongSnapshot,
+        now: NOW
+      })
+    ).rejects.toThrow('validity exceeds its authorizing snapshot')
   })
 
   test('requires every searchable release to match a currently trusted catalog coordinate', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { parsePluginObjectParameterValue } from '@open-pencil/core/plugins'
+import { parsePluginObjectParameterValue } from '@open-pencil/plugin-contracts'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import type { EditorStore } from '@/app/editor/active-store'

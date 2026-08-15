@@ -9,7 +9,7 @@ import {
   signPluginManifest,
   validatePluginManifest,
   verifyPluginPackage
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import {
   canonicalManifestJSON,
   compareStableSemver,
@@ -20,13 +20,13 @@ import {
   stableSemverParts
 } from '@open-pencil/scene-graph'
 
-import { pluginPayload } from '../helpers'
+import { pluginPayload } from './helpers'
 
 async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
 }
 
-const V1_GOLDEN_PRIVATE_KEY: JSONWebKey = {
+const V1_GOLDEN_PRIVATE_KEY = {
   crv: 'Ed25519',
   d: 'FxJOeRX9SK273eZkGQ8W5ohk1EFWP67CZCSzYL4cNbU',
   ext: true,

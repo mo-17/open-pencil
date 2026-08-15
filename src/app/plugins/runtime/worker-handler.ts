@@ -2,7 +2,7 @@ import {
   PLUGIN_RUNTIME_COMPUTE_ABI,
   PLUGIN_RUNTIME_PACKAGE_LIMITS,
   validateWasmComputeRuntimeAsset
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   PLUGIN_RUNTIME_WORKER_PROTOCOL_VERSION,

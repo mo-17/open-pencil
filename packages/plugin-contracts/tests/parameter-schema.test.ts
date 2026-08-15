@@ -5,7 +5,7 @@ import {
   parsePluginObjectParameterSchema,
   parsePluginObjectParameterValue,
   parsePluginParameterSchema
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 function nestedArraySchema(depth: number): Record<string, unknown> {
   if (depth === 0) return { type: 'boolean' }

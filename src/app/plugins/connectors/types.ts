@@ -3,7 +3,7 @@ import type {
   PluginConnectorCredentialSlotV1,
   PluginConnectorOperationV1,
   PluginParameterValue
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import type { InstalledAppPlugin } from '@/app/plugins/types'

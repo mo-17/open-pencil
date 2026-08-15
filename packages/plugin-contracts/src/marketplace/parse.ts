@@ -5,8 +5,7 @@ import {
   parseStableSemver
 } from '@open-pencil/scene-graph'
 
-import { parsePluginTrustTimestamp } from '#core/plugins/keyring'
-
+import { parsePluginTrustTimestamp } from '../keyring'
 import { parseMarketplacePublisherDirectory } from './directory'
 import {
   assertMarketplaceSorted,

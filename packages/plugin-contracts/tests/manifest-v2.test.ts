@@ -13,14 +13,14 @@ import {
   validateVersionedPluginManifest,
   verifyVersionedPluginPackage,
   type PluginManifestPayloadV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   pluginConnectorContract,
   pluginPayload,
   pluginPayloadV2,
   pluginStorageProviderContribution
-} from '../helpers'
+} from './helpers'
 
 async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
@@ -54,9 +54,11 @@ describe('plugin manifest schema version 2', () => {
   test('binds connector contracts to the signed v2 plugin identity', () => {
     const payload = pluginPayloadV2()
     payload.contributions.connectors = [pluginConnectorContract()]
-    expect(parseVersionedPluginManifestPayload(payload).contributions.connectors).toEqual(
-      payload.contributions.connectors
-    )
+    const parsed = parseVersionedPluginManifestPayload(payload)
+    if (parsed.schemaVersion !== PLUGIN_MANIFEST_SCHEMA_VERSION_V2) {
+      throw new Error('Expected schema-v2 manifest fixture')
+    }
+    expect(parsed.contributions.connectors).toEqual(payload.contributions.connectors)
 
     const mismatched = structuredClone(payload)
     const connector = mismatched.contributions.connectors?.[0]
@@ -81,9 +83,11 @@ describe('plugin manifest schema version 2', () => {
   test('strictly bounds storage-provider declarations without accepting implementation config', () => {
     const payload = pluginPayloadV2()
     payload.contributions.storageProviders = [pluginStorageProviderContribution()]
-    expect(parseVersionedPluginManifestPayload(payload).contributions.storageProviders).toEqual(
-      payload.contributions.storageProviders
-    )
+    const parsed = parseVersionedPluginManifestPayload(payload)
+    if (parsed.schemaVersion !== PLUGIN_MANIFEST_SCHEMA_VERSION_V2) {
+      throw new Error('Expected schema-v2 manifest fixture')
+    }
+    expect(parsed.contributions.storageProviders).toEqual(payload.contributions.storageProviders)
 
     const duplicateProvider = structuredClone(payload)
     duplicateProvider.contributions.storageProviders = [

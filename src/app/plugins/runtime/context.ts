@@ -1,4 +1,4 @@
-import type { PluginRuntimeCapabilityV1 } from '@open-pencil/core/plugins'
+import type { PluginRuntimeCapabilityV1 } from '@open-pencil/plugin-contracts'
 import type { SceneNode } from '@open-pencil/scene-graph'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 

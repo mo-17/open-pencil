@@ -5,8 +5,10 @@ import {
   PLUGIN_CONNECTOR_CONTRACT_SCHEMA_VERSION,
   PluginConnectorContractRegistry,
   parsePluginConnectorContract,
-  resolvePluginConnectorOriginTemplate
-} from '@open-pencil/core/plugins'
+  resolvePluginConnectorOriginTemplate,
+  type PluginConnectorContractV1,
+  type PluginConnectorOperationRequestV1
+} from '@open-pencil/plugin-contracts'
 
 function emptyContract(maxBytes = 2) {
   return {
@@ -71,14 +73,15 @@ function validContract() {
   }
 }
 
-interface MutableRequestFixture {
-  origin?: string
-  originTemplate?: string
+type MutableRequestFixture = {
+  -readonly [Key in keyof PluginConnectorOperationRequestV1]: PluginConnectorOperationRequestV1[Key]
 }
 
 describe('plugin connector preparation contract', () => {
   test('normalizes a bounded host-reviewed connector without executing it', () => {
-    expect(parsePluginConnectorContract(validContract())).toEqual(validContract())
+    expect(parsePluginConnectorContract(validContract())).toEqual(
+      validContract() as PluginConnectorContractV1
+    )
   })
 
   test('requires OAuth PKCE and canonical public HTTPS origins', () => {
@@ -123,7 +126,7 @@ describe('plugin connector preparation contract', () => {
 
   test('accepts optional fixed request authority and validates it against network and parameters', () => {
     const value = validContract()
-    const request = {
+    const request: MutableRequestFixture = {
       origin: 'https://api.airtable.com',
       method: 'GET',
       pathTemplate: '/v0/{baseId}/{tableId}',
@@ -187,7 +190,7 @@ describe('plugin connector preparation contract', () => {
       })
     ).toThrow('canonical DNS label')
 
-    const request = value.operations[0].request as MutableRequestFixture
+    const request = Reflect.get(value.operations[0], 'request') as MutableRequestFixture
     request.origin = 'https://api.supabase.com'
     expect(() => parsePluginConnectorContract(value)).toThrow('exactly one')
     delete request.origin
@@ -196,29 +199,30 @@ describe('plugin connector preparation contract', () => {
     request.originTemplate = 'https://prefix-{projectRef}.supabase.co'
     expect(() => parsePluginConnectorContract(value)).toThrow('literal hostname label')
     request.originTemplate = 'https://{projectRef}.home.arpa'
-    value.network.originTemplates = ['https://{projectRef}.home.arpa']
+    Reflect.set(value.network, 'originTemplates', ['https://{projectRef}.home.arpa'])
     expect(() => parsePluginConnectorContract(value)).toThrow('canonical public HTTPS origin')
   })
 
   test('permits only reviewed non-reserved API-key header injection', () => {
     const value = validContract()
+    const injection = { location: 'header', name: 'apikey' }
     value.credentialSlots[0] = {
       slotId: 'access-token',
       label: 'Public API key',
       kind: 'api-key',
       required: true,
-      injection: { location: 'header', name: 'apikey' }
+      injection
     } as never
     expect(parsePluginConnectorContract(value).credentialSlots[0].injection).toEqual({
       location: 'header',
       name: 'apikey'
     })
 
-    value.credentialSlots[0].injection.name = 'authorization'
+    injection.name = 'authorization'
     expect(() => parsePluginConnectorContract(value)).toThrow('allowed credential header')
-    value.credentialSlots[0].injection.name = 'X-API-Key'
+    injection.name = 'X-API-Key'
     expect(() => parsePluginConnectorContract(value)).toThrow('allowed credential header')
-    value.credentialSlots[0].injection.name = 'apikey'
+    injection.name = 'apikey'
     value.credentialSlots[0].kind = 'bearer-token'
     expect(() => parsePluginConnectorContract(value)).toThrow('only valid for an API-key')
   })
@@ -235,26 +239,24 @@ describe('plugin connector preparation contract', () => {
     let getterCalls = 0
     let toJSONCalls = 0
     const value = validContract()
-    value.operations[0].parameters.schema = Object.defineProperty(
-      {
-        type: 'object',
-        properties: {},
-        additionalProperties: false,
-        maxProperties: 0,
-        toJSON() {
-          toJSONCalls += 1
-          return emptyContract().schema
-        }
-      },
-      'title',
-      {
-        enumerable: true,
-        get() {
-          getterCalls += 1
-          return 'unsafe'
-        }
+    const unsafeSchema = {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+      maxProperties: 0,
+      toJSON() {
+        toJSONCalls += 1
+        return emptyContract().schema
       }
-    ) as never
+    }
+    Reflect.defineProperty(unsafeSchema, 'title', {
+      enumerable: true,
+      get() {
+        getterCalls += 1
+        return 'unsafe'
+      }
+    })
+    value.operations[0].parameters.schema = unsafeSchema as never
     expect(() => parsePluginConnectorContract(value)).toThrow('JSON')
     expect(getterCalls).toBe(0)
     expect(toJSONCalls).toBe(0)

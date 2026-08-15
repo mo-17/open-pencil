@@ -4,11 +4,13 @@ import {
   acceptPluginUpdate,
   createInstalledPluginState,
   parseInstalledPluginState,
-  PluginTrustError,
   rejectPluginUpdate,
   reviewPluginUpdate,
   rollbackPlugin,
-  setPluginEnabled,
+  setPluginEnabled
+} from '@open-pencil/core/plugins'
+import {
+  PluginTrustError,
   signPluginManifest,
   signVersionedPluginManifest,
   TRUSTED_PLUGIN_KEYRING_SCHEMA_VERSION,
@@ -18,7 +20,7 @@ import {
   type PluginManifestPayloadV2,
   type TrustedPluginKeyringV1,
   type VerifiedPluginPackage
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   pluginConnectorContract,

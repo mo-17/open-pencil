@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  createMarketplaceService,
+  createMemoryMarketplaceArtifactStore,
+  createMemoryMarketplaceRepository
+} from '@open-pencil/marketplace'
+import {
   PLUGIN_RUNTIME_COMPUTE_ABI,
   PLUGIN_RUNTIME_PACKAGE_FORMAT,
   PLUGIN_RUNTIME_PACKAGE_SCHEMA_VERSION,
@@ -11,12 +16,7 @@ import {
   signPluginManifest,
   signVersionedPluginManifest,
   signPluginRuntimePackage
-} from '@open-pencil/core/plugins'
-import {
-  createMarketplaceService,
-  createMemoryMarketplaceArtifactStore,
-  createMemoryMarketplaceRepository
-} from '@open-pencil/marketplace'
+} from '@open-pencil/plugin-contracts'
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 import {

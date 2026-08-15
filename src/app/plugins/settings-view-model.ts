@@ -6,7 +6,7 @@ import {
   type PluginHostPermissionV2,
   type PluginManifestPayload,
   type PluginStorageProviderCapabilityV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { bundledPluginLocalizedSearchText } from './localization'
 import type { MarketplaceSnapshotLoadResult, MarketplaceSnapshotLoadStatus } from './marketplace'

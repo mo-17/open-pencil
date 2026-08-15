@@ -8,7 +8,7 @@ import {
   parsePluginConnectorContract,
   type PluginConnectorContractV1,
   type PluginManifestPayload
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { ConnectorAuditFanout, RedactedConnectorAuditLog } from '@/app/plugins/connectors/audit'
 import type { ConnectorAuditSink } from '@/app/plugins/connectors/audit'

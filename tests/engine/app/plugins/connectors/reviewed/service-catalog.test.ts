@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { parsePluginConnectorContract } from '@open-pencil/core/plugins'
-import type { PluginConnectorOperationV1 } from '@open-pencil/core/plugins'
+import { parsePluginConnectorContract } from '@open-pencil/plugin-contracts'
+import type { PluginConnectorOperationV1 } from '@open-pencil/plugin-contracts'
 
 import {
   DEFERRED_REVIEWED_SERVICES,

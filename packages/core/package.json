@@ -208,6 +208,7 @@
     "@open-pencil/kiwi": "workspace:*",
     "@open-pencil/lowcode": "workspace:*",
     "@open-pencil/pen": "workspace:*",
+    "@open-pencil/plugin-contracts": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "@tauri-apps/api": "^2",
     "@xmldom/xmldom": "^0.9.10",

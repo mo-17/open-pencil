@@ -1,16 +1,16 @@
+import type { InstalledPluginStateV1 } from '@open-pencil/core/plugins'
 import type {
   DeclarativeCommandContributionV1,
   DeclarativeCommandContributionV2,
   DeclarativeExporterContributionV1,
   DeclarativeExporterContributionV2,
   DeclarativeModuleContributionV1,
-  InstalledPluginStateV1,
   PluginConnectorContractV1,
   PluginManifest,
   PluginManifestPayload,
   PluginStorageProviderContributionV2,
   VerifiedPluginPackage
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 export const APP_PLUGIN_STATE_SCHEMA_VERSION = 2 as const
 export const APP_PLUGIN_STATE_LEGACY_SCHEMA_VERSION = 1 as const

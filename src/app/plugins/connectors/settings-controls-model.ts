@@ -4,7 +4,7 @@ import {
   type PluginConnectorOperationKindV1,
   type PluginConnectorOperationRequestV1,
   type PluginConnectorOperationV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import type { Locale } from '@open-pencil/vue'
 
 import { localizedAppPluginContributionText } from '@/app/plugins/localization'

@@ -1,7 +1,7 @@
 import {
   PluginConnectorContractRegistry,
   type PluginConnectorOperationV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import type { InstalledAppPlugin, InstalledPluginConnector } from '@/app/plugins/types'
 import { appCredentialServices } from '@/app/settings/credentials/app'

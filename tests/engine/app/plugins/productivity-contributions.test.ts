@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import type {
   DeclarativeCommandContributionV2,
   DeclarativeExporterContributionV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   createBundledPluginCatalog,

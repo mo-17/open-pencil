@@ -1,7 +1,7 @@
 import type {
   PluginStorageProviderCapabilityV2,
   PluginStorageProviderContributionV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   GOOGLE_DRIVE_STORAGE_ADAPTER_ID,

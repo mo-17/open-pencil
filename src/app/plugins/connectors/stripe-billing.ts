@@ -5,7 +5,7 @@ import {
   type PluginConnectorContractV1,
   type PluginConnectorOperationV1,
   type PluginParameterValue
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { strictPlainDataRecord, type PluginJSONDataRecord } from '@/app/plugins/json-data'
 

@@ -2,6 +2,8 @@ import ts from 'typescript'
 
 const roots = [
   'src',
+  'packages/plugin-contracts/src',
+  'packages/plugin-contracts/tests',
   'packages/lowcode/src',
   'packages/lowcode/tests',
   'packages/core/src',

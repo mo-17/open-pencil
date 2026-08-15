@@ -1,4 +1,8 @@
 import {
+  hasExactPluginKeys,
+  mergePluginConfigWithDefaults
+} from '@open-pencil/plugin-contracts/adapter-helpers'
+import {
   isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
@@ -6,7 +10,6 @@ import {
 } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
-import { hasExactPluginKeys, mergePluginConfigWithDefaults } from './parse-helpers'
 import type {
   ModuleDefinition,
   ModulePropertyField,

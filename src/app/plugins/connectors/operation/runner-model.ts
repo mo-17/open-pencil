@@ -3,7 +3,7 @@ import {
   type PluginConnectorOperationV1,
   type PluginParameterSchemaV2,
   type PluginParameterValue
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import type { InstalledPluginConnector } from '@/app/plugins/types'
 

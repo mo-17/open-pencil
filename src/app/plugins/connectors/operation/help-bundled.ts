@@ -1,4 +1,4 @@
-import type { PluginParameterValue } from '@open-pencil/core/plugins'
+import type { PluginParameterValue } from '@open-pencil/plugin-contracts'
 
 // Examples and field copy are host-owned so signed third-party schemas cannot inject executable UI.
 

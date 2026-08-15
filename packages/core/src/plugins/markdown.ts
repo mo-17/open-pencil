@@ -1,22 +1,15 @@
-import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
-import type { JSONObject } from '@open-pencil/scene-graph/primitives'
-
-import {
-  createContractModuleDefinition,
-  createContractModuleInstance,
-  createSingleModulePlugin,
-  parseExactModuleConfig,
-  resolveContractModule,
-  type ModuleContract
-} from './module-contract'
-import { createModuleFrameOverrides } from './module-frame'
 import {
   assertBoundedPluginConfigBytes,
   parseBoundedPluginNumber,
   parseBoundedPluginText,
   parseCanonicalPluginColor,
   parsePluginStringEnum
-} from './parse-helpers'
+} from '@open-pencil/plugin-contracts/adapter-helpers'
+import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
+
+import * as moduleContract from './module-contract'
+import { createModuleFrameOverrides } from './module-frame'
 import type { ModulePropertyField, ModuleResolution } from './types'
 
 export const MARKDOWN_PLUGIN_ID = 'open-pencil.markdown'
@@ -76,7 +69,7 @@ const FLAVORS = new Set<MarkdownFlavorV1>(['commonmark', 'gfm'])
 const LINK_TARGETS = new Set<MarkdownLinkTargetV1>(['same-tab', 'new-tab'])
 
 function parseMarkdownConfig(value: unknown) {
-  return parseExactModuleConfig(
+  return moduleContract.parseExactModuleConfig(
     value,
     CONFIG_KEYS,
     'markdown config must contain exactly source, flavor, linkTarget, backgroundColor, textColor, headingColor, accentColor, fontSize, and lineHeight',
@@ -129,7 +122,7 @@ function parseMarkdownConfig(value: unknown) {
   )
 }
 
-const MARKDOWN_MODULE_CONTRACT: ModuleContract<MarkdownModuleConfigV1> = {
+const MARKDOWN_MODULE_CONTRACT: moduleContract.ModuleContract<MarkdownModuleConfigV1> = {
   pluginId: MARKDOWN_PLUGIN_ID,
   moduleType: MARKDOWN_MODULE_TYPE,
   configVersion: MARKDOWN_MODULE_CONFIG_VERSION,
@@ -139,7 +132,7 @@ const MARKDOWN_MODULE_CONTRACT: ModuleContract<MarkdownModuleConfigV1> = {
 }
 
 export function createMarkdownModuleInstance(config?: unknown): ModuleInstanceV1 {
-  return createContractModuleInstance(MARKDOWN_MODULE_CONTRACT, config)
+  return moduleContract.createContractModuleInstance(MARKDOWN_MODULE_CONTRACT, config)
 }
 
 export function createMarkdownModuleFrameOverrides(config?: unknown): Partial<SceneNode> {
@@ -153,7 +146,7 @@ export function createMarkdownModuleFrameOverrides(config?: unknown): Partial<Sc
 }
 
 export function resolveMarkdownModule(value: unknown): ModuleResolution<MarkdownModuleConfigV1> {
-  return resolveContractModule(value, MARKDOWN_MODULE_CONTRACT)
+  return moduleContract.resolveContractModule(value, MARKDOWN_MODULE_CONTRACT)
 }
 
 const MARKDOWN_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
@@ -221,19 +214,23 @@ const MARKDOWN_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
   }
 ])
 
-export const MARKDOWN_MODULE_DEFINITION = createContractModuleDefinition(MARKDOWN_MODULE_CONTRACT, {
-  name: 'Markdown',
-  description: 'Bounded Markdown content with raw HTML kept outside the executable rendering path.',
-  i18nNameKey: 'lowcodeModuleMarkdownName',
-  i18nDescriptionKey: 'lowcodeModuleMarkdownDescription',
-  defaultSize: MARKDOWN_MODULE_DEFAULT_SIZE,
-  fields: MARKDOWN_MODULE_FIELDS,
-  createInstance: createMarkdownModuleInstance,
-  createFrameOverrides: createMarkdownModuleFrameOverrides,
-  resolve: resolveMarkdownModule
-})
+export const MARKDOWN_MODULE_DEFINITION = moduleContract.createContractModuleDefinition(
+  MARKDOWN_MODULE_CONTRACT,
+  {
+    name: 'Markdown',
+    description:
+      'Bounded Markdown content with raw HTML kept outside the executable rendering path.',
+    i18nNameKey: 'lowcodeModuleMarkdownName',
+    i18nDescriptionKey: 'lowcodeModuleMarkdownDescription',
+    defaultSize: MARKDOWN_MODULE_DEFAULT_SIZE,
+    fields: MARKDOWN_MODULE_FIELDS,
+    createInstance: createMarkdownModuleInstance,
+    createFrameOverrides: createMarkdownModuleFrameOverrides,
+    resolve: resolveMarkdownModule
+  }
+)
 
-export const MARKDOWN_PLUGIN = createSingleModulePlugin(
+export const MARKDOWN_PLUGIN = moduleContract.createSingleModulePlugin(
   MARKDOWN_PLUGIN_ID,
   'OpenPencil Markdown',
   MARKDOWN_MODULE_DEFINITION

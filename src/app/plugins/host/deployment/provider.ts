@@ -1,4 +1,4 @@
-import { parsePluginObjectParameterValue } from '@open-pencil/core/plugins'
+import { parsePluginObjectParameterValue } from '@open-pencil/plugin-contracts'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'

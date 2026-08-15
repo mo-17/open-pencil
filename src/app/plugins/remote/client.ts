@@ -6,7 +6,7 @@ import {
   type TrustedPluginKeyringV1,
   type VerifiedCatalogPluginPackage,
   type VerifiedPluginCatalog
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import type { PublisherSignedPluginCatalogEntry } from '../types'
 import {

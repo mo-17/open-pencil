@@ -1,23 +1,9 @@
+import * as pluginAdapter from '@open-pencil/plugin-contracts/adapter-helpers'
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
-import {
-  createContractModuleDefinition,
-  createContractModuleInstance,
-  createSingleModulePlugin,
-  parseExactModuleConfig,
-  resolveContractModule,
-  type ModuleContract
-} from './module-contract'
+import * as moduleContract from './module-contract'
 import { createModuleFrameOverrides } from './module-frame'
-import {
-  assertBoundedPluginConfigBytes,
-  parseBoundedPluginInteger,
-  parseBoundedPluginText,
-  parseCanonicalPluginColor,
-  parsePluginBoolean,
-  parsePluginStringEnum
-} from './parse-helpers'
 import type { ModulePropertyField, ModuleResolution } from './types'
 
 export const QR_BARCODE_PLUGIN_ID = 'open-pencil.qr-barcode'
@@ -76,7 +62,7 @@ const ERROR_CORRECTIONS = new Set<QrErrorCorrectionV1>(['low', 'medium', 'quarti
 function parseEncodedValue(value: unknown, format: QrBarcodeFormatV1): string {
   const maximum =
     format === 'qr' ? QR_BARCODE_MODULE_LIMITS.qrValue : QR_BARCODE_MODULE_LIMITS.barcodeValue
-  const parsed = parseBoundedPluginText(value, 'QR/barcode config value', 1, maximum)
+  const parsed = pluginAdapter.parseBoundedPluginText(value, 'QR/barcode config value', 1, maximum)
   for (let index = 0; index < parsed.length; index += 1) {
     const code = parsed.charCodeAt(index)
     if (code <= 31 || code === 127) {
@@ -90,12 +76,12 @@ function parseEncodedValue(value: unknown, format: QrBarcodeFormatV1): string {
 }
 
 function parseQrBarcodeConfig(value: unknown) {
-  return parseExactModuleConfig(
+  return moduleContract.parseExactModuleConfig(
     value,
     CONFIG_KEYS,
     'QR/barcode config must contain exactly format, value, caption, showCaption, errorCorrection, quietZone, foregroundColor, and backgroundColor',
     (source): QrBarcodeModuleConfigV1 => {
-      const format = parsePluginStringEnum(
+      const format = pluginAdapter.parsePluginStringEnum(
         source.format,
         'QR/barcode config format',
         FORMATS,
@@ -104,35 +90,38 @@ function parseQrBarcodeConfig(value: unknown) {
       const config: QrBarcodeModuleConfigV1 = {
         format,
         value: parseEncodedValue(source.value, format),
-        caption: parseBoundedPluginText(
+        caption: pluginAdapter.parseBoundedPluginText(
           source.caption,
           'QR/barcode config caption',
           0,
           QR_BARCODE_MODULE_LIMITS.caption
         ),
-        showCaption: parsePluginBoolean(source.showCaption, 'QR/barcode config showCaption'),
-        errorCorrection: parsePluginStringEnum(
+        showCaption: pluginAdapter.parsePluginBoolean(
+          source.showCaption,
+          'QR/barcode config showCaption'
+        ),
+        errorCorrection: pluginAdapter.parsePluginStringEnum(
           source.errorCorrection,
           'QR/barcode config errorCorrection',
           ERROR_CORRECTIONS,
           'low, medium, quartile, or high'
         ),
-        quietZone: parseBoundedPluginInteger(
+        quietZone: pluginAdapter.parseBoundedPluginInteger(
           source.quietZone,
           'QR/barcode config quietZone',
           QR_BARCODE_MODULE_LIMITS.quietZoneMin,
           QR_BARCODE_MODULE_LIMITS.quietZoneMax
         ),
-        foregroundColor: parseCanonicalPluginColor(
+        foregroundColor: pluginAdapter.parseCanonicalPluginColor(
           source.foregroundColor,
           'QR/barcode config foregroundColor'
         ),
-        backgroundColor: parseCanonicalPluginColor(
+        backgroundColor: pluginAdapter.parseCanonicalPluginColor(
           source.backgroundColor,
           'QR/barcode config backgroundColor'
         )
       }
-      assertBoundedPluginConfigBytes(
+      pluginAdapter.assertBoundedPluginConfigBytes(
         config,
         'QR/barcode config',
         QR_BARCODE_MODULE_LIMITS.configBytes
@@ -142,7 +131,7 @@ function parseQrBarcodeConfig(value: unknown) {
   )
 }
 
-const QR_BARCODE_MODULE_CONTRACT: ModuleContract<QrBarcodeModuleConfigV1> = {
+const QR_BARCODE_MODULE_CONTRACT: moduleContract.ModuleContract<QrBarcodeModuleConfigV1> = {
   pluginId: QR_BARCODE_PLUGIN_ID,
   moduleType: QR_BARCODE_MODULE_TYPE,
   configVersion: QR_BARCODE_MODULE_CONFIG_VERSION,
@@ -152,7 +141,7 @@ const QR_BARCODE_MODULE_CONTRACT: ModuleContract<QrBarcodeModuleConfigV1> = {
 }
 
 export function createQrBarcodeModuleInstance(config?: unknown): ModuleInstanceV1 {
-  return createContractModuleInstance(QR_BARCODE_MODULE_CONTRACT, config)
+  return moduleContract.createContractModuleInstance(QR_BARCODE_MODULE_CONTRACT, config)
 }
 
 export function createQrBarcodeModuleFrameOverrides(config?: unknown): Partial<SceneNode> {
@@ -166,7 +155,7 @@ export function createQrBarcodeModuleFrameOverrides(config?: unknown): Partial<S
 }
 
 export function resolveQrBarcodeModule(value: unknown): ModuleResolution<QrBarcodeModuleConfigV1> {
-  return resolveContractModule(value, QR_BARCODE_MODULE_CONTRACT)
+  return moduleContract.resolveContractModule(value, QR_BARCODE_MODULE_CONTRACT)
 }
 
 const QR_BARCODE_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
@@ -225,7 +214,7 @@ const QR_BARCODE_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
   }
 ])
 
-export const QR_BARCODE_MODULE_DEFINITION = createContractModuleDefinition(
+export const QR_BARCODE_MODULE_DEFINITION = moduleContract.createContractModuleDefinition(
   QR_BARCODE_MODULE_CONTRACT,
   {
     name: 'QR / Barcode',
@@ -240,7 +229,7 @@ export const QR_BARCODE_MODULE_DEFINITION = createContractModuleDefinition(
   }
 )
 
-export const QR_BARCODE_PLUGIN = createSingleModulePlugin(
+export const QR_BARCODE_PLUGIN = moduleContract.createSingleModulePlugin(
   QR_BARCODE_PLUGIN_ID,
   'OpenPencil QR / Barcode',
   QR_BARCODE_MODULE_DEFINITION

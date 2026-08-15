@@ -8,7 +8,7 @@ import {
   type PluginConnectorOperationV1,
   type PluginObjectParameterSchemaV2,
   type PluginParameterValue
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {

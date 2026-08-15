@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { PluginConnectorContractRegistry } from '@open-pencil/core/plugins'
+import { PluginConnectorContractRegistry } from '@open-pencil/plugin-contracts'
 
 import { ConnectorHostAdapterRegistry } from '@/app/plugins/connectors/registry'
 import {

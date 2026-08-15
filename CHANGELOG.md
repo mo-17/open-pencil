@@ -8,6 +8,10 @@
   routing, forms, server workflows, and runtime audits. Existing
   `@open-pencil/core/lowcode-validation` entry points remain as compatibility exports while new
   consumers import the owning package directly.
+- Add the public `@open-pencil/plugin-contracts` package for portable declarative manifests,
+  parameter and connector schemas, signed catalogs/packages, publisher trust, runtime indexes, and
+  marketplace snapshots. Core keeps its host registries and built-in modules while its existing
+  root and `plugins` exports remain compatible.
 - Add a reproducible Dev Container for web, package, CLI, and non-browser test development.
 - Add local crash recovery for unsaved and pathless documents, including MCP-created documents. (#487)
 - Add isolated visual inspection that sends bounded selection renders to the configured Vision model and returns text findings without retaining image data in Design chat history. (#232, #471)

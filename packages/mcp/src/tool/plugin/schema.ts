@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { parsePluginObjectParameterSchema } from '@open-pencil/core/plugins'
+import { parsePluginObjectParameterSchema } from '@open-pencil/plugin-contracts'
 
 import { PLUGIN_MCP_CATALOG_LIMITS, type PluginMCPToolKind } from '#mcp/tool/plugin/contract'
 

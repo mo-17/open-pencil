@@ -9,7 +9,7 @@ import {
   verifyVersionedPluginPackage,
   type PluginManifest,
   type PluginManifestPayload
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   importPrivateKey,

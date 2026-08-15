@@ -1,7 +1,8 @@
+import type { ModulePropertyFieldKind } from '@open-pencil/plugin-contracts'
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
-export type ModulePropertyFieldKind = 'number' | 'boolean' | 'select' | 'json' | 'text' | 'color'
+export type { ModulePropertyFieldKind } from '@open-pencil/plugin-contracts'
 
 export interface ModulePropertyField {
   path: readonly (string | number)[]

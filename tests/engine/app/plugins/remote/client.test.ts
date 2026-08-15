@@ -8,7 +8,7 @@ import {
   signPluginCatalog,
   signPluginManifest,
   type PluginCatalogPayloadV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   createMemoryRemotePluginCacheStorage,

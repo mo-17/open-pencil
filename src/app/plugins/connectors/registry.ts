@@ -2,7 +2,7 @@ import type {
   PluginConnectorContractRegistry,
   PluginConnectorContractV1,
   PluginManifestPayload
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import type { ConnectorHostAdapter } from './types'
 

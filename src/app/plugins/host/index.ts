@@ -6,8 +6,8 @@ import type {
   PluginHostPermissionV2,
   PluginObjectParameterSchemaV2,
   PluginStorageProviderContributionV2
-} from '@open-pencil/core/plugins'
-import { parsePluginObjectParameterValue } from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
+import { parsePluginObjectParameterValue } from '@open-pencil/plugin-contracts'
 import type { JSONObject, JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'

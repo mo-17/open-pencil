@@ -5,7 +5,7 @@ import {
   type PluginConnectorContractV1,
   type PluginConnectorOperationV1,
   type PluginParameterValue
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import { parseBoundedManifestArray, parseExactManifestRecord } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 

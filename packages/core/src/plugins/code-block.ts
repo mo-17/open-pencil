@@ -1,24 +1,9 @@
+import * as pluginAdapter from '@open-pencil/plugin-contracts/adapter-helpers'
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
-import {
-  createContractModuleDefinition,
-  createContractModuleInstance,
-  createSingleModulePlugin,
-  parseExactModuleConfig,
-  resolveContractModule,
-  type ModuleContract
-} from './module-contract'
+import * as moduleContract from './module-contract'
 import { createModuleFrameOverrides } from './module-frame'
-import {
-  assertBoundedPluginConfigBytes,
-  parseBoundedPluginInteger,
-  parseBoundedPluginNumber,
-  parseBoundedPluginText,
-  parseCanonicalPluginColor,
-  parsePluginBoolean,
-  parsePluginStringEnum
-} from './parse-helpers'
 import type { ModulePropertyField, ModuleResolution } from './types'
 
 export const CODE_BLOCK_PLUGIN_ID = 'open-pencil.code-block'
@@ -108,63 +93,77 @@ const THEMES = new Set<CodeBlockThemeV1>(['light', 'dark'])
 const TAB_SIZES = new Set([2, 4, 8])
 
 function parseCodeBlockConfig(value: unknown) {
-  return parseExactModuleConfig(
+  return moduleContract.parseExactModuleConfig(
     value,
     CONFIG_KEYS,
     'code block config must contain exactly label, code, language, theme, showLineNumbers, wrapLines, showCopyButton, fontSize, tabSize, backgroundColor, textColor, and accentColor',
     (source): CodeBlockModuleConfigV1 => {
-      const tabSize = parseBoundedPluginInteger(source.tabSize, 'code block config tabSize', 2, 8)
+      const tabSize = pluginAdapter.parseBoundedPluginInteger(
+        source.tabSize,
+        'code block config tabSize',
+        2,
+        8
+      )
       if (!TAB_SIZES.has(tabSize))
         throw new TypeError('code block config tabSize must be 2, 4, or 8')
       const config: CodeBlockModuleConfigV1 = {
-        label: parseBoundedPluginText(
+        label: pluginAdapter.parseBoundedPluginText(
           source.label,
           'code block config label',
           1,
           CODE_BLOCK_MODULE_LIMITS.label
         ),
-        code: parseBoundedPluginText(
+        code: pluginAdapter.parseBoundedPluginText(
           source.code,
           'code block config code',
           0,
           CODE_BLOCK_MODULE_LIMITS.code
         ),
-        language: parsePluginStringEnum(
+        language: pluginAdapter.parsePluginStringEnum(
           source.language,
           'code block config language',
           LANGUAGES,
           'a supported language'
         ),
-        theme: parsePluginStringEnum(
+        theme: pluginAdapter.parsePluginStringEnum(
           source.theme,
           'code block config theme',
           THEMES,
           'light or dark'
         ),
-        showLineNumbers: parsePluginBoolean(
+        showLineNumbers: pluginAdapter.parsePluginBoolean(
           source.showLineNumbers,
           'code block config showLineNumbers'
         ),
-        wrapLines: parsePluginBoolean(source.wrapLines, 'code block config wrapLines'),
-        showCopyButton: parsePluginBoolean(
+        wrapLines: pluginAdapter.parsePluginBoolean(
+          source.wrapLines,
+          'code block config wrapLines'
+        ),
+        showCopyButton: pluginAdapter.parsePluginBoolean(
           source.showCopyButton,
           'code block config showCopyButton'
         ),
-        fontSize: parseBoundedPluginNumber(
+        fontSize: pluginAdapter.parseBoundedPluginNumber(
           source.fontSize,
           'code block config fontSize',
           CODE_BLOCK_MODULE_LIMITS.fontSizeMin,
           CODE_BLOCK_MODULE_LIMITS.fontSizeMax
         ),
         tabSize,
-        backgroundColor: parseCanonicalPluginColor(
+        backgroundColor: pluginAdapter.parseCanonicalPluginColor(
           source.backgroundColor,
           'code block config backgroundColor'
         ),
-        textColor: parseCanonicalPluginColor(source.textColor, 'code block config textColor'),
-        accentColor: parseCanonicalPluginColor(source.accentColor, 'code block config accentColor')
+        textColor: pluginAdapter.parseCanonicalPluginColor(
+          source.textColor,
+          'code block config textColor'
+        ),
+        accentColor: pluginAdapter.parseCanonicalPluginColor(
+          source.accentColor,
+          'code block config accentColor'
+        )
       }
-      assertBoundedPluginConfigBytes(
+      pluginAdapter.assertBoundedPluginConfigBytes(
         config,
         'code block config',
         CODE_BLOCK_MODULE_LIMITS.configBytes
@@ -174,7 +173,7 @@ function parseCodeBlockConfig(value: unknown) {
   )
 }
 
-const CODE_BLOCK_MODULE_CONTRACT: ModuleContract<CodeBlockModuleConfigV1> = {
+const CODE_BLOCK_MODULE_CONTRACT: moduleContract.ModuleContract<CodeBlockModuleConfigV1> = {
   pluginId: CODE_BLOCK_PLUGIN_ID,
   moduleType: CODE_BLOCK_MODULE_TYPE,
   configVersion: CODE_BLOCK_MODULE_CONFIG_VERSION,
@@ -184,7 +183,7 @@ const CODE_BLOCK_MODULE_CONTRACT: ModuleContract<CodeBlockModuleConfigV1> = {
 }
 
 export function createCodeBlockModuleInstance(config?: unknown): ModuleInstanceV1 {
-  return createContractModuleInstance(CODE_BLOCK_MODULE_CONTRACT, config)
+  return moduleContract.createContractModuleInstance(CODE_BLOCK_MODULE_CONTRACT, config)
 }
 
 export function createCodeBlockModuleFrameOverrides(config?: unknown): Partial<SceneNode> {
@@ -198,7 +197,7 @@ export function createCodeBlockModuleFrameOverrides(config?: unknown): Partial<S
 }
 
 export function resolveCodeBlockModule(value: unknown): ModuleResolution<CodeBlockModuleConfigV1> {
-  return resolveContractModule(value, CODE_BLOCK_MODULE_CONTRACT)
+  return moduleContract.resolveContractModule(value, CODE_BLOCK_MODULE_CONTRACT)
 }
 
 const CODE_BLOCK_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
@@ -279,7 +278,7 @@ const CODE_BLOCK_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
   }
 ])
 
-export const CODE_BLOCK_MODULE_DEFINITION = createContractModuleDefinition(
+export const CODE_BLOCK_MODULE_DEFINITION = moduleContract.createContractModuleDefinition(
   CODE_BLOCK_MODULE_CONTRACT,
   {
     name: 'Code Block',
@@ -294,7 +293,7 @@ export const CODE_BLOCK_MODULE_DEFINITION = createContractModuleDefinition(
   }
 )
 
-export const CODE_BLOCK_PLUGIN = createSingleModulePlugin(
+export const CODE_BLOCK_PLUGIN = moduleContract.createSingleModulePlugin(
   CODE_BLOCK_PLUGIN_ID,
   'OpenPencil Code Block',
   CODE_BLOCK_MODULE_DEFINITION

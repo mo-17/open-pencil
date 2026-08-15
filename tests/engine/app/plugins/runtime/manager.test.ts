@@ -12,7 +12,7 @@ import {
   type PluginRuntimeCapabilityV1,
   type PluginRuntimePackagePayloadV1,
   type VerifiedIndexedPluginRuntimePackage
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import {

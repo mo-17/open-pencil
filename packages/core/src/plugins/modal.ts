@@ -1,16 +1,9 @@
+import * as pluginAdapter from '@open-pencil/plugin-contracts/adapter-helpers'
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import * as moduleContract from './module-contract'
 import { createModuleFrameOverrides } from './module-frame'
-import {
-  assertBoundedPluginConfigBytes,
-  parseBoundedPluginNumber,
-  parseBoundedPluginText,
-  parseCanonicalPluginColor,
-  parsePluginBoolean,
-  parsePluginStringEnum
-} from './parse-helpers'
 import type { ModulePropertyField, ModuleResolution } from './types'
 
 export const MODAL_PLUGIN_ID = 'open-pencil.modal'
@@ -104,71 +97,89 @@ function parseModalConfig(value: unknown) {
     'modal config must contain exactly triggerLabel, showTriggerIcon, showTriggerLabel, title, content, showCloseButton, closeOnBackdrop, closeOnEscape, showCancelButton, cancelLabel, showConfirmButton, confirmLabel, panelWidth, footerAlign, panelBackground, textColor, accentColor, and overlayOpacity',
     (source): ModalModuleConfigV1 => {
       const config: ModalModuleConfigV1 = {
-        triggerLabel: parseBoundedPluginText(
+        triggerLabel: pluginAdapter.parseBoundedPluginText(
           source.triggerLabel,
           'modal config triggerLabel',
           1,
           MODAL_MODULE_LIMITS.triggerLabel
         ),
-        showTriggerIcon: parsePluginBoolean(source.showTriggerIcon, 'modal config showTriggerIcon'),
-        showTriggerLabel: parsePluginBoolean(
+        showTriggerIcon: pluginAdapter.parsePluginBoolean(
+          source.showTriggerIcon,
+          'modal config showTriggerIcon'
+        ),
+        showTriggerLabel: pluginAdapter.parsePluginBoolean(
           source.showTriggerLabel,
           'modal config showTriggerLabel'
         ),
-        title: parseBoundedPluginText(
+        title: pluginAdapter.parseBoundedPluginText(
           source.title,
           'modal config title',
           0,
           MODAL_MODULE_LIMITS.title
         ),
-        content: parseBoundedPluginText(
+        content: pluginAdapter.parseBoundedPluginText(
           source.content,
           'modal config content',
           0,
           MODAL_MODULE_LIMITS.content
         ),
-        showCloseButton: parsePluginBoolean(source.showCloseButton, 'modal config showCloseButton'),
-        closeOnBackdrop: parsePluginBoolean(source.closeOnBackdrop, 'modal config closeOnBackdrop'),
-        closeOnEscape: parsePluginBoolean(source.closeOnEscape, 'modal config closeOnEscape'),
-        showCancelButton: parsePluginBoolean(
+        showCloseButton: pluginAdapter.parsePluginBoolean(
+          source.showCloseButton,
+          'modal config showCloseButton'
+        ),
+        closeOnBackdrop: pluginAdapter.parsePluginBoolean(
+          source.closeOnBackdrop,
+          'modal config closeOnBackdrop'
+        ),
+        closeOnEscape: pluginAdapter.parsePluginBoolean(
+          source.closeOnEscape,
+          'modal config closeOnEscape'
+        ),
+        showCancelButton: pluginAdapter.parsePluginBoolean(
           source.showCancelButton,
           'modal config showCancelButton'
         ),
-        cancelLabel: parseBoundedPluginText(
+        cancelLabel: pluginAdapter.parseBoundedPluginText(
           source.cancelLabel,
           'modal config cancelLabel',
           1,
           MODAL_MODULE_LIMITS.actionLabel
         ),
-        showConfirmButton: parsePluginBoolean(
+        showConfirmButton: pluginAdapter.parsePluginBoolean(
           source.showConfirmButton,
           'modal config showConfirmButton'
         ),
-        confirmLabel: parseBoundedPluginText(
+        confirmLabel: pluginAdapter.parseBoundedPluginText(
           source.confirmLabel,
           'modal config confirmLabel',
           1,
           MODAL_MODULE_LIMITS.actionLabel
         ),
-        panelWidth: parseBoundedPluginNumber(
+        panelWidth: pluginAdapter.parseBoundedPluginNumber(
           source.panelWidth,
           'modal config panelWidth',
           MODAL_MODULE_LIMITS.panelWidthMin,
           MODAL_MODULE_LIMITS.panelWidthMax
         ),
-        footerAlign: parsePluginStringEnum(
+        footerAlign: pluginAdapter.parsePluginStringEnum(
           source.footerAlign,
           'modal config footerAlign',
           FOOTER_ALIGNMENTS,
           'left, center, or right'
         ),
-        panelBackground: parseCanonicalPluginColor(
+        panelBackground: pluginAdapter.parseCanonicalPluginColor(
           source.panelBackground,
           'modal config panelBackground'
         ),
-        textColor: parseCanonicalPluginColor(source.textColor, 'modal config textColor'),
-        accentColor: parseCanonicalPluginColor(source.accentColor, 'modal config accentColor'),
-        overlayOpacity: parseBoundedPluginNumber(
+        textColor: pluginAdapter.parseCanonicalPluginColor(
+          source.textColor,
+          'modal config textColor'
+        ),
+        accentColor: pluginAdapter.parseCanonicalPluginColor(
+          source.accentColor,
+          'modal config accentColor'
+        ),
+        overlayOpacity: pluginAdapter.parseBoundedPluginNumber(
           source.overlayOpacity,
           'modal config overlayOpacity',
           MODAL_MODULE_LIMITS.overlayOpacityMin,
@@ -184,7 +195,11 @@ function parseModalConfig(value: unknown) {
       ) {
         throw new TypeError('modal config must provide at least one dismissal control')
       }
-      assertBoundedPluginConfigBytes(config, 'modal config', MODAL_MODULE_LIMITS.configBytes)
+      pluginAdapter.assertBoundedPluginConfigBytes(
+        config,
+        'modal config',
+        MODAL_MODULE_LIMITS.configBytes
+      )
       return config
     }
   )

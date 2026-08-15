@@ -1,7 +1,7 @@
 import {
   parsePluginConnectorContract,
   type PluginConnectorContractV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { ConnectorSnapshotListenerRegistry } from './listener-registry'
 import type { ConnectorAuthorityIdentity } from './types'

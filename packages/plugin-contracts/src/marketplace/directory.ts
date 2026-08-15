@@ -5,9 +5,8 @@ import {
   parsePluginTrustTimestamp,
   parseTrustedPluginKeyring,
   type TrustedPluginKeyringV1
-} from '#core/plugins/keyring'
-import { parsePluginTrustValidityWindow } from '#core/plugins/parse-helpers'
-
+} from '../keyring'
+import { parsePluginTrustValidityWindow } from '../parse-helpers'
 import {
   assertMarketplaceSorted,
   compareMarketplaceText,

@@ -1,3 +1,4 @@
+import { detectSupabaseSecretKey } from '@open-pencil/lowcode'
 /* eslint-disable max-lines -- Contract, request shaping, and response normalization share one review boundary. */
 import {
   PLUGIN_CONNECTOR_CONTRACT_FORMAT,
@@ -8,8 +9,7 @@ import {
   type PluginConnectorOperationV1,
   type PluginObjectParameterSchemaV2,
   type PluginParameterValue
-} from '@open-pencil/core/plugins'
-import { detectSupabaseSecretKey } from '@open-pencil/lowcode'
+} from '@open-pencil/plugin-contracts'
 
 import { projectRefFromSupabaseURL } from '@/app/lowcode/supabase/management-client'
 import type { JSONTraversalState } from '@/app/plugins/json-data'

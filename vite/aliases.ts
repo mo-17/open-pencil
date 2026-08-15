@@ -37,6 +37,14 @@ export function createOpenPencilAliases(rootDir: string) {
     },
     { find: '@open-pencil/lowcode', replacement: resolve(rootDir, 'packages/lowcode/src') },
     {
+      find: /^@open-pencil\/plugin-contracts\/adapter-helpers$/,
+      replacement: resolve(rootDir, 'packages/plugin-contracts/src/adapter-helpers.ts')
+    },
+    {
+      find: /^@open-pencil\/plugin-contracts$/,
+      replacement: resolve(rootDir, 'packages/plugin-contracts/src/index.ts')
+    },
+    {
       find: /^@open-pencil\/scene-graph$/,
       replacement: resolve(rootDir, 'packages/scene-graph/src/index.ts')
     },

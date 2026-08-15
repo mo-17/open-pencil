@@ -5,7 +5,9 @@ import {
   CHART_MODULE_TYPE,
   CHART_PLUGIN_ID,
   MAP_MODULE_TYPE,
-  MAP_PLUGIN_ID,
+  MAP_PLUGIN_ID
+} from '@open-pencil/core/plugins'
+import {
   TRUSTED_PLUGIN_KEYRING_SCHEMA_VERSION,
   parseTrustedPluginKeyring,
   signPluginManifest,
@@ -14,7 +16,7 @@ import {
   type PluginManifest,
   type PluginManifestPayloadV1,
   type VerifiedPluginPackage
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { GOOGLE_DRIVE_STORAGE_PLUGIN_ID } from '@/app/integrations/storage/google-drive/config'
 import {

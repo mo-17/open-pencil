@@ -14,7 +14,7 @@ import {
   parseVersionedPluginManifest,
   type PluginCatalogPayloadV1,
   type PluginManifestPayloadV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { runOpenPencilCLI } from '#tests/helpers/cli'
 import { cliSourcePath } from '#tests/helpers/paths'

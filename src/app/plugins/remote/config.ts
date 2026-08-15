@@ -2,7 +2,7 @@ import {
   TRUSTED_PLUGIN_KEYRING_SCHEMA_VERSION,
   parseTrustedPluginKeyring,
   type TrustedPluginKeyringV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import {
   importEd25519PublicKeyPem,
   parseExactManifestRecord,

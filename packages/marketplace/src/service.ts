@@ -13,7 +13,7 @@ import {
   type MarketplacePluginListingV1,
   type SignedMarketplaceSnapshotV1,
   type VerifiedMarketplaceSnapshot
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import {
   exportEd25519PublicKeyPem,
   importEd25519PublicKeyPem,

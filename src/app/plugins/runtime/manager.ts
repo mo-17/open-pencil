@@ -3,7 +3,7 @@ import {
   type PluginRuntimeCapabilityV1,
   type VerifiedIndexedPluginRuntimePackage,
   type VerifiedPluginPackage
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
 import type { InstalledAppPlugin } from '../types'

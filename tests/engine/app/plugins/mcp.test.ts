@@ -4,9 +4,9 @@ import {
   DROPDOWN_MENU_PLUGIN_ID,
   MAP_PLUGIN_ID,
   MODAL_PLUGIN_ID,
-  UPLOAD_BUTTON_PLUGIN_ID,
-  parsePluginConnectorContract
+  UPLOAD_BUTTON_PLUGIN_ID
 } from '@open-pencil/core/plugins'
+import { parsePluginConnectorContract } from '@open-pencil/plugin-contracts'
 
 import { createBundledPluginCatalog } from '@/app/plugins/catalog'
 import {

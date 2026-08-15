@@ -19,7 +19,7 @@ import {
   type MarketplaceSnapshotPayloadV1,
   type PluginRuntimeIndexPayloadV1,
   type PluginRuntimePackagePayloadV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import { digestCanonicalManifest, exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 import { createMemoryRemotePluginCacheStorage, createPluginRuntimeClient } from '@/app/plugins'

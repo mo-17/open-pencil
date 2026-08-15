@@ -6,11 +6,10 @@ import {
   verifySignedManifestIntegrity
 } from '@open-pencil/scene-graph'
 
-import { verifyPluginCatalog } from '#core/plugins/catalog'
-import { pluginTrustNow, resolveTrustedPluginKey } from '#core/plugins/keyring'
-import { verifyPluginRuntimeIndex } from '#core/plugins/runtime-index'
-import type { VerifiedPluginRuntimeIndex } from '#core/plugins/runtime-index'
-
+import { verifyPluginCatalog } from '../catalog'
+import { pluginTrustNow, resolveTrustedPluginKey } from '../keyring'
+import { verifyPluginRuntimeIndex } from '../runtime-index'
+import type { VerifiedPluginRuntimeIndex } from '../runtime-index'
 import { createMarketplacePublisherKeyring } from './directory'
 import {
   marketplaceCatalogReference,

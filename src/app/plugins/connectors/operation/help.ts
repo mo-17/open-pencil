@@ -4,7 +4,7 @@ import type {
   PluginParameterSchemaPrimitive,
   PluginParameterSchemaType,
   PluginParameterSchemaV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import type { Locale } from '@open-pencil/vue'
 
 import { REVIEWED_EXTERNAL_SERVICE_CATALOG } from '../services'

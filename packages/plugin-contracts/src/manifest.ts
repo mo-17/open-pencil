@@ -15,7 +15,6 @@ import {
   parsePluginObjectParameterSchema,
   type PluginContributionDataContractV2
 } from './parameter-schema'
-import type { ModulePropertyFieldKind } from './types'
 
 export {
   PLUGIN_PARAMETER_SCHEMA_LIMITS,
@@ -42,6 +41,8 @@ export const PLUGIN_MANIFEST_FORMAT = 'openpencil-plugin' as const
 export const PLUGIN_MANIFEST_SCHEMA_VERSION = 1 as const
 export const PLUGIN_MANIFEST_SCHEMA_VERSION_V2 = 2 as const
 export const PLUGIN_MANIFEST_LATEST_SCHEMA_VERSION = PLUGIN_MANIFEST_SCHEMA_VERSION_V2
+
+export type ModulePropertyFieldKind = 'number' | 'boolean' | 'select' | 'json' | 'text' | 'color'
 
 export const PLUGIN_MANIFEST_LIMITS = Object.freeze({
   maxJsonBytes: 1024 * 1024,

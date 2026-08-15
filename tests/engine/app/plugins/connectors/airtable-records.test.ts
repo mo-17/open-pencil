@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { parsePluginConnectorContract } from '@open-pencil/core/plugins'
+import { parsePluginConnectorContract } from '@open-pencil/plugin-contracts'
 
 import {
   AIRTABLE_LIST_RECORDS_OPERATION,

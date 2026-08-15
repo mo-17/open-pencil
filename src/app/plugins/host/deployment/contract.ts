@@ -1,7 +1,7 @@
 import type {
   DeclarativeCommandContributionV2,
   PluginContributionDataContractV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import type { DeployProvider } from '@/app/lowcode/preview-pane/deploy/runner'
 import { credentialRef } from '@/app/settings/credentials/reference'

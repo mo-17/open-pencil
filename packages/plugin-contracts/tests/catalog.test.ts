@@ -5,6 +5,7 @@ import {
   PLUGIN_CATALOG_SCHEMA_VERSION,
   PluginTrustError,
   TRUSTED_PLUGIN_KEYRING_SCHEMA_VERSION,
+  authorizeTrustedPluginKeyTransition,
   parsePluginCatalogBytes,
   parsePluginCatalogJSON,
   parsePluginCatalogPayload,
@@ -14,6 +15,7 @@ import {
   signPluginCatalog,
   signPluginManifest,
   signVersionedPluginManifest,
+  traceTrustedPluginKeyTransition,
   validatePluginCatalog,
   verifyCatalogPluginPackage,
   verifyPluginCatalog,
@@ -22,9 +24,9 @@ import {
   type PluginManifest,
   type TrustedPluginKeyringV1,
   type TrustedPluginPublisherKeyV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
-import { pluginPayload, pluginPayloadV2 } from '../helpers'
+import { pluginPayload, pluginPayloadV2 } from './helpers'
 
 const GENERATED_AT = '2026-08-05T00:00:00.000Z'
 const EXPIRES_AT = '2026-08-10T00:00:00.000Z'
@@ -384,6 +386,27 @@ describe('trusted publisher keyring', () => {
     expect(resolved.diagnostics.map(({ code }) => code)).toContain(
       'publisher-key-predecessor-revoked'
     )
+
+    const transition = {
+      pluginId: 'acme.analytics',
+      publisherId: 'acme',
+      fromKeyId: 'acme.release',
+      toKeyId: 'acme.release.2026',
+      now: NOW
+    }
+    expect(traceTrustedPluginKeyTransition(keyring([oldKey, newKey]), transition)).toEqual([
+      'acme.release',
+      'acme.release.2026'
+    ])
+    const authorized = authorizeTrustedPluginKeyTransition(keyring([oldKey, newKey]), transition)
+    expect(authorized.key.keyId).toBe('acme.release.2026')
+    expect(authorized.rotationPath).toEqual(['acme.release', 'acme.release.2026'])
+    expect(() =>
+      traceTrustedPluginKeyTransition(keyring([oldKey, newKey]), {
+        ...transition,
+        fromKeyId: 'acme.unrelated'
+      })
+    ).toThrow('does not rotate')
 
     expect(() =>
       resolveTrustedPluginKey(keyring([oldKey]), {

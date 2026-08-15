@@ -9,6 +9,8 @@ import {
   PluginRuntimeTrustError,
   TRUSTED_PLUGIN_KEYRING_SCHEMA_VERSION,
   createPluginRuntimeAsset,
+  parsePluginRuntimeIndexBytes,
+  parsePluginRuntimeIndexJSON,
   parsePluginRuntimeIndexPayload,
   pluginRuntimePackageCanonicalByteLength,
   serializePluginRuntimeIndex,
@@ -25,7 +27,7 @@ import {
   type PluginRuntimePackagePayloadV1,
   type TrustedPluginKeyringV1,
   type TrustedPluginPublisherKeyV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { pluginPayload, pluginPayloadV2 } from './helpers'
 
@@ -179,6 +181,8 @@ describe('root-signed executable plugin index', () => {
       keyId: 'marketplace.root.2026'
     })
     const serialized = serializePluginRuntimeIndex(index)
+    expect(parsePluginRuntimeIndexJSON(serialized)).toEqual(index)
+    expect(parsePluginRuntimeIndexBytes(new TextEncoder().encode(serialized))).toEqual(index)
     const verifiedIndex = await verifyPluginRuntimeIndex(JSON.parse(serialized), root.publicKey, {
       expectedIndexId: 'openpencil.marketplace.runtime',
       expectedKeyId: 'marketplace.root.2026',

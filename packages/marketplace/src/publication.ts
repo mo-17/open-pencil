@@ -24,7 +24,7 @@ import {
   type SignedMarketplaceSnapshotV1,
   type SignedPluginCatalogV1,
   type SignedPluginRuntimeIndexV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import {
   compareStableSemver,
   importEd25519PublicKeyPem,

@@ -3,20 +3,22 @@ import {
   acceptPluginUpdate,
   createInstalledPluginState,
   parseInstalledPluginState,
-  parseVersionedPluginManifestPayload,
-  parseTrustedPluginKeyring,
   rejectPluginUpdate,
-  resolveTrustedPluginKey,
   reviewPluginUpdate,
   rollbackPlugin,
   setPluginEnabled,
-  verifyVersionedPluginPackage,
   type InstalledPluginStateV1,
-  type InstalledPluginTrustOptions,
+  type InstalledPluginTrustOptions
+} from '@open-pencil/core/plugins'
+import {
+  parseVersionedPluginManifestPayload,
+  parseTrustedPluginKeyring,
+  resolveTrustedPluginKey,
+  verifyVersionedPluginPackage,
   type PluginManifestPayload,
   type TrustedPluginKeyringV1,
   type VerifiedPluginPackage
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import {
   compareStableSemver,
   digestCanonicalManifest,

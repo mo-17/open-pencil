@@ -24,9 +24,9 @@ import {
   UPLOAD_BUTTON_MODULE_TYPE,
   UPLOAD_BUTTON_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
-  VIDEO_PLUGIN_ID,
-  type DeclarativeModuleContributionV1
+  VIDEO_PLUGIN_ID
 } from '@open-pencil/core/plugins'
+import { type DeclarativeModuleContributionV1 } from '@open-pencil/plugin-contracts'
 
 import {
   createBundledPluginCatalog,

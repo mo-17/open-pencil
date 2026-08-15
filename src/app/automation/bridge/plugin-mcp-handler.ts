@@ -3,7 +3,7 @@ import {
   type DeclarativeCommandContributionV2,
   type DeclarativeExporterContributionV2,
   type PluginConnectorOperationV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import { canonicalManifestValue } from '@open-pencil/scene-graph'
 import type { JSONObject, JSONValue } from '@open-pencil/scene-graph/primitives'
 

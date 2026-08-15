@@ -1,13 +1,13 @@
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
 
+import type { ModuleDefinition } from '@open-pencil/core/plugins'
+import type { PluginMCPCatalogSnapshot } from '@open-pencil/mcp/plugin-contract'
 import type {
   DeclarativeCommandContributionV2,
   DeclarativeExporterContributionV2,
-  ModuleDefinition,
   PluginConnectorOperationV1
-} from '@open-pencil/core/plugins'
-import type { PluginMCPCatalogSnapshot } from '@open-pencil/mcp/plugin-contract'
+} from '@open-pencil/plugin-contracts'
 import { canonicalManifestValue } from '@open-pencil/scene-graph'
 import type { JSONObject, JSONValue } from '@open-pencil/scene-graph/primitives'
 

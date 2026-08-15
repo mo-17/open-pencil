@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   PluginConnectorContractRegistry,
   parsePluginConnectorContract
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { RedactedConnectorAuditLog } from '@/app/plugins/connectors/audit'
 import { ConnectorAuthorizationRegistry } from '@/app/plugins/connectors/authorization'

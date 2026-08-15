@@ -1,7 +1,7 @@
 import {
   PLUGIN_RUNTIME_CAPABILITIES,
   type PluginRuntimeCapabilityV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import {
   parseBoundedManifestArray,
   parseExactManifestRecord,

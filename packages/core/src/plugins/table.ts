@@ -1,3 +1,4 @@
+import { hasExactPluginKeys } from '@open-pencil/plugin-contracts/adapter-helpers'
 import {
   isPlainJSONObject,
   validateModuleInstance,
@@ -7,7 +8,6 @@ import {
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
-import { hasExactPluginKeys } from './parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
 export const TABLE_PLUGIN_ID = 'open-pencil.table'

@@ -7,7 +7,7 @@ import {
   type VerifiedMarketplaceSnapshot,
   type VerifiedPluginPackage,
   type VerifiedPluginRuntimeIndex
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   REMOTE_PLUGIN_CACHE_SCHEMA_VERSION,

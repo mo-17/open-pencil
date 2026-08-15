@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { PLUGIN_RUNTIME_COMPUTE_ABI } from '@open-pencil/core/plugins'
+import { PLUGIN_RUNTIME_COMPUTE_ABI } from '@open-pencil/plugin-contracts'
 
 import {
   PLUGIN_RUNTIME_WORKER_PROTOCOL_VERSION,

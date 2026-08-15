@@ -1,3 +1,12 @@
+import {
+  assertBoundedPluginConfigBytes,
+  parseBoundedPluginNumber,
+  parseBoundedPluginText,
+  parseCanonicalPluginColor,
+  parsePluginBoolean,
+  parsePluginStringEnum,
+  parseSafePluginAssetSource
+} from '@open-pencil/plugin-contracts/adapter-helpers'
 import type { ModuleInstanceV1, SceneNode } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
@@ -10,15 +19,6 @@ import {
   type ModuleContract
 } from './module-contract'
 import { createModuleFrameOverrides } from './module-frame'
-import {
-  assertBoundedPluginConfigBytes,
-  parseBoundedPluginNumber,
-  parseBoundedPluginText,
-  parseCanonicalPluginColor,
-  parsePluginBoolean,
-  parsePluginStringEnum,
-  parseSafePluginAssetSource
-} from './parse-helpers'
 import type { ModulePropertyField, ModuleResolution } from './types'
 
 export const AUDIO_PLAYER_PLUGIN_ID = 'open-pencil.audio-player'

@@ -7,7 +7,7 @@ import {
   signPluginRuntimeIndex,
   verifyPluginRuntimeIndex,
   type PluginRuntimeIndexPayloadV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   importPrivateKey,

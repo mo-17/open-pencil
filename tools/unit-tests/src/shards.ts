@@ -12,6 +12,7 @@ export const UNIT_TEST_GROUPS = {
     'tests/engine/cli',
     'tests/engine/marketplace',
     'tests/engine/plugins',
+    'packages/plugin-contracts/tests',
     'tests/engine/tauri'
   ],
   compiler: ['tests/engine/compiler', 'packages/codepen-sidecar/tests'],

@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
+import { PLUGIN_MANIFEST_FORMAT } from '@open-pencil/plugin-contracts'
 import {
-  PLUGIN_MANIFEST_FORMAT,
   type PluginConnectorOperationV1,
   type PluginManifestPayloadV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   createConnectorMutationAttemptId,

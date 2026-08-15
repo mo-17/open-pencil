@@ -10,7 +10,7 @@ import {
   type PluginConnectorOperationV1,
   type PluginObjectParameterSchemaV2,
   type PluginParameterValue
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { credentialRef } from '@/app/settings/credentials/reference'
 import type { CredentialRef } from '@/app/settings/credentials/types'

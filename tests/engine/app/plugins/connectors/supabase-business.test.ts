@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { PluginConnectorContractRegistry } from '@open-pencil/core/plugins'
+import { PluginConnectorContractRegistry } from '@open-pencil/plugin-contracts'
 
 import { RedactedConnectorAuditLog } from '@/app/plugins/connectors/audit'
 import { ConnectorAuthorizationRegistry } from '@/app/plugins/connectors/authorization'

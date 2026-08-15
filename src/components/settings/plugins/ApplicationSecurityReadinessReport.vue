@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { parsePluginObjectParameterValue } from '@open-pencil/core/plugins'
+import { parsePluginObjectParameterValue } from '@open-pencil/plugin-contracts'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 import { useI18n } from '@open-pencil/vue'
 

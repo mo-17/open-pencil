@@ -9,7 +9,7 @@ import type {
   PluginManifestPayloadV1,
   PluginManifestPayloadV2,
   PluginStorageProviderContributionV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 

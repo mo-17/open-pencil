@@ -1,4 +1,10 @@
 import {
+  assertBoundedPluginConfigBytes,
+  hasExactPluginKeys,
+  mergePluginConfigWithDefaults,
+  parseCanonicalPluginColor as canonicalColor
+} from '@open-pencil/plugin-contracts/adapter-helpers'
+import {
   isPlainJSONObject,
   validateModuleInstance,
   type ModuleInstanceV1,
@@ -7,12 +13,6 @@ import {
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from '#core/plugins/module-frame'
-import {
-  assertBoundedPluginConfigBytes,
-  hasExactPluginKeys,
-  mergePluginConfigWithDefaults,
-  parseCanonicalPluginColor as canonicalColor
-} from '#core/plugins/parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from '#core/plugins/types'
 
 import {

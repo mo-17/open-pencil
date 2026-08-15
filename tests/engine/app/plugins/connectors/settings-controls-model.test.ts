@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
+import { PLUGIN_MANIFEST_FORMAT } from '@open-pencil/plugin-contracts'
 import {
-  PLUGIN_MANIFEST_FORMAT,
   type PluginConnectorContractV1,
   type PluginManifestPayloadV1,
   type PluginManifestPayloadV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   AIRTABLE_RECORDS_CONNECTOR_CONTRACT,

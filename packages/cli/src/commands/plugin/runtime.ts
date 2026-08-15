@@ -10,7 +10,7 @@ import {
   verifyPluginRuntimePackage,
   type PluginRuntimePackagePayloadV1,
   type SignedPluginRuntimePackageV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   importPrivateKey,

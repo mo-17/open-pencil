@@ -16,7 +16,7 @@ import {
   type PluginRuntimeIndexPayloadV1,
   type PluginRuntimePackagePayloadV1,
   type SignedPluginRuntimePackageV1
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import { runOpenPencilCLI } from '#tests/helpers/cli'
 

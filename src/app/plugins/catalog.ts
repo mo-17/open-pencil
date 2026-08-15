@@ -39,19 +39,21 @@ import {
   UPLOAD_BUTTON_PLUGIN,
   VIDEO_MODULE_DEFINITION,
   VIDEO_PLUGIN,
+  type ModuleDefinition,
+  type PluginDefinition
+} from '@open-pencil/core/plugins'
+import {
   type DeclarativeCommandContributionV1,
   type DeclarativeCommandContributionV2,
   type DeclarativeExporterContributionV1,
   type DeclarativeExporterContributionV2,
-  type ModuleDefinition,
-  type PluginDefinition,
   type PluginContributionDataContractV2,
   type PluginConnectorContractV1,
   type PluginManifestPayloadV1,
   type PluginManifestPayloadV2,
   type PluginObjectParameterSchemaV2,
   type PluginStorageProviderContributionV2
-} from '@open-pencil/core/plugins'
+} from '@open-pencil/plugin-contracts'
 
 import {
   GOOGLE_DRIVE_STORAGE_ADAPTER_ID,
