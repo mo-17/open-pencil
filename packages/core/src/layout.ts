@@ -23,6 +23,7 @@ export {
   setTextMeasurer,
   type TextMeasurer
 } from './layout/text-measurement'
+import type { MotionVisualState } from '@open-pencil/motion'
 import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { throwIfAborted, yieldToHost } from '#core/async-work'
@@ -38,7 +39,6 @@ import {
   mapGridTrack,
   mapJustify
 } from './layout/yoga-helpers'
-import type { MotionVisualState } from './motion'
 
 const LAYOUT_ABORT_MESSAGE = 'Layout cancelled'
 

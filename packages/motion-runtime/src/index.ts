@@ -55,5 +55,5 @@ export {
   type MotionSamplingSelection,
   type MotionVisualState,
   type PreparedMotionSamplingPlan
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 export type { MotionSpec } from '@open-pencil/scene-graph'

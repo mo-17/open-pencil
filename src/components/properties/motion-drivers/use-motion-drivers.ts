@@ -4,7 +4,7 @@ import {
   motionDriverDocumentStates,
   motionDriverPageStates,
   motionDriverVariables
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import {
   MOTION_DRIVER_LIMITS,
   type MotionDriver,

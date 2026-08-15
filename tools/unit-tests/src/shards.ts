@@ -31,7 +31,12 @@ export const UNIT_TEST_GROUPS = {
     'tests/engine/snap'
   ],
   fig: ['tests/engine/figma', 'tests/engine/io', 'tests/engine/kiwi'],
-  motion: ['tests/engine/collab', 'tests/engine/motion', 'packages/motion-runtime/tests'],
+  motion: [
+    'tests/engine/collab',
+    'tests/engine/motion',
+    'packages/motion/tests',
+    'packages/motion-runtime/tests'
+  ],
   render: ['tests/engine/geometry', 'tests/engine/layout', 'tests/engine/render'],
   scene: [
     'tests/engine/async-work',

@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import { prepareMotionScenePlan, samplePreparedMotionScenePlan } from '@open-pencil/core/motion'
+import { prepareMotionScenePlan, samplePreparedMotionScenePlan } from '@open-pencil/motion'
 import type { MotionSceneSpec, MotionSpec } from '@open-pencil/scene-graph'
 
-import { expectDefined } from '#tests/helpers/assert'
+import { expectDefined } from './helpers'
 
 function motion(): MotionSpec {
   return {

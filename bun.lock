@@ -23,6 +23,7 @@
         "@open-pencil/fig": "workspace:*",
         "@open-pencil/kiwi": "workspace:*",
         "@open-pencil/lowcode": "workspace:*",
+        "@open-pencil/motion": "workspace:*",
         "@open-pencil/motion-runtime": "workspace:*",
         "@open-pencil/pen": "workspace:*",
         "@open-pencil/plugin-contracts": "workspace:*",
@@ -163,6 +164,7 @@
         "@open-pencil/fig": "workspace:*",
         "@open-pencil/lowcode": "workspace:*",
         "@open-pencil/mcp": "workspace:*",
+        "@open-pencil/motion": "workspace:*",
         "@open-pencil/plugin-contracts": "workspace:*",
         "@open-pencil/scene-graph": "workspace:*",
         "agentfmt": "^0.1.3",
@@ -199,6 +201,7 @@
         "@open-pencil/core": "workspace:*",
         "@open-pencil/dom-css": "workspace:*",
         "@open-pencil/lowcode": "workspace:*",
+        "@open-pencil/motion": "workspace:*",
         "@open-pencil/motion-runtime": "workspace:*",
         "@open-pencil/scene-graph": "workspace:*",
         "@tailwindcss/vite": "^4.2.1",
@@ -226,6 +229,7 @@
         "@open-pencil/fig": "workspace:*",
         "@open-pencil/kiwi": "workspace:*",
         "@open-pencil/lowcode": "workspace:*",
+        "@open-pencil/motion": "workspace:*",
         "@open-pencil/pen": "workspace:*",
         "@open-pencil/plugin-contracts": "workspace:*",
         "@open-pencil/scene-graph": "workspace:*",
@@ -392,6 +396,18 @@
         "@types/ws": "^8.18.1",
       },
     },
+    "packages/motion": {
+      "name": "@open-pencil/motion",
+      "version": "0.14.0",
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "tsdown": "^0.22.3",
+        "typescript": "~5.8.3",
+      },
+      "peerDependencies": {
+        "@open-pencil/scene-graph": "workspace:*",
+      },
+    },
     "packages/motion-runtime": {
       "name": "@open-pencil/motion-runtime",
       "version": "0.14.0",
@@ -402,7 +418,7 @@
         "vue": "^3.5.29",
       },
       "peerDependencies": {
-        "@open-pencil/core": "workspace:*",
+        "@open-pencil/motion": "workspace:*",
         "@open-pencil/scene-graph": "workspace:*",
         "vue": "^3.5.0",
       },
@@ -1083,6 +1099,8 @@
     "@open-pencil/marketplace": ["@open-pencil/marketplace@workspace:packages/marketplace"],
 
     "@open-pencil/mcp": ["@open-pencil/mcp@workspace:packages/mcp"],
+
+    "@open-pencil/motion": ["@open-pencil/motion@workspace:packages/motion"],
 
     "@open-pencil/motion-runtime": ["@open-pencil/motion-runtime@workspace:packages/motion-runtime"],
 

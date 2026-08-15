@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { sampleMotionEasing, sampleMotionSpec } from '@open-pencil/motion'
 import type { MotionSpec } from '@open-pencil/scene-graph'
-
-import { sampleMotionEasing, sampleMotionSpec } from '#core/motion'
 
 function spec(): MotionSpec {
   return {

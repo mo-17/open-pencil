@@ -4,7 +4,7 @@ import {
   type MotionInputBatch,
   type MotionInputFrameScheduler,
   type MotionInputTargetState
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import {
   parseMotionDriverSpec,
   type MotionDriver,

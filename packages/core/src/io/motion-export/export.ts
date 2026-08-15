@@ -1,12 +1,4 @@
 import {
-  validateMotionSpec,
-  type MotionSpec,
-  type MotionTrack,
-  type SceneGraph
-} from '@open-pencil/scene-graph'
-
-import { computeContentBounds, headlessRenderNodes } from '#core/io/formats/raster'
-import {
   prepareMotionSamplingPlan,
   prepareMotionScenePlan,
   preparedMotionPlanDuration,
@@ -14,7 +6,15 @@ import {
   samplePreparedMotionScenePlan,
   type MotionVisualState,
   type PreparedMotionSamplingPlan
-} from '#core/motion'
+} from '@open-pencil/motion'
+import {
+  validateMotionSpec,
+  type MotionSpec,
+  type MotionTrack,
+  type SceneGraph
+} from '@open-pencil/scene-graph'
+
+import { computeContentBounds, headlessRenderNodes } from '#core/io/formats/raster'
 
 import { motionExportUnavailableReason, resolveMotionAnimationEncoders } from './capabilities'
 import { planMotionFrames } from './planner'

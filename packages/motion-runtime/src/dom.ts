@@ -1,6 +1,7 @@
-import { colorToCSS } from '@open-pencil/core/color'
-import { TRANSPARENT } from '@open-pencil/core/constants'
-import type { MotionVisualState } from '@open-pencil/core/motion'
+import type { MotionVisualState } from '@open-pencil/motion'
+import { TRANSPARENT } from '@open-pencil/scene-graph'
+
+import { colorToCSS } from './color'
 
 export interface MotionStyleDeclaration {
   getPropertyValue(property: string): string

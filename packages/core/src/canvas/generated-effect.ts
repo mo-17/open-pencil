@@ -1,10 +1,10 @@
 import type { Canvas } from 'canvaskit-wasm'
 
+import { sampleGeneratedEffect, type GeneratedEffectPrimitive } from '@open-pencil/motion'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import type { RenderOverlays } from '#core/canvas/renderer/types'
-import { sampleGeneratedEffect, type GeneratedEffectPrimitive } from '#core/motion'
 
 function blendMode(r: SkiaRenderer, value: string) {
   switch (value) {

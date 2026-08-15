@@ -7,7 +7,7 @@ JavaScript, and reads no browser globals at module evaluation time.
 ## Installation
 
 ```sh
-bun add @open-pencil/motion-runtime @open-pencil/core @open-pencil/scene-graph
+bun add @open-pencil/motion-runtime @open-pencil/motion @open-pencil/scene-graph
 ```
 
 Install `vue` only when using the optional `@open-pencil/motion-runtime/vue` entrypoint.
@@ -103,7 +103,7 @@ const animation = useMotion(element, () => props.motion, { trigger: 'mount' })
 ```
 
 `useMotion()` reacts to element/spec replacement and disposes listeners, styles, and owned runtime
-state with its Vue effect scope. Importing the core or DOM entrypoint never loads Vue, which keeps
+state with its Vue effect scope. Importing the package root or DOM entrypoint never loads Vue, which keeps
 SSR and non-Vue bundles tree-shakeable. Vanilla and Vue-owned runtimes follow live
 `prefers-reduced-motion` changes when no explicit preference is supplied. Injected runtimes are
 never observed or disposed; their host owns `setPrefersReducedMotion()` and lifecycle cleanup.

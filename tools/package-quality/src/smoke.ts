@@ -68,15 +68,17 @@ function writeTypeConsumer(cwd: string): void {
 
   writeFileSync(
     join(cwd, 'package-type-consumer.ts'),
-    `import { createEditor, type Editor, type PluginManifest as CoreRootPluginManifest } from '@open-pencil/core'
+    `import { createEditor, sampleMotionSpec as sampleMotionFromCoreRoot, type Editor, type MotionVisualState as CoreRootMotionVisualState, type PluginManifest as CoreRootPluginManifest } from '@open-pencil/core'
 import { parseExpression as parseExpressionCompat } from '@open-pencil/core/lowcode-validation'
 import type { ApplicationRuntimeAudit as ApplicationRuntimeAuditCompat } from '@open-pencil/core/lowcode-validation/application-runtime'
+import { sampleMotionSpec as sampleMotionFromCore, type MotionVisualState as CoreMotionVisualState } from '@open-pencil/core/motion'
 import { parseVersionedPluginManifestPayload as parsePluginManifestCompat, type PluginManifest as CorePluginManifest } from '@open-pencil/core/plugins'
 import { htmlToDesignDocument, type DesignDocument } from '@open-pencil/dom-css'
 import { FIG_PACKAGE_STATUS, type FigContainerDocument } from '@open-pencil/fig'
 import { FIG_KIWI_DEFAULT_VERSION, buildFigKiwi } from '@open-pencil/kiwi/fig/container'
 import { type GUID as KiwiGUID } from '@open-pencil/kiwi/fig'
 import { parseExpression, type ExprAst } from '@open-pencil/lowcode'
+import { sampleMotionSpec, type MotionVisualState, type PreparedMotionSamplingPlan } from '@open-pencil/motion'
 import { parsePenFile, type PenDocument } from '@open-pencil/pen'
 import { parseVersionedPluginManifestPayload, type MarketplaceSnapshotPayloadV1, type PluginManifest, type PluginRuntimeIndexPayloadV1 } from '@open-pencil/plugin-contracts'
 import { hasExactPluginKeys } from '@open-pencil/plugin-contracts/adapter-helpers'
@@ -89,12 +91,16 @@ declare const editor: Editor
 declare const designDocument: DesignDocument
 declare const expression: ExprAst
 declare const applicationRuntimeAudit: ApplicationRuntimeAuditCompat
+declare const motionVisual: MotionVisualState
+declare const motionPlan: PreparedMotionSamplingPlan
 declare const pluginManifest: PluginManifest
 declare const marketplaceSnapshot: MarketplaceSnapshotPayloadV1
 declare const pluginRuntimeIndex: PluginRuntimeIndexPayloadV1
 const corePluginManifest: CorePluginManifest = pluginManifest
 const coreRootPluginManifest: CoreRootPluginManifest = pluginManifest
 const ownerManifestFromCompat: PluginManifest = corePluginManifest
+const coreMotionVisual: CoreMotionVisualState = motionVisual
+const coreRootMotionVisual: CoreRootMotionVisualState = motionVisual
 
 const color: Color = { r: 1, g: 0.5, b: 0, a: 1 }
 const vector: Vector = { x: 1, y: 2 }
@@ -111,6 +117,10 @@ void editor
 void designDocument
 void expression
 void applicationRuntimeAudit
+void motionVisual
+void motionPlan
+void coreMotionVisual
+void coreRootMotionVisual
 void pluginManifest
 void marketplaceSnapshot
 void pluginRuntimeIndex
@@ -128,6 +138,9 @@ void FIG_KIWI_DEFAULT_VERSION
 void buildFigKiwi
 void parseExpression
 void parseExpressionCompat
+void sampleMotionSpec
+void sampleMotionFromCore
+void sampleMotionFromCoreRoot
 void parseVersionedPluginManifestPayload
 void parsePluginManifestCompat
 void hasExactPluginKeys
@@ -362,6 +375,10 @@ globalThis.__OPENPENCIL_MOTION_RUNTIME__?.dispose()
   )
   nodeEval(
     "const owner = await import('@open-pencil/plugin-contracts'); const helpers = await import('@open-pencil/plugin-contracts/adapter-helpers'); const pluginsCompat = await import('@open-pencil/core/plugins'); const rootCompat = await import('@open-pencil/core'); const representative = ['parsePluginObjectParameterSchema', 'parsePluginConnectorContract', 'parseVersionedPluginManifest', 'verifyVersionedPluginPackage', 'parseTrustedPluginKeyring', 'verifyPluginCatalog', 'verifyPluginRuntimePackage', 'verifyPluginRuntimeIndex', 'verifyMarketplaceSnapshot', 'verifyMarketplaceRuntimeIndex', 'PluginTrustError', 'PluginRuntimeTrustError', 'MarketplaceSnapshotTrustError']; for (const key of representative) if (typeof owner[key] === 'undefined') throw new Error('Plugin contracts representative export missing: ' + key); for (const key of Object.keys(owner)) if (pluginsCompat[key] !== owner[key] || rootCompat[key] !== owner[key]) throw new Error('Core plugin contract compatibility export failed: ' + key); const payload = { format: 'openpencil-plugin', schemaVersion: 1, plugin: { id: 'smoke.plugin', name: 'Smoke Plugin', version: '1.0.0' }, publisher: { id: 'smoke', name: 'Smoke Publisher', keyId: 'smoke.release' }, engineRange: '>=0.14.0 <1.0.0', capabilities: [], contributions: { modules: [{ moduleType: 'smoke', name: 'Smoke', description: 'Packed package probe', adapterId: 'smoke.adapter', configVersion: 1, defaultSize: { width: 1, height: 1 }, defaultConfig: {}, fields: [] }] } }; if (owner.parseVersionedPluginManifestPayload(payload).plugin.id !== 'smoke.plugin') throw new Error('Plugin manifest contract smoke failed'); if (!helpers.hasExactPluginKeys({ enabled: true }, new Set(['enabled']))) throw new Error('Plugin adapter helper smoke failed')",
+    tempDir
+  )
+  nodeEval(
+    "const owner = await import('@open-pencil/motion'); const compat = await import('@open-pencil/core/motion'); const rootCompat = await import('@open-pencil/core'); const runtime = await import('@open-pencil/motion-runtime'); for (const key of Object.keys(owner)) if (compat[key] !== owner[key] || rootCompat[key] !== owner[key]) throw new Error('Core Motion compatibility export failed: ' + key); for (const key of ['prepareMotionSamplingPlan', 'sampleMotionSpec', 'samplePreparedMotionPlan']) if (runtime[key] !== owner[key]) throw new Error('Motion runtime owner re-export failed: ' + key); const sample = owner.sampleMotionSpec({ version: 1, tracks: [{ id: 'move', trigger: 'mount', keyframes: [{ offset: 0, x: 0 }, { offset: 1, x: 10 }], timing: { durationMs: 100, easing: 'linear' } }] }, 50); if (sample.visual.x !== 5) throw new Error('Motion owner sampler smoke failed')",
     tempDir
   )
   nodeEval(

@@ -1,12 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { MotionSpec, MotionTrack, MotionTrackComposition } from '@open-pencil/scene-graph'
-
 import {
   prepareMotionSamplingPlan,
   sampleMotionSpec,
   samplePreparedMotionPlanWithDiagnostics
-} from '#core/motion'
+} from '@open-pencil/motion'
+import type { MotionSpec, MotionTrack, MotionTrackComposition } from '@open-pencil/scene-graph'
 
 function track(id: string, x: [number, number], composition?: MotionTrackComposition): MotionTrack {
   return {

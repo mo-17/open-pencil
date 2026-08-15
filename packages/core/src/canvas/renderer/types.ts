@@ -1,9 +1,9 @@
+import type { MotionVisualState } from '@open-pencil/motion'
 import type { VectorRegion, VectorVertex } from '@open-pencil/scene-graph'
 import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
 import type { MotionLayoutPreviewNode } from '#core/layout'
-import type { MotionVisualState } from '#core/motion'
 import type { TextEditor } from '#core/text/editor'
 
 export interface RulerTheme {

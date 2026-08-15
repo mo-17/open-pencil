@@ -1,4 +1,4 @@
-import { inspectMotionNodeCapabilities } from '@open-pencil/core/motion'
+import { inspectMotionNodeCapabilities } from '@open-pencil/motion'
 import {
   cloneMotionSpec,
   instantiateMotionRecipe,

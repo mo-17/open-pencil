@@ -4,7 +4,7 @@ import { chromium, type Browser, type Page } from '@playwright/test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
-import { sampleGeneratedEffect } from '@open-pencil/core/motion'
+import { sampleGeneratedEffect } from '@open-pencil/motion'
 
 import { generatedEffect } from '#tests/helpers/generated-effect'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'

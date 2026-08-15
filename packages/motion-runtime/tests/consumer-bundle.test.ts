@@ -38,6 +38,12 @@ test('tree-shakes Vue and DOM adapters from a framework-neutral consumer bundle'
 
   expect(contributingInputs).toContain('packages/motion-runtime/dist/runtime.js')
   expect(
+    contributingInputs.filter((path) => /(?:^|\/)packages\/motion\/dist\//.test(path))
+  ).not.toEqual([])
+  expect(contributingInputs.filter((path) => /(?:^|\/)packages\/core\/dist\//.test(path))).toEqual(
+    []
+  )
+  expect(
     contributingInputs.filter((path) =>
       /packages\/motion-runtime\/dist\/(?:dom|drivers|vanilla\d*|vue)\.js$/.test(path)
     )

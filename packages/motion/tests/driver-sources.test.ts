@@ -5,7 +5,7 @@ import {
   motionDriverDocumentStates,
   motionDriverPageStates,
   motionDriverVariables
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import { SceneGraph, type MotionDriverSpecV1 } from '@open-pencil/scene-graph'
 
 describe('continuous Motion driver sources', () => {

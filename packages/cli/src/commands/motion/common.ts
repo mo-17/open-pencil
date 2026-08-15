@@ -1,4 +1,4 @@
-import { inspectMotionNodeCapabilities } from '@open-pencil/core/motion'
+import { inspectMotionNodeCapabilities } from '@open-pencil/motion'
 import { cloneMotionSpec, type MotionSpec, type SceneNode } from '@open-pencil/scene-graph'
 
 import { printError } from '#cli/format'

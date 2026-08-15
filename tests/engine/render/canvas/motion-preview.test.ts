@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from 'bun:test'
 
 import type { Canvas } from 'canvaskit-wasm'
 
+import type { MotionVisualState } from '@open-pencil/motion'
 import { SceneGraph, type MotionSpec, type SceneNode } from '@open-pencil/scene-graph'
 
 import { renderBooleanOperation } from '#core/canvas/boolean'
@@ -12,7 +13,6 @@ import { hasVolatileOverlay, renderSceneToCanvas } from '#core/canvas/renderer/p
 import { renderNode } from '#core/canvas/scene'
 import { renderNodesToSVG } from '#core/io/formats/svg'
 import { computeMotionLayoutPreview, setTextMeasurer } from '#core/layout'
-import type { MotionVisualState } from '#core/motion'
 
 import { fixed, gridFrame, rect } from '#tests/helpers/layout'
 

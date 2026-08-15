@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { prepareMotionSamplingPlan, samplePreparedMotionPlan } from '@open-pencil/motion'
 import type { MotionSpec } from '@open-pencil/scene-graph'
-
-import { prepareMotionSamplingPlan, samplePreparedMotionPlan } from '#core/motion'
 
 function benchmarkSpec(seed: number): MotionSpec {
   return {

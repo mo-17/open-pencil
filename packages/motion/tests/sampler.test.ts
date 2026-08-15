@@ -1,14 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
-import { createMotionPreset, type MotionSpec, type MotionTrack } from '@open-pencil/scene-graph'
-
 import {
   prepareMotionSamplingPlan,
   sampleMotionEasing,
   sampleMotionSpec,
   samplePreparedMotionPlan,
   samplePreparedMotionPlanWithDiagnostics
-} from '#core/motion'
+} from '@open-pencil/motion'
+import { createMotionPreset, type MotionSpec, type MotionTrack } from '@open-pencil/scene-graph'
 
 function spec(tracks: MotionTrack[], reducedMotion?: MotionSpec['reducedMotion']): MotionSpec {
   return { version: 1, tracks, ...(reducedMotion ? { reducedMotion } : {}) }

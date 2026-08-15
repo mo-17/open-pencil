@@ -5,7 +5,7 @@ import { chromium, type Browser, type Page } from '@playwright/test'
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
 import { vectorNetworkToSVGPaths } from '@open-pencil/core/io/formats/svg'
-import { motionVectorTopologyId } from '@open-pencil/core/motion'
+import { motionVectorTopologyId } from '@open-pencil/motion'
 import type { MotionKeyframe, MotionSpec, VectorNetwork } from '@open-pencil/scene-graph'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 

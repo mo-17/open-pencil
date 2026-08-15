@@ -33,6 +33,7 @@
     "@open-pencil/fig": "workspace:*",
     "@open-pencil/lowcode": "workspace:*",
     "@open-pencil/mcp": "workspace:*",
+    "@open-pencil/motion": "workspace:*",
     "@open-pencil/plugin-contracts": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "agentfmt": "^0.1.3",

@@ -3,7 +3,7 @@ import {
   motionEndProgress,
   resolveMotionTrackIterations,
   splitMotionEasing
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import {
   MOTION_LIMITS,
   type MotionColor,

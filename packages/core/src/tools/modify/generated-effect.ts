@@ -1,3 +1,4 @@
+import { generatedEffectNodeChanges } from '@open-pencil/motion'
 import {
   cloneGeneratedEffectSpec,
   parseGeneratedEffectSpec,
@@ -6,7 +7,6 @@ import {
 } from '@open-pencil/scene-graph'
 
 import type { FigmaAPI } from '#core/figma-api'
-import { generatedEffectNodeChanges } from '#core/motion'
 import { defineTool, type ToolCtx } from '#core/tools/schema'
 
 type ModifyResult<T> = { ok: true; data: T } | { ok: false; error: string }

@@ -2,6 +2,11 @@
 import type { Canvas, Path } from 'canvaskit-wasm'
 
 import {
+  MOTION_VISUAL_IDENTITY,
+  projectMotionAdvancedChannels,
+  type MotionVisualState
+} from '@open-pencil/motion'
+import {
   getAbsolutePositionFull,
   type SceneNode,
   type SceneGraph,
@@ -17,11 +22,6 @@ import {
   SECTION_CORNER_RADIUS,
   TRANSPARENT
 } from '#core/constants'
-import {
-  MOTION_VISUAL_IDENTITY,
-  projectMotionAdvancedChannels,
-  type MotionVisualState
-} from '#core/motion'
 import { transformTextCase } from '#core/text/case'
 import { fontManager } from '#core/text/fonts'
 import { vectorNetworkToCenterlinePath } from '#core/vector'

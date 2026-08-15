@@ -1,5 +1,5 @@
 import type { EditorState } from '@open-pencil/core/editor'
-import { sampleMotionPath } from '@open-pencil/core/motion'
+import { sampleMotionPath } from '@open-pencil/motion'
 import {
   getWorldMatrix,
   TransformMatrix,

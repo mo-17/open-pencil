@@ -1,7 +1,7 @@
 /* oxlint-disable eslint/max-lines -- Scene choreography keeps one atomic selection, preview, undo, and collaborative presence controller. */
 import { computed, getCurrentInstance, onBeforeUnmount, ref, watch } from 'vue'
 
-import { prepareMotionScenePlan, type MotionScenePlanIssue } from '@open-pencil/core/motion'
+import { prepareMotionScenePlan, type MotionScenePlanIssue } from '@open-pencil/motion'
 import {
   MOTION_SCENE_LIMITS,
   type MotionSceneCue,

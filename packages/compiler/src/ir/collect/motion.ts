@@ -8,7 +8,7 @@ import {
   samplePreparedMotionPlan,
   type MotionAdvancedChannel,
   type MotionVisualState
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import {
   type MotionEasing,
   type MotionChannels,

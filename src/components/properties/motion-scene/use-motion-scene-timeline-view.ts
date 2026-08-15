@@ -1,7 +1,7 @@
 import { computed, inject, provide, reactive, ref, type InjectionKey } from 'vue'
 
 import { colorToCSS } from '@open-pencil/core/color'
-import type { MotionScenePlanIssue } from '@open-pencil/core/motion'
+import type { MotionScenePlanIssue } from '@open-pencil/motion'
 import {
   MOTION_LIMITS,
   type MotionSceneCue,

@@ -1,11 +1,10 @@
-import { validateMotionSpec, type MotionSpec, type MotionTrigger } from '@open-pencil/scene-graph'
-
 import {
   prepareMotionScenePlan,
   prepareMotionSamplingPlan,
   samplePreparedMotionPlan,
   type MotionVisualState
-} from '#core/motion'
+} from '@open-pencil/motion'
+import { validateMotionSpec, type MotionSpec, type MotionTrigger } from '@open-pencil/scene-graph'
 
 import type {
   EditorContext,

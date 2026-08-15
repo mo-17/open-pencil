@@ -1,5 +1,6 @@
 import type { Canvas } from 'canvaskit-wasm'
 
+import { graphHasAnimatedGeneratedEffects } from '@open-pencil/motion'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry'
 
@@ -7,7 +8,6 @@ import { drawPageGuides } from '#core/canvas/page-guides'
 import type { RenderOverlays, SkiaRenderer } from '#core/canvas/renderer'
 import type { EditorState } from '#core/editor/types'
 import { computeMotionLayoutPreview } from '#core/layout'
-import { graphHasAnimatedGeneratedEffects } from '#core/motion'
 
 import { beginDecodedImageCacheFrame, endDecodedImageCacheFrame } from './image-cache'
 import {

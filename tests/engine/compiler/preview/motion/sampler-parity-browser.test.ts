@@ -6,9 +6,8 @@ import { chromium, type Browser, type Locator, type Page } from '@playwright/tes
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
 import type { Vector } from '@open-pencil/core'
+import { sampleMotionSpec, type MotionVisualState } from '@open-pencil/motion'
 import type { MotionSpec, MotionTrack } from '@open-pencil/scene-graph'
-
-import { sampleMotionSpec, type MotionVisualState } from '#core/motion'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 

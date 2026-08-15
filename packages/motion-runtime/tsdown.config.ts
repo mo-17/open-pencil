@@ -21,8 +21,8 @@ export default defineConfig({
   },
   deps: {
     neverBundle: [
-      '@open-pencil/core',
-      /^@open-pencil\/core\//,
+      '@open-pencil/motion',
+      /^@open-pencil\/motion\//,
       '@open-pencil/scene-graph',
       /^@open-pencil\/scene-graph\//,
       'vue',

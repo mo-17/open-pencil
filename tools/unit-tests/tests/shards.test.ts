@@ -13,6 +13,7 @@ import {
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
 const REQUIRED_UNIT_TEST_ROOTS = [
   'tests/engine',
+  'packages/motion/tests',
   'packages/plugin-contracts/tests',
   'packages/lowcode/tests',
   'packages/motion-runtime/tests',
@@ -40,6 +41,7 @@ test('unit test groups cover all declared shards', () => {
   expect(pathsForUnitTestGroup('dom')).toContain('tests/engine/dom-css')
   expect(pathsForUnitTestGroup('all')).toContain('tests/engine/io')
   expect(pathsForUnitTestGroup('compiler-browser')).toEqual(['tests/engine/compiler/preview'])
+  expect(pathsForUnitTestGroup('motion')).toContain('packages/motion/tests')
   expect(pathsForUnitTestGroup('motion')).toContain('packages/motion-runtime/tests')
   expect(pathsForUnitTestGroup('app')).toContain('packages/plugin-contracts/tests')
   expect(pathsForUnitTestGroup('scene')).toContain('packages/lowcode/tests')
@@ -154,6 +156,7 @@ test('root unit test scripts select heavy suites explicitly', async () => {
   }
 
   expect(packageJSON.scripts?.['test:unit']).toContain('BUN_HEAVY_TESTS=true')
+  expect(packageJSON.scripts?.['test:unit']).toContain('./packages/motion/tests')
   expect(packageJSON.scripts?.['test:unit']).toContain('./packages/plugin-contracts/tests')
   expect(packageJSON.scripts?.['test:unit']).toContain('./packages/motion-runtime/tests')
   expect(packageJSON.scripts?.['test:unit:quick']).toContain('BUN_HEAVY_TESTS=false')

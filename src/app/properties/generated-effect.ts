@@ -1,4 +1,4 @@
-import { generatedEffectNodeChanges } from '@open-pencil/core/motion'
+import { generatedEffectNodeChanges } from '@open-pencil/motion'
 import {
   cloneGeneratedEffectSpec,
   parseGeneratedEffectSpec,

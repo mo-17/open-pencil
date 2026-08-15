@@ -1,13 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph } from '@open-pencil/scene-graph'
-
 import {
   inspectMotionAdvancedChannels,
   motionVectorTopologyId,
   projectMotionAdvancedChannels,
   type MotionVisualState
-} from '#core/motion'
+} from '@open-pencil/motion'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
 function pageId(graph: SceneGraph): string {
   return graph.getPages()[0].id

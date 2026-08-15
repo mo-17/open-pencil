@@ -88,6 +88,25 @@ describe('DOM Motion adapter', () => {
     expect(style.getPropertyValue('background-color')).toBe('')
   })
 
+  test('serializes bounded alpha colors without a core color dependency', () => {
+    const style = new FakeStyle()
+    const target = createDOMMotionTarget({ style })
+
+    target.apply({
+      x: 0,
+      y: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotate: 0,
+      opacity: 1,
+      fillColor: { r: 0.1, g: 0.2, b: 0.3, a: 0.333_333 },
+      shadowColor: { r: -1, g: 2, b: 0.499, a: 0.995 }
+    })
+
+    expect(style.getPropertyValue('background-color')).toBe('rgba(26, 51, 77, 0.33)')
+    expect(style.getPropertyValue('box-shadow')).toBe('0px 0px 0px 0px rgba(0, 255, 127, 1)')
+  })
+
   test('reveals Unicode code points and restores the authored text snapshot', () => {
     const style = new FakeStyle()
     let text = 'A🐸中'

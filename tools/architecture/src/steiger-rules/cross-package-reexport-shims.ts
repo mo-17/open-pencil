@@ -3,6 +3,7 @@ import ts from 'typescript'
 import { createTextRule, type Rule } from './support.ts'
 
 const ESTABLISHED_COMPATIBILITY_BARRELS = new Set([
+  'packages/core/src/motion/index.ts',
   'packages/core/src/lowcode-validation/index.ts',
   'packages/core/src/lowcode-validation/application-runtime.ts'
 ])

@@ -1,6 +1,11 @@
 import type { CanvasKit } from 'canvaskit-wasm'
 
 import type {
+  MotionScenePlanIssue,
+  MotionVisualState,
+  PreparedMotionSamplingPlan
+} from '@open-pencil/motion'
+import type {
   MotionSpec,
   MotionTrigger,
   SceneGraph,
@@ -15,11 +20,6 @@ import type { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import type { RulerTheme, SkiaRenderer } from '#core/canvas/renderer'
 import type { RenderOverlays } from '#core/canvas/renderer/types'
-import type {
-  MotionScenePlanIssue,
-  MotionVisualState,
-  PreparedMotionSamplingPlan
-} from '#core/motion'
 import type { TextEditor } from '#core/text/editor'
 import type { FontLoadOptions } from '#core/text/fonts'
 import type { FontResolutionEvent, FontResolutionSnapshot } from '#core/text/resolver'

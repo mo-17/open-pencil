@@ -1,4 +1,10 @@
 import {
+  inspectMotionAdvancedChannels,
+  motionAdvancedChannelTemplates,
+  type MotionAdvancedCapabilityIssue,
+  type MotionAdvancedChannelTemplate
+} from '@open-pencil/motion'
+import {
   cloneMotionDriverSpec,
   cloneMotionSceneSpec,
   cloneMotionSpec,
@@ -13,12 +19,6 @@ import {
   type PrototypeSpecV1
 } from '@open-pencil/scene-graph'
 
-import {
-  inspectMotionAdvancedChannels,
-  motionAdvancedChannelTemplates,
-  type MotionAdvancedCapabilityIssue,
-  type MotionAdvancedChannelTemplate
-} from '#core/motion'
 import { defineTool } from '#core/tools/schema'
 
 import type { BatchReadResult } from './batch-result'

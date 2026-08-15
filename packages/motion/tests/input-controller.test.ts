@@ -11,7 +11,7 @@ import {
   samplePreparedMotionPlan,
   type MotionInputBatch,
   type MotionInputFrameScheduler
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import type {
   MotionDriver,
   MotionDriverMapping,

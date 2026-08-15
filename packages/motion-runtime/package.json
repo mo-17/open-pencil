@@ -65,7 +65,7 @@
     "vue": "^3.5.29"
   },
   "peerDependencies": {
-    "@open-pencil/core": "workspace:*",
+    "@open-pencil/motion": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "vue": "^3.5.0"
   },

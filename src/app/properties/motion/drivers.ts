@@ -2,7 +2,7 @@ import {
   inspectMotionDriverSourceBindings,
   prepareMotionDriverTarget,
   type MotionDriverSourceGraph
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import {
   cloneMotionDriverSpec,
   parseMotionDriverSpec,

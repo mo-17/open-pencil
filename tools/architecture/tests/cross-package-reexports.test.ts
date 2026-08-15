@@ -33,7 +33,13 @@ describe('cross-package re-export shims', () => {
     ).toBe(false)
   })
 
-  test('allows only the established core lowcode compatibility entry points', () => {
+  test('allows only the established core compatibility entry points', () => {
+    expect(
+      isCrossPackageReexportShim(
+        'packages/core/src/motion/index.ts',
+        "export * from '@open-pencil/motion'\n"
+      )
+    ).toBe(false)
     expect(
       isCrossPackageReexportShim(
         'packages/core/src/lowcode-validation/index.ts',

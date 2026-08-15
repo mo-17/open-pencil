@@ -1,7 +1,7 @@
+import type { MotionVisualState } from '@open-pencil/motion'
 import type { MotionTrigger, SceneGraph } from '@open-pencil/scene-graph'
 
 import type { RasterRenderBounds } from '#core/io/formats/raster'
-import type { MotionVisualState } from '#core/motion'
 
 export type MotionExportFormat = 'png-sequence' | 'gif' | 'webm' | 'mp4'
 

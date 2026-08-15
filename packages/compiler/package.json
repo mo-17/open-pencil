@@ -88,6 +88,7 @@
     "@open-pencil/core": "workspace:*",
     "@open-pencil/dom-css": "workspace:*",
     "@open-pencil/lowcode": "workspace:*",
+    "@open-pencil/motion": "workspace:*",
     "@open-pencil/motion-runtime": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "@tailwindcss/vite": "^4.2.1",

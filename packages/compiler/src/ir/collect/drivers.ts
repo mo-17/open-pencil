@@ -1,7 +1,7 @@
 import {
   inspectMotionDriverSourceBindings,
   type MotionDriverSourceGraph
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import {
   motionDriverNodeReferences,
   validateMotionDriverSpec,

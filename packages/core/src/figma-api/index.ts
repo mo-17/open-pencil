@@ -1,3 +1,4 @@
+import type { MotionVisualState } from '@open-pencil/motion'
 import type {
   SceneGraph,
   SceneNode as CoreSceneNode,
@@ -22,7 +23,6 @@ import type {
   RasterRenderBounds,
   RasterRenderOptions
 } from '#core/io/formats/raster'
-import type { MotionVisualState } from '#core/motion'
 import { documentFontStatus, type DocumentFontStatus } from '#core/text/font/status'
 import { buttonLabelTextNode } from '#core/text/lowcode'
 

@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  motionPathBoundaryProgresses,
+  prepareMotionPath,
+  sampleMotionPath,
+  sampleMotionSpec
+} from '@open-pencil/motion'
+import {
   MOTION_LIMITS,
   cloneMotionPath,
   parseMotionSpec,
@@ -9,13 +15,6 @@ import {
   type MotionPath,
   type MotionSpec
 } from '@open-pencil/scene-graph'
-
-import {
-  motionPathBoundaryProgresses,
-  prepareMotionPath,
-  sampleMotionPath,
-  sampleMotionSpec
-} from '#core/motion'
 
 const legacyPath: MotionPath = {
   points: [
@@ -105,9 +104,10 @@ describe('MotionSpec v3 cubic paths', () => {
     expect(legacyCopy).toEqual(legacyPath)
     expect('version' in legacyCopy).toBe(false)
     expect(legacyCopy).not.toBe(legacyPath)
-    expect(legacyCopy.version !== 2 && legacyCopy.points[0]).not.toBe(
-      legacyPath.version !== 2 ? legacyPath.points[0] : undefined
-    )
+    if (!('points' in legacyCopy) || !('points' in legacyPath)) {
+      throw new Error('Expected polyline fixtures')
+    }
+    expect(legacyCopy.points[0]).not.toBe(legacyPath.points[0])
     expect(explicitCopy).toMatchObject({ version: 1 })
     expect(cubicCopy).toEqual(cubicPath)
     expect(cubicCopy.version === 2 && cubicCopy.start).not.toBe(cubicPath.start)

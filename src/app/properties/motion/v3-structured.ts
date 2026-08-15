@@ -2,7 +2,7 @@ import {
   inspectMotionAdvancedChannels,
   motionAdvancedChannelTemplate,
   type MotionAdvancedCapabilityIssue
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import {
   type MotionColor,
   type MotionKeyframe,

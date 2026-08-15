@@ -1,9 +1,9 @@
 import type { CanvasKit } from 'canvaskit-wasm'
 
+import type { MotionVisualState } from '@open-pencil/motion'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { SkiaRenderer } from '#core/canvas'
-import type { MotionVisualState } from '#core/motion'
 
 import {
   renderNodesToImage,

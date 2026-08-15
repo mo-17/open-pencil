@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { motionVectorTopologyId } from '@open-pencil/core/motion'
+import { motionVectorTopologyId } from '@open-pencil/motion'
 import {
   SceneGraph,
   type MotionPaintTarget,

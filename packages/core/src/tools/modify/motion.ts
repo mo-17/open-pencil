@@ -1,4 +1,8 @@
 import {
+  inspectMotionDriverSourceBindings,
+  inspectMotionNodeCapabilities
+} from '@open-pencil/motion'
+import {
   assertMotionStaggerBatch,
   cloneMotionDriverSpec,
   cloneMotionSceneSpec,
@@ -34,7 +38,6 @@ import {
 } from '@open-pencil/scene-graph'
 
 import type { FigmaAPI } from '#core/figma-api'
-import { inspectMotionDriverSourceBindings, inspectMotionNodeCapabilities } from '#core/motion'
 import { defineTool, type ParamDef, type ToolCtx } from '#core/tools/schema'
 
 type ModifyResult<T> = { ok: true; data: T } | { ok: false; error: string }

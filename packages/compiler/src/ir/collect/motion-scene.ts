@@ -2,7 +2,7 @@ import {
   prepareMotionScenePlan,
   type MotionScenePlanIssue,
   type PreparedMotionScenePlan
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import {
   type MotionSceneSpec,
   type SceneGraph,

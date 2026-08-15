@@ -1,9 +1,9 @@
 import type { MotionDriver, MotionTrack, MotionTrigger } from '@open-pencil/scene-graph'
 
-import type { MotionResolvedTarget } from '#core/motion/resolved-target'
-import { prepareMotionSamplingPlan, samplePreparedMotionPlan } from '#core/motion/sampler'
-import { resolveMotionTrackIterations } from '#core/motion/timing'
-import type { MotionSample, PreparedMotionSamplingPlan } from '#core/motion/types'
+import type { MotionResolvedTarget } from '../resolved-target'
+import { prepareMotionSamplingPlan, samplePreparedMotionPlan } from '../sampler'
+import { resolveMotionTrackIterations } from '../timing'
+import type { MotionSample, PreparedMotionSamplingPlan } from '../types'
 
 export type MotionDriverPlanIssueCode =
   | 'motion-missing'

@@ -38,6 +38,7 @@
       "@open-pencil/dom-css": ["./packages/dom-css/src/index.ts"],
       "@open-pencil/lowcode": ["./packages/lowcode/src/index.ts"],
       "@open-pencil/lowcode/*": ["./packages/lowcode/src/*"],
+      "@open-pencil/motion": ["./packages/motion/src/index.ts"],
       "@open-pencil/plugin-contracts": ["./packages/plugin-contracts/src/index.ts"],
       "@open-pencil/plugin-contracts/adapter-helpers": [
         "./packages/plugin-contracts/src/adapter-helpers.ts"

@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import { generatedEffectHash, sampleGeneratedEffect } from '@open-pencil/core/motion'
+import { generatedEffectHash, sampleGeneratedEffect } from '@open-pencil/motion'
 
-import { generatedEffect } from '#tests/helpers/generated-effect'
+import { generatedEffect } from './helpers'
 
 describe('generated-effect deterministic sampler', () => {
   test('is byte-for-byte stable for the same seed/time and changes only at bounded frames', () => {
@@ -50,6 +50,9 @@ describe('generated-effect deterministic sampler', () => {
       primitives: []
     })
     const spec = generatedEffect('particles')
+    if (spec.params.preset !== 'particles') {
+      throw new Error('Expected a particle fixture')
+    }
     spec.params.count = 10
     spec.budget.maxPrimitives = 10
     expect(sampleGeneratedEffect(spec, 1_000).primitives).toHaveLength(10)

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { sampleMotionPath, sampleMotionSpec } from '@open-pencil/core/motion'
+import { sampleMotionPath, sampleMotionSpec } from '@open-pencil/motion'
 import { parseMotionSpec, type MotionSpec } from '@open-pencil/scene-graph'
 
 import {

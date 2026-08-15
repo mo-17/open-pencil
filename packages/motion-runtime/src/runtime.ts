@@ -4,7 +4,7 @@ import {
   type MotionSample,
   type MotionSamplingSelection,
   type PreparedMotionSamplingPlan
-} from '@open-pencil/core/motion'
+} from '@open-pencil/motion'
 import { parseMotionSpec, type MotionSpec } from '@open-pencil/scene-graph'
 
 import { createDefaultMotionClock, type MotionRuntimeClock } from './clock'

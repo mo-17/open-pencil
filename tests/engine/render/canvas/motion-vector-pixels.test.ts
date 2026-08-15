@@ -3,10 +3,10 @@ import { beforeAll, describe, expect, test } from 'bun:test'
 import type { CanvasKit } from 'canvaskit-wasm'
 
 import { SceneGraph, SkiaRenderer } from '@open-pencil/core'
+import type { MotionVisualState } from '@open-pencil/motion'
 
 import { initCanvasKit } from '#cli/headless'
 import { renderNode } from '#core/canvas/scene'
-import type { MotionVisualState } from '#core/motion'
 
 import { expectDefined } from '#tests/helpers/assert'
 

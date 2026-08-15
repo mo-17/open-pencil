@@ -1,6 +1,6 @@
 import type { IRMotion, IRMotionEasing, IRMotionKeyframe, IRMotionTrack } from '#compiler/ir/motion'
 
-import { sampleMotionEasing } from '@open-pencil/core/motion'
+import { sampleMotionEasing } from '@open-pencil/motion'
 
 // Collection reuses one immutable-by-contract IRMotion object for equivalent nodes. Cache by that
 // identity so a large sampled path is canonicalized and hashed once, not once per scan/emission.

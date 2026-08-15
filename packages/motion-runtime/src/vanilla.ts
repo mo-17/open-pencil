@@ -1,4 +1,4 @@
-import type { MotionSamplingSelection } from '@open-pencil/core/motion'
+import type { MotionSamplingSelection } from '@open-pencil/motion'
 import type { MotionSpec, MotionTrigger } from '@open-pencil/scene-graph'
 
 import { runMotionCleanup } from './cleanup'

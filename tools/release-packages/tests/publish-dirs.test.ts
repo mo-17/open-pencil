@@ -56,6 +56,7 @@ describe('DEFAULT_PACKAGES', () => {
   test('includes every public workspace package that release publish must pack', () => {
     expect(DEFAULT_PACKAGES.map((pkg) => pkg.dir)).toEqual([
       'packages/scene-graph',
+      'packages/motion',
       'packages/plugin-contracts',
       'packages/lowcode',
       'packages/pen',

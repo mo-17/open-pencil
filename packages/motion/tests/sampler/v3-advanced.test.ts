@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
+import {
+  prepareMotionSamplingPlan,
+  sampleMotionSpec,
+  samplePreparedMotionPlan
+} from '@open-pencil/motion'
 import type { MotionKeyframe, MotionSpec } from '@open-pencil/scene-graph'
-
-import { prepareMotionSamplingPlan, sampleMotionSpec, samplePreparedMotionPlan } from '#core/motion'
 
 const sampleValues = {
   opacity: [0, 1],

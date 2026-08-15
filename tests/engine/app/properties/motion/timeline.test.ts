@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { sampleMotionSpec } from '@open-pencil/core/motion'
+import { sampleMotionSpec } from '@open-pencil/motion'
 import {
   createMotionPreset,
   MOTION_LIMITS,

@@ -1,5 +1,6 @@
 import type { CanvasKit, Canvas } from 'canvaskit-wasm'
 
+import type { MotionVisualState } from '@open-pencil/motion'
 import {
   getWorldMatrix,
   type Mat3,
@@ -12,7 +13,6 @@ import type { SkiaRenderer } from '#core/canvas'
 import type { RenderOverlays } from '#core/canvas/renderer'
 import type { RenderColorSpace } from '#core/color/management'
 import { extractExportGraph, findPageId } from '#core/io/subgraph'
-import type { MotionVisualState } from '#core/motion'
 
 export type RasterExportFormat = 'PNG' | 'JPG' | 'WEBP'
 export type ExportFormat = RasterExportFormat | 'SVG'
