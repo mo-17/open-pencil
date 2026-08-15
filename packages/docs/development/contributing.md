@@ -87,7 +87,7 @@ Developers and AI agents working on the codebase should read `AGENTS.md` in the 
 
 ## Key Files
 
-Core engine source lives in `packages/core/src/`. App-specific editor, document, AI, collaboration, shell, demo, and automation code lives under `src/app/*`; the Vue SDK owns reusable canvas/composable code under `packages/vue/src/`.
+Core engine source lives in `packages/core/src/`. Framework-agnostic low-code validation and runtime audit contracts live in `packages/lowcode/src/`. App-specific editor, document, AI, collaboration, shell, demo, and automation code lives under `src/app/*`; the Vue SDK owns reusable canvas/composable code under `packages/vue/src/`.
 
 | File | Purpose |
 |------|---------|
@@ -99,6 +99,7 @@ Core engine source lives in `packages/core/src/`. App-specific editor, document,
 | `packages/core/src/io/formats/raster/render.ts` | Offscreen image export (PNG/JPG/WEBP) |
 | `packages/kiwi/src/schema-runtime/` | Kiwi schema runtime and binary codec |
 | `packages/fig/src/node-change/` | SceneGraph and Figma NodeChange conversion policy |
+| `packages/lowcode/src/` | Low-code expressions, validators, routes, workflows, and runtime audits |
 | `packages/core/src/io/formats/fig/` | App-facing .fig read/write orchestration |
 | `packages/cli/src/index.ts` | CLI entry point |
 | `packages/core/src/tools/` | Unified tool definitions split by domain (read, create, modify, structure, variables, vector, analyze) |

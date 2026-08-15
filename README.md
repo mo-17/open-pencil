@@ -629,6 +629,7 @@ The Dev Container supports the web editor, packages, CLI, and automated checks. 
 ```
 packages/
   scene-graph/    @open-pencil/scene-graph — nodes, primitives, hit testing, copy/snap/undo
+  lowcode/        @open-pencil/lowcode — expressions, validation, routes, forms, runtime audits
   pen/            @open-pencil/pen — Pencil document format helpers
   kiwi/           @open-pencil/kiwi — Kiwi runtime and low-level .fig container parsing
   fig/            @open-pencil/fig — .fig archives, SceneGraph conversion, instances, metadata

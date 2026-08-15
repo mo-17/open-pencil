@@ -6,7 +6,7 @@
 | --------------------- | ---------- | -------------------- | --------------- |
 | E2E visual regression | Playwright | `bun run test`       | `tests/e2e/`    |
 | Figma CDP reference   | Playwright | `bun run test:figma` | `tests/figma/`  |
-| Unit tests            | bun:test   | `bun run test:unit`  | `tests/engine/` |
+| Unit tests            | bun:test   | `bun run test:unit`  | `tests/engine/`, `packages/*/tests/` |
 
 ## Documentation Build Memory
 
@@ -106,7 +106,7 @@ usable CDP endpoint even when launched with `--remote-debugging-port=9222`.
 
 ## Unit Tests
 
-Engine unit tests use bun:test and target < 50ms execution:
+Engine and package unit tests use bun:test and target < 50ms execution:
 
 ```sh
 bun run test:unit

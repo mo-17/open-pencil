@@ -1,5 +1,9 @@
 # Phase 3 — Lowcode Platform on OpenPencil
 
+> **2026-08-16 package migration:** This document preserves the historical implementation paths.
+> The current owner of the shared low-code APIs is `@open-pencil/lowcode`; the former
+> `@open-pencil/core/lowcode-validation` paths are compatibility exports only.
+
 > 紧接 `docs/lowcode-phase-2.md`。Phase 2 在 HEAD `f9a58ca`(branch
 > `lowcode-phase-0`)收官,§1.1 候选 8 项中 7 项交付,§5(Kiwi schema 升格)
 > 推迟到本 Phase 作为候选。Phase 2 全部交付:§9 条件/列表渲染、§2 Document

@@ -1,5 +1,9 @@
 # Phase 5 — Lowcode Platform Productization
 
+> **2026-08-16 package migration:** This document preserves the historical implementation paths.
+> The current owner of the shared low-code APIs is `@open-pencil/lowcode`; the former
+> `@open-pencil/core/lowcode-validation` paths are compatibility exports only.
+
 > 紧接 `docs/lowcode-phase-4.md`。Phase 4 已在 2026-06-25 收尾:
 > #1–#12 均已完成,#13 Kiwi schema 升格明确 Deferred 到 Phase 5+ 工程债。
 >
