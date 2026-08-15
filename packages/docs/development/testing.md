@@ -115,7 +115,7 @@ bun run test:unit
 Tests cover:
 
 - Scene graph CRUD operations, parent-child relationships, z-ordering, hit testing
-- Public package contracts under `packages/*/tests/`, including low-code validation and portable plugin trust/runtime schemas
+- Public package contracts under `packages/*/tests/`, including the deterministic Motion kernel, low-code validation, and portable plugin trust/runtime schemas
 - **Fig-import pipeline** — node type mapping, transforms, fills/strokes/effects, gradients, images, arcs, nested hierarchies (`tests/engine/io/fig/import/legacy/*.test.ts`)
 - **Layout computation** — Yoga auto-layout: direction, gap, padding, justify, align, child sizing (fixed/fill/hug), cross-axis sizing, wrap, nested layouts (`tests/engine/layout/`)
 

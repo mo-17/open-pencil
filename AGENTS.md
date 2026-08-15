@@ -9,13 +9,14 @@ Vue 3 + CanvasKit (Skia WASM) + Yoga WASM design editor. Tauri v2 desktop, also 
 Bun workspace with focused packages:
 
 - `packages/scene-graph` — `@open-pencil/scene-graph`: framework-agnostic node types, graph storage, variables, libraries, copy/snap/undo, and geometry primitives.
+- `packages/motion` — `@open-pencil/motion`: framework-agnostic deterministic Motion planning, sampling, path/easing/timing, advanced-channel projection, generated effects, scene choreography, and continuous-input controller primitives.
 - `packages/lowcode` — `@open-pencil/lowcode`: framework-agnostic lowcode expressions, validation, routing, forms, Supabase/server-workflow policy, and application-runtime audits shared by core, compiler, app, CLI, and external consumers.
 - `packages/plugin-contracts` — `@open-pencil/plugin-contracts`: portable declarative plugin manifests, parameter and connector schemas, signed packages/catalogs, publisher trust, runtime package/index contracts, and marketplace snapshot verification. Host registries, built-in modules, persistence, and execution remain in core or the app.
 - `packages/pen` — `@open-pencil/pen`: Pencil.dev `.pen` document model, parser, SceneGraph import adapter, and source-preserving MotionSpec writer. The writer accepts imported `.pen` graphs and rejects non-Motion edits rather than emitting a lossy document.
 - `packages/kiwi` — `@open-pencil/kiwi`: pure Kiwi schema/runtime/protocol package. Owns low-level Figma Kiwi codec/container/parse helpers and stays SceneGraph-agnostic.
 - `packages/fig` — `@open-pencil/fig`: `.fig` archive/parser package owning Figma-specific SceneGraph conversion, raw metadata policy, and component/instance interpretation. Core keeps format-neutral IO registration and runtime rendering/font integration.
-- `packages/core` — `@open-pencil/core`: renderer, layout, editor core, Figma API, tools, clipboard, vector conversion, and app/CLI-facing document I/O. Keeps browser DOM out of core and consumes lowcode policy through `@open-pencil/lowcode` plus portable plugin contracts through `@open-pencil/plugin-contracts`.
-- `packages/motion-runtime` — `@open-pencil/motion-runtime`: public SSR-safe Motion playback SDK. Owns the shared scheduler, manual clock, reversible DOM projection, and Vanilla/Vue lifecycle adapters while reusing `@open-pencil/core/motion` prepared plans.
+- `packages/core` — `@open-pencil/core`: renderer, layout, editor core, Figma API, tools, clipboard, vector conversion, and app/CLI-facing document I/O. Keeps browser DOM out of core and consumes the Motion kernel through `@open-pencil/motion`, lowcode policy through `@open-pencil/lowcode`, and portable plugin contracts through `@open-pencil/plugin-contracts`.
+- `packages/motion-runtime` — `@open-pencil/motion-runtime`: public SSR-safe Motion playback SDK. Owns the shared scheduler, manual clock, reversible DOM projection, and Vanilla/Vue lifecycle adapters while reusing `@open-pencil/motion` prepared plans.
 - `packages/dom-css` — `@open-pencil/dom-css`: DOM/CSS/Tailwind/JSX import and HTML export pipelines.
 - `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
 - `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React or Vite + Vue 3 TypeScript + Tailwind projects, plus source-only Expo React Native and Flutter projects. Both web targets support the preview VFS, static builds, and deploy bundles; Vue v1 emits editable SFCs, Vue Router v4, route/query bindings, a bounded lowcode subset, and explicit warnings for unsupported advanced runtimes. Expo and Flutter remain explicit static native MVPs with fail-closed warnings, not WebViews or React Native Web wrappers.
@@ -26,11 +27,11 @@ Bun workspace with focused packages:
 - `packages/docs` — `@open-pencil/docs`: published VitePress documentation site. Run `bun run docs:dev` for authoring, `bun run docs:build` for the default local render check, and `bun run docs:build:production` for complete deployment output.
 - `packages/demos` — demo media/assets only, not a published workspace package.
 
-The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, lowcode preview, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/scene-graph`, `@open-pencil/lowcode`, `@open-pencil/plugin-contracts`, `@open-pencil/core`, `@open-pencil/compiler`, and `@open-pencil/vue` through public workspace exports.
+The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, lowcode preview, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/scene-graph`, `@open-pencil/motion`, `@open-pencil/lowcode`, `@open-pencil/plugin-contracts`, `@open-pencil/core`, `@open-pencil/compiler`, and `@open-pencil/vue` through public workspace exports.
 
 ### Public engine exports
 
-`@open-pencil/scene-graph` owns graph data and geometry. `@open-pencil/plugin-contracts` owns portable plugin data and trust validation. `@open-pencil/core` builds editor, renderer, IO, automation, and host-owned plugin behavior on top and exposes targeted subpaths.
+`@open-pencil/scene-graph` owns graph data, geometry, and authored Motion schemas. `@open-pencil/motion` owns deterministic Motion planning and sampling. `@open-pencil/plugin-contracts` owns portable plugin data and trust validation. `@open-pencil/core` builds editor, renderer, IO, automation, and host-owned plugin behavior on top and exposes targeted subpaths.
 
 Use public package exports across package/app boundaries. Do not import workspace package internals from app code. Do not create cross-package re-export shim files whose only purpose is forwarding another package's API. Import the owning package directly at call sites; public compatibility barrels may re-export the owner directly when preserving an established package API.
 
@@ -42,6 +43,7 @@ Use public package exports across package/app boundaries. Do not import workspac
 | `@open-pencil/scene-graph/geometry`             | geometry and math helpers                                                            | —                         |
 | `@open-pencil/scene-graph/snap`                 | snapping helpers and types                                                           | —                         |
 | `@open-pencil/scene-graph/undo`                 | SceneGraph undo manager                                                              | —                         |
+| `@open-pencil/motion`                           | deterministic Motion planning, sampling, projection, drivers, and scene choreography | —                         |
 | `@open-pencil/lowcode`                          | expressions, validation, routes, forms, Supabase/server and security audit contracts | —                         |
 | `@open-pencil/lowcode/application-runtime`      | focused application runtime readiness audit                                          | —                         |
 | `@open-pencil/plugin-contracts`                 | declarative plugin manifests, catalogs, trust, runtime, and marketplace contracts    | —                         |
@@ -54,7 +56,7 @@ Use public package exports across package/app boundaries. Do not import workspac
 | `@open-pencil/core/canvas`                      | SkiaRenderer (Skia/CanvasKit painting engine)                                        | —                         |
 | `@open-pencil/core/design-jsx`                  | JSX-to-design renderer                                                               | sucrase                   |
 | `@open-pencil/core/editor`                      | createEditor, Editor, EditorState                                                    | —                         |
-| `@open-pencil/core/motion`                      | prepared MotionSpec sampling, per-track diagnostics, easing, and timeline timing     | —                         |
+| `@open-pencil/core/motion`                      | compatibility export for `@open-pencil/motion`; new code imports the owner directly  | —                         |
 | `@open-pencil/core/tools`                       | ToolDef, ALL_TOOLS, AI adapter                                                       | diff                      |
 | `@open-pencil/core/kiwi`                        | .fig parse/serialize, codec, protocol                                                | fflate, fzstd             |
 | `@open-pencil/core/clipboard`                   | Figma/OpenPencil clipboard parsing and import helpers                                | —                         |
@@ -200,7 +202,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun run test` — Playwright app/visual regression (`--project=openpencil`)
 - `bun run test:update` — update Playwright snapshots for the OpenPencil project
 - `bun run test:figma` — Playwright Figma automation project
-- `bun run test:dupes` — jscpd clone detection across `packages/core/src`, `packages/cli/src`, `packages/compiler/src`, and `src`
+- `bun run test:dupes` — jscpd clone detection across selected framework-agnostic, package, compiler, and app sources
 - `bun run test:type-shapes` — duplicate object-type shape detector
 - `bun run test:tools` — run private tool package tests under `tools/*`
 - `bun run test:packages` — package metadata check + packed tarball smoke tests
@@ -253,7 +255,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 
 ### How to release
 
-1. Update version in `package.json`, each public `packages/*/package.json` including `packages/motion-runtime/package.json`, `desktop/tauri.conf.json`, and `desktop/Cargo.toml`
+1. Update version in `package.json`, each public `packages/*/package.json` including `packages/motion/package.json` and `packages/motion-runtime/package.json`, `desktop/tauri.conf.json`, and `desktop/Cargo.toml`
 2. Update `CHANGELOG.md` — move "Unreleased" items under new version heading with date
 3. Commit: `Release v0.x.y`
 4. Tag: `git tag v0.x.y && git push --tags`
@@ -261,7 +263,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 6. The `build.yml` workflow triggers on `v*` tags and:
    - Builds Tauri binaries for macOS (arm64 + x64), Windows (x64 + arm64), Linux (x64)
    - Creates a draft GitHub Release with all platform binaries
-   - Publishes all public workspace packages, including `@open-pencil/motion-runtime`, to npm with provenance
+   - Publishes all public workspace packages, including `@open-pencil/motion` and `@open-pencil/motion-runtime`, to npm with provenance
 7. `@open-pencil/compiler` is private and built for app/CLI consumption, but it is not currently published as a standalone npm package.
 8. Go to GitHub Releases → edit the draft → paste changelog section → publish
 
@@ -495,8 +497,10 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - One-click deploy shells out to `bun packages/cli/src/index.ts deploy ... --json` with provider tokens passed through env (`NETLIFY_AUTH_TOKEN` / `VERCEL_TOKEN`), never as process args or persisted document data.
 - Lowcode document/page/node fields live on `SceneNode` (`state`, `bindings`, `events`, `interactiveProps`, `lowcodeDocumentState`, `lowcodeSupabaseConfig`, translations, workflows, route/auth fields) and round-trip through `.fig` pluginData keys in `packages/core/src/kiwi/fig/node-change/lowcode-plugin-data.ts`.
 - Personal Motion preset definitions and favorites are user-scoped app settings, not SceneGraph fields. The local settings envelope stores both; portable JSON contains the versioned library metadata and preset definitions but deliberately omits favorites. The portable library format and strict migration/parser helpers live under `packages/scene-graph/src/motion/`; app persistence, browser/native file exchange, and UI state live under `src/app/motion-presets/`. Applied nodes always receive a complete expanded `MotionSpec` snapshot, so `.fig`, clipboard, collaboration, instances, and compiler behavior never require the source library. Imported `.pen` sources use the versioned `metadata.openPencil` envelope; the Pen writer updates Motion-only edits and rejects all other edits.
+- Deterministic Motion planning, sampling, easing, paths, advanced-channel projection, generated effects, scene choreography, and continuous-input controllers live in `@open-pencil/motion`. Keep authored schemas/presets/recipes in `@open-pencil/scene-graph`, editor/render/export integration in core and the app, and clock/DOM/Vanilla/Vue playback lifecycle in `@open-pencil/motion-runtime`; do not create reverse dependencies across those layers.
 - Figma native Motion remains an adapter boundary: `MotionSpec` is canonical, the active shared envelope is strict and conflict-free, and both generated scripts and `packages/figma-motion-plugin` must execute the same runtime-validated applicator from `@open-pencil/fig`. Reject unsupported semantics; under the default `replace-owned` policy, also reject foreign/native-edited state. Treat `replace-all` as explicit destructive consent to remove only the verified removable subset, while indexed and unknown future tracks still fail closed. Require explicit timeline-growth consent, verify readback and rollback, and never synthesize undocumented native timeline bytes in raw `.fig` output.
 - Preset-card previews use the editor's ephemeral Motion preview state and must not mutate nodes or create undo entries. Multi-node preset/spec application validates every staggered snapshot first, then commits one instance-aware undo batch.
+- Motion kernel tests belong under `packages/motion/tests/**`; editor, renderer, compiler, runtime, and app integration coverage remains with the owning package or under `tests/engine/**`. The established core compatibility entrypoint gets a focused identity/type test rather than duplicate behavior suites.
 - Validate lowcode mutations through `@open-pencil/lowcode` and the lowcode ToolDefs in `packages/core/src/tools/modify/lowcode.ts`; do not hand-assign unvalidated action/state JSON in app UI or compiler code. Keep the SceneGraph document schema in `@open-pencil/scene-graph` so the dependency remains one-way into lowcode.
 - Lowcode domain tests belong under `packages/lowcode/tests/**`; integration coverage belongs under `tests/engine/compiler/**`, `tests/engine/lowcode-validation/**`, `tests/engine/tools/lowcode/**`, `tests/engine/kiwi/lowcode/**`, or UI-facing E2E specs when behavior is visible in the app.
 - Portable plugin contract tests belong under `packages/plugin-contracts/tests/**`; host registry, installed-state, CLI, marketplace-service, app-adapter, and document-lock integration tests remain under `tests/engine/**`.

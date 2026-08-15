@@ -4,6 +4,11 @@
 
 ### Added
 
+- Add the public `@open-pencil/motion` package for framework-agnostic deterministic Motion planning,
+  sampling, projection, paths, generated effects, scene choreography, and continuous-input
+  controllers. Existing `@open-pencil/core/motion` and core-root exports remain compatible while
+  new consumers import the owning package directly; `@open-pencil/motion-runtime` now reuses it
+  without depending on core.
 - Add the public `@open-pencil/lowcode` package for framework-agnostic expressions, validation,
   routing, forms, server workflows, and runtime audits. Existing
   `@open-pencil/core/lowcode-validation` entry points remain as compatibility exports while new

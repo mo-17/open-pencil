@@ -629,6 +629,7 @@ The Dev Container supports the web editor, packages, CLI, and automated checks. 
 ```
 packages/
   scene-graph/    @open-pencil/scene-graph — nodes, primitives, hit testing, copy/snap/undo
+  motion/         @open-pencil/motion — deterministic Motion planning, sampling, and projection
   lowcode/        @open-pencil/lowcode — expressions, validation, routes, forms, runtime audits
   plugin-contracts/ @open-pencil/plugin-contracts — portable plugin schemas, trust, runtime contracts
   pen/            @open-pencil/pen — Pencil document format helpers

@@ -4,26 +4,25 @@
 
 ```
 packages/
-  core/              @open-pencil/core — engine (zero DOM deps)
-    src/             Scene graph, renderer, layout, codec, kiwi, types
-  cli/               @open-pencil/cli — headless CLI for .fig operations
-    src/commands/    info, tree, find, export, eval, analyze
+  scene-graph/       @open-pencil/scene-graph — graph data, geometry, and authored schemas
+  motion/            @open-pencil/motion — deterministic Motion planning and sampling
+  lowcode/           @open-pencil/lowcode — expressions, validation, and runtime audits
+  plugin-contracts/  @open-pencil/plugin-contracts — portable plugin and trust contracts
+  pen/               @open-pencil/pen — Pencil document model and source-preserving writer
+  kiwi/              @open-pencil/kiwi — Kiwi schema, codec, and container primitives
+  fig/               @open-pencil/fig — .fig archives and SceneGraph conversion
+  core/              @open-pencil/core — editor, renderer, layout, tools, and document I/O
+  motion-runtime/    @open-pencil/motion-runtime — clocks, playback, and DOM/Vue adapters
+  cli/               @open-pencil/cli — headless CLI
   mcp/               @open-pencil/mcp — MCP server for AI tools
-    src/             stdio + HTTP (Hono) transports, 140+ design operations
 src/
-  components/        Vue SFCs (canvas, panels, toolbar, color picker)
-    properties/      Property panel sections (Appearance, Fill, Stroke, etc.)
-  composables/       Canvas input, keyboard shortcuts, rendering hooks
-  stores/            Editor state (Vue reactivity)
-  engine/            Re-export shims from @open-pencil/core
-  kiwi/              Re-export shims from @open-pencil/core
-  types.ts           Shared types (re-exported from core)
-  constants.ts       UI colors, defaults, thresholds
+  app/               App-owned editor sessions, documents, AI, collaboration, and automation
+  components/        Vue SFCs for the editor shell and feature surfaces
 desktop/             Tauri v2 (Rust + config)
 tests/
   e2e/               Playwright visual regression
-  engine/            Unit tests (bun:test)
-docs/                VitePress documentation site
+  engine/            Integration and engine tests (bun:test)
+packages/docs/       VitePress documentation site
 ```
 
 ## Development Setup
@@ -87,11 +86,12 @@ Developers and AI agents working on the codebase should read `AGENTS.md` in the 
 
 ## Key Files
 
-Core engine and host-owned plugin behavior live in `packages/core/src/`. Framework-agnostic low-code validation and runtime audit contracts live in `packages/lowcode/src/`; portable declarative plugin, trust, runtime-index, and marketplace contracts live in `packages/plugin-contracts/src/`. App-specific editor, document, AI, collaboration, shell, demo, and automation code lives under `src/app/*`; the Vue SDK owns reusable canvas/composable code under `packages/vue/src/`.
+Core engine and host-owned plugin behavior live in `packages/core/src/`. Framework-agnostic Motion planning and sampling live in `packages/motion/src/`; low-code validation and runtime audit contracts live in `packages/lowcode/src/`; portable declarative plugin, trust, runtime-index, and marketplace contracts live in `packages/plugin-contracts/src/`. App-specific editor, document, AI, collaboration, shell, demo, and automation code lives under `src/app/*`; the Vue SDK owns reusable canvas/composable code under `packages/vue/src/`.
 
 | File                                            | Purpose                                                                                                |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `packages/scene-graph/src/`                     | Scene graph: nodes, variables, instances, hit testing, undo                                            |
+| `packages/motion/src/`                          | Deterministic Motion planning, sampling, projection, paths, and input controllers                      |
 | `packages/core/src/canvas/renderer.ts`          | CanvasKit rendering pipeline                                                                           |
 | `packages/core/src/layout/`                     | Yoga layout adapter                                                                                    |
 | `packages/core/src/clipboard.ts`                | Figma-compatible clipboard                                                                             |

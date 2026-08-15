@@ -6,17 +6,17 @@ description: Play OpenPencil MotionSpec snapshots in framework-neutral, DOM, Van
 # Motion Runtime SDK
 
 `@open-pencil/motion-runtime` plays bounded OpenPencil `MotionSpec` snapshots outside the editor. It
-shares the editor's prepared-plan sampler, keeps one scheduler for all active bindings, and exposes
-explicit lifecycle methods instead of starting work during module import.
+reuses the public `@open-pencil/motion` prepared-plan sampler, keeps one scheduler for all active
+bindings, and exposes explicit lifecycle methods instead of starting work during module import.
 
 ## Install
 
 ```sh
-bun add @open-pencil/motion-runtime @open-pencil/core @open-pencil/scene-graph
+bun add @open-pencil/motion-runtime @open-pencil/motion @open-pencil/scene-graph
 ```
 
-Add `vue` only when using the optional Vue entrypoint. The core, DOM, and Vanilla entrypoints do not
-load Vue.
+Add `vue` only when using the optional Vue entrypoint. The package root, DOM, and Vanilla
+entrypoints do not load Vue.
 
 ## Framework-neutral playback
 
