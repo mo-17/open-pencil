@@ -13,31 +13,24 @@
 // `vite build`, so the same plugin instance serves both paths.
 
 import { Buffer } from 'node:buffer'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix } from 'node:path'
 
-import type { ESBuildOptions, Plugin } from 'vite'
+import type { Plugin } from 'vite'
 
 export type PreviewFiles = Map<string, string | Uint8Array>
 export type WebVfsTarget = 'react' | 'vue'
 
-/**
- * The Vite `esbuild` JSX override shared by the dev-server and the static
- * build. Vite's import-analysis / TS-strip stage reads tsconfig from disk
- * before plugin-react's transform runs; the workspace root tsconfig sets
- * `jsx: "preserve"` (for Vue), which makes esbuild reject the React TSX as
- * invalid JS. This forces the React automatic runtime regardless.
- */
-export const VITE_JSX_ESBUILD: ESBuildOptions = {
-  jsx: 'automatic',
-  jsxImportSource: 'react',
-  tsconfigRaw: {
-    compilerOptions: {
-      jsx: 'react-jsx',
-      jsxImportSource: 'react',
-      target: 'esnext',
-      useDefineForClassFields: true
-    }
+export function reactViteOptions(development?: boolean) {
+  return {
+    oxc: {
+      jsx: {
+        runtime: 'automatic' as const,
+        importSource: 'react',
+        ...(development === undefined ? {} : { development })
+      }
+    },
+    resolve: { dedupe: ['react', 'react-dom'] }
   }
 }
 
@@ -48,8 +41,8 @@ export const VITE_JSX_ESBUILD: ESBuildOptions = {
  * node_modules. The VFS prefix sits *inside* scanRoot so npm-package resolution
  * from any virtual file walks up to that node_modules chain (trailing + leading
  * slash make the prefix look like an absolute directory path). Plants the
- * target-specific tsconfig that wins the upward search Vite/esbuild does (the
- * workspace root sets jsx:preserve for Vue — see VITE_JSX_ESBUILD).
+ * target-specific tsconfig that wins the upward search performed by Vite/OXC;
+ * the workspace root keeps JSX preserved for Vue while React uses jsx-runtime.
  */
 function previewTsconfig(target: WebVfsTarget): string {
   return JSON.stringify(
@@ -77,8 +70,12 @@ export function prepareVfsRoot(
 ): { scanRoot: string; vfsPrefix: string } {
   // Keep framework roots isolated: plugin-vue and plugin-react maintain
   // transform caches keyed by absolute ids and must never share one id space.
-  const scanRoot = join(workspaceRoot, `packages/compiler/.preview-root/${target}`)
-  mkdirSync(scanRoot, { recursive: true })
+  const requestedScanRoot = join(workspaceRoot, `packages/compiler/.preview-root/${target}`)
+  mkdirSync(requestedScanRoot, { recursive: true })
+  // Vite/Rolldown may canonicalize loaded module IDs. Keep the configured root
+  // on that same path so aliases such as macOS /var -> /private/var cannot turn
+  // the emitted HTML asset name into a root-escaping ../../ path.
+  const scanRoot = realpathSync(requestedScanRoot)
   // Idempotent write: this tsconfig lives inside the host app's Vite root, so
   // rewriting it (even with identical content, since mtime changes) trips
   // Vite's tsconfig watcher into a forced full reload. That reload re-creates

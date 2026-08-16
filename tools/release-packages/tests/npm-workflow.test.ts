@@ -1,0 +1,266 @@
+import { describe, expect, test } from 'bun:test'
+import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+
+import { DEFAULT_PACKAGES } from '../src/publish-dirs'
+
+const WORKFLOW_PATH = new URL('../../../.github/workflows/build.yml', import.meta.url)
+const APP_WORKFLOW_PATH = new URL('../../../.github/workflows/app.yml', import.meta.url)
+const DOCS_WORKFLOW_PATH = new URL('../../../.github/workflows/docs.yml', import.meta.url)
+const SETUP_BUN_ACTION_PATH = new URL(
+  '../../../.github/actions/setup-bun/action.yml',
+  import.meta.url
+)
+const PACKAGE_ROOT_PATH = new URL('../../package-quality/src/packages.ts', import.meta.url)
+const PACKAGE_SMOKE_PATH = new URL('../../package-quality/src/smoke.ts', import.meta.url)
+const NON_NPM_JOB_GATE =
+  "if: github.event_name == 'workflow_dispatch' || github.repository == 'open-pencil/open-pencil'"
+
+function job(workflow: string, name: string, nextName?: string): string {
+  const start = workflow.indexOf(`  ${name}:`)
+  expect(start).toBeGreaterThan(-1)
+  const end = nextName ? workflow.indexOf(`  ${nextName}:`, start + 1) : workflow.length
+  expect(end).toBeGreaterThan(start)
+  return workflow.slice(start, end)
+}
+
+function namedRunBlock(workflow: string, name: string): string {
+  const stepStart = workflow.indexOf(`      - name: ${name}\n`)
+  if (stepStart === -1) throw new Error(`Workflow step not found: ${name}`)
+  const marker = '        run: |\n'
+  const runStart = workflow.indexOf(marker, stepStart)
+  if (runStart === -1) throw new Error(`Workflow run block not found: ${name}`)
+  const contentStart = runStart + marker.length
+  const nextStep = workflow.indexOf('\n      - ', contentStart)
+  const content = workflow.slice(contentStart, nextStep === -1 ? workflow.length : nextStep)
+  return content
+    .split('\n')
+    .map((line) => (line.startsWith('          ') ? line.slice(10) : line))
+    .join('\n')
+}
+
+describe('npm release workflow', () => {
+  test('runs non-npm release jobs automatically only in the official repository', () => {
+    const buildWorkflow = readFileSync(WORKFLOW_PATH, 'utf8')
+    const build = job(buildWorkflow, 'build', 'prepare-npm')
+    expect(build).toContain(NON_NPM_JOB_GATE)
+
+    for (const path of [APP_WORKFLOW_PATH, DOCS_WORKFLOW_PATH]) {
+      const deployWorkflow = readFileSync(path, 'utf8')
+      const deploy = job(deployWorkflow, 'deploy')
+      expect(deployWorkflow).toContain('workflow_dispatch:')
+      expect(deployWorkflow).toMatch(/- ['"]v\*['"]/)
+      expect(deploy).toContain(NON_NPM_JOB_GATE)
+    }
+
+    const prepare = job(buildWorkflow, 'prepare-npm', 'publish-npm')
+    const publish = job(buildWorkflow, 'publish-npm')
+    expect(prepare).not.toContain(NON_NPM_JOB_GATE)
+    expect(publish).not.toContain(NON_NPM_JOB_GATE)
+  })
+
+  test('uses owner/tag gates and keeps credentials out of the preparation job', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
+    const prepare = job(workflow, 'prepare-npm', 'publish-npm')
+    const publish = job(workflow, 'publish-npm')
+    const gate =
+      "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'mo-17/open-pencil'"
+
+    expect(prepare).toContain(gate)
+    expect(publish).toContain(gate)
+    expect(prepare).toContain('permissions:\n      contents: read\n    outputs:')
+    expect(prepare).not.toContain('id-token: write')
+    expect(prepare).not.toContain('secrets.NPM_TOKEN')
+    expect(prepare).not.toContain('NODE_AUTH_TOKEN')
+    expect(prepare).toMatch(/release_digest: \$\{\{ steps\.release_digest\.outputs\.digest \}\}/)
+    expect(publish).toContain('needs: prepare-npm')
+    expect(publish).toContain('environment: npm-production')
+    expect(publish).toContain(
+      'permissions:\n      contents: read\n      id-token: write\n    steps:'
+    )
+    expect(publish).not.toContain('./.github/actions/setup-bun')
+    expect(publish).not.toContain('actions/checkout')
+    expect(publish).toContain('node-version: 24.x')
+  })
+
+  test('builds, prepares, audits, smokes, then uploads one immutable npm artifact', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
+    const prepare = job(workflow, 'prepare-npm', 'publish-npm')
+    const buildIndex = prepare.indexOf('name: Build packages for publish')
+    const prepareIndex = prepare.indexOf('name: Prepare publish directories')
+    const validationIndex = prepare.indexOf('name: Validate prepared package metadata')
+    const packIndex = prepare.indexOf('name: Pack and audit release tarballs')
+    const smokeIndex = prepare.indexOf('name: Smoke audited npm tarball consumers')
+    const uploadIndex = prepare.indexOf('name: Upload audited npm release artifact')
+
+    expect(buildIndex).toBeGreaterThan(-1)
+    expect(buildIndex).toBeLessThan(prepareIndex)
+    expect(prepareIndex).toBeLessThan(validationIndex)
+    expect(validationIndex).toBeLessThan(packIndex)
+    expect(packIndex).toBeLessThan(smokeIndex)
+    expect(smokeIndex).toBeLessThan(uploadIndex)
+
+    expect(prepare).toContain('run: bun run build:packages')
+    expect(prepare).toContain('bun tools/release-packages/src/prepare-publish-dirs.ts')
+    expect(prepare).toContain(
+      "uses: ./.github/actions/setup-bun\n        with:\n          cache: 'false'"
+    )
+    expect(prepare).toContain('OPENPENCIL_PACKAGE_ROOT: .publish')
+    expect(prepare).toContain('bun tools/package-quality/src/check/metadata.ts')
+    expect(prepare).toContain('bun tools/package-quality/src/check/publint.ts')
+    expect(prepare).toContain('bun tools/package-quality/src/check/attw.ts')
+    expect(prepare).toContain('bun tools/package-quality/src/smoke.ts')
+    expect(prepare).toContain('bun tools/release-packages/src/validate-tarballs.ts')
+    expect(prepare).toContain('OPENPENCIL_PACKAGE_TARBALL_ROOT: npm-release')
+    expect(prepare).toContain('name: Smoke audited npm tarball consumers')
+    expect(prepare).toContain('actions/upload-artifact@v4')
+    expect(prepare).toContain('compression-level: 0')
+    expect(prepare).toContain(
+      'shasum -a 512 npm-release/release-plan.json npm-release/*.tgz > npm-release/SHA512SUMS'
+    )
+    expect(prepare).toContain(`printf 'digest=%s\\n' "$release_digest" >> "$GITHUB_OUTPUT"`)
+    expect(prepare).not.toContain('npm view')
+
+    const setupBunAction = readFileSync(SETUP_BUN_ACTION_PATH, 'utf8')
+    expect(setupBunAction).toContain('cache:\n    description: Restore the Bun package cache')
+    expect(setupBunAction).toContain("if: inputs.cache == 'true'")
+  })
+
+  test('derives release identity and order from the prepared release plan', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
+    const prepare = job(workflow, 'prepare-npm', 'publish-npm')
+    const publish = job(workflow, 'publish-npm')
+
+    expect(prepare).toContain(`export RELEASE_VERSION="\${GITHUB_REF_NAME#v}"`)
+    expect(prepare).toContain("require('./.publish/release-plan.json').packages")
+    expect(prepare).toContain('item.version !== plan.version')
+    expect(prepare).toContain('npm pack --pack-destination "$root_dir/npm-release"')
+    expect(prepare).not.toContain('publish_packages="')
+    expect(prepare).toContain('Release plan must publish MCP before CLI')
+    expect(prepare).toMatch(
+      /Release plan must publish \$\{dependencyName\} before \$\{item\.name\}/
+    )
+    expect(publish).toContain("require('./npm-release/release-plan.json').packages")
+    expect(publish).not.toContain('publish_packages="')
+    expect(publish).toContain('shasum -a 512 -c npm-release/SHA512SUMS')
+    expect(publish).toMatch(
+      /EXPECTED_RELEASE_DIGEST: \$\{\{ needs\.prepare-npm\.outputs\.release_digest \}\}/
+    )
+    expect(publish).toContain('Downloaded npm release artifact digest does not match')
+    expect(publish).toContain('actions/download-artifact@v4')
+  })
+
+  test('keeps the prepared release plan in dependency order with MCP before CLI', () => {
+    const manifests = DEFAULT_PACKAGES.map(
+      (pkg) =>
+        JSON.parse(
+          readFileSync(new URL(`../../../${pkg.dir}/package.json`, import.meta.url), 'utf8')
+        ) as {
+          name: string
+          dependencies?: Record<string, string>
+          optionalDependencies?: Record<string, string>
+          peerDependencies?: Record<string, string>
+        }
+    )
+    const positions = new Map(manifests.map((manifest, index) => [manifest.name, index]))
+
+    for (const [index, manifest] of manifests.entries()) {
+      for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies'] as const) {
+        for (const dependencyName of Object.keys(manifest[field] ?? {})) {
+          const dependencyIndex = positions.get(dependencyName)
+          if (dependencyIndex !== undefined) expect(dependencyIndex).toBeLessThan(index)
+        }
+      }
+    }
+
+    const mcpIndex = positions.get('@open-pencil/mcp')
+    const cliIndex = positions.get('@open-pencil/cli')
+    expect(mcpIndex).toBeDefined()
+    expect(cliIndex).toBeDefined()
+    if (mcpIndex === undefined || cliIndex === undefined) return
+    expect(mcpIndex).toBeLessThan(cliIndex)
+  })
+
+  test('smokes the exact npm tarballs and exercises packed React and Vue CLI builds', () => {
+    const packageRoot = readFileSync(PACKAGE_ROOT_PATH, 'utf8')
+    const packageSmoke = readFileSync(PACKAGE_SMOKE_PATH, 'utf8')
+
+    expect(packageRoot).toContain('process.env.OPENPENCIL_PACKAGE_ROOT?.trim()')
+    expect(packageRoot).toContain('export const usingPreparedPublishDirectories')
+    expect(packageSmoke).toContain(
+      "const privateDependencyDirs = usingPreparedPublishDirectories ? [] : ['packages/compiler']"
+    )
+    expect(packageSmoke).toContain('OPENPENCIL_PACKAGE_TARBALL_ROOT')
+    expect(packageSmoke).toContain('resolveExactReleaseTarballs')
+    expect(packageSmoke).toContain('if (!usingPreparedPublishDirectories) {')
+    expect(packageSmoke).toContain('publicPackagePath(packageDir)')
+    expect(packageSmoke).toMatch(
+      /bunEval\(`await import\(\$\{JSON\.stringify\(specifier\)\}\)`, tempDir\)/
+    )
+    expect(packageSmoke).toContain('function buildFrameworkConsumers(cwd: string): void')
+    expect(packageSmoke).toContain("import react from '@vitejs/plugin-react'")
+    expect(packageSmoke).toContain("import vue from '@vitejs/plugin-vue'")
+    expect(packageSmoke).toContain('buildFrameworkConsumers(tempDir)')
+    expect(packageSmoke).toContain('function buildPackedCLIConsumers(cwd: string): void')
+    expect(packageSmoke).toContain("for (const target of ['react', 'vue'] as const)")
+    expect(packageSmoke).toContain("'node_modules/.bin/openpencil'")
+    expect(packageSmoke).toContain("'build'")
+    expect(packageSmoke).toContain("'--package-name'")
+    expect(packageSmoke).toContain('buildPackedCLIConsumers(tempDir)')
+    expect(packageSmoke).toContain('Packed CLI build wrote its compiler VFS root')
+    expect(packageSmoke).toContain('Packed CLI build leaked compiler roots')
+    expect(packageSmoke).toContain("'.openpencil-build-output.json'")
+  })
+
+  test('limits bootstrap token and OIDC to publishing and fails closed on registry errors', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
+    const publish = job(workflow, 'publish-npm')
+    const publishStepIndex = publish.indexOf('name: Publish packages to npm')
+
+    expect(workflow.match(/\$\{\{ secrets\.NPM_TOKEN \}\}/g)).toHaveLength(1)
+    expect(publish.slice(0, publishStepIndex)).not.toContain('secrets.NPM_TOKEN')
+    expect(publish).toMatch(/NPM_BOOTSTRAP_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/)
+    expect(publish).toContain('export NODE_AUTH_TOKEN="$NPM_BOOTSTRAP_TOKEN"')
+    expect(publish).toContain('npm whoami --registry "$NPM_REGISTRY" >/dev/null')
+    expect(publish).toContain('Using npm Trusted Publishing (OIDC)')
+    expect(publish).toContain('elif [[ "$output" == *"E404"* ]]')
+    expect(publish).toContain('npm registry lookup failed')
+    expect(publish).toContain('differs from the audited tarball')
+    expect(publish).toMatch(
+      /npm publish "\.\/\$\{tarball\}" --access public --provenance --tag latest --registry "\$NPM_REGISTRY"/
+    )
+    expect(publish).not.toMatch(
+      /(?:echo|printf)[^\n]*\$(?:\{)?(?:NPM_BOOTSTRAP_TOKEN|NODE_AUTH_TOKEN)/
+    )
+  })
+
+  test('fails closed before authentication when npm is too old for Trusted Publishing', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
+    const publish = job(workflow, 'publish-npm')
+    const setupNodeIndex = publish.indexOf('uses: actions/setup-node@v7')
+    const versionGateIndex = publish.indexOf('name: Verify npm Trusted Publishing support')
+    const publishStepIndex = publish.indexOf('name: Publish packages to npm')
+
+    expect(setupNodeIndex).toBeGreaterThan(-1)
+    expect(setupNodeIndex).toBeLessThan(versionGateIndex)
+    expect(versionGateIndex).toBeLessThan(publishStepIndex)
+    expect(publish).toContain('npm_version=$(npm --version)')
+    expect(publish).toContain('NPM_VERSION="$npm_version" node')
+    expect(publish).toContain('const match = /^(\\d+)\\.(\\d+)\\.(\\d+)$/.exec(raw)')
+    expect(publish).toContain('Trusted Publishing requires npm >=11.5.1')
+    expect(publish.slice(versionGateIndex, publishStepIndex)).not.toContain('secrets.NPM_TOKEN')
+
+    const gate = namedRunBlock(workflow, 'Verify npm Trusted Publishing support')
+    const runGate = (version: string) =>
+      spawnSync('bash', ['-c', `npm() { printf '%s\\n' "$FAKE_NPM_VERSION"; }\n${gate}`], {
+        encoding: 'utf8',
+        env: { ...process.env, FAKE_NPM_VERSION: version }
+      })
+    expect(runGate('11.5.1').status).toBe(0)
+    expect(runGate('11.6.0').status).toBe(0)
+    expect(runGate('12.0.0').status).toBe(0)
+    expect(runGate('11.5.0').status).not.toBe(0)
+    expect(runGate('10.99.99').status).not.toBe(0)
+    expect(runGate('11.5.1-beta.0').status).not.toBe(0)
+  })
+})

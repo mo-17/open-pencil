@@ -3,8 +3,71 @@ import { readFileSync } from 'node:fs'
 import { defineConfig } from 'tsdown'
 import type { Rolldown } from 'tsdown'
 
-const packageJSON = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+const packageJSON = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8')
+) as {
   dependencies?: Record<string, string>
+}
+
+interface PublishedWorkerURL {
+  ownerEntry: string
+  sourceSpecifier: string
+  publishedSpecifier: string
+  workerEntry: string
+}
+
+export const CORE_PUBLISHED_WORKER_URLS = Object.freeze([
+  {
+    ownerEntry: 'src/io/formats/pen/read.ts',
+    sourceSpecifier: './worker.ts',
+    publishedSpecifier: './worker.js',
+    workerEntry: 'src/io/formats/pen/worker.ts'
+  },
+  {
+    ownerEntry: 'src/io/formats/fig/export.ts',
+    sourceSpecifier: './export-worker.ts',
+    publishedSpecifier: './export-worker.js',
+    workerEntry: 'src/io/formats/fig/export-worker.ts'
+  },
+  {
+    ownerEntry: 'src/io/formats/fig/read.ts',
+    sourceSpecifier: '../../../kiwi/fig/parse/worker.ts',
+    publishedSpecifier: '../../../kiwi/fig/parse/worker.js',
+    workerEntry: 'src/kiwi/fig/parse/worker.ts'
+  }
+] as const satisfies readonly PublishedWorkerURL[])
+
+export const PUBLISHED_WORKER_URL_PLUGIN_NAME = 'published-worker-urls'
+
+function normalizedModuleID(id: string): string {
+  return (id.split('?')[0] ?? id).replaceAll('\\', '/')
+}
+
+export function rewritePublishedWorkerURL(code: string, id: string): string | undefined {
+  const normalizedID = normalizedModuleID(id)
+  const target = CORE_PUBLISHED_WORKER_URLS.find(({ ownerEntry }) =>
+    normalizedID.endsWith(`/${ownerEntry}`)
+  )
+  if (!target) return
+
+  const occurrences = code.split(target.sourceSpecifier).length - 1
+  if (occurrences !== 1) {
+    throw new Error(
+      `Expected one ${target.sourceSpecifier} Worker URL in ${target.ownerEntry}, found ${occurrences}`
+    )
+  }
+  // The extensions have equal length, so existing source-map offsets stay valid.
+  return code.replace(target.sourceSpecifier, target.publishedSpecifier)
+}
+
+function publishedWorkerURLs(): Rolldown.Plugin {
+  return {
+    name: PUBLISHED_WORKER_URL_PLUGIN_NAME,
+    transform(code, id) {
+      const rewritten = rewritePublishedWorkerURL(code, id)
+      return rewritten === undefined ? undefined : { code: rewritten, map: null }
+    }
+  }
 }
 
 function fontLicenseManifest(): Rolldown.Plugin {
@@ -42,7 +105,7 @@ function rawText(): Rolldown.Plugin {
 
 export default defineConfig({
   entry: ['src/**/*.ts', '!src/**/*.d.ts'],
-  plugins: [fontLicenseManifest(), rawText()],
+  plugins: [fontLicenseManifest(), rawText(), publishedWorkerURLs()],
   unbundle: true,
   platform: 'neutral',
   format: ['esm'],

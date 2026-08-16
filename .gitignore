@@ -84,6 +84,11 @@ scratch/
 # Ad-hoc compile-demo output
 /.compiler-output/
 
+# Prepared npm release artifacts
+/.publish/
+/.npm-packages/
+/npm-release/
+
 # OpenCode
 .opencode/
 

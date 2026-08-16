@@ -1,13 +1,44 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
-  inMemoryVFS,
   contentTypeForPath,
+  inMemoryVFS,
   lookupFile,
+  prepareVfsRoot,
+  reactViteOptions,
   resolveRelative,
   stripQuery,
   type PreviewFiles
 } from '@open-pencil/compiler/vfs'
+
+test('prepareVfsRoot canonicalizes a symlinked workspace before forming virtual IDs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'open-pencil-vfs-root-'))
+  const workspace = join(root, 'workspace')
+  const alias = join(root, 'workspace-alias')
+  try {
+    await mkdir(workspace)
+    await symlink(workspace, alias, process.platform === 'win32' ? 'junction' : 'dir')
+
+    const { scanRoot, vfsPrefix } = prepareVfsRoot(alias, 'react')
+    expect(scanRoot).toBe(await realpath(join(workspace, 'packages/compiler/.preview-root/react')))
+    expect(vfsPrefix).toBe(`${scanRoot}/`)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test('reactViteOptions fixes production JSX while leaving dev mode dynamic', () => {
+  expect(reactViteOptions(false)).toEqual({
+    oxc: {
+      jsx: { runtime: 'automatic', importSource: 'react', development: false }
+    },
+    resolve: { dedupe: ['react', 'react-dom'] }
+  })
+  expect(reactViteOptions().oxc.jsx).not.toHaveProperty('development')
+})
 
 /**
  * Phase 3 §5 step 1: the in-memory VFS resolution helpers are shared between

@@ -23,7 +23,7 @@ import type { CompilerOutput } from '../types'
 import {
   inMemoryVFS,
   prepareVfsRoot,
-  VITE_JSX_ESBUILD,
+  reactViteOptions,
   contentTypeForPath,
   type PreviewFiles,
   type WebVfsTarget
@@ -217,7 +217,7 @@ export async function buildMicrofrontendProject(
     },
     logLevel: 'warn',
     plugins: [vfs, ...frameworkPlugins, ...tailwindcss()],
-    ...(target === 'react' ? { esbuild: { ...VITE_JSX_ESBUILD, jsxDev: false } } : {}),
+    ...(target === 'react' ? reactViteOptions(false) : {}),
     build: {
       outDir: options.outDir,
       emptyOutDir: true,

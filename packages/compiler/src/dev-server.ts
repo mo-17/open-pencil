@@ -29,7 +29,7 @@ import {
 import {
   inMemoryVFS,
   prepareVfsRoot,
-  VITE_JSX_ESBUILD,
+  reactViteOptions,
   type PreviewFiles,
   type WebVfsTarget
 } from './vfs'
@@ -326,9 +326,9 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       entries: [],
       include: previewOptimizeDeps(state.files, target)
     },
-    // React's in-memory TSX needs an explicit JSX override (shared with the
-    // static build — see VITE_JSX_ESBUILD). Vue SFCs stay on plugin-vue's path.
-    ...(target === 'react' ? { esbuild: VITE_JSX_ESBUILD } : {}),
+    // Keep React's in-memory TSX on Vite 8's OXC path and collapse linked
+    // workspace dependencies to the same React instance as react-dom.
+    ...(target === 'react' ? reactViteOptions() : {}),
     plugins: [
       previewFileBoundaryPlugin(fileSystemAllowlist),
       vfs,

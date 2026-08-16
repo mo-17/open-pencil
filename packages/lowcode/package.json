@@ -1,6 +1,6 @@
 {
   "name": "@open-pencil/lowcode",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Framework-agnostic low-code validation, expression, routing, and runtime audit contracts for OpenPencil.",
   "license": "MIT",
   "repository": {

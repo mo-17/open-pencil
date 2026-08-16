@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { publicPackageDirs } from '../packages'
+import {
+  publicPackageDirs,
+  publicPackagePath,
+  repositoryRoot,
+  usingPreparedPublishDirectories
+} from '../packages'
 
 interface PackageJSON {
   name: string
@@ -11,6 +16,10 @@ interface PackageJSON {
   files?: string[]
   bin?: Record<string, string> | string
   exports?: unknown
+  imports?: unknown
+  private?: boolean
+  scripts?: unknown
+  devDependencies?: Record<string, string>
   publishConfig?: Record<string, unknown>
 }
 
@@ -21,10 +30,12 @@ function isDeclarationPath(value: string): boolean {
 }
 
 function readPackageJSON(packageDir: string): PackageJSON {
-  return JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'))
+  return JSON.parse(readFileSync(join(publicPackagePath(packageDir), 'package.json'), 'utf8'))
 }
 
-const rootPackage = readPackageJSON('.')
+const rootPackage = JSON.parse(
+  readFileSync(join(repositoryRoot, 'package.json'), 'utf8')
+) as PackageJSON
 const expectedVersion = rootPackage.version
 
 function checkRuntimePath(packageName: string, field: string, value: string): void {
@@ -81,7 +92,7 @@ function walkExports(
 ): void {
   if (typeof value === 'string') {
     const key = path.at(-1)
-    if (key === 'bun') return
+    if (key === 'bun' && !usingPreparedPublishDirectories) return
     if (key === 'types') {
       checkIncludedTypePath(packageName, `exports.${path.join('.')}`, value, files)
     } else {
@@ -118,6 +129,20 @@ for (const packageDir of publicPackageDirs) {
   }
 
   walkExports(pkg.name, pkg.exports, pkg.files ?? [])
+
+  if (usingPreparedPublishDirectories) {
+    if (pkg.imports !== undefined)
+      errors.push(`${pkg.name}: published imports aliases must be removed`)
+    if (pkg.private !== undefined)
+      errors.push(`${pkg.name}: published private field must be removed`)
+    if (pkg.publishConfig !== undefined) {
+      errors.push(`${pkg.name}: published publishConfig must be removed`)
+    }
+    if (pkg.scripts !== undefined) errors.push(`${pkg.name}: published scripts must be removed`)
+    if (pkg.devDependencies !== undefined) {
+      errors.push(`${pkg.name}: published devDependencies must be removed`)
+    }
+  }
 
   if (
     pkg.publishConfig &&

@@ -8,10 +8,10 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'open-pencil/open-pencil'
     strategy:
       fail-fast: false
       matrix:
@@ -143,13 +143,13 @@ jobs:
           codesign --verify --strict "$sidecar_path"
           bun run smoke:codepen-sidecar --target=${{ matrix.target }} --binary="$sidecar_path"
 
-  publish-npm:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+  prepare-npm:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'mo-17/open-pencil'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+    outputs:
+      release_digest: ${{ steps.release_digest.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
 
@@ -159,63 +159,244 @@ jobs:
           registry-url: https://registry.npmjs.org/
 
       - uses: ./.github/actions/setup-bun
+        with:
+          cache: 'false'
 
       - name: Build packages for publish
-        run: |
-          publish_packages="packages/scene-graph packages/motion packages/plugin-contracts packages/lowcode packages/pen packages/kiwi packages/fig packages/core packages/motion-runtime packages/dom-css packages/cli packages/mcp packages/vue"
-          for dir in $publish_packages; do
-            if [ -f "$dir/package.json" ] && node -p "require('./$dir/package.json').scripts?.build" 2>/dev/null | grep -qv undefined; then
-              echo "Building $dir..."
-              (cd "$dir" && bun run build)
-            fi
-          done
+        shell: bash
+        run: bun run build:packages
 
       - name: Prepare publish directories
+        shell: bash
         run: |
+          set -euo pipefail
           bun tools/release-packages/src/prepare-publish-dirs.ts
           find .publish -maxdepth 3 -type f | sort
 
-      - name: Pack packages for publish
+      - name: Validate prepared package metadata
+        shell: bash
+        env:
+          OPENPENCIL_PACKAGE_ROOT: .publish
         run: |
-          mkdir -p .npm-packages
-          pack_if_new() {
-            local dir=$1
-            local name=$(node -p "require('./$dir/package.json').name")
-            local version=$(node -p "require('./$dir/package.json').version")
-            local publish_dir=".publish/$(basename "$dir")"
-            if npm view "${name}@${version}" version 2>/dev/null; then
-              echo "${name}@${version} already published, skipping pack"
-            else
-              (cd "$publish_dir" && npm pack --pack-destination "$root_dir/.npm-packages")
-            fi
+          set -euo pipefail
+          export RELEASE_VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            echo "Prerelease tags require an explicit npm dist-tag policy" >&2
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require('node:fs')
+          const plan = require('./.publish/release-plan.json')
+          const expectedRepository = 'git+https://github.com/mo-17/open-pencil.git'
+          if (
+            plan.version !== process.env.RELEASE_VERSION ||
+            plan.repository !== expectedRepository ||
+            plan.packages.length !== 13
+          ) {
+            throw new Error(`Prepared release plan does not match v${process.env.RELEASE_VERSION}`)
           }
+          const positions = new Map(plan.packages.map((item, index) => [item.name, index]))
+          const directories = new Set(plan.packages.map(({ dir }) => dir))
+          if (positions.size !== plan.packages.length || directories.size !== plan.packages.length) {
+            throw new Error('Prepared release plan contains duplicate packages')
+          }
+          for (const [index, item] of plan.packages.entries()) {
+            const manifest = JSON.parse(fs.readFileSync(`.publish/${item.dir}/package.json`, 'utf8'))
+            if (
+              item.version !== plan.version ||
+              manifest.name !== item.name ||
+              manifest.version !== item.version
+            ) {
+              throw new Error(`${item.dir}: prepared manifest identity does not match release plan`)
+            }
+            if (item.name !== `@open-pencil-lowcode/${item.dir}`) {
+              throw new Error(`${item.dir}: unexpected publish name ${item.name}`)
+            }
+            for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
+              for (const dependencyName of Object.keys(manifest[field] ?? {})) {
+                const dependencyIndex = positions.get(dependencyName)
+                if (dependencyIndex !== undefined && dependencyIndex >= index) {
+                  throw new Error(
+                    `Release plan must publish ${dependencyName} before ${item.name}`
+                  )
+                }
+              }
+            }
+          }
+          const mcpIndex = positions.get('@open-pencil-lowcode/mcp')
+          const cliIndex = positions.get('@open-pencil-lowcode/cli')
+          if (mcpIndex === undefined || cliIndex === undefined || mcpIndex >= cliIndex) {
+            throw new Error('Release plan must publish MCP before CLI')
+          }
+          NODE
+          bun tools/package-quality/src/check/metadata.ts
+          bun tools/package-quality/src/check/publint.ts
+          bun tools/package-quality/src/check/attw.ts
+
+      - name: Pack and audit release tarballs
+        id: release_digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p npm-release
           root_dir="$PWD"
-          publish_packages="packages/scene-graph packages/motion packages/plugin-contracts packages/lowcode packages/pen packages/kiwi packages/fig packages/core packages/motion-runtime packages/dom-css packages/cli packages/mcp packages/vue"
+          publish_packages=$(node -p "require('./.publish/release-plan.json').packages.map(({ dir }) => dir).join(' ')")
           for dir in $publish_packages; do
-            pack_if_new "$dir"
+            (cd ".publish/${dir}" && npm pack --pack-destination "$root_dir/npm-release")
           done
-          ls -la .npm-packages
-          for tarball in .npm-packages/open-pencil-*.tgz; do
-            echo "Contents of $tarball"
-            tar -tf "$tarball" | sed -n '1,60p' || true
-          done
-          bun tools/release-packages/src/validate-tarballs.ts
+          bun tools/release-packages/src/validate-tarballs.ts npm-release .publish/release-plan.json
+          cp .publish/release-plan.json npm-release/release-plan.json
+          shasum -a 512 npm-release/release-plan.json npm-release/*.tgz > npm-release/SHA512SUMS
+          release_digest=$(shasum -a 256 npm-release/SHA512SUMS | awk '{print $1}')
+          printf 'digest=%s\n' "$release_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke audited npm tarball consumers
+        shell: bash
+        env:
+          OPENPENCIL_PACKAGE_ROOT: .publish
+          OPENPENCIL_PACKAGE_TARBALL_ROOT: npm-release
+        run: |
+          set -euo pipefail
+          bun tools/package-quality/src/smoke.ts
+
+      - name: Upload audited npm release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-release-${{ github.run_id }}
+          path: npm-release
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish-npm:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'mo-17/open-pencil'
+    needs: prepare-npm
+    runs-on: ubuntu-latest
+    environment: npm-production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download audited npm release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-release-${{ github.run_id }}
+          path: npm-release
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org/
+
+      - name: Verify npm Trusted Publishing support
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm_version=$(npm --version)
+          NPM_VERSION="$npm_version" node <<'NODE'
+          const raw = process.env.NPM_VERSION ?? ''
+          const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(raw)
+          if (!match) {
+            throw new Error(`Cannot verify npm version for Trusted Publishing: ${raw || '<empty>'}`)
+          }
+          const [major, minor, patch] = match.slice(1).map(Number)
+          if (
+            major < 11 ||
+            (major === 11 && minor < 5) ||
+            (major === 11 && minor === 5 && patch < 1)
+          ) {
+            throw new Error(`npm ${raw} is too old; Trusted Publishing requires npm >=11.5.1`)
+          }
+          NODE
+          echo "Verified npm ${npm_version} supports Trusted Publishing"
+
+      - name: Verify downloaded release artifact
+        shell: bash
+        env:
+          EXPECTED_RELEASE_DIGEST: ${{ needs.prepare-npm.outputs.release_digest }}
+        run: |
+          set -euo pipefail
+          actual_release_digest=$(shasum -a 256 npm-release/SHA512SUMS | awk '{print $1}')
+          if [ "$actual_release_digest" != "$EXPECTED_RELEASE_DIGEST" ]; then
+            echo "Downloaded npm release artifact digest does not match the preparation job" >&2
+            exit 1
+          fi
+          shasum -a 512 -c npm-release/SHA512SUMS
+          export RELEASE_VERSION="${GITHUB_REF_NAME#v}"
+          node <<'NODE'
+          const fs = require('node:fs')
+          const plan = require('./npm-release/release-plan.json')
+          const actual = fs.readdirSync('npm-release').sort()
+          const expected = [
+            'SHA512SUMS',
+            'release-plan.json',
+            ...plan.packages.map(
+              ({ name, version }) =>
+                `${name.replace(/^@/, '').replaceAll('/', '-')}-${version}.tgz`
+            )
+          ].sort()
+          if (plan.version !== process.env.RELEASE_VERSION || JSON.stringify(actual) !== JSON.stringify(expected)) {
+            throw new Error('Downloaded npm release artifact does not match the tag or release plan')
+          }
+          NODE
 
       - name: Publish packages to npm
+        # BOOTSTRAP ONLY: NPM_TOKEN must be a short-lived granular token used solely to
+        # create packages that do not exist yet. After the first successful publish,
+        # configure npm Trusted Publishers for mo-17/open-pencil + build.yml and the
+        # npm-production environment, delete the repository secret, and remove this env
+        # block plus the bootstrap auth branch.
+        env:
+          NPM_BOOTSTRAP_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
         run: |
-          publish_if_new() {
-            local dir=$1
-            local name=$(node -p "require('./$dir/package.json').name")
-            local version=$(node -p "require('./$dir/package.json').version")
-            if npm view "${name}@${version}" version 2>/dev/null; then
-              echo "${name}@${version} already published, skipping"
+          set -euo pipefail
+          readonly NPM_REGISTRY=https://registry.npmjs.org/
+          if [ -n "${NPM_BOOTSTRAP_TOKEN:-}" ]; then
+            export NODE_AUTH_TOKEN="$NPM_BOOTSTRAP_TOKEN"
+            unset NPM_BOOTSTRAP_TOKEN
+            echo "Using temporary npm bootstrap token authentication"
+            npm whoami --registry "$NPM_REGISTRY" >/dev/null
+          else
+            unset NODE_AUTH_TOKEN NPM_BOOTSTRAP_TOKEN
+            echo "Using npm Trusted Publishing (OIDC)"
+          fi
+
+          registry_state() {
+            local name=$1
+            local version=$2
+            local output
+            if output=$(npm view "${name}@${version}" version --registry "$NPM_REGISTRY" 2>&1); then
+              if [ "$output" != "$version" ]; then
+                echo "Registry returned unexpected version for ${name}@${version}: ${output}" >&2
+                exit 1
+              fi
+              REGISTRY_STATE=exists
+            elif [[ "$output" == *"E404"* ]]; then
+              REGISTRY_STATE=missing
             else
-              local tarball
-              tarball=$(cd .npm-packages && ls open-pencil-$(basename "$dir")-${version}.tgz)
-              npm publish "./.npm-packages/${tarball}" --access public --provenance
+              echo "npm registry lookup failed for ${name}@${version}" >&2
+              echo "$output" >&2
+              exit 1
             fi
           }
-          publish_packages="packages/scene-graph packages/motion packages/plugin-contracts packages/lowcode packages/pen packages/kiwi packages/fig packages/core packages/motion-runtime packages/dom-css packages/cli packages/mcp packages/vue"
+
+          publish_packages=$(node -p "require('./npm-release/release-plan.json').packages.map(({ dir }) => dir).join(' ')")
           for dir in $publish_packages; do
-            publish_if_new "$dir"
+            name=$(node -p "require('./npm-release/release-plan.json').packages.find(({ dir }) => dir === '$dir').name")
+            version=$(node -p "require('./npm-release/release-plan.json').packages.find(({ dir }) => dir === '$dir').version")
+            tarball=${name#@}
+            tarball="npm-release/${tarball//\//-}-${version}.tgz"
+            registry_state "$name" "$version"
+            if [ "$REGISTRY_STATE" = exists ]; then
+              remote_integrity=$(npm view "${name}@${version}" dist.integrity --registry "$NPM_REGISTRY")
+              local_integrity=$(node -e "const fs=require('node:fs'),crypto=require('node:crypto'); console.log('sha512-'+crypto.createHash('sha512').update(fs.readFileSync(process.argv[1])).digest('base64'))" "$tarball")
+              if [ "$remote_integrity" != "$local_integrity" ]; then
+                echo "Published ${name}@${version} differs from the audited tarball" >&2
+                exit 1
+              fi
+              echo "${name}@${version} already published with matching integrity"
+            else
+              npm publish "./${tarball}" --access public --provenance --tag latest --registry "$NPM_REGISTRY"
+            fi
           done

@@ -202,6 +202,25 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
     )
   }, 30_000)
 
+  test('builds through a symlinked workspace root without a root-escaping HTML name', async () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'op-build-workspace-alias-'))
+    const workspaceAlias = join(sandbox, 'workspace')
+    const linkedOutDir = join(sandbox, 'dist')
+    try {
+      symlinkSync(process.cwd(), workspaceAlias, process.platform === 'win32' ? 'junction' : 'dir')
+      const result = await buildPreviewProject({
+        files: fixture,
+        outDir: linkedOutDir,
+        fsRoot: workspaceAlias
+      })
+
+      expect(result.files).toContain('index.html')
+      expect(readFileSync(join(linkedOutDir, 'index.html'), 'utf8')).toContain('<div id="root">')
+    } finally {
+      rmSync(sandbox, { force: true, recursive: true })
+    }
+  }, 30_000)
+
   test('selects plugin-vue and preserves imported binary assets for a Vue VFS build', async () => {
     const vueOutDir = mkdtempSync(join(tmpdir(), 'op-build-vue-'))
     try {

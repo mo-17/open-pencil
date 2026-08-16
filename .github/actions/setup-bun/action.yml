@@ -11,6 +11,10 @@ inputs:
     description: Pull Git LFS files before installing dependencies.
     required: false
     default: 'false'
+  cache:
+    description: Restore the Bun package cache before installing dependencies.
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -26,6 +30,7 @@ runs:
     - uses: oven-sh/setup-bun@v2
 
     - uses: actions/cache@v6
+      if: inputs.cache == 'true'
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}

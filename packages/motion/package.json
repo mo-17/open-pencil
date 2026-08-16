@@ -1,6 +1,6 @@
 {
   "name": "@open-pencil/motion",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Framework-agnostic deterministic Motion planning, sampling, projection, and continuous-driver primitives for OpenPencil.",
   "license": "MIT",
   "repository": {

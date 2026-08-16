@@ -1,10 +1,19 @@
-import { publicPackageDirs } from '../packages'
+import { publicPackageDirs, publicPackagePath } from '../packages'
 
 let failed = false
 
 for (const packageDir of publicPackageDirs) {
   const proc = Bun.spawnSync(
-    ['bun', 'attw', '--pack', packageDir, '--profile', 'esm-only', '--format', 'ascii'],
+    [
+      'bun',
+      'attw',
+      '--pack',
+      publicPackagePath(packageDir),
+      '--profile',
+      'esm-only',
+      '--format',
+      'ascii'
+    ],
     {
       stdout: 'pipe',
       stderr: 'pipe'

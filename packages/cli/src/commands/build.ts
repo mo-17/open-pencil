@@ -8,6 +8,7 @@ import { buildMicrofrontendProject } from '@open-pencil/compiler/microfrontend'
 
 import { loadAndCompile, reportCodegenResult, resolveBuildEnv } from '#cli/codegen'
 import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
+import { withCompilerBuildRoot } from '#cli/compiler-build-root'
 import { printError } from '#cli/format'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
 import { microfrontendPackagingArgs, resolveMicrofrontendPackaging } from '#cli/microfrontend-args'
@@ -136,21 +137,37 @@ export default defineCommand({
     let result: BuildResult
     let microfrontendManifest: { digest: string; byteLength: number } | undefined
     try {
-      if (packaging) {
-        const microfrontendResult = await buildMicrofrontendProject({
-          output: compiled,
-          outDir,
-          base,
-          env
-        })
-        result = microfrontendResult
-        microfrontendManifest = {
-          digest: microfrontendResult.manifestDigest,
-          byteLength: microfrontendResult.manifestByteLength
+      const outcome = await withCompilerBuildRoot(async (fsRoot) => {
+        if (packaging) {
+          const microfrontendResult = await buildMicrofrontendProject({
+            output: compiled,
+            outDir,
+            base,
+            env,
+            fsRoot
+          })
+          return {
+            result: microfrontendResult,
+            microfrontendManifest: {
+              digest: microfrontendResult.manifestDigest,
+              byteLength: microfrontendResult.manifestByteLength
+            }
+          }
         }
-      } else {
-        result = await buildPreviewProject({ files: compiled.files, outDir, base, env, target })
-      }
+        return {
+          result: await buildPreviewProject({
+            files: compiled.files,
+            outDir,
+            base,
+            env,
+            target,
+            fsRoot
+          }),
+          microfrontendManifest: undefined
+        }
+      })
+      result = outcome.result
+      microfrontendManifest = outcome.microfrontendManifest
     } catch (e) {
       // Surface the Vite/build failure rather than swallowing it (经验 C).
       printError(e)

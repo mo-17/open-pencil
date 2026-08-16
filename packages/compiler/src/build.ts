@@ -24,7 +24,7 @@ import { detectSupabaseSecretKey } from '@open-pencil/lowcode'
 import {
   inMemoryVFS,
   prepareVfsRoot,
-  VITE_JSX_ESBUILD,
+  reactViteOptions,
   type PreviewFiles,
   type WebVfsTarget
 } from './vfs'
@@ -317,7 +317,10 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
 
   // §5: explicit CLI/app overrides win. Missing keys are pinned to undefined
   // instead of letting Vite inherit an unrelated build-process VITE_* value.
-  const define = createSupabaseBuildDefines(opts.env)
+  const define = {
+    ...createSupabaseBuildDefines(opts.env),
+    'process.env.NODE_ENV': JSON.stringify('production')
+  }
 
   await build({
     root: scanRoot,
@@ -329,7 +332,7 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
     // the CLI owns the human-facing output.
     logLevel: 'warn',
     plugins: [vfs, ...frameworkPlugins, ...tailwindcss()],
-    ...(target === 'react' ? { esbuild: VITE_JSX_ESBUILD } : {}),
+    ...(target === 'react' ? reactViteOptions(false) : {}),
     build: {
       outDir,
       emptyOutDir: true,

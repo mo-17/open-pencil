@@ -3,11 +3,12 @@ name: Deploy docs
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'open-pencil/open-pencil'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -14,6 +14,7 @@ import {
 
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
 import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
+import { withCompilerBuildRoot } from '#cli/compiler-build-root'
 import { bold, dim, ok, printError } from '#cli/format'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
 import {
@@ -215,13 +216,16 @@ export default defineCommand({
       }
 
       if (!args.json) console.log('  Building…')
-      const built = await buildPreviewProject({
-        files: compiled.files,
-        outDir: buildDir,
-        base,
-        env,
-        target
-      })
+      const built = await withCompilerBuildRoot((fsRoot) =>
+        buildPreviewProject({
+          files: compiled.files,
+          outDir: buildDir,
+          base,
+          env,
+          target,
+          fsRoot
+        })
+      )
       // `openpencil-server/` is an operator-owned Edge Function bundle. Static
       // providers receive browser assets only; this command never deploys the
       // function or configures its secrets as a side effect.

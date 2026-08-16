@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- **Fork npm namespace:** Starting with 0.15.0, release tooling maps this fork's workspace
+  `@open-pencil/*` package names to `@open-pencil-lowcode/*` npm artifacts. Workspace manifests
+  and source imports retain the upstream scope; fork consumers use the mapped scope for package
+  installation, imports, peer dependencies, and compatibility subpaths. The external Yoga fork
+  remains `npm:@open-pencil/yoga-layout` and is not remapped.
+
 ### Added
 
 - Add the public `@open-pencil/motion` package for framework-agnostic deterministic Motion planning,

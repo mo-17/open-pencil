@@ -1,26 +1,51 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, readFileSync } from 'node:fs'
+import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 interface RootPackageJSON {
   workspaces?: string[]
 }
 
-interface WorkspacePackageJSON {
+interface PackageJSON {
   private?: boolean
 }
 
-const rootDir = fileURLToPath(new URL('../../..', import.meta.url))
+export const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
+const configuredPackageRoot = process.env.OPENPENCIL_PACKAGE_ROOT?.trim()
+export const usingPreparedPublishDirectories = Boolean(configuredPackageRoot)
 
-function readJSON<T>(path: string): T {
-  return JSON.parse(readFileSync(path, 'utf8')) as T
+function resolvePackageRoot(configuredRoot: string | undefined): string {
+  if (!configuredRoot) return repositoryRoot
+  return isAbsolute(configuredRoot) ? configuredRoot : resolve(repositoryRoot, configuredRoot)
 }
 
-const rootPackage = readJSON<RootPackageJSON>(join(rootDir, 'package.json'))
+export const packageRoot = resolvePackageRoot(configuredPackageRoot)
 
-export const publicPackageDirs = (rootPackage.workspaces ?? []).filter((workspaceDir) => {
-  const workspacePackage = readJSON<WorkspacePackageJSON>(
-    join(rootDir, workspaceDir, 'package.json')
-  )
-  return workspacePackage.private !== true
-})
+function readJSON(path: string): unknown {
+  return JSON.parse(readFileSync(path, 'utf8')) as unknown
+}
+
+const rootPackage = readJSON(join(repositoryRoot, 'package.json')) as RootPackageJSON
+
+export const publicPackageDirs = usingPreparedPublishDirectories
+  ? readdirSync(packageRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .map((packageDir) => {
+        const packageJSON = readJSON(join(packageRoot, packageDir, 'package.json')) as PackageJSON
+        if (packageJSON.private === true) {
+          throw new Error(`Prepared publish directory must not be private: ${packageDir}`)
+        }
+        return packageDir
+      })
+      .sort()
+  : (rootPackage.workspaces ?? []).filter((workspaceDir) => {
+      const workspacePackage = readJSON(
+        join(repositoryRoot, workspaceDir, 'package.json')
+      ) as PackageJSON
+      return workspacePackage.private !== true
+    })
+
+export function publicPackagePath(packageDir: string): string {
+  return join(packageRoot, packageDir)
+}

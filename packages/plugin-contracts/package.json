@@ -1,6 +1,6 @@
 {
   "name": "@open-pencil/plugin-contracts",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Portable declarative plugin, trust, catalog, marketplace, and isolated runtime contracts for OpenPencil.",
   "license": "MIT",
   "repository": {

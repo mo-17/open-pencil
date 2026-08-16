@@ -10,6 +10,7 @@ import {
   parseOpenPencilMicrofrontendCompositionManifestJSON
 } from '@open-pencil/compiler/microfrontend'
 
+import { withCompilerBuildRoot } from '#cli/compiler-build-root'
 import { bold, kv, ok, printError } from '#cli/format'
 
 interface ComposeArgs {
@@ -203,12 +204,15 @@ export const compose = defineCommand({
       const composition = parseOpenPencilMicrofrontendCompositionManifestJSON(
         await readComposition(manifestPath)
       )
-      const result = await buildCompositionShell({
-        composition,
-        outDir,
-        base: options.base,
-        sourceDir: dirname(manifestPath)
-      })
+      const result = await withCompilerBuildRoot((fsRoot) =>
+        buildCompositionShell({
+          composition,
+          outDir,
+          base: options.base,
+          sourceDir: dirname(manifestPath),
+          fsRoot
+        })
+      )
       if (options.json) {
         console.log(
           JSON.stringify(

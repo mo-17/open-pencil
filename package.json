@@ -1,6 +1,6 @@
 {
   "name": "open-pencil-app",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "license": "MIT",
   "workspaces": [
@@ -41,7 +41,7 @@
     "check:docs": "bun --filter @open-pencil/docs check",
     "check:audit": "bun audit --audit-level=critical",
     "check:secrets": "bun tools/secret-scan/src/index.ts",
-    "check:monorepo": "sherif --ignore-rule root-package-dependencies",
+    "check:monorepo": "sherif --ignore-rule root-package-dependencies --ignore-dependency 'tailwind-merge@^2.5.5' --ignore-dependency 'vue-router@^4.6.4'",
     "check:i18n": "bun tools/i18n/src/check-locales.ts",
     "check:packages": "bun tools/package-quality/src/check/metadata.ts && bun tools/package-quality/src/check/publint.ts && bun tools/package-quality/src/check/attw.ts",
     "check:figma-motion-plugin": "bun --filter @open-pencil/figma-motion-plugin check",

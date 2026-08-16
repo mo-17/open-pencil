@@ -1,12 +1,8 @@
-import { fileURLToPath } from 'node:url'
-
-import { publicPackageDirs } from '../packages'
-
-const rootDir = fileURLToPath(new URL('../../../..', import.meta.url))
+import { publicPackageDirs, publicPackagePath, repositoryRoot } from '../packages'
 
 for (const packageDir of publicPackageDirs) {
-  const proc = Bun.spawnSync(['bun', 'publint', packageDir, '--strict'], {
-    cwd: rootDir,
+  const proc = Bun.spawnSync(['bun', 'publint', publicPackagePath(packageDir), '--strict'], {
+    cwd: repositoryRoot,
     stdout: 'pipe',
     stderr: 'pipe'
   })

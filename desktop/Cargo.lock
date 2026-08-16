@@ -3252,7 +3252,7 @@ dependencies = [
 
 [[package]]
 name = "open_pencil"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64 0.22.1",
  "fix-path-env",
