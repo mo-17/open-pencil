@@ -75,6 +75,24 @@ describe('team-library scene-graph helpers (Phase 4 §14)', () => {
     expect(after).toMatch(/^v1-[0-9a-f]{16}$/)
   })
 
+  test('keeps subtree versions compatible with nodes created before librarySource existed', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const component = graph.createNode('COMPONENT', page.id, { name: 'Card' })
+    const title = graph.createNode('TEXT', component.id, { name: 'Title', text: 'Hello' })
+
+    expect(component.librarySource).toBeNull()
+    expect(title.librarySource).toBeNull()
+    const currentVersion = componentSubtreeVersion(graph, component.id)
+
+    Reflect.deleteProperty(component, 'librarySource')
+    Reflect.deleteProperty(title, 'librarySource')
+    expect('librarySource' in component).toBeFalse()
+    expect('librarySource' in title).toBeFalse()
+
+    expect(componentSubtreeVersion(graph, component.id)).toBe(currentVersion)
+  })
+
   test('rejects non-component nodes', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

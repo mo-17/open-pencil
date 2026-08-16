@@ -53,6 +53,7 @@ import { getAbsolutePosition } from './coordinate'
 import type { Color, Rect, Vector } from './primitives'
 import type {
   DocumentColorSpace,
+  EnabledLibraryBinding,
   NodeType,
   SceneGraphEventHandlers,
   SceneGraphEvents,
@@ -144,6 +145,7 @@ export class SceneGraph {
   /** Opaque Kiwi Message.objectAnimations payload retained for .fig roundtrip fidelity. */
   figMessageObjectAnimations: unknown = null
   documentColorSpace: DocumentColorSpace = 'display-p3'
+  enabledLibraries = new Map<string, EnabledLibraryBinding>()
   readonly emitter: Emitter<SceneGraphEvents> = createNanoEvents()
   private absPosCache = new Map<string, Vector>()
   private previewMutationDepth = 0

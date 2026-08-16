@@ -9,6 +9,7 @@ import {
 } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { openLibraryReview, useLibraryService } from '@/app/libraries'
 import { COMPONENT_TYPES, nodeIcon } from '@/app/editor/icons'
 import {
   designPanelWorkspace,
@@ -64,6 +65,8 @@ import StrokeSection from './properties/StrokeSection.vue'
 import TypographySection from './properties/TypographySection.vue'
 import VariablesSection from './properties/VariablesSection.vue'
 import ComponentPropertiesSection from './properties/component-properties/ComponentPropertiesSection.vue'
+import VariantAuthoringSection from './properties/component-properties/VariantAuthoringSection.vue'
+import InstanceUpdateAction from './properties/component-properties/instance-update/InstanceUpdateAction.vue'
 import FramePresetsSection from './properties/frame-presets/FramePresetsSection.vue'
 import FramePresetSelect from './properties/frame-presets/FramePresetSelect.vue'
 
@@ -74,6 +77,7 @@ interface InspectorWorkspaceBarHandle {
 const variablesOpen = ref(false)
 const inspectorFilter = ref('')
 const store = useEditorStore()
+const libraryService = useLibraryService()
 const activeTool = computed(() => store.state.activeTool)
 const { selectedNode: node, selectedCount: multiCount } = useSelectionState()
 const { active: componentPropertiesActive } = useComponentProperties()
@@ -134,6 +138,29 @@ const hasInteractionStatePanel = computed(() => {
   return Boolean(
     selected &&
     (INTERACTION_STATE_NODE_TYPES.has(selected.type) || selected.stateOverrides !== undefined)
+  )
+})
+function openSelectedInstanceReview() {
+  const instance = node.value
+  if (instance?.type !== 'INSTANCE' || !instance.componentId) return
+  const component = store.graph.getNode(instance.componentId)
+  const identity = component?.librarySource?.identity
+  if (!identity) return
+  openLibraryReview({
+    libraryId: identity.libraryId,
+    assetKey: identity.assetKey,
+    instanceIds: [instance.id],
+    initialInstanceId: instance.id
+  })
+}
+const isVariantAuthoringNode = computed(() => {
+  const selected = node.value
+  return Boolean(
+    selected &&
+    (selected.type === 'COMPONENT_SET' ||
+      (selected.type === 'COMPONENT' &&
+        selected.parentId &&
+        store.graph.getNode(selected.parentId)?.type === 'COMPONENT_SET'))
   )
 })
 const supportsLayoutGuides = computed(() => {
@@ -419,7 +446,9 @@ const hasLowcodeBindings = computed(() => {
 const showSinglePosition = computed(() => sectionMatches('position', panels.value.position))
 const showSingleLayout = computed(() => sectionMatches('layout', panels.value.layout))
 const showSingleComponent = computed(
-  () => node.value?.type === 'INSTANCE' && sectionMatches('component', 'Component')
+  () =>
+    (node.value?.type === 'INSTANCE' || isVariantAuthoringNode.value) &&
+    sectionMatches('component', 'Component')
 )
 const showSingleAppearance = computed(() => sectionMatches('appearance', panels.value.appearance))
 const showSingleInteractionStates = computed(
@@ -604,6 +633,13 @@ const emptyHasMatches = computed(
       </template>
       <span role="heading" aria-level="2">{{ node.name }}</span>
       <template #actions>
+        <InstanceUpdateAction
+          v-if="node.type === 'INSTANCE'"
+          :node="node"
+          :editor="store"
+          :service="libraryService"
+          @review="openSelectedInstanceReview"
+        />
         <SelectionActionsControl />
       </template>
     </PanelHeader>
@@ -624,14 +660,17 @@ const emptyHasMatches = computed(
 
     <template v-for="sectionId in panelSectionOrder" :key="sectionRenderKey(sectionId)">
       <InspectorSection
-        v-if="sectionId === 'component' && node.type === 'INSTANCE'"
+        v-if="sectionId === 'component' && (node.type === 'INSTANCE' || isVariantAuthoringNode)"
         v-show="sectionVisible('component', showSingleComponent)"
         id="component"
         label="Component"
         v-bind="inspectorSectionState('component')"
         :highlighted="sectionHighlighted('component', 'Component')"
       >
-        <div class="flex flex-col gap-1 border-b border-border px-3 py-2">
+        <div
+          v-if="node.type === 'INSTANCE'"
+          class="flex flex-col gap-1 border-b border-border px-3 py-2"
+        >
           <button
             type="button"
             data-test-id="design-go-to-component"
@@ -649,8 +688,9 @@ const emptyHasMatches = computed(
             {{ panels.detachInstance }}
           </button>
         </div>
-        <ComponentPropertiesSection />
-        <ComponentPropsPanel />
+        <ComponentPropertiesSection v-if="node.type === 'INSTANCE'" />
+        <ComponentPropsPanel v-if="node.type === 'INSTANCE'" />
+        <VariantAuthoringSection v-if="isVariantAuthoringNode" />
       </InspectorSection>
 
       <InspectorSection

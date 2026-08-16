@@ -13,6 +13,8 @@ export interface RulerTheme {
   label: Color
 }
 
+export type MeasurementMode = 'off' | 'shallow' | 'deep'
+
 export interface RenderOverlays {
   /** Ephemeral scene-only motion deltas; absent from static render/export paths. */
   motionVisualStates?: ReadonlyMap<string, MotionVisualState>
@@ -22,6 +24,7 @@ export interface RenderOverlays {
   generatedEffectTimeMs?: number
   generatedEffectMode?: 'allow' | 'reduce' | 'disable'
   hoveredNodeId?: string | null
+  measurementMode?: MeasurementMode
   enteredContainerId?: string | null
   editingTextId?: string | null
   textEditor?: TextEditor | null

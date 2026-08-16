@@ -82,6 +82,17 @@ export {
   type RenderPlacementInput,
   type ResolvedRenderPlacement
 } from './render-placement'
+export {
+  DESIGN_JSX_ELEMENTS,
+  DESIGN_JSX_HELPERS,
+  DESIGN_JSX_PROPERTIES,
+  DESIGN_JSX_SUPPORTED_PROPERTIES,
+  DESIGN_JSX_SUPPORTED_PROPERTY_NAMES,
+  type DesignJSXElementDefinition,
+  type DesignJSXHelperDefinition,
+  type DesignJSXPropertyDefinition
+} from './schema'
+export { transformDesignJSXExpression } from './transform'
 
 import jsxReference from '#core/tools/prompts/jsx-reference.md'
 

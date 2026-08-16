@@ -19,7 +19,7 @@ import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 import type { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import type { RulerTheme, SkiaRenderer } from '#core/canvas/renderer'
-import type { RenderOverlays } from '#core/canvas/renderer/types'
+import type { MeasurementMode, RenderOverlays } from '#core/canvas/renderer/types'
 import type { TextEditor } from '#core/text/editor'
 import type { FontLoadOptions } from '#core/text/fonts'
 import type { FontResolutionEvent, FontResolutionSnapshot } from '#core/text/resolver'
@@ -103,8 +103,24 @@ export interface MotionPreviewState {
   readonly finished: boolean
 }
 
-export interface EditorState {
+export interface EditorSharedState {
   activeTool: Tool
+  remoteCursors: Array<{
+    name: string
+    color: Color
+    x: number
+    y: number
+    selection?: string[]
+  }>
+  documentName: string
+  rulerTheme?: RulerTheme
+  sceneVersion: number
+  loading: boolean
+  /** One editor-owned ephemeral preview shared by every canvas pane. */
+  motionPreview: MotionPreviewState | null
+}
+
+export interface EditorViewState {
   currentPageId: string
   selectedIds: Set<string>
   marquee: Rect | null
@@ -120,6 +136,7 @@ export interface EditorState {
     direction: 'HORIZONTAL' | 'VERTICAL'
   } | null
   hoveredNodeId: string | null
+  measurementMode: MeasurementMode
   editingTextId: string | null
   penState: {
     vertices: VectorVertex[]
@@ -134,34 +151,24 @@ export interface EditorState {
   } | null
   penCursorX: number | null
   penCursorY: number | null
-  remoteCursors: Array<{
-    name: string
-    color: Color
-    x: number
-    y: number
-    selection?: string[]
-  }>
   autoLayoutHover: {
     nodeId: string
     kind: 'frame' | 'children' | 'spacing' | 'spacing-value' | 'padding' | 'padding-value'
     index?: number
     side?: 'top' | 'right' | 'bottom' | 'left'
   } | null
-  documentName: string
   panX: number
   pageColor: Color
-  rulerTheme?: RulerTheme
   panY: number
   zoom: number
   renderVersion: number
-  sceneVersion: number
-  loading: boolean
   enteredContainerId: string | null
   nodeEditState?: RenderOverlays['nodeEditState'] | null
   cursorCanvasX?: number | null
   cursorCanvasY?: number | null
-  motionPreview: MotionPreviewState | null
 }
+
+export interface EditorState extends EditorSharedState, EditorViewState {}
 
 export interface ClipboardImageResolution {
   total: number

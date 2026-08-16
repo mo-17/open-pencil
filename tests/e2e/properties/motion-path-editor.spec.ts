@@ -72,6 +72,24 @@ async function createNestedCubicPathNode(): Promise<string> {
   })
 }
 
+async function createSiblingNode(): Promise<string> {
+  return editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const page = store.graph.getNode(store.state.currentPageId)
+    if (!page) throw new Error('Current page not found')
+    const node = store.graph.createNode('RECTANGLE', page.id, {
+      name: 'Other pane selection',
+      x: 640,
+      y: 180,
+      width: 100,
+      height: 70
+    })
+    store.requestRender()
+    return node.id
+  })
+}
+
 async function nodeSnapshot(nodeId: string): Promise<PathNodeSnapshot> {
   return editor.page.evaluate((id) => {
     const store = window.openPencil?.getStore?.()
@@ -159,6 +177,50 @@ test('drags a cubic control on the canvas with one undo, Escape cancel, and keyb
   expect((await nodeSnapshot(nodeId)).control1).toEqual(dragged.control1)
 
   await editor.page.evaluate(() => window.openPencil?.getStore?.().clearSelection())
+  await expect(editor.page.getByTestId('motion-path-handle-segment-0-control1')).toHaveCount(0)
+  expect(
+    await editor.page.evaluate(() => window.openPencil?.getStore?.().state.motionPathEdit ?? null)
+  ).toBeNull()
+})
+
+test('clears path editing when activating a same-page pane with another selection', async () => {
+  test.setTimeout(30_000)
+  const pathNodeId = await createNestedCubicPathNode()
+  const siblingNodeId = await createSiblingNode()
+  await editor.canvas.waitForRender()
+
+  await editor.page.getByRole('menuitem', { name: 'View', exact: true }).click()
+  await editor.page.getByRole('menuitem', { name: 'Split right' }).click()
+
+  const headers = editor.page.locator('[data-slot="canvas-pane-header"]')
+  const panes = editor.page.locator('[data-active-pane]')
+  await expect(headers).toHaveCount(2)
+  await expect(panes.nth(1)).toHaveAttribute('data-active-pane', 'true')
+
+  await editor.page.evaluate((nodeId) => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    store.select([nodeId])
+  }, siblingNodeId)
+
+  await headers.nth(0).click({ position: { x: 20, y: 15 } })
+  await expect(panes.nth(0)).toHaveAttribute('data-active-pane', 'true')
+  expect(
+    await editor.page.evaluate(() => [...(window.openPencil?.getStore?.().state.selectedIds ?? [])])
+  ).toEqual([pathNodeId])
+
+  const motion = propertySection(editor.page, 'Motion')
+  await motion.scrollIntoViewIfNeeded()
+  const edit = motion.getByTestId('motion-path-edit-canvas')
+  await edit.scrollIntoViewIfNeeded()
+  await edit.click()
+  await expect(editor.page.getByTestId('motion-path-handle-segment-0-control1')).toBeVisible()
+
+  await headers.nth(1).click({ position: { x: 20, y: 15 } })
+  await expect(panes.nth(1)).toHaveAttribute('data-active-pane', 'true')
+  expect(
+    await editor.page.evaluate(() => [...(window.openPencil?.getStore?.().state.selectedIds ?? [])])
+  ).toEqual([siblingNodeId])
   await expect(editor.page.getByTestId('motion-path-handle-segment-0-control1')).toHaveCount(0)
   expect(
     await editor.page.evaluate(() => window.openPencil?.getStore?.().state.motionPathEdit ?? null)

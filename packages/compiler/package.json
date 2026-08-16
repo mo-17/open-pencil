@@ -94,7 +94,7 @@
     "@tailwindcss/vite": "^4.2.1",
     "@vitejs/plugin-react": "^6.0.4",
     "@vitejs/plugin-vue": "^6.0.5",
-    "vite": "^8.0.0"
+    "vite": "8.1.4"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.100.0",

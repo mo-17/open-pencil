@@ -11,6 +11,8 @@ import {
 } from '@/app/integrations/storage'
 import AppShell from '@/components/Shell/AppShell.vue'
 import AppToast from '@/components/Shell/AppToast.vue'
+import PublishLibraryDialog from '@/components/libraries/PublishLibraryDialog.vue'
+import LibraryUpdateReviewDialog from '@/components/libraries/review/LibraryUpdateReviewDialog.vue'
 import RecoveryDialog from '@/components/recovery/RecoveryDialog.vue'
 import SettingsDialog from '@/components/settings/SettingsDialog.vue'
 import { useEditorStore } from '@/app/editor/active-store'
@@ -64,6 +66,8 @@ onMounted(() => {
     <SettingsDialog />
     <ApplicationRuntimeGuideDialog v-if="applicationRuntimeGuideOpen" />
     <RecoveryDialog />
+    <PublishLibraryDialog />
+    <LibraryUpdateReviewDialog />
     <AppToast />
   </TooltipProvider>
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, provide, ref } from 'vue'
+import { tv } from 'tailwind-variants'
 import { useEventListener, useUrlSearchParams } from '@vueuse/core'
 import { useRoute } from 'vue-router'
 import { useHead } from '@unhead/vue'
@@ -28,6 +29,7 @@ import { createTab, activeTab, getActiveStore, tabCount } from '@/app/tabs'
 
 import CollabPanel from '@/components/CollabPanel/CollabPanel.vue'
 import EditorCanvas from '@/components/EditorCanvas.vue'
+import CanvasSplitRoot from '@/components/canvas/CanvasSplitRoot.vue'
 import FontStatusBanner from '@/components/font-status/FontStatusBanner.vue'
 import LayersPanel from '@/components/LayersPanel.vue'
 import MobileDrawer from '@/components/MobileDrawer.vue'
@@ -38,6 +40,7 @@ import SafariBanner from '@/components/SafariBanner.vue'
 import TabBar from '@/components/TabBar.vue'
 import Tip from '@/components/ui/Tip.vue'
 import Toolbar from '@/components/Toolbar/Toolbar.vue'
+import splitterTheme from '@/theme/splitter'
 
 const route = useRoute()
 const params = useUrlSearchParams('history')
@@ -97,6 +100,7 @@ function expandPreviewForAction(expand: () => void, complete: () => void): void 
   expand()
   void nextTick(complete)
 }
+const horizontalSplitterStyles = tv(splitterTheme)({ direction: 'horizontal' })
 
 type PendingOpenFile = {
   path: string
@@ -167,18 +171,18 @@ onUnmounted(() => {
       </SplitterPanel>
       <SplitterResizeHandle
         data-test-id="left-splitter-handle"
-        class="group relative z-10 -mx-1 w-2 cursor-col-resize"
+        :class="horizontalSplitterStyles.handle()"
       >
-        <div class="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />
+        <div :class="horizontalSplitterStyles.divider()" />
       </SplitterResizeHandle>
       <SplitterPanel id="canvas" :default-size="editorPanelSizes[1]" :min-size="30" class="flex">
         <div class="relative flex min-w-0 flex-1">
-          <EditorCanvas />
+          <CanvasSplitRoot />
           <Toolbar />
         </div>
       </SplitterPanel>
-      <SplitterResizeHandle class="group relative z-10 -mx-1 w-2 cursor-col-resize">
-        <div class="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />
+      <SplitterResizeHandle :class="horizontalSplitterStyles.handle()">
+        <div :class="horizontalSplitterStyles.divider()" />
       </SplitterResizeHandle>
       <SplitterPanel
         id="properties"

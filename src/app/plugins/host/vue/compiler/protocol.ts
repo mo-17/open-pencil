@@ -4,13 +4,8 @@ import type {
   CompilerOptions,
   CompilerOutput
 } from '@open-pencil/compiler'
-import {
-  SceneGraph,
-  type DocumentColorSpace,
-  type SceneNode,
-  type Variable,
-  type VariableCollection
-} from '@open-pencil/scene-graph'
+import type { PortableSceneGraphData } from '@open-pencil/core'
+import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import {
   assertExactPrototype,
@@ -37,15 +32,7 @@ const DATE_GET_TIME_DESCRIPTOR = Object.getOwnPropertyDescriptor(Date.prototype,
 const MAP_ENTRIES_DESCRIPTOR = Object.getOwnPropertyDescriptor(Map.prototype, 'entries')
 const SET_VALUES_DESCRIPTOR = Object.getOwnPropertyDescriptor(Set.prototype, 'values')
 
-export interface VueCompilerGraphSnapshot {
-  activeMode: Array<[string, string]>
-  documentColorSpace: DocumentColorSpace
-  images: Array<[string, Uint8Array]>
-  nodes: Array<[string, SceneNode]>
-  rootId: string
-  variableCollections: Array<[string, VariableCollection]>
-  variables: Array<[string, Variable]>
-}
+export type VueCompilerGraphSnapshot = PortableSceneGraphData
 
 export interface VueSourceCompilerWorkerRequest {
   version: typeof VUE_SOURCE_COMPILER_WORKER_PROTOCOL_VERSION

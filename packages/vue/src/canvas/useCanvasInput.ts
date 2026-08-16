@@ -39,7 +39,9 @@ export function useCanvasInput(
   hitTestComponentLabel: (cx: number, cy: number) => SceneNode | null,
   hitTestFrameTitle: (cx: number, cy: number) => SceneNode | null,
   onCursorMove?: (cx: number, cy: number) => void,
-  onCursorFlush?: () => void
+  onCursorFlush?: () => void,
+  onActivate?: () => void,
+  isEnabled: () => boolean = () => true
 ) {
   const drag = ref<DragState | null>(null)
   const cursorOverride = ref<string | null>(null)
@@ -50,6 +52,11 @@ export function useCanvasInput(
     previous: number
   } | null>(null)
   const selectedIdsBeforeClickSequence = ref<ReadonlySet<string>>(new Set())
+  const lastPointer = ref<{ cx: number; cy: number } | null>(null)
+  const pointerInside = ref(false)
+  let altHeld = false
+  let metaHeld = false
+  let controlHeld = false
   const spaceHeld = useSpaceHeld()
   const { recordClick, getClickCount } = createClickCounter()
   let passiveHoverFrame: number | null = null
@@ -63,8 +70,56 @@ export function useCanvasInput(
     hitTestFrameTitle
   )
 
+  function canMeasure() {
+    return (
+      pointerInside.value &&
+      !drag.value &&
+      editor.state.activeTool === 'SELECT' &&
+      editor.state.selectedIds.size > 0 &&
+      !editor.state.editingTextId &&
+      !editor.state.nodeEditState &&
+      !editor.state.penState
+    )
+  }
+
+  function refreshMeasurement() {
+    const mode = altHeld && canMeasure() ? (metaHeld || controlHeld ? 'deep' : 'shallow') : 'off'
+    editor.setMeasurementMode(mode)
+    const pointer = lastPointer.value
+    if (!pointer || drag.value || editor.state.activeTool !== 'SELECT' || !pointerInside.value)
+      return
+    cursorOverride.value = updateHoverCursor(
+      pointer.cx,
+      pointer.cy,
+      editor,
+      hitFns,
+      mode === 'deep'
+    )
+    editor.setAutoLayoutHover(
+      mode === 'off' ? resolveAutoLayoutHover(pointer.cx, pointer.cy, editor) : null
+    )
+  }
+
+  function updateModifier(code: string, held: boolean) {
+    if (!isEnabled()) return
+    if (code === 'AltLeft' || code === 'AltRight') altHeld = held
+    if (code === 'MetaLeft' || code === 'MetaRight') metaHeld = held
+    if (code === 'ControlLeft' || code === 'ControlRight') controlHeld = held
+    if (code.startsWith('Alt') || code.startsWith('Meta') || code.startsWith('Control')) {
+      refreshMeasurement()
+    }
+  }
+
+  function resetMeasurementModifiers() {
+    altHeld = false
+    metaHeld = false
+    controlHeld = false
+    editor.setMeasurementMode('off')
+  }
+
   function setDrag(d: DragState) {
     cancelPassiveHover()
+    editor.setMeasurementMode('off')
     drag.value = d
   }
 
@@ -83,8 +138,18 @@ export function useCanvasInput(
       const hover = pendingPassiveHover
       pendingPassiveHover = null
       if (!hover || drag.value || editor.state.activeTool !== 'SELECT') return
-      cursorOverride.value = updateHoverCursor(hover.cx, hover.cy, editor, hitFns)
-      editor.setAutoLayoutHover(resolveAutoLayoutHover(hover.cx, hover.cy, editor))
+      cursorOverride.value = updateHoverCursor(
+        hover.cx,
+        hover.cy,
+        editor,
+        hitFns,
+        editor.state.measurementMode === 'deep'
+      )
+      editor.setAutoLayoutHover(
+        editor.state.measurementMode === 'off'
+          ? resolveAutoLayoutHover(hover.cx, hover.cy, editor)
+          : null
+      )
     })
   }
 
@@ -172,7 +237,10 @@ export function useCanvasInput(
   }
 
   function onMouseDown(e: MouseEvent) {
+    onActivate?.()
+    if (!isEnabled()) return
     cancelPassiveHover()
+    editor.setMeasurementMode('off')
     const paddingEdit = autoLayoutPaddingEdit.value
     if (paddingEdit) {
       commitAutoLayoutPaddingEdit(paddingEdit.value)
@@ -202,7 +270,10 @@ export function useCanvasInput(
   }
 
   function onMouseMove(e: MouseEvent) {
+    if (!isEnabled()) return
+    pointerInside.value = true
     const { sx, sy, cx, cy } = getCoords(e)
+    lastPointer.value = { cx, cy }
     onCursorMove?.(cx, cy)
 
     if (!drag.value) {
@@ -266,6 +337,7 @@ export function useCanvasInput(
   }
 
   function onMouseUp(e?: MouseEvent) {
+    if (!isEnabled()) return
     if (e) {
       const { cx, cy } = getCoords(e)
       onCursorMove?.(cx, cy)
@@ -304,17 +376,24 @@ export function useCanvasInput(
 
     drag.value = null
     cursorOverride.value = null
+    refreshMeasurement()
   }
 
   useEventListener(canvasRef, 'dblclick', onDblClick)
   useEventListener(canvasRef, 'mousedown', onMouseDown)
   useEventListener(canvasRef, 'mousemove', onMouseMove)
   useEventListener(canvasRef, 'mouseup', onMouseUp)
+  useEventListener(window, 'keydown', (event) => updateModifier(event.code, true))
+  useEventListener(window, 'keyup', (event) => updateModifier(event.code, false))
+  useEventListener(window, 'blur', resetMeasurementModifiers)
   useEventListener(canvasRef, 'mouseleave', (event) => {
+    pointerInside.value = false
     const { cx, cy } = getCoords(event)
     onCursorMove?.(cx, cy)
     onCursorFlush?.()
     cancelPassiveHover()
+    if (!isEnabled()) return
+    editor.setMeasurementMode('off')
     if (!drag.value) {
       editor.setHoveredNode(null)
       editor.setAutoLayoutHover(null)
@@ -324,6 +403,12 @@ export function useCanvasInput(
     if (drag.value) onMouseUp(event)
   })
 
+  const stopToolListener = editor.onEditorEvent('tool:changed', () => {
+    if (!isEnabled()) return
+    editor.setMeasurementMode('off')
+  })
+  tryOnScopeDispose(stopToolListener)
+
   setupPanZoom(canvasRef, editor, drag, onMouseDown, onMouseMove, onMouseUp)
   tryOnScopeDispose(cancelPassiveHover)
   return {
@@ -332,6 +417,14 @@ export function useCanvasInput(
     autoLayoutPaddingEdit,
     updateAutoLayoutPaddingEdit,
     commitAutoLayoutPaddingEdit,
-    cancelAutoLayoutPaddingEdit
+    cancelAutoLayoutPaddingEdit,
+    cleanupInteractions() {
+      cancelPassiveHover()
+      cancelAutoLayoutPaddingEdit()
+      drag.value = null
+      cursorOverride.value = null
+      pointerInside.value = false
+      resetMeasurementModifiers()
+    }
   }
 }

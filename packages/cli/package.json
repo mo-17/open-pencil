@@ -18,6 +18,14 @@
   "imports": {
     "#cli/*": "./src/*"
   },
+  "exports": {
+    "./library": {
+      "types": "./dist/library/index.d.mts",
+      "bun": "./src/library/index.ts",
+      "import": "./dist/library/index.mjs",
+      "default": "./dist/library/index.mjs"
+    }
+  },
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -70,7 +78,7 @@
     "remark-gfm": "4.0.1",
     "tailwind-merge": "^2.5.5",
     "tailwindcss": "^4.2.1",
-    "vite": "^8.0.0",
+    "vite": "8.1.4",
     "vue": "^3.5.29",
     "vue-router": "^4.6.4",
     "zustand": "^5.0.0"

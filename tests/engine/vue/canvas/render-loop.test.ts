@@ -163,6 +163,7 @@ function createEditor() {
       motionActive = false
       motionStops++
       for (const handler of handlers.get('repaint:requested') ?? []) handler()
+      return true
     }
   }
 
@@ -378,6 +379,106 @@ describe('canvas render loop', () => {
     }
   })
 
+  test('repaint events dirty every canvas view even when its local version is unchanged', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const { editor, emit } = createEditor()
+      const firstView = { ...editor.state, selectedIds: new Set<string>() }
+      const secondView = { ...editor.state, selectedIds: new Set<string>() }
+      let firstRenders = 0
+      let secondRenders = 0
+      const firstLoop = createCanvasRenderLoop(editor, () => firstRenders++, {
+        layer: 'scene',
+        getRenderState: () => firstView
+      })
+      const secondLoop = createCanvasRenderLoop(editor, () => secondRenders++, {
+        layer: 'scene',
+        getRenderState: () => secondView
+      })
+
+      emit('repaint:requested')
+      scheduler.flush()
+      firstLoop.markRendered()
+      secondLoop.markRendered()
+      expect([firstRenders, secondRenders]).toEqual([1, 1])
+
+      emit('repaint:requested')
+      scheduler.flush()
+      expect([firstRenders, secondRenders]).toEqual([2, 2])
+    } finally {
+      scheduler.restore()
+    }
+  })
+
+  test('reads versions and selection from the supplied canvas view state', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const { editor, emit } = createEditor()
+      const viewState = {
+        ...editor.state,
+        renderVersion: 4,
+        sceneVersion: 2,
+        selectedIds: new Set(['pane-node'])
+      }
+      let renders = 0
+      const loop = createCanvasRenderLoop(
+        editor,
+        () => {
+          renders++
+        },
+        { getRenderState: () => viewState }
+      )
+
+      emit('repaint:requested')
+      scheduler.flush()
+      loop.markRendered()
+      expect(renders).toBe(1)
+
+      emit('repaint:requested')
+      scheduler.flush()
+      expect(renders).toBe(2)
+
+      viewState.renderVersion++
+      emit('repaint:requested')
+      scheduler.flush()
+      expect(renders).toBe(3)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
+  test('resumes a supplied canvas view after loading completion requests a repaint', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const { editor, emit } = createEditor()
+      const viewState = { ...editor.state, loading: false }
+      let renders = 0
+      const loop = createCanvasRenderLoop(
+        editor,
+        () => {
+          renders++
+        },
+        { getRenderState: () => viewState }
+      )
+
+      emit('repaint:requested')
+      scheduler.flush()
+      loop.markRendered()
+      viewState.loading = true
+      emit('repaint:requested')
+      scheduler.flush()
+      expect(renders).toBe(1)
+      expect(scheduler.pendingCount).toBe(0)
+
+      viewState.loading = false
+      emit('repaint:requested')
+      scheduler.flush()
+      expect(renders).toBe(2)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
   test('cancels pending renders when paused', () => {
     const scheduler = createFrameScheduler()
     try {
@@ -441,6 +542,42 @@ describe('canvas render loop', () => {
 
       expect(renders).toBe(1)
       expect(harness.motionTimestamps).toEqual([])
+      expect(scheduler.pendingCount).toBe(0)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
+  test('renders shared Motion in inactive panes without advancing the active pane clock twice', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const harness = createEditor()
+      const inactiveView = { ...harness.editor.state, selectedIds: new Set<string>() }
+      let activeRenders = 0
+      let inactiveRenders = 0
+      createCanvasRenderLoop(harness.editor, () => activeRenders++, { layer: 'scene' })
+      createCanvasRenderLoop(harness.editor, () => inactiveRenders++, {
+        layer: 'scene',
+        getRenderState: () => inactiveView
+      })
+      harness.startMotion([true, false])
+
+      harness.emit('repaint:requested')
+      scheduler.flush(500)
+      expect([activeRenders, inactiveRenders]).toEqual([1, 1])
+      expect(harness.motionTimestamps).toEqual([500])
+      expect(scheduler.pendingCount).toBe(1)
+
+      scheduler.flush(516)
+      expect([activeRenders, inactiveRenders]).toEqual([2, 2])
+      expect(harness.motionTimestamps).toEqual([500, 516])
+      expect(harness.motionStops).toBe(1)
+
+      // The inactive pane consumes the stop repaint later in the same shared RAF. The active pane
+      // alone needs the follow-up frame because it rendered the final sample before requesting it.
+      expect(scheduler.pendingCount).toBe(1)
+      scheduler.flush(532)
+      expect([activeRenders, inactiveRenders]).toEqual([3, 2])
       expect(scheduler.pendingCount).toBe(0)
     } finally {
       scheduler.restore()

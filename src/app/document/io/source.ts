@@ -95,11 +95,11 @@ export function createDocumentSourceActions({
     onDownloadSuccess: (version) => recovery.markProtectedVersion(version)
   })
 
-  const { disposeAutosave } = createAutosave({
+  const autosave = createAutosave({
     state,
     getSavedVersion,
     hasWritableSource: () => !!getFileHandle() || !!getFilePath() || !!getStorageBinding(),
-    saveCurrentDocument: saveFigFile
+    saveCurrentDocument: () => saveFigFile()
   })
 
   function setDocumentSource(
@@ -155,7 +155,7 @@ export function createDocumentSourceActions({
 
   function disposeDocumentIO() {
     stopWatchingFile()
-    disposeAutosave()
+    autosave.disposeAutosave()
     recovery.disposeRecovery()
   }
 

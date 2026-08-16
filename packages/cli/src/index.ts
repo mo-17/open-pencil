@@ -13,6 +13,7 @@ import find from './commands/find'
 import formats from './commands/formats'
 import importCmd from './commands/import'
 import info from './commands/info'
+import libraries from './commands/libraries'
 import library from './commands/library'
 import lint from './commands/lint'
 import microfrontend from './commands/microfrontend'
@@ -47,6 +48,7 @@ const main = defineCommand({
     formats,
     info,
     library,
+    libraries,
     lint,
     motion,
     microfrontend,

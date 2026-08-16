@@ -113,6 +113,7 @@ export function renderFromEditorState(
       ...(generatedEffectsAnimate ? { generatedEffectTimeMs: now() } : {}),
       generatedEffectMode: reducedMotion ? 'reduce' : 'allow',
       hoveredNodeId: state.hoveredNodeId,
+      measurementMode: state.measurementMode,
       enteredContainerId: state.enteredContainerId,
       editingTextId: state.editingTextId,
       textEditor: textEditor as RenderOverlays['textEditor'],
@@ -247,6 +248,37 @@ function renderSceneLayer(
   )
 }
 
+function measurementVisible(overlays: RenderOverlays): boolean {
+  return (
+    overlays.measurementMode !== undefined &&
+    overlays.measurementMode !== 'off' &&
+    !overlays.editingTextId &&
+    !overlays.nodeEditState &&
+    !overlays.penState
+  )
+}
+
+function drawInteractiveOverlays(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  selectedIds: Set<string>,
+  overlays: RenderOverlays
+) {
+  const measuring = measurementVisible(overlays)
+  const hoveredNodeId =
+    measuring || overlays.hoveredNodeId === overlays.nodeEditState?.nodeId
+      ? null
+      : overlays.hoveredNodeId
+  r.drawHoverHighlight(canvas, graph, hoveredNodeId)
+  r.drawEnteredContainer(canvas, graph, overlays.enteredContainerId)
+  r.profiler.beginPhase('render:selection')
+  // Motion preview is scene-only; selection chrome stays on authored bounds.
+  r.drawSelection(canvas, graph, selectedIds, overlays)
+  if (measuring) r.drawMeasurements(canvas, graph, selectedIds, overlays.hoveredNodeId)
+  r.profiler.endPhase('render:selection')
+}
+
 export function render(
   r: SkiaRenderer,
   graph: SceneGraph,
@@ -338,22 +370,15 @@ export function render(
       canvas.save()
       canvas.scale(r.dpr, r.dpr)
 
-      r.drawHoverHighlight(
-        canvas,
-        graph,
-        overlays.hoveredNodeId === overlays.nodeEditState?.nodeId ? null : overlays.hoveredNodeId
-      )
-      r.drawEnteredContainer(canvas, graph, overlays.enteredContainerId)
-      p.beginPhase('render:selection')
-      // Motion preview is scene-only; selection chrome stays on authored bounds.
-      r.drawSelection(canvas, graph, selectedIds, overlays)
-      p.endPhase('render:selection')
+      drawInteractiveOverlays(r, canvas, graph, selectedIds, overlays)
       r.drawFlashes(canvas, graph)
       drawPageGuides(r, canvas, graph)
       r.drawSnapGuides(canvas, overlays.snapGuides)
       r.drawMarquee(canvas, overlays.marquee)
       r.drawLayoutInsertIndicator(canvas, overlays.layoutInsertIndicator)
-      r.drawAutoLayoutHover(canvas, graph, overlays.autoLayoutHover)
+      if (!measurementVisible(overlays)) {
+        r.drawAutoLayoutHover(canvas, graph, overlays.autoLayoutHover)
+      }
       r.drawNodeEditOverlay(canvas, graph, overlays.nodeEditState)
       r.drawPenOverlay(canvas, overlays.penState)
       r.drawRemoteCursors(canvas, graph, overlays.remoteCursors)

@@ -191,7 +191,7 @@ export function createCanvasSurfaceManager({
 
     const previousRenderer = state.renderer
 
-    sizeCanvas(canvas, editor)
+    sizeCanvas(canvas, editor, options?.onViewportResize)
     const surface = makeReplacementSurface(ck, canvas, previousRenderer)
     if (!surface) return false
     const renderer = makeReplacementRenderer(ck, surface, canvas, previousRenderer)
@@ -242,7 +242,8 @@ export function createCanvasSurfaceManager({
   }
 
   function renderNow(): boolean {
-    if (editor.state.loading) {
+    const renderState = options?.getRenderState?.() ?? editor.state
+    if (renderState.loading) {
       // kit-loader and font reloads can call renderNow directly, outside the guarded RAF loop.
       // Keep the frame dirty; the loading lease's repaint event will schedule it once usable.
       renderLoop.markDirty()
@@ -257,7 +258,7 @@ export function createCanvasSurfaceManager({
     }
     try {
       renderer.renderFromEditorState(
-        editor.state,
+        renderState,
         editor.graph,
         editor.textEditor,
         canvas.clientWidth,
@@ -288,6 +289,7 @@ export function createCanvasSurfaceManager({
 
   const renderLoop = createCanvasRenderLoop(editor, renderNow, {
     layer: options?.layer,
+    getRenderState: options?.getRenderState,
     performanceMode,
     onActiveFrameSample: options?.onActiveFrameSample
   })
@@ -300,7 +302,6 @@ export function createCanvasSurfaceManager({
     state.renderer?.setPerformanceMode(normalized)
     renderLoop.setPerformanceMode(normalized)
   }
-
   function resizeCanvas(canvas: HTMLCanvasElement) {
     const ck = getCanvasKit()
     if (!ck || !state.renderer) {
@@ -308,7 +309,7 @@ export function createCanvasSurfaceManager({
       return
     }
 
-    sizeCanvas(canvas, editor)
+    sizeCanvas(canvas, editor, options?.onViewportResize)
 
     const surface = makeReplacementSurface(ck, canvas, state.renderer)
     if (!surface) {

@@ -8,6 +8,7 @@ import { useAIChat } from '@/app/ai/chat/use'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import { settingsDialogOpen, settingsDialogSection } from '@/app/settings/dialog'
 import AppearanceSettingsPanel from '@/components/settings/appearance/AppearanceSettingsPanel.vue'
+import MCPConnectionsSection from '@/components/settings/mcp/MCPConnectionsSection.vue'
 import ModelsPanel from '@/components/settings/models/ModelsPanel.vue'
 import CanvasPerformancePanel from '@/components/settings/performance/CanvasPerformancePanel.vue'
 import PluginsPanel from '@/components/settings/plugins/PluginsPanel.vue'
@@ -103,6 +104,16 @@ const navigationClass =
         <button
           type="button"
           :class="navigationClass"
+          :data-state="settingsDialogSection === 'mcp' ? 'active' : 'inactive'"
+          data-test-id="settings-section-mcp"
+          @click="settingsDialogSection = 'mcp'"
+        >
+          <icon-lucide-plug class="size-3.5" />
+          {{ dialogs.mcpConnections }}
+        </button>
+        <button
+          type="button"
+          :class="navigationClass"
           :data-state="settingsDialogSection === 'media' ? 'active' : 'inactive'"
           data-test-id="settings-section-media"
           @click="settingsDialogSection = 'media'"
@@ -134,6 +145,14 @@ const navigationClass =
         <AppearanceSettingsPanel v-else-if="settingsDialogSection === 'appearance'" />
 
         <CanvasPerformancePanel v-else-if="settingsDialogSection === 'performance'" />
+
+        <section
+          v-else-if="settingsDialogSection === 'mcp'"
+          class="flex flex-col"
+          data-test-id="settings-mcp-panel"
+        >
+          <MCPConnectionsSection />
+        </section>
 
         <section
           v-else-if="settingsDialogSection === 'media'"

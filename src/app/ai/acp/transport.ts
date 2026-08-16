@@ -37,6 +37,7 @@ import {
 } from '@/app/ai/chat/attachments'
 import { INTERRUPTED_TOOL_ERROR } from '@/app/ai/chat/interruption'
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
+import { buildACPMCPServers } from '@/app/integrations/mcp'
 
 import {
   beginACPDiagnostics,
@@ -1244,7 +1245,10 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       appendACPDebugEntry('initialize_response', initializeResult)
 
       beginACPDiagnostics(this.agentDef.name)
-      const mcpServers = buildACPMCPServerConfigs(automationAuthToken, this.mcpServers)
+      const mcpServers = [
+        ...(await buildACPMCPServers({ authorizationToken: automationAuthToken })),
+        ...this.mcpServers
+      ]
       const capabilities: ACPSessionCapabilities = {
         list: initializeResult.agentCapabilities?.sessionCapabilities?.list != null,
         resume: initializeResult.agentCapabilities?.sessionCapabilities?.resume != null,

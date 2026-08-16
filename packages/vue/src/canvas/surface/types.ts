@@ -1,4 +1,5 @@
 import type { CanvasPerformanceMode } from '@open-pencil/core/canvas'
+import type { EditorState } from '@open-pencil/core/editor'
 
 /**
  * Options for {@link useCanvas}.
@@ -51,4 +52,15 @@ export interface UseCanvasOptions {
    * Called once the rendering surface is ready.
    */
   onReady?: () => void
+  /**
+   * Supplies the view state rendered by this canvas. Defaults to `editor.state`.
+   *
+   * Multiple canvas surfaces can use independent view state while sharing one
+   * document graph, history, and editor event bus.
+   */
+  getRenderState?: () => EditorState
+  /**
+   * Receives this canvas surface's CSS viewport size after creation and resize.
+   */
+  onViewportResize?: (width: number, height: number) => void
 }

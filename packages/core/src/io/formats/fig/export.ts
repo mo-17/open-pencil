@@ -22,6 +22,7 @@ import type { GUID } from '@open-pencil/scene-graph/primitives'
 import { decodeBase64 } from '#core/bytes'
 import type { SkiaRenderer } from '#core/canvas'
 import { CANVAS_BG_COLOR, IS_BROWSER, IS_TAURI } from '#core/constants'
+import { applyEnabledLibrariesPluginData } from '#core/io/formats/fig/library-metadata'
 import { projectLowcodeNodeForFigma } from '#core/io/formats/fig/lowcode-projection'
 import { encodeNativeFigBuildPayload } from '#core/io/formats/fig/native-payload'
 import { prepareFigmaProjectionFonts } from '#core/io/formats/fig/projection-fonts'
@@ -147,9 +148,15 @@ function makeExportDocumentNodeChange(
     blobs,
     blobIndexByHex
   )
+  applyEnabledLibrariesPluginData(documentNc, graph)
   const rootLowcode = serializeLowcodeFields(rootNode)
-  if (rootNode.pluginData.length > 0 || rootLowcode.length > 0) {
-    documentNc.pluginData = mergePluginData([...rootNode.pluginData, ...rootLowcode])
+  const rootPluginData = (documentNc.pluginData ?? []).map((entry) => ({
+    pluginId: entry.pluginID,
+    key: entry.key,
+    value: entry.value
+  }))
+  if (rootPluginData.length > 0 || rootLowcode.length > 0) {
+    documentNc.pluginData = mergePluginData([...rootPluginData, ...rootLowcode])
   }
   return documentNc
 }
@@ -627,9 +634,6 @@ export async function exportFigFileWithOptions(
   // Lazy population synchronizes component trees and therefore mutates its graph. Saving must not
   // rewrite the live editor document or restore component values over edits made by the user.
   const graph = cloneSceneGraphForFigExport(sourceGraph)
-  // The upstream lightweight clone predates OpenPencil's message-level Motion round-trip field.
-  // Preserve the same reference semantics as the previous serialize/deserialize export clone.
-  graph.figMessageObjectAnimations = sourceGraph.figMessageObjectAnimations
   populateAllLazyFigImportRoots(graph)
   await initCodec()
 

@@ -3,7 +3,12 @@ import { tool } from 'ai'
 import * as v from 'valibot'
 
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
-import { CORE_TOOLS, EXTENDED_TOOLS, toolsToAI } from '@open-pencil/core/tools'
+import {
+  CORE_TOOLS,
+  EXTENDED_TOOLS,
+  registerComponentCatalog,
+  toolsToAI
+} from '@open-pencil/core/tools'
 import type { StepBudget, ToolLogEntry } from '@open-pencil/core/tools'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
@@ -13,6 +18,7 @@ import { getActiveEditorStore } from '@/app/editor/active-store'
 import type { EditorStore } from '@/app/editor/active-store'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 import { resolveEditorMutationScope } from '@/app/editor/mutation-scope'
+import { useLibraryService } from '@/app/libraries'
 import { canCreatePluginModule } from '@/app/plugins'
 
 import { createVisualInspectionTool } from './vision'
@@ -84,8 +90,17 @@ type SuccessfulSnapshot =
       undoRevision: number
     }
 
-const VISUAL_INSPECTION_TOOL_NAMES = new Set(['export_image'])
-
+const EXTENDED_AI_TOOL_NAMES = new Set([
+  'export_image',
+  'get_components',
+  'list_libraries',
+  'insert_library_component'
+])
+const COMPONENT_CATALOG_TOOL_NAMES = new Set([
+  'get_components',
+  'list_libraries',
+  'insert_library_component'
+])
 export interface StepUsage {
   inputTokens: number
   outputTokens: number
@@ -285,7 +300,7 @@ export function createAITools(store: EditorStore) {
   const codePenManager = codePenToolsEnabled ? getCodePenAIManager(store) : null
   const toolDefinitions = [
     ...CORE_TOOLS,
-    ...EXTENDED_TOOLS.filter((definition) => VISUAL_INSPECTION_TOOL_NAMES.has(definition.name)),
+    ...EXTENDED_TOOLS.filter((definition) => EXTENDED_AI_TOOL_NAMES.has(definition.name)),
     ...(codePenToolsEnabled ? createCodePenAITools(store) : [])
   ]
 
@@ -305,6 +320,11 @@ export function createAITools(store: EditorStore) {
         return undefined
       },
       onBeforeExecute: (def, { args, signal }) => {
+        if (COMPONENT_CATALOG_TOOL_NAMES.has(def.name)) {
+          const libraryService = useLibraryService()
+          libraryService.bindEditor(store)
+          registerComponentCatalog(store.graph, libraryService)
+        }
         if (def.mutates && codePenManager?.hasActiveReconstruction()) {
           throw new Error(
             'Live-document mutation tools are disabled while a CodePen shadow reconstruction is active. Seal, review, or discard the shadow draft first.'

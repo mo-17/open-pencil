@@ -16,6 +16,7 @@ export {
   type NodeFontReadiness
 } from './read/fonts'
 export { readGeneratedEffect, type GeneratedEffectRead } from './read/generated-effect'
+export { insertLibraryComponent, listLibraries } from './read/libraries'
 export { diffJSX, getJSX } from './read/jsx'
 export { listModules, readModule } from './read/module'
 export {

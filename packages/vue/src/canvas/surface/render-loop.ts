@@ -4,7 +4,7 @@ import {
   type CanvasPerformanceMode,
   type CanvasPerformanceProfile
 } from '@open-pencil/core/canvas'
-import type { Editor } from '@open-pencil/core/editor'
+import type { Editor, EditorState } from '@open-pencil/core/editor'
 import {
   validateGeneratedEffectSpec,
   type GeneratedEffectPreset,
@@ -16,6 +16,7 @@ import type { CanvasActiveFrameSample, CanvasRenderLayer } from './types'
 
 type RenderLoopOptions = {
   layer?: CanvasRenderLayer
+  getRenderState?: () => EditorState
   performanceMode?: CanvasPerformanceMode
   onActiveFrameSample?: (sample: CanvasActiveFrameSample) => void
 }
@@ -142,6 +143,7 @@ export function createCanvasRenderLoop(
   renderNow: () => unknown,
   options: RenderLoopOptions = {}
 ) {
+  const getRenderState = options.getRenderState ?? (() => editor.state)
   const scheduler = getRenderScheduler(editor)
   const drivesMotion = shouldDriveMotion(options.layer)
   const reducedMotionQuery =
@@ -152,6 +154,7 @@ export function createCanvasRenderLoop(
   let dirty = true
   let frameScheduled = false
   let lastRenderVersion = -1
+  let lastSceneVersion = -1
   let lastSelectedIds: Set<string> | null = null
   let generatedEffectTimer: ReturnType<typeof setTimeout> | null = null
   let generatedEffectFrameDue = false
@@ -173,12 +176,13 @@ export function createCanvasRenderLoop(
 
   function currentGeneratedEffectSchedule(): GeneratedEffectSchedule {
     if (!drivesMotion) return { active: false, cadenceHz: 0, continuous: false }
-    const cacheKey = `${editor.state.currentPageId}:${editor.state.sceneVersion}:${prefersReducedMotion}:${performanceMode}`
+    const state = getRenderState()
+    const cacheKey = `${state.currentPageId}:${state.sceneVersion}:${prefersReducedMotion}:${performanceMode}`
     if (cacheKey !== generatedEffectCacheKey) {
       generatedEffectCacheKey = cacheKey
       generatedEffectSchedule = animatedGeneratedEffectSchedule(
         editor.graph,
-        editor.state.currentPageId,
+        state.currentPageId,
         prefersReducedMotion,
         canvasPerformanceProfile(performanceMode)
       )
@@ -229,9 +233,11 @@ export function createCanvasRenderLoop(
     activeFrame: boolean,
     measureFrameInterval: boolean
   ): boolean {
-    const versionChanged = editor.state.renderVersion !== lastRenderVersion
-    const selectionChanged = editor.state.selectedIds !== lastSelectedIds
-    if (!dirty && !versionChanged && !selectionChanged) return true
+    const state = getRenderState()
+    const versionChanged = state.renderVersion !== lastRenderVersion
+    const sceneChanged = state.sceneVersion !== lastSceneVersion
+    const selectionChanged = state.selectedIds !== lastSelectedIds
+    if (!dirty && !versionChanged && !sceneChanged && !selectionChanged) return true
 
     dirty = false
     let renderSucceeded = true
@@ -277,17 +283,20 @@ export function createCanvasRenderLoop(
   function renderFrame(timestampMs: number) {
     frameScheduled = false
     if (!pageVisible || suspended || disposed) return
-    if (editor.state.loading) {
+    if (getRenderState().loading) {
       dirty = true
       clearGeneratedEffectTimer()
       return
     }
 
+    // The active pane owns the editor Motion clock. Other scene panes still render and schedule
+    // against the shared preview so they see every sampled frame without sampling it twice.
     const motionWasActive = drivesMotion && editor.isMotionPreviewActive()
+    const ownsMotionClock = motionWasActive && getRenderState() === editor.state
     const effectSchedule = currentGeneratedEffectSchedule()
-    const motionShouldContinue = motionWasActive
+    const motionShouldContinue = ownsMotionClock
       ? editor.updateMotionPreviewFrame(timestampMs)
-      : false
+      : motionWasActive
     const measureFrameInterval = activeSamplePending || motionWasActive || effectSchedule.continuous
     const activeFrame = measureFrameInterval || generatedEffectFrameDue
     activeSamplePending = false
@@ -308,7 +317,7 @@ export function createCanvasRenderLoop(
   const scheduleRender = () => {
     dirty = true
     clearGeneratedEffectTimer()
-    if (editor.state.loading) return
+    if (getRenderState().loading) return
     scheduleFrame()
   }
 
@@ -320,7 +329,7 @@ export function createCanvasRenderLoop(
 
   const scheduleActiveRender = () => {
     activeSamplePending = true
-    scheduleRender()
+    scheduleFrame()
   }
 
   const onReducedMotionChange = () => {
@@ -345,14 +354,15 @@ export function createCanvasRenderLoop(
     editor.onEditorEvent('viewport:changed', scheduleActiveRender)
   ]
 
-  unsubscribe.push(editor.onEditorEvent('repaint:requested', scheduleActiveRender))
+  // Repaints can represent cache/font/loading changes that are not reflected in a pane-local
+  // renderVersion, so every view must redraw even when its supplied state is otherwise unchanged.
+  unsubscribe.push(editor.onEditorEvent('repaint:requested', scheduleRender))
 
   if (options.layer !== 'scene') {
     unsubscribe.push(editor.onEditorEvent('overlay:requested', scheduleRender))
   }
-
   if (shouldScheduleForSelection(options.layer)) {
-    unsubscribe.push(editor.onEditorEvent('selection:changed', scheduleRender))
+    unsubscribe.push(editor.onEditorEvent('selection:changed', scheduleFrame))
   }
 
   reducedMotionQuery?.addEventListener('change', onReducedMotionChange)
@@ -360,8 +370,10 @@ export function createCanvasRenderLoop(
     document.addEventListener('visibilitychange', onVisibilityChange)
 
   function markRendered() {
-    lastRenderVersion = editor.state.renderVersion
-    lastSelectedIds = editor.state.selectedIds
+    const state = getRenderState()
+    lastRenderVersion = state.renderVersion
+    lastSceneVersion = state.sceneVersion
+    lastSelectedIds = state.selectedIds
     consecutiveRenderFailures = 0
   }
 

@@ -43,6 +43,7 @@
       "@open-pencil/plugin-contracts/adapter-helpers": [
         "./packages/plugin-contracts/src/adapter-helpers.ts"
       ],
+      "@open-pencil/cli/library": ["./packages/cli/src/library/index.ts"],
       "#scene-graph/*": ["./packages/scene-graph/src/*"],
       "@open-pencil/scene-graph": ["./packages/scene-graph/src/index.ts"],
       "@open-pencil/scene-graph/*": ["./packages/scene-graph/src/*"],

@@ -84,6 +84,7 @@ export {
 } from '@open-pencil/scene-graph'
 
 export { FigmaAPI, FigmaNodeProxy, computeImageHash, type FigmaFontName } from './figma-api'
+export type { PortableSceneGraphData } from './kiwi/fig/parse/portable-data'
 export {
   ALL_TOOLS,
   CORE_TOOLS,

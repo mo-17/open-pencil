@@ -18,6 +18,7 @@ import {
   parseS3ErrorXML,
   type ListedObject
 } from '@/app/integrations/storage/s3/xml'
+import type { LibraryObjectWriteOptions } from '@/app/integrations/storage/types'
 
 export function resolveS3Region(config: S3CompatibleConfig): string {
   const explicit = config.region?.trim()
@@ -298,8 +299,12 @@ export async function putObject(
   body: Uint8Array | string,
   contentType: string,
   onUploadProgress?: (progress: UploadProgress) => void,
-  signal?: AbortSignal
+  requestOptions?: AbortSignal | LibraryObjectWriteOptions
 ): Promise<void> {
+  const signal = isAbortSignal(requestOptions) ? requestOptions : undefined
+  const options: LibraryObjectWriteOptions | undefined = isAbortSignal(requestOptions)
+    ? undefined
+    : requestOptions
   const bytes = typeof body === 'string' ? new TextEncoder().encode(body) : body
   // Exact ArrayBuffer so fetch/UA can set Content-Length (required by B2 for large PUTs).
   const payload = bytes.buffer.slice(
@@ -312,7 +317,9 @@ export async function putObject(
     {
       method: 'PUT',
       headers: {
-        'Content-Type': contentType
+        'Content-Type': contentType,
+        ...(options?.ifMatch ? { 'If-Match': options.ifMatch } : {}),
+        ...(options?.ifNoneMatch ? { 'If-None-Match': options.ifNoneMatch } : {})
       },
       body: payload,
       signal
@@ -325,6 +332,27 @@ export async function putObject(
     throw new S3HttpError(res.status, `Failed to upload ${key}`)
   }
   await res.body?.cancel().catch(() => undefined)
+}
+
+function isAbortSignal(value: unknown): value is AbortSignal {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'aborted' in value &&
+    typeof (value as AbortSignal).addEventListener === 'function'
+  )
+}
+
+export async function getObjectValue(
+  config: S3CompatibleConfig,
+  key: string
+): Promise<{ bytes: Uint8Array | null; etag: string | null }> {
+  const res = await s3Request(config, objectURL(config, key), { method: 'GET' })
+  if (res.status === 404) return { bytes: null, etag: null }
+  return {
+    bytes: new Uint8Array(await res.arrayBuffer()),
+    etag: res.headers.get('etag')
+  }
 }
 
 export type DownloadProgress = { receivedBytes: number; totalBytes: number | null }

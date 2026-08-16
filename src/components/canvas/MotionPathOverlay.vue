@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { templateRef, useResizeObserver } from '@vueuse/core'
-import { computed, onBeforeUnmount, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, watch, watchEffect } from 'vue'
 
 import type { MotionPathPoint } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
@@ -286,6 +286,8 @@ function validateEditingSelection(): void {
     stopMotionPathEditing(store)
   }
 }
+
+watch(() => store.state.selectedIds, validateEditingSelection, { immediate: true })
 
 watchEffect(() => {
   void activeEdit.value

@@ -40,7 +40,7 @@ import { initializeRendererPaints } from './renderer/paints'
 import * as RenderPipeline from './renderer/pipeline'
 import * as RendererState from './renderer/state'
 import * as RenderText from './text'
-export type { RenderOverlays, RulerTheme } from './renderer/types'
+export type { MeasurementMode, RenderOverlays, RulerTheme } from './renderer/types'
 import type {
   Image as CKImage,
   Path,
@@ -216,6 +216,12 @@ export class SkiaRenderer {
     canvas: Canvas,
     graph: SceneGraph,
     hoveredNodeId?: string | null
+  ) => void
+  declare drawMeasurements: (
+    canvas: Canvas,
+    graph: SceneGraph,
+    selectedIds: Set<string>,
+    targetId?: string | null
   ) => void
   declare drawEnteredContainer: (
     canvas: Canvas,

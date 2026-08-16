@@ -28,6 +28,7 @@ const VERSION_HASH_EXCLUDED_KEYS = new Set<keyof SceneNode | 'childIds'>([
   'overrideKey',
   'sharedSymbolVersion',
   'publishedVersion',
+  'librarySource',
   'isPublishable',
   'isSymbolPublishable'
 ])

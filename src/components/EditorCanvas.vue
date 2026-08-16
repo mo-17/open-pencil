@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, type Component } from 'vue'
+import { computed, onUnmounted, ref, watch, type Component } from 'vue'
 import {
   AUTO_LAYOUT_PADDING_EDITOR_OFFSET_X,
   AUTO_LAYOUT_PADDING_EDITOR_OFFSET_Y
@@ -36,6 +36,10 @@ import CanvasMenu from './canvas/CanvasMenu.vue'
 import MotionPathOverlay from './canvas/MotionPathOverlay.vue'
 import NumberField from './inputs/NumberField.vue'
 
+const { paneId } = defineProps<{
+  paneId?: string
+}>()
+
 const store = useEditorStore()
 const collab = useCollabInjected()
 const { dialogs } = useI18n()
@@ -65,6 +69,21 @@ const fontLoadingLabel = computed(() => {
   })
 })
 
+const isActivePane = computed(() => !paneId || store.activePaneId.value === paneId)
+
+function activatePane() {
+  if (paneId) store.setActivePane(paneId)
+}
+
+function updatePaneCursor(cx: number, cy: number) {
+  if (isActivePane.value) updateCursor(cx, cy)
+}
+
+const getRenderState = paneId ? () => store.getPaneRenderState(paneId) : undefined
+const onViewportResize = paneId
+  ? (width: number, height: number) => store.resizePane(paneId, width, height)
+  : undefined
+
 const { updateCursor, flushCursor } = useCanvasCollaborationAwareness(
   store,
   collab,
@@ -76,14 +95,18 @@ useCanvas(sceneCanvasRef, store, {
   layer: 'scene',
   showRulers: false,
   performanceMode: getCanvasPerformanceMode,
-  onActiveFrameSample: recordActiveCanvasFrame
+  onActiveFrameSample: recordActiveCanvasFrame,
+  getRenderState,
+  onViewportResize
 })
 const { hitTestSectionTitle, hitTestComponentLabel, hitTestFrameTitle } = useCanvas(
   canvasRef,
   store,
   {
     layer: 'overlays',
-    performanceMode: getCanvasPerformanceMode
+    performanceMode: getCanvasPerformanceMode,
+    getRenderState,
+    onViewportResize
   }
 )
 const {
@@ -91,19 +114,27 @@ const {
   autoLayoutPaddingEdit,
   updateAutoLayoutPaddingEdit,
   commitAutoLayoutPaddingEdit,
-  cancelAutoLayoutPaddingEdit
+  cancelAutoLayoutPaddingEdit,
+  cleanupInteractions
 } = useCanvasInput(
   canvasRef,
   store,
   hitTestSectionTitle,
   hitTestComponentLabel,
   hitTestFrameTitle,
-  updateCursor,
-  flushCursor
+  updatePaneCursor,
+  flushCursor,
+  activatePane,
+  () => isActivePane.value
 )
 
-useTextEdit(canvasRef, store)
-const { isDraggingOver } = useCanvasDrop(canvasRef, store)
+watch(isActivePane, (active) => {
+  if (!active) cleanupInteractions()
+})
+onUnmounted(cleanupInteractions)
+
+useTextEdit(canvasRef, store, { isEnabled: () => isActivePane.value })
+const { isDraggingOver } = useCanvasDrop(canvasRef, store, activatePane)
 
 const paddingSideIcons = {
   top: IconLucidePanelTop,
@@ -139,22 +170,30 @@ const cursor = computed(() => toolCursor(store.state.activeTool, cursorOverride.
     <ContextMenuTrigger as-child @contextmenu="selectAtContextPoint">
       <div
         data-test-id="canvas-area"
+        :data-pane-id="paneId"
+        :data-active-pane="isActivePane ? 'true' : 'false'"
         class="canvas-area relative min-h-0 min-w-0 flex-1 overflow-hidden"
+        @pointerdown.capture="activatePane"
+        @focusin.capture="activatePane"
+        @wheel.capture="activatePane"
+        @dragenter.capture="activatePane"
       >
         <canvas
           ref="sceneCanvasRef"
+          :data-pane-id="paneId"
           data-test-id="scene-canvas-element"
           aria-hidden="true"
           class="pointer-events-none absolute inset-0 size-full outline-none"
         />
         <canvas
           ref="canvasRef"
+          :data-pane-id="paneId"
           data-test-id="canvas-element"
           tabindex="-1"
           :style="{ cursor }"
           class="absolute inset-0 block size-full touch-none outline-none"
         />
-        <MotionPathOverlay />
+        <MotionPathOverlay v-if="isActivePane" />
         <Transition
           enter-active-class="transition duration-150"
           enter-from-class="-translate-y-1 opacity-0"

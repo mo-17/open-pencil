@@ -181,6 +181,34 @@ export type StorageConnectionResult = {
   message: string
 }
 
+export interface LibraryObjectSummary {
+  key: string
+  size: number | null
+  etag: string | null
+}
+
+export interface LibraryObjectValue {
+  bytes: Uint8Array | null
+  etag: string | null
+}
+
+export interface LibraryObjectWriteOptions {
+  ifMatch?: string
+  ifNoneMatch?: '*'
+}
+
+export interface LibraryObjectStore {
+  getObject(key: string): Promise<Uint8Array | null>
+  getObjectValue?(key: string): Promise<LibraryObjectValue>
+  putObject(
+    key: string,
+    bytes: Uint8Array,
+    contentType: string,
+    options?: LibraryObjectWriteOptions
+  ): Promise<void>
+  listObjects(prefix: string): Promise<LibraryObjectSummary[]>
+}
+
 export interface StorageAdapter {
   testConnection(options?: Pick<StorageTransferOptions, 'signal'>): Promise<StorageConnectionResult>
   listDocuments(options?: Pick<StorageTransferOptions, 'signal'>): Promise<StorageDocument[]>
@@ -209,6 +237,7 @@ export interface StorageAdapter {
     options?: Pick<StorageTransferOptions, 'signal' | 'expectedAuthority'>
   ): Promise<Uint8Array | null>
   putThumbnail?(id: string, bytes: Uint8Array, options?: StorageTransferOptions): Promise<void>
+  libraryObjects?: LibraryObjectStore
 }
 
 export type StoragePreferenceField = {

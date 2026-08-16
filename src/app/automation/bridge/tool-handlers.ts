@@ -8,13 +8,14 @@ import {
 import type { Editor } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
-import { ALL_TOOLS, serializeToolMutation } from '@open-pencil/core/tools'
+import { ALL_TOOLS, registerComponentCatalog, serializeToolMutation } from '@open-pencil/core/tools'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { AutomationRequestContext } from '@/app/automation/bridge/request-context'
 import type { AutomationTarget } from '@/app/automation/bridge/target'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 import { pageIdForNode, resolveEditorMutationScope } from '@/app/editor/mutation-scope'
+import { useLibraryService } from '@/app/libraries'
 import { canCreatePluginModule } from '@/app/plugins'
 
 type FigmaFactory = (store: AutomationTarget['store'], pageId?: string) => FigmaAPI
@@ -55,6 +56,11 @@ const NON_GRAPH_MUTATION_TOOLS = new Set([
   'switch_page'
 ])
 const MODULE_CREATION_POLICY_TOOLS = new Set(['list_modules', 'create_module'])
+const COMPONENT_CATALOG_TOOLS = new Set([
+  'get_components',
+  'list_libraries',
+  'insert_library_component'
+])
 type AutomationMutationSnapshot =
   | { scope: 'document'; snapshot: ReturnType<Editor['snapshotDocument']> }
   | { scope: 'page'; snapshot: ReturnType<Editor['snapshotPage']> }
@@ -183,6 +189,11 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     const def = ALL_TOOLS.find((t) => t.name === toolName)
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
     const store = target.store
+    if (COMPONENT_CATALOG_TOOLS.has(def.name)) {
+      const libraryService = useLibraryService()
+      libraryService.bindEditor(store)
+      registerComponentCatalog(store.graph, libraryService)
+    }
     const execute = async () => {
       throwIfAborted(context?.signal)
       const targetPage = store.graph.getNode(target.pageId)
@@ -209,7 +220,6 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
               deferLayout: def.name === 'render'
             })
             throwIfAborted(context?.signal)
-
             if (tracksGraph && store.state.sceneVersion !== sceneVersionBefore) {
               const pageNode = store.graph.getNode(pageId)
               if (pageNode) {

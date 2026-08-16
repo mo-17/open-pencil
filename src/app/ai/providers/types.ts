@@ -2,6 +2,8 @@ import type { LanguageModel, ToolLoopAgentSettings, ToolSet } from 'ai'
 
 import type { AIProviderID } from '@open-pencil/core/constants'
 
+import type { FetchFunction } from '@/app/http/types'
+
 export type ModelConfig = {
   providerID: AIProviderID
   apiKey: string
@@ -12,7 +14,7 @@ export type ModelConfig = {
 }
 
 export type ModelProviderAdapterContext = {
-  fetch?: typeof fetch
+  fetch?: FetchFunction
 }
 
 export type ProviderFeaturePolicy = {

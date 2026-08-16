@@ -6,6 +6,7 @@ import type {
   ProviderFeaturePolicy,
   ProviderModelRuntime
 } from '@/app/ai/providers/types'
+import type { FetchFunction } from '@/app/http/types'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
 
@@ -24,8 +25,8 @@ export function resolveLanguageModelID(
   return config.modelID
 }
 
-function desktopFetch(): typeof fetch | undefined {
-  return isTauri() ? (tauriFetch as typeof fetch) : undefined
+function desktopFetch(): FetchFunction | undefined {
+  return isTauri() ? tauriFetch : undefined
 }
 
 export function createLanguageModel(config: ModelConfig): LanguageModel {

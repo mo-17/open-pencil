@@ -25,6 +25,32 @@
   parameter and connector schemas, signed catalogs/packages, publisher trust, runtime indexes, and
   marketplace snapshots. Core keeps its host registries and built-in modules while its existing
   root and `plugins` exports remain compatible.
+- Add tested pane-registry and recursive split-tree models for independently viewed same-document canvases, capped at four visible panes.
+- Add explicit shared/view editor-state ownership and canvas render-state hooks as a foundation for independent same-document canvas panes.
+- Improve collaboration efficiency by avoiding redundant unchanged-field Yjs writes and covering repeated and concurrent two-peer edits.
+- Show Figma-style temporary distance measurements between selected and Option/Alt-hovered layers. (#491)
+- Add a single CodeMirror editor for live Design JSX and HTML/CSS canvas previews, with Tailwind JSX viewing, completion, diagnostics, line numbers, bounded execution, and session-level undo. (#130)
+- Add reusable remote MCP connections for ACP agents, with Streamable HTTP endpoints and bearer tokens stored in the configured credential backend.
+- Author multidimensional component variants in the Design panel, including property/value renaming, sparse-combination diagnostics, variant duplication, and exact instance transitions. (#239)
+- Create deterministic, dependency-complete component-library revisions through the provider-neutral Core library catalog, with browser IndexedDB persistence for local catalogs. (#239)
+- Enable published component libraries per document, browse their assets alongside local components, and lazily materialize read-only definitions for offline linked instances. (#239)
+- Detect newer component-library revisions and explicitly apply stable-key updates to linked instances while preserving assignments and retaining old definitions. (#239)
+- Let AI, MCP, and headless tools discover enabled library components, rank preferred libraries before local assets, and insert components by stable library identity. (#239)
+- Publish the current document as an immutable local component library from the Assets panel, assigning durable collision-safe asset keys on first publication. (#239)
+- Review component-library asset changes before acceptance and undo or redo accepted instance updates as one editor history action. (#239)
+- Preserve enabled-library bindings and materialized definition identities through `.fig` save/reopen, and reject Figma API or AI edits to read-only library definitions. (#239)
+- Enforce read-only library capabilities across visual/layout Figma API setters, structural edits, editor history actions, variant authoring, and clipboard replacement while keeping instances editable. (#239)
+- Publish component-library revisions to storage-provider object namespaces with immutable revision objects, validated manifests, and conflict-checked latest pointers. (#239)
+- Switch the library manager between local and configured storage catalogs, caching remote revisions in IndexedDB for offline browsing and insertion. (#239)
+- Bind the active library catalog into live automation requests so MCP component discovery and stable-identity insertion use the targeted document’s enabled libraries. (#239)
+- Show affected-instance and variant-fallback counts before accepting a component-library update. (#239)
+- Persist the selected local/storage catalog and preferred-library priorities, restoring them for Assets browsing and AI component ranking. (#239)
+- Validate downloaded library revisions against size, node, image, content-hash, and revision-hash limits before caching or materialization. (#239)
+- Manage bounded filesystem component-library catalogs from the CLI with JSON-capable `libraries list` and immutable `libraries publish` commands. (#239)
+- Cover the complete local library lifecycle from multidimensional publication and cross-document insertion through `.fig` save/reopen and offline linked-instance editing. (#239)
+- Track library update state per linked instance so individual instances or every instance of one asset can accept a revision while older definitions remain usable. (#239)
+- Group outdated linked instances by library asset, filter updates by current page or all pages, and apply visible updates in one undoable transaction. (#239)
+- Keep library update discovery read-only until acceptance and cover the populated manager’s page scope, atomic update, and graph immutability in Playwright. (#239)
 - Add a reproducible Dev Container for web, package, CLI, and non-browser test development.
 - Add local crash recovery for unsaved and pathless documents, including MCP-created documents. (#487)
 - Add isolated visual inspection that sends bounded selection renders to the configured Vision model and returns text findings without retaining image data in Design chat history. (#232, #471)
@@ -32,14 +58,22 @@
 - Allow supported AI model profiles to set a provider-specific reasoning effort. (#454)
 - Show unavailable or substituted document fonts with affected-layer selection and retry actions, and expose font fidelity through the Figma API and MCP tooling. (#503)
 
+### Changed
+
+- Pan horizontally with Shift+wheel while preserving native horizontal trackpad movement.
+- Move MCP connections into their own Settings destination instead of presenting them as part of model configuration.
+
 ### Performance
 
+- Coalesce writable-document autosaves that overlap an active `.fig` export while preserving a trailing save for newer edits. (#528)
 - Defer JSX generation and syntax highlighting until the Code panel is active, keeping large canvas selections responsive. (#500)
 - Index Figma clipboard children once during import instead of rescanning every pasted node, keeping large flat pastes linear. (#500)
 - Reduce peak memory during `.fig` export by sharing immutable binary resources with the isolated export graph.
 
 ### Fixed
 
+- Place editor-created instances beside nested source components in world space, including transformed source and destination parents.
+- Harden collaboration node synchronization against malformed remote source metadata and geometry while excluding derived text-renderer caches.
 - Transfer native `.fig` exports over binary Tauri IPC instead of JSON byte arrays, preventing large desktop saves from being truncated or exhausting WebView memory. (#484)
 - Keep unsaved source-less documents recoverable after their editor tab is closed, matching Figma's retained offline-change behavior.
 - Decode zstd-compressed FIG containers, reject invalid compressed payloads, and preserve exact fixture byte ranges. (#397)
@@ -1282,7 +1316,6 @@
 - Fix component property override resolution through clone chains.
 - Fix text/property overrides clobbered by second transitive sync.
 
-
 - Fix text rendering with wrong fonts on file open — all font weights (including default family) are now loaded before the first render.
 - Fix `weightToStyle` mapping: weight 400 now correctly maps to "Regular" instead of "Medium".
 - Fix detached ArrayBuffer crash when switching pages after saving — export worker now copies image buffers before transferring.
@@ -1405,7 +1438,6 @@
 - Centralize all color utilities in `packages/core/src/color.ts` — `colorToHex8`, `colorToCSSCompact`, `normalizeColor`, `colorDistance`; remove 5 duplicate implementations across the codebase.
 - Add `geometry.ts` with shared rotation math (`degToRad`, `radToDeg`, `rotatePoint`, `rotatedCorners`, `rotatedBBox`).
 - Extract `isArrayMixed()` helper for multi-selection property panels.
-
 
 - Add `motion-v` for declarative animations — used in mobile drawer (spring-animated height with pan gestures) and toolbar (layout-animated category switching with directional slide transitions).
 - Mobile drawer: replace `useSwipe` + manual rAF animation with `motion.div` `:animate` + `@pan`/`@panEnd`; always-on tab state (no more null `activeRibbonTab`); content stays rendered when closed.
@@ -1557,17 +1589,14 @@
 - Fix font picker dropdown truncating long font names.
 - Show explanation in font picker when Local Font Access API unavailable (Safari/Firefox).
 
-
 - Auto-populate GitHub Release notes from CHANGELOG.md via `ffurrer2/extract-release-notes@v2`.
 - Skip already-published npm versions on CI re-runs instead of failing.
 - Exclude non-app directories from Vite file watcher.
-
 
 - Extract shared color constants (`BLACK`, `TRANSPARENT`, `DEFAULT_SHADOW_COLOR`) — replaces 8 inline literals across core.
 - Extract shared `NodeContextMenuContent` component to avoid menu duplication.
 - Fix `@open-pencil/core` dep in MCP package: `workspace:*` for local dev (pnpm resolves at publish time).
 - Replace store thunks with a late-binding proxy.
-
 
 - Clipboard roundtrip tests: encode to Figma Kiwi binary → decode → verify.
 - 9 visual regression snapshot tests for effects rendering.
@@ -1599,7 +1628,6 @@
 
 - Import additional properties from Figma clipboard: `layoutAlignSelf`, `clipsContent`, `fontWeight`, `italic`, `letterSpacing`, `lineHeight`.
 - Convert `letterSpacing` PERCENT units to pixels based on font size.
-
 
 - 7 new clipboard import unit tests (14 total).
 
@@ -1740,12 +1768,10 @@ First public alpha. The editor is functional but not production-ready.
 - ScrubInput drag-to-change number controls.
 - Resizable side panels via reka-ui Splitter.
 
-
 - .fig file import via Kiwi binary codec (194 definitions, ~390 fields).
 - .fig file export with Kiwi encoding, Zstd compression, thumbnail generation.
 - Figma clipboard: copy/paste between OpenPencil and Figma.
 - Round-trip fidelity for supported node types.
-
 
 - Built-in AI chat in properties panel (⌘J).
 - Direct browser → OpenRouter communication, no backend.
@@ -1754,11 +1780,9 @@ First public alpha. The editor is functional but not production-ready.
 - Streaming markdown responses (vue-stream-markdown).
 - Tool call timeline with collapsible details.
 
-
 - JSX export of selected nodes with Tailwind-like shorthand props.
 - Syntax highlighting via Prism.js.
 - Copy to clipboard.
-
 
 - `info` — document stats, node types, fonts.
 - `tree` — visual node tree.
@@ -1774,13 +1798,11 @@ First public alpha. The editor is functional but not production-ready.
 - `analyze clusters` — repeated patterns.
 - All commands support `--json`.
 
-
 - Scene graph with flat Map storage and parentIndex tree.
 - FigmaAPI with ~65% Figma plugin API compatibility.
 - JSX renderer (TreeNode builder functions with shorthand props).
 - Kiwi binary codec (encode/decode).
 - Vector network blob encoder/decoder.
-
 
 - Tauri v2 (~5 MB).
 - Native menu bar, save/open dialogs.
@@ -1788,11 +1810,9 @@ First public alpha. The editor is functional but not production-ready.
 - Zstd compression in Rust.
 - macOS and Windows builds via GitHub Actions.
 
-
 - Runs at [app.openpencil.dev](https://app.openpencil.dev).
 - No installation required.
 - File System Access API for save/open (Chrome/Edge), download fallback elsewhere.
-
 
 - [openpencil.dev](https://openpencil.dev) — VitePress site with user guide, reference, and development docs.
 - Deployed via Cloudflare Pages.

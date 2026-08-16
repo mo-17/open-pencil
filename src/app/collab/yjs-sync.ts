@@ -14,6 +14,11 @@ import {
   syncMotionSpecToYMap,
   type MotionTimelineConflict
 } from '@/app/collab/motion-timeline-yjs'
+import {
+  decodeNodeFromYjs,
+  syncEncodedNodeToYMap,
+  type DecodedYjsNodeProps
+} from '@/app/collab/node-codec'
 import type { EditorStore } from '@/app/editor/active-store'
 
 type ConflictHandler = (kind: DocStateConflictKind) => void
@@ -90,17 +95,13 @@ export function syncNodePropsToYMap(node: SceneNode, ynode: Y.Map<unknown>) {
   for (const key of ynode.keys()) {
     if (!currentKeys.has(key)) ynode.delete(key)
   }
-  for (const [key, value] of Object.entries(node)) {
-    ynode.set(key, structuredClone(value))
-  }
+  syncEncodedNodeToYMap(node, ynode)
 }
 
-export function yNodeToProps(ynode: Y.Map<unknown>): Record<string, unknown> {
-  const props: Record<string, unknown> = {}
-  for (const [key, value] of ynode.entries()) {
-    props[key] = structuredClone(value)
-  }
-  return props
+// Compatibility export retained for the fork's focused collaboration tests and downstream callers.
+// oxlint-disable-next-line open-pencil/no-useless-pass-through-wrappers
+export function yNodeToProps(ynode: Y.Map<unknown>): DecodedYjsNodeProps {
+  return decodeNodeFromYjs(ynode)
 }
 
 export function bindCollabGraphEvents({

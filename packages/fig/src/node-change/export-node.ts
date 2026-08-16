@@ -15,6 +15,7 @@ import { effectiveFigmaRawNodeFields, effectiveFigmaSourcePayload } from '../sou
 import { bytesToHex } from './bytes'
 import {
   applyExportSettingsPluginData,
+  applyLibrarySourcePluginData,
   mergePluginData,
   NODE_TYPE_PLUGIN_KEY,
   serializePluginRelaunchData,
@@ -992,6 +993,7 @@ export function sceneNodeToKiwiWithContext(
   if (variableModeBySetMap) nc.variableModeBySetMap = variableModeBySetMap
 
   applyExportSettingsPluginData(node)
+  applyLibrarySourcePluginData(node)
   const additionalPluginData = context.getAdditionalPluginData(node, context.graph)
   const pluginData = mergePluginData(
     additionalPluginData.length === 0
