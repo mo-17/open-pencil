@@ -84,7 +84,9 @@ useEventListener(
 const automationCleanup = ref<(() => void) | null>(null)
 const mcpCleanup = ref<(() => void) | null>(null)
 const fileAssociationCleanup = ref<(() => void) | null>(null)
-const showPreviewPane = isTauri()
+// Both hosts share the existing pane: Tauri uses the Bun/Vite sidecar while
+// the browser uses the isolated Worker + sandbox iframe pipeline.
+const showPreviewPane = true
 const editorLayout = ref(loadEditorLayout())
 const previewSize = computed(() => previewPanelDefaultSize(editorLayout.value))
 const editorPanelSizes = computed(() =>
