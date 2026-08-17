@@ -39,6 +39,8 @@ export interface ResolveCompilerWebFontsInput {
   preferLoaded?: boolean
   /** Bypass the per-graph resolution cache (used by the preview reload action). */
   refresh?: boolean
+  /** Bounded face-resolution concurrency. Browser preview uses a small pipeline. */
+  concurrency?: number
 }
 
 export interface ResolveCompilerLocalFontsInput {
@@ -65,6 +67,38 @@ const resolutionCache = new WeakMap<SceneGraph, Map<string, Promise<CompilerFont
 // A CJK face can exceed 10 MiB and each manifest owns its byte snapshots. Keep
 // only the current and immediately previous plan (useful for undo) per graph.
 const MAX_GRAPH_RESOLUTION_CACHE_ENTRIES = 2
+const MAX_FONT_RESOLUTION_CONCURRENCY = 8
+
+function fontResolutionConcurrency(value: number | undefined): number {
+  const concurrency = value ?? 1
+  if (
+    !Number.isSafeInteger(concurrency) ||
+    concurrency < 1 ||
+    concurrency > MAX_FONT_RESOLUTION_CONCURRENCY
+  ) {
+    throw new TypeError(
+      `Font resolution concurrency must be between 1 and ${MAX_FONT_RESOLUTION_CONCURRENCY}`
+    )
+  }
+  return concurrency
+}
+
+async function mapWithConcurrency<Input, Output>(
+  values: readonly Input[],
+  concurrency: number,
+  operation: (value: Input) => Promise<Output>
+): Promise<Output[]> {
+  const output: Output[] = []
+  let nextIndex = 0
+  const run = async (): Promise<void> => {
+    while (nextIndex < values.length) {
+      const index = nextIndex++
+      output[index] = await operation(values[index])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => run()))
+  return output
+}
 
 function cacheResolution(
   graphCache: Map<string, Promise<CompilerFontManifest>>,
@@ -320,18 +354,32 @@ export async function resolveCompilerLocalFonts({
   }
 }
 
-async function resolveLoadedFontPlan(requirements: FontPlanRequirements): Promise<LoadedFontPlan> {
+async function resolveLoadedFontPlan(
+  requirements: FontPlanRequirements,
+  concurrency: number
+): Promise<LoadedFontPlan> {
   const faces = new Map<string, CompilerFontFaceAsset>()
   const resolvedRequests = new Set<string>()
-  for (const request of requirements.primary) {
-    const style = weightToStyle(request.weight, request.style === 'italic')
-    await fontManager.loadCachedFont(request.family, style, requirements.cacheCharacters)
-    const snapshot = await fontResolver.retry(fontFaceDemand(request.family, style))
-    if (snapshot.state !== 'loaded' || !snapshot.candidate) continue
-    const assets = await loadedFaceAssets(snapshot.candidate.family, snapshot.candidate.style)
-    if (assets.length === 0) continue
-    for (const asset of assets) faces.set(asset.path, asset)
-    resolvedRequests.add(requestKey(request))
+  const primaryResults = await mapWithConcurrency(
+    requirements.primary,
+    concurrency,
+    async (request) => {
+      const style = weightToStyle(request.weight, request.style === 'italic')
+      await fontManager.loadCachedFont(request.family, style, requirements.cacheCharacters)
+      const snapshot = await fontResolver.retry(
+        fontFaceDemand(request.family, style, requirements.cacheCharacters)
+      )
+      if (snapshot.state !== 'loaded' || !snapshot.candidate) return null
+      const assets = await loadedFaceAssets(snapshot.candidate.family, snapshot.candidate.style)
+      return assets.length > 0 ? { request, assets } : null
+    }
+  )
+  // Promise workers may settle out of order. Merge in authored request order so
+  // manifests and generated output remain deterministic.
+  for (const result of primaryResults) {
+    if (!result) continue
+    for (const asset of result.assets) faces.set(asset.path, asset)
+    resolvedRequests.add(requestKey(result.request))
   }
 
   const fallbackFamilies = new Map<FontFallbackScript, string>()
@@ -373,10 +421,11 @@ async function resolvePlan(
   requirements: FontPlanRequirements,
   providers: WebFontProviderId[] | undefined,
   fetcher: WebFontFetch | undefined,
-  preferLoaded: boolean
+  preferLoaded: boolean,
+  concurrency: number
 ): Promise<CompilerFontManifest> {
   const loaded = preferLoaded
-    ? await resolveLoadedFontPlan(requirements)
+    ? await resolveLoadedFontPlan(requirements, concurrency)
     : { faces: [], resolvedRequests: new Set<string>(), fallbackFamilies: new Map() }
   const unresolvedPrimary = requirements.primary.filter(
     (request) => !loaded.resolvedRequests.has(requestKey(request))
@@ -422,8 +471,10 @@ export function resolveCompilerWebFonts({
   providers,
   fetcher,
   preferLoaded = false,
-  refresh = false
+  refresh = false,
+  concurrency: requestedConcurrency
 }: ResolveCompilerWebFontsInput): Promise<CompilerFontManifest> {
+  const concurrency = fontResolutionConcurrency(requestedConcurrency)
   const requirements = buildRequirements(graph, pageIds)
   const key = planCacheKey(requirements, providers, preferLoaded)
   let graphCache = resolutionCache.get(graph)
@@ -437,7 +488,7 @@ export function resolveCompilerWebFonts({
     cacheResolution(graphCache, key, cached)
     return cached
   }
-  const pending = resolvePlan(requirements, providers, fetcher, preferLoaded)
+  const pending = resolvePlan(requirements, providers, fetcher, preferLoaded, concurrency)
   cacheResolution(graphCache, key, pending)
   return pending
 }

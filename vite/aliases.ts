@@ -8,6 +8,10 @@ export function createOpenPencilAliases(rootDir: string) {
     { find: /^path$/, replacement: emptyNodeModule },
     { find: '@', replacement: resolve(rootDir, 'src') },
     { find: '#vue', replacement: resolve(rootDir, 'packages/vue/src') },
+    {
+      find: /^#core\/text\/bundled-font-loader$/,
+      replacement: resolve(rootDir, 'packages/core/src/text/bundled-font-loader.browser.ts')
+    },
     { find: '#core', replacement: resolve(rootDir, 'packages/core/src') },
     { find: '#compiler', replacement: resolve(rootDir, 'packages/compiler/src') },
     { find: '#dom-css', replacement: resolve(rootDir, 'packages/dom-css/src') },

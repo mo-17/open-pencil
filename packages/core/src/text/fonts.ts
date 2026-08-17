@@ -6,6 +6,7 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { DynamicConcurrencyLimiter, type ConcurrencyLimiterState } from '#core/async-work'
 import { DEFAULT_FONT_FAMILY, IS_BROWSER } from '#core/constants'
+import { fetchBundledFontBytes } from '#core/text/bundled-font-loader'
 import { BUNDLED_FONT_URLS } from '#core/text/bundled-fonts'
 import { fontFamilyLicenseDisplayForCatalog } from '#core/text/font/license-display'
 import {
@@ -34,6 +35,8 @@ import { normalizedCoverageText, WebFontResolver } from '#core/text/web-fonts'
 import type { WebFontFetch, WebFontProviderId } from '#core/text/web-fonts'
 
 type FindLocalFontOptions = { allowVariable?: boolean }
+
+export { MAX_BUNDLED_FONT_WORKER_BYTES } from '#core/text/bundled-font-loader'
 
 function familyOption(family: string, source: FontFamilySource): FontFamilyOption {
   return {
@@ -379,18 +382,7 @@ export class FontManager {
   }
 
   async fetchBundledFont(url: string): Promise<ArrayBuffer | null> {
-    if (IS_BROWSER) {
-      const response = await fetch(url)
-      return response.arrayBuffer()
-    }
-    const { readFile } = await import(/* @vite-ignore */ 'node:fs/promises')
-    const { resolve, dirname } = await import(/* @vite-ignore */ 'node:path')
-    const { fileURLToPath } = await import(/* @vite-ignore */ 'node:url')
-    const packageJSONURL = import.meta.resolve('@open-pencil/core/package.json')
-    const packageRoot = dirname(fileURLToPath(packageJSONURL))
-    const assetPath = resolve(packageRoot, `assets${url}`)
-    const buf = await readFile(assetPath)
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    return fetchBundledFontBytes(url)
   }
 
   async loadLocalFont(family: string, style = 'Regular'): Promise<ArrayBuffer | null> {

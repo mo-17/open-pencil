@@ -7,13 +7,73 @@ import {
   fontManager,
   fontResolver,
   type FontFallbackScript,
-  WEB_FONT_PROVIDER_IDS
+  WEB_FONT_PROVIDER_IDS,
+  webFontSubsetsForText
 } from '@open-pencil/core/text'
 
 import { fontBytesWithFsType } from '#tests/helpers/font-fixtures'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 describe('resolveCompilerWebFonts', () => {
+  test('pipelines browser-preview face resolution with bounded deterministic concurrency', async () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    for (let index = 0; index < 5; index++) {
+      graph.createNode('TEXT', pageId, {
+        text: `Face ${index}`,
+        fontFamily: `Compiler Concurrent Fixture ${index}`,
+        fontWeight: 400
+      })
+    }
+    const originalLoadCachedFont = Object.getOwnPropertyDescriptor(fontManager, 'loadCachedFont')
+    const originalRetry = Object.getOwnPropertyDescriptor(fontResolver, 'retry')
+    let active = 0
+    let maximumActive = 0
+    const demandCharacters: string[] = []
+    Reflect.set(fontManager, 'loadCachedFont', async () => {
+      active++
+      maximumActive = Math.max(maximumActive, active)
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 5)
+      })
+      active--
+      return null
+    })
+    Reflect.set(fontResolver, 'retry', async (demand: ReturnType<typeof fontFaceDemand>) => {
+      demandCharacters.push(demand.characters ?? '')
+      return { key: demand.key, state: 'exhausted' as const }
+    })
+
+    try {
+      const manifest = await resolveCompilerWebFonts({
+        graph,
+        pageIds: [pageId],
+        providers: [],
+        preferLoaded: true,
+        refresh: true,
+        concurrency: 3
+      })
+      expect(manifest.faces).toEqual([])
+      expect(maximumActive).toBe(3)
+      expect(demandCharacters.length).toBeGreaterThan(0)
+      expect(demandCharacters.every((characters) => characters.length > 0)).toBe(true)
+      expect(demandCharacters.map(webFontSubsetsForText)).toEqual(
+        demandCharacters.map(() => ['latin'])
+      )
+      expect(() =>
+        resolveCompilerWebFonts({ graph, pageIds: [pageId], providers: [], concurrency: 9 })
+      ).toThrow('concurrency must be between 1 and 8')
+    } finally {
+      if (originalLoadCachedFont) {
+        Object.defineProperty(fontManager, 'loadCachedFont', originalLoadCachedFont)
+      } else {
+        Reflect.deleteProperty(fontManager, 'loadCachedFont')
+      }
+      if (originalRetry) Object.defineProperty(fontResolver, 'retry', originalRetry)
+      else Reflect.deleteProperty(fontResolver, 'retry')
+    }
+  })
+
   test('resolves an exact packaged font without an online provider or prior retained bytes', async () => {
     const bytes = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
     const key = 'Inter|Regular'
