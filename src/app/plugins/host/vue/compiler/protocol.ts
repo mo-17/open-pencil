@@ -4,7 +4,7 @@ import type {
   CompilerOptions,
   CompilerOutput
 } from '@open-pencil/compiler'
-import type { PortableSceneGraphData } from '@open-pencil/core'
+import type { PortableSceneGraphData } from '@open-pencil/core/io/formats/fig'
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import {
@@ -200,7 +200,12 @@ function measureCloneRecord(
   }
 }
 
-function estimateCloneBytes(value: unknown, maximum: number): number {
+/**
+ * Validate and measure a value using the same structured-clone accounting as
+ * the Vue source compiler request. Browser preview Workers reuse this so both
+ * app Worker boundaries count complete binary backing buffers identically.
+ */
+export function estimateVueSourceWorkerCloneBytes(value: unknown, maximum: number): number {
   const measurement: CloneMeasurement = { bytes: 0, values: 0 }
   const seen = new WeakSet<object>()
   const pending: unknown[] = [value]
@@ -282,7 +287,8 @@ function validVueRequestEnvelope(
   )
 }
 
-function graphSnapshot(graph: SceneGraph): VueCompilerGraphSnapshot {
+/** Create the bounded, data-only SceneGraph snapshot sent to app Workers. */
+export function createVueCompilerGraphSnapshot(graph: SceneGraph): VueCompilerGraphSnapshot {
   if (graph.nodes.size > VUE_SOURCE_COMPILER_WORKER_LIMITS.maxNodes) {
     throw new Error(
       `Vue compiler Worker input exceeds ${VUE_SOURCE_COMPILER_WORKER_LIMITS.maxNodes} nodes`
@@ -319,7 +325,7 @@ export function createVueSourceCompilerWorkerRequest(
     version: VUE_SOURCE_COMPILER_WORKER_PROTOCOL_VERSION,
     type: 'compile-vue',
     requestId: requestIdValue,
-    graph: graphSnapshot(input.graph),
+    graph: createVueCompilerGraphSnapshot(input.graph),
     pageIds: [...input.pageIds],
     options: input.options,
     fontManifest: input.fontManifest
@@ -359,7 +365,7 @@ export function validateVueSourceCompilerWorkerRequest(
   ) {
     throw new TypeError('Vue compiler Worker graph snapshot is incomplete')
   }
-  estimateCloneBytes(request, VUE_SOURCE_COMPILER_WORKER_LIMITS.maxSnapshotBytes)
+  estimateVueSourceWorkerCloneBytes(request, VUE_SOURCE_COMPILER_WORKER_LIMITS.maxSnapshotBytes)
 }
 
 export function restoreVueCompilerGraph(snapshot: VueCompilerGraphSnapshot): SceneGraph {

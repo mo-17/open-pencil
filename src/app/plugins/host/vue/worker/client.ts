@@ -1,4 +1,5 @@
 import { createPluginExportAbortError } from '@/app/plugins/host/exporter-abort'
+import { hasCorrelatedWorkerRequestId, normalizeWorkerError } from '@/app/workers/correlation'
 
 export type VueSourceWorkerLike = Pick<
   Worker,
@@ -21,15 +22,6 @@ interface RunVueSourceWorkerRequestOptions<TRequest, TResponse, TResult> {
   signal?: AbortSignal
   timeoutMs: number
   workerFactory(): VueSourceWorkerLike
-}
-
-function asError(value: unknown): Error {
-  return value instanceof Error ? value : new Error(String(value))
-}
-
-function hasCorrelatedRequestId(value: unknown, expected: string): boolean {
-  if (value === null || typeof value !== 'object') return false
-  return Object.getOwnPropertyDescriptor(value, 'requestId')?.value === expected
 }
 
 export function resolveVueSourceWorkerTimeout(value: number | undefined, label: string): number {
@@ -69,7 +61,7 @@ export function runVueSourceWorkerRequest<TRequest, TResponse, TResult>(
       try {
         const response = options.parseResponse(event.data, requestId)
         if (!response) {
-          if (hasCorrelatedRequestId(event.data, requestId)) {
+          if (hasCorrelatedWorkerRequestId(event.data, requestId)) {
             finish(() => reject(new Error(`${label} returned an invalid response`)))
           }
           return
@@ -77,7 +69,7 @@ export function runVueSourceWorkerRequest<TRequest, TResponse, TResult>(
         const result = options.readResponse(response)
         finish(() => resolve(result))
       } catch (cause) {
-        finish(() => reject(asError(cause)))
+        finish(() => reject(normalizeWorkerError(cause)))
       }
     }
     worker.onerror = (event) => finish(() => reject(new Error(event.message || `${label} failed`)))
@@ -92,7 +84,7 @@ export function runVueSourceWorkerRequest<TRequest, TResponse, TResult>(
       // oxlint-disable-next-line unicorn/require-post-message-target-origin -- this is a Worker, not Window.postMessage.
       worker.postMessage(request)
     } catch (cause) {
-      finish(() => reject(asError(cause)))
+      finish(() => reject(normalizeWorkerError(cause)))
     }
   })
 }

@@ -17,3 +17,4 @@ export {
   compressFigDataSync,
   type ExportFigFileOptions
 } from './write'
+export type { PortableSceneGraphData } from '#core/kiwi/fig/parse/portable-data'
