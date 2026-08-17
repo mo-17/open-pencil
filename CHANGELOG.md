@@ -57,6 +57,8 @@
 - Add image attachments to AI chat with bounded analysis, immediate transcript thumbnails, hover previews, and click-to-view images. (#232)
 - Allow supported AI model profiles to set a provider-specific reasoning effort. (#454)
 - Show unavailable or substituted document fonts with affected-layer selection and retry actions, and expose font fidelity through the Figma API and MCP tooling. (#503)
+- Run React lowcode previews in ordinary browsers through a bounded SceneGraph Worker, a
+  browser-safe bundler, and a script-only sandbox while preserving the desktop sidecar path.
 
 ### Changed
 
@@ -83,6 +85,10 @@
 - Report whether missing Figma clipboard images were actually fetched. (#397)
 - Report exhausted provider credit, request failures, and output-token limits through localized chat toasts and copied diagnostics. (#451, #454)
 - Prevent Windows desktop crashes when loading large system fonts for non-Latin text.
+- Load reviewed, version-pinned Fontsource faces in the browser editor and preview, with bounded
+  caching, retry, fallback, and diagnostics.
+- Let image-heavy browser previews use their separately reviewed asset budget without weakening the
+  ordinary document-content limit or the 32 MiB sandbox hard limit.
 - Preserve open vector segments when the same vector network also contains filled regions. (#450)
 - Match Figma Plugin API behavior for `rescale()`, page `backgrounds`, and nullable visual `absoluteRenderBounds`. (#442)
 - Keep imported Figma instances linked to their remapped source components so later component edits update existing instances. (#385)
