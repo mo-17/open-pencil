@@ -3,6 +3,7 @@ import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka
 import { onMounted, ref } from 'vue'
 
 import { isTauri } from '@/app/tauri/env'
+import { isOnlineFontProviderAvailable } from '@/app/editor/fonts'
 import { useFontSettings } from '@/components/FontSettings/use'
 import { WEB_FONT_PROVIDER_IDS, WEB_FONT_PROVIDER_LABELS } from '@open-pencil/core/text'
 import type { WebFontProviderId } from '@open-pencil/core/text'
@@ -65,10 +66,11 @@ function setPopoverOpen(value: boolean) {
 }
 
 function isProviderEnabled(provider: WebFontProviderId) {
-  return fontProviderSettings.value[provider]
+  return isOnlineFontProviderAvailable(provider) && fontProviderSettings.value[provider]
 }
 
 function onProviderToggle(provider: WebFontProviderId, event: Event) {
+  if (!isOnlineFontProviderAvailable(provider)) return
   const input = event.target
   if (!(input instanceof HTMLInputElement)) return
   setFontProviderEnabled(provider, input.checked)
@@ -212,12 +214,21 @@ onMounted(() => {
                   :key="provider"
                   class="flex items-center justify-between gap-2 text-[10px] text-muted"
                 >
-                  <span>{{ WEB_FONT_PROVIDER_LABELS[provider] }}</span>
+                  <span>
+                    {{ WEB_FONT_PROVIDER_LABELS[provider] }}
+                    <span v-if="!isOnlineFontProviderAvailable(provider)">
+                      ({{ dialogs.unavailable }})
+                    </span>
+                  </span>
                   <input
                     type="checkbox"
                     class="size-3 accent-accent disabled:opacity-50"
                     :checked="isProviderEnabled(provider)"
-                    :disabled="busyAction !== null || !onlineFontsEnabled"
+                    :disabled="
+                      busyAction !== null ||
+                      !onlineFontsEnabled ||
+                      !isOnlineFontProviderAvailable(provider)
+                    "
                     :data-test-id="`font-settings-provider-${provider}`"
                     @change="onProviderToggle(provider, $event)"
                   />

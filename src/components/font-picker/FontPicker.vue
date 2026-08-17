@@ -23,7 +23,7 @@ import {
   requestLocalFontAccess
 } from '@/app/editor/fonts'
 
-import { WEB_FONT_PROVIDER_IDS } from '@open-pencil/core/text'
+import { fontManager, WEB_FONT_PROVIDER_IDS } from '@open-pencil/core/text'
 
 const { panels } = useI18n()
 const { label: labelProp } = defineProps<{ label?: string }>()
@@ -61,9 +61,17 @@ const localFontAccess = {
 
 function loadPreviewFont(family: string, source: string) {
   if (!WEB_FONT_PROVIDER_IDS.includes(source as (typeof WEB_FONT_PROVIDER_IDS)[number])) return
-  if (previewFontLoads.has(family)) return
-  previewFontLoads.add(family)
-  void loadFont(family)
+  const key = `${source}|${family}`
+  if (previewFontLoads.has(key)) return
+  previewFontLoads.add(key)
+  fontManager.clearFontLoadFailure(family)
+  void (async () => {
+    try {
+      if ((await loadFont(family)) === null) previewFontLoads.delete(key)
+    } catch {
+      previewFontLoads.delete(key)
+    }
+  })()
 }
 
 function optionKey(option: FontFamilyOption): string {

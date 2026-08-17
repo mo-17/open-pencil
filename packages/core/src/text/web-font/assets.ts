@@ -15,6 +15,7 @@ import {
 import {
   DEFAULT_WEB_FONT_PROVIDER_SETTINGS,
   WEB_FONT_PROVIDER_IDS,
+  webFontFaceAttempts,
   webFontSubsetsForText,
   type WebFontFetch,
   type WebFontProviderId
@@ -167,24 +168,6 @@ function resolvedRemoteFaces(result: ResolveFontResult): ResolvedRemoteFace[] {
   return faces
 }
 
-function faceAttempts(
-  request: WebFontFaceRequest
-): Array<{ weight: number; style: 'normal' | 'italic' }> {
-  const requestedStyle = request.style ?? 'normal'
-  const values = [
-    { weight: request.weight, style: requestedStyle },
-    { weight: 400, style: requestedStyle },
-    { weight: 400, style: 'normal' as const }
-  ]
-  const seen = new Set<string>()
-  return values.filter((value) => {
-    const key = `${value.weight}|${value.style}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
 async function resolveRemoteFontFaces(
   family: string,
   request: WebFontFaceRequest,
@@ -192,7 +175,7 @@ async function resolveRemoteFontFaces(
   fetcher: WebFontFetch | undefined
 ): Promise<ResolvedRemoteFace[]> {
   const unifont = await providerUnifont(provider, fetcher)
-  for (const attempt of faceAttempts(request)) {
+  for (const attempt of webFontFaceAttempts(request.weight, request.style ?? 'normal')) {
     const characters = request.characters ?? ''
     const options = {
       weights: [String(attempt.weight)],

@@ -24,6 +24,27 @@ describe('web font coverage requests', () => {
     )
   })
 
+  test('requests only the font shards required by known Latin-family text', () => {
+    expect(webFontSubsetsForText('Source Sans 3')).toEqual(['latin'])
+    expect(webFontSubsetsForText('Příliš žluťoučký kůň')).toEqual(['latin', 'latin-ext'])
+    expect(webFontSubsetsForText('Tiếng Việt')).toEqual(['latin', 'vietnamese'])
+    expect(webFontSubsetsForText('Привет')).toEqual(['cyrillic'])
+    expect(webFontSubsetsForText('Γειά')).toEqual(['greek'])
+  })
+
+  test('keeps a conservative provider fallback when no glyph coverage is known', () => {
+    expect(webFontSubsetsForText('')).toEqual([
+      'latin',
+      'latin-ext',
+      'vietnamese',
+      'cyrillic',
+      'cyrillic-ext',
+      'greek',
+      'greek-ext'
+    ])
+    expect(webFontSubsetsForText('123 🎨')).toEqual(['latin'])
+  })
+
   test('clears only the requested font negative-cache entries before a retry', () => {
     const resolver = new WebFontResolver()
     const failures = Reflect.get(resolver, 'failedFonts') as Set<string>

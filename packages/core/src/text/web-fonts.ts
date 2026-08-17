@@ -43,21 +43,109 @@ const DEFAULT_WEB_FONT_SUBSETS = [
   'greek-ext'
 ]
 
+function inRange(codePoint: number, start: number, end: number): boolean {
+  return codePoint >= start && codePoint <= end
+}
+
+function isLatinCodePoint(codePoint: number): boolean {
+  return (
+    inRange(codePoint, 0x0041, 0x005a) ||
+    inRange(codePoint, 0x0061, 0x007a) ||
+    inRange(codePoint, 0x00c0, 0x00ff) ||
+    inRange(codePoint, 0x0100, 0x024f) ||
+    inRange(codePoint, 0x1e00, 0x1eff) ||
+    inRange(codePoint, 0x2c60, 0x2c7f) ||
+    inRange(codePoint, 0xa720, 0xa7ff) ||
+    inRange(codePoint, 0xab30, 0xab6f) ||
+    inRange(codePoint, 0xff21, 0xff3a) ||
+    inRange(codePoint, 0xff41, 0xff5a)
+  )
+}
+
+function isLatinExtendedCodePoint(codePoint: number): boolean {
+  return isLatinCodePoint(codePoint) && codePoint > 0x00ff
+}
+
+function isVietnameseCodePoint(codePoint: number): boolean {
+  return (
+    codePoint === 0x0102 ||
+    codePoint === 0x0103 ||
+    codePoint === 0x0110 ||
+    codePoint === 0x0111 ||
+    codePoint === 0x0128 ||
+    codePoint === 0x0129 ||
+    codePoint === 0x0168 ||
+    codePoint === 0x0169 ||
+    inRange(codePoint, 0x01a0, 0x01a1) ||
+    inRange(codePoint, 0x01af, 0x01b0) ||
+    inRange(codePoint, 0x1ea0, 0x1ef9)
+  )
+}
+
 export function normalizedCoverageText(text: string): string {
   return Array.from(new Set(text)).sort().join('')
 }
 
 export function webFontSubsetsForText(text: string): string[] {
-  const subsets = new Set(DEFAULT_WEB_FONT_SUBSETS)
-  if (/\p{Script=Arabic}/u.test(text)) subsets.add('arabic')
-  if (/\p{Script=Hangul}/u.test(text)) subsets.add('korean')
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) subsets.add('japanese')
+  // An empty coverage string means the caller cannot prove which glyphs are
+  // needed. Preserve the historical broad request in that case. Once text is
+  // known, requesting every Latin/Greek/Cyrillic shard multiplies CDN traffic
+  // and can exhaust the bounded browser-preview request budget.
+  if (!text) return [...DEFAULT_WEB_FONT_SUBSETS]
+
+  const codePoints = Array.from(text, (character) => character.codePointAt(0) ?? 0)
+  const hasLatin = codePoints.some(isLatinCodePoint)
+  const hasVietnamese = codePoints.some(isVietnameseCodePoint)
+  const hasLatinExtended = codePoints.some(
+    (codePoint) => isLatinExtendedCodePoint(codePoint) && !isVietnameseCodePoint(codePoint)
+  )
+  const hasCyrillic = /\p{Script=Cyrillic}/u.test(text)
+  const hasCyrillicExtended = codePoints.some(
+    (codePoint) => inRange(codePoint, 0x0460, 0x052f) || inRange(codePoint, 0x2de0, 0x2dff)
+  )
+  const hasGreek = /\p{Script=Greek}/u.test(text)
+  const hasGreekExtended = codePoints.some((codePoint) => inRange(codePoint, 0x1f00, 0x1fff))
+  const subsets: string[] = []
+  if (hasLatin) subsets.push('latin')
+  if (hasLatinExtended) subsets.push('latin-ext')
+  if (hasVietnamese) subsets.push('vietnamese')
+  if (hasCyrillic) subsets.push('cyrillic')
+  if (hasCyrillicExtended) subsets.push('cyrillic-ext')
+  if (hasGreek) subsets.push('greek')
+  if (hasGreekExtended) subsets.push('greek-ext')
+  if (/\p{Script=Arabic}/u.test(text)) subsets.push('arabic')
+  if (/\p{Script=Hangul}/u.test(text)) subsets.push('korean')
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) subsets.push('japanese')
   if (/\p{Script=Han}/u.test(text)) {
-    subsets.add('chinese-simplified')
-    subsets.add('chinese-traditional')
-    subsets.add('japanese')
+    subsets.push('chinese-simplified', 'chinese-traditional')
+    if (!subsets.includes('japanese')) subsets.push('japanese')
   }
-  return [...subsets]
+  // Digits, punctuation, emoji, and unclassified scripts still need a
+  // deterministic provider request. Latin is the smallest portable fallback.
+  return subsets.length > 0 ? subsets : ['latin']
+}
+
+export interface WebFontFaceAttempt {
+  weight: number
+  style: 'normal' | 'italic'
+}
+
+export function webFontFaceAttempts(
+  weight: number,
+  style: 'normal' | 'italic'
+): WebFontFaceAttempt[] {
+  const values: WebFontFaceAttempt[] = [
+    { weight, style },
+    { weight: 400, style },
+    { weight: 400, style: 'normal' }
+  ]
+  const seen = new Set<string>()
+  return values.filter((value) => {
+    const key = `${value.weight}|${value.style}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 function preferredRemoteSource(face: FontFaceData): RemoteFontSource | undefined {
@@ -235,23 +323,28 @@ export class WebFontResolver {
     try {
       const parsed = parseFontStyle(style)
       const unifont = await this.unifont(provider)
-      const options = {
-        weights: [String(parsed.weight)],
-        styles: [parsed.italic ? 'italic' : 'normal'],
-        formats: ['ttf', 'otf', 'woff2', 'woff'],
-        subsets: webFontSubsetsForText(characters)
-      } satisfies WebFontResolveOptions
-      const result = await this.withFetchProxy<ResolveFontResult>(() =>
-        unifont.resolveFont(family, options)
-      )
-      const faces = resolvedRemoteFaces(result)
-      const buffers = await Promise.all(
-        faces.map(async ({ source, init }) => {
-          const response = await this.fetchRemote(source.url, init)
-          return response.ok ? response.arrayBuffer() : null
-        })
-      )
-      return buffers.filter(isArrayBuffer)
+      const requestedStyle = parsed.italic ? 'italic' : 'normal'
+      for (const attempt of webFontFaceAttempts(parsed.weight, requestedStyle)) {
+        const options = {
+          weights: [String(attempt.weight)],
+          styles: [attempt.style],
+          formats: ['ttf', 'otf', 'woff2', 'woff'],
+          subsets: webFontSubsetsForText(characters)
+        } satisfies WebFontResolveOptions
+        const result = await this.withFetchProxy<ResolveFontResult>(() =>
+          unifont.resolveFont(family, options)
+        )
+        const faces = resolvedRemoteFaces(result)
+        if (faces.length === 0) continue
+        const buffers = await Promise.all(
+          faces.map(async ({ source, init }) => {
+            const response = await this.fetchRemote(source.url, init)
+            return response.ok ? response.arrayBuffer() : null
+          })
+        )
+        return buffers.filter(isArrayBuffer)
+      }
+      return []
     } catch {
       return []
     }

@@ -22,8 +22,12 @@ import {
   type WebFontProviderId
 } from '@open-pencil/core/text'
 import type { SceneGraph } from '@open-pencil/scene-graph'
-import { dialogMessages } from '@open-pencil/vue'
 
+import {
+  createBrowserDownloadedFontCache,
+  type BrowserDownloadedFontCache
+} from '@/app/editor/fonts/browser-downloaded-font-cache'
+import { createBrowserWebFontFetch } from '@/app/editor/fonts/browser-web-font-fetch'
 import {
   clearDownloadedFontCache as clearTauriDownloadedFontCache,
   createTauriDownloadedFontCache,
@@ -33,8 +37,12 @@ import {
   stageImportedFontCache,
   type ImportedFontCacheFace
 } from '@/app/editor/fonts/cache'
+import {
+  FONT_PROVIDER_SETTINGS_STORAGE_SERIALIZER,
+  normalizeFontProviderSettings,
+  type FontProviderSettings
+} from '@/app/editor/fonts/provider-settings'
 import { preferredFontStyle } from '@/app/editor/fonts/style-selection'
-import { toast } from '@/app/shell/ui'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
 
@@ -42,13 +50,22 @@ if (typeof navigator !== 'undefined') {
   fontManager.setFallbackUserAgent(navigator.userAgent)
 }
 
-export type FontProviderSettings = Record<WebFontProviderId, boolean>
+export type { FontProviderSettings } from '@/app/editor/fonts/provider-settings'
+
+const BROWSER_WEB_FONT_PROVIDER_IDS = new Set<WebFontProviderId>(['fontsource'])
+
+/** Browser web-font transport currently reviews and permits Fontsource only. */
+export function isOnlineFontProviderAvailable(provider: WebFontProviderId): boolean {
+  return isTauri() || BROWSER_WEB_FONT_PROVIDER_IDS.has(provider)
+}
 
 export const onlineFontsEnabled = useLocalStorage('op-online-fonts-enabled', true)
 export const fontProviderSettings = useLocalStorage<FontProviderSettings>(
   'op-font-providers',
-  DEFAULT_WEB_FONT_PROVIDER_SETTINGS
+  DEFAULT_WEB_FONT_PROVIDER_SETTINGS,
+  { serializer: FONT_PROVIDER_SETTINGS_STORAGE_SERIALIZER }
 )
+fontProviderSettings.value = normalizeFontProviderSettings(fontProviderSettings.value)
 /** Reactive signal for consumers whose output embeds the currently loaded font bytes. */
 export const importedFontRevision = ref(0)
 
@@ -60,7 +77,7 @@ watch(
         ? Object.fromEntries(
             WEB_FONT_PROVIDER_IDS.map((provider) => [
               provider,
-              fontProviderSettings.value[provider]
+              isOnlineFontProviderAvailable(provider) && fontProviderSettings.value[provider]
             ])
           )
         : {}
@@ -70,14 +87,8 @@ watch(
 )
 
 let tauriFontCacheConfigured = false
-let webFontUnavailableToastShown = false
-
-function showWebFontUnavailableToast(): void {
-  if (webFontUnavailableToastShown || isTauri() || !onlineFontsEnabled.value) return
-  if (!WEB_FONT_PROVIDER_IDS.some((provider) => fontProviderSettings.value[provider])) return
-  webFontUnavailableToastShown = true
-  toast.warning(dialogMessages.get().webFontProvidersRequireDesktopApp)
-}
+let browserFontInfrastructureConfigured = false
+let browserDownloadedFontCache: BrowserDownloadedFontCache | null = null
 
 function configureTauriFontCache() {
   if (tauriFontCacheConfigured || !isTauri()) return
@@ -87,7 +98,34 @@ function configureTauriFontCache() {
   fontManager.setHostFontLoader(loadSystemFont)
 }
 
+function configureBrowserFontInfrastructure(): void {
+  if (browserFontInfrastructureConfigured || !IS_BROWSER || isTauri()) return
+  browserFontInfrastructureConfigured = true
+  if (typeof indexedDB !== 'undefined') {
+    browserDownloadedFontCache = createBrowserDownloadedFontCache()
+    fontManager.setDownloadedFontCache(browserDownloadedFontCache)
+  }
+  if (typeof globalThis.fetch === 'function') {
+    fontManager.setWebFontFetch(createBrowserWebFontFetch())
+  }
+}
+
+/**
+ * Starts a new bounded browser-font transport session after an explicit user retry.
+ *
+ * The browser fetcher deliberately accounts requests and downloaded bytes for its whole
+ * lifetime. Clearing a face's negative cache is therefore insufficient after that lifetime
+ * budget has been exhausted. Keep automatic loads on the existing session, and only renew it
+ * for the document-level Retry action. Tauri continues to use its existing HTTP bridge.
+ */
+export function resetBrowserWebFontFetchSession(): boolean {
+  if (!IS_BROWSER || isTauri() || typeof globalThis.fetch !== 'function') return false
+  fontManager.setWebFontFetch(createBrowserWebFontFetch())
+  return true
+}
+
 configureTauriFontCache()
+configureBrowserFontInfrastructure()
 
 interface TauriFontFamily {
   family: string
@@ -147,9 +185,9 @@ export function preloadFonts(): void {
   configureTauriFontCache()
   if (isTauri()) {
     void getTauriFonts().then(registerFontFaces)
-    return
   }
-  if (onlineFontsEnabled.value) fontManager.preloadWebFontFamilies()
+  // Browser catalogs stay demand-driven (FontPicker or an actual missing face). This avoids
+  // startup network requests and keeps document opening independent from third-party CDNs.
 }
 
 export function localFontAccessState(): LocalFontAccessState {
@@ -164,13 +202,26 @@ export async function requestLocalFontAccess(): Promise<FontFamilyOption[]> {
 
 export async function downloadedFontCacheSummary() {
   configureTauriFontCache()
-  if (!isTauri()) return { count: 0, byteLength: 0, updatedAt: null }
+  configureBrowserFontInfrastructure()
+  if (!isTauri()) {
+    return (
+      (await browserDownloadedFontCache?.summary()) ?? {
+        count: 0,
+        byteLength: 0,
+        updatedAt: null
+      }
+    )
+  }
   return tauriDownloadedFontCacheSummary()
 }
 
 export async function clearDownloadedFontCache(): Promise<void> {
   configureTauriFontCache()
-  if (!isTauri()) return
+  configureBrowserFontInfrastructure()
+  if (!isTauri()) {
+    await browserDownloadedFontCache?.clear()
+    return
+  }
   await clearTauriDownloadedFontCache()
 }
 
@@ -216,7 +267,6 @@ export async function listFamilies(): Promise<FontFamilyOption[]> {
     }
     return [...byFamily.values()].sort((a, b) => a.family.localeCompare(b.family))
   }
-  showWebFontUnavailableToast()
   return fontManager.listFamilyOptions()
 }
 
@@ -320,7 +370,6 @@ export async function loadFont(
   const loaded = options
     ? await fontManager.loadFont(family, style, characters, options)
     : await fontManager.loadFont(family, style, characters)
-  if (!loaded) showWebFontUnavailableToast()
   return loaded
 }
 

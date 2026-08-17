@@ -141,7 +141,7 @@ test('does not report a local font as missing while its bytes are still loading'
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('TEXT', 120, 120, 240, 40)
     store.updateNode(id, {
-      characters: 'Deferred local font',
+      text: 'Deferred local font',
       fontFamily: 'Bebas Neue'
     })
     store.select([id])
@@ -196,7 +196,7 @@ test('manually retries a confirmed missing font and refreshes the canvas', async
     if (!store) throw new Error('OpenPencil store not initialized')
     const id = store.createShape('TEXT', 120, 120, 240, 40)
     store.updateNode(id, {
-      characters: 'Manual font retry',
+      text: 'Manual font retry',
       fontFamily: 'Retryable Sans',
       fontWeight: 700
     })
