@@ -28,6 +28,7 @@
       "#dom-css/*": ["./packages/dom-css/src/*"],
       "#tests/*": ["./tests/*"],
       "#tools/*": ["./tools/*"],
+      "#vite/*": ["./vite/*"],
       "#docs-config/*": ["./packages/docs/.vitepress/*"],
       "tinykeys": ["./node_modules/tinykeys/dist/tinykeys.d.ts"],
       "@open-pencil/vue": ["./packages/vue/src/index.ts"],

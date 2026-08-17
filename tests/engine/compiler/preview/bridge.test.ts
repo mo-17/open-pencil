@@ -14,6 +14,40 @@ describe('preview-bridge — channel sources (regression of Phase 0 §5.4)', () 
     expect(bridge).toContain("const OUTBOUND_SOURCE = 'op-lowcode-preview'")
   })
 
+  test('boots from an exact iframe.name capability context', () => {
+    expect(bridge).toContain("const CHANNEL_PROTOCOL = 'open-pencil-preview-v2'")
+    expect(bridge).toContain('const candidate: unknown = JSON.parse(window.name)')
+    expect(bridge).toContain(
+      "hasExactKeys(candidate, ['protocol', 'channel', 'parentOrigin', 'transport'])"
+    )
+    expect(bridge).toContain('candidate.channel.length < 16')
+    expect(bridge).toContain(
+      "const canonicalTauriOrigin = candidate.parentOrigin === 'tauri://localhost'"
+    )
+    expect(bridge).toContain('!canonicalTauriOrigin &&')
+    expect(bridge).toContain('parsed.origin !== candidate.parentOrigin')
+  })
+
+  test('authenticates source window, origin, channel, and exact payload shape', () => {
+    expect(bridge).toContain('if (event.source !== window.parent) return')
+    expect(bridge).toContain('if (event.origin !== frameContext.parentOrigin) return')
+    expect(bridge).toContain('value.channel !== channel')
+    expect(bridge).toContain("hasExactKeys(value, ['source', 'channel', 'type', 'id'])")
+    expect(bridge).toContain("hasExactKeys(value, ['source', 'channel', 'type', 'route'])")
+  })
+
+  test('adds the channel to every outbound message and avoids wildcard targets', () => {
+    expect(bridge).toContain(
+      '{ ...payload, source: OUTBOUND_SOURCE, channel: frameContext.channel }'
+    )
+    expect(bridge).toContain('frameContext.parentOrigin')
+    expect(bridge).not.toContain(
+      "postMessage({ source: OUTBOUND_SOURCE, type: 'select', id }, '*')"
+    )
+    expect(bridge).toContain("frameContext.transport === 'message-port'")
+    expect(bridge).toContain('window.__openPencilPreviewPort?.postMessage')
+  })
+
   test('still mounts at most once per window via the __openPencilPreviewBridge guard', () => {
     expect(bridge).toContain('window.__openPencilPreviewBridge')
     expect(bridge).toContain('!window.__openPencilPreviewBridge')
@@ -75,10 +109,8 @@ describe('preview-bridge — navigate channel (Phase 2 §7)', () => {
   })
 
   test('outbound navigate posts the contract payload to the parent window', () => {
-    // Single source of truth: postOutboundNavigate composes the message;
-    // this regex tolerates whitespace + quoting variants.
-    expect(bridge).toMatch(/source: OUTBOUND_SOURCE,\s*type: 'navigate',\s*route/)
-    expect(bridge).toContain('window.parent?.postMessage')
+    expect(bridge).toContain("postToParent({ type: 'navigate', route })")
+    expect(bridge).toContain('window.parent.postMessage')
   })
 
   test('echo loop is broken by a suppressOutbound flag wrapping the inbound replay', () => {
@@ -109,7 +141,7 @@ describe('preview-bridge — runtime docState channel (Phase 3 §4.6)', () => {
   test('outbound posts per-key changes via a store.subscribe diff', () => {
     expect(bridge).toContain('store.subscribe(')
     expect(bridge).toContain('if (state[name] !== prev[name])')
-    expect(bridge).toMatch(/source: OUTBOUND_SOURCE,\s*type: 'docState',\s*name: name,\s*value:/)
+    expect(bridge).toContain("postToParent({ type: 'docState', name: name, value: state[name] })")
   })
 
   test('inbound docState applies via setState', () => {
@@ -140,8 +172,20 @@ describe('preview-bridge — Motion Debug channel', () => {
   test('calls the generated runtime inspect handle and posts structured snapshots', () => {
     expect(bridge).toContain("if (data.type === 'motionDebug')")
     expect(bridge).toContain("typeof runtime.inspect !== 'function'")
-    expect(bridge).toContain("postMotionDebug('ready', runtime.inspect())")
+    expect(bridge).toContain('const snapshot = runtime.inspect()')
+    expect(bridge).toContain('if (!validMotionDebugSnapshot(snapshot))')
+    expect(bridge).toContain("postMotionDebug('ready', snapshot)")
     expect(bridge).toMatch(/type: 'motionDebug',\s*status,\s*snapshot,\s*error/)
+  })
+
+  test('bounds entry count, portable values, and inspect errors', () => {
+    expect(bridge).toContain('const MAX_MOTION_DEBUG_ENTRIES = 256')
+    expect(bridge).toContain('const MAX_PORTABLE_MESSAGE_BYTES = 256 * 1024')
+    expect(bridge).toContain('if (bytes > MAX_PORTABLE_MESSAGE_BYTES) return false')
+    expect(bridge).toContain('entries.length <= MAX_MOTION_DEBUG_ENTRIES')
+    expect(bridge).toContain('validDocStateValue(value)')
+    expect(bridge).toContain('Motion diagnostics exceed the preview safety limit.')
+    expect(bridge).toContain('message.slice(0, MAX_DOC_STATE_STRING_LENGTH)')
   })
 
   test('polls only while enabled and stops immediately when disabled', () => {

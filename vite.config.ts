@@ -12,6 +12,7 @@ import packageJson from './package.json'
 import { createOpenPencilAliases } from './vite/aliases'
 import { localAutomationToken, openPencilAutomationPlugin } from './vite/automation'
 import { copyCanvasKitAssetsPlugin } from './vite/canvaskit-assets'
+import { openPencilProjectRootDefineValue } from './vite/project-root'
 import { openPencilPwaPlugin } from './vite/pwa'
 import { rawMarkdownPlugin } from './vite/raw-markdown'
 import { createDevServerOptions } from './vite/server'
@@ -25,11 +26,13 @@ export default defineConfig(async ({ command }) => ({
   define: {
     __OPENPENCIL_APP_VERSION__: JSON.stringify(packageJson.version),
     __OPENPENCIL_LOCAL_AUTOMATION_TOKEN__: JSON.stringify(localAutomationToken(command)),
-    // Project root injected at build time; the lowcode preview pane passes it as
-    // a known cwd + `--root` to the dev-server sidecar so it resolves
-    // react/tailwind from the workspace node_modules regardless of where Tauri
-    // spawned the child process.
-    __OPENPENCIL_PROJECT_ROOT__: JSON.stringify(__dirname)
+    // Tauri injects the project root so the desktop sidecar can resolve
+    // workspace dependencies. Web builds must not disclose the build machine's
+    // absolute path.
+    __OPENPENCIL_PROJECT_ROOT__: openPencilProjectRootDefineValue(
+      __dirname,
+      process.env.TAURI_ENV_PLATFORM
+    )
   },
   plugins: [
     rawMarkdownPlugin(),

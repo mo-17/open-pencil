@@ -71,6 +71,7 @@
         "culori": "^4.0.2",
         "dedent": "^1.7.1",
         "es-toolkit": "^1.46.1",
+        "esbuild-wasm": "0.27.4",
         "fflate": "^0.8.2",
         "fzstd": "^0.1.1",
         "hast-util-to-html": "^9.0.5",
@@ -260,6 +261,8 @@
         "@tailwindcss/vite": "^4.2.1",
         "@vitejs/plugin-react": "^6.0.4",
         "@vitejs/plugin-vue": "^6.0.5",
+        "esbuild-wasm": "0.27.4",
+        "tailwindcss": "4.2.2",
         "vite": "8.1.4",
       },
       "devDependencies": {
@@ -2444,6 +2447,8 @@
     "es-toolkit": ["es-toolkit@1.46.1", "", {}, "sha512-5eNtXOs3tbfxXOj04tjjseeWkRWaoCjdEI+96DgwzZoe6c9juL49pXlzAFTI72aWC9Y8p7168g6XIKjh7k6pyQ=="],
 
     "esbuild": ["esbuild@0.27.4", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.27.4", "@esbuild/android-arm": "0.27.4", "@esbuild/android-arm64": "0.27.4", "@esbuild/android-x64": "0.27.4", "@esbuild/darwin-arm64": "0.27.4", "@esbuild/darwin-x64": "0.27.4", "@esbuild/freebsd-arm64": "0.27.4", "@esbuild/freebsd-x64": "0.27.4", "@esbuild/linux-arm": "0.27.4", "@esbuild/linux-arm64": "0.27.4", "@esbuild/linux-ia32": "0.27.4", "@esbuild/linux-loong64": "0.27.4", "@esbuild/linux-mips64el": "0.27.4", "@esbuild/linux-ppc64": "0.27.4", "@esbuild/linux-riscv64": "0.27.4", "@esbuild/linux-s390x": "0.27.4", "@esbuild/linux-x64": "0.27.4", "@esbuild/netbsd-arm64": "0.27.4", "@esbuild/netbsd-x64": "0.27.4", "@esbuild/openbsd-arm64": "0.27.4", "@esbuild/openbsd-x64": "0.27.4", "@esbuild/openharmony-arm64": "0.27.4", "@esbuild/sunos-x64": "0.27.4", "@esbuild/win32-arm64": "0.27.4", "@esbuild/win32-ia32": "0.27.4", "@esbuild/win32-x64": "0.27.4" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-Rq4vbHnYkK5fws5NF7MYTU68FPRE1ajX7heQ/8QXXWqNgqqJ/GkmmyxIzUnf2Sr/bakf8l54716CcMGHYhMrrQ=="],
+
+    "esbuild-wasm": ["esbuild-wasm@0.27.4", "", { "bin": { "esbuild": "bin/esbuild" } }, "sha512-3xhVMcJ8Odvb1QjlWnjBGSYVYESsi3/oJYwLyVvbHOb2CiV4mFtD6x8Lk6JFnRxwEE3fUeVuJLbIxyVQWa867g=="],
 
     "escalade": ["escalade@3.2.0", "", {}, "sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA=="],
 

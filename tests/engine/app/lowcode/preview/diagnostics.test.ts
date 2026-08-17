@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   buildCompileDiagnostics,
-  summarizeCompileDiagnostics
+  summarizeCompileDiagnostics,
+  summarizeStructuredCompileDiagnostics
 } from '@/app/lowcode/preview-pane/compile-diagnostics'
 
 describe('lowcode preview compile diagnostics', () => {
@@ -54,5 +55,26 @@ describe('lowcode preview compile diagnostics', () => {
       warningCount: 0,
       total: 0
     })
+  })
+
+  test('preserves structured Worker locations and multiple errors', () => {
+    expect(
+      summarizeStructuredCompileDiagnostics([
+        {
+          severity: 'error',
+          code: 'browser-preview-build-error',
+          message: 'Expected expression',
+          path: 'src/App.tsx',
+          line: 12,
+          column: 4
+        },
+        {
+          severity: 'warning',
+          code: 'motion-static-fallback',
+          message: 'Motion channel is static',
+          nodeId: 'node-1'
+        }
+      ])
+    ).toMatchObject({ errorCount: 1, warningCount: 1, total: 2 })
   })
 })

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/* oxlint-disable eslint/max-lines -- Existing preview controls and runtime transport share lifecycle state. */
 import { useElementSize, useEventListener, useLocalStorage } from '@vueuse/core'
 import {
   DropdownMenuContent,
@@ -29,7 +30,10 @@ import { toast } from '@/app/shell/ui'
 import Tip from '@/components/ui/Tip.vue'
 import { menuItem, useMenuUI } from '@/components/ui/menu'
 
-import { summarizeCompileDiagnostics, type CompileDiagnostic } from './compile-diagnostics'
+import {
+  summarizeStructuredCompileDiagnostics,
+  type CompileDiagnostic
+} from './compile-diagnostics'
 import CodePenShowcaseControls from './CodePenShowcaseControls.vue'
 import {
   DEFAULT_PREVIEW_REFRESH_POLICY,
@@ -37,6 +41,14 @@ import {
   type PreviewRefreshPolicy
 } from './compile-scheduler'
 import DeployControls from './DeployControls.vue'
+import {
+  createPreviewEditorMessage,
+  parsePreviewInboundMessage,
+  parsePreviewMessageEvent,
+  serializePreviewFrameName,
+  type PreviewEditorPayload,
+  type PreviewInboundMessage
+} from './iframe/messages'
 import MicrofrontendExportControls from './MicrofrontendExportControls.vue'
 import {
   compilerPreviewPopoutBusy,
@@ -58,9 +70,6 @@ const { embeddedVisible = true } = defineProps<{ embeddedVisible?: boolean }>()
 // 'navigate' (editor↔iframe page sync), and Phase 3 §4.6 'docState' (runtime
 // state mirrored across collaborators). The compiled iframe ships the other
 // side in packages/compiler/src/adapters/react/preview-bridge.ts.
-const INBOUND_SOURCE = 'op-lowcode-preview'
-const OUTBOUND_SOURCE = 'op-lowcode-editor'
-
 const previewTarget = ref<PreviewTarget>('react')
 const previewUIKit = ref<PreviewUIKit>('none')
 const previewI18nEnabled = ref(false)
@@ -121,12 +130,15 @@ watch(
 )
 const {
   status,
+  hostKind,
   compileState,
-  compileWarnings,
-  compileError,
+  compileMetrics,
+  compileDiagnostics,
   motionWarnings,
   motionCompileError,
-  forceRecompile
+  forceRecompile,
+  markRuntimeReady,
+  reportRuntimeError
 } = useCompileOnChange({
   target: previewTarget,
   uiKit: previewUIKit,
@@ -149,14 +161,27 @@ const compilerPreviewPopoutReady = computed(
   () =>
     compilerPreviewPopoutCommand.value !== null &&
     status.value.kind === 'ready' &&
+    status.value.port !== null &&
     !compilerPreviewPopoutBusy.value
 )
 
 const iframeKey = ref(0)
 const iframeEl = ref<HTMLIFrameElement | null>(null)
+let browserMessagePort: MessagePort | null = null
+let browserMessagePortChannel: string | null = null
+
+function closeBrowserMessagePort(): void {
+  browserMessagePort?.close()
+  browserMessagePort = null
+  browserMessagePortChannel = null
+}
+
+function closeTransferredPorts(ports: readonly MessagePort[]): void {
+  for (const port of ports) port.close()
+}
 const diagnosticsOpen = ref(false)
 const diagnosticSummary = computed(() =>
-  summarizeCompileDiagnostics(compileWarnings.value, compileError.value)
+  summarizeStructuredCompileDiagnostics(compileDiagnostics.value)
 )
 const diagnosticSummaryLabel = computed(() => {
   const { errorCount, warningCount, total } = diagnosticSummary.value
@@ -173,6 +198,9 @@ const compileActivityLabel = computed(() => {
       ? 'Changes pending'
       : `Queued ${compileState.value.autoDelayMs}ms`
   }
+  if (compileMetrics.value) {
+    return `${Math.round(compileMetrics.value.totalMs)}ms`
+  }
   if (compileState.value.lastDurationMs !== null) {
     return `${Math.round(compileState.value.lastDurationMs)}ms`
   }
@@ -183,11 +211,11 @@ const previewStatusShort = computed(() => {
     case 'ready':
       return 'Ready'
     case 'starting':
-      return 'Starting'
+      return 'Compiling'
     case 'error':
       return 'Error'
-    case 'disabled':
-      return 'Unavailable'
+    case 'unsupported':
+      return 'Unsupported'
     case 'idle':
       return 'Idle'
   }
@@ -195,6 +223,7 @@ const previewStatusShort = computed(() => {
 const previewStatusTone = computed(() => {
   if (status.value.kind === 'ready') return 'bg-emerald-500'
   if (status.value.kind === 'error') return 'bg-red-500'
+  if (status.value.kind === 'unsupported') return 'bg-violet-500'
   if (status.value.kind === 'starting') return 'bg-amber-500'
   return 'bg-muted/60'
 })
@@ -218,6 +247,13 @@ const compileActivityDetail = computed(() => {
   if (state.lastPushedRevision !== null) parts.push(`last pushed: ${state.lastPushedRevision}`)
   if (state.coalescedRequests > 0) parts.push(`coalesced: ${state.coalescedRequests}`)
   if (state.supersededRuns > 0) parts.push(`superseded: ${state.supersededRuns}`)
+  if (hostKind.value) parts.push(`host: ${hostKind.value}`)
+  if (compileMetrics.value) {
+    const metrics = compileMetrics.value
+    parts.push(`compile: ${Math.round(metrics.compileMs)}ms`)
+    parts.push(`bundle: ${Math.round(metrics.bundleMs)}ms`)
+    parts.push(`output: ${metrics.outputBytes} bytes / ${metrics.fileCount} files`)
+  }
   return parts.join(' · ')
 })
 
@@ -245,18 +281,6 @@ interface MotionDebugSnapshot {
 
 interface UnknownRecord {
   [key: string]: unknown
-}
-
-interface PreviewMessage {
-  source?: unknown
-  type?: unknown
-  id?: unknown
-  route?: unknown
-  name?: unknown
-  value?: unknown
-  status?: unknown
-  snapshot?: unknown
-  error?: unknown
 }
 
 const motionDebugEnabled = ref(false)
@@ -290,15 +314,31 @@ function resetMotionDebugForReload(): void {
   motionDebugSnapshot.value = null
 }
 
-const url = computed(() => (status.value.kind === 'ready' ? status.value.url : null))
-const previewOrigin = computed(() => {
-  if (!url.value) return null
-  try {
-    return new URL(url.value).origin
-  } catch {
-    return null
+const activeFrame = computed(() => {
+  if (status.value.kind === 'ready') return status.value.frame
+  if (status.value.kind === 'starting') return status.value.frame ?? null
+  return null
+})
+watch(activeFrame, (frame) => {
+  if (browserMessagePortChannel && frame?.channelId !== browserMessagePortChannel) {
+    closeBrowserMessagePort()
   }
 })
+const url = computed(() => activeFrame.value?.src ?? null)
+const frameName = computed(() => {
+  const frame = activeFrame.value
+  if (!frame) return undefined
+  try {
+    return serializePreviewFrameName(
+      frame.channelId,
+      window.location.origin,
+      hostKind.value === 'browser-worker' ? 'message-port' : 'window'
+    )
+  } catch {
+    return undefined
+  }
+})
+const canRecompile = computed(() => hostKind.value !== null && status.value.kind !== 'starting')
 
 // §7: the sidecar's `status.url` is only the dev-server origin (e.g.
 // `http://localhost:58856/`). On its own it never updates, which makes the
@@ -318,15 +358,15 @@ const statusLabel = computed(() => {
     case 'idle':
       return 'Idle'
     case 'starting':
-      return 'Starting dev server…'
+      return status.value.host === 'tauri-sidecar' ? 'Starting dev server…' : 'Compiling…'
     case 'ready': {
       const route = findRouteForPageId(store.state.currentPageId) ?? '/'
-      return formatPreviewURL(status.value.url, route)
+      return formatPreviewURL(status.value.frame.displayURL, route)
     }
     case 'error':
       return `Error: ${status.value.message}`
-    case 'disabled':
-      return status.value.reason
+    case 'unsupported':
+      return `Unsupported: ${status.value.reason}`
   }
   return ''
 })
@@ -442,17 +482,21 @@ function currentSelectionId(): string | null {
   return ids.length === 1 ? ids[0] : null
 }
 
-function postIframe(
-  payload:
-    | { type: 'select'; id: string | null }
-    | { type: 'navigate'; route: string }
-    | { type: 'theme'; theme: 'light' | 'dark' }
-    | { type: 'motionDebug'; enabled: boolean }
-    | ({ type: 'docState' } & PreviewDocStatePayload)
-): void {
-  const targetOrigin = previewOrigin.value
-  if (!targetOrigin) return
-  iframeEl.value?.contentWindow?.postMessage({ source: OUTBOUND_SOURCE, ...payload }, targetOrigin)
+function postIframe(payload: PreviewEditorPayload): void {
+  if (status.value.kind !== 'ready') return
+  const message = createPreviewEditorMessage(status.value.frame.channelId, payload)
+  if (!message) return
+  if (hostKind.value === 'browser-worker') {
+    if (!browserMessagePort || browserMessagePortChannel !== status.value.frame.channelId) {
+      return
+    }
+    // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no target origin; possession is the capability.
+    browserMessagePort.postMessage(message)
+    return
+  }
+  const frameWindow = iframeEl.value?.contentWindow
+  if (!frameWindow) return
+  frameWindow.postMessage(message, status.value.frame.postMessageTargetOrigin)
 }
 
 function postTheme(): void {
@@ -579,21 +623,48 @@ const visibleMotionDebugEntries = computed(
   () => motionDebugSnapshot.value?.entries.slice(0, 100) ?? []
 )
 
-function onIframeLoad(): void {
-  // After every iframe reload the bridge starts fresh — replay current
-  // editor state (target page + selection) so the iframe doesn't sit on
-  // the default `/` route or with a stale overlay.
+function replayPreviewState(): void {
   resetMotionDebugForReload()
+  if (status.value.kind !== 'ready') return
   postNavigateToCurrent()
   postTheme()
   postSelection()
   if (motionDebugEnabled.value) postIframe({ type: 'motionDebug', enabled: true })
 }
 
+let loadedBrowserFrameChannel: string | null = null
+
+function onIframeLoad(event: Event): void {
+  const frameElement = event.currentTarget
+  if (!(frameElement instanceof HTMLIFrameElement) || frameElement !== iframeEl.value) return
+  const frame = activeFrame.value
+  if (!frame) return
+  if (hostKind.value !== 'browser-worker') {
+    // Tauri sidecar reloads are trusted HMR navigations and retain their
+    // existing state-replay behavior.
+    replayPreviewState()
+    return
+  }
+  if (loadedBrowserFrameChannel !== frame.channelId) {
+    loadedBrowserFrameChannel = frame.channelId
+    return
+  }
+  // The opaque-origin sandbox moves onto a MessagePort after one verified handshake.
+  // A replacement
+  // document cannot inherit. Refuse the second document and close our endpoint.
+  closeBrowserMessagePort()
+  reportRuntimeError(
+    frame.channelId,
+    'Browser preview navigation was blocked because the sandbox document cannot replace its compiled artifact.'
+  )
+}
+
 let unsubscribeSelection: (() => void) | null = null
 let unregisterPopoutSession: (() => void) | null = null
 
-function handleMotionDebugMessage(data: PreviewMessage): void {
+function handleMotionDebugMessage(
+  data: Extract<PreviewInboundMessage, { type: 'motionDebug' }>
+): void {
   if (!motionDebugEnabled.value) return
   if (data.status === 'ready') {
     motionDebugStatus.value = 'ready'
@@ -613,46 +684,149 @@ function handleMotionDebugMessage(data: PreviewMessage): void {
   }
 }
 
+function handlePreviewSelectMessage(
+  data: Extract<PreviewInboundMessage, { type: 'select' }>
+): void {
+  if (!store.graph.getNode(data.id)) return
+  store.select([data.id])
+}
+
+function handlePreviewNavigateMessage(
+  data: Extract<PreviewInboundMessage, { type: 'navigate' }>
+): void {
+  const targetPageId = findPageIdForRoute(data.route)
+  if (!targetPageId || targetPageId === store.state.currentPageId) return
+  suppressOutboundNavigate = true
+  void store.switchPage(targetPageId).finally(() => {
+    suppressOutboundNavigate = false
+  })
+}
+
+function handlePreviewDocStateMessage(
+  data: Extract<PreviewInboundMessage, { type: 'docState' }>
+): void {
+  collab?.sendPreviewDocState({
+    name: data.name,
+    value: data.value as PreviewDocStatePayload['value']
+  })
+}
+
+function handlePreviewContentMessage(
+  data: Exclude<PreviewInboundMessage, { type: 'ready' } | { type: 'runtimeError' }>
+): void {
+  if (data.type === 'select') handlePreviewSelectMessage(data)
+  else if (data.type === 'navigate') handlePreviewNavigateMessage(data)
+  else if (data.type === 'docState') handlePreviewDocStateMessage(data)
+  else handleMotionDebugMessage(data)
+}
+
+function installBrowserMessagePort(port: MessagePort, channelId: string): void {
+  closeBrowserMessagePort()
+  browserMessagePort = port
+  browserMessagePortChannel = channelId
+  port.addEventListener('message', (event: MessageEvent) => {
+    const frame = activeFrame.value
+    if (
+      browserMessagePort !== port ||
+      browserMessagePortChannel !== channelId ||
+      !frame ||
+      frame.channelId !== channelId
+    ) {
+      return
+    }
+    if (event.ports.length !== 0) {
+      closeTransferredPorts(event.ports)
+      closeBrowserMessagePort()
+      reportRuntimeError(channelId, 'Browser preview message channel transferred an extra port.')
+      return
+    }
+    const data = parsePreviewInboundMessage(event.data, channelId)
+    if (!data || data.type === 'ready') return
+    if (data.type === 'runtimeError') {
+      closeBrowserMessagePort()
+      reportRuntimeError(channelId, data.message)
+      return
+    }
+    if (status.value.kind === 'ready') handlePreviewContentMessage(data)
+  })
+  port.addEventListener('messageerror', () => {
+    if (browserMessagePort !== port || browserMessagePortChannel !== channelId) return
+    closeBrowserMessagePort()
+    reportRuntimeError(channelId, 'Browser preview message channel received malformed data.')
+  })
+  port.start()
+}
+
+function handlePreviewReadyWindowMessage(event: MessageEvent, channelId: string): void {
+  if (hostKind.value === 'browser-worker') {
+    if (browserMessagePort !== null) {
+      closeTransferredPorts(event.ports)
+      return
+    }
+    if (event.ports.length !== 1) {
+      closeTransferredPorts(event.ports)
+      reportRuntimeError(channelId, 'Browser preview did not provide its isolated channel.')
+      return
+    }
+    installBrowserMessagePort(event.ports[0], channelId)
+  } else if (event.ports.length !== 0) {
+    closeTransferredPorts(event.ports)
+    return
+  }
+  if (markRuntimeReady(channelId)) replayPreviewState()
+}
+
+function handlePreviewRuntimeErrorWindowMessage(
+  event: MessageEvent,
+  channelId: string,
+  message: string
+): void {
+  if (hostKind.value === 'browser-worker') {
+    closeTransferredPorts(event.ports)
+    if (browserMessagePort !== null || event.ports.length !== 0) return
+  }
+  reportRuntimeError(channelId, message)
+}
+
 useEventListener(window, 'message', (event: MessageEvent) => {
-  if (event.source !== iframeEl.value?.contentWindow) return
-  if (!previewOrigin.value || event.origin !== previewOrigin.value) return
-  const data = event.data as PreviewMessage | null
-  if (!data || data.source !== INBOUND_SOURCE) return
-
-  // §7 step 4 walker concern: dispatch on `type` must stay exhaustive.
-  // The bridge widens its outbound `type` from 'select' to
-  // 'select' | 'navigate' — both branches handled below; unknown values
-  // silently drop (acceptable for a postMessage channel).
-  if (data.type === 'select') {
-    if (typeof data.id !== 'string' || data.id === '') return
-    if (!store.graph.getNode(data.id)) return
-    store.select([data.id])
+  const frame = activeFrame.value
+  if (!frame) return
+  const frameWindow = iframeEl.value?.contentWindow
+  if (!frameWindow) return
+  const eventMatchesFrame =
+    event.source === frameWindow && event.origin === frame.expectedMessageOrigin
+  const data = parsePreviewMessageEvent(
+    event,
+    frameWindow,
+    frame.expectedMessageOrigin,
+    frame.channelId
+  )
+  if (!data) {
+    if (eventMatchesFrame) closeTransferredPorts(event.ports)
     return
   }
 
-  if (data.type === 'navigate') {
-    if (typeof data.route !== 'string') return
-    const targetPageId = findPageIdForRoute(data.route)
-    if (!targetPageId || targetPageId === store.state.currentPageId) return
-    suppressOutboundNavigate = true
-    void store.switchPage(targetPageId).finally(() => {
-      suppressOutboundNavigate = false
-    })
+  if (hostKind.value !== 'browser-worker' && event.ports.length !== 0) {
+    closeTransferredPorts(event.ports)
     return
   }
 
-  // §4.6: a runtime docState change in this peer's iframe → broadcast to the
-  // room (no-op when not in a collab session).
-  if (data.type === 'docState') {
-    if (typeof data.name !== 'string') return
-    collab?.sendPreviewDocState({
-      name: data.name,
-      value: data.value as PreviewDocStatePayload['value']
-    })
+  if (data.type === 'ready') {
+    handlePreviewReadyWindowMessage(event, frame.channelId)
     return
   }
 
-  if (data.type === 'motionDebug') handleMotionDebugMessage(data)
+  if (data.type === 'runtimeError') {
+    handlePreviewRuntimeErrorWindowMessage(event, frame.channelId, data.message)
+    return
+  }
+
+  if (hostKind.value === 'browser-worker') {
+    closeTransferredPorts(event.ports)
+    return
+  }
+  if (status.value.kind !== 'ready') return
+  handlePreviewContentMessage(data)
 })
 
 // §7 decision #4: switching pages just navigates the iframe — no recompile
@@ -710,7 +884,7 @@ watch(
 onMounted(() => {
   unregisterPopoutSession = registerCompilerPreviewPopoutSession({
     getRequest() {
-      if (status.value.kind !== 'ready') return null
+      if (status.value.kind !== 'ready' || status.value.port === null) return null
       const path = findRouteForPageId(store.state.currentPageId)
       return path
         ? {
@@ -738,6 +912,7 @@ onBeforeUnmount(() => {
   unsubscribeSelection?.()
   unsubscribeSelection = null
   collab?.onPreviewDocState(null)
+  closeBrowserMessagePort()
 })
 </script>
 
@@ -745,6 +920,8 @@ onBeforeUnmount(() => {
   <aside
     id="lowcode-preview-pane"
     data-test-id="lowcode-preview-pane"
+    :data-preview-status="status.kind"
+    :data-preview-host="hostKind ?? undefined"
     class="flex min-w-0 flex-1 flex-col overflow-hidden border-l border-border bg-panel"
     :class="{ hidden: !embeddedVisible }"
   >
@@ -810,13 +987,22 @@ onBeforeUnmount(() => {
             :show-target="!showInlineTarget"
           />
 
-          <Tip v-if="showInlineReload" :label="url ? `Reload (${url})` : 'Preview is not ready'">
+          <Tip
+            v-if="showInlineReload"
+            :label="
+              canRecompile
+                ? url
+                  ? `Reload (${statusLabel})`
+                  : 'Recompile preview'
+                : 'Preview is compiling'
+            "
+          >
             <button
               type="button"
               data-test-id="lowcode-preview-reload"
               aria-label="Reload compiler preview"
               class="flex size-7 shrink-0 items-center justify-center rounded text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-40"
-              :disabled="!url"
+              :disabled="!canRecompile"
               @click="reload"
             >
               <icon-lucide-refresh-cw class="size-3.5" />
@@ -923,7 +1109,7 @@ onBeforeUnmount(() => {
                 <DropdownMenuItem
                   v-if="!showInlineReload"
                   :class="moreMenuItemClass"
-                  :disabled="!url"
+                  :disabled="!canRecompile"
                   @select="reload"
                 >
                   <icon-lucide-refresh-cw class="size-3.5 text-muted" />
@@ -1170,9 +1356,13 @@ onBeforeUnmount(() => {
               Motion
             </button>
           </Tip>
-          <Tip :label="url ? `Reload (${url})` : undefined">
+          <Tip
+            :label="
+              canRecompile ? (url ? `Reload (${statusLabel})` : 'Recompile preview') : undefined
+            "
+          >
             <button
-              v-if="url"
+              v-if="canRecompile"
               type="button"
               class="rounded px-2 py-0.5 text-xs text-muted hover:bg-hover hover:text-surface"
               @click="reload"
@@ -1202,13 +1392,17 @@ onBeforeUnmount(() => {
           v-if="url && embeddedVisible"
           :key="iframeKey"
           ref="iframeEl"
+          :name="frameName"
+          :sandbox="activeFrame?.sandbox ?? undefined"
           :src="url"
+          referrerpolicy="no-referrer"
           class="absolute inset-0 size-full border-0"
+          :class="{ invisible: status.kind !== 'ready' }"
           aria-label="lowcode preview"
           @load="onIframeLoad"
         />
         <div
-          v-else
+          v-if="!url || status.kind === 'starting'"
           class="flex h-full items-center justify-center px-4 text-center text-xs text-muted"
         >
           {{ statusLabel }}
@@ -1251,6 +1445,13 @@ onBeforeUnmount(() => {
               >: {{ diagnostic.message }}
               <span v-if="diagnostic.nodeId" class="block truncate text-muted">
                 Node {{ diagnostic.nodeId }}
+              </span>
+              <span v-if="diagnostic.path" class="block truncate text-muted">
+                {{ diagnostic.path
+                }}<template v-if="diagnostic.line"
+                  >:{{ diagnostic.line
+                  }}<template v-if="diagnostic.column">:{{ diagnostic.column }}</template></template
+                >
               </span>
             </span>
             <button

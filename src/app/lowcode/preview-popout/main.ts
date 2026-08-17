@@ -1,5 +1,9 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import {
+  createPreviewEditorMessage,
+  serializePreviewFrameName
+} from '../preview-pane/iframe/messages'
 import type { CompilerPreviewPopoutControls } from '../preview-pane/popout/controls'
 import {
   parseCompilerPreviewPopoutIntent,
@@ -11,8 +15,6 @@ import {
   requestCompilerPreviewPopoutLatestPayload,
   type CompilerPreviewPopoutGlobalTarget
 } from './globals'
-
-const PREVIEW_BRIDGE_SOURCE = 'op-lowcode-editor'
 
 function requireElement<T extends Element>(selector: string, type: new () => T): T {
   const element = document.querySelector(selector)
@@ -36,6 +38,8 @@ const exportMicrofrontendButton = requireElement(
 )
 const deployButton = requireElement('#compiler-preview-deploy', HTMLButtonElement)
 const toolbarStatus = requireElement('#compiler-preview-toolbar-status', HTMLElement)
+const previewChannelId = crypto.randomUUID()
+iframe.name = serializePreviewFrameName(previewChannelId, window.location.origin)
 let frameLoaded = false
 let pendingNavigation: Readonly<{ origin: string; path: string }> | null = null
 let requestedAlwaysOnTop = false
@@ -162,10 +166,9 @@ function applyControls(next: CompilerPreviewPopoutControls): void {
 
 function postNavigation(origin: string, path: string): boolean {
   if (!frameLoaded || !iframe.contentWindow) return false
-  iframe.contentWindow.postMessage(
-    { source: PREVIEW_BRIDGE_SOURCE, type: 'navigate', route: path },
-    origin
-  )
+  const message = createPreviewEditorMessage(previewChannelId, { type: 'navigate', route: path })
+  if (!message) return false
+  iframe.contentWindow.postMessage(message, origin)
   return true
 }
 

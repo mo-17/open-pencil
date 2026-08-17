@@ -1,13 +1,9 @@
 import type { CompileWarning } from '@open-pencil/compiler'
 
-export type CompileDiagnosticSeverity = 'error' | 'warning'
+import type { PreviewDiagnostic } from './host/types'
 
-export interface CompileDiagnostic {
-  severity: CompileDiagnosticSeverity
-  code: string
-  message: string
-  nodeId?: string
-}
+export type CompileDiagnosticSeverity = PreviewDiagnostic['severity']
+export type CompileDiagnostic = PreviewDiagnostic
 
 export interface CompileDiagnosticSummary {
   items: CompileDiagnostic[]
@@ -41,6 +37,15 @@ export function summarizeCompileDiagnostics(
   compileError: string | null
 ): CompileDiagnosticSummary {
   const items = buildCompileDiagnostics(warnings, compileError)
+  const errorCount = items.filter((item) => item.severity === 'error').length
+  const warningCount = items.length - errorCount
+  return { items, errorCount, warningCount, total: items.length }
+}
+
+export function summarizeStructuredCompileDiagnostics(
+  diagnostics: readonly CompileDiagnostic[]
+): CompileDiagnosticSummary {
+  const items = diagnostics.map((diagnostic) => ({ ...diagnostic }))
   const errorCount = items.filter((item) => item.severity === 'error').length
   const warningCount = items.length - errorCount
   return { items, errorCount, warningCount, total: items.length }

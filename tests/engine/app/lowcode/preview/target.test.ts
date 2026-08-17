@@ -2,10 +2,10 @@ import { describe, expect, test } from 'bun:test'
 
 import { ref } from 'vue'
 
+import { previewSidecarCommandArgs } from '@/app/lowcode/preview-pane/host/tauri-sidecar'
 import {
   parsePreviewSidecarReady,
-  previewCompilerOverrides,
-  previewSidecarCommandArgs
+  previewCompilerOverrides
 } from '@/app/lowcode/preview-pane/use-compile-on-change'
 
 function settings(target: 'react' | 'vue') {

@@ -11,6 +11,11 @@
 //   iframe → editor   { source: 'op-lowcode-preview',  type: 'select',   id }
 //   iframe → editor   { source: 'op-lowcode-preview',  type: 'navigate', route }
 //
+// Every payload also carries the per-frame `channel` written into the
+// iframe's browsing-context name by PreviewPane. The generated runtime reads
+// the expected parent origin from that one-time boot context before Browser
+// Preview clears it, so the bridge never uses a wildcard postMessage target.
+//
 // `id` is `null` when nothing is selected; otherwise the SceneNode id that
 // the web adapter emitted as `data-node-id`. The iframe runtime only
 // surrenders a click to the editor when the user is holding Alt/Option —
@@ -31,6 +36,15 @@ export function buildPreviewBridge(): string {
 
 const INBOUND_SOURCE = 'op-lowcode-editor'
 const OUTBOUND_SOURCE = 'op-lowcode-preview'
+const CHANNEL_PROTOCOL = 'open-pencil-preview-v2'
+const MAX_CHANNEL_LENGTH = 128
+const MAX_NODE_ID_LENGTH = 512
+const MAX_ROUTE_LENGTH = 2048
+const MAX_DOC_STATE_NAME_LENGTH = 128
+const MAX_DOC_STATE_VALUES = 4096
+const MAX_DOC_STATE_STRING_LENGTH = 65536
+const MAX_PORTABLE_MESSAGE_BYTES = 256 * 1024
+const MAX_MOTION_DEBUG_ENTRIES = 256
 // Editor-only preview selection chrome. Keep these fixed, high-contrast colors
 // independent from generated app theme tokens so the canvas↔preview bridge is
 // readable even when the user design overrides runtime CSS variables.
@@ -48,6 +62,7 @@ interface DocStore {
 declare global {
   interface Window {
     __openPencilPreviewBridge?: boolean
+    __openPencilPreviewPort?: MessagePort | null
     // Phase 3 §4.6 — the adapter-owned lowcode docState store, exposed by
     // the generated state module so the bridge can mirror state across peers.
     __opDocStore?: DocStore
@@ -56,27 +71,32 @@ declare global {
 
 interface InboundSelect {
   source: typeof INBOUND_SOURCE
+  channel: string
   type: 'select'
   id: string | null
 }
 interface InboundNavigate {
   source: typeof INBOUND_SOURCE
+  channel: string
   type: 'navigate'
   route: string
 }
 interface InboundDocState {
   source: typeof INBOUND_SOURCE
+  channel: string
   type: 'docState'
   name: string
   value: unknown
 }
 interface InboundTheme {
   source: typeof INBOUND_SOURCE
+  channel: string
   type: 'theme'
   theme: 'light' | 'dark'
 }
 interface InboundMotionDebug {
   source: typeof INBOUND_SOURCE
+  channel: string
   type: 'motionDebug'
   enabled: boolean
 }
@@ -87,8 +107,189 @@ type Inbound =
   | InboundTheme
   | InboundMotionDebug
 
-if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
+interface PreviewFrameContext {
+  protocol: typeof CHANNEL_PROTOCOL
+  channel: string
+  parentOrigin: string
+  transport: 'window' | 'message-port'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value)
+  return keys.length === expected.length && keys.every((key) => expected.includes(key))
+}
+
+function readFrameContext(): PreviewFrameContext | null {
+  try {
+    const candidate: unknown = JSON.parse(window.name)
+    if (
+      !isRecord(candidate) ||
+      !hasExactKeys(candidate, ['protocol', 'channel', 'parentOrigin', 'transport'])
+    ) {
+      return null
+    }
+    if (
+      candidate.protocol !== CHANNEL_PROTOCOL ||
+      typeof candidate.channel !== 'string' ||
+      candidate.channel.length < 16 ||
+      candidate.channel.length > MAX_CHANNEL_LENGTH ||
+      !/^[A-Za-z0-9_-]+$/.test(candidate.channel) ||
+      typeof candidate.parentOrigin !== 'string' ||
+      (candidate.transport !== 'window' && candidate.transport !== 'message-port')
+    ) {
+      return null
+    }
+    const parsed = new URL(candidate.parentOrigin)
+    const canonicalTauriOrigin = candidate.parentOrigin === 'tauri://localhost'
+    if (
+      !canonicalTauriOrigin &&
+      (parsed.origin !== candidate.parentOrigin || parsed.username || parsed.password)
+    ) {
+      return null
+    }
+    return {
+      protocol: CHANNEL_PROTOCOL,
+      channel: candidate.channel,
+      parentOrigin: candidate.parentOrigin,
+      transport: candidate.transport
+    }
+  } catch {
+    return null
+  }
+}
+
+function validRoute(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= MAX_ROUTE_LENGTH &&
+    value.startsWith('/') &&
+    !value.startsWith('//') &&
+    !value.includes('\\\\') &&
+    !/[\\u0000-\\u001f\\u007f]/.test(value)
+  )
+}
+
+function validDocStateValue(value: unknown): boolean {
+  const pending: unknown[] = [value]
+  const seen = new Set<object>()
+  let values = 0
+  let bytes = 0
+  while (pending.length > 0) {
+    const current = pending.pop()
+    values += 1
+    if (values > MAX_DOC_STATE_VALUES) return false
+    if (
+      current === null ||
+      typeof current === 'boolean' ||
+      (typeof current === 'number' && Number.isFinite(current))
+    ) {
+      bytes += 8
+      if (bytes > MAX_PORTABLE_MESSAGE_BYTES) return false
+      continue
+    }
+    if (typeof current === 'string') {
+      if (current.length > MAX_DOC_STATE_STRING_LENGTH) return false
+      bytes += current.length * 2
+      if (bytes > MAX_PORTABLE_MESSAGE_BYTES) return false
+      continue
+    }
+    if (!isRecord(current) && !Array.isArray(current)) return false
+    if (seen.has(current)) return false
+    seen.add(current)
+    if (Array.isArray(current)) {
+      bytes += current.length * 8
+      if (bytes > MAX_PORTABLE_MESSAGE_BYTES) return false
+      pending.push(...current)
+      continue
+    }
+    if (Object.getOwnPropertySymbols(current).length > 0) return false
+    const descriptors = Object.getOwnPropertyDescriptors(current)
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+      if (
+        key.length > MAX_DOC_STATE_NAME_LENGTH ||
+        !descriptor.enumerable ||
+        !Object.hasOwn(descriptor, 'value')
+      ) {
+        return false
+      }
+      bytes += key.length * 2 + 8
+      if (bytes > MAX_PORTABLE_MESSAGE_BYTES) return false
+      pending.push(descriptor.value)
+    }
+  }
+  return true
+}
+
+function validMotionDebugSnapshot(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  const entries = Object.getOwnPropertyDescriptor(value, 'entries')?.value
+  return (
+    Array.isArray(entries) &&
+    entries.length <= MAX_MOTION_DEBUG_ENTRIES &&
+    validDocStateValue(value)
+  )
+}
+
+function parseInbound(value: unknown, channel: string): Inbound | null {
+  if (!isRecord(value) || value.source !== INBOUND_SOURCE || value.channel !== channel) return null
+  if (value.type === 'select' && hasExactKeys(value, ['source', 'channel', 'type', 'id'])) {
+    return value.id === null ||
+      (typeof value.id === 'string' && value.id.length > 0 && value.id.length <= MAX_NODE_ID_LENGTH)
+      ? (value as unknown as InboundSelect)
+      : null
+  }
+  if (value.type === 'navigate' && hasExactKeys(value, ['source', 'channel', 'type', 'route'])) {
+    return validRoute(value.route) ? (value as unknown as InboundNavigate) : null
+  }
+  if (
+    value.type === 'docState' &&
+    hasExactKeys(value, ['source', 'channel', 'type', 'name', 'value']) &&
+    typeof value.name === 'string' &&
+    value.name.length > 0 &&
+    value.name.length <= MAX_DOC_STATE_NAME_LENGTH &&
+    validDocStateValue(value.value)
+  ) {
+    return value as unknown as InboundDocState
+  }
+  if (value.type === 'theme' && hasExactKeys(value, ['source', 'channel', 'type', 'theme'])) {
+    return value.theme === 'light' || value.theme === 'dark'
+      ? (value as unknown as InboundTheme)
+      : null
+  }
+  if (
+    value.type === 'motionDebug' &&
+    hasExactKeys(value, ['source', 'channel', 'type', 'enabled']) &&
+    typeof value.enabled === 'boolean'
+  ) {
+    return value as unknown as InboundMotionDebug
+  }
+  return null
+}
+
+const frameContext = typeof window === 'undefined' ? null : readFrameContext()
+
+if (typeof window !== 'undefined' && frameContext && !window.__openPencilPreviewBridge) {
   window.__openPencilPreviewBridge = true
+
+  function postToParent(payload: Record<string, unknown>): void {
+    if (frameContext.transport === 'message-port') {
+      window.__openPencilPreviewPort?.postMessage({
+        ...payload,
+        source: OUTBOUND_SOURCE,
+        channel: frameContext.channel
+      })
+      return
+    }
+    window.parent.postMessage(
+      { ...payload, source: OUTBOUND_SOURCE, channel: frameContext.channel },
+      frameContext.parentOrigin
+    )
+  }
 
   const overlay = document.createElement('div')
   overlay.setAttribute('data-op-preview-overlay', '')
@@ -117,10 +318,7 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
     snapshot?: unknown,
     error?: string
   ): void {
-    window.parent?.postMessage(
-      { source: OUTBOUND_SOURCE, type: 'motionDebug', status, snapshot, error },
-      '*'
-    )
+    postToParent({ type: 'motionDebug', status, snapshot, error })
   }
 
   function inspectMotion(): void {
@@ -134,9 +332,15 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
       return
     }
     try {
-      postMotionDebug('ready', runtime.inspect())
+      const snapshot = runtime.inspect()
+      if (!validMotionDebugSnapshot(snapshot)) {
+        postMotionDebug('error', undefined, 'Motion diagnostics exceed the preview safety limit.')
+        return
+      }
+      postMotionDebug('ready', snapshot)
     } catch (error) {
-      postMotionDebug('error', undefined, error instanceof Error ? error.message : String(error))
+      const message = error instanceof Error ? error.message : String(error)
+      postMotionDebug('error', undefined, message.slice(0, MAX_DOC_STATE_STRING_LENGTH))
     }
   }
 
@@ -187,10 +391,7 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
 
   function postOutboundNavigate(route: string): void {
     if (suppressOutbound) return
-    window.parent?.postMessage(
-      { source: OUTBOUND_SOURCE, type: 'navigate', route },
-      '*'
-    )
+    if (validRoute(route)) postToParent({ type: 'navigate', route })
   }
 
   // Client routers call history.pushState directly and do NOT dispatch
@@ -219,10 +420,13 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
       if (suppressDocStateOutbound) return
       for (const name of Object.keys(state)) {
         if (state[name] !== prev[name]) {
-          window.parent?.postMessage(
-            { source: OUTBOUND_SOURCE, type: 'docState', name: name, value: state[name] },
-            '*'
-          )
+          if (
+            name.length > 0 &&
+            name.length <= MAX_DOC_STATE_NAME_LENGTH &&
+            validDocStateValue(state[name])
+          ) {
+            postToParent({ type: 'docState', name: name, value: state[name] })
+          }
         }
       }
     })
@@ -242,18 +446,14 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
     )
   }
 
-  window.addEventListener('message', (event: MessageEvent) => {
-    if (event.source !== window.parent) return
-    const data = event.data as Partial<Inbound> | null
-    if (!data || data.source !== INBOUND_SOURCE) return
+  function handleInbound(data: Inbound): void {
     if (data.type === 'select') {
       currentId = typeof data.id === 'string' ? data.id : null
       updateOverlay()
       return
     }
     if (data.type === 'navigate') {
-      const route = typeof data.route === 'string' ? data.route : null
-      if (!route) return
+      const route = data.route
       // No-op if the iframe is already at this route — avoids stray
       // outbound traffic on init or on duplicate page-id watcher fires.
       if (location.pathname === route) return
@@ -268,7 +468,7 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
     }
     if (data.type === 'docState') {
       const store = window.__opDocStore
-      if (!store || typeof data.name !== 'string') return
+      if (!store) return
       if (!Object.hasOwn(store.getState(), data.name)) return
       // Apply the remote value without re-broadcasting it back out.
       suppressDocStateOutbound = true
@@ -287,7 +487,26 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
     if (data.type === 'motionDebug') {
       setMotionDebugEnabled(data.enabled === true)
     }
-  })
+  }
+
+  if (frameContext.transport === 'message-port') {
+    const port = window.__openPencilPreviewPort
+    if (port) {
+      port.addEventListener('message', (event: MessageEvent) => {
+        const data = parseInbound(event.data, frameContext.channel)
+        if (data) handleInbound(data)
+      })
+      port.start()
+      window.addEventListener('pagehide', () => port.close(), { once: true })
+    }
+  } else {
+    window.addEventListener('message', (event: MessageEvent) => {
+      if (event.source !== window.parent) return
+      if (event.origin !== frameContext.parentOrigin) return
+      const data = parseInbound(event.data, frameContext.channel)
+      if (data) handleInbound(data)
+    })
+  }
 
   // Alt/Option-click is the "select in canvas" affordance — plain clicks pass
   // through so the user's onClick handlers still fire as in any real app.
@@ -301,7 +520,7 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
       if (!id) return
       event.preventDefault()
       event.stopPropagation()
-      window.parent?.postMessage({ source: OUTBOUND_SOURCE, type: 'select', id }, '*')
+      if (id.length <= MAX_NODE_ID_LENGTH) postToParent({ type: 'select', id })
     },
     true
   )

@@ -171,6 +171,12 @@ describe('preview compile scheduler', () => {
     scheduler.flush()
     expect(runner.runs.map(({ request }) => request.revision)).toEqual([1, 3])
     expect(runner.runs[1].request.refreshFonts).toBe(true)
+
+    scheduler.requestChange()
+    expect(runner.runs[1].request.isCurrent()).toBe(true)
+    runner.runs[1].resolve('pushed')
+    await settleScheduler()
+    expect(scheduler.getState()).toMatchObject({ pending: true, pendingRevision: 4 })
   })
 
   test('switching a pending Manual change to Auto schedules its trailing flush', () => {

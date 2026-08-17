@@ -1,89 +1,46 @@
-// Wires the editor scene-graph into the lowcode preview pipeline:
+// Wires SceneGraph changes into the environment-specific preview host:
 //
-//   sceneVersion --(refresh policy)--> compile(all pages | currentPage)
-//                                          |
-//                                          v
-//                                  Map<path, content>
-//                                          |
-//                                          v
-//                              dev-server sidecar (stdio)
-//                                          |
-//                                          v
-//                                  iframe HMR refresh
+//   SceneGraph --(Auto | Real-time | Manual)--> PreviewHost
+//        Tauri: compiler + Bun/Vite sidecar ACK/HMR
+//        Browser: bounded snapshot + disposable Worker + WASM bundle + Blob iframe
 //
-// Phase 2 §7: multi-page docs (pages.length > 1) compile all pages so the
-// iframe runs the same react-router-dom router shell as CLI export, and
-// editor↔iframe navigation rides the preview-bridge `navigate` channel
-// (owned by PreviewPane.vue, not this composable). Single-page docs keep
-// the legacy [currentPageId] fast path for byte-identical regression with
-// Phase 1 §11.5 #5 (§7 decision #a). Switching `currentPageId` no longer
-// triggers a recompile — only `sceneVersion` does (§7 decision #4).
-//
-// Tauri-only. The sidecar runs `bun packages/compiler/src/dev-server.ts`
-// via @tauri-apps/plugin-shell; that path is never imported statically so
-// the browser bundle stays clean.
+// Page switches remain bridge-only navigation. The scheduler still coalesces
+// scene revisions, while generation and AbortSignal gates prevent a late build
+// from publishing an obsolete iframe artifact.
 
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
 
-import {
-  compile,
-  createPreviewFileEncodeCache,
-  resolveCompilerWebFonts,
-  resetPreviewFileEncodeCache,
-  serializePreviewFiles,
-  withDefaults,
-  type CompilerOptions,
-  type CompileWarning
-} from '@open-pencil/compiler'
-import { fontManager } from '@open-pencil/core/text'
+import { withDefaults, type CompilerOptions, type CompileWarning } from '@open-pencil/compiler'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { importedFontRevision } from '@/app/editor/fonts'
-import { decodeTauriStderr } from '@/app/shell/ui'
-import { isTauri } from '@/app/tauri/env'
-import { tauriFetch } from '@/app/tauri/http'
 
 import {
   createPreviewCompileScheduler,
   createPreviewCompileSchedulerState,
   DEFAULT_PREVIEW_REFRESH_POLICY,
+  type PreviewCompileOutcome,
   type PreviewCompileRun,
   type PreviewCompileSchedulerState,
   type PreviewRefreshPolicy
 } from './compile-scheduler'
-import { parsePreviewSidecarReady, type PreviewSidecarReady } from './sidecar-ready'
-import { createPreviewStartupEventBuffer, waitForPreviewUpdateAck } from './update-ack'
+import { createPreviewHost } from './host/create'
+import type {
+  PreviewDiagnostic,
+  PreviewFrameDescriptor,
+  PreviewHost,
+  PreviewHostBuildResult,
+  PreviewHostBuildMetrics,
+  PreviewTarget as HostPreviewTarget
+} from './host/types'
 
 export { parsePreviewSidecarReady, type PreviewSidecarReady } from './sidecar-ready'
 
-interface SidecarReadyEvent {
-  type: 'ready'
-  url: string
-  port: number
-}
-interface SidecarErrorEvent {
-  type: 'error'
-  message: string
-}
-interface SidecarUpdatedEvent {
-  type: 'updated'
-}
-interface SidecarClosingEvent {
-  type: 'closing'
-}
-type SidecarEvent =
-  | SidecarReadyEvent
-  | SidecarErrorEvent
-  | SidecarUpdatedEvent
-  | SidecarClosingEvent
-
-const SIDECAR_NAME = 'lowcode-preview'
-const SIDECAR_ENTRY = 'packages/compiler/src/dev-server.ts'
-const READY_TIMEOUT_MS = 15_000
 const NOOP = (): void => undefined
 
 export type PreviewUIKit = 'none' | 'shadcn'
-export type PreviewTarget = 'react' | 'vue'
+export type PreviewTarget = HostPreviewTarget
+export const BROWSER_PREVIEW_RUNTIME_READY_TIMEOUT_MS = 15_000
 
 export interface PreviewCompileSettings {
   target?: Ref<PreviewTarget>
@@ -96,8 +53,8 @@ export interface PreviewCompileSettings {
 export function parsePreviewLocales(raw: string): string[] {
   return raw
     .split(/[,\s]+/)
-    .map((s) => s.trim())
-    .filter((s) => s !== '')
+    .map((value) => value.trim())
+    .filter((value) => value !== '')
 }
 
 export function previewCompilerOverrides(
@@ -119,421 +76,362 @@ export function previewCompilerOverrides(
   }
 }
 
-interface PreviewSidecar {
-  url: string
-  port: number
-  readonly terminal: Promise<{ code: number | null; message: string }>
-  isAlive(): boolean
-  update(files: Map<string, string | Uint8Array>): Promise<void>
-  dispose(): Promise<void>
-}
-
-export function previewSidecarCommandArgs(projectRoot: string, target: PreviewTarget): string[] {
-  return [SIDECAR_ENTRY, '--root', projectRoot, '--target', target]
-}
-
-function parsePreviewSidecarEvent(line: string): SidecarEvent {
-  const value: unknown = JSON.parse(line)
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Preview sidecar event must be an object')
-  }
-  const type = (value as { type?: unknown }).type
-  if (type === 'ready') return { type, ...parsePreviewSidecarReady(value) }
-  if (type === 'updated' || type === 'closing') return { type }
-  if (type === 'error' && typeof (value as { message?: unknown }).message === 'string') {
-    return { type, message: (value as { message: string }).message }
-  }
-  throw new Error('Unsupported preview sidecar event')
-}
-
-async function startPreviewSidecar(target: PreviewTarget): Promise<PreviewSidecar> {
-  const { Command } = await import('@tauri-apps/plugin-shell')
-  // PROJECT_ROOT is injected by Vite via `define` (see vite.config.ts).
-  const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
-  const command = Command.create(SIDECAR_NAME, previewSidecarCommandArgs(projectRoot, target), {
-    cwd: projectRoot
-  })
-
-  let stdoutBuffer = ''
-  const stderrTail: string[] = []
-  const listeners = new Set<(event: SidecarEvent) => void>()
-  const processState: {
-    closed: boolean
-    unhealthy: boolean
-    exitCode: number | null
-    terminalMessage: string | null
-  } = { closed: false, unhealthy: false, exitCode: null, terminalMessage: null }
-  let resolveTerminal: (value: { code: number | null; message: string }) => void = NOOP
-  const terminal = new Promise<{ code: number | null; message: string }>((resolve) => {
-    resolveTerminal = resolve
-  })
-  const startupEvents = createPreviewStartupEventBuffer()
-  const processIsClosed = (): boolean => processState.closed
-  const processIsAlive = (): boolean => !processState.closed && !processState.unhealthy
-
-  const settleTerminal = (message: string, code: number | null): void => {
-    processState.unhealthy = true
-    if (processState.terminalMessage !== null) return
-    processState.terminalMessage = message
-    resolveTerminal({ code, message })
-  }
-
-  const dispatch = (event: SidecarEvent): void => {
-    startupEvents.capture(event)
-    for (const fn of listeners) fn(event)
-  }
-
-  command.stdout.on('data', (raw: Uint8Array | number[] | string) => {
-    const chunk = typeof raw === 'string' ? raw : decodeTauriStderr(raw)
-    stdoutBuffer += chunk
-    let nl = stdoutBuffer.indexOf('\n')
-    while (nl !== -1) {
-      const line = stdoutBuffer.slice(0, nl).trim()
-      stdoutBuffer = stdoutBuffer.slice(nl + 1)
-      nl = stdoutBuffer.indexOf('\n')
-      if (!line) continue
-      try {
-        dispatch(parsePreviewSidecarEvent(line))
-      } catch (e) {
-        console.warn('[preview] non-JSON stdout:', line, e)
-      }
-    }
-  })
-
-  command.stderr.on('data', (raw: Uint8Array | number[] | string) => {
-    const text = decodeTauriStderr(raw)
-    stderrTail.push(text)
-    // Keep at most ~8KiB of recent stderr for error context.
-    let total = stderrTail.reduce((n, s) => n + s.length, 0)
-    while (total > 8192 && stderrTail.length > 1) {
-      total -= stderrTail.shift()?.length ?? 0
-    }
-    console.warn('[preview]', text)
-  })
-
-  command.on('close', (data: { code: number | null }) => {
-    processState.closed = true
-    processState.exitCode = data.code
-    const message = `dev-server exited (code ${data.code ?? 'null'})`
-    settleTerminal(message, data.code)
-    dispatch({ type: 'error', message })
-  })
-  command.on('error', (message: string) => {
-    settleTerminal(message, null)
-    dispatch({ type: 'error', message })
-  })
-
-  let child: Awaited<ReturnType<typeof command.spawn>>
-  try {
-    child = await command.spawn()
-  } catch (e) {
-    const hint =
-      'Failed to spawn `bun`. Ensure bun is on the launching shell PATH ' +
-      '(GUI apps on macOS may need `~/.bun/bin` exported in /etc/paths.d or via launchctl).'
-    throw new Error(`${e instanceof Error ? e.message : String(e)} — ${hint}`)
-  }
-
-  let ready: PreviewSidecarReady
-  try {
-    ready = await new Promise<PreviewSidecarReady>((resolve, reject) => {
-      const fail = (msg: string): void => {
-        clearTimeout(timer)
-        listeners.delete(handle)
-        const stderr = stderrTail.join('').trim()
-        reject(new Error(stderr ? `${msg}\n--- stderr ---\n${stderr}` : msg))
-      }
-      const timer = setTimeout(() => {
-        if (processIsClosed()) {
-          fail(`dev-server exited (code ${processState.exitCode ?? 'null'}) before ready`)
-        } else {
-          fail(`Preview server did not become ready within ${READY_TIMEOUT_MS}ms`)
-        }
-      }, READY_TIMEOUT_MS)
-      const handle = (event: SidecarEvent): void => {
-        if (event.type === 'ready') {
-          try {
-            const parsed = parsePreviewSidecarReady(event)
-            clearTimeout(timer)
-            listeners.delete(handle)
-            resolve(parsed)
-          } catch (cause) {
-            fail(cause instanceof Error ? cause.message : String(cause))
-          }
-        } else if (event.type === 'error') {
-          fail(event.message)
-        }
-      }
-      listeners.add(handle)
-      startupEvents.replay(handle)
-    })
-    if (!processIsAlive()) {
-      throw new Error(
-        processState.terminalMessage ?? 'Preview sidecar stopped before startup completed'
-      )
-    }
-  } catch (error) {
-    if (!processIsClosed()) {
-      try {
-        await child.kill()
-      } catch (killError) {
-        console.warn('[preview] startup cleanup failed:', killError)
-      }
-    }
-    throw error
-  } finally {
-    startupEvents.settle()
-  }
-
-  const encodeCache = createPreviewFileEncodeCache()
-  let updateQueue: Promise<void> = Promise.resolve()
-  let disposed = false
-  return {
-    url: ready.url,
-    port: ready.port,
-    terminal,
-    isAlive: () => !disposed && processIsAlive(),
-    async update(files: Map<string, string | Uint8Array>): Promise<void> {
-      if (disposed) return
-      const pending = updateQueue.then(async () => {
-        if (disposed) return undefined
-        if (!processIsAlive()) {
-          throw new Error(processState.terminalMessage ?? 'Preview sidecar is not running')
-        }
-        const acknowledgement = waitForPreviewUpdateAck(listeners)
-        try {
-          const serializable = serializePreviewFiles(files, encodeCache)
-          const line = JSON.stringify({ type: 'update', files: serializable }) + '\n'
-          await child.write(line)
-          await acknowledgement.promise
-          if (!processIsAlive()) {
-            throw new Error(
-              processState.terminalMessage ?? 'Preview sidecar stopped after the update'
-            )
-          }
-          return undefined
-        } catch (cause) {
-          resetPreviewFileEncodeCache(encodeCache)
-          settleTerminal(
-            cause instanceof Error ? cause.message : 'Preview sidecar update failed',
-            processState.exitCode
-          )
-          if (!processIsClosed()) {
-            try {
-              await child.kill()
-            } catch (killError) {
-              console.warn('[preview] update failure cleanup failed:', killError)
-            }
-          }
-          throw cause
-        } finally {
-          acknowledgement.cancel()
-        }
-      })
-      updateQueue = pending.catch(() => undefined)
-      await pending
-    },
-    async dispose(): Promise<void> {
-      if (disposed) return
-      disposed = true
-      await updateQueue
-      try {
-        await child.write(JSON.stringify({ type: 'close' }) + '\n')
-      } catch (e) {
-        console.warn('[preview] close write failed (stdin closed?):', e)
-      }
-      try {
-        await child.kill()
-      } catch (e) {
-        console.warn('[preview] kill failed:', e)
-      }
-    }
-  }
-}
-
 export type PreviewStatus =
   | { kind: 'idle' }
-  | { kind: 'starting' }
-  | { kind: 'ready'; url: string; port: number }
+  | {
+      kind: 'starting'
+      host: PreviewHost['kind'] | null
+      generation?: number
+      frame?: PreviewFrameDescriptor
+    }
+  | {
+      kind: 'ready'
+      generation: number
+      url: string
+      port: number | null
+      frame: PreviewFrameDescriptor
+    }
   | { kind: 'error'; message: string }
-  | { kind: 'disabled'; reason: string }
+  | { kind: 'unsupported'; reason: string }
 
 interface UseCompileOnChangeResult {
   status: Ref<PreviewStatus>
+  hostKind: Ref<PreviewHost['kind'] | null>
   compileState: Ref<PreviewCompileSchedulerState>
+  compileMetrics: Ref<PreviewHostBuildMetrics | null>
+  compileDiagnostics: Ref<PreviewDiagnostic[]>
   compileWarnings: Ref<CompileWarning[]>
   compileError: Ref<string | null>
   motionWarnings: Ref<CompileWarning[]>
   motionCompileError: Ref<string | null>
-  /** Compile + push immediately, bypassing the active refresh policy. Used by
-   *  the PreviewPane reload button so the user can force a fresh build without
-   *  waiting on an Auto trailing flush. No-op until the sidecar is ready. */
   forceRecompile: () => void
+  markRuntimeReady: (channelId: string) => boolean
+  reportRuntimeError: (channelId: string, message: string) => boolean
 }
 
 export function onlyMotionWarnings(warnings: readonly CompileWarning[]): CompileWarning[] {
   return warnings.filter((warning) => warning.code.startsWith('motion-'))
 }
 
+function diagnosticWarnings(diagnostics: readonly PreviewDiagnostic[]): CompileWarning[] {
+  return diagnostics
+    .filter((diagnostic) => diagnostic.severity === 'warning')
+    .map((diagnostic) => ({
+      code: diagnostic.code,
+      message: diagnostic.message,
+      ...(diagnostic.nodeId ? { nodeId: diagnostic.nodeId } : {})
+    }))
+}
+
+function normalizedDiagnostics(
+  diagnostics: readonly PreviewDiagnostic[],
+  fallbackError?: string
+): PreviewDiagnostic[] {
+  const output = diagnostics.map((diagnostic) => ({ ...diagnostic }))
+  if (fallbackError && !output.some((diagnostic) => diagnostic.severity === 'error')) {
+    output.unshift({
+      code: 'preview-build-failed',
+      severity: 'error',
+      message: fallbackError
+    })
+  }
+  return output
+}
+
 /**
- * Mount-time: spawn the dev-server, do an initial compile + push.
- * Then policy-watch `sceneVersion` and push fresh compiles on change.
- * Unmount: dispose the sidecar.
+ * Mount: create the current PreviewHost and request the initial build.
+ * Change: preserve the scheduler policy and coalesce obsolete active builds.
+ * Unmount/target change: terminate Workers/sidecars and revoke host artifacts.
  */
 export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompileOnChangeResult {
   const status = ref<PreviewStatus>({ kind: 'idle' })
+  const hostKind = ref<PreviewHost['kind'] | null>(null)
   const compileState = ref(
     createPreviewCompileSchedulerState(
       settings?.refreshPolicy?.value ?? DEFAULT_PREVIEW_REFRESH_POLICY
     )
   )
+  const compileMetrics = ref<PreviewHostBuildMetrics | null>(null)
+  const compileDiagnostics = ref<PreviewDiagnostic[]>([])
   const compileWarnings = ref<CompileWarning[]>([])
   const compileError = ref<string | null>(null)
   const motionWarnings = ref<CompileWarning[]>([])
   const motionCompileError = ref<string | null>(null)
+  const store = useEditorStore()
 
-  if (!isTauri()) {
-    status.value = { kind: 'disabled', reason: 'Preview is only available in the desktop app' }
-    return {
-      status,
-      compileState,
-      compileWarnings,
-      compileError,
-      motionWarnings,
-      motionCompileError,
-      forceRecompile: NOOP
+  let host: PreviewHost | null = null
+  let activeBuildController: AbortController | null = null
+  let cancelled = false
+  let hostGeneration = 0
+  let buildGeneration = 0
+  let runtimeReadyTimer: ReturnType<typeof setTimeout> | null = null
+
+  function publishDiagnostics(
+    diagnostics: readonly PreviewDiagnostic[],
+    fallbackError?: string
+  ): void {
+    const normalized = normalizedDiagnostics(diagnostics, fallbackError)
+    const warnings = diagnosticWarnings(normalized)
+    compileDiagnostics.value = normalized
+    compileWarnings.value = warnings
+    compileError.value = fallbackError ?? null
+    motionWarnings.value = onlyMotionWarnings(warnings)
+    motionCompileError.value = fallbackError ?? null
+    for (const warning of warnings) {
+      console.warn(`[preview] ${warning.code}: ${warning.message}`)
     }
   }
 
-  const store = useEditorStore()
-  let sidecar: PreviewSidecar | null = null
-  let cancelled = false
-  let sidecarGeneration = 0
+  function clearBuildOutput(): void {
+    compileMetrics.value = null
+    compileDiagnostics.value = []
+    compileWarnings.value = []
+    compileError.value = null
+    motionWarnings.value = []
+    motionCompileError.value = null
+  }
 
-  async function compileAndPush(request: PreviewCompileRun) {
-    const activeSidecar = sidecar
-    if (!activeSidecar) return 'superseded' as const
-    try {
-      const graph = store.graph
-      const pages = graph.getPages()
-      // §7 decision #a: single-page docs keep the legacy fast path so the
-      // emitted bytes stay identical to Phase 1 §11.5 #5. Multi-page docs
-      // hand all pages to the compiler so the iframe boots the same
-      // BrowserRouter shell as CLI export — that's what makes editor↔iframe
-      // navigation possible (decision #1).
-      const pageIds = pages.length > 1 ? pages.map((p) => p.id) : [store.state.currentPageId]
-      const fontManifest = await resolveCompilerWebFonts({
-        graph,
-        pageIds,
-        providers: fontManager.enabledOnlineFontProviders(),
-        fetcher: tauriFetch,
-        preferLoaded: true,
-        refresh: request.refreshFonts
-      })
-      if (!request.isCurrent() || sidecar !== activeSidecar) {
-        return 'superseded' as const
+  function clearRuntimeReadyTimer(): void {
+    if (runtimeReadyTimer === null) return
+    clearTimeout(runtimeReadyTimer)
+    runtimeReadyTimer = null
+  }
+
+  function currentBrowserFrame(channelId: string): PreviewFrameDescriptor | null {
+    if (host?.kind !== 'browser-worker') return null
+    const current = status.value
+    if (current.kind !== 'starting' && current.kind !== 'ready') return null
+    const frame = current.frame
+    return frame?.channelId === channelId ? frame : null
+  }
+
+  function failBrowserRuntime(channelId: string, code: string, message: string): boolean {
+    const frame = currentBrowserFrame(channelId)
+    if (!frame) return false
+    clearRuntimeReadyTimer()
+    host?.releaseFrame(frame)
+    publishDiagnostics(
+      [
+        ...compileDiagnostics.value.filter((diagnostic) => diagnostic.code !== code),
+        { code, severity: 'error', message }
+      ],
+      message
+    )
+    status.value = { kind: 'error', message }
+    return true
+  }
+
+  function waitForBrowserRuntime(generation: number, frame: PreviewFrameDescriptor): void {
+    clearRuntimeReadyTimer()
+    status.value = { kind: 'starting', host: 'browser-worker', generation, frame }
+    runtimeReadyTimer = setTimeout(() => {
+      failBrowserRuntime(
+        frame.channelId,
+        'browser-preview-runtime-timeout',
+        `Browser preview did not become ready within ${BROWSER_PREVIEW_RUNTIME_READY_TIMEOUT_MS}ms`
+      )
+    }, BROWSER_PREVIEW_RUNTIME_READY_TIMEOUT_MS)
+  }
+
+  function markRuntimeReady(channelId: string): boolean {
+    const current = status.value
+    if (
+      current.kind !== 'starting' ||
+      current.host !== 'browser-worker' ||
+      current.frame?.channelId !== channelId ||
+      current.generation === undefined
+    ) {
+      return false
+    }
+    clearRuntimeReadyTimer()
+    status.value = {
+      kind: 'ready',
+      generation: current.generation,
+      url: current.frame.src,
+      port: current.frame.port,
+      frame: current.frame
+    }
+    return true
+  }
+
+  function reportRuntimeError(channelId: string, message: string): boolean {
+    return failBrowserRuntime(channelId, 'browser-preview-runtime-error', message)
+  }
+
+  function buildResultIsStale(
+    request: PreviewCompileRun,
+    activeHost: PreviewHost,
+    generation: number,
+    result: PreviewHostBuildResult
+  ): boolean {
+    return (
+      !request.isCurrent() ||
+      cancelled ||
+      host !== activeHost ||
+      result.generation !== generation ||
+      result.status === 'stale'
+    )
+  }
+
+  function publishHostResult(
+    activeHost: PreviewHost,
+    generation: number,
+    result: Exclude<PreviewHostBuildResult, { status: 'stale' }>
+  ): PreviewCompileOutcome {
+    compileMetrics.value = { ...result.metrics }
+    if (result.status === 'ready') {
+      publishDiagnostics(result.diagnostics)
+      if (activeHost.kind === 'browser-worker') {
+        waitForBrowserRuntime(generation, result.frame)
+      } else {
+        status.value = {
+          kind: 'ready',
+          generation,
+          url: result.frame.src,
+          port: result.frame.port,
+          frame: result.frame
+        }
       }
-      const out = compile({
-        graph,
+      return 'pushed'
+    }
+    if (result.status === 'unsupported') {
+      publishDiagnostics(result.diagnostics)
+      status.value = { kind: 'unsupported', reason: result.reason }
+      return 'failed'
+    }
+    publishDiagnostics(result.diagnostics, result.reason)
+    status.value = { kind: 'error', message: result.reason }
+    return 'failed'
+  }
+
+  function buildWasCancelled(
+    request: PreviewCompileRun,
+    activeHost: PreviewHost,
+    controller: AbortController
+  ): boolean {
+    return !request.isCurrent() || cancelled || host !== activeHost || controller.signal.aborted
+  }
+
+  async function compileAndPublish(request: PreviewCompileRun): Promise<PreviewCompileOutcome> {
+    const activeHost = host
+    if (!activeHost || !activeHost.isAlive()) return 'superseded' as const
+    const generation = ++buildGeneration
+    const controller = new AbortController()
+    activeBuildController = controller
+    if (activeHost.kind === 'browser-worker') clearRuntimeReadyTimer()
+
+    // Browser artifacts are revoked at build start, so the old iframe must not
+    // remain visible. Tauri keeps its acknowledged iframe mounted for HMR.
+    if (activeHost.kind === 'browser-worker' || status.value.kind !== 'ready') {
+      status.value = { kind: 'starting', host: activeHost.kind }
+    }
+
+    try {
+      const pages = store.graph.getPages()
+      const pageIds = pages.length > 1 ? pages.map((page) => page.id) : [store.state.currentPageId]
+      const result = await activeHost.build({
+        generation,
+        graph: store.graph,
         pageIds,
-        fontManifest,
         options: withDefaults({
           packageName: 'openpencil-preview',
           ...previewCompilerOverrides(settings, pageIds.length)
-        })
+        }),
+        refreshFonts: request.refreshFonts,
+        signal: controller.signal
       })
-      // `compile` is synchronous. Re-check the scheduler revision before the
-      // sidecar write so a newer scene snapshot never joins the sidecar queue
-      // behind an already obsolete compile.
-      if (!request.isCurrent() || sidecar !== activeSidecar) {
-        return 'superseded' as const
+
+      if (buildResultIsStale(request, activeHost, generation, result)) {
+        if (result.status === 'ready') activeHost.releaseFrame(result.frame)
+        return 'superseded'
       }
-      compileWarnings.value = [...out.warnings]
-      compileError.value = null
-      motionWarnings.value = onlyMotionWarnings(out.warnings)
-      motionCompileError.value = null
-      for (const w of out.warnings) {
-        console.warn(`[preview] ${w.code}: ${w.message}`)
-      }
-      await activeSidecar.update(out.files)
-      if (!request.isCurrent() || sidecar !== activeSidecar) {
-        return 'superseded' as const
-      }
-      if (!activeSidecar.isAlive()) {
-        throw new Error('Preview sidecar stopped before the initial preview was ready')
-      }
-      // Do not mount the iframe while the sidecar still has an empty VFS.
-      // A first request made before this acknowledged push receives Vite's
-      // disk 404 page, which has no HMR client and therefore cannot observe
-      // the full-reload emitted by the initial update.
-      if (status.value.kind !== 'ready' || status.value.port !== activeSidecar.port) {
-        status.value = {
-          kind: 'ready',
-          url: activeSidecar.url,
-          port: activeSidecar.port
-        }
-      }
-      return 'pushed' as const
-    } catch (e) {
-      if (!request.isCurrent()) return 'superseded' as const
-      const message = e instanceof Error ? e.message : String(e)
-      compileWarnings.value = []
-      compileError.value = message
-      motionWarnings.value = []
-      motionCompileError.value = message
-      if (status.value.kind === 'starting' && sidecar === activeSidecar) {
-        status.value = { kind: 'error', message }
-      }
-      console.warn('[preview] compile failed:', e)
-      return 'failed' as const
+      if (result.status === 'stale') return 'superseded'
+      return publishHostResult(activeHost, generation, result)
+    } catch (cause) {
+      if (buildWasCancelled(request, activeHost, controller)) return 'superseded'
+      const message = cause instanceof Error ? cause.message : String(cause)
+      publishDiagnostics([], message)
+      status.value = { kind: 'error', message }
+      console.warn('[preview] compile failed:', cause)
+      return 'failed'
+    } finally {
+      if (activeBuildController === controller) activeBuildController = null
     }
   }
 
   const scheduler = createPreviewCompileScheduler({
     policy: compileState.value.policy,
-    run: compileAndPush,
+    run: compileAndPublish,
     onStateChange: (next) => {
       compileState.value = next
     }
   })
 
-  async function launchPreviewSidecar(target: PreviewTarget): Promise<void> {
-    const generation = ++sidecarGeneration
-    const launchIsStale = (): boolean => cancelled || generation !== sidecarGeneration
-    status.value = { kind: 'starting' }
-    const previous = sidecar
-    sidecar = null
+  function cancelActiveBuild(): void {
+    activeBuildController?.abort()
+  }
+
+  function enqueueChange(refreshFonts: boolean): void {
+    // The scheduler serializes builds and marks an obsolete result stale. Do
+    // not terminate esbuild-wasm mid-initialization for ordinary edits: the
+    // next coalesced snapshot runs immediately after the stale one settles.
+    // Target changes and unmount still cancel through cancelActiveBuild().
+    scheduler.requestChange(refreshFonts)
+  }
+
+  function flushBuild(refreshFonts: boolean): void {
+    scheduler.flush(refreshFonts)
+  }
+
+  async function launchPreviewHost(target: PreviewTarget): Promise<void> {
+    const generation = ++hostGeneration
+    const launchIsStale = (): boolean => cancelled || generation !== hostGeneration
+    status.value = { kind: 'starting', host: null }
+    hostKind.value = null
+    clearBuildOutput()
+    clearRuntimeReadyTimer()
+    cancelActiveBuild()
+    const previous = host
+    host = null
     if (previous) await previous.dispose()
     if (launchIsStale()) return
+
     try {
-      const handle = await startPreviewSidecar(target)
+      const created = await createPreviewHost(target)
       if (launchIsStale()) {
-        await handle.dispose()
-      } else {
-        sidecar = handle
-        void handle.terminal.then((terminal) => {
-          if (cancelled || generation !== sidecarGeneration || sidecar !== handle) return undefined
-          sidecar = null
+        await created.dispose()
+        return
+      }
+      host = created
+      hostKind.value = created.kind
+      status.value = { kind: 'starting', host: created.kind }
+      if (created.terminal) {
+        void created.terminal.then((terminal) => {
+          if (launchIsStale() || host !== created) return undefined
+          host = null
+          hostKind.value = null
+          cancelActiveBuild()
+          publishDiagnostics([], terminal.message)
           status.value = { kind: 'error', message: terminal.message }
           return undefined
         })
-        // `compileAndPush` promotes this launch to ready only after the first
-        // VFS update is acknowledged, so the iframe never mounts against the
-        // sidecar's intentionally empty startup state.
-        scheduler.requestInitial()
       }
-    } catch (e: unknown) {
+      scheduler.requestInitial()
+    } catch (cause) {
       if (launchIsStale()) return
-      const message = e instanceof Error ? e.message : String(e)
+      const message = cause instanceof Error ? cause.message : String(cause)
+      publishDiagnostics([], message)
       status.value = { kind: 'error', message }
     }
   }
-  void launchPreviewSidecar(settings?.target?.value ?? 'react')
+
+  void launchPreviewHost(settings?.target?.value ?? 'react')
 
   const stopSceneWatch = watch(
     () => [store.state.sceneVersion, importedFontRevision.value] as const,
     (current, previous) => {
-      if (!sidecar) return
-      scheduler.requestChange(current[1] !== previous[1])
+      if (!host) return
+      enqueueChange(current[1] !== previous[1])
     }
   )
   const stopPolicyWatch = settings?.refreshPolicy
@@ -541,41 +439,39 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     : NOOP
   const stopTargetWatch = settings?.target
     ? watch(settings.target, (target) => {
-        compileWarnings.value = []
-        compileError.value = null
-        motionWarnings.value = []
-        motionCompileError.value = null
-        void launchPreviewSidecar(target)
+        void launchPreviewHost(target)
       })
     : NOOP
 
-  // §7 decision #4: switching `currentPageId` no longer rebuilds the
-  // preview — it just navigates the existing iframe via the bridge
-  // (handled in PreviewPane.vue). For single-page docs the watcher would
-  // have been a no-op anyway (only one page id exists); for multi-page
-  // we explicitly avoid the recompile cost on every page switch.
-
   onBeforeUnmount(() => {
     cancelled = true
+    hostGeneration += 1
     stopSceneWatch()
     stopPolicyWatch()
     stopTargetWatch()
     scheduler.dispose()
-    if (sidecar) {
-      void sidecar.dispose()
-      sidecar = null
-    }
+    clearRuntimeReadyTimer()
+    cancelActiveBuild()
+    const activeHost = host
+    host = null
+    hostKind.value = null
+    if (activeHost) void activeHost.dispose()
   })
 
   return {
     status,
+    hostKind,
     compileState,
+    compileMetrics,
+    compileDiagnostics,
     compileWarnings,
     compileError,
     motionWarnings,
     motionCompileError,
+    markRuntimeReady,
+    reportRuntimeError,
     forceRecompile: () => {
-      if (sidecar) scheduler.flush(true)
+      if (host?.isAlive()) flushBuild(true)
     }
   }
 }

@@ -128,13 +128,15 @@ export function createPreviewCompileScheduler(options: PreviewCompileSchedulerOp
     cancelScheduledRun = null
   }
 
-  function shouldKeepInitialCurrent(request: PendingCompile): boolean {
-    return request.reason === 'initial' && state.policy === 'manual'
+  function shouldKeepExplicitManualRunCurrent(request: PendingCompile): boolean {
+    return (
+      state.policy === 'manual' && (request.reason === 'initial' || request.reason === 'manual')
+    )
   }
 
   function isCurrent(request: PendingCompile): boolean {
     if (disposed || active?.revision !== request.revision) return false
-    return request.revision === state.latestRevision || shouldKeepInitialCurrent(request)
+    return request.revision === state.latestRevision || shouldKeepExplicitManualRunCurrent(request)
   }
 
   function delayFor(request: PendingCompile): number | null {
