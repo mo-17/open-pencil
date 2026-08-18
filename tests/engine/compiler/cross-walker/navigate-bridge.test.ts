@@ -25,8 +25,11 @@ describe('cross-walker — bridge navigate channel ships in every devMode compil
     // Both dispatch branches present, not just the protocol mentions.
     expect(bridge).toContain("if (data.type === 'select')")
     expect(bridge).toContain("if (data.type === 'navigate')")
-    // Outbound emit for navigate (mirror of the inbound dispatch).
-    expect(bridge).toMatch(/source: OUTBOUND_SOURCE,\s*type: 'navigate'/)
+    // Outbound navigate uses the shared sender, which adds the authenticated
+    // source/channel envelope for both MessagePort and window transports.
+    expect(bridge).toContain("postToParent({ type: 'navigate', route })")
+    expect(bridge).toContain('source: OUTBOUND_SOURCE')
+    expect(bridge).toContain('channel: frameContext.channel')
     // Echo-loop guard present — without this, an inbound navigate would
     // round-trip back to the editor and re-fire indefinitely.
     expect(bridge).toContain('let suppressOutbound = false')
