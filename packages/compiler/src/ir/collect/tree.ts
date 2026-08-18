@@ -2666,6 +2666,14 @@ function isBackgroundFill(fill: Fill): boolean {
 }
 
 function warnUnsupportedVisualSemantics(node: SceneNode, ctx: WalkCtx): void {
+  if (node.type === 'TEXT' && (node.textPathData !== null || node.textPathBox !== null)) {
+    ctx.warnings.push({
+      code: 'text-path-unsupported',
+      message: `TEXT ${node.id} uses path text; lowcode compile emits straight text because path layout, glyph outlines, and glyph rotation are not supported yet`,
+      nodeId: node.id
+    })
+  }
+
   if (node.isMask) {
     ctx.warnings.push({
       code: 'visual-mask-unsupported',

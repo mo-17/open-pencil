@@ -555,7 +555,9 @@ function projectedText(node: SceneNode, progress: number): Partial<SceneNode> {
       return [{ ...run, length: Math.min(run.length, textLength - run.start) }]
     }),
     textPicture: null,
-    figmaDerivedTextGlyphs: null
+    derivedTextGlyphs: null,
+    textPathData: null,
+    textPathBox: null
   }
 }
 

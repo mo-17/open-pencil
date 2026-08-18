@@ -27,7 +27,7 @@ describe('derived instance layout regressions', () => {
   test('retains imported glyph outlines through non-glyph layout updates', () => {
     const glyphCount = () =>
       layoutNodes.filter(
-        (node) => node.type === 'TEXT' && (node.figmaDerivedTextGlyphs?.length ?? 0) > 0
+        (node) => node.type === 'TEXT' && (node.derivedTextGlyphs?.length ?? 0) > 0
       ).length
 
     expect(glyphCount()).toBe(43)
@@ -101,7 +101,7 @@ describe('derived instance layout regressions', () => {
     )
     expect(dividers).toHaveLength(3)
     const generatedDividers = dividers.filter(
-      (node) => layoutGraph.getNode(node.componentId)?.figmaDerivedLayout?.y === 13.5
+      (node) => layoutGraph.getNode(node.componentId)?.derivedLayout?.y === 13.5
     )
     expect(generatedDividers).toHaveLength(3)
     for (const divider of generatedDividers) expect(divider.y).toBeCloseTo(13.5, 3)
@@ -197,7 +197,7 @@ describe('derived instance layout regressions', () => {
       a: 1
     })
     // The source glyphs spell "Link" and must be discarded after the override becomes "browse".
-    expect(linkText?.figmaDerivedTextGlyphs).toBeNull()
+    expect(linkText?.derivedTextGlyphs).toBeNull()
 
     const input = previewChild(graph, nodes, 'Input')
     const inputRoot = childNamed(graph, input, '_input')

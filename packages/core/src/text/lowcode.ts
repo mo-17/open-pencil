@@ -24,7 +24,9 @@ function projectedTextNode(
     text,
     textAutoResize: 'NONE',
     textPicture: null,
-    figmaDerivedTextGlyphs: null,
+    derivedTextGlyphs: null,
+    textPathData: null,
+    textPathBox: null,
     ...overrides
   }
 }

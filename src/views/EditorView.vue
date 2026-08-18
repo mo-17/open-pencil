@@ -18,6 +18,7 @@ import { openFileFromPath, useEditorMenu } from '@/app/shell/menu/use'
 import { toast } from '@/app/shell/ui'
 import { useCollab, COLLAB_KEY } from '@/app/collab/use'
 import { connectAutomation } from '@/app/automation/bridge/server'
+import { exposeCollaborationActions } from '@/app/browser-bridge'
 import { spawnMCPIfNeeded } from '@/app/automation/mcp/spawn'
 import { isTauri } from '@/app/tauri/env'
 import { appMenuShortcut } from '@/app/shell/menu/shortcut'
@@ -62,6 +63,7 @@ useEditorMenu()
 
 const collab = useCollab(getActiveStore)
 provide(COLLAB_KEY, collab)
+exposeCollaborationActions(collab)
 
 // Phase 3 §4.5 — docState/page-state collections are whole-field last-write-wins
 // (no auto-merge); warn when an incoming remote update would drop a concurrent

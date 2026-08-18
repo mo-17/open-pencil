@@ -1,10 +1,11 @@
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
-import type { FigmaDerivedTextGlyph } from '@open-pencil/scene-graph'
+import type { DerivedTextGlyph } from '@open-pencil/scene-graph'
 
+/** Preserve the per-glyph rotation used by Figma text-on-path layers. */
 export function convertFigmaDerivedTextGlyphs(
   derivedTextData: NodeChange['derivedTextData'],
   blobs: Uint8Array[]
-): FigmaDerivedTextGlyph[] {
+): DerivedTextGlyph[] {
   return (derivedTextData?.glyphs ?? [])
     .map((glyph) => {
       const commandsBlob = resolveCommandsBlob(glyph.commandsBlob, blobs)
@@ -13,7 +14,8 @@ export function convertFigmaDerivedTextGlyphs(
         commandsBlob,
         x: glyph.position.x,
         y: glyph.position.y,
-        fontSize: glyph.fontSize
+        fontSize: glyph.fontSize,
+        rotation: glyph.rotation
       }
     })
     .filter((glyph): glyph is NonNullable<typeof glyph> => !!glyph)

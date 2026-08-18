@@ -25,6 +25,8 @@
   parameter and connector schemas, signed catalogs/packages, publisher trust, runtime indexes, and
   marketplace snapshots. Core keeps its host registries and built-in modules while its existing
   root and `plugins` exports remain compatible.
+- Add deterministic two-browser collaboration coverage for bidirectional edits, awareness, departure cleanup, partitioned-peer convergence, and reconnect synchronization without public network dependencies. (#530)
+- Import, render, edit, resize, select, and export Figma text-on-path layers while preserving their curved glyph layout.
 - Add tested pane-registry and recursive split-tree models for independently viewed same-document canvases, capped at four visible panes.
 - Add explicit shared/view editor-state ownership and canvas render-state hooks as a foundation for independent same-document canvas panes.
 - Improve collaboration efficiency by avoiding redundant unchanged-field Yjs writes and covering repeated and concurrent two-peer edits.
@@ -67,6 +69,7 @@
 
 ### Performance
 
+- Use cached axis-aligned world positions for hit testing untransformed layer chains and add representative 500/2,000-node interaction profiles. (#527)
 - Coalesce writable-document autosaves that overlap an active `.fig` export while preserving a trailing save for newer edits. (#528)
 - Defer JSX generation and syntax highlighting until the Code panel is active, keeping large canvas selections responsive. (#500)
 - Index Figma clipboard children once during import instead of rescanning every pasted node, keeping large flat pastes linear. (#500)
@@ -74,6 +77,10 @@
 
 ### Fixed
 
+- Keep text-editing carets, hit testing, and selection highlights aligned with vertically centered or bottom-aligned text. (#539)
+- Match AI chat code-block syntax colors and backgrounds to the active light or dark theme. (#537)
+- Let desktop users select and copy AI chat text without replacing it with the selected canvas layers. (#538)
+- Restore visible above, below, and child drop feedback while dragging layers in the Layers panel.
 - Place editor-created instances beside nested source components in world space, including transformed source and destination parents.
 - Harden collaboration node synchronization against malformed remote source metadata and geometry while excluding derived text-renderer caches.
 - Transfer native `.fig` exports over binary Tauri IPC instead of JSON byte arrays, preventing large desktop saves from being truncated or exhausting WebView memory. (#484)

@@ -15,6 +15,7 @@ import {
 } from '@/app/ai/chat/sources'
 import { hasErrorOutput, toolErrorText, toolState } from '@/app/ai/chat/tool-presentation'
 import { remoteMCPToolServerDisplayInfo } from '@/app/ai/mcp'
+import { resolvedAppTheme } from '@/app/shell/theme'
 import { openExternalLink } from '@/app/shell/ui'
 import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.vue'
 
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   toolApproval: [messageId: string, id: string, approved: boolean]
 }>()
 const { dialogs } = useI18n()
+const isDark = computed(() => resolvedAppTheme.value === 'dark')
 
 type ToolPart = Extract<UIMessagePart<UIDataTypes, UITools>, { toolCallId: string }>
 
@@ -123,7 +125,7 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
     :class="message.role === 'user' ? 'flex justify-end' : ''"
   >
     <div
-      class="min-w-0"
+      class="min-w-0 select-text"
       :class="
         message.role === 'user' ? 'flex max-w-[85%] flex-col items-end gap-1.5' : 'space-y-1.5'
       "
@@ -243,7 +245,12 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
             data-test-id="chat-text-bubble"
             class="rounded-xl rounded-tl-md bg-hover px-3 py-2 text-xs leading-relaxed text-surface"
           >
-            <Markdown :content="part.text" :mermaid="false" class="chat-markdown" />
+            <Markdown
+              :content="part.text"
+              :is-dark="isDark"
+              :mermaid="false"
+              class="chat-markdown [&_[data-stream-markdown=code]]:!bg-input"
+            />
           </div>
         </template>
 

@@ -312,7 +312,7 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
       height: 20,
       fontSize: 16,
       textAlignHorizontal: 'CENTER',
-      figmaDerivedTextGlyphs: [{ commandsBlob, x: 0, y: 16, fontSize: 16 }]
+      derivedTextGlyphs: [{ commandsBlob, x: 0, y: 16, fontSize: 16, rotation: 0 }]
     })
     const blobs: Uint8Array[] = []
 

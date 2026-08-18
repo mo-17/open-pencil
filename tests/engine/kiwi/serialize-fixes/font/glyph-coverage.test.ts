@@ -51,12 +51,12 @@ describe('derivedTextData glyph coverage', () => {
   test('font lacking CJK glyphs bakes NO derived glyphs (renders via live shaping)', async () => {
     const node = await roundTrip('CoverageLatin')
     expect(node.text).toBe(CN)
-    expect(node.figmaDerivedTextGlyphs ?? []).toHaveLength(0)
+    expect(node.derivedTextGlyphs ?? []).toHaveLength(0)
   })
 
   test('font covering the text still bakes derived glyphs (no regression)', async () => {
     const node = await roundTrip('CoverageCJK')
     expect(node.text).toBe(CN)
-    expect((node.figmaDerivedTextGlyphs ?? []).length).toBeGreaterThan(0)
+    expect((node.derivedTextGlyphs ?? []).length).toBeGreaterThan(0)
   })
 })

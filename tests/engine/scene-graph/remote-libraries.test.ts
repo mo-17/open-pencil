@@ -465,7 +465,7 @@ describe('remote library scene-graph contracts', () => {
 
     graph.updateNode(component.id, {
       textPicture: null,
-      figmaDerivedTextGlyphs: [{ commandsBlob: oversizedBinary, x: 0, y: 0, fontSize: 16 }]
+      derivedTextGlyphs: [{ commandsBlob: oversizedBinary, x: 0, y: 0, fontSize: 16, rotation: 0 }]
     })
     expectBoundedFailure()
   })

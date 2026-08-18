@@ -21,3 +21,13 @@ describe('setPlannedFilePath', () => {
     expect(store.state.documentName).toBe('Untitled')
   })
 })
+
+describe('editor store accessors', () => {
+  test('preserves the live core canvas renderer getter', () => {
+    const store = createEditorStore()
+    const descriptor = Object.getOwnPropertyDescriptor(store, 'canvasRenderers')
+
+    expect(descriptor?.get).toBeFunction()
+    expect(store.canvasRenderers).toEqual([])
+  })
+})

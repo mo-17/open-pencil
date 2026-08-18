@@ -27,6 +27,7 @@ export const UNIT_TEST_GROUPS = {
   ],
   editor: [
     'tests/engine/clipboard',
+    'tests/engine/core',
     'tests/engine/editor',
     'tests/engine/hit-test',
     'tests/engine/snap'

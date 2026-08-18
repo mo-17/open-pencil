@@ -1,4 +1,3 @@
-import type { Room } from 'trystero'
 import type { Ref } from 'vue'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import * as awarenessProtocol from 'y-protocols/awareness'
@@ -12,6 +11,7 @@ import {
   MOTION_TIMELINES_DOC_KEY
 } from '@/app/collab/motion-timeline-yjs'
 import { connectCollabRoom } from '@/app/collab/room'
+import type { CollabRoomTransport } from '@/app/collab/transport'
 import type { CollabState, PreviewDocStatePayload } from '@/app/collab/types'
 import { bindCollabGraphEvents, registerYjsObservers } from '@/app/collab/yjs-sync'
 import type { EditorStore } from '@/app/editor/active-store'
@@ -24,7 +24,7 @@ export type CollabRuntime = {
   yimages: Y.Map<Uint8Array> | null
   ymotions: Y.Map<Y.Map<unknown>> | null
   motionUndoManager: Y.UndoManager | null
-  room: Room | null
+  room: CollabRoomTransport | null
   persistence: IndexeddbPersistence | null
   connectedStore: EditorStore | null
   suppressGraphSync: boolean
@@ -67,7 +67,7 @@ interface CollabConnectionActionsOptions extends CollabSessionSyncOptions {
 
 type CollabSessionResources = {
   store: EditorStore
-  room: Room | null
+  room: CollabRoomTransport | null
   awareness: awarenessProtocol.Awareness | null
   persistence: IndexeddbPersistence | null
   ydoc: Y.Doc | null

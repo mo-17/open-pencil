@@ -7,6 +7,7 @@ import {
   SkiaRenderer as SkiaRendererClass
 } from '@open-pencil/core'
 import type { SceneNode } from '@open-pencil/scene-graph'
+import { createDefaultSourceMetadata } from '@open-pencil/scene-graph/node-defaults'
 
 import { initCanvasKit } from '#cli/headless'
 import type { SkiaRenderer } from '#core/canvas/renderer'
@@ -30,7 +31,9 @@ function createMockCanvas() {
     saveLayer: mock(() => undefined),
     restore: mock(() => undefined),
     clipRect: mock(() => undefined),
-    translate: mock(() => undefined)
+    translate: mock(() => undefined),
+    scale: mock(() => undefined),
+    rotate: mock(() => undefined)
   }
 }
 
@@ -62,11 +65,13 @@ function createMockRenderer(overrides: Partial<Record<string, unknown>> = {}) {
         cubicTo = mock(() => undefined)
         quadTo = mock(() => undefined)
         close = mock(() => undefined)
+        setFillType = mock(() => undefined)
         delete = mock(() => undefined)
       },
       LTRBRect: mock((...args: number[]) => args),
       Color4f: mock((...args: number[]) => new Float32Array(args)),
       BlendMode: { SrcOver: 0, SrcIn: 1 },
+      FillType: { EvenOdd: 0, Winding: 1 },
       ClipOp: { Intersect: 0 }
     },
     DEFAULT_FONT_SIZE: 14,
@@ -95,8 +100,28 @@ function textNode(overrides: Partial<SceneNode> = {}): SceneNode {
     textDecoration: 'NONE',
     textDirection: 'AUTO',
     styleRuns: [],
+    source: createDefaultSourceMetadata(),
     ...overrides
   } as SceneNode
+}
+
+function squareCommandsBlob(): Uint8Array {
+  const blob = new Uint8Array(1 + 4 * 9 + 1)
+  const view = new DataView(blob.buffer)
+  let offset = 0
+  for (const { command, x, y } of [
+    { command: 1, x: 0, y: 0 },
+    { command: 2, x: 1, y: 0 },
+    { command: 2, x: 1, y: 1 },
+    { command: 2, x: 0, y: 1 }
+  ]) {
+    blob[offset] = command
+    view.setFloat32(offset + 1, x, true)
+    view.setFloat32(offset + 5, y, true)
+    offset += 9
+  }
+  blob[offset] = 0
+  return blob
 }
 
 async function createTextRenderer() {
@@ -203,6 +228,30 @@ describe('renderText', () => {
 
     expect(canvas.drawPicture).not.toHaveBeenCalled()
     expect(r.buildParagraph).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps derived glyph placement authoritative for text on a path', () => {
+    const r = createMockRenderer()
+    const canvas = createMockCanvas()
+    const node = textNode({
+      textPathBox: { x: 0, y: 0, width: 20, height: 20 },
+      derivedTextGlyphs: [
+        {
+          commandsBlob: squareCommandsBlob(),
+          x: 2,
+          y: 12,
+          fontSize: 10,
+          rotation: Math.PI / 4
+        }
+      ]
+    })
+
+    renderText(r, canvas as never, node)
+
+    expect(canvas.drawPath).toHaveBeenCalledTimes(1)
+    expect(canvas.rotate).toHaveBeenCalledTimes(1)
+    expect(r.buildParagraph).not.toHaveBeenCalled()
+    expect(canvas.drawParagraph).not.toHaveBeenCalled()
   })
 
   test('uses baked text pictures after font resolution is exhausted', () => {

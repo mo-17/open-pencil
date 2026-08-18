@@ -9,9 +9,11 @@ test('storage settings keep secrets behind the credential manager', async ({ pag
 
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-storage').click()
-  await page.getByLabel('Endpoint').fill('https://s3.example.com')
-  await page.getByLabel('Bucket').fill('designs')
-  await expect(page.getByRole('button', { name: 'Copy CORS JSON' })).toBeHidden()
+  const storagePanel = page.getByTestId('settings-storage-panel')
+  await storagePanel.getByTestId('settings-storage-provider-s3-compatible').click()
+  await storagePanel.getByLabel('Endpoint').fill('https://s3.example.com')
+  await storagePanel.getByLabel('Bucket').fill('designs')
+  await expect(page.getByRole('button', { name: 'Copy CORS JSON' })).toBeVisible()
 
   const secretField = page.locator('[data-credential="secret-access-key"]')
   await secretField.locator('input').fill('storage-secret')
@@ -22,6 +24,7 @@ test('storage settings keep secrets behind the credential manager', async ({ pag
   await page.getByTestId('app-settings-done').click()
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-storage').click()
+  await storagePanel.getByTestId('settings-storage-provider-s3-compatible').click()
   await expect(secretField.locator('input')).toHaveValue('')
   await secretField.getByRole('button', { name: 'Clear' }).click()
   await page.getByTestId('app-settings-done').click()
@@ -30,7 +33,8 @@ test('storage settings keep secrets behind the credential manager', async ({ pag
   await canvas.waitForInit()
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-storage').click()
-  await expect(page.getByLabel('Endpoint')).toHaveValue('https://s3.example.com')
+  await storagePanel.getByTestId('settings-storage-provider-s3-compatible').click()
+  await expect(storagePanel.getByLabel('Endpoint')).toHaveValue('https://s3.example.com')
   await expect(secretField.locator('input')).not.toHaveAttribute('placeholder', /Key saved/)
 })
 
@@ -93,7 +97,8 @@ test('model library keeps reusable profiles and role assignments', async ({ page
   await page.getByTestId('settings-model-provider').click()
   await page.getByRole('option', { name: 'OpenRouter' }).click()
   await page.getByLabel('Model ID').first().click()
-  await page.getByRole('option', { name: 'Kimi K2.5' }).click()
+  await page.getByRole('option', { name: 'Custom model…' }).click()
+  await page.getByTestId('provider-settings-custom-model').fill('test/vision-model')
   await page.getByRole('switch', { name: 'Image input' }).click()
   await page.getByRole('button', { name: 'Save model' }).click()
 
@@ -123,7 +128,7 @@ test('remembered browser credentials survive reload and clear centrally', async 
   const remember = page.getByTestId('settings-remember-credentials')
   await expect(remember).toHaveAttribute('data-state', 'checked')
   await expect(page.getByTestId('settings-credential-backend')).toContainText(
-    'encrypted browser storage'
+    'encrypted app storage'
   )
 
   await page.locator('[data-model-id]').first().click()

@@ -259,13 +259,14 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 2. Update `CHANGELOG.md` — move "Unreleased" items under new version heading with date
 3. Commit: `Release v0.x.y`
 4. Tag: `git tag v0.x.y && git push --tags`
-5. Ensure GitHub Actions has repository variable `VITE_GOOGLE_DRIVE_CLIENT_ID` for the public Google Desktop OAuth client. Also configure `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the updater key is password-protected); the public updater key is configured in `desktop/tauri.conf.json`.
-6. The `build.yml` workflow triggers on `v*` tags and:
-   - Builds Tauri binaries for macOS (arm64 + x64), Windows (x64 + arm64), Linux (x64)
-   - Creates a draft GitHub Release with all platform binaries
-   - Publishes all public workspace packages, including `@open-pencil/motion` and `@open-pencil/motion-runtime`, to npm with provenance
-7. `@open-pencil/compiler` is private and built for app/CLI consumption, but it is not currently published as a standalone npm package.
-8. Go to GitHub Releases → edit the draft → paste changelog section → publish
+5. Ensure GitHub Actions has repository variable `VITE_GOOGLE_DRIVE_CLIENT_ID` for the public Google Desktop OAuth client. Release secrets must include `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the updater key is password-protected); the public updater key is configured in `desktop/tauri.conf.json`. macOS signing and notarization additionally require `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID`.
+6. The `build.yml` workflow triggers on `v*` tags, with repository-specific release authority:
+   - In `open-pencil/open-pencil`, it builds Tauri binaries for macOS (arm64 + x64), Windows (x64 + arm64), and Linux (x64), then creates a draft GitHub Release whose title exactly matches the tag and whose body is the matching version section from `CHANGELOG.md`. The release includes platform installers, updater signatures, and `latest.json`.
+   - In `mo-17/open-pencil`, it prepares, audits, and publishes the public `@open-pencil-lowcode/*` workspace packages to npm with provenance. Keep the exact package list in sync with `.github/workflows/build.yml` and `tools/release-packages/src/publish-dirs.ts`.
+   - A manual `workflow_dispatch` can run the Tauri build for the selected ref, but it never authorizes npm publication.
+7. The production web app/docs deploy workflows (`app.yml`, `docs.yml`) also trigger on `v*` tags. They do **not** deploy on ordinary `master` pushes.
+8. `@open-pencil/compiler` is private and built for app/CLI consumption, but it is not currently published as a standalone npm package.
+9. For an official desktop release, verify the draft’s title and changelog-derived body, then publish it. Publishing the GitHub Release triggers `homebrew.yml`, which updates the Homebrew cask from the signed macOS updater archives.
 
 ### CI workflows
 
@@ -275,10 +276,13 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 | `preview.yml`            | PR to `master` (non-docs), `pull_request_target` | Build web app, deploy Cloudflare Pages preview, comment preview URL                                                    |
 | `build.yml`              | `v*` tag push or manual                          | Build Tauri desktop apps (5 targets), create GitHub Release, and publish all public workspace packages with provenance |
 | `homebrew.yml`           | Release published                                | Update `open-pencil/homebrew-tap` cask with new version + SHA256 hashes                                                |
-| `app.yml`                | Push to `master` (non-docs)                      | Build web app, deploy to Cloudflare Pages (`app.openpencil.dev`)                                                       |
-| `docs.yml`               | Push to `master` (`packages/docs/**`)            | Build VitePress docs, deploy to Cloudflare Pages (`openpencil.dev`)                                                    |
+| `app.yml`                | `v*` tag push or manual                          | Build web app, deploy to Cloudflare Pages (`app.openpencil.dev`)                                                       |
+| `docs.yml`               | `v*` tag push or manual                          | Build VitePress docs, deploy to Cloudflare Pages (`openpencil.dev`)                                                    |
 | `heavy-tests.yml`        | Manual                                           | Heavy `.fig` round-trip tests with `BUN_HEAVY_TESTS=true`                                                              |
 | `pr-review-guidance.yml` | PR review/comment events                         | Record CodeRabbit review guidance using trusted default-branch tooling only                                            |
+
+Production Cloudflare Pages deploys are release/manual only. Ordinary `master` pushes do not
+deploy the app or docs; manual runs deploy the selected ref to the configured production branch.
 
 ### Before committing
 

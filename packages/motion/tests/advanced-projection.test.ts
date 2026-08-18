@@ -142,7 +142,16 @@ describe('MotionSpec v3 advanced node projection', () => {
       ],
       styleRuns: [{ start: 1, length: 3, style: { fontWeight: 700 } }],
       textPicture: new Uint8Array([1]),
-      figmaDerivedTextGlyphs: [{ commandsBlob: new Uint8Array([1]), x: 0, y: 0, fontSize: 12 }]
+      derivedTextGlyphs: [
+        { commandsBlob: new Uint8Array([1]), x: 0, y: 0, fontSize: 12, rotation: 0 }
+      ],
+      textPathData: {
+        network: { vertices: [], segments: [], regions: [] },
+        normalizedSize: { x: 20, y: 20 },
+        tValue: 0,
+        forward: true
+      },
+      textPathBox: { x: 0, y: 0, width: 20, height: 20 }
     })
     const result = projectMotionAdvancedChannels(
       node,
@@ -163,7 +172,9 @@ describe('MotionSpec v3 advanced node projection', () => {
       { axis: 'wdth', value: 90 }
     ])
     expect(result.node.textPicture).toBeNull()
-    expect(result.node.figmaDerivedTextGlyphs).toBeNull()
+    expect(result.node.derivedTextGlyphs).toBeNull()
+    expect(result.node.textPathData).toBeNull()
+    expect(result.node.textPathBox).toBeNull()
   })
 
   test('gates vector morph by the source topology and preserves mask identity', () => {

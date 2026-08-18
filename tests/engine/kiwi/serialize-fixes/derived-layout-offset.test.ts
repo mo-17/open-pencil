@@ -10,7 +10,7 @@ import { pageId, toKiwi } from './helpers'
 /**
  * Read-side back-compat for old .fig files. Older OpenPencil exports zeroed the
  * transform of auto-layout children; apply.ts pins a child to its
- * figmaDerivedLayout.x/y when present, so reading a zeroed (0,0) derived
+ * derivedLayout.x/y when present, so reading a zeroed (0,0) derived
  * position snapped every nested auto-layout child to the origin — the layout
  * distortion seen when reopening pre-rebaseline files. convert.ts now only
  * carries derived x/y when the transform is genuinely non-zero (real Figma
@@ -32,13 +32,13 @@ function hugAutoLayoutNc(graph: SceneGraph) {
   return toKiwi(frame, graph)[0]
 }
 
-describe('figmaDerivedLayout offset (old .fig read back-compat)', () => {
+describe('derivedLayout offset (old .fig read back-compat)', () => {
   test('zeroed child transform → no derived x/y (falls back to Yoga)', () => {
     const nc = hugAutoLayoutNc(new SceneGraph())
     nc.transform = { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
 
     const props = nodeChangeToProps(nc, [])
-    const derived = expectDefined(props.figmaDerivedLayout, 'figmaDerivedLayout')
+    const derived = expectDefined(props.derivedLayout, 'derivedLayout')
     expect(derived.x).toBeUndefined()
     expect(derived.y).toBeUndefined()
     // HUG size is still derived.
@@ -50,7 +50,7 @@ describe('figmaDerivedLayout offset (old .fig read back-compat)', () => {
     nc.transform = { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 120 }
 
     const props = nodeChangeToProps(nc, [])
-    const derived = expectDefined(props.figmaDerivedLayout, 'figmaDerivedLayout')
+    const derived = expectDefined(props.derivedLayout, 'derivedLayout')
     expect(derived.y).toBe(120)
   })
 })

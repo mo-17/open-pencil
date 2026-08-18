@@ -79,6 +79,49 @@ describe('compile (public API, end-to-end)', () => {
     expect(appTsx).toContain('>Hello world</p>')
   })
 
+  test('warns when path text is flattened to straight React text', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const pathDataText = graph.createNode('TEXT', pageId, {
+      text: 'Path data label',
+      textPathData: {
+        network: {
+          vertices: [
+            { x: 0, y: 20 },
+            { x: 120, y: 20 }
+          ],
+          segments: [
+            { start: 0, end: 1, tangentStart: { x: 0, y: 0 }, tangentEnd: { x: 0, y: 0 } }
+          ],
+          regions: []
+        },
+        normalizedSize: { x: 120, y: 40 },
+        tValue: 0,
+        forward: true
+      }
+    })
+    const pathBoxText = graph.createNode('TEXT', pageId, {
+      text: 'Path box label',
+      textPathBox: { x: 0, y: 0, width: 120, height: 40 }
+    })
+    graph.createNode('TEXT', pageId, {
+      text: 'Derived glyph label',
+      derivedTextGlyphs: [
+        { commandsBlob: new Uint8Array([1, 0, 0, 0, 0]), x: 0, y: 0, fontSize: 16 }
+      ]
+    })
+
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults() })
+    const pathWarnings = out.warnings.filter((warning) => warning.code === 'text-path-unsupported')
+    const appTsx = out.files.get('src/App.tsx') as string
+
+    expect(pathWarnings.map((warning) => warning.nodeId)).toEqual([pathDataText.id, pathBoxText.id])
+    expect(appTsx).toContain('>Path data label</p>')
+    expect(appTsx).toContain('>Path box label</p>')
+    expect(appTsx).toContain('>Derived glyph label</p>')
+    expect(appTsx).not.toContain('<path')
+  })
+
   test('drops malicious document-state identifiers before React source emission', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

@@ -22,7 +22,7 @@
     "@open-pencil/lowcode": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "@vue/compiler-sfc": "^3.5.29",
-    "tailwindcss": "^4.2.1"
+    "tailwindcss": "4.2.2"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",
