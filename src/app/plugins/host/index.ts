@@ -66,11 +66,25 @@ import {
   FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
+  MPX_EXPORTER,
+  MPX_EXPORTER_PLUGIN_ID,
+  TARO_EXPORTER,
+  TARO_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID,
+  UNI_APP_EXPORTER,
+  UNI_APP_EXPORTER_PLUGIN_ID,
   VUE_EXPORTER,
-  VUE_EXPORTER_PLUGIN_ID
+  VUE_EXPORTER_PLUGIN_ID,
+  WECHAT_MINIPROGRAM_EXPORTER,
+  WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID
 } from './ids'
+import {
+  exportCurrentDocumentAsMpxSource,
+  exportCurrentDocumentAsTaroSource,
+  exportCurrentDocumentAsUniAppSource,
+  exportCurrentDocumentAsWechatMiniProgramSource
+} from './miniprogram/source-exporter'
 import { exportCurrentDocumentAsNextJsSource } from './nextjs-exporter'
 import {
   inspectPluginStorageProviderCompatibility,
@@ -368,6 +382,54 @@ const TRUSTED_EXPORTER_ADAPTERS = new Map<string, TrustedExporterAdapter>([
       supportsCancellation: true,
       execute: sourceProjectExporterExecutor(exportCurrentDocumentAsVueSource)
     }
+  ],
+  [
+    WECHAT_MINIPROGRAM_EXPORTER.adapterId,
+    {
+      pluginId: WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID,
+      exporterId: WECHAT_MINIPROGRAM_EXPORTER.exporterId,
+      schemaVersion: 1,
+      fileExtension: WECHAT_MINIPROGRAM_EXPORTER.fileExtension,
+      mcpExposure: 'disabled',
+      supportsCancellation: true,
+      execute: sourceProjectExporterExecutor(exportCurrentDocumentAsWechatMiniProgramSource)
+    }
+  ],
+  [
+    TARO_EXPORTER.adapterId,
+    {
+      pluginId: TARO_EXPORTER_PLUGIN_ID,
+      exporterId: TARO_EXPORTER.exporterId,
+      schemaVersion: 1,
+      fileExtension: TARO_EXPORTER.fileExtension,
+      mcpExposure: 'disabled',
+      supportsCancellation: true,
+      execute: sourceProjectExporterExecutor(exportCurrentDocumentAsTaroSource)
+    }
+  ],
+  [
+    UNI_APP_EXPORTER.adapterId,
+    {
+      pluginId: UNI_APP_EXPORTER_PLUGIN_ID,
+      exporterId: UNI_APP_EXPORTER.exporterId,
+      schemaVersion: 1,
+      fileExtension: UNI_APP_EXPORTER.fileExtension,
+      mcpExposure: 'disabled',
+      supportsCancellation: true,
+      execute: sourceProjectExporterExecutor(exportCurrentDocumentAsUniAppSource)
+    }
+  ],
+  [
+    MPX_EXPORTER.adapterId,
+    {
+      pluginId: MPX_EXPORTER_PLUGIN_ID,
+      exporterId: MPX_EXPORTER.exporterId,
+      schemaVersion: 1,
+      fileExtension: MPX_EXPORTER.fileExtension,
+      mcpExposure: 'disabled',
+      supportsCancellation: true,
+      execute: sourceProjectExporterExecutor(exportCurrentDocumentAsMpxSource)
+    }
   ]
 ])
 
@@ -599,10 +661,16 @@ export function inspectPluginExporterMCPExposure(
   const compatibility = inspectPluginExporterCompatibility(pluginId, contribution)
   if (!compatibility.ok) return compatibility
   const adapter = TRUSTED_EXPORTER_ADAPTERS.get(contribution.adapterId)
-  if (adapter?.mcpExposure !== 'enabled' || !adapter.supportsCancellation) {
+  if (!adapter?.supportsCancellation) {
     return incompatible(
       'mcp-exposure-disabled',
       `Plugin exporter adapter is not available to MCP until it supports cooperative cancellation: ${contribution.adapterId}`
+    )
+  }
+  if (adapter.mcpExposure !== 'enabled') {
+    return incompatible(
+      'mcp-exposure-disabled',
+      `Plugin exporter adapter is not available to MCP: ${contribution.adapterId}`
     )
   }
   return { ok: true, status: 'compatible' }

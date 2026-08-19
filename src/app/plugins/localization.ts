@@ -310,6 +310,42 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         )
       }
     ),
+    'open-pencil.wechat-miniprogram-exporter': plugin(
+      '微信小程序导出器',
+      '将当前文档打包为原生微信小程序源码项目。',
+      {
+        'wechat-miniprogram-source': contribution(
+          '导出微信小程序源码',
+          '生成 WXML、WXSS、JavaScript 与配置文件 ZIP，不调用微信开发者工具，也不写入 AppID。'
+        )
+      }
+    ),
+    'open-pencil.taro-exporter': plugin(
+      'Taro 导出器',
+      '将当前文档打包为 Taro React 小程序源码项目。',
+      {
+        'taro-source': contribution(
+          '导出 Taro 源码',
+          '生成可继续开发的源码 ZIP，不安装依赖、不运行构建，也不执行生成代码。'
+        )
+      }
+    ),
+    'open-pencil.uni-app-exporter': plugin(
+      'uni-app 导出器',
+      '将当前文档打包为 Vue 与 uni-app 源码项目。',
+      {
+        'uni-app-source': contribution(
+          '导出 uni-app 源码',
+          '生成可导入开发工具的源码 ZIP，并明确记录不支持或需要人工适配的行为。'
+        )
+      }
+    ),
+    'open-pencil.mpx-exporter': plugin('Mpx 导出器', '将当前文档打包为 Mpx 小程序源码项目。', {
+      'mpx-source': contribution(
+        '导出 Mpx 源码',
+        '生成 .mpx 组件与配置源码 ZIP，不安装依赖、不运行构建，也不写入 AppID。'
+      )
+    }),
     'open-pencil.supabase-schema-inspector': plugin(
       'Supabase 架构检查器',
       '通过受审核的只读连接器读取 Supabase 项目的有界数据库架构，不会修改数据。',

@@ -58,12 +58,20 @@ import {
   FLUTTER_EXPORTER_PLUGIN_ID,
   GOOGLE_DRIVE_STORAGE_CAPABILITIES,
   GOOGLE_DRIVE_STORAGE_CONFIG_VERSION,
+  MPX_EXPORTER,
+  MPX_EXPORTER_PLUGIN_ID,
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
+  TARO_EXPORTER,
+  TARO_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID,
+  UNI_APP_EXPORTER,
+  UNI_APP_EXPORTER_PLUGIN_ID,
   VUE_EXPORTER,
-  VUE_EXPORTER_PLUGIN_ID
+  VUE_EXPORTER_PLUGIN_ID,
+  WECHAT_MINIPROGRAM_EXPORTER,
+  WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import { exportCurrentDocumentAsTauriReactSource } from '@/app/plugins/host/tauri-react-exporter'
 
@@ -234,6 +242,12 @@ describe('app plugin host contribution trust', () => {
     expect(resolveTrustedPluginExporterExecutor(CAPACITOR_EXPORTER.adapterId)).toBeFunction()
     expect(resolveTrustedPluginExporterExecutor(ELECTRON_EXPORTER.adapterId)).toBeFunction()
     expect(resolveTrustedPluginExporterExecutor(VUE_EXPORTER.adapterId)).toBeFunction()
+    expect(
+      resolveTrustedPluginExporterExecutor(WECHAT_MINIPROGRAM_EXPORTER.adapterId)
+    ).toBeFunction()
+    expect(resolveTrustedPluginExporterExecutor(TARO_EXPORTER.adapterId)).toBeFunction()
+    expect(resolveTrustedPluginExporterExecutor(UNI_APP_EXPORTER.adapterId)).toBeFunction()
+    expect(resolveTrustedPluginExporterExecutor(MPX_EXPORTER.adapterId)).toBeFunction()
     expect(resolveTrustedPluginExporterExecutor('publisher.unreviewed-exporter')).toBeUndefined()
   })
 
@@ -512,6 +526,19 @@ describe('app plugin host contribution trust', () => {
         bundledV1ExporterContribution(VUE_EXPORTER_PLUGIN_ID, VUE_EXPORTER.exporterId)
       )
     ).toEqual({ ok: true, status: 'compatible' })
+    for (const [pluginId, exporter] of [
+      [WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID, WECHAT_MINIPROGRAM_EXPORTER],
+      [TARO_EXPORTER_PLUGIN_ID, TARO_EXPORTER],
+      [UNI_APP_EXPORTER_PLUGIN_ID, UNI_APP_EXPORTER],
+      [MPX_EXPORTER_PLUGIN_ID, MPX_EXPORTER]
+    ] as const) {
+      expect(
+        inspectPluginExporterCompatibility(
+          pluginId,
+          bundledV1ExporterContribution(pluginId, exporter.exporterId)
+        )
+      ).toEqual({ ok: true, status: 'compatible' })
+    }
   })
 
   test('keeps synchronous project exporters out of MCP until cancellation is cooperative', () => {
@@ -534,7 +561,8 @@ describe('app plugin host contribution trust', () => {
     ] as const) {
       expect(inspectPluginExporterMCPExposure(pluginId, contribution)).toMatchObject({
         ok: false,
-        status: 'mcp-exposure-disabled'
+        status: 'mcp-exposure-disabled',
+        reason: expect.stringContaining('until it supports cooperative cancellation')
       })
       expect(supportsPluginExporterCancellation(pluginId, contribution)).toBe(false)
     }
@@ -559,6 +587,23 @@ describe('app plugin host contribution trust', () => {
         bundledV1ExporterContribution(VUE_EXPORTER_PLUGIN_ID, VUE_EXPORTER.exporterId)
       )
     ).toBe(true)
+  })
+
+  test('keeps mini-program source exporters UI-only while preserving cooperative cancellation', () => {
+    for (const [pluginId, exporter] of [
+      [WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID, WECHAT_MINIPROGRAM_EXPORTER],
+      [TARO_EXPORTER_PLUGIN_ID, TARO_EXPORTER],
+      [UNI_APP_EXPORTER_PLUGIN_ID, UNI_APP_EXPORTER],
+      [MPX_EXPORTER_PLUGIN_ID, MPX_EXPORTER]
+    ] as const) {
+      const contribution = bundledV1ExporterContribution(pluginId, exporter.exporterId)
+      expect(inspectPluginExporterMCPExposure(pluginId, contribution)).toEqual({
+        ok: false,
+        status: 'mcp-exposure-disabled',
+        reason: `Plugin exporter adapter is not available to MCP: ${exporter.adapterId}`
+      })
+      expect(supportsPluginExporterCancellation(pluginId, contribution)).toBe(true)
+    }
   })
 
   test('fails disabled and blocked commands before invoking the injected host executor', async () => {

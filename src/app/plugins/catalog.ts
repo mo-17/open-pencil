@@ -108,10 +108,18 @@ import {
   GOOGLE_DRIVE_STORAGE_CONFIG_VERSION,
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
+  MPX_EXPORTER,
+  MPX_EXPORTER_PLUGIN_ID,
+  TARO_EXPORTER,
+  TARO_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID,
+  UNI_APP_EXPORTER,
+  UNI_APP_EXPORTER_PLUGIN_ID,
   VUE_EXPORTER,
-  VUE_EXPORTER_PLUGIN_ID
+  VUE_EXPORTER_PLUGIN_ID,
+  WECHAT_MINIPROGRAM_EXPORTER,
+  WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID
 } from './host/ids'
 import type { AppPluginCatalogEntry } from './types'
 
@@ -480,7 +488,7 @@ function flutterExporterManifest(): PluginManifestPayloadV1 {
   )
 }
 
-function additionalWebSourceExporterManifest(
+function additionalSourceExporterManifest(
   plugin: BundledPluginIdentity,
   exporter: DeclarativeExporterContributionV1
 ): PluginManifestPayloadV1 {
@@ -862,7 +870,7 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
-      manifest: additionalWebSourceExporterManifest(
+      manifest: additionalSourceExporterManifest(
         { id: NEXTJS_EXPORTER_PLUGIN_ID, name: 'Next.js Exporter', version: '1.0.0' },
         {
           ...NEXTJS_EXPORTER,
@@ -873,7 +881,7 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
-      manifest: additionalWebSourceExporterManifest(
+      manifest: additionalSourceExporterManifest(
         { id: CAPACITOR_EXPORTER_PLUGIN_ID, name: 'Capacitor Exporter', version: '1.0.0' },
         {
           ...CAPACITOR_EXPORTER,
@@ -884,7 +892,7 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
-      manifest: additionalWebSourceExporterManifest(
+      manifest: additionalSourceExporterManifest(
         { id: ELECTRON_EXPORTER_PLUGIN_ID, name: 'Electron Exporter', version: '1.0.0' },
         {
           ...ELECTRON_EXPORTER,
@@ -895,12 +903,68 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
-      manifest: additionalWebSourceExporterManifest(
+      manifest: additionalSourceExporterManifest(
         { id: VUE_EXPORTER_PLUGIN_ID, name: 'Vue Exporter', version: '1.0.0' },
         {
           ...VUE_EXPORTER,
           name: 'Export Vue source',
           description: 'Package the current document as a Vite + Vue 3 source project.'
+        }
+      ),
+      installedByDefault: false,
+      enabledByDefault: false
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: additionalSourceExporterManifest(
+        {
+          id: WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID,
+          name: 'WeChat Mini Program Exporter',
+          version: '1.0.0'
+        },
+        {
+          ...WECHAT_MINIPROGRAM_EXPORTER,
+          name: 'Export WeChat Mini Program source',
+          description: 'Package the current document as a native WeChat Mini Program project.'
+        }
+      ),
+      installedByDefault: false,
+      enabledByDefault: false
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: additionalSourceExporterManifest(
+        { id: TARO_EXPORTER_PLUGIN_ID, name: 'Taro Exporter', version: '1.0.0' },
+        {
+          ...TARO_EXPORTER,
+          name: 'Export Taro source',
+          description: 'Package the current document as a Taro React mini-program project.'
+        }
+      ),
+      installedByDefault: false,
+      enabledByDefault: false
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: additionalSourceExporterManifest(
+        { id: UNI_APP_EXPORTER_PLUGIN_ID, name: 'uni-app Exporter', version: '1.0.0' },
+        {
+          ...UNI_APP_EXPORTER,
+          name: 'Export uni-app source',
+          description: 'Package the current document as a Vue-based uni-app project.'
+        }
+      ),
+      installedByDefault: false,
+      enabledByDefault: false
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: additionalSourceExporterManifest(
+        { id: MPX_EXPORTER_PLUGIN_ID, name: 'Mpx Exporter', version: '1.0.0' },
+        {
+          ...MPX_EXPORTER,
+          name: 'Export Mpx source',
+          description: 'Package the current document as an Mpx mini-program project.'
         }
       ),
       installedByDefault: false,

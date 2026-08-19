@@ -10,6 +10,10 @@ export const NEXTJS_EXPORTER_PLUGIN_ID = 'open-pencil.nextjs-exporter'
 export const CAPACITOR_EXPORTER_PLUGIN_ID = 'open-pencil.capacitor-exporter'
 export const ELECTRON_EXPORTER_PLUGIN_ID = 'open-pencil.electron-exporter'
 export const VUE_EXPORTER_PLUGIN_ID = 'open-pencil.vue-exporter'
+export const WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID = 'open-pencil.wechat-miniprogram-exporter'
+export const TARO_EXPORTER_PLUGIN_ID = 'open-pencil.taro-exporter'
+export const UNI_APP_EXPORTER_PLUGIN_ID = 'open-pencil.uni-app-exporter'
+export const MPX_EXPORTER_PLUGIN_ID = 'open-pencil.mpx-exporter'
 export const COMPILER_PREVIEW_POPOUT_PLUGIN_ID = 'open-pencil.compiler-preview-popout'
 export const AI_POPOUT_PLUGIN_ID = 'open-pencil.ai-popout'
 
@@ -120,5 +124,29 @@ export const ELECTRON_EXPORTER = Object.freeze({
 export const VUE_EXPORTER = Object.freeze({
   exporterId: 'vue-source',
   adapterId: 'open-pencil.export.vue-source',
+  fileExtension: '.zip'
+})
+
+export const WECHAT_MINIPROGRAM_EXPORTER = Object.freeze({
+  exporterId: 'wechat-miniprogram-source',
+  adapterId: 'open-pencil.export.wechat-miniprogram-source',
+  fileExtension: '.zip'
+})
+
+export const TARO_EXPORTER = Object.freeze({
+  exporterId: 'taro-source',
+  adapterId: 'open-pencil.export.taro-source',
+  fileExtension: '.zip'
+})
+
+export const UNI_APP_EXPORTER = Object.freeze({
+  exporterId: 'uni-app-source',
+  adapterId: 'open-pencil.export.uni-app-source',
+  fileExtension: '.zip'
+})
+
+export const MPX_EXPORTER = Object.freeze({
+  exporterId: 'mpx-source',
+  adapterId: 'open-pencil.export.mpx-source',
   fileExtension: '.zip'
 })

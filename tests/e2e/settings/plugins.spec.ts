@@ -1,5 +1,8 @@
+import { readFile } from 'node:fs/promises'
+
 /* eslint-disable max-lines -- Plugin settings lifecycle, marketplace trust badges, and runtime grants share one end-to-end surface. */
 import { expect, test, type Page } from '@playwright/test'
+import { unzipSync } from 'fflate'
 
 import type { ModuleInstanceV1 } from '@open-pencil/scene-graph'
 
@@ -12,6 +15,32 @@ const CHART_MODULE_TYPE = 'chart'
 const CLIPBOARD_PLUGIN_ID = 'open-pencil.clipboard-toolkit'
 const TAURI_EXPORTER_PLUGIN_ID = 'open-pencil.tauri-react-exporter'
 const VUE_EXPORTER_PLUGIN_ID = 'open-pencil.vue-exporter'
+const MINI_PROGRAM_EXPORTERS = [
+  {
+    pluginId: 'open-pencil.wechat-miniprogram-exporter',
+    exporterId: 'wechat-miniprogram-source',
+    suffix: 'wechat-miniprogram.zip',
+    marker: 'app.json'
+  },
+  {
+    pluginId: 'open-pencil.taro-exporter',
+    exporterId: 'taro-source',
+    suffix: 'taro.zip',
+    marker: 'config/index.ts'
+  },
+  {
+    pluginId: 'open-pencil.uni-app-exporter',
+    exporterId: 'uni-app-source',
+    suffix: 'uni-app.zip',
+    marker: 'pages.json'
+  },
+  {
+    pluginId: 'open-pencil.mpx-exporter',
+    exporterId: 'mpx-source',
+    suffix: 'mpx.zip',
+    marker: 'src/app.mpx'
+  }
+] as const
 
 interface StoredPluginState {
   schemaVersion: number
@@ -393,6 +422,53 @@ test('exposes reviewed command and exporter actions only after enabling their pl
   for (const action of [copyText, copySVG, copyJSX, copyPNG, exportProject, exportVueProject]) {
     await expect(action).toBeEnabled()
   }
+})
+
+test('installs and exports all four mini-program projects through the browser Worker pipeline', async ({
+  page
+}) => {
+  test.setTimeout(90_000)
+  await page.goto('/?test')
+  const canvas = new CanvasHelper(page)
+  await canvas.waitForInit()
+  await page.evaluate(() => {
+    window.showSaveFilePicker = undefined
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    store.graph.createNode('TEXT', store.state.currentPageId, {
+      text: 'Mini Program Worker E2E'
+    })
+  })
+  await openPlugins(page)
+
+  for (const fixture of MINI_PROGRAM_EXPORTERS) {
+    await selectPluginView(page, 'Browse')
+    await page.getByTestId(`plugin-install-${fixture.pluginId}`).click()
+    await expect(page.getByTestId(`plugin-installed-${fixture.pluginId}`)).toBeVisible()
+  }
+
+  await selectPluginView(page, 'Installed')
+  for (const fixture of MINI_PROGRAM_EXPORTERS) {
+    const enabled = page.getByTestId(`plugin-enabled-${fixture.pluginId}`)
+    await enabled.click()
+    await expect(enabled).toBeChecked()
+    const action = page.getByTestId(`plugin-exporter-${fixture.pluginId}-${fixture.exporterId}`)
+    await expect(action).toBeEnabled()
+    const [download] = await Promise.all([page.waitForEvent('download'), action.click()])
+    expect(download.suggestedFilename().endsWith(fixture.suffix)).toBe(true)
+    const path = await download.path()
+    if (!path) throw new Error(`Missing ${fixture.pluginId} download path`)
+    const files = unzipSync(new Uint8Array(await readFile(path)))
+    expect(files[fixture.marker]).toBeDefined()
+    expect(files['README.md']).toBeDefined()
+    const text = Object.values(files)
+      .map((bytes) => new TextDecoder().decode(bytes))
+      .join('\n')
+    expect(text).toContain('Mini Program Worker E2E')
+    expect(text).not.toContain('/Users/')
+    expect(text).not.toMatch(/sk-(?:proj|live|test)-/)
+  }
+  canvas.assertNoErrors()
 })
 
 test('shows verified marketplace snapshot and publisher control-plane badges', async ({ page }) => {

@@ -96,12 +96,20 @@ import {
   FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
   GOOGLE_DRIVE_STORAGE_CAPABILITIES,
   GOOGLE_DRIVE_STORAGE_CONFIG_VERSION,
+  MPX_EXPORTER,
+  MPX_EXPORTER_PLUGIN_ID,
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
+  TARO_EXPORTER,
+  TARO_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID,
+  UNI_APP_EXPORTER,
+  UNI_APP_EXPORTER_PLUGIN_ID,
   VUE_EXPORTER,
-  VUE_EXPORTER_PLUGIN_ID
+  VUE_EXPORTER_PLUGIN_ID,
+  WECHAT_MINIPROGRAM_EXPORTER,
+  WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 
 const ENGINE_VERSION = '0.13.2'
@@ -115,7 +123,7 @@ function bundledManifest(pluginId: string) {
 }
 
 describe('bundled plugin catalog contributions', () => {
-  test('publishes the sixty reviewed built-in plugin identities', () => {
+  test('publishes the sixty-four reviewed built-in plugin identities', () => {
     const catalog = createBundledPluginCatalog()
     const ids = catalog.map((entry) => entry.manifest.plugin.id)
 
@@ -155,6 +163,10 @@ describe('bundled plugin catalog contributions', () => {
       CAPACITOR_EXPORTER_PLUGIN_ID,
       ELECTRON_EXPORTER_PLUGIN_ID,
       VUE_EXPORTER_PLUGIN_ID,
+      WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID,
+      TARO_EXPORTER_PLUGIN_ID,
+      UNI_APP_EXPORTER_PLUGIN_ID,
+      MPX_EXPORTER_PLUGIN_ID,
       SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID,
       AIRTABLE_RECORDS_PLUGIN_ID,
       SUPABASE_BUSINESS_PLUGIN_ID,
@@ -179,7 +191,7 @@ describe('bundled plugin catalog contributions', () => {
             : 0),
         0
       )
-    ).toBe(63)
+    ).toBe(67)
     for (const descriptor of REVIEWED_EXTERNAL_SERVICE_CATALOG) {
       const entry = catalog.find(
         (candidate) => candidate.manifest.plugin.id === descriptor.connector.contract.pluginId
@@ -456,6 +468,10 @@ describe('bundled plugin catalog contributions', () => {
     const capacitorExporter = bundledManifest(CAPACITOR_EXPORTER_PLUGIN_ID)
     const electronExporter = bundledManifest(ELECTRON_EXPORTER_PLUGIN_ID)
     const vueExporter = bundledManifest(VUE_EXPORTER_PLUGIN_ID)
+    const wechatMiniProgramExporter = bundledManifest(WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID)
+    const taroExporter = bundledManifest(TARO_EXPORTER_PLUGIN_ID)
+    const uniAppExporter = bundledManifest(UNI_APP_EXPORTER_PLUGIN_ID)
+    const mpxExporter = bundledManifest(MPX_EXPORTER_PLUGIN_ID)
     const supabaseSchema = bundledManifest(SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID)
     const airtableRecords = bundledManifest(AIRTABLE_RECORDS_PLUGIN_ID)
     const supabaseBusiness = bundledManifest(SUPABASE_BUSINESS_PLUGIN_ID)
@@ -540,7 +556,11 @@ describe('bundled plugin catalog contributions', () => {
       [nextJsExporter, NEXTJS_EXPORTER],
       [capacitorExporter, CAPACITOR_EXPORTER],
       [electronExporter, ELECTRON_EXPORTER],
-      [vueExporter, VUE_EXPORTER]
+      [vueExporter, VUE_EXPORTER],
+      [wechatMiniProgramExporter, WECHAT_MINIPROGRAM_EXPORTER],
+      [taroExporter, TARO_EXPORTER],
+      [uniAppExporter, UNI_APP_EXPORTER],
+      [mpxExporter, MPX_EXPORTER]
     ] as const) {
       expect(manifest.contributions.modules).toEqual([])
       expect(manifest.contributions.commands).toBeUndefined()
@@ -674,6 +694,20 @@ describe('bundled plugin catalog contributions', () => {
     ).toMatchObject(VUE_EXPORTER)
     await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, false)
     expect(store.installedExporters()).toEqual([])
+
+    for (const [pluginId, exporter] of [
+      [WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID, WECHAT_MINIPROGRAM_EXPORTER],
+      [TARO_EXPORTER_PLUGIN_ID, TARO_EXPORTER],
+      [UNI_APP_EXPORTER_PLUGIN_ID, UNI_APP_EXPORTER],
+      [MPX_EXPORTER_PLUGIN_ID, MPX_EXPORTER]
+    ] as const) {
+      await store.install(pluginId)
+      expect(store.installedExporters()).toEqual([])
+      await store.setEnabled(pluginId, true)
+      expect(store.exporter(pluginId, exporter.exporterId)?.contribution).toMatchObject(exporter)
+      await store.setEnabled(pluginId, false)
+      expect(store.installedExporters()).toEqual([])
+    }
 
     await store.install(SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID)
     expect(store.installedConnectors()).toEqual([])
