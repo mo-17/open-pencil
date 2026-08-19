@@ -105,15 +105,19 @@ describe('npm release workflow', () => {
     for (const label of ['macos-arm64', 'macos-x64', 'windows-x64', 'windows-arm64', 'linux-x64']) {
       expect(build).toContain(`label: ${label}`)
     }
+    expect(build).toContain('manualBundleArgs: --bundles deb,rpm')
+    expect(build.match(/manualBundleArgs: --bundles deb,rpm/g)).toHaveLength(1)
     expect(releaseNotes).toContain(
       "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
     )
 
     expect(manual).toContain("if: github.event_name == 'workflow_dispatch'")
     expect(manual).toContain('uses: tauri-apps/tauri-action@v0')
-    expect(manual).toContain(
-      `args: --target \${{ matrix.target }} --no-sign --config desktop/tauri.unsigned.conf.json`
-    )
+    expect(manual).toContain('args: >-')
+    expect(manual).toContain(`--target \${{ matrix.target }}`)
+    expect(manual).toContain('--no-sign')
+    expect(manual).toContain('--config desktop/tauri.unsigned.conf.json')
+    expect(manual).toContain(`\${{ matrix.manualBundleArgs }}`)
     for (const forbidden of [
       'GITHUB_TOKEN',
       'secrets.',
@@ -141,6 +145,8 @@ describe('npm release workflow', () => {
     expect(release).toContain(`tagName: \${{ github.ref_name }}`)
     expect(release).toContain(`releaseName: \${{ github.ref_name }}`)
     expect(release).toContain('includeUpdaterJson: true')
+    expect(release).not.toContain('matrix.manualBundleArgs')
+    expect(release).not.toContain('--bundles')
     expect(release).not.toContain('uploadUpdaterJson:')
     expect(release).not.toContain('uploadUpdaterSignatures:')
     for (const secret of [

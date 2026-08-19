@@ -23,6 +23,7 @@ jobs:
             nativeSmoke: true
             nativeSidecar: false
             bunDownloadUrl: ''
+            manualBundleArgs: ''
           - platform: macos-15-intel
             target: x86_64-apple-darwin
             label: macos-x64
@@ -30,6 +31,7 @@ jobs:
             nativeSmoke: true
             nativeSidecar: false
             bunDownloadUrl: ''
+            manualBundleArgs: ''
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x64
@@ -40,6 +42,7 @@ jobs:
             bunExecutableSha256: a26e4e47c3b1d59e7cff711795778d95531457eac2a7104ba25a17fcb0225774
             bunExpectedArch: x64
             bunVersion: 1.3.10
+            manualBundleArgs: ''
           - platform: windows-11-arm
             target: aarch64-pc-windows-msvc
             label: windows-arm64
@@ -50,6 +53,7 @@ jobs:
             bunExecutableSha256: 96db0e1941cb923cd9f776647fad9571f9e6041d6454ea8ca1d18d7d38697274
             bunExpectedArch: arm64
             bunVersion: 1.3.10
+            manualBundleArgs: ''
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: linux-x64
@@ -57,6 +61,7 @@ jobs:
             nativeSmoke: true
             nativeSidecar: false
             bunDownloadUrl: ''
+            manualBundleArgs: --bundles deb,rpm
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -160,7 +165,11 @@ jobs:
           OPENPENCIL_CODEPEN_SIDECAR_PREBUILT: '1'
         with:
           tauriScript: bunx tauri
-          args: --target ${{ matrix.target }} --no-sign --config desktop/tauri.unsigned.conf.json
+          args: >-
+            --target ${{ matrix.target }}
+            --no-sign
+            --config desktop/tauri.unsigned.conf.json
+            ${{ matrix.manualBundleArgs }}
 
       - name: Upload unsigned Tauri workflow artifacts
         if: github.event_name == 'workflow_dispatch'
