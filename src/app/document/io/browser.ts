@@ -30,8 +30,18 @@ export function createDocumentViewportActions(editor: ViewportEditor, viewportSi
   return { setViewportSize, fitCurrentPageToViewport }
 }
 
+export function createBrowserDownloadBlob(data: Uint8Array, mime: string): Blob {
+  const exactBuffer =
+    data.buffer instanceof ArrayBuffer &&
+    data.byteOffset === 0 &&
+    data.byteLength === data.buffer.byteLength
+      ? data.buffer
+      : new Uint8Array(data).buffer
+  return new Blob([exactBuffer], { type: mime })
+}
+
 export function downloadBlob(data: Uint8Array, filename: string, mime: string) {
-  const blob = new Blob([data.buffer as ArrayBuffer], { type: mime })
+  const blob = createBrowserDownloadBlob(data, mime)
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
