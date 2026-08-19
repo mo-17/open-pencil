@@ -40,6 +40,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -68,7 +70,7 @@ jobs:
         run: bun run smoke:codepen-sidecar --target=${{ matrix.target }}
 
       - name: Extract release notes
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         id: changelog
         shell: bash
         run: |
@@ -80,7 +82,28 @@ jobs:
           cat "$NOTES_FILE" >> "$GITHUB_OUTPUT"
           echo "$EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Build Tauri
+      - name: Build unsigned Tauri workflow artifacts
+        if: github.event_name == 'workflow_dispatch'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          VITE_GOOGLE_DRIVE_CLIENT_ID: ${{ vars.VITE_GOOGLE_DRIVE_CLIENT_ID }}
+          OPENPENCIL_CODEPEN_SIDECAR_PREBUILT: '1'
+        with:
+          tauriScript: bunx tauri
+          args: --target ${{ matrix.target }} --no-sign --config desktop/tauri.unsigned.conf.json
+
+      - name: Upload unsigned Tauri workflow artifacts
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-pencil-${{ matrix.label }}-${{ github.run_attempt }}
+          path: desktop/target/${{ matrix.target }}/release/bundle/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Build signed Tauri release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,15 +119,17 @@ jobs:
         with:
           tauriScript: bunx tauri
           args: --target ${{ matrix.target }}
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
           releaseBody: ${{ steps.changelog.outputs.release_notes }}
           releaseDraft: true
-          uploadUpdaterJson: true
-          uploadUpdaterSignatures: true
+          includeUpdaterJson: true
 
       - name: Verify signed macOS CodePen sidecar
-        if: startsWith(matrix.target, 'aarch64-apple-') || startsWith(matrix.target, 'x86_64-apple-')
+        if: >-
+          github.event_name == 'push' &&
+          startsWith(github.ref, 'refs/tags/v') &&
+          (startsWith(matrix.target, 'aarch64-apple-') || startsWith(matrix.target, 'x86_64-apple-'))
         shell: bash
         run: |
           app_path="desktop/target/${{ matrix.target }}/release/bundle/macos/OpenPencil.app"

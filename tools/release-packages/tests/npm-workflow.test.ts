@@ -5,6 +5,10 @@ import { readFileSync } from 'node:fs'
 import { DEFAULT_PACKAGES } from '../src/publish-dirs'
 
 const WORKFLOW_PATH = new URL('../../../.github/workflows/build.yml', import.meta.url)
+const UNSIGNED_TAURI_CONFIG_PATH = new URL(
+  '../../../desktop/tauri.unsigned.conf.json',
+  import.meta.url
+)
 const APP_WORKFLOW_PATH = new URL('../../../.github/workflows/app.yml', import.meta.url)
 const DOCS_WORKFLOW_PATH = new URL('../../../.github/workflows/docs.yml', import.meta.url)
 const SETUP_BUN_ACTION_PATH = new URL(
@@ -39,6 +43,16 @@ function namedRunBlock(workflow: string, name: string): string {
     .join('\n')
 }
 
+function namedStep(workflow: string, name: string, nextName?: string): string {
+  const start = workflow.indexOf(`      - name: ${name}\n`)
+  expect(start).toBeGreaterThan(-1)
+  const end = nextName
+    ? workflow.indexOf(`      - name: ${nextName}\n`, start + 1)
+    : workflow.length
+  expect(end).toBeGreaterThan(start)
+  return workflow.slice(start, end)
+}
+
 describe('npm release workflow', () => {
   test('runs non-npm release jobs automatically only in the official repository', () => {
     const buildWorkflow = readFileSync(WORKFLOW_PATH, 'utf8')
@@ -57,6 +71,107 @@ describe('npm release workflow', () => {
     const publish = job(buildWorkflow, 'publish-npm')
     expect(prepare).not.toContain(NON_NPM_JOB_GATE)
     expect(publish).not.toContain(NON_NPM_JOB_GATE)
+  })
+
+  test('keeps manual desktop builds unsigned, secret-free, and artifact-only', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
+    const build = job(workflow, 'build', 'prepare-npm')
+    const releaseNotes = namedStep(
+      build,
+      'Extract release notes',
+      'Build unsigned Tauri workflow artifacts'
+    )
+    const manual = namedStep(
+      build,
+      'Build unsigned Tauri workflow artifacts',
+      'Upload unsigned Tauri workflow artifacts'
+    )
+    const upload = namedStep(
+      build,
+      'Upload unsigned Tauri workflow artifacts',
+      'Build signed Tauri release'
+    )
+    const release = namedStep(
+      build,
+      'Build signed Tauri release',
+      'Verify signed macOS CodePen sidecar'
+    )
+    const signedVerification = namedStep(build, 'Verify signed macOS CodePen sidecar')
+
+    expect(build).toContain(
+      'uses: actions/checkout@v7\n        with:\n          persist-credentials: false'
+    )
+    expect(build.match(/^\s+label: /gm)).toHaveLength(5)
+    for (const label of ['macos-arm64', 'macos-x64', 'windows-x64', 'windows-arm64', 'linux-x64']) {
+      expect(build).toContain(`label: ${label}`)
+    }
+    expect(releaseNotes).toContain(
+      "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
+    )
+
+    expect(manual).toContain("if: github.event_name == 'workflow_dispatch'")
+    expect(manual).toContain('uses: tauri-apps/tauri-action@v0')
+    expect(manual).toContain(
+      `args: --target \${{ matrix.target }} --no-sign --config desktop/tauri.unsigned.conf.json`
+    )
+    for (const forbidden of [
+      'GITHUB_TOKEN',
+      'secrets.',
+      'TAURI_SIGNING_',
+      'APPLE_',
+      'tagName:',
+      'releaseName:',
+      'releaseId:'
+    ]) {
+      expect(manual).not.toContain(forbidden)
+    }
+
+    expect(upload).toContain("if: github.event_name == 'workflow_dispatch'")
+    expect(upload).toContain('uses: actions/upload-artifact@v4')
+    expect(upload).toContain(`name: open-pencil-\${{ matrix.label }}-\${{ github.run_attempt }}`)
+    expect(upload).toContain(`path: desktop/target/\${{ matrix.target }}/release/bundle/`)
+    expect(upload).toContain('if-no-files-found: error')
+    expect(upload).toContain('retention-days: 14')
+    expect(upload).toContain('compression-level: 0')
+    expect(upload).not.toContain('tagName:')
+    expect(upload).not.toContain('releaseName:')
+
+    const releaseGate = "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
+    expect(release).toContain(releaseGate)
+    expect(release).toContain(`tagName: \${{ github.ref_name }}`)
+    expect(release).toContain(`releaseName: \${{ github.ref_name }}`)
+    expect(release).toContain('includeUpdaterJson: true')
+    expect(release).not.toContain('uploadUpdaterJson:')
+    expect(release).not.toContain('uploadUpdaterSignatures:')
+    for (const secret of [
+      'secrets.GITHUB_TOKEN',
+      'secrets.TAURI_SIGNING_PRIVATE_KEY',
+      'secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD',
+      'secrets.APPLE_CERTIFICATE',
+      'secrets.APPLE_CERTIFICATE_PASSWORD',
+      'secrets.APPLE_ID',
+      'secrets.APPLE_PASSWORD',
+      'secrets.APPLE_TEAM_ID'
+    ]) {
+      expect(release).toContain(secret)
+      expect(build.replace(release, '')).not.toContain(secret)
+    }
+
+    expect(signedVerification).toContain("github.event_name == 'push' &&")
+    expect(signedVerification).toContain("startsWith(github.ref, 'refs/tags/v') &&")
+    expect(signedVerification).toContain("startsWith(matrix.target, 'aarch64-apple-')")
+    expect(signedVerification).toContain("startsWith(matrix.target, 'x86_64-apple-')")
+
+    const unsignedConfig = JSON.parse(readFileSync(UNSIGNED_TAURI_CONFIG_PATH, 'utf8')) as {
+      bundle: {
+        createUpdaterArtifacts: boolean
+        macOS: { signingIdentity: string | null }
+      }
+      plugins: { updater: { endpoints: string[] } }
+    }
+    expect(unsignedConfig.bundle.createUpdaterArtifacts).toBe(false)
+    expect(unsignedConfig.bundle.macOS.signingIdentity).toBeNull()
+    expect(unsignedConfig.plugins.updater.endpoints).toEqual([])
   })
 
   test('uses owner/tag gates and keeps credentials out of the preparation job', () => {
