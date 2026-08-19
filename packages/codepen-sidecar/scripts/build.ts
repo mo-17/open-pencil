@@ -153,6 +153,19 @@ export async function verifyCodePenSidecarBinary(
 interface BuildOptions {
   target: CodePenSidecarTargetTriple
   verifyOnly: boolean
+  nativeRuntime: boolean
+}
+
+export function codePenSidecarNativeRuntimeMatchesTarget(
+  target: CodePenSidecarTargetTriple,
+  platform: NodeJS.Platform = process.platform,
+  architecture: string = process.arch
+): boolean {
+  if (target === 'aarch64-apple-darwin') return platform === 'darwin' && architecture === 'arm64'
+  if (target === 'x86_64-apple-darwin') return platform === 'darwin' && architecture === 'x64'
+  if (target === 'aarch64-pc-windows-msvc') return platform === 'win32' && architecture === 'arm64'
+  if (target === 'x86_64-pc-windows-msvc') return platform === 'win32' && architecture === 'x64'
+  return platform === 'linux' && architecture === 'x64'
 }
 
 export function parseCodePenSidecarBuildArgs(
@@ -160,6 +173,7 @@ export function parseCodePenSidecarBuildArgs(
   environment: Readonly<Record<string, string | undefined>> = process.env
 ): BuildOptions {
   let target: CodePenSidecarTargetTriple | null = null
+  let nativeRuntime = false
   const prebuilt = environment.OPENPENCIL_CODEPEN_SIDECAR_PREBUILT
   if (prebuilt !== undefined && prebuilt !== '0' && prebuilt !== '1') {
     throw new Error('OPENPENCIL_CODEPEN_SIDECAR_PREBUILT must be 0 or 1')
@@ -170,6 +184,11 @@ export function parseCodePenSidecarBuildArgs(
     if (argument === '--verify-only') {
       if (verifyOnly && prebuilt !== '1') throw new Error('Duplicate --verify-only option')
       verifyOnly = true
+      continue
+    }
+    if (argument === '--native-runtime') {
+      if (nativeRuntime) throw new Error('Duplicate --native-runtime option')
+      nativeRuntime = true
       continue
     }
     if (argument === '--target') {
@@ -190,10 +209,19 @@ export function parseCodePenSidecarBuildArgs(
       'CodePen sidecar target is required outside a Tauri build hook; pass --target <triple>.'
     )
   }
-  return { target, verifyOnly }
+  if (verifyOnly && nativeRuntime) {
+    throw new Error('--native-runtime is only valid while building the CodePen sidecar')
+  }
+  return { target, verifyOnly, nativeRuntime }
 }
 
-async function buildCodePenSidecar(target: CodePenSidecarTargetTriple): Promise<void> {
+async function buildCodePenSidecar(
+  target: CodePenSidecarTargetTriple,
+  nativeRuntime: boolean
+): Promise<void> {
+  if (nativeRuntime && !codePenSidecarNativeRuntimeMatchesTarget(target)) {
+    throw new Error(`Native Bun runtime does not match the ${target} CodePen sidecar target`)
+  }
   const destination = codePenSidecarOutputPath(target)
   const { extension } = CODEPEN_SIDECAR_TARGETS[target]
   const base = extension ? destination.slice(0, -extension.length) : destination
@@ -201,7 +229,7 @@ async function buildCodePenSidecar(target: CodePenSidecarTargetTriple): Promise<
   await mkdir(dirname(destination), { recursive: true })
   await rm(temporary, { force: true })
   try {
-    const command = codePenSidecarBuildCommand(target, temporary)
+    const command = codePenSidecarBuildCommand(target, temporary, nativeRuntime)
     const processResult = Bun.spawn(command, {
       cwd: REPOSITORY_ROOT,
       stdin: 'ignore',
@@ -227,13 +255,13 @@ async function buildCodePenSidecar(target: CodePenSidecarTargetTriple): Promise<
 
 export function codePenSidecarBuildCommand(
   target: CodePenSidecarTargetTriple,
-  outputPath: string
+  outputPath: string,
+  nativeRuntime = false
 ): string[] {
   const command = [
     process.execPath,
     'build',
     '--compile',
-    `--target=${CODEPEN_SIDECAR_TARGETS[target].bunTarget}`,
     '--no-compile-autoload-dotenv',
     '--no-compile-autoload-bunfig',
     '--no-compile-autoload-tsconfig',
@@ -242,18 +270,19 @@ export function codePenSidecarBuildCommand(
     ENTRY_PATH,
     `--outfile=${outputPath}`
   ]
+  if (!nativeRuntime) command.splice(3, 0, `--target=${CODEPEN_SIDECAR_TARGETS[target].bunTarget}`)
   if (target.includes('windows')) command.push('--windows-hide-console')
   return command
 }
 
 async function main(): Promise<void> {
-  const { target, verifyOnly } = parseCodePenSidecarBuildArgs(Bun.argv.slice(2))
+  const { target, verifyOnly, nativeRuntime } = parseCodePenSidecarBuildArgs(Bun.argv.slice(2))
   if (verifyOnly) {
     await verifyCodePenSidecarBinary(target)
     process.stdout.write(`Verified ${codePenSidecarOutputPath(target)}\n`)
     return
   }
-  await buildCodePenSidecar(target)
+  await buildCodePenSidecar(target, nativeRuntime)
 }
 
 if (import.meta.main) {

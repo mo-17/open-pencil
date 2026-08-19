@@ -15,6 +15,10 @@ inputs:
     description: Restore the Bun package cache before installing dependencies.
     required: false
     default: 'true'
+  bun-download-url:
+    description: Optional exact Bun release archive URL for a native runner.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -28,13 +32,19 @@ runs:
         head -c 4 tests/fixtures/material3.fig | xxd
 
     - uses: oven-sh/setup-bun@v2
+      if: inputs.bun-download-url == ''
+
+    - uses: oven-sh/setup-bun@v2
+      if: inputs.bun-download-url != ''
+      with:
+        bun-download-url: ${{ inputs.bun-download-url }}
 
     - uses: actions/cache@v6
       if: inputs.cache == 'true'
       with:
         path: ~/.bun/install/cache
-        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-        restore-keys: bun-${{ runner.os }}-
+        key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Install dependencies
       shell: bash

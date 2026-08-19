@@ -7,6 +7,7 @@ import {
   CODEPEN_SIDECAR_TARGETS,
   codePenSidecarBinaryHeaderMatchesTarget,
   codePenSidecarBuildCommand,
+  codePenSidecarNativeRuntimeMatchesTarget,
   codePenSidecarOutputPath,
   codePenSidecarTargetFromTauriEnvironment,
   parseCodePenSidecarBuildArgs,
@@ -124,14 +125,48 @@ describe('CodePen sidecar packaging contract', () => {
   test('accepts one explicit target and the verify-only operation', () => {
     expect(
       parseCodePenSidecarBuildArgs(['--target=x86_64-unknown-linux-gnu', '--verify-only'])
-    ).toEqual({ target: 'x86_64-unknown-linux-gnu', verifyOnly: true })
+    ).toEqual({ target: 'x86_64-unknown-linux-gnu', verifyOnly: true, nativeRuntime: false })
     expect(
       parseCodePenSidecarBuildArgs([], {
         TAURI_ENV_PLATFORM: 'darwin',
         TAURI_ENV_ARCH: 'aarch64',
         OPENPENCIL_CODEPEN_SIDECAR_PREBUILT: '1'
       })
-    ).toEqual({ target: 'aarch64-apple-darwin', verifyOnly: true })
+    ).toEqual({ target: 'aarch64-apple-darwin', verifyOnly: true, nativeRuntime: false })
+  })
+
+  test('uses a native Bun runtime only on the matching desktop architecture', () => {
+    expect(
+      parseCodePenSidecarBuildArgs(['--target=x86_64-pc-windows-msvc', '--native-runtime'])
+    ).toEqual({
+      target: 'x86_64-pc-windows-msvc',
+      verifyOnly: false,
+      nativeRuntime: true
+    })
+    expect(() =>
+      parseCodePenSidecarBuildArgs([
+        '--target=x86_64-pc-windows-msvc',
+        '--native-runtime',
+        '--verify-only'
+      ])
+    ).toThrow('--native-runtime is only valid while building')
+    expect(
+      codePenSidecarNativeRuntimeMatchesTarget('x86_64-pc-windows-msvc', 'win32', 'x64')
+    ).toBeTrue()
+    expect(
+      codePenSidecarNativeRuntimeMatchesTarget('aarch64-pc-windows-msvc', 'win32', 'arm64')
+    ).toBeTrue()
+    expect(
+      codePenSidecarNativeRuntimeMatchesTarget('aarch64-pc-windows-msvc', 'win32', 'x64')
+    ).toBeFalse()
+
+    const command = codePenSidecarBuildCommand(
+      'x86_64-pc-windows-msvc',
+      'desktop/binaries/sidecar.exe',
+      true
+    )
+    expect(command.some((argument) => argument.startsWith('--target='))).toBeFalse()
+    expect(command).toContain('--windows-hide-console')
   })
 
   test('Tauri bundles and permits only the zero-argument sidecar identity', () => {
@@ -158,11 +193,33 @@ describe('CodePen sidecar packaging contract', () => {
 
   test('release CI builds every target and smokes every native runner', () => {
     const workflow = readFileSync('.github/workflows/build.yml', 'utf8')
+    const rootManifest = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      packageManager: string
+    }
+    const bunVersion = rootManifest.packageManager.replace(/^bun@/, '')
     for (const [target, config] of Object.entries(CODEPEN_SIDECAR_TARGETS)) {
       expect(workflow).toContain(`target: ${target}`)
       expect(workflow).toContain(`bunRuntimeCache: ${config.bunTarget.replace('arm64', 'aarch64')}`)
     }
     expect(workflow).toContain('platform: macos-15-intel')
+    expect(workflow).toContain('platform: windows-11-arm')
+    expect(workflow).toContain(
+      `bunDownloadUrl: https://github.com/oven-sh/bun/releases/download/bun-v${bunVersion}/bun-windows-x64-baseline.zip`
+    )
+    expect(workflow).toContain(
+      `bunDownloadUrl: https://github.com/oven-sh/bun/releases/download/bun-v${bunVersion}/bun-windows-aarch64.zip`
+    )
+    expect(workflow.match(new RegExp(`bunVersion: ${bunVersion}`, 'g'))).toHaveLength(2)
+    expect(workflow).toContain(
+      'bunExecutableSha256: a26e4e47c3b1d59e7cff711795778d95531457eac2a7104ba25a17fcb0225774'
+    )
+    expect(workflow).toContain(
+      'bunExecutableSha256: 96db0e1941cb923cd9f776647fad9571f9e6041d6454ea8ca1d18d7d38697274'
+    )
+    expect(workflow).toContain('name: Verify native Windows Bun runtime')
+    expect(workflow).toContain('test "$(bun -p \'process.platform\')" = "win32"')
+    expect(workflow).toContain('test "$actual_sha256" = "$EXPECTED_BUN_SHA256"')
+    expect(workflow).toContain('sidecar_args+=(--native-runtime)')
     expect(workflow).toContain('name: Smoke CodePen sidecar protocol')
     expect(workflow).toContain('if: matrix.nativeSmoke')
     expect(workflow).toContain('name: Verify signed macOS CodePen sidecar')
@@ -187,9 +244,10 @@ describe('CodePen sidecar packaging contract', () => {
     )
     expect(workflow).toContain('rm -rf -- "$cache_entry"')
     expect(workflow).not.toContain('rm -rf -- "$HOME/.bun/install/cache"')
-    expect(
-      workflow.match(/bun run build:codepen-sidecar --target=\$\{\{ matrix\.target \}\}/g)
-    ).toHaveLength(3)
+    expect(workflow).toContain(`bun run build:codepen-sidecar "${dollar}{sidecar_args[@]}"`)
+    expect(workflow).toContain(
+      `bun run build:codepen-sidecar --target=${dollar}{{ matrix.target }} --verify-only`
+    )
   })
 
   test('root quality gates own the private sidecar source, scripts, and tests', () => {

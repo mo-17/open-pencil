@@ -237,8 +237,13 @@ describe('npm release workflow', () => {
     expect(prepare).not.toContain('npm view')
 
     const setupBunAction = readFileSync(SETUP_BUN_ACTION_PATH, 'utf8')
+    const dollar = '$'
     expect(setupBunAction).toContain('cache:\n    description: Restore the Bun package cache')
     expect(setupBunAction).toContain("if: inputs.cache == 'true'")
+    expect(setupBunAction).toContain('bun-download-url:')
+    expect(setupBunAction).toContain("if: inputs.bun-download-url != ''")
+    expect(setupBunAction).toContain(`bun-download-url: ${dollar}{{ inputs.bun-download-url }}`)
+    expect(setupBunAction).toContain(`${dollar}{{ runner.os }}-${dollar}{{ runner.arch }}`)
   })
 
   test('derives release identity and order from the prepared release plan', () => {

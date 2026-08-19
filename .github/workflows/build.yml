@@ -21,26 +21,42 @@ jobs:
             label: macos-arm64
             bunRuntimeCache: bun-darwin-aarch64
             nativeSmoke: true
+            nativeSidecar: false
+            bunDownloadUrl: ''
           - platform: macos-15-intel
             target: x86_64-apple-darwin
             label: macos-x64
             bunRuntimeCache: bun-darwin-x64-baseline
             nativeSmoke: true
+            nativeSidecar: false
+            bunDownloadUrl: ''
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x64
             bunRuntimeCache: bun-windows-x64-baseline
             nativeSmoke: true
-          - platform: windows-latest
+            nativeSidecar: true
+            bunDownloadUrl: https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-windows-x64-baseline.zip
+            bunExecutableSha256: a26e4e47c3b1d59e7cff711795778d95531457eac2a7104ba25a17fcb0225774
+            bunExpectedArch: x64
+            bunVersion: 1.3.10
+          - platform: windows-11-arm
             target: aarch64-pc-windows-msvc
             label: windows-arm64
             bunRuntimeCache: bun-windows-aarch64
-            nativeSmoke: false
+            nativeSmoke: true
+            nativeSidecar: true
+            bunDownloadUrl: https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-windows-aarch64.zip
+            bunExecutableSha256: 96db0e1941cb923cd9f776647fad9571f9e6041d6454ea8ca1d18d7d38697274
+            bunExpectedArch: arm64
+            bunVersion: 1.3.10
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: linux-x64
             bunRuntimeCache: bun-linux-x64-baseline
             nativeSmoke: true
+            nativeSidecar: false
+            bunDownloadUrl: ''
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -64,6 +80,24 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - uses: ./.github/actions/setup-bun
+        with:
+          bun-download-url: ${{ matrix.bunDownloadUrl }}
+
+      - name: Verify native Windows Bun runtime
+        if: matrix.nativeSidecar
+        shell: bash
+        env:
+          EXPECTED_BUN_ARCH: ${{ matrix.bunExpectedArch }}
+          EXPECTED_BUN_SHA256: ${{ matrix.bunExecutableSha256 }}
+          EXPECTED_BUN_VERSION: ${{ matrix.bunVersion }}
+        run: |
+          set -euo pipefail
+          test "$(bun --version)" = "$EXPECTED_BUN_VERSION"
+          test "$(bun -p 'process.platform')" = "win32"
+          test "$(bun -p 'process.arch')" = "$EXPECTED_BUN_ARCH"
+          bun_path="$(cygpath -u "$(bun -p 'process.execPath')")"
+          actual_sha256="$(sha256sum "$bun_path" | awk '{ print $1 }')"
+          test "$actual_sha256" = "$EXPECTED_BUN_SHA256"
 
       - name: Build and verify CodePen sidecar
         shell: bash
@@ -72,7 +106,11 @@ jobs:
         run: |
           set -o pipefail
           build_log="$RUNNER_TEMP/codepen-sidecar-build.log"
-          if ! bun run build:codepen-sidecar --target=${{ matrix.target }} 2>&1 | tee "$build_log"; then
+          sidecar_args=(--target=${{ matrix.target }})
+          if [[ "${{ matrix.nativeSidecar }}" == "true" ]]; then
+            sidecar_args+=(--native-runtime)
+          fi
+          if ! bun run build:codepen-sidecar "${sidecar_args[@]}" 2>&1 | tee "$build_log"; then
             bun_version="$(bun --version)"
             expected_error="Failed to extract executable for '${CODEPEN_BUN_RUNTIME_CACHE_NAME}-v${bun_version}'. The download may be incomplete."
             if ! grep -Fq -- "$expected_error" "$build_log"; then
@@ -93,7 +131,7 @@ jobs:
             echo "Retrying after clearing the incomplete runtime cache entry."
             rm -rf -- "$cache_entry"
             sleep 5
-            bun run build:codepen-sidecar --target=${{ matrix.target }}
+            bun run build:codepen-sidecar "${sidecar_args[@]}"
           fi
           bun run build:codepen-sidecar --target=${{ matrix.target }} --verify-only
 
