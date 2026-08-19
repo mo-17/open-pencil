@@ -83,6 +83,22 @@
           {
             "id": "plugin.export.electron",
             "label": "Electron Project…"
+          },
+          {
+            "id": "plugin.export.wechat-miniprogram",
+            "label": "WeChat Mini Program…"
+          },
+          {
+            "id": "plugin.export.taro",
+            "label": "Taro Project…"
+          },
+          {
+            "id": "plugin.export.uni-app",
+            "label": "uni-app Project…"
+          },
+          {
+            "id": "plugin.export.mpx",
+            "label": "Mpx Project…"
           }
         ]
       },

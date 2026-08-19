@@ -107,6 +107,18 @@ describe('APP_MENU_SCHEMA', () => {
     expect(fileEntries).toContainEqual(
       expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportElectron })
     )
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportWechatMiniProgram })
+    )
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportTaro })
+    )
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportUniApp })
+    )
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportMpx })
+    )
     expect(editEntries.map((entry) => ('type' in entry ? null : entry.id))).toEqual(
       expect.arrayContaining([
         PLUGIN_MENU_ACTION_IDS.clipboardText,
@@ -134,6 +146,10 @@ describe('APP_MENU_SCHEMA', () => {
         PLUGIN_MENU_ACTION_IDS.exportVue,
         PLUGIN_MENU_ACTION_IDS.exportCapacitor,
         PLUGIN_MENU_ACTION_IDS.exportElectron,
+        PLUGIN_MENU_ACTION_IDS.exportWechatMiniProgram,
+        PLUGIN_MENU_ACTION_IDS.exportTaro,
+        PLUGIN_MENU_ACTION_IDS.exportUniApp,
+        PLUGIN_MENU_ACTION_IDS.exportMpx,
         PLUGIN_MENU_ACTION_IDS.clipboardText,
         PLUGIN_MENU_ACTION_IDS.clipboardSvg,
         PLUGIN_MENU_ACTION_IDS.clipboardJsx,

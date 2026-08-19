@@ -17,12 +17,20 @@ import {
   EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
   FLUTTER_EXPORTER,
   FLUTTER_EXPORTER_PLUGIN_ID,
+  MPX_EXPORTER,
+  MPX_EXPORTER_PLUGIN_ID,
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
+  TARO_EXPORTER,
+  TARO_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID,
+  UNI_APP_EXPORTER,
+  UNI_APP_EXPORTER_PLUGIN_ID,
   VUE_EXPORTER,
-  VUE_EXPORTER_PLUGIN_ID
+  VUE_EXPORTER_PLUGIN_ID,
+  WECHAT_MINIPROGRAM_EXPORTER,
+  WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import {
   createPluginMenuActions,
@@ -31,9 +39,13 @@ import {
   executeElectronPluginMenuExporter,
   executeExpoReactNativePluginMenuExporter,
   executeFlutterPluginMenuExporter,
+  executeMpxPluginMenuExporter,
   executeNextJsPluginMenuExporter,
+  executeTaroPluginMenuExporter,
   executeTauriReactPluginMenuExporter,
+  executeUniAppPluginMenuExporter,
   executeVuePluginMenuExporter,
+  executeWechatMiniProgramPluginMenuExporter,
   type PluginMenuExecutionDependencies
 } from '@/app/shell/menu/plugin-actions'
 import { PLUGIN_MENU_ACTION_IDS } from '@/app/shell/menu/schema'
@@ -106,6 +118,15 @@ describe('plugin system menu actions', () => {
     await store.setEnabled(ELECTRON_EXPORTER_PLUGIN_ID, true)
     await store.install(VUE_EXPORTER_PLUGIN_ID)
     await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, true)
+    for (const pluginId of [
+      WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID,
+      TARO_EXPORTER_PLUGIN_ID,
+      UNI_APP_EXPORTER_PLUGIN_ID,
+      MPX_EXPORTER_PLUGIN_ID
+    ]) {
+      await store.install(pluginId)
+      await store.setEnabled(pluginId, true)
+    }
 
     await expect(
       executeClipboardPluginMenuCommand(EDITOR, CLIPBOARD_COMMANDS.svg.commandId, dependencies)
@@ -138,6 +159,24 @@ describe('plugin system menu actions', () => {
       status: 'completed',
       message: `ran ${ELECTRON_EXPORTER.exporterId}`
     })
+    await expect(executeWechatMiniProgramPluginMenuExporter(EDITOR, dependencies)).resolves.toEqual(
+      {
+        status: 'completed',
+        message: `ran ${WECHAT_MINIPROGRAM_EXPORTER.exporterId}`
+      }
+    )
+    await expect(executeTaroPluginMenuExporter(EDITOR, dependencies)).resolves.toEqual({
+      status: 'completed',
+      message: `ran ${TARO_EXPORTER.exporterId}`
+    })
+    await expect(executeUniAppPluginMenuExporter(EDITOR, dependencies)).resolves.toEqual({
+      status: 'completed',
+      message: `ran ${UNI_APP_EXPORTER.exporterId}`
+    })
+    await expect(executeMpxPluginMenuExporter(EDITOR, dependencies)).resolves.toEqual({
+      status: 'completed',
+      message: `ran ${MPX_EXPORTER.exporterId}`
+    })
     expect(calls).toEqual([
       `${CLIPBOARD_TOOLKIT_PLUGIN_ID}:${CLIPBOARD_COMMANDS.svg.commandId}`,
       `${TAURI_REACT_EXPORTER_PLUGIN_ID}:${TAURI_REACT_EXPORTER.exporterId}`,
@@ -146,7 +185,11 @@ describe('plugin system menu actions', () => {
       `${NEXTJS_EXPORTER_PLUGIN_ID}:${NEXTJS_EXPORTER.exporterId}`,
       `${VUE_EXPORTER_PLUGIN_ID}:${VUE_EXPORTER.exporterId}`,
       `${CAPACITOR_EXPORTER_PLUGIN_ID}:${CAPACITOR_EXPORTER.exporterId}`,
-      `${ELECTRON_EXPORTER_PLUGIN_ID}:${ELECTRON_EXPORTER.exporterId}`
+      `${ELECTRON_EXPORTER_PLUGIN_ID}:${ELECTRON_EXPORTER.exporterId}`,
+      `${WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID}:${WECHAT_MINIPROGRAM_EXPORTER.exporterId}`,
+      `${TARO_EXPORTER_PLUGIN_ID}:${TARO_EXPORTER.exporterId}`,
+      `${UNI_APP_EXPORTER_PLUGIN_ID}:${UNI_APP_EXPORTER.exporterId}`,
+      `${MPX_EXPORTER_PLUGIN_ID}:${MPX_EXPORTER.exporterId}`
     ])
   })
 
@@ -243,6 +286,21 @@ describe('plugin system menu actions', () => {
     expect(notifications.at(-1)).toEqual({
       tone: 'info',
       message: `ran ${VUE_EXPORTER.exporterId}`
+    })
+
+    await actions[PLUGIN_MENU_ACTION_IDS.exportWechatMiniProgram]()
+    expect(notifications.at(-1)).toEqual({
+      tone: 'error',
+      message:
+        'Plugin operation failed: WeChat Mini Program Exporter is not installed. Install it in Settings → Plugins.'
+    })
+
+    await store.install(WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID)
+    await store.setEnabled(WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID, true)
+    await actions[PLUGIN_MENU_ACTION_IDS.exportWechatMiniProgram]()
+    expect(notifications.at(-1)).toEqual({
+      tone: 'info',
+      message: `ran ${WECHAT_MINIPROGRAM_EXPORTER.exporterId}`
     })
   })
 })

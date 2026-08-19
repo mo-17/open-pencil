@@ -40,7 +40,11 @@ export const PLUGIN_MENU_ACTION_IDS = Object.freeze({
   exportNextJs: 'plugin.export.nextjs',
   exportVue: 'plugin.export.vue',
   exportCapacitor: 'plugin.export.capacitor',
-  exportElectron: 'plugin.export.electron'
+  exportElectron: 'plugin.export.electron',
+  exportWechatMiniProgram: 'plugin.export.wechat-miniprogram',
+  exportTaro: 'plugin.export.taro',
+  exportUniApp: 'plugin.export.uni-app',
+  exportMpx: 'plugin.export.mpx'
 })
 
 export const APP_MENU_SCHEMA = [
@@ -91,6 +95,22 @@ export const APP_MENU_SCHEMA = [
           {
             id: PLUGIN_MENU_ACTION_IDS.exportElectron,
             label: 'Electron Project…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportWechatMiniProgram,
+            label: 'WeChat Mini Program…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportTaro,
+            label: 'Taro Project…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportUniApp,
+            label: 'uni-app Project…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportMpx,
+            label: 'Mpx Project…'
           }
         ]
       },

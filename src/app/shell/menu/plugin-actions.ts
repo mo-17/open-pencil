@@ -20,12 +20,20 @@ import {
   EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
   FLUTTER_EXPORTER,
   FLUTTER_EXPORTER_PLUGIN_ID,
+  MPX_EXPORTER,
+  MPX_EXPORTER_PLUGIN_ID,
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
+  TARO_EXPORTER,
+  TARO_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID,
+  UNI_APP_EXPORTER,
+  UNI_APP_EXPORTER_PLUGIN_ID,
   VUE_EXPORTER,
-  VUE_EXPORTER_PLUGIN_ID
+  VUE_EXPORTER_PLUGIN_ID,
+  WECHAT_MINIPROGRAM_EXPORTER,
+  WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import { PLUGIN_MENU_ACTION_IDS } from '@/app/shell/menu/schema'
 import { toast } from '@/app/shell/ui'
@@ -218,6 +226,58 @@ export async function executeElectronPluginMenuExporter(
   )
 }
 
+export async function executeWechatMiniProgramPluginMenuExporter(
+  editor: EditorStore,
+  dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
+): Promise<AppPluginHostExecutionResult> {
+  return executePluginMenuExporter(
+    editor,
+    WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID,
+    WECHAT_MINIPROGRAM_EXPORTER.exporterId,
+    'WeChat Mini Program Exporter',
+    dependencies
+  )
+}
+
+export async function executeTaroPluginMenuExporter(
+  editor: EditorStore,
+  dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
+): Promise<AppPluginHostExecutionResult> {
+  return executePluginMenuExporter(
+    editor,
+    TARO_EXPORTER_PLUGIN_ID,
+    TARO_EXPORTER.exporterId,
+    'Taro Exporter',
+    dependencies
+  )
+}
+
+export async function executeUniAppPluginMenuExporter(
+  editor: EditorStore,
+  dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
+): Promise<AppPluginHostExecutionResult> {
+  return executePluginMenuExporter(
+    editor,
+    UNI_APP_EXPORTER_PLUGIN_ID,
+    UNI_APP_EXPORTER.exporterId,
+    'uni-app Exporter',
+    dependencies
+  )
+}
+
+export async function executeMpxPluginMenuExporter(
+  editor: EditorStore,
+  dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
+): Promise<AppPluginHostExecutionResult> {
+  return executePluginMenuExporter(
+    editor,
+    MPX_EXPORTER_PLUGIN_ID,
+    MPX_EXPORTER.exporterId,
+    'Mpx Exporter',
+    dependencies
+  )
+}
+
 async function reportPluginMenuResult(
   operation: Promise<AppPluginHostExecutionResult>,
   notifications: PluginMenuNotifications,
@@ -291,6 +351,30 @@ export function createPluginMenuActions(
     [PLUGIN_MENU_ACTION_IDS.exportElectron]: () =>
       reportPluginMenuResult(
         executeElectronPluginMenuExporter(editor, execution),
+        notifications,
+        formatError
+      ),
+    [PLUGIN_MENU_ACTION_IDS.exportWechatMiniProgram]: () =>
+      reportPluginMenuResult(
+        executeWechatMiniProgramPluginMenuExporter(editor, execution),
+        notifications,
+        formatError
+      ),
+    [PLUGIN_MENU_ACTION_IDS.exportTaro]: () =>
+      reportPluginMenuResult(
+        executeTaroPluginMenuExporter(editor, execution),
+        notifications,
+        formatError
+      ),
+    [PLUGIN_MENU_ACTION_IDS.exportUniApp]: () =>
+      reportPluginMenuResult(
+        executeUniAppPluginMenuExporter(editor, execution),
+        notifications,
+        formatError
+      ),
+    [PLUGIN_MENU_ACTION_IDS.exportMpx]: () =>
+      reportPluginMenuResult(
+        executeMpxPluginMenuExporter(editor, execution),
         notifications,
         formatError
       )

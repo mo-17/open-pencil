@@ -23,6 +23,10 @@ export const menuMessageDefaults = {
   exportVueProject: 'Vue Project…',
   exportCapacitorProject: 'Capacitor Project…',
   exportElectronProject: 'Electron Project…',
+  exportWechatMiniProgramProject: 'WeChat Mini Program…',
+  exportTaroProject: 'Taro Project…',
+  exportUniAppProject: 'uni-app Project…',
+  exportMpxProject: 'Mpx Project…',
   autosave: 'Auto-save to local file',
   closeTab: 'Close tab',
 
