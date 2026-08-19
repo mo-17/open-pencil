@@ -17,11 +17,12 @@ publishes root-signed discovery state. The optional executable channel runs only
 root-indexed, import-free WASM compute packages after an exact local grant. No manifest path or URL
 is dynamically imported as JavaScript, HTML, CSS, native code, or privileged host functionality.
 
-The current **Unreleased** source line contains 60 reviewed plugins and 63 contributions: 20 module
+The current **Unreleased** source line contains 64 reviewed plugins and 67 contributions: 20 module
 contributions; 11 commands (four Clipboard Toolkit commands, Compiler Preview Popout, AI Popout,
 Static Accessibility Audit, Static Design System Audit, Application Security Readiness, and safe
-Vercel and Cloudflare deployment-plan reviews); nine exporters (Tauri React, Next.js, Vue, Capacitor,
-Electron, Expo React Native, Flutter, Design Tokens JSON, and Figma Editable Projection); 22
+Vercel and Cloudflare deployment-plan reviews); 13 exporters (Tauri React, Next.js, Vue, Capacitor,
+Electron, Expo React Native, Flutter, native WeChat Mini Program, Taro, uni-app, Mpx, Design Tokens
+JSON, and Figma Editable Projection); 22
 connectors; and one Google Drive storage provider. Map, Google Drive Storage, Compiler Preview
 Popout, and AI Popout are installed and enabled by default. Catalog count is an application snapshot,
 not a promise that a signed remote manifest can introduce a new host implementation.
@@ -658,6 +659,15 @@ query/hash suffixes, the four reviewed module runtimes above, and byte-preserved
 does not install dependencies or execute generated code. Routerless single-page exports keep route
 and query context empty and warn instead of inventing browser state.
 
+The opt-in WeChat Mini Program, Taro, uni-app, and Mpx exporters use the same source-project host
+boundary but dispatch the shared compiler IR through four dedicated platform adapters. A validated,
+bounded SceneGraph snapshot enters a disposable compiler Worker; a separate bounded archive Worker
+creates the ZIP. Generated projects preserve native pages and reviewed local raster assets; omit
+AppID, credentials, custom font bytes, arbitrary remote code, and local file paths; and record every
+unsupported web, module, Motion, provider, or server feature in `EXPORT_WARNINGS.md`. These targets
+are source-only: they do not join Compiler Preview, dev-server, Deploy, CodePen, or CLI build flows,
+and the exporters never install dependencies or launch a platform toolchain.
+
 The reviewed Vue lowcode runtime includes bounded Toast and Confirm actions plus local form
 validation. Toast supports `info`/`success`/`error`, six viewport positions, authored duration,
 duplicate suppression, dismissal, a five-item cap, timer cleanup, and `aria-live`/`alert`/`status`
@@ -779,7 +789,10 @@ queries become query tools. Connector mutations stay out of MCP and require a fr
 the installed-plugin UI. Vue source export is MCP-visible only while its opt-in plugin is installed
 and enabled. The Tauri, Next.js, Capacitor, Electron, Expo,
 Flutter, and Figma source/projection exporters remain UI-only until their synchronous
-Compiler/encoder stages support cooperative cancellation. Static Design System Audit can become a
+Compiler/encoder stages support cooperative cancellation. WeChat Mini Program, Taro, uni-app, and
+Mpx also remain UI/menu-only despite cooperative Worker cancellation because platform build,
+permission, package, and signing review stays outside the source-export contract. Static Design
+System Audit can become a
 run tool only after its cancellable implementation and exact v2 manifest are both centrally
 registered. Tool names contain a canonical contribution SHA-256 identity. Store changes trigger
 `notifications/tools/list_changed`; disablement, removal, or host disconnect removes the descriptor,

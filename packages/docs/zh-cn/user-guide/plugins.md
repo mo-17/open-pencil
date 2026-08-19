@@ -21,8 +21,8 @@ OpenPencil 插件系统分为两个明确隔离的层级：
 
 配置远程市场根之后，页面还会显示 stable/beta 渠道、发布者与密钥身份、快照状态、审计头，以及该快照是否授权可执行运行时索引。搜索只匹配签名内容中的名称、摘要、分类、关键词、插件 ID 和发布者元数据，不会信任未签名搜索服务返回的身份信息。
 
-当前 **Unreleased** 源码线包含 60 个经过审查的插件、63 项 contribution：20 个模块、
-11 个命令、9 个导出器、22 个连接器与 1 个存储服务商。只有定义、渲染器、合同或导出源码
+当前 **Unreleased** 源码线包含 64 个经过审查的插件、67 项 contribution：20 个模块、
+11 个命令、13 个导出器、22 个连接器与 1 个存储服务商。只有定义、渲染器、合同或导出源码
 文件，并不代表插件已经可以使用；该 contribution 还必须完成中央主机注册。新配置中 Map、
 Google Drive Storage、Compiler Preview Popout 与 AI Popout 默认安装并启用，其余内置插件都需要用户选择安装并启用。
 
@@ -115,6 +115,14 @@ Google Drive Storage、Compiler Preview Popout 与 AI Popout 默认安装并启�
   React 完全等价。UI 与 MCP 共用一次性编译与 ZIP Worker；取消会终止当前 Worker，同时不会
   detach 编辑器仍在使用的图片缓冲区。插件导出器只会在精确摘要与再分发许可证审查通过后复用
   已保留、缓存或内置的字体字节，并在包含字体时生成 `FONT-LICENSES.txt`。
+- **WeChat Mini Program Exporter（微信小程序导出器）**：生成原生 WXML、WXSS、JavaScript、
+  页面配置和经过审查的本地图片资源；不会写入 AppID，也不会启动微信开发者工具。
+- **Taro Exporter**：生成固定依赖版本的 source-only Taro React 工程、原生页面路由和本地资源；
+  安装依赖和执行 `taro build` 由开发者在导出后完成。
+- **uni-app Exporter**：生成可导入 HBuilderX 的 Vue 工程，包括 `App.vue`、`pages.json`、页面、
+  组件与本地资源；不会启动 HBuilderX 或云构建服务。
+- **Mpx Exporter**：生成包含 `.mpx` 页面/组件和本地资源的 Mpx 源码工程；依赖安装及
+  Mpx/微信构建工具链不属于 OpenPencil 导出范围。
 - **Capacitor Exporter**：生成使用相对资源与 Hash Router 的 Capacitor + React 源码工程，
   以适配原生 WebView 来源；不会生成 Android/iOS 平台工程，也不会调用 Gradle 或 Xcode。
 - **Electron Exporter**：生成采用 Hash Router 的 Electron + React 源码工程，默认启用
@@ -150,7 +158,7 @@ Google Drive Storage、Compiler Preview Popout 与 AI Popout 默认安装并启�
 3. 完成人工审查后启用插件。
 4. 从编辑器使用对应入口：画布底部工具栏的 **插件** 菜单插入模块；**编辑 → Clipboard
    Toolkit** 执行复制命令；在插件启用后，从 **文件 → 导出** 选择 Tauri、Next.js、Vue、
-   Capacitor、Electron、Expo React Native 或 Flutter 源码导出。当前构建完成相应中央注册后，
+   Capacitor、Electron、Expo React Native、Flutter、微信小程序、Taro、uni-app 或 Mpx 源码导出。当前构建完成相应中央注册后，
    审计和导出器也可从已启用插件卡片运行。已启用模块、Clipboard 命令、静态无障碍审计、
    静态设计系统审计、Application Security Readiness、两个安全部署计划审查、Design Tokens 与 Vue Exporter
    会暴露动态 MCP 工具。连接器卡片还会显示中央凭据状态、当前会话授权/撤销和经过审查的操作
@@ -164,6 +172,8 @@ Google Drive Storage、Compiler Preview Popout 与 AI Popout 默认安装并启�
    卸载后会立即撤销。Worker 快照超过 25,000 个节点、4,096 张图片或 32 MiB（包括每个完整
    二进制 backing buffer）会安全失败；Worker 输出和路径安全 ZIP 均保留 4,096 文件/64 MiB
    上限。
+   微信小程序、Taro、uni-app 与 Mpx 同样使用可取消的编译与 ZIP Worker，但仍只在 UI/菜单
+   中提供；真实平台的构建、包体、权限、AppID 与签名审查是导出后的人工门禁，不属于 MCP 能力。
 5. 对模块，在画布中编辑生成的原生 `FRAME` 与受控属性。
 
 任何插件导出运行时，已安装插件卡片都会显示“选择位置、准备、编译、归档、保存或取消中”状态；
@@ -347,6 +357,13 @@ Unreleased 的 **Next.js**、**Capacitor** 和 **Electron** 导出器只生成�
 运行方式，不宣称完成 SSR 转换；Capacitor 需要开发者在导出后自行添加并审查 Android/iOS
 平台工程；Electron 虽然默认隔离渲染器，发布前仍需按具体应用审查打包、权限、更新和签名流程。
 开始构建前请阅读归档内的 `README.md` 和 `EXPORT_WARNINGS.md`。
+
+**微信小程序、Taro、uni-app 与 Mpx 导出器**同样只创建源码 ZIP。它们从相同 SceneGraph 页面
+和共享 IR 直接生成四种平台工程，而不是包装 React 产物。本地 PNG/JPEG/GIF/WebP 会保存在工程
+中并生成原生页面路由；不支持的 Motion、模块、服务商、服务端、远程代码和 Web 行为会写入
+`EXPORT_WARNINGS.md`。自定义字体字节、凭据、AppID/AppSecret、任意远程 URL 与本地文件路径
+都会被省略。OpenPencil 不安装这些工程的依赖、不运行平台构建工具、不打开 IDE、不签名，也不
+宣称已经通过真机兼容性验证。
 
 **Vue Exporter** 同样只创建源码 ZIP，不安装依赖、不运行生成应用，也不启动 Vite。Vue v1
 输出可移植图片、可编辑组件、Vue Router v4 页面、路由/查询读取和安全的参数化导航、基础响应式

@@ -41,8 +41,8 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   Motion Runtime SDK; and generate a fail-closed Figma Motion Plugin API adapter for the verified
   native subset
 - **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase schema inspection and RLS guidance, authenticated client/server workflows, environment-scoped runtime configuration, i18n, shadcn/ui output, preview diagnostics, build, and deploy flows. Switch Compiler Preview and the `compile`/`build`/`deploy` CLI between the full React target and the bounded Vue 3 target; preview refresh supports Real-time, Auto, and Manual policies with single-flight latest-change scheduling
-- **Built-in plugin marketplace** — manage 58 reviewed plugins with 61 module, command, exporter,
-  connector, and storage-provider contributions: 20 editable modules, nine bounded commands, nine
+- **Built-in plugin marketplace** — manage 64 reviewed plugins with 67 module, command, exporter,
+  connector, and storage-provider contributions: 20 editable modules, 11 bounded commands, 13
   source/data exporters, 22 host-reviewed connectors, and the default-enabled Google Drive Storage
   declaration. The opt-in additions include 17 read-only external-service connectors, local
   Application Security Readiness, and safe deployment-plan reviews for Vercel and Cloudflare Pages
@@ -269,6 +269,14 @@ font-family CSS remains intact. The input snapshot fails closed above 25,000 nod
 32 MiB (counting each complete unique
 binary backing buffer); Worker output and the path-safe ZIP each retain a 4,096-file/64-MiB ceiling.
 
+Four additional opt-in source exporters generate **native WeChat Mini Program**, **Taro React**,
+**uni-app**, or **Mpx** projects from the same shared compiler IR. Enable the desired plugin and use
+its **File → Export** entry. These exporters run compilation and ZIP creation in bounded Workers,
+preserve local raster assets and native page routing, and write `EXPORT_WARNINGS.md` for unsupported
+Motion, module, provider, server, or web behavior. They never write AppID, credentials, arbitrary
+remote code, or custom font bytes, and they do not install dependencies or invoke platform tools.
+They are source-only exporters, not Compiler Preview, Deploy, CLI build, or CodePen targets.
+
 Compiler Preview has a **Target** selector for React or Vue 3 and restarts the matching isolated
 sidecar when it changes. React-only shadcn and i18n controls are disabled for Vue instead of being
 silently ignored. The same target is available directly from all three codegen commands; `--i18n`,
@@ -308,13 +316,14 @@ stable/beta catalogs, searchable listings, immutable artifact coordinates, an ap
 checkpoint, and an optional executable-runtime index. Explicit update review, verified rollback,
 digest pins, cache status, and portable document dependency locks remain enforced.
 After enablement, insert module plugins from the canvas toolbar, run Clipboard Toolkit commands from
-the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 58
-reviewed built-ins expose 61 contributions: twenty modules (including Map, Rich Text, sandboxed
+the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 64
+reviewed built-ins expose 67 contributions: twenty modules (including Map, Rich Text, sandboxed
 HTML, Video, Lottie, Carousel, Advanced Data Grid, Tabs, Accordion, QR/Code 128, Markdown, Code
-Block, PDF Viewer, Audio Player, Modal, Dropdown Menu, and Upload Button), nine commands (four Clipboard Toolkit
-actions, Static Accessibility Audit, Static Design System Audit, Application Security Readiness, and
-safe Vercel and Cloudflare Pages deployment-plan reviews), nine exporters (Tauri React, Expo React Native, Flutter,
-Next.js, Vue, Capacitor, Electron, Design Tokens JSON, and Figma Editable Projection), 22 connectors, and
+Block, PDF Viewer, Audio Player, Modal, Dropdown Menu, and Upload Button), 11 commands (four Clipboard Toolkit
+actions, Compiler Preview Popout, AI Popout, Static Accessibility Audit, Static Design System Audit,
+Application Security Readiness, and safe Vercel and Cloudflare Pages deployment-plan reviews), 13 exporters (Tauri React, Expo React Native, Flutter,
+Next.js, Vue, Capacitor, Electron, native WeChat Mini Program, Taro, uni-app, Mpx, Design Tokens JSON,
+and Figma Editable Projection), 22 connectors, and
 one Google Drive storage provider. The connector set includes the original five bounded business
 integrations plus opt-in read-only Neon, Sentry, HubSpot, Apollo, PostHog, Asana, Zotero, HeyGen,
 Linear, OpenAI, Box, Slack, Google Calendar, SharePoint, Outlook Email, Outlook Calendar, and
@@ -384,6 +393,9 @@ UI-only until their synchronous Compiler/encoder stages support cooperative canc
 source exporter compiles and compresses in bounded module Workers that are terminated on
 cancellation, then checks the signal through its atomic write boundary. It appears in MCP only while its opt-in plugin is
 installed and enabled;
+the WeChat Mini Program, Taro, uni-app, and Mpx exporters also remain UI/menu-only despite using
+cooperatively cancellable Workers, because platform build, package, permission, and signing gates are
+outside OpenPencil's source export boundary;
 uninstalled, disabled, or host-incompatible contributions and non-cancellable exporters are never
 exposed.
 

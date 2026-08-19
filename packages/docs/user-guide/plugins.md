@@ -31,8 +31,8 @@ or beta channel, publisher/key identity, snapshot status, the audit head, and wh
 authorizes an executable runtime index. Search matches the signed name, summary, category, keyword,
 plugin ID, and publisher metadata; it does not trust an unsigned search-service response.
 
-The current **Unreleased** source line contains 60 reviewed plugins with 63 contributions: 20
-modules, 11 commands, nine exporters, 22 connectors, and one storage provider. A definition,
+The current **Unreleased** source line contains 64 reviewed plugins with 67 contributions: 20
+modules, 11 commands, 13 exporters, 22 connectors, and one storage provider. A definition,
 renderer, contract, or exporter source file alone does not make a plugin available; the contribution
 must also have its reviewed central host registration. Map, Google Drive Storage, and Compiler Preview
 Popout, and AI Popout are installed and enabled on a new profile; every other bundled plugin is
@@ -147,6 +147,14 @@ opt-in.
   detaching live image buffers. The plugin exporter can reuse retained, cached, or bundled font bytes
   only after exact digest and redistribution-license review, and writes `FONT-LICENSES.txt` when it
   includes them.
+- **WeChat Mini Program Exporter** emits native WXML, WXSS, JavaScript, page configuration, and
+  reviewed local raster assets. It never supplies an AppID or invokes WeChat Developer Tools.
+- **Taro Exporter** emits a pinned, source-only Taro React project with native page routes and local
+  assets; dependency installation and `taro build` remain developer actions after export.
+- **uni-app Exporter** emits an HBuilderX-compatible Vue project with `App.vue`, `pages.json`, native
+  pages, components, and local assets; it does not launch HBuilderX or cloud build services.
+- **Mpx Exporter** emits an Mpx source project with `.mpx` pages/components and reviewed local assets;
+  package installation and the Mpx/WeChat build toolchain remain outside OpenPencil.
 - **Capacitor Exporter** packages a source-only Capacitor + React project with relative assets and
   hash routing for the native WebView origin. It does not generate Android/iOS platform projects or
   invoke Gradle or Xcode.
@@ -182,7 +190,8 @@ opt-in.
 
 Install and enable a plugin, then use its editor entry point. Insert modules from the **Plugins**
 menu in the canvas toolbar, run copy commands from **Edit → Clipboard Toolkit**, and use the enabled
-entries under **File → Export** for Tauri, Next.js, Vue, Capacitor, Electron, Expo React Native, or Flutter
+entries under **File → Export** for Tauri, Next.js, Vue, Capacitor, Electron, Expo React Native,
+Flutter, WeChat Mini Program, Taro, uni-app, or Mpx
 source. Audits and exporters also remain available from their enabled installed-plugin cards when the
 current build has registered their reviewed host adapters. Enabled modules, Clipboard commands,
 Static Accessibility Audit, Static Design System Audit, Application Security Readiness, the two safe
@@ -203,6 +212,10 @@ installed and enabled and disappears immediately on disable or uninstall. The Wo
 closed above 25,000 nodes, 4,096 images, or 32 MiB including complete binary backing buffers; Worker
 output and the path-safe ZIP retain 4,096-file/64-MiB ceilings. Modules create native editable
 `FRAME` nodes rather than opaque browser surfaces.
+
+WeChat Mini Program, Taro, uni-app, and Mpx exports also use cooperatively cancellable compiler and
+archive Workers, but remain UI/menu-only. Their real platform build, package, permission, AppID, and
+signing review is an explicit post-export gate rather than an MCP capability.
 
 While any plugin exporter runs, its installed-plugin card shows choosing, preparing, compiling,
 archiving, saving, or cancelling status and provides a keyboard-accessible **Cancel** action when the
@@ -422,6 +435,14 @@ SSR conversion. Capacitor requires the developer to add and review Android/iOS p
 Electron keeps its renderer sandboxed but still needs an application-specific packaging, permission,
 update, and signing review before distribution. Read each generated `README.md` and
 `EXPORT_WARNINGS.md` before building.
+
+The **WeChat Mini Program**, **Taro**, **uni-app**, and **Mpx** exporters also create source ZIPs
+only. They compile the same SceneGraph pages and shared IR into four platform-specific project
+layouts rather than wrapping React output. Local PNG/JPEG/GIF/WebP assets stay inside the project;
+native page routing is generated; unsupported Motion, module, provider, server, remote-code, and web
+behavior is listed in `EXPORT_WARNINGS.md`. Custom font bytes, credentials, AppID/AppSecret values,
+arbitrary remote URLs, and local file paths are omitted. OpenPencil never installs these projects'
+dependencies, runs their build tools, opens an IDE, signs a package, or claims device compatibility.
 
 The **Vue Exporter** also creates a source ZIP only and never installs packages, runs the generated
 application, or starts Vite. Vue v1 emits portable image assets, editable components, Vue Router v4

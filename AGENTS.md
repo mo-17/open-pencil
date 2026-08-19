@@ -19,7 +19,7 @@ Bun workspace with focused packages:
 - `packages/motion-runtime` — `@open-pencil/motion-runtime`: public SSR-safe Motion playback SDK. Owns the shared scheduler, manual clock, reversible DOM projection, and Vanilla/Vue lifecycle adapters while reusing `@open-pencil/motion` prepared plans.
 - `packages/dom-css` — `@open-pencil/dom-css`: DOM/CSS/Tailwind/JSX import and HTML export pipelines.
 - `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
-- `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React or Vite + Vue 3 TypeScript + Tailwind projects, plus source-only Expo React Native and Flutter projects. Both web targets support the preview VFS, static builds, and deploy bundles; Vue v1 emits editable SFCs, Vue Router v4, route/query bindings, a bounded lowcode subset, and explicit warnings for unsupported advanced runtimes. Expo and Flutter remain explicit static native MVPs with fail-closed warnings, not WebViews or React Native Web wrappers.
+- `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React or Vite + Vue 3 TypeScript + Tailwind projects, plus source-only Expo React Native, Flutter, native WeChat Mini Program, Taro, uni-app, and Mpx projects. Both web targets support the preview VFS, static builds, and deploy bundles; Vue v1 emits editable SFCs, Vue Router v4, route/query bindings, a bounded lowcode subset, and explicit warnings for unsupported advanced runtimes. Native/mobile and mini-program targets remain explicit source-only MVPs with fail-closed warnings, not WebViews or post-processed React output.
 - `packages/cli` — `@open-pencil/cli`: headless CLI for `.fig`/`.pen` inspection, conversion, export, linting, XPath query, and compiler build/deploy flows. Uses `citty` + `agentfmt`.
 - `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + Streamable HTTP (Hono) + browser WebSocket RPC. Reuses core ToolDefs.
 - `packages/marketplace` — private self-hostable plugin-marketplace control plane. Owns publisher/key/ownership/submission/release state, SQLite persistence, immutable artifacts, signed publication, public/publisher HTTP APIs, admin CLI, and append-only audit checkpoints while consuming the public data-only contracts.
@@ -415,8 +415,8 @@ Release commits are the exception: keep using `Release v0.x.y`.
   deterministic and offline; Compiler adapters may emit a trusted local package runtime, but must
   reject arbitrary script/style URLs, raw executable configuration, credentials, and unsupported
   config versions.
-- The bundled catalog currently contains 58 reviewed plugins with 61 contributions: 20 modules,
-  nine commands, nine exporters, 22 connectors, and one storage provider. Map and Google Drive
+- The bundled catalog currently contains 64 reviewed plugins with 67 contributions: 20 modules,
+  11 commands, 13 exporters, 22 connectors, and one storage provider. Map and Google Drive
   Storage are installed and enabled for a new profile; all other bundled entries, including the 17
   external-service connectors, Application Security Readiness, Vercel, and Cloudflare Pages, are
   opt-in. Keep this aggregate and both user-guide translations synchronized when adding or removing
@@ -436,6 +436,14 @@ Release commits are the exception: keep using `Release v0.x.y`.
   digest and redistribution license are reviewed, generate `FONT-LICENSES.txt`, and warn while
   preserving authored family CSS for every omitted or restricted face. Its dynamic MCP descriptor
   must disappear immediately on disable or uninstall.
+- WeChat Mini Program, Taro, uni-app, and Mpx source export are four separate opt-in bundled plugins.
+  They dispatch a validated, bounded SceneGraph snapshot through the shared compiler IR, dedicated
+  source-only adapters, and the compiler/archive Worker pipeline; they are not Compiler Preview targets and must not enter
+  dev-server, Deploy, or CodePen paths. Generated projects keep local raster assets and native page
+  routing, omit AppID, credentials, remote code, and custom font bytes, and write deterministic
+  warnings for unsupported web, Motion, module, server, and provider behavior. Their host adapters
+  remain UI/menu-only even though cancellation is cooperative; real platform toolchains and signing
+  stay explicit post-export release gates.
 - Upload Button v1 is a local file-selection module, not a storage or upload integration. Its
   generated runtime may validate selected file type, count, and per-file size, but must not transfer,
   persist, or claim successful upload. The HTML `accept` attribute is only a chooser hint, so runtime

@@ -12,6 +12,11 @@
 
 ### Added
 
+- Add opt-in source exporters for native WeChat Mini Program, Taro React, uni-app, and Mpx. Each
+  target compiles the shared SceneGraph IR in a bounded Worker, archives through the path-safe ZIP
+  boundary, preserves reviewed local raster assets and native pages, and emits explicit warnings
+  instead of carrying AppID, credentials, remote code, custom font bytes, or unsupported web/runtime
+  behavior into generated projects.
 - Add the public `@open-pencil/motion` package for framework-agnostic deterministic Motion planning,
   sampling, projection, paths, generated effects, scene choreography, and continuous-input
   controllers. Existing `@open-pencil/core/motion` and core-root exports remain compatible while
