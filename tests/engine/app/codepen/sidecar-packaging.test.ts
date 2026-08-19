@@ -158,8 +158,9 @@ describe('CodePen sidecar packaging contract', () => {
 
   test('release CI builds every target and smokes every native runner', () => {
     const workflow = readFileSync('.github/workflows/build.yml', 'utf8')
-    for (const target of Object.keys(CODEPEN_SIDECAR_TARGETS)) {
+    for (const [target, config] of Object.entries(CODEPEN_SIDECAR_TARGETS)) {
       expect(workflow).toContain(`target: ${target}`)
+      expect(workflow).toContain(`bunRuntimeCache: ${config.bunTarget.replace('arm64', 'aarch64')}`)
     }
     expect(workflow).toContain('platform: macos-15-intel')
     expect(workflow).toContain('name: Smoke CodePen sidecar protocol')
@@ -168,6 +169,27 @@ describe('CodePen sidecar packaging contract', () => {
     expect(workflow).toContain('codesign --verify --deep --strict')
     expect(workflow).toContain('--binary="$sidecar_path"')
     expect(workflow).toContain("OPENPENCIL_CODEPEN_SIDECAR_PREBUILT: '1'")
+  })
+
+  test('release CI retries only an incomplete target runtime cache entry', () => {
+    const workflow = readFileSync('.github/workflows/build.yml', 'utf8')
+    const dollar = '$'
+    expect(workflow).toContain('shell: bash')
+    expect(workflow).toContain(
+      `CODEPEN_BUN_RUNTIME_CACHE_NAME: ${dollar}{{ matrix.bunRuntimeCache }}`
+    )
+    expect(workflow).toContain(
+      `expected_error="Failed to extract executable for '${dollar}{CODEPEN_BUN_RUNTIME_CACHE_NAME}-v${dollar}{bun_version}'. The download may be incomplete."`
+    )
+    expect(workflow).toContain('grep -Fq -- "$expected_error" "$build_log"')
+    expect(workflow).toContain(
+      `cache_entry="$HOME/.bun/install/cache/${dollar}{CODEPEN_BUN_RUNTIME_CACHE_NAME}-v${dollar}{bun_version}"`
+    )
+    expect(workflow).toContain('rm -rf -- "$cache_entry"')
+    expect(workflow).not.toContain('rm -rf -- "$HOME/.bun/install/cache"')
+    expect(
+      workflow.match(/bun run build:codepen-sidecar --target=\$\{\{ matrix\.target \}\}/g)
+    ).toHaveLength(3)
   })
 
   test('root quality gates own the private sidecar source, scripts, and tests', () => {

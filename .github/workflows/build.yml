@@ -19,22 +19,27 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             label: macos-arm64
+            bunRuntimeCache: bun-darwin-aarch64
             nativeSmoke: true
           - platform: macos-15-intel
             target: x86_64-apple-darwin
             label: macos-x64
+            bunRuntimeCache: bun-darwin-x64-baseline
             nativeSmoke: true
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x64
+            bunRuntimeCache: bun-windows-x64-baseline
             nativeSmoke: true
           - platform: windows-latest
             target: aarch64-pc-windows-msvc
             label: windows-arm64
+            bunRuntimeCache: bun-windows-aarch64
             nativeSmoke: false
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: linux-x64
+            bunRuntimeCache: bun-linux-x64-baseline
             nativeSmoke: true
 
     runs-on: ${{ matrix.platform }}
@@ -61,8 +66,35 @@ jobs:
       - uses: ./.github/actions/setup-bun
 
       - name: Build and verify CodePen sidecar
+        shell: bash
+        env:
+          CODEPEN_BUN_RUNTIME_CACHE_NAME: ${{ matrix.bunRuntimeCache }}
         run: |
-          bun run build:codepen-sidecar --target=${{ matrix.target }}
+          set -o pipefail
+          build_log="$RUNNER_TEMP/codepen-sidecar-build.log"
+          if ! bun run build:codepen-sidecar --target=${{ matrix.target }} 2>&1 | tee "$build_log"; then
+            bun_version="$(bun --version)"
+            expected_error="Failed to extract executable for '${CODEPEN_BUN_RUNTIME_CACHE_NAME}-v${bun_version}'. The download may be incomplete."
+            if ! grep -Fq -- "$expected_error" "$build_log"; then
+              exit 1
+            fi
+            if [[ ! "$bun_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+              echo "Refusing to clear a Bun runtime cache entry for an invalid version." >&2
+              exit 1
+            fi
+            cache_entry="$HOME/.bun/install/cache/${CODEPEN_BUN_RUNTIME_CACHE_NAME}-v${bun_version}"
+            case "$cache_entry" in
+              "$HOME"/.bun/install/cache/*) ;;
+              *)
+                echo "Refusing to clear a Bun runtime cache entry outside the install cache." >&2
+                exit 1
+                ;;
+            esac
+            echo "Retrying after clearing the incomplete runtime cache entry."
+            rm -rf -- "$cache_entry"
+            sleep 5
+            bun run build:codepen-sidecar --target=${{ matrix.target }}
+          fi
           bun run build:codepen-sidecar --target=${{ matrix.target }} --verify-only
 
       - name: Smoke CodePen sidecar protocol
