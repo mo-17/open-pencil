@@ -80,9 +80,36 @@ jobs:
 
       - name: Install dependencies (Linux)
         if: startsWith(matrix.platform, 'ubuntu')
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          set -euo pipefail
+          . /etc/os-release
+          test "$VERSION_CODENAME" = jammy
+
+          ubuntu_sources="$RUNNER_TEMP/openpencil-ubuntu.list"
+          cat > "$ubuntu_sources" <<'EOF'
+          deb https://archive.ubuntu.com/ubuntu jammy main restricted universe multiverse
+          deb https://archive.ubuntu.com/ubuntu jammy-updates main restricted universe multiverse
+          deb https://archive.ubuntu.com/ubuntu jammy-backports main restricted universe multiverse
+          deb https://security.ubuntu.com/ubuntu jammy-security main restricted universe multiverse
+          EOF
+
+          apt_options=(
+            -o "Dir::Etc::sourcelist=$ubuntu_sources"
+            -o Dir::Etc::sourceparts=-
+            -o Acquire::Retries=5
+            -o Acquire::http::Timeout=20
+            -o Acquire::https::Timeout=20
+            -o DPkg::Lock::Timeout=60
+          )
+          sudo env DEBIAN_FRONTEND="$DEBIAN_FRONTEND" NEEDRESTART_MODE="$NEEDRESTART_MODE" \
+            apt-get "${apt_options[@]}" update
+          sudo env DEBIAN_FRONTEND="$DEBIAN_FRONTEND" NEEDRESTART_MODE="$NEEDRESTART_MODE" \
+            apt-get "${apt_options[@]}" install -y --no-install-recommends \
+              libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - uses: ./.github/actions/setup-bun
         with:

@@ -180,6 +180,38 @@ describe('npm release workflow', () => {
     expect(unsignedConfig.plugins.updater.endpoints).toEqual([])
   })
 
+  test('uses bounded HTTPS Ubuntu sources for Linux build dependencies', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
+    const build = job(workflow, 'build', 'prepare-npm')
+    const install = namedStep(
+      build,
+      'Install dependencies (Linux)',
+      'Verify native Windows Bun runtime'
+    )
+    const run = namedRunBlock(build, 'Install dependencies (Linux)')
+    const dollar = '$'
+
+    expect(install).toContain("if: startsWith(matrix.platform, 'ubuntu')")
+    expect(install).toContain('timeout-minutes: 10')
+    expect(install).toContain('DEBIAN_FRONTEND: noninteractive')
+    expect(install).toContain('NEEDRESTART_MODE: a')
+    expect(run).toContain('test "$VERSION_CODENAME" = jammy')
+    expect(run).toContain('deb https://archive.ubuntu.com/ubuntu jammy ')
+    expect(run).toContain('deb https://archive.ubuntu.com/ubuntu jammy-updates ')
+    expect(run).toContain('deb https://archive.ubuntu.com/ubuntu jammy-backports ')
+    expect(run).toContain('deb https://security.ubuntu.com/ubuntu jammy-security ')
+    expect(run).not.toContain('azure.archive.ubuntu.com')
+    expect(run).toContain('-o "Dir::Etc::sourcelist=$ubuntu_sources"')
+    expect(run).toContain('-o Dir::Etc::sourceparts=-')
+    expect(run).toContain('-o Acquire::Retries=5')
+    expect(run).toContain('-o Acquire::http::Timeout=20')
+    expect(run).toContain('-o Acquire::https::Timeout=20')
+    expect(run).toContain('-o DPkg::Lock::Timeout=60')
+    expect(run.match(/sudo env DEBIAN_FRONTEND=/g)).toHaveLength(2)
+    expect(run).toContain(`apt-get "${dollar}{apt_options[@]}" update`)
+    expect(run).toContain(`apt-get "${dollar}{apt_options[@]}" install -y --no-install-recommends`)
+  })
+
   test('uses owner/tag gates and keeps credentials out of the preparation job', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
     const prepare = job(workflow, 'prepare-npm', 'publish-npm')
