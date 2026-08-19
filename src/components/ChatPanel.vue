@@ -4,6 +4,7 @@ import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewpor
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
+import type { UIMessage } from 'ai'
 
 import { clearACPDebugLog, getACPDebugText, hasACPDebugEntries } from '@/app/ai/acp/transport'
 import { useAIChat } from '@/app/ai/chat/use'
@@ -54,7 +55,6 @@ const {
 const { chatFailure, clearChatFailure } = useAIChat()
 const { copy } = useClipboard()
 const { dialogs } = useI18n()
-
 const messagesEnd = ref<HTMLDivElement>()
 const debugCopied = refAutoReset(false, 1500)
 const acpLogCopied = refAutoReset(false, 1500)
@@ -72,6 +72,13 @@ const failureMessage = computed(() => {
       return null
   }
 })
+function isStreamingMessage(message: UIMessage, index: number): boolean {
+  return (
+    message.role === 'assistant' &&
+    index === messages.value.length - 1 &&
+    (status.value === 'submitted' || status.value === 'streaming')
+  )
+}
 
 function scheduleScrollToBottom(): void {
   if (scrollTimer) return
@@ -148,9 +155,10 @@ async function handleClearChat(): Promise<void> {
 
           <div v-else data-test-id="chat-messages" class="flex flex-col gap-3">
             <ChatMessage
-              v-for="message in messages"
+              v-for="(message, index) in messages"
               :key="message.id"
               :message="message"
+              :streaming="isStreamingMessage(message, index)"
               :pending-approval-ids="pendingApprovalIds"
               :approval-enabled="message.id === actionableApprovalMessageId"
               @tool-approval="handleToolApproval"

@@ -15,6 +15,7 @@ import { DEFAULT_COLLAB_STATE, useCollabInjected } from '@/app/collab/use'
 import type { RemotePeer } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import { toolIcons } from '@/app/editor/icons'
+import { useNotificationMessages } from '@/app/i18n/notifications'
 import { openFileDialog } from '@/app/shell/menu/use'
 import { toast } from '@/app/shell/ui'
 import type { ToolbarActionItem } from '@/components/Toolbar/types'
@@ -28,6 +29,7 @@ function createMobileHudContext() {
   const store = useEditorStore()
   const { copy } = useClipboard()
   const { dialogs } = useI18n()
+  const notifications = useNotificationMessages()
   const { getCommand } = useEditorCommands()
 
   const collabState = computed(() => collab?.state.value ?? DEFAULT_COLLAB_STATE)
@@ -63,7 +65,7 @@ function createMobileHudContext() {
     const path = key ? `/share/${roomId}#k=${key}` : `/share/${roomId}`
     void router.push(path)
     void copy(getShareURL(roomId, key || undefined))
-    toast.info('Link copied to clipboard')
+    toast.info(notifications.value.linkCopied)
   }
 
   function disconnect() {

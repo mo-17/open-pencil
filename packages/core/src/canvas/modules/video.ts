@@ -40,12 +40,13 @@ function drawPlayIcon(
   configureModulePreviewPaint(renderer, '#F9FAFB')
   canvas.drawCircle(x, y, size, renderer.fillPaint)
   configureModulePreviewPaint(renderer, '#111827')
-  const path = new renderer.ck.Path()
+  const builder = new renderer.ck.PathBuilder()
+  builder.moveTo(x - size * 0.25, y - size * 0.45)
+  builder.lineTo(x + size * 0.5, y)
+  builder.lineTo(x - size * 0.25, y + size * 0.45)
+  builder.close()
+  const path = builder.detachAndDelete()
   try {
-    path.moveTo(x - size * 0.25, y - size * 0.45)
-    path.lineTo(x + size * 0.5, y)
-    path.lineTo(x - size * 0.25, y + size * 0.45)
-    path.close()
     canvas.drawPath(path, renderer.fillPaint)
   } finally {
     path.delete()

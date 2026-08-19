@@ -88,7 +88,7 @@
     "build": "bunx tsdown --config tsdown.config.ts"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.94",
+    "@iconify-json/lucide": "^1.2.123",
     "@noble/hashes": "^1.8.0",
     "@open-pencil/core": "workspace:*",
     "@open-pencil/dom-css": "workspace:*",
@@ -96,16 +96,16 @@
     "@open-pencil/motion": "workspace:*",
     "@open-pencil/motion-runtime": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
-    "@tailwindcss/vite": "^4.2.1",
+    "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.0.4",
-    "@vitejs/plugin-vue": "^6.0.5",
+    "@vitejs/plugin-vue": "^6.0.8",
     "esbuild-wasm": "0.27.4",
-    "tailwindcss": "4.2.2",
+    "tailwindcss": "4.3.3",
     "vite": "8.1.4"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.100.0",
-    "@types/node": "^25.3.2",
+    "@types/node": "^25.9.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "react": "^19.2.0",

@@ -10,6 +10,7 @@ import { presenceEditingLabel } from '@/app/collab/presence-label'
 import { DEFAULT_COLLAB_STATE, useCollabInjected } from '@/app/collab/use'
 import type { RemotePeer } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
+import { useNotificationMessages } from '@/app/i18n/notifications'
 import { toast } from '@/app/shell/ui'
 import { getShareURL } from '@/constants'
 
@@ -20,6 +21,7 @@ function createCollabPanelContext() {
   const editor = useEditorStore()
   const { copy, copied } = useClipboard({ copiedDuring: 2000 })
   const { dialogs } = useI18n()
+  const notifications = useNotificationMessages()
 
   const joinInput = ref('')
   const nameDraft = ref(collab?.state.value.localName ?? '')
@@ -49,7 +51,7 @@ function createCollabPanelContext() {
   function copyLink() {
     if (!shareURL.value) return
     void copy(shareURL.value)
-    toast.info('Link copied to clipboard')
+    toast.info(notifications.value.linkCopied)
   }
 
   function share() {
@@ -58,7 +60,7 @@ function createCollabPanelContext() {
     const { roomId, key } = collab.shareCurrentDoc()
     void router.push(`/share/${roomId}`)
     void copy(getShareURL(roomId, key))
-    toast.info('Link copied to clipboard')
+    toast.info(notifications.value.linkCopied)
     popoverOpen.value = false
   }
 

@@ -23,27 +23,27 @@ function createUploadIconPath(
   centerY: number,
   scale: number
 ): Path {
-  const path = new renderer.ck.Path()
+  const builder = new renderer.ck.PathBuilder()
   const point = (value: number) => value * scale
   const top = centerY - ICON_HEIGHT * scale * 0.5
-  path.moveTo(left + point(8), top + point(13))
-  path.lineTo(left + point(10), top + point(13))
-  path.lineTo(left + point(10), top + point(6))
-  path.lineTo(left + point(14), top + point(6))
-  path.lineTo(left + point(9), top + point(1))
-  path.lineTo(left + point(4), top + point(6))
-  path.lineTo(left + point(8), top + point(6))
-  path.close()
-  path.moveTo(left + point(1), top + point(11))
-  path.lineTo(left + point(3), top + point(11))
-  path.lineTo(left + point(3), top + point(16))
-  path.lineTo(left + point(15), top + point(16))
-  path.lineTo(left + point(15), top + point(11))
-  path.lineTo(left + point(17), top + point(11))
-  path.lineTo(left + point(17), top + point(18))
-  path.lineTo(left + point(1), top + point(18))
-  path.close()
-  return path
+  builder.moveTo(left + point(8), top + point(13))
+  builder.lineTo(left + point(10), top + point(13))
+  builder.lineTo(left + point(10), top + point(6))
+  builder.lineTo(left + point(14), top + point(6))
+  builder.lineTo(left + point(9), top + point(1))
+  builder.lineTo(left + point(4), top + point(6))
+  builder.lineTo(left + point(8), top + point(6))
+  builder.close()
+  builder.moveTo(left + point(1), top + point(11))
+  builder.lineTo(left + point(3), top + point(11))
+  builder.lineTo(left + point(3), top + point(16))
+  builder.lineTo(left + point(15), top + point(16))
+  builder.lineTo(left + point(15), top + point(11))
+  builder.lineTo(left + point(17), top + point(11))
+  builder.lineTo(left + point(17), top + point(18))
+  builder.lineTo(left + point(1), top + point(18))
+  builder.close()
+  return builder.detachAndDelete()
 }
 
 function drawUploadIcon(

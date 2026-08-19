@@ -83,12 +83,14 @@ describe('upload button module canvas preview', () => {
     ])
     expect(canvas.drawPath).toHaveBeenCalledTimes(1)
     const path = uploadPath(canvas)
-    expect(path?.moveTo.mock.calls[0]).toEqual([62, 28])
-    expect(path?.lineTo.mock.calls[3]).toEqual([63, 16])
-    const shaftBottomY = path?.moveTo.mock.calls[0]?.[1] as number
-    const arrowTipY = path?.lineTo.mock.calls[3]?.[1] as number
+    const builder = path?.sourceBuilder
+    expect(builder?.moveTo.mock.calls[0]).toEqual([62, 28])
+    expect(builder?.lineTo.mock.calls[3]).toEqual([63, 16])
+    const shaftBottomY = builder?.moveTo.mock.calls[0]?.[1] as number
+    const arrowTipY = builder?.lineTo.mock.calls[3]?.[1] as number
     expect(arrowTipY).toBeLessThan(shaftBottomY)
-    expect(path?.close).toHaveBeenCalledTimes(2)
+    expect(builder?.close).toHaveBeenCalledTimes(2)
+    expect(builder?.detachAndDelete).toHaveBeenCalledTimes(1)
     expect(path?.delete).toHaveBeenCalledTimes(1)
     expect(renderer.color4f.mock.calls[0]).toEqual([37 / 255, 99 / 255, 235 / 255, 1])
     expect(renderer.color4f).toHaveBeenLastCalledWith(1, 1, 1, 1)
@@ -146,7 +148,7 @@ describe('upload button module canvas preview', () => {
       if (visibility.expectedIconLeft === null) {
         expect(canvas.drawPath, visibility.name).not.toHaveBeenCalled()
       } else {
-        expect(uploadPath(canvas)?.moveTo.mock.calls[0]?.[0], visibility.name).toBe(
+        expect(uploadPath(canvas)?.sourceBuilder?.moveTo.mock.calls[0]?.[0], visibility.name).toBe(
           visibility.expectedIconLeft + 8
         )
       }
@@ -247,7 +249,9 @@ describe('upload button module canvas preview', () => {
     expect(y).toBe(28)
     const textWidth = String(text).length * 6
     expect(x).toBe((200 - (textWidth + 8 + 18)) / 2 + 18 + 8)
-    expect(uploadPath(canvas)?.moveTo.mock.calls[0]?.[0]).toBe((200 - (textWidth + 8 + 18)) / 2 + 8)
+    expect(uploadPath(canvas)?.sourceBuilder?.moveTo.mock.calls[0]?.[0]).toBe(
+      (200 - (textWidth + 8 + 18)) / 2 + 8
+    )
   })
 
   test('cleans vector resources and restores the save stack when drawing fails', () => {

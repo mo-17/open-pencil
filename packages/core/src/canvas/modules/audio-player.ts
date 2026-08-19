@@ -29,12 +29,13 @@ function drawAudioPlayIcon(
   configureModulePreviewPaint(renderer, color)
   canvas.drawCircle(centerX, centerY, radius, renderer.fillPaint)
   configureModulePreviewPaint(renderer, '#111827')
-  const path = new renderer.ck.Path()
+  const builder = new renderer.ck.PathBuilder()
+  builder.moveTo(centerX - radius * 0.25, centerY - radius * 0.45)
+  builder.lineTo(centerX + radius * 0.5, centerY)
+  builder.lineTo(centerX - radius * 0.25, centerY + radius * 0.45)
+  builder.close()
+  const path = builder.detachAndDelete()
   try {
-    path.moveTo(centerX - radius * 0.25, centerY - radius * 0.45)
-    path.lineTo(centerX + radius * 0.5, centerY)
-    path.lineTo(centerX - radius * 0.25, centerY + radius * 0.45)
-    path.close()
     canvas.drawPath(path, renderer.fillPaint)
   } finally {
     path.delete()

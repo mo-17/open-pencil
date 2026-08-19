@@ -94,10 +94,12 @@ describe('dropdown menu module canvas preview', () => {
     ])
     expect(canvas.drawPath).toHaveBeenCalledTimes(1)
     const path = chevronPath(canvas)
-    expect(path?.moveTo.mock.calls).toEqual([[114, 20]])
-    expect(path?.lineTo.mock.calls[0]).toEqual([121, 28])
-    expect(path?.lineTo.mock.calls[1]).toEqual([128, 20])
-    expect(path?.close).toHaveBeenCalledTimes(1)
+    const builder = path?.sourceBuilder
+    expect(builder?.moveTo.mock.calls).toEqual([[114, 20]])
+    expect(builder?.lineTo.mock.calls[0]).toEqual([121, 28])
+    expect(builder?.lineTo.mock.calls[1]).toEqual([128, 20])
+    expect(builder?.close).toHaveBeenCalledTimes(1)
+    expect(builder?.detachAndDelete).toHaveBeenCalledTimes(1)
     expect(path?.delete).toHaveBeenCalledTimes(1)
     expect(renderer.color4f.mock.calls[0]).toEqual([37 / 255, 99 / 255, 235 / 255, 1])
     expect(renderer.color4f).toHaveBeenLastCalledWith(1, 1, 1, 1)
@@ -153,7 +155,7 @@ describe('dropdown menu module canvas preview', () => {
       if (visibility.expectedChevronLeft === null) {
         expect(canvas.drawPath, visibility.name).not.toHaveBeenCalled()
       } else {
-        expect(chevronPath(canvas)?.moveTo.mock.calls[0]?.[0], visibility.name).toBe(
+        expect(chevronPath(canvas)?.sourceBuilder?.moveTo.mock.calls[0]?.[0], visibility.name).toBe(
           visibility.expectedChevronLeft
         )
       }
@@ -249,7 +251,9 @@ describe('dropdown menu module canvas preview', () => {
     expect(y).toBe(28)
     const textWidth = String(text).length * 6
     expect(x).toBe((180 - (textWidth + 8 + 14)) / 2)
-    expect(chevronPath(canvas)?.moveTo.mock.calls[0]?.[0]).toBe(Number(x) + textWidth + 8)
+    expect(chevronPath(canvas)?.sourceBuilder?.moveTo.mock.calls[0]?.[0]).toBe(
+      Number(x) + textWidth + 8
+    )
   })
 
   test('restores the Canvas save stack when label drawing fails', () => {

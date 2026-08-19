@@ -96,7 +96,7 @@ export const programmableSidebar = (
 export const referenceSidebar = (
   prefix: string,
   label: string,
-  labels: SidebarLabels,
+  labels: SidebarLabels
 ): DefaultTheme.SidebarItem[] => [
   {
     text: label,
@@ -115,7 +115,7 @@ export const referenceSidebar = (
 export const developmentSidebar = (
   prefix: string,
   label: string,
-  labels: SidebarLabels,
+  labels: SidebarLabels
 ): DefaultTheme.SidebarItem[] => [
   {
     text: label,

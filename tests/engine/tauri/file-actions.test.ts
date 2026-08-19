@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { saveExportedFile } from '@/app/document/export/files'
 import { watchTauriFile } from '@/app/document/io/watch-targets'
 import {
-  chooseTauriOpenPath,
+  chooseTauriOpenPaths,
   readTauriDesignBytes,
   readTauriDesignFile
 } from '@/app/shell/menu/files'
@@ -16,19 +16,19 @@ afterEach(async () => {
 })
 
 describe('Tauri file actions', () => {
-  test('chooses a design file through plugin-dialog', async () => {
+  test('chooses multiple design files through plugin-dialog', async () => {
     await mockTauriIPC((cmd, args) => {
       expect(cmd).toBe('plugin:dialog|open')
       expect(args).toEqual({
         options: {
           filters: [{ name: 'Design file', extensions: ['fig', 'pen', 'html', 'htm', 'xhtml'] }],
-          multiple: false
+          multiple: true
         }
       })
-      return '/tmp/design.fig'
+      return ['/tmp/design.fig', '/tmp/design.pen']
     })
 
-    await expect(chooseTauriOpenPath()).resolves.toBe('/tmp/design.fig')
+    await expect(chooseTauriOpenPaths()).resolves.toEqual(['/tmp/design.fig', '/tmp/design.pen'])
   })
 
   test('reads a Tauri design file into a File object', async () => {

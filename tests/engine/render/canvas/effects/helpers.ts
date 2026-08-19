@@ -4,10 +4,15 @@ import type { SkiaRenderer } from '#core/canvas/renderer'
 import { renderEffects } from '#core/canvas/shadows'
 
 export interface MockCanvasPath {
+  sourceBuilder?: MockCanvasPathBuilder
+  delete: ReturnType<typeof mock>
+}
+
+export interface MockCanvasPathBuilder {
   moveTo: ReturnType<typeof mock>
   lineTo: ReturnType<typeof mock>
   close: ReturnType<typeof mock>
-  delete: ReturnType<typeof mock>
+  detachAndDelete: ReturnType<typeof mock>
 }
 
 export function mockCalls(fn: ReturnType<typeof mock>): unknown[][] {
@@ -15,27 +20,42 @@ export function mockCalls(fn: ReturnType<typeof mock>): unknown[][] {
 }
 
 export function createMockRenderer(overrides: Partial<SkiaRenderer> = {}): SkiaRenderer {
+  class MockPath implements MockCanvasPath {
+    sourceBuilder?: MockCanvasPathBuilder
+    delete = mock(() => undefined)
+    copy = mock(() => new MockPath())
+    makeCombined = mock(() => new MockPath())
+    makeStroked = mock(() => new MockPath())
+  }
+
+  class MockPathBuilder implements MockCanvasPathBuilder {
+    addOval = mock(() => this)
+    addRect = mock(() => this)
+    addRRect = mock(() => this)
+    addPath = mock(() => this)
+    transform = mock(() => this)
+    delete = mock(() => undefined)
+    moveTo = mock(() => this)
+    lineTo = mock(() => this)
+    cubicTo = mock(() => this)
+    close = mock(() => this)
+    detachAndDelete = mock(() => {
+      const path = new MockPath()
+      path.sourceBuilder = this
+      return path
+    })
+  }
+
   return {
     ck: {
       Color4f: mock((r, g, b, a) => new Float32Array([r, g, b, a])),
       LTRBRect: mock((l, t, r, b) => new Float32Array([l, t, r, b])),
       RRectXY: mock(() => new Float32Array(12)),
       ClipOp: { Intersect: 0 },
-      Path: class {
-        addOval = mock(() => undefined)
-        addRect = mock(() => undefined)
-        addRRect = mock(() => undefined)
-        addPath = mock(() => undefined)
-        op = mock(() => true)
-        transform = mock(() => undefined)
-        delete = mock(() => undefined)
-        copy = mock(() => this)
-        stroke = mock(() => this)
-        moveTo = mock(() => undefined)
-        lineTo = mock(() => undefined)
-        cubicTo = mock(() => undefined)
-        close = mock(() => undefined)
-      },
+      Path: Object.assign(MockPath, {
+        MakeFromOp: mock(() => new MockPath())
+      }),
+      PathBuilder: MockPathBuilder,
       PathOp: { Difference: 0, Union: 1 },
       StrokeCap: { Butt: 0, Round: 1, Square: 2 },
       StrokeJoin: { Miter: 0, Round: 1, Bevel: 2 },

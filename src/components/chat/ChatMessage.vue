@@ -22,17 +22,20 @@ import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.v
 const {
   message,
   pendingApprovalIds = [],
-  approvalEnabled
+  approvalEnabled,
+  streaming = false
 } = defineProps<{
   message: UIMessage
   pendingApprovalIds?: readonly string[]
   approvalEnabled: boolean
+  streaming?: boolean
 }>()
 const emit = defineEmits<{
   toolApproval: [messageId: string, id: string, approved: boolean]
 }>()
 const { dialogs } = useI18n()
 const isDark = computed(() => resolvedAppTheme.value === 'dark')
+const markdownMode = computed(() => (streaming ? 'streaming' : 'static'))
 
 type ToolPart = Extract<UIMessagePart<UIDataTypes, UITools>, { toolCallId: string }>
 
@@ -246,9 +249,12 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
             class="rounded-xl rounded-tl-md bg-hover px-3 py-2 text-xs leading-relaxed text-surface"
           >
             <Markdown
+              :key="markdownMode"
               :content="part.text"
               :is-dark="isDark"
               :mermaid="false"
+              :mode="markdownMode"
+              :data-chat-markdown-mode="markdownMode"
               class="chat-markdown [&_[data-stream-markdown=code]]:!bg-input"
             />
           </div>

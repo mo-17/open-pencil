@@ -24,21 +24,21 @@ function createChevronPath(
   centerY: number,
   scale: number
 ): Path {
-  const path = new renderer.ck.Path()
+  const builder = new renderer.ck.PathBuilder()
   const width = CHEVRON_WIDTH * scale
   const height = CHEVRON_HEIGHT * scale
   const stroke = CHEVRON_STROKE * scale
   const top = centerY - height / 2
   const bottom = centerY + height / 2
   const middle = left + width / 2
-  path.moveTo(left, top)
-  path.lineTo(middle, bottom)
-  path.lineTo(left + width, top)
-  path.lineTo(left + width - stroke, top)
-  path.lineTo(middle, bottom - stroke * 1.4)
-  path.lineTo(left + stroke, top)
-  path.close()
-  return path
+  builder.moveTo(left, top)
+  builder.lineTo(middle, bottom)
+  builder.lineTo(left + width, top)
+  builder.lineTo(left + width - stroke, top)
+  builder.lineTo(middle, bottom - stroke * 1.4)
+  builder.lineTo(left + stroke, top)
+  builder.close()
+  return builder.detachAndDelete()
 }
 
 function drawDropdownChevron(

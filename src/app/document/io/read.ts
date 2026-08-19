@@ -11,6 +11,7 @@ import {
   resolveReloadPageId,
   restoreReloadState
 } from '@/app/document/io/reload-state'
+import { notificationMessages } from '@/app/i18n/notifications'
 import { toast } from '@/app/shell/ui'
 
 type OpenDocumentState = EditorState & {
@@ -63,7 +64,12 @@ export function createOpenActions({
       await fitCurrentPageToViewport()
     } catch (e) {
       console.error('Failed to open .fig file:', e)
-      toast.error(`Failed to open file: ${e instanceof Error ? e.message : String(e)}`)
+      toast.error(
+        notificationMessages.get().openFileFailed({
+          name: file.name,
+          error: e instanceof Error ? e.message : String(e)
+        })
+      )
     } finally {
       finishLoading()
     }

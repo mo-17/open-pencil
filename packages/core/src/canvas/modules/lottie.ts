@@ -52,14 +52,15 @@ function drawLottieMark(
   canvas.drawCircle(centerX, centerY, radius * 0.68, renderer.fillPaint)
 
   configureModulePreviewPaint(renderer, '#A5F3FC')
-  const path = new renderer.ck.Path()
+  const builder = new renderer.ck.PathBuilder()
+  builder.moveTo(centerX - radius * 0.32, centerY + radius * 0.34)
+  builder.lineTo(centerX - radius * 0.08, centerY - radius * 0.32)
+  builder.lineTo(centerX + radius * 0.34, centerY + radius * 0.1)
+  builder.lineTo(centerX + radius * 0.08, centerY + radius * 0.34)
+  builder.lineTo(centerX - radius * 0.02, centerY + radius * 0.16)
+  builder.close()
+  const path = builder.detachAndDelete()
   try {
-    path.moveTo(centerX - radius * 0.32, centerY + radius * 0.34)
-    path.lineTo(centerX - radius * 0.08, centerY - radius * 0.32)
-    path.lineTo(centerX + radius * 0.34, centerY + radius * 0.1)
-    path.lineTo(centerX + radius * 0.08, centerY + radius * 0.34)
-    path.lineTo(centerX - radius * 0.02, centerY + radius * 0.16)
-    path.close()
     canvas.drawPath(path, renderer.fillPaint)
   } finally {
     path.delete()
