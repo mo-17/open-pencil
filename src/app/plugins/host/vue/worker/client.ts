@@ -1,5 +1,9 @@
 import { createPluginExportAbortError } from '@/app/plugins/host/exporter-abort'
-import { hasCorrelatedWorkerRequestId, normalizeWorkerError } from '@/app/workers/correlation'
+import {
+  hasCorrelatedWorkerRequestId,
+  normalizeWorkerError,
+  postWorkerRequestWithoutTransfer
+} from '@/app/workers/correlation'
 
 export type VueSourceWorkerLike = Pick<
   Worker,
@@ -73,18 +77,12 @@ export function runVueSourceWorkerRequest<TRequest, TResponse, TResult>(
       }
     }
     worker.onerror = (event) => finish(() => reject(new Error(event.message || `${label} failed`)))
-    signal?.addEventListener('abort', abort, { once: true })
-    if (signal?.aborted) {
-      abort()
-      return
-    }
-    try {
-      // No transfer list: editor-owned graph and asset buffers must remain
-      // attached for retry, warning display, and cancellation recovery.
-      // oxlint-disable-next-line unicorn/require-post-message-target-origin -- this is a Worker, not Window.postMessage.
-      worker.postMessage(request)
-    } catch (cause) {
-      finish(() => reject(normalizeWorkerError(cause)))
-    }
+    postWorkerRequestWithoutTransfer({
+      worker,
+      request,
+      signal,
+      abort,
+      fail: (error) => finish(() => reject(error))
+    })
   })
 }

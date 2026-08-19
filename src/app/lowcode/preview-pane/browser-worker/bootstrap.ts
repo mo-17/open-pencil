@@ -1,5 +1,11 @@
 /* oxlint-disable unicorn/require-post-message-target-origin -- DedicatedWorkerGlobalScope has no target origin. */
 
+import {
+  ownWorkerDataValue,
+  readWorkerRequestCorrelation,
+  type WorkerBootstrapRuntimeLoaderOptions
+} from '@/app/workers/correlation'
+
 import { BROWSER_PREVIEW_WORKER_LIMITS } from './limits'
 import { BROWSER_PREVIEW_WORKER_PROTOCOL_VERSION } from './worker-bootstrap-protocol'
 
@@ -12,39 +18,26 @@ export interface BrowserPreviewWorkerBootstrapScope {
   postMessage(message: unknown): void
 }
 
-export interface InstallBrowserPreviewWorkerBootstrapOptions {
-  loadRuntime: () => Promise<BrowserPreviewWorkerRuntime>
-  now?: () => number
-}
+export type InstallBrowserPreviewWorkerBootstrapOptions =
+  WorkerBootstrapRuntimeLoaderOptions<BrowserPreviewWorkerRuntime>
 
 interface RequestCorrelation {
   generation: number
   requestId: string
 }
 
-const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/
-
-function ownValue(value: object, key: string): unknown {
-  return Object.getOwnPropertyDescriptor(value, key)?.value
-}
-
 function requestCorrelation(value: unknown): RequestCorrelation | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  const version = ownValue(value, 'version')
-  const type = ownValue(value, 'type')
-  const requestId = ownValue(value, 'requestId')
-  const generation = ownValue(value, 'generation')
-  if (
-    version !== BROWSER_PREVIEW_WORKER_PROTOCOL_VERSION ||
-    type !== 'build-browser-preview' ||
-    typeof requestId !== 'string' ||
-    !REQUEST_ID_PATTERN.test(requestId) ||
-    !Number.isSafeInteger(generation) ||
-    (generation as number) < 0
-  ) {
+  const correlation = readWorkerRequestCorrelation(
+    value,
+    BROWSER_PREVIEW_WORKER_PROTOCOL_VERSION,
+    'build-browser-preview'
+  )
+  if (!correlation) return null
+  const generation = ownWorkerDataValue(correlation.request, 'generation')
+  if (!Number.isSafeInteger(generation) || (generation as number) < 0) {
     return null
   }
-  return { requestId, generation: generation as number }
+  return { requestId: correlation.requestId, generation: generation as number }
 }
 
 function errorMessage(value: unknown): string {
