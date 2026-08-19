@@ -64,21 +64,47 @@ export interface CompilerFontManifest {
   fallbackFamilies?: string[]
 }
 
+export type CompilerTarget =
+  | 'react'
+  | 'vue'
+  | 'expo'
+  | 'flutter'
+  | 'wechat-miniprogram'
+  | 'taro'
+  | 'uni-app'
+  | 'mpx'
+
+export type MiniProgramCompilerTarget = Extract<
+  CompilerTarget,
+  'wechat-miniprogram' | 'taro' | 'uni-app' | 'mpx'
+>
+
+export type CompilerRouter =
+  | 'react-router-v6'
+  | 'vue-router-v4'
+  | 'expo-router'
+  | 'flutter-router'
+  | 'wechat-native'
+  | 'taro-router'
+  | 'uni-pages'
+  | 'mpx-router'
+  | 'none'
+
 export interface CompilerOptions {
   /** package.json `name` field of the output project */
   packageName: string
   /** Human-readable application name used by native targets. Web targets ignore it. */
   productName?: string
   /**
-   * Output target. React emits the web/Vite project, while Expo and Flutter
-   * emit source-only native static MVPs. Vue emits a Vite + Vue 3 web project
-   * with an explicit v1 capability/degradation contract.
+   * Output target. React and Vue emit web projects; Expo, Flutter, and the
+   * mini-program targets emit source-only projects with explicit capability
+   * and degradation contracts.
    */
-  target: 'react' | 'vue' | 'expo' | 'flutter'
+  target: CompilerTarget
   /** React major version to target. Applies when `target === 'react'`. */
   reactVersion: '18' | '19'
   /** Router strategy. Each implemented target validates its own compatible value. */
-  router: 'react-router-v6' | 'vue-router-v4' | 'expo-router' | 'flutter-router' | 'none'
+  router: CompilerRouter
   /** Phase 0 always emits TypeScript */
   typescript: true
   /**

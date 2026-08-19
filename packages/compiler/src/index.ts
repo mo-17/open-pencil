@@ -10,7 +10,8 @@ import { derivePagePaths } from './adapters/react/route-paths'
 import {
   applyCompilerFontManifest,
   applyExpoCompilerFontManifest,
-  applyFlutterCompilerFontManifest
+  applyFlutterCompilerFontManifest,
+  applyMiniProgramCompilerFontManifest
 } from './font-manifest'
 import { buildComponentRegistry } from './ir/collect/components'
 import type { MotionLoweringCache } from './ir/collect/motion'
@@ -50,6 +51,9 @@ export type {
   CompilerOptions,
   CompilerOutput,
   CompilerPackaging,
+  CompilerRouter,
+  CompilerTarget,
+  MiniProgramCompilerTarget,
   UIKitName
 } from './types'
 export {
@@ -88,6 +92,13 @@ export {
   findPageInfoByPageId,
   type PagePathInfo
 } from './adapters/react/route-paths'
+export {
+  assertMiniProgramExportProjectBudget,
+  isReviewedMiniProgramRasterAsset,
+  MiniProgramProjectBudgetError,
+  type MiniProgramProjectBudgetDiagnostic,
+  type MiniProgramProjectBudgetDiagnosticCode
+} from './adapters/miniprogram-shared'
 
 const DEFAULT_OPTIONS: CompilerOptions = {
   packageName: 'openpencil-output',
@@ -101,7 +112,7 @@ const DEFAULT_OPTIONS: CompilerOptions = {
 
 /**
  * Compile SceneGraph pages into a target project. React and Vue emit Vite web
- * apps; Expo and Flutter emit source-only native static MVPs.
+ * apps; native/mobile and mini-program targets emit source-only projects.
  */
 export function compile(input: CompilerInput): CompilerOutput {
   validatePackaging(input.options)
@@ -171,6 +182,19 @@ export function compile(input: CompilerInput): CompilerOutput {
         input.graph,
         input.pageIds,
         input.fontManifest
+      )
+    } else if (
+      options.target === 'wechat-miniprogram' ||
+      options.target === 'taro' ||
+      options.target === 'uni-app' ||
+      options.target === 'mpx'
+    ) {
+      fontWarnings = applyMiniProgramCompilerFontManifest(
+        files,
+        input.graph,
+        input.pageIds,
+        input.fontManifest,
+        options.target
       )
     } else {
       fontWarnings = applyCompilerFontManifest(

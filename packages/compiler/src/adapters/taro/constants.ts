@@ -1,0 +1,5 @@
+export const TARO_VERSION = '4.2.1'
+export const TARO_REACT_VERSION = '18.3.1'
+export const TARO_TYPESCRIPT_VERSION = '5.9.3'
+export const TARO_BABEL_VERSION = '7.24.4'
+export const TARO_BABEL_REACT_PRESET_VERSION = '7.24.1'

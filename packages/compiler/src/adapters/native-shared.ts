@@ -28,6 +28,22 @@ const NATIVE_BORDER_RADII: Readonly<Partial<Record<string, number>>> = {
   full: 9999
 }
 
+const NATIVE_TEXT_SIZES: Readonly<Partial<Record<string, number>>> = {
+  xs: 12,
+  sm: 14,
+  base: 16,
+  lg: 18,
+  xl: 20,
+  '2xl': 24,
+  '3xl': 30,
+  '4xl': 36,
+  '5xl': 48,
+  '6xl': 60,
+  '7xl': 72,
+  '8xl': 96,
+  '9xl': 128
+}
+
 export function createCompileWarningSink(
   warnings: CompileWarning[]
 ): (warning: CompileWarning) => void {
@@ -53,6 +69,10 @@ export function safeNativeStateDefault(state: IRStateDecl): unknown {
 
 export function nativeBorderRadius(token: string): number | undefined {
   return NATIVE_BORDER_RADII[token]
+}
+
+export function nativeTextSize(token: string): number | undefined {
+  return NATIVE_TEXT_SIZES[token]
 }
 
 export function isNativeSwitch(node: IRElement): boolean {

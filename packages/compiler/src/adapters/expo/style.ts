@@ -1,4 +1,4 @@
-import { nativeBorderRadius } from '../native-shared'
+import { nativeBorderRadius, nativeTextSize } from '../native-shared'
 import type { ExpoStyleResult, ExpoStyleValue, ExpoWarningSink } from './types'
 
 const COLOR_NAMES: Readonly<Partial<Record<string, string>>> = {
@@ -32,22 +32,6 @@ const COLOR_NAMES: Readonly<Partial<Record<string, string>>> = {
   'red-500': '#EF4444',
   'green-500': '#22C55E',
   'yellow-500': '#EAB308'
-}
-
-const TEXT_SIZES: Readonly<Partial<Record<string, number>>> = {
-  xs: 12,
-  sm: 14,
-  base: 16,
-  lg: 18,
-  xl: 20,
-  '2xl': 24,
-  '3xl': 30,
-  '4xl': 36,
-  '5xl': 48,
-  '6xl': 60,
-  '7xl': 72,
-  '8xl': 96,
-  '9xl': 128
 }
 
 const FONT_WEIGHTS: Readonly<Partial<Record<string, string>>> = {
@@ -255,7 +239,7 @@ function applyTypography(style: Record<string, ExpoStyleValue>, className: strin
   }
   const text = className.match(/^text-(.+)$/)
   if (!text) return false
-  const size = TEXT_SIZES[text[1]] ?? arbitraryNumber(text[1])
+  const size = nativeTextSize(text[1]) ?? arbitraryNumber(text[1])
   if (size !== undefined) {
     style.fontSize = size
     return true

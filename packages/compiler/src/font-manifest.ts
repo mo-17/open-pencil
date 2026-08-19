@@ -7,7 +7,12 @@ import {
 import { normalizeFontFamily, parseFontStyle, type SceneGraph } from '@open-pencil/scene-graph'
 
 import { exactArrayBuffer } from './bytes'
-import type { CompileWarning, CompilerFontFaceAsset, CompilerFontManifest } from './types'
+import type {
+  CompileWarning,
+  CompilerFontFaceAsset,
+  CompilerFontManifest,
+  MiniProgramCompilerTarget
+} from './types'
 
 const FONT_ASSET_PREFIX = 'src/assets/fonts/'
 const EXPO_FONT_ASSET_PREFIX = 'assets/fonts/'
@@ -361,6 +366,33 @@ export function applyFlutterCompilerFontManifest(
   const requested = requestedFaces(graph, pageIds)
   warnings.push(...flutterFontResolutionWarnings(requested.faces, []))
   warnings.push(...fontLicenseWarnings(collected.faces))
+  return warnings
+}
+
+/**
+ * Mini-program source targets preserve authored family names but do not copy
+ * font bytes in v1. Their platform loaders and redistribution rules differ,
+ * so emitting web @font-face assets would create a misleading or unusable
+ * project. Keep the omission explicit until each adapter owns a reviewed
+ * local-font contract.
+ */
+export function applyMiniProgramCompilerFontManifest(
+  _files: Map<string, string | Uint8Array>,
+  graph: SceneGraph,
+  pageIds: readonly string[],
+  manifest: CompilerFontManifest,
+  target: MiniProgramCompilerTarget
+): CompileWarning[] {
+  const collected = embeddableFaces(manifest)
+  const warnings = [...collected.warnings]
+  const targetLabel = target === 'wechat-miniprogram' ? 'WeChat Mini Program' : target
+  for (const face of collected.faces) {
+    warnings.push({
+      code: `${target}-font-asset-unsupported`,
+      message: `${targetLabel} source export omitted ${face.family} ${fontWeightValue(face.weight)} ${face.style} because v1 does not bundle custom font bytes; authored family names remain available for manual platform configuration`
+    })
+  }
+  warnings.push(...fontResolutionWarnings(requestedFaces(graph, pageIds).faces, []))
   return warnings
 }
 
