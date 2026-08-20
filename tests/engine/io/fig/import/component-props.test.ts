@@ -349,7 +349,13 @@ describe('Figma component property import', () => {
         preferredValues: ['icon/user-key']
       }
     ])
+    expect(graph.getNode(component.componentPropertyDefinitions[0].defaultValue)?.name).toBe(
+      'icon/mail'
+    )
     expect(sourceInstance.componentPropertyAssignments).toEqual({ '3:2': userIcon.id })
+    expect(graph.getNode(sourceInstance.componentPropertyAssignments['3:2'])?.name).toBe(
+      'icon/user'
+    )
     const clone = nodes.find((node) => node.name === 'Menu item clone')
     const icon = clone?.childIds
       .map((id) => graph.getNode(id))

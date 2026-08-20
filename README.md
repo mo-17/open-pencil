@@ -538,6 +538,8 @@ When an agent advertises the unstable ACP `session/list` capability, the session
 
 **Force stop** preserves an existing resumable binding. **Clear chat** waits for deletion of the current local session binding and reports a failure visibly, but it cannot delete history retained by the agent because ACP has no stable cross-agent delete API. Session records expire after 90 days and are capped at 8 per document and 200 globally; unreferenced document-routing metadata is pruned after 90 days. Direct API providers never read ACP records and continue to use bounded in-memory messages. The visible transcript is not restored after an application restart. Actual restoration still depends on the installed agent retaining the thread and supporting ACP resume. Requires the desktop app and the agent CLI installed locally.
 
+Pi is also available as an optional AI SDK Harness provider. Install its companion CLI with `npm install -g @open-pencil/harness`, then add a **Pi** model profile in **Settings → AI & agents**. The companion is installed separately so OpenPencil does not bundle a JavaScript runtime for users who do not enable Harness providers.
+
 **Setup (Claude Code):**
 
 1. Install the ACP adapter: `npm install -g @agentclientprotocol/claude-agent-acp`

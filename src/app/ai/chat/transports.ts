@@ -52,7 +52,11 @@ import {
   VisualReferenceChatTransport
 } from '@/app/ai/chat/visual-transport'
 import { buildRemoteMCPACPServerConfigs } from '@/app/ai/mcp/acp'
-import { createAIModelRuntime, designModelProfile } from '@/app/ai/models'
+import {
+  createAIModelRuntime,
+  designModelProfile,
+  resolveModelConnectionAPIKey
+} from '@/app/ai/models'
 import type { ResolvedAIModelRole } from '@/app/ai/models'
 import type { AISessionStore } from '@/app/ai/sessions'
 import { MAX_AGENT_STEPS, createAITools, recordStepUsage, resetRunSteps } from '@/app/ai/tools'
@@ -93,6 +97,7 @@ export type CreateACPTransportFactory = (
 type ChatSessionOptions = {
   isConfigured: ComputedRef<boolean>
   isACPProvider: ComputedRef<boolean>
+  isHarnessProvider?: ComputedRef<boolean>
   providerID: Ref<AIProviderID>
   credentialsReady: Promise<void>
   getActiveEditorStore: () => EditorStore
@@ -402,6 +407,7 @@ export function createToolLoopTransport({
 export function createChatSessionManager({
   isConfigured,
   isACPProvider,
+  isHarnessProvider,
   providerID,
   credentialsReady,
   getActiveEditorStore,
@@ -421,10 +427,10 @@ export function createChatSessionManager({
   let acpTransportInstance: ACPTransport | null = null
   const closingACPTransports = new Set<ACPTransport>()
   let acpTransportClosePromise: Promise<void> = Promise.resolve()
-  type DirectRuntimeHandle = { dispose: () => Promise<void> }
-  let directRuntimeHandle: DirectRuntimeHandle | null = null
-  const closingDirectRuntimes = new Set<DirectRuntimeHandle>()
-  let directRuntimeClosePromise: Promise<void> = Promise.resolve()
+  type ModelRuntimeHandle = { dispose: () => Promise<void> }
+  let modelRuntimeHandle: ModelRuntimeHandle | null = null
+  const closingModelRuntimes = new Set<ModelRuntimeHandle>()
+  let modelRuntimeClosePromise: Promise<void> = Promise.resolve()
   let chatStopPromise: Promise<void> = Promise.resolve()
   let acpTransportGeneration = 0
   let chatInitializationGeneration = 0
@@ -556,24 +562,22 @@ export function createChatSessionManager({
     return acpTransportClosePromise
   }
 
-  function closeDirectRuntime(handle: DirectRuntimeHandle): Promise<void> {
-    if (directRuntimeHandle === handle) directRuntimeHandle = null
-    closingDirectRuntimes.add(handle)
+  function closeModelRuntime(handle: ModelRuntimeHandle): Promise<void> {
+    if (modelRuntimeHandle === handle) modelRuntimeHandle = null
+    closingModelRuntimes.add(handle)
     const close = chatStopPromise
       .then(() => handle.dispose())
       .catch(() => undefined)
-      .finally(() => closingDirectRuntimes.delete(handle))
-    directRuntimeClosePromise = Promise.all([directRuntimeClosePromise, close]).then(
-      () => undefined
-    )
-    return directRuntimeClosePromise
+      .finally(() => closingModelRuntimes.delete(handle))
+    modelRuntimeClosePromise = Promise.all([modelRuntimeClosePromise, close]).then(() => undefined)
+    return modelRuntimeClosePromise
   }
 
-  function detachDirectRuntime(): Promise<void> {
-    const handle = directRuntimeHandle
+  function detachModelRuntime(): Promise<void> {
+    const handle = modelRuntimeHandle
     return handle
-      ? closeDirectRuntime(handle)
-      : Promise.all([chatStopPromise, directRuntimeClosePromise]).then(() => undefined)
+      ? closeModelRuntime(handle)
+      : Promise.all([chatStopPromise, modelRuntimeClosePromise]).then(() => undefined)
   }
 
   function forceDetachACPTransport(): Promise<void> {
@@ -596,11 +600,11 @@ export function createChatSessionManager({
     return close
   }
 
-  function forceDetachDirectRuntime(): Promise<void> {
-    const runtimes = new Set(closingDirectRuntimes)
-    if (directRuntimeHandle) runtimes.add(directRuntimeHandle)
-    directRuntimeHandle = null
-    closingDirectRuntimes.clear()
+  function forceDetachModelRuntime(): Promise<void> {
+    const runtimes = new Set(closingModelRuntimes)
+    if (modelRuntimeHandle) runtimes.add(modelRuntimeHandle)
+    modelRuntimeHandle = null
+    closingModelRuntimes.clear()
 
     const destroy = Promise.all(
       [...runtimes].map((handle) =>
@@ -613,7 +617,7 @@ export function createChatSessionManager({
     // As with ACP, force stop deliberately abandons any graceful close that is
     // still queued behind a provider's hung Chat.stop(). The runtime disposer
     // is idempotent, so a released graceful chain can safely converge later.
-    directRuntimeClosePromise = close
+    modelRuntimeClosePromise = close
     return close
   }
 
@@ -633,7 +637,7 @@ export function createChatSessionManager({
     acpSessionRestoreNotice.value = null
     resetACPSessionState()
     void detachACPTransport()
-    void detachDirectRuntime()
+    void detachModelRuntime()
     acpConfigOptions.value = []
     acpConfigUpdating.value = false
     sessionRevision.value++
@@ -771,6 +775,46 @@ export function createChatSessionManager({
     if (overrideTransport) return { transport: overrideTransport(), dispose: undefined }
 
     const runtime = await createModelRuntime('design')
+    const harnessProviderActive = isHarnessProvider?.value ?? providerID.value === 'harness:pi'
+    if (harnessProviderActive) {
+      if (runtime?.kind !== 'harness') {
+        throw new Error('The Design agent is not configured for Pi')
+      }
+      const [{ HarnessChatTransport }, { buildPiMCPServers }, { getActiveTabId }] =
+        await Promise.all([
+          import('@/app/ai/harness/transport'),
+          import('@/app/integrations/mcp'),
+          import('@/app/tabs')
+        ])
+      const apiKey = await resolveModelConnectionAPIKey(runtime.role.connection.id)
+      if (!apiKey) throw new Error('Credential is unavailable for the Pi agent')
+      const model = runtime.role.profile.customModelID || runtime.role.profile.modelID
+      const harnessTransport = new HarnessChatTransport(
+        `tab-${getActiveTabId()}-${runtime.role.profile.id}`,
+        {
+          adapter: 'pi',
+          sandbox: 'just-bash',
+          model,
+          settings: {
+            thinkingLevel: runtime.role.profile.harnessThinkingLevel ?? 'medium',
+            permissionMode: runtime.role.profile.harnessPermissionMode ?? 'allow-edits'
+          },
+          instructions: SYSTEM_PROMPT,
+          mcpServers: await buildPiMCPServers()
+        },
+        { OPENPENCIL_HARNESS_API_KEY: apiKey }
+      )
+      return {
+        transport: new VisualReferenceChatTransport({
+          transport: harnessTransport,
+          // The Harness protocol currently forwards text only. Route images
+          // through the configured direct Vision role instead of dropping them.
+          designSupportsVision: false,
+          analyze: createVisionRoleAnalyzer()
+        }) as ChatTransport<UIMessage>,
+        dispose: () => harnessTransport.destroy()
+      }
+    }
     if (runtime?.kind !== 'direct') {
       throw new Error('The Design model is not configured for direct API access')
     }
@@ -861,27 +905,27 @@ export function createChatSessionManager({
     resetACPDiagnostics()
 
     let transport: ChatTransport<UIMessage>
-    let pendingDirectRuntime: Awaited<ReturnType<typeof createTransport>> | null = null
+    let pendingModelRuntime: Awaited<ReturnType<typeof createTransport>> | null = null
     if (isACPProvider.value) {
-      await detachDirectRuntime()
+      await detachModelRuntime()
       transport = await createActiveACPTransport(store)
     } else {
       await detachACPTransport()
-      await detachDirectRuntime()
-      pendingDirectRuntime = await createTransport(store)
-      transport = pendingDirectRuntime.transport
+      await detachModelRuntime()
+      pendingModelRuntime = await createTransport(store)
+      transport = pendingModelRuntime.transport
     }
 
     if (generation !== chatInitializationGeneration || store !== getActiveEditorStore()) {
       if (transport === acpTransportInstance) await detachACPTransport()
-      if (pendingDirectRuntime?.dispose) await pendingDirectRuntime.dispose().catch(() => undefined)
+      if (pendingModelRuntime?.dispose) await pendingModelRuntime.dispose().catch(() => undefined)
       return ensureChat()
     }
-    if (pendingDirectRuntime?.dispose) {
+    if (pendingModelRuntime?.dispose) {
       let disposePromise: Promise<void> | null = null
-      directRuntimeHandle = {
+      modelRuntimeHandle = {
         dispose: () => {
-          disposePromise ??= pendingDirectRuntime.dispose?.() ?? Promise.resolve()
+          disposePromise ??= pendingModelRuntime.dispose?.() ?? Promise.resolve()
           return disposePromise
         }
       }
@@ -979,7 +1023,7 @@ export function createChatSessionManager({
     const [discardedACPSessionBinding] = await Promise.all([
       bindingPromise,
       detachACPTransport(),
-      detachDirectRuntime()
+      detachModelRuntime()
     ] as const)
     await (acpSessionPersistence?.forget(discardedACPSessionBinding) ?? Promise.resolve())
     sessionRevision.value++
@@ -1019,7 +1063,7 @@ export function createChatSessionManager({
     transportDirty = false
     acpConfigOptions.value = []
     acpConfigUpdating.value = false
-    await Promise.all([forceDetachACPTransport(), forceDetachDirectRuntime()])
+    await Promise.all([forceDetachACPTransport(), forceDetachModelRuntime()])
     sessionRevision.value++
   }
 

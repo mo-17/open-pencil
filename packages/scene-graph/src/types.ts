@@ -1,3 +1,4 @@
+import type { CanvasGuide } from './guides'
 import type {
   GeneratedEffectSpecV1,
   MotionDriverSpecV1,
@@ -557,6 +558,7 @@ export interface SceneNode {
   strokes: Stroke[]
   effects: Effect[]
   layoutGrids: LayoutGrid[]
+  guides: CanvasGuide[]
   fillStyleId: string | null
   strokeStyleId: string | null
   textStyleId: string | null

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { UIMessage, UIMessageChunk } from 'ai'
-import { computed, effectScope, ref } from 'vue'
+import { computed, effectScope, nextTick, ref } from 'vue'
 
 import type { AIProviderID } from '@open-pencil/core/constants'
 
@@ -163,6 +163,36 @@ describe('AI model profiles and role assignments', () => {
     const profile = saveModelProfileDraft(draft)
     expect(profile.connectionId).toBe('connection-anthropic')
     expect(modelSettingsSnapshot().connections).toHaveLength(2)
+  })
+
+  test('stores multiple Harness provider profiles with independent model IDs', () => {
+    const first = createModelProfileDraft()
+    Object.assign(first, {
+      name: 'Pi Sonnet',
+      providerID: 'harness:pi',
+      modelID: '',
+      customModelID: 'anthropic/claude-sonnet-4.6',
+      harnessThinkingLevel: 'medium',
+      harnessPermissionMode: 'allow-edits'
+    })
+    const second = createModelProfileDraft()
+    Object.assign(second, {
+      name: 'Pi custom',
+      providerID: 'harness:pi',
+      modelID: '',
+      customModelID: 'custom/provider-model',
+      harnessThinkingLevel: 'high',
+      harnessPermissionMode: 'allow-reads'
+    })
+
+    const savedFirst = saveModelProfileDraft(first)
+    const savedSecond = saveModelProfileDraft(second)
+    expect(savedFirst.customModelID).toBe('anthropic/claude-sonnet-4.6')
+    expect(savedSecond.customModelID).toBe('custom/provider-model')
+    expect(savedFirst.harnessThinkingLevel).toBe('medium')
+    expect(savedSecond.harnessThinkingLevel).toBe('high')
+    expect(savedFirst.harnessPermissionMode).toBe('allow-edits')
+    expect(savedSecond.harnessPermissionMode).toBe('allow-reads')
   })
 
   test('keeps ACP agents exclusive to the Design role', () => {
@@ -338,6 +368,39 @@ describe('AI model profiles and role assignments', () => {
     const keys = appCredentialRefs().map(credentialKey)
     expect(keys).toContain('v1:anthropic:anthropic-main:api-key')
     expect(keys).toContain('v1:google:google-main:api-key')
+  })
+
+  test('invalidates chat when Harness runtime controls change', async () => {
+    const settings = modelSettingsSnapshot()
+    settings.connections[0].providerID = 'harness:pi'
+    settings.models[0].harnessThinkingLevel = 'medium'
+    settings.models[0].harnessPermissionMode = 'allow-edits'
+    replaceAIModelSettings(settings)
+
+    const scope = effectScope()
+    let invalidations = 0
+    scope.run(() =>
+      registerAIChatEffects(() => {
+        invalidations++
+      })
+    )
+
+    try {
+      const profile = aiModelSettings.value.models[0]
+      profile.harnessThinkingLevel = 'high'
+      await nextTick()
+      expect(invalidations).toBe(1)
+
+      profile.harnessPermissionMode = 'allow-reads'
+      await nextTick()
+      expect(invalidations).toBe(2)
+
+      profile.reasoningEffort = 'high'
+      await nextTick()
+      expect(invalidations).toBe(3)
+    } finally {
+      scope.stop()
+    }
   })
 
   test('invalidates chat synchronously when a model connection credential changes', async () => {

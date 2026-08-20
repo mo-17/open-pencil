@@ -35,10 +35,12 @@
     "allow-close-preview-window",
     "allow-list-system-fonts",
     "allow-load-system-font",
+    "allow-native-menu-checked",
     "allow-open-ai-window",
     "allow-open-codepen-prefill",
     "allow-proxy-http-request",
     "allow-open-preview-window",
+    "allow-set-native-menu-checked",
     "allow-take-pending-open",
     "allow-update-ai-window",
     "allow-update-preview-window",
@@ -48,8 +50,26 @@
       "allow": [{ "path": "**" }]
     },
     {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [
+        { "path": "$HOME/Library/Application Support/OpenPencil/mcp.json" },
+        { "path": "$LOCALDATA/OpenPencil/mcp.json" },
+        { "path": "$RUNTIME/openpencil/mcp.json" },
+        { "path": "$HOME/.openpencil/mcp.json" }
+      ]
+    },
+    {
       "identifier": "fs:allow-write-file",
       "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [
+        { "path": "$HOME/Library/Application Support/OpenPencil/mcp.json" },
+        { "path": "$LOCALDATA/OpenPencil/mcp.json" },
+        { "path": "$RUNTIME/openpencil/mcp.json" },
+        { "path": "$HOME/.openpencil/mcp.json" }
+      ]
     },
     {
       "identifier": "fs:allow-mkdir",
@@ -72,6 +92,7 @@
         { "name": "gemini", "cmd": "gemini", "args": true },
         { "name": "openpencil-mcp", "cmd": "openpencil-mcp", "args": true },
         { "name": "openpencil-mcp-http", "cmd": "openpencil-mcp-http", "args": true },
+        { "name": "openpencil-harness", "cmd": "openpencil-harness", "args": false },
         { "name": "cmd", "cmd": "cmd", "args": true },
         { "name": "lowcode-preview", "cmd": "bun", "args": true },
         { "name": "binaries/openpencil-codepen-sidecar", "sidecar": true }

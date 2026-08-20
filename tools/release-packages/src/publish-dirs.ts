@@ -93,6 +93,7 @@ export const PUBLIC_PACKAGE_NAME_MAP = {
   '@open-pencil/motion-runtime': '@open-pencil-lowcode/motion-runtime',
   '@open-pencil/dom-css': '@open-pencil-lowcode/dom-css',
   '@open-pencil/mcp': '@open-pencil-lowcode/mcp',
+  '@open-pencil/harness': '@open-pencil-lowcode/harness',
   '@open-pencil/vue': '@open-pencil-lowcode/vue',
   '@open-pencil/cli': '@open-pencil-lowcode/cli'
 } as const
@@ -117,6 +118,7 @@ export const DEFAULT_PACKAGES: PackagePublishConfig[] = [
   { dir: 'packages/motion-runtime', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/dom-css', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/mcp', include: ['dist'], extraFiles: [] },
+  { dir: 'packages/harness', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/vue', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/cli', include: ['bin', 'dist'], extraFiles: [] }
 ]

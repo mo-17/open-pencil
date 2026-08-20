@@ -1,4 +1,5 @@
 export * from './basics'
+export * from './canvas-guides'
 export * from './convert'
 export * from './derived/data'
 export * from './derived/glyphs'

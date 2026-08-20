@@ -5,7 +5,9 @@ import { deflateSync, inflateSync } from 'fflate'
 import { compressFigDataSync } from '@open-pencil/fig'
 import {
   buildComponentPropIndex,
+  exportCanvasGuides,
   guidToString,
+  importCanvasGuides,
   materializeFigmaPayload,
   mergePluginData,
   remapFigmaMessageObjectAnimations,
@@ -371,6 +373,51 @@ function assignVariableGuids(
   }
 }
 
+interface ComponentPropertyGuidState {
+  ids: string[]
+  maxLocalId0: number
+  maxLocalId1: number
+}
+
+function collectComponentPropertyGuidState(graph: SceneGraph): ComponentPropertyGuidState {
+  const ids = new Set<string>()
+  let maxLocalId0 = 0
+  let maxLocalId1 = 0
+  for (const node of graph.getAllNodes()) {
+    for (const definition of node.componentPropertyDefinitions) ids.add(definition.id)
+    for (const reference of node.componentPropertyReferences) ids.add(reference.propertyId)
+    for (const propertyId of Object.keys(node.componentPropertyAssignments)) ids.add(propertyId)
+    for (const spec of node.variantPropSpecs) ids.add(spec.propDefId)
+  }
+  for (const propertyId of ids) {
+    const match = /^(\d+):(\d+)$/.exec(propertyId)
+    if (!match) continue
+    const sessionID = Number.parseInt(match[1], 10)
+    const localID = Number.parseInt(match[2], 10)
+    if (sessionID === 0) maxLocalId0 = Math.max(maxLocalId0, localID)
+    if (sessionID === 1) maxLocalId1 = Math.max(maxLocalId1, localID)
+  }
+  return { ids: [...ids], maxLocalId0, maxLocalId1 }
+}
+
+function assignComponentPropertyGuids(
+  propertyIds: readonly string[],
+  localIdCounter: { value: number },
+  propertyIdToGuid: Map<string, GUID>,
+  assignedGuidValues: Set<string>,
+  nodeSourceGuidValues: Set<string>
+): void {
+  for (const propertyId of propertyIds) {
+    const guid = assignVariableGuid(
+      propertyId,
+      localIdCounter,
+      assignedGuidValues,
+      nodeSourceGuidValues
+    )
+    propertyIdToGuid.set(propertyId, guid)
+  }
+}
+
 function appendVariableNodeChanges(
   graph: SceneGraph,
   nodeChanges: KiwiNodeChange[],
@@ -470,6 +517,14 @@ function applyImportedCanvasFields(
     blobs,
     blobIndexByHex
   )
+  if (page.guides.length > 0) {
+    const normalized = exportCanvasGuides(page.guides)
+    const raw = page.source.fig.rawNodeFields.guides
+    canvasNc.guides =
+      Array.isArray(raw) && JSON.stringify(importCanvasGuides(raw)) === JSON.stringify(page.guides)
+        ? structuredClone(raw)
+        : normalized
+  }
 }
 
 function buildCanvasEntries(
@@ -560,6 +615,7 @@ interface InternalResourceContext {
   assignedGuidValues: Set<string>
   componentPropertyDefinitionsById: ReturnType<typeof buildComponentPropIndex>
   runtime: FigNodeChangeExportRuntime
+  propertyIdToGuid: Map<string, GUID>
 }
 
 function appendInternalResources(context: InternalResourceContext): void {
@@ -583,7 +639,8 @@ function appendInternalResources(context: InternalResourceContext): void {
         context.assignedGuidValues,
         context.componentPropertyDefinitionsById,
         context.modeIdToGuid,
-        context.runtime
+        context.runtime,
+        context.propertyIdToGuid
       )
     )
   }
@@ -662,6 +719,7 @@ export async function exportFigFileWithOptions(
   assignedGuidValues.add(`${docGuid.sessionID}:${docGuid.localID}`)
   const varIdToGuid = new Map<string, GUID>()
   const modeIdToGuid = new Map<string, GUID>()
+  const propertyIdToGuid = new Map<string, GUID>()
   const compatibleProjection =
     profile === 'figma-compatible' ? createCompatibleFigProjection(graph) : null
   if (compatibleProjection) await prepareFigmaProjectionFonts(compatibleProjection.nodes)
@@ -675,6 +733,12 @@ export async function exportFigFileWithOptions(
   // counter is past every imported GUID before any canvas, variable, or
   // node claims a new counter-based GUID — preventing collisions.
   const nodeSourceGuidValues = advanceCounterPastSourceGuids(graph, localIdCounter)
+  const propertyGuidState = collectComponentPropertyGuidState(graph)
+  localIdCounter.value = Math.max(
+    localIdCounter.value,
+    propertyGuidState.maxLocalId0 + 1,
+    propertyGuidState.maxLocalId1 + 1
+  )
 
   const { canvasEntries, internalCanvasGuid } = buildCanvasEntries(
     graph,
@@ -694,6 +758,14 @@ export async function exportFigFileWithOptions(
     localIdCounter,
     varIdToGuid,
     modeIdToGuid,
+    assignedGuidValues,
+    nodeSourceGuidValues
+  )
+
+  assignComponentPropertyGuids(
+    propertyGuidState.ids,
+    localIdCounter,
+    propertyIdToGuid,
     assignedGuidValues,
     nodeSourceGuidValues
   )
@@ -723,7 +795,8 @@ export async function exportFigFileWithOptions(
           assignedGuidValues,
           componentPropertyDefinitionsById,
           modeIdToGuid,
-          runtime
+          runtime,
+          propertyIdToGuid
         )
       )
     }
@@ -743,7 +816,8 @@ export async function exportFigFileWithOptions(
     blobIndexByHex,
     assignedGuidValues,
     componentPropertyDefinitionsById,
-    runtime
+    runtime,
+    propertyIdToGuid
   })
 
   remapSerializedLowcodeMotionActionReferences(nodeChanges, (nodeId) => {

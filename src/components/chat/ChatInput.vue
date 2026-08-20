@@ -61,7 +61,11 @@ const fileInput = ref<HTMLInputElement>()
 const isStreaming = computed(() => status === 'streaming' || status === 'submitted')
 const isBusy = computed(() => initializing || isStreaming.value)
 const isACPProvider = computed(() => providerID.value.startsWith('acp:'))
-const acpAgentName = computed(() => {
+const isAgentProvider = computed(
+  () => providerID.value.startsWith('acp:') || providerID.value === 'harness:pi'
+)
+const agentName = computed(() => {
+  if (providerID.value === 'harness:pi') return 'Pi'
   const agentId = providerID.value.replace('acp:', '')
   return ACP_AGENTS.find((agent) => agent.id === agentId)?.name ?? agentId
 })
@@ -94,7 +98,7 @@ const attachmentActionsDisabled = computed(() => isBusy.value || attachmentsDisa
 const attachmentTarget = computed(() => {
   const override = attachmentTargetLabel?.trim()
   if (override) return override
-  if (isACPProvider.value) return acpAgentName.value
+  if (isAgentProvider.value) return agentName.value
   return [providerDef.value.name, selectedModelName.value].filter(Boolean).join(' · ')
 })
 
@@ -154,16 +158,18 @@ function handleSubmit(event: Event) {
   <TooltipProvider>
     <div class="shrink-0 border-t border-border px-3 py-2">
       <div class="mb-1.5 flex items-center gap-1">
-        <template v-if="isACPProvider">
+        <template v-if="isAgentProvider">
           <div
             class="flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted"
             data-test-id="chat-acp-agent-label"
           >
             <icon-lucide-bot class="size-3" />
-            {{ acpAgentName }}
+            {{ agentName }}
           </div>
-          <AcpConfigSelect category="model" :disabled="isBusy" />
-          <AcpConfigSelect category="thought_level" :disabled="isBusy" />
+          <template v-if="isACPProvider">
+            <AcpConfigSelect category="model" :disabled="isBusy" />
+            <AcpConfigSelect category="thought_level" :disabled="isBusy" />
+          </template>
         </template>
         <ChatProfileSelect v-else-if="canSwitchProfile && (isCustomProvider || usesCustomModel)">
           <template #value>

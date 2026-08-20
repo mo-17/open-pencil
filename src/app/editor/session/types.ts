@@ -2,10 +2,12 @@ import { createDefaultEditorState, type EditorState } from '@open-pencil/core/ed
 
 import type { NodeEditState } from '@/app/editor/vector-edit/types'
 import type { MotionPathEditSelection } from '@/app/motion-path/types'
+import { appPreferences } from '@/app/settings/preferences/store'
 
 export function createInitialAppEditorState(pageId: string): AppEditorState {
   return {
     ...createDefaultEditorState(pageId),
+    snappingPreferences: { ...appPreferences.value.editing.snapping },
     showUI: true,
     showRulers: true,
     showRemoteCursors: true,

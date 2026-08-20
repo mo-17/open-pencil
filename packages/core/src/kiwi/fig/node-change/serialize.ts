@@ -69,8 +69,13 @@ export function sceneNodeToKiwi(
   assignedGuidValues?: Set<string>,
   componentPropertyDefinitionsById?: ReadonlyMap<string, ComponentPropertyDefinition>,
   modeIdToGuid?: Map<string, GUID>,
-  runtime: FigNodeChangeExportRuntime = coreFigExportRuntime
+  runtimeOrPropertyIdToGuid: FigNodeChangeExportRuntime | Map<string, GUID> = coreFigExportRuntime,
+  propertyIdToGuid?: Map<string, GUID>
 ): KiwiNodeChange[] {
+  const runtime =
+    runtimeOrPropertyIdToGuid instanceof Map ? coreFigExportRuntime : runtimeOrPropertyIdToGuid
+  const componentPropertyGuids =
+    runtimeOrPropertyIdToGuid instanceof Map ? runtimeOrPropertyIdToGuid : propertyIdToGuid
   return sceneNodeToKiwiWithRuntime(
     node,
     parentGuid,
@@ -86,6 +91,7 @@ export function sceneNodeToKiwi(
     assignedGuidValues,
     runtime,
     componentPropertyDefinitionsById,
-    modeIdToGuid
+    modeIdToGuid,
+    componentPropertyGuids
   )
 }

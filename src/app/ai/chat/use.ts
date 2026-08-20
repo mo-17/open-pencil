@@ -10,6 +10,7 @@ import {
   customBaseURL,
   customModelID,
   isACPProvider,
+  isHarnessProvider,
   isConfigured,
   maxOutputTokens,
   modelID,
@@ -49,6 +50,7 @@ function resolveACPConfigurationContext(role: NonNullable<ReturnType<typeof reso
 const chatSession = createChatSessionManager({
   isConfigured,
   isACPProvider,
+  isHarnessProvider,
   providerID,
   credentialsReady,
   getActiveEditorStore,

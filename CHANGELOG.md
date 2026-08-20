@@ -12,6 +12,8 @@
 
 ### Added
 
+- Snap vector points, moved layers, and resized edges to nearby geometry, sibling layer bounds, canvas and frame layout guides, and whole-pixel coordinates with visible alignment guides, fractional-coordinate preservation when pixel snapping is off, and persistent geometry, object, and pixel-grid controls in General settings and the Preferences menu.
+- Run Pi through AI SDK HarnessAgent as a configurable desktop provider with multiple saved model profiles, secure credentials, existing MCP design tools, and per-profile thinking and permission settings.
 - Open multiple selected design files in separate tabs.
 - Add opt-in source exporters for native WeChat Mini Program, Taro React, uni-app, and Mpx. Each
   target compiles the shared SceneGraph IR in a bounded Worker, archives through the path-safe ZIP
@@ -31,6 +33,7 @@
   parameter and connector schemas, signed catalogs/packages, publisher trust, runtime indexes, and
   marketplace snapshots. Core keeps its host registries and built-in modules while its existing
   root and `plugins` exports remain compatible.
+- Let Figma API scripts and automation combine components into variant sets.
 - Add deterministic two-browser collaboration coverage for bidirectional edits, awareness, departure cleanup, partitioned-peer convergence, and reconnect synchronization without public network dependencies. (#530)
 - Import, render, edit, resize, select, and export Figma text-on-path layers while preserving their curved glyph layout.
 - Add tested pane-registry and recursive split-tree models for independently viewed same-document canvases, capped at four visible panes.
@@ -86,6 +89,8 @@
 
 ### Fixed
 
+- Preserve app-created component properties and instance-swap targets across `.fig` save and reload cycles. (#548)
+- Reconnect desktop automation to an already-running MCP server by allowing access to its discovery file. (#546)
 - Keep text-editing carets, hit testing, and selection highlights aligned with vertically centered or bottom-aligned text. (#539)
 - Match AI chat code-block syntax colors and backgrounds to the active light or dark theme. (#537)
 - Let desktop users select and copy AI chat text without replacing it with the selected canvas layers. (#538)

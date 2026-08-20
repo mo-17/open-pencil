@@ -37,7 +37,12 @@ export type ACPModelRuntime = {
   role: ResolvedAIModelRole
 }
 
-export type AIModelRuntime = DirectAIModelRuntime | ACPModelRuntime
+export type HarnessModelRuntime = {
+  kind: 'harness'
+  role: ResolvedAIModelRole
+}
+
+export type AIModelRuntime = DirectAIModelRuntime | ACPModelRuntime | HarnessModelRuntime
 
 const mutableModelCredentialRevision = ref(0)
 export const modelCredentialRevision = readonly(mutableModelCredentialRevision)
@@ -104,6 +109,12 @@ export async function createAIModelRuntime(role: AIModelRole): Promise<AIModelRu
   }
   if (role === 'vision' && !resolved.profile.capabilities.includes('vision')) {
     throw new Error('The Vision model must support image input')
+  }
+  if (resolved.connection.providerID === 'harness:pi') {
+    if (role !== 'design') {
+      throw new Error('Harness agents can only be assigned to the Design agent role')
+    }
+    return { kind: 'harness', role: resolved }
   }
   if (resolved.connection.providerID.startsWith('acp:')) {
     if (role !== 'design') {

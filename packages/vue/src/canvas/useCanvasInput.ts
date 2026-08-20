@@ -301,7 +301,7 @@ export function useCanvasInput(
       return
     }
     if (d.type === 'move') {
-      handleMoveMove(d, cx, cy, sx, sy, editor)
+      handleMoveMove(d, cx, cy, sx, sy, editor, e.ctrlKey)
       return
     }
     if (d.type === 'text-select') {
@@ -309,7 +309,7 @@ export function useCanvasInput(
       return
     }
     if (d.type === 'resize') {
-      applyResize(d, cx, cy, e.shiftKey, editor)
+      applyResize(d, cx, cy, e.shiftKey, editor, e.ctrlKey)
       return
     }
 
@@ -319,7 +319,7 @@ export function useCanvasInput(
     }
 
     if (d.type === 'edit-node' || d.type === 'edit-handle') {
-      handleNodeEditMove(d, cx, cy, editor, e.altKey, e.metaKey || e.ctrlKey, e.shiftKey)
+      handleNodeEditMove(d, cx, cy, editor, e.altKey, e.metaKey || e.ctrlKey, e.shiftKey, e.ctrlKey)
       return
     }
 
@@ -379,13 +379,29 @@ export function useCanvasInput(
     refreshMeasurement()
   }
 
+  function clearTransientInteractionFeedback() {
+    editor.setSnapGuides([])
+    editor.setLayoutInsertIndicator(null)
+    editor.setDropTarget(null)
+  }
+
+  function cancelPointerInteraction() {
+    cancelPassiveHover()
+    drag.value = null
+    cursorOverride.value = null
+    clearTransientInteractionFeedback()
+  }
+
   useEventListener(canvasRef, 'dblclick', onDblClick)
   useEventListener(canvasRef, 'mousedown', onMouseDown)
   useEventListener(canvasRef, 'mousemove', onMouseMove)
   useEventListener(canvasRef, 'mouseup', onMouseUp)
   useEventListener(window, 'keydown', (event) => updateModifier(event.code, true))
   useEventListener(window, 'keyup', (event) => updateModifier(event.code, false))
-  useEventListener(window, 'blur', resetMeasurementModifiers)
+  useEventListener(window, 'blur', () => {
+    resetMeasurementModifiers()
+    cancelPointerInteraction()
+  })
   useEventListener(canvasRef, 'mouseleave', (event) => {
     pointerInside.value = false
     const { cx, cy } = getCoords(event)
@@ -399,13 +415,19 @@ export function useCanvasInput(
       editor.setAutoLayoutHover(null)
     }
   })
-  useEventListener(window, 'mouseup', (event) => {
-    if (drag.value) onMouseUp(event)
-  })
+  useEventListener(
+    window,
+    'mouseup',
+    (event) => {
+      if (drag.value) onMouseUp(event)
+    },
+    { capture: true }
+  )
 
   const stopToolListener = editor.onEditorEvent('tool:changed', () => {
     if (!isEnabled()) return
     editor.setMeasurementMode('off')
+    cancelPointerInteraction()
   })
   tryOnScopeDispose(stopToolListener)
 
@@ -424,6 +446,7 @@ export function useCanvasInput(
       drag.value = null
       cursorOverride.value = null
       pointerInside.value = false
+      clearTransientInteractionFeedback()
       resetMeasurementModifiers()
     }
   }

@@ -292,7 +292,7 @@ jobs:
           if (
             plan.version !== process.env.RELEASE_VERSION ||
             plan.repository !== expectedRepository ||
-            plan.packages.length !== 13
+            plan.packages.length !== 14
           ) {
             throw new Error(`Prepared release plan does not match v${process.env.RELEASE_VERSION}`)
           }
@@ -481,7 +481,6 @@ jobs:
               exit 1
             fi
           }
-
           publish_packages=$(node -p "require('./npm-release/release-plan.json').packages.map(({ dir }) => dir).join(' ')")
           for dir in $publish_packages; do
             name=$(node -p "require('./npm-release/release-plan.json').packages.find(({ dir }) => dir === '$dir').name")

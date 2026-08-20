@@ -17,7 +17,7 @@ describe('Google Drive storage configuration', () => {
       'bundled.apps.googleusercontent.com'
     )
     expect(
-      resolveGoogleDriveClientId({ 'client-id': 'override.apps.googleusercontent.com' }, undefined)
+      resolveGoogleDriveClientId({ 'client-id': 'override.apps.googleusercontent.com' }, '   ')
     ).toBeNull()
   })
 })

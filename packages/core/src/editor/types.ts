@@ -20,6 +20,7 @@ import type { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import type { RulerTheme, SkiaRenderer } from '#core/canvas/renderer'
 import type { MeasurementMode, RenderOverlays } from '#core/canvas/renderer/types'
+import type { SnappingPreferences } from '#core/editor/preferences'
 import type { TextEditor } from '#core/text/editor'
 import type { FontLoadOptions } from '#core/text/fonts'
 import type { FontResolutionEvent, FontResolutionSnapshot } from '#core/text/resolver'
@@ -105,6 +106,7 @@ export interface MotionPreviewState {
 
 export interface EditorSharedState {
   activeTool: Tool
+  snappingPreferences: SnappingPreferences
   remoteCursors: Array<{
     name: string
     color: Color

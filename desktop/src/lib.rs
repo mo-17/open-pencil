@@ -31,7 +31,7 @@ use google_drive::{
     google_drive_oauth_revoke, google_drive_transfer, GoogleDriveOAuthOperations,
 };
 use http::proxy_http_request;
-use menu::install_app_menu;
+use menu::{install_app_menu, native_menu_checked, set_native_menu_checked};
 use menu_events::handle_menu_event;
 use motion_export::write_motion_export_noclobber;
 use preview_window::{
@@ -191,6 +191,7 @@ pub fn run() {
             get_preview_window_latest_payload,
             list_system_fonts,
             load_system_font,
+            native_menu_checked,
             proxy_http_request,
             open_ai_window,
             open_codepen_prefill,
@@ -202,7 +203,8 @@ pub fn run() {
             take_pending_open,
             update_ai_window,
             update_preview_window,
-            write_motion_export_noclobber
+            write_motion_export_noclobber,
+            set_native_menu_checked
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

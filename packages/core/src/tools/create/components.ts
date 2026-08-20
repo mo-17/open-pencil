@@ -1,4 +1,5 @@
-import { defineTool, nodeSummary } from '#core/tools/schema'
+import type { FigmaComponentNode } from '#core/figma-api'
+import { defineTool, nodeSummary, requireNodes } from '#core/tools/schema'
 import { hasComponentInstanceReferencePath } from '#core/tools/structure/hierarchy'
 
 export const createComponent = defineTool({
@@ -69,5 +70,34 @@ export const createInstance = defineTool({
     if (args.y !== undefined) instance.y = args.y
     const index = parent.children.findIndex((child) => child.id === instance.id)
     return { ...nodeSummary(instance), parent_id: parent.id, index }
+  }
+})
+
+export const combineAsVariants = defineTool({
+  name: 'combine_as_variants',
+  mutates: true,
+  description:
+    'Combine components sharing a parent into a component set (variant set). Components named ' +
+    '"Category/Value" (e.g. "Button/Primary") derive variant properties from the name segments.',
+  params: {
+    ids: { type: 'string[]', description: 'Component node IDs to combine', required: true }
+  },
+  execute: (figma, { ids }) => {
+    const nodes = requireNodes(figma, ids)
+    if (!nodes) return { error: 'One or more node IDs were not found' }
+    if (nodes.length < 2) return { error: 'Need at least 2 components to combine as variants' }
+    if (!nodes.every((node): node is FigmaComponentNode => node.type === 'COMPONENT')) {
+      return { error: 'combineAsVariants requires COMPONENT nodes' }
+    }
+    const parent = nodes[0].parent ?? figma.currentPage
+    if (!nodes.every((node) => node.parent?.id === parent.id)) {
+      return { error: 'combineAsVariants requires components to share a parent' }
+    }
+    try {
+      const componentSet = figma.combineAsVariants(nodes, parent)
+      return nodeSummary(componentSet)
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) }
+    }
   }
 })

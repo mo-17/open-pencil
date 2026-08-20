@@ -230,6 +230,7 @@ describe('DEFAULT_PACKAGES', () => {
       'packages/motion-runtime',
       'packages/dom-css',
       'packages/mcp',
+      'packages/harness',
       'packages/vue',
       'packages/cli'
     ])

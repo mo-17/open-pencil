@@ -22,6 +22,7 @@ Bun workspace with focused packages:
 - `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React or Vite + Vue 3 TypeScript + Tailwind projects, plus source-only Expo React Native, Flutter, native WeChat Mini Program, Taro, uni-app, and Mpx projects. Both web targets support the preview VFS, static builds, and deploy bundles; Vue v1 emits editable SFCs, Vue Router v4, route/query bindings, a bounded lowcode subset, and explicit warnings for unsupported advanced runtimes. Native/mobile and mini-program targets remain explicit source-only MVPs with fail-closed warnings, not WebViews or post-processed React output.
 - `packages/cli` — `@open-pencil/cli`: headless CLI for `.fig`/`.pen` inspection, conversion, export, linting, XPath query, and compiler build/deploy flows. Uses `citty` + `agentfmt`.
 - `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + Streamable HTTP (Hono) + browser WebSocket RPC. Reuses core ToolDefs.
+- `packages/harness` — `@open-pencil/harness`: optional Node companion CLI for backend-neutral coding-agent sessions. Owns HarnessAgent adapters, opaque resume-state persistence, and the bounded JSONL host protocol; the desktop launches the separately installed command instead of bundling a JavaScript runtime.
 - `packages/marketplace` — private self-hostable plugin-marketplace control plane. Owns publisher/key/ownership/submission/release state, SQLite persistence, immutable artifacts, signed publication, public/publisher HTTP APIs, admin CLI, and append-only audit checkpoints while consuming the public data-only contracts.
 - `packages/figma-motion-plugin` — private development Figma plugin that consumes OpenPencil's strict shared Motion envelope and applies the verified official Motion Plugin API subset through the shared `@open-pencil/fig` applicator.
 - `packages/docs` — `@open-pencil/docs`: published VitePress documentation site. Run `bun run docs:dev` for authoring, `bun run docs:build` for the default local render check, and `bun run docs:build:production` for complete deployment output.
@@ -519,6 +520,7 @@ Release commits are the exception: keep using `Release v0.x.y`.
 
 ## ACP (Agent Client Protocol)
 
+- Harness-based coding agents live in the optional `@open-pencil/harness` Node companion rather than the browser app. Keep its session service backend-neutral, persist only opaque non-secret resume state, and expose host integration through its bounded JSONL protocol. Do not bundle a JavaScript runtime into Tauri; launch the separately installed `openpencil-harness` command. Pi may use local `just-bash`, but that in-memory sandbox does not provide process-restart recovery.
 - ACP transport (`src/app/ai/acp/transport.ts`) spawns agents via dynamic import of `@tauri-apps/plugin-shell`
 - Pure mapping logic in `src/app/ai/acp/map-update.ts` — converts `SessionUpdate` → `UIMessageChunk`
 - ACP design context prompt (`ACP_DESIGN_CONTEXT`) is authored in `src/app/ai/acp/design-context.md` and re-exported from `src/constants.ts`

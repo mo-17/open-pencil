@@ -1,7 +1,7 @@
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
-import type { FigmaAPI, FigmaNodeProxy } from '#core/figma-api'
-import { defineTool, nodeSummary, type ToolCtx } from '#core/tools/schema'
+import type { FigmaAPI } from '#core/figma-api'
+import { defineTool, nodeSummary, requireNodes, type ToolCtx } from '#core/tools/schema'
 
 interface ReparentSnapshot {
   id: string
@@ -251,10 +251,8 @@ export const groupNodes = defineTool({
     ids: { type: 'string[]', description: 'Node IDs to group', required: true }
   },
   execute: (figma, { ids }) => {
-    const nodes = ids
-      .map((id) => figma.getNodeById(id))
-      .filter((node): node is FigmaNodeProxy => node !== null)
-    if (nodes.length < 2) return { error: 'Need at least 2 nodes to group' }
+    const nodes = requireNodes(figma, ids)
+    if (!nodes || nodes.length < 2) return { error: 'Need at least 2 nodes to group' }
     const parent = nodes[0].parent ?? figma.currentPage
     const group = figma.group(nodes, parent)
     return nodeSummary(group)

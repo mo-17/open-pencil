@@ -41,9 +41,12 @@ export const unsplashKeyStatus = ref<CredentialStatus>('missing')
 const credentialPersistenceRevision = ref(0)
 
 export const isACPProvider = computed(() => providerID.value.startsWith('acp:'))
+export const isHarnessProvider = computed(() => providerID.value === 'harness:pi')
+export const isAgentProvider = computed(() => isACPProvider.value || isHarnessProvider.value)
 
 export const isConfigured = computed(() => {
   if (isACPProvider.value) return IS_TAURI
+  if (isHarnessProvider.value) return IS_TAURI && apiKeyStatus.value === 'configured'
   if (apiKeyStatus.value !== 'configured') return false
   const needsBaseURL =
     providerID.value === 'openai-compatible' || providerID.value === 'anthropic-compatible'
@@ -145,6 +148,9 @@ export function registerAIChatEffects(markTransportDirty: () => void) {
     const profile = designModelProfile.value
     if (!profile) return null
     return [
+      profile.reasoningEffort,
+      profile.harnessThinkingLevel,
+      profile.harnessPermissionMode,
       ...profile.capabilities,
       profile.featurePolicy.webSearch.enabled,
       profile.featurePolicy.codeExecution.enabled,
