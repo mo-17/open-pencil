@@ -102,6 +102,7 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
         eventListeners.delete(eventId)
       }
       let previewEventChannelId: number | null = null
+      let codePenEventChannelId: number | null = null
       const previewEventIndexes = new Map<number, number>()
       const emitShellEvent = (callbackId: number, event: string, payload: unknown): void => {
         const index = previewEventIndexes.get(callbackId) ?? 0
@@ -168,43 +169,21 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
           const onEvent = args?.onEvent as { id?: number } | undefined
           if (!onEvent?.id) throw new Error('Missing shell event channel')
           const shellArgs = args?.args
+          const shellOptions = args?.options
           const isMicrofrontendBuild =
             Array.isArray(shellArgs) &&
             shellArgs.includes('build') &&
             shellArgs.includes('--packaging') &&
             shellArgs.includes('microfrontend')
-          const isCodePenBuild = Array.isArray(shellArgs) && shellArgs.includes('codepen')
-          if (isCodePenBuild) {
-            const flagValue = (flag: string): string => {
-              const index = shellArgs.indexOf(flag)
-              const value = shellArgs[index + 1]
-              if (typeof value !== 'string') throw new Error(`Missing ${flag} CodePen argument`)
-              return value
-            }
+          const isCodePenSidecar =
+            args?.program === 'binaries/openpencil-codepen-sidecar' &&
+            typeof shellOptions === 'object' &&
+            shellOptions !== null &&
+            !Array.isArray(shellOptions) &&
+            Object.getOwnPropertyDescriptor(shellOptions, 'sidecar')?.value === true
+          if (isCodePenSidecar) {
+            codePenEventChannelId = onEvent.id
             previewEventIndexes.set(onEvent.id, 0)
-            window.setTimeout(() => {
-              emitShellEvent(
-                onEvent.id,
-                'Stdout',
-                JSON.stringify({
-                  compatible: true,
-                  target: flagValue('--target'),
-                  packageName: flagValue('--package-name'),
-                  data: {
-                    title: flagValue('--title'),
-                    html: '<div id="root"></div>',
-                    html_pre_processor: 'none',
-                    css: 'body{margin:0}',
-                    css_pre_processor: 'none',
-                    js: 'document.body.dataset.showcase="ready"',
-                    js_pre_processor: 'none'
-                  },
-                  diagnostics: [],
-                  warnings: []
-                }) + '\n'
-              )
-              emitShellEvent(onEvent.id, 'Terminated', { code: 0, signal: null })
-            }, 0)
             return 3
           }
           if (isMicrofrontendBuild) {
@@ -251,6 +230,43 @@ async function installTauriPreviewMock(page: Page, options?: { autoUpdateAck?: b
         if (cmd === 'plugin:shell|stdin_write') {
           if (typeof args?.buffer === 'string') {
             tauriWindow.__OP_PREVIEW_STDIN__?.push(args.buffer)
+            if (args.pid === 3 && codePenEventChannelId !== null) {
+              const request = JSON.parse(args.buffer) as {
+                requestId: string
+                target: 'react' | 'vue'
+                packageName: string
+                options?: { title?: string }
+              }
+              const callbackId = codePenEventChannelId
+              window.setTimeout(() => {
+                emitShellEvent(
+                  callbackId,
+                  'Stdout',
+                  JSON.stringify({
+                    version: 1,
+                    requestId: request.requestId,
+                    ok: true,
+                    result: {
+                      compatible: true,
+                      target: request.target,
+                      packageName: request.packageName,
+                      data: {
+                        title: request.options?.title ?? 'Untitled',
+                        html: '<div id="root"></div>',
+                        html_pre_processor: 'none',
+                        css: 'body{margin:0}',
+                        css_pre_processor: 'none',
+                        js: 'document.body.dataset.showcase="ready"',
+                        js_pre_processor: 'none'
+                      },
+                      diagnostics: []
+                    }
+                  }) + '\n'
+                )
+                emitShellEvent(callbackId, 'Terminated', { code: 0, signal: null })
+              }, 0)
+              return null
+            }
             const command = JSON.parse(args.buffer) as { type?: unknown }
             if (command.type === 'update' && previewEventChannelId !== null) {
               const callbackId = previewEventChannelId
