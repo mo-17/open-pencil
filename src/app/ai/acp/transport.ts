@@ -37,6 +37,7 @@ import {
 } from '@/app/ai/chat/attachments'
 import { INTERRUPTED_TOOL_ERROR } from '@/app/ai/chat/interruption'
 import { designSystemPromptFor } from '@/app/ai/chat/prompt-policy'
+import { describeDiagnosticError, recordACPTransportFailure } from '@/app/diagnostics'
 import { buildACPMCPServers } from '@/app/integrations/mcp'
 
 import {
@@ -794,6 +795,10 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
               this.invalidateSession(session, requestError(e))
               finish('stop', undefined, INTERRUPTED_TOOL_ERROR)
             } else {
+              recordACPTransportFailure({
+                operation: 'message',
+                ...describeDiagnosticError(e)
+              })
               finish('error', formatConnectionError(e, this.agentDef))
             }
           })
@@ -1215,9 +1220,11 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       })
     } catch (e) {
       if (this.requestLifecycle === lifecycle) this.requestLifecycle = null
+      if (!this.isDestroying()) {
+        recordACPTransportFailure({ operation: 'start', ...describeDiagnosticError(e) })
+      }
       throw new Error(formatConnectionError(e, this.agentDef))
     }
-
     const { child, input, output } = process
     if (this.isDestroying()) {
       await child.kill()
@@ -1278,6 +1285,9 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         initializeResult.agentCapabilities?.promptCapabilities?.image === true
       )
     } catch (e) {
+      if (!this.isDestroying()) {
+        recordACPTransportFailure({ operation: 'start', ...describeDiagnosticError(e) })
+      }
       state.diagnosticsEnabled = false
       updates.clear()
       const message = this.isDestroying()

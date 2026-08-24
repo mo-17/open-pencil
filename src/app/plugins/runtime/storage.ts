@@ -9,7 +9,7 @@ import {
   validateModuleIdentity
 } from '@open-pencil/scene-graph'
 
-import { openIdb, runIdbReadonlyRequest, txDone } from '@/app/storage/idb-util'
+import { openIdb, runIdbReadonlyRequest, txDone } from '@/app/storage/idb'
 
 import { parseAppPluginMarketplaceAuthority, type AppPluginMarketplaceAuthority } from '../types'
 

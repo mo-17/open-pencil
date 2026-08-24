@@ -27,7 +27,6 @@ import { createVisualInspectionTool } from './vision'
 
 export const MAX_AGENT_STEPS = 50
 const MAX_TOOL_LOG_ENTRIES = 200
-const MAX_STEP_USAGE_ENTRIES = 500
 const DOCUMENT_SCOPE_TOOLS = new Set(['eval'])
 const NON_GRAPH_MUTATION_TOOLS = new Set(['viewport_zoom_to_fit'])
 const MODULE_CREATION_POLICY_TOOLS = new Set(['list_modules', 'create_module'])
@@ -113,17 +112,8 @@ const COMPONENT_CATALOG_TOOL_NAMES = new Set([
   'list_libraries',
   'insert_library_component'
 ])
-export interface StepUsage {
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheWriteTokens: number
-  timestamp: number
-}
-
 class RunState {
   toolLog: ToolLogEntry[] = []
-  stepUsages: StepUsage[] = []
   currentSteps = 0
   undoTurn = 0
 
@@ -138,14 +128,6 @@ class RunState {
     }
   }
 
-  recordStep(usage: StepUsage): void {
-    this.stepUsages.push(usage)
-    if (this.stepUsages.length > MAX_STEP_USAGE_ENTRIES) {
-      this.stepUsages.splice(0, this.stepUsages.length - MAX_STEP_USAGE_ENTRIES)
-    }
-    this.currentSteps++
-  }
-
   resetSteps(): void {
     this.currentSteps = 0
     this.undoTurn++
@@ -157,7 +139,6 @@ class RunState {
 
   clear(): void {
     this.toolLog = []
-    this.stepUsages = []
     this.currentSteps = 0
     this.undoTurn++
   }
@@ -178,12 +159,8 @@ export function getToolLogEntries(store?: EditorStore): ToolLogEntry[] {
   return getRunState(store).toolLog
 }
 
-export function getStepUsages(store?: EditorStore): StepUsage[] {
-  return getRunState(store).stepUsages
-}
-
-export function recordStepUsage(usage: StepUsage, store?: EditorStore): void {
-  getRunState(store).recordStep(usage)
+export function recordStep(store?: EditorStore): void {
+  getRunState(store).currentSteps++
 }
 
 export function resetRunSteps(store?: EditorStore): void {

@@ -1,5 +1,5 @@
 import type { AISessionStorageBackend } from '@/app/ai/sessions/types'
-import { openIdb, reqToPromise, txDone } from '@/app/storage/idb-util'
+import { openIdb, reqToPromise, txDone } from '@/app/storage/idb'
 
 export const AI_SESSION_DATABASE_NAME = 'open-pencil-ai-sessions'
 const AI_SESSION_DATABASE_VERSION = 1

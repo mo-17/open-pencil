@@ -1,4 +1,4 @@
-import { openIdb, reqToPromise, runIdbReadonlyRequest, txDone } from '@/app/storage/idb-util'
+import { openIdb, reqToPromise, runIdbReadonlyRequest, txDone } from '@/app/storage/idb'
 
 import { MARKETPLACE_SOURCE_STORAGE_KEY } from './contract'
 

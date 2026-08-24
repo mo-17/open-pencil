@@ -18,7 +18,7 @@ import ChatMessage from '@/components/chat/ChatMessage.vue'
 import CodePenAIReview from '@/components/chat/CodePenAIReview.vue'
 import ProviderSetup from '@/components/chat/ProviderSetup.vue'
 import AppPlaceholder from '@/components/ui/AppPlaceholder.vue'
-import AppTextButton from '@/components/ui/AppTextButton.vue'
+import AppButton from '@/components/ui/AppButton.vue'
 
 const IS_DEV = import.meta.env.DEV
 const {
@@ -208,32 +208,32 @@ async function handleClearChat(): Promise<void> {
         v-if="messages.length > 0"
         class="flex shrink-0 items-center gap-1 border-t border-border px-3 py-1"
       >
-        <AppTextButton
-          v-if="IS_DEV"
-          :ui="{ base: 'flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover' }"
-          @click="handleCopyDebug"
-        >
+        <AppButton v-if="IS_DEV" color="neutral" variant="ghost" size="xs" @click="handleCopyDebug">
           <icon-lucide-clipboard-copy v-if="!debugCopied" class="size-3" />
           <icon-lucide-check v-else class="size-3 text-green-400" />
           {{ debugCopied ? 'Copied' : 'Copy log' }}
-        </AppTextButton>
-        <AppTextButton
+        </AppButton>
+        <AppButton
           v-if="IS_DEV && hasACPDebugEntries()"
-          :ui="{ base: 'flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover' }"
+          color="neutral"
+          variant="ghost"
+          size="xs"
           @click="handleCopyACPLog"
         >
           <icon-lucide-bug v-if="!acpLogCopied" class="size-3" />
           <icon-lucide-check v-else class="size-3 text-green-400" />
           {{ acpLogCopied ? 'Copied' : 'ACP log' }}
-        </AppTextButton>
-        <AppTextButton
+        </AppButton>
+        <AppButton
           v-if="!isACPProvider"
-          :ui="{ base: 'flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover' }"
+          color="error"
+          variant="ghost"
+          size="xs"
           @click="handleClearChat"
         >
           <icon-lucide-trash-2 class="size-3" />
           Clear
-        </AppTextButton>
+        </AppButton>
       </div>
 
       <div
@@ -248,16 +248,17 @@ async function handleClearChat(): Promise<void> {
           @refresh="refreshACPSessionHistory"
           @resume="handleRestoreACPSession"
         />
-        <AppTextButton
-          :ui="{
-            base: 'ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover'
-          }"
+        <AppButton
+          color="error"
+          variant="ghost"
+          size="xs"
+          :ui="{ base: 'ml-auto shrink-0' }"
           :disabled="acpSessionInteractionBusy"
           @click="handleClearChat"
         >
           <icon-lucide-trash-2 class="size-3" />
           {{ dialogs.clear }}
-        </AppTextButton>
+        </AppButton>
       </div>
 
       <ChatInput

@@ -1,4 +1,4 @@
-import { openIdb, reqToPromise, txDone } from '@/app/storage/idb-util'
+import { openIdb, reqToPromise, txDone } from '@/app/storage/idb'
 
 import type { AppPluginStateStorage } from './types'
 

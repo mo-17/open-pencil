@@ -1,4 +1,4 @@
-/** Shared IndexedDB plumbing for the local canvas store and the sync outbox. */
+/** Native IndexedDB helpers for stores that need explicit factory injection. */
 
 export function openIdb(
   name: string,
@@ -7,8 +7,7 @@ export function openIdb(
   idbFactory?: IDBFactory
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const factory =
-      idbFactory ?? (Reflect.get(globalThis, 'indexedDB') as IDBFactory | undefined)
+    const factory = idbFactory ?? (Reflect.get(globalThis, 'indexedDB') as IDBFactory | undefined)
     if (!factory) {
       reject(new Error('IndexedDB is not available'))
       return

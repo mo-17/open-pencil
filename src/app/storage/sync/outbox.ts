@@ -5,14 +5,13 @@ import {
   type StorageDocumentAuthority,
   type StorageProviderID
 } from '@/app/integrations/storage/types'
-import { openIdb, reqToPromise, txDone } from '@/app/storage/idb-util'
+import { APP_DATABASE_NAMES, openIdb, reqToPromise, txDone } from '@/app/storage/idb'
 import { legacyLocalCanvasBinding } from '@/app/storage/local-store/identity'
 import { makeJobId, supersedePutCanvasJobs, type OutboxJob } from '@/app/storage/sync/types'
 
-const DB_NAME = 'open-pencil-cloud-outbox'
+const DB_NAME = APP_DATABASE_NAMES.outbox
 const DB_VERSION = 2
 const STORE = 'jobs'
-
 export type OutboxEnqueueInput = Omit<
   OutboxJob,
   'id' | 'createdAt' | 'attempts' | 'nextAttemptAt' | 'expectedRemoteRevision'

@@ -1,7 +1,7 @@
 import type { DownloadedFontCache } from '@open-pencil/core/text'
 
 import type { DownloadedFontCacheSummary } from '@/app/editor/fonts/cache'
-import { openIdb, reqToPromise, txDone } from '@/app/storage/idb-util'
+import { openIdb, reqToPromise, txDone } from '@/app/storage/idb'
 
 const DEFAULT_DATABASE_NAME = 'open-pencil-downloaded-fonts-v1'
 const DATABASE_VERSION = 1

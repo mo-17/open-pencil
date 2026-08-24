@@ -1,6 +1,7 @@
 import type { Editor, EditorState } from '@open-pencil/core/editor'
 import { browserHTMLToSceneGraph } from '@open-pencil/dom-css/browser'
 
+import { describeDiagnosticError, recordDocumentFailure } from '@/app/diagnostics'
 import { yieldToUI } from '@/app/document/io/browser'
 import { applyImportedDocument } from '@/app/document/io/imported-document'
 import { notificationMessages } from '@/app/i18n/notifications'
@@ -66,7 +67,12 @@ export function createDOMOpenActions({
       setDocumentSource(`${pageName}.html`, 'html')
       toast.info(notificationMessages.get().importedDOMCSS)
     } catch (e) {
-      console.error('Failed to import DOM/CSS:', e)
+      recordDocumentFailure({
+        operation: 'import',
+        format: 'dom-css',
+        ...describeDiagnosticError(e),
+        retryable: describeDiagnosticError(e).retryable
+      })
       toast.error(notificationMessages.get().importDOMCSSFailed({ error: errorDetail(e) }))
       throw e
     } finally {
@@ -84,7 +90,12 @@ export function createDOMOpenActions({
       })
       setDocumentSource(file.name, 'html', options.handle, options.path)
     } catch (e) {
-      console.error('Failed to open DOM/CSS file:', e)
+      recordDocumentFailure({
+        operation: 'open',
+        format: 'dom-css',
+        ...describeDiagnosticError(e),
+        retryable: describeDiagnosticError(e).retryable
+      })
       toast.error(notificationMessages.get().openDOMCSSFailed({ error: errorDetail(e) }))
     } finally {
       finishLoading()

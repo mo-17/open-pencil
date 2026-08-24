@@ -59,7 +59,12 @@ import {
 } from '@/app/ai/models'
 import type { ResolvedAIModelRole } from '@/app/ai/models'
 import type { AISessionStore } from '@/app/ai/sessions'
-import { MAX_AGENT_STEPS, createAITools, recordStepUsage, resetRunSteps } from '@/app/ai/tools'
+import { MAX_AGENT_STEPS, createAITools, recordStep, resetRunSteps } from '@/app/ai/tools'
+import {
+  recordChatCompleted,
+  recordChatFailed,
+  recordModelStepCompleted
+} from '@/app/diagnostics/events'
 import type { getActiveEditorStore } from '@/app/editor/active-store'
 
 type EditorStore = ReturnType<typeof getActiveEditorStore>
@@ -391,16 +396,15 @@ export function createToolLoopTransport({
       }
     },
     onStepFinish: ({ usage }) => {
-      recordStepUsage(
-        {
-          inputTokens: usage.inputTokens ?? 0,
-          outputTokens: usage.outputTokens ?? 0,
-          cacheReadTokens: usage.inputTokenDetails.cacheReadTokens ?? 0,
-          cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens ?? 0,
-          timestamp: Date.now()
-        },
-        store
-      )
+      recordStep(store)
+      recordModelStepCompleted({
+        provider: providerID,
+        model: effectiveModelID,
+        inputTokens: usage.inputTokens ?? null,
+        outputTokens: usage.outputTokens ?? null,
+        cacheReadTokens: usage.inputTokenDetails.cacheReadTokens ?? null,
+        cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens ?? null
+      })
     }
   })
 
@@ -483,13 +487,18 @@ export function createChatSessionManager({
   function handleChatFinish({
     finishReason,
     isAbort,
+    isDisconnect,
     isError
   }: {
     finishReason?: FinishReason
     isAbort: boolean
+    isDisconnect: boolean
     isError: boolean
   }): void {
-    if (!isAbort && !isError) failure.value = classifyAIChatFinish(finishReason)
+    if (!isAbort && !isDisconnect && !isError) {
+      failure.value = classifyAIChatFinish(finishReason)
+      recordChatCompleted({ finishReason: finishReason ?? null })
+    }
   }
 
   function clearFailure(): void {
@@ -867,6 +876,7 @@ export function createChatSessionManager({
         lastAssistantMessageIsCompleteWithApprovalResponses(options),
       onError: (error) => {
         failure.value = classifyAIChatError(error)
+        recordChatFailed({ errorName: error instanceof Error ? error.name : 'unknown' })
         // Preserve the original detail in the bounded/redacted debug failure,
         // but never expose provider text through Chat.error consumers.
         try {
@@ -876,8 +886,8 @@ export function createChatSessionManager({
           void redactionError
         }
       },
-      onFinish: ({ messages: finishedMessages, finishReason, isAbort, isError }) => {
-        handleChatFinish({ finishReason, isAbort, isError })
+      onFinish: ({ messages: finishedMessages, finishReason, isAbort, isDisconnect, isError }) => {
+        handleChatFinish({ finishReason, isAbort, isDisconnect, isError })
         let settledMessages = finishedMessages
         if (isAbort) {
           settledMessages = finalizeInterruptedToolParts(finishedMessages)

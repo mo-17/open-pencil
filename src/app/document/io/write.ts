@@ -1,5 +1,6 @@
 import type { EditorState } from '@open-pencil/core/editor'
 
+import { describeDiagnosticError, recordDocumentFailure } from '@/app/diagnostics'
 import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
 import type { StorageProfileMutationLease } from '@/app/storage/mutation-drain'
 import { persistStorageCanvasLocally } from '@/app/storage/sync/persist'
@@ -94,13 +95,22 @@ export function createDocumentWriter(
     const savedVersion = version ?? state.sceneVersion
 
     setLastWriteTime(Date.now())
-    await writeDocumentTarget(target, data)
-    setSavedVersion(savedVersion)
     try {
-      await onWriteSuccess?.(savedVersion)
+      await writeDocumentTarget(target, data)
+      setSavedVersion(savedVersion)
+      try {
+        await onWriteSuccess?.(savedVersion)
+      } catch (error) {
+        console.warn('[Recovery] Cleanup after document write failed:', error)
+      }
+      return true
     } catch (error) {
-      console.warn('[Recovery] Cleanup after document write failed:', error)
+      recordDocumentFailure({
+        operation: 'save',
+        format: 'fig',
+        ...describeDiagnosticError(error)
+      })
+      throw error
     }
-    return true
   }
 }

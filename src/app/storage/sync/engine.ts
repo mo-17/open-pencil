@@ -1,6 +1,11 @@
 import { IS_BROWSER } from '@open-pencil/core/constants'
 
 import {
+  describeDiagnosticError,
+  recordStorageFailure,
+  storageOperationForJob
+} from '@/app/diagnostics'
+import {
   createActiveStorageAdapter,
   ensureS3StorageAuthority,
   S3_COMPATIBLE_STORAGE_PROVIDER_ID,
@@ -350,6 +355,13 @@ async function pumpOnce(): Promise<void> {
     if (remaining.length === 0) setSyncUI('idle')
     else scheduleWake(50)
   } catch (error) {
+    const { errorName, errorCode, retryable } = describeDiagnosticError(error)
+    recordStorageFailure({
+      operation: storageOperationForJob(job.type),
+      errorName,
+      errorCode,
+      retryable
+    })
     const message = error instanceof Error ? error.message : String(error)
     // A newer enqueue may have superseded this in-flight job. Never resurrect
     // its durable record or let its late result mutate the replacement row.

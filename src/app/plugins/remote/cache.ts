@@ -1,4 +1,4 @@
-import { openIdb, runIdbReadonlyRequest, txDone } from '@/app/storage/idb-util'
+import { openIdb, runIdbReadonlyRequest, txDone } from '@/app/storage/idb'
 
 import { REMOTE_PLUGIN_TRANSPORT_LIMITS, type RemotePluginCacheValidators } from './transport'
 

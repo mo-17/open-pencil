@@ -1,4 +1,4 @@
-import { openIdb, reqToPromise, txDone } from '@/app/storage/idb-util'
+import { APP_DATABASE_NAMES, openIdb, reqToPromise, txDone } from '@/app/storage/idb'
 import {
   LEGACY_STORAGE_PROVIDER_ID,
   legacyAuthorityMigrationKeys,
@@ -18,7 +18,7 @@ import {
 import type { LocalCanvasStore } from '@/app/storage/local-store/store'
 import type { LocalCanvasMeta, LocalCanvasWriteInput } from '@/app/storage/local-store/types'
 
-const DB_NAME = 'open-pencil-cloud-local'
+const DB_NAME = APP_DATABASE_NAMES.localCanvas
 const DB_VERSION = 2
 
 const STORE_META = 'meta-v2'
