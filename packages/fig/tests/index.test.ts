@@ -94,6 +94,9 @@ describe('@open-pencil/fig package API', () => {
     })
     const buffer = new Uint8Array(bytes).buffer
 
+    expect(() =>
+      parseFigBuffer(buffer, { limits: { maxArchiveBytes: buffer.byteLength - 1 } })
+    ).toThrow(`.fig archive exceeds the ${buffer.byteLength - 1} compressed byte limit`)
     expect(() => parseFigBuffer(buffer, { limits: { maxEntries: 3 } })).toThrow(
       '.fig archive exceeds the 3 entry limit'
     )
@@ -110,7 +113,7 @@ describe('@open-pencil/fig package API', () => {
       parseFigBuffer(buffer, { limits: { maxTotalEntryBytes: totalBytes - 1 } })
     ).toThrow(`.fig archive exceeds the ${totalBytes - 1} total uncompressed byte limit`)
     expect(() => parseFigBuffer(buffer, { limits: { maxNodeChanges: 1 } })).toThrow(
-      /(?:Kiwi array item limit exceeded \(1 per message\)|\.fig node changes exceed the 1 record limit)/
+      /(?:Kiwi array (?:item limit exceeded \(1 per message\)|length limit exceeded \(1 per array\))|\.fig node changes exceed the 1 record limit)/
     )
   })
 
@@ -136,7 +139,7 @@ describe('@open-pencil/fig package API', () => {
     const buffer = new Uint8Array(bytes).buffer
 
     expect(() => parseFigBuffer(buffer, { limits: { maxDataBytes: 1 } })).toThrow(
-      'Decompressed fig-kiwi data exceeds the 1 byte limit'
+      /Decompressed fig-kiwi data.*exceeds the 1 byte limit/
     )
   })
 

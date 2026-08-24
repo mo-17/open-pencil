@@ -167,8 +167,15 @@ describe('Figma FIG parse helpers', () => {
 
     expect(decodeFigKiwiCanvas(container).nodeChanges).toHaveLength(2)
     expect(() => decodeFigKiwiCanvas(container, { maxNodeChanges: 1 })).toThrow(
-      'Kiwi array item limit exceeded (1 per message)'
+      'Kiwi array length limit exceeded (1 per array)'
     )
+    expect(() =>
+      decodeFigKiwiCanvas(container, {
+        maxNodeChanges: 10,
+        maxArrayLength: 1,
+        maxArrayItems: 10
+      })
+    ).toThrow('Kiwi array length limit exceeded (1 per array)')
   })
 })
 

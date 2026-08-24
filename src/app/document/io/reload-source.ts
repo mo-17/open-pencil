@@ -10,8 +10,11 @@ export type ReloadSourceOptions = {
 
 export async function readReloadSource({ filePath, fileHandle }: ReloadSourceOptions) {
   if (filePath && isTauri()) {
-    const { readFile: tauriRead } = await import('@tauri-apps/plugin-fs')
-    return readFigSource({ read: () => tauriRead(filePath) }, { populate: 'first-page' })
+    const { readFile: tauriRead, stat } = await import('@tauri-apps/plugin-fs')
+    return readFigSource(
+      { size: async () => (await stat(filePath)).size, read: () => tauriRead(filePath) },
+      { populate: 'first-page' }
+    )
   }
 
   if (fileHandle) {

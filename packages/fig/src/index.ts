@@ -1,4 +1,5 @@
 export {
+  assertFigArchiveByteLength,
   compressFigDataSync,
   parseFigBuffer,
   REMOTE_FIG_ARCHIVE_LIMITS,

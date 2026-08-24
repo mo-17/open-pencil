@@ -32,6 +32,8 @@ export interface FigParseResult {
 }
 
 export interface FigArchiveLimits extends FigKiwiDecodeLimits {
+  /** Maximum byte length of the compressed outer ZIP archive. */
+  maxArchiveBytes?: number
   /** Maximum number of entries in the outer ZIP archive. */
   maxEntries?: number
   /** Maximum uncompressed size of one outer ZIP entry. */
@@ -49,6 +51,7 @@ export interface FigArchiveLimits extends FigKiwiDecodeLimits {
 }
 
 export const REMOTE_FIG_ARCHIVE_LIMITS: Readonly<Required<FigArchiveLimits>> = Object.freeze({
+  maxArchiveBytes: 256 * 1024 * 1024,
   maxEntries: 2_048,
   maxEntryBytes: 64 * 1024 * 1024,
   maxTotalEntryBytes: 256 * 1024 * 1024,
@@ -57,6 +60,7 @@ export const REMOTE_FIG_ARCHIVE_LIMITS: Readonly<Required<FigArchiveLimits>> = O
   maxSchemaBytes: 16 * 1024 * 1024,
   maxDataBytes: 192 * 1024 * 1024,
   maxNodeChanges: 200_000,
+  maxArrayLength: 200_000,
   maxArrayItems: 1_000_000,
   maxDecodeDepth: 64,
   maxSchemaDefinitions: 4_096,
@@ -67,7 +71,7 @@ export const REMOTE_FIG_ARCHIVE_LIMITS: Readonly<Required<FigArchiveLimits>> = O
 })
 
 export interface ParseFigBufferOptions {
-  /** Omit for the legacy local-file path. Remote/untrusted callers must provide limits. */
+  /** Omit only for explicitly trusted, application-generated round trips. */
   limits?: FigArchiveLimits
 }
 
@@ -77,6 +81,17 @@ function checkedLimit(value: number | undefined, label: string): number {
     throw new RangeError(`${label} must be a positive safe integer`)
   }
   return value
+}
+
+/** Reject a compressed archive before a caller allocates or decompresses it. */
+export function assertFigArchiveByteLength(byteLength: number, limits?: FigArchiveLimits): void {
+  if (!Number.isSafeInteger(byteLength) || byteLength < 0) {
+    throw new RangeError('FIG archive byteLength must be a non-negative safe integer')
+  }
+  const maxArchiveBytes = checkedLimit(limits?.maxArchiveBytes, 'maxArchiveBytes')
+  if (byteLength > maxArchiveBytes) {
+    throw new Error(`.fig archive exceeds the ${maxArchiveBytes} compressed byte limit`)
+  }
 }
 
 function isLikelyAsset(name: string): boolean {
@@ -110,6 +125,7 @@ export function parseFigBuffer(
   const maxTotalEntryBytes = checkedLimit(limits?.maxTotalEntryBytes, 'maxTotalEntryBytes')
   const maxImageBytes = checkedLimit(limits?.maxImageBytes, 'maxImageBytes')
   const maxTotalImageBytes = checkedLimit(limits?.maxTotalImageBytes, 'maxTotalImageBytes')
+  assertFigArchiveByteLength(buffer.byteLength, limits)
   const archive = unzipSync(new Uint8Array(buffer), {
     filter(entry) {
       entryCount += 1
@@ -186,6 +202,7 @@ export function parseFigBuffer(
           maxSchemaBytes: limits.maxSchemaBytes,
           maxDataBytes: limits.maxDataBytes,
           maxNodeChanges: limits.maxNodeChanges,
+          maxArrayLength: limits.maxArrayLength,
           maxArrayItems: limits.maxArrayItems,
           maxDecodeDepth: limits.maxDecodeDepth,
           maxSchemaDefinitions: limits.maxSchemaDefinitions,

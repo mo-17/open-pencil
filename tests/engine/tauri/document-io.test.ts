@@ -15,6 +15,15 @@ describe('Tauri document IO helpers', () => {
   test('reads reload source bytes through plugin-fs', async () => {
     const fixture = await Bun.file('tests/fixtures/gold-preview.fig').arrayBuffer()
     await mockTauriIPC((cmd, args) => {
+      if (cmd === 'plugin:fs|stat') {
+        expect(args).toEqual({ path: '/tmp/document.fig', options: undefined })
+        return {
+          size: fixture.byteLength,
+          mtime: null,
+          atime: null,
+          birthtime: null
+        }
+      }
       expect(cmd).toBe('plugin:fs|read_file')
       expect(args).toEqual({ path: '/tmp/document.fig', options: undefined })
       return [...new Uint8Array(fixture)]

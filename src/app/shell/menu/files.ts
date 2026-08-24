@@ -81,6 +81,10 @@ export async function openFileFromPath(path: string) {
   await openFileInNewTab(
     {
       name: designFileName(path),
+      size: async () => {
+        const { stat } = await import('@tauri-apps/plugin-fs')
+        return (await stat(path)).size
+      },
       read: () => readTauriDesignBytes(path)
     },
     undefined,

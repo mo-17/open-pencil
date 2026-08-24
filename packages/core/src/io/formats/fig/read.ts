@@ -1,4 +1,4 @@
-import { parseFigBuffer, type FigArchiveLimits } from '@open-pencil/fig'
+import { assertFigArchiveByteLength, parseFigBuffer, type FigArchiveLimits } from '@open-pencil/fig'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { DynamicConcurrencyLimiter, type ConcurrencyLimiterState } from '#core/async-work'
@@ -10,13 +10,42 @@ import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
 
 export interface ParseFigFileOptions {
   populate?: 'all' | 'first-page' | 'none'
-  /** Apply archive and decompression quotas when parsing untrusted remote input. */
+  /** Override the finite ordinary-file archive and decompression quotas. */
   archiveLimits?: FigArchiveLimits
   /** Cancel queued or active dedicated-worker parsing. */
   signal?: AbortSignal
-  /** Disable the UI-thread recovery path for untrusted remote input. */
+  /** Explicitly enable UI-thread recovery only for trusted input. Ordinary readers default false. */
   allowMainThreadFallback?: boolean
 }
+
+/**
+ * Finite defaults for user-selected, local, cloud, reload, and CLI `.fig` inputs.
+ * These are intentionally higher than remote-library limits so known large design
+ * systems remain loadable while compressed, decoded, and expanded graph growth is
+ * still bounded. Low-level parseFigFile/parseFigBuffer callers may omit limits only
+ * for explicitly trusted application-generated round trips.
+ */
+export const ORDINARY_FIG_ARCHIVE_LIMITS: Readonly<Required<FigArchiveLimits>> = Object.freeze({
+  maxArchiveBytes: 256 * 1024 * 1024,
+  maxEntries: 8_192,
+  maxEntryBytes: 256 * 1024 * 1024,
+  maxTotalEntryBytes: 512 * 1024 * 1024,
+  maxImageBytes: 64 * 1024 * 1024,
+  maxTotalImageBytes: 384 * 1024 * 1024,
+  maxSchemaBytes: 32 * 1024 * 1024,
+  maxDataBytes: 384 * 1024 * 1024,
+  maxNodeChanges: 1_000_000,
+  maxArrayLength: 1_000_000,
+  // material3.fig needs more than 1m aggregate Kiwi array items despite
+  // containing only 87,237 nodeChanges; 2m is the measured compatibility floor.
+  maxArrayItems: 2_000_000,
+  maxDecodeDepth: 128,
+  maxSchemaDefinitions: 8_192,
+  maxFieldsPerDefinition: 8_192,
+  maxSchemaFields: 131_072,
+  maxGraphNodes: 400_000,
+  maxTreeDepth: 512
+})
 
 export const MAX_FIG_PARSE_WORKER_CONCURRENCY = 2
 
@@ -31,8 +60,22 @@ export function figParseWorkerConcurrencyForDeviceMemory(deviceMemoryGiB?: numbe
 export type FigSourceData = ArrayBuffer | Uint8Array
 
 export interface ReloadableFigSource {
+  /** Optional known size used to reject oversized input before allocating it. */
+  size?: number | (() => number | Promise<number>)
   /** Return fresh data on every call. The result may be transferred and detached. */
   read(): Promise<FigSourceData>
+}
+
+function ordinaryFigReadOptions(options: ParseFigFileOptions): ParseFigFileOptions {
+  return {
+    ...options,
+    archiveLimits: { ...ORDINARY_FIG_ARCHIVE_LIMITS, ...options.archiveLimits },
+    allowMainThreadFallback: options.allowMainThreadFallback ?? false
+  }
+}
+
+async function declaredFigSourceSize(source: ReloadableFigSource): Promise<number | undefined> {
+  return typeof source.size === 'function' ? source.size() : source.size
 }
 
 function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}): SceneGraph {
@@ -297,23 +340,28 @@ export async function readFigSource(
   source: ReloadableFigSource,
   options: ParseFigFileOptions = {}
 ): Promise<SceneGraph> {
+  const readOptions = ordinaryFigReadOptions(options)
+  const declaredSize = await declaredFigSourceSize(source)
+  if (declaredSize !== undefined) {
+    assertFigArchiveByteLength(declaredSize, readOptions.archiveLimits)
+  }
   const readBuffer = async () => transferableFigBuffer(await source.read())
   const buffer = await readBuffer()
   if (typeof Worker !== 'undefined' && IS_BROWSER) {
-    return parseFigFileWithFallback(buffer, options, readBuffer)
+    return parseFigFileWithFallback(buffer, readOptions, readBuffer)
   }
-  if (IS_BROWSER && options.allowMainThreadFallback === false) {
+  if (IS_BROWSER && readOptions.allowMainThreadFallback === false) {
     throw new Error('A dedicated Worker is required to parse untrusted .fig input')
   }
-  throwIfFigParseAborted(options.signal)
-  return parseFigFileSync(buffer, options)
+  throwIfFigParseAborted(readOptions.signal)
+  return parseFigFileSync(buffer, readOptions)
 }
 
 export async function readFigFile(
   file: File,
   options: ParseFigFileOptions = {}
 ): Promise<SceneGraph> {
-  return readFigSource({ read: () => file.arrayBuffer() }, options)
+  return readFigSource({ size: file.size, read: () => file.arrayBuffer() }, options)
 }
 
 function figParseAbortReason(signal: AbortSignal | undefined): Error {

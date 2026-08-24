@@ -323,6 +323,7 @@ export async function openStorageDocumentInNewTab(
       let initialBytes: Uint8Array | null = bytes
       const imported = await readFigSource(
         {
+          size: bytes.byteLength,
           async read() {
             if (initialBytes) {
               const current = initialBytes

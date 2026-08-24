@@ -1,4 +1,5 @@
 export interface KiwiRuntimeLimits {
+  maxArrayLength?: number
   maxArrayItems?: number
   maxSchemaDefinitions?: number
   maxFieldsPerDefinition?: number
@@ -8,6 +9,8 @@ export interface KiwiRuntimeLimits {
 
 /** Recommended limits for untrusted/dynamic Kiwi input. They are never applied implicitly. */
 export const KIWI_RUNTIME_LIMITS: Readonly<Required<KiwiRuntimeLimits>> = Object.freeze({
+  /** Maximum decoded items in any one non-byte array. */
+  maxArrayLength: 1_000_000,
   /** Maximum total decoded items across all non-byte arrays in one message buffer. */
   maxArrayItems: 1_000_000,
   /** Maximum number of definitions accepted from a dynamic Kiwi schema. */
@@ -33,6 +36,7 @@ export function normalizeKiwiRuntimeLimits(
 ): Readonly<KiwiRuntimeLimits> | undefined {
   if (limits === undefined) return undefined
   return Object.freeze({
+    maxArrayLength: checkedOptionalLimit(limits.maxArrayLength, 'maxArrayLength'),
     maxArrayItems: checkedOptionalLimit(limits.maxArrayItems, 'maxArrayItems'),
     maxSchemaDefinitions: checkedOptionalLimit(limits.maxSchemaDefinitions, 'maxSchemaDefinitions'),
     maxFieldsPerDefinition: checkedOptionalLimit(

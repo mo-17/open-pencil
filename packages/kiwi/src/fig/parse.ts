@@ -58,13 +58,16 @@ export interface FigKiwiDecodeLimits extends KiwiRuntimeLimits {
 
 function remoteRuntimeLimits(limits: FigKiwiDecodeLimits): KiwiRuntimeLimits {
   const maxNodeChanges = checkedLimit(limits.maxNodeChanges, 'maxNodeChanges')
-  let maxArrayItems =
+  const maxArrayLength =
+    checkedLimit(limits.maxArrayLength, 'maxArrayLength') ?? KIWI_RUNTIME_LIMITS.maxArrayLength
+  const maxArrayItems =
     checkedLimit(limits.maxArrayItems, 'maxArrayItems') ?? KIWI_RUNTIME_LIMITS.maxArrayItems
-  // nodeChanges itself is a Kiwi array. Apply this bound before generated code
-  // calls Array(length), instead of relying only on the post-decode check.
-  if (maxNodeChanges !== undefined) maxArrayItems = Math.min(maxArrayItems, maxNodeChanges)
 
   return {
+    // nodeChanges itself is a Kiwi array. Bound every single array before
+    // generated code calls Array(length), while retaining a separate aggregate budget.
+    maxArrayLength:
+      maxNodeChanges === undefined ? maxArrayLength : Math.min(maxArrayLength, maxNodeChanges),
     maxArrayItems,
     maxSchemaDefinitions:
       checkedLimit(limits.maxSchemaDefinitions, 'maxSchemaDefinitions') ??

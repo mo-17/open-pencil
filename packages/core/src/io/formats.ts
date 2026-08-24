@@ -163,7 +163,7 @@ export const figFormat: IOFormatAdapter = {
   },
   async readDocument(input, _context, options) {
     const graph = await readFigSource(
-      { read: async () => input.data.slice() },
+      { size: input.data.byteLength, read: async () => input.data.slice() },
       {
         populate: options?.populate ?? 'first-page',
         archiveLimits: options?.archiveLimits,

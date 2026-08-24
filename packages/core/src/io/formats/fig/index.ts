@@ -1,5 +1,6 @@
 export {
   MAX_FIG_PARSE_WORKER_CONCURRENCY,
+  ORDINARY_FIG_ARCHIVE_LIMITS,
   figParseWorkerConcurrencyForDeviceMemory,
   figParseWorkerQueueState,
   readFigFile,

@@ -14,6 +14,7 @@ export {
 export {
   exportFigFile,
   exportFigFileWithOptions,
+  ORDINARY_FIG_ARCHIVE_LIMITS,
   parseFigFile,
   readFigFile,
   readFigSource,

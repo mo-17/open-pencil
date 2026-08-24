@@ -1,6 +1,7 @@
 export interface DeferredOpenFile {
   name: string
   type?: string
+  size?: number | (() => number | Promise<number>)
   read: () => Promise<Uint8Array>
 }
 

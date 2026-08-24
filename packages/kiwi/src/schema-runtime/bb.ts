@@ -51,6 +51,10 @@ export class ByteBuffer {
 
   readArrayLength(): number {
     const length = this.readVarUint()
+    const maximumLength = this._limits?.maxArrayLength
+    if (maximumLength !== undefined && length > maximumLength) {
+      throw new Error(`Kiwi array length limit exceeded (${maximumLength} per array)`)
+    }
     const maximum = this._limits?.maxArrayItems
     if (maximum !== undefined) {
       if (length > maximum - this._arrayItems) {

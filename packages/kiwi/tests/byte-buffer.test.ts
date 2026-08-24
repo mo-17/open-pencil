@@ -82,5 +82,11 @@ describe('Kiwi ByteBuffer read boundaries', () => {
         maxArrayItems: KIWI_RUNTIME_LIMITS.maxArrayItems
       }).readArrayLength()
     ).toThrow(`Kiwi array item limit exceeded (${KIWI_RUNTIME_LIMITS.maxArrayItems} per message)`)
+    expect(() =>
+      new ByteBuffer(encoded.toUint8Array(), {
+        maxArrayLength: KIWI_RUNTIME_LIMITS.maxArrayLength,
+        maxArrayItems: KIWI_RUNTIME_LIMITS.maxArrayItems + 2
+      }).readArrayLength()
+    ).toThrow(`Kiwi array length limit exceeded (${KIWI_RUNTIME_LIMITS.maxArrayLength} per array)`)
   })
 })

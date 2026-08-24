@@ -18,10 +18,15 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
 
       globalThis.window = {}
       const NativeWorker = globalThis.Worker
-      const { parseFigFile, readFigSource } = await import(${JSON.stringify(READ_MODULE_URL)})
+      const { ORDINARY_FIG_ARCHIVE_LIMITS, parseFigFile, readFigSource } = await import(${JSON.stringify(READ_MODULE_URL)})
       const fixtureBlob = new Blob([
         Buffer.from(${JSON.stringify(Buffer.from(fixture).toString('base64'))}, 'base64')
       ])
+      assert(
+        Object.values(ORDINARY_FIG_ARCHIVE_LIMITS).every(
+          (value) => Number.isSafeInteger(value) && value > 0
+        )
+      )
 
       // A raw ArrayBuffer is transferred directly without retaining a copy.
       const input = await fixtureBlob.arrayBuffer()
@@ -122,6 +127,21 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
       }
 
       globalThis.Worker = FailingAfterTransferWorker
+      let ordinaryReads = 0
+      await assert.rejects(
+        readFigSource(
+          {
+            async read() {
+              ordinaryReads++
+              return fixtureBlob.arrayBuffer()
+            }
+          },
+          { populate: 'first-page' }
+        ),
+        /fallback is disabled for untrusted/
+      )
+      assert.equal(ordinaryReads, 1)
+
       let reads = 0
       const fallbackGraph = await readFigSource(
         {
@@ -130,7 +150,7 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
             return fixtureBlob.arrayBuffer()
           }
         },
-        { populate: 'first-page' }
+        { populate: 'first-page', allowMainThreadFallback: true }
       )
       assert.equal(fallbackGraph.getPages().length, 1)
       assert.equal(reads, 2)
@@ -158,7 +178,7 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
             return fixtureBlob.arrayBuffer()
           }
         },
-        { populate: 'first-page' }
+        { populate: 'first-page', allowMainThreadFallback: true }
       )
       assert.equal(messageErrorFallbackGraph.getPages().length, 1)
       assert.equal(messageErrorReads, 2)
@@ -191,7 +211,7 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
             return reusableBuffer
           }
         },
-        { populate: 'first-page' }
+        { populate: 'first-page', allowMainThreadFallback: true }
       )
       assert.equal(preTransferFallbackGraph.getPages().length, 1)
       assert.equal(preTransferReads, 1)
@@ -210,7 +230,7 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
               throw new Error('synthetic reload failure')
             }
           },
-          { populate: 'first-page' }
+          { populate: 'first-page', allowMainThreadFallback: true }
         )
       } catch (error) {
         reloadFailure = error
@@ -236,7 +256,7 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
               return fixtureBlob.arrayBuffer()
             }
           },
-          { populate: 'first-page' }
+          { populate: 'first-page', allowMainThreadFallback: true }
         )
       } catch (error) {
         oomFailure = error

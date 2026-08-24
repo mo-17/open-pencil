@@ -1,8 +1,14 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 
-import { BUILTIN_IO_FORMATS, IORegistry, initCanvasKit } from '@open-pencil/core/io'
+import {
+  BUILTIN_IO_FORMATS,
+  IORegistry,
+  ORDINARY_FIG_ARCHIVE_LIMITS,
+  initCanvasKit
+} from '@open-pencil/core/io'
 import { populateAllLazyFigImportRoots, populateLazyFigImportRoots } from '@open-pencil/core/kiwi'
 import { computeAllLayouts } from '@open-pencil/core/layout'
+import { assertFigArchiveByteLength } from '@open-pencil/fig'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 export { initCanvasKit }
@@ -10,6 +16,9 @@ export { initCanvasKit }
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 
 export async function loadDocument(filePath: string): Promise<SceneGraph> {
+  if (/\.fig$/i.test(filePath)) {
+    assertFigArchiveByteLength((await stat(filePath)).size, ORDINARY_FIG_ARCHIVE_LIMITS)
+  }
   const bytes = new Uint8Array(await readFile(filePath))
   const { graph } = await io.readDocument({ name: filePath, data: bytes })
   graph.preserveSourceMetadataDuring(() => computeAllLayouts(graph))
