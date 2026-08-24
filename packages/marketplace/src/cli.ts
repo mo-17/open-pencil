@@ -25,6 +25,13 @@ import {
 } from './cli-args'
 import { printMarketplaceCLIOutput as print } from './cli-output'
 import { createMarketplaceHttpApp } from './http'
+import {
+  MARKETPLACE_PUBLISHER_REQUEST_MAX_BODY_BYTES,
+  createMarketplacePublisherSignedEnvelope,
+  marketplacePublisherRequestBodyDigest,
+  writeMarketplacePublisherSignedEnvelope,
+  type MarketplacePublisherRequestOperation
+} from './publisher-request'
 import { positiveMarketplacePort, resolveMarketplaceServeMode } from './serve-mode'
 import { createMarketplaceService, type MarketplaceRootTrust } from './service'
 import {
@@ -116,6 +123,21 @@ async function privateKey(args: PrivateKeyArguments): Promise<CryptoKey> {
   }
 }
 
+async function publisherRequestPrivateKey(args: PrivateKeyArguments): Promise<CryptoKey> {
+  if (args['private-key'] && !args['private-key-env']) {
+    if (process.platform === 'win32') {
+      throw new Error(
+        'Publisher request private-key file permissions cannot be verified on Windows; use a named environment variable'
+      )
+    }
+    const metadata = await stat(resolve(args['private-key']))
+    if (!metadata.isFile() || (metadata.mode & 0o077) !== 0) {
+      throw new Error('Publisher request private-key file must be a regular 0600 owner-only file')
+    }
+  }
+  return privateKey(args)
+}
+
 async function publicKey(args: PublicKeyArguments): Promise<CryptoKey> {
   try {
     return await importEd25519PublicKeyPem(
@@ -204,6 +226,61 @@ async function runStatusTransition<Value>(
     print(args.json, await operation(service, statusTransitionContext(args)))
   })
 }
+
+const requestSign = defineCommand({
+  meta: {
+    name: 'sign',
+    description: 'Create an exact local Publisher signed-request envelope without sending it'
+  },
+  args: {
+    operation: { type: 'string', required: true },
+    audience: { type: 'string', required: true },
+    publisher: { type: 'string', required: true },
+    'key-id': { type: 'string', required: true },
+    body: { type: 'string', required: true },
+    submission: { type: 'string' },
+    output: { type: 'string', required: true },
+    ...privateKeyArgs
+  },
+  async run({ args }) {
+    const body = await boundedFile(
+      args.body,
+      MARKETPLACE_PUBLISHER_REQUEST_MAX_BODY_BYTES,
+      'publisher request body'
+    )
+    const envelope = await createMarketplacePublisherSignedEnvelope(
+      {
+        operation: args.operation as MarketplacePublisherRequestOperation,
+        audience: args.audience,
+        publisherId: args.publisher,
+        keyId: args['key-id'],
+        body,
+        ...(args.submission ? { submissionId: args.submission } : {})
+      },
+      await publisherRequestPrivateKey(args)
+    )
+    const output = resolve(args.output)
+    await writeMarketplacePublisherSignedEnvelope(output, envelope)
+    process.stdout.write(
+      `${JSON.stringify({
+        schemaVersion: 1,
+        operation: envelope.operation,
+        target: envelope.target,
+        bodyDigest: marketplacePublisherRequestBodyDigest(body),
+        output,
+        signedAt: envelope.headers.timestamp
+      })}\n`
+    )
+  }
+})
+
+const request = defineCommand({
+  meta: {
+    name: 'request',
+    description: 'Prepare Publisher-authenticated requests for an identity-aware server hand-off'
+  },
+  subCommands: { sign: requestSign }
+})
 
 const init = defineCommand({
   meta: { name: 'init', description: 'Initialize local marketplace state and artifact storage' },
@@ -466,6 +543,11 @@ const serve = defineCommand({
       default: false,
       description: 'Opt in to loading the root private key and exposing loopback admin publish'
     },
+    'require-admin-assertion': {
+      type: 'boolean',
+      default: false,
+      description: 'Require a versioned Portal service assertion instead of legacy bearer access'
+    },
     host: { type: 'string', default: '127.0.0.1' },
     port: { type: 'string', default: '43121' },
     'admin-token-env': {
@@ -501,6 +583,7 @@ const serve = defineCommand({
       admin: {
         enabled: mode.adminEnabled,
         ...(token === undefined ? {} : { token }),
+        requireServiceAssertion: args['require-admin-assertion'],
         onlinePublishing: mode.onlineSigning
       }
     })
@@ -527,7 +610,7 @@ export const marketplaceCommand = defineCommand({
     version: '0.0.0',
     description: 'Operate the local-first OpenPencil plugin marketplace control plane'
   },
-  subCommands: { init, publisher, submission, review, publish, audit, serve }
+  subCommands: { request, init, publisher, submission, review, publish, audit, serve }
 })
 
 if (import.meta.main) await runMain(marketplaceCommand)

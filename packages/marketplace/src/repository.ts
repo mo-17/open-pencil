@@ -6,6 +6,7 @@ import {
   marketplaceAuditHead,
   verifyMarketplaceAuditChain
 } from './audit'
+import { findActiveMarketplacePublisherKey } from './publisher-trust'
 import {
   MARKETPLACE_LIMITS,
   MARKETPLACE_SCHEMA_VERSION,
@@ -14,10 +15,13 @@ import {
   canTransitionMarketplacePublisherKey,
   canTransitionMarketplaceSubmission,
   createEmptyMarketplaceState,
+  marketplacePublisherPublicKeyDigest,
   marketplaceReleaseCoordinateKey,
+  marketplaceSubmissionRevisionPayloadDigest,
   parseCreateMarketplaceSubmissionInput,
   parseCreateMarketplacePublisherInput,
   parseMarketplaceIdentity,
+  parseMarketplaceOwnership,
   parseMarketplacePublication,
   parseMarketplacePublisher,
   parseMarketplacePublisherKey,
@@ -99,6 +103,16 @@ export interface MarketplaceTransaction {
     input: CreateMarketplaceSubmissionInput,
     context: MarketplaceMutationContext
   ): Promise<MarketplaceSubmissionV1>
+  reviseSubmission(
+    input: CreateMarketplaceSubmissionInput,
+    expectedRevision: number,
+    context: MarketplaceMutationContext
+  ): Promise<MarketplaceSubmissionV1>
+  pinLegacySubmissionSigningKey(
+    submissionId: string,
+    signingKeyId: string,
+    context: MarketplaceMutationContext
+  ): Promise<MarketplaceSubmissionV1>
   transitionSubmission(
     submissionId: string,
     status: MarketplaceSubmissionStatus,
@@ -120,6 +134,13 @@ export interface MarketplaceTransaction {
 
 export interface MarketplaceRepository {
   snapshot(): Promise<MarketplaceStateV1>
+  /**
+   * Returns a deeply immutable, fully verified committed state for trusted
+   * read-only projections. The snapshot may remain at the previous committed
+   * state while a transaction is in progress, but must never expose uncommitted
+   * or mutable repository state.
+   */
+  immutableSnapshot?(): Promise<MarketplaceStateV1>
   transaction<Value>(
     operation: (transaction: MarketplaceTransaction) => Value | Promise<Value>
   ): Promise<Value>
@@ -204,6 +225,19 @@ function activeOwnership(
   return ownership
 }
 
+function activeSigningKey(
+  state: MarketplaceStateV1,
+  publisherId: string,
+  keyId: string,
+  at: string
+): MarketplacePublisherKeyV1 {
+  const key = findActiveMarketplacePublisherKey(state, publisherId, keyId, Date.parse(at))
+  if (!key) {
+    throw new TypeError(`Publisher key ${keyId} is not active for ${publisherId}`)
+  }
+  return key
+}
+
 function stateWithAudit(
   parsed: MarketplaceStateV1,
   auditEvents: readonly MarketplaceAuditEventV1[]
@@ -232,12 +266,22 @@ async function commitMutation<Value>(
     actor: audit.context.actor,
     action: audit.action,
     subject: audit.subject,
-    payload: audit.payload
+    payload: audit.payload,
+    ...(audit.context.reason === null && audit.context.correlationId === null
+      ? {}
+      : {
+          context: {
+            reason: audit.context.reason,
+            correlationId: audit.context.correlationId
+          }
+        })
   })
   const parsed = parseMarketplaceState({
     ...state,
     ...changes,
-    auditEvents: appended.events
+    auditEvents: appended.events,
+    auditContexts:
+      appended.context === null ? state.auditContexts : [...state.auditContexts, appended.context]
   })
   return Object.freeze({ state: stateWithAudit(parsed, appended.events), value })
 }
@@ -265,7 +309,11 @@ export async function createMarketplacePublisher(
   return commitMutation(state, { publishers: [...state.publishers, publisher] }, publisher, {
     action: 'publisher.created',
     subject: `publisher:${publisher.id}`,
-    payload: { publisherId: publisher.id, status: publisher.status },
+    payload: {
+      displayName: publisher.displayName,
+      publisherId: publisher.id,
+      status: publisher.status
+    },
     context
   })
 }
@@ -366,6 +414,7 @@ export async function registerMarketplacePublisherKey(
       notAfter: key.notAfter,
       notBefore: key.notBefore,
       predecessorKeyId: key.predecessorKeyId,
+      publicKeyDigest: marketplacePublisherPublicKeyDigest(key.publicKeyPem),
       publisherId: key.publisherId
     },
     context
@@ -437,7 +486,7 @@ export async function requestMarketplaceOwnership(
     )
   }
   activePublisher(state, input.publisherId)
-  const ownership = Object.freeze({
+  const ownership = parseMarketplaceOwnership({
     schemaVersion: MARKETPLACE_SCHEMA_VERSION,
     pluginId: input.pluginId,
     publisherId: input.publisherId,
@@ -446,25 +495,12 @@ export async function requestMarketplaceOwnership(
     updatedAt: context.time,
     statusReason: null
   })
-  const parsedState = parseMarketplaceState({
-    ...state,
-    ownerships: [...state.ownerships, ownership]
+  return commitMutation(state, { ownerships: [...state.ownerships, ownership] }, ownership, {
+    action: 'ownership.requested',
+    subject: `ownership:${ownership.pluginId}`,
+    payload: { pluginId: ownership.pluginId, publisherId: ownership.publisherId },
+    context
   })
-  const parsedOwnership = requireEntity(
-    parsedState.ownerships.find(({ pluginId }) => pluginId === ownership.pluginId),
-    `Ownership for ${ownership.pluginId}`
-  )
-  return commitMutation(
-    state,
-    { ownerships: [...state.ownerships, parsedOwnership] },
-    parsedOwnership,
-    {
-      action: 'ownership.requested',
-      subject: `ownership:${ownership.pluginId}`,
-      payload: { pluginId: ownership.pluginId, publisherId: ownership.publisherId },
-      context
-    }
-  )
 }
 
 export async function transitionMarketplaceOwnership(
@@ -486,30 +522,20 @@ export async function transitionMarketplaceOwnership(
   requireChronological(current.updatedAt, context.time, 'ownership.updatedAt')
   if (status === 'active') activePublisher(state, current.publisherId)
   const reason = transitionReason(status, REASONED_OWNERSHIP_STATUSES, context)
-  const next = Object.freeze({
+  const next = parseMarketplaceOwnership({
     ...current,
     status,
     updatedAt: context.time,
     statusReason: reason
   })
-  const parsedState = parseMarketplaceState({
-    ...state,
-    ownerships: state.ownerships.map((ownership) =>
-      ownership.pluginId === pluginId ? next : ownership
-    )
-  })
-  const parsedOwnership = requireEntity(
-    parsedState.ownerships.find((ownership) => ownership.pluginId === pluginId),
-    `Ownership for ${pluginId}`
-  )
   return commitMutation(
     state,
     {
       ownerships: state.ownerships.map((ownership) =>
-        ownership.pluginId === pluginId ? parsedOwnership : ownership
+        ownership.pluginId === pluginId ? next : ownership
       )
     },
-    parsedOwnership,
+    next,
     {
       action: 'ownership.status_changed',
       subject: `ownership:${pluginId}`,
@@ -535,13 +561,8 @@ export async function createMarketplaceSubmission(
   const context = resolveMarketplaceMutationContext(contextValue)
   activePublisher(state, input.publisherId)
   activeOwnership(state, input.coordinate.pluginId, input.publisherId)
-  if (
-    !state.publisherKeys.some(
-      (key) => key.publisherId === input.publisherId && key.status === 'active'
-    )
-  ) {
-    throw new TypeError(`Publisher ${input.publisherId} has no active signing key`)
-  }
+  activeSigningKey(state, input.publisherId, input.signingKeyId, context.time)
+  activeSigningKey(state, input.publisherId, input.authenticatedRequestKeyId, context.time)
   if (state.submissions.some(({ id }) => id === input.id)) {
     throw new TypeError(`Submission ${input.id} already exists`)
   }
@@ -562,7 +583,13 @@ export async function createMarketplaceSubmission(
     artifactDigest: input.artifactDigest,
     manifestUrl: input.manifestUrl,
     listing: input.listing,
+    listingDigest: input.listingDigest,
     runtimeCoordinate: input.runtimeCoordinate ?? null,
+    signingKeyId: input.signingKeyId,
+    authenticatedRequestKeyId: input.authenticatedRequestKeyId,
+    revision: 1,
+    revisionCreatedAt: context.time,
+    revisionHistory: [],
     status: 'submitted',
     submittedAt: context.time,
     updatedAt: context.time,
@@ -573,14 +600,138 @@ export async function createMarketplaceSubmission(
     subject: `submission:${submission.id}`,
     payload: {
       artifactDigest: submission.artifactDigest,
+      authenticatedRequestKeyId: submission.authenticatedRequestKeyId,
       coordinate: coordinateKey,
       manifestDigest: submission.manifestDigest,
+      listingDigest: submission.listingDigest,
       publisherId: submission.publisherId,
+      revision: submission.revision,
+      revisionPayloadDigest: marketplaceSubmissionRevisionPayloadDigest(submission),
+      signingKeyId: submission.signingKeyId,
       runtimePackageDigest: submission.runtimeCoordinate?.packageDigest ?? null,
       submissionId: submission.id
     },
     context
   })
+}
+
+export async function reviseMarketplaceSubmission(
+  value: MarketplaceStateV1,
+  inputValue: CreateMarketplaceSubmissionInput,
+  expectedRevisionValue: number,
+  contextValue: MarketplaceMutationContext
+): Promise<MarketplaceMutationResult<MarketplaceSubmissionV1>> {
+  const state = parseMarketplaceState(value)
+  const input = parseCreateMarketplaceSubmissionInput(inputValue)
+  const context = resolveMarketplaceMutationContext(contextValue)
+  if (
+    !Number.isSafeInteger(expectedRevisionValue) ||
+    expectedRevisionValue < 1 ||
+    expectedRevisionValue >= MARKETPLACE_LIMITS.maxSubmissionRevisions
+  ) {
+    throw new TypeError('expectedRevision must identify a revisable positive revision')
+  }
+  const current = requireEntity(
+    state.submissions.find(({ id }) => id === input.id),
+    `Submission ${input.id}`
+  )
+  if (current.publisherId !== input.publisherId) {
+    throw new TypeError('Submission does not belong to the authenticated publisher')
+  }
+  if (
+    marketplaceReleaseCoordinateKey(current.coordinate) !==
+    marketplaceReleaseCoordinateKey(input.coordinate)
+  ) {
+    throw new TypeError('Submission revision cannot change its release coordinate')
+  }
+  if (current.revision !== expectedRevisionValue) {
+    throw new TypeError('Submission revision changed before the update was committed')
+  }
+  if (current.status !== 'validation_failed' && current.status !== 'changes_requested') {
+    throw new TypeError(`Submission cannot be revised from ${current.status}`)
+  }
+  if (!current.statusReason) {
+    throw new TypeError('Revisable submissions must preserve their review reason')
+  }
+  requireChronological(current.updatedAt, context.time, 'submission.updatedAt')
+  activePublisher(state, input.publisherId)
+  activeOwnership(state, input.coordinate.pluginId, input.publisherId)
+  activeSigningKey(state, input.publisherId, input.signingKeyId, context.time)
+  activeSigningKey(state, input.publisherId, input.authenticatedRequestKeyId, context.time)
+  if (input.manifestDigest === current.manifestDigest) {
+    throw new TypeError('Submission revision must use a newly signed manifest')
+  }
+  const previousRevision = {
+    revision: current.revision,
+    signingKeyId: current.signingKeyId,
+    authenticatedRequestKeyId: current.authenticatedRequestKeyId,
+    manifestDigest: current.manifestDigest,
+    artifactDigest: current.artifactDigest,
+    manifestUrl: current.manifestUrl,
+    listing: current.listing,
+    listingDigest: current.listingDigest,
+    runtimeCoordinate: current.runtimeCoordinate,
+    createdAt: current.revisionCreatedAt,
+    supersededAt: context.time,
+    supersededBy: context.actor,
+    supersededFromStatus: current.status,
+    supersededReason: current.statusReason
+  } as const
+  const next = parseMarketplaceSubmission({
+    ...current,
+    manifestDigest: input.manifestDigest,
+    artifactDigest: input.artifactDigest,
+    manifestUrl: input.manifestUrl,
+    listing: input.listing,
+    listingDigest: input.listingDigest,
+    runtimeCoordinate: input.runtimeCoordinate ?? null,
+    signingKeyId: input.signingKeyId,
+    authenticatedRequestKeyId: input.authenticatedRequestKeyId,
+    revision: current.revision + 1,
+    revisionCreatedAt: context.time,
+    revisionHistory: [...current.revisionHistory, previousRevision],
+    status: 'submitted',
+    updatedAt: context.time,
+    statusReason: null
+  })
+  return commitMutation(
+    state,
+    {
+      submissions: state.submissions.map((submission) =>
+        submission.id === current.id ? next : submission
+      )
+    },
+    next,
+    {
+      action: 'submission.revised',
+      subject: `submission:${current.id}`,
+      payload: {
+        coordinate: marketplaceReleaseCoordinateKey(current.coordinate),
+        fromRevision: current.revision,
+        fromStatus: current.status,
+        newArtifactDigest: next.artifactDigest,
+        newListingDigest: next.listingDigest,
+        newManifestDigest: next.manifestDigest,
+        newRevisionPayloadDigest: marketplaceSubmissionRevisionPayloadDigest(next),
+        newRuntimePackageDigest: next.runtimeCoordinate?.packageDigest ?? null,
+        newAuthenticatedRequestKeyId: next.authenticatedRequestKeyId,
+        oldArtifactDigest: current.artifactDigest,
+        oldAuthenticatedRequestKeyId: current.authenticatedRequestKeyId,
+        oldListingDigest: current.listingDigest,
+        oldManifestDigest: current.manifestDigest,
+        oldRevisionPayloadDigest: marketplaceSubmissionRevisionPayloadDigest(current),
+        oldRuntimePackageDigest: current.runtimeCoordinate?.packageDigest ?? null,
+        oldSigningKeyId: current.signingKeyId,
+        publisherId: current.publisherId,
+        fromReason: current.statusReason,
+        signingKeyId: next.signingKeyId,
+        submissionId: current.id,
+        toRevision: next.revision,
+        toStatus: next.status
+      },
+      context
+    }
+  )
 }
 
 async function transitionSubmissionOnly(
@@ -620,6 +771,71 @@ async function transitionSubmissionOnly(
   })
 }
 
+export async function pinLegacyMarketplaceSubmissionSigningKey(
+  value: MarketplaceStateV1,
+  submissionIdValue: string,
+  signingKeyIdValue: string,
+  contextValue: MarketplaceMutationContext
+): Promise<MarketplaceMutationResult<MarketplaceSubmissionV1>> {
+  const state = parseMarketplaceState(value)
+  const submissionId = parseMarketplaceIdentity(submissionIdValue, 'submissionId')
+  const signingKeyId = parseMarketplaceIdentity(signingKeyIdValue, 'signingKeyId')
+  const context = resolveMarketplaceMutationContext(contextValue)
+  const current = requireEntity(
+    state.submissions.find(({ id }) => id === submissionId),
+    `Submission ${submissionId}`
+  )
+  if (
+    current.revision !== 1 ||
+    current.revisionHistory.length !== 0 ||
+    current.signingKeyId !== null ||
+    current.authenticatedRequestKeyId !== null ||
+    current.status !== 'approved'
+  ) {
+    throw new TypeError('Only one legacy approved submission may have its signer pinned')
+  }
+  requireChronological(current.updatedAt, context.time, 'submission.updatedAt')
+  activePublisher(state, current.publisherId)
+  activeOwnership(state, current.coordinate.pluginId, current.publisherId)
+  activeSigningKey(state, current.publisherId, signingKeyId, context.time)
+  const next = parseMarketplaceSubmission({
+    ...current,
+    signingKeyId,
+    updatedAt: context.time
+  })
+  const beforePin = parseMarketplaceSubmission({
+    ...current,
+    signingKeyId: null,
+    authenticatedRequestKeyId: null
+  })
+  return commitMutation(
+    state,
+    {
+      submissions: state.submissions.map((submission) =>
+        submission.id === current.id ? next : submission
+      )
+    },
+    next,
+    {
+      action: 'submission.signing_key_pinned',
+      subject: `submission:${current.id}`,
+      payload: {
+        artifactDigest: current.artifactDigest,
+        authenticatedRequestKeyId: next.authenticatedRequestKeyId,
+        coordinate: marketplaceReleaseCoordinateKey(current.coordinate),
+        manifestDigest: current.manifestDigest,
+        newRevisionPayloadDigest: marketplaceSubmissionRevisionPayloadDigest(next),
+        oldRevisionPayloadDigest: marketplaceSubmissionRevisionPayloadDigest(beforePin),
+        publisherId: current.publisherId,
+        revision: current.revision,
+        signingKeyId,
+        submissionId: current.id
+      },
+      context
+    }
+  )
+}
+
 export async function publishMarketplaceSubmission(
   value: MarketplaceStateV1,
   submissionIdValue: string,
@@ -638,6 +854,10 @@ export async function publishMarketplaceSubmission(
   requireChronological(current.updatedAt, context.time, 'submission.updatedAt')
   activePublisher(state, current.publisherId)
   activeOwnership(state, current.coordinate.pluginId, current.publisherId)
+  if (!current.signingKeyId) {
+    throw new TypeError('Submission is missing its signing key identity and cannot be published')
+  }
+  activeSigningKey(state, current.publisherId, current.signingKeyId, context.time)
   const coordinateKey = marketplaceReleaseCoordinateKey(current.coordinate)
   if (
     state.releases.some(
@@ -656,6 +876,7 @@ export async function publishMarketplaceSubmission(
     schemaVersion: MARKETPLACE_SCHEMA_VERSION,
     coordinate: submission.coordinate,
     submissionId,
+    submissionRevision: submission.revision,
     publisherId: submission.publisherId,
     manifestDigest: submission.manifestDigest,
     artifactDigest: submission.artifactDigest,
@@ -1008,6 +1229,24 @@ function createTransaction(
         createMarketplaceSubmission(current, isolatedInput, isolatedContext)
       )
     },
+    reviseSubmission(input, expectedRevision, context) {
+      const isolatedInput = structuredClone(input)
+      const isolatedContext = structuredClone(context)
+      return mutate((current) =>
+        reviseMarketplaceSubmission(current, isolatedInput, expectedRevision, isolatedContext)
+      )
+    },
+    pinLegacySubmissionSigningKey(submissionId, signingKeyId, context) {
+      const isolatedContext = structuredClone(context)
+      return mutate((current) =>
+        pinLegacyMarketplaceSubmissionSigningKey(
+          current,
+          submissionId,
+          signingKeyId,
+          isolatedContext
+        )
+      )
+    },
     transitionSubmission(submissionId, status, context) {
       const isolatedContext = structuredClone(context)
       return mutate((current) =>
@@ -1085,6 +1324,10 @@ export function createMemoryMarketplaceRepository(
   return {
     snapshot() {
       return enqueue(async () => isolatedState(state))
+    },
+    async immutableSnapshot() {
+      await initialization
+      return state
     },
     transaction(operation) {
       return enqueue(async () => {

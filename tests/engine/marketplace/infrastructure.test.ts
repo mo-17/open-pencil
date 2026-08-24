@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,6 +15,26 @@ import {
 } from '@open-pencil/marketplace'
 
 const temporaryDirectories: string[] = []
+const encoder = new TextEncoder()
+const AUDIENCE = 'openpencil-marketplace'
+
+function legacyCanonicalMarketplaceRequest(input: {
+  method: string
+  url: string
+  timestamp: string
+  nonce: string
+  body: Uint8Array
+}): string {
+  const url = new URL(input.url)
+  return [
+    'OPENPENCIL-MARKETPLACE-REQUEST-V1',
+    input.method.toUpperCase(),
+    `${url.pathname}${url.search}`,
+    input.timestamp,
+    input.nonce,
+    createHash('sha256').update(input.body).digest('base64url')
+  ].join('\n')
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -55,6 +75,7 @@ describe('publisher request authentication', () => {
     const body = new TextEncoder().encode('{"submission":"one"}')
     const timestamp = '2026-08-05T12:00:00.000Z'
     const input = {
+      audience: AUDIENCE,
       publisherId: 'publisher-one',
       keyId: 'publisher-one-2026',
       method: 'POST',
@@ -66,6 +87,7 @@ describe('publisher request authentication', () => {
     const headers = await signMarketplaceRequest(input, pair.privateKey)
     const nonces = createMemoryMarketplaceNonceStore(() => Date.parse(timestamp))
     const options = {
+      audience: AUDIENCE,
       now: () => Date.parse(timestamp),
       nonces,
       resolvePublicKey: async () => pair.publicKey
@@ -80,11 +102,39 @@ describe('publisher request authentication', () => {
     )
   })
 
+  test('rejects a signature replayed into a different Marketplace audience', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const timestamp = '2026-08-05T12:00:00.000Z'
+    const input = {
+      audience: AUDIENCE,
+      publisherId: 'publisher-one',
+      keyId: 'publisher-one-2026',
+      method: 'GET',
+      url: 'https://plugins.example.com/v1/publishers/me',
+      timestamp,
+      nonce: 'audiencenonce001',
+      body: new Uint8Array()
+    }
+    const headers = await signMarketplaceRequest(input, pair.privateKey)
+    await expect(
+      verifyMarketplaceRequest(
+        { ...input, headers },
+        {
+          audience: 'different-marketplace',
+          now: () => Date.parse(timestamp),
+          nonces: createMemoryMarketplaceNonceStore(() => Date.parse(timestamp)),
+          resolvePublicKey: async () => pair.publicKey
+        }
+      )
+    ).rejects.toThrow('audience')
+  })
+
   test('binds method, path, timestamp, nonce, and body digest', async () => {
     const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
     const timestamp = '2026-08-05T12:00:00.000Z'
     const body = new TextEncoder().encode('{}')
     const base = {
+      audience: AUDIENCE,
       publisherId: 'publisher-one',
       keyId: 'publisher-one-2026',
       method: 'POST',
@@ -98,11 +148,107 @@ describe('publisher request authentication', () => {
 
     await expect(
       verifyMarketplaceRequest(tampered, {
+        audience: AUDIENCE,
         now: () => Date.parse(timestamp),
         nonces: createMemoryMarketplaceNonceStore(() => Date.parse(timestamp)),
         resolvePublicKey: async () => pair.publicKey
       })
     ).rejects.toThrow('signature is invalid')
     expect(canonicalMarketplaceRequest(base)).toContain('/v1/submissions?channel=beta')
+  })
+
+  test('binds publisher and key identities even when two records reuse one public key', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const timestamp = '2026-08-05T12:00:00.000Z'
+    const input = {
+      audience: AUDIENCE,
+      publisherId: 'publisher-one',
+      keyId: 'publisher-one-2026',
+      method: 'GET',
+      url: 'https://plugins.example.com/v1/publishers/me',
+      timestamp,
+      nonce: 'identitynonce001',
+      body: new Uint8Array()
+    }
+    const headers = await signMarketplaceRequest(input, pair.privateKey)
+
+    await expect(
+      verifyMarketplaceRequest(
+        {
+          method: input.method,
+          url: input.url,
+          body: input.body,
+          headers: {
+            ...headers,
+            publisherId: 'publisher-two',
+            keyId: 'publisher-two-2026'
+          }
+        },
+        {
+          audience: AUDIENCE,
+          now: () => Date.parse(timestamp),
+          nonces: createMemoryMarketplaceNonceStore(() => Date.parse(timestamp)),
+          resolvePublicKey: async () => pair.publicKey
+        }
+      )
+    ).rejects.toThrow('signature is invalid')
+  })
+
+  test('rejects legacy V1 signatures and a no-longer-active publisher key', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const timestamp = '2026-08-05T12:00:00.000Z'
+    const input = {
+      audience: AUDIENCE,
+      publisherId: 'publisher-one',
+      keyId: 'publisher-one-2026',
+      method: 'GET',
+      url: 'https://plugins.example.com/v1/publishers/me',
+      timestamp,
+      nonce: 'legacynonce000001',
+      body: new Uint8Array()
+    }
+    const legacySignature = Buffer.from(
+      await crypto.subtle.sign(
+        'Ed25519',
+        pair.privateKey,
+        encoder.encode(legacyCanonicalMarketplaceRequest(input))
+      )
+    ).toString('base64url')
+    const legacyHeaders = {
+      audience: input.audience,
+      publisherId: input.publisherId,
+      keyId: input.keyId,
+      timestamp: input.timestamp,
+      nonce: input.nonce,
+      signature: legacySignature
+    }
+
+    await expect(
+      verifyMarketplaceRequest(
+        { method: input.method, url: input.url, body: input.body, headers: legacyHeaders },
+        {
+          audience: AUDIENCE,
+          now: () => Date.parse(timestamp),
+          nonces: createMemoryMarketplaceNonceStore(() => Date.parse(timestamp)),
+          resolvePublicKey: async () => pair.publicKey
+        }
+      )
+    ).rejects.toThrow('signature is invalid')
+
+    const currentHeaders = await signMarketplaceRequest(
+      { ...input, nonce: 'revokednonce00001' },
+      pair.privateKey
+    )
+    await expect(
+      verifyMarketplaceRequest(
+        { method: input.method, url: input.url, body: input.body, headers: currentHeaders },
+        {
+          audience: AUDIENCE,
+          now: () => Date.parse(timestamp),
+          nonces: createMemoryMarketplaceNonceStore(() => Date.parse(timestamp)),
+          resolvePublicKey: async () => null
+        }
+      )
+    ).rejects.toThrow('not active')
   })
 })

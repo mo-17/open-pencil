@@ -22,6 +22,10 @@ describe('marketplace CLI', () => {
     const publisher = marketplaceCommand.subCommands?.publisher
     expect(publisher?.meta?.name).toBe('publisher')
     expect(publisher?.subCommands?.create.meta?.name).toBe('create')
+    expect(marketplaceCommand.subCommands?.serve.args?.['require-admin-assertion']).toMatchObject({
+      type: 'boolean',
+      default: false
+    })
   })
 
   test('initializes local state without printing private key material', async () => {

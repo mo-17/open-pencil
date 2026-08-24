@@ -2,8 +2,11 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   appendMarketplaceAuditEvent,
+  createEmptyMarketplaceState,
+  createMarketplacePublisher,
   marketplaceAuditHead,
   marketplaceAuditPayloadDigest,
+  parseMarketplaceState,
   verifyMarketplaceAuditChain,
   verifyMarketplaceAuditEventHash
 } from '@open-pencil/marketplace'
@@ -84,5 +87,78 @@ describe('marketplace audit hash chain', () => {
     const cyclic: Record<string, unknown> = {}
     cyclic.self = cyclic
     await expect(marketplaceAuditPayloadDigest(cyclic)).rejects.toThrow('depth limit')
+  })
+
+  test('keeps legacy hashes valid and binds new reason/correlation context without plaintext events', async () => {
+    const legacy = await appendMarketplaceAuditEvent([], {
+      time: FIRST_TIME,
+      actor: 'admin-1',
+      action: 'publisher.created',
+      subject: 'publisher:legacy',
+      payload: { publisherId: 'legacy' }
+    })
+    const contextual = await appendMarketplaceAuditEvent(legacy.events, {
+      time: SECOND_TIME,
+      actor: 'portal:user-01j5operator',
+      action: 'publisher.status_changed',
+      subject: 'publisher:legacy',
+      payload: { from: 'pending', to: 'rejected' },
+      context: {
+        reason: 'Publisher identity evidence did not match',
+        correlationId: 'correlation_01j5phase7audit'
+      }
+    })
+
+    expect(legacy.event).not.toHaveProperty('contextDigest')
+    expect(contextual.event.contextDigest).toHaveLength(43)
+    expect(contextual.event).not.toHaveProperty('reason')
+    expect(contextual.event).not.toHaveProperty('correlationId')
+    expect(contextual.context).toMatchObject({
+      sequence: 2,
+      reason: 'Publisher identity evidence did not match',
+      correlationId: 'correlation_01j5phase7audit',
+      contextDigest: contextual.event.contextDigest
+    })
+    await expect(verifyMarketplaceAuditChain(contextual.events)).resolves.toHaveLength(2)
+    await expect(
+      verifyMarketplaceAuditChain([
+        legacy.event,
+        { ...contextual.event, contextDigest: legacy.event.eventHash }
+      ])
+    ).rejects.toThrow(/eventHash/i)
+  })
+
+  test('loads legacy state without auditContexts and rejects tampered plaintext context', async () => {
+    const legacyMutation = await createMarketplacePublisher(
+      createEmptyMarketplaceState(),
+      { id: 'legacy', displayName: 'Legacy Publisher' },
+      { actor: 'admin:legacy', time: FIRST_TIME }
+    )
+    const { auditContexts: _legacyContexts, ...legacyState } = structuredClone(legacyMutation.state)
+    expect(parseMarketplaceState(legacyState).auditContexts).toEqual([])
+
+    const contextualMutation = await createMarketplacePublisher(
+      createEmptyMarketplaceState(),
+      { id: 'acme', displayName: 'Acme Publisher' },
+      {
+        actor: 'portal:user-01j5operator',
+        time: FIRST_TIME,
+        reason: 'Initial operator review',
+        correlationId: 'correlation_01j5phase7state'
+      }
+    )
+    const contextualState = structuredClone(contextualMutation.state)
+    const [firstContext, ...remainingContexts] = contextualState.auditContexts
+    const tampered = {
+      ...contextualState,
+      auditContexts: [
+        {
+          ...firstContext,
+          reason: 'Tampered reason'
+        },
+        ...remainingContexts
+      ]
+    }
+    expect(() => parseMarketplaceState(tampered)).toThrow(/contextDigest/i)
   })
 })

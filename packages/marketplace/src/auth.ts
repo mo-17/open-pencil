@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { parsePluginTrustTimestamp } from '@open-pencil/plugin-contracts'
 import { validateModuleIdentity, webCryptoBuffer } from '@open-pencil/scene-graph'
 
-export const MARKETPLACE_REQUEST_AUTH_VERSION = 1 as const
+export const MARKETPLACE_REQUEST_AUTH_VERSION = 2 as const
 export const MARKETPLACE_REQUEST_AUTH_LIMITS = Object.freeze({
   maxBodyBytes: 4 * 1024 * 1024,
   maxClockSkewMs: 5 * 60 * 1_000,
@@ -12,6 +12,7 @@ export const MARKETPLACE_REQUEST_AUTH_LIMITS = Object.freeze({
 })
 
 export interface MarketplaceSignedRequestHeaders {
+  audience: string
   publisherId: string
   keyId: string
   timestamp: string
@@ -24,6 +25,7 @@ export interface MarketplaceNonceStore {
 }
 
 export interface VerifyMarketplaceRequestOptions {
+  audience: string
   now?: () => number
   resolvePublicKey(publisherId: string, keyId: string): Promise<CryptoKey | null>
   nonces: MarketplaceNonceStore
@@ -75,13 +77,25 @@ export function digestMarketplaceRequestBody(body: Uint8Array): string {
   return createHash('sha256').update(body).digest('base64url')
 }
 
+/**
+ * V2 signs these exact UTF-8 lines in order: protocol prefix, deployment-stable
+ * marketplace audience, publisher id, key id, upper-case method, pathname plus
+ * raw query, canonical timestamp, nonce, and the base64url SHA-256 digest of the
+ * unmodified body bytes.
+ */
 export function canonicalMarketplaceRequest(input: {
+  audience: string
+  publisherId: string
+  keyId: string
   method: string
   url: string
   timestamp: string
   nonce: string
   body: Uint8Array
 }): string {
+  const audience = identity(input.audience, 'marketplace request audience')
+  const publisherId = identity(input.publisherId, 'marketplace request publisher id')
+  const keyId = identity(input.keyId, 'marketplace request key id')
   const method = input.method.toUpperCase()
   if (!/^[A-Z]+$/.test(method)) throw new TypeError('Marketplace request method is invalid')
   const timestamp = parsePluginTrustTimestamp(input.timestamp, 'marketplace request timestamp')
@@ -95,6 +109,9 @@ export function canonicalMarketplaceRequest(input: {
   }
   return [
     REQUEST_PREFIX,
+    audience,
+    publisherId,
+    keyId,
     method,
     requestTarget(input.url),
     timestamp,
@@ -105,6 +122,7 @@ export function canonicalMarketplaceRequest(input: {
 
 export async function signMarketplaceRequest(
   input: {
+    audience: string
     publisherId: string
     keyId: string
     method: string
@@ -120,11 +138,12 @@ export async function signMarketplaceRequest(
   }
   const publisherId = identity(input.publisherId, 'marketplace request publisher id')
   const keyId = identity(input.keyId, 'marketplace request key id')
-  const canonical = canonicalMarketplaceRequest(input)
+  const audience = identity(input.audience, 'marketplace request audience')
+  const canonical = canonicalMarketplaceRequest({ ...input, audience, publisherId, keyId })
   const signature = Buffer.from(
     await crypto.subtle.sign('Ed25519', privateKey, encoder.encode(canonical))
   ).toString('base64url')
-  return { publisherId, keyId, timestamp: input.timestamp, nonce: input.nonce, signature }
+  return { audience, publisherId, keyId, timestamp: input.timestamp, nonce: input.nonce, signature }
 }
 
 export async function verifyMarketplaceRequest(
@@ -136,9 +155,17 @@ export async function verifyMarketplaceRequest(
   },
   options: VerifyMarketplaceRequestOptions
 ): Promise<{ publisherId: string; keyId: string }> {
+  const audience = identity(input.headers.audience, 'marketplace request audience')
+  const expectedAudience = identity(options.audience, 'expected marketplace request audience')
+  if (audience !== expectedAudience) {
+    throw new Error('Marketplace request audience does not match')
+  }
   const publisherId = identity(input.headers.publisherId, 'marketplace request publisher id')
   const keyId = identity(input.headers.keyId, 'marketplace request key id')
   const canonical = canonicalMarketplaceRequest({
+    audience,
+    publisherId,
+    keyId,
     method: input.method,
     url: input.url,
     timestamp: input.headers.timestamp,

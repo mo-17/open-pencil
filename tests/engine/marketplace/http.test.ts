@@ -11,12 +11,14 @@ import {
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 const NOW = '2026-08-05T12:00:00.000Z'
+const MARKETPLACE_ID = 'openpencil-marketplace'
 const REGISTRATION_URL = 'http://localhost/v1/publishers/register'
 const KEY_ROTATION_URL = 'http://localhost/v1/publisher-keys'
 
 function requestHeaders(headers: Awaited<ReturnType<typeof signMarketplaceRequest>>) {
   return {
     'content-type': 'application/json',
+    'x-openpencil-marketplace-audience': headers.audience,
     'x-openpencil-publisher-id': headers.publisherId,
     'x-openpencil-key-id': headers.keyId,
     'x-openpencil-timestamp': headers.timestamp,
@@ -32,7 +34,7 @@ describe('marketplace HTTP API', () => {
     const service = createMarketplaceService({
       repository,
       artifacts: createMemoryMarketplaceArtifactStore(),
-      marketplaceId: 'openpencil-marketplace',
+      marketplaceId: MARKETPLACE_ID,
       publicBaseUrl: 'https://plugins.example.com/',
       now: () => new Date(NOW)
     })
@@ -54,6 +56,7 @@ describe('marketplace HTTP API', () => {
     const bytes = new TextEncoder().encode(body)
     const signed = await signMarketplaceRequest(
       {
+        audience: MARKETPLACE_ID,
         publisherId: 'acme',
         keyId: 'acme.release',
         method: 'POST',
@@ -95,6 +98,7 @@ describe('marketplace HTTP API', () => {
     const rotationBytes = new TextEncoder().encode(rotationBody)
     const rotationHeaders = await signMarketplaceRequest(
       {
+        audience: MARKETPLACE_ID,
         publisherId: 'acme',
         keyId: 'acme.release',
         method: 'POST',
@@ -121,6 +125,7 @@ describe('marketplace HTTP API', () => {
     const forgedBytes = new TextEncoder().encode(forgedBody)
     const forgedHeaders = await signMarketplaceRequest(
       {
+        audience: MARKETPLACE_ID,
         publisherId: 'acme',
         keyId: 'acme.release',
         method: 'POST',
@@ -146,6 +151,7 @@ describe('marketplace HTTP API', () => {
     const crossPublisherBytes = new TextEncoder().encode(crossPublisherBody)
     const crossPublisherHeaders = await signMarketplaceRequest(
       {
+        audience: MARKETPLACE_ID,
         publisherId: 'acme',
         keyId: 'acme.release',
         method: 'POST',
@@ -164,11 +170,70 @@ describe('marketplace HTTP API', () => {
     expect(crossPublisher.status).toBe(401)
   })
 
+  test('rejects publisher identity header substitution when public key material is reused', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const publicKeyPem = await exportEd25519PublicKeyPem(pair.publicKey)
+    const service = createMarketplaceService({
+      repository: createMemoryMarketplaceRepository(),
+      artifacts: createMemoryMarketplaceArtifactStore(),
+      marketplaceId: MARKETPLACE_ID,
+      publicBaseUrl: 'https://plugins.example.com/',
+      now: () => new Date(NOW)
+    })
+    for (const publisherId of ['publisher-one', 'publisher-two']) {
+      const keyId = `${publisherId}-2026`
+      await service.registerPublisher(
+        {
+          publisher: { id: publisherId, displayName: publisherId },
+          key: {
+            keyId,
+            publisherId,
+            publicKeyPem,
+            notBefore: '2026-01-01T00:00:00.000Z',
+            notAfter: '2027-01-01T00:00:00.000Z'
+          }
+        },
+        { actor: `publisher:${publisherId}` }
+      )
+      await service.transitionPublisherKey(keyId, 'active', { actor: 'admin:test' })
+      await service.transitionPublisher(publisherId, 'active', { actor: 'admin:test' })
+    }
+    const app = createMarketplaceHttpApp({
+      service,
+      nonces: createMemoryMarketplaceNonceStore(() => Date.parse(NOW)),
+      now: () => Date.parse(NOW)
+    })
+    const url = 'http://localhost/v1/publishers/me'
+    const signed = await signMarketplaceRequest(
+      {
+        audience: MARKETPLACE_ID,
+        publisherId: 'publisher-one',
+        keyId: 'publisher-one-2026',
+        method: 'GET',
+        url,
+        timestamp: NOW,
+        nonce: 'identitynonce001',
+        body: new Uint8Array()
+      },
+      pair.privateKey
+    )
+    const substituted = await app.request(url, {
+      headers: {
+        ...requestHeaders(signed),
+        'x-openpencil-publisher-id': 'publisher-two',
+        'x-openpencil-key-id': 'publisher-two-2026'
+      }
+    })
+
+    expect(substituted.status).toBe(401)
+    expect(await substituted.json()).toEqual({ error: 'Marketplace request signature is invalid' })
+  })
+
   test('keeps admin mutations loopback-gated and does not enable CORS', async () => {
     const service = createMarketplaceService({
       repository: createMemoryMarketplaceRepository(),
       artifacts: createMemoryMarketplaceArtifactStore(),
-      marketplaceId: 'openpencil-marketplace',
+      marketplaceId: MARKETPLACE_ID,
       publicBaseUrl: 'https://plugins.example.com/'
     })
     const app = createMarketplaceHttpApp({

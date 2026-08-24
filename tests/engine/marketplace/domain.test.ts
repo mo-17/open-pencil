@@ -7,6 +7,7 @@ import {
   canTransitionMarketplacePublisherKey,
   canTransitionMarketplaceSubmission,
   createEmptyMarketplaceState,
+  marketplaceListingDigest,
   marketplaceReleaseCoordinateKey,
   parseCreateMarketplaceSubmissionInput,
   parseMarketplacePublication,
@@ -81,6 +82,9 @@ describe('marketplace v1 domain schema', () => {
       artifactDigest: digest,
       manifestUrl: 'https://plugins.example.com/acme.analytics/1.0.0/manifest.json',
       listing,
+      listingDigest: marketplaceListingDigest(listing),
+      signingKeyId: 'acme.release.2026',
+      authenticatedRequestKeyId: 'acme.release.2026',
       runtimeCoordinate: null
     }
     expect(parseCreateMarketplaceSubmissionInput(input).manifestDigest).toBe(digest)

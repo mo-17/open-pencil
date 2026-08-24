@@ -5,7 +5,10 @@ import type {
   MarketplaceMutationContext,
   RegisterMarketplacePublisherKeyInput
 } from '@open-pencil/marketplace'
-import { createMemoryMarketplaceRepository } from '@open-pencil/marketplace'
+import {
+  createMemoryMarketplaceRepository,
+  marketplaceListingDigest
+} from '@open-pencil/marketplace'
 import { digestCanonicalManifest, exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 const times = Array.from(
@@ -32,6 +35,14 @@ async function submission(): Promise<CreateMarketplaceSubmissionInput> {
   const manifestDigest = await digestCanonicalManifest({ kind: 'manifest-payload' })
   const artifactDigest = await digestCanonicalManifest({ kind: 'manifest-artifact' })
   const packageDigest = await digestCanonicalManifest({ kind: 'runtime-package' })
+  const listing = {
+    displayName: 'Acme Analytics',
+    summary: 'Verified analytics components.',
+    description: 'Declarative analytics components for OpenPencil documents.',
+    categories: ['analytics'],
+    iconUrl: null,
+    homepageUrl: 'https://plugins.example.com/acme.analytics'
+  }
   return {
     id: 'submission-1',
     publisherId: 'acme',
@@ -39,14 +50,10 @@ async function submission(): Promise<CreateMarketplaceSubmissionInput> {
     manifestDigest,
     artifactDigest,
     manifestUrl: 'https://plugins.example.com/acme.analytics/1.0.0/manifest.json',
-    listing: {
-      displayName: 'Acme Analytics',
-      summary: 'Verified analytics components.',
-      description: 'Declarative analytics components for OpenPencil documents.',
-      categories: ['analytics'],
-      iconUrl: null,
-      homepageUrl: 'https://plugins.example.com/acme.analytics'
-    },
+    listing,
+    listingDigest: marketplaceListingDigest(listing),
+    signingKeyId: 'acme.release.2026',
+    authenticatedRequestKeyId: 'acme.release.2026',
     runtimeCoordinate: {
       packageDigest,
       packageUrl: 'https://plugins.example.com/acme.analytics/1.0.0/runtime.wasm',

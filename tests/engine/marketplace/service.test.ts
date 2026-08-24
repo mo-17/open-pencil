@@ -162,6 +162,26 @@ describe('marketplace service publication pipeline', () => {
       { channel: 'stable', version: '1.0.0', digest: manifest.integrity.digest }
     ])
 
+    const currentReport = await service.submissionCurrentCheckReport(submission.id)
+    expect(currentReport).toMatchObject({
+      binding: {
+        submissionId: submission.id,
+        revision: 1,
+        signingKeyId: 'acme.release',
+        manifestDigest: manifest.integrity.digest,
+        runtime: {
+          packageDigest: runtimePackage.integrity.digest,
+          artifactDigest: submission.runtimeCoordinate?.packageUrl.split('/').at(-1),
+          byteLength: submission.runtimeCoordinate?.byteLength,
+          kind: 'javascript'
+        }
+      },
+      valid: true
+    })
+    expect(
+      currentReport?.checks.find(({ id }) => id === 'runtime-artifact-signature-binding')
+    ).toMatchObject({ status: 'pass' })
+
     const verified = await service.latestVerifiedSnapshot()
     expect(verified?.verifiedDigest).toBe(result.publication.snapshotDigest)
     expect(await service.search({ query: 'analytics' })).toHaveLength(1)

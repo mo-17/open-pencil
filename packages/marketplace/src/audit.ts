@@ -9,11 +9,15 @@ import {
 import {
   MARKETPLACE_AUDIT_ACTIONS,
   MARKETPLACE_LIMITS,
+  marketplaceAuditContextDigest,
   parseMarketplaceAuditActor,
+  parseMarketplaceCorrelationId,
   parseMarketplaceAuditEvent,
+  parseMarketplaceReason,
   parseMarketplaceAuditSubject,
   parseMarketplaceTimestamp,
   type MarketplaceAuditAction,
+  type MarketplaceAuditContextV1,
   type MarketplaceAuditEventV1,
   type MarketplaceJSONValue
 } from './types'
@@ -24,11 +28,16 @@ export interface AppendMarketplaceAuditEventInput {
   action: MarketplaceAuditAction
   subject: string
   payload: MarketplaceJSONValue
+  context?: {
+    reason: string | null
+    correlationId: string | null
+  }
 }
 
 export interface AppendMarketplaceAuditEventResult {
   events: readonly MarketplaceAuditEventV1[]
   event: MarketplaceAuditEventV1
+  context: MarketplaceAuditContextV1 | null
 }
 
 const VERIFIED_CHAINS = new WeakSet()
@@ -150,6 +159,11 @@ export async function marketplaceAuditEventHash(
     action: fields.action,
     subject: parseMarketplaceAuditSubject(fields.subject),
     payloadDigest: parseSha256Base64URL(fields.payloadDigest, 'audit.payloadDigest'),
+    ...(fields.contextDigest === undefined
+      ? {}
+      : {
+          contextDigest: parseSha256Base64URL(fields.contextDigest, 'audit.contextDigest')
+        }),
     previousHash:
       fields.previousHash === null
         ? null
@@ -226,6 +240,23 @@ export async function appendMarketplaceAuditEvent(
   if (!MARKETPLACE_AUDIT_ACTIONS.includes(input.action)) {
     throw new TypeError('audit.action is not supported')
   }
+  const contextValue =
+    input.context === undefined
+      ? null
+      : {
+          reason:
+            input.context.reason === null
+              ? null
+              : parseMarketplaceReason(input.context.reason, 'audit.context.reason'),
+          correlationId:
+            input.context.correlationId === null
+              ? null
+              : parseMarketplaceCorrelationId(
+                  input.context.correlationId,
+                  'audit.context.correlationId'
+                )
+        }
+  const contextDigest = contextValue ? marketplaceAuditContextDigest(contextValue) : undefined
   const fields = Object.freeze({
     sequence: events.length + 1,
     time,
@@ -233,6 +264,7 @@ export async function appendMarketplaceAuditEvent(
     action: input.action,
     subject: parseMarketplaceAuditSubject(input.subject),
     payloadDigest: await marketplaceAuditPayloadDigest(input.payload),
+    ...(contextDigest === undefined ? {} : { contextDigest }),
     previousHash: previous?.eventHash ?? null
   })
   const event = parseMarketplaceAuditEvent({
@@ -240,8 +272,13 @@ export async function appendMarketplaceAuditEvent(
     eventHash: await marketplaceAuditEventHash(fields)
   })
   const next = Object.freeze([...events, event])
+  let context: MarketplaceAuditContextV1 | null = null
+  if (contextValue) {
+    if (!contextDigest) throw new TypeError('audit.contextDigest is unavailable')
+    context = Object.freeze({ sequence: event.sequence, ...contextValue, contextDigest })
+  }
   VERIFIED_CHAINS.add(next)
-  return Object.freeze({ events: next, event })
+  return Object.freeze({ events: next, event, context })
 }
 
 export function marketplaceAuditHead(events: readonly MarketplaceAuditEventV1[]): string | null {
