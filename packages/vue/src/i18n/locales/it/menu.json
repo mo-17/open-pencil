@@ -80,5 +80,6 @@
   "settings": "Impostazioni…",
   "splitRight": "Dividi a destra",
   "splitDown": "Dividi in basso",
-  "closeView": "Chiudi vista"
+  "closeView": "Chiudi vista",
+  "removeGuide": "Rimuovi guida"
 }

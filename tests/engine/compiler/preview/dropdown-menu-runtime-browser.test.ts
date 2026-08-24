@@ -207,9 +207,9 @@ describe('preview browser — compiled Dropdown Menu module', () => {
       expect(await menu.evaluate((element) => element.parentElement === document.body)).toBe(true)
 
       const triggerFocus = await trigger.evaluate(
-        (element) => getComputedStyle(element).outlineWidth
+        (element) => getComputedStyle(element).outlineStyle
       )
-      expect(triggerFocus).toBe('0px')
+      expect(triggerFocus).toBe('none')
       const firstItem = page.getByRole('menuitem', { name: /Dashboard/ })
       await page.waitForTimeout(180)
       expect(await firstItem.evaluate((element) => element.getBoundingClientRect().height)).toBe(44)

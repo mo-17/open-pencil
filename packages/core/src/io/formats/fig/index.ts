@@ -19,3 +19,4 @@ export {
   type ExportFigFileOptions
 } from './write'
 export type { PortableSceneGraphData } from '#core/kiwi/fig/parse/portable-data'
+export { findFigThumbnailPageId } from './thumbnail-page'

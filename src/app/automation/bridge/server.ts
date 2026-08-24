@@ -4,7 +4,6 @@
  * Connects to the bridge via WebSocket, receives RPC requests,
  * executes them against the live EditorStore, and sends results back.
  */
-import { AUTOMATION_HTTP_PORT } from '@open-pencil/core/constants'
 import { randomHex } from '@open-pencil/core/random'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
@@ -19,7 +18,11 @@ import {
 } from '@/app/plugins/connectors/app'
 import { listAppPluginMCPTools } from '@/app/plugins/mcp'
 
-export function connectAutomation(getStore: () => EditorStore, authToken: string | null = null) {
+export function connectAutomation(
+  getStore: () => EditorStore,
+  authToken: string | null = null,
+  automationURL = __OPENPENCIL_LOCAL_AUTOMATION_URL__
+) {
   const token = authToken ?? randomHex(32)
   let ws: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
@@ -110,7 +113,7 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
   function connect() {
     let socket: WebSocket
     try {
-      socket = new WebSocket(`ws://127.0.0.1:${AUTOMATION_HTTP_PORT}`)
+      socket = new WebSocket(automationURL)
       ws = socket
     } catch (e) {
       console.error(

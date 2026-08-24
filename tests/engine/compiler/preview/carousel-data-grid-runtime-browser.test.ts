@@ -354,9 +354,9 @@ describe('preview browser — carousel and data grid runtimes', () => {
       await csvTools.getByRole('button', { name: 'Paste CSV (local session)' }).click()
       const importSource = csvTools.getByRole('textbox', { name: 'CSV import text' })
 
-      await importSource.fill('Name,Score\rBroken,1')
+      await importSource.fill('Name,Score\n"Broken,1')
       await csvTools.getByRole('button', { name: 'Import pasted CSV' }).click()
-      expect(await csvTools.getByRole('alert').textContent()).toContain('malformed CR')
+      expect(await csvTools.getByRole('alert').textContent()).toContain('unterminated quoted field')
 
       await importSource.fill('\uFEFFName,Score\n"=SUM(A1:A2)",10\nGamma,3')
       await csvTools.getByRole('button', { name: 'Import pasted CSV' }).click()

@@ -115,7 +115,10 @@ function automationRenderResult(
   }
 }
 
-export function createAutomationToolHandler(makeFigma: FigmaFactory) {
+export function createAutomationToolHandler(
+  makeFigma: FigmaFactory,
+  canCreateModule: (pluginId: string, moduleType: string) => boolean = canCreatePluginModule
+) {
   async function handleToolRender(
     target: AutomationTarget,
     toolArgs: Record<string, unknown>,
@@ -213,7 +216,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
             const result = await def.execute(figma, toolArgs, {
               ...(EDITOR_UNDO_TOOLS.has(def.name) ? { editor: store } : {}),
               ...(MODULE_CREATION_POLICY_TOOLS.has(def.name)
-                ? { canCreateModule: canCreatePluginModule }
+                ? { canCreateModule }
                 : {}),
               signal: context?.signal,
               onProgress: context?.onProgress,

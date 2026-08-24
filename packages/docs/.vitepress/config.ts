@@ -1,5 +1,6 @@
 import { readdirSync } from 'node:fs'
-import { fileURLToPath, URL } from 'node:url'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { transformerTwoslash } from '@shikijs/vitepress-twoslash'
 import { createFileSystemTypesCache } from '@shikijs/vitepress-twoslash/cache-fs'
@@ -17,8 +18,10 @@ import { docsLocalesFor } from './locales'
 import { rootThemeConfig } from './root-theme'
 import { BASE, applyPageSeo, siteHead, withAlternateSitemapLinks } from './seo'
 
-const repoRoot = fileURLToPath(new URL('../../..', import.meta.url))
-const docsRoot = fileURLToPath(new URL('..', import.meta.url))
+const configDir = dirname(fileURLToPath(import.meta.url))
+const docsRoot = dirname(configDir)
+const packagesRoot = dirname(docsRoot)
+const repoRoot = dirname(packagesRoot)
 
 function positiveIntegerEnvironmentValue(name: string, fallback: number): number {
   const raw = process.env[name]
@@ -96,7 +99,7 @@ export default defineConfig({
       ? [
           transformerTwoslash({
             typesCache: createFileSystemTypesCache({
-              dir: fileURLToPath(new URL('./cache/twoslash', import.meta.url))
+              dir: resolve(configDir, 'cache/twoslash')
             }),
             twoslashOptions: {
               compilerOptions: {
@@ -115,8 +118,9 @@ export default defineConfig({
   vite: {
     resolve: {
       alias: {
-        '#docs': fileURLToPath(new URL('.', import.meta.url)),
-        '#vue': fileURLToPath(new URL('../../vue/src', import.meta.url))
+        '#docs': configDir,
+        '#docs-api': resolve(docsRoot, 'programmable/sdk/api'),
+        '#vue': resolve(packagesRoot, 'vue/src')
       }
     },
     plugins: [tailwindcss()]

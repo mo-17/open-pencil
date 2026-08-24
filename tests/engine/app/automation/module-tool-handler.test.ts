@@ -11,9 +11,8 @@ import {
 import type { AutomationTarget } from '@/app/automation/bridge/target'
 import { createAutomationToolHandler } from '@/app/automation/bridge/tool-handlers'
 import { createEditorStore } from '@/app/editor/session'
-import { appPluginStore, appPluginStoreReady } from '@/app/plugins'
 
-function setup() {
+function setup(canCreateModule: (pluginId: string, moduleType: string) => boolean = () => true) {
   const store = createEditorStore()
   const page = store.graph.getNode(store.state.currentPageId)
   if (!page) throw new Error('Expected current page')
@@ -25,7 +24,10 @@ function setup() {
     pageId: page.id,
     pageName: page.name
   }
-  const handle = createAutomationToolHandler((currentStore) => new FigmaAPI(currentStore.graph))
+  const handle = createAutomationToolHandler(
+    (currentStore) => new FigmaAPI(currentStore.graph),
+    canCreateModule
+  )
   return { handle, page, store, target }
 }
 
@@ -37,7 +39,6 @@ function resultNodeId(response: unknown): string {
 
 describe('automation module tool handler', () => {
   test('creates a module through editor history and preserves it across undo and redo', async () => {
-    await appPluginStoreReady
     const { handle, store, target } = setup()
 
     const response = await handle(target, {
@@ -135,14 +136,14 @@ describe('automation module tool handler', () => {
   })
 
   test('honors plugin enablement for creation without disabling existing module updates', async () => {
-    await appPluginStoreReady
-    const { handle, page, store, target } = setup()
+    let moduleCreationEnabled = true
+    const { handle, page, store, target } = setup(() => moduleCreationEnabled)
     const existing = store.graph.createNode(
       'FRAME',
       page.id,
       createMapModuleFrameOverrides({ zoom: 4 })
     )
-    await appPluginStore.setEnabled(MAP_PLUGIN_ID, false)
+    moduleCreationEnabled = false
     try {
       const denied = await handle(target, {
         name: 'create_module',
@@ -170,7 +171,7 @@ describe('automation module tool handler', () => {
         resolveMapModule(store.graph.getNode(existing.id)?.interactiveProps?.module)
       ).toMatchObject({ ok: true, config: { zoom: 7 } })
     } finally {
-      await appPluginStore.setEnabled(MAP_PLUGIN_ID, true)
+      moduleCreationEnabled = true
     }
   })
 })

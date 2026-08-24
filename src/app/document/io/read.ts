@@ -1,9 +1,9 @@
 import type { Editor, EditorState } from '@open-pencil/core/editor'
-import { readFigFile } from '@open-pencil/core/io/formats/fig'
 import { populateLazyFigImportRoots } from '@open-pencil/core/kiwi'
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
 
 import { yieldToUI } from '@/app/document/io/browser'
+import { readFigDocument } from '@/app/document/io/fig'
 import { applyImportedDocument } from '@/app/document/io/imported-document'
 import { readReloadSource } from '@/app/document/io/reload-source'
 import {
@@ -56,7 +56,7 @@ export function createOpenActions({
     const finishLoading = editor.beginLoading()
     try {
       await yieldToUI()
-      const imported = await readFigFile(file, { populate: 'first-page' })
+      const imported = await readFigDocument(file, editor)
       await yieldToUI()
       await applyImportedDocument(editor, imported)
       state.documentName = file.name.replace(/\.fig$/i, '')

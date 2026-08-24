@@ -1,5 +1,7 @@
 import ts from 'typescript'
 
+import { discoverTypeShapeFiles } from './files'
+
 const roots = [
   'src',
   'packages/motion/src',
@@ -17,15 +19,9 @@ const roots = [
   'tools'
 ]
 
-type ShapeLocation = { file: string; line: number; name: string }
+const files = await discoverTypeShapeFiles(roots)
 
-const files: string[] = []
-for (const root of roots) {
-  for await (const path of new Bun.Glob('**/*.{ts,tsx}').scan(root)) {
-    if (path.endsWith('.d.ts')) continue
-    files.push(`${root}/${path}`)
-  }
-}
+type ShapeLocation = { file: string; line: number; name: string }
 
 function entityNameText(name: ts.EntityName): string {
   return ts.isIdentifier(name) ? name.text : `${entityNameText(name.left)}.${name.right.text}`

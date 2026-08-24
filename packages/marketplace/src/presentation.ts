@@ -19,6 +19,11 @@ import {
 import { MARKETPLACE_ARTIFACT_LIMITS } from './artifacts'
 import { MARKETPLACE_CONTROL_SCHEMA_VERSION } from './control-contract'
 import {
+  parsePositivePresentationInteger as positive,
+  parsePresentationText as text,
+  parseSortedPresentationStrings as stringArray
+} from './presentation-parse'
+import {
   MARKETPLACE_RELEASE_CHANNELS,
   parseMarketplaceIdentity,
   parseMarketplaceReleaseCoordinate,
@@ -153,47 +158,6 @@ const RUNTIME_CAPABILITIES = new Set<string>(PLUGIN_RUNTIME_CAPABILITIES)
 
 function sortedUnique(values: readonly string[]): readonly string[] {
   return Object.freeze([...new Set(values)].sort())
-}
-
-function text(value: unknown, path: string, maximum = 2_048): string {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value !== value.trim() ||
-    new TextEncoder().encode(value).byteLength > maximum ||
-    Array.from(value).some((character) => {
-      const code = character.codePointAt(0)
-      return code !== undefined && (code <= 0x1f || code === 0x7f)
-    })
-  ) {
-    throw new TypeError(`${path} must be bounded text without control characters`)
-  }
-  return value
-}
-
-function positive(value: unknown, path: string, maximum = Number.MAX_SAFE_INTEGER): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 1 || (value as number) > maximum) {
-    throw new TypeError(`${path} must be a positive safe integer`)
-  }
-  return value as number
-}
-
-function stringArray(
-  value: unknown,
-  path: string,
-  maximum: number,
-  parse: (entry: unknown, path: string) => string
-): readonly string[] {
-  const entries = parseBoundedManifestArray(value, path, maximum).map((entry, index) =>
-    parse(entry, `${path}[${index}]`)
-  )
-  if (
-    new Set(entries).size !== entries.length ||
-    [...entries].sort().join('\0') !== entries.join('\0')
-  ) {
-    throw new TypeError(`${path} must be sorted and unique`)
-  }
-  return Object.freeze(entries)
 }
 
 function identityArray(value: unknown, path: string, maximum: number): readonly string[] {

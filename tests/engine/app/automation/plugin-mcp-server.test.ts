@@ -15,6 +15,8 @@ import {
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import { credentialRef } from '@/app/settings/credentials/reference'
 
+const TEST_AUTOMATION_URL = 'ws://127.0.0.1:25500'
+
 test('automation bridge announces the current dynamic plugin tool revision after registration', () => {
   const originalWebSocket = globalThis.WebSocket
   const sent: string[] = []
@@ -47,7 +49,7 @@ test('automation bridge announces the current dynamic plugin tool revision after
 
   Reflect.set(globalThis, 'WebSocket', FakeWebSocket)
   const editor = createEditorStore()
-  const connection = connectAutomation(() => editor, 'test-token')
+  const connection = connectAutomation(() => editor, 'test-token', TEST_AUTOMATION_URL)
   try {
     const socket = FakeWebSocket.instances[0]
     if (!socket) throw new Error('Expected automation WebSocket')
@@ -114,7 +116,7 @@ test('automation bridge announces connector tools after authorization and revoca
 
   Reflect.set(globalThis, 'WebSocket', FakeWebSocket)
   const editor = createEditorStore()
-  const connection = connectAutomation(() => editor, 'connector-test-token')
+  const connection = connectAutomation(() => editor, 'connector-test-token', TEST_AUTOMATION_URL)
   try {
     const socket = FakeWebSocket.instances[0]
     if (!socket) throw new Error('Expected automation WebSocket')

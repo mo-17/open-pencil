@@ -30,9 +30,9 @@ export const CORE_PUBLISHED_WORKER_URLS = Object.freeze([
     workerEntry: 'src/io/formats/fig/export-worker.ts'
   },
   {
-    ownerEntry: 'src/io/formats/fig/read.ts',
-    sourceSpecifier: '../../../kiwi/fig/parse/worker.ts',
-    publishedSpecifier: '../../../kiwi/fig/parse/worker.js',
+    ownerEntry: 'src/kiwi/fig/parse/client.ts',
+    sourceSpecifier: './worker.ts',
+    publishedSpecifier: './worker.js',
     workerEntry: 'src/kiwi/fig/parse/worker.ts'
   }
 ] as const satisfies readonly PublishedWorkerURL[])

@@ -75,7 +75,8 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   let parsed: ReturnType<typeof parseFigBuffer>
   try {
     parsed = parseFigBuffer(parseRequest.buffer, {
-      limits: parseRequest.options?.archiveLimits
+      limits: parseRequest.options?.archiveLimits,
+      onPages: (pages) => postWorkerMessage({ type: 'page-manifest', pages }, [])
     })
   } catch (error) {
     postError(error, 'parse')
@@ -107,7 +108,7 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
       parseRequest.options?.populate === 'first-page'
         ? []
         : serializedSceneGraphTransferList(serialized)
-    postWorkerMessage({ graph: serialized }, transfer)
+    postWorkerMessage({ type: 'graph', graph: serialized }, transfer)
   } catch (error) {
     postError(error, 'transport')
   }

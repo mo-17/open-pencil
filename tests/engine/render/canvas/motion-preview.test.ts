@@ -591,6 +591,14 @@ describe('CanvasKit motion preview', () => {
         return undefined
       }
     }
+    class FakePathBuilder {
+      addPath(): undefined {
+        return undefined
+      }
+      detachAndDelete(): FakePath {
+        return new FakePath()
+      }
+    }
     class FakeContourMeasureIter {
       private consumed = false
       next() {
@@ -630,6 +638,7 @@ describe('CanvasKit motion preview', () => {
     const renderer = rendererFixture({
       ck: {
         Path: FakePath,
+        PathBuilder: FakePathBuilder,
         ContourMeasureIter: FakeContourMeasureIter,
         PathEffect: { MakeDash: makeDash },
         Color4f: (...values: number[]) => values

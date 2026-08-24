@@ -15,6 +15,7 @@ import {
   parseMarketplaceSnapshotPayload,
   resolveTrustedPluginKey,
   searchMarketplaceListings,
+  searchVerifiedMarketplaceListingProjection,
   serializeMarketplaceSnapshot,
   signMarketplaceSnapshot,
   signPluginCatalog,
@@ -198,6 +199,37 @@ describe('root-signed marketplace snapshot', () => {
     expect(
       searchMarketplaceListings(verified, { query: 'chart' }).map(({ pluginId }) => pluginId)
     ).toEqual(['acme.analytics'])
+
+    const signedListing = verified.snapshot.listings[0]
+    const projection = [{ ...signedListing, releases: [...signedListing.releases] }]
+    expect(searchVerifiedMarketplaceListingProjection(verified, projection)).toEqual([
+      signedListing
+    ])
+    expect(
+      Object.isFrozen(searchVerifiedMarketplaceListingProjection(verified, projection)[0])
+    ).toBe(true)
+
+    expect(() =>
+      searchVerifiedMarketplaceListingProjection(verified, [
+        { ...signedListing, name: 'Forged listing', releases: [...signedListing.releases] }
+      ])
+    ).toThrow('must preserve signed metadata')
+    expect(() =>
+      searchVerifiedMarketplaceListingProjection(verified, [
+        {
+          ...signedListing,
+          releases: [{ ...signedListing.releases[0], digest: 'forged-digest' }]
+        }
+      ])
+    ).toThrow('ordered signed subset')
+    expect(() =>
+      searchVerifiedMarketplaceListingProjection(verified, [
+        {
+          ...signedListing,
+          releases: [signedListing.releases[0], signedListing.releases[0]]
+        }
+      ])
+    ).toThrow('preserve signed metadata')
   })
 
   test('rejects tampering, wrong roots, expired snapshots, and cloned verification claims', async () => {

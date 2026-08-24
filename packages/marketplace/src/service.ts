@@ -1382,12 +1382,8 @@ export function createMarketplaceService(
       const at = currentTime(options.now)
       const snapshot = await latestVerifiedSnapshotFromState(state, at)
       if (!snapshot) return []
-      const listings = projectLiveMarketplaceListings(
-        state,
-        snapshot.snapshot.listings,
-        Date.parse(at)
-      )
-      return searchLiveMarketplaceListings(listings, searchOptions)
+      const listings = projectLiveMarketplaceListings(state, snapshot, Date.parse(at))
+      return searchLiveMarketplaceListings(snapshot, listings, searchOptions)
     },
     async listing(pluginId) {
       const id = parseMarketplaceIdentity(pluginId, 'marketplace plugin id')
@@ -1396,7 +1392,7 @@ export function createMarketplaceService(
       const snapshot = await latestVerifiedSnapshotFromState(state, at)
       if (!snapshot) return null
       return (
-        projectLiveMarketplaceListings(state, snapshot.snapshot.listings, Date.parse(at)).find(
+        projectLiveMarketplaceListings(state, snapshot, Date.parse(at)).find(
           (candidate) => candidate.pluginId === id
         ) ?? null
       )

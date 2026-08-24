@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 import { parsePluginTrustTimestamp } from '@open-pencil/plugin-contracts'
 import { validateModuleIdentity, webCryptoBuffer } from '@open-pencil/scene-graph'
 
+import { canonicalBase64URLBytes } from './canonical-base64url'
+
 export const MARKETPLACE_REQUEST_AUTH_VERSION = 2 as const
 export const MARKETPLACE_REQUEST_AUTH_LIMITS = Object.freeze({
   maxBodyBytes: 4 * 1024 * 1024,
@@ -41,27 +43,10 @@ function identity(value: string, path: string): string {
 }
 
 function base64URLBytes(value: string, path: string, expectedLength?: number): Uint8Array {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > MARKETPLACE_REQUEST_AUTH_LIMITS.maxSignatureLength ||
-    !/^[A-Za-z0-9_-]+$/.test(value)
-  ) {
-    throw new TypeError(`${path} must be base64url without padding`)
-  }
-  let bytes: Uint8Array
-  try {
-    bytes = new Uint8Array(Buffer.from(value, 'base64url'))
-  } catch {
-    throw new TypeError(`${path} must be valid base64url`)
-  }
-  if (Buffer.from(bytes).toString('base64url') !== value) {
-    throw new TypeError(`${path} must use canonical base64url encoding`)
-  }
-  if (expectedLength !== undefined && bytes.byteLength !== expectedLength) {
-    throw new TypeError(`${path} must decode to ${expectedLength} bytes`)
-  }
-  return bytes
+  return canonicalBase64URLBytes(value, path, {
+    expectedLength,
+    maxEncodedLength: MARKETPLACE_REQUEST_AUTH_LIMITS.maxSignatureLength
+  })
 }
 
 function requestTarget(urlValue: string): string {

@@ -431,6 +431,27 @@ export function createPluginRuntimeManager(options: CreatePluginRuntimeManagerOp
     )
   }
 
+  function reviewFromPolicy(
+    pluginId: string,
+    policy: PluginRuntimePolicyRecord
+  ): PluginRuntimeReview {
+    return {
+      pluginId,
+      installationIncarnation: installationIncarnation(pluginId),
+      declarativeManifestDigest: policy.declarativeManifestDigest,
+      runtimePackageDigest: policy.runtimePackageDigest,
+      marketplaceAuthority:
+        policy.schemaVersion === PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION && policy.marketplaceAuthority
+          ? structuredClone(policy.marketplaceAuthority)
+          : null,
+      kind: 'wasm',
+      capabilities: policy.grantedCapabilities,
+      executionStatus: 'eligible',
+      executionReason: null,
+      source: 'cache'
+    }
+  }
+
   function revoke(pluginId: string): Promise<PluginRuntimePolicyRecordV2> {
     pendingRevocations.add(pluginId)
     activeExecutions.get(pluginId)?.abort(new Error('Plugin runtime was revoked'))
@@ -439,22 +460,7 @@ export function createPluginRuntimeManager(options: CreatePluginRuntimeManagerOp
         const current = await refreshPolicy(pluginId)
         if (!current?.grantedAt || current.revokedAt)
           throw new Error('Plugin runtime is not granted')
-        const review: PluginRuntimeReview = {
-          pluginId,
-          installationIncarnation: installationIncarnation(pluginId),
-          declarativeManifestDigest: current.declarativeManifestDigest,
-          runtimePackageDigest: current.runtimePackageDigest,
-          marketplaceAuthority:
-            current.schemaVersion === PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION &&
-            current.marketplaceAuthority
-              ? structuredClone(current.marketplaceAuthority)
-              : null,
-          kind: 'wasm',
-          capabilities: current.grantedCapabilities,
-          executionStatus: 'eligible',
-          executionReason: null,
-          source: 'cache'
-        }
+        const review = reviewFromPolicy(pluginId, current)
         const occurredAt = monotonicAuditTimestamp()
         const policy = auditPolicy(current, review, 'revoke', occurredAt, null, {
           revokedAt: occurredAt
@@ -474,22 +480,7 @@ export function createPluginRuntimeManager(options: CreatePluginRuntimeManagerOp
     const current = await refreshPolicy(pluginId)
     if (current?.grantedAt && !current.revokedAt) {
       const occurredAt = monotonicAuditTimestamp()
-      const review: PluginRuntimeReview = {
-        pluginId,
-        installationIncarnation: installationIncarnation(pluginId),
-        declarativeManifestDigest: current.declarativeManifestDigest,
-        runtimePackageDigest: current.runtimePackageDigest,
-        marketplaceAuthority:
-          current.schemaVersion === PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION &&
-          current.marketplaceAuthority
-            ? structuredClone(current.marketplaceAuthority)
-            : null,
-        kind: 'wasm',
-        capabilities: current.grantedCapabilities,
-        executionStatus: 'eligible',
-        executionReason: null,
-        source: 'cache'
-      }
+      const review = reviewFromPolicy(pluginId, current)
       await persist(
         auditPolicy(current, review, 'revoke', occurredAt, null, { revokedAt: occurredAt })
       )

@@ -28,7 +28,8 @@ import type {
   InstalledPluginCommand,
   InstalledPluginConnector,
   InstalledPluginExporter,
-  InstalledPluginModule
+  InstalledPluginModule,
+  ResolvedPluginPackage
 } from './types'
 
 export const PLUGIN_MCP_LIMITS = Object.freeze({
@@ -318,6 +319,21 @@ export function appPluginMCPConnectorContributionId(
   return `connector_${sha256Hex(`${connectorId}\0${operationId}`)}`
 }
 
+export function appPluginMCPToolAuthority(
+  pluginPackage: ResolvedPluginPackage,
+  adapterId: string
+): AppPluginMCPToolAuthority {
+  return {
+    trustSource: pluginPackage.trustSource,
+    packageDigest: pluginPackage.digest,
+    pluginVersion: pluginPackage.manifest.plugin.version,
+    publisherId: pluginPackage.manifest.publisher.id,
+    publisherKeyId:
+      pluginPackage.verifiedPackage?.verifiedKeyId ?? pluginPackage.manifest.publisher.keyId,
+    adapterId
+  }
+}
+
 function pluginMetadata(
   plugin: InstalledAppPlugin,
   adapterId: string,
@@ -337,15 +353,7 @@ function pluginMetadata(
     pluginId,
     kind,
     contributionId,
-    authority: {
-      trustSource: pluginPackage.trustSource,
-      packageDigest: pluginPackage.digest,
-      pluginVersion: pluginPackage.manifest.plugin.version,
-      publisherId: pluginPackage.manifest.publisher.id,
-      publisherKeyId:
-        pluginPackage.verifiedPackage?.verifiedKeyId ?? pluginPackage.manifest.publisher.keyId,
-      adapterId
-    }
+    authority: appPluginMCPToolAuthority(pluginPackage, adapterId)
   }
 }
 

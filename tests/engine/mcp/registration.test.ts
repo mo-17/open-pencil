@@ -25,7 +25,7 @@ function captureRegistration(sendRPC: () => Promise<unknown>): {
     }
   })
 
-  registerTools(server, { enableEval: false, sendRPC })
+  registerTools(server, { policy: { allowEval: false, disabledTools: [] }, sendRPC })
   return { definitions, handlers }
 }
 

@@ -8,7 +8,8 @@ export default defineConfig({
     transport: './src/transport/paths.ts',
     discovery: './src/transport/discovery.ts',
     'motion-export': './src/motion-export/index.ts',
-    'plugin-contract': './src/tool/plugin/contract.ts'
+    'plugin-contract': './src/tool/plugin/contract.ts',
+    tools: './src/tool/index.ts'
   },
   platform: 'node',
   format: ['esm'],

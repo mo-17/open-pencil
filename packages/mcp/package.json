@@ -57,6 +57,12 @@
       "bun": "./src/tool/plugin/contract.ts",
       "import": "./dist/plugin-contract.mjs",
       "default": "./dist/plugin-contract.mjs"
+    },
+    "./tools": {
+      "types": "./dist/tools.d.mts",
+      "bun": "./src/tool/index.ts",
+      "import": "./dist/tools.mjs",
+      "default": "./dist/tools.mjs"
     }
   },
   "publishConfig": {

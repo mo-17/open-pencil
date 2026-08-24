@@ -58,10 +58,14 @@ function renderedPNGSequence(
   return { plan, frames }
 }
 
-async function fakeFfmpeg(name: string, source: string): Promise<string> {
+async function fakeFfmpeg(
+  name: string,
+  source: string,
+  interpreter = '/usr/bin/env bun'
+): Promise<string> {
   await mkdir(root, { recursive: true })
   const executable = join(root, name)
-  await writeFile(executable, `#!/usr/bin/env bun\n${source}\n`, 'utf8')
+  await writeFile(executable, `#!${interpreter}\n${source}\n`, 'utf8')
   await chmod(executable, 0o755)
   return executable
 }
@@ -92,16 +96,16 @@ describe('MCP platform Motion encoding', () => {
     const pidFile = join(root, 'probe-pids.txt')
     const executable = await fakeFfmpeg(
       'ffmpeg-probe-hang',
-      `import { appendFileSync } from 'node:fs'
-appendFileSync(${JSON.stringify(pidFile)}, String(process.pid) + '\\n')
-process.on('SIGTERM', () => undefined)
-setInterval(() => undefined, 1_000)`
+      `printf '%s\\n' "$$" >> ${JSON.stringify(pidFile)}
+trap '' TERM
+exec /bin/sleep 86400`,
+      '/bin/sh'
     )
     const started = Date.now()
     const discovery = await discoverFfmpegMotionEncoders({
       executable,
-      timeoutMs: 25,
-      terminationGraceMs: 25
+      timeoutMs: 100,
+      terminationGraceMs: 50
     })
 
     expect(discovery.available).toBe(false)
@@ -385,7 +389,7 @@ process.exit(1)`
     })
     let rpcArgs: Record<string, unknown> | undefined
     registerTools(server, {
-      enableEval: false,
+      policy: { allowEval: false, disabledTools: [] },
       mcpRoot: root,
       async sendRPC(body: Record<string, unknown>) {
         rpcArgs = body
@@ -434,7 +438,7 @@ process.exit(1)`
     let rpcSignal: AbortSignal | undefined
     const notifications: Record<string, unknown>[] = []
     registerTools(server, {
-      enableEval: false,
+      policy: { allowEval: false, disabledTools: [] },
       mcpRoot: root,
       async sendRPC(_body, options) {
         rpcSignal = options?.signal
@@ -492,7 +496,7 @@ process.exit(1)`
     cancellation.name = 'AbortError'
     let forwardedSignal: AbortSignal | undefined
     registerTools(server, {
-      enableEval: false,
+      policy: { allowEval: false, disabledTools: [] },
       async sendRPC(_body, options) {
         forwardedSignal = options?.signal
         throw cancellation

@@ -368,6 +368,37 @@ export function createMarketplaceSourceManager(options: CreateMarketplaceSourceM
     )
   }
 
+  function requireReady(): void {
+    if (!ready || fatalError) {
+      throw fatalError ?? new Error('Marketplace source manager is not ready')
+    }
+  }
+
+  function resolvedActiveSource(): MarketplaceSourceRecordV1 | null {
+    requireReady()
+    return managedConfigured && managedCandidate ? null : activeSource(state, managedConfigured)
+  }
+
+  async function persistDomainWallClock(
+    domain: MarketplaceTrustDomainRecordV1,
+    effectiveNow: number
+  ): Promise<void> {
+    if (!domain.highWater) throw new Error('Marketplace trust clock is unavailable')
+    const nextDomain = {
+      ...domain,
+      highWater: {
+        ...domain.highWater,
+        lastSeenWallTime: new Date(effectiveNow).toISOString()
+      }
+    }
+    await persist({
+      ...state,
+      trustDomains: state.trustDomains.map((entry) =>
+        entry.trustDomainId === nextDomain.trustDomainId ? nextDomain : entry
+      )
+    })
+  }
+
   function candidateFor(
     origin: MarketplaceSourceOrigin,
     config: CanonicalMarketplaceSourceConfig
@@ -538,10 +569,7 @@ export function createMarketplaceSourceManager(options: CreateMarketplaceSourceM
 
   async function stageActiveSourceRefresh(): Promise<MarketplaceSourceCandidate | null> {
     return runMutation(async () => {
-      if (!ready || fatalError)
-        throw fatalError ?? new Error('Marketplace source manager is not ready')
-      const source =
-        managedConfigured && managedCandidate ? null : activeSource(state, managedConfigured)
+      const source = resolvedActiveSource()
       if (!source) return null
       const resolved = await resolveMarketplaceSourceRecord(source)
       return candidateFor(source.origin, {
@@ -559,10 +587,7 @@ export function createMarketplaceSourceManager(options: CreateMarketplaceSourceM
    */
   async function checkpointActivePrivilegeClock(): Promise<number> {
     return runMutation(async () => {
-      if (!ready || fatalError)
-        throw fatalError ?? new Error('Marketplace source manager is not ready')
-      const source =
-        managedConfigured && managedCandidate ? null : activeSource(state, managedConfigured)
+      const source = resolvedActiveSource()
       if (!source) {
         await assertPersistedStateCurrent()
         return now()
@@ -573,19 +598,7 @@ export function createMarketplaceSourceManager(options: CreateMarketplaceSourceM
         await assertPersistedStateCurrent()
         return effectiveNow
       }
-      const nextDomain = {
-        ...domain,
-        highWater: {
-          ...domain.highWater,
-          lastSeenWallTime: new Date(effectiveNow).toISOString()
-        }
-      }
-      await persist({
-        ...state,
-        trustDomains: state.trustDomains.map((entry) =>
-          entry.trustDomainId === nextDomain.trustDomainId ? nextDomain : entry
-        )
-      })
+      await persistDomainWallClock(domain, effectiveNow)
       return effectiveNow
     })
   }
@@ -594,8 +607,7 @@ export function createMarketplaceSourceManager(options: CreateMarketplaceSourceM
     candidate: MarketplaceSourceCandidate
   ): Promise<MarketplaceSourceCandidate> {
     return runMutation(async () => {
-      if (!ready || fatalError)
-        throw fatalError ?? new Error('Marketplace source manager is not ready')
+      requireReady()
       if (!issuedCandidates.has(candidate))
         throw new Error('Marketplace source candidate was not issued by this manager')
       if (candidate.baseRevision !== revision)
@@ -603,19 +615,7 @@ export function createMarketplaceSourceManager(options: CreateMarketplaceSourceM
       const domain = findDomain(candidate.config)
       const effectiveNow = marketplaceEffectiveNow(domain?.highWater ?? null, now())
       if (domain?.highWater && effectiveNow > Date.parse(domain.highWater.lastSeenWallTime)) {
-        const nextDomain = {
-          ...domain,
-          highWater: {
-            ...domain.highWater,
-            lastSeenWallTime: new Date(effectiveNow).toISOString()
-          }
-        }
-        await persist({
-          ...state,
-          trustDomains: state.trustDomains.map((entry) =>
-            entry.trustDomainId === nextDomain.trustDomainId ? nextDomain : entry
-          )
-        })
+        await persistDomainWallClock(domain, effectiveNow)
       }
       const refreshed = candidateFor(candidate.origin, candidate.config)
       if (candidate.origin === 'managed') managedCandidate = refreshed
@@ -625,10 +625,7 @@ export function createMarketplaceSourceManager(options: CreateMarketplaceSourceM
 
   async function resolveActiveSource(): Promise<ResolvedMarketplaceSource | null> {
     return runMutation(async () => {
-      if (!ready || fatalError)
-        throw fatalError ?? new Error('Marketplace source manager is not ready')
-      const source =
-        managedConfigured && managedCandidate ? null : activeSource(state, managedConfigured)
+      const source = resolvedActiveSource()
       if (!source) return null
       const domain = domainFor(state, source)
       const config = await resolveMarketplaceSourceRecord(source)

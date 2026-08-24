@@ -35,16 +35,22 @@ export function createMemoryMarketplaceSourceStorage(
 
 export function createBrowserMarketplaceSourceStorage(
   storageKey = MARKETPLACE_SOURCE_STORAGE_KEY,
-  databaseName = MARKETPLACE_SOURCE_DATABASE_NAME
+  databaseName = MARKETPLACE_SOURCE_DATABASE_NAME,
+  idbFactory: IDBFactory | undefined = globalThis.indexedDB
 ): MarketplaceSourceStorage {
   let databasePromise: Promise<IDBDatabase> | null = null
 
   function database(): Promise<IDBDatabase> {
-    databasePromise ??= openIdb(databaseName, 1, (db) => {
-      if (!db.objectStoreNames.contains(MARKETPLACE_SOURCE_STORE_NAME)) {
-        db.createObjectStore(MARKETPLACE_SOURCE_STORE_NAME)
-      }
-    })
+    databasePromise ??= openIdb(
+      databaseName,
+      1,
+      (db) => {
+        if (!db.objectStoreNames.contains(MARKETPLACE_SOURCE_STORE_NAME)) {
+          db.createObjectStore(MARKETPLACE_SOURCE_STORE_NAME)
+        }
+      },
+      idbFactory
+    )
     return databasePromise
   }
 

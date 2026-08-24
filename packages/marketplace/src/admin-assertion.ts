@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 
 import type { MarketplaceNonceStore } from './auth'
+import { canonicalBase64URLBytes } from './canonical-base64url'
 import {
   parseMarketplaceOperatorAuthorization,
   type MarketplaceOperatorAuthorizationV2
@@ -208,17 +209,7 @@ function assertionTarget(value: unknown): string {
 }
 
 function base64URLBytes(value: string, path: string, expectedLength?: number): Uint8Array {
-  if (typeof value !== 'string' || value.length === 0 || !/^[A-Za-z0-9_-]+$/.test(value)) {
-    throw new TypeError(`${path} must be base64url without padding`)
-  }
-  const bytes = new Uint8Array(Buffer.from(value, 'base64url'))
-  if (Buffer.from(bytes).toString('base64url') !== value) {
-    throw new TypeError(`${path} must use canonical base64url encoding`)
-  }
-  if (expectedLength !== undefined && bytes.byteLength !== expectedLength) {
-    throw new TypeError(`${path} must decode to ${expectedLength} bytes`)
-  }
-  return bytes
+  return canonicalBase64URLBytes(value, path, { expectedLength })
 }
 
 function bodyDigest(body: Uint8Array): string {

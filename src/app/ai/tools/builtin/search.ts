@@ -9,6 +9,7 @@ import { inspectPluginCommandMCPExposure } from '@/app/plugins/host'
 import { bundledPluginLocalizedSearchText } from '@/app/plugins/localization'
 import {
   appPluginMCPConnectorContributionId,
+  appPluginMCPToolAuthority,
   type AppPluginMCPToolCatalog,
   type AppPluginMCPToolDescriptor,
   type AppPluginMCPToolAuthority,
@@ -266,16 +267,7 @@ function packageAuthority(
   item: AppPluginCatalogItem,
   adapterId: string
 ): AppPluginMCPToolAuthority {
-  const pluginPackage = item.package
-  return {
-    trustSource: pluginPackage.trustSource,
-    packageDigest: pluginPackage.digest,
-    pluginVersion: pluginPackage.manifest.plugin.version,
-    publisherId: pluginPackage.manifest.publisher.id,
-    publisherKeyId:
-      pluginPackage.verifiedPackage?.verifiedKeyId ?? pluginPackage.manifest.publisher.keyId,
-    adapterId
-  }
+  return appPluginMCPToolAuthority(item.package, adapterId)
 }
 
 function authorityFields(

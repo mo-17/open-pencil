@@ -13,6 +13,11 @@ import {
   type MarketplaceSubmissionPresentationV1
 } from './presentation'
 import {
+  parsePositivePresentationInteger as positive,
+  parsePresentationText as boundedText,
+  parseSortedPresentationStrings as parseSortedSet
+} from './presentation-parse'
+import {
   MARKETPLACE_RELEASE_CHANNELS,
   parseMarketplaceIdentity,
   parseMarketplaceReleaseCoordinate,
@@ -124,47 +129,6 @@ const PERMISSIONS = new Set([
 ])
 const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 const RUNTIME_CAPABILITIES = new Set<string>(PLUGIN_RUNTIME_CAPABILITIES)
-
-function positive(value: unknown, path: string): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 1) {
-    throw new TypeError(`${path} must be a positive safe integer`)
-  }
-  return value as number
-}
-
-function boundedText(value: unknown, path: string, maximum = 2_048): string {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value !== value.trim() ||
-    new TextEncoder().encode(value).byteLength > maximum ||
-    Array.from(value).some((character) => {
-      const code = character.codePointAt(0)
-      return code !== undefined && (code <= 0x1f || code === 0x7f)
-    })
-  ) {
-    throw new TypeError(`${path} must be bounded text without control characters`)
-  }
-  return value
-}
-
-function parseSortedSet(
-  value: unknown,
-  path: string,
-  maximum: number,
-  parse: (entry: unknown, path: string) => string = boundedText
-): readonly string[] {
-  const entries = parseBoundedManifestArray(value, path, maximum).map((entry, index) =>
-    parse(entry, `${path}[${index}]`)
-  )
-  if (
-    new Set(entries).size !== entries.length ||
-    [...entries].sort().join('\0') !== entries.join('\0')
-  ) {
-    throw new TypeError(`${path} must be sorted and unique`)
-  }
-  return Object.freeze(entries)
-}
 
 function equalStrings(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])

@@ -64,6 +64,8 @@ export interface ToolCtx {
 export interface ToolDef {
   name: string
   description: string
+  /** Whether execution changes persisted document content. Defaults to `mutates`. */
+  changesDocument?: boolean
   mutates?: boolean
   params: Record<string, ParamDef>
   execute: (figma: FigmaAPI, args: Record<string, unknown>, ctx?: ToolCtx) => unknown
@@ -99,11 +101,17 @@ type ResolvedParams<P extends Record<string, ParamDef>> = {
 export function defineTool<P extends Record<string, ParamDef>>(def: {
   name: string
   description: string
+  /** Whether execution changes persisted document content. Defaults to `mutates`. */
+  changesDocument?: boolean
   mutates?: boolean
   params: P
   execute: (figma: FigmaAPI, args: ResolvedParams<P>, ctx?: ToolCtx) => unknown
 }): ToolDef {
   return def as ToolDef
+}
+
+export function toolChangesDocument(def: ToolDef): boolean {
+  return def.changesDocument ?? def.mutates === true
 }
 
 export class NodeNotFoundError extends Error {

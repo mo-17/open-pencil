@@ -1,15 +1,18 @@
 import { assertFigArchiveByteLength, parseFigBuffer, type FigArchiveLimits } from '@open-pencil/fig'
+import type { FigPageManifestEntry } from '@open-pencil/kiwi/fig'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { DynamicConcurrencyLimiter, type ConcurrencyLimiterState } from '#core/async-work'
 import { IS_BROWSER } from '#core/constants'
 import { importNodeChanges } from '#core/kiwi/fig/import'
+import { createFigParseWorker } from '#core/kiwi/fig/parse/client'
 import { deserializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
 import type { SerializedSceneGraph } from '#core/kiwi/fig/parse/transfer'
 import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
 
 export interface ParseFigFileOptions {
   populate?: 'all' | 'first-page' | 'none'
+  onPages?: (pages: readonly FigPageManifestEntry[]) => void
   /** Override the finite ordinary-file archive and decompression quotas. */
   archiveLimits?: FigArchiveLimits
   /** Cancel queued or active dedicated-worker parsing. */
@@ -86,7 +89,10 @@ function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}
     figKiwiVersion,
     figSchemaDeflated,
     objectAnimations
-  } = parseFigBuffer(buffer, { limits: options.archiveLimits })
+  } = parseFigBuffer(buffer, {
+    limits: options.archiveLimits,
+    onPages: options.onPages
+  })
   const graph = importNodeChanges(nodeChanges, blobs, new Map(imageEntries), {
     populate: options.populate,
     maxGraphNodes: options.archiveLimits?.maxGraphNodes,
@@ -98,7 +104,8 @@ function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}
   return graph
 }
 
-interface WorkerParseResult {
+interface WorkerGraphResult {
+  type: 'graph'
   graph?: SerializedSceneGraph
   error?: string
   phase?: 'parse' | 'import' | 'transport'
@@ -143,7 +150,7 @@ class DeterministicFigWorkerError extends Error {
 }
 
 function isDeterministicWorkerPhase(
-  phase: WorkerParseResult['phase']
+  phase: WorkerGraphResult['phase']
 ): phase is 'parse' | 'import' {
   return phase === 'parse' || phase === 'import'
 }
@@ -174,6 +181,13 @@ function transferableFigBuffer(data: FigSourceData): ArrayBuffer {
   return copy.buffer
 }
 
+interface WorkerPageManifestResult {
+  type: 'page-manifest'
+  pages: FigPageManifestEntry[]
+}
+
+type WorkerParseResult = WorkerGraphResult | WorkerPageManifestResult
+
 function parseViaWorker(buffer: ArrayBuffer, options: ParseFigFileOptions): Promise<SceneGraph> {
   const pending = figParseWorkerLimiter.run(() => {
     throwIfFigParseAborted(options.signal)
@@ -187,10 +201,7 @@ function parseViaStartedWorker(
   options: ParseFigFileOptions
 ): Promise<SceneGraph> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('../../../kiwi/fig/parse/worker.ts', import.meta.url), {
-      type: 'module'
-    })
-
+    const worker = createFigParseWorker()
     let settled = false
     const abort = () => fail(figParseAbortReason(options.signal))
 
@@ -222,6 +233,14 @@ function parseViaStartedWorker(
     }
 
     worker.onmessage = (e: MessageEvent<WorkerParseResult>) => {
+      if (e.data.type === 'page-manifest') {
+        try {
+          options.onPages?.(e.data.pages)
+        } catch (error) {
+          fail(error)
+        }
+        return
+      }
       if (typeof e.data.error === 'string') {
         fail(
           isDeterministicWorkerPhase(e.data.phase)

@@ -35,13 +35,17 @@ export interface RootScopedRPCPolicyOptions {
 
 const EXPECTED_EXISTING_PATH = '__openpencil_expected_existing_path'
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function requestArgs(body: Record<string, unknown>): Record<string, unknown> {
   const args = body.args
   if (args === undefined) return {}
-  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+  if (!isRecord(args)) {
     throw new TypeError(`${String(body.command)} args must be an object`)
   }
-  return args as Record<string, unknown>
+  return args
 }
 
 function explicitPath(args: Record<string, unknown>): string | undefined {
@@ -72,7 +76,7 @@ function pathlessSaveTarget(
       ? (result as { documents?: unknown }).documents
       : undefined
   if (!Array.isArray(documents)) {
-    throw new Error('OpenPencil did not return a document list for pathless save_file')
+    throw new TypeError('OpenPencil did not return a document list for pathless save_file')
   }
 
   const document = documents.find((candidate): candidate is AutomationDocumentPath => {
@@ -100,6 +104,51 @@ function pathlessSaveTarget(
   return { documentId: document.id, path: document.path }
 }
 
+function hasReservedControlField(rawArgs: unknown): boolean {
+  return isRecord(rawArgs) && Object.hasOwn(rawArgs, EXPECTED_EXISTING_PATH)
+}
+
+async function prepareExplicitPathRequest(
+  body: Record<string, unknown>,
+  args: Record<string, unknown>,
+  command: unknown,
+  requestedPath: string,
+  resolvedRoot: string,
+  sendRPC: RootScopedRPCSender,
+  options: RPCSendOptions
+): Promise<PreparedRootScopedRPCRequest> {
+  const safePath = await resolveSafePath(requestedPath, resolvedRoot)
+  if (command !== 'save_file' || args[EXPECTED_EXISTING_PATH] === undefined) {
+    return { body: { ...body, args: { ...args, path: safePath.realPath } }, safePath }
+  }
+
+  const expectedExistingPath = args[EXPECTED_EXISTING_PATH]
+  if (typeof expectedExistingPath !== 'string' || expectedExistingPath.length === 0) {
+    throw new TypeError('save_file expected existing path must be a non-empty string')
+  }
+  const response = await sendRPC(
+    { command: 'list_documents', args: {} },
+    { signal: options.signal }
+  )
+  const selected = pathlessSaveTarget(response, args.document_id)
+  const currentPath = await resolveSafePath(selected.path, resolvedRoot)
+  if (safePath.realPath !== expectedExistingPath || currentPath.realPath !== expectedExistingPath) {
+    throw new Error('Selected document path changed before pathless save_file was forwarded')
+  }
+  const { [EXPECTED_EXISTING_PATH]: _expectedExistingPath, ...forwardArgs } = args
+  return {
+    body: {
+      ...body,
+      args: {
+        ...forwardArgs,
+        document_id: selected.documentId,
+        path: safePath.realPath
+      }
+    },
+    safePath
+  }
+}
+
 /**
  * Apply OPENPENCIL_MCP_ROOT immediately before an automation RPC is forwarded
  * to the desktop app. The app receives a canonical path, but this boundary
@@ -114,12 +163,8 @@ export async function prepareRootScopedRPCRequest(
 ): Promise<PreparedRootScopedRPCRequest> {
   const command = body.command
   const rawArgs = body.args
-  const hasReservedControlField =
-    Boolean(rawArgs) &&
-    typeof rawArgs === 'object' &&
-    !Array.isArray(rawArgs) &&
-    Object.hasOwn(rawArgs as object, EXPECTED_EXISTING_PATH)
-  if (hasReservedControlField && (!resolvedRoot || command !== 'save_file')) {
+  const includesReservedControlField = hasReservedControlField(rawArgs)
+  if (includesReservedControlField && (!resolvedRoot || command !== 'save_file')) {
     throw new TypeError('Internal pathless save_file control field is not accepted here')
   }
   if (!resolvedRoot) {
@@ -131,42 +176,19 @@ export async function prepareRootScopedRPCRequest(
 
   const args = requestArgs(body)
   const requestedPath = explicitPath(args)
-  if (hasReservedControlField && requestedPath === undefined) {
+  if (includesReservedControlField && requestedPath === undefined) {
     throw new TypeError('Internal pathless save_file control field is not accepted here')
   }
   if (requestedPath !== undefined) {
-    const safePath = await resolveSafePath(requestedPath, resolvedRoot)
-    if (command === 'save_file' && args[EXPECTED_EXISTING_PATH] !== undefined) {
-      const expectedExistingPath = args[EXPECTED_EXISTING_PATH]
-      if (typeof expectedExistingPath !== 'string' || expectedExistingPath.length === 0) {
-        throw new TypeError('save_file expected existing path must be a non-empty string')
-      }
-      const response = await sendRPC(
-        { command: 'list_documents', args: {} },
-        { signal: options.signal }
-      )
-      const selected = pathlessSaveTarget(response, args.document_id)
-      const currentPath = await resolveSafePath(selected.path, resolvedRoot)
-      if (
-        safePath.realPath !== expectedExistingPath ||
-        currentPath.realPath !== expectedExistingPath
-      ) {
-        throw new Error('Selected document path changed before pathless save_file was forwarded')
-      }
-      const { [EXPECTED_EXISTING_PATH]: _expectedExistingPath, ...forwardArgs } = args
-      return {
-        body: {
-          ...body,
-          args: {
-            ...forwardArgs,
-            document_id: selected.documentId,
-            path: safePath.realPath
-          }
-        },
-        safePath
-      }
-    }
-    return { body: { ...body, args: { ...args, path: safePath.realPath } }, safePath }
+    return prepareExplicitPathRequest(
+      body,
+      args,
+      command,
+      requestedPath,
+      resolvedRoot,
+      sendRPC,
+      options
+    )
   }
 
   if (command === 'open_file') {

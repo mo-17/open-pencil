@@ -8,6 +8,7 @@
     "/src/app/codepen/visual-compare.ts",
     "/src/app/plugins/index.ts",
     "/src/app/plugins/app.ts",
+    "/src/app/plugins/marketplace/index.ts",
     "#core/*"
   ],
   "ignoreBinaries": ["figma-use", "identify", "magick", "open", "osascript", "tauri-wd"]

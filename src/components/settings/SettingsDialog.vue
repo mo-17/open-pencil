@@ -10,6 +10,7 @@ import { settingsDialogOpen, settingsDialogSection } from '@/app/settings/dialog
 import AppearanceSettingsPanel from '@/components/settings/appearance/AppearanceSettingsPanel.vue'
 import GeneralSettingsPanel from '@/components/settings/general/GeneralSettingsPanel.vue'
 import MCPConnectionsSection from '@/components/settings/mcp/MCPConnectionsSection.vue'
+import MCPSettingsPanel from '@/components/settings/mcp/MCPSettingsPanel.vue'
 import ModelsPanel from '@/components/settings/models/ModelsPanel.vue'
 import CanvasPerformancePanel from '@/components/settings/performance/CanvasPerformancePanel.vue'
 import PluginsPanel from '@/components/settings/plugins/PluginsPanel.vue'
@@ -120,7 +121,7 @@ const navigationClass =
           @click="settingsDialogSection = 'mcp'"
         >
           <icon-lucide-plug class="size-3.5" />
-          {{ dialogs.mcpConnections }}
+          {{ dialogs.settingsMCP }}
         </button>
         <button
           type="button"
@@ -164,6 +165,7 @@ const navigationClass =
           class="flex flex-col"
           data-test-id="settings-mcp-panel"
         >
+          <MCPSettingsPanel />
           <MCPConnectionsSection />
         </section>
 

@@ -22,8 +22,10 @@ export function getWorldMatrix(node: SceneNode, graph: SceneGraph): Mat3 {
   return matrix
 }
 
-export function getAxisAlignedWorldBounds(node: SceneNode, graph: SceneGraph) {
-  const matrix = getWorldMatrix(node, graph)
+export function getTransformedNodeBounds(
+  node: Pick<SceneNode, 'width' | 'height'>,
+  matrix: Mat3
+): Rect {
   const points = Matrix.mapPoints(matrix, [
     0,
     0,
@@ -41,6 +43,10 @@ export function getAxisAlignedWorldBounds(node: SceneNode, graph: SceneGraph) {
   const minY = Math.min(...ys)
   const maxY = Math.max(...ys)
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+}
+
+export function getAxisAlignedWorldBounds(node: SceneNode, graph: SceneGraph): Rect {
+  return getTransformedNodeBounds(node, getWorldMatrix(node, graph))
 }
 
 export function getAbsolutePosition(node: SceneNode, graph: SceneGraph): Vector {

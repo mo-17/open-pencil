@@ -81,17 +81,26 @@ function decodeCSSEscapes(value: string): string {
   )
 }
 
-function parsedNodesContainResource(nodes: ParsedNode[]): boolean {
+type ParsedFunctionNode = ParsedNode & { nodes: ParsedNode[] }
+
+function parsedNodesMatch(
+  nodes: ParsedNode[],
+  matches: (node: ParsedFunctionNode, name: string) => boolean
+): boolean {
   for (const node of nodes) {
     if (node.type !== 'function') continue
-    const functionNode = node as ParsedNode & { nodes: ParsedNode[] }
+    const functionNode = node as ParsedFunctionNode
     const name = decodeCSSEscapes(node.value).toLowerCase()
-    if (RESOURCE_FUNCTIONS.has(name) || parsedNodesContainResource(functionNode.nodes)) return true
+    if (matches(functionNode, name) || parsedNodesMatch(functionNode.nodes, matches)) return true
   }
   return false
 }
 
-function resourceURLFromFunction(node: ParsedNode & { nodes: ParsedNode[] }): string {
+function parsedNodesContainResource(nodes: ParsedNode[]): boolean {
+  return parsedNodesMatch(nodes, (_node, name) => RESOURCE_FUNCTIONS.has(name))
+}
+
+function resourceURLFromFunction(node: ParsedFunctionNode): string {
   return decodeCSSEscapes(valueParser.stringify(node.nodes))
     .trim()
     .replace(/^(['"])(.*)\1$/, '$2')
@@ -118,19 +127,13 @@ function isSafeSerializedURL(value: string, allowNavigationProtocols = false): b
 }
 
 function parsedNodesContainDangerousResource(nodes: ParsedNode[]): boolean {
-  for (const node of nodes) {
-    if (node.type !== 'function') continue
-    const functionNode = node as ParsedNode & { nodes: ParsedNode[] }
-    const name = decodeCSSEscapes(node.value).toLowerCase()
+  return parsedNodesMatch(nodes, (functionNode, name) => {
     if (name === 'url') {
       const url = resourceURLFromFunction(functionNode)
-      if (!isSafeSerializedURL(url) && !SAFE_DATA_IMAGE.test(url)) return true
-    } else if (RESOURCE_FUNCTIONS.has(name)) {
-      return true
+      return !isSafeSerializedURL(url) && !SAFE_DATA_IMAGE.test(url)
     }
-    if (parsedNodesContainDangerousResource(functionNode.nodes)) return true
-  }
-  return false
+    return RESOURCE_FUNCTIONS.has(name)
+  })
 }
 
 function containsDangerousCSS(cssText: string): boolean {

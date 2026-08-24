@@ -4,16 +4,17 @@ import { ref, type Ref } from 'vue'
 import type { Editor } from '@open-pencil/core/editor'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
+import { createGuideInput, selectedTopLevelGuideFrameId } from '#vue/canvas/guides/input'
 import {
   handleBendHandleMove,
   handleNodeEditMouseUp,
   updateNodeEditHover
-} from '#vue/canvas/node-edit-input/use'
-import { handlePenDragMove, updatePenHover } from '#vue/canvas/pen-input/use'
+} from '#vue/canvas/node-edit/input'
+import { handlePenDragMove, updatePenHover } from '#vue/canvas/pen/input'
 import { createCanvasPointer } from '#vue/canvas/pointer/use'
 import { createTextEditInput } from '#vue/canvas/text-edit/input'
-import { handleToolMouseDown } from '#vue/canvas/tool-input/use'
-import { createCanvasTransformInput } from '#vue/canvas/transform-input/use'
+import { handleToolMouseDown } from '#vue/canvas/tools/input'
+import { createCanvasTransformInput } from '#vue/canvas/transform/input'
 import { resolveAutoLayoutHover } from '#vue/shared/input/auto-layout-hover'
 import { createClickCounter } from '#vue/shared/input/click-count'
 import { handleDrawMove, handleDrawUp } from '#vue/shared/input/draw'
@@ -52,7 +53,7 @@ export function useCanvasInput(
     previous: number
   } | null>(null)
   const selectedIdsBeforeClickSequence = ref<ReadonlySet<string>>(new Set())
-  const lastPointer = ref<{ cx: number; cy: number } | null>(null)
+  const lastPointer = ref<{ sx: number; sy: number; cx: number; cy: number } | null>(null)
   const pointerInside = ref(false)
   let altHeld = false
   let metaHeld = false
@@ -60,7 +61,7 @@ export function useCanvasInput(
   const spaceHeld = useSpaceHeld()
   const { recordClick, getClickCount } = createClickCounter()
   let passiveHoverFrame: number | null = null
-  let pendingPassiveHover: { cx: number; cy: number } | null = null
+  let pendingPassiveHover: { sx: number; sy: number; cx: number; cy: number } | null = null
 
   const { getCoords, canvasToLocal, hitTestInScope, hitFns } = createCanvasPointer(
     canvasRef,
@@ -88,13 +89,9 @@ export function useCanvasInput(
     const pointer = lastPointer.value
     if (!pointer || drag.value || editor.state.activeTool !== 'SELECT' || !pointerInside.value)
       return
-    cursorOverride.value = updateHoverCursor(
-      pointer.cx,
-      pointer.cy,
-      editor,
-      hitFns,
-      mode === 'deep'
-    )
+    const guideCursor = guideInput.updateHover(pointer.sx, pointer.sy)
+    cursorOverride.value =
+      guideCursor ?? updateHoverCursor(pointer.cx, pointer.cy, editor, hitFns, mode === 'deep')
     editor.setAutoLayoutHover(
       mode === 'off' ? resolveAutoLayoutHover(pointer.cx, pointer.cy, editor) : null
     )
@@ -130,21 +127,24 @@ export function useCanvasInput(
     passiveHoverFrame = null
   }
 
-  function schedulePassiveHover(cx: number, cy: number) {
-    pendingPassiveHover = { cx, cy }
+  function schedulePassiveHover(sx: number, sy: number, cx: number, cy: number) {
+    pendingPassiveHover = { sx, sy, cx, cy }
     if (passiveHoverFrame !== null) return
     passiveHoverFrame = requestAnimationFrame(() => {
       passiveHoverFrame = null
       const hover = pendingPassiveHover
       pendingPassiveHover = null
       if (!hover || drag.value || editor.state.activeTool !== 'SELECT') return
-      cursorOverride.value = updateHoverCursor(
-        hover.cx,
-        hover.cy,
-        editor,
-        hitFns,
-        editor.state.measurementMode === 'deep'
-      )
+      const guideCursor = guideInput.updateHover(hover.sx, hover.sy)
+      cursorOverride.value =
+        guideCursor ??
+        updateHoverCursor(
+          hover.cx,
+          hover.cy,
+          editor,
+          hitFns,
+          editor.state.measurementMode === 'deep'
+        )
       editor.setAutoLayoutHover(
         editor.state.measurementMode === 'off'
           ? resolveAutoLayoutHover(hover.cx, hover.cy, editor)
@@ -152,6 +152,16 @@ export function useCanvasInput(
       )
     })
   }
+
+  const guideInput = createGuideInput({
+    canvasRef,
+    editor,
+    canvasToLocal,
+    setDrag,
+    setCursor: (cursor) => {
+      cursorOverride.value = cursor
+    }
+  })
 
   const { handleTextEditClick, onDblClick: onTextDblClick } = createTextEditInput({
     editor,
@@ -250,6 +260,15 @@ export function useCanvasInput(
     const { sx, sy, cx, cy } = getCoords(e)
     onCursorMove?.(cx, cy)
     onCursorFlush?.()
+    if (e.button === 0 && guideInput.tryStartExisting(sx, sy, e.altKey)) {
+      e.preventDefault()
+      return
+    }
+    if (e.button === 0 && guideInput.tryStartFromRuler(sx, sy, cx, cy)) {
+      e.preventDefault()
+      return
+    }
+    editor.setSelectedGuide(null)
 
     const selectedIdsBeforeMouseDown = new Set(editor.state.selectedIds)
     const clickCount = recordClick(sx, sy)
@@ -269,11 +288,13 @@ export function useCanvasInput(
     })
   }
 
+  // Dispatching the full drag union is intentionally centralized here.
+  // eslint-disable-next-line complexity
   function onMouseMove(e: MouseEvent) {
     if (!isEnabled()) return
     pointerInside.value = true
     const { sx, sy, cx, cy } = getCoords(e)
-    lastPointer.value = { cx, cy }
+    lastPointer.value = { sx, sy, cx, cy }
     onCursorMove?.(cx, cy)
 
     if (!drag.value) {
@@ -285,7 +306,7 @@ export function useCanvasInput(
     }
 
     if (!drag.value && editor.state.activeTool === 'SELECT') {
-      schedulePassiveHover(cx, cy)
+      schedulePassiveHover(sx, sy, cx, cy)
     }
 
     if (!drag.value) return
@@ -296,6 +317,18 @@ export function useCanvasInput(
       return
     }
 
+    if (d.type === 'guide') {
+      const frameId = e.altKey && !d.guideId ? selectedTopLevelGuideFrameId(editor) : null
+      guideInput.handleMove(
+        d,
+        sx,
+        sy,
+        cx,
+        cy,
+        frameId ? { frameId, deep: e.metaKey || e.ctrlKey } : undefined
+      )
+      return
+    }
     if (d.type === 'rotate') {
       handleRotateMove(d, cx, cy, e.shiftKey)
       return
@@ -348,7 +381,9 @@ export function useCanvasInput(
 
     if (handleNodeEditMouseUp(drag, editor)) return
 
-    if (d.type === 'move') handleMoveUp(d, editor)
+    if (d.type === 'guide') {
+      guideInput.finish(d)
+    } else if (d.type === 'move') handleMoveUp(d, editor)
     else if (d.type === 'text-select') {
       drag.value = null
       return
@@ -383,6 +418,7 @@ export function useCanvasInput(
     editor.setSnapGuides([])
     editor.setLayoutInsertIndicator(null)
     editor.setDropTarget(null)
+    guideInput.clearHoverAndPreview()
   }
 
   function cancelPointerInteraction() {
@@ -396,7 +432,10 @@ export function useCanvasInput(
   useEventListener(canvasRef, 'mousedown', onMouseDown)
   useEventListener(canvasRef, 'mousemove', onMouseMove)
   useEventListener(canvasRef, 'mouseup', onMouseUp)
-  useEventListener(window, 'keydown', (event) => updateModifier(event.code, true))
+  useEventListener(window, 'keydown', (event) => {
+    if (!isEnabled()) return
+    if (!guideInput.deleteSelected(event)) updateModifier(event.code, true)
+  })
   useEventListener(window, 'keyup', (event) => updateModifier(event.code, false))
   useEventListener(window, 'blur', () => {
     resetMeasurementModifiers()
@@ -413,6 +452,7 @@ export function useCanvasInput(
     if (!drag.value) {
       editor.setHoveredNode(null)
       editor.setAutoLayoutHover(null)
+      editor.setHoveredGuide(null)
     }
   })
   useEventListener(

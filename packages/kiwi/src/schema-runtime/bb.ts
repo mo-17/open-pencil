@@ -24,6 +24,14 @@ export class ByteBuffer {
     this.length = data ? data.length : 0
   }
 
+  get offset(): number {
+    return this._index
+  }
+
+  set offset(value: number) {
+    this._index = value
+  }
+
   /**
    * Returns a view into the internal buffer, not a copy.
    *
@@ -78,6 +86,12 @@ export class ByteBuffer {
     if (this._limits?.maxDecodeDepth !== undefined && this._decodeDepth > 0) {
       this._decodeDepth -= 1
     }
+  }
+
+  skipByteArray(): void {
+    const length = this.readVarUint()
+    this._requireReadable(length, 'byte array')
+    this._index += length
   }
 
   readVarFloat(): number {
@@ -164,14 +178,24 @@ export class ByteBuffer {
   }
 
   readString(): string {
-    const data = this._data
     const start = this._index
-    const end = data.indexOf(0, start)
-    if (end === -1 || end >= this.length) {
+    const end = this.findStringTerminator(start)
+    this._index = end + 1
+    return textDecoder.decode(this._data.subarray(start, end))
+  }
+
+  skipString(): void {
+    this._index = this.findStringTerminator(this._index) + 1
+  }
+
+  private findStringTerminator(start: number): number {
+    const data = this._data
+    let index = start
+    while (index < this.length && data[index] !== 0) index++
+    if (index >= this.length) {
       throw new Error('Unexpected end of ByteBuffer while reading null-terminated string')
     }
-    this._index = end + 1
-    return textDecoder.decode(data.subarray(start, end))
+    return index
   }
 
   private _requireReadable(amount: number, label: string): void {

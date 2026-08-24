@@ -12,6 +12,7 @@ paths = [
   '''(^|/)node_modules/''',
   '''^desktop/target/''',
   '''^packages/[^/]+/dist/''',
+  '''^output/''',
   '''^test-results/''',
   '''^scratch/'''
 ]

@@ -35,11 +35,12 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/
 const encoder = new TextEncoder()
 
 function record(value: unknown, label: string): WorkerRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (typeof value !== 'object' || value === null) {
     throw new TypeError(`${label} must be an object`)
   }
+  if (Array.isArray(value)) throw new TypeError(`${label} must be an object`)
   const prototype = Object.getPrototypeOf(value)
-  if (prototype !== Object.prototype && prototype !== null) {
+  if (![Object.prototype, null].includes(prototype)) {
     throw new TypeError(`${label} must be a plain object`)
   }
   return value as WorkerRecord

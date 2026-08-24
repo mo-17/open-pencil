@@ -1,11 +1,15 @@
+import { promiseTimeout } from '@vueuse/core'
 import { shallowRef, computed, triggerRef } from 'vue'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
-import { readFigFile, readFigSource } from '@open-pencil/core/io/formats/fig'
+import { findFigThumbnailPageId, readFigSource } from '@open-pencil/core/io/formats/fig'
+import { renderThumbnail } from '@open-pencil/core/io/formats/raster'
+import { populateLazyFigImportRoots } from '@open-pencil/core/kiwi'
 import { computeAllLayouts } from '@open-pencil/core/layout'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { setOpenPencilStore } from '@/app/browser-bridge'
+import { readFigDocument, showFigPageManifest } from '@/app/document/io/fig'
 import type { DocumentSourceIdentity } from '@/app/document/io/types'
 import { getRecoveryStore, type RecoverySnapshotMeta } from '@/app/document/recovery'
 import { setActiveEditorStore } from '@/app/editor/active-store'
@@ -21,6 +25,11 @@ import {
   type StorageDocument,
   type StorageTransferOptions
 } from '@/app/integrations/storage'
+import {
+  cacheRecentFileThumbnail,
+  loadCachedRecentFileThumbnail,
+  rememberRecentStorageDocument
+} from '@/app/recent-files'
 import { assertCloudStorageDurability } from '@/app/storage/durability'
 import { getLocalCanvasStore } from '@/app/storage/local-store'
 import { withStorageProfileMutationLease } from '@/app/storage/mutation-drain'
@@ -33,13 +42,18 @@ import {
 } from '@/app/tabs/open/file-source'
 import { findTabByFileIdentity } from '@/app/tabs/open/identity'
 
+export type TabKind = 'home' | 'document'
+
 export interface Tab {
   id: string
   store: EditorStore
+  kind: TabKind
 }
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const fileOpenCoordinator = createFileOpenCoordinator()
+const RECENT_FILE_THUMBNAIL_SIZE = 512
+const coverThumbnailListeners = new WeakMap<EditorStore, () => void>()
 
 let nextTabId = 1
 
@@ -56,6 +70,7 @@ export const allTabs = computed(() =>
   tabsRef.value.map((t) => ({
     id: t.id,
     name: t.store.state.documentName,
+    isHome: t.kind === 'home',
     isActive: t.id === activeTabId.value
   }))
 )
@@ -84,10 +99,41 @@ export function getTabsSnapshot(): Tab[] {
 
 export function createTab(store?: EditorStore, initialGraph?: SceneGraph): Tab {
   const s = store ?? createEditorStore(initialGraph)
-  const tab: Tab = { id: generateTabId(), store: s }
+  const tab: Tab = { id: generateTabId(), store: s, kind: 'document' }
   tabsRef.value = [...tabsRef.value, tab]
   activateTab(tab)
   return tab
+}
+
+export function createHomeTab(): Tab {
+  const tab: Tab = { id: generateTabId(), store: createEditorStore(), kind: 'home' }
+  tabsRef.value = [...tabsRef.value, tab]
+  activateTab(tab)
+  return tab
+}
+
+export function leaveHome(tabId: string): void {
+  const tabIndex = tabsRef.value.findIndex((candidate) => candidate.id === tabId)
+  if (tabIndex === -1) return
+  const tab = tabsRef.value[tabIndex]
+  if (tab.kind !== 'home') return
+  tabsRef.value = tabsRef.value.with(tabIndex, { ...tab, kind: 'document' })
+}
+
+export function createDocumentInCurrentTab(): Tab {
+  const current = activeTab.value
+  if (current?.kind !== 'home') return createTab()
+  leaveHome(current.id)
+  return getTabById(current.id) ?? current
+}
+
+export function showNewTab(): void {
+  const homeTab = tabsRef.value.find((tab) => tab.kind === 'home')
+  if (homeTab) {
+    switchTab(homeTab.id)
+    return
+  }
+  createHomeTab()
 }
 
 function activateTab(tab: Tab) {
@@ -112,13 +158,16 @@ export async function closeTab(tabId: string): Promise<void> {
   if (idx === -1) return
 
   const closingTab = tabsRef.value[idx]
+  if (closingTab.kind === 'home' && tabsRef.value.length === 1) return
   const wasActive = activeTabId.value === tabId
+  coverThumbnailListeners.get(closingTab.store)?.()
+  coverThumbnailListeners.delete(closingTab.store)
   await closingTab.store.persistRecoveryNow()
   closingTab.store.dispose()
   tabsRef.value = tabsRef.value.filter((t) => t.id !== tabId)
 
   if (tabsRef.value.length === 0) {
-    createTab()
+    createHomeTab()
     return
   }
 
@@ -154,11 +203,96 @@ async function openDOMSource(
   await store.openDOMFile(file, { handle, path })
 }
 
-function reusableTabStore(): EditorStore {
+function reusableTabStore(): { store: EditorStore; created: boolean } {
   const current = activeTab.value
+  if (current?.kind === 'home') {
+    leaveHome(current.id)
+    return { store: current.store, created: false }
+  }
   const isUntouched =
     current?.store.state.documentName === 'Untitled' && !current.store.undo.canUndo
-  return isUntouched ? current.store : createTab().store
+  if (isUntouched) {
+    leaveHome(current.id)
+    return { store: current.store, created: false }
+  }
+  return { store: createTab().store, created: true }
+}
+
+function prepareFigGraphForTab(imported: SceneGraph): SceneGraph {
+  const firstPageId = imported.getPages()[0]?.id
+  if (firstPageId) computeAllLayouts(imported, firstPageId)
+  const coverPageId = findFigThumbnailPageId(imported.getPages())
+  if (coverPageId && coverPageId !== firstPageId) {
+    populateLazyFigImportRoots(imported, [coverPageId])
+    computeAllLayouts(imported, coverPageId)
+  }
+  return imported
+}
+
+async function readFigForTab(source: OpenFileSource, store: EditorStore): Promise<SceneGraph> {
+  const imported = isDeferredOpenFile(source)
+    ? await readFigSource(source, {
+        populate: 'first-page',
+        onPages: (pages) => showFigPageManifest(store, pages)
+      })
+    : await readFigDocument(source, store)
+  return prepareFigGraphForTab(imported)
+}
+
+async function showImportedGraph(
+  store: EditorStore,
+  graph: SceneGraph,
+  prepare?: () => void | Promise<void>
+): Promise<void> {
+  store.replaceGraph(graph)
+  store.undo.clear()
+  await prepare?.()
+  store.clearSelection()
+  const pageId = store.graph.getPages()[0]?.id ?? store.graph.rootId
+  await store.switchPage(pageId)
+  await store.fitCurrentPageToViewport()
+}
+
+async function cacheOpenedFigCover(path: string, store: EditorStore): Promise<void> {
+  if (await loadCachedRecentFileThumbnail(path)) return
+  const coverPageId = findFigThumbnailPageId(store.graph.getPages())
+  if (!coverPageId) return
+  for (let attempt = 0; attempt < 240 && !store.renderer; attempt++) {
+    await promiseTimeout(250)
+  }
+  const renderer = store.renderer
+  if (!renderer) {
+    console.warn('[Recent files] Cover thumbnail skipped because the renderer was unavailable')
+    return
+  }
+  const bytes = renderThumbnail(
+    renderer.ck,
+    renderer,
+    store.graph,
+    coverPageId,
+    RECENT_FILE_THUMBNAIL_SIZE,
+    RECENT_FILE_THUMBNAIL_SIZE
+  )
+  if (!bytes) {
+    console.warn('[Recent files] Cover thumbnail skipped because the Cover page was empty')
+    return
+  }
+  await cacheRecentFileThumbnail(path, bytes)
+}
+
+function watchOpenedFigCover(path: string, store: EditorStore): void {
+  coverThumbnailListeners.get(store)?.()
+  const coverPageId = findFigThumbnailPageId(store.graph.getPages())
+  if (!coverPageId) return
+  coverThumbnailListeners.set(
+    store,
+    store.onEditorEvent('page:changed', (pageId) => {
+      if (pageId !== coverPageId) return
+      void cacheOpenedFigCover(path, store).catch((error) => {
+        console.warn('[Recent files] Failed to cache the Cover thumbnail', error)
+      })
+    })
+  )
 }
 
 function storageOpenPath(binding: StorageDocumentBindingInput): string {
@@ -207,17 +341,23 @@ async function decideDocumentOpen(
     const existing = await findExisting()
     if (existing) {
       switchTab(existing.id)
+      if (identity.path?.toLowerCase().endsWith('.fig')) {
+        watchOpenedFigCover(identity.path, existing.store)
+        void cacheOpenedFigCover(identity.path, existing.store).catch((error) => {
+          console.warn('[Recent files] Failed to cache the Cover thumbnail', error)
+        })
+      }
       return { kind: 'existing' as const }
     }
 
-    const store = reusableTabStore()
+    const { store, created } = reusableTabStore()
     store.state.documentName = documentName
     const finishLoading = store.beginLoading()
     const completion = Promise.withResolvers<undefined>()
     void completion.promise.catch(() => undefined)
     const pendingOpen = { completion: completion.promise, identity, store }
     fileOpenCoordinator.add(pendingOpen)
-    return { kind: 'owner' as const, completion, finishLoading, pendingOpen, store }
+    return { kind: 'owner' as const, completion, finishLoading, pendingOpen, store, created }
   })
 }
 
@@ -233,31 +373,21 @@ async function completeDocumentOpen(
     return
   }
 
-  const { completion, finishLoading, pendingOpen, store } = decision
+  const { completion, created, finishLoading, pendingOpen, store } = decision
   try {
     await open(store)
     completion.resolve(undefined)
   } catch (error) {
     completion.reject(error)
+    if (created) {
+      const tab = getTabForStore(store)
+      if (tab) await closeTab(tab.id)
+    }
     throw error
   } finally {
     finishLoading()
     fileOpenCoordinator.remove(pendingOpen)
   }
-}
-
-async function finishImportedGraphOpen(
-  store: EditorStore,
-  imported: SceneGraph,
-  setSource: () => void
-): Promise<void> {
-  store.replaceGraph(imported)
-  store.undo.clear()
-  setSource()
-  store.clearSelection()
-  const pageId = store.graph.getPages()[0]?.id ?? store.graph.rootId
-  await store.switchPage(pageId)
-  await store.fitCurrentPageToViewport()
 }
 
 export async function openStorageDocumentInNewTab(
@@ -335,13 +465,18 @@ export async function openStorageDocumentInNewTab(
             return cached
           }
         },
-        { populate: 'first-page' }
+        {
+          populate: 'first-page',
+          signal: options.signal,
+          onPages: (pages) => showFigPageManifest(store, pages)
+        }
       )
       options.signal?.throwIfAborted()
-      await finishImportedGraphOpen(store, imported, () => {
+      await showImportedGraph(store, prepareFigGraphForTab(imported), () => {
         store.setStorageDocumentSource(binding, document.name)
       })
     })
+    rememberRecentStorageDocument(providerId, document.id, document.name)
   })
 }
 
@@ -369,9 +504,7 @@ export async function openFileInNewTab(
     let imported: SceneGraph
     let sourceFormat: string
     if (isFig) {
-      imported = isDeferredOpenFile(file)
-        ? await readFigSource(file, { populate: 'first-page' })
-        : await readFigFile(file, { populate: 'first-page' })
+      imported = await readFigForTab(file, store)
       sourceFormat = 'fig'
     } else {
       const result = await io.readDocument({
@@ -381,11 +514,19 @@ export async function openFileInNewTab(
       })
       imported = result.graph
       sourceFormat = result.sourceFormat
+      const firstPageId = imported.getPages()[0]?.id
+      if (firstPageId) computeAllLayouts(imported, firstPageId)
     }
 
-    await finishImportedGraphOpen(store, imported, () => {
+    await showImportedGraph(store, imported, () => {
       store.setDocumentSource(file.name, sourceFormat, handle, path)
+      if (isFig && path) watchOpenedFigCover(path, store)
     })
+    if (isFig && path) {
+      void cacheOpenedFigCover(path, store).catch((error) => {
+        console.warn('[Recent files] Failed to cache the Cover thumbnail', error)
+      })
+    }
   })
 }
 
@@ -401,23 +542,28 @@ export async function restoreRecoverySnapshot(id: string): Promise<void> {
   const snapshot = await getRecoveryStore().read(id)
   if (!snapshot) throw new Error('Recovery snapshot is no longer available')
 
-  const fileBytes = new Uint8Array(snapshot.figBytes)
-  const file = new File([fileBytes.buffer], `${snapshot.documentName}.fig`, {
-    type: 'application/octet-stream'
-  })
-  const imported = await readFigFile(file, { populate: 'first-page' })
-  const firstPageId = imported.getPages()[0]?.id
-  if (firstPageId) computeAllLayouts(imported, firstPageId)
+  const { store, created } = reusableTabStore()
+  const finishLoading = store.beginLoading()
+  try {
+    const fileBytes = new Uint8Array(snapshot.figBytes)
+    const file = new File([fileBytes.buffer], `${snapshot.documentName}.fig`, {
+      type: 'application/octet-stream'
+    })
+    const imported = await readFigForTab(file, store)
 
-  const store = reusableTabStore()
-  store.replaceGraph(imported)
-  store.undo.clear()
-  store.state.documentName = snapshot.documentName
-  await store.adoptRecoverySnapshot(id, snapshot.sceneVersion)
-  store.clearSelection()
-  const pageId = store.graph.getPages()[0]?.id ?? store.graph.rootId
-  await store.switchPage(pageId)
-  await store.fitCurrentPageToViewport()
+    await showImportedGraph(store, imported, async () => {
+      store.state.documentName = snapshot.documentName
+      await store.adoptRecoverySnapshot(id, snapshot.sceneVersion)
+    })
+  } catch (error) {
+    if (created) {
+      const tab = getTabForStore(store)
+      if (tab) await closeTab(tab.id)
+    }
+    throw error
+  } finally {
+    finishLoading()
+  }
 }
 
 export async function prepareForReload(): Promise<void> {
@@ -432,7 +578,10 @@ export function useTabsStore() {
   return {
     tabs: allTabs,
     activeTabId,
+    createHomeTab,
+    createDocumentInCurrentTab,
     createTab,
+    leaveHome,
     switchTab,
     closeTab,
     getActiveTabId,

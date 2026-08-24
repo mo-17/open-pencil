@@ -28,6 +28,7 @@ import { applyEnabledLibrariesPluginData } from '#core/io/formats/fig/library-me
 import { projectLowcodeNodeForFigma } from '#core/io/formats/fig/lowcode-projection'
 import { encodeNativeFigBuildPayload } from '#core/io/formats/fig/native-payload'
 import { prepareFigmaProjectionFonts } from '#core/io/formats/fig/projection-fonts'
+import { findFigThumbnailPageId } from '#core/io/formats/fig/thumbnail-page'
 import { renderThumbnail } from '#core/io/formats/raster'
 import type { FigWriteOptions, IOContext } from '#core/io/types'
 import { populateAllLazyFigImportRoots } from '#core/kiwi/fig/lazy-import'
@@ -295,8 +296,8 @@ function collectImageEntries(graph: SceneGraph): Array<{ name: string; data: Uin
   return entries
 }
 
-const THUMBNAIL_WIDTH = 400
-const THUMBNAIL_HEIGHT = 225
+const THUMBNAIL_WIDTH = 512
+const THUMBNAIL_HEIGHT = 512
 
 async function renderFigThumbnail(
   graph: SceneGraph,
@@ -845,7 +846,7 @@ export async function exportFigFileWithOptions(
 
   const kiwiData = compiled.encodeMessage(msg)
 
-  const currentPageId = pageId ?? pages[0]?.id
+  const currentPageId = pageId ?? findFigThumbnailPageId(pages)
   const thumbnailPNG = await renderFigThumbnail(
     graph,
     currentPageId,

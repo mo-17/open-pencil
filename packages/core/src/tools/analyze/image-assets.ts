@@ -34,10 +34,7 @@ interface ImageAssetReference {
   fillVisible: boolean
 }
 
-interface PageInfo {
-  id: string
-  name: string
-}
+type PageInfo = Pick<SceneNode, 'id' | 'name'>
 
 interface AuditLimits {
   maxAssetBytes: number

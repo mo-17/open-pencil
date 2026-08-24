@@ -4,12 +4,12 @@ import { graphHasAnimatedGeneratedEffects } from '@open-pencil/motion'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry'
 
-import { drawPageGuides } from '#core/canvas/page-guides'
 import type { RenderOverlays, SkiaRenderer } from '#core/canvas/renderer'
 import type { EditorState } from '#core/editor/types'
 import { computeMotionLayoutPreview } from '#core/layout'
 
 import { beginDecodedImageCacheFrame, endDecodedImageCacheFrame } from './image-cache'
+import { drawChromePass, drawLabelPass, drawOverlayPass } from './overlay-pass'
 import {
   drawLastGoodSceneBacking,
   renderSceneBacking,
@@ -119,6 +119,7 @@ export function renderFromEditorState(
       textEditor: textEditor as RenderOverlays['textEditor'],
       marquee: state.marquee,
       snapGuides: state.snapGuides,
+      guides: state.guides,
       rotationPreview: state.rotationPreview,
       dropTargetId: state.dropTargetId,
       layoutInsertIndicator: state.layoutInsertIndicator,
@@ -171,10 +172,10 @@ function canUseScenePicture(
   r: SkiaRenderer,
   graph: SceneGraph,
   sceneVersion: number,
-  hasVolatileOverlays: boolean
+  requiresUncachedSceneRender: boolean
 ): boolean {
   return (
-    !hasVolatileOverlays &&
+    !requiresUncachedSceneRender &&
     !!r.scenePicture &&
     graph.positionPreviewVersion === r.scenePicturePositionPreviewVersion &&
     sceneVersion === r.scenePictureVersion &&
@@ -247,38 +248,6 @@ function renderSceneLayer(
     hasVolatileOverlays
   )
 }
-
-function measurementVisible(overlays: RenderOverlays): boolean {
-  return (
-    overlays.measurementMode !== undefined &&
-    overlays.measurementMode !== 'off' &&
-    !overlays.editingTextId &&
-    !overlays.nodeEditState &&
-    !overlays.penState
-  )
-}
-
-function drawInteractiveOverlays(
-  r: SkiaRenderer,
-  canvas: Canvas,
-  graph: SceneGraph,
-  selectedIds: Set<string>,
-  overlays: RenderOverlays
-) {
-  const measuring = measurementVisible(overlays)
-  const hoveredNodeId =
-    measuring || overlays.hoveredNodeId === overlays.nodeEditState?.nodeId
-      ? null
-      : overlays.hoveredNodeId
-  r.drawHoverHighlight(canvas, graph, hoveredNodeId)
-  r.drawEnteredContainer(canvas, graph, overlays.enteredContainerId)
-  r.profiler.beginPhase('render:selection')
-  // Motion preview is scene-only; selection chrome stays on authored bounds.
-  r.drawSelection(canvas, graph, selectedIds, overlays)
-  if (measuring) r.drawMeasurements(canvas, graph, selectedIds, overlays.hoveredNodeId)
-  r.profiler.endPhase('render:selection')
-}
-
 export function render(
   r: SkiaRenderer,
   graph: SceneGraph,
@@ -359,35 +328,13 @@ export function render(
       canvas.save()
       canvas.scale(r.dpr, r.dpr)
       r.labelCache.update(graph, r.pageId, sceneVersion, graph.positionPreviewVersion)
-      p.beginPhase('render:sectionTitles')
-      r.drawSectionTitles(canvas, graph)
-      p.endPhase('render:sectionTitles')
-      p.beginPhase('render:componentLabels')
-      r.drawComponentLabels(canvas, graph)
-      p.endPhase('render:componentLabels')
+      drawLabelPass(r, canvas, graph)
       canvas.restore()
 
       canvas.save()
       canvas.scale(r.dpr, r.dpr)
-
-      drawInteractiveOverlays(r, canvas, graph, selectedIds, overlays)
-      r.drawFlashes(canvas, graph)
-      drawPageGuides(r, canvas, graph)
-      r.drawSnapGuides(canvas, overlays.snapGuides)
-      r.drawMarquee(canvas, overlays.marquee)
-      r.drawLayoutInsertIndicator(canvas, overlays.layoutInsertIndicator)
-      if (!measurementVisible(overlays)) {
-        r.drawAutoLayoutHover(canvas, graph, overlays.autoLayoutHover)
-      }
-      r.drawNodeEditOverlay(canvas, graph, overlays.nodeEditState)
-      r.drawPenOverlay(canvas, overlays.penState)
-      r.drawRemoteCursors(canvas, graph, overlays.remoteCursors)
-      p.beginPhase('render:rulers')
-      if (r.showRulers) r.drawRulers(canvas, graph, selectedIds)
-      p.endPhase('render:rulers')
-
-      p.drawHUD(canvas, r.showRulers)
-
+      drawOverlayPass(r, canvas, graph, selectedIds, overlays)
+      drawChromePass(r, canvas, graph, selectedIds, overlays)
       canvas.restore()
     }
 

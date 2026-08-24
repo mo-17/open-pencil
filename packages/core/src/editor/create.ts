@@ -24,6 +24,7 @@ import { createComponentSyncScheduler } from './component-sync'
 import { createComponentActions } from './components'
 import { createGraphEventSubscription } from './graph-events'
 import { createGraphReadActions } from './graph-reads'
+import { createGuideActions } from './guides'
 import { createLayoutRunner } from './layout-runner'
 import { createMotionPreviewActions } from './motion-preview'
 import { createNodeActions } from './nodes'
@@ -225,6 +226,7 @@ export function createEditor(options?: EditorOptions) {
   const viewport = createViewportActions(ctx)
   const selection = createSelectionActions(ctx)
   const { cancelPendingSwitch, ...pages } = createPageActions(ctx)
+  const guides = createGuideActions(ctx)
   const shapes = createShapeActions(ctx)
   const structure = createStructureActions(ctx)
   const components = createComponentActions(ctx)
@@ -289,6 +291,7 @@ export function createEditor(options?: EditorOptions) {
     state.motionPreview = null
     state.measurementMode = 'off'
     state.snapGuides = []
+    state.guides = { preview: null, hovered: null, selected: null, redline: null }
     state.layoutInsertIndicator = null
     state.dropTargetId = null
     pages.clearPageViewports()
@@ -336,6 +339,9 @@ export function createEditor(options?: EditorOptions) {
 
     // Pages
     ...pages,
+
+    // Canvas and frame guides
+    ...guides,
 
     // Shapes & tools
     ...shapes,

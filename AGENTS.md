@@ -178,7 +178,8 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 
 ## Commands
 
-- `bun run dev` — Vite web app dev server
+- `bun run dev:portless` — preferred browser development server at `https://open-pencil.localhost`; linked worktrees use `https://<branch>.open-pencil.localhost`
+- `bun run dev` — direct Vite server at `http://localhost:1420`, used by Playwright, Tauri, and Dev Containers
 - `bun run build` — build workspace packages, run `lint`, then `vite build`
 - `bun run preview` — preview the built web app
 - `bun run tauri dev` — Tauri desktop app with hot reload; generates native menu first via Tauri `beforeDevCommand`
@@ -191,9 +192,9 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun run build:packages` — build workspace packages in dependency order, including public contract/SDK packages plus private app-support packages
 - `bun run lint` — structure lint + type-aware oxlint over app, packages, compiler, tests, scripts, tools
 - `bun run lint:structure` — fast structural oxlint pass
-- `bun run check` — full pre-commit gate: package build, lint, `tsgo`, Vue typecheck, i18n/package/arch checks, type-shape/tool/dupe tests
-- `bun run check:arch` — Steiger architecture lint for import boundaries, test placement, scripts/tools layout, compiler layers
-- `bun run check:vue` — `vue-tsc` for root app and `packages/vue`
+- `bun run check` — full pre-commit gate: package build, type-aware lint, `tsgo`, Vue typecheck, i18n/package/arch checks, type-shape/tool/dupe tests
+- `bun run check:arch` — Steiger architecture lint for project-specific import boundaries, test placement, scripts/tools layout, and compiler layers
+- `bun run check:vue` — `vue-tsc` typecheck for the root app and Vue SDK `.vue` files
 - `bun run check:i18n` — locale JSON keys must match `packages/vue/src/i18n/messages.ts`
 - `bun run check:packages` — public package metadata must point to built `dist/`, not runtime TypeScript
 - `bun run format` — oxfmt with import sorting
@@ -251,6 +252,10 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun open-pencil motion export <file> --node <id> -o <path>` — export deterministic PNG/GIF or capability-gated WebM/MP4 animation
 - `bun open-pencil motion presets publish|import|check|accept ...` — manage readonly shared Motion preset manifests with explicit update acceptance
 - `bun open-pencil library remote prepare <published.fig|pen> --manifest <local.json> --artifact-url <https-url> -o <remote.json>` — validate a component-library artifact and emit a length/SHA-256-pinned direct-HTTPS manifest
+
+## Git worktrees and development servers
+
+Use `bun run dev:portless` for browser development, especially in worktrees; Portless assigns the main checkout `https://open-pencil.localhost` and each worktree a branch-prefixed URL. The Vite-owned development MCP server is registered as the matching `mcp.open-pencil` sibling service (for example, `https://fix-ui.mcp.open-pencil.localhost`) and uses isolated runtime socket/discovery paths. Keep `bun run dev` for Playwright, Tauri, and Dev Container flows that require `http://localhost:1420` and the fixed local automation port.
 
 ## Releases & CI
 

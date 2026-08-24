@@ -113,7 +113,10 @@ describe('compiler browser preview bundler', () => {
 
   test('rejects secrets and local filesystem paths before bundling', async () => {
     const secretFiles = compileBrowserPreviewFixture()
-    secretFiles.set('src/leak.ts', "export const apiKey = 'sk-proj-1234567890abcdefghijklmnop'\n")
+    secretFiles.set(
+      'src/leak.ts',
+      "export const apiKey = 'sk-proj-1234567890abcdefghijklmnop'\n" // gitleaks:allow -- Deliberate fake API key for the browser-preview scanner regression.
+    )
     const secret = await buildBrowserPreview(await browserPreviewInput(secretFiles))
     expect(secret.status).toBe('error')
     expect(secret.diagnostics[0]?.code).toBe('browser-preview-secret-detected')

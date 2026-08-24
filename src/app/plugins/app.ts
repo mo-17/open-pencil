@@ -1,5 +1,7 @@
 import { shallowRef } from 'vue'
 
+import { IS_BROWSER } from '@open-pencil/core/constants'
+
 import { getActiveEditorStoreOrNull, type EditorStore } from '@/app/editor/active-store'
 
 import { createThirdPartyPluginAIGrantManager } from './ai-authorization'
@@ -47,10 +49,9 @@ import type {
   AppPluginMarketplaceTrustBundle
 } from './types'
 
+const usesBrowserIndexedDB = IS_BROWSER && typeof indexedDB !== 'undefined'
 const storage =
-  typeof indexedDB === 'undefined'
-    ? createMemoryAppPluginStateStorage()
-    : createIdbAppPluginStateStorage()
+  usesBrowserIndexedDB ? createIdbAppPluginStateStorage() : createMemoryAppPluginStateStorage()
 
 const remoteTrustConfigJSON = import.meta.env.VITE_OPENPENCIL_PLUGIN_TRUST_CONFIG?.trim() ?? ''
 const managedMarketplaceTrustConfigJSON = import.meta.env.VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG
@@ -60,13 +61,11 @@ export const appPluginRemoteCatalogConfigured =
 export const appPluginRemoteCatalogSnapshot = shallowRef<RemotePluginCatalogLoadResult | null>(null)
 export const appPluginMarketplaceSnapshot = shallowRef<MarketplaceSnapshotLoadResult | null>(null)
 const remoteCache =
-  typeof indexedDB === 'undefined'
-    ? createMemoryRemotePluginCacheStorage()
-    : createIdbRemotePluginCacheStorage()
+  usesBrowserIndexedDB ? createIdbRemotePluginCacheStorage() : createMemoryRemotePluginCacheStorage()
 const marketplaceSourceStorage =
-  typeof indexedDB === 'undefined'
-    ? createMemoryMarketplaceSourceStorage()
-    : createBrowserMarketplaceSourceStorage()
+  usesBrowserIndexedDB
+    ? createBrowserMarketplaceSourceStorage()
+    : createMemoryMarketplaceSourceStorage()
 const pluginEngineVersion =
   typeof __OPENPENCIL_APP_VERSION__ === 'string' ? __OPENPENCIL_APP_VERSION__ : '0.0.0'
 let appPluginTrustLastSeen = Date.now()
@@ -88,7 +87,7 @@ function withAppPluginPublisherPrivilegeLock<T>(operation: () => Promise<T>): Pr
   if (browserLocks) {
     return browserLocks.request(PUBLISHER_PRIVILEGE_LOCK_NAME, { mode: 'exclusive' }, operation)
   }
-  if (typeof indexedDB !== 'undefined') {
+  if (usesBrowserIndexedDB) {
     throw new TypeError('Cross-window plugin authority locking is unavailable in this browser')
   }
   return withLocalPublisherPrivilegeLock(operation)
@@ -317,9 +316,9 @@ const appPluginMarketplaceSourceReady = appPluginMarketplaceSourceManager.load()
 export const appPluginStoreReady = appPluginMarketplaceSourceReady.then(() => appPluginStore.load())
 
 const runtimePolicyStorage =
-  typeof indexedDB === 'undefined'
-    ? createMemoryPluginRuntimePolicyStorage()
-    : createIdbPluginRuntimePolicyStorage()
+  usesBrowserIndexedDB
+    ? createIdbPluginRuntimePolicyStorage()
+    : createMemoryPluginRuntimePolicyStorage()
 
 export const appPluginRuntimeManager = createPluginRuntimeManager({
   storage: runtimePolicyStorage,

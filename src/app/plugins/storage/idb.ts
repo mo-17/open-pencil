@@ -25,18 +25,41 @@ function nextRevision(value: unknown): number {
 }
 
 export function createIdbAppPluginStateStorage(
-  databaseName = APP_PLUGIN_DATABASE_NAME
+  databaseName = APP_PLUGIN_DATABASE_NAME,
+  idbFactory: IDBFactory | undefined = globalThis.indexedDB
 ): AppPluginStateStorage {
   let databasePromise: Promise<IDBDatabase> | null = null
 
   function database(): Promise<IDBDatabase> {
-    databasePromise ??= openIdb(databaseName, DATABASE_VERSION, (db) => {
-      if (!db.objectStoreNames.contains(STATE_STORE)) {
-        db.createObjectStore(STATE_STORE, { keyPath: 'pluginId' })
-      }
-      if (!db.objectStoreNames.contains(META_STORE)) db.createObjectStore(META_STORE)
-    })
+    databasePromise ??= openIdb(
+      databaseName,
+      DATABASE_VERSION,
+      (db) => {
+        if (!db.objectStoreNames.contains(STATE_STORE)) {
+          db.createObjectStore(STATE_STORE, { keyPath: 'pluginId' })
+        }
+        if (!db.objectStoreNames.contains(META_STORE)) db.createObjectStore(META_STORE)
+      },
+      idbFactory
+    )
     return databasePromise
+  }
+
+  async function mutateState(operation: (store: IDBObjectStore) => void): Promise<void> {
+    const db = await database()
+    const transaction = db.transaction([STATE_STORE, META_STORE], 'readwrite')
+    const metadata = transaction.objectStore(META_STORE)
+    const revision = await reqToPromise(metadata.get(REVISION_KEY))
+    let next: number
+    try {
+      next = nextRevision(revision)
+    } catch (cause) {
+      transaction.abort()
+      throw cause
+    }
+    operation(transaction.objectStore(STATE_STORE))
+    metadata.put(next, REVISION_KEY)
+    await txDone(transaction)
   }
 
   return {
@@ -55,36 +78,10 @@ export function createIdbAppPluginStateStorage(
       return values
     },
     async put(record) {
-      const db = await database()
-      const transaction = db.transaction([STATE_STORE, META_STORE], 'readwrite')
-      const metadata = transaction.objectStore(META_STORE)
-      const revision = await reqToPromise(metadata.get(REVISION_KEY))
-      let next: number
-      try {
-        next = nextRevision(revision)
-      } catch (cause) {
-        transaction.abort()
-        throw cause
-      }
-      transaction.objectStore(STATE_STORE).put(record)
-      metadata.put(next, REVISION_KEY)
-      await txDone(transaction)
+      await mutateState((store) => store.put(record))
     },
     async delete(pluginId) {
-      const db = await database()
-      const transaction = db.transaction([STATE_STORE, META_STORE], 'readwrite')
-      const metadata = transaction.objectStore(META_STORE)
-      const revision = await reqToPromise(metadata.get(REVISION_KEY))
-      let next: number
-      try {
-        next = nextRevision(revision)
-      } catch (cause) {
-        transaction.abort()
-        throw cause
-      }
-      transaction.objectStore(STATE_STORE).delete(pluginId)
-      metadata.put(next, REVISION_KEY)
-      await txDone(transaction)
+      await mutateState((store) => store.delete(pluginId))
     }
   }
 }

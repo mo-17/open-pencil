@@ -18,9 +18,11 @@ function cachePath(key: string) {
   return `${APP_CACHE_DIR}/${key.split('/').map(encodeURIComponent).join('/')}`
 }
 
-function cacheParentPath(key: string) {
-  const path = cachePath(key)
-  return path.slice(0, path.lastIndexOf('/'))
+function cacheDirectoryPath(key: string) {
+  const segments = key.split('/').slice(0, -1)
+  return segments.length > 0
+    ? `${APP_CACHE_DIR}/${segments.map(encodeURIComponent).join('/')}`
+    : APP_CACHE_DIR
 }
 
 function storageKey(key: string) {
@@ -44,6 +46,14 @@ export function removeLocalStorageText(key: string): void {
   localStorageOrNull()?.removeItem(key)
 }
 
+function removeStorageEntriesWithPrefix(prefix: string): void {
+  if (!isStorageAvailable()) return
+  for (let i = window.localStorage.length - 1; i >= 0; i--) {
+    const key = window.localStorage.key(i)
+    if (key?.startsWith(storageKey(prefix))) window.localStorage.removeItem(key)
+  }
+}
+
 export async function readCacheText(key: string): Promise<string | null> {
   if (isTauriRuntime()) {
     try {
@@ -62,10 +72,7 @@ export async function readCacheText(key: string): Promise<string | null> {
 export async function writeCacheText(key: string, value: string): Promise<void> {
   if (isTauriRuntime()) {
     const { BaseDirectory, mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
-    await mkdir(cacheParentPath(key), {
-      baseDir: BaseDirectory.AppLocalData,
-      recursive: true
-    })
+    await mkdir(cacheDirectoryPath(key), { baseDir: BaseDirectory.AppLocalData, recursive: true })
     await writeFile(cachePath(key), textEncoder.encode(value), {
       baseDir: BaseDirectory.AppLocalData
     })
@@ -105,10 +112,7 @@ export async function writeCacheBytes(key: string, value: ArrayBuffer): Promise<
   if (!isTauriRuntime()) return
 
   const { BaseDirectory, mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
-  await mkdir(cacheParentPath(key), {
-    baseDir: BaseDirectory.AppLocalData,
-    recursive: true
-  })
+  await mkdir(cacheDirectoryPath(key), { baseDir: BaseDirectory.AppLocalData, recursive: true })
   await writeFile(cachePath(key), new Uint8Array(value), { baseDir: BaseDirectory.AppLocalData })
 }
 
@@ -123,11 +127,7 @@ export async function removeCachePrefix(prefix: string): Promise<void> {
     return
   }
 
-  if (!isStorageAvailable()) return
-  for (let i = window.localStorage.length - 1; i >= 0; i--) {
-    const key = window.localStorage.key(i)
-    if (key?.startsWith(storageKey(prefix))) window.localStorage.removeItem(key)
-  }
+  removeStorageEntriesWithPrefix(prefix)
 }
 
 type JSONCacheEnvelope<T> = {

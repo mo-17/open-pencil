@@ -3,14 +3,17 @@
 export function openIdb(
   name: string,
   version: number,
-  upgrade: (db: IDBDatabase, oldVersion: number, transaction: IDBTransaction) => void
+  upgrade: (db: IDBDatabase, oldVersion: number, transaction: IDBTransaction) => void,
+  idbFactory?: IDBFactory
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
+    const factory =
+      idbFactory ?? (Reflect.get(globalThis, 'indexedDB') as IDBFactory | undefined)
+    if (!factory) {
       reject(new Error('IndexedDB is not available'))
       return
     }
-    const req = indexedDB.open(name, version)
+    const req = factory.open(name, version)
     req.onerror = () => reject(req.error ?? new Error(`Failed to open ${name}`))
     req.onblocked = () => reject(new Error(`Opening ${name} blocked by another tab's connection`))
     req.onsuccess = () => resolve(req.result)

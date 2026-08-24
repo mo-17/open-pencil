@@ -3,6 +3,7 @@ import type { VectorRegion, VectorVertex } from '@open-pencil/scene-graph'
 import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
+import type { GuideOverlayState } from '#core/canvas/guides/types'
 import type { MotionLayoutPreviewNode } from '#core/layout'
 import type { TextEditor } from '#core/text/editor'
 
@@ -30,6 +31,7 @@ export interface RenderOverlays {
   textEditor?: TextEditor | null
   marquee?: Rect | null
   snapGuides?: SnapGuide[]
+  guides?: GuideOverlayState
   rotationPreview?: { nodeId: string; angle: number } | null
   dropTargetId?: string | null
   layoutInsertIndicator?: {
