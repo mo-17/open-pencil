@@ -19,6 +19,10 @@ export const MOTION_DOM_DRIVER_LIMITS = Object.freeze({
   maxStateIdLength: 256
 })
 
+const MOTION_VISIBILITY_THRESHOLDS = Object.freeze(
+  Array.from({ length: 21 }, (_, index) => index / 20)
+)
+
 export interface MotionDriverDOMElement extends Element {
   readonly style: CSSStyleDeclaration
   readonly clientWidth: number
@@ -135,7 +139,9 @@ function defaultVisibilityObserver(
   callback: (entries: readonly MotionDriverVisibilityEntry[]) => void
 ): MotionDriverVisibilityObserver | undefined {
   if (typeof globalThis.IntersectionObserver !== 'function') return undefined
-  return new globalThis.IntersectionObserver((entries) => callback(entries))
+  return new globalThis.IntersectionObserver((entries) => callback(entries), {
+    threshold: [...MOTION_VISIBILITY_THRESHOLDS]
+  })
 }
 
 function appendIndex(index: Map<string, string[]>, id: string, driverId: string): void {

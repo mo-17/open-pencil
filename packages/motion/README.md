@@ -6,7 +6,8 @@ Framework-agnostic deterministic Motion planning and sampling for OpenPencil.
 
 This package owns:
 
-- easing, timing, path, track, and scene-plan sampling;
+- bounded named, cubic, physical, and rich curve easing plus timing, path, track, and scene-plan
+  sampling;
 - advanced paint, effect, font-axis, and vector projection planning;
 - continuous-driver mapping, source inspection, target preparation, and input batching;
 - deterministic generated-effect sampling and authored node changes.

@@ -200,19 +200,60 @@ function canonicalEasing(easing: IRMotionEasing): string | unknown[] {
   if (easing.type === 'spring') {
     return ['spring', easing.mass, easing.stiffness, easing.damping, easing.velocity]
   }
-  return ['inertia', easing.velocity, easing.deceleration]
+  if (easing.type === 'inertia') return ['inertia', easing.velocity, easing.deceleration]
+  if (easing.type === 'power') return ['power', easing.mode, easing.power]
+  if (
+    easing.type === 'sine' ||
+    easing.type === 'expo' ||
+    easing.type === 'circ' ||
+    easing.type === 'bounce'
+  ) {
+    return [easing.type, easing.mode]
+  }
+  if (easing.type === 'back') return ['back', easing.mode, easing.overshoot]
+  return ['elastic', easing.mode, easing.amplitude, easing.period]
 }
 
 function canonicalColor(color: IRMotionKeyframe['fillColor']): unknown[] | null {
   return color ? [color.r, color.g, color.b, color.a] : null
 }
 
-/** CSS linear() approximates bounded physical curves without a runtime dependency. */
+/** CSS linear() approximates bounded physical and rich curves without a runtime dependency. */
 function sampledLinearEasing(
-  easing: Extract<IRMotionEasing, { type: 'spring' | 'inertia' }>
+  easing: Extract<
+    IRMotionEasing,
+    {
+      type:
+        | 'spring'
+        | 'inertia'
+        | 'power'
+        | 'sine'
+        | 'expo'
+        | 'circ'
+        | 'bounce'
+        | 'back'
+        | 'elastic'
+    }
+  >
 ): string {
-  const samples = Array.from({ length: 17 }, (_, index) => {
-    const progress = index / 16
+  // Elastic frequency and overshoot are authored independently. Scale the finite
+  // approximation with both while capping generated CSS size deterministically.
+  let segments = 64
+  if (easing.type === 'spring' || easing.type === 'inertia') {
+    segments = 16
+  } else if (easing.type === 'elastic') {
+    segments = Math.min(
+      512,
+      Math.max(
+        64,
+        Math.ceil(
+          ((easing.mode === 'inOut' ? 2 : 1) / easing.period) * 16 * Math.sqrt(easing.amplitude)
+        )
+      )
+    )
+  }
+  const samples = Array.from({ length: segments + 1 }, (_, index) => {
+    const progress = index / segments
     const value = sampleMotionEasing(easing, progress)
     return `${number(value)} ${number(progress * 100)}%`
   })

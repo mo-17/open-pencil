@@ -164,7 +164,9 @@ section also exposes a visual timeline where you can:
 - Drag the playhead to preview an exact time on the Canvas without changing document geometry.
 - Edit each track's trigger, duration, delay, easing, iterations, direction, fill, and exit behavior,
   plus a per-keyframe segment easing. Easing supports named curves, a graphical/numeric cubic
-  bezier editor, and MotionSpec v2 hold, steps, spring, and inertia controls.
+  bezier editor, and MotionSpec v2 power, sine, exponential, circular, back, bounce, elastic, hold,
+  steps, spring, and inertia controls. Rich curve families expose bounded direction and family
+  parameters while remaining deterministic data rather than executable animation code.
 - Enable and edit opacity, X/Y translation, X/Y scale, and rotation on each keyframe.
 - Explicitly upgrade a v1 spec before authoring v2 transform origin, width/height, corner radius,
   fill/stroke, blur/shadow, bounded paths with progress and auto-rotate, vector trim, gap, row/column

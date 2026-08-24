@@ -7,6 +7,17 @@ export const MOTION_KERNEL_SAMPLING_CHANNELS: readonly MotionKernelSamplingChann
 
 export type MotionKernelEasingName = 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out'
 
+export type MotionEaseMode = 'in' | 'out' | 'inOut'
+
+type MotionKernelRichEasing =
+  | { type: 'power'; mode: MotionEaseMode; power: 1 | 2 | 3 | 4 }
+  | { type: 'sine'; mode: MotionEaseMode }
+  | { type: 'expo'; mode: MotionEaseMode }
+  | { type: 'circ'; mode: MotionEaseMode }
+  | { type: 'bounce'; mode: MotionEaseMode }
+  | { type: 'back'; mode: MotionEaseMode; overshoot: number }
+  | { type: 'elastic'; mode: MotionEaseMode; amplitude: number; period: number }
+
 export type MotionKernelEasing =
   | MotionKernelEasingName
   | { type: 'cubicBezier'; x1: number; y1: number; x2: number; y2: number }
@@ -14,6 +25,7 @@ export type MotionKernelEasing =
   | { type: 'steps'; steps: number; position: 'start' | 'end' }
   | { type: 'spring'; mass: number; stiffness: number; damping: number; velocity: number }
   | { type: 'inertia'; velocity: number; deceleration: number }
+  | MotionKernelRichEasing
 
 export interface MotionKernelSamplingFrame {
   readonly offset: number
@@ -90,6 +102,69 @@ function solveCurveX(progress: number, x1: number, x2: number): number {
   return estimate
 }
 
+function applyEaseMode(
+  mode: MotionEaseMode,
+  progress: number,
+  easeIn: (progress: number) => number
+): number {
+  if (mode === 'in') return easeIn(progress)
+  if (mode === 'out') return 1 - easeIn(1 - progress)
+  return progress < 0.5 ? easeIn(progress * 2) / 2 : 1 - easeIn((1 - progress) * 2) / 2
+}
+
+function bounceOut(progress: number): number {
+  const factor = 7.5625
+  const divisor = 2.75
+  if (progress < 1 / divisor) return factor * progress * progress
+  if (progress < 2 / divisor) {
+    const shifted = progress - 1.5 / divisor
+    return factor * shifted * shifted + 0.75
+  }
+  if (progress < 2.5 / divisor) {
+    const shifted = progress - 2.25 / divisor
+    return factor * shifted * shifted + 0.9375
+  }
+  const shifted = progress - 2.625 / divisor
+  return factor * shifted * shifted + 0.984375
+}
+
+function bounceIn(progress: number): number {
+  return 1 - bounceOut(1 - progress)
+}
+
+function elasticIn(progress: number, amplitude: number, period: number): number {
+  const phase = (period / (Math.PI * 2)) * Math.asin(1 / amplitude)
+  return (
+    -amplitude *
+    2 ** (10 * (progress - 1)) *
+    Math.sin(((progress - 1 - phase) * Math.PI * 2) / period)
+  )
+}
+
+function sampleRichEasing(easing: MotionKernelRichEasing, progress: number): number {
+  switch (easing.type) {
+    case 'power':
+      return applyEaseMode(easing.mode, progress, (value) => value ** (easing.power + 1))
+    case 'sine':
+      return applyEaseMode(easing.mode, progress, (value) => 1 - Math.cos((value * Math.PI) / 2))
+    case 'expo':
+      return applyEaseMode(easing.mode, progress, (value) => 2 ** (10 * (value - 1)))
+    case 'circ':
+      return applyEaseMode(easing.mode, progress, (value) => 1 - Math.sqrt(1 - value * value))
+    case 'back':
+      return applyEaseMode(easing.mode, progress, (value) => {
+        return (easing.overshoot + 1) * value ** 3 - easing.overshoot * value ** 2
+      })
+    case 'bounce':
+      return applyEaseMode(easing.mode, progress, bounceIn)
+    case 'elastic':
+      return applyEaseMode(easing.mode, progress, (value) => {
+        return elasticIn(value, easing.amplitude, easing.period)
+      })
+  }
+  throw new TypeError('Unsupported rich Motion easing')
+}
+
 /** Zero-dependency easing sampler shared by the public and generated runtimes. */
 export function sampleMotionRuntimeEasing(easing: MotionKernelEasing, progress: number): number {
   const normalized = Math.min(1, Math.max(0, progress))
@@ -137,6 +212,7 @@ export function sampleMotionRuntimeEasing(easing: MotionKernelEasing, progress: 
       const velocityBias = easing.velocity * 0.0005 * normalized * (1 - normalized)
       return Math.min(1, Math.max(0, decay + velocityBias))
     }
+    if (easing.type !== 'cubicBezier') return sampleRichEasing(easing, normalized)
   }
   const controls =
     typeof easing === 'string'
@@ -315,6 +391,11 @@ export function buildMotionRuntimeKernelSource(): string {
   const coordinateName = emittedFunctionName(cubicCoordinate, 'cubicCoordinate')
   const derivativeName = emittedFunctionName(cubicDerivative, 'cubicDerivative')
   const solveName = emittedFunctionName(solveCurveX, 'solveCurveX')
+  const applyEaseModeName = emittedFunctionName(applyEaseMode, 'applyEaseMode')
+  const bounceOutName = emittedFunctionName(bounceOut, 'bounceOut')
+  const bounceInName = emittedFunctionName(bounceIn, 'bounceIn')
+  const elasticInName = emittedFunctionName(elasticIn, 'elasticIn')
+  const richEasingName = emittedFunctionName(sampleRichEasing, 'sampleRichEasing')
   const easingName = emittedFunctionName(sampleMotionRuntimeEasing, 'sampleMotionRuntimeEasing')
   const frameValueName = emittedFunctionName(samplingFrameValue, 'samplingFrameValue')
   const channelName = emittedFunctionName(sampleMotionRuntimeChannel, 'sampleMotionRuntimeChannel')
@@ -387,6 +468,23 @@ export function buildMotionRuntimeKernelSource(): string {
       solveName,
       '(progress: number, x1: number, x2: number) => number',
       solveCurveX
+    ),
+    typedFunctionSource(
+      applyEaseModeName,
+      '(mode: MotionEaseMode, progress: number, easeIn: (progress: number) => number) => number',
+      applyEaseMode
+    ),
+    typedFunctionSource(bounceOutName, '(progress: number) => number', bounceOut),
+    typedFunctionSource(bounceInName, '(progress: number) => number', bounceIn),
+    typedFunctionSource(
+      elasticInName,
+      '(progress: number, amplitude: number, period: number) => number',
+      elasticIn
+    ),
+    typedFunctionSource(
+      richEasingName,
+      "(easing: Extract<MotionSamplingEasing, { type: 'power' | 'sine' | 'expo' | 'circ' | 'bounce' | 'back' | 'elastic' }>, progress: number) => number",
+      sampleRichEasing
     ),
     typedFunctionSource(
       easingName,

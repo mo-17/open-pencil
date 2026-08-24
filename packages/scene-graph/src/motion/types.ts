@@ -1,7 +1,7 @@
 /**
  * MotionSpec is a declarative, bounded animation model for design nodes.
  * It deliberately contains no arbitrary JavaScript or CSS payloads. Version 2
- * adds a finite set of visual/layout channels and deterministic physical easing.
+ * adds a finite set of visual/layout channels plus deterministic physical and rich curve easing.
  * Version 3 adds explicit composition, indexed/structured visual channels,
  * and cubic paths while retaining every v2 channel and timing semantic.
  */
@@ -46,7 +46,10 @@ export const MOTION_LIMITS = Object.freeze({
   springStiffness: range(0.01, 10_000),
   springDamping: range(0, 1_000),
   physicalVelocity: range(-1_000, 1_000),
-  inertiaDeceleration: range(0.0001, 1)
+  inertiaDeceleration: range(0.0001, 1),
+  backOvershoot: range(0, 10),
+  elasticAmplitude: range(1, 10),
+  elasticPeriod: range(0.1, 2)
 })
 
 export type MotionTrigger =
@@ -61,6 +64,8 @@ export type MotionTrigger =
   | 'loop'
 
 export type MotionEasingName = 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out'
+
+export type MotionEaseMode = 'in' | 'out' | 'inOut'
 
 export interface MotionCubicBezierEasing {
   type: 'cubicBezier'
@@ -94,6 +99,45 @@ export interface MotionInertiaEasing {
   deceleration: number
 }
 
+export interface MotionPowerEasing {
+  type: 'power'
+  mode: MotionEaseMode
+  power: 1 | 2 | 3 | 4
+}
+
+export interface MotionSineEasing {
+  type: 'sine'
+  mode: MotionEaseMode
+}
+
+export interface MotionExpoEasing {
+  type: 'expo'
+  mode: MotionEaseMode
+}
+
+export interface MotionCircEasing {
+  type: 'circ'
+  mode: MotionEaseMode
+}
+
+export interface MotionBackEasing {
+  type: 'back'
+  mode: MotionEaseMode
+  overshoot: number
+}
+
+export interface MotionBounceEasing {
+  type: 'bounce'
+  mode: MotionEaseMode
+}
+
+export interface MotionElasticEasing {
+  type: 'elastic'
+  mode: MotionEaseMode
+  amplitude: number
+  period: number
+}
+
 export type MotionEasing =
   | MotionEasingName
   | MotionCubicBezierEasing
@@ -101,6 +145,13 @@ export type MotionEasing =
   | MotionStepsEasing
   | MotionSpringEasing
   | MotionInertiaEasing
+  | MotionPowerEasing
+  | MotionSineEasing
+  | MotionExpoEasing
+  | MotionCircEasing
+  | MotionBackEasing
+  | MotionBounceEasing
+  | MotionElasticEasing
 
 export interface MotionColor {
   r: number

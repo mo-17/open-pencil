@@ -147,6 +147,62 @@ function pointer(type: string, values: Record<string, number>): Event {
 }
 
 describe('DOM continuous Motion drivers', () => {
+  test('requests bounded visibility ratio thresholds from the default observer', () => {
+    const hadIntersectionObserver = Object.hasOwn(globalThis, 'IntersectionObserver')
+    const originalIntersectionObserver = Reflect.get(globalThis, 'IntersectionObserver')
+    let observedThresholds: number | number[] | undefined
+    let observeCount = 0
+    let disconnectCount = 0
+    let controller: ReturnType<typeof createDOMMotionDrivers> | undefined
+
+    class FakeIntersectionObserver {
+      constructor(_callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        observedThresholds = options?.threshold
+      }
+
+      observe(): void {
+        observeCount++
+      }
+      disconnect(): void {
+        disconnectCount++
+      }
+    }
+
+    Reflect.set(globalThis, 'IntersectionObserver', FakeIntersectionObserver)
+    try {
+      const owner = new FakeElement()
+      const source = new FakeElement()
+      const target = new FakeElement()
+      const elements = new Map([
+        ['visible-source', source],
+        ['target-visibility', target]
+      ])
+      controller = createDOMMotionDrivers({
+        id: 'visibility-thresholds',
+        owner: element(owner),
+        root: {} as ParentNode,
+        viewport: viewport(new FakeViewport()),
+        spec: {
+          version: 1,
+          drivers: [driver('visibility', { kind: 'visibility', sourceNodeId: 'visible-source' })]
+        },
+        resolveElement: (id) => element(elements.get(id) as FakeElement),
+        resolveMotion: (id) => (id === 'target-visibility' ? motion('track-visibility') : undefined)
+      })
+
+      expect(observedThresholds).toEqual(Array.from({ length: 21 }, (_, index) => index / 20))
+      expect(observeCount).toBe(1)
+    } finally {
+      controller?.dispose()
+      if (hadIntersectionObserver) {
+        Reflect.set(globalThis, 'IntersectionObserver', originalIntersectionObserver)
+      } else {
+        Reflect.deleteProperty(globalThis, 'IntersectionObserver')
+      }
+    }
+    expect(disconnectCount).toBe(1)
+  })
+
   test('coalesces scroll input, suppresses automatic tracks, and restores on cleanup', () => {
     const owner = new FakeElement()
     const source = new FakeElement()

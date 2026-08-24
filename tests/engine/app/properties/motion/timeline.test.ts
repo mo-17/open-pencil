@@ -57,6 +57,13 @@ describe('motion timeline property model', () => {
       'ease-out',
       'ease-in-out',
       'cubicBezier',
+      'power',
+      'sine',
+      'expo',
+      'circ',
+      'back',
+      'bounce',
+      'elastic',
       'hold',
       'steps',
       'spring',
@@ -80,6 +87,18 @@ describe('motion timeline property model', () => {
       expect(parsed.tracks[0]?.timing.easing).toEqual(easing)
       expect(motionEasingKind(easing)).toBe(kind)
     }
+
+    expect(createMotionEasing('back')).toEqual({
+      type: 'back',
+      mode: 'out',
+      overshoot: 1.70158
+    })
+    expect(createMotionEasing('elastic')).toEqual({
+      type: 'elastic',
+      mode: 'out',
+      amplitude: 1,
+      period: 0.3
+    })
   })
 
   test('adds, edits, and removes bounded tracks while clearing preset provenance', () => {

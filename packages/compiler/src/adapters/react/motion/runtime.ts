@@ -75,6 +75,7 @@ type MotionTrigger =
 type MotionExit = 'none' | 'reverse' | 'reset'
 type MotionSamplingChannel = 'opacity' | 'x' | 'y' | 'scaleX' | 'scaleY' | 'rotate'
 type MotionEasingName = 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out'
+type MotionEaseMode = 'in' | 'out' | 'inOut'
 type MotionSamplingEasing =
   | MotionEasingName
   | { type: 'cubicBezier'; x1: number; y1: number; x2: number; y2: number }
@@ -82,6 +83,13 @@ type MotionSamplingEasing =
   | { type: 'steps'; steps: number; position: 'start' | 'end' }
   | { type: 'spring'; mass: number; stiffness: number; damping: number; velocity: number }
   | { type: 'inertia'; velocity: number; deceleration: number }
+  | { type: 'power'; mode: MotionEaseMode; power: 1 | 2 | 3 | 4 }
+  | { type: 'sine'; mode: MotionEaseMode }
+  | { type: 'expo'; mode: MotionEaseMode }
+  | { type: 'circ'; mode: MotionEaseMode }
+  | { type: 'bounce'; mode: MotionEaseMode }
+  | { type: 'back'; mode: MotionEaseMode; overshoot: number }
+  | { type: 'elastic'; mode: MotionEaseMode; amplitude: number; period: number }
 
 ${buildMotionRuntimeKernelSource()}
 

@@ -5,6 +5,7 @@ import {
   type MotionCornerRadii,
   type MotionColor,
   type MotionDirection,
+  type MotionEaseMode,
   type MotionEasing,
   type MotionEasingName,
   type MotionEffectTarget,
@@ -53,6 +54,7 @@ const EASING_NAMES: readonly MotionEasingName[] = [
   'ease-out',
   'ease-in-out'
 ]
+const EASE_MODES: readonly MotionEaseMode[] = ['in', 'out', 'inOut']
 const DIRECTIONS: readonly MotionDirection[] = [
   'normal',
   'reverse',
@@ -98,6 +100,13 @@ function integer(value: unknown, path: string, min: number, max: number): number
   const number = boundedNumber(value, path, min, max)
   if (!Number.isInteger(number)) return invalid(path, 'invalid_value', 'Expected an integer')
   return number
+}
+
+function easeMode(value: unknown, path: string): MotionEaseMode {
+  if (!isOneOf(value, EASE_MODES)) {
+    return invalid(path, 'invalid_value', 'Expected in, out, or inOut')
+  }
+  return value
 }
 
 function safeId(value: unknown, path: string): string {
@@ -225,6 +234,53 @@ export function parseMotionEasing(
         `${path}.deceleration`,
         MOTION_LIMITS.inertiaDeceleration.min,
         MOTION_LIMITS.inertiaDeceleration.max
+      )
+    }
+  }
+  if (type === 'power') {
+    const record = strictRecord(value, path, ['type', 'mode', 'power'])
+    return {
+      type: 'power',
+      mode: easeMode(required(record, 'mode', path), `${path}.mode`),
+      power: integer(required(record, 'power', path), `${path}.power`, 1, 4) as 1 | 2 | 3 | 4
+    }
+  }
+  if (type === 'sine' || type === 'expo' || type === 'circ' || type === 'bounce') {
+    const record = strictRecord(value, path, ['type', 'mode'])
+    return {
+      type,
+      mode: easeMode(required(record, 'mode', path), `${path}.mode`)
+    }
+  }
+  if (type === 'back') {
+    const record = strictRecord(value, path, ['type', 'mode', 'overshoot'])
+    return {
+      type: 'back',
+      mode: easeMode(required(record, 'mode', path), `${path}.mode`),
+      overshoot: boundedNumber(
+        required(record, 'overshoot', path),
+        `${path}.overshoot`,
+        MOTION_LIMITS.backOvershoot.min,
+        MOTION_LIMITS.backOvershoot.max
+      )
+    }
+  }
+  if (type === 'elastic') {
+    const record = strictRecord(value, path, ['type', 'mode', 'amplitude', 'period'])
+    return {
+      type: 'elastic',
+      mode: easeMode(required(record, 'mode', path), `${path}.mode`),
+      amplitude: boundedNumber(
+        required(record, 'amplitude', path),
+        `${path}.amplitude`,
+        MOTION_LIMITS.elasticAmplitude.min,
+        MOTION_LIMITS.elasticAmplitude.max
+      ),
+      period: boundedNumber(
+        required(record, 'period', path),
+        `${path}.period`,
+        MOTION_LIMITS.elasticPeriod.min,
+        MOTION_LIMITS.elasticPeriod.max
       )
     }
   }

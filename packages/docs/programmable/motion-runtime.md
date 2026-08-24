@@ -115,12 +115,12 @@ drivers.dispose()
 
 Each controller is owner-scoped: it never resolves a same-id element in another page or component
 instance. Scroll and pointer listeners are passive where possible, drag captures only its active
-pointer, visibility uses an injected or native observer, and state/variable sources are explicit
-host writes rather than global-store inspection. Inputs are coalesced into one frame, mapped through
-the authored min/max, clamp, reverse, and dead-zone settings, and sampled by the same reference
-sampler as ordinary playback. Directly driven tracks suppress their automatic trigger without
-mutating the document. `dispose()` removes listeners and observers, cancels scheduled work, restores
-owned styles and attributes, and makes later host writes fail closed.
+pointer, visibility observes a bounded ratio threshold ladder, and state/variable sources are
+explicit host writes rather than global-store inspection. Inputs are coalesced into one frame,
+mapped through the authored min/max, clamp, reverse, and dead-zone settings, and sampled by the same
+reference sampler as ordinary playback. Directly driven tracks suppress their automatic trigger
+without mutating the document. `dispose()` removes listeners and observers, cancels scheduled work,
+restores owned styles and attributes, and makes later host writes fail closed.
 
 ## Vue adapter
 

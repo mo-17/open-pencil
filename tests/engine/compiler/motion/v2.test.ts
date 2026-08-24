@@ -5,7 +5,7 @@ import { instrumentVectorMotionHTML } from '#compiler/adapters/react/motion/targ
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRElement } from '@open-pencil/compiler/ir/types'
-import type { MotionSpec } from '@open-pencil/scene-graph'
+import type { MotionEasing, MotionSpec } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -79,6 +79,24 @@ function motion(trigger: 'mount' | 'hover' = 'mount'): MotionSpec {
           durationMs: 700,
           easing: { type: 'inertia', velocity: 10, deceleration: 0.2 }
         }
+      }
+    ]
+  }
+}
+
+function richEasingMotion(easing: MotionEasing, trigger: 'mount' | 'hover' = 'mount'): MotionSpec {
+  return {
+    version: 2,
+    reducedMotion: 'allow',
+    tracks: [
+      {
+        id: 'rich-easing',
+        trigger,
+        keyframes: [
+          { offset: 0, opacity: 0, y: 24 },
+          { offset: 1, opacity: 1, y: 0 }
+        ],
+        timing: { durationMs: 500, easing }
       }
     ]
   }
@@ -204,6 +222,70 @@ describe('compiler — MotionSpec v2 artifacts', () => {
       /data-op-motion="([^"]+)"/.exec(out.files.get('src/App.tsx') as string)?.[1]
     expect(token(first)).toBeDefined()
     expect(token(second)).not.toBe(token(first))
+  })
+
+  test('samples rich easing to bounded adaptive CSS points while keeping physical curves at 17', () => {
+    const sampleCount = (spec: MotionSpec) => {
+      const css = compileMotion(spec).files.get('src/__motion.css') as string
+      const linear = /animation-timing-function: linear\(([^;]+)\);/.exec(css)?.[1]
+      expect(linear).toBeDefined()
+      return linear?.split(',').length
+    }
+
+    expect(
+      sampleCount(richEasingMotion({ type: 'elastic', mode: 'inOut', amplitude: 1.5, period: 0.5 }))
+    ).toBe(80)
+    expect(
+      sampleCount(richEasingMotion({ type: 'elastic', mode: 'inOut', amplitude: 10, period: 0.1 }))
+    ).toBe(513)
+    expect(
+      sampleCount(
+        richEasingMotion({
+          type: 'spring',
+          mass: 1,
+          stiffness: 170,
+          damping: 26,
+          velocity: 0
+        })
+      )
+    ).toBe(17)
+  })
+
+  test('embeds rich easing in controlled runtime output and its shared kernel', () => {
+    const out = compileMotion(richEasingMotion({ type: 'bounce', mode: 'out' }, 'hover'))
+    const runtime = out.files.get('src/__motion-runtime.ts') as string
+    const registrySource = /const registry: Record<string, MotionSpec> = (.+)\n/.exec(runtime)?.[1]
+    expect(registrySource).toBeDefined()
+    const registry = JSON.parse(registrySource ?? '{}') as Record<
+      string,
+      { tracks: Array<{ timing: { easing: string } }> }
+    >
+    const easing = Object.values(registry)[0]?.tracks[0]?.timing.easing
+    expect(easing?.startsWith('linear(')).toBe(true)
+    expect(easing?.slice('linear('.length, -1).split(',')).toHaveLength(65)
+    expect(runtime).toContain("type MotionEaseMode = 'in' | 'out' | 'inOut'")
+    expect(runtime).toContain('const sampleRichEasing:')
+    expect(runtime).toContain('const sharedSampleMotionRuntimeEasing')
+  })
+
+  test('keeps canonical tokens sensitive to every rich easing parameter', () => {
+    const variants: MotionEasing[] = [
+      { type: 'power', mode: 'out', power: 2 },
+      { type: 'power', mode: 'in', power: 2 },
+      { type: 'power', mode: 'out', power: 3 },
+      { type: 'back', mode: 'out', overshoot: 1.7 },
+      { type: 'back', mode: 'out', overshoot: 2.4 },
+      { type: 'elastic', mode: 'out', amplitude: 1.5, period: 0.5 },
+      { type: 'elastic', mode: 'in', amplitude: 1.5, period: 0.5 },
+      { type: 'elastic', mode: 'out', amplitude: 2, period: 0.5 },
+      { type: 'elastic', mode: 'out', amplitude: 1.5, period: 0.8 }
+    ]
+    const tokens = variants.map((easing) => {
+      const app = compileMotion(richEasingMotion(easing)).files.get('src/App.tsx') as string
+      return /data-op-motion="([^"]+)"/.exec(app)?.[1]
+    })
+    expect(tokens.every(Boolean)).toBe(true)
+    expect(new Set(tokens)).toHaveLength(tokens.length)
   })
 
   test('separates target-sensitive tokens while deduplicating identical targets', () => {

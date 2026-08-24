@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { sampleMotionEasing } from '@open-pencil/motion'
+
 import { createManualMotionClock } from '../src/clock'
 import {
   buildMotionRuntimeKernelSource,
@@ -7,6 +9,7 @@ import {
   motionRuntimeTrackProgress,
   sampleMotionRuntimeChannel,
   sampleMotionRuntimeEasing,
+  type MotionKernelEasing,
   type MotionKernelTrack
 } from '../src/kernel'
 
@@ -29,6 +32,30 @@ const track: MotionKernelTrack = {
   }
 }
 
+const RICH_EASINGS = [
+  { type: 'power', mode: 'in', power: 1 },
+  { type: 'power', mode: 'out', power: 4 },
+  { type: 'power', mode: 'inOut', power: 2 },
+  { type: 'sine', mode: 'in' },
+  { type: 'sine', mode: 'out' },
+  { type: 'sine', mode: 'inOut' },
+  { type: 'expo', mode: 'in' },
+  { type: 'expo', mode: 'out' },
+  { type: 'expo', mode: 'inOut' },
+  { type: 'circ', mode: 'in' },
+  { type: 'circ', mode: 'out' },
+  { type: 'circ', mode: 'inOut' },
+  { type: 'back', mode: 'in', overshoot: 1.7 },
+  { type: 'back', mode: 'out', overshoot: 2.4 },
+  { type: 'back', mode: 'inOut', overshoot: 3 },
+  { type: 'bounce', mode: 'in' },
+  { type: 'bounce', mode: 'out' },
+  { type: 'bounce', mode: 'inOut' },
+  { type: 'elastic', mode: 'in', amplitude: 1, period: 0.3 },
+  { type: 'elastic', mode: 'out', amplitude: 1.5, period: 0.5 },
+  { type: 'elastic', mode: 'inOut', amplitude: 2, period: 0.8 }
+] as const satisfies readonly MotionKernelEasing[]
+
 describe('Motion runtime kernel', () => {
   test('emits the package-owned self-contained kernel used by generated projects', () => {
     const source = buildMotionRuntimeKernelSource()
@@ -40,6 +67,16 @@ describe('Motion runtime kernel', () => {
     expect(source).not.toContain("from '@open-pencil/motion-runtime")
     expect(source).not.toContain('document.')
     expect(source).not.toContain('window.')
+    const helperOrder = [
+      'const applyEaseMode:',
+      'const bounceOut:',
+      'const bounceIn:',
+      'const elasticIn:',
+      'const sampleRichEasing:',
+      'const sampleMotionRuntimeEasing:'
+    ].map((helper) => source.indexOf(helper))
+    expect(helperOrder.every((index) => index >= 0)).toBe(true)
+    expect(helperOrder).toEqual([...helperOrder].sort((left, right) => left - right))
   })
 
   test('samples easing, channels, fill, direction, and fractional iterations', () => {
@@ -56,6 +93,17 @@ describe('Motion runtime kernel', () => {
       progress: 0.5,
       completedIterations: 1
     })
+  })
+
+  test('matches the native sampler for every rich easing family and mode', () => {
+    for (const easing of RICH_EASINGS) {
+      for (let index = 0; index <= 64; index++) {
+        const progress = index / 64
+        expect(sampleMotionRuntimeEasing(easing, progress)).toBe(
+          sampleMotionEasing(easing, progress)
+        )
+      }
+    }
   })
 
   test('shares one cancellation-safe frame loop with the public runtime', () => {

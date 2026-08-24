@@ -88,10 +88,11 @@ drivers.setVariable('motion.intensity', 0.8)
 drivers.dispose()
 ```
 
-Scroll, pointer, drag, and visibility sources install bounded owner-scoped browser listeners; page
-state, document state, and variables are explicit host bridges. Input updates are coalesced into one
-frame and use the same direct-progress reference sampler. Disposal removes all listeners and
-observers, cancels scheduled work, restores owned styles/attributes, and prevents stale writes.
+Scroll, pointer, drag, and visibility sources install bounded owner-scoped browser listeners;
+visibility uses a finite ratio threshold ladder instead of only entry/exit edges. Page state,
+document state, and variables are explicit host bridges. Input updates are coalesced into one frame
+and use the same direct-progress reference sampler. Disposal removes all listeners and observers,
+cancels scheduled work, restores owned styles/attributes, and prevents stale writes.
 
 ## Vue adapter
 

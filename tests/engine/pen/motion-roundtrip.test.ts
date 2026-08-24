@@ -21,7 +21,8 @@ function motion(id: string, distance = 24): MotionSpec {
             x: distance,
             width: 120,
             fillColor: { r: 1, g: 0.2, b: 0, a: 1 },
-            pathProgress: 0
+            pathProgress: 0,
+            easing: { type: 'back', mode: 'out', overshoot: 1.70158 }
           },
           {
             offset: 1,
@@ -35,7 +36,7 @@ function motion(id: string, distance = 24): MotionSpec {
         timing: {
           durationMs: 320,
           delayMs: 40,
-          easing: { type: 'spring', mass: 1, stiffness: 170, damping: 26, velocity: 0 },
+          easing: { type: 'elastic', mode: 'out', amplitude: 1, period: 0.3 },
           fill: 'both'
         },
         exit: 'reset',

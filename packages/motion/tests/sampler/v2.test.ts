@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { sampleMotionEasing, sampleMotionSpec } from '@open-pencil/motion'
-import type { MotionSpec } from '@open-pencil/scene-graph'
+import type { MotionEasing, MotionSpec } from '@open-pencil/scene-graph'
 
 function spec(): MotionSpec {
   return {
@@ -136,5 +136,60 @@ describe('MotionSpec v2 reference sampling', () => {
     const inertia = { type: 'inertia', velocity: 20, deceleration: 0.2 } as const
     expect(sampleMotionEasing(inertia, 0.5)).toBeGreaterThan(0)
     expect(sampleMotionEasing(inertia, 0.5)).toBeLessThan(1)
+  })
+
+  test('samples every rich easing family and mode from fixed reference values', () => {
+    const cases: Array<{ easing: MotionEasing; midpoint: number }> = [
+      { easing: { type: 'power', mode: 'in', power: 1 }, midpoint: 0.25 },
+      { easing: { type: 'power', mode: 'out', power: 1 }, midpoint: 0.75 },
+      { easing: { type: 'power', mode: 'inOut', power: 1 }, midpoint: 0.5 },
+      { easing: { type: 'sine', mode: 'in' }, midpoint: 0.2928932188134524 },
+      { easing: { type: 'sine', mode: 'out' }, midpoint: 0.7071067811865475 },
+      { easing: { type: 'sine', mode: 'inOut' }, midpoint: 0.5 },
+      { easing: { type: 'expo', mode: 'in' }, midpoint: 0.03125 },
+      { easing: { type: 'expo', mode: 'out' }, midpoint: 0.96875 },
+      { easing: { type: 'expo', mode: 'inOut' }, midpoint: 0.5 },
+      { easing: { type: 'circ', mode: 'in' }, midpoint: 0.1339745962155614 },
+      { easing: { type: 'circ', mode: 'out' }, midpoint: 0.8660254037844386 },
+      { easing: { type: 'circ', mode: 'inOut' }, midpoint: 0.5 },
+      { easing: { type: 'back', mode: 'in', overshoot: 1.70158 }, midpoint: -0.0876975 },
+      { easing: { type: 'back', mode: 'out', overshoot: 1.70158 }, midpoint: 1.0876975 },
+      { easing: { type: 'back', mode: 'inOut', overshoot: 1.70158 }, midpoint: 0.5 },
+      { easing: { type: 'bounce', mode: 'in' }, midpoint: 0.234375 },
+      { easing: { type: 'bounce', mode: 'out' }, midpoint: 0.765625 },
+      { easing: { type: 'bounce', mode: 'inOut' }, midpoint: 0.5 },
+      {
+        easing: { type: 'elastic', mode: 'in', amplitude: 1, period: 0.3 },
+        midpoint: -0.015625
+      },
+      {
+        easing: { type: 'elastic', mode: 'out', amplitude: 1, period: 0.3 },
+        midpoint: 1.015625
+      },
+      {
+        easing: { type: 'elastic', mode: 'inOut', amplitude: 1, period: 0.3 },
+        midpoint: 0.5
+      }
+    ]
+
+    for (const { easing, midpoint } of cases) {
+      expect(sampleMotionEasing(easing, 0)).toBe(0)
+      expect(sampleMotionEasing(easing, 1)).toBe(1)
+      expect(sampleMotionEasing(easing, 0.5)).toBeCloseTo(midpoint, 12)
+    }
+    expect(sampleMotionEasing({ type: 'power', mode: 'in', power: 4 }, 0.5)).toBe(0.03125)
+  })
+
+  test('uses rich track easing and preserves strict endpoints after input clamping', () => {
+    const source = spec()
+    source.tracks[0].timing.easing = { type: 'power', mode: 'in', power: 1 }
+    expect(sampleMotionSpec(source, 500).visual.width).toBe(125)
+
+    const elastic = { type: 'elastic', mode: 'out', amplitude: 10, period: 0.1 } as const
+    expect(sampleMotionEasing(elastic, -1)).toBe(0)
+    expect(sampleMotionEasing(elastic, 2)).toBe(1)
+    for (const progress of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+      expect(Number.isFinite(sampleMotionEasing(elastic, progress))).toBe(true)
+    }
   })
 })

@@ -53,6 +53,9 @@ type MotionDriverHostKind = 'pageState' | 'documentState' | 'variable'
 
 const motionDriverRegistry: Record<string, MotionDriverSpec> = ${JSON.stringify(registry)}
 const motionDriverSelector = '[data-op-motion-drivers]'
+const motionDriverVisibilityThresholds = Object.freeze(
+  Array.from({ length: 21 }, (_, index) => index / 20)
+)
 const mountedMotionDrivers = new Map<Element, MountedMotionDrivers>()
 const pendingMotionDriverInputs = new Map<{ mount: MountedMotionDrivers; driver: MotionDriverDefinition }, number>()
 const motionDriverHostValues = new Map<string, number | boolean>()
@@ -230,13 +233,16 @@ function mountMotionDriverOwner(owner: Element): void {
     }
   }
   if (visibility.size > 0 && typeof IntersectionObserver === 'function') {
-    mount.observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        for (const driver of visibility.get(entry.target) ?? []) {
-          queueMotionDriverInput(mount, driver, entry.isIntersecting ? entry.intersectionRatio : 0)
+    mount.observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          for (const driver of visibility.get(entry.target) ?? []) {
+            queueMotionDriverInput(mount, driver, entry.isIntersecting ? entry.intersectionRatio : 0)
+          }
         }
-      }
-    })
+      },
+      { threshold: [...motionDriverVisibilityThresholds] }
+    )
     for (const element of visibility.keys()) mount.observer.observe(element)
   }
 }

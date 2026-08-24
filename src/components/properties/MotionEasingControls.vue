@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import {
   MOTION_LIMITS,
   type MotionCubicBezierEasing,
+  type MotionEaseMode,
   type MotionEasing,
   type MotionInertiaEasing,
   type MotionSpec,
@@ -56,6 +57,13 @@ const labels = computed<Record<MotionEasingKind, string>>(() => ({
   'ease-out': panels.value.motionEasingEaseOut,
   'ease-in-out': panels.value.motionEasingEaseInOut,
   cubicBezier: panels.value.motionEasingCubicBezier,
+  power: panels.value.motionEasingPower,
+  sine: panels.value.motionEasingSine,
+  expo: panels.value.motionEasingExpo,
+  circ: panels.value.motionEasingCirc,
+  back: panels.value.motionEasingBack,
+  bounce: panels.value.motionEasingBounce,
+  elastic: panels.value.motionEasingElastic,
   hold: panels.value.motionEasingHold,
   steps: panels.value.motionEasingSteps,
   spring: panels.value.motionEasingSpring,
@@ -73,6 +81,23 @@ const options = computed<Array<{ value: SelectValue; label: string }>>(() => {
 const cubicBezier = computed<MotionCubicBezierEasing | undefined>(() =>
   typeof easing === 'object' && easing.type === 'cubicBezier' ? easing : undefined
 )
+type ModeEasing = Extract<MotionEasing, { mode: MotionEaseMode }>
+type PowerEasing = Extract<MotionEasing, { type: 'power' }>
+type BackEasing = Extract<MotionEasing, { type: 'back' }>
+type ElasticEasing = Extract<MotionEasing, { type: 'elastic' }>
+
+const modeEasing = computed<ModeEasing | undefined>(() =>
+  typeof easing === 'object' && 'mode' in easing ? (easing as ModeEasing) : undefined
+)
+const power = computed<PowerEasing | undefined>(() =>
+  typeof easing === 'object' && easing.type === 'power' ? easing : undefined
+)
+const back = computed<BackEasing | undefined>(() =>
+  typeof easing === 'object' && easing.type === 'back' ? easing : undefined
+)
+const elastic = computed<ElasticEasing | undefined>(() =>
+  typeof easing === 'object' && easing.type === 'elastic' ? easing : undefined
+)
 const steps = computed<MotionStepsEasing | undefined>(() =>
   typeof easing === 'object' && easing.type === 'steps' ? easing : undefined
 )
@@ -88,6 +113,11 @@ const stepPositionOptions = computed<
   { value: 'start', label: panels.value.motionEasingStepStart },
   { value: 'end', label: panels.value.motionEasingStepEnd }
 ])
+const modeOptions = computed<Array<{ value: MotionEaseMode; label: string }>>(() => [
+  { value: 'in', label: panels.value.motionEasingModeIn },
+  { value: 'out', label: panels.value.motionEasingModeOut },
+  { value: 'inOut', label: panels.value.motionEasingModeInOut }
+])
 
 function updateSelect(value: SelectValue): void {
   if (value === 'inherit') {
@@ -99,6 +129,27 @@ function updateSelect(value: SelectValue): void {
 
 function updateBezier(value: MotionCubicBezierEasing, coalesceKey?: string): void {
   emit('update', value, coalesceKey)
+}
+
+function updateMode(mode: MotionEaseMode): void {
+  if (!modeEasing.value) return
+  emit('update', { ...modeEasing.value, mode })
+}
+
+function updatePower(value: number): void {
+  if (!power.value) return
+  const normalized = Math.min(4, Math.max(1, Math.round(value))) as PowerEasing['power']
+  emit('update', { ...power.value, power: normalized })
+}
+
+function updateBack(overshoot: number): void {
+  if (!back.value) return
+  emit('update', { ...back.value, overshoot })
+}
+
+function updateElastic(patch: Partial<Pick<ElasticEasing, 'amplitude' | 'period'>>): void {
+  if (!elastic.value) return
+  emit('update', { ...elastic.value, ...patch })
 }
 
 function updateSteps(patch: Partial<Pick<MotionStepsEasing, 'steps' | 'position'>>): void {
@@ -138,6 +189,57 @@ function updateInertia(
       :property-prefix="propertyPrefix"
       @update="updateBezier"
     />
+    <PanelGrid v-else-if="modeEasing" :columns="2" :data-test-id="`${propertyPrefix}-curve`">
+      <PanelFieldGroup :label="panels.motionEasingMode">
+        <AppSelect
+          :model-value="modeEasing.mode"
+          :label="panels.motionEasingMode"
+          :options="modeOptions"
+          :data-test-id="`${propertyPrefix}-curve-mode`"
+          @update:model-value="updateMode"
+        />
+      </PanelFieldGroup>
+      <NumberField
+        v-if="power"
+        :model-value="power.power"
+        :label="panels.motionEasingPowerLevel"
+        :min="1"
+        :max="4"
+        :step="1"
+        :data-property="`${propertyPrefix}-power-level`"
+        @commit="updatePower"
+      />
+      <NumberField
+        v-if="back"
+        :model-value="back.overshoot"
+        :label="panels.motionEasingOvershoot"
+        :min="MOTION_LIMITS.backOvershoot.min"
+        :max="MOTION_LIMITS.backOvershoot.max"
+        :step="0.05"
+        :data-property="`${propertyPrefix}-back-overshoot`"
+        @commit="updateBack"
+      />
+      <template v-if="elastic">
+        <NumberField
+          :model-value="elastic.amplitude"
+          :label="panels.motionEasingAmplitude"
+          :min="MOTION_LIMITS.elasticAmplitude.min"
+          :max="MOTION_LIMITS.elasticAmplitude.max"
+          :step="0.05"
+          :data-property="`${propertyPrefix}-elastic-amplitude`"
+          @commit="updateElastic({ amplitude: $event })"
+        />
+        <NumberField
+          :model-value="elastic.period"
+          :label="panels.motionEasingPeriod"
+          :min="MOTION_LIMITS.elasticPeriod.min"
+          :max="MOTION_LIMITS.elasticPeriod.max"
+          :step="0.05"
+          :data-property="`${propertyPrefix}-elastic-period`"
+          @commit="updateElastic({ period: $event })"
+        />
+      </template>
+    </PanelGrid>
     <PanelGrid v-else-if="steps" :columns="2" :data-test-id="`${propertyPrefix}-steps`">
       <PanelFieldGroup :label="panels.motionEasingStepCount">
         <NumberField

@@ -183,6 +183,24 @@ describe('@open-pencil/fig native Motion adapter', () => {
     expect(plan.operations[0]?.track.keyframes[1]?.easing).toEqual({ type: 'EASE_OUT' })
   })
 
+  test('fails closed instead of approximating rich easing in Figma native Motion', () => {
+    const plan = createFigmaNativeMotionPlan(
+      createSpec(
+        {
+          timing: {
+            durationMs: 400,
+            easing: { type: 'back', mode: 'out', overshoot: 1.70158 }
+          }
+        },
+        { version: 2 }
+      )
+    )
+
+    expect(plan.supported).toBe(false)
+    expect(plan.operations).toEqual([])
+    expect(plan.issues.map((issue) => issue.code)).toContain('easing')
+  })
+
   test('retains non-native policy and preset provenance as plugin-data warnings', () => {
     const plan = createFigmaNativeMotionPlan(
       createSpec(

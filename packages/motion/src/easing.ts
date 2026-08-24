@@ -1,4 +1,4 @@
-import type { MotionEasing } from '@open-pencil/scene-graph'
+import type { MotionEaseMode, MotionEasing } from '@open-pencil/scene-graph'
 
 const NAMED_EASINGS = {
   linear: [0, 0, 1, 1],
@@ -195,6 +195,72 @@ function sampleInertia(
   return Math.min(1, Math.max(0, decay + velocityBias))
 }
 
+type EaseIn = (progress: number) => number
+
+function applyEaseMode(mode: MotionEaseMode, progress: number, easeIn: EaseIn): number {
+  if (mode === 'in') return easeIn(progress)
+  if (mode === 'out') return 1 - easeIn(1 - progress)
+  return progress < 0.5 ? easeIn(progress * 2) / 2 : 1 - easeIn((1 - progress) * 2) / 2
+}
+
+function bounceOut(progress: number): number {
+  const factor = 7.5625
+  const divisor = 2.75
+  if (progress < 1 / divisor) return factor * progress * progress
+  if (progress < 2 / divisor) {
+    const shifted = progress - 1.5 / divisor
+    return factor * shifted * shifted + 0.75
+  }
+  if (progress < 2.5 / divisor) {
+    const shifted = progress - 2.25 / divisor
+    return factor * shifted * shifted + 0.9375
+  }
+  const shifted = progress - 2.625 / divisor
+  return factor * shifted * shifted + 0.984375
+}
+
+function bounceIn(progress: number): number {
+  return 1 - bounceOut(1 - progress)
+}
+
+function elasticIn(progress: number, amplitude: number, period: number): number {
+  const phase = (period / (Math.PI * 2)) * Math.asin(1 / amplitude)
+  return (
+    -amplitude *
+    2 ** (10 * (progress - 1)) *
+    Math.sin(((progress - 1 - phase) * Math.PI * 2) / period)
+  )
+}
+
+type RichEasing = Extract<
+  MotionEasing,
+  { type: 'power' | 'sine' | 'expo' | 'circ' | 'back' | 'bounce' | 'elastic' }
+>
+
+function sampleRichEasing(easing: RichEasing, progress: number): number {
+  switch (easing.type) {
+    case 'power':
+      return applyEaseMode(easing.mode, progress, (value) => value ** (easing.power + 1))
+    case 'sine':
+      return applyEaseMode(easing.mode, progress, (value) => 1 - Math.cos((value * Math.PI) / 2))
+    case 'expo':
+      return applyEaseMode(easing.mode, progress, (value) => 2 ** (10 * (value - 1)))
+    case 'circ':
+      return applyEaseMode(easing.mode, progress, (value) => 1 - Math.sqrt(1 - value * value))
+    case 'back':
+      return applyEaseMode(easing.mode, progress, (value) => {
+        return (easing.overshoot + 1) * value ** 3 - easing.overshoot * value ** 2
+      })
+    case 'bounce':
+      return applyEaseMode(easing.mode, progress, bounceIn)
+    case 'elastic':
+      return applyEaseMode(easing.mode, progress, (value) => {
+        return elasticIn(value, easing.amplitude, easing.period)
+      })
+  }
+  throw new TypeError('Unsupported rich Motion easing')
+}
+
 /** Sample every bounded MotionSpec easing deterministically. */
 export function sampleMotionEasing(easing: MotionEasing, progress: number): number {
   const normalized = Math.min(1, Math.max(0, progress))
@@ -211,6 +277,7 @@ export function sampleMotionEasing(easing: MotionEasing, progress: number): numb
     }
     if (easing.type === 'spring') return sampleSpring(easing, normalized)
     if (easing.type === 'inertia') return sampleInertia(easing, normalized)
+    if (easing.type !== 'cubicBezier') return sampleRichEasing(easing, normalized)
   }
   const [x1, y1, x2, y2] =
     typeof easing === 'string'

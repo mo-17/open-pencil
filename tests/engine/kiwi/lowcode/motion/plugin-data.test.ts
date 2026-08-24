@@ -66,11 +66,21 @@ const userPresetMotion = (): MotionSpec => {
     ],
     autoRotate: true
   }
-  motion.tracks[0].timing.easing = { type: 'steps', steps: 4, position: 'end' }
+  motion.tracks[0].timing.easing = {
+    type: 'elastic',
+    mode: 'inOut',
+    amplitude: 1.5,
+    period: 0.4
+  }
   for (const frame of motion.tracks[0].keyframes) {
     frame.width = 120 + frame.offset * 40
     frame.fillColor = { r: 1 - frame.offset, g: 0.25, b: frame.offset, a: 1 }
     frame.pathProgress = frame.offset
+  }
+  motion.tracks[0].keyframes[0].easing = {
+    type: 'back',
+    mode: 'out',
+    overshoot: 2.2
   }
   return motion
 }

@@ -52,6 +52,47 @@ export interface IRMotionInertiaEasing {
   deceleration: number
 }
 
+export type IRMotionEaseMode = 'in' | 'out' | 'inOut'
+
+export interface IRMotionPowerEasing {
+  type: 'power'
+  mode: IRMotionEaseMode
+  power: 1 | 2 | 3 | 4
+}
+
+export interface IRMotionSineEasing {
+  type: 'sine'
+  mode: IRMotionEaseMode
+}
+
+export interface IRMotionExpoEasing {
+  type: 'expo'
+  mode: IRMotionEaseMode
+}
+
+export interface IRMotionCircEasing {
+  type: 'circ'
+  mode: IRMotionEaseMode
+}
+
+export interface IRMotionBounceEasing {
+  type: 'bounce'
+  mode: IRMotionEaseMode
+}
+
+export interface IRMotionBackEasing {
+  type: 'back'
+  mode: IRMotionEaseMode
+  overshoot: number
+}
+
+export interface IRMotionElasticEasing {
+  type: 'elastic'
+  mode: IRMotionEaseMode
+  amplitude: number
+  period: number
+}
+
 export type IRMotionEasing =
   | IRMotionEasingName
   | IRMotionCubicBezierEasing
@@ -59,6 +100,13 @@ export type IRMotionEasing =
   | IRMotionStepsEasing
   | IRMotionSpringEasing
   | IRMotionInertiaEasing
+  | IRMotionPowerEasing
+  | IRMotionSineEasing
+  | IRMotionExpoEasing
+  | IRMotionCircEasing
+  | IRMotionBounceEasing
+  | IRMotionBackEasing
+  | IRMotionElasticEasing
 
 export interface IRMotionColor {
   r: number

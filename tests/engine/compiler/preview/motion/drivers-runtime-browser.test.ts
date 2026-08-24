@@ -73,6 +73,36 @@ function buildFixture() {
       stateTarget.id
     )
   })
+  const visibilitySource = graph.createNode('RECTANGLE', pageId, {
+    name: 'Visibility source',
+    x: 520,
+    y: 100,
+    width: 100,
+    height: 100
+  })
+  const visibilityTarget = graph.createNode('RECTANGLE', pageId, {
+    name: 'Visibility target',
+    x: 520,
+    y: 220,
+    width: 30,
+    height: 30,
+    motion: motion()
+  })
+  const pageDrivers = graph.getNode(pageId)?.motionDrivers
+  if (!pageDrivers) throw new Error('Expected page Motion drivers')
+  graph.updateNode(pageId, {
+    motionDrivers: {
+      version: 1,
+      drivers: [
+        ...pageDrivers.drivers,
+        ...spec(
+          'visibility-driver',
+          { kind: 'visibility', sourceNodeId: visibilitySource.id },
+          visibilityTarget.id
+        ).drivers
+      ]
+    }
+  })
   const stateButton = graph.createNode('BUTTON', pageId, {
     name: 'Drive page state',
     x: 40,
@@ -194,6 +224,8 @@ function buildFixture() {
     }).files,
     stateTargetId: stateTarget.id,
     stateButtonId: stateButton.id,
+    visibilitySourceId: visibilitySource.id,
+    visibilityTargetId: visibilityTarget.id,
     documentTargetId: documentTarget.id,
     documentButtonId: documentButton.id,
     scrollSourceId: scrollSource.id,
@@ -270,6 +302,15 @@ describe('preview browser — generated continuous Motion drivers', () => {
           : Number(animation.currentTime)
       })
     expect(remountedDocumentTime).toBeCloseTo(400, -1)
+
+    await waitForControlledProgress(page, fixture.visibilityTargetId, 1, 1_000)
+    await page.locator(`[data-node-id="${fixture.visibilitySourceId}"]`).evaluate((source) => {
+      const html = source as HTMLElement
+      const rect = html.getBoundingClientRect()
+      html.style.transform = `translateY(${-rect.top - rect.height / 2}px)`
+    })
+    await waitForControlledProgress(page, fixture.visibilityTargetId, 0.5, 1_000)
+    expect(await controlledTime(page, fixture.visibilityTargetId)).toBeCloseTo(500, -1)
 
     await page.locator(`[data-node-id="${fixture.scrollSourceId}"]`).evaluate((source) => {
       const html = source as HTMLElement

@@ -31,11 +31,18 @@ function source(): MotionSpec {
         name: 'Enter',
         trigger: 'mount',
         keyframes: [
-          { offset: 0, opacity: 0 },
+          {
+            offset: 0,
+            opacity: 0,
+            easing: { type: 'back', mode: 'out', overshoot: 1.70158 }
+          },
           { offset: 0.5, opacity: 0.5 },
           { offset: 1, opacity: 1 }
         ],
-        timing: { durationMs: 400, easing: 'ease-out' }
+        timing: {
+          durationMs: 400,
+          easing: { type: 'elastic', mode: 'out', amplitude: 1, period: 0.3 }
+        }
       },
       {
         id: 'hover',
