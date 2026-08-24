@@ -50,6 +50,6 @@ test('renders imported text on a path with its selection overlay', async () => {
   )
   editor.canvas.assertNoErrors()
 
-  const buffer = await editor.canvas.canvas.screenshot()
+  const buffer = await editor.canvas.screenshotCanvasRegion()
   expect(buffer).toMatchSnapshot('text-path-rendering-and-selection.png')
 })
