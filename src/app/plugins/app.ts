@@ -2,19 +2,27 @@ import { shallowRef } from 'vue'
 
 import { getActiveEditorStoreOrNull, type EditorStore } from '@/app/editor/active-store'
 
+import { createThirdPartyPluginAIGrantManager } from './ai-authorization'
 import { createBundledPluginCatalog } from './catalog'
-import { appConnectorHostAdapters, reconcileConnectorAuthorizations } from './connectors/app'
+import {
+  appConnectorAuthorization,
+  appConnectorHostAdapters,
+  reconcileConnectorAuthorizations
+} from './connectors/app'
 import { inspectConnectorManifestCompatibility } from './connectors/registry'
 import { inspectPluginHostContributionsCompatibility } from './host'
 import {
-  createMarketplaceSnapshotClient,
-  parseMarketplaceTrustConfigJSON,
+  createBrowserMarketplaceSourceStorage,
+  createMarketplaceSourceManager,
+  createMarketplaceSourceRuntime,
+  createMemoryMarketplaceSourceStorage,
+  type MarketplaceSourceReview,
   type MarketplaceSnapshotLoadResult,
-  type ResolvedMarketplaceTrustConfig
+  type MarketplaceSourceManagerSnapshot
 } from './marketplace'
 import {
-  inspectInstalledPluginModuleCompatibility,
-  inspectPluginModuleContributionsCompatibility
+  inspectPluginModuleContributionsCompatibility,
+  isInstalledPluginModuleAutomationCallable
 } from './modules'
 import {
   createIdbRemotePluginCacheStorage,
@@ -34,7 +42,10 @@ import {
 } from './runtime'
 import { createIdbAppPluginStateStorage, createMemoryAppPluginStateStorage } from './storage'
 import { createAppPluginStore } from './store'
-import type { AppPluginActivationCompatibilityPolicy } from './types'
+import type {
+  AppPluginActivationCompatibilityPolicy,
+  AppPluginMarketplaceTrustBundle
+} from './types'
 
 const storage =
   typeof indexedDB === 'undefined'
@@ -42,9 +53,8 @@ const storage =
     : createIdbAppPluginStateStorage()
 
 const remoteTrustConfigJSON = import.meta.env.VITE_OPENPENCIL_PLUGIN_TRUST_CONFIG?.trim() ?? ''
-const marketplaceTrustConfigJSON =
-  import.meta.env.VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG?.trim() ?? ''
-export const appPluginMarketplaceConfigured = marketplaceTrustConfigJSON.length > 0
+const managedMarketplaceTrustConfigJSON = import.meta.env.VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG
+export const appPluginMarketplaceConfigured = managedMarketplaceTrustConfigJSON !== undefined
 export const appPluginRemoteCatalogConfigured =
   remoteTrustConfigJSON.length > 0 || appPluginMarketplaceConfigured
 export const appPluginRemoteCatalogSnapshot = shallowRef<RemotePluginCatalogLoadResult | null>(null)
@@ -53,13 +63,85 @@ const remoteCache =
   typeof indexedDB === 'undefined'
     ? createMemoryRemotePluginCacheStorage()
     : createIdbRemotePluginCacheStorage()
+const marketplaceSourceStorage =
+  typeof indexedDB === 'undefined'
+    ? createMemoryMarketplaceSourceStorage()
+    : createBrowserMarketplaceSourceStorage()
+const pluginEngineVersion =
+  typeof __OPENPENCIL_APP_VERSION__ === 'string' ? __OPENPENCIL_APP_VERSION__ : '0.0.0'
+let appPluginTrustLastSeen = Date.now()
+let publisherPrivilegeTail: Promise<void> = Promise.resolve()
+const PUBLISHER_PRIVILEGE_LOCK_NAME = 'open-pencil:publisher-plugin-privilege'
+
+function withLocalPublisherPrivilegeLock<T>(operation: () => Promise<T>): Promise<T> {
+  const result = publisherPrivilegeTail.then(operation, operation)
+  publisherPrivilegeTail = result.then(
+    () => undefined,
+    () => undefined
+  )
+  return result
+}
+
+function withAppPluginPublisherPrivilegeLock<T>(operation: () => Promise<T>): Promise<T> {
+  const browserNavigator = Reflect.get(globalThis, 'navigator') as Navigator | undefined
+  const browserLocks = browserNavigator?.locks
+  if (browserLocks) {
+    return browserLocks.request(PUBLISHER_PRIVILEGE_LOCK_NAME, { mode: 'exclusive' }, operation)
+  }
+  if (typeof indexedDB !== 'undefined') {
+    throw new TypeError('Cross-window plugin authority locking is unavailable in this browser')
+  }
+  return withLocalPublisherPrivilegeLock(operation)
+}
+
+function sessionPluginTrustNow(): number {
+  appPluginTrustLastSeen = Math.max(appPluginTrustLastSeen, Date.now())
+  return appPluginTrustLastSeen
+}
+const appPluginMarketplaceSourceManager = createMarketplaceSourceManager({
+  storage: marketplaceSourceStorage,
+  now: sessionPluginTrustNow,
+  ...(managedMarketplaceTrustConfigJSON === undefined
+    ? {}
+    : { managedConfigJSON: managedMarketplaceTrustConfigJSON })
+})
+export const appPluginMarketplaceSourceSnapshot = shallowRef(
+  appPluginMarketplaceSourceManager.snapshot()
+)
+const marketplaceSourceRuntime = createMarketplaceSourceRuntime({
+  manager: appPluginMarketplaceSourceManager,
+  cache: remoteCache,
+  engineVersion: pluginEngineVersion,
+  onMarketplaceResult(result) {
+    appPluginMarketplaceSnapshot.value = result
+  },
+  onCatalogResult(result) {
+    appPluginRemoteCatalogSnapshot.value = result
+  }
+})
+
+function appPluginTrustNow(): number {
+  const persisted = appPluginMarketplaceSourceManager.snapshot().active?.highWater
+  const persistedTime = persisted ? Date.parse(persisted.lastSeenWallTime) : 0
+  appPluginTrustLastSeen = Math.max(appPluginTrustLastSeen, Date.now(), persistedTime)
+  return appPluginTrustLastSeen
+}
 let remoteConfigPromise: Promise<ResolvedRemotePluginTrustConfig | null> | null = null
 let remoteClient: ReturnType<typeof createRemotePluginCatalogClient> | null = null
-let marketplaceConfigPromise: Promise<ResolvedMarketplaceTrustConfig | null> | null = null
-let marketplaceClient: ReturnType<typeof createMarketplaceSnapshotClient> | null = null
-let marketplaceLoadPromise: Promise<MarketplaceSnapshotLoadResult> | null = null
-let marketplaceLoadedAt = 0
 let runtimeClient: ReturnType<typeof createPluginRuntimeClient> | null = null
+let marketplaceSourceAuthorityKey: string | null = null
+
+appPluginMarketplaceSourceManager.subscribe((snapshot) => {
+  appPluginMarketplaceSourceSnapshot.value = snapshot
+  const active = snapshot.active
+  const nextAuthorityKey = active
+    ? `${active.sourceId}\0${active.sourceGeneration}\0${active.rootKeySpkiSha256}`
+    : null
+  if (nextAuthorityKey === marketplaceSourceAuthorityKey) return
+  marketplaceSourceAuthorityKey = nextAuthorityKey
+  marketplaceSourceRuntime.reset()
+  runtimeClient = null
+})
 
 interface PluginRuntimeInputContext {
   editor: EditorStore | null
@@ -83,8 +165,6 @@ function prepareCapturedPluginRuntimeInput(
   }
   return preparePluginRuntimeInput(capabilities, input, context.editor)
 }
-
-const MARKETPLACE_SNAPSHOT_REUSE_MILLISECONDS = 60_000
 
 function remoteConfig(): Promise<ResolvedRemotePluginTrustConfig | null> {
   remoteConfigPromise ??= remoteTrustConfigJSON
@@ -113,84 +193,20 @@ function unavailableMarketplace(cause: unknown): MarketplaceSnapshotLoadResult {
   }
 }
 
-function marketplaceConfig(): Promise<ResolvedMarketplaceTrustConfig | null> {
-  marketplaceConfigPromise ??= marketplaceTrustConfigJSON
-    ? parseMarketplaceTrustConfigJSON(marketplaceTrustConfigJSON)
-    : Promise.resolve(null)
-  return marketplaceConfigPromise
-}
-
-function reusableMarketplaceSnapshot(at: number): MarketplaceSnapshotLoadResult | null {
-  const current = appPluginMarketplaceSnapshot.value
-  if (!current?.snapshot) return null
-  const age = at - marketplaceLoadedAt
-  if (
-    age < 0 ||
-    age >= MARKETPLACE_SNAPSHOT_REUSE_MILLISECONDS ||
-    at >= Date.parse(current.snapshot.snapshot.expiresAt)
-  ) {
+async function loadMarketplaceTrustBundle(): Promise<
+  AppPluginMarketplaceTrustBundle | null | undefined
+> {
+  try {
+    return await marketplaceSourceRuntime.loadActiveTrustBundle()
+  } catch (cause) {
+    appPluginRemoteCatalogSnapshot.value = unavailableRemoteCatalog(cause)
+    appPluginMarketplaceSnapshot.value = unavailableMarketplace(cause)
     return null
   }
-  return current
-}
-
-function loadMarketplace(forceRefresh = false): Promise<MarketplaceSnapshotLoadResult> {
-  const at = Date.now()
-  if (!forceRefresh) {
-    const reusable = reusableMarketplaceSnapshot(at)
-    if (reusable) return Promise.resolve(reusable)
-  }
-  if (marketplaceLoadPromise) return marketplaceLoadPromise
-  const request = (async () => {
-    try {
-      const config = await marketplaceConfig()
-      if (!config) return unavailableMarketplace(new Error('Marketplace is not configured'))
-      marketplaceClient ??= createMarketplaceSnapshotClient({ ...config, cache: remoteCache })
-      const result = await marketplaceClient.load()
-      marketplaceLoadedAt = Date.now()
-      appPluginMarketplaceSnapshot.value = result
-      return result
-    } catch (cause) {
-      const result = unavailableMarketplace(cause)
-      appPluginMarketplaceSnapshot.value = result
-      return result
-    }
-  })()
-  marketplaceLoadPromise = request
-  void request.finally(() => {
-    if (marketplaceLoadPromise === request) marketplaceLoadPromise = null
-  })
-  return request
-}
-
-async function loadMarketplaceRemoteCatalog() {
-  const [config, marketplace] = await Promise.all([marketplaceConfig(), loadMarketplace(true)])
-  if (!config || !marketplace.snapshot) return []
-  const reference = marketplace.snapshot.snapshot.catalogs.find(
-    (candidate) => candidate.channel === config.channel
-  )
-  if (!reference) throw new Error(`Marketplace ${config.channel} catalog is unavailable`)
-  const client = createRemotePluginCatalogClient({
-    catalogUrl: reference.url,
-    expectedCatalogId: reference.catalogId,
-    expectedCatalogKeyId: reference.keyId,
-    catalogPublicKey: config.rootPublicKey,
-    publisherKeyring: marketplace.snapshot.publisherKeyring,
-    engineVersion:
-      typeof __OPENPENCIL_APP_VERSION__ === 'string' ? __OPENPENCIL_APP_VERSION__ : '0.0.0',
-    cache: remoteCache
-  })
-  const result = await client.load()
-  if (result.catalog && result.catalog.verifiedDigest !== reference.digest) {
-    throw new Error('Marketplace catalog digest does not match the signed marketplace snapshot')
-  }
-  appPluginRemoteCatalogSnapshot.value = result
-  return remotePluginCatalogEntries(result)
 }
 
 async function loadRemoteCatalog() {
   try {
-    if (appPluginMarketplaceConfigured) return await loadMarketplaceRemoteCatalog()
     const config = await remoteConfig()
     if (!config) return []
     remoteClient ??= createRemotePluginCatalogClient({
@@ -210,9 +226,6 @@ async function loadRemoteCatalog() {
 
 async function loadRemoteKeyring() {
   try {
-    if (appPluginMarketplaceConfigured) {
-      return (await loadMarketplace()).snapshot?.publisherKeyring
-    }
     return (await remoteConfig())?.publisherKeyring
   } catch (cause) {
     appPluginRemoteCatalogSnapshot.value = unavailableRemoteCatalog(cause)
@@ -248,28 +261,60 @@ const activationCompatibilityPolicy: AppPluginActivationCompatibilityPolicy = (m
       }
 }
 
+function appPluginTrustLoaders() {
+  return {
+    marketplaceTrustBundleLoader: loadMarketplaceTrustBundle,
+    ...(remoteTrustConfigJSON
+      ? {
+          catalogLoader: loadRemoteCatalog,
+          trustedKeyringLoader: loadRemoteKeyring
+        }
+      : {})
+  }
+}
+
 export const appPluginStore = createAppPluginStore({
   storage,
   catalog: createBundledPluginCatalog(),
   activationCompatibilityPolicy,
-  ...(appPluginRemoteCatalogConfigured
-    ? {
-        catalogLoader: loadRemoteCatalog,
-        trustedKeyringLoader: loadRemoteKeyring
-      }
-    : {}),
-  engineVersion:
-    typeof __OPENPENCIL_APP_VERSION__ === 'string' ? __OPENPENCIL_APP_VERSION__ : '0.0.0'
+  ...appPluginTrustLoaders(),
+  publisherMutationLock: withAppPluginPublisherPrivilegeLock,
+  publisherTrustClockCheckpoint: checkpointAppPluginMarketplaceSourceClockUnlocked,
+  now: appPluginTrustNow,
+  engineVersion: pluginEngineVersion
 })
 
 export const appPluginStoreSnapshot = shallowRef(appPluginStore.snapshot())
 
+export const appPluginAIAuthorization = createThirdPartyPluginAIGrantManager({
+  resolveInstalledPlugin(pluginId) {
+    const snapshot = appPluginStore.snapshot()
+    if (!snapshot.ready) return undefined
+    return snapshot.installed.find(({ package: value }) => value.manifest.plugin.id === pluginId)
+  }
+})
+
+export const appPluginAIAuthorizationSnapshot = shallowRef(appPluginAIAuthorization.snapshot())
+
 appPluginStore.subscribe((snapshot) => {
   appPluginStoreSnapshot.value = snapshot
   reconcileConnectorAuthorizations(snapshot.installed)
+  appPluginAIAuthorization.reconcile()
+  appPluginAIAuthorizationSnapshot.value = appPluginAIAuthorization.snapshot()
 })
 
-export const appPluginStoreReady = appPluginStore.load()
+appPluginAIAuthorization.subscribe((snapshot) => {
+  appPluginAIAuthorizationSnapshot.value = snapshot
+})
+
+appConnectorAuthorization.subscribe(() => {
+  for (const grant of appPluginAIAuthorization.snapshot()) {
+    if (grant.kind === 'connector') appPluginAIAuthorization.revoke(grant)
+  }
+})
+
+const appPluginMarketplaceSourceReady = appPluginMarketplaceSourceManager.load()
+export const appPluginStoreReady = appPluginMarketplaceSourceReady.then(() => appPluginStore.load())
 
 const runtimePolicyStorage =
   typeof indexedDB === 'undefined'
@@ -278,14 +323,17 @@ const runtimePolicyStorage =
 
 export const appPluginRuntimeManager = createPluginRuntimeManager({
   storage: runtimePolicyStorage,
+  publisherPrivilegeLock: withAppPluginPublisherPrivilegeLock,
+  checkpointPublisherTrust: checkpointAppPluginMarketplacePrivilegeClockUnlocked,
   resolveInstalledPlugin(pluginId) {
-    return appPluginStore
-      .snapshot()
-      .installed.find(({ package: value }) => value.manifest.plugin.id === pluginId)
+    const snapshot = appPluginStore.snapshot()
+    if (!snapshot.ready) return undefined
+    return snapshot.installed.find(({ package: value }) => value.manifest.plugin.id === pluginId)
   },
   async loadRuntime(declarativePackage) {
-    const [config, marketplace] = await Promise.all([marketplaceConfig(), loadMarketplace(true)])
-    if (!config || !marketplace.snapshot) {
+    const bundle = await loadMarketplaceTrustBundle()
+    const marketplace = appPluginMarketplaceSnapshot.value
+    if (!bundle || !marketplace?.snapshot) {
       throw new Error('A verified marketplace snapshot is required for executable plugins')
     }
     runtimeClient ??= createPluginRuntimeClient({
@@ -308,12 +356,80 @@ appPluginRuntimeManager.subscribe((snapshot) => {
 
 export const appPluginRuntimeReady = appPluginStoreReady.then(() => appPluginRuntimeManager.load())
 
+export function reviewAppPluginMarketplaceSource(value: unknown): Promise<MarketplaceSourceReview> {
+  return marketplaceSourceRuntime.reviewUserSource(value)
+}
+
+/**
+ * Durably checkpoints monotonic Marketplace time before entering a publisher
+ * privilege boundary. Callers must await this before granting or exercising
+ * privileges derived from Marketplace authority.
+ */
+async function checkpointAppPluginMarketplaceSourceClockUnlocked(): Promise<number> {
+  await appPluginMarketplaceSourceReady
+  return appPluginMarketplaceSourceManager.checkpointActivePrivilegeClock()
+}
+
+async function checkpointAppPluginMarketplacePrivilegeClockUnlocked(): Promise<number> {
+  const checkpoint = await checkpointAppPluginMarketplaceSourceClockUnlocked()
+  await appPluginStore.assertPublisherStateCurrent()
+  return checkpoint
+}
+
+export function checkpointAppPluginMarketplacePrivilegeClock(): Promise<number> {
+  return withAppPluginPublisherPrivilegeLock(checkpointAppPluginMarketplacePrivilegeClockUnlocked)
+}
+
+export function withAppPluginPublisherPrivilege<T>(operation: () => Promise<T>): Promise<T> {
+  return withAppPluginPublisherPrivilegeLock(async () => {
+    await checkpointAppPluginMarketplacePrivilegeClockUnlocked()
+    return operation()
+  })
+}
+
+export function activateAppPluginMarketplaceSource(
+  stageId: string,
+  confirmedRootFingerprint: string
+): Promise<MarketplaceSourceManagerSnapshot> {
+  return appPluginStore.transitionPublisherTrust(() =>
+    marketplaceSourceRuntime.activateReviewedSource(stageId, confirmedRootFingerprint)
+  )
+}
+
+export function clearAppPluginMarketplaceSource(): Promise<MarketplaceSourceManagerSnapshot> {
+  return appPluginStore.transitionPublisherTrust(async () => {
+    marketplaceSourceRuntime.reset()
+    runtimeClient = null
+    return appPluginMarketplaceSourceManager.clearUserSource()
+  })
+}
+
+export function refreshAppPluginCatalog() {
+  return appPluginStore.refreshCatalog()
+}
+
 export async function uninstallAppPlugin(pluginId: string): Promise<void> {
   await appPluginRuntimeReady
+  const installed = appPluginStore
+    .snapshot()
+    .installed.find(({ package: value }) => value.manifest.plugin.id === pluginId)
+  if (installed?.package.trustSource === 'publisher-signature') {
+    await appPluginStore.uninstallWithPublisherCleanup(pluginId, () =>
+      appPluginRuntimeManager.uninstallWhilePublisherLocked(pluginId, async () => undefined)
+    )
+    return
+  }
   await appPluginRuntimeManager.uninstall(pluginId, () => appPluginStore.uninstall(pluginId))
+}
+
+export async function resetAppPluginLocalState(pluginId: string) {
+  await appPluginRuntimeReady
+  return appPluginStore.resetLocalStateWithPublisherCleanup(pluginId, () =>
+    appPluginRuntimeManager.uninstallWhilePublisherLocked(pluginId, async () => undefined)
+  )
 }
 
 export function canCreatePluginModule(pluginId: string, moduleType: string): boolean {
   const module = appPluginStore.module(pluginId, moduleType)
-  return module ? inspectInstalledPluginModuleCompatibility(module).ok : false
+  return module ? isInstalledPluginModuleAutomationCallable(module) : false
 }

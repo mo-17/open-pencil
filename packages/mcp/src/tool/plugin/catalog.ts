@@ -11,6 +11,9 @@ import type { MCPResult } from '#mcp/result'
 import {
   PLUGIN_MCP_CATALOG_LIMITS,
   type PluginMCPCatalogSnapshot,
+  type PluginMCPToolAuthority,
+  type PluginMCPToolCallDescriptor,
+  type PluginMCPToolCallRequest,
   type PluginMCPToolDescriptor,
   type PluginMCPToolKind
 } from '#mcp/tool/plugin/contract'
@@ -18,7 +21,14 @@ import { parsePluginMCPInputSchema } from '#mcp/tool/plugin/schema'
 import type { RPCSender, ToolRequestExtra } from '#mcp/tool/registration'
 
 export { PLUGIN_MCP_CATALOG_LIMITS }
-export type { PluginMCPCatalogSnapshot, PluginMCPToolDescriptor, PluginMCPToolKind }
+export type {
+  PluginMCPCatalogSnapshot,
+  PluginMCPToolAuthority,
+  PluginMCPToolCallDescriptor,
+  PluginMCPToolCallRequest,
+  PluginMCPToolDescriptor,
+  PluginMCPToolKind
+}
 
 interface CatalogRecord {
   [key: string]: unknown
@@ -37,11 +47,23 @@ const DESCRIPTOR_REQUIRED_KEYS = Object.freeze([
   'inputSchema',
   'pluginId',
   'kind',
-  'contributionId'
+  'contributionId',
+  'authority'
 ])
 const DESCRIPTOR_OPTIONAL_KEYS = Object.freeze(['title'])
+const AUTHORITY_KEYS = Object.freeze([
+  'trustSource',
+  'packageDigest',
+  'pluginVersion',
+  'publisherId',
+  'publisherKeyId',
+  'adapterId'
+])
 const PLUGIN_TOOL_NAME = /^plugin__[a-z0-9_]+__(add|run|export|query)_[a-z0-9_]+_([a-f0-9]{64})$/
 const IDENTITY = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/i
+const STABLE_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+const SHA_256_BASE64URL = /^[A-Za-z0-9_-]{43}$/
+const APP_BUNDLE_SHA_256 = /^app-bundle-sha256:[A-Za-z0-9_-]{43}$/
 const AUTOMATION_TARGET_PROPERTIES = Object.freeze({
   document_id: Object.freeze({
     type: 'string',
@@ -69,7 +91,38 @@ function record(value: unknown, path: string): CatalogRecord {
   if (prototype !== Object.prototype && prototype !== null) {
     throw new TypeError(`${path} must be a plain object`)
   }
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string') {
+      throw new TypeError(`${path} must not contain symbol properties`)
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor?.enumerable || !('value' in descriptor)) {
+      throw new TypeError(`${path}.${key} must be an enumerable data property`)
+    }
+  }
   return value as CatalogRecord
+}
+
+function boundedArray(value: unknown, path: string, maximumLength: number): readonly unknown[] {
+  if (!Array.isArray(value) || value.length > maximumLength) {
+    throw new TypeError(`${path} must be an array with at most ${maximumLength} entries`)
+  }
+  const keys = Reflect.ownKeys(value)
+  if (
+    keys.length !== value.length + 1 ||
+    keys.some((key) => typeof key !== 'string' || (key !== 'length' && !/^(0|[1-9]\d*)$/.test(key)))
+  ) {
+    throw new TypeError(`${path} must be a dense array without custom properties`)
+  }
+  return Object.freeze(
+    Array.from({ length: value.length }, (_, index) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+      if (!descriptor?.enumerable || !('value' in descriptor)) {
+        throw new TypeError(`${path}[${index}] must be an enumerable data property`)
+      }
+      return descriptor.value
+    })
+  )
 }
 
 function exactRecord(
@@ -113,6 +166,40 @@ function identity(value: unknown, path: string): string {
   return parsed
 }
 
+function parseAuthority(value: unknown, path: string): PluginMCPToolAuthority {
+  const source = exactRecord(value, path, AUTHORITY_KEYS)
+  const trustSource = source.trustSource
+  if (trustSource !== 'app-bundle' && trustSource !== 'publisher-signature') {
+    throw new TypeError(`${path}.trustSource is not supported`)
+  }
+  const packageDigest = boundedString(
+    source.packageDigest,
+    `${path}.packageDigest`,
+    PLUGIN_MCP_CATALOG_LIMITS.maxPackageDigestLength
+  )
+  const digestPattern = trustSource === 'app-bundle' ? APP_BUNDLE_SHA_256 : SHA_256_BASE64URL
+  if (!digestPattern.test(packageDigest)) {
+    throw new TypeError(`${path}.packageDigest does not match ${path}.trustSource`)
+  }
+  const pluginVersion = boundedString(
+    source.pluginVersion,
+    `${path}.pluginVersion`,
+    PLUGIN_MCP_CATALOG_LIMITS.maxPluginVersionLength
+  )
+  const versionMatch = STABLE_SEMVER.exec(pluginVersion)
+  if (!versionMatch || !versionMatch.slice(1).every((part) => Number.isSafeInteger(Number(part)))) {
+    throw new TypeError(`${path}.pluginVersion must be a stable semantic version`)
+  }
+  return Object.freeze({
+    trustSource,
+    packageDigest,
+    pluginVersion,
+    publisherId: identity(source.publisherId, `${path}.publisherId`),
+    publisherKeyId: identity(source.publisherKeyId, `${path}.publisherKeyId`),
+    adapterId: identity(source.adapterId, `${path}.adapterId`)
+  })
+}
+
 function pluginToolIdentityDigest(
   pluginId: string,
   kind: PluginMCPToolKind,
@@ -151,6 +238,7 @@ function parseDescriptor(value: unknown, index: number): PluginMCPToolDescriptor
   if (nameMatch[2] !== pluginToolIdentityDigest(pluginId, kind, contributionId)) {
     throw new TypeError(`${path}.name identity suffix does not match its canonical contribution`)
   }
+  const authority = parseAuthority(source.authority, `${path}.authority`)
   return Object.freeze({
     name,
     ...(source.title === undefined
@@ -170,19 +258,20 @@ function parseDescriptor(value: unknown, index: number): PluginMCPToolDescriptor
     inputSchema: parsePluginMCPInputSchema(source.inputSchema, `${path}.inputSchema`, kind),
     pluginId,
     kind,
-    contributionId
+    contributionId,
+    authority
   })
 }
 
 export function parsePluginMCPCatalogResponse(value: unknown): PluginMCPCatalogSnapshot {
-  if (JSONBytes(value) > PLUGIN_MCP_CATALOG_LIMITS.maxCatalogBytes) {
-    throw new TypeError('pluginMcpCatalog exceeds the catalog byte limit')
-  }
   const envelope = exactRecord(value, 'pluginMcpCatalog', ['ok', 'result'], ['error'])
   if (envelope.ok !== true) {
     const message =
       typeof envelope.error === 'string' ? envelope.error : 'Plugin MCP catalog failed'
     throw new Error(message)
+  }
+  if (envelope.error !== undefined) {
+    throw new TypeError('pluginMcpCatalog.error is not supported on a successful response')
   }
   const result = exactRecord(envelope.result, 'pluginMcpCatalog.result', ['revision', 'tools'])
   const revision = boundedString(
@@ -190,18 +279,21 @@ export function parsePluginMCPCatalogResponse(value: unknown): PluginMCPCatalogS
     'pluginMcpCatalog.result.revision',
     PLUGIN_MCP_CATALOG_LIMITS.maxRevisionLength
   )
-  if (!Array.isArray(result.tools) || result.tools.length > PLUGIN_MCP_CATALOG_LIMITS.maxTools) {
-    throw new TypeError(
-      `pluginMcpCatalog.result.tools must be an array with at most ${PLUGIN_MCP_CATALOG_LIMITS.maxTools} entries`
-    )
-  }
-  const tools = result.tools
+  const tools = boundedArray(
+    result.tools,
+    'pluginMcpCatalog.result.tools',
+    PLUGIN_MCP_CATALOG_LIMITS.maxTools
+  )
     .map(parseDescriptor)
     .sort((left, right) => left.name.localeCompare(right.name))
   if (new Set(tools.map((tool) => tool.name)).size !== tools.length) {
     throw new TypeError('pluginMcpCatalog.result.tools names must be unique')
   }
-  return Object.freeze({ revision, tools: Object.freeze(tools) })
+  const snapshot = Object.freeze({ revision, tools: Object.freeze(tools) })
+  if (JSONBytes({ ok: true, result: snapshot }) > PLUGIN_MCP_CATALOG_LIMITS.maxCatalogBytes) {
+    throw new TypeError('pluginMcpCatalog exceeds the catalog byte limit')
+  }
+  return snapshot
 }
 
 function snapshotFingerprint(snapshot: PluginMCPCatalogSnapshot): string {
@@ -361,35 +453,79 @@ function pluginCallMeta(
       pluginId: descriptor.pluginId,
       contributionId: descriptor.contributionId,
       kind: descriptor.kind,
+      authority: descriptor.authority,
       requestedTarget: target
     }
   }
 }
 
+function callDescriptor(descriptor: PluginMCPToolDescriptor): PluginMCPToolCallDescriptor {
+  return Object.freeze({
+    name: descriptor.name,
+    ...(descriptor.title === undefined ? {} : { title: descriptor.title }),
+    pluginId: descriptor.pluginId,
+    kind: descriptor.kind,
+    contributionId: descriptor.contributionId,
+    authority: descriptor.authority
+  })
+}
+
+function sameCallDescriptor(
+  left: PluginMCPToolCallDescriptor,
+  right: PluginMCPToolCallDescriptor
+): boolean {
+  return (
+    left.name === right.name &&
+    left.title === right.title &&
+    left.pluginId === right.pluginId &&
+    left.kind === right.kind &&
+    left.contributionId === right.contributionId &&
+    left.authority.trustSource === right.authority.trustSource &&
+    left.authority.packageDigest === right.authority.packageDigest &&
+    left.authority.pluginVersion === right.authority.pluginVersion &&
+    left.authority.publisherId === right.authority.publisherId &&
+    left.authority.publisherKeyId === right.authority.publisherKeyId &&
+    left.authority.adapterId === right.authority.adapterId
+  )
+}
+
 async function callPluginTool(
   catalog: PluginMCPCatalog,
   sendRPC: RPCSender,
-  registeredName: string,
+  expectedCatalogRevision: string,
+  expectedDescriptor: PluginMCPToolCallDescriptor,
   args: Record<string, unknown>,
   extra?: ToolRequestExtra
 ): Promise<MCPResult> {
-  const descriptor = catalog.get(registeredName)
-  if (!descriptor) {
-    return fail(`Plugin tool "${registeredName}" is no longer installed and enabled`)
+  const snapshot = catalog.current()
+  const descriptor = catalog.get(expectedDescriptor.name)
+  if (
+    snapshot.revision !== expectedCatalogRevision ||
+    !descriptor ||
+    !sameCallDescriptor(callDescriptor(descriptor), expectedDescriptor)
+  ) {
+    return fail(
+      `Plugin tool "${expectedDescriptor.name}" catalog authority changed; refresh tools/list before calling it`
+    )
   }
   const { target, args: toolArgs } = splitAutomationTarget(args)
   const meta = pluginCallMeta(descriptor, target)
   try {
     // The app resolves the installed/enabled contribution again immediately before
     // execution. This closes the uninstall/disable race between tools/list and tools/call.
+    const request: PluginMCPToolCallRequest<Record<string, unknown>> = {
+      name: expectedDescriptor.name,
+      pluginId: expectedDescriptor.pluginId,
+      expectedCatalogRevision,
+      expectedDescriptor,
+      args: toolArgs
+    }
     const response = (await sendRPC(
       {
         command: 'plugin_mcp_tool',
         args: {
           ...target,
-          name: descriptor.name,
-          pluginId: descriptor.pluginId,
-          args: toolArgs
+          ...request
         }
       },
       { signal: extra?.signal }
@@ -420,7 +556,8 @@ export function registerPluginMCPTools(
       registered.delete(name)
     }
     for (const descriptor of snapshot.tools) {
-      const fingerprint = JSON.stringify(descriptor)
+      const expectedDescriptor = callDescriptor(descriptor)
+      const fingerprint = JSON.stringify([snapshot.revision, descriptor])
       const previous = registered.get(descriptor.name)
       if (previous?.fingerprint === fingerprint) continue
       if (previous) {
@@ -441,7 +578,9 @@ export function registerPluginMCPTools(
             openpencil: {
               pluginId: descriptor.pluginId,
               contributionId: descriptor.contributionId,
-              kind: descriptor.kind
+              kind: descriptor.kind,
+              authority: descriptor.authority,
+              catalogRevision: snapshot.revision
             }
           }
         },
@@ -449,7 +588,8 @@ export function registerPluginMCPTools(
           callPluginTool(
             options.catalog,
             options.sendRPC,
-            descriptor.name,
+            snapshot.revision,
+            expectedDescriptor,
             record(args, `pluginTool.${descriptor.name}.args`),
             { signal: extra.signal }
           )

@@ -34,11 +34,13 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
   const handleTool = createAutomationToolHandler(makeFigma)
   const { handleList: handlePluginMCPTools, handleCall: handlePluginMCPTool } =
     createAutomationPluginMCPHandlers(handleTool)
+  const handlePluginMCPToolFromRPC: CommandHandler = (target, args, context) =>
+    handlePluginMCPTool(target, args, context, { requireExpectedAuthority: true })
 
   const commandHandlers: Partial<Record<string, CommandHandler>> = {
     eval: handleEval,
     tool: handleTool,
-    plugin_mcp_tool: handlePluginMCPTool,
+    plugin_mcp_tool: handlePluginMCPToolFromRPC,
     export: handleExport,
     export_jsx: handleExportJSX,
     selection: handleSelection,

@@ -27,7 +27,8 @@ import {
   addInstalledPluginModuleToCanvas,
   appPluginStore,
   appPluginStoreSnapshot,
-  inspectInstalledPluginModuleCompatibility
+  inspectInstalledPluginModuleCompatibility,
+  withAppPluginPublisherPrivilege
 } from '@/app/plugins'
 import {
   localizedAppPluginContributionText,
@@ -126,15 +127,22 @@ function moduleIcon(moduleType: string): Component {
   return IconPuzzle
 }
 
-function addModule(module: InstalledPluginModule): void {
+async function addModule(module: InstalledPluginModule): Promise<void> {
   const id = pluginId(module)
   try {
-    // Re-resolve at execution time so a plugin disabled while the menu was open cannot run.
-    const current = appPluginStore.module(id, module.contribution.moduleType)
-    if (!current) throw new Error(dialogs.value.pluginDisabledHint)
-    const compatibility = inspectInstalledPluginModuleCompatibility(current)
-    if (!compatibility.ok) throw new Error(compatibility.reason)
-    addInstalledPluginModuleToCanvas(editor, current)
+    const add = async (): Promise<InstalledPluginModule> => {
+      // Re-resolve inside the privilege boundary so stale cross-window authority cannot run.
+      const current = appPluginStore.module(id, module.contribution.moduleType)
+      if (!current) throw new Error(dialogs.value.pluginDisabledHint)
+      const compatibility = inspectInstalledPluginModuleCompatibility(current)
+      if (!compatibility.ok) throw new Error(compatibility.reason)
+      addInstalledPluginModuleToCanvas(editor, current)
+      return current
+    }
+    const current =
+      module.plugin.package.trustSource === 'publisher-signature'
+        ? await withAppPluginPublisherPrivilege(add)
+        : await add()
     showActionToast(`${dialogs.value.pluginAddToCanvas}: ${moduleDisplayName(current)}`)
   } catch (cause) {
     showActionToast(

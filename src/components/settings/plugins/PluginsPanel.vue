@@ -7,8 +7,10 @@ import { useI18n, useSceneComputed } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import {
+  activateAppPluginMarketplaceSource,
   addInstalledPluginModuleToCanvas,
   appPluginMarketplaceSnapshot,
+  appPluginMarketplaceSourceSnapshot,
   appPluginRemoteCatalogConfigured,
   appPluginRemoteCatalogSnapshot,
   appPluginRuntimeManager,
@@ -17,6 +19,7 @@ import {
   appPluginStore,
   appPluginStoreSnapshot,
   appConnectorHostAdapters,
+  clearAppPluginMarketplaceSource,
   inspectPluginCommandCompatibility,
   inspectPluginExporterCompatibility,
   inspectPluginHostContributionsCompatibility,
@@ -24,10 +27,15 @@ import {
   inspectPluginModuleContributionsCompatibility,
   inspectPluginModuleCompatibility,
   resolveAppPluginDocumentDependencies,
+  resetAppPluginLocalState,
+  reviewAppPluginMarketplaceSource,
+  refreshAppPluginCatalog,
   runInstalledPluginCommand,
   runInstalledPluginExporter,
+  sameAppPluginMarketplaceAuthority,
   supportsPluginExporterCancellation,
   uninstallAppPlugin,
+  withAppPluginPublisherPrivilege,
   writeAppPluginDocumentLock,
   type AppPluginDocumentDependency,
   type AppPluginDocumentDependencyStatus,
@@ -37,13 +45,16 @@ import {
   type InstalledPluginCommand,
   type InstalledPluginExporter,
   type InstalledPluginModule,
-  type PluginRuntimePolicyRecordV1,
-  type PluginRuntimeReview
+  type MarketplaceSourceReview,
+  type PluginRuntimePolicyRecord,
+  type PluginRuntimeReview,
+  type ResolvedPluginPackage
 } from '@/app/plugins'
 import {
   localizedAppPluginContributionText,
   localizedAppPluginText
 } from '@/app/plugins/localization'
+import { sameReviewedPublisherPackage } from '@/app/plugins/review-authority'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import { AI_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_PLUGIN_ID } from '@/app/plugins/host/ids'
 import {
@@ -70,11 +81,16 @@ import AccessibilityAuditReport from './AccessibilityAuditReport.vue'
 import AIPopoutControls from './AIPopoutControls.vue'
 import ApplicationSecurityReadinessReport from './ApplicationSecurityReadinessReport.vue'
 import CompilerPreviewPopoutControls from './CompilerPreviewPopoutControls.vue'
+import PluginAIAccessControls from './PluginAIAccessControls.vue'
 import PluginConnectorControls from './PluginConnectorControls.vue'
 import PluginDeploymentControls from './PluginDeploymentControls.vue'
 import PluginExporterResult from './PluginExporterResult.vue'
 import PluginConnectorOutcomeUnknownNotices from './PluginConnectorOutcomeUnknownNotices.vue'
 import PluginMarketplaceSummary from './PluginMarketplaceSummary.vue'
+import PluginMarketplaceSourceControls, {
+  type PluginMarketplaceSourceInput
+} from './PluginMarketplaceSourceControls.vue'
+import PluginPackageReviewDialog from './PluginPackageReviewDialog.vue'
 import PluginV2ContractSummary from './PluginV2ContractSummary.vue'
 
 const { dialogs, locale } = useI18n()
@@ -86,8 +102,14 @@ const pendingUninstallId = ref<string | null>(null)
 const pendingPinReplacementId = ref<string | null>(null)
 const pendingResetPluginId = ref<string | null>(null)
 const pendingRollback = ref<{ pluginId: string; targetDigest: string } | null>(null)
+const pendingPackageReview = ref<PendingPluginPackageReview | null>(null)
+const packageReviewError = ref<string | null>(null)
 const documentLockMessage = ref<string | null>(null)
 const refreshingRemoteCatalog = ref(false)
+const marketplaceSourceReview = ref<MarketplaceSourceReview | null>(null)
+const marketplaceSourceBusy = ref<'verify' | 'activate' | 'remove' | null>(null)
+const marketplaceSourceError = ref<string | null>(null)
+const marketplaceSourceSuccess = ref<string | null>(null)
 const discoverQuery = ref('')
 const runtimeBusyPluginId = ref<string | null>(null)
 const runtimeReviews = ref<Record<string, PluginRuntimeReview | undefined>>({})
@@ -98,6 +120,18 @@ const hostActionMessage = ref<string | null>(null)
 const hostActionStatus = ref<'completed' | 'cancelled' | null>(null)
 const hostActionData = ref<JSONValue>()
 const hostActionResult = ref<HTMLElement | null>(null)
+let packageReviewReturnFocus: HTMLElement | null = null
+
+type PendingPluginPackageReview = Readonly<{
+  action: 'install' | 'update'
+  pluginId: string
+  pluginPackage: ResolvedPluginPackage
+  currentAuthority?: Readonly<{
+    version: string
+    digest: string
+    keyId: string
+  }>
+}>
 
 const viewOptions = computed(() => [
   { value: 'browse', label: dialogs.value.pluginsBrowse },
@@ -105,6 +139,14 @@ const viewOptions = computed(() => [
 ])
 const catalog = computed(() => appPluginStoreSnapshot.value.catalog)
 const installed = computed(() => appPluginStoreSnapshot.value.installed)
+const installedPublisherCount = computed(
+  () =>
+    installed.value.filter(({ package: value }) => value.trustSource === 'publisher-signature')
+      .length
+)
+const remoteCatalogConfigured = computed(
+  () => appPluginRemoteCatalogConfigured || appPluginMarketplaceSourceSnapshot.value.configured
+)
 const marketplaceListings = computed(() =>
   pluginMarketplaceListingViews(appPluginMarketplaceSnapshot.value)
 )
@@ -167,6 +209,11 @@ const pendingRollbackPlugin = computed(() => {
   )
   return plugin && target ? { plugin, target } : null
 })
+const packageReviewContracts = computed(() =>
+  pendingPackageReview.value
+    ? pluginV2ContractSummaries(pendingPackageReview.value.pluginPackage.manifest)
+    : []
+)
 const documentDependencies = useSceneComputed(() =>
   resolveAppPluginDocumentDependencies(editor.graph, installed.value)
 )
@@ -243,15 +290,17 @@ function marketplaceKeyStatusLabel(status: PluginMarketplaceKeyStatus): string {
 }
 
 function runtimeGrantActive(
-  policy: PluginRuntimePolicyRecordV1 | null,
+  policy: PluginRuntimePolicyRecord | null,
   review: PluginRuntimeReview | undefined
 ): boolean {
   return Boolean(
+    policy?.schemaVersion === 2 &&
     policy?.grantedAt &&
     !policy.revokedAt &&
     review?.executionStatus === 'eligible' &&
     policy.declarativeManifestDigest === review.declarativeManifestDigest &&
     policy.runtimePackageDigest === review.runtimePackageDigest &&
+    sameAppPluginMarketplaceAuthority(policy.marketplaceAuthority, review.marketplaceAuthority) &&
     policy.grantedCapabilities.length === review.capabilities.length &&
     policy.grantedCapabilities.every(
       (capability, index) => capability === review.capabilities[index]
@@ -490,7 +539,7 @@ function documentLockLabel(): string {
 }
 
 function remoteCatalogStatusLabel(): string {
-  if (!appPluginRemoteCatalogConfigured) return dialogs.value.pluginRemoteNotConfigured
+  if (!remoteCatalogConfigured.value) return dialogs.value.pluginRemoteNotConfigured
   const status = appPluginRemoteCatalogSnapshot.value?.status
   if (!status) return dialogs.value.pluginLoading
   const labels = {
@@ -503,7 +552,7 @@ function remoteCatalogStatusLabel(): string {
 }
 
 function remoteCatalogStatusTone(): 'neutral' | 'success' | 'warning' | 'error' {
-  if (!appPluginRemoteCatalogConfigured || !appPluginRemoteCatalogSnapshot.value) return 'neutral'
+  if (!remoteCatalogConfigured.value || !appPluginRemoteCatalogSnapshot.value) return 'neutral'
   const status = appPluginRemoteCatalogSnapshot.value.status
   if (status === 'fresh') return 'success'
   if (status === 'cached') return 'neutral'
@@ -511,11 +560,11 @@ function remoteCatalogStatusTone(): 'neutral' | 'success' | 'warning' | 'error' 
 }
 
 async function refreshRemoteCatalog(): Promise<void> {
-  if (!appPluginRemoteCatalogConfigured || refreshingRemoteCatalog.value) return
+  if (!remoteCatalogConfigured.value || refreshingRemoteCatalog.value) return
   refreshingRemoteCatalog.value = true
   operationError.value = null
   try {
-    await appPluginStore.refreshCatalog()
+    await refreshAppPluginCatalog()
   } catch (error) {
     operationError.value = dialogs.value.pluginOperationFailed({
       error: error instanceof Error ? error.message : String(error)
@@ -525,15 +574,81 @@ async function refreshRemoteCatalog(): Promise<void> {
   }
 }
 
-async function mutate(pluginIdValue: string, operation: () => Promise<unknown>): Promise<void> {
+function marketplaceSourceFailure(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause)
+}
+
+async function reviewMarketplaceSource(input: PluginMarketplaceSourceInput): Promise<void> {
+  if (marketplaceSourceBusy.value) return
+  marketplaceSourceBusy.value = 'verify'
+  marketplaceSourceReview.value = null
+  marketplaceSourceError.value = null
+  marketplaceSourceSuccess.value = null
+  try {
+    marketplaceSourceReview.value = await reviewAppPluginMarketplaceSource(input)
+  } catch (cause) {
+    marketplaceSourceError.value = marketplaceSourceFailure(cause)
+  } finally {
+    marketplaceSourceBusy.value = null
+  }
+}
+
+async function activateMarketplaceSource(value: {
+  stageId: string
+  confirmedFingerprint: string
+}): Promise<void> {
+  if (marketplaceSourceBusy.value) return
+  marketplaceSourceBusy.value = 'activate'
+  marketplaceSourceError.value = null
+  marketplaceSourceSuccess.value = null
+  try {
+    await activateAppPluginMarketplaceSource(value.stageId, value.confirmedFingerprint)
+    marketplaceSourceReview.value = null
+    marketplaceSourceSuccess.value = dialogs.value.pluginMarketplaceSourceActivated
+  } catch (cause) {
+    marketplaceSourceError.value = marketplaceSourceFailure(cause)
+  } finally {
+    marketplaceSourceBusy.value = null
+  }
+}
+
+function dismissMarketplaceSourceReview(): void {
+  if (marketplaceSourceBusy.value === 'activate') return
+  marketplaceSourceReview.value = null
+  marketplaceSourceError.value = null
+}
+
+async function removeMarketplaceSource(): Promise<void> {
+  if (marketplaceSourceBusy.value) return
+  marketplaceSourceBusy.value = 'remove'
+  marketplaceSourceError.value = null
+  marketplaceSourceSuccess.value = null
+  try {
+    await clearAppPluginMarketplaceSource()
+    marketplaceSourceReview.value = null
+    marketplaceSourceSuccess.value = dialogs.value.pluginMarketplaceSourceRemoved
+  } catch (cause) {
+    marketplaceSourceError.value = marketplaceSourceFailure(cause)
+  } finally {
+    marketplaceSourceBusy.value = null
+  }
+}
+
+async function mutate(
+  pluginIdValue: string,
+  operation: () => Promise<unknown>
+): Promise<string | null> {
   busyPluginId.value = pluginIdValue
   operationError.value = null
   try {
     await operation()
+    return null
   } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
     operationError.value = dialogs.value.pluginOperationFailed({
-      error: error instanceof Error ? error.message : String(error)
+      error: reason
     })
+    return reason
   } finally {
     busyPluginId.value = null
   }
@@ -587,13 +702,140 @@ function pluginDisabledExplanation(plugin: InstalledAppPlugin): string {
     : dialogs.value.pluginDisabledContributionHint
 }
 
-function install(pluginIdValue: string): void {
+function packageReviewTrigger(event: Event): HTMLElement | null {
+  return event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+}
+
+function copyPublisherPackage(pluginPackage: ResolvedPluginPackage): ResolvedPluginPackage {
+  return structuredClone(pluginPackage)
+}
+
+function pendingUpdatePackage(plugin: InstalledAppPlugin): ResolvedPluginPackage | null {
+  const pending = plugin.installedState?.pending
+  if (!pending || plugin.package.trustSource !== 'publisher-signature') return null
+  const catalogCandidate = catalog.value.find(
+    (item) =>
+      item.package.manifest.plugin.id === pluginId(plugin) &&
+      item.package.trustSource === 'publisher-signature' &&
+      item.package.digest === pending.candidate.verifiedDigest
+  )?.package
+  return {
+    trustSource: 'publisher-signature',
+    manifest: pending.candidate.manifest,
+    digest: pending.candidate.verifiedDigest,
+    verifiedPackage: pending.candidate,
+    ...(catalogCandidate?.remoteCatalog
+      ? { remoteCatalog: structuredClone(catalogCandidate.remoteCatalog) }
+      : {}),
+    ...(catalogCandidate
+      ? {
+          marketplaceAuthority: catalogCandidate.marketplaceAuthority
+            ? structuredClone(catalogCandidate.marketplaceAuthority)
+            : null
+        }
+      : {})
+  }
+}
+
+function packageReviewAuthorityCurrent(review: PendingPluginPackageReview): boolean {
+  const expiresAt = review.pluginPackage.remoteCatalog
+    ? Date.parse(review.pluginPackage.remoteCatalog.catalogExpiresAt)
+    : Number.NaN
+  if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) return false
+  if (review.action === 'install') {
+    const current = catalog.value.find(
+      (item) => item.package.manifest.plugin.id === review.pluginId && !item.installed
+    )?.package
+    return Boolean(current && sameReviewedPublisherPackage(review.pluginPackage, current))
+  }
+  const current = installed.value.find((plugin) => pluginId(plugin) === review.pluginId)
+  const accepted = current?.installedState?.accepted
+  const candidate = current ? pendingUpdatePackage(current) : null
+  return Boolean(
+    current &&
+    accepted &&
+    candidate &&
+    !current.pinnedDigest &&
+    pendingUpdateCompatibilityFailures(current).length === 0 &&
+    accepted.manifest.plugin.version === review.currentAuthority?.version &&
+    accepted.verifiedDigest === review.currentAuthority.digest &&
+    accepted.verifiedKeyId === review.currentAuthority.keyId &&
+    sameReviewedPublisherPackage(review.pluginPackage, candidate)
+  )
+}
+
+function openPackageReview(review: PendingPluginPackageReview, event: Event): void {
+  packageReviewReturnFocus = packageReviewTrigger(event)
+  packageReviewError.value = null
+  pendingPackageReview.value = review
+}
+
+function closePackageReview(): void {
+  pendingPackageReview.value = null
+  packageReviewError.value = null
+  const returnFocus = packageReviewReturnFocus
+  packageReviewReturnFocus = null
+  void nextTick(() => {
+    if (returnFocus?.isConnected) returnFocus.focus()
+  })
+}
+
+function updatePackageReviewOpen(open: boolean): void {
+  if (open || busyPluginId.value === pendingPackageReview.value?.pluginId) return
+  closePackageReview()
+}
+
+async function confirmPackageReview(): Promise<void> {
+  const review = pendingPackageReview.value
+  if (!review || busyPluginId.value === review.pluginId) return
+  packageReviewError.value = null
+  if (!packageReviewAuthorityCurrent(review)) {
+    packageReviewError.value = dialogs.value.pluginPackageReviewAuthorityChanged
+    return
+  }
+  const failure = await mutate(review.pluginId, async () => {
+    if (review.action === 'install') {
+      await appPluginStore.installReviewed(review.pluginId, review.pluginPackage)
+      view.value = 'installed'
+      return
+    }
+    if (!review.currentAuthority) {
+      throw new Error(dialogs.value.pluginPackageReviewAuthorityChanged)
+    }
+    await appPluginStore.acceptUpdateReviewed(
+      review.pluginId,
+      review.pluginPackage,
+      review.currentAuthority
+    )
+  })
+  if (failure) {
+    packageReviewError.value = failure
+    return
+  }
+  closePackageReview()
+}
+
+function install(pluginIdValue: string, event: Event): void {
   if (
     appPluginStoreSnapshot.value.pinnedDigestMismatches.some(
       (issue) => issue.pluginId === pluginIdValue
     )
   ) {
     pendingPinReplacementId.value = pluginIdValue
+    return
+  }
+  const catalogItem = catalog.value.find(
+    (item) => item.package.manifest.plugin.id === pluginIdValue
+  )
+  if (catalogItem?.package.trustSource === 'publisher-signature') {
+    openPackageReview(
+      {
+        action: 'install',
+        pluginId: pluginIdValue,
+        pluginPackage: copyPublisherPackage(catalogItem.package)
+      },
+      event
+    )
     return
   }
   void mutate(pluginIdValue, async () => {
@@ -618,11 +860,29 @@ function setPinned(plugin: InstalledAppPlugin): void {
   )
 }
 
-function acceptUpdate(plugin: InstalledAppPlugin): void {
+function acceptUpdate(plugin: InstalledAppPlugin, event: Event): void {
   if (
     pendingUpdateCompatibilityFailures(plugin).length > 0 ||
     rejectActivePluginOperation(pluginId(plugin))
   ) {
+    return
+  }
+  const candidate = pendingUpdatePackage(plugin)
+  const accepted = plugin.installedState?.accepted
+  if (candidate && accepted) {
+    openPackageReview(
+      {
+        action: 'update',
+        pluginId: pluginId(plugin),
+        pluginPackage: copyPublisherPackage(candidate),
+        currentAuthority: {
+          version: accepted.manifest.plugin.version,
+          digest: accepted.verifiedDigest,
+          keyId: accepted.verifiedKeyId
+        }
+      },
+      event
+    )
     return
   }
   void mutate(pluginId(plugin), () => appPluginStore.acceptUpdate(pluginId(plugin)))
@@ -669,15 +929,20 @@ function writeDocumentLock(): void {
   }
 }
 
-function addModule(
+async function addModule(
   plugin: InstalledAppPlugin,
   contribution: InstalledPluginModule['contribution']
-): void {
+): Promise<void> {
   operationError.value = null
   try {
-    const module = appPluginStore.module(pluginId(plugin), contribution.moduleType)
-    if (!module) throw new Error(dialogs.value.pluginDisabledHint)
-    addInstalledPluginModuleToCanvas(editor, module)
+    const add = async (): Promise<void> => {
+      const module = appPluginStore.module(pluginId(plugin), contribution.moduleType)
+      if (!module) throw new Error(dialogs.value.pluginDisabledHint)
+      addInstalledPluginModuleToCanvas(editor, module)
+    }
+    if (plugin.package.trustSource === 'publisher-signature') {
+      await withAppPluginPublisherPrivilege(add)
+    } else await add()
     settingsDialogOpen.value = false
   } catch (error) {
     operationError.value = dialogs.value.pluginOperationFailed({
@@ -727,7 +992,16 @@ function runCommand(
   contribution: InstalledPluginCommand['contribution']
 ): void {
   const key = hostContributionKey(plugin, 'command', contribution.commandId)
-  void runHostContribution(key, () => runInstalledPluginCommand(editor, plugin, contribution))
+  void runHostContribution(key, async () => {
+    const run = async () => {
+      const current = appPluginStore.command(pluginId(plugin), contribution.commandId)
+      if (!current) throw new Error(dialogs.value.pluginDisabledHint)
+      return runInstalledPluginCommand(editor, current.plugin, current.contribution)
+    }
+    return plugin.package.trustSource === 'publisher-signature'
+      ? withAppPluginPublisherPrivilege(run)
+      : run()
+  })
 }
 
 function runExporter(
@@ -737,7 +1011,16 @@ function runExporter(
   const key = hostContributionKey(plugin, 'exporter', contribution.exporterId)
   void runHostContribution(
     key,
-    () => runInstalledPluginExporter(editor, plugin, contribution),
+    async () => {
+      const run = async () => {
+        const current = appPluginStore.exporter(pluginId(plugin), contribution.exporterId)
+        if (!current) throw new Error(dialogs.value.pluginDisabledHint)
+        return runInstalledPluginExporter(editor, current.plugin, current.contribution)
+      }
+      return plugin.package.trustSource === 'publisher-signature'
+        ? withAppPluginPublisherPrivilege(run)
+        : run()
+    },
     dialogs.value.pluginExportCancelled
   )
 }
@@ -789,7 +1072,7 @@ function confirmResetLocalState(): void {
     return
   }
   pendingResetPluginId.value = null
-  void mutate(issue.pluginId, () => appPluginStore.resetLocalState(issue.pluginId))
+  void mutate(issue.pluginId, () => resetAppPluginLocalState(issue.pluginId))
 }
 </script>
 
@@ -806,6 +1089,19 @@ function confirmResetLocalState(): void {
 
     <PluginConnectorOutcomeUnknownNotices />
 
+    <PluginMarketplaceSourceControls
+      :state="appPluginMarketplaceSourceSnapshot"
+      :review="marketplaceSourceReview"
+      :busy="marketplaceSourceBusy"
+      :error="marketplaceSourceError"
+      :success-message="marketplaceSourceSuccess"
+      :installed-publisher-count="installedPublisherCount"
+      @verify="reviewMarketplaceSource"
+      @activate="activateMarketplaceSource"
+      @dismiss-review="dismissMarketplaceSourceReview"
+      @remove="removeMarketplaceSource"
+    />
+
     <div
       class="rounded border border-border bg-panel-field px-2.5 py-2"
       data-test-id="plugin-remote-catalog"
@@ -820,7 +1116,7 @@ function confirmResetLocalState(): void {
         <button
           type="button"
           class="rounded border border-border px-2 py-1 text-[10px] text-surface hover:bg-hover disabled:opacity-50"
-          :disabled="!appPluginRemoteCatalogConfigured || refreshingRemoteCatalog"
+          :disabled="!remoteCatalogConfigured || refreshingRemoteCatalog"
           data-test-id="plugin-remote-catalog-refresh"
           @click="refreshRemoteCatalog"
         >
@@ -1025,7 +1321,7 @@ function confirmResetLocalState(): void {
                 !hasCompatibleContributions(item.package.manifest)
               "
               :data-test-id="`plugin-install-${item.package.manifest.plugin.id}`"
-              @click="install(item.package.manifest.plugin.id)"
+              @click="install(item.package.manifest.plugin.id, $event)"
             >
               {{
                 item.installed
@@ -1140,6 +1436,10 @@ function confirmResetLocalState(): void {
             {{ dialogs.pluginBlockedReason({ reason: plugin.blockedReason }) }}
           </p>
 
+          <PluginAIAccessControls
+            v-if="plugin.package.trustSource === 'publisher-signature'"
+            :plugin="plugin"
+          />
           <PluginConnectorControls :plugin="plugin" />
           <PluginDeploymentControls :plugin="plugin" />
           <CompilerPreviewPopoutControls
@@ -1346,7 +1646,7 @@ function confirmResetLocalState(): void {
                   pendingUpdateCompatibilityFailures(plugin).length > 0
                 "
                 :data-test-id="`plugin-update-accept-${pluginId(plugin)}`"
-                @click="acceptUpdate(plugin)"
+                @click="acceptUpdate(plugin, $event)"
               >
                 {{ dialogs.pluginAcceptUpdate }}
               </button>
@@ -1829,6 +2129,18 @@ function confirmResetLocalState(): void {
       </p>
     </div>
   </section>
+
+  <PluginPackageReviewDialog
+    :open="pendingPackageReview !== null"
+    :action="pendingPackageReview?.action ?? 'install'"
+    :plugin-package="pendingPackageReview?.pluginPackage ?? null"
+    :current-authority="pendingPackageReview?.currentAuthority"
+    :contracts="packageReviewContracts"
+    :busy="busyPluginId === pendingPackageReview?.pluginId"
+    :error="packageReviewError"
+    @update:open="updatePackageReviewOpen"
+    @confirm="confirmPackageReview"
+  />
 
   <AppAlertDialogRoot
     :open="pendingUninstall !== null"

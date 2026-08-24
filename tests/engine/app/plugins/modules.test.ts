@@ -29,9 +29,12 @@ import {
 import { type DeclarativeModuleContributionV1 } from '@open-pencil/plugin-contracts'
 
 import {
+  appPluginStore,
+  appPluginStoreReady,
   createBundledPluginCatalog,
   inspectPluginModuleCompatibility,
-  inspectPluginModuleContributionsCompatibility
+  inspectPluginModuleContributionsCompatibility,
+  isInstalledPluginModuleAutomationCallable
 } from '@/app/plugins'
 
 function mapContribution(): DeclarativeModuleContributionV1 {
@@ -57,6 +60,23 @@ function contributionFor(pluginId: string): DeclarativeModuleContributionV1 {
 }
 
 describe('app plugin module adapter compatibility', () => {
+  test('keeps publisher modules out of the generic automation authority', async () => {
+    await appPluginStoreReady
+    const module = appPluginStore.module('open-pencil.map', 'map')
+    if (!module) throw new Error('Expected installed Map module')
+
+    expect(isInstalledPluginModuleAutomationCallable(module)).toBe(true)
+    expect(
+      isInstalledPluginModuleAutomationCallable({
+        ...module,
+        plugin: {
+          ...module.plugin,
+          package: { ...module.plugin.package, trustSource: 'publisher-signature' }
+        }
+      })
+    ).toBe(false)
+  })
+
   test('accepts only the reviewed host adapter identity and config version', () => {
     const compatibility = inspectPluginModuleCompatibility('open-pencil.map', mapContribution())
 

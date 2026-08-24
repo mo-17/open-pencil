@@ -192,6 +192,18 @@ export function inspectInstalledPluginModuleCompatibility(
   )
 }
 
+/**
+ * Generic automation is intentionally limited to app-bundled modules. Publisher modules are
+ * available only through reviewed, live host surfaces and never inherit the core create_module
+ * authority merely because their package is installed and enabled.
+ */
+export function isInstalledPluginModuleAutomationCallable(module: InstalledPluginModule): boolean {
+  return (
+    module.plugin.package.trustSource === 'app-bundle' &&
+    inspectInstalledPluginModuleCompatibility(module).ok
+  )
+}
+
 export function inspectPluginModuleContributionsCompatibility(
   pluginId: string,
   contributions: readonly DeclarativeModuleContributionV1[]

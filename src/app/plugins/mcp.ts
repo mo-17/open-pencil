@@ -2,7 +2,10 @@ import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
 
 import type { ModuleDefinition } from '@open-pencil/core/plugins'
-import type { PluginMCPCatalogSnapshot } from '@open-pencil/mcp/plugin-contract'
+import type {
+  PluginMCPCatalogSnapshot,
+  PluginMCPToolAuthority
+} from '@open-pencil/mcp/plugin-contract'
 import type {
   DeclarativeCommandContributionV2,
   DeclarativeExporterContributionV2,
@@ -21,6 +24,7 @@ import type { createAppPluginStore } from './store'
 import type {
   AppPluginCommandContribution,
   AppPluginExporterContribution,
+  InstalledAppPlugin,
   InstalledPluginCommand,
   InstalledPluginConnector,
   InstalledPluginExporter,
@@ -44,6 +48,8 @@ export const PLUGIN_MCP_LIMITS = Object.freeze({
 
 export type AppPluginMCPToolKind = 'module' | 'command' | 'exporter' | 'connector'
 
+export type AppPluginMCPToolAuthority = PluginMCPToolAuthority
+
 export interface AppPluginMCPToolDescriptor {
   name: string
   title: string
@@ -52,9 +58,11 @@ export interface AppPluginMCPToolDescriptor {
   pluginId: string
   kind: AppPluginMCPToolKind
   contributionId: string
+  authority: AppPluginMCPToolAuthority
 }
 
-export type AppPluginMCPToolCatalog = PluginMCPCatalogSnapshot
+export type AppPluginMCPToolCatalog = Omit<PluginMCPCatalogSnapshot, 'tools'> &
+  Readonly<{ tools: readonly AppPluginMCPToolDescriptor[] }>
 
 export type AppPluginMCPStore = Pick<
   ReturnType<typeof createAppPluginStore>,
@@ -73,6 +81,16 @@ export interface AppPluginMCPOptions {
   readonly connectorNonGetReadOnlyExposure?: (
     connector: InstalledPluginConnector,
     operation: PluginConnectorOperationV1
+  ) => boolean
+  /**
+   * Explicit host authorization for a publisher-signed read-only command or connector.
+   * Publisher modules/exporters are never MCP-exposed, and omission fails closed.
+   */
+  readonly publisherContributionExposure?: (
+    plugin: InstalledAppPlugin,
+    kind: 'command' | 'connector',
+    contributionId: string,
+    adapterId: string
   ) => boolean
 }
 
@@ -301,13 +319,16 @@ export function appPluginMCPConnectorContributionId(
 }
 
 function pluginMetadata(
-  pluginId: string,
+  plugin: InstalledAppPlugin,
+  adapterId: string,
   kind: AppPluginMCPToolKind,
   contributionId: string,
   contributionName: string,
   contributionDescription: string,
   inputSchema: JSONObject
 ): Omit<AppPluginMCPToolDescriptor, 'name'> {
+  const pluginPackage = plugin.package
+  const pluginId = pluginPackage.manifest.plugin.id
   const description = `${contributionDescription} Available only while plugin ${pluginId} is installed and enabled.`
   return {
     title: contributionName.slice(0, PLUGIN_MCP_LIMITS.maxTitleLength),
@@ -315,8 +336,29 @@ function pluginMetadata(
     inputSchema,
     pluginId,
     kind,
-    contributionId
+    contributionId,
+    authority: {
+      trustSource: pluginPackage.trustSource,
+      packageDigest: pluginPackage.digest,
+      pluginVersion: pluginPackage.manifest.plugin.version,
+      publisherId: pluginPackage.manifest.publisher.id,
+      publisherKeyId:
+        pluginPackage.verifiedPackage?.verifiedKeyId ?? pluginPackage.manifest.publisher.keyId,
+      adapterId
+    }
   }
+}
+
+function contributionIsExposed(
+  plugin: InstalledAppPlugin,
+  kind: AppPluginMCPToolKind,
+  contributionId: string,
+  adapterId: string,
+  options: AppPluginMCPOptions
+): boolean {
+  if (plugin.package.trustSource === 'app-bundle') return true
+  if (kind !== 'command' && kind !== 'connector') return false
+  return options.publisherContributionExposure?.(plugin, kind, contributionId, adapterId) === true
 }
 
 function activeConnectorCandidates(
@@ -340,13 +382,25 @@ function activeConnectorCandidates(
         connector.contribution.connectorId,
         operation.operationId
       )
+      if (
+        !contributionIsExposed(
+          connector.plugin,
+          'connector',
+          contributionId,
+          connector.contribution.adapterId,
+          options
+        )
+      ) {
+        continue
+      }
       const origin = operation.request.origin ?? operation.request.originTemplate
       const authority = `${operation.request.method} ${origin}${operation.request.pathTemplate}`
       candidates.push({
         baseName: appPluginMCPToolName(pluginId, 'connector', contributionId),
         identity: candidateIdentity(pluginId, 'connector', contributionId),
         descriptor: pluginMetadata(
-          pluginId,
+          connector.plugin,
+          connector.contribution.adapterId,
           'connector',
           contributionId,
           `Query ${connector.contribution.connectorId}`,
@@ -367,6 +421,17 @@ function activeCandidates(
 ): PluginMCPCandidate[] {
   const candidates: PluginMCPCandidate[] = []
   for (const module of store.installedModules()) {
+    if (
+      !contributionIsExposed(
+        module.plugin,
+        'module',
+        module.contribution.moduleType,
+        module.contribution.adapterId,
+        options
+      )
+    ) {
+      continue
+    }
     const compatibility = inspectInstalledPluginModuleCompatibility(module)
     if (!compatibility.ok) continue
     const pluginId = module.plugin.package.manifest.plugin.id
@@ -375,7 +440,8 @@ function activeCandidates(
       baseName: appPluginMCPToolName(pluginId, 'module', contributionId),
       identity: candidateIdentity(pluginId, 'module', contributionId),
       descriptor: pluginMetadata(
-        pluginId,
+        module.plugin,
+        module.contribution.adapterId,
         'module',
         contributionId,
         compatibility.definition.name,
@@ -390,12 +456,24 @@ function activeCandidates(
     const pluginId = command.plugin.package.manifest.plugin.id
     if (!inspectPluginCommandMCPExposure(pluginId, command.contribution).ok) continue
     const contributionId = command.contribution.commandId
+    if (
+      !contributionIsExposed(
+        command.plugin,
+        'command',
+        contributionId,
+        command.contribution.adapterId,
+        options
+      )
+    ) {
+      continue
+    }
     const trustedText = trustedPluginCommandMCPText(pluginId, command.contribution)
     candidates.push({
       baseName: appPluginMCPToolName(pluginId, 'command', contributionId),
       identity: candidateIdentity(pluginId, 'command', contributionId),
       descriptor: pluginMetadata(
-        pluginId,
+        command.plugin,
+        command.contribution.adapterId,
         'command',
         contributionId,
         trustedText?.title ?? `Run ${contributionId}`,
@@ -410,11 +488,23 @@ function activeCandidates(
     const pluginId = exporter.plugin.package.manifest.plugin.id
     if (!inspectPluginExporterMCPExposure(pluginId, exporter.contribution).ok) continue
     const contributionId = exporter.contribution.exporterId
+    if (
+      !contributionIsExposed(
+        exporter.plugin,
+        'exporter',
+        contributionId,
+        exporter.contribution.adapterId,
+        options
+      )
+    ) {
+      continue
+    }
     candidates.push({
       baseName: appPluginMCPToolName(pluginId, 'exporter', contributionId),
       identity: candidateIdentity(pluginId, 'exporter', contributionId),
       descriptor: pluginMetadata(
-        pluginId,
+        exporter.plugin,
+        exporter.contribution.adapterId,
         'exporter',
         contributionId,
         `Export with ${contributionId}`,

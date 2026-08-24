@@ -274,5 +274,8 @@ describe('provider model runtime', () => {
     expect(() =>
       mergeAIToolSets({ duplicate: applicationTool }, { duplicate: providerTool })
     ).toThrow('Provider tool name conflicts with an application tool: duplicate')
+    expect(() => mergeAIToolSets({}, { create_module: providerTool })).toThrow(
+      'Provider tool name conflicts with an application tool: create_module'
+    )
   })
 })

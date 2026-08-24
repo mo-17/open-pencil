@@ -11,7 +11,10 @@ import {
 
 import { openIdb, runIdbReadonlyRequest, txDone } from '@/app/storage/idb-util'
 
-export const PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION = 1 as const
+import { parseAppPluginMarketplaceAuthority, type AppPluginMarketplaceAuthority } from '../types'
+
+export const PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION = 2 as const
+export const PLUGIN_RUNTIME_POLICY_LEGACY_SCHEMA_VERSION = 1 as const
 export const PLUGIN_RUNTIME_POLICY_DATABASE_NAME = 'open-pencil-plugin-runtime-policy'
 export const PLUGIN_RUNTIME_POLICY_LIMITS = Object.freeze({
   maxPlugins: 64,
@@ -35,7 +38,7 @@ export interface PluginRuntimeAuditEventV1 {
 }
 
 export interface PluginRuntimePolicyRecordV1 {
-  schemaVersion: typeof PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION
+  schemaVersion: typeof PLUGIN_RUNTIME_POLICY_LEGACY_SCHEMA_VERSION
   pluginId: string
   declarativeManifestDigest: string
   runtimePackageDigest: string
@@ -46,6 +49,21 @@ export interface PluginRuntimePolicyRecordV1 {
   audit: readonly PluginRuntimeAuditEventV1[]
 }
 
+export interface PluginRuntimePolicyRecordV2 {
+  schemaVersion: typeof PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION
+  pluginId: string
+  declarativeManifestDigest: string
+  runtimePackageDigest: string
+  marketplaceAuthority: AppPluginMarketplaceAuthority | null
+  grantedCapabilities: readonly PluginRuntimeCapabilityV1[]
+  grantedAt: string | null
+  revokedAt: string | null
+  auditSequence: number
+  audit: readonly PluginRuntimeAuditEventV1[]
+}
+
+export type PluginRuntimePolicyRecord = PluginRuntimePolicyRecordV1 | PluginRuntimePolicyRecordV2
+
 export interface PluginRuntimePolicyStorage {
   get(pluginId: string): Promise<unknown>
   list(): Promise<unknown[]>
@@ -53,7 +71,7 @@ export interface PluginRuntimePolicyStorage {
   delete(pluginId: string): Promise<void>
 }
 
-const POLICY_KEYS = new Set([
+const POLICY_V1_KEYS = new Set([
   'schemaVersion',
   'pluginId',
   'declarativeManifestDigest',
@@ -64,6 +82,7 @@ const POLICY_KEYS = new Set([
   'auditSequence',
   'audit'
 ])
+const POLICY_V2_KEYS = new Set([...POLICY_V1_KEYS, 'marketplaceAuthority'])
 const AUDIT_KEYS = new Set([
   'sequence',
   'occurredAt',
@@ -185,6 +204,16 @@ function assertAuditState(
   )
   const latestState = stateEvents.at(-1)
   const completeRetainedHistory = audit.length === auditSequence
+  const latestAudit = audit.at(-1)
+  if (
+    grantedAt === null &&
+    revokedAt === null &&
+    latestAudit?.runtimePackageDigest === runtimePackageDigest &&
+    latestAudit.action === 'execute-blocked' &&
+    latestAudit.reasonCode === 'marketplace-authority-changed'
+  ) {
+    return
+  }
   if (!latestState) {
     if (completeRetainedHistory && (grantedAt !== null || revokedAt !== null)) {
       throw new TypeError('pluginRuntimePolicy grant state is not backed by its audit history')
@@ -202,11 +231,37 @@ function assertAuditState(
   }
 }
 
-export function parsePluginRuntimePolicyRecord(value: unknown): PluginRuntimePolicyRecordV1 {
-  const source = parseExactManifestRecord(value, 'pluginRuntimePolicy', POLICY_KEYS, POLICY_KEYS)
-  if (source.schemaVersion !== PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION) {
+function policySchemaVersion(
+  value: unknown
+):
+  | typeof PLUGIN_RUNTIME_POLICY_LEGACY_SCHEMA_VERSION
+  | typeof PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError('pluginRuntimePolicy must be an object')
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(value, 'schemaVersion')
+  if (!descriptor?.enumerable || !('value' in descriptor)) {
     throw new TypeError('pluginRuntimePolicy.schemaVersion is unsupported')
   }
+  if (
+    descriptor.value !== PLUGIN_RUNTIME_POLICY_LEGACY_SCHEMA_VERSION &&
+    descriptor.value !== PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION
+  ) {
+    throw new TypeError('pluginRuntimePolicy.schemaVersion is unsupported')
+  }
+  return descriptor.value
+}
+
+export function parsePluginRuntimePolicyRecord(value: unknown): PluginRuntimePolicyRecord {
+  const schemaVersion = policySchemaVersion(value)
+  let allowedFields = POLICY_V1_KEYS
+  if (schemaVersion === PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION) allowedFields = POLICY_V2_KEYS
+  const source = parseExactManifestRecord(
+    value,
+    'pluginRuntimePolicy',
+    allowedFields,
+    allowedFields
+  )
   const grantedAt = timestamp(source.grantedAt, 'pluginRuntimePolicy.grantedAt')
   const revokedAt = timestamp(source.revokedAt, 'pluginRuntimePolicy.revokedAt')
   const grantedCapabilities = capabilities(source.grantedCapabilities)
@@ -238,8 +293,7 @@ export function parsePluginRuntimePolicyRecord(value: unknown): PluginRuntimePol
     'pluginRuntimePolicy.runtimePackageDigest'
   )
   assertAuditState(audit, auditSequence, runtimePackageDigest, grantedAt, revokedAt)
-  return Object.freeze({
-    schemaVersion: PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION,
+  const common = {
     pluginId: identity(source.pluginId, 'pluginRuntimePolicy.pluginId'),
     declarativeManifestDigest: parseSha256Base64URL(
       source.declarativeManifestDigest,
@@ -251,7 +305,17 @@ export function parsePluginRuntimePolicyRecord(value: unknown): PluginRuntimePol
     revokedAt,
     auditSequence,
     audit: Object.freeze(audit)
-  })
+  }
+  return schemaVersion === PLUGIN_RUNTIME_POLICY_SCHEMA_VERSION
+    ? Object.freeze({
+        schemaVersion,
+        ...common,
+        marketplaceAuthority:
+          source.marketplaceAuthority === null
+            ? null
+            : parseAppPluginMarketplaceAuthority(source.marketplaceAuthority)
+      })
+    : Object.freeze({ schemaVersion, ...common })
 }
 
 export function createMemoryPluginRuntimePolicyStorage(

@@ -175,22 +175,30 @@ export function isAppConnectorMCPExposed(
   connector: InstalledPluginConnector,
   operation: PluginConnectorOperationV1
 ): boolean {
-  const adapter = appConnectorHostAdapters.resolve(connector.contribution)
+  if (!isAppConnectorMCPStaticallyEligible(connector.contribution, operation)) return false
   const requiredCredentials = requiredConnectorCredentialRefs(connector)
-  const requestIsReadOnly =
-    operation.request?.method === 'GET' ||
-    adapter?.mcpReadOnlyOperationIds?.includes(operation.operationId) === true
   return Boolean(
-    operation.kind === 'query' &&
-    operation.request &&
-    requestIsReadOnly &&
-    adapter &&
     appConnectorAuthorization.isAuthorized(
       connector.contribution,
       connector.plugin.package.digest
     ) &&
     requiredCredentials &&
     appConnectorCredentialReadiness.areConfigured(requiredCredentials)
+  )
+}
+
+/** Host-reviewed, credential-independent eligibility used by discovery UIs. */
+export function isAppConnectorMCPStaticallyEligible(
+  contribution: InstalledPluginConnector['contribution'],
+  operation: PluginConnectorOperationV1
+): boolean {
+  const adapter = appConnectorHostAdapters.resolve(contribution)
+  return Boolean(
+    operation.kind === 'query' &&
+    operation.request &&
+    adapter &&
+    (operation.request.method === 'GET' ||
+      adapter.mcpReadOnlyOperationIds?.includes(operation.operationId) === true)
   )
 }
 

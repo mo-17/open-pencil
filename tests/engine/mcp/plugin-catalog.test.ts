@@ -42,6 +42,18 @@ const AIRTABLE_TOOL_NAME = appPluginMCPToolName(
   AIRTABLE_CONNECTOR_CONTRIBUTION_ID
 )
 
+function authority(overrides: Record<string, unknown> = {}) {
+  return {
+    trustSource: 'app-bundle',
+    packageDigest: `app-bundle-sha256:${'A'.repeat(43)}`,
+    pluginVersion: '1.0.0',
+    publisherId: 'open-pencil',
+    publisherKeyId: 'app-bundle-v1',
+    adapterId: 'open-pencil.slide-menu',
+    ...overrides
+  }
+}
+
 function descriptor(overrides: Record<string, unknown> = {}) {
   return {
     name: SLIDE_MENU_TOOL_NAME,
@@ -63,12 +75,20 @@ function descriptor(overrides: Record<string, unknown> = {}) {
     pluginId: 'open-pencil.slide-menu',
     kind: 'module',
     contributionId: 'slide-menu',
+    authority: authority(),
     ...overrides
   }
 }
 
 function response(tools: unknown[], revision = 'revision-1') {
   return { ok: true, result: { revision, tools } }
+}
+
+function expectedDescriptor(
+  value: ReturnType<typeof descriptor>
+): Omit<ReturnType<typeof descriptor>, 'description' | 'inputSchema'> {
+  const { description: _description, inputSchema: _inputSchema, ...expected } = value
+  return expected
 }
 
 function commandInputSchema(valueType: 'integer' | 'string' = 'string') {
@@ -93,7 +113,12 @@ function commandDescriptor(inputSchema: unknown = commandInputSchema()) {
     inputSchema,
     pluginId: 'acme.analytics',
     kind: 'command',
-    contributionId: 'accessibility-audit'
+    contributionId: 'accessibility-audit',
+    authority: authority({
+      publisherId: 'acme',
+      publisherKeyId: 'acme-v1',
+      adapterId: 'acme.accessibility-audit'
+    })
   })
 }
 
@@ -105,7 +130,12 @@ function exporterDescriptor(inputSchema: unknown = commandInputSchema()) {
     inputSchema,
     pluginId: 'acme.analytics',
     kind: 'exporter',
-    contributionId: 'design-tokens'
+    contributionId: 'design-tokens',
+    authority: authority({
+      publisherId: 'acme',
+      publisherKeyId: 'acme-v1',
+      adapterId: 'acme.design-tokens'
+    })
   })
 }
 
@@ -137,6 +167,7 @@ function connectorDescriptor(
     pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
     kind: 'connector',
     contributionId: AIRTABLE_CONNECTOR_CONTRIBUTION_ID,
+    authority: authority({ adapterId: 'open-pencil.connector.airtable-records' }),
     ...overrides
   })
 }
@@ -192,6 +223,80 @@ describe('plugin MCP catalog validation', () => {
     expect(parsed.tools[0]?.inputSchema).toMatchObject({
       properties: { config: { additionalProperties: true } }
     })
+    expect(parsed.tools[0]?.authority).toEqual(authority())
+  })
+
+  test('requires exact bounded package authority and rejects forged records', () => {
+    const signedAuthority = authority({
+      trustSource: 'publisher-signature',
+      packageDigest: 'B'.repeat(43),
+      publisherId: 'acme',
+      publisherKeyId: 'acme-release-v1'
+    })
+    expect(
+      parsePluginMCPCatalogResponse(response([descriptor({ authority: signedAuthority })])).tools[0]
+        ?.authority
+    ).toEqual(signedAuthority)
+
+    const legacy = descriptor()
+    Reflect.deleteProperty(legacy, 'authority')
+    expect(() => parsePluginMCPCatalogResponse(response([legacy]))).toThrow('authority is required')
+
+    expect(() =>
+      parsePluginMCPCatalogResponse(
+        response([descriptor({ authority: authority({ extraAuthority: true }) })])
+      )
+    ).toThrow('extraAuthority is not supported')
+    expect(() =>
+      parsePluginMCPCatalogResponse({ ...response([descriptor()]), error: 'forged success' })
+    ).toThrow('error is not supported on a successful response')
+    expect(() =>
+      parsePluginMCPCatalogResponse(
+        response([descriptor({ authority: authority({ trustSource: 'local-directory' }) })])
+      )
+    ).toThrow('trustSource is not supported')
+    expect(() =>
+      parsePluginMCPCatalogResponse(
+        response([
+          descriptor({
+            authority: authority({
+              trustSource: 'publisher-signature',
+              packageDigest: `app-bundle-sha256:${'A'.repeat(43)}`
+            })
+          })
+        ])
+      )
+    ).toThrow('packageDigest does not match')
+    expect(() =>
+      parsePluginMCPCatalogResponse(
+        response([descriptor({ authority: authority({ pluginVersion: '1.0.0-beta.1' }) })])
+      )
+    ).toThrow('stable semantic version')
+    expect(() =>
+      parsePluginMCPCatalogResponse(
+        response([
+          descriptor({
+            authority: authority({
+              packageDigest: 'A'.repeat(PLUGIN_MCP_CATALOG_LIMITS.maxPackageDigestLength + 1)
+            })
+          })
+        ])
+      )
+    ).toThrow(`at most ${PLUGIN_MCP_CATALOG_LIMITS.maxPackageDigestLength}`)
+
+    let getterInvoked = false
+    const forgedAuthority = authority()
+    Object.defineProperty(forgedAuthority, 'publisherKeyId', {
+      enumerable: true,
+      get() {
+        getterInvoked = true
+        return 'forged-key'
+      }
+    })
+    expect(() =>
+      parsePluginMCPCatalogResponse(response([descriptor({ authority: forgedAuthority })]))
+    ).toThrow('enumerable data property')
+    expect(getterInvoked).toBe(false)
   })
 
   test('accepts strict bounded v2 command, exporter, and connector parameter schemas', () => {
@@ -330,6 +435,18 @@ describe('plugin MCP catalog validation', () => {
     )
   })
 
+  test('fails the whole catalog when bounded descriptors exceed the catalog byte limit', () => {
+    const tools = Array.from({ length: PLUGIN_MCP_CATALOG_LIMITS.maxTools }, (_, index) =>
+      descriptor({
+        name: appPluginMCPToolName(`publisher-${index}`, 'module', `module-${index}`),
+        description: 'x'.repeat(PLUGIN_MCP_CATALOG_LIMITS.maxDescriptionLength),
+        pluginId: `publisher-${index}`,
+        contributionId: `module-${index}`
+      })
+    )
+    expect(() => parsePluginMCPCatalogResponse(response(tools))).toThrow('catalog byte limit')
+  })
+
   test('fails closed for open, unknown, oversized, deep, or node-heavy v2 schemas', () => {
     for (const invalidSchema of [
       { ...commandInputSchema(), additionalProperties: true },
@@ -446,6 +563,9 @@ describe('dynamic plugin MCP registration', () => {
         page_id: { type: 'string' }
       }
     })
+    expect(listed.find((tool) => tool.name === SLIDE_MENU_TOOL_NAME)?._meta).toMatchObject({
+      openpencil: { authority: authority() }
+    })
 
     const called = await client.callTool({
       name: SLIDE_MENU_TOOL_NAME,
@@ -460,6 +580,8 @@ describe('dynamic plugin MCP registration', () => {
           page_id: 'page-1',
           name: SLIDE_MENU_TOOL_NAME,
           pluginId: 'open-pencil.slide-menu',
+          expectedCatalogRevision: 'revision-1',
+          expectedDescriptor: expectedDescriptor(descriptor()),
           args: { x: 40 }
         }
       }
@@ -480,6 +602,8 @@ describe('dynamic plugin MCP registration', () => {
         document_id: 'document-2',
         name: AUDIT_TOOL_NAME,
         pluginId: 'acme.analytics',
+        expectedCatalogRevision: 'command-string',
+        expectedDescriptor: expectedDescriptor(commandDescriptor()),
         args: { scope: 'selection' }
       }
     })
@@ -520,6 +644,8 @@ describe('dynamic plugin MCP registration', () => {
         document_id: 'document-3',
         name: AIRTABLE_TOOL_NAME,
         pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
+        expectedCatalogRevision: 'connector-integer',
+        expectedDescriptor: expectedDescriptor(connectorDescriptor()),
         args: { baseId: 'appBase123', tableId: 'tblTable123', pageSize: 25 }
       }
     })

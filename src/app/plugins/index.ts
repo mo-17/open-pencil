@@ -1,4 +1,6 @@
 export {
+  appPluginAIAuthorization,
+  appPluginAIAuthorizationSnapshot,
   appPluginStore,
   appPluginStoreReady,
   appPluginStoreSnapshot,
@@ -6,12 +8,21 @@ export {
   appPluginRuntimeReady,
   appPluginRuntimeSnapshot,
   appPluginMarketplaceConfigured,
+  appPluginMarketplaceSourceSnapshot,
   appPluginMarketplaceSnapshot,
   appPluginRemoteCatalogConfigured,
   appPluginRemoteCatalogSnapshot,
+  activateAppPluginMarketplaceSource,
   canCreatePluginModule,
-  uninstallAppPlugin
+  checkpointAppPluginMarketplacePrivilegeClock,
+  clearAppPluginMarketplaceSource,
+  refreshAppPluginCatalog,
+  resetAppPluginLocalState,
+  reviewAppPluginMarketplaceSource,
+  uninstallAppPlugin,
+  withAppPluginPublisherPrivilege
 } from './app'
+export * from './ai-authorization'
 export { createBundledPluginCatalog } from './catalog'
 export {
   appConnectorAudit,
@@ -55,6 +66,7 @@ export {
   inspectInstalledPluginModuleCompatibility,
   inspectPluginModuleContributionsCompatibility,
   inspectPluginModuleCompatibility,
+  isInstalledPluginModuleAutomationCallable,
   type AppPluginModuleCompatibility,
   type AppPluginModuleCompatibilityFailure,
   type AppPluginModuleCompatibilityStatus
@@ -64,6 +76,7 @@ export {
   PLUGIN_MCP_LIMITS,
   resolveAppPluginMCPTool,
   type AppPluginMCPStore,
+  type AppPluginMCPToolAuthority,
   type AppPluginMCPToolCatalog,
   type AppPluginMCPToolDescriptor,
   type AppPluginMCPToolKind,
@@ -91,13 +104,18 @@ export {
 export * from './remote'
 export * from './marketplace'
 export * from './runtime'
-export { createAppPluginStore, type CreateAppPluginStoreOptions } from './store'
+export {
+  createAppPluginStore,
+  PublisherPluginTransitionBlockedError,
+  type CreateAppPluginStoreOptions
+} from './store'
 export {
   APP_PLUGIN_DATABASE_NAME,
   createIdbAppPluginStateStorage,
   createMemoryAppPluginStateStorage,
   type AppPluginStateStorage
 } from './storage'
+export { sameAppPluginMarketplaceAuthority } from './types'
 export type {
   AppPluginActivationCompatibility,
   AppPluginActivationCompatibilityPolicy,
@@ -106,6 +124,9 @@ export type {
   AppPluginCatalogEntry,
   AppPluginCatalogItem,
   AppPluginExporterContribution,
+  AppPluginMarketplaceTrustBundle,
+  AppPluginMarketplaceTrustLease,
+  AppPluginMarketplaceAuthority,
   AppPluginPinnedDigestMismatch,
   AppPluginRecordIssue,
   AppPluginRecordIssueKind,
@@ -121,6 +142,7 @@ export type {
   PersistedAppPluginState,
   PersistedAppPluginStateV1,
   PersistedAppPluginStateV2,
+  PersistedAppPluginStateV3,
   PublisherSignedPluginCatalogEntry,
   ResolvedPluginPackage
 } from './types'

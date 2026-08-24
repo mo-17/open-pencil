@@ -146,14 +146,16 @@ describe('MCP stdio transport', () => {
         socketPath: SOCKET_PATH,
         authToken: AUTH_TOKEN,
         enableEval: false,
-        mcpRoot: null
+        mcpRoot: process.cwd()
       })
 
       if (!handle.httpPort) {
         throw new Error('TCP listener not started — httpPort is undefined')
       }
 
-      browser = await connectMockBrowser(handle.httpPort, graph, AUTH_TOKEN)
+      browser = await connectMockBrowser(handle.httpPort, graph, AUTH_TOKEN, {
+        documentPath: join(process.cwd(), 'stdio-existing.fig')
+      })
       await waitForBrowserRegistration(handle.httpPort)
 
       const socketPath = handle.socketPath ?? ''
@@ -234,7 +236,15 @@ describe('MCP stdio transport', () => {
       },
       pluginId: 'open-pencil.slide-menu',
       kind: 'module',
-      contributionId: 'slide-menu'
+      contributionId: 'slide-menu',
+      authority: {
+        trustSource: 'app-bundle',
+        packageDigest: `app-bundle-sha256:${'A'.repeat(43)}`,
+        pluginVersion: '1.0.0',
+        publisherId: 'open-pencil',
+        publisherKeyId: 'app-bundle-v1',
+        adapterId: 'open-pencil.slide-menu'
+      }
     }
 
     activeBrowser.ws.removeAllListeners('message')
@@ -301,6 +311,15 @@ describe('MCP stdio transport', () => {
         page_id: 'page-1',
         name: toolName,
         pluginId: 'open-pencil.slide-menu',
+        expectedCatalogRevision: 'plugin-revision-1',
+        expectedDescriptor: {
+          name: toolName,
+          title: 'Add Slide Menu',
+          pluginId: 'open-pencil.slide-menu',
+          kind: 'module',
+          contributionId: 'slide-menu',
+          authority: pluginDescriptor.authority
+        },
         args: { x: 24 }
       }
     ])
@@ -381,7 +400,7 @@ describe('MCP stdio transport', () => {
     expect(data.documents[0].current_page_id).toBe(browser?.graph.getPages()[0].id)
   })
 
-  test('save_file via stdio succeeds', async () => {
+  test('save_file via stdio succeeds for an existing path inside the configured root', async () => {
     const result = await requireClient().callTool({ name: 'save_file', arguments: {} })
     expect(result.isError).not.toBe(true)
     const data = JSON.parse(textContent(result.content)) as { saved: boolean }

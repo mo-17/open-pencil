@@ -9,20 +9,15 @@ import { randomHex } from '@open-pencil/core/random'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
+import { DEFAULT_APP_PLUGIN_MCP_OPTIONS } from '@/app/automation/bridge/plugin-mcp-handler'
 import type { EditorStore } from '@/app/editor/active-store'
-import { appPluginStore } from '@/app/plugins/app'
+import { appPluginAIAuthorization, appPluginStore } from '@/app/plugins/app'
 import {
   appConnectorAuthorization,
   appConnectorCredentialReadiness,
-  isAppConnectorMCPExposed,
   refreshAppConnectorCredentialReadiness
 } from '@/app/plugins/connectors/app'
 import { listAppPluginMCPTools } from '@/app/plugins/mcp'
-
-const PLUGIN_MCP_OPTIONS = Object.freeze({
-  connectorExposure: isAppConnectorMCPExposed,
-  connectorNonGetReadOnlyExposure: isAppConnectorMCPExposed
-})
 
 export function connectAutomation(getStore: () => EditorStore, authToken: string | null = null) {
   const token = authToken ?? randomHex(32)
@@ -38,7 +33,10 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
   function announcePluginTools(socket: WebSocket): void {
     if (socket !== ws || socket.readyState !== WebSocket.OPEN) return
     try {
-      const revision = listAppPluginMCPTools(appPluginStore, PLUGIN_MCP_OPTIONS).revision
+      const revision = listAppPluginMCPTools(
+        appPluginStore,
+        DEFAULT_APP_PLUGIN_MCP_OPTIONS
+      ).revision
       if (revision === lastPluginToolsRevision) return
       lastPluginToolsRevision = revision
       socket.send(JSON.stringify({ type: 'plugin_tools_changed', revision }))
@@ -72,6 +70,10 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
     if (socket) announcePluginTools(socket)
   })
   const unsubscribeConnectorCredentialReadiness = appConnectorCredentialReadiness.subscribe(() => {
+    const socket = ws
+    if (socket) announcePluginTools(socket)
+  })
+  const unsubscribePluginAIAuthorization = appPluginAIAuthorization.subscribe(() => {
     const socket = ws
     if (socket) announcePluginTools(socket)
   })
@@ -192,6 +194,7 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
     unsubscribePluginTools()
     unsubscribeConnectorTools()
     unsubscribeConnectorCredentialReadiness()
+    unsubscribePluginAIAuthorization()
     for (const controller of activeRequests.values()) controller.abort()
     activeRequests.clear()
     ws?.close()

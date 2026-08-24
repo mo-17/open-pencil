@@ -49,7 +49,11 @@ import {
 } from '@/app/plugins/mcp'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
-import type { InstalledPluginCommand, InstalledPluginModule } from '@/app/plugins/types'
+import type {
+  InstalledAppPlugin,
+  InstalledPluginCommand,
+  InstalledPluginModule
+} from '@/app/plugins/types'
 
 function createStore() {
   return createAppPluginStore({
@@ -111,10 +115,22 @@ describe('app plugin MCP catalog', () => {
     const enabled = listAppPluginMCPTools(store)
     expect(enabled.tools).toHaveLength(1)
     const mapTool = enabled.tools[0]
+    const installedMap = store
+      .installedModules()
+      .find(({ plugin }) => plugin.package.manifest.plugin.id === MAP_PLUGIN_ID)
+    if (!installedMap) throw new Error('Expected installed Map module')
     expect(mapTool).toMatchObject({
       pluginId: MAP_PLUGIN_ID,
       kind: 'module',
-      contributionId: 'map'
+      contributionId: 'map',
+      authority: {
+        trustSource: installedMap.plugin.package.trustSource,
+        packageDigest: installedMap.plugin.package.digest,
+        pluginVersion: installedMap.plugin.package.manifest.plugin.version,
+        publisherId: installedMap.plugin.package.manifest.publisher.id,
+        publisherKeyId: installedMap.plugin.package.manifest.publisher.keyId,
+        adapterId: installedMap.contribution.adapterId
+      }
     })
     expect(mapTool.name).toMatch(/^plugin__[a-z0-9_]+__add_[a-z0-9_]+_[a-f0-9]{64}$/)
     expect(mapTool.name.length).toBeLessThanOrEqual(PLUGIN_MCP_LIMITS.maxToolNameLength)
@@ -126,7 +142,9 @@ describe('app plugin MCP catalog', () => {
       },
       additionalProperties: false
     })
-    expect(resolveAppPluginMCPTool(store, mapTool.name, MAP_PLUGIN_ID).kind).toBe('module')
+    const resolvedMap = resolveAppPluginMCPTool(store, mapTool.name, MAP_PLUGIN_ID)
+    expect(resolvedMap.kind).toBe('module')
+    expect(resolvedMap.descriptor.authority).toEqual(mapTool.authority)
 
     await store.setEnabled(MAP_PLUGIN_ID, false)
     const disabled = listAppPluginMCPTools(store)
@@ -162,6 +180,50 @@ describe('app plugin MCP catalog', () => {
     )
     expect(commands).toHaveLength(4)
     expect(commands.every((tool) => tool.kind === 'command')).toBe(true)
+  })
+
+  test('fails closed for publisher tools and never exposes publisher modules or exporters', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, true)
+    await store.install(DESIGN_TOKENS_EXPORTER_PLUGIN_ID)
+    await store.setEnabled(DESIGN_TOKENS_EXPORTER_PLUGIN_ID, true)
+
+    function signed(plugin: InstalledAppPlugin): InstalledAppPlugin {
+      return {
+        ...plugin,
+        package: {
+          ...plugin.package,
+          trustSource: 'publisher-signature',
+          digest: 'B'.repeat(43)
+        }
+      }
+    }
+
+    const map = store
+      .installedModules()
+      .find(({ plugin }) => plugin.package.manifest.plugin.id === MAP_PLUGIN_ID)
+    const command = store
+      .installedCommands()
+      .find(({ plugin }) => plugin.package.manifest.plugin.id === ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    const exporter = store
+      .installedExporters()
+      .find(({ plugin }) => plugin.package.manifest.plugin.id === DESIGN_TOKENS_EXPORTER_PLUGIN_ID)
+    if (!map || !command || !exporter) throw new Error('Expected publisher MCP fixtures')
+    const fakeStore: AppPluginMCPStore = {
+      installedModules: () => [{ ...map, plugin: signed(map.plugin) }],
+      installedCommands: () => [{ ...command, plugin: signed(command.plugin) }],
+      installedExporters: () => [{ ...exporter, plugin: signed(exporter.plugin) }],
+      installedConnectors: () => []
+    }
+
+    expect(listAppPluginMCPTools(fakeStore).tools).toEqual([])
+    const exposed = listAppPluginMCPTools(fakeStore, {
+      publisherContributionExposure: () => true
+    }).tools
+    expect(exposed.map(({ kind }) => kind)).toEqual(['command'])
+    expect(exposed[0]?.pluginId).toBe(ACCESSIBILITY_AUDIT_PLUGIN_ID)
   })
 
   test('exposes Modal to MCP only while its opt-in plugin is installed and enabled', async () => {
@@ -375,12 +437,124 @@ describe('app plugin MCP catalog', () => {
     expect(resolved.kind).toBe('connector')
     if (resolved.kind !== 'connector') throw new Error('Expected connector resolution')
     expect(resolved.operation.operationId).toBe(AIRTABLE_LIST_RECORDS_OPERATION_ID)
+    expect(connector.authority).toEqual({
+      trustSource: resolved.value.plugin.package.trustSource,
+      packageDigest: resolved.value.plugin.package.digest,
+      pluginVersion: resolved.value.plugin.package.manifest.plugin.version,
+      publisherId: resolved.value.plugin.package.manifest.publisher.id,
+      publisherKeyId: resolved.value.plugin.package.manifest.publisher.keyId,
+      adapterId: resolved.value.contribution.adapterId
+    })
+    expect(resolved.descriptor.authority).toEqual(connector.authority)
 
     authorized = false
     expect(listAppPluginMCPTools(store, options).revision).not.toBe(enabled.revision)
     expect(() =>
       resolveAppPluginMCPTool(store, connector.name, AIRTABLE_RECORDS_PLUGIN_ID, options)
     ).toThrow('is unavailable')
+  })
+
+  test('changes catalog revision when package or contribution authority changes', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(AIRTABLE_RECORDS_PLUGIN_ID)
+    await store.setEnabled(AIRTABLE_RECORDS_PLUGIN_ID, true)
+    const installed = store
+      .installedConnectors()
+      .find(({ plugin }) => plugin.package.manifest.plugin.id === AIRTABLE_RECORDS_PLUGIN_ID)
+    if (!installed) throw new Error('Expected installed Airtable connector')
+
+    function catalogFor(
+      overrides: Partial<{
+        trustSource: 'app-bundle' | 'publisher-signature'
+        packageDigest: string
+        publisherKeyId: string
+        adapterId: string
+      }> = {}
+    ) {
+      const fakeStore: AppPluginMCPStore = {
+        installedModules: () => [],
+        installedCommands: () => [],
+        installedExporters: () => [],
+        installedConnectors: () => [
+          {
+            plugin: {
+              ...installed.plugin,
+              package: {
+                ...installed.plugin.package,
+                trustSource: overrides.trustSource ?? installed.plugin.package.trustSource,
+                digest: overrides.packageDigest ?? installed.plugin.package.digest,
+                manifest: {
+                  ...installed.plugin.package.manifest,
+                  publisher: {
+                    ...installed.plugin.package.manifest.publisher,
+                    keyId:
+                      overrides.publisherKeyId ?? installed.plugin.package.manifest.publisher.keyId
+                  }
+                }
+              }
+            },
+            contribution: {
+              ...installed.contribution,
+              adapterId: overrides.adapterId ?? installed.contribution.adapterId
+            }
+          }
+        ]
+      }
+      const options = {
+        connectorExposure: () => true,
+        publisherContributionExposure: () => true
+      }
+      return {
+        fakeStore,
+        options,
+        catalog: listAppPluginMCPTools(fakeStore, options)
+      }
+    }
+
+    const baseline = catalogFor()
+    const variants = [
+      catalogFor({ trustSource: 'publisher-signature', packageDigest: 'B'.repeat(43) }),
+      catalogFor({ packageDigest: `app-bundle-sha256:${'A'.repeat(43)}` }),
+      catalogFor({ publisherKeyId: 'app-bundle-v2' }),
+      catalogFor({ adapterId: 'open-pencil.connector.airtable-records-v2' })
+    ]
+    const baselineTool = baseline.catalog.tools[0]
+    if (!baselineTool) throw new Error('Expected baseline connector descriptor')
+    for (const variant of variants) {
+      expect(variant.catalog.revision).not.toBe(baseline.catalog.revision)
+      expect(variant.catalog.tools[0]?.name).toBe(baselineTool.name)
+    }
+    expect(variants[0]?.catalog.tools[0]?.authority).toMatchObject({
+      trustSource: 'publisher-signature',
+      packageDigest: 'B'.repeat(43)
+    })
+    const publisherVariant = variants[0]
+    if (!publisherVariant) throw new Error('Expected publisher authority variant')
+    expect(
+      listAppPluginMCPTools(publisherVariant.fakeStore, { connectorExposure: () => true }).tools
+    ).toEqual([])
+    expect(() =>
+      resolveAppPluginMCPTool(
+        publisherVariant.fakeStore,
+        baselineTool.name,
+        AIRTABLE_RECORDS_PLUGIN_ID,
+        { connectorExposure: () => true }
+      )
+    ).toThrow('is unavailable')
+    expect(new Set(variants.map(({ catalog }) => catalog.revision))).toHaveLength(variants.length)
+
+    const adapterVariant = variants.at(-1)
+    const adapterTool = adapterVariant?.catalog.tools[0]
+    if (!adapterVariant || !adapterTool) throw new Error('Expected adapter authority variant')
+    expect(
+      resolveAppPluginMCPTool(
+        adapterVariant.fakeStore,
+        adapterTool.name,
+        AIRTABLE_RECORDS_PLUGIN_ID,
+        adapterVariant.options
+      ).descriptor.authority
+    ).toEqual(adapterTool.authority)
   })
 
   test('requires a separate host gate for semantic read-only fixed POST queries', async () => {

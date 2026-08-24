@@ -1,5 +1,6 @@
 import { valibotSchema } from '@ai-sdk/valibot'
 import { tool } from 'ai'
+import type { ToolExecutionOptions } from 'ai'
 import * as v from 'valibot'
 
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
@@ -21,6 +22,7 @@ import { resolveEditorMutationScope } from '@/app/editor/mutation-scope'
 import { useLibraryService } from '@/app/libraries'
 import { canCreatePluginModule } from '@/app/plugins'
 
+import { createPluginAITools } from './builtin'
 import { createVisualInspectionTool } from './vision'
 
 export const MAX_AGENT_STEPS = 50
@@ -89,6 +91,16 @@ type SuccessfulSnapshot =
       snapshot: DocumentHistorySnapshot
       undoRevision: number
     }
+
+interface ExecutableAITool {
+  execute(args: Record<string, unknown>, execution: ToolExecutionOptions<unknown>): unknown
+}
+
+function executableAITool(value: unknown): ExecutableAITool | null {
+  if (value === null || typeof value !== 'object') return null
+  const execute = Reflect.get(value, 'execute')
+  return typeof execute === 'function' ? { execute: execute.bind(value) } : null
+}
 
 const EXTENDED_AI_TOOL_NAMES = new Set([
   'export_image',
@@ -417,8 +429,32 @@ export function createAITools(store: EditorStore) {
     },
     { v, valibotSchema, tool }
   )
+  const { create_module: hiddenCreateModuleTool, ...publicApplicationTools } = applicationTools
+  const createModuleExecutor = executableAITool(hiddenCreateModuleTool)
+  if (!createModuleExecutor) {
+    throw new Error('The reviewed built-in plugin module executor is unavailable')
+  }
 
-  return { ...applicationTools, inspect_visual: createVisualInspectionTool(store) }
+  const blockPluginModuleDuringShadowReconstruction = (kind: string) => {
+    if (kind === 'module' && codePenManager?.hasActiveReconstruction()) {
+      throw new Error(
+        'Live-document mutation tools are disabled while a CodePen shadow reconstruction is active. Seal, review, or discard the shadow draft first.'
+      )
+    }
+  }
+  const pluginTools = createPluginAITools(store, {
+    beforeUse: (_input, match) => blockPluginModuleDuringShadowReconstruction(match.kind),
+    beforeDispatch: (_input, resolved) =>
+      blockPluginModuleDuringShadowReconstruction(resolved.kind),
+    executeModule: (args, execution) =>
+      Promise.resolve(createModuleExecutor.execute(args, execution))
+  })
+
+  return {
+    ...publicApplicationTools,
+    ...pluginTools,
+    inspect_visual: createVisualInspectionTool(store)
+  }
 }
 
 function throwIfAborted(signal?: AbortSignal): void {

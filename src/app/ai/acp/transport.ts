@@ -36,7 +36,7 @@ import {
   type VisualAttachmentMediaType
 } from '@/app/ai/chat/attachments'
 import { INTERRUPTED_TOOL_ERROR } from '@/app/ai/chat/interruption'
-import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
+import { designSystemPromptFor } from '@/app/ai/chat/prompt-policy'
 import { buildACPMCPServers } from '@/app/integrations/mcp'
 
 import {
@@ -662,7 +662,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     const consumedRuntimeContext = this.runtimeContextDirty
     const runtimeContext = formatACPRuntimeContext(getACPDiagnostics())
     const promptText = [
-      ...(consumedSystemContext ? [SYSTEM_PROMPT] : []),
+      ...(consumedSystemContext ? [designSystemPromptFor('delegated')] : []),
       ...(consumedRuntimeContext ? [runtimeContext] : []),
       text,
       visualReferenceSourceContext

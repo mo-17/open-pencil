@@ -16,16 +16,28 @@ export function createMemoryAppPluginStateStorage(
   initial: readonly unknown[] = []
 ): AppPluginStateStorage {
   const records = new Map(initial.map((value) => [pluginIdOf(value), structuredClone(value)]))
+  let revision = 0
 
   return {
+    async revision() {
+      return revision
+    },
     async list() {
       return [...records.values()].map((value) => structuredClone(value))
     },
     async put(record) {
+      if (revision === Number.MAX_SAFE_INTEGER) {
+        throw new Error('Plugin state storage revision is exhausted')
+      }
       records.set(pluginIdOf(record), structuredClone(record))
+      revision += 1
     },
     async delete(pluginId) {
+      if (revision === Number.MAX_SAFE_INTEGER) {
+        throw new Error('Plugin state storage revision is exhausted')
+      }
       records.delete(pluginId)
+      revision += 1
     }
   }
 }

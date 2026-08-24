@@ -15,6 +15,7 @@ import {
 } from '../remote/cache'
 import {
   createRemotePluginTransport,
+  parseRemotePluginURL,
   type CreateRemotePluginTransportOptions,
   type RemotePluginJSONResponse
 } from '../remote/transport'
@@ -48,16 +49,17 @@ function cachedJSON(record: RemotePluginCacheRecordV1): unknown {
 }
 
 function cacheRecord(
-  url: string,
+  cacheKey: string,
+  sourceURL: string,
   response: Extract<RemotePluginJSONResponse, { status: 'fresh' }>,
   verifiedAt: number,
   expiresAt: number
 ): RemotePluginCacheRecordV1 {
   return parseRemotePluginCacheRecord({
     schemaVersion: REMOTE_PLUGIN_CACHE_SCHEMA_VERSION,
-    cacheKey: url,
+    cacheKey,
     kind: 'marketplace',
-    sourceUrl: response.url,
+    sourceUrl: sourceURL,
     rawJson: response.rawJson,
     etag: response.etag,
     lastModified: response.lastModified,
@@ -71,6 +73,15 @@ export function createMarketplaceSnapshotClient(options: CreateMarketplaceSnapsh
   const storage = options.cache ?? createMemoryRemotePluginCacheStorage()
   const transport = options.transport ?? createRemotePluginTransport(options.transportOptions ?? {})
   const now = options.now ?? Date.now
+  const urlOptions = { allowLoopbackHttp: options.transportOptions?.allowLoopbackHttp }
+  const expectedSourceURL = parseRemotePluginURL(options.snapshotUrl, urlOptions).href
+
+  function assertExpectedResponseURL(response: RemotePluginJSONResponse): void {
+    const responseURL = parseRemotePluginURL(response.url, urlOptions).href
+    if (responseURL !== expectedSourceURL) {
+      throw new Error('Marketplace snapshot response URL does not match its requested source')
+    }
+  }
 
   async function verify(value: unknown, at: number): Promise<VerifiedMarketplaceSnapshot> {
     return verifyMarketplaceSnapshot(value, options.rootPublicKey, {
@@ -85,10 +96,21 @@ export function createMarketplaceSnapshotClient(options: CreateMarketplaceSnapsh
     const cachedValue = await storage.get(options.snapshotUrl)
     let cached: RemotePluginCacheRecordV1 | null = null
     try {
-      cached = cachedValue ? parseRemotePluginCacheRecord(cachedValue) : null
-      if (cached?.kind !== 'marketplace') cached = null
+      cached =
+        cachedValue === null || cachedValue === undefined
+          ? null
+          : parseRemotePluginCacheRecord(cachedValue)
+      if (
+        cached &&
+        (cached.kind !== 'marketplace' ||
+          cached.cacheKey !== options.snapshotUrl ||
+          cached.sourceUrl !== expectedSourceURL)
+      ) {
+        throw new TypeError('Marketplace cache identity does not match its requested source')
+      }
     } catch {
       await storage.delete(options.snapshotUrl)
+      cached = null
     }
     const at = now()
     try {
@@ -96,6 +118,7 @@ export function createMarketplaceSnapshotClient(options: CreateMarketplaceSnapsh
         options.snapshotUrl,
         remotePluginCacheValidators(cached)
       )
+      assertExpectedResponseURL(response)
       if (response.status === 'not-modified') {
         if (!cached) throw new Error('Marketplace snapshot returned 304 without a verified cache')
         return {
@@ -113,7 +136,13 @@ export function createMarketplaceSnapshotClient(options: CreateMarketplaceSnapsh
         }
       }
       await storage.put(
-        cacheRecord(options.snapshotUrl, response, at, Date.parse(snapshot.snapshot.expiresAt))
+        cacheRecord(
+          options.snapshotUrl,
+          expectedSourceURL,
+          response,
+          at,
+          Date.parse(snapshot.snapshot.expiresAt)
+        )
       )
       return { status: 'fresh', snapshot, source: 'network', refreshError: null }
     } catch (cause) {

@@ -4,7 +4,21 @@ import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { unzipSync } from 'fflate'
 
-import type { ModuleInstanceV1 } from '@open-pencil/scene-graph'
+import {
+  MARKETPLACE_SNAPSHOT_FORMAT,
+  MARKETPLACE_SNAPSHOT_SCHEMA_VERSION,
+  PLUGIN_CATALOG_FORMAT,
+  PLUGIN_CATALOG_SCHEMA_VERSION,
+  signMarketplaceSnapshot,
+  signPluginCatalog,
+  type MarketplaceSnapshotPayloadV1,
+  type PluginCatalogPayloadV1
+} from '@open-pencil/plugin-contracts'
+import {
+  digestCanonicalManifest,
+  exportEd25519PublicKeyPem,
+  type ModuleInstanceV1
+} from '@open-pencil/scene-graph'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 
@@ -15,6 +29,9 @@ const CHART_MODULE_TYPE = 'chart'
 const CLIPBOARD_PLUGIN_ID = 'open-pencil.clipboard-toolkit'
 const TAURI_EXPORTER_PLUGIN_ID = 'open-pencil.tauri-react-exporter'
 const VUE_EXPORTER_PLUGIN_ID = 'open-pencil.vue-exporter'
+const MARKETPLACE_SOURCE_URL = 'https://source-fixture.example/marketplace.json'
+const MARKETPLACE_CATALOG_URL = 'https://source-fixture.example/catalog.json'
+const MARKETPLACE_ROOT_KEY_ID = 'openpencil.marketplace.root.2026'
 const MINI_PROGRAM_EXPORTERS = [
   {
     pluginId: 'open-pencil.wechat-miniprogram-exporter',
@@ -50,6 +67,90 @@ interface StoredPluginState {
   installed: boolean
   enabled: boolean
   pinnedDigest: string | null
+}
+
+interface MarketplaceSourceFixture {
+  rootPublicKeyPem: string
+  rootFingerprint: string
+  snapshot: Awaited<ReturnType<typeof signMarketplaceSnapshot>>
+  catalog: Awaited<ReturnType<typeof signPluginCatalog>>
+}
+
+async function marketplaceSourceFixture(): Promise<MarketplaceSourceFixture> {
+  const root = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+  const catalogPayload: PluginCatalogPayloadV1 = {
+    format: PLUGIN_CATALOG_FORMAT,
+    schemaVersion: PLUGIN_CATALOG_SCHEMA_VERSION,
+    catalogId: 'openpencil.marketplace.stable',
+    version: '1.0.0',
+    generatedAt: '2026-08-20T00:00:00.000Z',
+    expiresAt: '2026-08-27T00:00:00.000Z',
+    entries: []
+  }
+  const catalog = await signPluginCatalog(catalogPayload, root.privateKey, {
+    keyId: MARKETPLACE_ROOT_KEY_ID
+  })
+  const snapshotPayload: MarketplaceSnapshotPayloadV1 = {
+    format: MARKETPLACE_SNAPSHOT_FORMAT,
+    schemaVersion: MARKETPLACE_SNAPSHOT_SCHEMA_VERSION,
+    marketplaceId: 'openpencil.marketplace',
+    version: '1.0.0',
+    sequence: 1,
+    generatedAt: '2026-08-20T00:00:00.000Z',
+    expiresAt: '2026-08-27T00:00:00.000Z',
+    publisherDirectory: { publishers: [], ownerships: [] },
+    catalogs: [
+      {
+        channel: 'stable',
+        catalogId: catalog.catalogId,
+        keyId: MARKETPLACE_ROOT_KEY_ID,
+        url: MARKETPLACE_CATALOG_URL,
+        digest: catalog.integrity.digest
+      }
+    ],
+    listings: [],
+    auditHead: {
+      sequence: 1,
+      headDigest: await digestCanonicalManifest({ audit: 1 }),
+      url: 'https://source-fixture.example/audit.json'
+    }
+  }
+  const snapshot = await signMarketplaceSnapshot(snapshotPayload, root.privateKey, {
+    keyId: MARKETPLACE_ROOT_KEY_ID
+  })
+  const rootPublicKeyPem = await exportEd25519PublicKeyPem(root.publicKey)
+  const rootFingerprint = await pageIndependentRootFingerprint(root.publicKey)
+  return { rootPublicKeyPem, rootFingerprint, snapshot, catalog }
+}
+
+async function pageIndependentRootFingerprint(key: CryptoKey): Promise<string> {
+  const spki = await crypto.subtle.exportKey('spki', key)
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', spki))
+  return `sha256-${Buffer.from(digest).toString('base64url')}`
+}
+
+async function routeMarketplaceSource(
+  page: Page,
+  fixture: MarketplaceSourceFixture
+): Promise<void> {
+  const headers = {
+    'access-control-allow-origin': '*',
+    'content-type': 'application/json'
+  }
+  await page.route(MARKETPLACE_SOURCE_URL, (route) =>
+    route.fulfill({ status: 200, headers, body: JSON.stringify(fixture.snapshot) })
+  )
+  await page.route(MARKETPLACE_CATALOG_URL, (route) =>
+    route.fulfill({ status: 200, headers, body: JSON.stringify(fixture.catalog) })
+  )
+}
+
+async function readMarketplaceSourceState(page: Page): Promise<unknown> {
+  return page.evaluate(async () => {
+    const { createBrowserMarketplaceSourceStorage } =
+      await import('/src/app/plugins/marketplace/index.ts')
+    return createBrowserMarketplaceSourceStorage().read()
+  })
 }
 
 async function openPlugins(page: Page): Promise<void> {
@@ -298,6 +399,277 @@ async function injectMarketplaceSnapshot(page: Page): Promise<void> {
   }, MAP_PLUGIN_ID)
 }
 
+interface PublisherReviewFixture {
+  installPluginId: string
+  updatePluginId: string
+  installDigest: string
+  updateDigest: string
+  catalogId: string
+  catalogDigest: string
+  publisherId: string
+}
+
+async function injectPublisherReviewFixtures(page: Page): Promise<PublisherReviewFixture> {
+  return page.evaluate(async () => {
+    const { appPluginStore, appPluginStoreReady, appPluginStoreSnapshot } =
+      await import('/src/app/plugins/app.ts')
+    await appPluginStoreReady
+    const snapshot = appPluginStoreSnapshot.value
+    const updatePlugin = snapshot.installed.find(
+      (plugin) => !plugin.pinnedDigest && plugin.package.manifest.schemaVersion === 2
+    )
+    const updatePluginId = updatePlugin?.package.manifest.plugin.id
+    const installItem = snapshot.catalog.find(
+      (item) =>
+        item.package.manifest.schemaVersion === 2 &&
+        item.package.manifest.plugin.id !== updatePluginId
+    )
+    if (!installItem || !updatePlugin) {
+      throw new Error('Expected V2 app-bundle fixtures for publisher review')
+    }
+
+    const publisherId = 'reviewed.publisher'
+    const keyId = 'reviewed.publisher.release-2026'
+    const catalogId = 'reviewed.publisher.stable'
+    const installDigest = `sha256:${'I'.repeat(43)}`
+    const updateCurrentDigest = `sha256:${'C'.repeat(43)}`
+    const updateDigest = `sha256:${'U'.repeat(43)}`
+    const catalogDigest = `sha256:${'K'.repeat(43)}`
+    const catalogExpiresAt = '2027-01-01T00:00:00.000Z'
+
+    function publisherManifest(
+      manifest: (typeof installItem)['package']['manifest'],
+      version: string
+    ) {
+      const next = structuredClone(manifest)
+      next.plugin.version = version
+      next.publisher = { id: publisherId, name: 'Reviewed Publisher', keyId }
+      return next
+    }
+
+    function catalogMetadata(source: 'network' | 'cache') {
+      return {
+        catalogId,
+        catalogVersion: '3.0.0',
+        catalogDigest,
+        catalogExpiresAt,
+        source
+      } as const
+    }
+
+    const installManifest = publisherManifest(installItem.package.manifest, '3.1.0')
+    const installPackage = {
+      trustSource: 'publisher-signature' as const,
+      manifest: installManifest,
+      digest: installDigest,
+      verifiedPackage: {
+        manifest: installManifest,
+        verifiedDigest: installDigest,
+        verifiedKeyId: keyId
+      },
+      remoteCatalog: catalogMetadata('network')
+    }
+
+    const currentManifest = publisherManifest(updatePlugin.package.manifest, '2.0.0')
+    const candidateManifest = publisherManifest(updatePlugin.package.manifest, '2.1.0')
+    const accepted = {
+      manifest: currentManifest,
+      verifiedDigest: updateCurrentDigest,
+      verifiedKeyId: keyId
+    }
+    const candidate = {
+      manifest: candidateManifest,
+      verifiedDigest: updateDigest,
+      verifiedKeyId: keyId
+    }
+    const currentPackage = {
+      trustSource: 'publisher-signature' as const,
+      manifest: currentManifest,
+      digest: updateCurrentDigest,
+      verifiedPackage: accepted,
+      remoteCatalog: catalogMetadata('cache')
+    }
+    const candidatePackage = {
+      trustSource: 'publisher-signature' as const,
+      manifest: candidateManifest,
+      digest: updateDigest,
+      verifiedPackage: candidate,
+      remoteCatalog: catalogMetadata('network')
+    }
+
+    const catalog = snapshot.catalog.map((item) => {
+      const pluginId = item.package.manifest.plugin.id
+      if (pluginId === installItem.package.manifest.plugin.id) {
+        return { package: installPackage, installed: false }
+      }
+      if (pluginId === updatePlugin.package.manifest.plugin.id) {
+        return { package: candidatePackage, installed: true }
+      }
+      return item
+    })
+    const installed = snapshot.installed
+      .filter((plugin) => plugin.package.manifest.plugin.id !== installManifest.plugin.id)
+      .map((plugin) => {
+        if (plugin.package.manifest.plugin.id !== updatePlugin.package.manifest.plugin.id) {
+          return plugin
+        }
+        return {
+          ...plugin,
+          package: currentPackage,
+          installedState: {
+            version: 1 as const,
+            enabled: plugin.enabled,
+            accepted,
+            history: [],
+            pending: {
+              candidate,
+              diff: {
+                fromVersion: currentManifest.plugin.version,
+                toVersion: candidateManifest.plugin.version,
+                addedModules: [],
+                removedModules: [],
+                updatedModules: [],
+                addedCommands: [],
+                removedCommands: [],
+                updatedCommands: [],
+                addedExporters: [],
+                removedExporters: [],
+                updatedExporters: [],
+                addedConnectors: [],
+                removedConnectors: [],
+                updatedConnectors: [],
+                addedStorageProviders: [],
+                removedStorageProviders: [],
+                updatedStorageProviders: []
+              },
+              status: 'pending' as const
+            }
+          }
+        }
+      })
+    appPluginStoreSnapshot.value = { ...snapshot, catalog, installed }
+
+    const calls = { install: 0, update: 0 }
+    Reflect.set(window, '__publisherReviewCalls', calls)
+    appPluginStore.installReviewed = async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 150)
+      })
+      calls.install += 1
+      return structuredClone(updatePlugin)
+    }
+    appPluginStore.acceptUpdateReviewed = async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 150)
+      })
+      calls.update += 1
+      return structuredClone(updatePlugin)
+    }
+
+    return {
+      installPluginId: installManifest.plugin.id,
+      updatePluginId: candidateManifest.plugin.id,
+      installDigest,
+      updateDigest,
+      catalogId,
+      catalogDigest,
+      publisherId
+    }
+  })
+}
+
+async function setPublisherReviewCatalogDigest(
+  page: Page,
+  pluginId: string,
+  catalogDigest: string
+): Promise<void> {
+  await page.evaluate(
+    async ({ pluginId: targetPluginId, catalogDigest: nextCatalogDigest }) => {
+      const { appPluginStoreSnapshot } = await import('/src/app/plugins/app.ts')
+      const snapshot = appPluginStoreSnapshot.value
+      const catalog = snapshot.catalog.map((item) =>
+        item.package.manifest.plugin.id === targetPluginId && item.package.remoteCatalog
+          ? {
+              ...item,
+              package: {
+                ...item.package,
+                remoteCatalog: {
+                  ...item.package.remoteCatalog,
+                  catalogDigest: nextCatalogDigest
+                }
+              }
+            }
+          : item
+      )
+      appPluginStoreSnapshot.value = { ...snapshot, catalog }
+    },
+    { pluginId, catalogDigest }
+  )
+}
+
+async function publisherReviewCalls(page: Page): Promise<{ install: number; update: number }> {
+  return page.evaluate(() => {
+    const calls = Reflect.get(window, '__publisherReviewCalls')
+    if (!calls || typeof calls !== 'object') throw new Error('Publisher review calls unavailable')
+    return calls as { install: number; update: number }
+  })
+}
+
+test('requires explicit third-party install and update review before dispatch', async ({
+  page
+}) => {
+  await page.goto('/?test')
+  const canvas = new CanvasHelper(page)
+  await canvas.waitForInit()
+  const fixture = await injectPublisherReviewFixtures(page)
+  await openPlugins(page)
+
+  const installButton = page.getByTestId(`plugin-install-${fixture.installPluginId}`)
+  const reviewDialog = page.getByTestId('plugin-package-review-dialog')
+  await installButton.click()
+  await expect(reviewDialog).toBeVisible()
+  await expect(reviewDialog).toContainText(fixture.installDigest)
+  await expect(reviewDialog).toContainText(fixture.catalogId)
+  await expect(reviewDialog).toContainText(fixture.publisherId)
+  await setPublisherReviewCatalogDigest(page, fixture.installPluginId, `sha256:${'S'.repeat(43)}`)
+  await page.getByTestId('plugin-package-review-confirm').click()
+  await expect(reviewDialog).toBeVisible()
+  await expect(page.getByTestId('plugin-package-review-error')).toBeVisible()
+  expect(await publisherReviewCalls(page)).toEqual({ install: 0, update: 0 })
+  await page.getByTestId('plugin-package-review-cancel').click()
+  await expect(reviewDialog).toBeHidden()
+  await expect(installButton).toBeFocused()
+  expect(await publisherReviewCalls(page)).toEqual({ install: 0, update: 0 })
+  await setPublisherReviewCatalogDigest(page, fixture.installPluginId, fixture.catalogDigest)
+
+  await installButton.click()
+  await page.keyboard.press('Escape')
+  await expect(reviewDialog).toBeHidden()
+  await expect(installButton).toBeFocused()
+  expect(await publisherReviewCalls(page)).toEqual({ install: 0, update: 0 })
+
+  await installButton.click()
+  const confirmReview = page.getByTestId('plugin-package-review-confirm')
+  await confirmReview.click()
+  await expect(confirmReview).toBeDisabled()
+  await expect(confirmReview).toContainText('Installing')
+  await expect(reviewDialog).toBeHidden()
+  expect(await publisherReviewCalls(page)).toEqual({ install: 1, update: 0 })
+
+  const updateButton = page.getByTestId(`plugin-update-accept-${fixture.updatePluginId}`)
+  await updateButton.click()
+  await expect(reviewDialog).toBeVisible()
+  await expect(reviewDialog).toContainText(fixture.updateDigest)
+  await page.getByTestId('plugin-package-review-cancel').click()
+  expect(await publisherReviewCalls(page)).toEqual({ install: 1, update: 0 })
+
+  await updateButton.click()
+  await page.getByTestId('plugin-package-review-confirm').click()
+  await expect(reviewDialog).toBeHidden()
+  expect(await publisherReviewCalls(page)).toEqual({ install: 1, update: 1 })
+  canvas.assertNoErrors()
+})
+
 test('installs and manages offline plugins without changing existing canvas modules', async ({
   page
 }) => {
@@ -468,6 +840,152 @@ test('installs and exports all four mini-program projects through the browser Wo
     expect(text).not.toContain('/Users/')
     expect(text).not.toMatch(/sk-(?:proj|live|test)-/)
   }
+  canvas.assertNoErrors()
+})
+
+test('stages marketplace source verification without persistence before explicit confirmation', async ({
+  page
+}) => {
+  test.setTimeout(45_000)
+  const fixture = await marketplaceSourceFixture()
+  await routeMarketplaceSource(page, fixture)
+  await page.goto('/?test')
+  const canvas = new CanvasHelper(page)
+  await canvas.waitForInit()
+  await openPlugins(page)
+
+  const sourceControls = page.getByTestId('plugin-marketplace-source-controls')
+  await expect(sourceControls).toBeVisible()
+  await expect(page.getByTestId('plugin-marketplace-source-form')).toBeVisible()
+  await page.getByTestId('plugin-marketplace-source-url-input').fill(MARKETPLACE_SOURCE_URL)
+  await page.getByTestId('plugin-marketplace-source-id-input').fill('openpencil.marketplace')
+  await page.getByTestId('plugin-marketplace-source-key-input').fill(MARKETPLACE_ROOT_KEY_ID)
+  await page.getByTestId('plugin-marketplace-source-pem-input').fill(fixture.rootPublicKeyPem)
+
+  const verify = page.getByTestId('plugin-marketplace-source-verify')
+  await verify.click()
+  const review = page.getByTestId('plugin-marketplace-source-review-dialog')
+  await expect(review).toBeVisible()
+  await expect(review).toContainText(MARKETPLACE_SOURCE_URL)
+  await expect(review).toContainText(fixture.rootFingerprint)
+  await expect(review).toContainText(fixture.snapshot.integrity.digest)
+  await expect(review).toContainText(fixture.catalog.integrity.digest)
+  await expect(review).toContainText('openpencil.marketplace.stable')
+  await expect(review).toContainText('1.0.0')
+  expect(await readMarketplaceSourceState(page)).toBeNull()
+
+  await page.getByTestId('plugin-marketplace-source-review-cancel').click()
+  await expect(review).toBeHidden()
+  await expect(verify).toBeFocused()
+  expect(await readMarketplaceSourceState(page)).toBeNull()
+
+  await verify.click()
+  await expect(review).toBeVisible()
+  await page.getByTestId('plugin-marketplace-source-review-confirm').click()
+  await expect(review).toBeHidden()
+  const active = page.getByTestId('plugin-marketplace-source-active')
+  await expect(active).toBeVisible()
+  await expect(active).toContainText(MARKETPLACE_SOURCE_URL)
+  await expect(active).toContainText(fixture.rootFingerprint)
+  await expect(page.getByTestId('plugin-marketplace-source-success')).toBeVisible()
+  expect(await readMarketplaceSourceState(page)).not.toBeNull()
+  await expect(page.getByTestId('plugin-remote-catalog-refresh')).toBeEnabled()
+  canvas.assertNoErrors()
+})
+
+test('keeps managed sources locked and blocks source transitions while publisher plugins exist', async ({
+  page
+}) => {
+  await page.goto('/?test')
+  const canvas = new CanvasHelper(page)
+  await canvas.waitForInit()
+  await page.evaluate(async () => {
+    const pluginApp = await import('/src/app/plugins/app.ts')
+    pluginApp.appPluginMarketplaceSourceSnapshot.value = {
+      ready: true,
+      configured: true,
+      origin: 'managed',
+      editable: false,
+      active: {
+        sourceId: 'managed-source',
+        trustDomainId: 'managed-domain',
+        origin: 'managed',
+        snapshotUrl: 'https://managed.example/marketplace.json',
+        expectedMarketplaceId: 'managed.marketplace',
+        channel: 'stable',
+        rootKeyId: 'managed.root',
+        rootKeySpkiSha256: `sha256-${'M'.repeat(43)}`,
+        sourceGeneration: 1,
+        highWater: null
+      },
+      error: null
+    }
+  })
+  await openPlugins(page)
+
+  const sourceControls = page.getByTestId('plugin-marketplace-source-controls')
+  await expect(sourceControls).toContainText('Managed · locked')
+  await expect(sourceControls).toContainText('https://managed.example/marketplace.json')
+  await expect(page.getByTestId('plugin-marketplace-source-form')).toHaveCount(0)
+  await expect(page.getByTestId('plugin-marketplace-source-replace')).toHaveCount(0)
+  await expect(page.getByTestId('plugin-marketplace-source-remove')).toHaveCount(0)
+
+  await page.evaluate(async () => {
+    const pluginApp = await import('/src/app/plugins/app.ts')
+    pluginApp.appPluginMarketplaceSourceSnapshot.value = {
+      ready: true,
+      configured: true,
+      origin: 'managed',
+      editable: false,
+      active: null,
+      error: new Error('Managed source is malformed')
+    }
+  })
+  await expect(sourceControls).toContainText('Managed · locked')
+  await expect(sourceControls).toContainText('Managed source is malformed')
+  await expect(page.getByTestId('plugin-marketplace-source-form')).toHaveCount(0)
+
+  await page.evaluate(async () => {
+    const pluginApp = await import('/src/app/plugins/app.ts')
+    const pluginSnapshot = pluginApp.appPluginStoreSnapshot.value
+    const firstInstalled = pluginSnapshot.installed[0]
+    if (!firstInstalled) throw new Error('Expected an installed app-bundle plugin')
+    pluginApp.appPluginStoreSnapshot.value = {
+      ...pluginSnapshot,
+      installed: [
+        {
+          ...firstInstalled,
+          package: { ...firstInstalled.package, trustSource: 'publisher-signature' as const }
+        },
+        ...pluginSnapshot.installed.slice(1)
+      ]
+    }
+    pluginApp.appPluginMarketplaceSourceSnapshot.value = {
+      ready: true,
+      configured: true,
+      origin: 'user',
+      editable: true,
+      active: {
+        sourceId: 'user-source',
+        trustDomainId: 'user-domain',
+        origin: 'user',
+        snapshotUrl: 'https://user.example/marketplace.json',
+        expectedMarketplaceId: 'user.marketplace',
+        channel: 'stable',
+        rootKeyId: 'user.root',
+        rootKeySpkiSha256: `sha256-${'U'.repeat(43)}`,
+        sourceGeneration: 1,
+        highWater: null
+      },
+      error: null
+    }
+  })
+  await expect(page.getByTestId('plugin-marketplace-source-blocker')).toBeVisible()
+  await expect(page.getByTestId('plugin-marketplace-source-blocker')).toContainText(
+    'Uninstall 1 installed publisher plugin'
+  )
+  await expect(page.getByTestId('plugin-marketplace-source-replace')).toBeDisabled()
+  await expect(page.getByTestId('plugin-marketplace-source-remove')).toBeDisabled()
   canvas.assertNoErrors()
 })
 

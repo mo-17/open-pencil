@@ -441,6 +441,39 @@ export const dialogMessageDefaults = {
   pluginResetLocalStateConfirm: 'Reset and reload',
   pluginInstall: 'Install',
   pluginInstalled: 'Installed',
+  pluginPackageReviewInstallTitle: 'Review third-party plugin installation',
+  pluginPackageReviewUpdateTitle: 'Review third-party plugin update',
+  pluginPackageReviewInstallDescription:
+    'Confirm the exact signed package, catalog provenance, and declared authority before installing.',
+  pluginPackageReviewUpdateDescription:
+    'Compare the installed authority with the exact signed candidate before accepting this update.',
+  pluginPackageReviewCurrent: 'Currently installed authority',
+  pluginPackageReviewCandidate: 'Signed candidate authority',
+  pluginPackageReviewCurrentAuthority: params(
+    'Version {version} · digest {digest} · signing key {keyId}'
+  ),
+  pluginPackageReviewPackageAuthority: params(
+    'Plugin {pluginId} · manifest v{schemaVersion} · version {version} · digest {digest}'
+  ),
+  pluginPackageReviewPublisherAuthority: params(
+    'Publisher {publisherName} ({publisherId}) · signing key {keyId}'
+  ),
+  pluginPackageReviewCatalog: 'Verified catalog provenance',
+  pluginPackageReviewCatalogAuthority: params('Catalog {catalogId} · v{version} · digest {digest}'),
+  pluginPackageReviewCatalogExpiry: params('Catalog authorization expires at {expiresAt}'),
+  pluginPackageReviewCatalogMissing:
+    'Remote catalog provenance and expiry are not available for this configured publisher package.',
+  pluginPackageReviewCapabilities: 'Declared V2 authority and bounds',
+  pluginPackageReviewLegacyContract:
+    'This legacy manifest does not expose a V2 permission, network, credential, and byte-bound summary.',
+  pluginPackageReviewCancel: 'Cancel',
+  pluginPackageReviewConfirmInstall: 'Confirm and install',
+  pluginPackageReviewConfirmUpdate: 'Confirm and accept update',
+  pluginPackageReviewInstalling: 'Installing…',
+  pluginPackageReviewUpdating: 'Updating…',
+  pluginPackageReviewOperationFailed: params('The reviewed plugin operation failed: {reason}'),
+  pluginPackageReviewAuthorityChanged:
+    'The package, signing authority, or catalog changed. Close this dialog and review the latest candidate again.',
   pluginVersion: params('Version {version}'),
   pluginTrustAppBundle: 'App bundle',
   pluginTrustPublisher: 'Verified publisher',
@@ -453,6 +486,55 @@ export const dialogMessageDefaults = {
   pluginRemoteStale: 'Stale cache',
   pluginRemoteUnavailable: 'Unavailable',
   pluginRemoteIssues: params('{count} catalog entries could not be verified.'),
+  pluginMarketplaceSource: 'Marketplace source',
+  pluginMarketplaceSourceDescription:
+    'Verify a signed snapshot and its root authority before trusting a third-party marketplace.',
+  pluginMarketplaceSourceManaged: 'Managed · locked',
+  pluginMarketplaceSourceUser: 'User configured',
+  pluginMarketplaceSourceNone: 'Not configured',
+  pluginMarketplaceSourceLoading: 'Loading marketplace source…',
+  pluginMarketplaceSourceLocked:
+    'This source is controlled by managed app configuration and cannot be changed here.',
+  pluginMarketplaceSourceUrl: 'Snapshot URL',
+  pluginMarketplaceSourceUrlHint: 'Direct HTTPS URL. Credentials and redirects are rejected.',
+  pluginMarketplaceSourceMarketplaceId: 'Marketplace ID',
+  pluginMarketplaceSourceChannel: 'Release channel',
+  pluginMarketplaceSourceChannelStable: 'Stable',
+  pluginMarketplaceSourceChannelBeta: 'Beta',
+  pluginMarketplaceSourceRootKey: 'Root key ID',
+  pluginMarketplaceSourceRootPem: 'Ed25519 root public key (PEM)',
+  pluginMarketplaceSourceRootPemHint:
+    'Kept in app-local trust settings only; it is never written into a design document.',
+  pluginMarketplaceSourceRootFingerprint: 'Root SPKI SHA-256 fingerprint',
+  pluginMarketplaceSourceReplace: 'Replace source',
+  pluginMarketplaceSourceRemove: 'Remove source',
+  pluginMarketplaceSourceVerify: 'Verify source',
+  pluginMarketplaceSourceVerifying: 'Verifying…',
+  pluginMarketplaceSourceInstalledBlocker: params(
+    'Uninstall {count} installed publisher plugin(s) before replacing or removing this source.'
+  ),
+  pluginMarketplaceSourceReviewTitle: 'Review marketplace trust source',
+  pluginMarketplaceSourceReviewDescription:
+    'Confirm the exact verified snapshot and root fingerprint. Verification alone has not changed your trusted source.',
+  pluginMarketplaceSourceSnapshotVersion: 'Snapshot version',
+  pluginMarketplaceSourceSnapshotSequence: 'Snapshot sequence',
+  pluginMarketplaceSourceSnapshotDigest: 'Snapshot digest',
+  pluginMarketplaceSourceSnapshotExpiry: 'Snapshot expires',
+  pluginMarketplaceSourceAuditHead: 'Audit head',
+  pluginMarketplaceSourceListingCount: 'Published listings',
+  pluginMarketplaceSourceRootRotation:
+    'This replaces the current root key. The previous root is retired and cannot be restored.',
+  pluginMarketplaceSourceStrictAdvance:
+    'The new snapshot must strictly advance the persisted version and sequence.',
+  pluginMarketplaceSourceActivate: 'Confirm and use source',
+  pluginMarketplaceSourceActivating: 'Activating…',
+  pluginMarketplaceSourceRemoveTitle: 'Remove marketplace source?',
+  pluginMarketplaceSourceRemoveDescription:
+    'OpenPencil will stop loading third-party publisher plugins from this source. Persisted rollback protection remains.',
+  pluginMarketplaceSourceRemoveConfirm: 'Remove source',
+  pluginMarketplaceSourceRemoving: 'Removing…',
+  pluginMarketplaceSourceActivated: 'Marketplace source verified and activated.',
+  pluginMarketplaceSourceRemoved: 'Marketplace source removed.',
   pluginDiscoverSearch: 'Search plugin catalog',
   pluginDiscoverSearchPlaceholder: 'Search by name, ID, summary, category, or keyword…',
   pluginsEmptySearch: 'No plugins match this search.',
@@ -490,6 +572,37 @@ export const dialogMessageDefaults = {
   pluginRuntimeOutput: 'Last output',
   pluginRuntimeAudit: 'Recent local runtime audit',
   pluginRuntimeAuditEmpty: 'No local runtime decisions recorded.',
+  pluginAIAccess: 'AI access',
+  pluginAIAccessDescription:
+    'Review eligible read-only contributions from this verified publisher before AI can use them.',
+  pluginAIAccessSessionOnly: 'Session only. Restarting OpenPencil revokes every grant.',
+  pluginAIAccessApprovalRequired: 'Every invocation still requires approval.',
+  pluginAIAccessEligible: 'Eligible · review required',
+  pluginAIAccessGranted: 'Granted for this session',
+  pluginAIAccessReview: 'Review and grant',
+  pluginAIAccessRevoke: 'Revoke',
+  pluginAIAccessGrantTitle: 'Grant AI access to this contribution?',
+  pluginAIAccessRevokeTitle: 'Revoke AI access from this contribution?',
+  pluginAIAccessGrantDescription:
+    'Confirm the exact contribution authority below. The grant is limited to this contribution and this app session.',
+  pluginAIAccessRevokeDescription:
+    'Confirm the exact contribution whose session grant will be removed.',
+  pluginAIAccessPackageAuthority: params(
+    'Plugin: {pluginId} · v{pluginVersion} · digest: {packageDigest}'
+  ),
+  pluginAIAccessPublisherAuthority: params(
+    'Publisher: {publisherId} · signing key: {publisherKeyId}'
+  ),
+  pluginAIAccessContributionAuthority: params('{kind}: {contributionId}'),
+  pluginAIAccessAdapterAuthority: params('Host adapter: {adapterId}'),
+  pluginAIAccessScopeAuthority: params('Reviewed scope: {scope}'),
+  pluginAIAccessConnectorAuthority: params('Connector: {connectorId} · operation: {operationId}'),
+  pluginAIAccessCommandKind: 'Read-only command',
+  pluginAIAccessConnectorKind: 'Read-only connector query',
+  pluginAIAccessNoHostPermissions: 'No host permissions',
+  pluginAIAccessGrantConfirm: 'Grant for this session',
+  pluginAIAccessRevokeConfirm: 'Revoke session grant',
+  pluginAIAccessOperationFailed: params('AI access could not be updated: {reason}'),
   pluginPin: 'Pin digest',
   pluginUnpin: 'Unpin digest',
   pluginPinned: 'Pinned',

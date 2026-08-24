@@ -29,6 +29,17 @@ export interface MockBrowser {
   close: () => void
 }
 
+export interface MockBrowserOptions {
+  documentPath?: string
+  documents?: () => Array<{
+    id: string
+    name?: string
+    path?: string
+    active?: boolean
+  }>
+  afterDocumentList?: () => void | Promise<void>
+}
+
 /** Read the next WebSocket JSON message with a timeout. */
 export function readWsJSON<T>(ws: WebSocket, timeoutMs = 1000): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -175,7 +186,8 @@ function randomHex(bytes: number): string {
 async function handleMockCommand(
   graph: SceneGraph,
   command: string,
-  rawArgs: unknown
+  rawArgs: unknown,
+  options: MockBrowserOptions
 ): Promise<unknown> {
   const args = rawArgs as { name?: string; args?: Record<string, unknown> } | undefined
 
@@ -194,18 +206,23 @@ async function handleMockCommand(
   if (command === 'list_documents') {
     const pages = graph.getPages()
     const currentPage = pages[0]
-    return {
-      documents: [
+    const documents = (
+      options.documents?.() ?? [
         {
           id: 'doc-1',
           name: 'Mock document',
-          active: true,
-          current_page_id: currentPage?.id ?? '',
-          current_page_name: currentPage?.name ?? '',
-          pages: pages.map((page) => ({ id: page.id, name: page.name }))
+          ...(options.documentPath ? { path: options.documentPath } : {}),
+          active: true
         }
       ]
-    }
+    ).map((document) => ({
+      ...document,
+      current_page_id: currentPage?.id ?? '',
+      current_page_name: currentPage?.name ?? '',
+      pages: pages.map((page) => ({ id: page.id, name: page.name }))
+    }))
+    await options.afterDocumentList?.()
+    return { documents }
   }
 
   if (command === 'save_file' || command === 'new_document' || command === 'open_file') {
@@ -218,7 +235,8 @@ async function handleMockCommand(
 export function connectMockBrowser(
   port: number,
   graph: SceneGraph,
-  authToken?: string
+  authToken?: string,
+  options: MockBrowserOptions = {}
 ): Promise<MockBrowser> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`)
@@ -243,7 +261,7 @@ export function connectMockBrowser(
 
         try {
           requests.push({ command: msg.command, args: msg.args })
-          const result = await handleMockCommand(graph, msg.command, msg.args)
+          const result = await handleMockCommand(graph, msg.command, msg.args, options)
           ws.send(JSON.stringify({ type: 'response', id: msg.id, ok: true, result }))
         } catch (e) {
           ws.send(

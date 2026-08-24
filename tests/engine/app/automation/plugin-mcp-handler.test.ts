@@ -25,6 +25,11 @@ import {
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
   VUE_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
+import type {
+  AppPluginMCPStore,
+  AppPluginMCPToolCatalog,
+  AppPluginMCPToolDescriptor
+} from '@/app/plugins/mcp'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
 
@@ -50,7 +55,67 @@ function target(): AutomationTarget {
   }
 }
 
+function expectedDescriptor(descriptor: AppPluginMCPToolDescriptor) {
+  return {
+    name: descriptor.name,
+    title: descriptor.title,
+    pluginId: descriptor.pluginId,
+    kind: descriptor.kind,
+    contributionId: descriptor.contributionId,
+    authority: descriptor.authority
+  }
+}
+
+function strictCall(
+  catalog: AppPluginMCPToolCatalog,
+  descriptor: AppPluginMCPToolDescriptor,
+  args: unknown = {}
+) {
+  return {
+    name: descriptor.name,
+    pluginId: descriptor.pluginId,
+    expectedCatalogRevision: catalog.revision,
+    expectedDescriptor: expectedDescriptor(descriptor),
+    args
+  }
+}
+
 describe('automation plugin MCP handler', () => {
+  test('checkpoints publisher trust before listing or dispatching plugin tools', async () => {
+    const store = createStore()
+    await store.load()
+    let checkpointFailure: Error | null = null
+    let dispatches = 0
+    const handlers = createAutomationPluginMCPHandlers(
+      async () => {
+        dispatches += 1
+        return { ok: true }
+      },
+      {
+        store,
+        async checkpointPublisherTrust() {
+          if (checkpointFailure) throw checkpointFailure
+        },
+        runCommand: async () => ({ status: 'completed', message: 'command' }),
+        runExporter: async () => ({ status: 'completed', message: 'export' })
+      }
+    )
+    const listed = await handlers.handleList()
+    const descriptor = listed.result.tools.find(({ pluginId }) => pluginId === MAP_PLUGIN_ID)
+    if (!descriptor) throw new Error('Expected Map MCP descriptor')
+    checkpointFailure = new Error('publisher state changed in another window')
+
+    await expect(handlers.handleList()).rejects.toBe(checkpointFailure)
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: descriptor.pluginId,
+        args: {}
+      })
+    ).rejects.toBe(checkpointFailure)
+    expect(dispatches).toBe(0)
+  })
+
   test('dispatches a module through the trusted core tool with fixed identity', async () => {
     const store = createStore()
     await store.load()
@@ -96,6 +161,33 @@ describe('automation plugin MCP handler', () => {
         }
       }
     ])
+
+    const approvedDispatches: Record<string, unknown>[] = []
+    const approvedResponse = await handlers.handleCall(
+      target(),
+      {
+        name: descriptor.name,
+        pluginId: MAP_PLUGIN_ID,
+        args: { x: 40, config: { zoom: 8 } }
+      },
+      undefined,
+      {
+        executeModule: async (args) => {
+          approvedDispatches.push(args)
+          return { ok: true, result: { approved: true } }
+        }
+      }
+    )
+    expect(approvedResponse).toEqual({ ok: true, result: { approved: true } })
+    expect(approvedDispatches).toEqual([
+      {
+        x: 40,
+        config: { zoom: 8 },
+        plugin_id: MAP_PLUGIN_ID,
+        module_type: descriptor.contributionId
+      }
+    ])
+    expect(dispatches).toHaveLength(1)
 
     await expect(
       handlers.handleCall(target(), {
@@ -613,5 +705,135 @@ describe('automation plugin MCP handler', () => {
       })
     ).rejects.toThrow('is unavailable')
     expect(received).toHaveLength(1)
+  })
+
+  test('requires and compares the exact catalog authority on the cross-process call boundary', async () => {
+    const store = createStore()
+    await store.load()
+    const map = store
+      .installedModules()
+      .find(({ plugin }) => plugin.package.manifest.plugin.id === MAP_PLUGIN_ID)
+    if (!map) throw new Error('Expected installed Map module')
+    let packageDigest = map.plugin.package.digest
+    let pluginVersion = map.plugin.package.manifest.plugin.version
+    let publisherKeyId = map.plugin.package.manifest.publisher.keyId
+    const adapterId = map.contribution.adapterId
+    const authorityStore: AppPluginMCPStore = {
+      installedModules: () => [
+        {
+          plugin: {
+            ...map.plugin,
+            package: {
+              ...map.plugin.package,
+              digest: packageDigest,
+              manifest: {
+                ...map.plugin.package.manifest,
+                plugin: { ...map.plugin.package.manifest.plugin, version: pluginVersion },
+                publisher: { ...map.plugin.package.manifest.publisher, keyId: publisherKeyId }
+              }
+            }
+          },
+          contribution: { ...map.contribution, adapterId }
+        }
+      ],
+      installedCommands: () => [],
+      installedExporters: () => [],
+      installedConnectors: () => []
+    }
+    const dispatches: unknown[] = []
+    const handlers = createAutomationPluginMCPHandlers(
+      async (_target, args) => {
+        dispatches.push(args)
+        return { ok: true, result: { created: true } }
+      },
+      {
+        store: authorityStore,
+        runCommand: async () => ({ status: 'cancelled', message: 'unused' }),
+        runExporter: async () => ({ status: 'cancelled', message: 'unused' })
+      }
+    )
+    const catalog = (await handlers.handleList()).result
+    const descriptor = catalog.tools.find(({ pluginId }) => pluginId === MAP_PLUGIN_ID)
+    if (!descriptor) throw new Error('Expected Map MCP descriptor')
+    const strictOptions = { requireExpectedAuthority: true }
+
+    await expect(
+      handlers.handleCall(target(), strictCall(catalog, descriptor), undefined, strictOptions)
+    ).resolves.toEqual({ ok: true, result: { created: true } })
+    expect(dispatches).toHaveLength(1)
+
+    await expect(
+      handlers.handleCall(
+        target(),
+        { name: descriptor.name, pluginId: descriptor.pluginId, args: {} },
+        undefined,
+        strictOptions
+      )
+    ).rejects.toThrow('must include expectedCatalogRevision and expectedDescriptor')
+
+    const staleRevision = strictCall(catalog, descriptor)
+    staleRevision.expectedCatalogRevision = `${catalog.revision}-stale`
+    await expect(
+      handlers.handleCall(target(), staleRevision, undefined, strictOptions)
+    ).rejects.toThrow('catalog authority changed')
+
+    const authorityReplacements = [
+      {
+        packageDigest: `app-bundle-sha256:${'B'.repeat(43)}`
+      },
+      { pluginVersion: '9.0.0' },
+      { publisherId: 'replacement-publisher' },
+      { publisherKeyId: 'replacement-key-v2' },
+      { adapterId: 'replacement.map-adapter' },
+      {
+        trustSource: 'publisher-signature' as const,
+        packageDigest: 'C'.repeat(43)
+      }
+    ]
+    for (const replacement of authorityReplacements) {
+      const stale = strictCall(catalog, descriptor)
+      stale.expectedDescriptor = {
+        ...stale.expectedDescriptor,
+        authority: { ...stale.expectedDescriptor.authority, ...replacement }
+      }
+      await expect(handlers.handleCall(target(), stale, undefined, strictOptions)).rejects.toThrow(
+        'catalog authority changed'
+      )
+    }
+
+    for (const replacement of [
+      { title: 'Replacement Map Tool' },
+      { kind: 'command' as const },
+      { contributionId: 'replacement-map' }
+    ]) {
+      const stale = strictCall(catalog, descriptor)
+      stale.expectedDescriptor = { ...stale.expectedDescriptor, ...replacement }
+      await expect(handlers.handleCall(target(), stale, undefined, strictOptions)).rejects.toThrow(
+        'catalog authority changed'
+      )
+    }
+    expect(dispatches).toHaveLength(1)
+
+    const staleCatalogCall = strictCall(catalog, descriptor)
+    packageDigest = `app-bundle-sha256:${'D'.repeat(43)}`
+    pluginVersion = '2.0.0'
+    publisherKeyId = 'app-bundle-v2'
+    const replacementCatalog = (await handlers.handleList()).result
+    const replacementDescriptor = replacementCatalog.tools[0]
+    if (!replacementDescriptor) throw new Error('Expected replacement Map MCP descriptor')
+    expect(replacementDescriptor.name).toBe(descriptor.name)
+    expect(replacementCatalog.revision).not.toBe(catalog.revision)
+    await expect(
+      handlers.handleCall(target(), staleCatalogCall, undefined, strictOptions)
+    ).rejects.toThrow('catalog authority changed')
+    await expect(
+      handlers.handleCall(
+        target(),
+        strictCall(replacementCatalog, replacementDescriptor),
+        undefined,
+        strictOptions
+      )
+    ).resolves.toEqual({ ok: true, result: { created: true } })
+    expect(dispatches).toHaveLength(2)
   })
 })

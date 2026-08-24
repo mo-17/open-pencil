@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { appPluginStore } from '@/app/plugins/app'
+import { appPluginStore, withAppPluginPublisherPrivilege } from '@/app/plugins/app'
 import {
   appConnectorAuthorization,
   executeInstalledAppConnector
@@ -145,21 +145,36 @@ async function executeCurrent(
   resultText.value = null
   errorText.value = null
   try {
-    const result = await executeInstalledAppConnector(
-      connector,
-      operation.operationId,
-      parameters,
-      {
-        signal: controller.signal,
-        ...(review
-          ? {
-              mutationAttemptId: review.mutationAttemptId,
-              confirmMutation: (confirmation) =>
-                connectorMutationConfirmationMatches(review, confirmation)
-            }
-          : {})
+    const execute = async () => {
+      const current = resolveCurrent()
+      if (
+        !current ||
+        current.connector.plugin.package.digest !== connector.plugin.package.digest ||
+        current.connector.contribution.adapterId !== connector.contribution.adapterId ||
+        current.operation.operationId !== operation.operationId
+      ) {
+        throw new Error('Plugin connector authority changed')
       }
-    )
+      return executeInstalledAppConnector(
+        current.connector,
+        current.operation.operationId,
+        parameters,
+        {
+          signal: controller.signal,
+          ...(review
+            ? {
+                mutationAttemptId: review.mutationAttemptId,
+                confirmMutation: (confirmation) =>
+                  connectorMutationConfirmationMatches(review, confirmation)
+              }
+            : {})
+        }
+      )
+    }
+    const result =
+      connector.plugin.package.trustSource === 'publisher-signature'
+        ? await withAppPluginPublisherPrivilege(execute)
+        : await execute()
     if (revision === executionRevision && activeController === controller) {
       resultText.value = connectorExecutionDataText(result)
       pendingReview.value = null

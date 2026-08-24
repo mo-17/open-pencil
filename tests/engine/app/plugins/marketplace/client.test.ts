@@ -108,6 +108,147 @@ describe('marketplace trust configuration', () => {
 })
 
 describe('marketplace snapshot client', () => {
+  test('rejects injected cache keys and source URLs before using cache validators', async () => {
+    const root = await keys()
+    const snapshot = await signMarketplaceSnapshot(await payload(1), root.privateKey, {
+      keyId: ROOT_KEY_ID
+    })
+    const validRecord = {
+      schemaVersion: 1 as const,
+      cacheKey: URL,
+      kind: 'marketplace' as const,
+      sourceUrl: URL,
+      rawJson: JSON.stringify(snapshot),
+      etag: '"injected"',
+      lastModified: null,
+      fetchedAt: NOW,
+      verifiedAt: NOW,
+      expiresAt: Date.parse('2026-08-09T00:00:00.000Z')
+    }
+
+    for (const injected of [
+      { ...validRecord, cacheKey: 'https://evil.example.com/marketplace.json' },
+      { ...validRecord, sourceUrl: 'https://evil.example.com/marketplace.json' }
+    ]) {
+      let current: unknown = injected
+      const deleted: string[] = []
+      let validators: unknown
+      const client = createMarketplaceSnapshotClient({
+        snapshotUrl: URL,
+        expectedMarketplaceId: 'openpencil.marketplace',
+        expectedKeyId: ROOT_KEY_ID,
+        rootPublicKey: root.publicKey,
+        now: () => NOW,
+        cache: {
+          async get() {
+            return current
+          },
+          async list() {
+            return []
+          },
+          async put(value) {
+            current = value
+          },
+          async delete(cacheKey) {
+            deleted.push(cacheKey)
+            current = null
+          }
+        },
+        transport: {
+          loadMarketplace: async (_url, cacheValidators) => {
+            validators = cacheValidators
+            throw new Error('offline')
+          }
+        }
+      })
+
+      const result = await client.load()
+      expect(result).toMatchObject({ status: 'unavailable', snapshot: null, source: null })
+      expect(validators).toEqual({})
+      expect(deleted).toEqual([URL])
+    }
+  })
+
+  test('rejects a fresh response whose canonical URL differs from the requested source', async () => {
+    const root = await keys()
+    const snapshot = await signMarketplaceSnapshot(await payload(1), root.privateKey, {
+      keyId: ROOT_KEY_ID
+    })
+    let writes = 0
+    const client = createMarketplaceSnapshotClient({
+      snapshotUrl: URL,
+      expectedMarketplaceId: 'openpencil.marketplace',
+      expectedKeyId: ROOT_KEY_ID,
+      rootPublicKey: root.publicKey,
+      now: () => NOW,
+      cache: {
+        async get() {
+          return null
+        },
+        async list() {
+          return []
+        },
+        async put() {
+          writes += 1
+        },
+        async delete() {
+          throw new Error('Unexpected cache deletion')
+        }
+      },
+      transport: {
+        loadMarketplace: async () => ({
+          ...fresh(snapshot),
+          url: 'https://evil.example.com/marketplace.json'
+        })
+      }
+    })
+
+    const result = await client.load()
+    expect(result.status).toBe('unavailable')
+    expect(result.snapshot).toBeNull()
+    expect(result.refreshError?.message).toContain('does not match its requested source')
+    expect(writes).toBe(0)
+  })
+
+  test('keeps the exact lookup key while binding cache source to the canonical URL', async () => {
+    const root = await keys()
+    const snapshot = await signMarketplaceSnapshot(await payload(1), root.privateKey, {
+      keyId: ROOT_KEY_ID
+    })
+    const nonCanonicalURL = 'https://PLUGINS.EXAMPLE.COM:443/marketplace.json'
+    const cache = createMemoryRemotePluginCacheStorage()
+    const online = createMarketplaceSnapshotClient({
+      snapshotUrl: nonCanonicalURL,
+      expectedMarketplaceId: 'openpencil.marketplace',
+      expectedKeyId: ROOT_KEY_ID,
+      rootPublicKey: root.publicKey,
+      cache,
+      now: () => NOW,
+      transport: { loadMarketplace: async () => fresh(snapshot) }
+    })
+
+    expect((await online.load()).status).toBe('fresh')
+    expect(await cache.get(nonCanonicalURL)).toMatchObject({
+      cacheKey: nonCanonicalURL,
+      sourceUrl: URL
+    })
+
+    const offline = createMarketplaceSnapshotClient({
+      snapshotUrl: nonCanonicalURL,
+      expectedMarketplaceId: 'openpencil.marketplace',
+      expectedKeyId: ROOT_KEY_ID,
+      rootPublicKey: root.publicKey,
+      cache,
+      now: () => NOW,
+      transport: {
+        loadMarketplace: async () => {
+          throw new Error('offline')
+        }
+      }
+    })
+    expect((await offline.load()).status).toBe('cached')
+  })
+
   test('re-verifies cache offline and refuses a validly signed rollback', async () => {
     const root = await keys()
     const first = await signMarketplaceSnapshot(await payload(1), root.privateKey, {

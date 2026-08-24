@@ -15,16 +15,25 @@ import {
 } from '@open-pencil/plugin-contracts'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
+import type { AppPluginMarketplaceAuthority } from '@/app/plugins'
 import {
   createMemoryPluginRuntimePolicyStorage,
   createPluginRuntimeManager,
   parsePluginRuntimePolicyRecord,
   type CreatePluginRuntimeManagerOptions,
   type PluginRuntimeAuditAction,
+  type PluginRuntimePolicyRecordV1,
   type PluginRuntimePolicyStorage
 } from '@/app/plugins/runtime'
 
 import { pluginPayload } from '#tests/engine/plugins/helpers'
+
+const MARKETPLACE_AUTHORITY: AppPluginMarketplaceAuthority = Object.freeze({
+  sourceId: 'source:runtime',
+  trustDomainId: 'trust-domain:runtime',
+  sourceGeneration: 1,
+  rootKeySpkiSha256: `sha256-${'A'.repeat(43)}`
+})
 
 async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
@@ -305,6 +314,52 @@ describe('plugin runtime policy manager', () => {
     expect(manager.snapshot().policies).toHaveLength(0)
   })
 
+  test('captures the reviewed runtime authority before grant enters the queue', async () => {
+    const publisher = await keys()
+    const declarative = await verifyPluginPackage(
+      await signPluginManifest(pluginPayload(), publisher.privateKey),
+      publisher.publicKey
+    )
+    const runtime = await runtimeFixture({
+      publicKey: publisher.publicKey,
+      privateKey: publisher.privateKey,
+      declarativeDigest: declarative.verifiedDigest
+    })
+    let gate: Promise<void> | null = null
+    let releaseGate: (() => void) | null = null
+    const manager = createPluginRuntimeManager({
+      publisherPrivilegeLock: async (operation) => {
+        if (gate) await gate
+        return operation()
+      },
+      resolveInstalledPlugin: () => ({
+        package: {
+          trustSource: 'publisher-signature',
+          manifest: declarative.manifest,
+          digest: declarative.verifiedDigest,
+          verifiedPackage: declarative
+        },
+        enabled: true,
+        pinnedDigest: null
+      }),
+      loadRuntime: async () => ({ runtime, source: 'network', refreshError: null })
+    })
+    await manager.load()
+    const reviewed = await manager.review('acme.analytics')
+    gate = new Promise<void>((resolve) => {
+      releaseGate = resolve
+    })
+    const grant = manager.grant('acme.analytics', reviewed)
+    Reflect.set(reviewed, 'runtimePackageDigest', declarative.verifiedDigest)
+    Reflect.set(reviewed, 'capabilities', ['document.nodes.read'])
+    releaseGate?.()
+
+    await expect(grant).resolves.toMatchObject({
+      runtimePackageDigest: runtime.verifiedRuntimePackage.verifiedDigest,
+      grantedCapabilities: []
+    })
+  })
+
   test('aborts an in-flight worker before persisting revocation', async () => {
     const publisher = await keys()
     const declarative = await verifyPluginPackage(
@@ -519,6 +574,85 @@ describe('plugin runtime policy manager', () => {
     expect(manager.snapshot().policies[0]?.audit.map(({ action }) => action)).toEqual(['grant'])
   })
 
+  test('requires a new exact runtime grant when marketplace authority changes', async () => {
+    const publisher = await keys()
+    const declarative = await verifyPluginPackage(
+      await signPluginManifest(pluginPayload(), publisher.privateKey),
+      publisher.publicKey
+    )
+    const runtime = await runtimeFixture({
+      publicKey: publisher.publicKey,
+      privateKey: publisher.privateKey,
+      declarativeDigest: declarative.verifiedDigest
+    })
+    const runtimeDigest = runtime.verifiedRuntimePackage.verifiedDigest
+    const grantedAt = '2026-08-05T00:00:00.000Z'
+    const legacyPolicy: PluginRuntimePolicyRecordV1 = {
+      schemaVersion: 1,
+      pluginId: declarative.manifest.plugin.id,
+      declarativeManifestDigest: declarative.verifiedDigest,
+      runtimePackageDigest: runtimeDigest,
+      grantedCapabilities: [],
+      grantedAt,
+      revokedAt: null,
+      auditSequence: 1,
+      audit: [
+        {
+          sequence: 1,
+          occurredAt: grantedAt,
+          action: 'grant',
+          runtimePackageDigest: runtimeDigest,
+          reasonCode: null
+        }
+      ]
+    }
+    let authority = MARKETPLACE_AUTHORITY
+    let now = Date.parse('2026-08-05T00:01:00.000Z')
+    const manager = createPluginRuntimeManager({
+      storage: createMemoryPluginRuntimePolicyStorage([legacyPolicy]),
+      now: () => now++,
+      resolveInstalledPlugin: () => ({
+        package: {
+          trustSource: 'publisher-signature',
+          manifest: declarative.manifest,
+          digest: declarative.verifiedDigest,
+          verifiedPackage: declarative,
+          marketplaceAuthority: authority
+        },
+        enabled: true,
+        pinnedDigest: null
+      }),
+      loadRuntime: async () => ({ runtime, source: 'network', refreshError: null }),
+      executor: { execute: async () => ({ ok: true }) }
+    })
+
+    await manager.load()
+    await expect(manager.execute(declarative.manifest.plugin.id, null)).rejects.toThrow(
+      'marketplace-authority-changed'
+    )
+    const firstReview = await manager.review(declarative.manifest.plugin.id)
+    await manager.grant(declarative.manifest.plugin.id, firstReview)
+    await expect(manager.execute(declarative.manifest.plugin.id, null)).resolves.toEqual({
+      ok: true
+    })
+
+    authority = { ...MARKETPLACE_AUTHORITY, sourceGeneration: 2 }
+    await expect(manager.execute(declarative.manifest.plugin.id, null)).rejects.toThrow(
+      'marketplace-authority-changed'
+    )
+    const replacementReview = await manager.review(declarative.manifest.plugin.id)
+    await manager.grant(declarative.manifest.plugin.id, replacementReview)
+    await expect(manager.execute(declarative.manifest.plugin.id, null)).resolves.toEqual({
+      ok: true
+    })
+    expect(manager.snapshot().policies[0]).toMatchObject({
+      schemaVersion: 2,
+      marketplaceAuthority: authority,
+      grantedAt: expect.any(String),
+      revokedAt: null
+    })
+  })
+
   test('captures the input document context when execution is requested', async () => {
     let activeDocument = { id: 'document-a' }
     const observedContexts: unknown[] = []
@@ -536,5 +670,331 @@ describe('plugin runtime policy manager', () => {
     activeDocument = { id: 'document-b' }
     await expect(execution).resolves.toEqual({ ok: true })
     expect(observedContexts).toEqual([{ id: 'document-a' }])
+  })
+
+  test('keeps revoke and uninstall audit time monotonic after the wall clock rolls back', async () => {
+    const publisher = await keys()
+    const declarative = await verifyPluginPackage(
+      await signPluginManifest(pluginPayload(), publisher.privateKey),
+      publisher.publicKey
+    )
+    const runtime = await runtimeFixture({
+      publicKey: publisher.publicKey,
+      privateKey: publisher.privateKey,
+      declarativeDigest: declarative.verifiedDigest
+    })
+    const storage = createMemoryPluginRuntimePolicyStorage()
+    let now = Date.parse('2026-08-05T12:00:00.000Z')
+    const managerOptions = {
+      storage,
+      now: () => now,
+      resolveInstalledPlugin: () => ({
+        package: {
+          trustSource: 'publisher-signature' as const,
+          manifest: declarative.manifest,
+          digest: declarative.verifiedDigest,
+          verifiedPackage: declarative
+        },
+        enabled: true,
+        pinnedDigest: null
+      }),
+      loadRuntime: async () => ({ runtime, source: 'network' as const, refreshError: null })
+    }
+    const firstManager = createPluginRuntimeManager(managerOptions)
+    await firstManager.load()
+    await firstManager.grant('acme.analytics', await firstManager.review('acme.analytics'))
+    const grantedAt = firstManager.snapshot().policies[0].grantedAt
+    expect(grantedAt).toBe('2026-08-05T12:00:00.000Z')
+
+    now = Date.parse('2026-08-05T11:00:00.000Z')
+    const restartedManager = createPluginRuntimeManager(managerOptions)
+    await restartedManager.load()
+    let removed = false
+    await restartedManager.uninstall('acme.analytics', async () => {
+      removed = true
+    })
+
+    expect(removed).toBe(true)
+    const persisted = parsePluginRuntimePolicyRecord(await storage.get('acme.analytics'))
+    expect(persisted.revokedAt).toBe(grantedAt)
+    expect(persisted.audit.at(-1)).toMatchObject({
+      action: 'revoke',
+      occurredAt: grantedAt
+    })
+  })
+
+  test('reloads a cross-window grant before uninstalling and persists its revocation', async () => {
+    const publisher = await keys()
+    const declarative = await verifyPluginPackage(
+      await signPluginManifest(pluginPayload(), publisher.privateKey),
+      publisher.publicKey
+    )
+    const runtime = await runtimeFixture({
+      publicKey: publisher.publicKey,
+      privateKey: publisher.privateKey,
+      declarativeDigest: declarative.verifiedDigest
+    })
+    const storage = createMemoryPluginRuntimePolicyStorage()
+    let installed = true
+    let lockTail: Promise<void> = Promise.resolve()
+    let lockRequests = 0
+    const sharedLock = <T>(operation: () => Promise<T>): Promise<T> => {
+      lockRequests += 1
+      const result = lockTail.then(operation, operation)
+      lockTail = result.then(
+        () => undefined,
+        () => undefined
+      )
+      return result
+    }
+    let executorCalls = 0
+    const options = {
+      storage,
+      publisherPrivilegeLock: sharedLock,
+      checkpointPublisherTrust: async () => {
+        if (!installed) throw new Error('publisher plugin was removed')
+      },
+      resolveInstalledPlugin: () =>
+        installed
+          ? {
+              package: {
+                trustSource: 'publisher-signature' as const,
+                manifest: declarative.manifest,
+                digest: declarative.verifiedDigest,
+                verifiedPackage: declarative
+              },
+              enabled: true,
+              pinnedDigest: null
+            }
+          : undefined,
+      loadRuntime: async () => ({ runtime, source: 'network' as const, refreshError: null }),
+      executor: {
+        async execute() {
+          executorCalls += 1
+          return { ok: true }
+        }
+      }
+    }
+    const uninstallingWindow = createPluginRuntimeManager(options)
+    const grantingWindow = createPluginRuntimeManager(options)
+    await uninstallingWindow.load()
+    await grantingWindow.load()
+    const uninstallingWindowReview = await uninstallingWindow.review('acme.analytics')
+    const review = await grantingWindow.review('acme.analytics')
+    await grantingWindow.grant('acme.analytics', review)
+    expect(uninstallingWindow.snapshot().policies).toHaveLength(0)
+
+    let queuedGrant: ReturnType<typeof uninstallingWindow.grant> | undefined
+    await sharedLock(async () => {
+      const requestsBeforeGrant = lockRequests
+      queuedGrant = uninstallingWindow.grant('acme.analytics', uninstallingWindowReview)
+      await Promise.resolve()
+      expect(lockRequests).toBe(requestsBeforeGrant + 1)
+      await uninstallingWindow.uninstallWhilePublisherLocked('acme.analytics', async () => {
+        installed = false
+      })
+    })
+    if (!queuedGrant) throw new Error('Expected queued grant')
+    await expect(queuedGrant).rejects.toThrow('publisher plugin was removed')
+    expect(installed).toBe(false)
+    expect(await storage.get('acme.analytics')).toMatchObject({
+      grantedAt: expect.any(String),
+      revokedAt: expect.any(String),
+      audit: expect.arrayContaining([expect.objectContaining({ action: 'revoke' })])
+    })
+
+    installed = true
+    const restarted = createPluginRuntimeManager(options)
+    await restarted.load()
+    await expect(restarted.execute('acme.analytics', null)).rejects.toThrow('grant-required')
+    expect(executorCalls).toBe(0)
+  })
+
+  test('invalidates queued reviews across an exact publisher uninstall and reinstall', async () => {
+    const publisher = await keys()
+    const declarative = await verifyPluginPackage(
+      await signPluginManifest(pluginPayload(), publisher.privateKey),
+      publisher.publicKey
+    )
+    const runtime = await runtimeFixture({
+      publicKey: publisher.publicKey,
+      privateKey: publisher.privateKey,
+      declarativeDigest: declarative.verifiedDigest
+    })
+    const storage = createMemoryPluginRuntimePolicyStorage()
+    let installed = true
+    let lockTail: Promise<void> = Promise.resolve()
+    let lockRequests = 0
+    let notifyFirstQueuedGrant: (() => void) | undefined
+    const firstQueuedGrantRequestedLock = new Promise<void>((resolve) => {
+      notifyFirstQueuedGrant = resolve
+    })
+    const sharedLock = <T>(operation: () => Promise<T>): Promise<T> => {
+      lockRequests += 1
+      if (lockRequests === 3) notifyFirstQueuedGrant?.()
+      const result = lockTail.then(operation, operation)
+      lockTail = result.then(
+        () => undefined,
+        () => undefined
+      )
+      return result
+    }
+    const manager = createPluginRuntimeManager({
+      storage,
+      publisherPrivilegeLock: sharedLock,
+      checkpointPublisherTrust: async () => {
+        if (!installed) throw new Error('publisher plugin was removed')
+      },
+      resolveInstalledPlugin: () =>
+        installed
+          ? {
+              package: {
+                trustSource: 'publisher-signature' as const,
+                manifest: declarative.manifest,
+                digest: declarative.verifiedDigest,
+                verifiedPackage: declarative,
+                marketplaceAuthority: MARKETPLACE_AUTHORITY
+              },
+              enabled: true,
+              pinnedDigest: null
+            }
+          : undefined,
+      loadRuntime: async () => ({ runtime, source: 'network' as const, refreshError: null })
+    })
+    await manager.load()
+    const pluginId = declarative.manifest.plugin.id
+    const reviewedBeforeUninstall = await manager.review(pluginId)
+
+    let queuedGrantX: ReturnType<typeof manager.grant> | undefined
+    let queuedGrantY: ReturnType<typeof manager.grant> | undefined
+    await sharedLock(async () => {
+      queuedGrantX = manager.grant(pluginId, reviewedBeforeUninstall)
+      void queuedGrantX.catch(() => undefined)
+      queuedGrantY = manager.grant(pluginId, reviewedBeforeUninstall)
+      void queuedGrantY.catch(() => undefined)
+      await firstQueuedGrantRequestedLock
+      expect(lockRequests).toBe(3)
+
+      await manager.uninstallWhilePublisherLocked(pluginId, async () => {
+        installed = false
+        installed = true
+      })
+    })
+    if (!queuedGrantX || !queuedGrantY) throw new Error('Expected queued grants')
+
+    await expect(queuedGrantX).rejects.toThrow('review is stale')
+    await expect(queuedGrantY).rejects.toThrow('review is stale')
+    expect(lockRequests).toBe(4)
+    expect(await storage.get(pluginId)).toBeNull()
+
+    const lockRequestsBeforeEntryCheck = lockRequests
+    await expect(manager.grant(pluginId, reviewedBeforeUninstall)).rejects.toThrow(
+      'review is stale'
+    )
+    expect(lockRequests).toBe(lockRequestsBeforeEntryCheck)
+
+    const reviewedAfterReinstall = await manager.review(pluginId)
+    expect(reviewedAfterReinstall.installationIncarnation).not.toBe(
+      reviewedBeforeUninstall.installationIncarnation
+    )
+    await expect(manager.grant(pluginId, reviewedAfterReinstall)).resolves.toMatchObject({
+      marketplaceAuthority: MARKETPLACE_AUTHORITY,
+      grantedAt: expect.any(String),
+      revokedAt: null
+    })
+  })
+
+  test('does not remove a publisher plugin when its lock-held runtime tombstone fails', async () => {
+    const tombstoneFailure = new Error('runtime tombstone persist failed')
+    const { storage } = storageRejectingAction('revoke', tombstoneFailure)
+    const manager = await createGrantedManagerFixture({
+      storage,
+      executor: {
+        async execute() {
+          return null
+        }
+      }
+    })
+    let removed = false
+
+    await expect(
+      manager.uninstallWhilePublisherLocked('acme.analytics', async () => {
+        removed = true
+      })
+    ).rejects.toBe(tombstoneFailure)
+    expect(removed).toBe(false)
+  })
+
+  test('checks publisher trust inside the privilege lock before review, grant, and execute', async () => {
+    const publisher = await keys()
+    const declarative = await verifyPluginPackage(
+      await signPluginManifest(pluginPayload(), publisher.privateKey),
+      publisher.publicKey
+    )
+    const runtime = await runtimeFixture({
+      publicKey: publisher.publicKey,
+      privateKey: publisher.privateKey,
+      declarativeDigest: declarative.verifiedDigest
+    })
+    const events: string[] = []
+    let checkpointFailure: Error | null = null
+    let executorCalls = 0
+    const manager = createPluginRuntimeManager({
+      publisherPrivilegeLock: async (operation) => {
+        events.push('lock:start')
+        try {
+          return await operation()
+        } finally {
+          events.push('lock:end')
+        }
+      },
+      async checkpointPublisherTrust() {
+        events.push('checkpoint')
+        if (checkpointFailure) throw checkpointFailure
+      },
+      resolveInstalledPlugin: () => ({
+        package: {
+          trustSource: 'publisher-signature',
+          manifest: declarative.manifest,
+          digest: declarative.verifiedDigest,
+          verifiedPackage: declarative
+        },
+        enabled: true,
+        pinnedDigest: null
+      }),
+      loadRuntime: async () => {
+        events.push('load')
+        return { runtime, source: 'network', refreshError: null }
+      },
+      executor: {
+        async execute() {
+          executorCalls += 1
+          return { ok: true }
+        }
+      }
+    })
+    await manager.load()
+    const review = await manager.review('acme.analytics')
+    await manager.grant('acme.analytics', review)
+    expect(events).toEqual([
+      'lock:start',
+      'checkpoint',
+      'load',
+      'lock:end',
+      'lock:start',
+      'checkpoint',
+      'load',
+      'lock:end'
+    ])
+
+    events.length = 0
+    checkpointFailure = new Error('publisher trust checkpoint failed')
+    await expect(manager.execute('acme.analytics', null)).rejects.toBe(checkpointFailure)
+    expect(events).toEqual(['lock:start', 'checkpoint', 'lock:end'])
+    expect(executorCalls).toBe(0)
+
+    await expect(manager.revoke('acme.analytics')).resolves.toMatchObject({
+      revokedAt: expect.any(String)
+    })
   })
 })

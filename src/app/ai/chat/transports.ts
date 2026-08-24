@@ -44,9 +44,9 @@ import {
   finalizeUnfinishedToolParts
 } from '@/app/ai/chat/interruption'
 import { resolveLanguageModelID } from '@/app/ai/chat/model'
+import { designSystemPromptFor } from '@/app/ai/chat/prompt-policy'
 import { buildReasoningProviderOptions, type AIProviderOptions } from '@/app/ai/chat/reasoning'
 import { archiveAssistantFileMessages } from '@/app/ai/chat/sources'
-import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
 import {
   createVisionRoleAnalyzer,
   VisualReferenceChatTransport
@@ -165,6 +165,7 @@ const ANTHROPIC_CACHE_CONTROL = {
 const MAX_CHAT_HISTORY_MESSAGES = 40
 const MAX_CHAT_HISTORY_BYTES = 2 * 1024 * 1024
 const FORCE_CLOSE_TIMEOUT_MS = 1_000
+const RESERVED_DIRECT_AI_TOOL_NAMES = new Set(['create_module'])
 
 function emptyACPSessionCapabilities(): ACPSessionCapabilities {
   return { list: false, resume: false, load: false }
@@ -307,7 +308,9 @@ function supportsAnthropicCaching(providerID: AIProviderID, modelID: string): bo
 }
 
 export function mergeAIToolSets(applicationTools: ToolSet, providerTools: ToolSet = {}): ToolSet {
-  const conflicts = Object.keys(providerTools).filter((name) => name in applicationTools)
+  const conflicts = Object.keys(providerTools).filter(
+    (name) => name in applicationTools || RESERVED_DIRECT_AI_TOOL_NAMES.has(name)
+  )
   if (conflicts.length > 0) {
     throw new Error(
       `Provider tool name conflicts with an application tool: ${conflicts.join(', ')}`
@@ -374,7 +377,7 @@ export function createToolLoopTransport({
 
   const agent = new ToolLoopAgent({
     model,
-    instructions: SYSTEM_PROMPT,
+    instructions: designSystemPromptFor('direct'),
     tools,
     stopWhen: stepCountIs(MAX_AGENT_STEPS),
     maxOutputTokens,
@@ -799,7 +802,7 @@ export function createChatSessionManager({
             thinkingLevel: runtime.role.profile.harnessThinkingLevel ?? 'medium',
             permissionMode: runtime.role.profile.harnessPermissionMode ?? 'allow-edits'
           },
-          instructions: SYSTEM_PROMPT,
+          instructions: designSystemPromptFor('delegated'),
           mcpServers: await buildPiMCPServers()
         },
         { OPENPENCIL_HARNESS_API_KEY: apiKey }

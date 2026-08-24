@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   parsePluginRuntimePolicyRecord,
-  type PluginRuntimePolicyRecordV1
+  type PluginRuntimePolicyRecordV1,
+  type PluginRuntimePolicyRecordV2
 } from '@/app/plugins/runtime'
 
 function emptyPolicy(): PluginRuntimePolicyRecordV1 {
@@ -20,6 +21,37 @@ function emptyPolicy(): PluginRuntimePolicyRecordV1 {
 }
 
 describe('plugin runtime policy storage', () => {
+  test('strictly persists marketplace authority in v2 while retaining legacy v1 records', () => {
+    const authority = {
+      sourceId: 'source:runtime',
+      trustDomainId: 'trust-domain:runtime',
+      sourceGeneration: 1,
+      rootKeySpkiSha256: `sha256-${'A'.repeat(43)}`
+    }
+    const current: PluginRuntimePolicyRecordV2 = {
+      ...emptyPolicy(),
+      schemaVersion: 2,
+      marketplaceAuthority: authority
+    }
+    expect(parsePluginRuntimePolicyRecord(current)).toMatchObject({
+      schemaVersion: 2,
+      marketplaceAuthority: authority
+    })
+    expect(parsePluginRuntimePolicyRecord(emptyPolicy())).not.toHaveProperty('marketplaceAuthority')
+    expect(() =>
+      parsePluginRuntimePolicyRecord({
+        ...current,
+        marketplaceAuthority: { ...authority, sourceGeneration: 0 }
+      })
+    ).toThrow('sourceGeneration')
+    expect(() =>
+      parsePluginRuntimePolicyRecord({
+        ...current,
+        marketplaceAuthority: { ...authority, extraAuthority: true }
+      })
+    ).toThrow('unexpected fields')
+  })
+
   test('normalizes invalid persisted timestamps to a TypeError', () => {
     expect(() =>
       parsePluginRuntimePolicyRecord({
