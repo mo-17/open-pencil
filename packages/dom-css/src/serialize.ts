@@ -1,5 +1,6 @@
 import { twirl } from 'twirlwind'
 
+import { sanitizeDesignDocument, sanitizeDesignNode } from './inert-markup'
 import type { DesignDocument, DesignElement, DesignNode, DesignText } from './types'
 
 export interface SerializeHTMLOptions {
@@ -97,10 +98,16 @@ function serializeElement(node: DesignElement, options: SerializeHTMLOptions): s
   const tagName = node.tagName.toLowerCase()
   const attrs = serializeAttrs(node, options)
   if (VOID_ELEMENTS.has(tagName)) return `<${tagName}${attrs}>`
-  return `<${tagName}${attrs}>${node.children.map((child) => serializeNode(child, options)).join('')}</${tagName}>`
+  return `<${tagName}${attrs}>${node.children.map((child) => serializeSanitizedNode(child, options)).join('')}</${tagName}>`
 }
 
 export function serializeNode(node: DesignNode, options: SerializeHTMLOptions = {}): string {
+  const sanitized = sanitizeDesignNode(node)
+  if (!sanitized) return ''
+  return serializeSanitizedNode(sanitized, options)
+}
+
+function serializeSanitizedNode(node: DesignNode, options: SerializeHTMLOptions): string {
   return node.type === 'text' ? serializeText(node) : serializeElement(node, options)
 }
 
@@ -108,5 +115,7 @@ export function serializeHTML(
   document: DesignDocument,
   options: SerializeHTMLOptions = {}
 ): string {
-  return document.children.map((node) => serializeNode(node, options)).join('')
+  return sanitizeDesignDocument(document)
+    .children.map((node) => serializeSanitizedNode(node, options))
+    .join('')
 }

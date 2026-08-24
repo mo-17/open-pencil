@@ -80,7 +80,7 @@ describe('@open-pencil/dom-css runtime', () => {
     expect(section.children[0]).toEqual({ type: 'text', text: 'OpenPencil' })
   })
 
-  it('parses inline style values with embedded semicolons', () => {
+  it('drops active inline resource values while preserving ordinary declarations', () => {
     const runtime = createHeadlessCSSRuntime()
     const document = runtime.parseHTML(
       '<section style="background-image: url(\'data:image/svg+xml;utf8,<svg></svg>\'); width: 320px">OpenPencil</section>'
@@ -89,10 +89,85 @@ describe('@open-pencil/dom-css runtime', () => {
 
     expect(section?.type).toBe('element')
     if (section?.type !== 'element') return
-    expect(section.inlineStyle?.['background-image']).toBe(
-      "url('data:image/svg+xml;utf8,<svg></svg>')"
-    )
+    expect(section.inlineStyle?.['background-image']).toBeUndefined()
     expect(section.inlineStyle?.width).toBe('320px')
+  })
+
+  it('removes active markup and dangerous URLs while preserving safe import resources', () => {
+    const runtime = createHeadlessCSSRuntime()
+    const embeddedImage = 'data:image/png;base64,AAAA'
+    const document = runtime.parseHTML(`
+      <main id="hero" class="card" onclick="globalThis.pwned = 1"
+        style="color: red; background-image: url(https://attacker.invalid/bg); width: 320px">
+        <script>globalThis.pwned = 2</script>
+        <iframe srcdoc="<script>globalThis.pwned = 3</script>"></iframe>
+        <object data="https://attacker.invalid/object"></object>
+        <img alt="Remote" src="https://attacker.invalid/pixel" onerror="globalThis.pwned = 4">
+        <img alt="Embedded" src="${embeddedImage}">
+        <a href="javascript:globalThis.pwned = 5" autofocus>Label</a>
+        <security-probe>custom element</security-probe>
+      </main>
+    `)
+    const html = serializeHTML(document)
+
+    expect(html).toContain(
+      '<main id="hero" class="card" style="color: red; background-image: url(https://attacker.invalid/bg); width: 320px">'
+    )
+    expect(html).toContain('<img alt="Remote" src="https://attacker.invalid/pixel">')
+    expect(html).toContain(`<img alt="Embedded" src="${embeddedImage}">`)
+    expect(html).toContain('<a>Label</a>')
+    expect(html).not.toMatch(/script|iframe|object|security-probe|on(?:click|error)|javascript:/i)
+  })
+
+  it('sanitizes caller-built DesignDOM during serialization', () => {
+    const html = serializeHTML({
+      type: 'document',
+      children: [
+        {
+          type: 'element',
+          tagName: 'iframe',
+          attrs: { srcdoc: '<script>globalThis.pwned = 1</script>' },
+          children: []
+        },
+        {
+          type: 'element',
+          tagName: 'section',
+          attrs: {
+            class: 'card',
+            onclick: 'globalThis.pwned = 2',
+            style: 'color: red; background: url(javascript:globalThis.pwned=3)'
+          },
+          inlineStyle: {
+            color: 'red',
+            background: 'url(javascript:globalThis.pwned=3)'
+          },
+          children: [{ type: 'text', text: 'Safe content' }]
+        }
+      ]
+    })
+
+    expect(html).toBe('<section class="card" style="color: red">Safe content</section>')
+  })
+
+  it('rejects direct and CSS-escaped external resource syntax before style computation', async () => {
+    const runtime = createHeadlessCSSRuntime()
+    const document = runtime.parseHTML('<section class="card">OpenPencil</section>')
+
+    await expect(
+      runtime.computeStyles(
+        document,
+        '.card { background-image: url(https://attacker.invalid/a); }'
+      )
+    ).rejects.toThrow('rejected active or external CSS resource syntax')
+    await expect(
+      runtime.computeStyles(
+        document,
+        String.raw`.card { background-image: u\72l(https://attacker.invalid/b); }`
+      )
+    ).rejects.toThrow('rejected active or external CSS resource syntax')
+    await expect(
+      runtime.computeStyles(document, String.raw`@\69mport "https://attacker.invalid/c";`)
+    ).rejects.toThrow('rejected active or external CSS resource syntax')
   })
 
   it('computes selector specificity, inheritance, and shorthands', async () => {

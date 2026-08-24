@@ -1,6 +1,7 @@
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { mergeCSSText } from './css-text'
+import { extractInertCSSText } from './inert-markup'
 import { jsxToDesignDocumentCore, type JSXChild } from './jsx/core'
 import { createBrowserCSSRuntime, type BrowserCSSRuntimeOptions } from './runtime/browser'
 import type { CompileTailwindCSSOptions } from './tailwind'
@@ -55,16 +56,6 @@ function resolveBrowserDocument(documentOverride: Document | undefined): Documen
   return document
 }
 
-function extractEmbeddedCSSText(html: string, browserDocument: Document): string | undefined {
-  const Parser = browserDocument.defaultView?.DOMParser
-  if (!Parser) throw new TypeError('Browser DOM/CSS helpers require DOMParser')
-  const parsed = new Parser().parseFromString(html, 'text/html')
-  const styles = Array.from(parsed.querySelectorAll('style'))
-    .map((style) => (style.textContent ? style.textContent.trim() : ''))
-    .filter((css): css is string => !!css)
-  return styles.length > 0 ? styles.join('\n') : undefined
-}
-
 export async function browserHTMLToDesignDocument(
   html: string,
   options: BrowserHTMLToDesignDocumentOptions = {}
@@ -72,7 +63,7 @@ export async function browserHTMLToDesignDocument(
   const browserDocument = resolveBrowserDocument(options.document)
   const runtime = createRuntime({ ...options, document: browserDocument })
   const document = runtime.parseHTML(html)
-  const cssText = mergeCSSText(extractEmbeddedCSSText(html, browserDocument), options.cssText)
+  const cssText = mergeCSSText(extractInertCSSText(html), options.cssText)
   return runtime.computeStyles(document, cssText, options.compute)
 }
 

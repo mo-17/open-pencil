@@ -1,3 +1,9 @@
+import {
+  assertInertCSSText,
+  parseInertHTML,
+  sanitizeDesignDocument,
+  sanitizeDesignDocumentForStyleComputation
+} from '../inert-markup'
 import { serializeHTML } from '../serialize'
 import type {
   CSSComputeOptions,
@@ -83,60 +89,19 @@ function resolveBrowserDocument(documentOverride: Document | undefined): Documen
   return document
 }
 
-function attributesToRecord(element: Element): Record<string, string> {
-  const attrs: Record<string, string> = {}
-  for (const attr of Array.from(element.attributes)) {
-    attrs[attr.name] = attr.value
+function parseStyleAttributeWithDocument(
+  browserDocument: Document,
+  value: string | undefined
+): Record<string, string> | undefined {
+  if (!value) return undefined
+  const element = browserDocument.createElement('div')
+  element.style.cssText = value
+  const style: Record<string, string> = {}
+  for (const property of Array.from(element.style)) {
+    const propertyValue = element.style.getPropertyValue(property)
+    if (propertyValue) style[property] = propertyValue
   }
-  return attrs
-}
-
-function styleToRecord(style: CSSStyleDeclaration): Record<string, string> | undefined {
-  const entries: Record<string, string> = {}
-  for (const property of Array.from(style)) {
-    const value = style.getPropertyValue(property)
-    if (value) entries[property] = value
-  }
-  return Object.keys(entries).length > 0 ? entries : undefined
-}
-
-const NON_RENDERED_TAGS = new Set(['head', 'link', 'meta', 'script', 'style', 'template', 'title'])
-
-function domNodeToDesignNode(node: Node): DesignNode | null {
-  if (node.nodeType === 3) {
-    const text = node.textContent ?? ''
-    return text.length > 0 ? { type: 'text', text } : null
-  }
-
-  if (node.nodeType !== 1) return null
-
-  const element = node as Element
-  if (NON_RENDERED_TAGS.has(element.tagName.toLowerCase())) return null
-  const children = Array.from(element.childNodes)
-    .map(domNodeToDesignNode)
-    .filter((child): child is DesignNode => child !== null)
-  const style = 'style' in element ? (element.style as CSSStyleDeclaration) : undefined
-
-  return {
-    type: 'element',
-    tagName: element.tagName.toLowerCase(),
-    attrs: attributesToRecord(element),
-    children,
-    inlineStyle: style ? styleToRecord(style) : undefined
-  }
-}
-
-function parseHTMLWithDocument(browserDocument: Document, html: string): DesignDocument {
-  const Parser = browserDocument.defaultView?.DOMParser
-  if (!Parser) throw new TypeError('Browser CSS runtime requires DOMParser')
-  const parser = new Parser()
-  const parsed = parser.parseFromString(html, 'text/html')
-  return {
-    type: 'document',
-    children: Array.from(parsed.body.childNodes)
-      .map(domNodeToDesignNode)
-      .filter((node): node is DesignNode => node !== null)
-  }
+  return Object.keys(style).length > 0 ? style : undefined
 }
 
 function collectElementPairs(
@@ -198,6 +163,48 @@ function applySandboxHostStyle(element: HTMLElement): void {
   ].join(';')
 }
 
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+const IFRAME_CSP = [
+  "default-src 'none'",
+  "style-src 'unsafe-inline'",
+  'img-src data:',
+  'font-src data:',
+  "base-uri 'none'",
+  "form-action 'none'"
+].join('; ')
+
+function shouldCreateSVGElement(parent: Node, tagName: string): boolean {
+  if (tagName === 'svg') return true
+  if (parent.nodeType !== 1) return false
+  const element = parent as Element
+  return element.namespaceURI === SVG_NAMESPACE && element.localName !== 'foreignObject'
+}
+
+function appendInertNode(browserDocument: Document, parent: Node, node: DesignNode): void {
+  if (node.type === 'text') {
+    parent.appendChild(browserDocument.createTextNode(node.text))
+    return
+  }
+
+  const element = shouldCreateSVGElement(parent, node.tagName)
+    ? browserDocument.createElementNS(SVG_NAMESPACE, node.tagName)
+    : browserDocument.createElement(node.tagName)
+  for (const [name, value] of Object.entries(node.attrs)) element.setAttribute(name, value)
+  for (const [property, value] of Object.entries(node.inlineStyle ?? {})) {
+    element.style.setProperty(property, value)
+  }
+  for (const child of node.children) appendInertNode(browserDocument, element, child)
+  parent.appendChild(element)
+}
+
+function appendInertDocument(
+  browserDocument: Document,
+  parent: Node,
+  designDocument: DesignDocument
+): void {
+  for (const node of designDocument.children) appendInertNode(browserDocument, parent, node)
+}
+
 async function computeStylesInShadowRoot(
   browserDocument: Document,
   designDocument: DesignDocument,
@@ -213,7 +220,11 @@ async function computeStylesInShadowRoot(
   shadow.append(style)
 
   const content = browserDocument.createElement('div')
-  content.innerHTML = serializeHTML(designDocument)
+  appendInertDocument(
+    browserDocument,
+    content,
+    sanitizeDesignDocumentForStyleComputation(designDocument)
+  )
   shadow.append(content)
   browserDocument.body.append(host)
 
@@ -232,22 +243,29 @@ async function computeStylesInIframe(
   options: CSSComputeOptions
 ): Promise<DesignDocument> {
   const iframe = browserDocument.createElement('iframe')
+  iframe.setAttribute('sandbox', 'allow-same-origin')
   applySandboxHostStyle(iframe)
   browserDocument.body.append(iframe)
 
   try {
     const iframeDocument = iframe.contentDocument
     if (!iframeDocument) throw new TypeError('Browser CSS runtime could not create iframe document')
-    iframeDocument.open()
-    iframeDocument.write(`<!doctype html><html><head></head><body></body></html>`)
-    iframeDocument.close()
+    const csp = iframeDocument.createElement('meta')
+    csp.httpEquiv = 'Content-Security-Policy'
+    csp.content = IFRAME_CSP
+    iframeDocument.head.replaceChildren(csp)
+    iframeDocument.body.replaceChildren()
 
     const style = iframeDocument.createElement('style')
     style.textContent = cssText
     iframeDocument.head.append(style)
 
     const content = iframeDocument.createElement('div')
-    content.innerHTML = serializeHTML(designDocument)
+    appendInertDocument(
+      iframeDocument,
+      content,
+      sanitizeDesignDocumentForStyleComputation(designDocument)
+    )
     iframeDocument.body.append(content)
 
     await requestFrame(iframeDocument)
@@ -286,11 +304,15 @@ export function createBrowserCSSRuntime(options: BrowserCSSRuntimeOptions = {}):
 
   return {
     kind: 'browser',
-    parseHTML: (html) => parseHTMLWithDocument(browserDocument, html),
+    parseHTML: (html) =>
+      parseInertHTML(html, (value) => parseStyleAttributeWithDocument(browserDocument, value)),
     serializeHTML,
-    computeStyles: (designDocument, cssText = '', computeOptions = {}) =>
-      sandbox === 'iframe'
-        ? computeStylesInIframe(browserDocument, designDocument, cssText, computeOptions)
-        : computeStylesInShadowRoot(browserDocument, designDocument, cssText, computeOptions)
+    computeStyles: (designDocument, cssText = '', computeOptions = {}) => {
+      assertInertCSSText(cssText)
+      const inertDocument = sanitizeDesignDocument(designDocument)
+      return sandbox === 'iframe'
+        ? computeStylesInIframe(browserDocument, inertDocument, cssText, computeOptions)
+        : computeStylesInShadowRoot(browserDocument, inertDocument, cssText, computeOptions)
+    }
   }
 }

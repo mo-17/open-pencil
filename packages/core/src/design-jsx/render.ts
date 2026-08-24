@@ -1,30 +1,17 @@
-import { transform } from 'sucrase'
-
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { throwIfAborted, yieldToHost } from '#core/async-work'
 import { DESIGN_JSX_SUPPORTED_PROPERTIES } from '#core/design-jsx/schema'
 import type { RenderOptions as RenderJSXOptions } from '#core/design-jsx/types'
 
-import { backgroundBlur, dropShadow, foregroundBlur, innerShadow, layerBlur } from './effects'
 import * as React from './mini-react'
-import {
-  angularGradient,
-  diamondGradient,
-  gradient,
-  linearGradient,
-  radialGradient,
-  solid
-} from './paints'
 import { renderTree, type RenderResult, validateTreeForRenderAsync } from './renderer'
+import { parseSafeDesignJSX } from './safe-render'
 import { isTreeNode, resolveToTreeAsync, type TreeNode } from './tree'
 
 const JSX_RENDER_ABORT_MESSAGE = 'JSX render cancelled'
 
-/**
- * Build a component function from a JSX string using sucrase.
- * Works in both Node/Bun and the browser (no native bindings).
- */
+/** Build a component from the declarative Design JSX subset. */
 const SUPPORTED_PROPS = DESIGN_JSX_SUPPORTED_PROPERTIES
 
 function stripHTMLComments(jsxString: string): string {
@@ -65,66 +52,8 @@ async function unsupportedPropWarnings(tree: TreeNode, signal?: AbortSignal): Pr
 
 export function buildComponent(jsxString: string): React.ComponentType {
   const trimmed = stripHTMLComments(jsxString).trim()
-
-  const aliases = `
-    const __h = React.createElement
-    const __frag = ''
-    const Frame = 'frame', Text = 'text', Rectangle = 'rectangle', Ellipse = 'ellipse'
-    const Line = 'line', Star = 'star', Polygon = 'polygon', Vector = 'vector'
-    const Group = 'group', Section = 'section', View = 'frame', Rect = 'rectangle'
-    const Component = 'component', ComponentSet = 'component-set', Instance = 'instance'
-    const Button = 'button', Input = 'input', Select = 'select', Checkbox = 'checkbox'
-    const Form = 'form', List = 'list', Radio = 'radio', Textarea = 'textarea'
-    const DatePicker = 'datepicker', Switch = 'switch'
-    const Icon = 'icon'
-    const svg = 'svg'
-    const dropShadow = __helpers.dropShadow
-    const innerShadow = __helpers.innerShadow
-    const layerBlur = __helpers.layerBlur
-    const backgroundBlur = __helpers.backgroundBlur
-    const foregroundBlur = __helpers.foregroundBlur
-    const solid = __helpers.solid
-    const gradient = __helpers.gradient
-    const linearGradient = __helpers.linearGradient
-    const radialGradient = __helpers.radialGradient
-    const angularGradient = __helpers.angularGradient
-    const diamondGradient = __helpers.diamondGradient
-    const __varSymbol = Symbol.for('open-pencil.variable')
-    const designVar = (def, value) => typeof def === 'string'
-      ? ({ [__varSymbol]: true, id: def, name: def, value })
-      : ({ [__varSymbol]: true, id: def.id, name: def.name ?? def.id ?? '', value: def.value })
-    const defineVars = (vars) => Object.fromEntries(
-      Object.entries(vars).map(([key, def]) => [key, designVar(def)])
-    )
-  `
-  const opts = {
-    transforms: ['typescript', 'jsx'] as Array<'typescript' | 'jsx'>,
-    jsxPragma: '__h',
-    jsxFragmentPragma: '__frag',
-    production: true
-  }
-
-  let code: string
-  try {
-    code = transform(`${aliases}\nreturn function __render() { return ${trimmed} }`, opts).code
-  } catch {
-    code = transform(`${aliases}\nreturn function __render() { return <>${trimmed}</> }`, opts).code
-  }
-
-  // eslint-disable-next-line typescript-eslint/no-implied-eval -- sucrase output must be evaluated at runtime
-  return new Function('React', '__helpers', code)(React, {
-    backgroundBlur,
-    dropShadow,
-    foregroundBlur,
-    innerShadow,
-    layerBlur,
-    angularGradient,
-    diamondGradient,
-    gradient,
-    linearGradient,
-    radialGradient,
-    solid
-  }) as React.ComponentType
+  const value = parseSafeDesignJSX(trimmed)
+  return () => value as React.ReactNode
 }
 
 /**
