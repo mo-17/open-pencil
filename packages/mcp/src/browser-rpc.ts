@@ -17,6 +17,11 @@ type BrowserRPCBridgeOptions = {
   onConnectionChange: (connected: boolean) => void
   onPluginToolsChanged?: (revision?: string) => void
   resolveTimeoutMs?: (body: Record<string, unknown>) => number
+  requestPreflight?: (
+    body: Record<string, unknown>,
+    sendRPC: (body: Record<string, unknown>, options?: BrowserRPCSendOptions) => Promise<unknown>,
+    options: BrowserRPCSendOptions
+  ) => Promise<Record<string, unknown>>
 }
 
 type ConnectionListener = (connected: boolean) => void
@@ -71,7 +76,8 @@ export function createBrowserRPCBridge({
   authToken,
   onConnectionChange,
   onPluginToolsChanged,
-  resolveTimeoutMs = resolveBrowserRPCTimeoutMs
+  resolveTimeoutMs = resolveBrowserRPCTimeoutMs,
+  requestPreflight
 }: BrowserRPCBridgeOptions) {
   const pending = new Map<string, PendingRequest>()
   const clients = new Set<WebSocket>()
@@ -83,6 +89,7 @@ export function createBrowserRPCBridge({
   const connectionListeners = new Set<ConnectionListener>()
   let browserWs: WebSocket | null = null
   let browserRegistered = false
+  let browserAuthorityEpoch = 0
   let bridgeClosed = false
 
   function isConnected(): boolean {
@@ -117,26 +124,43 @@ export function createBrowserRPCBridge({
     connectionWaiters.clear()
   }
 
-  function waitForConnection(): Promise<void> {
+  function waitForConnection(signal?: AbortSignal): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       let waiter: PendingRequest | null = null
+      const cleanupAbort = () => signal?.removeEventListener('abort', abort)
+      const abort = () => {
+        if (waiter) connectionWaiters.delete(waiter)
+        clearTimeout(timer)
+        cleanupAbort()
+        const error = new Error('RPC request cancelled')
+        error.name = 'AbortError'
+        reject(error)
+      }
 
       const timer = setTimeout(() => {
         if (waiter) connectionWaiters.delete(waiter)
+        cleanupAbort()
         reject(new Error(APP_NOT_CONNECTED_MESSAGE))
       }, APP_WAIT_TIMEOUT)
 
       waiter = {
         resolve: () => {
           clearTimeout(timer)
+          cleanupAbort()
           resolve()
         },
         reject: (error: Error) => {
           clearTimeout(timer)
+          cleanupAbort()
           reject(error)
         },
         timer
       }
+      if (signal?.aborted) {
+        abort()
+        return
+      }
+      signal?.addEventListener('abort', abort, { once: true })
       // Add the waiter BEFORE checking browser state to avoid a lost-wakeup
       // race: if the browser registers between sendRPC's initial check and
       // this point, notifyConnectionWaiters() will have already fired and
@@ -175,9 +199,10 @@ export function createBrowserRPCBridge({
     for (const client of clients) sendRegisterPrompt(client)
   }
 
-  function sendRPC(
+  function sendPreparedRPC(
     body: Record<string, unknown>,
-    options: BrowserRPCSendOptions = {}
+    options: BrowserRPCSendOptions,
+    authorityEpoch: number
   ): Promise<unknown> {
     if (bridgeClosed) return Promise.reject(new Error('Server shutting down'))
     if (options.signal?.aborted) {
@@ -220,8 +245,13 @@ export function createBrowserRPCBridge({
       const doSend = () => {
         if (settle.isSettled()) return
         const ws = browserWs
-        if (!ws || ws.readyState !== ws.OPEN || !browserRegistered) {
-          settle.reject(new Error(APP_NOT_CONNECTED_MESSAGE))
+        if (
+          !ws ||
+          ws.readyState !== ws.OPEN ||
+          !browserRegistered ||
+          browserAuthorityEpoch !== authorityEpoch
+        ) {
+          settle.reject(new Error('OpenPencil browser authority changed during RPC preflight'))
           return
         }
         id = randomUUID()
@@ -251,12 +281,45 @@ export function createBrowserRPCBridge({
         }
       }
 
-      if (browserWs && browserWs.readyState === browserWs.OPEN && browserRegistered) {
-        doSend()
-      } else {
-        void waitForConnection().then(doSend).catch(settle.reject)
-      }
+      doSend()
     })
+  }
+
+  async function sendRPCWithAuthorityLease(
+    body: Record<string, unknown>,
+    options: BrowserRPCSendOptions,
+    authorityEpoch?: number
+  ): Promise<unknown> {
+    if (bridgeClosed) throw new Error('Server shutting down')
+    if (options.signal?.aborted) {
+      const error = new Error('RPC request cancelled')
+      error.name = 'AbortError'
+      throw error
+    }
+    if (!browserWs || browserWs.readyState !== browserWs.OPEN || !browserRegistered) {
+      if (authorityEpoch !== undefined) {
+        throw new Error('OpenPencil browser authority changed during RPC preflight')
+      }
+      await waitForConnection(options.signal)
+    }
+    const leasedEpoch = authorityEpoch ?? browserAuthorityEpoch
+    if (leasedEpoch !== browserAuthorityEpoch) {
+      throw new Error('OpenPencil browser authority changed during RPC preflight')
+    }
+    const leasedSender = (nestedBody: Record<string, unknown>, nestedOptions = options) =>
+      sendRPCWithAuthorityLease(nestedBody, nestedOptions, leasedEpoch)
+    const prepared = requestPreflight ? await requestPreflight(body, leasedSender, options) : body
+    if (leasedEpoch !== browserAuthorityEpoch) {
+      throw new Error('OpenPencil browser authority changed during RPC preflight')
+    }
+    return sendPreparedRPC(prepared, options, leasedEpoch)
+  }
+
+  function sendRPC(
+    body: Record<string, unknown>,
+    options: BrowserRPCSendOptions = {}
+  ): Promise<unknown> {
+    return sendRPCWithAuthorityLease(body, options)
   }
 
   async function handleClientRequest(ws: WebSocket, msg: BrowserMessage) {
@@ -285,6 +348,7 @@ export function createBrowserRPCBridge({
     const previousBrowserWs = browserWs
     browserWs = ws
     browserRegistered = true
+    browserAuthorityEpoch += 1
     if (previousBrowserWs && previousBrowserWs !== ws) {
       // Reject in-flight requests to the old browser. Without this, pending
       // requests sit in the pending map until RPC_TIMEOUT (20s), because

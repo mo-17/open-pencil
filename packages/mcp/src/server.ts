@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import type { Server as HttpServer } from 'node:http'
+import { resolve } from 'node:path'
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { Hono } from 'hono'
@@ -13,6 +14,7 @@ import { createBrowserRPCBridge } from '#mcp/browser-rpc'
 import { MCP_CORS_HEADERS, MCP_CORS_METHODS, MCP_EXPOSED_HEADERS } from '#mcp/http-options'
 import type { RPCJSONObject } from '#mcp/json'
 import { preprocessRPC } from '#mcp/jsx-preprocess'
+import { prepareRootScopedRPCRequest } from '#mcp/root-scoped-rpc'
 import { createMCPSessionManager } from '#mcp/server/sessions'
 import { createPluginMCPController, registerPluginMCPTools } from '#mcp/tool/plugin/catalog'
 import { registerTools } from '#mcp/tool/registration'
@@ -281,6 +283,7 @@ function buildServerContext(options: ServerOptions) {
   const httpPort = options.httpPort ?? 7600
   const enableEval = options.enableEval ?? false
   const mcpRoot = options.mcpRoot ?? null
+  const resolvedRoot = mcpRoot ? resolve(mcpRoot) : null
   // Auto-generated so all transports require auth by default. Override via OPENPENCIL_MCP_AUTH_TOKEN or authToken option.
   // Pass authToken: null explicitly to disable auth entirely.
   const authToken =
@@ -305,7 +308,9 @@ function buildServerContext(options: ServerOptions) {
   const browserRPC = createBrowserRPCBridge({
     authToken,
     onConnectionChange: (connected) => handleConnectionChange(connected),
-    onPluginToolsChanged: (revision) => handlePluginToolsChanged(revision)
+    onPluginToolsChanged: (revision) => handlePluginToolsChanged(revision),
+    requestPreflight: async (body, sendRPC, sendOptions) =>
+      (await prepareRootScopedRPCRequest(body, resolvedRoot, sendRPC, sendOptions)).body
   })
   const sendToBrowser = browserRPC.sendRPC
   const pluginMCP = createPluginMCPController({ sendRPC: sendToBrowser })

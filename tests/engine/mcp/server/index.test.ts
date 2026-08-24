@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, stat, symlink, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -12,9 +12,12 @@ import { startServer } from '#mcp/server'
 
 import {
   connectMockBrowser,
+  openWs,
+  readNextResponse,
   waitForBrowserRegistration,
   type HealthResponse,
-  type MockBrowser
+  type MockBrowser,
+  type MockBrowserOptions
 } from '#tests/helpers/mcp/server'
 
 const isUnix = process.platform !== 'win32'
@@ -254,9 +257,27 @@ describe('MCP server', () => {
 // ---------------------------------------------------------------------------
 
 describe('MCP server with mcpRoot', () => {
+  async function postRawRPC(httpPort: number, body: Record<string, unknown>) {
+    const response = await fetch(`http://127.0.0.1:${httpPort}/rpc`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${TEST_AUTH_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+    return { status: response.status, data: (await response.json()) as Record<string, unknown> }
+  }
+
   async function withMCPRootServer(
     mcpRoot: string | null,
-    fn: (client: Client, browser: MockBrowser, graph: SceneGraph) => Promise<void>
+    fn: (
+      client: Client,
+      browser: MockBrowser,
+      graph: SceneGraph,
+      httpPort: number
+    ) => Promise<void>,
+    browserOptions: MockBrowserOptions = {}
   ) {
     if (isUnix) await mkdir(SOCKET_DIR, { recursive: true })
     if (mcpRoot) await mkdir(mcpRoot, { recursive: true })
@@ -277,7 +298,7 @@ describe('MCP server with mcpRoot', () => {
       if (!httpPort) throw new Error('withTcp: true did not produce an HTTP port')
 
       const graph = new SceneGraph()
-      browser = await connectMockBrowser(httpPort, graph, TEST_AUTH_TOKEN)
+      browser = await connectMockBrowser(httpPort, graph, TEST_AUTH_TOKEN, browserOptions)
       await waitForBrowserRegistration(httpPort)
 
       client = new Client({ name: 'test-root', version: '0.0.0' })
@@ -287,7 +308,7 @@ describe('MCP server with mcpRoot', () => {
       )
       await client.connect(transport)
 
-      await fn(client, browser, graph)
+      await fn(client, browser, graph, httpPort)
     } finally {
       await client?.close().catch(() => undefined)
       browser?.close()
@@ -315,8 +336,8 @@ describe('MCP server with mcpRoot', () => {
 
       expect(result.isError).not.toBe(true)
       const request = browser.requests.find((item) => item.command === 'save_file')
-      // The server sends the canonical (realpath-resolved) path to the browser
-      // to prevent TOCTOU races. On macOS, /var -> /private/var.
+      // The server sends the path canonicalized at its validation boundary.
+      // On macOS, /var -> /private/var; later cross-process FS changes remain possible.
       const { realpath } = await import('node:fs/promises')
       const { dirname, basename } = await import('node:path')
       const canonicalPath = join(await realpath(dirname(savePath)), basename(savePath))
@@ -333,6 +354,209 @@ describe('MCP server with mcpRoot', () => {
 
       expect(result.isError).toBe(true)
       expect(browser.requests.some((item) => item.command === 'save_file')).toBe(false)
+    })
+  })
+
+  test('pathless save_file validates and pins an existing path inside mcpRoot', async () => {
+    const documentPath = join(TEST_MCP_ROOT, 'existing.fig')
+    let activeDocumentId = 'doc-1'
+    await withMCPRootServer(
+      TEST_MCP_ROOT,
+      async (client, browser) => {
+        const result = await client.callTool({ name: 'save_file', arguments: {} })
+
+        expect(result.isError).not.toBe(true)
+        expect(activeDocumentId).toBe('doc-2')
+        expect(browser.requests.map((request) => request.command)).toContain('list_documents')
+        const request = browser.requests.find((item) => item.command === 'save_file')
+        const { realpath } = await import('node:fs/promises')
+        const canonicalRoot = await realpath(TEST_MCP_ROOT)
+        expect(request?.args).toEqual({
+          document_id: 'doc-1',
+          path: join(canonicalRoot, 'existing.fig')
+        })
+      },
+      {
+        documents: () => [
+          {
+            id: 'doc-1',
+            path: documentPath,
+            active: activeDocumentId === 'doc-1'
+          },
+          {
+            id: 'doc-2',
+            path: join(TEST_MCP_ROOT, 'other.fig'),
+            active: activeDocumentId === 'doc-2'
+          }
+        ],
+        afterDocumentList: () => {
+          activeDocumentId = 'doc-2'
+        }
+      }
+    )
+  })
+
+  test('registered pathless save_file revalidates a reused document ID at the final bridge', async () => {
+    let documentListCount = 0
+    await withMCPRootServer(
+      TEST_MCP_ROOT,
+      async (client, browser) => {
+        const result = await client.callTool({ name: 'save_file', arguments: {} })
+
+        expect(result.isError).toBe(true)
+        expect(
+          browser.requests.filter((request) => request.command === 'list_documents')
+        ).toHaveLength(2)
+        expect(browser.requests.some((request) => request.command === 'save_file')).toBe(false)
+      },
+      {
+        documents: () => [
+          {
+            id: 'doc-1',
+            path: join(
+              TEST_MCP_ROOT,
+              documentListCount === 0 ? 'old-authority.fig' : 'new-authority.fig'
+            ),
+            active: true
+          }
+        ],
+        afterDocumentList: () => {
+          documentListCount += 1
+        }
+      }
+    )
+  })
+
+  test('pathless save_file rejects an existing path outside mcpRoot before writing', async () => {
+    const documentPath = join(TEST_MCP_ROOT, '..', 'outside-existing.fig')
+    await withMCPRootServer(
+      TEST_MCP_ROOT,
+      async (client, browser) => {
+        const result = await client.callTool({ name: 'save_file', arguments: {} })
+
+        expect(result.isError).toBe(true)
+        expect(browser.requests.some((item) => item.command === 'list_documents')).toBe(true)
+        expect(browser.requests.some((item) => item.command === 'save_file')).toBe(false)
+      },
+      { documentPath }
+    )
+  })
+
+  test('pathless save_file fails closed when the selected document has no local path', async () => {
+    await withMCPRootServer(TEST_MCP_ROOT, async (client, browser) => {
+      const result = await client.callTool({ name: 'save_file', arguments: {} })
+
+      expect(result.isError).toBe(true)
+      expect(browser.requests.some((item) => item.command === 'save_file')).toBe(false)
+    })
+  })
+
+  test('pathless save_file remains app-managed when mcpRoot is not configured', async () => {
+    await withMCPRootServer(null, async (client, browser, _graph, httpPort) => {
+      const result = await client.callTool({ name: 'save_file', arguments: {} })
+      const raw = await postRawRPC(httpPort, { command: 'save_file', args: {} })
+      const injectedMarker = await postRawRPC(httpPort, {
+        command: 'save_file',
+        args: { __openpencil_expected_existing_path: '/tmp/injected.fig' }
+      })
+
+      expect(result.isError).not.toBe(true)
+      expect(raw.status).toBe(200)
+      expect(injectedMarker.status).toBe(502)
+      expect(browser.requests.some((item) => item.command === 'list_documents')).toBe(false)
+      expect(browser.requests.filter((item) => item.command === 'save_file')).toHaveLength(2)
+      expect(
+        browser.requests.filter((item) => item.command === 'save_file').map((item) => item.args)
+      ).toEqual([{}, {}])
+    })
+  })
+
+  test('raw HTTP RPC rejects explicit file paths outside mcpRoot', async () => {
+    await withMCPRootServer(TEST_MCP_ROOT, async (_client, browser, _graph, httpPort) => {
+      const outsidePath = join(TEST_MCP_ROOT, '..', 'raw-outside.fig')
+      for (const command of ['save_file', 'open_file', 'new_document']) {
+        const response = await postRawRPC(httpPort, {
+          command,
+          args: { path: outsidePath }
+        })
+        expect(response.status).toBe(502)
+        expect(response.data.ok).toBe(false)
+      }
+      const injectedMarker = await postRawRPC(httpPort, {
+        command: 'save_file',
+        args: { __openpencil_expected_existing_path: join(TEST_MCP_ROOT, 'injected.fig') }
+      })
+      expect(injectedMarker.status).toBe(502)
+      const markerOnUnrelatedCommand = await postRawRPC(httpPort, {
+        command: 'get_current_page',
+        args: { __openpencil_expected_existing_path: join(TEST_MCP_ROOT, 'injected.fig') }
+      })
+      expect(markerOnUnrelatedCommand.status).toBe(502)
+      expect(
+        browser.requests.some((item) =>
+          ['save_file', 'open_file', 'new_document'].includes(item.command)
+        )
+      ).toBe(false)
+    })
+  })
+
+  test('raw HTTP pathless save_file rejects an existing path outside mcpRoot', async () => {
+    await withMCPRootServer(
+      TEST_MCP_ROOT,
+      async (_client, browser, _graph, httpPort) => {
+        const response = await postRawRPC(httpPort, { command: 'save_file', args: {} })
+
+        expect(response.status).toBe(502)
+        expect(response.data.ok).toBe(false)
+        expect(browser.requests.some((item) => item.command === 'list_documents')).toBe(true)
+        expect(browser.requests.some((item) => item.command === 'save_file')).toBe(false)
+      },
+      { documentPath: join(TEST_MCP_ROOT, '..', 'raw-existing-outside.fig') }
+    )
+  })
+
+  test.skipIf(!isUnix)('raw HTTP RPC rejects a path through an outward symlink', async () => {
+    const outsideDirectory = join(tmpdir(), `open-pencil-mcp-outside-${process.pid}`)
+    await mkdir(outsideDirectory, { recursive: true })
+    await withMCPRootServer(TEST_MCP_ROOT, async (_client, browser, _graph, httpPort) => {
+      const linkPath = join(TEST_MCP_ROOT, `raw-link-${++testCounter}`)
+      await symlink(outsideDirectory, linkPath)
+      try {
+        const response = await postRawRPC(httpPort, {
+          command: 'save_file',
+          args: { path: join(linkPath, 'escaped.fig') }
+        })
+        expect(response.status).toBe(502)
+        expect(response.data.ok).toBe(false)
+        expect(browser.requests.some((item) => item.command === 'save_file')).toBe(false)
+      } finally {
+        await unlink(linkPath)
+      }
+    })
+  })
+
+  test('authenticated WebSocket RPC rejects save_file outside mcpRoot', async () => {
+    await withMCPRootServer(TEST_MCP_ROOT, async (_client, browser, _graph, httpPort) => {
+      const forwardingClient = await openWs(`ws://127.0.0.1:${httpPort}`, TEST_AUTH_TOKEN)
+      try {
+        forwardingClient.send(
+          JSON.stringify({
+            type: 'request',
+            id: 'raw-ws-outside',
+            command: 'save_file',
+            args: { path: join(TEST_MCP_ROOT, '..', 'ws-outside.fig') }
+          })
+        )
+        const response = await readNextResponse<{ type: string; ok?: boolean; error?: string }>(
+          forwardingClient
+        )
+        expect(response.type).toBe('response')
+        expect(response.ok).toBe(false)
+        expect(response.error).toContain('outside the allowed root')
+        expect(browser.requests.some((item) => item.command === 'save_file')).toBe(false)
+      } finally {
+        forwardingClient.close()
+      }
     })
   })
 

@@ -17,13 +17,11 @@ import {
 } from '#mcp/motion-export/index'
 import { MAX_RESULT_BYTES, fail, getDomainFailure, ok, resultTooLargeMessage } from '#mcp/result'
 import type { MCPResult } from '#mcp/result'
+import { prepareRootScopedRPCRequest, type RootScopedRPCSender } from '#mcp/root-scoped-rpc'
 import { resolveSafePath, writeToolOutput } from '#mcp/tool/output'
 import { paramToZod } from '#mcp/tool/schema'
 
-export type RPCSender = (
-  body: Record<string, unknown>,
-  options?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void }
-) => Promise<unknown>
+export type RPCSender = RootScopedRPCSender
 
 export interface ToolRequestExtra {
   signal?: AbortSignal
@@ -365,23 +363,23 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
       extra?: ToolRequestExtra
     ) => {
       try {
-        const safePath =
-          args.path !== undefined && resolvedRoot
-            ? await resolveSafePath(args.path, resolvedRoot)
-            : undefined
         const { target } = splitAutomationTarget(args)
-        const result = await sendRPC(
+        const preparedSave = await prepareRootScopedRPCRequest(
           {
             command: 'save_file',
-            args: { ...target, path: safePath?.realPath }
+            args: { ...target, ...(args.path === undefined ? {} : { path: args.path }) }
           },
-          { signal: extra?.signal }
+          resolvedRoot,
+          sendRPC,
+          { signal: extra?.signal },
+          { markPathlessSaveForRevalidation: true }
         )
+        const result = await sendRPC(preparedSave.body, { signal: extra?.signal })
         const res = result as { ok?: boolean; result?: unknown; target?: unknown; error?: string }
         if (res.ok === false) return fail(res.error ?? 'OpenPencil RPC failed')
         return ok({
           saved: true,
-          ...(safePath ? { path: safePath.resolved } : {}),
+          ...(preparedSave.safePath ? { path: preparedSave.safePath.resolved } : {}),
           ...(res.target ? { target: res.target } : {})
         })
       } catch (e) {

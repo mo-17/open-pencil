@@ -47,6 +47,18 @@ function connectClient(url: string): Promise<WebSocket> {
   })
 }
 
+function within<T>(promise: Promise<T>, label: string, timeoutMs = 2_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    promise.finally(() => {
+      if (timer) clearTimeout(timer)
+    }),
+    new Promise<T>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), timeoutMs)
+    })
+  ])
+}
+
 /**
  * Set up a connected pair: one client-side WS and one server-side WS.
  *
@@ -94,13 +106,15 @@ async function registerBrowser(
   })
   serverWs.on('close', () => bridge.handleClose(serverWs))
 
-  // Bridge sends register prompt to the client (token is null for security)
+  // Arm the listener before handleConnection sends the prompt; loopback
+  // delivery can otherwise beat a listener registered after the send.
+  const registerPrompt = new Promise<Buffer>((resolve) => {
+    clientWs.once('message', resolve)
+  })
   bridge.handleConnection(serverWs)
 
   // Client receives the register prompt
-  const raw: Buffer = await new Promise<Buffer>((resolve) => {
-    clientWs.once('message', resolve)
-  })
+  const raw = await registerPrompt
   const msg = JSON.parse(raw.toString())
   expect(msg.type).toBe('register')
 
@@ -164,6 +178,103 @@ describe('BrowserRpcBridge reconnection', () => {
     await expect(rpcPromise).rejects.toThrow('Browser reconnected')
     const elapsed = Date.now() - start
     expect(elapsed).toBeLessThan(5_000)
+  })
+
+  test('does not forward a preflighted request after browser authority replacement', async () => {
+    const pairA = await within(setupWsPair(), 'first WebSocket pair')
+    track(pairA)
+    const pairB = await within(setupWsPair(), 'replacement WebSocket pair')
+    track(pairB)
+
+    let finishPreflight = () => undefined
+    const preflightGate = new Promise<void>((resolve) => {
+      finishPreflight = resolve
+    })
+    let markLookupComplete = () => undefined
+    const lookupComplete = new Promise<void>((resolve) => {
+      markLookupComplete = resolve
+    })
+    let connectedCount = 0
+    let markReplacementRegistered = () => undefined
+    const replacementRegistered = new Promise<void>((resolve) => {
+      markReplacementRegistered = resolve
+    })
+    const bridge = createBrowserRPCBridge({
+      authToken: AUTH_TOKEN,
+      onConnectionChange: (connected) => {
+        if (connected && (connectedCount += 1) === 2) markReplacementRegistered()
+      },
+      requestPreflight: async (body, sendRPC) => {
+        if (body.command !== 'save_file') return body
+        const listed = (await sendRPC({ command: 'list_documents', args: {} })) as {
+          result?: { documents?: Array<{ id?: string; path?: string }> }
+        }
+        const selected = listed.result?.documents?.[0]
+        markLookupComplete()
+        await preflightGate
+        return {
+          ...body,
+          args: { document_id: selected?.id, path: selected?.path }
+        }
+      }
+    })
+
+    await within(
+      registerBrowser(pairA.serverWs, pairA.clientWs, bridge),
+      'first browser registration'
+    )
+    pairA.clientWs.on('message', (raw: Buffer) => {
+      const message = JSON.parse(raw.toString()) as {
+        type?: string
+        id?: string
+        command?: string
+      }
+      if (message.type === 'request' && message.command === 'list_documents') {
+        pairA.clientWs.send(
+          JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: { documents: [{ id: 'tab-1', path: '/safe/old.fig', active: true }] }
+          })
+        )
+      }
+    })
+
+    const replacementRequests: string[] = []
+    pairB.clientWs.on('message', (raw: Buffer) => {
+      const message = JSON.parse(raw.toString()) as { type?: string; command?: string }
+      if (message.type === 'request' && message.command) {
+        replacementRequests.push(message.command)
+      }
+    })
+
+    const savePromise = bridge.sendRPC({ command: 'save_file', args: {} })
+    try {
+      await within(lookupComplete, 'preflight lookup')
+      await within(
+        registerBrowser(pairB.serverWs, pairB.clientWs, bridge),
+        'replacement helper registration'
+      )
+      await within(replacementRegistered, 'replacement registration')
+
+      const outcome = within(
+        savePromise.then(
+          (value) => ({ value }),
+          (error: unknown) => ({ error })
+        ),
+        'authority outcome'
+      )
+      finishPreflight()
+      const result = await outcome
+      expect('error' in result ? result.error : undefined).toBeInstanceOf(Error)
+      expect('error' in result ? (result.error as Error).message : '').toBe(
+        'OpenPencil browser authority changed during RPC preflight'
+      )
+    } finally {
+      finishPreflight()
+    }
+    expect(replacementRequests).not.toContain('save_file')
   })
 
   test('keeps connection waiters pending across browser reconnects', async () => {
