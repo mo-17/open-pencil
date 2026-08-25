@@ -163,6 +163,37 @@ describe('memory outbox', () => {
     expect((await outbox.list())[0]?.binding).toEqual(exactBinding)
   })
 
+  test('defers every Drive profile for a Broker retry window without delaying S3', async () => {
+    const outbox = createMemoryOutbox()
+    await outbox.enqueue({
+      binding: binding('drive-a', 'primary', 'subject-a'),
+      type: 'putCanvas',
+      revision: 1,
+      nextAttemptAt: 100
+    })
+    await outbox.enqueue({
+      binding: binding('drive-b', 'secondary', 'subject-b'),
+      type: 'putCanvas',
+      revision: 1,
+      nextAttemptAt: 200
+    })
+    await outbox.enqueue({
+      binding: binding('s3-document'),
+      type: 'putCanvas',
+      revision: 1,
+      nextAttemptAt: 100
+    })
+
+    expect(await outbox.deferProvider('google-drive', 60_000)).toBe(2)
+    expect((await outbox.list()).map((job) => [job.binding.providerId, job.nextAttemptAt])).toEqual(
+      [
+        ['google-drive', 60_000],
+        ['google-drive', 60_000],
+        ['s3-compatible', 100]
+      ]
+    )
+  })
+
   test('delete supersedes pending uploads only for the same provider profile account and document', async () => {
     const outbox = createMemoryOutbox()
     const current = binding('shared', 'work', 'subject-1', 'grant-current')
@@ -328,5 +359,38 @@ describe('IndexedDB outbox migration', () => {
     await outbox.remove('legacy-job')
     await outbox.update(removed)
     expect(await outbox.list()).toEqual([])
+  })
+})
+
+describe('IndexedDB outbox cooldown', () => {
+  test('atomically defers existing jobs for one provider', async () => {
+    const outbox = createIdbOutbox(`open-pencil-outbox-cooldown-${crypto.randomUUID()}`)
+    await outbox.enqueue({
+      binding: binding('drive-a', 'primary', 'subject-a'),
+      type: 'putCanvas',
+      revision: 1,
+      nextAttemptAt: 100
+    })
+    await outbox.enqueue({
+      binding: binding('drive-b', 'secondary', 'subject-b'),
+      type: 'deleteCanvas',
+      revision: 0,
+      nextAttemptAt: 200
+    })
+    await outbox.enqueue({
+      binding: binding('s3-document'),
+      type: 'putCanvas',
+      revision: 1,
+      nextAttemptAt: 100
+    })
+
+    expect(await outbox.deferProvider('google-drive', 60_000)).toBe(2)
+    const jobs = await outbox.list()
+    expect(
+      jobs
+        .filter((job) => job.binding.providerId === 'google-drive')
+        .map((job) => job.nextAttemptAt)
+    ).toEqual([60_000, 60_000])
+    expect(jobs.find((job) => job.binding.providerId === 's3-compatible')?.nextAttemptAt).toBe(100)
   })
 })

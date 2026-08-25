@@ -1,3 +1,5 @@
+import { ALIYUN_DRIVE_STORAGE_PROVIDER_ID } from '@/app/integrations/storage/aliyun-drive/config'
+import { BAIDU_NETDISK_STORAGE_PROVIDER_ID } from '@/app/integrations/storage/baidu-netdisk/config'
 import {
   resolveStorageDocumentBinding,
   storageDocumentAuthoritiesEqual,
@@ -14,10 +16,22 @@ import { recoverStorageSyncJobs } from '@/app/storage/sync/engine'
 import { getOutbox, type Outbox } from '@/app/storage/sync/outbox'
 import type { OutboxJob } from '@/app/storage/sync/types'
 
+const ADOPTABLE_OAUTH_STORAGE_PROVIDERS = new Set([
+  'google-drive',
+  'onedrive',
+  ALIYUN_DRIVE_STORAGE_PROVIDER_ID,
+  BAIDU_NETDISK_STORAGE_PROVIDER_ID
+])
+
 export type StorageAuthorizationWorkScope = {
   providerId: StorageProviderID
   profileId: string
   authority: StorageDocumentAuthority
+}
+
+export type StorageAuthorizationProfileScope = {
+  providerId: StorageProviderID
+  profileId: string
 }
 
 export type StorageAuthorizationWorkInspection = {
@@ -60,6 +74,17 @@ function normalizedScope(scope: StorageAuthorizationWorkScope): StorageAuthoriza
     profileId: binding.profileId,
     authority: binding.authority
   }
+}
+
+function normalizedProfileScope(
+  scope: StorageAuthorizationProfileScope
+): StorageAuthorizationProfileScope {
+  const binding = resolveStorageDocumentBinding({
+    providerId: scope.providerId,
+    profileId: scope.profileId,
+    documentId: 'authorization-work'
+  })
+  return { providerId: binding.providerId, profileId: binding.profileId }
 }
 
 function runtimeDependencies(
@@ -110,6 +135,41 @@ function inspectSnapshot(
   }
 }
 
+function authorityKey(authority: StorageDocumentAuthority): string {
+  return JSON.stringify([authority.accountId, authority.authorizationVersion])
+}
+
+function profileAuthorities(
+  profile: StorageAuthorizationProfileScope,
+  metas: LocalCanvasMeta[],
+  jobs: OutboxJob[]
+): StorageDocumentAuthority[] {
+  const authorities = new Map<string, StorageDocumentAuthority>()
+  const collect = (authority: StorageDocumentAuthority | null | undefined) => {
+    if (!authority) return
+    const normalized = normalizedScope({ ...profile, authority }).authority
+    authorities.set(authorityKey(normalized), normalized)
+  }
+  for (const meta of metas) {
+    if (meta.providerId === profile.providerId && meta.profileId === profile.profileId) {
+      collect(meta.authority)
+    }
+  }
+  for (const job of jobs) {
+    if (
+      job.binding.providerId === profile.providerId &&
+      job.binding.profileId === profile.profileId
+    ) {
+      collect(job.binding.authority)
+    }
+  }
+  return [...authorities.values()].sort(
+    (left, right) =>
+      left.accountId.localeCompare(right.accountId) ||
+      left.authorizationVersion.localeCompare(right.authorizationVersion)
+  )
+}
+
 /** Inspect one exact grant before disconnecting or starting replacement OAuth. */
 export async function inspectStorageAuthorizationWork(
   input: StorageAuthorizationWorkScope,
@@ -119,6 +179,19 @@ export async function inspectStorageAuthorizationWork(
   const runtime = runtimeDependencies(dependencies)
   const [metas, jobs] = await Promise.all([runtime.store.listMetas(true), runtime.outbox.list()])
   return inspectSnapshot(scope, metas, jobs)
+}
+
+/** Enumerate every exact grant that owns local rows or durable jobs for one provider profile. */
+export async function listStorageProfileAuthorizationWork(
+  input: StorageAuthorizationProfileScope,
+  dependencies?: StorageAuthorizationWorkDependencies
+): Promise<StorageAuthorizationWorkInspection[]> {
+  const profile = normalizedProfileScope(input)
+  const runtime = runtimeDependencies(dependencies)
+  const [metas, jobs] = await Promise.all([runtime.store.listMetas(true), runtime.outbox.list()])
+  return profileAuthorities(profile, metas, jobs).map((authority) =>
+    inspectSnapshot({ ...profile, authority }, metas, jobs)
+  )
 }
 
 /** Discover crash-gap grants for the connected account without trusting labels or document IDs. */
@@ -165,11 +238,11 @@ export async function adoptStorageAuthorizationWork(
   input: AdoptStorageAuthorizationWorkInput,
   dependencies?: StorageAuthorizationWorkDependencies
 ): Promise<AdoptStorageAuthorizationWorkResult> {
-  // Only OAuth grants for the same Google account are safely adoptable. S3
+  // Only OAuth grants for the same provider account are safely adoptable. S3
   // generations can identify different endpoints or buckets; migrating an old
   // delete/upload job to a new S3 generation could mutate unrelated storage.
-  if (input.providerId !== 'google-drive') {
-    throw new Error('Storage authorization adoption only supports Google Drive OAuth grants')
+  if (!ADOPTABLE_OAUTH_STORAGE_PROVIDERS.has(input.providerId)) {
+    throw new Error('Storage authorization adoption only supports reviewed OAuth storage grants')
   }
   const previous = normalizedScope({
     providerId: input.providerId,

@@ -1,9 +1,11 @@
 export {
   adoptStorageAuthorizationWork,
   inspectStorageAuthorizationWork,
+  listStorageProfileAuthorizationWork,
   listStaleStorageAuthorizationWork,
   type AdoptStorageAuthorizationWorkInput,
   type AdoptStorageAuthorizationWorkResult,
+  type StorageAuthorizationProfileScope,
   type StorageAuthorizationWorkInspection,
   type StorageAuthorizationWorkScope
 } from './authorization-lifecycle'

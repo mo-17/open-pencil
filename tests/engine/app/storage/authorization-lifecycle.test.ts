@@ -7,6 +7,7 @@ import { createIdbLocalCanvasStore } from '@/app/storage/local-store/idb'
 import {
   adoptStorageAuthorizationWork,
   inspectStorageAuthorizationWork,
+  listStorageProfileAuthorizationWork,
   listStaleStorageAuthorizationWork
 } from '@/app/storage/sync/authorization-lifecycle'
 import { createIdbOutbox, createMemoryOutbox, type Outbox } from '@/app/storage/sync/outbox'
@@ -144,6 +145,102 @@ async function exerciseAdoption(
 }
 
 describe('storage authorization work lifecycle', () => {
+  test('enumerates every unique authority across local rows and durable jobs for one profile', async () => {
+    const store = createMemoryLocalCanvasStore()
+    const outbox = createMemoryOutbox()
+    const profileId = 'profile-wide'
+    const firstGrant = {
+      accountId: 'account-a',
+      authorizationVersion: 'grant-1'
+    }
+    const outboxOnlyGrant = {
+      accountId: 'account-a',
+      authorizationVersion: 'grant-2'
+    }
+    const syncedGrant = {
+      accountId: 'account-b',
+      authorizationVersion: 'grant-1'
+    }
+    const binding = (
+      documentId: string,
+      authority: StorageDocumentAuthority,
+      providerId = 'google-drive',
+      targetProfileId = profileId
+    ) => ({ providerId, profileId: targetProfileId, documentId, authority })
+
+    for (const [documentId, authority, syncStatus] of [
+      ['pending-a', firstGrant, 'pending'],
+      ['synced-a', firstGrant, 'synced'],
+      ['synced-b', syncedGrant, 'synced']
+    ] as const) {
+      await store.writeCanvas({
+        ...binding(documentId, authority),
+        id: documentId,
+        name: documentId,
+        figBytes: new Uint8Array([1]),
+        syncStatus
+      })
+    }
+    await store.writeCanvas({
+      ...binding('other-profile', firstGrant, 'google-drive', 'profile-other'),
+      id: 'other-profile',
+      name: 'Other profile',
+      figBytes: new Uint8Array([2]),
+      syncStatus: 'pending'
+    })
+    await store.writeCanvas({
+      ...binding('other-provider', firstGrant, 's3-compatible'),
+      id: 'other-provider',
+      name: 'Other provider',
+      figBytes: new Uint8Array([3]),
+      syncStatus: 'pending'
+    })
+    await outbox.enqueue({
+      binding: binding('pending-a', firstGrant),
+      type: 'putThumb',
+      revision: 1
+    })
+    await outbox.enqueue({
+      binding: binding('outbox-only', outboxOnlyGrant),
+      type: 'putThumb',
+      revision: 1
+    })
+    await outbox.enqueue({
+      binding: binding('ignored-job', firstGrant, 'google-drive', 'profile-other'),
+      type: 'putThumb',
+      revision: 1
+    })
+
+    await expect(
+      listStorageProfileAuthorizationWork(
+        { providerId: 'google-drive', profileId },
+        { store, outbox }
+      )
+    ).resolves.toEqual([
+      {
+        scope: { providerId: 'google-drive', profileId, authority: firstGrant },
+        documentCount: 2,
+        unfinishedDocumentCount: 1,
+        jobCount: 1,
+        requiresConfirmation: true
+      },
+      {
+        scope: { providerId: 'google-drive', profileId, authority: outboxOnlyGrant },
+        documentCount: 0,
+        unfinishedDocumentCount: 0,
+        jobCount: 1,
+        requiresConfirmation: true
+      },
+      {
+        scope: { providerId: 'google-drive', profileId, authority: syncedGrant },
+        documentCount: 1,
+        unfinishedDocumentCount: 0,
+        jobCount: 0,
+        requiresConfirmation: false
+      }
+    ])
+  })
+
   test('adopts every same-account local row and replaces durable jobs with new IDs', async () => {
     await exerciseAdoption(createMemoryLocalCanvasStore(), 'memory')
     const idbOutbox = createIdbOutbox()
@@ -191,6 +288,31 @@ describe('storage authorization work lifecycle', () => {
     expect((await store.getMeta(binding))?.authority).toEqual(NEXT)
   })
 
+  test('allows reviewed Aliyun Drive and Baidu Netdisk grants to adopt same-account work', async () => {
+    for (const providerId of ['aliyun-drive', 'baidu-netdisk'] as const) {
+      const dependencies = {
+        store: createMemoryLocalCanvasStore(),
+        outbox: createMemoryOutbox(),
+        recover: () => Promise.resolve(0)
+      }
+      await expect(
+        adoptStorageAuthorizationWork(
+          {
+            providerId,
+            profileId: `profile-${providerId}`,
+            previousAuthority: PREVIOUS,
+            nextAuthority: NEXT
+          },
+          dependencies
+        )
+      ).resolves.toEqual({
+        adoptedDocumentCount: 0,
+        replacedJobCount: 0,
+        recoveredJobCount: 0
+      })
+    }
+  })
+
   test('rejects cross-account or same-grant adoption before mutating state', async () => {
     const dependencies = {
       store: createMemoryLocalCanvasStore(),
@@ -215,6 +337,6 @@ describe('storage authorization work lifecycle', () => {
         { ...base, providerId: 's3-compatible', nextAuthority: NEXT },
         dependencies
       )
-    ).rejects.toThrow('only supports Google Drive')
+    ).rejects.toThrow('reviewed OAuth storage grants')
   })
 })

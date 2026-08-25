@@ -30,6 +30,10 @@ import {
   type LocalCanvasStore
 } from '@/app/storage/local-store'
 import {
+  storageSyncErrorPolicy,
+  storageSyncFailureIsPermanent
+} from '@/app/storage/sync/error-policy'
+import {
   currentStorageSyncJobMeta,
   readStorageSyncPutSnapshot,
   storageSyncAuthorityOptions,
@@ -65,6 +69,7 @@ class StorageSyncConflictError extends Error {
 let pumping = false
 let wakeTimer: ReturnType<typeof setTimeout> | null = null
 let onlineBound = false
+const providerRetryNotBefore = new Map<string, number>()
 
 function isOnline(): boolean {
   if (typeof navigator === 'undefined') return true
@@ -147,16 +152,35 @@ export function nextSyncWakeDelay(jobs: OutboxJob[], now = Date.now()): number |
   return nextAt === Number.MAX_SAFE_INTEGER ? null : Math.max(250, nextAt - now)
 }
 
-function isPermanentError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const msg = error.message.toLowerCase()
-  return (
-    msg.includes('403') ||
-    msg.includes('401') ||
-    msg.includes('access denied') ||
-    msg.includes('invalid access key') ||
-    msg.includes('not configured')
+function providerRetryAt(providerId: string, now: number): number {
+  const retryAt = providerRetryNotBefore.get(providerId) ?? 0
+  if (retryAt <= now) {
+    providerRetryNotBefore.delete(providerId)
+    return 0
+  }
+  return retryAt
+}
+
+function retryAwareJobTime(job: OutboxJob, now: number): number {
+  return Math.max(job.nextAttemptAt, providerRetryAt(job.binding.providerId, now))
+}
+
+function retryAwareWakeDelay(jobs: OutboxJob[], now: number): number | null {
+  return nextSyncWakeDelay(
+    jobs.map((job) => ({ ...job, nextAttemptAt: retryAwareJobTime(job, now) })),
+    now
   )
+}
+
+function rememberProviderRetry(providerId: string, retryAt: number): void {
+  providerRetryNotBefore.set(
+    providerId,
+    Math.max(providerRetryNotBefore.get(providerId) ?? 0, retryAt)
+  )
+}
+
+function retryAwareEnqueueTime(providerId: string, now = Date.now()): number {
+  return Math.max(now, providerRetryAt(providerId, now))
 }
 
 async function createAuthorizedStorageAdapter(
@@ -321,6 +345,106 @@ async function runJob(job: OutboxJob): Promise<void> {
   return runPutThumbJob(store, job)
 }
 
+async function handleJobFailure(job: OutboxJob, error: unknown): Promise<void> {
+  const outbox = getOutbox()
+  const { errorName, errorCode, retryable } = describeDiagnosticError(error)
+  recordStorageFailure({
+    operation: storageOperationForJob(job.type),
+    errorName,
+    errorCode,
+    retryable
+  })
+  const message = error instanceof Error ? error.message : String(error)
+  // A newer enqueue may have superseded this in-flight job. Never resurrect
+  // its durable record or let its late result mutate the replacement row.
+  if (!(await outbox.list()).some((queued) => queued.id === job.id)) {
+    const remaining = await outbox.list()
+    setPendingSyncCount(remaining.length)
+    if (remaining.length > 0) scheduleWake(50)
+    else setSyncUI('idle')
+    return
+  }
+  if (error instanceof StorageSyncConflictError) {
+    await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, {
+      syncStatus: 'conflict',
+      remoteRevision: error.remoteRevision,
+      lastSyncError: message
+    })
+    await outbox.update({ ...job, nextAttemptAt: Number.MAX_SAFE_INTEGER })
+    setSyncUI('error', message)
+    return
+  }
+  if (error instanceof StorageSyncBlockedError) {
+    await outbox.update({
+      ...job,
+      nextAttemptAt: Number.MAX_SAFE_INTEGER
+    })
+    setSyncUI('error', message)
+    return
+  }
+
+  const policy = storageSyncErrorPolicy(error)
+  const attempts = Math.min(job.attempts + 1, MAX_ATTEMPTS)
+  const permanent = storageSyncFailureIsPermanent(policy, attempts, MAX_ATTEMPTS)
+  console.warn('[Storage sync] job failed:', job.type, job.binding.documentId, message)
+
+  if (permanent) {
+    // A failed thumbnail upload must not poison the document's sync status —
+    // only canvas/delete jobs reflect into the meta row.
+    if (job.type !== 'putThumb') {
+      await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, {
+        syncStatus: 'error',
+        lastSyncError: message
+      })
+      setSyncUI('error', message.slice(0, 120))
+    } else {
+      // Keep a record without touching syncStatus so the stale remote
+      // thumbnail is at least diagnosable.
+      await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, { lastSyncError: message })
+    }
+    if (job.type === 'putThumb') {
+      await outbox.remove(job.id)
+      const remaining = await outbox.list()
+      setPendingSyncCount(remaining.length)
+      if (remaining.length > 0) scheduleWake(1000)
+      else setSyncUI('idle')
+    } else {
+      // Never discard a document mutation. Keep it durable until the user
+      // repairs credentials/permissions and explicitly wakes synchronization.
+      await outbox.update({
+        ...job,
+        attempts,
+        nextAttemptAt: Number.MAX_SAFE_INTEGER
+      })
+    }
+    return
+  }
+
+  const retryAt = Date.now() + Math.max(backoffMs(attempts), policy.retryAfterMs ?? 0)
+  if (policy.retryScope === 'provider') {
+    rememberProviderRetry(job.binding.providerId, retryAt)
+  }
+  await outbox.update({
+    ...job,
+    attempts,
+    nextAttemptAt: retryAt
+  })
+  if (policy.retryScope === 'provider') {
+    await outbox.deferProvider(job.binding.providerId, retryAt)
+  }
+  if (job.type !== 'putThumb') {
+    await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, {
+      syncStatus: 'pending',
+      lastSyncError: message
+    })
+  }
+  // Wake for the next ready job across the whole queue — not this job's
+  // full backoff, which starved other jobs that were ready sooner.
+  const all = await outbox.list()
+  const delay = retryAwareWakeDelay(all, Date.now())
+  if (delay !== null) scheduleWake(delay)
+}
+
 async function pumpOnce(): Promise<void> {
   const outbox = getOutbox()
   const jobs = await outbox.list()
@@ -340,9 +464,9 @@ async function pumpOnce(): Promise<void> {
   setSyncUI('syncing')
   const now = Date.now()
   // Single-flight globally for simplicity (large figs)
-  const job = jobs.find((j) => j.nextAttemptAt <= now)
+  const job = jobs.find((candidate) => retryAwareJobTime(candidate, now) <= now)
   if (!job) {
-    const delay = nextSyncWakeDelay(jobs, now)
+    const delay = retryAwareWakeDelay(jobs, now)
     if (delay != null) scheduleWake(delay)
     return
   }
@@ -355,95 +479,7 @@ async function pumpOnce(): Promise<void> {
     if (remaining.length === 0) setSyncUI('idle')
     else scheduleWake(50)
   } catch (error) {
-    const { errorName, errorCode, retryable } = describeDiagnosticError(error)
-    recordStorageFailure({
-      operation: storageOperationForJob(job.type),
-      errorName,
-      errorCode,
-      retryable
-    })
-    const message = error instanceof Error ? error.message : String(error)
-    // A newer enqueue may have superseded this in-flight job. Never resurrect
-    // its durable record or let its late result mutate the replacement row.
-    if (!(await outbox.list()).some((queued) => queued.id === job.id)) {
-      const remaining = await outbox.list()
-      setPendingSyncCount(remaining.length)
-      if (remaining.length > 0) scheduleWake(50)
-      else setSyncUI('idle')
-      return
-    }
-    if (error instanceof StorageSyncConflictError) {
-      await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, {
-        syncStatus: 'conflict',
-        remoteRevision: error.remoteRevision,
-        lastSyncError: message
-      })
-      await outbox.update({ ...job, nextAttemptAt: Number.MAX_SAFE_INTEGER })
-      setSyncUI('error', message)
-      return
-    }
-    if (error instanceof StorageSyncBlockedError) {
-      await outbox.update({
-        ...job,
-        nextAttemptAt: Number.MAX_SAFE_INTEGER
-      })
-      setSyncUI('error', message)
-      return
-    }
-
-    const attempts = job.attempts + 1
-    const permanent = isPermanentError(error) || attempts >= MAX_ATTEMPTS
-    console.warn('[Storage sync] job failed:', job.type, job.binding.documentId, message)
-
-    if (permanent) {
-      // A failed thumbnail upload must not poison the document's sync status —
-      // only canvas/delete jobs reflect into the meta row.
-      if (job.type !== 'putThumb') {
-        await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, {
-          syncStatus: 'error',
-          lastSyncError: message
-        })
-        setSyncUI('error', message.slice(0, 120))
-      } else {
-        // Keep a record without touching syncStatus so the stale remote
-        // thumbnail is at least diagnosable.
-        await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, { lastSyncError: message })
-      }
-      if (job.type === 'putThumb') {
-        await outbox.remove(job.id)
-        const remaining = await outbox.list()
-        setPendingSyncCount(remaining.length)
-        if (remaining.length > 0) scheduleWake(1000)
-        else setSyncUI('idle')
-      } else {
-        // Never discard a document mutation. Keep it durable until the user
-        // repairs credentials/permissions and explicitly wakes synchronization.
-        await outbox.update({
-          ...job,
-          attempts,
-          nextAttemptAt: Number.MAX_SAFE_INTEGER
-        })
-      }
-      return
-    }
-
-    const updated: OutboxJob = {
-      ...job,
-      attempts,
-      nextAttemptAt: Date.now() + backoffMs(attempts)
-    }
-    await outbox.update(updated)
-    if (job.type !== 'putThumb') {
-      await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, {
-        syncStatus: 'pending',
-        lastSyncError: message
-      })
-    }
-    // Wake for the next ready job across the whole queue — not this job's
-    // full backoff, which starved other jobs that were ready sooner.
-    const all = await outbox.list()
-    const nextAt = Math.min(...all.map((j) => j.nextAttemptAt))
-    scheduleWake(Math.max(250, nextAt - Date.now()))
+    await handleJobFailure(job, error)
   }
 }
 
@@ -484,6 +520,7 @@ export async function recoverStorageSyncJobs(): Promise<number> {
       binding,
       type,
       revision: type === 'putCanvas' ? meta.revision : 0,
+      nextAttemptAt: retryAwareEnqueueTime(binding.providerId),
       expectedRemoteRevision: meta.remoteRevision
     })
     queued.add(key)
@@ -539,7 +576,8 @@ export async function kickSyncEngine(): Promise<void> {
   // 5s backoff; re-waking would clobber it into a tight retry loop.)
   if (pumpFailed || !isOnline()) return
   const jobs = await getOutbox().list()
-  if (jobs.some((job) => job.nextAttemptAt <= Date.now())) scheduleWake(250)
+  const now = Date.now()
+  if (jobs.some((job) => retryAwareJobTime(job, now) <= now)) scheduleWake(250)
 }
 
 export async function enqueuePutCanvas(
@@ -547,10 +585,12 @@ export async function enqueuePutCanvas(
   revision: number,
   expectedRemoteRevision: StorageRemoteRevision | null = null
 ): Promise<void> {
+  const binding = resolveLocalCanvasLocator(locator)
   await getOutbox().enqueue({
-    binding: resolveLocalCanvasLocator(locator),
+    binding,
     type: 'putCanvas',
     revision,
+    nextAttemptAt: retryAwareEnqueueTime(binding.providerId),
     expectedRemoteRevision
   })
   void kickSyncEngine()
@@ -560,19 +600,23 @@ export async function enqueuePutThumb(
   locator: LocalCanvasLocator,
   revision: number
 ): Promise<void> {
+  const binding = resolveLocalCanvasLocator(locator)
   await getOutbox().enqueue({
-    binding: resolveLocalCanvasLocator(locator),
+    binding,
     type: 'putThumb',
-    revision
+    revision,
+    nextAttemptAt: retryAwareEnqueueTime(binding.providerId)
   })
   void kickSyncEngine()
 }
 
 export async function enqueueDeleteCanvas(locator: LocalCanvasLocator): Promise<void> {
+  const binding = resolveLocalCanvasLocator(locator)
   await getOutbox().enqueue({
-    binding: resolveLocalCanvasLocator(locator),
+    binding,
     type: 'deleteCanvas',
-    revision: 0
+    revision: 0,
+    nextAttemptAt: retryAwareEnqueueTime(binding.providerId)
   })
   void kickSyncEngine()
 }
@@ -583,7 +627,11 @@ export async function resumeStorageSync(): Promise<void> {
   const outbox = getOutbox()
   const jobs = await outbox.list()
   const now = Date.now()
-  await Promise.all(jobs.map((job) => outbox.update({ ...job, nextAttemptAt: now })))
+  await Promise.all(
+    jobs.map((job) =>
+      outbox.update({ ...job, nextAttemptAt: retryAwareEnqueueTime(job.binding.providerId, now) })
+    )
+  )
   if (jobs.length > 0) setSyncUI('syncing')
   void kickSyncEngine()
 }

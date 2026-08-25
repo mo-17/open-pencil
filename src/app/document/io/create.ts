@@ -78,6 +78,7 @@ export function createDocumentIOActions(
     adoptRecoverySnapshot: sourceActions.adoptRecoverySnapshot,
     persistRecoveryNow: sourceActions.persistRecoveryNow,
     discardRecovery: sourceActions.discardRecovery,
+    buildFigFileSnapshot: sourceActions.buildFigFileSnapshot,
     setDocumentSource: sourceActions.setDocumentSource,
     setStorageDocumentSource: sourceActions.setStorageDocumentSource,
     setPlannedFilePath: sourceActions.setPlannedFilePath,

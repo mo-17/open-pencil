@@ -47,6 +47,8 @@ export type PersistStorageCanvasOptions = {
   canvasId: string
   name: string
   figBytes: Uint8Array
+  /** Initial provider revision, when document identity was reserved remotely. */
+  remoteRevision?: StorageRemoteRevision | null
   mutationLease?: StorageProfileMutationLease
 }
 
@@ -94,7 +96,8 @@ export async function persistStorageCanvasLocally(
         name: options.name,
         figBytes: options.figBytes,
         thumbBytes: thumbnailBytes,
-        syncStatus: 'pending'
+        syncStatus: 'pending',
+        remoteRevision: options.remoteRevision
       })
       await runtime.enqueueCanvas(binding, metadata.revision, metadata.remoteRevision)
       emitStorageWorkspaceEvent({

@@ -26,6 +26,8 @@ export type Outbox = {
   list(): Promise<OutboxJob[]>
   enqueue(job: OutboxEnqueueInput): Promise<OutboxJob>
   update(job: OutboxJob): Promise<void>
+  /** Atomically defer every existing job for one provider without creating new jobs. */
+  deferProvider(providerId: StorageProviderID, notBefore: number): Promise<number>
   replaceAuthority(replacement: OutboxAuthorityReplacement): Promise<number>
   /** Atomically replace pre-generation S3 jobs with jobs bound to the first generation. */
   replaceLegacyAuthority(replacement: OutboxLegacyAuthorityReplacement): Promise<number>
@@ -225,6 +227,23 @@ function withLegacyAuthorityReplaced(
   return { jobs, replaced: candidates.length }
 }
 
+function withProviderDeferred(
+  queue: OutboxJob[],
+  providerId: StorageProviderID,
+  notBefore: number
+): { jobs: OutboxJob[]; replaced: number } {
+  if (!providerId || !Number.isSafeInteger(notBefore) || notBefore < 0) {
+    throw new Error('Storage retry cooldown is invalid')
+  }
+  let replaced = 0
+  const jobs = queue.map((job) => {
+    if (job.binding.providerId !== providerId || job.nextAttemptAt >= notBefore) return job
+    replaced++
+    return { ...job, nextAttemptAt: notBefore }
+  })
+  return { jobs, replaced }
+}
+
 export function createMemoryOutbox(): Outbox {
   let jobs: OutboxJob[] = []
 
@@ -239,6 +258,11 @@ export function createMemoryOutbox(): Outbox {
     },
     async update(job) {
       jobs = jobs.map((j) => (j.id === job.id ? job : j))
+    },
+    async deferProvider(providerId, notBefore) {
+      const result = withProviderDeferred(jobs, providerId, notBefore)
+      jobs = result.jobs
+      return result.replaced
     },
     async replaceAuthority(replacement) {
       const result = withAuthorityReplaced(jobs, replacement)
@@ -318,6 +342,10 @@ export function createIdbOutbox(databaseName = DB_NAME): Outbox {
       // deleted while its provider request is still settling.
       if (existing !== undefined) store.put(job)
       await txDone(tx)
+    },
+
+    async deferProvider(providerId, notBefore) {
+      return replaceJobs((existing) => withProviderDeferred(existing, providerId, notBefore))
     },
 
     async replaceAuthority(replacement) {

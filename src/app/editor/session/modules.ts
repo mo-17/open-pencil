@@ -84,6 +84,7 @@ export function createEditorStoreModules(
     fitCurrentPageToViewport: documentIO.fitCurrentPageToViewport,
     saveFigFile: documentIO.saveFigFile,
     saveFigFileAs: documentIO.saveFigFileAs,
+    buildFigFileSnapshot: documentIO.buildFigFileSnapshot,
     getDocumentFilePath: documentIO.getDocumentFilePath,
     getSourceIdentity: documentIO.getSourceIdentity,
     onSourceChanged: documentIO.onSourceChanged,

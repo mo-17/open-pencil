@@ -34,10 +34,12 @@ describe('Google Drive workspace async identity guards', () => {
       'async function refresh()',
       'async function checkForRemoteChanges'
     )
-    const metadata = refresh.indexOf('readGoogleDriveStoredAuthority(context.profileId)')
+    const metadata = refresh.indexOf('const storedAuthority = await readStoredStorageAuthority(')
     const localPaint = refresh.indexOf('await paintLocalDocuments(identity')
     const remoteAuthority = refresh.indexOf('adapter.getAuthority?.')
     expect(metadata).toBeGreaterThan(-1)
+    expect(refresh.slice(metadata, localPaint)).toContain('context.providerId')
+    expect(refresh.slice(metadata, localPaint)).toContain('context.profileId')
     expect(localPaint).toBeGreaterThan(metadata)
     expect(remoteAuthority).toBeGreaterThan(localPaint)
   })
