@@ -21,15 +21,23 @@ OpenPencil 插件系统分为两个明确隔离的层级：
 
 配置远程市场根之后，页面还会显示 stable/beta 渠道、发布者与密钥身份、快照状态、审计头，以及该快照是否授权可执行运行时索引。搜索只匹配签名内容中的名称、摘要、分类、关键词、插件 ID 和发布者元数据，不会信任未签名搜索服务返回的身份信息。
 
-当前 **Unreleased** 源码线包含 64 个经过审查的插件、67 项 contribution：20 个模块、
-11 个命令、13 个导出器、22 个连接器与 1 个存储服务商。只有定义、渲染器、合同或导出源码
+当前 **Unreleased** 源码线包含 67 个经过审查的插件、70 项 contribution：20 个模块、
+11 个命令、13 个导出器、22 个连接器与 4 个存储服务商。只有定义、渲染器、合同或导出源码
 文件，并不代表插件已经可以使用；该 contribution 还必须完成中央主机注册。新配置中 Map、
-Google Drive Storage、Compiler Preview Popout 与 AI Popout 默认安装并启用，其余内置插件都需要用户选择安装并启用。
+Google Drive Storage、OneDrive Storage、Aliyun Drive Storage、Baidu Netdisk Storage、Compiler Preview Popout 与 AI Popout 默认安装并启用，
+其余内置插件都需要用户选择安装并启用。
 
 - **Map**：新配置中默认安装并启用，创建可原生编辑的地图 `FRAME`，并通过经过审查的
   MapLibre React 适配器编译。
 - **Google Drive Storage**：默认安装并启用的主机自有存储服务商声明。其清单不携带网络、
   OAuth 或可执行实现；请从 **设置 → 存储** 连接经过审查的桌面适配器。
+- **OneDrive Storage**：默认安装并启用的主机自有存储服务商声明，仅在 Tauri
+  桌面应用可用。它经过审查的适配器由 Microsoft Graph 限定在 OpenPencil 的应用文件夹中；
+  请从 **设置 → 存储** 连接。
+- **Aliyun Drive Storage**：默认安装并启用的主机自有存储服务商声明；经过审查的适配器由
+  阿里云盘的 folder-style 授权根目录限制访问范围。请从 **设置 → 存储** 连接。
+- **Baidu Netdisk Storage**：默认安装并启用的主机自有存储服务商声明；经过审查的适配器只在
+  `/apps/OpenPencil` 下管理文档。请从 **设置 → 存储** 连接。
 - **Compiler Preview Popout（编译器预览悬浮窗）**：新配置中默认安装并启用，仅在
   Tauri 桌面应用中可用。使用 Compiler Preview 工具栏的 **Pop out** 可在独立窗口打开当前
   本机预览。插件不会收到 URL、窗口标签或原生窗口参数；宿主只从当前 Loopback 预览服务与路由
@@ -435,26 +443,45 @@ Schema v2，将参数、结果、权限和输出绑定到已审查的主机适�
 只能包含精确的 `providerId`、`name`、`description`、`adapterId`、`configVersion` 与
 `capabilities` 键；`capabilities` 只能是 `documents.read`、`documents.write`、
 `documents.delete`、`changes.read`、`uploads.resumable` 的有界子集。这些字段只是主机兼容性
-元数据，不是插件权限；v2 清单仍不能携带网络、OAuth 或可执行实现。Google Drive Storage 是
-内置的 Schema v2 存储服务商声明。
+元数据，不是插件权限；v2 清单仍不能携带网络、OAuth 或可执行实现。Google Drive Storage、
+OneDrive Storage、Aliyun Drive Storage 与 Baidu Netdisk Storage 是内置的 Schema v2 存储服务商声明。
 
 ## 使用 Google Drive 的云文档
 
 **Google Drive Storage** 在新配置中默认安装并启用，但实际行为全部由经过审查的主机自有
-适配器提供。Fork 发布者通过 `VITE_GOOGLE_DRIVE_CLIENT_ID` 在构建时提供公开的
-Google Desktop OAuth Client ID。在桌面应用打开 **设置 → 存储 → Google Drive**，再选择
-**连接**。Desktop OAuth Client 是
-[公开的已安装应用客户端](https://developers.google.com/identity/protocols/oauth2/native-app)：
-OpenPencil 只需要 Client ID，不会内置 Client Secret。应用会打开系统浏览器，通过临时 Loopback
-回调完成带 PKCE 的 Authorization Code
-流程，并且只请求 `openid`、`email` 与 `drive.file`。`drive.file` 只允许适配器访问由本应用
-创建或用户明确用它打开的文件，并不是整个 Drive 的访问权。Refresh Token 保存在应用本地
-IndexedDB 中，并使用 AES-GCM 与不可提取的 WebCrypto 密钥加密；绑定只记录非秘密的账号身份与
-授权版本。Tauri 开发版和正式版都会直接选用这一加密应用存储，它不是原生凭据库失败后的回退，
-并且不使用 macOS 钥匙串。浏览器版暂不支持 Google Drive 授权。
+适配器提供。默认的官方连接只会从构建时的 `VITE_GOOGLE_DRIVE_CLIENT_ID` 读取公开 Google Desktop
+OAuth Client ID；配置不能覆盖这个发布者身份，正式版也绝不内置发布者的 Client Secret。在桌面应用
+打开 **设置 → 存储 → Google Drive**，再选择 **连接**。官方 Tauri 构建还会通过
+`OPENPENCIL_GOOGLE_DRIVE_OAUTH_BROKER_ORIGIN` 编译固定的规范 HTTPS Token Broker Origin。Native Rust
+在交换时只向 Broker 发送一次性 Code、PKCE Verifier 与 Loopback URI，在刷新时只发送本地解密后的
+Refresh Token。无状态 Broker 注入发布者凭据；Drive API 与 `.fig` 流量仍由桌面端直连 Google。
+正式版缺少或错误配置 Broker 时会失败关闭，不会跨后端重试。
 
-从使用钥匙串的旧构建升级时，OpenPencil 不会自动迁移或删除原有的 macOS 钥匙串项目。首次使用
-时请重新连接 Google Drive，并重新录入其他已保存凭据；旧项目会保持不变，直至你另行移除。
+仅桌面端提供的 **高级/自托管** 选项允许为某个配置显式导入下载的 Google Desktop
+`credentials.json`。这是独立标记的自有 Client 模式，不会覆盖官方 Client。OpenPencil 只读取
+`installed.client_id` 与 `installed.client_secret`，忽略文件中的授权、Token 或 Redirect URI 配置；
+Google Authorization/Token/Userinfo/Revoke Endpoint、精确的 `openid`、`email`、`drive.file` Scope、
+临时 Loopback 回调与 PKCE 行为仍由主机固定。自有 Client 身份、Client Secret 与 Refresh Token
+保存在同一个加密授权 Envelope 中；原始 JSON 和文件路径都不会保存。Desktop `client_secret` 一旦
+分发就不再是可保密秘密，但 OpenPencil 仍将其作为敏感值处理，不会放入 Manifest、Preference、日志、
+错误、长生命周期界面状态、构建变量或代码仓库。自有 Client 模式只会直连 Google，不会回退官方
+Broker；官方模式也不会回退到导入凭据。
+
+两种受支持的连接模式都会打开系统浏览器，并使用
+[公开的已安装应用客户端](https://developers.google.com/identity/protocols/oauth2/native-app)。
+`drive.file` 只允许适配器访问由本应用创建或用户明确用它打开的文件，并不是整个 Drive 的访问权。
+Rust 会把 Refresh Token 保存到 Tauri 固定应用数据目录下的版本化加密凭据库；绑定只记录非秘密的
+账号身份与授权版本。每条记录使用 AES-256-GCM 和新的随机 Nonce，加密主密钥则作为同目录下单独的
+私有文件保存。这条路径不会持久化 WebCrypto 密钥，也不使用 macOS 钥匙串。它可以避免凭据明文
+快照，但不能抵御同一系统用户、已受损的主 Renderer、文件回滚，或同时包含主密钥与凭据库的备份。
+浏览器版暂不支持 Google Drive 授权。
+
+Broker 故障会暂停新的 Token Exchange 或 Refresh，但不会阻止本地编辑，也不会丢弃持久 Outbox。
+发布配置错误或授权失效会暂停对应任务，直到修复构建或明确重新连接同一个账号。
+
+从使用 IndexedDB 或钥匙串的旧桌面构建升级时，OpenPencil 不会自动迁移或删除原有记录。首次
+使用时请重新连接 Google Drive，并重新录入其他已保存凭据；旧 IndexedDB 数据库和 macOS
+钥匙串项目都会保持不变，直至你另行移除。
 
 每个存储服务最多可保存 8 个具名配置。每个配置都有独立的 OAuth 账号或 S3 凭据、非秘密服务
 设置、本地文档索引、Change Cursor 与持久同步权限。切换配置时会先取消旧界面的异步工作，再
@@ -501,7 +528,9 @@ Bucket、Region 或凭据会旋转世代。存在待同步、冲突或待删除�
 
 ::: warning 发布前验证
 自动化 contract、adapter 与原生 Bridge 测试不能证明真实 Google OAuth Client/账号流程。
-正式发布前，请使用真实 Google Desktop OAuth Client 与两个测试账号逐项完成以下验收：
+正式发布前，请使用真实 Google Desktop OAuth Client 与两个测试账号，通过官方 Broker 逐项完成
+以下验收。如果发布高级模式，还要使用另一个 Google Project 的真实 Desktop `credentials.json`
+重复 Consent、重启、Refresh、Revoke 与 Drive 操作，并确认两种模式都不会访问对方的 Token Backend：
 
 1. 通过系统浏览器连接，核对授权页仅包含 `openid`、`email` 与 `drive.file`；重启桌面应用后，
    同一配置应能恢复连接，界面和日志都不得暴露 Refresh Token。
@@ -516,9 +545,107 @@ Bucket、Region 或凭据会旋转世代。存在待同步、冲突或待删除�
 6. 关闭编辑标签页后从存储工作区删除文档，覆盖离线队列与重启恢复，再确认文件进入 Drive
    回收站并可从回收站恢复。
 7. 在 Google 端撤销授权；OpenPencil 应提示重新连接而不是盲目重试，并检查日志与应用本地
-   IndexedDB，确认其中不含 Access Token、Refresh Token 或可恢复上传 Session URL 的明文；
-   在 macOS 上还应确认 OpenPencil 没有新建钥匙串项目。
+   凭据库，确认其中不含 Access Token、Refresh Token 或可恢复上传 Session URL 的明文；
+   在 macOS 上还应确认 OpenPencil 没有新建 WebKit WebCrypto 主密钥或其他凭据钥匙串项目。
    :::
+
+## 使用 OneDrive 的云文档
+
+**OneDrive Storage** 在新配置中默认安装并启用，但授权和 Microsoft Graph 操作仅在
+Tauri 桌面应用中可用，并且全部由经过审查的主机自有适配器执行。发布者必须在 Microsoft
+Entra 中注册 **Public Client / Desktop Application**，再通过构建变量
+`VITE_ONEDRIVE_CLIENT_ID` 提供公开的 Client ID。OpenPencil 不需要、不接受、也不会内置
+Client Secret。在桌面应用打开 **设置 → 存储 → OneDrive**，再选择 **连接**。浏览器版不支持
+OneDrive 授权。
+
+构建前请先配置 Entra 应用：
+
+1. 把应用注册命名为 **OpenPencil**，再把“支持的账户类型”设为**任何组织目录中的账户和个人
+   Microsoft 账户**；应用注册名称会决定用户看到的应用文件夹名称。
+2. 在**身份验证**中添加**移动和桌面应用程序**重定向 URI `http://localhost`，并允许公共客户端流。
+3. 在 **API 权限**中添加 Microsoft Graph 委托权限 `Files.ReadWrite.AppFolder`；不要为
+   OpenPencil 创建或配置 Client Secret。
+4. 本地构建时，把公开 Client ID 传给启动 Tauri 的同一个 Shell，例如
+   `VITE_ONEDRIVE_CLIENT_ID=00000000-0000-0000-0000-000000000000 bun run tauri dev`。仅由 Vite
+   从 `.env.local` 载入的值不会进入 Rust 编译期的 `option_env!`。发布构建使用同名 GitHub
+   Actions Repository Variable。
+
+原生主机把 Microsoft Identity Platform Tenant 固定为 `common`，因此同时支持个人 Microsoft
+账户与工作/学校账户。它会打开系统浏览器，通过随机 `localhost` Loopback 回调完成带 S256
+PKCE 的 Authorization Code 流程。请求并接受的 Scope 必须精确为 `openid`、`profile`、
+`email`、`offline_access` 与
+`https://graph.microsoft.com/Files.ReadWrite.AppFolder`；如果授权中包含更广的
+`Files.ReadWrite` 或 `Files.ReadWrite.All`，应用会拒绝该授权。经验证的 OpenID Connect
+Subject 用于绑定账号授权，Refresh Token 则保存在 Rust 拥有的加密凭据库中。
+
+Microsoft Graph 会把 `special/approot` 解析为界面中显示的 `Apps/OpenPencil` 应用文件夹。
+OpenPencil 只会在这个已解析根目录下创建和管理文档层级。`Files.ReadWrite.AppFolder` 使该边界由
+Microsoft Graph 服务端强制执行，而不是界面规则或客户端路径前缀检查；适配器不会回退到任意
+OneDrive 文件访问。文档仍使用共享的 Local-first Cache 和持久 Outbox；大文件使用可恢复上传，
+更新使用当前 ETag 执行条件写入，并发修改会保留带时间戳的冲突副本，删除则走 OneDrive 回收站语义。
+
+::: warning 发布前验证
+自动化 Contract、Adapter 与原生 Bridge 测试不能证明真实 Microsoft Entra Client 或 OneDrive 账号流程。
+发布前，请使用已配置的 Public Desktop Client ID，分别连接一个个人 Microsoft 账号与一个工作/学校
+账号，验证精确 Consent、重启与 Refresh、上传与下载（包括中断传输）、第二客户端冲突副本，
+以及删除/回收站行为。这些真实 Consent、重启、上传、下载、冲突与删除检查在已分发的
+Tauri 构建上完成前，仍是手工 Release Gate。Microsoft 当前在 Graph 权限参考中仍把委托的
+`Files.ReadWrite.AppFolder` 标记为 Preview，因此每次发布前还必须验证目标 Tenant 的可用性与
+Consent 行为。
+:::
+
+## 使用阿里云盘的云文档
+
+**Aliyun Drive Storage** 在新配置中默认安装并启用，但授权与数据操作仍由经过审查的桌面宿主
+执行。官方构建只接受 `VITE_ALIYUN_DRIVE_CLIENT_ID` 中的公开 OAuth Client ID、
+`OPENPENCIL_ALIYUN_DRIVE_OAUTH_BROKER_ORIGIN` 中的规范 HTTPS Token 服务 Origin，以及
+`OPENPENCIL_ALIYUN_DRIVE_REDIRECT_URI` 中与控制台登记值完全一致的固定回调。这些都是公开构建
+坐标，不是 Client Secret。回调必须是为桌面客户端登记的固定
+`http://127.0.0.1:<端口>/oauth/aliyun-drive/callback` loopback URI。发布者的 Confidential Client Secret 只保留在
+Broker；Broker 执行 Authorization Code 交换和 Refresh Token 轮换，但从不代理阿里云盘 API
+请求或 `.fig` 字节。
+
+授权固定使用 S256 PKCE、逗号分隔的精确 Scope
+`user:base,file:all:read,file:all:write`、`style=folder`，并建议使用 `drive=backup`。Consent 后，
+`/adrive/v1.0/user/getDriveInfo` 返回的 `folder_id` 是由阿里云盘服务端强制执行的访问根目录，
+不是客户端路径前缀约定。
+
+明确选择的 **高级/自托管** 模式可以导入用户自己的 Confidential Client ID/Client Secret，或
+Public App Client ID，以及单独登记的固定 loopback 回调。Public Client 的官方说明是 Access
+Token 约 30 天有效且不签发 Refresh Token，因此该模式到期后必须显式重新授权。两种自托管模式都
+不会回退到官方 Broker，官方配置也不会回退到导入配置。阿里云盘当前没有可供
+本集成使用的 Change Feed，也没有 ETag/`If-Match` 条件内容更新；因此清单不声明
+`changes.read`，刷新使用有界文件夹列表，界面也不能宣称具备 Google Drive 或 OneDrive 相同的
+远程写入前置条件保证。
+
+::: warning 发布前验证
+Contract 与 Adapter 测试不能证明真实阿里开放平台授权。发布前必须用真实账号验证固定 loopback 回调与
+Broker TLS、精确 Scope 与 folder-style Consent、服务端根目录、Refresh Token 轮换与 Public 模式到期行为、重新连接与
+授权迁移、上传/下载/可恢复传输、回收站与冲突保留。完成服务商要求的生产应用审核或账号白名单
+之前，不能把分发构建标记为就绪。
+:::
+
+## 使用百度网盘的云文档
+
+**Baidu Netdisk Storage** 在新配置中默认安装并启用。官方构建只包含
+`VITE_BAIDU_NETDISK_APP_KEY` 中的公开 App Key，以及
+`OPENPENCIL_BAIDU_NETDISK_OAUTH_BROKER_ORIGIN` 中的规范 HTTPS Token 服务 Origin。授权使用设备码
+端点和精确 Scope `basic,netdisk`。百度在 `grant_type=device_token` 交换与刷新时都强制要求应用
+`SecretKey`，所以该值只能留在托管 Broker，绝不能进入 Tauri 发行包、Vite 环境、清单、日志或
+文档。Broker 只交换和刷新 Token；百度 API 请求和 `.fig` 字节仍由桌面端直连百度网盘。
+
+所有远程文档都固定在 `/apps/OpenPencil` 应用目录下，适配器不会申请或模拟更大的根目录。明确
+选择的 **高级/自托管** 模式可以使用用户自己的 App Key 与 SecretKey；两者与轮换后的 Refresh
+Token 一起保存在原生加密凭据库中，且不保留导入源文件或其路径，也不会回退官方 Broker。内置
+清单不声明 `changes.read`；远程调和仍是有界整文档流程，不是 Change Feed 或协作保证。
+
+::: warning 发布前验证
+百度个人开发者账号可创建 1 个应用；未经上线审核的个人使用默认只限 10 个用户，公开分发必须通过
+百度上线审核。发布前应按服务商要求提交准确的 API 清单与必要性、测试账号、OAuth 与核心流程录屏、
+安全和隐私说明。随后还必须在已分发 Tauri 构建中，用真实账号验证设备码授权、重启与 Refresh、
+上传/下载/可恢复传输、`/apps/OpenPencil` 边界、重新连接与授权迁移、冲突保留和回收站行为。
+自动化测试不能清除这些账号与审核门禁。
+:::
 
 ## Application Security Readiness（应用安全就绪检查）
 
@@ -559,9 +686,10 @@ Phase 2 Broker 已让 22 个内置连接器可以执行：原有的 **Supabase S
 
 这些连接器是 OpenPencil 编辑器中的本地、设计时操作者工具；它们不会被编译进生成应用，
 也不是服务端连接器运行时。凭据不会进入插件清单、设计文档、Compiler 输出、审计日志或长期
-响应式 UI 状态，但 renderer 侧经过审查的请求路径会在发出调用时把凭据解析到内存。桌面端使用
-AES-GCM 与不可提取的 WebCrypto 密钥加密应用本地 IndexedDB 记录，并通过有界的 Tauri 代理
-传输；这**不等于服务端秘密隔离**，也不声称能抵御已受损的 renderer。请使用最小权限的开发
+响应式 UI 状态，但 renderer 侧经过审查的请求路径会在发出调用时把凭据解析到内存。桌面端由
+Rust 把每个值写入上述 AES-256-GCM 应用本地凭据库，并通过有界的 Tauri 代理传输。主密钥与
+凭据库位于同一系统用户的数据目录，因此这**不等于服务端秘密隔离**，也不声称能抵御已受损的
+renderer、同用户恶意程序或同时包含两者的备份。请使用最小权限的开发
 凭据（Stripe 优先使用受限密钥），生产应用秘密应留在你自己运维的
 基础设施中。生成应用的服务端连接器属于后续阶段。
 

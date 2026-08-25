@@ -41,18 +41,21 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   Motion Runtime SDK; and generate a fail-closed Figma Motion Plugin API adapter for the verified
   native subset
 - **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase schema inspection and RLS guidance, authenticated client/server workflows, environment-scoped runtime configuration, i18n, shadcn/ui output, preview diagnostics, build, and deploy flows. Switch Compiler Preview and the `compile`/`build`/`deploy` CLI between the full React target and the bounded Vue 3 target; preview refresh supports Real-time, Auto, and Manual policies with single-flight latest-change scheduling
-- **Built-in plugin marketplace** — manage 64 reviewed plugins with 67 module, command, exporter,
+- **Built-in plugin marketplace** — manage 67 reviewed plugins with 70 module, command, exporter,
   connector, and storage-provider contributions: 20 editable modules, 11 bounded commands, 13
-  source/data exporters, 22 host-reviewed connectors, and the default-enabled Google Drive Storage
-  declaration. The opt-in additions include 17 read-only external-service connectors, local
+  source/data exporters, 22 host-reviewed connectors, and four default-enabled Google Drive,
+  OneDrive, Aliyun Drive, and Baidu Netdisk Storage declarations. The opt-in additions include 17 read-only external-service connectors, local
   Application Security Readiness, and safe deployment-plan reviews for Vercel and Cloudflare Pages
-- **Local-first cloud documents** — connect the Tauri desktop app to Google Drive through the system
-  browser and OAuth PKCE with the narrow `drive.file` scope. OpenPencil keeps visible `.fig` files in
-  Drive. After the local document index and Outbox pass live durable IndexedDB probes, it saves
+- **Local-first cloud documents** — connect the Tauri desktop app to Google Drive, OneDrive, Aliyun
+  Drive, or Baidu Netdisk through reviewed OAuth flows. Google uses the narrow `drive.file` scope;
+  OneDrive uses the service-enforced `Files.ReadWrite.AppFolder` boundary for `Apps/OpenPencil`;
+  Aliyun Drive uses its service-enforced folder-style root; Baidu Netdisk stays under
+  `/apps/OpenPencil`. After the local document
+  index and Outbox pass live durable IndexedDB probes, OpenPencil saves
   locally before queuing background uploads, resumes pending work after restart, uses resumable
-  transfers and incremental change cursors, and preserves concurrent edits as conflict copies. A
-  production memory fallback blocks cloud operations and directs users to export open work as a
-  local `.fig`; it never claims offline or restart safety. Resumable session URLs are process-local,
+  transfers, uses incremental change cursors for Google Drive, and preserves concurrent edits as
+  conflict copies. A production memory fallback blocks cloud operations and directs users to export
+  open work as a local `.fig`; it never claims offline or restart safety. Resumable session URLs are process-local,
   so an ambiguous remote success followed by an app crash is preserved as a conflict copy instead of
   risking a silent overwrite. Self-managed S3-compatible storage remains an advanced alternative
 - **Vue SDK for custom editors** — headless components and composables for embedding OpenPencil into other apps or building workflow-specific editing surfaces. [Read the SDK docs →](https://openpencil.dev/programmable/sdk/)
@@ -316,15 +319,15 @@ stable/beta catalogs, searchable listings, immutable artifact coordinates, an ap
 checkpoint, and an optional executable-runtime index. Explicit update review, verified rollback,
 digest pins, cache status, and portable document dependency locks remain enforced.
 After enablement, insert module plugins from the canvas toolbar, run Clipboard Toolkit commands from
-the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 64
-reviewed built-ins expose 67 contributions: twenty modules (including Map, Rich Text, sandboxed
+the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 67
+reviewed built-ins expose 70 contributions: twenty modules (including Map, Rich Text, sandboxed
 HTML, Video, Lottie, Carousel, Advanced Data Grid, Tabs, Accordion, QR/Code 128, Markdown, Code
 Block, PDF Viewer, Audio Player, Modal, Dropdown Menu, and Upload Button), 11 commands (four Clipboard Toolkit
 actions, Compiler Preview Popout, AI Popout, Static Accessibility Audit, Static Design System Audit,
 Application Security Readiness, and safe Vercel and Cloudflare Pages deployment-plan reviews), 13 exporters (Tauri React, Expo React Native, Flutter,
 Next.js, Vue, Capacitor, Electron, native WeChat Mini Program, Taro, uni-app, Mpx, Design Tokens JSON,
 and Figma Editable Projection), 22 connectors, and
-one Google Drive storage provider. The connector set includes the original five bounded business
+four storage providers for Google Drive, OneDrive, Aliyun Drive, and Baidu Netdisk. The connector set includes the original five bounded business
 integrations plus opt-in read-only Neon, Sentry, HubSpot, Apollo, PostHog, Asana, Zotero, HeyGen,
 Linear, OpenAI, Box, Slack, Google Calendar, SharePoint, Outlook Email, Outlook Calendar, and
 Microsoft Teams integrations.
@@ -333,8 +336,8 @@ persist, or report transfer progress. Use the existing low-code `INPUT` plus Sup
 when an application needs server storage. Dynamic MCP can add the declarative Upload Button module
 only while its plugin is installed and enabled; file names and file bytes never enter MCP arguments
 or results.
-Map and the host-owned Google Drive Storage declaration are installed and enabled by default; all
-other built-ins are opt-in. Advanced Data Grid can
+Map and the host-owned Google Drive, OneDrive, Aliyun Drive, and Baidu Netdisk Storage declarations are installed and enabled by
+default; all other built-ins are opt-in. Advanced Data Grid can
 round-trip bounded RFC 4180 CSV in the property panel and generated web runtime without requesting
 file or clipboard privileges. Rich Text uses a structured visual block and inline-format editor in
 the Design panel. Compiler Preview and
@@ -345,16 +348,35 @@ ZIPs currently omit font bytes because the available SPDX IDs do not include the
 copyright, full license text, or NOTICE files required for safe redistribution; every omission
 remains visible in the export report.
 
-For cloud documents, the app publisher supplies the public Google OAuth Desktop client ID through
-`VITE_GOOGLE_DRIVE_CLIENT_ID` at build time. Open **Settings → Storage → Google Drive** in the
-desktop app and complete consent in the system browser. A Desktop OAuth client is a public
-installed-app client: OpenPencil needs only its Client ID and does not bundle a client secret. The
-app uses Authorization Code + PKCE through a temporary loopback callback and requests
-only `openid`, `email`, and `drive.file`. Refresh tokens are stored in app-local IndexedDB and
-encrypted with AES-GCM using a non-extractable WebCrypto key. Desktop development and release builds
-select this encrypted app backend directly—it is not a fallback after a native credential error—and
-do not use macOS Keychain. Existing Keychain items are neither migrated nor deleted, so after an
-upgrade you must reconnect Google Drive and enter other saved credentials once. Google Drive stores
+For cloud documents, the default official connection takes its public Google OAuth Desktop Client ID
+only from `VITE_GOOGLE_DRIVE_CLIENT_ID` at build time; a profile cannot override it, and the app never
+bundles the publisher's client secret. Official Tauri builds also fix the canonical HTTPS token Broker
+origin through `OPENPENCIL_GOOGLE_DRIVE_OAUTH_BROKER_ORIGIN`. Native Rust sends only the one-time code,
+PKCE verifier and loopback URI during exchange, or the locally decrypted refresh token during refresh.
+The stateless Broker injects the publisher credential; it never receives `.fig` files or Drive API
+requests. Missing or invalid release Broker configuration fails closed instead of falling back to a
+different token endpoint.
+
+The desktop-only **Advanced / self-hosted** option can explicitly import a downloaded Google Desktop
+`credentials.json` for one profile. This is a separate custom-client mode, not an override of the
+official identity. The importer consumes only `installed.client_id` and `installed.client_secret` and
+ignores every URI or redirect value in the file; authorization still uses host-fixed Google endpoints,
+the exact `openid`, `email`, and `drive.file` scopes, a temporary loopback callback, and PKCE. The custom
+client identity, client secret, and refresh token are stored together in one encrypted authorization
+envelope. OpenPencil never retains the original JSON or its path. A distributed Desktop client secret
+cannot remain confidential, but OpenPencil still treats it as sensitive and keeps it out of manifests,
+preferences, logs, errors, long-lived UI state, build variables, and the repository. Custom-client mode
+calls Google directly and never falls back to the official Broker; the official path never falls back
+to imported credentials.
+
+Both supported connection modes open the system browser; browser-only Google Drive authorization
+remains unsupported. Rust stores refresh tokens in a versioned AES-256-GCM vault under Tauri's fixed
+app-local-data directory; the random master key is a separate private file beside the vault. Desktop builds
+do not persist a WebCrypto key and do not use macOS Keychain. The vault avoids plaintext credential
+snapshots but is not a boundary against the same OS user, a compromised main renderer, rollback, or a
+backup containing both files. Existing desktop IndexedDB and Keychain records are neither imported nor
+deleted, so after an upgrade you must reconnect Google Drive and enter other saved credentials once.
+Google Drive stores
 ordinary, user-visible `.fig` files rather than hidden
 app-data blobs. Up to eight named profiles keep accounts, provider settings, local indexes, cursors,
 and durable work isolated. Reconnecting the same Google account checks unfinished work before OAuth,
@@ -378,8 +400,54 @@ collaboration backend. Pending jobs survive restart only after the durable probe
 resumable session URLs do not: if Drive may have committed an upload before the app could record its
 result, recovery preserves another conflict copy rather than guessing that an overwrite is safe. The
 implementation has automated contract coverage, but real Google authorization, restart,
-interrupted-transfer, multi-account, trash, and conflict checks remain a manual release gate. See
-[Cloud documents with Google Drive](packages/docs/user-guide/plugins.md#cloud-documents-with-google-drive).
+interrupted-transfer, multi-account, trash, and conflict checks remain a manual release gate. When
+advanced mode ships, run that gate once through the official Broker and once with explicitly imported
+credentials, including a check that neither mode contacts the other's token backend. See [Cloud
+documents with Google Drive](packages/docs/user-guide/plugins.md#cloud-documents-with-google-drive).
+
+OneDrive is available only in the Tauri desktop app. A publisher registers a Microsoft Entra public
+desktop client and provides its Client ID at build time through `VITE_ONEDRIVE_CLIENT_ID`; OpenPencil
+does not use or bundle a Client Secret. The native host uses the Microsoft `common` tenant so both
+personal Microsoft accounts and work or school accounts can connect. It opens the system browser and
+completes Authorization Code with S256 PKCE through a random `localhost` loopback callback, requesting
+exactly `openid`, `profile`, `email`, `offline_access`, and
+`https://graph.microsoft.com/Files.ReadWrite.AppFolder`.
+
+For local desktop development, provide the public ID to the shell that compiles Rust, for example
+`VITE_ONEDRIVE_CLIENT_ID=00000000-0000-0000-0000-000000000000 bun run tauri dev`. A Vite-only
+`.env.local` value is not sufficient for Rust's compile-time `option_env!`. The Entra registration
+must support organizational-directory plus personal Microsoft accounts, enable public-client flows,
+register the Mobile and desktop applications redirect `http://localhost`, and add the delegated
+Microsoft Graph `Files.ReadWrite.AppFolder` permission.
+
+Microsoft Graph resolves `special/approot` to the app folder shown as `Apps/OpenPencil`. The delegated
+permission enforces that boundary at the service; OpenPencil does not fall back to broader
+`Files.ReadWrite` or `Files.ReadWrite.All` access. Automated tests cover the contracts, but real
+Microsoft consent, restart/refresh, upload, download, conflict-copy, and delete behavior remain a
+manual release gate. See [Cloud documents with
+OneDrive](packages/docs/user-guide/plugins.md#cloud-documents-with-onedrive).
+
+Aliyun Drive official desktop builds accept only the public
+`VITE_ALIYUN_DRIVE_CLIENT_ID`, canonical
+`OPENPENCIL_ALIYUN_DRIVE_OAUTH_BROKER_ORIGIN`, and exact registered
+loopback `OPENPENCIL_ALIYUN_DRIVE_REDIRECT_URI`. Authorization uses S256 PKCE, exact scopes
+`user:base,file:all:read,file:all:write`, and `style=folder`; the returned `folder_id` is a
+service-enforced root. The Broker handles only token operations and never `.fig` traffic. Aliyun's
+publisher-managed confidential grant rotates refresh tokens without putting the Client Secret in the
+desktop build. Aliyun exposes neither a usable change feed nor ETag/`If-Match` content
+updates for this path, so OpenPencil does not declare or imply those guarantees. An explicit advanced
+profile can instead import the user's own confidential Client ID/Secret or a public-app Client ID;
+the public-app variant receives an access-only grant and must reconnect after expiry.
+
+Baidu Netdisk official desktop builds accept only the public `VITE_BAIDU_NETDISK_APP_KEY` and
+canonical `OPENPENCIL_BAIDU_NETDISK_OAUTH_BROKER_ORIGIN`. The default device-code flow requests only
+`basic,netdisk`; Baidu requires its `SecretKey` for both token exchange and refresh, so that secret
+stays in the Broker and never enters the Tauri artifact. Drive API and `.fig` traffic remain direct,
+and all documents stay below `/apps/OpenPencil`. An explicit advanced profile can store the user's
+own App Key, SecretKey, and rotating refresh token in the native encrypted vault. Public distribution
+still requires Baidu production review; unreviewed personal use is limited to ten users. Real-account
+OAuth, restart, transfer, boundary, conflict, and trash checks remain manual release gates for both
+providers. See [the Aliyun Drive and Baidu Netdisk sections in the plugin guide](packages/docs/user-guide/plugins.md#cloud-documents-with-aliyun-drive).
 
 Installed and enabled plugin contributions that the host explicitly marks MCP-safe also appear as
 dynamic MCP tools. Disabling, removing, or disconnecting the plugin host removes those tools from

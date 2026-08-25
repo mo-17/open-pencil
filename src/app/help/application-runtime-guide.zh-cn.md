@@ -411,7 +411,7 @@ supabase functions deploy openpencil-runtime \
 | 现象                                | 可能原因                                            | 检查内容                                                                          |
 | ----------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- |
 | **测试连接**失败                    | URL 无效、公开 key 错误、项目离线，或网络/CORS 失败 | 从同一个 Supabase 项目复制 URL 与 publishable/anon key；绝不能改用 secret key     |
-| **数据库结构**提示缺少凭据          | PAT 未保存，或凭据存储已锁定/不可用                 | 保存 Supabase personal access token，并解锁操作系统凭据存储                       |
+| **数据库结构**提示缺少凭据          | PAT 未保存，或应用本地凭据存储不可用                 | 保存 Supabase personal access token；若仍失败，请检查应用数据目录权限             |
 | Schema 检查返回 forbidden/not found | PAT 无权访问项目，或 URL 指向另一个项目             | 确认 PAT 所属账号、组织成员身份和项目 reference                                   |
 | 查询成功但返回零行                  | RLS 隐藏了数据、用户未登录，或过滤器错误            | 使用受影响用户测试 `$currentUser`、策略 `USING`、授权与相同查询                   |
 | INSERT 被拒绝                       | 缺少授权、RLS `WITH CHECK`、必填列，或 payload 无效 | 检查 Supabase 错误目标，并用 INSERT 策略验证最终数据行                            |

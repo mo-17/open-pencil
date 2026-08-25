@@ -387,6 +387,8 @@ URL you tested — "provider X doesn't have model Y" is only true for the endpoi
 
 In the browser, credentials default to encrypted IndexedDB persistence so users do not have to
 re-enter them; Settings also offers session-only storage, which keeps secrets in memory until the
-tab closes. The desktop build uses the OS credential store. Browser scripts running on the origin
-can still use a credential in place, so prefer scoped keys with spend caps where the provider
-offers them.
+tab closes. The desktop build instead uses a Rust-owned AES-256-GCM vault in its fixed Tauri app-local-data
+directory and does not persist a WebCrypto key or use macOS Keychain. Its separate key and vault files
+prevent plaintext snapshots but do not protect against the same OS user, a compromised main renderer,
+rollback, or a backup containing both files. Browser scripts running on the origin can still use a
+credential in place, so prefer scoped keys with spend caps where the provider offers them.
