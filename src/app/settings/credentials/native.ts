@@ -9,13 +9,31 @@ import {
   type CredentialStoreAvailability
 } from '@/app/settings/credentials/types'
 
-type NativeCredentialError = {
-  code?: CredentialErrorCode
-  message?: string
+type InvokeCredentialCommand = <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+
+const ERROR_MESSAGES: Readonly<Record<CredentialErrorCode, string>> = {
+  'invalid-reference': 'Credential reference is invalid',
+  'invalid-value': 'Credential value is invalid',
+  locked: 'The desktop credential store is locked',
+  unavailable: 'The app-local credential store is unavailable',
+  failed: 'Desktop app credential operation failed'
+}
+
+function credentialErrorCode(value: unknown): CredentialErrorCode {
+  return typeof value === 'string' && Object.hasOwn(ERROR_MESSAGES, value)
+    ? (value as CredentialErrorCode)
+    : 'failed'
+}
+
+function nativeCredentialErrorCode(error: unknown): CredentialErrorCode {
+  if (typeof error !== 'object' || error === null) return 'failed'
+  return credentialErrorCode((error as { code?: unknown }).code)
 }
 
 export class NativeCredentialStore implements CredentialStore {
   readonly backend = 'native' as const
+
+  constructor(private readonly invokeCommand: InvokeCredentialCommand = invoke) {}
 
   async availability(): Promise<CredentialStoreAvailability> {
     return this.#invoke('credential_store_availability')
@@ -39,13 +57,10 @@ export class NativeCredentialStore implements CredentialStore {
 
   async #invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
     try {
-      return await invoke<T>(command, args)
+      return await this.invokeCommand<T>(command, args)
     } catch (error) {
-      const nativeError = error as NativeCredentialError
-      throw new CredentialStoreError(
-        nativeError.code ?? 'failed',
-        nativeError.message ?? 'System credential operation failed'
-      )
+      const code = nativeCredentialErrorCode(error)
+      throw new CredentialStoreError(code, ERROR_MESSAGES[code])
     }
   }
 }

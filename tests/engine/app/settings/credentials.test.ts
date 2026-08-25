@@ -82,13 +82,13 @@ describe('credential references', () => {
 })
 
 describe('credential service roles', () => {
-  test('uses encrypted app-local storage for Tauri without a native Keychain fallback', () => {
+  test('uses the Rust app-local vault for Tauri without a browser or Keychain fallback', () => {
     expect(
       createRuntimeCredentialStore({ isTauri: true, browserPersistence: 'session' }).backend
-    ).toBe('browser')
+    ).toBe('native')
     expect(
       createRuntimeCredentialStore({ isTauri: true, browserPersistence: 'remembered' }).backend
-    ).toBe('browser')
+    ).toBe('native')
   })
 
   test('keeps the browser session-only choice in memory', () => {

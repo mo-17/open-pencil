@@ -22,7 +22,7 @@ use ai_window::{
 use codepen::{cleanup_stale_codepen_files, fetch_codepen_sources, open_codepen_prefill};
 use credentials::{
     credential_read, credential_remove, credential_status, credential_store_availability,
-    credential_write,
+    credential_write, CredentialVault,
 };
 use fig_container::build_fig_file;
 use fonts::{list_system_fonts, load_system_font};
@@ -223,6 +223,12 @@ pub fn run() {
             handle_menu_event(app, event.id().0.as_str());
         })
         .setup(|app| {
+            let credential_vault = app
+                .path()
+                .app_local_data_dir()
+                .map(CredentialVault::new)
+                .unwrap_or_else(|_| CredentialVault::unavailable());
+            app.manage(credential_vault);
             cleanup_stale_codepen_files();
             queue_open_paths(app.handle(), startup_open_paths());
             Ok(install_app_menu(app.handle(), &[])?)

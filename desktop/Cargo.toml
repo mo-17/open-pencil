@@ -42,14 +42,18 @@ tauri-plugin-process = "2"
 tauri-plugin-mcp-bridge = "0.11.0"
 tauri-plugin-webdriver-automation = "0.1.3"
 tauri-plugin-clipboard-manager = "2"
-keyring = "4.1.5"
+ring = "0.17"
 rand = "0.8"
 sha2 = "0.10"
 tempfile = "3.27.0"
+zeroize = "1"
 tauri-plugin-wdio-webdriver = { version = "1.3.0", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO"] }
