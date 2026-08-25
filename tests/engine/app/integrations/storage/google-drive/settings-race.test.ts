@@ -12,6 +12,21 @@ const oauthSessionSource = readFileSync(
   resolve(componentRoot, '../../../app/integrations/storage/google-drive/oauth/session.ts'),
   'utf8'
 )
+const googleRuntimeSource = readFileSync(
+  resolve(componentRoot, '../../../app/integrations/storage/google-drive/runtime.ts'),
+  'utf8'
+)
+const storageProvidersSource = readFileSync(
+  resolve(componentRoot, '../../../app/integrations/storage/providers.ts'),
+  'utf8'
+)
+const desktopCredentialsSource = readFileSync(
+  resolve(
+    componentRoot,
+    '../../../app/integrations/storage/google-drive/oauth/desktop-credentials.ts'
+  ),
+  'utf8'
+)
 const dialogsSource = readFileSync(
   resolve(componentRoot, '../../../../packages/vue/src/i18n/messages/dialogs.ts'),
   'utf8'
@@ -46,14 +61,22 @@ describe('storage settings async identity guards', () => {
       ['token-request-invalid', 'storageGoogleDriveTokenRequestInvalid'],
       ['authorization-grant-invalid', 'storageGoogleDriveAuthorizationCodeRejected'],
       ['network-failed', 'storageGoogleDriveNetworkFailed'],
+      ['oauth-broker-rate-limited', 'storageGoogleDriveRateLimited'],
+      ['oauth-broker-unavailable', 'storageTemporaryNetworkError'],
+      ['oauth-broker-misconfigured', 'storageGoogleDriveBrokerConfigurationFailed'],
+      ['oauth-broker-protocol-invalid', 'storageGoogleDriveBrokerConfigurationFailed'],
       ['userinfo-failed', 'storageGoogleDriveAccountVerificationFailed']
     ] as const
     for (const [code, key] of mappings) {
       expect(errorMapping).toContain(`'${code}': dialogs.value.${key}`)
     }
     expect(envSource).not.toContain('VITE_GOOGLE_DRIVE_CLIENT_SECRET')
+    expect(envSource).not.toContain('VITE_GOOGLE_DRIVE_OAUTH_BROKER_ORIGIN')
     expect(googleSource).not.toContain('clientSecretDraft')
-    expect(nativeBridgeSource).not.toContain('clientSecret:')
+    expect(googleSource).not.toContain('brokerOrigin')
+    expect(nativeBridgeSource).toContain("mode: 'self-hosted-desktop'")
+    expect(nativeBridgeSource).toContain('clientSecret: string')
+    expect(nativeBridgeSource).not.toContain('brokerOrigin')
     for (const removedCode of [
       'oauth-client-secret-missing',
       'oauth-client-pair-mismatch'
@@ -73,6 +96,14 @@ describe('storage settings async identity guards', () => {
     )
     expect(oauthSessionSource).not.toContain("options.manager.backend === 'native'")
     expect(googleSource).toContain('dialogs.storageGoogleDriveCredentialStorage')
+    expect(googleRuntimeSource).toContain('clientId: string | null')
+    expect(googleRuntimeSource).not.toContain('function missingClientId')
+    const googleProvider = functionSource(
+      storageProvidersSource,
+      'export const GOOGLE_DRIVE_STORAGE_PROVIDER',
+      'export const storageProviderRegistry'
+    )
+    expect(googleProvider).not.toContain('required: true')
   })
 
   test('attributes readiness to the emitting provider rather than the active provider', () => {
@@ -102,7 +133,7 @@ describe('storage settings async identity guards', () => {
     )
     const connect = functionSource(
       googleSource,
-      'async function connect()',
+      'async function connect(',
       'async function checkConnection()'
     )
     const unmount = functionSource(googleSource, 'onBeforeUnmount', '</script>')
@@ -150,7 +181,7 @@ describe('storage settings async identity guards', () => {
     )
     const connect = functionSource(
       googleSource,
-      'async function connect()',
+      'async function connect(',
       'async function confirmReconnect()'
     )
     const preflight = functionSource(
@@ -175,32 +206,73 @@ describe('storage settings async identity guards', () => {
     expect(connect).not.toContain('writeStoragePreference(')
     expect(googleSource).not.toContain('clientIdDraft')
     expect(googleSource).not.toContain('v-model=')
-    expect(googleSource).toContain(':model-value="maskedBuildClientId"')
+    expect(googleSource).toContain(':model-value="maskedActiveClientId"')
     expect(googleSource).toContain('readonly')
     expect(googleSource).not.toContain('@change="saveClientId"')
     expect(googleSource).not.toContain('@enter="saveClientId"')
     expect(preflight).toContain('for (const authority of seeds)')
-    expect(preflight).toContain('inspectStorageAuthorizationWork(authorizationScope(')
-    expect(preflight).toContain('listStaleStorageAuthorizationWork(authorizationScope(')
+    expect(preflight).toContain('inspectStorageAuthorizationWork(')
+    expect(preflight).toContain('authorizationScope(profileId, authority)')
+    expect(preflight).toContain('listStorageProfileAuthorizationWork({')
     expect(connect.indexOf('inspectAuthorizationPreflight(')).toBeLessThan(
       connect.indexOf('if (preflight.pending) return preflight.pending')
     )
     expect(connect.indexOf('if (preflight.pending) return preflight.pending')).toBeLessThan(
-      connect.indexOf('await performConnect(activeOperation, preflight.authorities)')
+      connect.indexOf('await performConnect(activeOperation, preflight.authorities, intent)')
     )
     expect(confirm).toContain('preflight.snapshotFingerprint !== pending.snapshotFingerprint')
-    expect(confirm).toContain('await performConnect(activeOperation, preflight.authorities)')
+    expect(confirm).toContain(
+      'await performConnect(activeOperation, preflight.authorities, pending.intent)'
+    )
     expect(cancel).not.toContain('performConnect(')
     expect(cancel).not.toContain('oauth.connect(')
     expect(googleSource).toContain('role="alertdialog"')
     expect(googleSource).toContain('reconnectConfirmButton.value?.focus()')
   })
 
+  test('imports self-hosted Desktop credentials only after preflight and never keeps raw input in Vue state', () => {
+    const choose = functionSource(
+      googleSource,
+      'async function chooseSelfHostedOAuthClient(',
+      'async function performConnect('
+    )
+    const perform = functionSource(
+      googleSource,
+      'async function performConnect(',
+      'async function connect('
+    )
+    const connect = functionSource(
+      googleSource,
+      'async function connect(',
+      'async function confirmReconnect()'
+    )
+
+    expect(connect.indexOf('inspectAuthorizationPreflight(')).toBeLessThan(
+      connect.indexOf('await performConnect(')
+    )
+    expect(connect).toContain('pendingReconnect.value = { ...pending, intent }')
+    expect(perform.indexOf("intent === 'self-hosted'")).toBeLessThan(
+      perform.indexOf('runtime.oauth.connect({')
+    )
+    expect(perform).toContain('chooseSelfHostedOAuthClient(signal)')
+    expect(perform).toContain('expectedSubject')
+    expect(choose.indexOf('await stat(path)')).toBeLessThan(choose.indexOf('readTextFile(path)'))
+    expect(choose).toContain('MAX_GOOGLE_DRIVE_DESKTOP_CREDENTIALS_BYTES')
+    expect(choose).toContain('parseGoogleDriveDesktopCredentialsJSON(raw)')
+    expect(googleSource).not.toContain('ref<GoogleDriveOAuthConnectClient')
+    expect(googleSource).not.toContain('clientSecretDraft')
+    expect(desktopCredentialsSource).toContain('keys.length === 1')
+    expect(desktopCredentialsSource).toContain("keys[0] === 'installed'")
+    expect(desktopCredentialsSource).not.toContain('value.installed.token_uri')
+    expect(desktopCredentialsSource).not.toContain('value.installed.auth_uri')
+    expect(nativeBridgeSource).toContain('oauthClient: GoogleDriveNativeOAuthClient')
+  })
+
   test('adopts replacement authority before resume and gates disconnect and removal', () => {
     const perform = functionSource(
       googleSource,
       'async function performConnect(',
-      'async function connect()'
+      'async function connect('
     )
     const disconnect = functionSource(
       googleSource,
@@ -218,7 +290,7 @@ describe('storage settings async identity guards', () => {
       'defineExpose({ removeProfile })'
     )
 
-    expect(perform.indexOf('runtime.oauth.connect(signal)')).toBeLessThan(
+    expect(perform.indexOf('runtime.oauth.connect({')).toBeLessThan(
       perform.indexOf('adoptStorageAuthorizationWork({')
     )
     expect(perform.indexOf('adoptStorageAuthorizationWork({')).toBeLessThan(
@@ -238,6 +310,51 @@ describe('storage settings async identity guards', () => {
     expect(remove).toContain('manager.clear(googleDriveRefreshTokenCredentialRef(profileId))')
   })
 
+  test('makes the final OAuth metadata write an explicit non-cancellable commit point', () => {
+    const perform = functionSource(
+      googleSource,
+      'async function performConnect(',
+      'async function connect('
+    )
+    const cancel = functionSource(
+      googleSource,
+      'function cancelOperation()',
+      'async function removeProfile('
+    )
+    const oauthReturned = perform.indexOf('const account = await runtime.oauth.connect({')
+    const commitCallback = perform.indexOf('onCommitStart()')
+    const commitPoint = perform.indexOf("operation.value = 'committing'")
+
+    expect(oauthReturned).toBeGreaterThan(-1)
+    expect(commitCallback).toBeGreaterThan(oauthReturned)
+    expect(commitPoint).toBeGreaterThan(commitCallback)
+    expect(commitPoint).toBeLessThan(perform.indexOf('adoptStorageAuthorizationWork({'))
+    expect(commitPoint).toBeLessThan(perform.indexOf('runtime.adapter.testConnection({ signal })'))
+    expect(cancel).toContain(
+      "if (operation.value === 'committing' || operation.value === 'repairing') return"
+    )
+    expect(googleSource).toContain(
+      `v-if="busy && operation !== 'repairing' && operation !== 'committing'"`
+    )
+  })
+
+  test('surfaces uncertain authorization persistence before ordinary abort feedback', () => {
+    const errorMapping = functionSource(
+      googleSource,
+      'function operationError(',
+      'function repairOperationError('
+    )
+    const persistenceGuard = errorMapping.indexOf("error.code === 'persistence-failed'")
+    const inconsistentGuard = errorMapping.indexOf("error.code === 'inconsistent-state'")
+    const abortedGuard = errorMapping.indexOf('if (signal.aborted)')
+
+    expect(persistenceGuard).toBeGreaterThan(-1)
+    expect(inconsistentGuard).toBeGreaterThan(-1)
+    expect(persistenceGuard).toBeLessThan(abortedGuard)
+    expect(inconsistentGuard).toBeLessThan(abortedGuard)
+    expect(errorMapping).toContain('return dialogs.value.storageGoogleDriveOperationFailed')
+  })
+
   test('preflights every credential and metadata crash authority before native OAuth', () => {
     const candidates = functionSource(
       googleSource,
@@ -251,12 +368,13 @@ describe('storage settings async identity guards', () => {
     )
     const connect = functionSource(
       googleSource,
-      'async function connect()',
+      'async function connect(',
       'async function confirmReconnect()'
     )
 
     expect(candidates).toContain('state.repairAuthorities.map(')
     expect(preflight).toContain('for (const authority of seeds)')
+    expect(preflight).toContain('listStorageProfileAuthorizationWork({')
     expect(preflight).toContain('inspection.requiresConfirmation')
     expect(connect.indexOf('inspectAuthorizationPreflight(')).toBeLessThan(
       connect.indexOf('await performConnect(')
@@ -266,7 +384,7 @@ describe('storage settings async identity guards', () => {
   test('drains profile persistence and blocks open tabs across authorization lifecycle changes', () => {
     const connect = functionSource(
       googleSource,
-      'async function connect()',
+      'async function connect(',
       'async function confirmReconnect()'
     )
     const confirm = functionSource(

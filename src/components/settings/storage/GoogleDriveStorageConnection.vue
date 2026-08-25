@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from '@open-pencil/vue'
+import { IS_TAURI } from '@open-pencil/core/constants'
 
 import {
   activeStorageProfileID,
@@ -15,8 +16,14 @@ import {
   resolveGoogleDriveClientId
 } from '@/app/integrations/storage/google-drive/config'
 import {
+  GoogleDriveDesktopCredentialsError,
+  MAX_GOOGLE_DRIVE_DESKTOP_CREDENTIALS_BYTES,
+  parseGoogleDriveDesktopCredentialsJSON
+} from '@/app/integrations/storage/google-drive/oauth/desktop-credentials'
+import {
   GoogleDriveOAuthError,
   googleDriveRefreshTokenCredentialRef,
+  type GoogleDriveOAuthConnectClient,
   type GoogleDriveOAuthStatus
 } from '@/app/integrations/storage/google-drive/oauth/session'
 import { LocalGoogleDriveOAuthMetadataStore } from '@/app/integrations/storage/google-drive/oauth/metadata'
@@ -37,6 +44,7 @@ import {
 import {
   adoptStorageAuthorizationWork,
   inspectStorageAuthorizationWork,
+  listStorageProfileAuthorizationWork,
   listStaleStorageAuthorizationWork,
   resumeStorageSync,
   type StorageAuthorizationWorkInspection
@@ -45,13 +53,22 @@ import { getTabsSnapshot } from '@/app/tabs'
 import AppInput from '@/components/ui/AppInput.vue'
 
 type ConnectionState = GoogleDriveOAuthStatus | { state: 'setup'; profileId: string }
-type Operation = 'idle' | 'inspecting' | 'connecting' | 'checking' | 'disconnecting' | 'repairing'
+type Operation =
+  | 'idle'
+  | 'inspecting'
+  | 'connecting'
+  | 'committing'
+  | 'checking'
+  | 'disconnecting'
+  | 'repairing'
+type ConnectIntent = 'reuse' | 'publisher' | 'self-hosted'
 type ActiveOperation = {
   controller: AbortController
   generation: number
   profileId: string
 }
 type PendingReconnect = {
+  intent: ConnectIntent
   documentCount: number
   unfinishedDocumentCount: number
   jobCount: number
@@ -63,7 +80,14 @@ type AuthorizationPreflight = {
   authorities: readonly StorageDocumentAuthority[]
   inspections: readonly StorageAuthorizationWorkInspection[]
   snapshotFingerprint: string
-  pending: PendingReconnect | null
+  pending: Omit<PendingReconnect, 'intent'> | null
+}
+
+class GoogleDriveMultipleAuthorizationAccountsError extends Error {
+  constructor() {
+    super('Google Drive profile contains work for multiple accounts')
+    this.name = 'GoogleDriveMultipleAuthorizationAccountsError'
+  }
 }
 
 const emit = defineEmits<{
@@ -82,6 +106,7 @@ const pendingReconnect = ref<PendingReconnect | null>(null)
 const staleAuthorizationWork = ref<StorageAuthorizationWorkInspection[]>([])
 const reconnectConfirmButton = ref<HTMLButtonElement | null>(null)
 const reconnectButton = ref<HTMLButtonElement | null>(null)
+const credentialsButton = ref<HTMLButtonElement | null>(null)
 const metadataStore = new LocalGoogleDriveOAuthMetadataStore()
 let controller: AbortController | null = null
 let asyncGeneration = 0
@@ -89,9 +114,32 @@ let mounted = false
 
 const connected = computed(() => connectionState.value.state === 'connected')
 const busy = computed(() => operation.value !== 'idle')
-const canConnect = computed(() => Boolean(buildClientId) && !busy.value && !pendingReconnect.value)
-const maskedBuildClientId = computed(() =>
-  buildClientId ? maskClientId(buildClientId) : dialogs.value.storageGoogleDriveClientIDUnavailable
+const canReconnect = computed(() => connected.value && !busy.value && !pendingReconnect.value)
+const canManagedConnect = computed(
+  () => Boolean(buildClientId) && !busy.value && !pendingReconnect.value
+)
+const canImportCredentials = computed(
+  () =>
+    IS_TAURI &&
+    connectionState.value.state !== 'unsupported' &&
+    !busy.value &&
+    !pendingReconnect.value
+)
+const connectedOAuthClient = computed(() => {
+  const state = connectionState.value
+  return state.state === 'connected' ? state.oauthClient : null
+})
+const selfHostedConnection = computed(
+  () => connectedOAuthClient.value?.mode === 'self-hosted-desktop'
+)
+const maskedActiveClientId = computed(() => {
+  const clientId = connectedOAuthClient.value?.clientId ?? buildClientId
+  return clientId ? maskClientId(clientId) : dialogs.value.storageGoogleDriveClientIDUnavailable
+})
+const connectionModeLabel = computed(() =>
+  selfHostedConnection.value
+    ? dialogs.value.storageGoogleDriveSelfHostedConnection
+    : dialogs.value.storageGoogleDriveManagedConnection
 )
 const showLocalOnly = computed(
   () => localOnlyAvailable.value || connectionState.value.state === 'invalid'
@@ -129,6 +177,9 @@ const statusDetail = computed(() => {
     return dialogs.value.storageGoogleDriveCredentialUnavailableDetail
   if (state.state === 'invalid') return dialogs.value.storageGoogleDriveConnectionNeedsRepairDetail
   if (state.state === 'setup') return dialogs.value.storageGoogleDriveBuildConfigurationMissing
+  if (state.state === 'missing' && !buildClientId) {
+    return dialogs.value.storageGoogleDriveBuildConfigurationMissing
+  }
   return dialogs.value.storageGoogleDriveConnectDescription
 })
 
@@ -191,17 +242,24 @@ function authorizationSnapshotFingerprint(
 }
 
 async function inspectAuthorizationPreflight(profileId: string): Promise<AuthorizationPreflight> {
-  const status = await services(profileId).oauth.status()
+  const [status, profileWork] = await Promise.all([
+    services(profileId).oauth.status(),
+    listStorageProfileAuthorizationWork({
+      providerId: GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
+      profileId
+    })
+  ])
   const seeds = authorizationCandidates(status)
   const inspections = new Map<string, StorageAuthorizationWorkInspection>()
+  for (const inspection of profileWork) {
+    inspections.set(authorityKey(inspection.scope.authority), inspection)
+  }
   for (const authority of seeds) {
-    const [current, stale] = await Promise.all([
-      inspectStorageAuthorizationWork(authorizationScope(profileId, authority)),
-      listStaleStorageAuthorizationWork(authorizationScope(profileId, authority))
-    ])
-    for (const inspection of [current, ...stale]) {
-      inspections.set(authorityKey(inspection.scope.authority), inspection)
-    }
+    if (inspections.has(authorityKey(authority))) continue
+    const inspection = await inspectStorageAuthorizationWork(
+      authorizationScope(profileId, authority)
+    )
+    inspections.set(authorityKey(inspection.scope.authority), inspection)
   }
   const values = [...inspections.values()]
   const authorities = values.map((inspection) => inspection.scope.authority)
@@ -230,6 +288,14 @@ async function inspectAuthorizationPreflight(profileId: string): Promise<Authori
   }
 }
 
+function expectedAuthorizationSubject(
+  authorities: readonly StorageDocumentAuthority[]
+): string | undefined {
+  const accountIds = new Set(authorities.map((authority) => authority.accountId))
+  if (accountIds.size > 1) throw new GoogleDriveMultipleAuthorizationAccountsError()
+  return accountIds.values().next().value
+}
+
 function clearLegacyClientIdOverride(profileId = activeStorageProfileID.value): void {
   writeStoragePreference(
     GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
@@ -255,7 +321,19 @@ function services(profileId = activeStorageProfileID.value) {
 }
 
 function operationError(error: unknown, signal: AbortSignal): string {
+  if (
+    error instanceof GoogleDriveOAuthError &&
+    (error.code === 'persistence-failed' || error.code === 'inconsistent-state')
+  ) {
+    return dialogs.value.storageGoogleDriveOperationFailed
+  }
   if (signal.aborted) return dialogs.value.storageGoogleDriveCancelled
+  if (error instanceof GoogleDriveDesktopCredentialsError) {
+    return dialogs.value.storageGoogleDriveCredentialsInvalid
+  }
+  if (error instanceof GoogleDriveMultipleAuthorizationAccountsError) {
+    return dialogs.value.storageGoogleDriveMultipleAccounts
+  }
   if (error instanceof StorageDurabilityUnavailableError) {
     return dialogs.value.storageDurabilityUnavailable
   }
@@ -277,10 +355,15 @@ function operationError(error: unknown, signal: AbortSignal): string {
       'authorization-grant-invalid': dialogs.value.storageGoogleDriveAuthorizationCodeRejected,
       'token-exchange-failed': dialogs.value.storageGoogleDriveTokenExchangeFailed,
       'token-response-invalid': dialogs.value.storageGoogleDriveTokenExchangeFailed,
+      'oauth-broker-rate-limited': dialogs.value.storageGoogleDriveRateLimited,
+      'oauth-broker-unavailable': dialogs.value.storageTemporaryNetworkError,
+      'oauth-broker-misconfigured': dialogs.value.storageGoogleDriveBrokerConfigurationFailed,
+      'oauth-broker-protocol-invalid': dialogs.value.storageGoogleDriveBrokerConfigurationFailed,
       'userinfo-failed': dialogs.value.storageGoogleDriveAccountVerificationFailed,
       'subject-mismatch': dialogs.value.storageGoogleDriveAccountVerificationFailed,
       'credential-locked': dialogs.value.storageGoogleDriveCredentialLocked,
-      'credential-unavailable': dialogs.value.storageGoogleDriveCredentialUnavailable
+      'credential-unavailable': dialogs.value.storageGoogleDriveCredentialUnavailable,
+      'self-hosted-credentials-required': dialogs.value.storageGoogleDriveCredentialsInvalid
     }
     const message = messageByCode[error.code]
     if (message) return message
@@ -321,12 +404,6 @@ async function refreshStaleAuthorizationWork(
 async function refreshStatus(): Promise<void> {
   const generation = ++asyncGeneration
   const profileId = activeStorageProfileID.value
-  if (!buildClientId) {
-    if (!currentGeneration(generation, profileId)) return
-    connectionState.value = { state: 'setup', profileId }
-    emitReadiness(false)
-    return
-  }
   try {
     const status = await services(profileId).oauth.status()
     if (!currentGeneration(generation, profileId)) return
@@ -369,14 +446,64 @@ function finishOperation(operationController: AbortController): void {
   operation.value = 'idle'
 }
 
+async function chooseSelfHostedOAuthClient(
+  signal: AbortSignal
+): Promise<GoogleDriveOAuthConnectClient | null> {
+  signal.throwIfAborted()
+  const [{ open }, { readTextFile, stat }] = await Promise.all([
+    import('@tauri-apps/plugin-dialog'),
+    import('@tauri-apps/plugin-fs')
+  ])
+  const path = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name: 'Google Desktop OAuth credentials', extensions: ['json'] }]
+  })
+  signal.throwIfAborted()
+  if (typeof path !== 'string') return null
+  const size = (await stat(path)).size
+  if (
+    !Number.isSafeInteger(size) ||
+    size < 1 ||
+    size > MAX_GOOGLE_DRIVE_DESKTOP_CREDENTIALS_BYTES
+  ) {
+    throw new GoogleDriveDesktopCredentialsError('credentials-too-large')
+  }
+  const raw = await readTextFile(path)
+  signal.throwIfAborted()
+  return parseGoogleDriveDesktopCredentialsJSON(raw)
+}
+
 async function performConnect(
   activeOperation: ActiveOperation,
-  approvedPreviousAuthorities: readonly StorageDocumentAuthority[]
-): Promise<void> {
+  approvedPreviousAuthorities: readonly StorageDocumentAuthority[],
+  intent: ConnectIntent
+): Promise<boolean> {
   const signal = activeOperation.controller.signal
   const runtime = services(activeOperation.profileId)
-  const account = await runtime.oauth.connect(signal)
-  if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return
+  let oauthClient: GoogleDriveOAuthConnectClient | undefined
+  if (intent === 'publisher') oauthClient = { mode: 'publisher-broker' }
+  if (intent === 'self-hosted') {
+    const imported = await chooseSelfHostedOAuthClient(signal)
+    if (!imported) {
+      feedback.value = {
+        tone: 'neutral',
+        message: dialogs.value.storageGoogleDriveCancelled
+      }
+      return false
+    }
+    oauthClient = imported
+  }
+  const expectedSubject = expectedAuthorizationSubject(approvedPreviousAuthorities)
+  const account = await runtime.oauth.connect({
+    signal,
+    ...(oauthClient ? { oauthClient } : {}),
+    ...(expectedSubject ? { expectedSubject } : {}),
+    onCommitStart() {
+      operation.value = 'committing'
+    }
+  })
+  if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return false
   const nextAuthority: StorageDocumentAuthority = {
     accountId: account.subject,
     authorizationVersion: account.authorizationVersion
@@ -404,7 +531,7 @@ async function performConnect(
       previousAuthority: candidate,
       nextAuthority
     })
-    if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return
+    if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return false
   }
   const { replacedAuthorities: _replacedAuthorities, ...connectedAccount } = account
   connectionState.value = { state: 'connected', ...connectedAccount }
@@ -418,7 +545,7 @@ async function performConnect(
         : dialogs.value.storageGoogleDriveConnectedSuccess
   }
   const result = await runtime.adapter.testConnection({ signal })
-  if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return
+  if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return false
   if (!result.ok) {
     feedback.value = {
       tone: 'error',
@@ -430,12 +557,19 @@ async function performConnect(
     nextAuthority,
     activeOperation.generation
   )
-  if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return
+  if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return false
   await resumeStorageSync()
+  return true
 }
 
-async function connect(): Promise<void> {
-  if (!canConnect.value) return
+async function connect(intent: ConnectIntent): Promise<void> {
+  if (
+    (intent === 'reuse' && !canReconnect.value) ||
+    (intent === 'publisher' && !canManagedConnect.value) ||
+    (intent === 'self-hosted' && !canImportCredentials.value)
+  ) {
+    return
+  }
   const activeOperation = beginOperation('inspecting')
   const signal = activeOperation.controller.signal
   try {
@@ -447,28 +581,24 @@ async function connect(): Promise<void> {
       async () => {
         const preflight = await inspectAuthorizationPreflight(activeOperation.profileId)
         if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return null
-        const accountIds = new Set(preflight.authorities.map((authority) => authority.accountId))
-        if (accountIds.size === 0) {
+        const expectedSubject = expectedAuthorizationSubject(preflight.authorities)
+        if (!expectedSubject) {
           if (profileHasOpenTabs(activeOperation.profileId)) {
             throw new StorageProfileOpenDocumentsError()
           }
-        } else if (
-          [...accountIds].some((accountId) =>
-            profileHasOpenTabs(activeOperation.profileId, accountId)
-          )
-        ) {
+        } else if (profileHasOpenTabs(activeOperation.profileId, expectedSubject)) {
           throw new StorageProfileOpenDocumentsError()
         }
         if (preflight.pending) return preflight.pending
         operation.value = 'connecting'
-        await performConnect(activeOperation, preflight.authorities)
+        await performConnect(activeOperation, preflight.authorities, intent)
         return null
       },
       signal
     )
     if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return
     if (pending) {
-      pendingReconnect.value = pending
+      pendingReconnect.value = { ...pending, intent }
       await nextTick()
       reconnectConfirmButton.value?.focus()
     }
@@ -499,6 +629,7 @@ async function confirmReconnect(): Promise<void> {
         if (preflight.snapshotFingerprint !== pending.snapshotFingerprint) {
           throw new Error('Google Drive authorization changed before reconnect confirmation')
         }
+        expectedAuthorizationSubject(preflight.authorities)
         if (
           preflight.authorities.some((authority) =>
             profileHasOpenTabs(activeOperation.profileId, authority.accountId)
@@ -506,7 +637,7 @@ async function confirmReconnect(): Promise<void> {
         ) {
           throw new StorageProfileOpenDocumentsError()
         }
-        await performConnect(activeOperation, preflight.authorities)
+        await performConnect(activeOperation, preflight.authorities, pending.intent)
       },
       signal
     )
@@ -520,9 +651,11 @@ async function confirmReconnect(): Promise<void> {
 }
 
 async function cancelReconnect(): Promise<void> {
+  const intent = pendingReconnect.value?.intent
   pendingReconnect.value = null
   await nextTick()
-  reconnectButton.value?.focus()
+  if (intent === 'self-hosted') credentialsButton.value?.focus()
+  else reconnectButton.value?.focus()
 }
 
 async function checkConnection(): Promise<void> {
@@ -559,12 +692,11 @@ async function disconnect(localOnly = false): Promise<void> {
       async () => {
         const preflight = await inspectAuthorizationPreflight(activeOperation.profileId)
         if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return null
+        const expectedSubject = expectedAuthorizationSubject(preflight.authorities)
         if (
-          preflight.authorities.length === 0
+          !expectedSubject
             ? profileHasOpenTabs(activeOperation.profileId)
-            : preflight.authorities.some((authority) =>
-                profileHasOpenTabs(activeOperation.profileId, authority.accountId)
-              )
+            : profileHasOpenTabs(activeOperation.profileId, expectedSubject)
         ) {
           throw new StorageProfileOpenDocumentsError()
         }
@@ -665,6 +797,7 @@ async function repairStaleWork(): Promise<void> {
 }
 
 function cancelOperation(): void {
+  if (operation.value === 'committing' || operation.value === 'repairing') return
   const activeController = controller
   controller = null
   asyncGeneration++
@@ -763,8 +896,8 @@ onBeforeUnmount(() => {
             ref="reconnectButton"
             type="button"
             class="rounded px-3 py-1.5 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
-            :disabled="busy"
-            @click="connect"
+            :disabled="!canReconnect"
+            @click="connect('reuse')"
           >
             {{ dialogs.storageGoogleDriveReconnect }}
           </button>
@@ -778,13 +911,13 @@ onBeforeUnmount(() => {
           </button>
         </template>
         <button
-          v-else-if="connectionState.state !== 'unsupported'"
+          v-else-if="connectionState.state !== 'unsupported' && buildClientId"
           ref="reconnectButton"
           type="button"
           class="rounded bg-accent px-3 py-1.5 text-[11px] font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-          :disabled="!canConnect"
+          :disabled="!canManagedConnect"
           data-test-id="settings-storage-google-connect"
-          @click="connect"
+          @click="connect('publisher')"
         >
           {{
             operation === 'connecting'
@@ -795,7 +928,7 @@ onBeforeUnmount(() => {
           }}
         </button>
         <button
-          v-if="busy && operation !== 'repairing'"
+          v-if="busy && operation !== 'repairing' && operation !== 'committing'"
           type="button"
           class="rounded px-3 py-1.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
           @click="cancelOperation"
@@ -891,10 +1024,20 @@ onBeforeUnmount(() => {
         {{ dialogs.storageGoogleDriveAdvanced }}
       </summary>
       <div class="mt-3 flex flex-col gap-2">
+        <label v-if="connected" class="flex flex-col gap-1 text-[10px] text-muted">
+          {{ dialogs.storageGoogleDriveConnectionMode }}
+          <AppInput
+            :model-value="connectionModeLabel"
+            :aria-label="dialogs.storageGoogleDriveConnectionMode"
+            readonly
+            size="sm"
+            tone="panel"
+          />
+        </label>
         <label class="flex flex-col gap-1 text-[10px] text-muted">
           {{ dialogs.storageGoogleDriveClientID }}
           <AppInput
-            :model-value="maskedBuildClientId"
+            :model-value="maskedActiveClientId"
             :aria-label="dialogs.storageGoogleDriveClientID"
             readonly
             size="sm"
@@ -904,6 +1047,35 @@ onBeforeUnmount(() => {
         <p class="text-[9px] leading-4 text-muted">
           {{ dialogs.storageGoogleDriveClientIDHint }}
         </p>
+        <p class="text-[9px] leading-4 text-muted">
+          {{ dialogs.storageGoogleDriveSelfHostedHint }}
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button
+            ref="credentialsButton"
+            type="button"
+            class="rounded bg-hover px-2.5 py-1 text-[10px] font-medium text-surface hover:bg-active disabled:opacity-50"
+            :disabled="!canImportCredentials"
+            data-test-id="settings-storage-google-import-credentials"
+            @click="connect('self-hosted')"
+          >
+            {{
+              connected
+                ? dialogs.storageGoogleDriveReplaceCredentials
+                : dialogs.storageGoogleDriveImportCredentials
+            }}
+          </button>
+          <button
+            v-if="selfHostedConnection && buildClientId"
+            type="button"
+            class="rounded px-2.5 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
+            :disabled="!canManagedConnect"
+            data-test-id="settings-storage-google-switch-managed"
+            @click="connect('publisher')"
+          >
+            {{ dialogs.storageGoogleDriveSwitchManaged }}
+          </button>
+        </div>
         <p
           class="text-[9px] leading-4 text-muted"
           data-test-id="settings-storage-google-credential-storage"

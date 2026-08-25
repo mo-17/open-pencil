@@ -41,7 +41,7 @@ const { dialogs } = useI18n()
       <AlertDialogDescription class="mt-1 text-[11px] leading-4 text-muted">
         {{
           movesToTrash
-            ? dialogs.storageDeleteDocumentDriveDescription
+            ? dialogs.storageDeleteDocumentTrashDescription({ provider: providerLabel })
             : dialogs.storageDeleteDocumentPermanentDescription({ provider: providerLabel })
         }}
       </AlertDialogDescription>

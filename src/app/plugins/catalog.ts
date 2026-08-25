@@ -56,10 +56,25 @@ import {
 } from '@open-pencil/plugin-contracts'
 
 import {
+  ALIYUN_DRIVE_STORAGE_ADAPTER_ID,
+  ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
+  ALIYUN_DRIVE_STORAGE_PROVIDER_ID
+} from '@/app/integrations/storage/aliyun-drive/config'
+import {
+  BAIDU_NETDISK_STORAGE_ADAPTER_ID,
+  BAIDU_NETDISK_STORAGE_PLUGIN_ID,
+  BAIDU_NETDISK_STORAGE_PROVIDER_ID
+} from '@/app/integrations/storage/baidu-netdisk/config'
+import {
   GOOGLE_DRIVE_STORAGE_ADAPTER_ID,
   GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
   GOOGLE_DRIVE_STORAGE_PROVIDER_ID
 } from '@/app/integrations/storage/google-drive/config'
+import {
+  ONEDRIVE_STORAGE_ADAPTER_ID,
+  ONEDRIVE_STORAGE_PLUGIN_ID,
+  ONEDRIVE_STORAGE_PROVIDER_ID
+} from '@/app/integrations/storage/onedrive/config'
 
 import {
   AIRTABLE_RECORDS_CONNECTOR_CONTRACT,
@@ -84,8 +99,12 @@ import { REVIEWED_DEPLOYMENT_PLUGINS } from './host/deployment/contract'
 import {
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  ALIYUN_DRIVE_STORAGE_CAPABILITIES,
+  ALIYUN_DRIVE_STORAGE_CONFIG_VERSION,
   AI_POPOUT_COMMAND,
   AI_POPOUT_PLUGIN_ID,
+  BAIDU_NETDISK_STORAGE_CAPABILITIES,
+  BAIDU_NETDISK_STORAGE_CONFIG_VERSION,
   CAPACITOR_EXPORTER,
   CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
@@ -106,6 +125,8 @@ import {
   FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
   GOOGLE_DRIVE_STORAGE_CAPABILITIES,
   GOOGLE_DRIVE_STORAGE_CONFIG_VERSION,
+  ONEDRIVE_STORAGE_CAPABILITIES,
+  ONEDRIVE_STORAGE_CONFIG_VERSION,
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
   MPX_EXPORTER,
@@ -675,6 +696,72 @@ function googleDriveStorageManifest(): PluginManifestPayloadV2 {
   )
 }
 
+function oneDriveStorageManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: ONEDRIVE_STORAGE_PLUGIN_ID,
+      name: 'OneDrive Storage',
+      version: '1.0.0'
+    },
+    {
+      storageProviders: [
+        {
+          providerId: ONEDRIVE_STORAGE_PROVIDER_ID,
+          name: 'OneDrive',
+          description: 'Store OpenPencil documents in the connected Microsoft OneDrive account.',
+          adapterId: ONEDRIVE_STORAGE_ADAPTER_ID,
+          configVersion: ONEDRIVE_STORAGE_CONFIG_VERSION,
+          capabilities: ONEDRIVE_STORAGE_CAPABILITIES
+        }
+      ]
+    }
+  )
+}
+
+function aliyunDriveStorageManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
+      name: 'Aliyun Drive Storage',
+      version: '1.0.0'
+    },
+    {
+      storageProviders: [
+        {
+          providerId: ALIYUN_DRIVE_STORAGE_PROVIDER_ID,
+          name: 'Aliyun Drive',
+          description: 'Store OpenPencil documents in the connected Aliyun Drive account.',
+          adapterId: ALIYUN_DRIVE_STORAGE_ADAPTER_ID,
+          configVersion: ALIYUN_DRIVE_STORAGE_CONFIG_VERSION,
+          capabilities: ALIYUN_DRIVE_STORAGE_CAPABILITIES
+        }
+      ]
+    }
+  )
+}
+
+function baiduNetdiskStorageManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: BAIDU_NETDISK_STORAGE_PLUGIN_ID,
+      name: 'Baidu Netdisk Storage',
+      version: '1.0.0'
+    },
+    {
+      storageProviders: [
+        {
+          providerId: BAIDU_NETDISK_STORAGE_PROVIDER_ID,
+          name: 'Baidu Netdisk',
+          description: 'Store OpenPencil documents in the connected Baidu Netdisk account.',
+          adapterId: BAIDU_NETDISK_STORAGE_ADAPTER_ID,
+          configVersion: BAIDU_NETDISK_STORAGE_CONFIG_VERSION,
+          capabilities: BAIDU_NETDISK_STORAGE_CAPABILITIES
+        }
+      ]
+    }
+  )
+}
+
 function deploymentPlanManifest(
   definition: (typeof REVIEWED_DEPLOYMENT_PLUGINS)[number]
 ): PluginManifestPayloadV2 {
@@ -1039,6 +1126,24 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     {
       trustSource: 'app-bundle',
       manifest: googleDriveStorageManifest(),
+      installedByDefault: true,
+      enabledByDefault: true
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: oneDriveStorageManifest(),
+      installedByDefault: true,
+      enabledByDefault: true
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: aliyunDriveStorageManifest(),
+      installedByDefault: true,
+      enabledByDefault: true
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: baiduNetdiskStorageManifest(),
       installedByDefault: true,
       enabledByDefault: true
     }

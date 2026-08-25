@@ -360,7 +360,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'management-pat': contribution(
           'Supabase 个人访问令牌',
-          '由系统凭据存储保管，仅在调用 Supabase Management API 时由宿主注入。'
+          '由中央凭据存储保管，仅在调用 Supabase Management API 时由宿主注入。'
         )
       }
     ),
@@ -378,7 +378,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'access-token': contribution(
           'Airtable 个人访问令牌',
-          '由系统凭据存储保管，仅在调用固定 Airtable API 时由宿主注入。'
+          '由中央凭据存储保管，仅在调用固定 Airtable API 时由宿主注入。'
         )
       }
     ),
@@ -405,11 +405,11 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'publishable-key': contribution(
           'Supabase 可发布密钥',
-          '由系统凭据存储保管，并作为经过审核的 apikey 请求头由宿主注入。'
+          '由中央凭据存储保管，并作为经过审核的 apikey 请求头由宿主注入。'
         ),
         'access-token': contribution(
           'Supabase 访问令牌',
-          '由系统凭据存储保管，并在运行时作为 Bearer 令牌由宿主注入。'
+          '由中央凭据存储保管，并在运行时作为 Bearer 令牌由宿主注入。'
         )
       }
     ),
@@ -429,7 +429,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'secret-key': contribution(
           'Stripe 密钥',
-          '由系统凭据存储保管，仅在调用固定 Stripe API 时由宿主注入。'
+          '由中央凭据存储保管，仅在调用固定 Stripe API 时由宿主注入。'
         )
       }
     ),
@@ -448,7 +448,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'api-key': contribution(
           'Resend API 密钥',
-          '由系统凭据存储保管，仅在调用固定 Resend API 时由宿主注入。'
+          '由中央凭据存储保管，仅在调用固定 Resend API 时由宿主注入。'
         )
       }
     ),
@@ -463,7 +463,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'api-key': contribution(
           'Neon API 密钥',
-          '请在 Neon 创建个人、组织或项目级 API 密钥并粘贴一次；无需额外 scope。密钥由系统凭据存储保管，仅在调用固定 Neon API 时注入。'
+          '请在 Neon 创建个人、组织或项目级 API 密钥并粘贴一次；无需额外 scope。密钥由中央凭据存储保管，仅在调用固定 Neon API 时注入。'
         )
       }
     ),
@@ -481,7 +481,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'access-token': contribution(
           'Sentry 身份验证令牌',
-          '请粘贴仅具事件读取权限的 Sentry 内部集成令牌；最小 scope：event:read。令牌由系统凭据存储保管，仅在调用固定 Sentry API 时注入。'
+          '请粘贴仅具事件读取权限的 Sentry 内部集成令牌；最小 scope：event:read。令牌由中央凭据存储保管，仅在调用固定 Sentry API 时注入。'
         )
       }
     ),
@@ -499,7 +499,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'access-token': contribution(
           'HubSpot 访问令牌',
-          '请使用 HubSpot 私有应用令牌或 OAuth 访问令牌；最小 scope：crm.objects.contacts.read。令牌由系统凭据存储保管，仅在调用固定 HubSpot API 时注入。'
+          '请使用 HubSpot 私有应用令牌或 OAuth 访问令牌；最小 scope：crm.objects.contacts.read。令牌由中央凭据存储保管，仅在调用固定 HubSpot API 时注入。'
         )
       }
     ),
@@ -514,7 +514,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'api-key': contribution(
           'Apollo API 密钥',
-          '请创建仅具名单读取权限的 Apollo API 密钥并粘贴一次；最小 OAuth scope：tags_list。密钥由系统凭据存储保管，仅作为 x-api-key 调用固定 Apollo API。'
+          '请创建仅具名单读取权限的 Apollo API 密钥并粘贴一次；最小 OAuth scope：tags_list。密钥由中央凭据存储保管，仅作为 x-api-key 调用固定 Apollo API。'
         )
       }
     ),
@@ -601,7 +601,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         ),
         'access-token': contribution(
           'Linear OAuth 访问令牌',
-          '请使用 Linear OAuth 访问令牌，以确保 Authorization Bearer 格式明确；最小 scope：read。令牌由系统凭据存储保管。'
+          '请使用 Linear OAuth 访问令牌，以确保 Authorization Bearer 格式明确；最小 scope：read。令牌由中央凭据存储保管。'
         )
       }
     ),
@@ -613,7 +613,7 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         'list-models': contribution('列出模型', '列出模型标识和基本所有权元数据，不发起模型推理。'),
         'api-key': contribution(
           'OpenAI API 密钥',
-          '请粘贴 OpenAI 项目 API 密钥；最小权限：models.read。此连接器只调用模型列表端点，密钥由系统凭据存储保管。'
+          '请粘贴 OpenAI 项目 API 密钥；最小权限：models.read。此连接器只调用模型列表端点，密钥由中央凭据存储保管。'
         )
       }
     ),
@@ -741,6 +741,36 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         'google-drive': contribution(
           'Google Drive',
           '读取、写入和删除文档，并支持变更跟踪与可恢复上传；OAuth 和网络请求仅由宿主管理。'
+        )
+      }
+    ),
+    'open-pencil.onedrive-storage': plugin(
+      'OneDrive 存储',
+      '通过宿主审核的 Microsoft OneDrive 适配器保存和同步 OpenPencil 文档。',
+      {
+        onedrive: contribution(
+          'OneDrive',
+          '读取、写入和移入回收站，并支持可恢复上传；OAuth 和网络请求仅由宿主管理。'
+        )
+      }
+    ),
+    'open-pencil.aliyun-drive-storage': plugin(
+      '阿里云盘存储',
+      '通过宿主审核的阿里云盘适配器保存和同步 OpenPencil 文档。',
+      {
+        'aliyun-drive': contribution(
+          '阿里云盘',
+          '读取、写入和移入回收站，并支持可恢复上传；OAuth 和网络请求仅由宿主管理。'
+        )
+      }
+    ),
+    'open-pencil.baidu-netdisk-storage': plugin(
+      '百度网盘存储',
+      '通过宿主审核的百度网盘适配器保存和同步 OpenPencil 文档。',
+      {
+        'baidu-netdisk': contribution(
+          '百度网盘',
+          '读取、写入和移入回收站，并支持可恢复上传；OAuth 和网络请求仅由宿主管理。'
         )
       }
     )

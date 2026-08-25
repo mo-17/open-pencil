@@ -5,8 +5,11 @@ import { useHead } from '@unhead/vue'
 import { TooltipProvider } from 'reka-ui'
 
 import { provideEditor, useI18n } from '@open-pencil/vue'
+import { ALIYUN_DRIVE_STORAGE_PROVIDER_ID } from '@/app/integrations/storage/aliyun-drive/config'
+import { BAIDU_NETDISK_STORAGE_PROVIDER_ID } from '@/app/integrations/storage/baidu-netdisk/config'
 import {
   GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
+  ONEDRIVE_STORAGE_PROVIDER_ID,
   storageProviderPluginState
 } from '@/app/integrations/storage'
 import AppShell from '@/components/Shell/AppShell.vue'
@@ -40,9 +43,19 @@ useAppTheme()
 useApplicationRuntimeGuideMenu()
 
 watch(
-  () => storageProviderPluginState(GOOGLE_DRIVE_STORAGE_PROVIDER_ID),
-  (state, previous) => {
-    if (state === 'enabled' && previous !== 'enabled') void resumeStorageSync()
+  () =>
+    [
+      storageProviderPluginState(GOOGLE_DRIVE_STORAGE_PROVIDER_ID),
+      storageProviderPluginState(ONEDRIVE_STORAGE_PROVIDER_ID),
+      storageProviderPluginState(ALIYUN_DRIVE_STORAGE_PROVIDER_ID),
+      storageProviderPluginState(BAIDU_NETDISK_STORAGE_PROVIDER_ID)
+    ] as const,
+  (states, previousStates) => {
+    if (
+      states.some((state, index) => state === 'enabled' && previousStates?.[index] !== 'enabled')
+    ) {
+      void resumeStorageSync()
+    }
   },
   { immediate: true }
 )

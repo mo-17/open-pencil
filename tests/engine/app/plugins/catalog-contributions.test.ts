@@ -44,10 +44,25 @@ import {
 } from '@open-pencil/core/plugins'
 
 import {
+  ALIYUN_DRIVE_STORAGE_ADAPTER_ID,
+  ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
+  ALIYUN_DRIVE_STORAGE_PROVIDER_ID
+} from '@/app/integrations/storage/aliyun-drive/config'
+import {
+  BAIDU_NETDISK_STORAGE_ADAPTER_ID,
+  BAIDU_NETDISK_STORAGE_PLUGIN_ID,
+  BAIDU_NETDISK_STORAGE_PROVIDER_ID
+} from '@/app/integrations/storage/baidu-netdisk/config'
+import {
   GOOGLE_DRIVE_STORAGE_ADAPTER_ID,
   GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
   GOOGLE_DRIVE_STORAGE_PROVIDER_ID
 } from '@/app/integrations/storage/google-drive/config'
+import {
+  ONEDRIVE_STORAGE_ADAPTER_ID,
+  ONEDRIVE_STORAGE_PLUGIN_ID,
+  ONEDRIVE_STORAGE_PROVIDER_ID
+} from '@/app/integrations/storage/onedrive/config'
 import {
   AIRTABLE_RECORDS_CONNECTOR_CONTRACT,
   AIRTABLE_RECORDS_CONNECTOR_ID,
@@ -94,12 +109,18 @@ import {
   FLUTTER_EXPORTER_PLUGIN_ID,
   FIGMA_PROJECTION_EXPORTER,
   FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
+  ALIYUN_DRIVE_STORAGE_CAPABILITIES,
+  ALIYUN_DRIVE_STORAGE_CONFIG_VERSION,
+  BAIDU_NETDISK_STORAGE_CAPABILITIES,
+  BAIDU_NETDISK_STORAGE_CONFIG_VERSION,
   GOOGLE_DRIVE_STORAGE_CAPABILITIES,
   GOOGLE_DRIVE_STORAGE_CONFIG_VERSION,
   MPX_EXPORTER,
   MPX_EXPORTER_PLUGIN_ID,
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
+  ONEDRIVE_STORAGE_CAPABILITIES,
+  ONEDRIVE_STORAGE_CONFIG_VERSION,
   TARO_EXPORTER,
   TARO_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
@@ -123,7 +144,7 @@ function bundledManifest(pluginId: string) {
 }
 
 describe('bundled plugin catalog contributions', () => {
-  test('publishes the sixty-four reviewed built-in plugin identities', () => {
+  test('publishes the sixty-seven reviewed built-in plugin identities', () => {
     const catalog = createBundledPluginCatalog()
     const ids = catalog.map((entry) => entry.manifest.plugin.id)
 
@@ -176,7 +197,10 @@ describe('bundled plugin catalog contributions', () => {
         (descriptor) => descriptor.connector.contract.pluginId
       ),
       ...REVIEWED_DEPLOYMENT_PLUGINS.map((definition) => definition.pluginId),
-      GOOGLE_DRIVE_STORAGE_PLUGIN_ID
+      GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      ONEDRIVE_STORAGE_PLUGIN_ID,
+      ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
+      BAIDU_NETDISK_STORAGE_PLUGIN_ID
     ])
     expect(
       catalog.reduce(
@@ -191,7 +215,7 @@ describe('bundled plugin catalog contributions', () => {
             : 0),
         0
       )
-    ).toBe(67)
+    ).toBe(70)
     for (const descriptor of REVIEWED_EXTERNAL_SERVICE_CATALOG) {
       const entry = catalog.find(
         (candidate) => candidate.manifest.plugin.id === descriptor.connector.contract.pluginId
@@ -207,6 +231,15 @@ describe('bundled plugin catalog contributions', () => {
     }
     expect(
       catalog.find((entry) => entry.manifest.plugin.id === GOOGLE_DRIVE_STORAGE_PLUGIN_ID)
+    ).toMatchObject({ installedByDefault: true, enabledByDefault: true })
+    expect(
+      catalog.find((entry) => entry.manifest.plugin.id === ONEDRIVE_STORAGE_PLUGIN_ID)
+    ).toMatchObject({ installedByDefault: true, enabledByDefault: true })
+    expect(
+      catalog.find((entry) => entry.manifest.plugin.id === ALIYUN_DRIVE_STORAGE_PLUGIN_ID)
+    ).toMatchObject({ installedByDefault: true, enabledByDefault: true })
+    expect(
+      catalog.find((entry) => entry.manifest.plugin.id === BAIDU_NETDISK_STORAGE_PLUGIN_ID)
     ).toMatchObject({ installedByDefault: true, enabledByDefault: true })
   })
 
@@ -478,6 +511,9 @@ describe('bundled plugin catalog contributions', () => {
     const stripeBilling = bundledManifest(STRIPE_BILLING_PLUGIN_ID)
     const resendEmail = bundledManifest(RESEND_EMAIL_PLUGIN_ID)
     const googleDriveStorage = bundledManifest(GOOGLE_DRIVE_STORAGE_PLUGIN_ID)
+    const oneDriveStorage = bundledManifest(ONEDRIVE_STORAGE_PLUGIN_ID)
+    const aliyunDriveStorage = bundledManifest(ALIYUN_DRIVE_STORAGE_PLUGIN_ID)
+    const baiduNetdiskStorage = bundledManifest(BAIDU_NETDISK_STORAGE_PLUGIN_ID)
 
     expect(clipboard.contributions.modules).toEqual([])
     expect(
@@ -595,6 +631,51 @@ describe('bundled plugin catalog contributions', () => {
         ]
       }
     })
+    expect(oneDriveStorage).toMatchObject({
+      schemaVersion: 2,
+      plugin: { id: ONEDRIVE_STORAGE_PLUGIN_ID, version: '1.0.0' },
+      contributions: {
+        modules: [],
+        storageProviders: [
+          {
+            providerId: ONEDRIVE_STORAGE_PROVIDER_ID,
+            adapterId: ONEDRIVE_STORAGE_ADAPTER_ID,
+            configVersion: ONEDRIVE_STORAGE_CONFIG_VERSION,
+            capabilities: ONEDRIVE_STORAGE_CAPABILITIES
+          }
+        ]
+      }
+    })
+    expect(aliyunDriveStorage).toMatchObject({
+      schemaVersion: 2,
+      plugin: { id: ALIYUN_DRIVE_STORAGE_PLUGIN_ID, version: '1.0.0' },
+      contributions: {
+        modules: [],
+        storageProviders: [
+          {
+            providerId: ALIYUN_DRIVE_STORAGE_PROVIDER_ID,
+            adapterId: ALIYUN_DRIVE_STORAGE_ADAPTER_ID,
+            configVersion: ALIYUN_DRIVE_STORAGE_CONFIG_VERSION,
+            capabilities: ALIYUN_DRIVE_STORAGE_CAPABILITIES
+          }
+        ]
+      }
+    })
+    expect(baiduNetdiskStorage).toMatchObject({
+      schemaVersion: 2,
+      plugin: { id: BAIDU_NETDISK_STORAGE_PLUGIN_ID, version: '1.0.0' },
+      contributions: {
+        modules: [],
+        storageProviders: [
+          {
+            providerId: BAIDU_NETDISK_STORAGE_PROVIDER_ID,
+            adapterId: BAIDU_NETDISK_STORAGE_ADAPTER_ID,
+            configVersion: BAIDU_NETDISK_STORAGE_CONFIG_VERSION,
+            capabilities: BAIDU_NETDISK_STORAGE_CAPABILITIES
+          }
+        ]
+      }
+    })
   })
 
   test('lists and resolves host contributions only while installed and enabled', async () => {
@@ -616,18 +697,29 @@ describe('bundled plugin catalog contributions', () => {
     ).toMatchObject(AI_POPOUT_COMMAND)
     expect(store.installedExporters()).toEqual([])
     expect(store.installedConnectors()).toEqual([])
-    expect(store.installedStorageProviders()).toHaveLength(1)
+    expect(store.installedStorageProviders()).toHaveLength(4)
     expect(
       store.storageProvider(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, GOOGLE_DRIVE_STORAGE_PROVIDER_ID)
         ?.contribution
     ).toMatchObject({ adapterId: GOOGLE_DRIVE_STORAGE_ADAPTER_ID })
+    expect(
+      store.storageProvider(ONEDRIVE_STORAGE_PLUGIN_ID, ONEDRIVE_STORAGE_PROVIDER_ID)?.contribution
+    ).toMatchObject({ adapterId: ONEDRIVE_STORAGE_ADAPTER_ID })
+    expect(
+      store.storageProvider(ALIYUN_DRIVE_STORAGE_PLUGIN_ID, ALIYUN_DRIVE_STORAGE_PROVIDER_ID)
+        ?.contribution
+    ).toMatchObject({ adapterId: ALIYUN_DRIVE_STORAGE_ADAPTER_ID })
+    expect(
+      store.storageProvider(BAIDU_NETDISK_STORAGE_PLUGIN_ID, BAIDU_NETDISK_STORAGE_PROVIDER_ID)
+        ?.contribution
+    ).toMatchObject({ adapterId: BAIDU_NETDISK_STORAGE_ADAPTER_ID })
     await store.setEnabled(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, false)
-    expect(store.installedStorageProviders()).toEqual([])
+    expect(store.installedStorageProviders()).toHaveLength(3)
     expect(
       store.storageProvider(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, GOOGLE_DRIVE_STORAGE_PROVIDER_ID)
     ).toBeNull()
     await store.setEnabled(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, true)
-    expect(store.installedStorageProviders()).toHaveLength(1)
+    expect(store.installedStorageProviders()).toHaveLength(4)
 
     await store.install(CLIPBOARD_TOOLKIT_PLUGIN_ID)
     expect(store.installedCommands()).toHaveLength(2)

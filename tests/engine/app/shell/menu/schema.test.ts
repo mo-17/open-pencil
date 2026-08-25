@@ -80,6 +80,52 @@ describe('APP_MENU_SCHEMA', () => {
     )
   })
 
+  test('exposes cloud storage copy actions only in the native File menu', () => {
+    const fileMenu = APP_MENU_SCHEMA.find((group) => group.label === 'File')
+    const entries = fileMenu ? actionItems(fileMenu.items) : []
+
+    expect(entries).toContainEqual(
+      expect.objectContaining({
+        id: 'save-copy-google-drive',
+        label: 'Save Copy to Google Drive',
+        target: 'native'
+      })
+    )
+    expect(entries).toContainEqual(
+      expect.objectContaining({
+        id: 'save-copy-onedrive',
+        label: 'Save Copy to OneDrive',
+        target: 'native'
+      })
+    )
+    expect(entries).toContainEqual(
+      expect.objectContaining({
+        id: 'save-copy-aliyun-drive',
+        label: 'Save Copy to Aliyun Drive',
+        target: 'native'
+      })
+    )
+    expect(entries).toContainEqual(
+      expect.objectContaining({
+        id: 'save-copy-baidu-netdisk',
+        label: 'Save Copy to Baidu Netdisk',
+        target: 'native'
+      })
+    )
+
+    const generated = JSON.parse(
+      readFileSync(resolve(import.meta.dir, '../../../../../desktop/generated/menu.json'), 'utf8')
+    ) as Array<{ label: string; items: AppMenuEntry[] }>
+    const nativeFile = generated.find((group) => group.label === 'File')
+    const nativeIds = nativeFile
+      ? actionItems(nativeFile.items).map((entry) => ('type' in entry ? null : entry.id))
+      : []
+    expect(nativeIds).toContain('save-copy-google-drive')
+    expect(nativeIds).toContain('save-copy-onedrive')
+    expect(nativeIds).toContain('save-copy-aliyun-drive')
+    expect(nativeIds).toContain('save-copy-baidu-netdisk')
+  })
+
   test('keeps move-to-page destination selection in the browser menu', () => {
     const objectMenu = APP_MENU_SCHEMA.find((group) => group.label === 'Object')
     const entries = objectMenu ? actionItems(objectMenu.items) : []

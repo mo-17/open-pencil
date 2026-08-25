@@ -58,6 +58,26 @@ export const APP_MENU_SCHEMA = [
       { type: 'separator' },
       { id: 'save', label: 'Save', shortcut: 'MOD+S' },
       { id: 'save-as', label: 'Save As…', shortcut: 'MOD+SHIFT+S' },
+      {
+        id: 'save-copy-google-drive',
+        label: 'Save Copy to Google Drive',
+        target: 'native'
+      },
+      {
+        id: 'save-copy-onedrive',
+        label: 'Save Copy to OneDrive',
+        target: 'native'
+      },
+      {
+        id: 'save-copy-aliyun-drive',
+        label: 'Save Copy to Aliyun Drive',
+        target: 'native'
+      },
+      {
+        id: 'save-copy-baidu-netdisk',
+        label: 'Save Copy to Baidu Netdisk',
+        target: 'native'
+      },
       { type: 'separator' },
       {
         id: 'export-selection',

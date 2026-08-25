@@ -793,9 +793,216 @@ export const dialogMessageDefaults = {
   settingsStorage: 'Cloud storage',
   storageProvider: 'Storage provider',
   storageProviderChoiceDescription:
-    'Connect Google Drive for the smoothest personal-cloud workflow, or use an S3-compatible service for advanced control.',
+    'Connect Google Drive, OneDrive, Aliyun Drive, or Baidu Netdisk for a personal-cloud workflow, or use an S3-compatible service for advanced control.',
   storageRecommended: 'Recommended',
   storageGoogleDriveProviderDescription: 'One-click personal cloud with your Google account.',
+  storageOneDriveProviderDescription:
+    'Microsoft personal or work/school cloud storage for OpenPencil documents.',
+  storageOneDriveConnect: 'Connect OneDrive',
+  storageOneDriveReconnect: 'Reconnect',
+  storageOneDriveWaitingForBrowser:
+    'Complete Microsoft authorization in your browser. OpenPencil will finish connecting afterward…',
+  storageOneDriveConnectedAs: params('Connected as {account}'),
+  storageOneDriveNotConnected: 'OneDrive is not connected',
+  storageOneDriveDesktopOnly: 'OneDrive requires the desktop app',
+  storageOneDriveDesktopOnlyDetail:
+    'Use the OpenPencil desktop app to authorize a personal or work/school Microsoft account.',
+  storageOneDriveSetupRequired: 'This build is missing OneDrive OAuth configuration',
+  storageOneDriveBuildConfigurationMissing:
+    'This build does not include the publisher-managed Microsoft public client ID.',
+  storageOneDriveCredentialLocked: 'Encrypted local credential storage is locked',
+  storageOneDriveCredentialLockedDetail:
+    'Unlock OpenPencil’s encrypted credential storage, then try again.',
+  storageOneDriveCredentialUnavailable: 'Encrypted local credential storage is unavailable',
+  storageOneDriveCredentialUnavailableDetail:
+    'OneDrive remains disconnected until encrypted local credential storage is available.',
+  storageOneDriveConnectionNeedsRepair: 'OneDrive connection needs repair',
+  storageOneDriveConnectionNeedsRepairDetail:
+    'The saved account metadata and encrypted grant no longer match. Reconnect this profile.',
+  storageOneDriveConnectDescription:
+    'Connect a personal or work/school Microsoft account in your system browser.',
+  storageOneDriveConnectedDetail:
+    'OpenPencil stores documents under Apps/OpenPencil and uploads local changes in the background.',
+  storageOneDrivePermissionDisclosure:
+    'OpenPencil requests Files.ReadWrite.AppFolder. Microsoft Graph enforces access to this app’s OneDrive app folder for both personal and work/school accounts.',
+  storageOneDriveCredentialStorage:
+    'The refresh token is encrypted in app-local storage. Access tokens remain in memory. Disconnect removes only this device’s saved grant.',
+  storageOneDriveRemoveFromDevice: 'Remove from this device',
+  storageOneDriveRemovedLocally: 'OneDrive was removed from this device.',
+  storageOneDriveConnectionHealthy: 'OneDrive connection is healthy.',
+  storageOneDriveVerificationFailed:
+    'The account is connected, but OpenPencil could not verify OneDrive access. Check the account permission and network, then try again.',
+  storageOneDriveStaleWorkDescription: params(
+    'Found {count} local items still bound to an earlier authorization for this account. Repair them before opening this workspace.'
+  ),
+  storageOneDriveRepairAuthorizationWork: params('Repair {count} items'),
+  storageOneDriveAuthorizationWorkRecovered:
+    'Pending OneDrive work was safely moved to the current authorization.',
+  storageOneDriveAuthorizationWorkRepairFailed:
+    'The account is connected, but pending OneDrive work still needs repair. Keep it connected and try repair again.',
+  storageOneDriveCancelled: 'OneDrive operation was cancelled.',
+  storageOneDriveDifferentAccount: 'Use a new storage profile for a different Microsoft account.',
+  storageOneDriveAuthorizationBlockedByOpenDocuments:
+    'Close documents using this OneDrive profile before reconnecting or removing it.',
+  storageOneDriveMultipleAccounts:
+    'This storage profile contains work from multiple Microsoft accounts. Repair or separate it before reconnecting.',
+  storageOneDriveUnfinishedWork:
+    'This OneDrive profile still has unfinished local uploads. Let synchronization finish before removing it.',
+  storageOneDriveAuthorizationDenied: 'Microsoft authorization was denied.',
+  storageOneDriveAuthorizationTimedOut:
+    'Microsoft authorization timed out. Start the connection again.',
+  storageOneDriveBrowserOpenFailed:
+    'OpenPencil could not open the system browser. Check your browser settings and try again.',
+  storageOneDriveScopeMismatch:
+    'Microsoft did not grant the required OneDrive app-folder permission. Reconnect and approve Files.ReadWrite.AppFolder.',
+  storageOneDriveNetworkFailed:
+    'OpenPencil could not reach Microsoft. Check your network connection and try again.',
+  storageOneDriveOperationFailed: 'OneDrive could not complete the operation. Try again.',
+  storageAliyunDriveProviderDescription:
+    'Aliyun personal cloud storage confined to its service-enforced application folder.',
+  storageAliyunDriveConnect: 'Connect Aliyun Drive',
+  storageAliyunDriveReconnect: 'Reconnect',
+  storageAliyunDriveWaitingForBrowser:
+    'Complete Aliyun Drive authorization in your browser. OpenPencil will finish connecting afterward…',
+  storageAliyunDriveConnectedAs: params('Connected as {account}'),
+  storageAliyunDriveNotConnected: 'Aliyun Drive is not connected',
+  storageAliyunDriveDesktopOnly: 'Aliyun Drive requires the desktop app',
+  storageAliyunDriveDesktopOnlyDetail:
+    'Use the OpenPencil desktop app to authorize Aliyun Drive in the system browser.',
+  storageAliyunDriveSetupRequired: 'Aliyun Drive setup is required',
+  storageAliyunDriveBuildConfigurationMissing:
+    'The managed connection is unavailable in this build. You can import your own Aliyun OAuth client JSON.',
+  storageAliyunDriveCredentialLocked: 'Encrypted local credential storage is locked',
+  storageAliyunDriveCredentialLockedDetail:
+    'Unlock OpenPencil’s encrypted local credential storage, then try again.',
+  storageAliyunDriveCredentialUnavailable: 'Encrypted local credential storage is unavailable',
+  storageAliyunDriveCredentialUnavailableDetail:
+    'Aliyun Drive remains disconnected until encrypted local credential storage is available.',
+  storageAliyunDriveConnectionNeedsRepair: 'Aliyun Drive connection needs repair',
+  storageAliyunDriveConnectionNeedsRepairDetail:
+    'The saved account metadata and encrypted grant no longer match. Reconnect this profile.',
+  storageAliyunDriveConnectDescription:
+    'Authorize Aliyun Drive in your system browser with S256 PKCE.',
+  storageAliyunDriveConnectedDetail:
+    'OpenPencil stores documents inside the application folder selected and enforced by Aliyun Drive.',
+  storageAliyunDrivePermissionDisclosure:
+    'OpenPencil requests user:base,file:all:read,file:all:write and remains inside Aliyun Drive’s service-enforced application folder.',
+  storageAliyunDriveCredentialStorage:
+    'The publisher secret stays server-side. Self-hosted confidential credentials and refresh tokens are encrypted together in app-local storage. Public-client mode has no refresh token.',
+  storageAliyunDriveManagedConnection: 'OpenPencil managed connection',
+  storageAliyunDriveSelfHostedConnection: 'Self-hosted confidential client',
+  storageAliyunDrivePublicConnection: params(
+    'Self-hosted public client · access-only grant expires {expires}; reconnect at expiry.'
+  ),
+  storageAliyunDriveAuthorizationExpired: 'Aliyun Drive access expired',
+  storageAliyunDrivePublicAccessExpiredDetail:
+    'This public-client access grant cannot be refreshed. Import the same client JSON and authorize again.',
+  storageAliyunDriveImportCredentials: 'Import OAuth client JSON',
+  storageAliyunDriveCredentialsInvalid:
+    'Select a strict JSON file for either a self-hosted confidential or public Aliyun OAuth client.',
+  storageAliyunDriveRemoveFromDevice: 'Remove from this device',
+  storageAliyunDriveRemovedLocally: 'Aliyun Drive was removed from this device.',
+  storageAliyunDriveConnectionHealthy: 'Aliyun Drive connection is healthy.',
+  storageAliyunDriveVerificationFailed:
+    'The account is connected, but OpenPencil could not verify Aliyun Drive access. Check the permission and network, then try again.',
+  storageAliyunDriveStaleWorkDescription: params(
+    'Found {count} local items still bound to an earlier authorization for this account. Repair them before opening this workspace.'
+  ),
+  storageAliyunDriveRepairAuthorizationWork: params('Repair {count} items'),
+  storageAliyunDriveAuthorizationWorkRecovered:
+    'Pending Aliyun Drive work was safely moved to the current authorization.',
+  storageAliyunDriveAuthorizationWorkRepairFailed:
+    'The account is connected, but pending Aliyun Drive work still needs repair. Keep it connected and try repair again.',
+  storageAliyunDriveCancelled: 'Aliyun Drive operation was cancelled.',
+  storageAliyunDriveDifferentAccount:
+    'Use a new storage profile for a different Aliyun Drive account.',
+  storageAliyunDriveAuthorizationBlockedByOpenDocuments:
+    'Close documents using this Aliyun Drive profile before reconnecting or removing it.',
+  storageAliyunDriveMultipleAccounts:
+    'This storage profile contains work from multiple Aliyun Drive accounts. Repair or separate it before reconnecting.',
+  storageAliyunDriveUnfinishedWork:
+    'This Aliyun Drive profile still has unfinished local uploads. Let synchronization finish before removing it.',
+  storageAliyunDriveAuthorizationDenied: 'Aliyun Drive authorization was denied.',
+  storageAliyunDriveAuthorizationTimedOut:
+    'Aliyun Drive authorization timed out. Start the connection again.',
+  storageAliyunDriveBrowserOpenFailed:
+    'OpenPencil could not open the system browser. Check your browser settings and try again.',
+  storageAliyunDriveScopeMismatch:
+    'Aliyun Drive did not grant the required user and file scopes. Reconnect and approve them.',
+  storageAliyunDriveTokenRequestInvalid:
+    'Aliyun Drive rejected the token request. Reconnect and verify the selected OAuth client.',
+  storageAliyunDriveNetworkFailed:
+    'OpenPencil could not reach Aliyun Drive. Check your network connection and try again.',
+  storageAliyunDriveOperationFailed: 'Aliyun Drive could not complete the operation. Try again.',
+  storageBaiduNetdiskProviderDescription:
+    'Baidu personal cloud storage confined to the OpenPencil application directory.',
+  storageBaiduNetdiskConnect: 'Connect Baidu Netdisk',
+  storageBaiduNetdiskReconnect: 'Reconnect',
+  storageBaiduNetdiskWaitingForBrowser:
+    'Complete Baidu device authorization in your browser. OpenPencil will finish connecting afterward…',
+  storageBaiduNetdiskConnectedAs: params('Connected as {account}'),
+  storageBaiduNetdiskNotConnected: 'Baidu Netdisk is not connected',
+  storageBaiduNetdiskDesktopOnly: 'Baidu Netdisk requires the desktop app',
+  storageBaiduNetdiskDesktopOnlyDetail:
+    'Use the OpenPencil desktop app to complete Baidu device authorization.',
+  storageBaiduNetdiskSetupRequired: 'Baidu Netdisk setup is required',
+  storageBaiduNetdiskBuildConfigurationMissing:
+    'The managed connection is unavailable in this build. You can import your own Baidu AppKey and SecretKey JSON.',
+  storageBaiduNetdiskCredentialLocked: 'Encrypted local credential storage is locked',
+  storageBaiduNetdiskCredentialLockedDetail:
+    'Unlock OpenPencil’s encrypted local credential storage, then try again.',
+  storageBaiduNetdiskCredentialUnavailable: 'Encrypted local credential storage is unavailable',
+  storageBaiduNetdiskCredentialUnavailableDetail:
+    'Baidu Netdisk remains disconnected until encrypted local credential storage is available.',
+  storageBaiduNetdiskConnectionNeedsRepair: 'Baidu Netdisk connection needs repair',
+  storageBaiduNetdiskConnectionNeedsRepairDetail:
+    'The saved account metadata and encrypted grant no longer match. Reconnect this profile.',
+  storageBaiduNetdiskConnectDescription:
+    'Authorize Baidu Netdisk in your system browser without exposing the publisher SecretKey.',
+  storageBaiduNetdiskConnectedDetail:
+    'OpenPencil stores documents under /apps/OpenPencil and uploads local changes in the background.',
+  storageBaiduNetdiskPermissionDisclosure:
+    'OpenPencil requests only basic,netdisk and keeps documents under /apps/OpenPencil.',
+  storageBaiduNetdiskCredentialStorage:
+    'The publisher SecretKey stays server-side. Self-hosted AppKey, SecretKey, and rotating refresh token are encrypted together in app-local storage; access tokens remain in memory.',
+  storageBaiduNetdiskManagedConnection: 'OpenPencil managed connection',
+  storageBaiduNetdiskSelfHostedConnection: 'Self-hosted Baidu application',
+  storageBaiduNetdiskImportCredentials: 'Import AppKey/SecretKey JSON',
+  storageBaiduNetdiskCredentialsInvalid:
+    'Select a JSON file containing exactly appKey and secretKey with valid values.',
+  storageBaiduNetdiskRemoveFromDevice: 'Remove from this device',
+  storageBaiduNetdiskRemovedLocally: 'Baidu Netdisk was removed from this device.',
+  storageBaiduNetdiskConnectionHealthy: 'Baidu Netdisk connection is healthy.',
+  storageBaiduNetdiskVerificationFailed:
+    'The account is connected, but OpenPencil could not verify Baidu Netdisk access. Check the permission and network, then try again.',
+  storageBaiduNetdiskStaleWorkDescription: params(
+    'Found {count} local items still bound to an earlier authorization for this account. Repair them before opening this workspace.'
+  ),
+  storageBaiduNetdiskRepairAuthorizationWork: params('Repair {count} items'),
+  storageBaiduNetdiskAuthorizationWorkRecovered:
+    'Pending Baidu Netdisk work was safely moved to the current authorization.',
+  storageBaiduNetdiskAuthorizationWorkRepairFailed:
+    'The account is connected, but pending Baidu Netdisk work still needs repair. Keep it connected and try again.',
+  storageBaiduNetdiskCancelled: 'Baidu Netdisk operation was cancelled.',
+  storageBaiduNetdiskDifferentAccount: 'Use a new storage profile for a different Baidu account.',
+  storageBaiduNetdiskAuthorizationBlockedByOpenDocuments:
+    'Close documents using this Baidu Netdisk profile before reconnecting or removing it.',
+  storageBaiduNetdiskMultipleAccounts:
+    'This storage profile contains work from multiple Baidu accounts. Repair or separate it before reconnecting.',
+  storageBaiduNetdiskUnfinishedWork:
+    'This Baidu Netdisk profile still has unfinished local uploads. Let synchronization finish before removing it.',
+  storageBaiduNetdiskAuthorizationDenied: 'Baidu authorization was denied.',
+  storageBaiduNetdiskAuthorizationTimedOut:
+    'Baidu device authorization expired or timed out. Start the connection again.',
+  storageBaiduNetdiskBrowserOpenFailed:
+    'OpenPencil could not open the system browser. Check your browser settings and try again.',
+  storageBaiduNetdiskScopeMismatch:
+    'Baidu did not grant the exact basic and netdisk scopes. Reconnect and approve both.',
+  storageBaiduNetdiskTokenRequestInvalid:
+    'Baidu rejected the device-token request. Start the connection again and verify the selected application credentials.',
+  storageBaiduNetdiskNetworkFailed:
+    'OpenPencil could not reach Baidu Netdisk. Check your network connection and try again.',
+  storageBaiduNetdiskOperationFailed: 'Baidu Netdisk could not complete the operation. Try again.',
   storageS3ProviderName: 'S3-compatible storage',
   storageS3ProviderDescription: 'Bring your own S3, R2, B2, or MinIO bucket.',
   storageS3AdvancedTitle: 'Advanced S3-compatible storage',
@@ -822,7 +1029,7 @@ export const dialogMessageDefaults = {
   storageGoogleDriveNotConnected: 'Google Drive is not connected',
   storageGoogleDriveSetupRequired: 'This build is missing Google Drive OAuth configuration',
   storageGoogleDriveBuildConfigurationMissing:
-    'Ask the app publisher for a build configured with a Google Desktop OAuth client ID.',
+    'The managed connection is unavailable in this build. You can import your own Desktop OAuth credentials under Advanced setup.',
   storageGoogleDriveConnectDescription:
     'A system-browser sign-in gives OpenPencil access only to files it creates or you explicitly open.',
   storageGoogleDriveConnectedDetail:
@@ -858,15 +1065,17 @@ export const dialogMessageDefaults = {
   storageGoogleDriveNetworkFailed:
     'OpenPencil could not reach Google. Check your network connection and try again.',
   storageGoogleDriveDesktopClientRequired:
-    'Google rejected this build’s publisher-configured Desktop OAuth client ID. Ask the app publisher for a corrected build.',
+    'Google rejected the selected Desktop OAuth client. Check the imported credentials, or ask the app publisher for a corrected managed build.',
   storageGoogleDriveRedirectUriMismatch:
-    'Google rejected OpenPencil’s local OAuth callback. Ask the app publisher to verify this build’s Desktop OAuth configuration.',
+    'Google rejected OpenPencil’s local OAuth callback. Verify that the selected OAuth credential is a Desktop application client.',
   storageGoogleDriveTokenRequestInvalid:
-    'Google rejected the token request. Start the connection again; if it still fails, ask the app publisher to verify the build’s Desktop OAuth credentials.',
+    'Google rejected the token request. Start again with a valid Desktop OAuth credentials.json or a corrected managed build.',
   storageGoogleDriveAuthorizationCodeRejected:
     'Google rejected the authorization code or PKCE verification. Start the connection again.',
   storageGoogleDriveTokenExchangeFailed:
-    'Google could not finish the authorization exchange. Try again; if it continues, ask the app publisher to verify this build’s Desktop OAuth configuration.',
+    'Google could not finish the authorization exchange. Try again and verify the selected Desktop OAuth credential.',
+  storageGoogleDriveBrokerConfigurationFailed:
+    'OpenPencil’s Google OAuth connection service is not configured correctly for this build. Ask the app publisher to check the Broker deployment and Desktop OAuth credential.',
   storageGoogleDriveAccountVerificationFailed:
     'OpenPencil could not verify the authorized Google account. Try connecting again.',
   storageGoogleDriveOperationFailed: 'Google Drive could not complete the operation. Try again.',
@@ -889,7 +1098,19 @@ export const dialogMessageDefaults = {
   storageGoogleDriveClientID: 'Google OAuth client ID',
   storageGoogleDriveClientIDUnavailable: 'Not configured in this build',
   storageGoogleDriveClientIDHint:
-    'Configured by the app publisher and shown read-only. End users cannot replace this build value; request a corrected build if it is unavailable or rejected.',
+    'The managed client ID is publisher-configured and read-only. Importing credentials creates a separate self-hosted connection and does not replace this build value.',
+  storageGoogleDriveConnectionMode: 'OAuth connection mode',
+  storageGoogleDriveManagedConnection: 'OpenPencil managed connection',
+  storageGoogleDriveSelfHostedConnection: 'Self-hosted Desktop OAuth',
+  storageGoogleDriveImportCredentials: 'Import credentials.json and connect',
+  storageGoogleDriveReplaceCredentials: 'Replace credentials.json and reconnect',
+  storageGoogleDriveSwitchManaged: 'Switch to OpenPencil managed connection',
+  storageGoogleDriveSelfHostedHint:
+    'Advanced mode accepts only a Google Desktop-app credentials.json. OpenPencil ignores endpoints and redirect URIs from the file and keeps the client secret encrypted with the refresh token.',
+  storageGoogleDriveCredentialsInvalid:
+    'The selected file is not a valid Google Desktop OAuth credentials.json.',
+  storageGoogleDriveMultipleAccounts:
+    'This storage profile contains local work for more than one Google account. Repair or separate that work before changing authorization.',
   storageProfileID: params('Storage profile: {profile}'),
   storageProfiles: 'Accounts and profiles',
   storageProfileSelector: 'Active storage profile',
@@ -942,10 +1163,39 @@ export const dialogMessageDefaults = {
   storageSyncNeedsAttention: 'Sync needs attention',
   storageSyncingCount: params('Syncing {count} item(s)'),
   storageCreatingDocument: 'Creating…',
+  storageUploadLocalFig: 'Upload .fig',
+  storagePreparingFigUpload: 'Adding…',
+  storageFigUploadQueued: params('“{name}” was added to the upload queue.'),
+  storageFigUploadRecoveryPending: params(
+    '“{name}” is safe on this device and its upload will resume automatically.'
+  ),
+  storageInvalidFigUpload: 'Select a valid .fig file.',
+  storageFigUploadFailed: 'The .fig file could not be added. Check the file and try again.',
+  storageGoogleDriveCopyQueued: params('A Google Drive copy of “{name}” was queued.'),
+  storageGoogleDriveCopyRecoveryPending: params(
+    'A copy of “{name}” is safe on this device and its Drive upload will resume automatically.'
+  ),
+  storageGoogleDriveCopyInProgress: 'A Google Drive copy is already being prepared.',
+  storageGoogleDriveCopyFailed:
+    'The Google Drive copy could not be prepared. Your current document was not changed.',
+  storageProviderNotConnected: params('{provider} is not connected.'),
+  storageProviderPermissionDenied: params('{provider} denied access to this document.'),
+  storageProviderQuotaExceeded: params('{provider} storage quota is full.'),
+  storageProviderCopyQueued: params('A {provider} copy of “{name}” was queued.'),
+  storageProviderCopyRecoveryPending: params(
+    'A copy of “{name}” is safe on this device and its {provider} upload will resume automatically.'
+  ),
+  storageProviderCopyInProgress: params('A {provider} copy is already being prepared.'),
+  storageProviderCopyFailed: params(
+    'The {provider} copy could not be prepared. Your current document was not changed.'
+  ),
   storageDeleteDocumentButton: params('Delete {name}'),
   storageDeleteDocumentTitle: params('Delete {name}?'),
   storageDeleteDocumentDriveDescription:
     'OpenPencil will hide this document now and move it to Google Drive trash when synchronization runs. You can restore it from Drive trash.',
+  storageDeleteDocumentTrashDescription: params(
+    'OpenPencil will hide this document now and move it to {provider} trash when synchronization runs. You can restore it from the provider trash.'
+  ),
   storageDeleteDocumentPermanentDescription: params(
     'OpenPencil will hide this document now and permanently delete it from {provider} when synchronization runs.'
   ),
@@ -971,7 +1221,8 @@ export const dialogMessageDefaults = {
   storageGoogleDriveReconnectRequired: 'Reconnect Google Drive to continue syncing.',
   storageGoogleDrivePermissionDenied:
     'Google Drive denied access to this file. Check the account and file permissions.',
-  storageGoogleDriveRateLimited: 'Google Drive is busy. OpenPencil will retry shortly.',
+  storageGoogleDriveRateLimited:
+    'The OpenPencil Google Drive connection service is busy. Wait a moment, then try again.',
   storageTemporaryNetworkError:
     'The cloud service is temporarily unavailable. Your local documents are safe.',
   storageDocumentTooLarge: 'This document exceeds the configured cloud transfer limit.',
@@ -1003,7 +1254,7 @@ export const dialogMessageDefaults = {
   storageSecretAccessKey: 'Secret access key',
   save: 'Save',
   credentialStorage: params('Credentials: {backend}'),
-  credentialBackendNative: 'system credential store',
+  credentialBackendNative: 'encrypted desktop app storage',
   credentialBackendBrowser: 'encrypted app storage',
   credentialBackendMemory: 'this session only',
   rememberCredentials: 'Remember credentials on this browser',

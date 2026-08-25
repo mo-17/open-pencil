@@ -26,6 +26,30 @@ export const GOOGLE_DRIVE_STORAGE_CAPABILITIES = Object.freeze([
   'uploads.resumable'
 ] as const)
 
+export const ONEDRIVE_STORAGE_CONFIG_VERSION = 1
+export const ONEDRIVE_STORAGE_CAPABILITIES = Object.freeze([
+  'documents.read',
+  'documents.write',
+  'documents.delete',
+  'uploads.resumable'
+] as const)
+
+export const ALIYUN_DRIVE_STORAGE_CONFIG_VERSION = 1
+export const ALIYUN_DRIVE_STORAGE_CAPABILITIES = Object.freeze([
+  'documents.read',
+  'documents.write',
+  'documents.delete',
+  'uploads.resumable'
+] as const)
+
+export const BAIDU_NETDISK_STORAGE_CONFIG_VERSION = 1
+export const BAIDU_NETDISK_STORAGE_CAPABILITIES = Object.freeze([
+  'documents.read',
+  'documents.write',
+  'documents.delete',
+  'uploads.resumable'
+] as const)
+
 export const CLIPBOARD_COMMANDS = Object.freeze({
   text: {
     commandId: 'copy-as-text',

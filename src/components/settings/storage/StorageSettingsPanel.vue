@@ -4,8 +4,10 @@ import { useRouter } from 'vue-router'
 import { useI18n } from '@open-pencil/vue'
 
 import {
+  ALIYUN_DRIVE_STORAGE_PROVIDER_ID,
   activeStorageProfileID,
   activeStorageProviderID,
+  BAIDU_NETDISK_STORAGE_PROVIDER_ID,
   copyStorageProfilePreferences,
   createStorageProfile,
   DEFAULT_STORAGE_PROFILE_ID,
@@ -14,6 +16,7 @@ import {
   listStorageProfiles,
   MAX_STORAGE_PROFILE_NAME_LENGTH,
   MAX_STORAGE_PROFILES_PER_PROVIDER,
+  ONEDRIVE_STORAGE_PROVIDER_ID,
   renameStorageProfile,
   readStoragePreferences,
   S3_COMPATIBLE_STORAGE_PROVIDER_ID,
@@ -34,7 +37,10 @@ import {
 import { storageProfileHasOpenTabs } from '@/app/storage/mutation-drain'
 import { prepareS3LegacyMigration } from '@/app/storage/sync'
 import { getTabsSnapshot } from '@/app/tabs'
+import AliyunDriveStorageConnection from '@/components/settings/storage/AliyunDriveStorageConnection.vue'
+import BaiduNetdiskStorageConnection from '@/components/settings/storage/BaiduNetdiskStorageConnection.vue'
 import GoogleDriveStorageConnection from '@/components/settings/storage/GoogleDriveStorageConnection.vue'
+import OneDriveStorageConnection from '@/components/settings/storage/OneDriveStorageConnection.vue'
 import S3CompatibleStorageSettings from '@/components/settings/storage/S3CompatibleStorageSettings.vue'
 import AppInput from '@/components/ui/AppInput.vue'
 
@@ -50,6 +56,9 @@ const profileActionBusy = ref(false)
 const profileError = ref<string | null>(null)
 const profileComponentGeneration = ref(0)
 const googleSettings = ref<ProfileSettingsHandle | null>(null)
+const oneDriveSettings = ref<ProfileSettingsHandle | null>(null)
+const aliyunDriveSettings = ref<ProfileSettingsHandle | null>(null)
+const baiduNetdiskSettings = ref<ProfileSettingsHandle | null>(null)
 const s3Settings = ref<ProfileSettingsHandle | null>(null)
 const provider = computed(() => storageProviderRegistry.get(activeStorageProviderID.value))
 const activePluginState = computed(() => storageProviderPluginState(activeStorageProviderID.value))
@@ -79,13 +88,25 @@ const configured = computed(() => {
 })
 
 function providerDescription(providerId: StorageProviderID): string {
-  return providerId === 'google-drive'
-    ? dialogs.value.storageGoogleDriveProviderDescription
-    : dialogs.value.storageS3ProviderDescription
+  if (providerId === 'google-drive') return dialogs.value.storageGoogleDriveProviderDescription
+  if (providerId === ONEDRIVE_STORAGE_PROVIDER_ID) {
+    return dialogs.value.storageOneDriveProviderDescription
+  }
+  if (providerId === ALIYUN_DRIVE_STORAGE_PROVIDER_ID) {
+    return dialogs.value.storageAliyunDriveProviderDescription
+  }
+  if (providerId === BAIDU_NETDISK_STORAGE_PROVIDER_ID) {
+    return dialogs.value.storageBaiduNetdiskProviderDescription
+  }
+  return dialogs.value.storageS3ProviderDescription
 }
 
 function providerLabel(providerId: StorageProviderID): string {
-  return providerId === 'google-drive' ? 'Google Drive' : dialogs.value.storageS3ProviderName
+  if (providerId === 'google-drive') return 'Google Drive'
+  if (providerId === ONEDRIVE_STORAGE_PROVIDER_ID) return 'OneDrive'
+  if (providerId === ALIYUN_DRIVE_STORAGE_PROVIDER_ID) return 'Aliyun Drive'
+  if (providerId === BAIDU_NETDISK_STORAGE_PROVIDER_ID) return 'Baidu Netdisk'
+  return dialogs.value.storageS3ProviderName
 }
 
 function selectProvider(providerId: StorageProviderID): void {
@@ -201,7 +222,11 @@ async function confirmDeleteProfile(): Promise<void> {
   if (profileActionBusy.value) return
   const providerId = activeStorageProviderID.value
   const profileId = activeStorageProfileID.value
-  const handle = providerId === 'google-drive' ? googleSettings.value : s3Settings.value
+  let handle = s3Settings.value
+  if (providerId === 'google-drive') handle = googleSettings.value
+  if (providerId === ONEDRIVE_STORAGE_PROVIDER_ID) handle = oneDriveSettings.value
+  if (providerId === ALIYUN_DRIVE_STORAGE_PROVIDER_ID) handle = aliyunDriveSettings.value
+  if (providerId === BAIDU_NETDISK_STORAGE_PROVIDER_ID) handle = baiduNetdiskSettings.value
   if (!handle) {
     profileError.value = dialogs.value.storageProfileActionFailed
     return
@@ -284,7 +309,11 @@ watch(
       </p>
     </div>
 
-    <div class="grid grid-cols-2 gap-2" role="radiogroup" :aria-label="dialogs.storageProvider">
+    <div
+      class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5"
+      role="radiogroup"
+      :aria-label="dialogs.storageProvider"
+    >
       <button
         v-for="item in providers"
         :key="item.id"
@@ -304,7 +333,10 @@ watch(
             class="flex size-6 items-center justify-center rounded bg-hover text-muted data-[state=active]:bg-accent/15 data-[state=active]:text-accent"
             :data-state="item.id === activeStorageProviderID ? 'active' : 'inactive'"
           >
-            <icon-lucide-cloud v-if="item.id === 'google-drive'" class="size-3.5" />
+            <icon-lucide-cloud
+              v-if="item.id !== S3_COMPATIBLE_STORAGE_PROVIDER_ID"
+              class="size-3.5"
+            />
             <icon-lucide-server v-else class="size-3.5" />
           </span>
           <span class="text-[11px] font-medium text-surface">{{ providerLabel(item.id) }}</span>
@@ -461,8 +493,26 @@ watch(
       ref="googleSettings"
       @ready="updateReadiness"
     />
+    <OneDriveStorageConnection
+      v-else-if="provider.id === ONEDRIVE_STORAGE_PROVIDER_ID"
+      :key="profileComponentKey"
+      ref="oneDriveSettings"
+      @ready="updateReadiness"
+    />
+    <AliyunDriveStorageConnection
+      v-else-if="provider.id === ALIYUN_DRIVE_STORAGE_PROVIDER_ID"
+      :key="profileComponentKey"
+      ref="aliyunDriveSettings"
+      @ready="updateReadiness"
+    />
+    <BaiduNetdiskStorageConnection
+      v-else-if="provider.id === BAIDU_NETDISK_STORAGE_PROVIDER_ID"
+      :key="profileComponentKey"
+      ref="baiduNetdiskSettings"
+      @ready="updateReadiness"
+    />
     <S3CompatibleStorageSettings
-      v-else
+      v-else-if="provider.id === S3_COMPATIBLE_STORAGE_PROVIDER_ID"
       :key="profileComponentKey"
       ref="s3Settings"
       @ready="updateS3Readiness"
