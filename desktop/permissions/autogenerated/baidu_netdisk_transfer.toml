@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-baidu-netdisk-transfer"
+description = "Enables the baidu_netdisk_transfer command without any pre-configured scope."
+commands.allow = ["baidu_netdisk_transfer"]
+
+[[permission]]
+identifier = "deny-baidu-netdisk-transfer"
+description = "Denies the baidu_netdisk_transfer command without any pre-configured scope."
+commands.deny = ["baidu_netdisk_transfer"]

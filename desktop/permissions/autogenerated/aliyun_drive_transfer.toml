@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-aliyun-drive-transfer"
+description = "Enables the aliyun_drive_transfer command without any pre-configured scope."
+commands.allow = ["aliyun_drive_transfer"]
+
+[[permission]]
+identifier = "deny-aliyun-drive-transfer"
+description = "Denies the aliyun_drive_transfer command without any pre-configured scope."
+commands.deny = ["aliyun_drive_transfer"]

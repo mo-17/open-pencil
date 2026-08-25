@@ -1,6 +1,8 @@
 mod ai_window;
+mod aliyun_drive;
 #[cfg(test)]
 mod app_commands;
+mod baidu_netdisk;
 mod codepen;
 mod credentials;
 mod fig_container;
@@ -10,6 +12,7 @@ mod http;
 mod menu;
 mod menu_events;
 mod motion_export;
+mod onedrive;
 mod preview_window;
 mod source_export;
 #[cfg(target_os = "macos")]
@@ -18,6 +21,14 @@ mod window;
 use ai_window::{
     close_ai_window, focus_ai_editor_window, get_ai_window_latest_payload, open_ai_window,
     send_ai_window_intent, set_ai_window_always_on_top, update_ai_window, AIWindowState,
+};
+use aliyun_drive::{
+    aliyun_drive_oauth_authorize, aliyun_drive_oauth_cancel, aliyun_drive_oauth_refresh,
+    aliyun_drive_transfer, AliyunDriveOAuthOperations, AliyunDriveTransferAuthorizations,
+};
+use baidu_netdisk::{
+    baidu_netdisk_oauth_authorize, baidu_netdisk_oauth_cancel, baidu_netdisk_oauth_refresh,
+    baidu_netdisk_transfer, BaiduNetdiskOAuthOperations, BaiduNetdiskTransferAuthorizations,
 };
 use codepen::{cleanup_stale_codepen_files, fetch_codepen_sources, open_codepen_prefill};
 use credentials::{
@@ -34,6 +45,10 @@ use http::proxy_http_request;
 use menu::{install_app_menu, native_menu_checked, set_native_menu_checked};
 use menu_events::handle_menu_event;
 use motion_export::write_motion_export_noclobber;
+use onedrive::{
+    onedrive_oauth_authorize, onedrive_oauth_cancel, onedrive_oauth_refresh, onedrive_transfer,
+    OneDriveOAuthOperations, OneDriveTransferAuthorizations,
+};
 use preview_window::{
     close_preview_window, focus_preview_editor_window, get_preview_window_latest_payload,
     open_preview_window, send_preview_window_intent, set_preview_window_always_on_top,
@@ -170,10 +185,24 @@ pub fn run() {
 
     builder
         .manage(PendingOpen(Mutex::new(Vec::new())))
+        .manage(AliyunDriveOAuthOperations::default())
+        .manage(AliyunDriveTransferAuthorizations::default())
+        .manage(BaiduNetdiskOAuthOperations::default())
+        .manage(BaiduNetdiskTransferAuthorizations::default())
         .manage(GoogleDriveOAuthOperations::default())
+        .manage(OneDriveOAuthOperations::default())
+        .manage(OneDriveTransferAuthorizations::default())
         .manage(AIWindowState::default())
         .manage(PreviewWindowState::default())
         .invoke_handler(tauri::generate_handler![
+            aliyun_drive_oauth_authorize,
+            aliyun_drive_oauth_cancel,
+            aliyun_drive_oauth_refresh,
+            aliyun_drive_transfer,
+            baidu_netdisk_oauth_authorize,
+            baidu_netdisk_oauth_cancel,
+            baidu_netdisk_oauth_refresh,
+            baidu_netdisk_transfer,
             build_fig_file,
             close_ai_window,
             credential_read,
@@ -188,6 +217,10 @@ pub fn run() {
             google_drive_oauth_refresh,
             google_drive_oauth_revoke,
             google_drive_transfer,
+            onedrive_oauth_authorize,
+            onedrive_oauth_cancel,
+            onedrive_oauth_refresh,
+            onedrive_transfer,
             mcp_executable_available,
             close_preview_window,
             focus_ai_editor_window,

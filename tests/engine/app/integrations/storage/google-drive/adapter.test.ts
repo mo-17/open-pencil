@@ -81,6 +81,31 @@ function jsonBody(call: RecordedCall): unknown {
 }
 
 describe('GoogleDriveStorageAdapter', () => {
+  test('binds Drive ID reservation to the expected authorization grant', async () => {
+    const { client, calls } = queuedClient([() => jsonResponse({ ids: ['document_1'] })])
+    const adapter = createGoogleDriveStorageAdapter(client)
+
+    await expect(
+      adapter.reserveDocumentId?.({
+        expectedAuthority: {
+          accountId: 'oidc-subject',
+          authorizationVersion: 'wrong-grant'
+        }
+      })
+    ).rejects.toMatchObject({ code: 'authorization-changed' })
+    expect(calls).toHaveLength(0)
+
+    await expect(
+      adapter.reserveDocumentId?.({
+        expectedAuthority: {
+          accountId: 'oidc-subject',
+          authorizationVersion: 'grant-v1'
+        }
+      })
+    ).resolves.toBe('document_1')
+    expect(calls).toHaveLength(1)
+  })
+
   test('creates a visible marked .fig blob at a reserved Drive ID', async () => {
     const { client, calls } = queuedClient([
       () => new Response(null, { status: 404 }),

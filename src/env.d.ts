@@ -19,6 +19,12 @@ interface ImportMetaEnv {
   readonly VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG?: string
   /** Public OAuth client ID for the reviewed desktop Google Drive integration. */
   readonly VITE_GOOGLE_DRIVE_CLIENT_ID?: string
+  /** Public Microsoft Entra application client ID for the desktop OneDrive integration. */
+  readonly VITE_ONEDRIVE_CLIENT_ID?: string
+  /** Public OAuth client ID for the desktop Aliyun Drive integration. */
+  readonly VITE_ALIYUN_DRIVE_CLIENT_ID?: string
+  /** Public Baidu OAuth application key for the desktop Baidu Netdisk integration. */
+  readonly VITE_BAIDU_NETDISK_APP_KEY?: string
 }
 
 declare const __OPENPENCIL_APP_VERSION__: string

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-onedrive-oauth-authorize"
+description = "Enables the onedrive_oauth_authorize command without any pre-configured scope."
+commands.allow = ["onedrive_oauth_authorize"]
+
+[[permission]]
+identifier = "deny-onedrive-oauth-authorize"
+description = "Denies the onedrive_oauth_authorize command without any pre-configured scope."
+commands.deny = ["onedrive_oauth_authorize"]

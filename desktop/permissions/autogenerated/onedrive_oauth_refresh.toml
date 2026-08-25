@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-onedrive-oauth-refresh"
+description = "Enables the onedrive_oauth_refresh command without any pre-configured scope."
+commands.allow = ["onedrive_oauth_refresh"]
+
+[[permission]]
+identifier = "deny-onedrive-oauth-refresh"
+description = "Denies the onedrive_oauth_refresh command without any pre-configured scope."
+commands.deny = ["onedrive_oauth_refresh"]

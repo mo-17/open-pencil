@@ -16,7 +16,8 @@ import type { GoogleDriveTransport } from './types'
 type GoogleDriveOAuthSession = ReturnType<typeof createGoogleDriveOAuthSession>
 
 export type GoogleDriveRuntimeServices = Readonly<{
-  clientId: string
+  /** Publisher-managed Desktop client ID. Self-hosted profiles can operate without it. */
+  clientId: string | null
   profileId: string
   oauth: GoogleDriveOAuthSession
   client: GoogleDriveClient
@@ -37,18 +38,12 @@ type RuntimeEntry = GoogleDriveRuntimeServices & {
 let entriesByManager = new WeakMap<CredentialManager, Map<string, RuntimeEntry>>()
 const liveEntries = new Set<RuntimeEntry>()
 
-function missingClientId(): never {
-  throw new Error(
-    'Google Drive OAuth client ID is not configured. The app publisher must set VITE_GOOGLE_DRIVE_CLIENT_ID when building OpenPencil.'
-  )
-}
-
 export function getGoogleDriveRuntimeServices(
   runtime: StorageProviderRuntime,
   options: GoogleDriveRuntimeOptions = {}
 ): GoogleDriveRuntimeServices {
   const profileId = requireStorageProfileID(runtime.profileId)
-  const clientId = resolveGoogleDriveClientId(runtime.preferences) ?? missingClientId()
+  const clientId = resolveGoogleDriveClientId(runtime.preferences)
   const transport = options.transport ?? (IS_TAURI ? googleDriveTauriTransport : undefined)
   let entries = entriesByManager.get(runtime.credentialManager)
   if (!entries) {

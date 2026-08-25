@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::{rngs::OsRng, RngCore};
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
+    header::{HeaderMap, HeaderName, HeaderValue, ACCEPT, CONTENT_TYPE, RETRY_AFTER},
     redirect::Policy,
     Client, Method, StatusCode, Url,
 };
@@ -23,6 +23,12 @@ const GOOGLE_AUTHORIZATION_URL: &str = "https://accounts.google.com/o/oauth2/v2/
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
 const GOOGLE_USERINFO_URL: &str = "https://openidconnect.googleapis.com/v1/userinfo";
+const OAUTH_BROKER_EXCHANGE_PATH: &str = "/v1/google-drive/oauth/exchange";
+const OAUTH_BROKER_REFRESH_PATH: &str = "/v1/google-drive/oauth/refresh";
+const OAUTH_BROKER_PROTOCOL_VERSION: u8 = 1;
+const COMPILED_GOOGLE_DRIVE_CLIENT_ID: Option<&str> = option_env!("VITE_GOOGLE_DRIVE_CLIENT_ID");
+const COMPILED_GOOGLE_DRIVE_OAUTH_BROKER_ORIGIN: Option<&str> =
+    option_env!("OPENPENCIL_GOOGLE_DRIVE_OAUTH_BROKER_ORIGIN");
 const DRIVE_API_ORIGIN: &str = "www.googleapis.com";
 const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.file";
 const USERINFO_EMAIL_SCOPE: &str = "https://www.googleapis.com/auth/userinfo.email";
@@ -34,12 +40,19 @@ const DEFAULT_TRANSFER_TIMEOUT_MS: u64 = 30_000;
 const MAX_TRANSFER_TIMEOUT_MS: u64 = 120_000;
 const MAX_CALLBACK_HEAD_BYTES: usize = 8 * 1024;
 const MAX_OAUTH_RESPONSE_BYTES: usize = 64 * 1024;
+const MAX_OAUTH_BROKER_RESPONSE_BYTES: usize = 32 * 1024;
+const MAX_OAUTH_BROKER_REQUEST_TOKEN_LENGTH: usize = 8 * 1024;
+const MAX_AUTHORIZATION_CODE_LENGTH: usize = 4 * 1024;
+const DEFAULT_OAUTH_BROKER_RETRY_AFTER_MS: u64 = 60_000;
+const MAX_OAUTH_BROKER_RETRY_AFTER_SECONDS: u64 = 300;
 const MAX_METADATA_BODY_BYTES: usize = 1024 * 1024;
 const MAX_TRANSFER_CHUNK_BYTES: usize = 8 * 1024 * 1024;
 const MAX_HEADER_COUNT: usize = 16;
 const MAX_HEADER_BYTES: usize = 32 * 1024;
 const MAX_URL_LENGTH: usize = 8 * 1024;
-const MAX_TOKEN_LENGTH: usize = 16 * 1024;
+const MAX_TOKEN_LENGTH: usize = 8 * 1024;
+const MIN_DESKTOP_CLIENT_SECRET_LENGTH: usize = 8;
+const MAX_DESKTOP_CLIENT_SECRET_LENGTH: usize = 4 * 1024;
 const MAX_CONCURRENT_OAUTH_OPERATIONS: usize = 8;
 const AUTHORIZATION_RECEIVED_MESSAGE: &str =
     "Authorization received. Return to OpenPencil while it finishes connecting.";
@@ -60,6 +73,10 @@ pub enum GoogleDriveNativeErrorCode {
     TokenRequestInvalid,
     TokenExchangeFailed,
     TokenResponseInvalid,
+    OauthBrokerRateLimited,
+    OauthBrokerUnavailable,
+    OauthBrokerMisconfigured,
+    OauthBrokerProtocolInvalid,
     UserinfoFailed,
     ScopeMismatch,
     SubjectMismatch,
@@ -72,11 +89,17 @@ pub enum GoogleDriveNativeErrorCode {
 pub struct GoogleDriveNativeError {
     code: GoogleDriveNativeErrorCode,
     message: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retry_after_ms: Option<u64>,
 }
 
 impl GoogleDriveNativeError {
     fn new(code: GoogleDriveNativeErrorCode, message: &'static str) -> Self {
-        Self { code, message }
+        Self {
+            code,
+            message,
+            retry_after_ms: None,
+        }
     }
 
     fn invalid_request() -> Self {
@@ -139,6 +162,35 @@ impl GoogleDriveNativeError {
         Self::new(
             GoogleDriveNativeErrorCode::TokenResponseInvalid,
             "Google returned an invalid token response",
+        )
+    }
+
+    fn oauth_broker_rate_limited(retry_after_ms: Option<u64>) -> Self {
+        Self {
+            code: GoogleDriveNativeErrorCode::OauthBrokerRateLimited,
+            message: "OpenPencil OAuth Broker rate limit was reached",
+            retry_after_ms: Some(retry_after_ms.unwrap_or(DEFAULT_OAUTH_BROKER_RETRY_AFTER_MS)),
+        }
+    }
+
+    fn oauth_broker_unavailable() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::OauthBrokerUnavailable,
+            "OpenPencil OAuth Broker is temporarily unavailable",
+        )
+    }
+
+    fn oauth_broker_misconfigured() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::OauthBrokerMisconfigured,
+            "OpenPencil OAuth Broker is not configured for this build",
+        )
+    }
+
+    fn oauth_broker_protocol_invalid() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::OauthBrokerProtocolInvalid,
+            "OpenPencil OAuth Broker returned an invalid response",
         )
     }
 
@@ -205,11 +257,11 @@ impl GoogleDriveOAuthOperations {
     }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GoogleDriveAuthorizeRequest {
     operation_id: String,
-    client_id: String,
+    oauth_client: GoogleDriveOAuthClient,
     timeout_ms: Option<u64>,
 }
 
@@ -226,10 +278,10 @@ pub struct GoogleDriveAuthorizeResponse {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GoogleDriveRefreshRequest {
     operation_id: String,
-    client_id: String,
+    oauth_client: GoogleDriveOAuthClient,
     refresh_token: String,
     expected_subject: String,
     timeout_ms: Option<u64>,
@@ -302,6 +354,38 @@ struct OAuthErrorResponse {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OAuthBrokerErrorResponse {
+    error: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OAuthBrokerTokenResponse {
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+    expires_in: Option<u64>,
+    token_type: Option<String>,
+    scope: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OAuthBrokerExchangeRequest<'a> {
+    code: &'a str,
+    code_verifier: &'a str,
+    protocol_version: u8,
+    redirect_uri: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OAuthBrokerRefreshRequest<'a> {
+    protocol_version: u8,
+    refresh_token: &'a str,
+}
+
+#[derive(Deserialize)]
 struct UserInfoResponse {
     sub: Option<String>,
     email: Option<String>,
@@ -317,6 +401,53 @@ struct ValidatedTokenResponse {
 struct VerifiedUser {
     subject: String,
     email: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "mode", rename_all = "kebab-case", deny_unknown_fields)]
+enum GoogleDriveOAuthClient {
+    PublisherBroker {},
+    SelfHostedDesktop {
+        #[serde(rename = "clientId")]
+        client_id: String,
+        #[serde(rename = "clientSecret")]
+        client_secret: GoogleDriveDesktopClientSecret,
+    },
+}
+
+enum OAuthTokenBackend<'a> {
+    Broker {
+        client_id: &'a str,
+        exchange_url: Url,
+        refresh_url: Url,
+    },
+    SelfHostedDesktop {
+        client_id: &'a str,
+        client_secret: &'a GoogleDriveDesktopClientSecret,
+    },
+}
+
+impl OAuthTokenBackend<'_> {
+    fn client_id(&self) -> &str {
+        match self {
+            Self::Broker { client_id, .. } | Self::SelfHostedDesktop { client_id, .. } => client_id,
+        }
+    }
+}
+
+/// User-provided installed-app credential for Google's fixed Desktop token endpoint.
+///
+/// Desktop client secrets are not confidential client credentials, but this wrapper still
+/// intentionally implements neither `Debug` nor `Serialize` so IPC values cannot be reflected by
+/// ordinary diagnostics or native responses.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct GoogleDriveDesktopClientSecret(String);
+
+impl GoogleDriveDesktopClientSecret {
+    fn expose(&self) -> &str {
+        &self.0
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -365,16 +496,95 @@ fn valid_operation_id(value: &str) -> bool {
 
 fn validate_client_id(value: &str) -> Result<(), GoogleDriveNativeError> {
     let suffix = ".apps.googleusercontent.com";
-    if value.len() < 20
-        || value.len() > 256
-        || !value.ends_with(suffix)
-        || !value
+    let Some(prefix) = value.strip_suffix(suffix) else {
+        return Err(GoogleDriveNativeError::invalid_request());
+    };
+    if !(10..=200).contains(&prefix.len())
+        || !prefix
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
     {
         return Err(GoogleDriveNativeError::invalid_request());
     }
     Ok(())
+}
+
+fn validate_desktop_client_secret(
+    value: &GoogleDriveDesktopClientSecret,
+) -> Result<(), GoogleDriveNativeError> {
+    let value = value.expose();
+    if !(MIN_DESKTOP_CLIENT_SECRET_LENGTH..=MAX_DESKTOP_CLIENT_SECRET_LENGTH).contains(&value.len())
+        || value.trim() != value
+        || !value.bytes().all(|byte| byte.is_ascii_graphic())
+    {
+        return Err(GoogleDriveNativeError::invalid_request());
+    }
+    Ok(())
+}
+
+fn oauth_broker_urls(origin: &str) -> Result<(Url, Url), GoogleDriveNativeError> {
+    let parsed =
+        Url::parse(origin).map_err(|_| GoogleDriveNativeError::oauth_broker_misconfigured())?;
+    if parsed.scheme() != "https"
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.path() != "/"
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || parsed.origin().ascii_serialization() != origin
+    {
+        return Err(GoogleDriveNativeError::oauth_broker_misconfigured());
+    }
+    let mut exchange_url = parsed.clone();
+    exchange_url.set_path(OAUTH_BROKER_EXCHANGE_PATH);
+    let mut refresh_url = parsed;
+    refresh_url.set_path(OAUTH_BROKER_REFRESH_PATH);
+    Ok((exchange_url, refresh_url))
+}
+
+fn oauth_token_backend_from_config<'a>(
+    oauth_client: &'a GoogleDriveOAuthClient,
+    broker_origin: Option<&str>,
+    compiled_client_id: Option<&'a str>,
+) -> Result<OAuthTokenBackend<'a>, GoogleDriveNativeError> {
+    match oauth_client {
+        GoogleDriveOAuthClient::PublisherBroker {} => {
+            let origin =
+                broker_origin.ok_or_else(GoogleDriveNativeError::oauth_broker_misconfigured)?;
+            let client_id = compiled_client_id
+                .ok_or_else(GoogleDriveNativeError::oauth_broker_misconfigured)?;
+            validate_client_id(client_id)
+                .map_err(|_| GoogleDriveNativeError::oauth_broker_misconfigured())?;
+            let (exchange_url, refresh_url) = oauth_broker_urls(origin)?;
+            Ok(OAuthTokenBackend::Broker {
+                client_id,
+                exchange_url,
+                refresh_url,
+            })
+        }
+        GoogleDriveOAuthClient::SelfHostedDesktop {
+            client_id,
+            client_secret,
+        } => {
+            validate_client_id(client_id)?;
+            validate_desktop_client_secret(client_secret)?;
+            Ok(OAuthTokenBackend::SelfHostedDesktop {
+                client_id,
+                client_secret,
+            })
+        }
+    }
+}
+
+fn oauth_token_backend(
+    oauth_client: &GoogleDriveOAuthClient,
+) -> Result<OAuthTokenBackend<'_>, GoogleDriveNativeError> {
+    oauth_token_backend_from_config(
+        oauth_client,
+        COMPILED_GOOGLE_DRIVE_OAUTH_BROKER_ORIGIN,
+        COMPILED_GOOGLE_DRIVE_CLIENT_ID,
+    )
 }
 
 fn oauth_timeout(value: Option<u64>) -> Result<Duration, GoogleDriveNativeError> {
@@ -613,10 +823,18 @@ fn validate_token(value: Option<String>) -> Result<String, GoogleDriveNativeErro
     let Some(value) = value else {
         return Err(GoogleDriveNativeError::oauth_failed());
     };
-    if value.is_empty() || value.len() > MAX_TOKEN_LENGTH || value.chars().any(char::is_control) {
+    if !valid_token_text(&value) {
         return Err(GoogleDriveNativeError::oauth_failed());
     }
     Ok(value)
+}
+
+fn valid_token_text(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_TOKEN_LENGTH
+        && value.trim() == value
+        && !value.chars().any(char::is_whitespace)
+        && !value.chars().any(char::is_control)
 }
 
 fn validate_granted_scopes(value: Option<String>) -> Result<(), GoogleDriveNativeError> {
@@ -648,13 +866,11 @@ fn validate_granted_scopes(value: Option<String>) -> Result<(), GoogleDriveNativ
     Ok(())
 }
 
-fn parsed_token_response(
-    body: &[u8],
+fn validated_token_response(
+    parsed: OAuthTokenResponse,
     require_refresh_token: bool,
     require_scopes: bool,
 ) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
-    let parsed: OAuthTokenResponse = serde_json::from_slice(body)
-        .map_err(|_| GoogleDriveNativeError::token_response_invalid())?;
     if parsed.token_type.as_deref() != Some("Bearer") {
         return Err(GoogleDriveNativeError::token_response_invalid());
     }
@@ -684,6 +900,37 @@ fn parsed_token_response(
         refresh_token,
         expires_in,
     })
+}
+
+fn parsed_token_response(
+    body: &[u8],
+    require_refresh_token: bool,
+    require_scopes: bool,
+) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
+    let parsed: OAuthTokenResponse = serde_json::from_slice(body)
+        .map_err(|_| GoogleDriveNativeError::token_response_invalid())?;
+    validated_token_response(parsed, require_refresh_token, require_scopes)
+}
+
+fn parsed_oauth_broker_token_response(
+    body: &[u8],
+    require_refresh_token: bool,
+    require_scopes: bool,
+) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
+    let parsed = serde_json::from_slice::<OAuthBrokerTokenResponse>(body)
+        .map_err(|_| GoogleDriveNativeError::oauth_broker_protocol_invalid())?;
+    validated_token_response(
+        OAuthTokenResponse {
+            access_token: parsed.access_token,
+            refresh_token: parsed.refresh_token,
+            expires_in: parsed.expires_in,
+            token_type: parsed.token_type,
+            scope: parsed.scope,
+        },
+        require_refresh_token,
+        require_scopes,
+    )
+    .map_err(|_| GoogleDriveNativeError::oauth_broker_protocol_invalid())
 }
 
 fn classified_token_exchange_error(
@@ -721,6 +968,198 @@ async fn validate_token_exchange_response(
         .unwrap_or_else(GoogleDriveNativeError::token_exchange_failed))
 }
 
+fn has_json_content_type(headers: &HeaderMap) -> bool {
+    headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"))
+}
+
+fn oauth_broker_non_contract_error(
+    status: StatusCode,
+    retry_after_ms: Option<u64>,
+) -> GoogleDriveNativeError {
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        return GoogleDriveNativeError::oauth_broker_rate_limited(retry_after_ms);
+    }
+    if status.is_server_error() {
+        return GoogleDriveNativeError::oauth_broker_unavailable();
+    }
+    GoogleDriveNativeError::oauth_broker_protocol_invalid()
+}
+
+async fn bounded_oauth_broker_response_body(
+    response: &mut reqwest::Response,
+    status: StatusCode,
+    retry_after_ms: Option<u64>,
+) -> Result<Vec<u8>, GoogleDriveNativeError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_OAUTH_BROKER_RESPONSE_BYTES as u64)
+    {
+        return Err(oauth_broker_non_contract_error(status, retry_after_ms));
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| GoogleDriveNativeError::oauth_broker_unavailable())?
+    {
+        if body.len().saturating_add(chunk.len()) > MAX_OAUTH_BROKER_RESPONSE_BYTES {
+            return Err(oauth_broker_non_contract_error(status, retry_after_ms));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+fn oauth_broker_retry_after_ms(headers: &HeaderMap) -> Option<u64> {
+    let value = headers.get(RETRY_AFTER)?.to_str().ok()?;
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let seconds = value.parse::<u64>().ok()?;
+    if seconds == 0 || seconds > MAX_OAUTH_BROKER_RETRY_AFTER_SECONDS {
+        return None;
+    }
+    seconds.checked_mul(1_000)
+}
+
+fn classified_oauth_broker_error(
+    status: StatusCode,
+    body: &[u8],
+    retry_after_ms: Option<u64>,
+) -> Option<GoogleDriveNativeError> {
+    if status.is_success() {
+        return None;
+    }
+    let response = match serde_json::from_slice::<OAuthBrokerErrorResponse>(body) {
+        Ok(response) => response,
+        Err(_) => return Some(oauth_broker_non_contract_error(status, retry_after_ms)),
+    };
+    let error = match (response.error.as_str(), status.as_u16()) {
+        ("invalid_client" | "unauthorized_client", 400..=499) => {
+            GoogleDriveNativeError::oauth_client_invalid()
+        }
+        ("invalid_grant", 400..=499) => GoogleDriveNativeError::authorization_grant_invalid(),
+        ("redirect_uri_mismatch", 400..=499) => GoogleDriveNativeError::redirect_uri_mismatch(),
+        ("invalid_request", 400..=499) => GoogleDriveNativeError::token_request_invalid(),
+        ("server_error" | "temporarily_unavailable", 503) => {
+            GoogleDriveNativeError::oauth_broker_unavailable()
+        }
+        ("rate_limited", 429) => GoogleDriveNativeError::oauth_broker_rate_limited(retry_after_ms),
+        ("provider_unavailable", 503) => GoogleDriveNativeError::oauth_broker_unavailable(),
+        ("internal_error", 500) => GoogleDriveNativeError::oauth_broker_unavailable(),
+        ("server_misconfigured", 503) => GoogleDriveNativeError::oauth_broker_misconfigured(),
+        ("origin_mismatch", 421)
+        | ("method_not_allowed", 405)
+        | ("not_found", 404)
+        | ("unsupported_media_type", 415) => GoogleDriveNativeError::oauth_broker_misconfigured(),
+        ("broker_invalid_request", 400)
+        | ("browser_request_forbidden", 403)
+        | ("payload_too_large", 413) => GoogleDriveNativeError::oauth_broker_protocol_invalid(),
+        ("provider_response_invalid", 502) => GoogleDriveNativeError::oauth_broker_unavailable(),
+        _ => oauth_broker_non_contract_error(status, retry_after_ms),
+    };
+    Some(error)
+}
+
+async fn validated_oauth_broker_response(
+    response: &mut reqwest::Response,
+    require_refresh_token: bool,
+    require_scopes: bool,
+) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
+    let status = response.status();
+    let retry_after_ms = oauth_broker_retry_after_ms(response.headers());
+    if !has_json_content_type(response.headers()) {
+        return Err(oauth_broker_non_contract_error(status, retry_after_ms));
+    }
+    let body = bounded_oauth_broker_response_body(response, status, retry_after_ms).await?;
+    if let Some(error) = classified_oauth_broker_error(status, &body, retry_after_ms) {
+        return Err(error);
+    }
+    parsed_oauth_broker_token_response(&body, require_refresh_token, require_scopes)
+}
+
+fn valid_oauth_broker_request_text(value: &str, minimum: usize, maximum: usize) -> bool {
+    (minimum..=maximum).contains(&value.len())
+        && value.trim() == value
+        && !value.chars().any(char::is_whitespace)
+        && !value.chars().any(char::is_control)
+}
+
+fn valid_oauth_broker_redirect_uri(value: &str) -> bool {
+    if value.len() > 128 {
+        return false;
+    }
+    let Ok(parsed) = Url::parse(value) else {
+        return false;
+    };
+    let Some(port) = parsed.port() else {
+        return false;
+    };
+    (1024..=65_535).contains(&port)
+        && parsed.scheme() == "http"
+        && parsed.host_str() == Some("127.0.0.1")
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
+        && parsed.path() == "/"
+        && parsed.query().is_none()
+        && parsed.fragment().is_none()
+        && (value == format!("http://127.0.0.1:{port}")
+            || value == format!("http://127.0.0.1:{port}/"))
+}
+
+fn oauth_broker_exchange_body(
+    code: &str,
+    verifier: &str,
+    redirect_uri: &str,
+) -> Result<Vec<u8>, GoogleDriveNativeError> {
+    let valid_verifier = (43..=128).contains(&verifier.len())
+        && verifier
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'~' | b'-'));
+    if !valid_oauth_broker_request_text(code, 8, MAX_AUTHORIZATION_CODE_LENGTH)
+        || !valid_verifier
+        || !valid_oauth_broker_redirect_uri(redirect_uri)
+    {
+        return Err(GoogleDriveNativeError::token_request_invalid());
+    }
+    serde_json::to_vec(&OAuthBrokerExchangeRequest {
+        code,
+        code_verifier: verifier,
+        protocol_version: OAUTH_BROKER_PROTOCOL_VERSION,
+        redirect_uri,
+    })
+    .map_err(|_| GoogleDriveNativeError::oauth_broker_protocol_invalid())
+}
+
+fn oauth_broker_refresh_body(refresh_token: &str) -> Result<Vec<u8>, GoogleDriveNativeError> {
+    if !valid_oauth_broker_request_text(refresh_token, 8, MAX_OAUTH_BROKER_REQUEST_TOKEN_LENGTH) {
+        return Err(GoogleDriveNativeError::authorization_grant_invalid());
+    }
+    serde_json::to_vec(&OAuthBrokerRefreshRequest {
+        protocol_version: OAUTH_BROKER_PROTOCOL_VERSION,
+        refresh_token,
+    })
+    .map_err(|_| GoogleDriveNativeError::oauth_broker_protocol_invalid())
+}
+
+fn oauth_broker_request(
+    client: &Client,
+    url: &Url,
+    body: Vec<u8>,
+) -> Result<reqwest::Request, GoogleDriveNativeError> {
+    client
+        .post(url.clone())
+        .header(ACCEPT, "application/json")
+        .header(CONTENT_TYPE, "application/json")
+        .body(body)
+        .build()
+        .map_err(|_| GoogleDriveNativeError::oauth_broker_protocol_invalid())
+}
+
 fn validate_userinfo_status(status: StatusCode) -> Result<(), GoogleDriveNativeError> {
     if status.is_success() {
         Ok(())
@@ -734,9 +1173,11 @@ fn authorization_code_token_form<'a>(
     code: &'a str,
     verifier: &'a str,
     redirect_uri: &'a str,
-) -> [(&'static str, &'a str); 5] {
-    [
+    client_secret: &'a GoogleDriveDesktopClientSecret,
+) -> Vec<(&'static str, &'a str)> {
+    vec![
         ("client_id", client_id),
+        ("client_secret", client_secret.expose()),
         ("code", code),
         ("code_verifier", verifier),
         ("grant_type", "authorization_code"),
@@ -747,30 +1188,68 @@ fn authorization_code_token_form<'a>(
 fn refresh_token_form<'a>(
     client_id: &'a str,
     refresh_token: &'a str,
-) -> [(&'static str, &'a str); 3] {
-    [
+    client_secret: &'a GoogleDriveDesktopClientSecret,
+) -> Vec<(&'static str, &'a str)> {
+    vec![
         ("client_id", client_id),
+        ("client_secret", client_secret.expose()),
         ("refresh_token", refresh_token),
         ("grant_type", "refresh_token"),
     ]
 }
 
-async fn exchange_authorization_code(
+fn authorization_code_token_request(
     client: &Client,
     client_id: &str,
     code: &str,
     verifier: &str,
     redirect_uri: &str,
-) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
-    let mut response = client
+    client_secret: &GoogleDriveDesktopClientSecret,
+) -> Result<reqwest::Request, GoogleDriveNativeError> {
+    client
         .post(GOOGLE_TOKEN_URL)
         .form(&authorization_code_token_form(
             client_id,
             code,
             verifier,
             redirect_uri,
+            client_secret,
         ))
-        .send()
+        .build()
+        .map_err(|_| GoogleDriveNativeError::token_request_invalid())
+}
+
+fn refresh_token_request(
+    client: &Client,
+    client_id: &str,
+    refresh_token: &str,
+    client_secret: &GoogleDriveDesktopClientSecret,
+) -> Result<reqwest::Request, GoogleDriveNativeError> {
+    client
+        .post(GOOGLE_TOKEN_URL)
+        .form(&refresh_token_form(client_id, refresh_token, client_secret))
+        .build()
+        .map_err(|_| GoogleDriveNativeError::token_request_invalid())
+}
+
+async fn exchange_authorization_code_direct(
+    client: &Client,
+    client_id: &str,
+    code: &str,
+    verifier: &str,
+    redirect_uri: &str,
+    client_secret: &GoogleDriveDesktopClientSecret,
+) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
+    let request = authorization_code_token_request(
+        client,
+        client_id,
+        code,
+        verifier,
+        redirect_uri,
+        client_secret,
+    )?;
+    let mut response = client
+        .execute(request)
         .await
         .map_err(|_| GoogleDriveNativeError::network_failed())?;
     validate_token_exchange_response(&mut response).await?;
@@ -778,20 +1257,76 @@ async fn exchange_authorization_code(
     parsed_token_response(&body, true, true)
 }
 
-async fn refresh_access_token(
+async fn refresh_access_token_direct(
     client: &Client,
     client_id: &str,
     refresh_token: &str,
+    client_secret: &GoogleDriveDesktopClientSecret,
 ) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
+    let request = refresh_token_request(client, client_id, refresh_token, client_secret)?;
     let mut response = client
-        .post(GOOGLE_TOKEN_URL)
-        .form(&refresh_token_form(client_id, refresh_token))
-        .send()
+        .execute(request)
         .await
         .map_err(|_| GoogleDriveNativeError::network_failed())?;
     validate_token_exchange_response(&mut response).await?;
     let body = bounded_response_body(&mut response, MAX_OAUTH_RESPONSE_BYTES).await?;
     parsed_token_response(&body, false, false)
+}
+
+async fn exchange_authorization_code(
+    client: &Client,
+    backend: &OAuthTokenBackend<'_>,
+    code: &str,
+    verifier: &str,
+    redirect_uri: &str,
+) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
+    match backend {
+        OAuthTokenBackend::Broker { exchange_url, .. } => {
+            let body = oauth_broker_exchange_body(code, verifier, redirect_uri)?;
+            let request = oauth_broker_request(client, exchange_url, body)?;
+            let mut response = client
+                .execute(request)
+                .await
+                .map_err(|_| GoogleDriveNativeError::oauth_broker_unavailable())?;
+            validated_oauth_broker_response(&mut response, true, true).await
+        }
+        OAuthTokenBackend::SelfHostedDesktop {
+            client_id,
+            client_secret,
+        } => {
+            exchange_authorization_code_direct(
+                client,
+                client_id,
+                code,
+                verifier,
+                redirect_uri,
+                client_secret,
+            )
+            .await
+        }
+    }
+}
+
+async fn refresh_access_token(
+    client: &Client,
+    backend: &OAuthTokenBackend<'_>,
+    refresh_token: &str,
+) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
+    match backend {
+        OAuthTokenBackend::Broker { refresh_url, .. } => {
+            let body = oauth_broker_refresh_body(refresh_token)?;
+            let request = oauth_broker_request(client, refresh_url, body)?;
+            let mut response = client
+                .execute(request)
+                .await
+                .map_err(|_| GoogleDriveNativeError::oauth_broker_unavailable())?;
+            validated_oauth_broker_response(&mut response, false, false).await
+        }
+        OAuthTokenBackend::SelfHostedDesktop {
+            client_id,
+            client_secret,
+        } => refresh_access_token_direct(client, client_id, refresh_token, client_secret).await,
+    }
 }
 
 fn parsed_userinfo_response(
@@ -856,7 +1391,10 @@ async fn authorize_inner(
     request: &GoogleDriveAuthorizeRequest,
     cancelled: Arc<AtomicBool>,
 ) -> Result<GoogleDriveAuthorizeResponse, GoogleDriveNativeError> {
-    validate_client_id(&request.client_id)?;
+    // Resolve and validate the explicitly selected authority before opening the browser. A token
+    // request is sent to exactly one backend and is never retried against another backend.
+    let token_backend = oauth_token_backend(&request.oauth_client)?;
+    let client_id = token_backend.client_id();
     let timeout = oauth_timeout(request.timeout_ms)?;
     let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|_| {
         GoogleDriveNativeError::new(
@@ -871,7 +1409,7 @@ async fn authorize_inner(
     let redirect_uri = format!("http://127.0.0.1:{port}");
     let state = random_urlsafe(32);
     let (verifier, challenge) = pkce_pair();
-    let url = authorization_url(&request.client_id, &redirect_uri, &state, &challenge)?;
+    let url = authorization_url(client_id, &redirect_uri, &state, &challenge)?;
     tauri_plugin_opener::open_url(url, None::<&str>).map_err(|_| {
         GoogleDriveNativeError::new(
             GoogleDriveNativeErrorCode::BrowserOpenFailed,
@@ -892,7 +1430,7 @@ async fn authorize_inner(
     }
     let client = http_client(timeout)?;
     let token =
-        exchange_authorization_code(&client, &request.client_id, &code, &verifier, &redirect_uri)
+        exchange_authorization_code(&client, &token_backend, &code, &verifier, &redirect_uri)
             .await?;
     let refresh_token = token
         .refresh_token
@@ -944,7 +1482,6 @@ pub async fn google_drive_oauth_refresh(
     request: GoogleDriveRefreshRequest,
     operations: tauri::State<'_, GoogleDriveOAuthOperations>,
 ) -> Result<GoogleDriveRefreshResponse, GoogleDriveNativeError> {
-    validate_client_id(&request.client_id)?;
     validate_token(Some(request.refresh_token.clone()))?;
     if request.expected_subject.is_empty()
         || request.expected_subject.len() > 256
@@ -952,12 +1489,12 @@ pub async fn google_drive_oauth_refresh(
     {
         return Err(GoogleDriveNativeError::invalid_request());
     }
+    let token_backend = oauth_token_backend(&request.oauth_client)?;
     let timeout = oauth_timeout(request.timeout_ms)?;
     let cancelled = operations.begin(&request.operation_id)?;
     let result = async {
         let client = http_client(timeout)?;
-        let token =
-            refresh_access_token(&client, &request.client_id, &request.refresh_token).await?;
+        let token = refresh_access_token(&client, &token_backend, &request.refresh_token).await?;
         if cancelled.load(Ordering::SeqCst) {
             return Err(GoogleDriveNativeError::new(
                 GoogleDriveNativeErrorCode::Cancelled,
@@ -1117,9 +1654,14 @@ fn validated_headers(
     let mut total_bytes = 0_usize;
     for value in values {
         let name_text = value.name.to_ascii_lowercase();
+        let max_value_length = if name_text == "authorization" {
+            MAX_TOKEN_LENGTH + "Bearer ".len()
+        } else {
+            MAX_TOKEN_LENGTH
+        };
         if !allowed_header(kind, &name_text)
             || value.value.is_empty()
-            || value.value.len() > MAX_TOKEN_LENGTH
+            || value.value.len() > max_value_length
             || value.value.chars().any(char::is_control)
         {
             return Err(GoogleDriveNativeError::invalid_request());
@@ -1143,7 +1685,10 @@ fn validated_headers(
         .get("authorization")
         .and_then(|value| value.to_str().ok())
         .ok_or_else(GoogleDriveNativeError::invalid_request)?;
-    if !authorization.starts_with("Bearer ") || authorization.len() <= "Bearer ".len() {
+    let Some(bearer_token) = authorization.strip_prefix("Bearer ") else {
+        return Err(GoogleDriveNativeError::invalid_request());
+    };
+    if !valid_token_text(bearer_token) {
         return Err(GoogleDriveNativeError::invalid_request());
     }
     if kind == GoogleDriveTransferKind::UploadChunk && !headers.contains_key("content-range") {
@@ -1352,6 +1897,22 @@ mod tests {
                 r#"{"code":"token-response-invalid","message":"Google returned an invalid token response"}"#,
             ),
             (
+                GoogleDriveNativeError::oauth_broker_rate_limited(Some(60_000)),
+                r#"{"code":"oauth-broker-rate-limited","message":"OpenPencil OAuth Broker rate limit was reached","retryAfterMs":60000}"#,
+            ),
+            (
+                GoogleDriveNativeError::oauth_broker_unavailable(),
+                r#"{"code":"oauth-broker-unavailable","message":"OpenPencil OAuth Broker is temporarily unavailable"}"#,
+            ),
+            (
+                GoogleDriveNativeError::oauth_broker_misconfigured(),
+                r#"{"code":"oauth-broker-misconfigured","message":"OpenPencil OAuth Broker is not configured for this build"}"#,
+            ),
+            (
+                GoogleDriveNativeError::oauth_broker_protocol_invalid(),
+                r#"{"code":"oauth-broker-protocol-invalid","message":"OpenPencil OAuth Broker returned an invalid response"}"#,
+            ),
+            (
                 GoogleDriveNativeError::userinfo_failed(),
                 r#"{"code":"userinfo-failed","message":"Google user information could not be verified"}"#,
             ),
@@ -1370,6 +1931,270 @@ mod tests {
     }
 
     #[test]
+    fn oauth_client_modes_are_explicit_and_never_fall_back() {
+        let client_id = "1234567890-test.apps.googleusercontent.com";
+        let publisher = GoogleDriveOAuthClient::PublisherBroker {};
+        let backend = oauth_token_backend_from_config(
+            &publisher,
+            Some("https://oauth-broker.example.com"),
+            Some(client_id),
+        )
+        .unwrap();
+        match backend {
+            OAuthTokenBackend::Broker {
+                client_id: resolved_client_id,
+                exchange_url,
+                refresh_url,
+            } => {
+                assert_eq!(resolved_client_id, client_id);
+                assert_eq!(
+                    exchange_url.as_str(),
+                    "https://oauth-broker.example.com/v1/google-drive/oauth/exchange"
+                );
+                assert_eq!(
+                    refresh_url.as_str(),
+                    "https://oauth-broker.example.com/v1/google-drive/oauth/refresh"
+                );
+            }
+            OAuthTokenBackend::SelfHostedDesktop { .. } => {
+                panic!("publisher mode must not select Google directly")
+            }
+        }
+
+        assert_eq!(
+            result_error_code(oauth_token_backend_from_config(&publisher, None, None)),
+            GoogleDriveNativeErrorCode::OauthBrokerMisconfigured
+        );
+        assert_eq!(
+            result_error_code(oauth_token_backend_from_config(
+                &publisher,
+                Some("https://oauth-broker.example.com"),
+                Some("attacker.example"),
+            )),
+            GoogleDriveNativeErrorCode::OauthBrokerMisconfigured,
+        );
+
+        let secret = GoogleDriveDesktopClientSecret("test-local-secret".to_owned());
+        let self_hosted = GoogleDriveOAuthClient::SelfHostedDesktop {
+            client_id: client_id.to_owned(),
+            client_secret: secret,
+        };
+        let backend = oauth_token_backend_from_config(
+            &self_hosted,
+            Some("https://invalid broker origin"),
+            Some("1234567890-other.apps.googleusercontent.com"),
+        )
+        .unwrap();
+        match backend {
+            OAuthTokenBackend::SelfHostedDesktop {
+                client_id: resolved_client_id,
+                client_secret,
+            } => {
+                assert_eq!(resolved_client_id, client_id);
+                assert_eq!(client_secret.expose(), "test-local-secret");
+            }
+            OAuthTokenBackend::Broker { .. } => {
+                panic!("self-hosted mode must not select the publisher Broker")
+            }
+        }
+
+        for invalid_origin in [
+            "http://oauth-broker.example.com",
+            "https://oauth-broker.example.com/",
+            "https://oauth-broker.example.com/path",
+            "https://oauth-broker.example.com?query=1",
+            "https://user@oauth-broker.example.com",
+        ] {
+            assert_eq!(
+                result_error_code(oauth_broker_urls(invalid_origin)),
+                GoogleDriveNativeErrorCode::OauthBrokerMisconfigured
+            );
+        }
+    }
+
+    #[test]
+    fn oauth_broker_requests_have_exact_versioned_json_without_client_identity() {
+        let exchange = oauth_broker_exchange_body(
+            "test-authorization-code",
+            "a234567890123456789012345678901234567890123456789012345678901234",
+            "http://127.0.0.1:43123",
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&exchange).unwrap(),
+            serde_json::json!({
+                "code": "test-authorization-code",
+                "codeVerifier": "a234567890123456789012345678901234567890123456789012345678901234",
+                "protocolVersion": 1,
+                "redirectUri": "http://127.0.0.1:43123",
+            })
+        );
+
+        let refresh = oauth_broker_refresh_body("test-refresh-token").unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&refresh).unwrap(),
+            serde_json::json!({
+                "protocolVersion": 1,
+                "refreshToken": "test-refresh-token",
+            })
+        );
+        for body in [&exchange, &refresh] {
+            let text = String::from_utf8_lossy(body);
+            assert!(!text.contains("clientId"));
+            assert!(!text.contains("client_id"));
+            assert!(!text.contains("clientSecret"));
+            assert!(!text.contains("client_secret"));
+            assert!(!text.contains("scope"));
+        }
+        let (exchange_url, _) = oauth_broker_urls("https://oauth-broker.example.com").unwrap();
+        let client = http_client(Duration::from_secs(10)).unwrap();
+        let request = oauth_broker_request(&client, &exchange_url, exchange.clone()).unwrap();
+        assert_eq!(request.method(), Method::POST);
+        assert_eq!(request.url(), &exchange_url);
+        assert_eq!(
+            request.headers().get(ACCEPT),
+            Some(&HeaderValue::from_static("application/json"))
+        );
+        assert_eq!(
+            request.headers().get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/json"))
+        );
+        for forbidden in ["authorization", "cookie", "origin"] {
+            assert!(!request.headers().contains_key(forbidden));
+        }
+        assert_eq!(
+            request.body().and_then(|body| body.as_bytes()),
+            Some(exchange.as_slice())
+        );
+
+        assert_eq!(
+            result_error_code(oauth_broker_exchange_body(
+                "test-authorization-code",
+                "a234567890123456789012345678901234567890123456789012345678901234",
+                "https://evil.example/callback",
+            )),
+            GoogleDriveNativeErrorCode::TokenRequestInvalid
+        );
+        assert_eq!(
+            result_error_code(oauth_broker_refresh_body(
+                &"x".repeat(MAX_OAUTH_BROKER_REQUEST_TOKEN_LENGTH + 1)
+            )),
+            GoogleDriveNativeErrorCode::AuthorizationGrantInvalid
+        );
+    }
+
+    #[test]
+    fn oauth_broker_errors_are_status_bound_and_never_reflect_response_data() {
+        let mut retry_headers = HeaderMap::new();
+        retry_headers.insert(RETRY_AFTER, HeaderValue::from_static("60"));
+        assert_eq!(oauth_broker_retry_after_ms(&retry_headers), Some(60_000));
+        retry_headers.insert(RETRY_AFTER, HeaderValue::from_static("301"));
+        assert_eq!(oauth_broker_retry_after_ms(&retry_headers), None);
+
+        let cases: &[(StatusCode, &[u8], GoogleDriveNativeErrorCode)] = &[
+            (
+                StatusCode::BAD_REQUEST,
+                br#"{"error":"invalid_grant"}"#,
+                GoogleDriveNativeErrorCode::AuthorizationGrantInvalid,
+            ),
+            (
+                StatusCode::UNAUTHORIZED,
+                br#"{"error":"invalid_client"}"#,
+                GoogleDriveNativeErrorCode::OauthClientInvalid,
+            ),
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                br#"{"error":"rate_limited"}"#,
+                GoogleDriveNativeErrorCode::OauthBrokerRateLimited,
+            ),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                br#"{"error":"provider_unavailable"}"#,
+                GoogleDriveNativeErrorCode::OauthBrokerUnavailable,
+            ),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                br#"{"error":"server_misconfigured"}"#,
+                GoogleDriveNativeErrorCode::OauthBrokerMisconfigured,
+            ),
+            (
+                StatusCode::BAD_GATEWAY,
+                br#"{"error":"provider_response_invalid"}"#,
+                GoogleDriveNativeErrorCode::OauthBrokerUnavailable,
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                br#"{"error":"invalid_grant","error_description":"must-not-leak"}"#,
+                GoogleDriveNativeErrorCode::OauthBrokerProtocolInvalid,
+            ),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"not-json-must-not-leak",
+                GoogleDriveNativeErrorCode::OauthBrokerUnavailable,
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                br#"{"error":"rate_limited"}"#,
+                GoogleDriveNativeErrorCode::OauthBrokerProtocolInvalid,
+            ),
+        ];
+        for (status, body, expected) in cases {
+            let error = classified_oauth_broker_error(*status, body, Some(60_000)).unwrap();
+            assert_eq!(error.code, *expected);
+            let serialized = serde_json::to_string(&error).unwrap();
+            assert!(!serialized.contains("must-not-leak"));
+            assert!(!serialized.contains("error_description"));
+        }
+    }
+
+    #[test]
+    fn oauth_broker_non_contract_responses_preserve_outage_semantics() {
+        assert_eq!(
+            oauth_broker_non_contract_error(StatusCode::SERVICE_UNAVAILABLE, None).code,
+            GoogleDriveNativeErrorCode::OauthBrokerUnavailable
+        );
+        assert_eq!(
+            oauth_broker_non_contract_error(StatusCode::OK, None).code,
+            GoogleDriveNativeErrorCode::OauthBrokerProtocolInvalid
+        );
+        assert_eq!(
+            oauth_broker_non_contract_error(StatusCode::TOO_MANY_REQUESTS, Some(60_000)).code,
+            GoogleDriveNativeErrorCode::OauthBrokerRateLimited
+        );
+        assert_eq!(
+            classified_oauth_broker_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                br#"{"error":"provider_unavailable"}"#,
+                None,
+            )
+            .unwrap()
+            .code,
+            GoogleDriveNativeErrorCode::OauthBrokerUnavailable
+        );
+    }
+
+    #[test]
+    fn oauth_broker_success_is_exact_and_protocol_bounded() {
+        let token = parsed_oauth_broker_token_response(
+            br#"{"access_token":"test-access","refresh_token":"test-refresh","expires_in":3600,"token_type":"Bearer","scope":"openid email https://www.googleapis.com/auth/drive.file"}"#,
+            true,
+            true,
+        )
+        .unwrap();
+        assert_eq!(token.access_token, "test-access");
+        assert_eq!(token.refresh_token.as_deref(), Some("test-refresh"));
+        for invalid in [
+            br#"{"access_token":"test-access","refresh_token":"test-refresh","expires_in":3600,"token_type":"Bearer","scope":"openid email https://www.googleapis.com/auth/drive.file","id_token":"must-not-leak"}"#.as_slice(),
+            b"not-json".as_slice(),
+        ] {
+            assert_eq!(
+                result_error_code(parsed_oauth_broker_token_response(invalid, true, true)),
+                GoogleDriveNativeErrorCode::OauthBrokerProtocolInvalid
+            );
+        }
+    }
+
+    #[test]
     fn callback_success_message_describes_pending_connection() {
         assert_eq!(
             AUTHORIZATION_RECEIVED_MESSAGE,
@@ -1378,18 +2203,24 @@ mod tests {
     }
 
     #[test]
-    fn token_forms_use_public_client_id_without_client_secret() {
-        let authorization_names = authorization_code_token_form(
+    fn self_hosted_requests_use_fixed_google_endpoints_and_exact_client_identity() {
+        let client_secret = GoogleDriveDesktopClientSecret("test-local-secret".to_owned());
+        let authorization_form = authorization_code_token_form(
             "desktop-test.apps.googleusercontent.com",
             "test-code",
             "test-verifier",
             "http://127.0.0.1:12345",
-        )
-        .map(|(name, _)| name);
+            &client_secret,
+        );
+        let authorization_names = authorization_form
+            .iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>();
         assert_eq!(
             authorization_names,
             [
                 "client_id",
+                "client_secret",
                 "code",
                 "code_verifier",
                 "grant_type",
@@ -1397,14 +2228,238 @@ mod tests {
             ]
         );
 
-        let refresh_names = refresh_token_form(
+        let refresh_form = refresh_token_form(
             "desktop-test.apps.googleusercontent.com",
             "test-refresh-token",
+            &client_secret,
+        );
+        let refresh_names = refresh_form
+            .iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            refresh_names,
+            ["client_id", "client_secret", "refresh_token", "grant_type"]
+        );
+        for form in [&authorization_form, &refresh_form] {
+            let secrets = form
+                .iter()
+                .filter_map(|(name, value)| (*name == "client_secret").then_some(*value))
+                .collect::<Vec<_>>();
+            assert_eq!(secrets, ["test-local-secret"]);
+        }
+
+        let client = http_client(Duration::from_secs(10)).unwrap();
+        let authorization_request = authorization_code_token_request(
+            &client,
+            "desktop-test.apps.googleusercontent.com",
+            "test-code",
+            "test-verifier",
+            "http://127.0.0.1:12345",
+            &client_secret,
         )
-        .map(|(name, _)| name);
-        assert_eq!(refresh_names, ["client_id", "refresh_token", "grant_type"]);
-        assert!(!authorization_names.contains(&"client_secret"));
-        assert!(!refresh_names.contains(&"client_secret"));
+        .unwrap();
+        assert_eq!(authorization_request.method(), Method::POST);
+        assert_eq!(authorization_request.url().as_str(), GOOGLE_TOKEN_URL);
+        assert_eq!(
+            authorization_request
+                .body()
+                .and_then(reqwest::Body::as_bytes),
+            Some(
+                b"client_id=desktop-test.apps.googleusercontent.com&client_secret=test-local-secret&code=test-code&code_verifier=test-verifier&grant_type=authorization_code&redirect_uri=http%3A%2F%2F127.0.0.1%3A12345"
+                    .as_slice()
+            )
+        );
+
+        let refresh_request = refresh_token_request(
+            &client,
+            "desktop-test.apps.googleusercontent.com",
+            "test-refresh-token",
+            &client_secret,
+        )
+        .unwrap();
+        assert_eq!(refresh_request.method(), Method::POST);
+        assert_eq!(refresh_request.url().as_str(), GOOGLE_TOKEN_URL);
+        assert_eq!(
+            refresh_request.body().and_then(reqwest::Body::as_bytes),
+            Some(
+                b"client_id=desktop-test.apps.googleusercontent.com&client_secret=test-local-secret&refresh_token=test-refresh-token&grant_type=refresh_token"
+                    .as_slice()
+            )
+        );
+
+        let authorization_url = authorization_url(
+            "desktop-test.apps.googleusercontent.com",
+            "http://127.0.0.1:12345",
+            "test-state",
+            "test-challenge",
+        )
+        .unwrap();
+        let parsed_authorization_url = Url::parse(&authorization_url).unwrap();
+        assert_eq!(parsed_authorization_url.scheme(), "https");
+        assert_eq!(
+            parsed_authorization_url.host_str(),
+            Some("accounts.google.com")
+        );
+        assert_eq!(parsed_authorization_url.port(), None);
+        assert_eq!(parsed_authorization_url.path(), "/o/oauth2/v2/auth");
+        let query = parsed_authorization_url
+            .query_pairs()
+            .into_owned()
+            .collect::<HashMap<_, _>>();
+        assert_eq!(query.len(), 10);
+        assert_eq!(
+            query.get("scope").map(String::as_str),
+            Some("openid email https://www.googleapis.com/auth/drive.file")
+        );
+        assert_eq!(
+            query.get("code_challenge").map(String::as_str),
+            Some("test-challenge")
+        );
+        assert_eq!(
+            query.get("code_challenge_method").map(String::as_str),
+            Some("S256")
+        );
+        assert_eq!(
+            query.get("access_type").map(String::as_str),
+            Some("offline")
+        );
+        assert_eq!(query.get("prompt").map(String::as_str), Some("consent"));
+        assert!(!authorization_url.contains("client_secret"));
+        assert!(!authorization_url.contains("test-local-secret"));
+    }
+
+    #[test]
+    fn oauth_ipc_client_modes_are_exact_and_do_not_reflect_secrets() {
+        let client_id = "desktop-test.apps.googleusercontent.com";
+        let publisher: GoogleDriveAuthorizeRequest = serde_json::from_value(serde_json::json!({
+            "operationId": "00000000000000000000000000000000",
+            "oauthClient": { "mode": "publisher-broker" },
+            "timeoutMs": 180000,
+        }))
+        .unwrap();
+        assert!(matches!(
+            publisher.oauth_client,
+            GoogleDriveOAuthClient::PublisherBroker {}
+        ));
+
+        let self_hosted: GoogleDriveRefreshRequest = serde_json::from_value(serde_json::json!({
+            "operationId": "00000000000000000000000000000000",
+            "oauthClient": {
+                "mode": "self-hosted-desktop",
+                "clientId": client_id,
+                "clientSecret": "test-local-secret",
+            },
+            "refreshToken": "test-refresh-token",
+            "expectedSubject": "test-subject",
+            "timeoutMs": 180000,
+        }))
+        .unwrap();
+        match self_hosted.oauth_client {
+            GoogleDriveOAuthClient::SelfHostedDesktop {
+                client_id: parsed_client_id,
+                client_secret,
+            } => {
+                assert_eq!(parsed_client_id, client_id);
+                assert_eq!(client_secret.expose(), "test-local-secret");
+            }
+            GoogleDriveOAuthClient::PublisherBroker {} => {
+                panic!("self-hosted request must retain its explicit client identity")
+            }
+        }
+
+        let invalid_authorize_requests = [
+            serde_json::json!({
+                "operationId": "00000000000000000000000000000000",
+                "oauthClient": {
+                    "mode": "publisher-broker",
+                    "clientId": client_id,
+                },
+                "timeoutMs": 180000,
+            }),
+            serde_json::json!({
+                "operationId": "00000000000000000000000000000000",
+                "oauthClient": {
+                    "mode": "publisher-broker",
+                    "clientSecret": "must-not-cross-modes",
+                },
+                "timeoutMs": 180000,
+            }),
+            serde_json::json!({
+                "operationId": "00000000000000000000000000000000",
+                "oauthClient": {
+                    "mode": "self-hosted-desktop",
+                    "clientId": client_id,
+                },
+                "timeoutMs": 180000,
+            }),
+            serde_json::json!({
+                "operationId": "00000000000000000000000000000000",
+                "oauthClient": {
+                    "mode": "self-hosted-desktop",
+                    "clientSecret": "must-not-cross-modes",
+                },
+                "timeoutMs": 180000,
+            }),
+            serde_json::json!({
+                "operationId": "00000000000000000000000000000000",
+                "oauthClient": {
+                    "mode": "self-hosted-desktop",
+                    "clientId": client_id,
+                    "clientSecret": "must-not-cross-modes",
+                    "tokenEndpoint": "https://attacker.example/token",
+                },
+                "timeoutMs": 180000,
+            }),
+            serde_json::json!({
+                "operationId": "00000000000000000000000000000000",
+                "oauthClient": { "mode": "unknown" },
+                "timeoutMs": 180000,
+            }),
+            serde_json::json!({
+                "operationId": "00000000000000000000000000000000",
+                "clientId": client_id,
+                "clientSecret": "legacy-top-level-secret",
+                "timeoutMs": 180000,
+            }),
+        ];
+        for request in invalid_authorize_requests {
+            assert!(serde_json::from_value::<GoogleDriveAuthorizeRequest>(request).is_err());
+        }
+
+        let invalid_secrets = [
+            "".to_owned(),
+            "short".to_owned(),
+            " test-local-secret".to_owned(),
+            "test local secret".to_owned(),
+            "test-local-secret\n".to_owned(),
+            "非ascii-client-secret".to_owned(),
+            "x".repeat(MAX_DESKTOP_CLIENT_SECRET_LENGTH + 1),
+        ];
+        for invalid_secret in invalid_secrets {
+            let oauth_client = GoogleDriveOAuthClient::SelfHostedDesktop {
+                client_id: client_id.to_owned(),
+                client_secret: GoogleDriveDesktopClientSecret(invalid_secret.clone()),
+            };
+            let error = match oauth_token_backend_from_config(&oauth_client, None, None) {
+                Ok(_) => panic!("invalid self-hosted secret must be rejected"),
+                Err(error) => error,
+            };
+            assert_eq!(error.code, GoogleDriveNativeErrorCode::InvalidRequest);
+            assert_eq!(
+                serde_json::to_string(&error).unwrap(),
+                r#"{"code":"invalid-request","message":"Google Drive request is invalid"}"#
+            );
+        }
+
+        let invalid_client = GoogleDriveOAuthClient::SelfHostedDesktop {
+            client_id: "attacker.example".to_owned(),
+            client_secret: GoogleDriveDesktopClientSecret("test-local-secret".to_owned()),
+        };
+        assert_eq!(
+            result_error_code(oauth_token_backend_from_config(&invalid_client, None, None)),
+            GoogleDriveNativeErrorCode::InvalidRequest
+        );
     }
 
     #[test]
@@ -1582,7 +2637,8 @@ mod tests {
 
     #[test]
     fn validates_client_and_timeout_bounds() {
-        assert!(validate_client_id("123-abc.apps.googleusercontent.com").is_ok());
+        assert!(validate_client_id("1234567890-abc.apps.googleusercontent.com").is_ok());
+        assert!(validate_client_id("123.4567890.apps.googleusercontent.com").is_err());
         assert!(validate_client_id("https://evil.example").is_err());
         assert!(oauth_timeout(Some(MIN_OAUTH_TIMEOUT_MS)).is_ok());
         assert!(oauth_timeout(Some(MIN_OAUTH_TIMEOUT_MS - 1)).is_err());
@@ -1647,6 +2703,17 @@ mod tests {
         assert!(validated_headers(GoogleDriveTransferKind::Api, &headers).is_ok());
         assert!(validated_headers(GoogleDriveTransferKind::UploadChunk, &headers).is_err());
         assert!(validated_headers(GoogleDriveTransferKind::DownloadChunk, &headers).is_err());
+
+        let maximum_token = [GoogleDriveTransferHeader {
+            name: "authorization".to_owned(),
+            value: format!("Bearer {}", "a".repeat(MAX_TOKEN_LENGTH)),
+        }];
+        assert!(validated_headers(GoogleDriveTransferKind::Api, &maximum_token).is_ok());
+        let oversized_token = [GoogleDriveTransferHeader {
+            name: "authorization".to_owned(),
+            value: format!("Bearer {}", "a".repeat(MAX_TOKEN_LENGTH + 1)),
+        }];
+        assert!(validated_headers(GoogleDriveTransferKind::Api, &oversized_token).is_err());
 
         let overflowing_range = [
             GoogleDriveTransferHeader {

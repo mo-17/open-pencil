@@ -21,7 +21,10 @@ export {
 } from './plugin-gate'
 export type { StoragePreferences, StorageProfile } from './preferences'
 export {
+  ALIYUN_DRIVE_STORAGE_PROVIDER,
+  BAIDU_NETDISK_STORAGE_PROVIDER,
   GOOGLE_DRIVE_STORAGE_PROVIDER,
+  ONEDRIVE_STORAGE_PROVIDER,
   S3_STORAGE_PROVIDER,
   storageProviderRegistry
 } from './providers'
@@ -38,6 +41,44 @@ export {
   resetGoogleDriveRuntimeServicesForTests
 } from './google-drive/runtime'
 export type { GoogleDriveRuntimeOptions, GoogleDriveRuntimeServices } from './google-drive/runtime'
+export {
+  ONEDRIVE_STORAGE_ADAPTER_ID,
+  ONEDRIVE_STORAGE_PLUGIN_ID,
+  ONEDRIVE_STORAGE_PROVIDER_ID
+} from './onedrive/config'
+export {
+  disposeOneDriveRuntimeProfile,
+  getOneDriveRuntimeServices,
+  resetOneDriveRuntimeServicesForTests
+} from './onedrive/runtime'
+export type { OneDriveRuntimeOptions, OneDriveRuntimeServices } from './onedrive/runtime'
+export {
+  ALIYUN_DRIVE_STORAGE_ADAPTER_ID,
+  ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
+  ALIYUN_DRIVE_STORAGE_PROVIDER_ID,
+  resolveAliyunDrivePublisherOAuthConfig
+} from './aliyun-drive/config'
+export {
+  disposeAliyunDriveRuntimeProfile,
+  getAliyunDriveRuntimeServices,
+  resetAliyunDriveRuntimeServicesForTests
+} from './aliyun-drive/runtime'
+export type { AliyunDriveRuntimeOptions, AliyunDriveRuntimeServices } from './aliyun-drive/runtime'
+export {
+  BAIDU_NETDISK_STORAGE_ADAPTER_ID,
+  BAIDU_NETDISK_STORAGE_PLUGIN_ID,
+  BAIDU_NETDISK_STORAGE_PROVIDER_ID,
+  resolveBaiduNetdiskPublisherOAuthConfig
+} from './baidu-netdisk/config'
+export {
+  disposeBaiduNetdiskRuntimeProfile,
+  getBaiduNetdiskRuntimeServices,
+  resetBaiduNetdiskRuntimeServicesForTests
+} from './baidu-netdisk/runtime'
+export type {
+  BaiduNetdiskRuntimeOptions,
+  BaiduNetdiskRuntimeServices
+} from './baidu-netdisk/runtime'
 export { defineStorageProvider, StorageProviderRegistry } from './registry'
 export { createS3StorageAdapter } from './s3/adapter'
 export type { S3StorageAdapter } from './s3/adapter'
@@ -63,7 +104,10 @@ export {
 } from './types'
 export {
   createActiveStorageAdapter,
+  readAliyunDriveStoredAuthority,
+  readBaiduNetdiskStoredAuthority,
   readGoogleDriveStoredAuthority,
+  readOneDriveStoredAuthority,
   readStoredStorageAuthority,
   storageCredentialRefs,
   storageCredentialStatuses

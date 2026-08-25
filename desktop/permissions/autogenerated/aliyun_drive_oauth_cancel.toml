@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-aliyun-drive-oauth-cancel"
+description = "Enables the aliyun_drive_oauth_cancel command without any pre-configured scope."
+commands.allow = ["aliyun_drive_oauth_cancel"]
+
+[[permission]]
+identifier = "deny-aliyun-drive-oauth-cancel"
+description = "Denies the aliyun_drive_oauth_cancel command without any pre-configured scope."
+commands.deny = ["aliyun_drive_oauth_cancel"]

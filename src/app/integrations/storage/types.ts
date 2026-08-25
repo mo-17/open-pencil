@@ -25,7 +25,7 @@ export function requireStorageProfileID(value: string): string {
 }
 
 export type StorageDocumentAuthority = {
-  /** Stable provider account identity (for Google, the OIDC subject). */
+  /** Stable provider account identity (for OAuth providers, the verified OIDC subject). */
   accountId: string
   /** Random version for the exact authorization grant that owns durable work. */
   authorizationVersion: string
@@ -68,8 +68,8 @@ export function storageDocumentKey(binding: StorageDocumentBindingInput): string
   const resolved = resolveStorageDocumentBinding(binding)
   // S3 configuration generations can represent entirely different endpoints/buckets while
   // retaining the same profile incarnation. Keep their cache/outbox keys generation-scoped.
-  // Google Drive intentionally keeps the established account-scoped key so an explicitly
-  // confirmed OAuth grant adoption can update the row in place.
+  // OAuth account providers intentionally keep an account-scoped key so an explicitly
+  // confirmed grant adoption can update the row in place.
   if (resolved.providerId === 's3-compatible' && resolved.authority) {
     return JSON.stringify([
       resolved.providerId,
@@ -212,7 +212,9 @@ export interface LibraryObjectStore {
 export interface StorageAdapter {
   testConnection(options?: Pick<StorageTransferOptions, 'signal'>): Promise<StorageConnectionResult>
   listDocuments(options?: Pick<StorageTransferOptions, 'signal'>): Promise<StorageDocument[]>
-  reserveDocumentId?(options?: Pick<StorageTransferOptions, 'signal'>): Promise<string>
+  reserveDocumentId?(
+    options?: Pick<StorageTransferOptions, 'signal' | 'expectedAuthority'>
+  ): Promise<string>
   getAuthority?(
     options?: Pick<StorageTransferOptions, 'signal'>
   ): Promise<StorageDocumentAuthority | null>
@@ -267,6 +269,12 @@ export type StorageProviderRegistration = {
   id: StorageProviderID
   label: string
   description: string
+  /** Whether durable work must remain bound to an exact account/grant. */
+  authorityMode?: 'account-grant' | 'configuration'
+  /** User-facing deletion behavior implemented by the provider. */
+  deletionMode?: 'trash' | 'permanent'
+  /** Whether ordinary local .fig files can be queued through the workspace. */
+  supportsLocalFigImport?: boolean
   preferenceFields: readonly StoragePreferenceField[]
   credentialFields: readonly StorageCredentialField[]
   createAdapter(runtime: StorageProviderRuntime): StorageAdapter

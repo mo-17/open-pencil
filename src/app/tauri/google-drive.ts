@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 
 import { randomHex } from '@open-pencil/core/random'
 
+import { GoogleDriveNativeError, nativeGoogleDriveError } from './drive-oauth-error'
 import {
   defaultGoogleDriveTransferSleep,
   linkedGoogleDriveAbortController,
@@ -11,44 +12,18 @@ import {
 } from './google-drive-download'
 import { withAbortSignal, type TauriHttpHeader } from './http'
 
-export type GoogleDriveNativeErrorCode =
-  | 'invalid-request'
-  | 'unsupported'
-  | 'cancelled'
-  | 'timeout'
-  | 'browser-open-failed'
-  | 'oauth-denied'
-  | 'oauth-failed'
-  | 'oauth-client-invalid'
-  | 'authorization-grant-invalid'
-  | 'redirect-uri-mismatch'
-  | 'token-request-invalid'
-  | 'token-exchange-failed'
-  | 'token-response-invalid'
-  | 'userinfo-failed'
-  | 'scope-mismatch'
-  | 'subject-mismatch'
-  | 'network-failed'
-  | 'response-too-large'
+export { GoogleDriveNativeError, type GoogleDriveNativeErrorCode } from './drive-oauth-error'
 
-type NativeErrorValue = {
-  code?: GoogleDriveNativeErrorCode
-  message?: string
-}
-
-export class GoogleDriveNativeError extends Error {
-  constructor(
-    readonly code: GoogleDriveNativeErrorCode,
-    message: string,
-    options?: ErrorOptions
-  ) {
-    super(message, options)
-    this.name = 'GoogleDriveNativeError'
-  }
-}
+export type GoogleDriveNativeOAuthClient =
+  | { mode: 'publisher-broker' }
+  | {
+      mode: 'self-hosted-desktop'
+      clientId: string
+      clientSecret: string
+    }
 
 export type GoogleDriveNativeAuthorizeRequest = {
-  clientId: string
+  oauthClient: GoogleDriveNativeOAuthClient
   timeoutMs?: number
 }
 
@@ -62,7 +37,7 @@ export type GoogleDriveNativeAuthorizeResult = {
 }
 
 export type GoogleDriveNativeRefreshRequest = {
-  clientId: string
+  oauthClient: GoogleDriveNativeOAuthClient
   refreshToken: string
   expectedSubject: string
   timeoutMs?: number
@@ -131,16 +106,6 @@ export interface GoogleDriveNativeBridge {
   revoke(request: GoogleDriveNativeRevokeRequest, signal?: AbortSignal): Promise<void>
 }
 
-function nativeError(error: unknown): GoogleDriveNativeError {
-  if (error instanceof GoogleDriveNativeError) return error
-  const value =
-    typeof error === 'object' && error !== null ? (error as NativeErrorValue) : undefined
-  return new GoogleDriveNativeError(
-    value?.code ?? 'oauth-failed',
-    value?.message ?? 'Google Drive native operation failed'
-  )
-}
-
 function abortReason(signal: AbortSignal): Error {
   return signal.reason instanceof Error
     ? signal.reason
@@ -173,10 +138,10 @@ async function invokeWithAbort<T>(
     try {
       return await pending
     } catch (error) {
-      throw nativeError(error)
+      throw nativeGoogleDriveError(error)
     }
   }
-  return withAbortSignal(pending, signal, nativeError)
+  return withAbortSignal(pending, signal, nativeGoogleDriveError)
 }
 
 async function invokeCancellableOAuth<T>(
@@ -192,7 +157,7 @@ async function invokeCancellableOAuth<T>(
     try {
       return await pending
     } catch (error) {
-      throw nativeError(error)
+      throw nativeGoogleDriveError(error)
     }
   }
 
@@ -232,7 +197,7 @@ async function invokeCancellableOAuth<T>(
       (error) => {
         if (aborting) return undefined
         cleanup()
-        reject(nativeError(error))
+        reject(nativeGoogleDriveError(error))
         return undefined
       }
     )

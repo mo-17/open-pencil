@@ -6,6 +6,15 @@ import {
 } from './envelope'
 
 const STORAGE_PREFIX = 'open-pencil:google-drive-oauth:v1:'
+const MAX_GOOGLE_DRIVE_OAUTH_METADATA_BYTES = 4 * 1024
+
+function invalidMetadata(): TypeError {
+  return new TypeError('Stored Google Drive account metadata is invalid')
+}
+
+function utf8Bytes(value: string): number {
+  return new TextEncoder().encode(value).byteLength
+}
 
 export interface GoogleDriveOAuthMetadataStore {
   read(profileId: string): Promise<GoogleDriveOAuthPublicMetadata | null>
@@ -30,14 +39,12 @@ export class LocalGoogleDriveOAuthMetadataStore implements GoogleDriveOAuthMetad
   async read(profileId: string): Promise<GoogleDriveOAuthPublicMetadata | null> {
     const raw = this.storage?.getItem(metadataKey(profileId))
     if (!raw) return null
-    if (raw.length > 4 * 1024) {
-      throw new TypeError('Stored Google Drive account metadata is invalid')
-    }
+    if (utf8Bytes(raw) > MAX_GOOGLE_DRIVE_OAUTH_METADATA_BYTES) throw invalidMetadata()
     let parsed: unknown
     try {
       parsed = JSON.parse(raw)
-    } catch (cause) {
-      throw new TypeError('Stored Google Drive account metadata is invalid', { cause })
+    } catch {
+      throw invalidMetadata()
     }
     return parseGoogleDriveOAuthPublicMetadata(parsed)
   }
@@ -45,7 +52,9 @@ export class LocalGoogleDriveOAuthMetadataStore implements GoogleDriveOAuthMetad
   async write(metadata: GoogleDriveOAuthPublicMetadata): Promise<void> {
     if (!this.storage) throw new Error('Google Drive account metadata storage is unavailable')
     const parsed = parseGoogleDriveOAuthPublicMetadata(metadata)
-    this.storage.setItem(metadataKey(parsed.profileId), JSON.stringify(parsed))
+    const serialized = JSON.stringify(parsed)
+    if (utf8Bytes(serialized) > MAX_GOOGLE_DRIVE_OAUTH_METADATA_BYTES) throw invalidMetadata()
+    this.storage.setItem(metadataKey(parsed.profileId), serialized)
   }
 
   async remove(profileId: string): Promise<void> {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-onedrive-oauth-cancel"
+description = "Enables the onedrive_oauth_cancel command without any pre-configured scope."
+commands.allow = ["onedrive_oauth_cancel"]
+
+[[permission]]
+identifier = "deny-onedrive-oauth-cancel"
+description = "Denies the onedrive_oauth_cancel command without any pre-configured scope."
+commands.deny = ["onedrive_oauth_cancel"]

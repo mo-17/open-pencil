@@ -93,6 +93,35 @@ describe('storage provider registry', () => {
     expect(provider.description).toContain('Google Drive')
   })
 
+  test('registers OneDrive as a public-client provider with no profile-owned OAuth identity', () => {
+    const provider = storageProviderRegistry.get('onedrive')
+
+    expect(provider.preferenceFields).toEqual([])
+    expect(provider.credentialFields).toEqual([])
+    expect(provider.authorityMode).toBe('account-grant')
+    expect(provider.deletionMode).toBe('trash')
+    expect(provider.supportsLocalFigImport).toBe(true)
+  })
+
+  test('registers Aliyun Drive and Baidu Netdisk as account-bound trash providers', () => {
+    for (const id of ['aliyun-drive', 'baidu-netdisk']) {
+      const provider = storageProviderRegistry.get(id)
+
+      expect(provider.preferenceFields).toEqual([])
+      expect(provider.credentialFields).toEqual([])
+      expect(provider.authorityMode).toBe('account-grant')
+      expect(provider.deletionMode).toBe('trash')
+      expect(provider.supportsLocalFigImport).toBe(true)
+    }
+    expect(storageProviderRegistry.list().map((provider) => provider.id)).toEqual([
+      'google-drive',
+      'onedrive',
+      'aliyun-drive',
+      'baidu-netdisk',
+      's3-compatible'
+    ])
+  })
+
   test('lists provider schemas without resolving credentials', () => {
     let resolutionCount = 0
     const credentials: CredentialResolver = {

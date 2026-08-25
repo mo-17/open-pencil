@@ -18,9 +18,11 @@ import { MemoryCredentialStore } from '@/app/settings/credentials/memory'
 import { createCredentialServices } from '@/app/settings/credentials/services'
 import {
   GoogleDriveNativeError,
+  type GoogleDriveNativeAuthorizeRequest,
   type GoogleDriveNativeAuthorizeResult,
   type GoogleDriveNativeBridge,
   type GoogleDriveNativeErrorCode,
+  type GoogleDriveNativeRefreshRequest,
   type GoogleDriveNativeRefreshResult
 } from '@/app/tauri/google-drive'
 
@@ -28,6 +30,12 @@ const CLIENT_ID = '1234567890-test.apps.googleusercontent.com'
 const VERSION_A = 'a'.repeat(32)
 const VERSION_B = 'b'.repeat(32)
 const VERSION_C = 'c'.repeat(32)
+const PUBLISHER_CLIENT = { mode: 'publisher-broker', clientId: CLIENT_ID } as const
+const SELF_HOSTED_CLIENT = {
+  mode: 'self-hosted-desktop',
+  clientId: '1234567890-self-hosted.apps.googleusercontent.com',
+  clientSecret: 'self-hosted-client-secret'
+} as const
 
 const NATIVE_OAUTH_ERROR_CASES = [
   ['scope-mismatch', 'scope-mismatch'],
@@ -42,6 +50,10 @@ const NATIVE_OAUTH_ERROR_CASES = [
   ['token-request-invalid', 'token-request-invalid'],
   ['token-exchange-failed', 'token-exchange-failed'],
   ['token-response-invalid', 'token-response-invalid'],
+  ['oauth-broker-rate-limited', 'oauth-broker-rate-limited'],
+  ['oauth-broker-unavailable', 'oauth-broker-unavailable'],
+  ['oauth-broker-misconfigured', 'oauth-broker-misconfigured'],
+  ['oauth-broker-protocol-invalid', 'oauth-broker-protocol-invalid'],
   ['userinfo-failed', 'userinfo-failed']
 ] as const satisfies readonly (readonly [GoogleDriveNativeErrorCode, GoogleDriveOAuthErrorCode])[]
 
@@ -68,11 +80,17 @@ function nativeBridge(initial = authorizationResult()) {
     email: initial.email
   }
   let refreshCalls = 0
+  const authorizeRequests: GoogleDriveNativeAuthorizeRequest[] = []
+  const refreshRequests: GoogleDriveNativeRefreshRequest[] = []
   const revoked: string[] = []
   let revokeError: Error | null = null
   const bridge: GoogleDriveNativeBridge = {
-    authorize: () => Promise.resolve(nextAuthorization),
-    refresh: () => {
+    authorize: (request) => {
+      authorizeRequests.push(request)
+      return Promise.resolve(nextAuthorization)
+    },
+    refresh: (request) => {
+      refreshRequests.push(request)
       refreshCalls++
       return Promise.resolve(refreshResult)
     },
@@ -84,6 +102,8 @@ function nativeBridge(initial = authorizationResult()) {
   return {
     bridge,
     revoked,
+    authorizeRequests,
+    refreshRequests,
     refreshCalls: () => refreshCalls,
     setAuthorization(result: GoogleDriveNativeAuthorizeResult) {
       nextAuthorization = result
@@ -139,6 +159,82 @@ describe('Google Drive OAuth session', () => {
     })
   }
 
+  test('preserves the Broker retry delay without exposing a response body', async () => {
+    const native = nativeBridge()
+    const nativeError = new GoogleDriveNativeError(
+      'oauth-broker-rate-limited',
+      'OpenPencil OAuth Broker rate limit was reached',
+      { retryAfterMs: 60_000 }
+    )
+    native.bridge.authorize = async () => {
+      throw nativeError
+    }
+    const { session } = testSession({ native })
+
+    await expect(session.connect()).rejects.toMatchObject({
+      code: 'oauth-broker-rate-limited',
+      retryAfterMs: 60_000,
+      cause: nativeError
+    } satisfies Partial<GoogleDriveOAuthError>)
+  })
+
+  test('retains the schema v1 storage bound for safe legacy reconnect identity', () => {
+    const base = {
+      schemaVersion: 1,
+      authorizationVersion: VERSION_A,
+      subject: 'google-subject-a'
+    } as const
+    expect(
+      parseGoogleDriveRefreshTokenEnvelope({ ...base, refreshToken: 'r'.repeat(12 * 1024) })
+        .refreshToken
+    ).toHaveLength(12 * 1024)
+    expect(() =>
+      parseGoogleDriveRefreshTokenEnvelope({ ...base, refreshToken: 'r'.repeat(12 * 1024 + 1) })
+    ).toThrow('Stored Google Drive authorization is invalid')
+    expect(() =>
+      parseGoogleDriveRefreshTokenEnvelope({ ...base, refreshToken: 'refresh token' })
+    ).toThrow('Stored Google Drive authorization is invalid')
+  })
+
+  test('rejects a new refresh token beyond the Broker v1 request bound', async () => {
+    const oversized = 'r'.repeat(8 * 1024 + 1)
+    const native = nativeBridge(authorizationResult('google-subject-a', oversized))
+    const { session } = testSession({ native })
+
+    await expect(session.connect()).rejects.toMatchObject({
+      code: 'token-response-invalid'
+    } satisfies Partial<GoogleDriveOAuthError>)
+    expect(native.revoked).toEqual([oversized])
+  })
+
+  test('keeps a legacy oversized credential reconnectable without using it', async () => {
+    const native = nativeBridge()
+    const { session, credentials } = testSession({ native, versions: [VERSION_A, VERSION_B] })
+    await session.connect()
+    const legacyCredential = serializeGoogleDriveRefreshTokenEnvelope({
+      schemaVersion: 1,
+      refreshToken: 'r'.repeat(8 * 1024 + 1),
+      authorizationVersion: VERSION_A,
+      subject: 'google-subject-a'
+    })
+    await credentials.manager.set(googleDriveRefreshTokenCredentialRef('default'), legacyCredential)
+    session.dispose()
+
+    await expect(session.status()).resolves.toMatchObject({
+      state: 'invalid',
+      reason: 'credential-invalid',
+      repairable: true,
+      repairAuthorities: [{ subject: 'google-subject-a', authorizationVersion: VERSION_A }]
+    })
+    await expect(session.getAccessToken()).rejects.toMatchObject({
+      code: 'credential-invalid'
+    } satisfies Partial<GoogleDriveOAuthError>)
+    await expect(session.connect()).resolves.toMatchObject({
+      authorizationVersion: VERSION_B,
+      replacedAuthorities: [{ subject: 'google-subject-a', authorizationVersion: VERSION_A }]
+    })
+  })
+
   test('preserves semantic native failures while refreshing access tokens', async () => {
     let now = 0
     const native = nativeBridge()
@@ -170,7 +266,7 @@ describe('Google Drive OAuth session', () => {
   })
 
   test('stores refresh tokens separately from independently readable public metadata', async () => {
-    const { session, credentials, metadata } = testSession()
+    const { session, credentials, metadata, native } = testSession()
 
     const connected = await session.connect()
 
@@ -181,21 +277,113 @@ describe('Google Drive OAuth session', () => {
       accountLabel: 'google-subject-a@example.com',
       authorizationVersion: VERSION_A,
       grantedScopes: GOOGLE_DRIVE_OAUTH_SCOPES,
+      oauthClient: PUBLISHER_CLIENT,
       replacedAuthorities: []
     })
     const publicMetadata = await metadata.read('default')
     expect(JSON.stringify(publicMetadata)).not.toContain('refresh-token')
     expect(JSON.stringify(publicMetadata)).not.toContain('access-')
+    expect(JSON.stringify(publicMetadata)).not.toContain('clientSecret')
     const rawCredential = await credentials.resolver.resolve({
       integrationId: 'google-drive',
       profileId: 'default',
       field: 'refresh-token'
     })
     expect(parseGoogleDriveRefreshTokenEnvelopeJSON(rawCredential as string)).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       refreshToken: 'refresh-token-a',
       authorizationVersion: VERSION_A,
-      subject: 'google-subject-a'
+      subject: 'google-subject-a',
+      oauthClient: PUBLISHER_CLIENT
+    })
+    expect(native.authorizeRequests).toEqual([{ oauthClient: { mode: 'publisher-broker' } }])
+  })
+
+  test('reuses an encrypted self-hosted client after restart without a publisher client', async () => {
+    let now = 0
+    const native = nativeBridge()
+    const { session, credentials, metadata } = testSession({ native, now: () => now })
+
+    const connected = await session.connect({ oauthClient: SELF_HOSTED_CLIENT })
+    expect(connected.oauthClient).toEqual({
+      mode: 'self-hosted-desktop',
+      clientId: SELF_HOSTED_CLIENT.clientId
+    })
+    expect(native.authorizeRequests).toEqual([{ oauthClient: SELF_HOSTED_CLIENT }])
+    expect(JSON.stringify(await metadata.read('default'))).not.toContain(
+      SELF_HOSTED_CLIENT.clientSecret
+    )
+    const rawCredential = await credentials.resolver.resolve(
+      googleDriveRefreshTokenCredentialRef('default')
+    )
+    expect(parseGoogleDriveRefreshTokenEnvelopeJSON(rawCredential as string)).toMatchObject({
+      schemaVersion: 2,
+      oauthClient: SELF_HOSTED_CLIENT
+    })
+
+    session.dispose()
+    const restarted = createGoogleDriveOAuthSession({
+      clientId: null,
+      profileId: 'default',
+      ...credentials,
+      metadataStore: metadata,
+      native: native.bridge,
+      now: () => now
+    })
+    await expect(restarted.status()).resolves.toMatchObject({
+      state: 'connected',
+      oauthClient: {
+        mode: 'self-hosted-desktop',
+        clientId: SELF_HOSTED_CLIENT.clientId
+      }
+    })
+    now = 3_600_000
+    await restarted.getAccessToken()
+    expect(native.refreshRequests.at(-1)).toMatchObject({
+      oauthClient: SELF_HOSTED_CLIENT,
+      refreshToken: 'refresh-token-a',
+      expectedSubject: 'google-subject-a'
+    })
+  })
+
+  test('uses durable work identity to reject a different account before persistence', async () => {
+    const native = nativeBridge(authorizationResult('google-subject-b', 'unexpected-grant'))
+    const { session } = testSession({ native })
+
+    await expect(
+      session.connect({
+        oauthClient: SELF_HOSTED_CLIENT,
+        expectedSubject: 'google-subject-a'
+      })
+    ).rejects.toMatchObject({ code: 'profile-account-mismatch' })
+    expect(native.revoked).toEqual(['unexpected-grant'])
+    expect(await session.status()).toEqual({ state: 'missing', profileId: 'default' })
+  })
+
+  test('repairs corrupt OAuth records when durable work supplies the trusted subject', async () => {
+    const native = nativeBridge()
+    const { session, credentials } = testSession({ native })
+    await credentials.manager.set(googleDriveRefreshTokenCredentialRef('default'), '{corrupt')
+
+    await expect(
+      session.connect({
+        oauthClient: SELF_HOSTED_CLIENT,
+        expectedSubject: 'google-subject-a'
+      })
+    ).resolves.toMatchObject({
+      subject: 'google-subject-a',
+      oauthClient: {
+        mode: 'self-hosted-desktop',
+        clientId: SELF_HOSTED_CLIENT.clientId
+      }
+    })
+    const stored = await credentials.resolver.resolve(
+      googleDriveRefreshTokenCredentialRef('default')
+    )
+    expect(parseGoogleDriveRefreshTokenEnvelopeJSON(stored as string)).toMatchObject({
+      schemaVersion: 2,
+      subject: 'google-subject-a',
+      oauthClient: SELF_HOSTED_CLIENT
     })
   })
 
@@ -248,7 +436,8 @@ describe('Google Drive OAuth session', () => {
       email: 'verified@example.com',
       accountLabel: 'verified@example.com',
       authorizationVersion: VERSION_A,
-      grantedScopes: GOOGLE_DRIVE_OAUTH_SCOPES
+      grantedScopes: GOOGLE_DRIVE_OAUTH_SCOPES,
+      oauthClient: PUBLISHER_CLIENT
     })
     expect(resolutionCount).toBe(1)
     expect(JSON.stringify(await session.status())).not.toContain('status-only-refresh-token')
@@ -470,6 +659,390 @@ describe('Google Drive OAuth session', () => {
 
     await expect(session.connect()).rejects.toMatchObject({ code: 'cancelled' })
     expect(await session.status()).toEqual({ state: 'missing', profileId: 'default' })
+  })
+
+  test('revokes a completed native grant when cancellation wins before persistence', async () => {
+    const native = nativeBridge()
+    const { session, credentials, metadata } = testSession({
+      native,
+      versions: [VERSION_A, VERSION_B]
+    })
+    await session.connect()
+    const controller = new AbortController()
+    native.bridge.authorize = async () => {
+      controller.abort(new DOMException('cancelled after native authorization', 'AbortError'))
+      return authorizationResult('google-subject-a', 'late-cancel-refresh-token')
+    }
+
+    await expect(session.connect({ signal: controller.signal })).rejects.toMatchObject({
+      code: 'cancelled'
+    } satisfies Partial<GoogleDriveOAuthError>)
+
+    expect(native.revoked).toContain('late-cancel-refresh-token')
+    expect(await session.status()).toMatchObject({
+      state: 'connected',
+      authorizationVersion: VERSION_A
+    })
+    expect((await metadata.read('default'))?.authorizationVersion).toBe(VERSION_A)
+    const stored = await credentials.resolver.resolve(
+      googleDriveRefreshTokenCredentialRef('default')
+    )
+    expect(parseGoogleDriveRefreshTokenEnvelopeJSON(stored as string)).toMatchObject({
+      authorizationVersion: VERSION_A,
+      refreshToken: 'refresh-token-a'
+    })
+  })
+
+  for (const boundary of ['staging-metadata', 'credential'] as const) {
+    test(`rolls back a replacement when cancellation wins after the ${boundary} write`, async () => {
+      const native = nativeBridge()
+      const { session, credentials, metadata } = testSession({
+        native,
+        versions: [VERSION_A, VERSION_B]
+      })
+      await session.connect()
+      const controller = new AbortController()
+      const setCredential = credentials.manager.set.bind(credentials.manager)
+      const writeMetadata = metadata.write.bind(metadata)
+      credentials.manager.set = async (reference, value) => {
+        await setCredential(reference, value)
+        const envelope = parseGoogleDriveRefreshTokenEnvelopeJSON(value)
+        if (boundary === 'credential' && envelope.authorizationVersion === VERSION_B) {
+          controller.abort(new DOMException('cancelled after credential write', 'AbortError'))
+        }
+      }
+      metadata.write = async (value) => {
+        await writeMetadata(value)
+        if (
+          boundary === 'staging-metadata' &&
+          value.authorizationVersion !== VERSION_A &&
+          value.authorizationVersion !== VERSION_B
+        ) {
+          controller.abort(new DOMException('cancelled after staged metadata write', 'AbortError'))
+        }
+      }
+      native.setAuthorization(
+        authorizationResult('google-subject-a', `${boundary}-boundary-refresh-token`)
+      )
+
+      await expect(session.connect({ signal: controller.signal })).rejects.toMatchObject({
+        code: 'cancelled'
+      } satisfies Partial<GoogleDriveOAuthError>)
+
+      expect(native.revoked).toContain(`${boundary}-boundary-refresh-token`)
+      expect(await session.status()).toMatchObject({
+        state: 'connected',
+        authorizationVersion: VERSION_A
+      })
+      expect((await metadata.read('default'))?.authorizationVersion).toBe(VERSION_A)
+      const stored = await credentials.resolver.resolve(
+        googleDriveRefreshTokenCredentialRef('default')
+      )
+      expect(parseGoogleDriveRefreshTokenEnvelopeJSON(stored as string)).toMatchObject({
+        authorizationVersion: VERSION_A,
+        refreshToken: 'refresh-token-a'
+      })
+    })
+  }
+
+  test('stages a restart-safe mismatch before the synchronous final commit callback', async () => {
+    const native = nativeBridge()
+    const { session, credentials, metadata } = testSession({
+      native,
+      versions: [VERSION_A, VERSION_B]
+    })
+    await session.connect()
+    const events: string[] = []
+    let stagingVersion = ''
+    const setCredential = credentials.manager.set.bind(credentials.manager)
+    const writeMetadata = metadata.write.bind(metadata)
+    credentials.manager.set = async (reference, value) => {
+      const envelope = parseGoogleDriveRefreshTokenEnvelopeJSON(value)
+      if (envelope.authorizationVersion === VERSION_B) events.push('credential')
+      await setCredential(reference, value)
+    }
+    metadata.write = async (value) => {
+      if (value.authorizationVersion === VERSION_B) events.push('final-metadata')
+      else if (value.authorizationVersion !== VERSION_A) {
+        stagingVersion = value.authorizationVersion
+        events.push('staged-metadata')
+      }
+      await writeMetadata(value)
+    }
+    native.setAuthorization(authorizationResult('google-subject-a', 'committed-refresh-token'))
+
+    await expect(
+      session.connect({
+        onCommitStart() {
+          events.push('commit-start')
+        }
+      })
+    ).resolves.toMatchObject({ authorizationVersion: VERSION_B })
+
+    expect(stagingVersion).toMatch(/^[a-f0-9]{32}$/)
+    expect(stagingVersion).not.toBe(VERSION_A)
+    expect(stagingVersion).not.toBe(VERSION_B)
+    expect(events).toEqual(['staged-metadata', 'credential', 'commit-start', 'final-metadata'])
+  })
+
+  test('commits when the caller aborts synchronously at the final commit point', async () => {
+    const native = nativeBridge()
+    const { session, credentials, metadata } = testSession({
+      native,
+      versions: [VERSION_A, VERSION_B]
+    })
+    await session.connect()
+    const controller = new AbortController()
+    native.setAuthorization(authorizationResult('google-subject-a', 'commit-point-refresh-token'))
+
+    await expect(
+      session.connect({
+        signal: controller.signal,
+        onCommitStart() {
+          controller.abort(new DOMException('cancelled at commit point', 'AbortError'))
+        }
+      })
+    ).resolves.toMatchObject({ authorizationVersion: VERSION_B })
+
+    expect(controller.signal.aborted).toBe(true)
+    expect((await metadata.read('default'))?.authorizationVersion).toBe(VERSION_B)
+    const stored = await credentials.resolver.resolve(
+      googleDriveRefreshTokenCredentialRef('default')
+    )
+    expect(parseGoogleDriveRefreshTokenEnvelopeJSON(stored as string)).toMatchObject({
+      authorizationVersion: VERSION_B,
+      refreshToken: 'commit-point-refresh-token'
+    })
+    await expect(session.status()).resolves.toMatchObject({
+      state: 'connected',
+      authorizationVersion: VERSION_B
+    })
+    expect(native.revoked).not.toContain('commit-point-refresh-token')
+  })
+
+  test('accepts a final metadata write error only after exact durable readback', async () => {
+    const native = nativeBridge()
+    const { session, metadata } = testSession({
+      native,
+      versions: [VERSION_A, VERSION_B]
+    })
+    await session.connect()
+    const finalWriteFailure = new Error('final metadata acknowledgement failed')
+    const writeMetadata = metadata.write.bind(metadata)
+    metadata.write = async (value) => {
+      await writeMetadata(value)
+      if (value.authorizationVersion === VERSION_B) throw finalWriteFailure
+    }
+    native.setAuthorization(authorizationResult('google-subject-a', 'read-back-refresh-token'))
+
+    await expect(session.connect()).resolves.toMatchObject({
+      authorizationVersion: VERSION_B
+    })
+    await expect(session.status()).resolves.toMatchObject({
+      state: 'connected',
+      authorizationVersion: VERSION_B
+    })
+    expect(native.revoked).not.toContain('read-back-refresh-token')
+  })
+
+  test('preserves a real final commit when durable readback is unavailable', async () => {
+    const native = nativeBridge()
+    const { session, credentials, metadata } = testSession({
+      native,
+      versions: [VERSION_A, VERSION_B]
+    })
+    await session.connect()
+    const finalWriteFailure = new Error('final metadata acknowledgement failed')
+    const readbackFailure = new Error('metadata readback unavailable')
+    const readMetadata = metadata.read.bind(metadata)
+    const writeMetadata = metadata.write.bind(metadata)
+    let readbackUnavailable = false
+    metadata.read = async (profileId) => {
+      if (readbackUnavailable) throw readbackFailure
+      return readMetadata(profileId)
+    }
+    metadata.write = async (value) => {
+      await writeMetadata(value)
+      if (value.authorizationVersion === VERSION_B) {
+        readbackUnavailable = true
+        throw finalWriteFailure
+      }
+    }
+    native.setAuthorization(
+      authorizationResult('google-subject-a', 'unverified-committed-refresh-token')
+    )
+
+    const failure = await session.connect().catch((error: unknown) => error)
+
+    expect(failure).toMatchObject({
+      code: 'persistence-failed',
+      message: 'Google Drive authorization storage outcome could not be verified'
+    })
+    expect((failure as Error).cause).toBeInstanceOf(AggregateError)
+    expect(((failure as Error).cause as AggregateError).errors).toEqual([
+      finalWriteFailure,
+      readbackFailure
+    ])
+    expect(native.revoked).not.toContain('unverified-committed-refresh-token')
+    await expect(session.status()).resolves.toMatchObject({
+      state: 'invalid',
+      reason: 'credential-invalid'
+    })
+
+    metadata.read = readMetadata
+    metadata.write = writeMetadata
+    const restarted = createGoogleDriveOAuthSession({
+      clientId: CLIENT_ID,
+      profileId: 'default',
+      ...credentials,
+      metadataStore: metadata,
+      native: native.bridge
+    })
+    await expect(restarted.status()).resolves.toMatchObject({
+      state: 'connected',
+      authorizationVersion: VERSION_B
+    })
+  })
+
+  test('preserves a restart-invalid staging mismatch when final write readback is unavailable', async () => {
+    const native = nativeBridge()
+    const { session, credentials, metadata } = testSession({
+      native,
+      versions: [VERSION_A, VERSION_B]
+    })
+    await session.connect()
+    const finalWriteFailure = new Error('final metadata write failed')
+    const readbackFailure = new Error('metadata readback unavailable')
+    const readMetadata = metadata.read.bind(metadata)
+    const writeMetadata = metadata.write.bind(metadata)
+    let readbackUnavailable = false
+    metadata.read = async (profileId) => {
+      if (readbackUnavailable) throw readbackFailure
+      return readMetadata(profileId)
+    }
+    metadata.write = async (value) => {
+      if (value.authorizationVersion === VERSION_B) {
+        readbackUnavailable = true
+        throw finalWriteFailure
+      }
+      await writeMetadata(value)
+    }
+    native.setAuthorization(
+      authorizationResult('google-subject-a', 'unverified-staged-refresh-token')
+    )
+
+    const failure = await session.connect().catch((error: unknown) => error)
+
+    expect(failure).toMatchObject({
+      code: 'persistence-failed',
+      message: 'Google Drive authorization storage outcome could not be verified'
+    })
+    expect((failure as Error).cause).toBeInstanceOf(AggregateError)
+    expect(((failure as Error).cause as AggregateError).errors).toEqual([
+      finalWriteFailure,
+      readbackFailure
+    ])
+    expect(native.revoked).not.toContain('unverified-staged-refresh-token')
+    await expect(session.status()).resolves.toMatchObject({
+      state: 'invalid',
+      reason: 'credential-invalid'
+    })
+
+    metadata.read = readMetadata
+    metadata.write = writeMetadata
+    const persistedMetadata = await metadata.read('default')
+    expect(persistedMetadata?.authorizationVersion).not.toBe(VERSION_A)
+    expect(persistedMetadata?.authorizationVersion).not.toBe(VERSION_B)
+    const restarted = createGoogleDriveOAuthSession({
+      clientId: CLIENT_ID,
+      profileId: 'default',
+      ...credentials,
+      metadataStore: metadata,
+      native: native.bridge
+    })
+    await expect(restarted.status()).resolves.toMatchObject({
+      state: 'invalid',
+      reason: 'authority-mismatch'
+    })
+    await expect(restarted.getAccessToken()).rejects.toMatchObject({
+      code: 'inconsistent-state'
+    } satisfies Partial<GoogleDriveOAuthError>)
+  })
+
+  test('surfaces rollback failures and keeps restart state invalid through staging', async () => {
+    const native = nativeBridge()
+    const { session, credentials, metadata } = testSession({
+      native,
+      versions: [VERSION_A, VERSION_B, VERSION_C]
+    })
+    await session.connect()
+    const persistenceFailure = new Error('credential replacement failed after write')
+    const credentialRollbackFailure = new Error('credential rollback failed')
+    const metadataRollbackFailure = new Error('metadata rollback failed')
+    const setCredential = credentials.manager.set.bind(credentials.manager)
+    const writeMetadata = metadata.write.bind(metadata)
+    credentials.manager.set = async (reference, value) => {
+      const envelope = parseGoogleDriveRefreshTokenEnvelopeJSON(value)
+      if (envelope.authorizationVersion === VERSION_A) throw credentialRollbackFailure
+      await setCredential(reference, value)
+      if (envelope.authorizationVersion === VERSION_B) throw persistenceFailure
+    }
+    metadata.write = async (value) => {
+      if (value.authorizationVersion === VERSION_A) throw metadataRollbackFailure
+      await writeMetadata(value)
+    }
+    native.setRevokeError(new Error('replacement revoke failed'))
+    native.setAuthorization(
+      authorizationResult('google-subject-a', 'rollback-failure-refresh-token')
+    )
+
+    const failure = await session.connect().catch((error: unknown) => error)
+
+    expect(failure).toMatchObject({ code: 'persistence-failed' })
+    expect((failure as Error).cause).toBeInstanceOf(AggregateError)
+    expect(((failure as Error).cause as AggregateError).errors).toEqual([
+      persistenceFailure,
+      credentialRollbackFailure,
+      metadataRollbackFailure
+    ])
+    expect(native.revoked).not.toContain('rollback-failure-refresh-token')
+    await expect(session.status()).resolves.toEqual({
+      state: 'invalid',
+      profileId: 'default',
+      reason: 'credential-invalid',
+      repairable: false,
+      repairAuthorities: []
+    })
+    await expect(session.getAccessToken()).rejects.toMatchObject({
+      code: 'persistence-failed'
+    } satisfies Partial<GoogleDriveOAuthError>)
+
+    const restarted = createGoogleDriveOAuthSession({
+      clientId: CLIENT_ID,
+      profileId: 'default',
+      ...credentials,
+      metadataStore: metadata,
+      native: native.bridge
+    })
+    await expect(restarted.status()).resolves.toMatchObject({
+      state: 'invalid',
+      reason: 'authority-mismatch'
+    })
+    await expect(restarted.getAccessToken()).rejects.toMatchObject({
+      code: 'inconsistent-state'
+    } satisfies Partial<GoogleDriveOAuthError>)
+
+    credentials.manager.set = setCredential
+    metadata.write = writeMetadata
+    native.setRevokeError(null)
+    native.setAuthorization(authorizationResult('google-subject-a', 'recovered-refresh-token'))
+    await expect(session.connect()).resolves.toMatchObject({
+      authorizationVersion: VERSION_C
+    })
+    await expect(session.status()).resolves.toMatchObject({
+      state: 'connected',
+      authorizationVersion: VERSION_C
+    })
   })
 
   test('rejects broadened scopes and unknown public metadata fields', async () => {

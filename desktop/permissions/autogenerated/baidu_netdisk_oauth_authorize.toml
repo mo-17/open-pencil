@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-baidu-netdisk-oauth-authorize"
+description = "Enables the baidu_netdisk_oauth_authorize command without any pre-configured scope."
+commands.allow = ["baidu_netdisk_oauth_authorize"]
+
+[[permission]]
+identifier = "deny-baidu-netdisk-oauth-authorize"
+description = "Denies the baidu_netdisk_oauth_authorize command without any pre-configured scope."
+commands.deny = ["baidu_netdisk_oauth_authorize"]

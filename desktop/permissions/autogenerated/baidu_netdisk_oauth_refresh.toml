@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-baidu-netdisk-oauth-refresh"
+description = "Enables the baidu_netdisk_oauth_refresh command without any pre-configured scope."
+commands.allow = ["baidu_netdisk_oauth_refresh"]
+
+[[permission]]
+identifier = "deny-baidu-netdisk-oauth-refresh"
+description = "Denies the baidu_netdisk_oauth_refresh command without any pre-configured scope."
+commands.deny = ["baidu_netdisk_oauth_refresh"]

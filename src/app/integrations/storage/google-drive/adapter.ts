@@ -189,7 +189,11 @@ export function createGoogleDriveStorageAdapter(
     },
 
     async reserveDocumentId(reserveOptions) {
-      const [id] = await client.generateIds(1, reserveOptions?.signal)
+      const [id] = await client.generateIds(
+        1,
+        reserveOptions?.signal,
+        reserveOptions?.expectedAuthority
+      )
       if (!id) {
         throw new GoogleDriveError('invalid-response', 'Google Drive did not reserve a document ID')
       }
