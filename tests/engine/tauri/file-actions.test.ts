@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
 
 import { saveExportedFile } from '@/app/document/export/files'
 import { watchTauriFile } from '@/app/document/io/watch-targets'
@@ -10,12 +11,27 @@ import {
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
+interface DesktopCapabilityConfig {
+  permissions: unknown[]
+}
+
 afterEach(async () => {
   await clearTauriMocks()
   Reflect.deleteProperty(globalThis, 'window')
 })
 
 describe('Tauri file actions', () => {
+  test('permits metadata reads for restored recent local files', () => {
+    const capability = JSON.parse(
+      readFileSync('desktop/capabilities/default.json', 'utf8')
+    ) as DesktopCapabilityConfig
+
+    expect(capability.permissions).toContainEqual({
+      identifier: 'fs:allow-stat',
+      allow: [{ path: '**' }]
+    })
+  })
+
   test('chooses multiple design files through plugin-dialog', async () => {
     await mockTauriIPC((cmd, args) => {
       expect(cmd).toBe('plugin:dialog|open')

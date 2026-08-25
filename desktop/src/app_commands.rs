@@ -31,6 +31,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "set_ai_window_always_on_top",
     "set_native_menu_checked",
     "set_preview_window_always_on_top",
+    "set_recent_files",
     "take_pending_open",
     "update_ai_window",
     "update_preview_window",

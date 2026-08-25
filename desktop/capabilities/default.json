@@ -41,12 +41,17 @@
     "allow-proxy-http-request",
     "allow-open-preview-window",
     "allow-set-native-menu-checked",
+    "allow-set-recent-files",
     "allow-take-pending-open",
     "allow-update-ai-window",
     "allow-update-preview-window",
     "allow-write-motion-export-noclobber",
     {
       "identifier": "fs:allow-read-file",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-stat",
       "allow": [{ "path": "**" }]
     },
     {
