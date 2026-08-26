@@ -80,6 +80,29 @@ describe('marketplace HTTP API', () => {
       error: 'Marketplace request nonce has already been used'
     })
 
+    const freshDuplicateHeaders = await signMarketplaceRequest(
+      {
+        audience: MARKETPLACE_ID,
+        publisherId: 'acme',
+        keyId: 'acme.release',
+        method: 'POST',
+        url: REGISTRATION_URL,
+        timestamp: NOW,
+        nonce: 'freshduplicatenonce01',
+        body: bytes
+      },
+      pair.privateKey
+    )
+    const freshDuplicate = await app.request(REGISTRATION_URL, {
+      method: 'POST',
+      headers: requestHeaders(freshDuplicateHeaders),
+      body
+    })
+    expect(freshDuplicate.status).toBe(409)
+    expect(await freshDuplicate.json()).toEqual({
+      error: 'Marketplace publisher registration already exists'
+    })
+
     await service.transitionPublisherKey('acme.release', 'active', {
       actor: 'admin:test',
       time: NOW

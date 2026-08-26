@@ -10,6 +10,7 @@ import {
 } from './auth'
 import {
   MARKETPLACE_RELEASE_CHANNELS,
+  parseCreateMarketplacePublisherInput,
   parseMarketplaceIdentity,
   parseMarketplaceReason,
   parseMarketplaceTimestamp,
@@ -20,6 +21,7 @@ export const MARKETPLACE_PUBLISHER_SIGNED_ENVELOPE_FORMAT =
   'openpencil.marketplace.publisher-signed-envelope' as const
 export const MARKETPLACE_PUBLISHER_SIGNED_ENVELOPE_SCHEMA_VERSION = 1 as const
 export const MARKETPLACE_PUBLISHER_REQUEST_OPERATIONS = [
+  'publisher.register',
   'ownership.request',
   'key.rotate',
   'submission.validate',
@@ -71,6 +73,7 @@ const ENVELOPE_KEYS = new Set([
   'headers'
 ])
 const HEADER_KEYS = new Set(['audience', 'publisherId', 'keyId', 'timestamp', 'nonce', 'signature'])
+const REGISTRATION_KEYS = new Set(['publisher', 'key'])
 const OWNERSHIP_KEYS = new Set(['pluginId', 'publisherId'])
 const SUBMISSION_KEYS = new Set([
   'id',
@@ -156,6 +159,8 @@ function exactTarget(
     )
   }
   switch (requestOperation) {
+    case 'publisher.register':
+      return '/v1/publishers/register'
     case 'ownership.request':
       return '/v1/ownerships'
     case 'key.rotate':
@@ -211,6 +216,22 @@ function validateBody(
   const keyId = parseMarketplaceIdentity(keyIdValue, 'Publisher request key id')
   const value = bodyJSON(body)
   switch (requestOperation) {
+    case 'publisher.register': {
+      const source = parseExactManifestRecord(
+        value,
+        'Publisher registration request',
+        REGISTRATION_KEYS
+      )
+      const publisher = parseCreateMarketplacePublisherInput(source.publisher)
+      const key = parseRegisterMarketplacePublisherKeyInput(source.key)
+      if (publisher.id !== publisherId || key.publisherId !== publisherId || key.keyId !== keyId) {
+        throw new TypeError('Publisher registration does not match its signer and initial key')
+      }
+      if (key.predecessorKeyId !== null) {
+        throw new TypeError('Publisher registration initial key must not have a predecessor')
+      }
+      return
+    }
     case 'ownership.request': {
       const source = parseExactManifestRecord(value, 'Publisher ownership request', OWNERSHIP_KEYS)
       parseMarketplaceIdentity(source.pluginId, 'Publisher ownership request plugin id')

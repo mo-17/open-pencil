@@ -1210,9 +1210,31 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
         return importEd25519PublicKeyPem(input.key.publicKeyPem)
       }
     )
-    const value = await options.service.registerPublisher(input, {
-      actor: `publisher:${authenticated.publisherId}`
-    })
+    const registrationAlreadyExists = async () => {
+      const [existingPublisher, existingKey] = await Promise.all([
+        options.service.control.publisher(input.publisher.id),
+        options.service.control.publisherKey(input.key.keyId)
+      ])
+      return existingPublisher !== null || existingKey !== null
+    }
+    if (await registrationAlreadyExists()) {
+      throw new HttpError(409, 'Marketplace publisher registration already exists')
+    }
+    let value
+    try {
+      value = await options.service.registerPublisher(input, {
+        actor: `publisher:${authenticated.publisherId}`
+      })
+    } catch (error) {
+      // Authentication and proof-of-possession have already succeeded. A
+      // concurrent winner is therefore safe to expose as a stable conflict so
+      // the Portal can reconcile exact live Publisher/key evidence. Other
+      // registration failures retain their original fail-closed status.
+      if (await registrationAlreadyExists()) {
+        throw new HttpError(409, 'Marketplace publisher registration already exists')
+      }
+      throw error
+    }
     return privateJSON(parseMarketplacePublisher(value), 201)
   })
 

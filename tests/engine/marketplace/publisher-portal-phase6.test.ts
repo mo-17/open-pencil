@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  MARKETPLACE_PUBLISHER_REQUEST_OPERATIONS,
   appendMarketplaceAuditEvent,
   createMarketplaceControlReader,
   createMarketplaceHttpApp,
@@ -15,6 +16,7 @@ import {
   parseMarketplaceControlPublisherAuditPage,
   parseMarketplacePublisherSignedEnvelope,
   parseMarketplaceSubmissionPresentation,
+  verifyMarketplaceRequest,
   writeMarketplacePublisherSignedEnvelope,
   type MarketplaceArtifactStore,
   type MarketplaceRepository,
@@ -198,6 +200,64 @@ function adminHeaders(): HeadersInit {
 }
 
 describe('Phase 6 local Publisher signed-envelope hand-off', () => {
+  test('creates a first-class Publisher registration envelope and preserves its exact raw bytes', async () => {
+    const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const initialKey = {
+      keyId: 'acme.release',
+      publisherId: 'acme',
+      publicKeyPem: await exportEd25519PublicKeyPem(keyPair.publicKey),
+      notBefore: '2026-01-01T00:00:00.000Z',
+      notAfter: '2027-01-01T00:00:00.000Z'
+    }
+    const body = encoder.encode(
+      `\r\n{\r\n  "publisher": ${JSON.stringify({ id: 'acme', displayName: 'Acme 插件' })},\r\n  "key": ${JSON.stringify({ ...initialKey, predecessorKeyId: null })}\r\n}\r\n`
+    )
+    const envelope = await createMarketplacePublisherSignedEnvelope(
+      {
+        operation: 'publisher.register',
+        audience: MARKETPLACE_ID,
+        publisherId: 'acme',
+        keyId: initialKey.keyId,
+        body,
+        timestamp: NOW,
+        nonce: 'phase6register1234567890'
+      },
+      keyPair.privateKey
+    )
+
+    expect(MARKETPLACE_PUBLISHER_REQUEST_OPERATIONS).toContain('publisher.register')
+    expect(envelope).toMatchObject({
+      format: 'openpencil.marketplace.publisher-signed-envelope',
+      schemaVersion: 1,
+      operation: 'publisher.register',
+      method: 'POST',
+      target: '/v1/publishers/register',
+      bodyEncoding: 'base64url',
+      headers: { publisherId: 'acme', keyId: initialKey.keyId }
+    })
+    expect(parseMarketplacePublisherSignedEnvelope(envelope).body).toEqual(body)
+
+    await expect(
+      createMarketplacePublisherSignedEnvelope(
+        {
+          operation: 'publisher.register',
+          audience: MARKETPLACE_ID,
+          publisherId: 'acme',
+          keyId: initialKey.keyId,
+          body: encoder.encode(
+            JSON.stringify({
+              publisher: { id: 'acme', displayName: 'Acme Plugins' },
+              key: initialKey
+            })
+          ),
+          timestamp: NOW,
+          nonce: 'phase6registerwithoutpredecessor'
+        },
+        keyPair.privateKey
+      )
+    ).resolves.toMatchObject({ operation: 'publisher.register' })
+  })
+
   test('derives an allowlisted exact target, preserves raw bytes, and writes an exclusive 0600 file', async () => {
     const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
     const body = encoder.encode(
@@ -298,6 +358,128 @@ describe('Phase 6 local Publisher signed-envelope hand-off', () => {
     ).rejects.toThrow('byte limit')
   })
 
+  test('rejects malformed Publisher registration targets, identities, initial keys, and extra fields', async () => {
+    const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const key = {
+      keyId: 'acme.release',
+      publisherId: 'acme',
+      publicKeyPem: await exportEd25519PublicKeyPem(keyPair.publicKey),
+      notBefore: '2026-01-01T00:00:00.000Z',
+      notAfter: '2027-01-01T00:00:00.000Z'
+    }
+    const registration = {
+      publisher: { id: 'acme', displayName: 'Acme Plugins' },
+      key
+    }
+    const create = (value: unknown) =>
+      createMarketplacePublisherSignedEnvelope(
+        {
+          operation: 'publisher.register',
+          audience: MARKETPLACE_ID,
+          publisherId: 'acme',
+          keyId: key.keyId,
+          body: encoder.encode(JSON.stringify(value)),
+          timestamp: NOW,
+          nonce: 'phase6registerinvalid123456'
+        },
+        keyPair.privateKey
+      )
+    const valid = await create(registration)
+
+    expect(() => parseMarketplacePublisherSignedEnvelope({ ...valid, method: 'GET' })).toThrow(
+      'schema'
+    )
+    expect(() =>
+      parseMarketplacePublisherSignedEnvelope({
+        ...valid,
+        target: '/v1/publishers/register?publisher=acme'
+      })
+    ).toThrow('target')
+
+    await expect(
+      create({ ...registration, publisher: { ...registration.publisher, id: 'beta' } })
+    ).rejects.toThrow('registration')
+    await expect(create({ ...registration, key: { ...key, publisherId: 'beta' } })).rejects.toThrow(
+      'registration'
+    )
+    await expect(create({ ...registration, key: { ...key, keyId: 'acme.other' } })).rejects.toThrow(
+      'registration'
+    )
+    await expect(
+      create({ ...registration, key: { ...key, predecessorKeyId: 'acme.previous' } })
+    ).rejects.toThrow('predecessor')
+    await expect(create({ ...registration, extra: true })).rejects.toThrow()
+    await expect(
+      create({
+        ...registration,
+        publisher: { ...registration.publisher, extra: true }
+      })
+    ).rejects.toThrow()
+    await expect(create({ ...registration, key: { ...key, extra: true } })).rejects.toThrow()
+  })
+
+  test('keeps registration body bytes signature-bound so body tampering fails verification', async () => {
+    const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const key = {
+      keyId: 'acme.release',
+      publisherId: 'acme',
+      publicKeyPem: await exportEd25519PublicKeyPem(keyPair.publicKey),
+      notBefore: '2026-01-01T00:00:00.000Z',
+      notAfter: '2027-01-01T00:00:00.000Z'
+    }
+    const body = encoder.encode(
+      JSON.stringify({
+        publisher: { id: 'acme', displayName: 'Acme Plugins' },
+        key
+      })
+    )
+    const envelope = await createMarketplacePublisherSignedEnvelope(
+      {
+        operation: 'publisher.register',
+        audience: MARKETPLACE_ID,
+        publisherId: 'acme',
+        keyId: key.keyId,
+        body,
+        timestamp: NOW,
+        nonce: 'phase6registertamper123456'
+      },
+      keyPair.privateKey
+    )
+    const verification = (requestBody: Uint8Array) =>
+      verifyMarketplaceRequest(
+        {
+          method: envelope.method,
+          url: `http://marketplace.invalid${envelope.target}`,
+          body: requestBody,
+          headers: envelope.headers
+        },
+        {
+          audience: MARKETPLACE_ID,
+          now: () => Date.parse(NOW),
+          nonces: createMemoryMarketplaceNonceStore(() => Date.parse(NOW)),
+          resolvePublicKey: async (publisherId, keyId) =>
+            publisherId === 'acme' && keyId === key.keyId ? keyPair.publicKey : null
+        }
+      )
+
+    await expect(verification(body)).resolves.toEqual({
+      publisherId: 'acme',
+      keyId: key.keyId
+    })
+    const tamperedBody = encoder.encode(
+      JSON.stringify({
+        publisher: { id: 'acme', displayName: 'Tampered Plugins' },
+        key
+      })
+    )
+    const parsedTampered = parseMarketplacePublisherSignedEnvelope({
+      ...envelope,
+      body: Buffer.from(tamperedBody).toString('base64url')
+    })
+    expect(parsedTampered.body).toEqual(tamperedBody)
+    await expect(verification(parsedTampered.body)).rejects.toThrow('signature')
+  })
+
   test('registers a runnable request sign CLI without exposing publish or yank operations', () => {
     const request = marketplaceCommand.subCommands?.request
     expect(request?.subCommands?.sign.meta?.name).toBe('sign')
@@ -365,6 +547,78 @@ describe('Phase 6 local Publisher signed-envelope hand-off', () => {
       JSON.parse(await readFile(outputPath, 'utf8'))
     )
     expect(new TextDecoder().decode(parsed.body)).toBe(body)
+  })
+
+  test('CLI signs a Publisher registration envelope without printing key material or body data', async () => {
+    const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const directory = await mkdtemp(join(tmpdir(), 'openpencil-phase6-register-cli-'))
+    temporaryDirectories.push(directory)
+    const bodyPath = join(directory, 'publisher-registration.json')
+    const outputPath = join(directory, 'publisher-registration.opm-request.json')
+    const body = `${JSON.stringify({
+      publisher: { id: 'acme', displayName: 'Acme Plugins' },
+      key: {
+        keyId: 'acme.release',
+        publisherId: 'acme',
+        publicKeyPem: await exportEd25519PublicKeyPem(keyPair.publicKey),
+        notBefore: '2026-01-01T00:00:00.000Z',
+        notAfter: '2027-01-01T00:00:00.000Z',
+        predecessorKeyId: null
+      }
+    })}\n`
+    await writeFile(bodyPath, body, { encoding: 'utf8', mode: 0o600 })
+    const processResult = Bun.spawn(
+      [
+        process.execPath,
+        join(process.cwd(), 'packages/marketplace/src/cli.ts'),
+        'request',
+        'sign',
+        '--operation',
+        'publisher.register',
+        '--audience',
+        MARKETPLACE_ID,
+        '--publisher',
+        'acme',
+        '--key-id',
+        'acme.release',
+        '--body',
+        bodyPath,
+        '--output',
+        outputPath,
+        '--private-key-env',
+        'PHASE6_REGISTER_PRIVATE_KEY'
+      ],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          PHASE6_REGISTER_PRIVATE_KEY: await privateKeyPem(keyPair.privateKey)
+        },
+        stdout: 'pipe',
+        stderr: 'pipe'
+      }
+    )
+    const [exitCode, stdout, stderr] = await Promise.all([
+      processResult.exited,
+      new Response(processResult.stdout).text(),
+      new Response(processResult.stderr).text()
+    ])
+
+    expect({ exitCode, stderr }).toEqual({ exitCode: 0, stderr: '' })
+    expect(stdout).not.toContain('PRIVATE KEY')
+    expect(stdout).not.toContain('PUBLIC KEY')
+    expect(stdout).not.toContain('Acme Plugins')
+    const parsed = parseMarketplacePublisherSignedEnvelope(
+      JSON.parse(await readFile(outputPath, 'utf8'))
+    )
+    expect(parsed).toMatchObject({
+      operation: 'publisher.register',
+      method: 'POST',
+      target: '/v1/publishers/register',
+      headers: { publisherId: 'acme', keyId: 'acme.release' }
+    })
+    expect(new TextDecoder().decode(parsed.body)).toBe(body)
+    expect((await stat(outputPath)).mode & 0o777).toBe(0o600)
   })
 
   test('rejects a group/world-readable Publisher private-key file before signing', async () => {
