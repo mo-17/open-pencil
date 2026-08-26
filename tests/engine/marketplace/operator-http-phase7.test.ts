@@ -263,6 +263,25 @@ describe('marketplace Phase 7 operator HTTP boundary', () => {
       contextDigest: event.contextDigest,
       chainStatus: 'verified'
     })
+
+    const publisherAudit = await operatorRequest(
+      app,
+      '/admin/operator/publishers/acme/audit?limit=100&sort=sequence',
+      'operator.audit.read',
+      'security_admin',
+      { oldMfa: true }
+    )
+    expect(publisherAudit.response.status).toBe(200)
+    const publisherPage = (await publisherAudit.response.json()) as {
+      publisherId: string
+      items: Array<{ action: string; subject: string; contextDigest?: string }>
+    }
+    expect(publisherPage.publisherId).toBe('acme')
+    expect(publisherPage.items.map(({ action }) => action)).toContain('publisher.created')
+    expect(publisherPage.items.map(({ action }) => action)).toContain('publisher_key.status_changed')
+    expect(publisherPage.items.map(({ action }) => action)).toContain('publisher.status_changed')
+    expect(publisherPage.items.every(({ subject }) => subject.includes('acme'))).toBe(true)
+    expect(publisherPage.items.at(-1)?.contextDigest).toBe(event.contextDigest)
   })
 
   test('denies role overreach, missing step-up, stale MFA, wrong operation, and replay', async () => {
