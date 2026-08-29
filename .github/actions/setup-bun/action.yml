@@ -33,18 +33,25 @@ runs:
 
     - uses: oven-sh/setup-bun@v2
       if: inputs.bun-download-url == ''
+      with:
+        bun-version: 1.3.10
 
     - uses: oven-sh/setup-bun@v2
       if: inputs.bun-download-url != ''
       with:
+        bun-version: 1.3.10
         bun-download-url: ${{ inputs.bun-download-url }}
+
+    - name: Verify exact Bun runtime
+      shell: bash
+      run: test "$(bun --version)" = "1.3.10"
 
     - uses: actions/cache@v6
       if: inputs.cache == 'true'
       with:
         path: ~/.bun/install/cache
-        key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
-        restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
+        key: bun-1.3.10-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-1.3.10-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Install dependencies
       shell: bash

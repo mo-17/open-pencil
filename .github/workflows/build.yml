@@ -7,11 +7,13 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     if: github.event_name == 'workflow_dispatch' || github.repository == 'open-pencil/open-pencil'
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +24,7 @@ jobs:
             bunRuntimeCache: bun-darwin-aarch64
             nativeSmoke: true
             nativeSidecar: false
+            appleSigning: true
             bunDownloadUrl: ''
             manualBundleArgs: ''
           - platform: macos-15-intel
@@ -30,6 +33,7 @@ jobs:
             bunRuntimeCache: bun-darwin-x64-baseline
             nativeSmoke: true
             nativeSidecar: false
+            appleSigning: true
             bunDownloadUrl: ''
             manualBundleArgs: ''
           - platform: windows-latest
@@ -38,6 +42,7 @@ jobs:
             bunRuntimeCache: bun-windows-x64-baseline
             nativeSmoke: true
             nativeSidecar: true
+            appleSigning: false
             bunDownloadUrl: https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-windows-x64-baseline.zip
             bunExecutableSha256: a26e4e47c3b1d59e7cff711795778d95531457eac2a7104ba25a17fcb0225774
             bunExpectedArch: x64
@@ -49,6 +54,7 @@ jobs:
             bunRuntimeCache: bun-windows-aarch64
             nativeSmoke: true
             nativeSidecar: true
+            appleSigning: false
             bunDownloadUrl: https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-windows-aarch64.zip
             bunExecutableSha256: 96db0e1941cb923cd9f776647fad9571f9e6041d6454ea8ca1d18d7d38697274
             bunExpectedArch: arm64
@@ -60,12 +66,13 @@ jobs:
             bunRuntimeCache: bun-linux-x64-baseline
             nativeSmoke: true
             nativeSidecar: false
+            appleSigning: false
             bunDownloadUrl: ''
             manualBundleArgs: --bundles deb,rpm
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
@@ -130,6 +137,9 @@ jobs:
           bun_path="$(cygpath -u "$(bun -p 'process.execPath')")"
           actual_sha256="$(sha256sum "$bun_path" | awk '{ print $1 }')"
           test "$actual_sha256" = "$EXPECTED_BUN_SHA256"
+
+      - name: Verify Marketplace release contracts
+        run: bun test tests/engine/marketplace && bun --filter @open-pencil/marketplace build
 
       - name: Build and verify CodePen sidecar
         shell: bash
@@ -288,11 +298,11 @@ jobs:
           OPENPENCIL_BAIDU_NETDISK_OAUTH_BROKER_ORIGIN: ${{ vars.OPENPENCIL_BAIDU_NETDISK_OAUTH_BROKER_ORIGIN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE: ${{ matrix.appleSigning && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ matrix.appleSigning && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.appleSigning && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ matrix.appleSigning && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.appleSigning && secrets.APPLE_TEAM_ID || '' }}
           OPENPENCIL_CODEPEN_SIDECAR_PREBUILT: '1'
         with:
           tauriScript: bunx tauri
@@ -318,18 +328,21 @@ jobs:
 
   prepare-npm:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'mo-17/open-pencil'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
       release_digest: ${{ steps.release_digest.outputs.digest }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: 24.x
+          node-version: 24.19.0
           registry-url: https://registry.npmjs.org/
+
+      - name: Verify exact Node.js runtime
+        run: test "$(node --version)" = "v24.19.0"
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -444,7 +457,7 @@ jobs:
   publish-npm:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'mo-17/open-pencil'
     needs: prepare-npm
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: npm-production
     permissions:
       contents: read
@@ -456,10 +469,13 @@ jobs:
           name: npm-release-${{ github.run_id }}
           path: npm-release
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: 24.x
+          node-version: 24.19.0
           registry-url: https://registry.npmjs.org/
+
+      - name: Verify exact Node.js runtime
+        run: test "$(node --version)" = "v24.19.0"
 
       - name: Verify npm Trusted Publishing support
         shell: bash

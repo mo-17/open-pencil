@@ -19,6 +19,8 @@ const PACKAGE_ROOT_PATH = new URL('../../package-quality/src/packages.ts', impor
 const PACKAGE_SMOKE_PATH = new URL('../../package-quality/src/smoke.ts', import.meta.url)
 const NON_NPM_JOB_GATE =
   "if: github.event_name == 'workflow_dispatch' || github.repository == 'open-pencil/open-pencil'"
+const CHECKOUT_ACTION = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
+const SETUP_NODE_ACTION = 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020'
 
 function job(workflow: string, name: string, nextName?: string): string {
   const start = workflow.indexOf(`  ${name}:`)
@@ -99,7 +101,7 @@ describe('npm release workflow', () => {
     const signedVerification = namedStep(build, 'Verify signed macOS CodePen sidecar')
 
     expect(build).toContain(
-      'uses: actions/checkout@v7\n        with:\n          persist-credentials: false'
+      `uses: ${CHECKOUT_ACTION}\n        with:\n          persist-credentials: false`
     )
     expect(build.match(/^\s+label: /gm)).toHaveLength(5)
     for (const label of ['macos-arm64', 'macos-x64', 'windows-x64', 'windows-arm64', 'linux-x64']) {
@@ -233,7 +235,7 @@ describe('npm release workflow', () => {
     )
     expect(publish).not.toContain('./.github/actions/setup-bun')
     expect(publish).not.toContain('actions/checkout')
-    expect(publish).toContain('node-version: 24.x')
+    expect(publish).toContain('node-version: 24.19.0')
   })
 
   test('builds, prepares, audits, smokes, then uploads one immutable npm artifact', () => {
@@ -395,7 +397,7 @@ describe('npm release workflow', () => {
   test('fails closed before authentication when npm is too old for Trusted Publishing', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
     const publish = job(workflow, 'publish-npm')
-    const setupNodeIndex = publish.indexOf('uses: actions/setup-node@v7')
+    const setupNodeIndex = publish.indexOf(`uses: ${SETUP_NODE_ACTION}`)
     const versionGateIndex = publish.indexOf('name: Verify npm Trusted Publishing support')
     const publishStepIndex = publish.indexOf('name: Publish packages to npm')
 
@@ -420,5 +422,51 @@ describe('npm release workflow', () => {
     expect(runGate('11.5.0').status).not.toBe(0)
     expect(runGate('10.99.99').status).not.toBe(0)
     expect(runGate('11.5.1-beta.0').status).not.toBe(0)
+  })
+
+  test('pins release toolchains and scopes release authority to the jobs and platforms that need it', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
+    const build = job(workflow, 'build', 'prepare-npm')
+    const prepare = job(workflow, 'prepare-npm', 'publish-npm')
+    const publish = job(workflow, 'publish-npm')
+    const release = namedStep(
+      build,
+      'Build signed Tauri release',
+      'Verify signed macOS CodePen sidecar'
+    )
+    const setupBunAction = readFileSync(SETUP_BUN_ACTION_PATH, 'utf8')
+    const dollar = '$'
+
+    expect(workflow).toContain('permissions:\n  contents: read\n\njobs:')
+    expect(build).toContain('permissions:\n      contents: write')
+    expect(prepare).toContain('permissions:\n      contents: read')
+    expect(publish).toContain('permissions:\n      contents: read\n      id-token: write')
+    expect(workflow.match(new RegExp(CHECKOUT_ACTION, 'g'))).toHaveLength(2)
+    expect(workflow.match(new RegExp(SETUP_NODE_ACTION, 'g'))).toHaveLength(2)
+    expect(workflow).not.toContain('actions/checkout@v7')
+    expect(workflow).not.toContain('actions/setup-node@v7')
+    expect(workflow.match(/node-version: 24\.19\.0/g)).toHaveLength(2)
+    expect(workflow.match(/test "\$\(node --version\)" = "v24\.19\.0"/g)).toHaveLength(2)
+
+    expect(build.match(/appleSigning: true/g)).toHaveLength(2)
+    expect(build.match(/appleSigning: false/g)).toHaveLength(3)
+    for (const secret of [
+      'APPLE_CERTIFICATE',
+      'APPLE_CERTIFICATE_PASSWORD',
+      'APPLE_ID',
+      'APPLE_PASSWORD',
+      'APPLE_TEAM_ID'
+    ]) {
+      expect(release).toContain(`${secret}: \${{ matrix.appleSigning && secrets.${secret} || '' }}`)
+    }
+
+    expect(build).toContain(
+      'run: bun test tests/engine/marketplace && bun --filter @open-pencil/marketplace build'
+    )
+    expect(setupBunAction.match(/bun-version: 1\.3\.10/g)).toHaveLength(2)
+    expect(setupBunAction).toContain('run: test "$(bun --version)" = "1.3.10"')
+    expect(setupBunAction).toContain(
+      `key: bun-1.3.10-${dollar}{{ runner.os }}-${dollar}{{ runner.arch }}-`
+    )
   })
 })
