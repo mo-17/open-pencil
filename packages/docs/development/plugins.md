@@ -35,6 +35,16 @@ identity, publisher identity, stable semantic version, OpenPencil `engineRange`,
 may be empty when a command or exporter is present; the manifest must contain at least one
 contribution in total.
 
+The runnable `examples/third-party-plugin/` collection contains four signable schema-v2 payload and
+listing examples for read-only commands: Document Summary, Node Type Counter, Style Usage, and
+Variable Overview. They become publisher-signed packages only after the documented signing step.
+Together they cover empty and enumerated parameters, public-document traversal, selection and
+variable permissions, bounded aggregate results, Marketplace listings, and the exact Publisher
+request handoff. They are intentionally absent from the bundled catalog: a user receives one only
+after a Marketplace release and explicit installation, while activation still requires the exact
+reviewed host adapter shipped by OpenPencil. A visual Simplified Chinese walkthrough is available in
+the [third-party plugin tutorial](/development/plugin-tutorial).
+
 ```ts
 interface PluginManifestContributionsV1 {
   modules: Array<{
@@ -276,11 +286,17 @@ digests and audit checkpoint. The next snapshot incorporates the previous public
 avoid a circular snapshot-digest dependency.
 
 Publisher HTTP mutations use Ed25519 request authentication over a canonical method, path,
-timestamp, nonce, and body digest. Timestamps have a bounded clock window and a successfully used
-nonce is one-shot. Administrative mutations require an explicit server-side token. This is a
-reference local authentication boundary, not OAuth, password recovery, organizations, or a public
-identity service. Public discovery endpoints need no credential and return only already-published
-signed artifacts/state.
+timestamp, nonce, and body digest. Timestamps have a bounded clock window. Signed reads and
+validation remain one-shot; the six Publisher mutations atomically commit their nonce, domain state,
+audit effect, and exact private response. An identical envelope may read that committed result inside
+the freshness window, while any same-nonce request mismatch fails closed. After authentication, a
+bounded typed `400`, `401`, `404`, or `409` also commits the nonce and exact private error response
+while rolling back domain and audit state, so later state changes cannot turn the same envelope into
+a success. Parse/signature failures and unclassified `500`/`503` failures commit neither nonce nor
+receipt. Administrative mutations require an explicit server-side authority. This is a reference
+local authentication boundary, not OAuth, password recovery, organizations, or a public identity
+service. Public discovery endpoints need no credential and return only already-published signed
+artifacts/state.
 
 The package installs the `openpencil-marketplace` operator CLI. From this repository, replace that
 name with `bun run marketplace`. A minimal local control-plane workflow is:
@@ -308,11 +324,32 @@ openpencil-marketplace submission import \
 openpencil-marketplace review example-plugin-1-0-0 --status approved
 openpencil-marketplace review example-plugin-1-0-0 --status published
 
-# Root signing is a short-lived offline operation. The matching public key self-verifies the
-# result before the latest publication pointer advances.
-openpencil-marketplace publish \
+# Online: freeze the exact state/review and persist a mutation-quiescing reservation.
+openpencil-marketplace publication request \
+  --database .marketplace/state.sqlite --artifacts .marketplace/artifacts \
+  --public-key marketplace-root-public.pem --root-key-id marketplace-root-2026 \
+  --output .marketplace/publication-1.handoff.json
+
+# Offline: inspect the digest and review diff. Initialize the owner-only policy only for the
+# first publication, after independently comparing the printed state digest.
+openpencil-marketplace publication inspect \
+  --handoff publication-1.handoff.json
+openpencil-marketplace publication signer-init \
+  --handoff publication-1.handoff.json --policy root-signer-policy.json \
+  --approve-state-digest '<stateDigest from the reviewed handoff>' \
+  --public-key marketplace-root-public.pem
+openpencil-marketplace publication sign \
+  --handoff publication-1.handoff.json --artifacts immutable-artifact-mirror \
+  --policy root-signer-policy.json \
+  --approve-request-digest '<requestDigest from publication inspect>' \
   --private-key marketplace-root-private.pem --public-key marketplace-root-public.pem \
-  --root-key-id marketplace-root-2026
+  --output publication-1.signed.json
+
+# Online: verify Root authorization, exact state/plan/artifacts, then record the publication and
+# clear the matching reservation in one SQLite commit.
+openpencil-marketplace publication import \
+  --database .marketplace/state.sqlite --artifacts .marketplace/artifacts \
+  --bundle publication-1.signed.json --public-key marketplace-root-public.pem
 openpencil-marketplace audit --json
 
 # The long-running server is public/read-only by default and loads no root private key or token.
@@ -323,18 +360,68 @@ openpencil-marketplace serve \
 
 Key rotation is explicit: register the successor with
 `publisher key-register --predecessor <old-key-id>`, then approve it with `publisher key-status`.
-Loopback administrative HTTP routes
-require `serve --enable-admin --admin-token-env <ENV_NAME>`. Online root signing additionally
-requires `--enable-online-signing` plus a private-key reference, is rejected on non-loopback hosts,
-and is intended only for local operational testing. Production deployments should keep root signing
-offline, put only the public server behind a reviewed TLS reverse proxy, and back up SQLite plus the
-artifact directory together.
+Loopback administrative HTTP routes require
+`serve --enable-admin --admin-token-env <ENV_NAME>`. Direct `publish`, HTTP online signing, and
+private keys on `serve` all fail closed; the online process accepts only the Root public key.
+Production deployments should put only the public server behind a reviewed TLS reverse proxy and
+back up SQLite plus the artifact directory together.
+
+`publication request` writes the handoff before establishing the reservation so an output failure
+cannot leave the Marketplace quiesced. The command syncs the handoff file, its parent directory, and
+every newly created directory entry back to an existing ancestor before reserving; a durability
+failure durably removes the new handoff or reports that cleanup could not be confirmed. Do not
+transfer or sign the handoff until the command reports `reservation: reserved` or
+`reservation: replayed`. If the process exits in the narrow
+write-before-reserve window, recover with
+`publication reserve --handoff <file> --database <db> --artifacts <dir>` and require its success.
+Once active, the reservation has no automatic expiry and blocks every ordinary domain or Publisher
+mutation. Preserve the handoff durably, retry only its exact digest after signer/import failures, and
+do not try to create a replacement request. Import rejects a missing or mismatched reservation before
+writing artifacts and clears the exact reservation only in the same commit that records the reviewed
+publication. A failed database commit may leave only unreferenced immutable CAS bytes; exact import
+retry remains safe. If the publication committed but its success response was lost, importing the
+same canonical bundle reads its durable completion receipt before current-state, reservation, or
+artifact checks and returns the original publication without another write. Reusing the request digest
+with different bundle bytes fails closed.
+
+If the exact handoff cannot be recovered or signed, cancellation is deliberately manual and local:
+
+```sh
+openpencil-marketplace publication cancel \
+  --database .marketplace/state.sqlite --artifacts .marketplace/artifacts \
+  --approve-request-digest '<requestDigest from the retained handoff or operator record>' \
+  --reason 'Documented operator recovery reason'
+```
+
+Cancellation requires the active reservation's exact request digest, appends a correlated audit
+event, and clears the reservation in the same SQLite commit. It does not revoke or alter an already
+completed publication receipt, and there is no timeout-based cancellation path.
+
+For emergency revocation, create a separately reviewed shrink-only projection and pass
+`publication request --purpose emergency-revocation --emergency-plan <projection.json>`. Restoring
+authority later requires a distinct `--purpose revocation-recovery` request; routine publication
+cannot silently clear the signer's durable revocation floor. Copy the handoff and a read-only mirror
+of every referenced immutable artifact to the offline machine. The Root private key and signer policy
+must never be copied to the online host; keep both owner-only, backed up, and preferably
+hardware-backed.
 
 The artifact store is immutable content-addressed storage. `manifestDigest` always means the digest
 inside the publisher-signed manifest; `artifactDigest` means the SHA-256 address of its exact stored
 JSON bytes. Runtime index byte length is the canonical package length, not the size of pretty-printed
 operator input. Publication URLs must be immutable canonical HTTPS coordinates in signed production
 artifacts.
+
+Publisher submission mutations defer artifact writes until the repository has validated the exact
+response and receipt-capacity boundary. A callback failure or deterministic capacity rejection
+therefore leaves no new artifact, state, audit, nonce, or receipt. The content-addressed write still
+must finish before the SQLite commit so committed state never points at missing bytes. SQLite and the
+filesystem cannot form one atomic transaction: a process crash, disk fault, or failed SQLite commit
+after a successful create-only artifact write can leave an unreferenced immutable blob. It must never
+be deleted inline by a request, because a concurrent or retained generation may reference the same
+digest. Production release therefore requires a bounded artifact-volume quota plus a quiesced,
+backup-aware mark-and-sweep runbook that derives the live closure from every retained state,
+publication, and backup generation. Until that rehearsal exists, “rollback” means Marketplace
+state/audit/nonce/receipt rollback and does not claim physical rollback of an unreferenced CAS blob.
 
 ### Public distribution layout
 
@@ -885,18 +972,28 @@ capabilities, and automatic update acceptance remain outside the verified Phase 
 The following steps intentionally require an operator and are not automated by the repository:
 
 1. Generate the marketplace root Ed25519 key in an offline or hardware-backed environment, define a
-   reviewed rotation/recovery ceremony, and package only its public SPKI key in the application trust
-   configuration.
+   reviewed rotation/recovery ceremony, initialize the owner-only signer policy from an independently
+   approved first-state digest, and package only the public SPKI key in application/server trust
+   configuration. Back up the signer policy with anti-rollback controls; same-user filesystem modes
+   alone do not provide hardware-backed rollback resistance.
 2. Choose the final HTTPS origin before signing the first release. Configure DNS, TLS termination,
    immutable artifact caching, request-size/rate limits, and proxy rules that expose only public
-   routes. Keep admin routes on loopback and root signing offline.
-3. Back up SQLite and the content-addressed artifact directory as one consistency unit. Exercise a
-   restore, verify the complete audit hash chain, and optionally publish audit heads to an independent
-   transparency witness.
-4. Rebuild the fork with `VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG`, then perform real Tauri
+   routes. Keep admin routes on loopback, reject every online private-key input, and run Root signing
+   on a separate offline machine.
+3. For every sequence, durably create and reserve one exact online handoff, move the handoff plus a
+   read-only immutable-artifact mirror offline, compare the human review and digest out of band, sign,
+   then import only the exact Root-authorized bundle. Rehearse write-before-reserve recovery, signer
+   crash replay, import lost-ack replay, explicit reservation cancellation, emergency shrink-only
+   revocation, and explicit revocation recovery. A reservation intentionally has no automatic expiry.
+4. Back up SQLite and the content-addressed artifact directory as one consistency unit. Exercise
+   restore from every supported schema generation, verify the complete audit hash chain and active
+   publication reservation/completion receipts, and publish signed or independently witnessed audit
+   heads if external rollback detection is required. The current online audit reader has no separate
+   no-key attestation by itself.
+5. Rebuild the fork with `VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG`, then perform real Tauri
    restart/offline/update/revocation tests on macOS, Windows, and Linux. Separately add the production
    CSP, local-origin navigation policy, debug-only capabilities, and narrower filesystem/shell
    scopes described above.
-5. Select and integrate any public account/OAuth, organization, email recovery, billing, tax,
+6. Select and integrate any public account/OAuth, organization, email recovery, billing, tax,
    ratings/reviews, abuse-reporting, sanctions, refund, and support systems. None of those systems is
    implied by the local publisher-signature/admin-token reference service.
