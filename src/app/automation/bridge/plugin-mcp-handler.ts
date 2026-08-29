@@ -15,6 +15,7 @@ import type { JSONObject, JSONValue } from '@open-pencil/scene-graph/primitives'
 import type { AutomationRequestContext } from '@/app/automation/bridge/request-context'
 import { isUnknownRecord, type AutomationTarget } from '@/app/automation/bridge/target'
 import type { EditorStore } from '@/app/editor/active-store'
+import type { ThirdPartyPluginAIContributionGrant } from '@/app/plugins/ai-authorization'
 import {
   appPluginAIAuthorization,
   appPluginStore,
@@ -46,6 +47,7 @@ import { inspectInstalledPluginModuleCompatibility } from '@/app/plugins/modules
 import type {
   AppPluginCommandContribution,
   AppPluginExporterContribution,
+  InstalledAppPlugin,
   InstalledPluginCommand,
   InstalledPluginConnector,
   InstalledPluginExporter
@@ -118,6 +120,9 @@ export interface AutomationPluginMCPDependencies {
   publisherPrivilegeBoundary?<T>(operation: () => Promise<T>): Promise<T>
   checkpointPublisherTrust?(): Promise<unknown>
   refreshConnectorCredentialReadiness?(): Promise<void>
+  resolvePublisherAIGrant?(
+    resolved: Extract<ResolvedAppPluginMCPTool, { kind: 'command' | 'connector' }>
+  ): ThirdPartyPluginAIContributionGrant | null
 }
 
 export interface AutomationPluginMCPCallOptions {
@@ -152,9 +157,12 @@ const runDefaultConnector: NonNullable<AutomationPluginMCPDependencies['runConne
   signal
 ) => executeInstalledAppConnector(connector, operation.operationId, args, { signal })
 
-const publisherContributionExposure: NonNullable<
-  AppPluginMCPOptions['publisherContributionExposure']
-> = (plugin, kind, contributionId, adapterId) => {
+function publisherAIGrant(
+  plugin: InstalledAppPlugin,
+  kind: 'command' | 'connector',
+  contributionId: string,
+  adapterId: string
+): ThirdPartyPluginAIContributionGrant | null {
   const pluginPackage = plugin.package
   const pluginId = pluginPackage.manifest.plugin.id
   const publisherKeyId =
@@ -172,13 +180,54 @@ const publisherContributionExposure: NonNullable<
         candidate.publisherId === pluginPackage.manifest.publisher.id &&
         candidate.publisherKeyId === publisherKeyId
     )
-  if (!grant) return false
+  if (!grant) return null
   try {
-    appPluginAIAuthorization.requireGrant(grant, grant.grantId)
-    return true
+    return appPluginAIAuthorization.requireGrant(grant, grant.grantId)
   } catch {
-    return false
+    return null
   }
+}
+
+const publisherContributionExposure: NonNullable<
+  AppPluginMCPOptions['publisherContributionExposure']
+> = (plugin, kind, contributionId, adapterId) =>
+  publisherAIGrant(plugin, kind, contributionId, adapterId) !== null
+
+function resolvedPublisherAIGrant(
+  resolved: Extract<ResolvedAppPluginMCPTool, { kind: 'command' | 'connector' }>
+): ThirdPartyPluginAIContributionGrant | null {
+  return publisherAIGrant(
+    resolved.value.plugin,
+    resolved.kind,
+    resolved.descriptor.contributionId,
+    resolved.descriptor.authority.adapterId
+  )
+}
+
+function publisherGrantIdForCall(
+  resolved: ResolvedAppPluginMCPTool,
+  dependencies: Pick<AutomationPluginMCPDependencies, 'resolvePublisherAIGrant'>
+): string | null {
+  const descriptor = resolved.descriptor
+  if (descriptor.authority.trustSource !== 'publisher-signature') return null
+  if (resolved.kind !== 'command' && resolved.kind !== 'connector') {
+    throw new Error('Publisher plugin contribution kind is unavailable to MCP')
+  }
+  const grant = dependencies.resolvePublisherAIGrant?.(resolved)
+  if (
+    !grant ||
+    grant.pluginId !== descriptor.pluginId ||
+    grant.kind !== resolved.kind ||
+    grant.contributionId !== descriptor.contributionId ||
+    grant.adapterId !== descriptor.authority.adapterId ||
+    grant.packageDigest !== descriptor.authority.packageDigest ||
+    grant.pluginVersion !== descriptor.authority.pluginVersion ||
+    grant.publisherId !== descriptor.authority.publisherId ||
+    grant.publisherKeyId !== descriptor.authority.publisherKeyId
+  ) {
+    throw new Error('Third-party plugin AI grant authority changed; review and grant it again')
+  }
+  return grant.grantId
 }
 
 export const DEFAULT_APP_PLUGIN_MCP_OPTIONS: AppPluginMCPOptions = Object.freeze({
@@ -198,7 +247,8 @@ const DEFAULT_DEPENDENCIES: AutomationPluginMCPDependencies = Object.freeze({
   refreshConnectorCredentialReadiness: () =>
     refreshAppConnectorCredentialReadiness(appPluginStore.installedConnectors()).then(
       () => undefined
-    )
+    ),
+  resolvePublisherAIGrant: resolvedPublisherAIGrant
 })
 
 interface PluginMCPRequestRecord {
@@ -607,6 +657,9 @@ export function createAutomationPluginMCPHandlers(
       // the exact catalog and executable authority after live resolution, immediately before policy
       // checks and dispatch, so a digest/key/version/adapter replacement fails closed.
       validateExpectedAuthority(call, liveCatalog, resolved)
+      const resolvedDescriptor = callDescriptor(resolved.descriptor)
+      const publisherGrantId = publisherGrantIdForCall(resolved, dependencies)
+      context?.onPluginMCPResolved?.(resolvedDescriptor, publisherGrantId)
       options.beforeExecute?.(resolved)
       if (resolved.kind === 'module') {
         const args = moduleArguments(call.args)

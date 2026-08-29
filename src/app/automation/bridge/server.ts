@@ -9,6 +9,7 @@ import { randomHex } from '@open-pencil/core/random'
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
 import { DEFAULT_APP_PLUGIN_MCP_OPTIONS } from '@/app/automation/bridge/plugin-mcp-handler'
+import { PluginMCPRequestRevocationRegistry } from '@/app/automation/bridge/plugin-mcp-request-revocation'
 import type { EditorStore } from '@/app/editor/active-store'
 import { appPluginAIAuthorization, appPluginStore } from '@/app/plugins/app'
 import {
@@ -28,7 +29,7 @@ export function connectAutomation(
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let intentionalDisconnect = false
   let lastPluginToolsRevision: string | null = null
-  const activeRequests = new Map<string, AbortController>()
+  const activeRequests = new PluginMCPRequestRevocationRegistry()
 
   const { handleRequest: handleAutomationRequest } =
     createAutomationCommandHandlers(makeFigmaFromStore)
@@ -76,7 +77,8 @@ export function connectAutomation(
     const socket = ws
     if (socket) announcePluginTools(socket)
   })
-  const unsubscribePluginAIAuthorization = appPluginAIAuthorization.subscribe(() => {
+  const unsubscribePluginAIAuthorization = appPluginAIAuthorization.subscribe((grants) => {
+    activeRequests.reconcilePublisherGrants(grants)
     const socket = ws
     if (socket) announcePluginTools(socket)
   })
@@ -87,12 +89,13 @@ export function connectAutomation(
     args: unknown,
     socket: WebSocket
   ): Promise<unknown> {
-    activeRequests.get(id)?.abort()
-    const controller = new AbortController()
-    activeRequests.set(id, controller)
+    const controller = activeRequests.start(id)
     try {
       const result = await handleAutomationRequest(getStore(), command, args, {
         signal: controller.signal,
+        onPluginMCPResolved(descriptor, publisherGrantId) {
+          activeRequests.bind(id, controller, descriptor, publisherGrantId)
+        },
         onProgress(progress) {
           if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'progress', id, progress }))
@@ -106,7 +109,7 @@ export function connectAutomation(
       if (command !== 'plugin_mcp_tool') controller.signal.throwIfAborted()
       return result
     } finally {
-      if (activeRequests.get(id) === controller) activeRequests.delete(id)
+      activeRequests.finish(id, controller)
     }
   }
 
@@ -142,7 +145,7 @@ export function connectAutomation(
         }
         if (!msg.id) return
         if (msg.type === 'cancel') {
-          activeRequests.get(msg.id)?.abort()
+          activeRequests.cancel(msg.id)
           return
         }
         if (msg.type !== 'request') return
@@ -173,8 +176,7 @@ export function connectAutomation(
         ws = null
         lastPluginToolsRevision = null
       }
-      for (const controller of activeRequests.values()) controller.abort()
-      activeRequests.clear()
+      activeRequests.abortAll()
       if (intentionalDisconnect || event.code === 1000) return
       console.warn('[Automation] WebSocket closed:', `code=${event.code} reason=${event.reason}`)
       scheduleReconnect()
@@ -198,8 +200,7 @@ export function connectAutomation(
     unsubscribeConnectorTools()
     unsubscribeConnectorCredentialReadiness()
     unsubscribePluginAIAuthorization()
-    for (const controller of activeRequests.values()) controller.abort()
-    activeRequests.clear()
+    activeRequests.abortAll()
     ws?.close()
     ws = null
   }
