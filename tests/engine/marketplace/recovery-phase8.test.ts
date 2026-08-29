@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- Phase 8 recovery trust, tamper, and crash-gap fixtures exercise one boundary. */
 import { Database } from 'bun:sqlite'
 import { afterEach, describe, expect, test } from 'bun:test'
-import { randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { link, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -17,9 +17,10 @@ import {
   verifyMarketplaceRecoveryState
 } from '@open-pencil/marketplace'
 import { signPluginManifest } from '@open-pencil/plugin-contracts'
-import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
+import { canonicalManifestValue, exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 import { pluginPayload } from '../plugins/helpers'
+import { recordTestMarketplacePublication } from './publication/helpers'
 
 const NOW = '2026-08-22T00:00:00.000Z'
 const BEFORE = '2026-08-21T23:59:00.000Z'
@@ -45,6 +46,55 @@ function reservationPath(generation: string): string {
   return join(dirname(generation), `.${basename(generation)}${INCOMPLETE_GENERATION_FILE}`)
 }
 
+function canonicalBytes(value: unknown): Uint8Array {
+  return new TextEncoder().encode(`${JSON.stringify(canonicalManifestValue(value))}\n`)
+}
+
+async function downgradeBackupDatabase(
+  backup: string,
+  manifest: Awaited<ReturnType<typeof createMarketplaceBackup>>,
+  schemaVersion: 3 | 4
+): Promise<void> {
+  const databasePath = join(backup, 'marketplace.sqlite')
+  const database = new Database(databasePath, { strict: true })
+  try {
+    database.exec('BEGIN IMMEDIATE')
+    database.exec('DROP TABLE marketplace_publication_completion_receipts')
+    if (schemaVersion === 3) database.exec('DROP TABLE marketplace_publication_reservation')
+    database
+      .query('UPDATE marketplace_state SET schema_version = ? WHERE id = 1')
+      .run(schemaVersion)
+    database.exec('COMMIT')
+  } catch (error) {
+    database.exec('ROLLBACK')
+    throw error
+  } finally {
+    database.close(false)
+  }
+
+  const databaseBytes = await readFile(databasePath)
+  const { integrity: _previousIntegrity, ...previousUnsigned } = manifest
+  const unsigned = {
+    ...previousUnsigned,
+    database: {
+      ...previousUnsigned.database,
+      digest: createHash('sha256').update(databaseBytes).digest('base64url'),
+      byteLength: databaseBytes.byteLength
+    }
+  }
+  const nextManifest = {
+    ...unsigned,
+    integrity: {
+      algorithm: 'HMAC-SHA256' as const,
+      keyId: manifest.integrity.keyId,
+      digest: createHmac('sha256', INTEGRITY_SECRET)
+        .update(canonicalBytes(unsigned))
+        .digest('base64url')
+    }
+  }
+  await writeFile(join(backup, 'manifest.json'), canonicalBytes(nextManifest))
+}
+
 async function fixture() {
   const rootDirectory = temporaryDirectory('phase8-source')
   const databasePath = join(rootDirectory, 'marketplace.sqlite')
@@ -64,7 +114,6 @@ async function fixture() {
     now: () => new Date(NOW),
     root: {
       keyId: 'marketplace-root-2026',
-      privateKey: root.privateKey,
       publicKey: root.publicKey
     }
   })
@@ -121,9 +170,20 @@ async function fixture() {
     time: NOW
   })
   await service.publishSubmission(submission.id, { actor: 'operator:test', time: NOW })
-  await service.publish({ actor: 'operator:test', time: NOW })
+  await recordTestMarketplacePublication({
+    repository,
+    artifacts,
+    marketplaceId: 'openpencil-marketplace',
+    publicBaseUrl: 'https://plugins.example.com/',
+    rootKeyId: 'marketplace-root-2026',
+    rootPrivateKey: root.privateKey,
+    rootPublicKey: root.publicKey,
+    generatedAt: NOW,
+    actor: 'operator:test'
+  })
   expect(
     await repository.nonces.consume(
+      'publisher-request-v2',
       'acme',
       'phase8-restored-nonce',
       Date.parse('2026-08-22T00:01:00.000Z')
@@ -145,6 +205,52 @@ afterEach(async () => {
 })
 
 describe('Phase 8 Marketplace backup and new-generation restore', () => {
+  for (const schemaVersion of [3, 4] as const) {
+    test(`verifies and restores a valid schema-v${schemaVersion} backup`, async () => {
+      const source = await fixture()
+      const backup = temporaryDirectory(`phase8-schema-v${schemaVersion}-backup`)
+      const restored = temporaryDirectory(`phase8-schema-v${schemaVersion}-restored`)
+      const manifest = await createMarketplaceBackup({
+        repository: source.repository,
+        artifacts: source.artifacts,
+        destination: backup,
+        marketplaceId: 'openpencil-marketplace',
+        publicBaseUrl: 'https://plugins.example.com/',
+        root: { keyId: 'marketplace-root-2026', publicKey: source.root.publicKey },
+        integrity: integrity(),
+        now: () => new Date(NOW)
+      })
+      await downgradeBackupDatabase(backup, manifest, schemaVersion)
+
+      const verified = await verifyMarketplaceBackup({
+        source: backup,
+        marketplaceId: 'openpencil-marketplace',
+        publicBaseUrl: 'https://plugins.example.com/',
+        root: { keyId: 'marketplace-root-2026', publicKey: source.root.publicKey },
+        integrity: integrity(),
+        now: () => new Date(NOW)
+      })
+      expect(verified.state.publications).toHaveLength(1)
+
+      await prepareMarketplaceRestore({
+        source: backup,
+        destination: restored,
+        marketplaceId: 'openpencil-marketplace',
+        publicBaseUrl: 'https://plugins.example.com/',
+        root: { keyId: 'marketplace-root-2026', publicKey: source.root.publicKey },
+        integrity: integrity(),
+        now: () => new Date(NOW)
+      })
+      const repository = createSqliteMarketplaceRepository({
+        path: join(restored, 'marketplace.sqlite'),
+        now: () => Date.parse(NOW)
+      })
+      expect((await repository.snapshot()).publications).toHaveLength(1)
+      await repository.close()
+      await source.repository.close()
+    })
+  }
+
   test('backs up exact referenced artifacts, verifies publication anchors, and preserves nonces', async () => {
     const source = await fixture()
     const backup = temporaryDirectory('phase8-backup')
@@ -206,6 +312,7 @@ describe('Phase 8 Marketplace backup and new-generation restore', () => {
     })
     expect(
       await repository.nonces.consume(
+        'publisher-request-v2',
         'acme',
         'phase8-restored-nonce',
         Date.parse('2026-08-22T00:01:00.000Z')
@@ -360,13 +467,13 @@ describe('Phase 8 Marketplace backup and new-generation restore', () => {
     ['table', 'CREATE TABLE phase8_unexpected_table (value TEXT)'],
     [
       'index',
-      'CREATE INDEX phase8_unexpected_index ON marketplace_nonces (publisher_id, expires_at)'
+      'CREATE INDEX phase8_unexpected_index ON marketplace_nonces (subject_id, expires_at)'
     ],
     [
       'trigger',
       'CREATE TRIGGER phase8_unexpected_trigger AFTER INSERT ON marketplace_nonces BEGIN DELETE FROM marketplace_nonces WHERE 0; END'
     ],
-    ['view', 'CREATE VIEW phase8_unexpected_view AS SELECT publisher_id FROM marketplace_nonces']
+    ['view', 'CREATE VIEW phase8_unexpected_view AS SELECT subject_id FROM marketplace_nonces']
   ])('rejects an unexpected SQLite user %s from backup verification', async (_kind, sql) => {
     const source = await fixture()
     const backup = temporaryDirectory(`phase8-extra-schema-${_kind}`)
@@ -442,7 +549,7 @@ describe('Phase 8 Marketplace backup and new-generation restore', () => {
       database.exec(`
         DROP INDEX marketplace_nonces_expiry;
         CREATE UNIQUE INDEX marketplace_nonces_expiry
-          ON marketplace_nonces (publisher_id, expires_at);
+          ON marketplace_nonces (subject_id, expires_at);
       `)
     } finally {
       database.close(false)

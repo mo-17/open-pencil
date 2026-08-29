@@ -84,6 +84,7 @@ export const MARKETPLACE_AUDIT_ACTIONS = [
   'submission.status_changed',
   'release.published',
   'release.yanked',
+  'publication.reservation_cancelled',
   'publication.recorded'
 ] as const
 

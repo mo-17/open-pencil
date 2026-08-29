@@ -22,6 +22,7 @@ import { signPluginManifest } from '@open-pencil/plugin-contracts'
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 import { pluginPayload } from '../plugins/helpers'
+import { recordTestMarketplacePublication } from './publication/helpers'
 
 const NOW = '2026-08-22T08:00:00.000Z'
 const ORIGIN = 'http://localhost'
@@ -61,15 +62,16 @@ async function publishedFixture(
   }
 ): Promise<PublishedFixture> {
   const root = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+  const repository = createMemoryMarketplaceRepository()
+  const artifacts = createMemoryMarketplaceArtifactStore()
   const service = createMarketplaceService({
-    repository: createMemoryMarketplaceRepository(),
-    artifacts: createMemoryMarketplaceArtifactStore(),
+    repository,
+    artifacts,
     marketplaceId: MARKETPLACE_ID,
     publicBaseUrl: 'https://plugins.example.com/',
     now: () => new Date(NOW),
     root: {
       keyId: 'marketplace-root-2026',
-      privateKey: root.privateKey,
       publicKey: root.publicKey
     }
   })
@@ -145,7 +147,17 @@ async function publishedFixture(
       coordinate: release.coordinate
     })
   }
-  await service.publish({ actor: 'admin:fixture', time: NOW })
+  await recordTestMarketplacePublication({
+    repository,
+    artifacts,
+    marketplaceId: MARKETPLACE_ID,
+    publicBaseUrl: 'https://plugins.example.com/',
+    rootKeyId: 'marketplace-root-2026',
+    rootPrivateKey: root.privateKey,
+    rootPublicKey: root.publicKey,
+    generatedAt: NOW,
+    actor: 'admin:fixture'
+  })
   return {
     service,
     entries,

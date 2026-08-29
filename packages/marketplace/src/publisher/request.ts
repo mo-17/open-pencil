@@ -7,7 +7,7 @@ import {
   MARKETPLACE_REQUEST_AUTH_LIMITS,
   signMarketplaceRequest,
   type MarketplaceSignedRequestHeaders
-} from './auth'
+} from '../auth'
 import {
   MARKETPLACE_RELEASE_CHANNELS,
   parseCreateMarketplacePublisherInput,
@@ -15,7 +15,7 @@ import {
   parseMarketplaceReason,
   parseMarketplaceTimestamp,
   parseRegisterMarketplacePublisherKeyInput
-} from './types'
+} from '../types'
 
 export const MARKETPLACE_PUBLISHER_SIGNED_ENVELOPE_FORMAT =
   'openpencil.marketplace.publisher-signed-envelope' as const

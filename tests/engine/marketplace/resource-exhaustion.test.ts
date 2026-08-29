@@ -290,7 +290,16 @@ describe('Marketplace anonymous-read resource bounds', () => {
       '\n}'
     )
     const snapshot = sourceBetween(sqliteFactory, 'snapshot() {', 'async immutableSnapshot()')
-    const transaction = sourceBetween(sqliteFactory, 'transaction(operation) {', 'checkpoint() {')
+    const transaction = sourceBetween(
+      sqliteFactory,
+      'transaction(operation) {',
+      'inspectPublisherMutation('
+    )
+    const publisherMutation = sourceBetween(
+      sqliteFactory,
+      'executePublisherMutation(',
+      'checkpoint() {'
+    )
     expect(snapshot).toContain('currentVerifiedState')
     expect(snapshot).not.toContain('verifiedState(parseStateRow')
     expect(transaction.indexOf('verifiedState(next)')).toBeLessThan(
@@ -299,6 +308,20 @@ describe('Marketplace anonymous-read resource bounds', () => {
     expect(transaction.indexOf("database.exec('COMMIT')")).toBeLessThan(
       transaction.indexOf('cachedState = verifiedNext')
     )
+    expect(transaction.indexOf('const committedDataVersion = dataVersion()')).toBeLessThan(
+      transaction.indexOf("database.exec('COMMIT')")
+    )
+    expect(
+      transaction.slice(transaction.indexOf("database.exec('COMMIT')")).includes('dataVersion()')
+    ).toBe(false)
+    expect(publisherMutation.indexOf('const committedDataVersion = dataVersion()')).toBeLessThan(
+      publisherMutation.lastIndexOf("database.exec('COMMIT')")
+    )
+    expect(
+      publisherMutation
+        .slice(publisherMutation.lastIndexOf("database.exec('COMMIT')"))
+        .includes('dataVersion()')
+    ).toBe(false)
     expect(repositorySource).toContain('immutableSnapshot?(): Promise<MarketplaceStateV1>')
 
     const index = sourceBetween(

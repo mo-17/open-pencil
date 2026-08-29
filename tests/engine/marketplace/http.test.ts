@@ -6,7 +6,9 @@ import {
   createMemoryMarketplaceArtifactStore,
   createMemoryMarketplaceNonceStore,
   createMemoryMarketplaceRepository,
-  signMarketplaceRequest
+  MarketplacePublisherMutationCapacityError,
+  signMarketplaceRequest,
+  type MarketplaceRepository
 } from '@open-pencil/marketplace'
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
@@ -28,7 +30,7 @@ function requestHeaders(headers: Awaited<ReturnType<typeof signMarketplaceReques
 }
 
 describe('marketplace HTTP API', () => {
-  test('accepts one self-signed publisher registration and rejects its replay', async () => {
+  test('accepts one self-signed publisher registration and replays its exact result', async () => {
     const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
     const repository = createMemoryMarketplaceRepository()
     const service = createMarketplaceService({
@@ -71,15 +73,16 @@ describe('marketplace HTTP API', () => {
 
     const accepted = await app.request(REGISTRATION_URL, init)
     expect(accepted.status).toBe(201)
-    expect((await accepted.json()).status).toBe('pending')
+    const acceptedBody = await accepted.text()
+    expect(JSON.parse(acceptedBody).status).toBe('pending')
     expect((await service.snapshot()).publisherKeys).toHaveLength(1)
 
     const replay = await app.request(REGISTRATION_URL, init)
-    expect(replay.status).toBe(401)
-    expect(await replay.json()).toEqual({
-      error: 'Marketplace request nonce has already been used'
+    const replayBody = await replay.text()
+    expect({ status: replay.status, body: replayBody }).toEqual({
+      status: 201,
+      body: acceptedBody
     })
-
     const freshDuplicateHeaders = await signMarketplaceRequest(
       {
         audience: MARKETPLACE_ID,
@@ -193,6 +196,88 @@ describe('marketplace HTTP API', () => {
     expect(crossPublisher.status).toBe(401)
   })
 
+  test('does not persist unauthenticated, unavailable, or internal failures as receipts', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const backing = createMemoryMarketplaceRepository()
+    const failures: Error[] = [
+      new MarketplacePublisherMutationCapacityError('injected capacity failure'),
+      new Error('injected internal failure')
+    ]
+    const repository: MarketplaceRepository = {
+      nonces: backing.nonces,
+      snapshot: () => backing.snapshot(),
+      immutableSnapshot: () => backing.immutableSnapshot?.() ?? backing.snapshot(),
+      transaction: (operation) => backing.transaction(operation),
+      inspectPublisherMutation: (request, currentTime) =>
+        backing.inspectPublisherMutation(request, currentTime),
+      executePublisherMutation(request, currentTime, operation) {
+        return backing.executePublisherMutation(request, currentTime, async (transaction) => {
+          const response = await operation(transaction)
+          const failure = failures.shift()
+          if (failure) throw failure
+          return response
+        })
+      }
+    }
+    const service = createMarketplaceService({
+      repository,
+      artifacts: createMemoryMarketplaceArtifactStore(),
+      marketplaceId: MARKETPLACE_ID,
+      publicBaseUrl: 'https://plugins.example.com/',
+      now: () => new Date(NOW)
+    })
+    const app = createMarketplaceHttpApp({ service, now: () => Date.parse(NOW) })
+    const body = JSON.stringify({
+      publisher: { id: 'retryable', displayName: 'Retryable Publisher' },
+      key: {
+        keyId: 'retryable.release',
+        publisherId: 'retryable',
+        publicKeyPem: await exportEd25519PublicKeyPem(pair.publicKey),
+        notBefore: '2026-01-01T00:00:00.000Z',
+        notAfter: '2027-01-01T00:00:00.000Z'
+      }
+    })
+    const signed = await signMarketplaceRequest(
+      {
+        audience: MARKETPLACE_ID,
+        publisherId: 'retryable',
+        keyId: 'retryable.release',
+        method: 'POST',
+        url: REGISTRATION_URL,
+        timestamp: NOW,
+        nonce: 'retryablenonce001',
+        body: new TextEncoder().encode(body)
+      },
+      pair.privateKey
+    )
+    const headers = requestHeaders(signed)
+    const firstSignatureCharacter = signed.signature[0]
+    const unauthenticated = await app.request(REGISTRATION_URL, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'x-openpencil-signature': `${firstSignatureCharacter === 'A' ? 'B' : 'A'}${signed.signature.slice(1)}`
+      },
+      body
+    })
+    expect(unauthenticated.status).toBe(401)
+
+    const unavailable = await app.request(REGISTRATION_URL, { method: 'POST', headers, body })
+    expect(unavailable.status).toBe(503)
+    expect((await service.snapshot()).publishers).toHaveLength(0)
+    expect((await service.snapshot()).auditEvents).toHaveLength(0)
+
+    const failed = await app.request(REGISTRATION_URL, { method: 'POST', headers, body })
+    expect(failed.status).toBe(500)
+    expect((await service.snapshot()).publishers).toHaveLength(0)
+    expect((await service.snapshot()).auditEvents).toHaveLength(0)
+
+    const retried = await app.request(REGISTRATION_URL, { method: 'POST', headers, body })
+    expect(retried.status).toBe(201)
+    expect((await service.snapshot()).publishers).toHaveLength(1)
+    expect((await service.snapshot()).auditEvents).toHaveLength(2)
+  })
+
   test('rejects publisher identity header substitution when public key material is reused', async () => {
     const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
     const publicKeyPem = await exportEd25519PublicKeyPem(pair.publicKey)
@@ -249,10 +334,10 @@ describe('marketplace HTTP API', () => {
     })
 
     expect(substituted.status).toBe(401)
-    expect(await substituted.json()).toEqual({ error: 'Marketplace request signature is invalid' })
+    expect(await substituted.json()).toEqual({ error: 'Marketplace request authentication failed' })
   })
 
-  test('keeps admin mutations loopback-gated and does not enable CORS', async () => {
+  test('keeps admin mutations V2-assertion-gated and does not enable CORS', async () => {
     const service = createMarketplaceService({
       repository: createMemoryMarketplaceRepository(),
       artifacts: createMemoryMarketplaceArtifactStore(),
@@ -274,12 +359,12 @@ describe('marketplace HTTP API', () => {
     })
     expect(admin.status).toBe(404)
 
-    const onlineDisabledApp = createMarketplaceHttpApp({
+    const adminEnabledApp = createMarketplaceHttpApp({
       service,
       nonces: createMemoryMarketplaceNonceStore(),
-      admin: { enabled: true, token: 'a'.repeat(32), onlinePublishing: false }
+      admin: { enabled: true, token: 'a'.repeat(32), onlinePublishing: true } as never
     })
-    const onlineDisabled = await onlineDisabledApp.request('http://localhost/admin/publish', {
+    const onlineDisabled = await adminEnabledApp.request('http://localhost/admin/publish', {
       method: 'POST',
       headers: {
         authorization: `Bearer ${'a'.repeat(32)}`,
@@ -288,6 +373,9 @@ describe('marketplace HTTP API', () => {
       body: '{}'
     })
     expect(onlineDisabled.status).toBe(404)
+    expect(await onlineDisabled.json()).toEqual({
+      error: 'Online marketplace signing is disabled'
+    })
 
     const preflight = await app.request('http://localhost/health', {
       method: 'OPTIONS',

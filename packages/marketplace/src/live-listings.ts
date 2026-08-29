@@ -6,7 +6,7 @@ import {
   type VerifiedMarketplaceSnapshot
 } from '@open-pencil/plugin-contracts'
 
-import { findActiveMarketplacePublisherKey } from './publisher-trust'
+import { findActiveMarketplacePublisherKey } from './publisher/trust'
 import { marketplaceReleaseCoordinateKey, type MarketplaceStateV1 } from './types'
 
 function liveListingRelease(

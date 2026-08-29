@@ -21,6 +21,8 @@ import {
   verifyPluginRuntimePackage,
   type MarketplacePluginListingV1,
   type MarketplacePublisherDirectoryV1,
+  type PluginCatalogPayloadV1,
+  type PluginRuntimeIndexPayloadV1,
   type SignedMarketplaceSnapshotV1,
   type SignedPluginCatalogV1,
   type SignedPluginRuntimeIndexV1
@@ -34,10 +36,15 @@ import {
 } from '@open-pencil/scene-graph'
 
 import type { MarketplaceArtifact, MarketplaceArtifactStore } from './artifacts'
-import { findActiveMarketplacePublisherKey } from './publisher-trust'
+import type {
+  MarketplacePublicationCatalogProjectionV1,
+  MarketplacePublicationProjectionV1
+} from './publication/request'
+import { findActiveMarketplacePublisherKey } from './publisher/trust'
 import {
   MARKETPLACE_RELEASE_CHANNELS,
   parseMarketplacePublicURL,
+  parseMarketplaceState,
   parseMarketplaceTimestamp,
   type MarketplacePublicationCatalogV1,
   type MarketplacePublisherKeyV1,
@@ -60,6 +67,11 @@ export interface MarketplacePublicationConfig {
   now?: () => Date
   validityMilliseconds?: number
 }
+
+export type MarketplacePublicationProjectionConfig = Omit<
+  MarketplacePublicationConfig,
+  'rootPrivateKey'
+>
 
 export interface PreparedMarketplaceCatalog {
   channel: MarketplaceReleaseChannel
@@ -108,7 +120,7 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : 1
 }
 
-function publicationTime(config: MarketplacePublicationConfig): string {
+function publicationTime(config: { now?: () => Date }): string {
   const date = (config.now ?? (() => new Date()))()
   if (!(date instanceof Date) || !Number.isFinite(date.getTime())) {
     throw new TypeError('Marketplace publication clock must return a valid Date')
@@ -413,54 +425,65 @@ function listings(
     })
 }
 
-async function prepareCatalogs(
+function publicationCatalogProjections(
   releases: readonly VerifiedRelease[],
-  artifacts: MarketplaceArtifactStore,
-  config: MarketplacePublicationConfig,
+  marketplaceId: string,
   sequence: number,
   generatedAt: string,
   expiresAt: string
+): readonly MarketplacePublicationCatalogProjectionV1[] {
+  return Object.freeze(
+    MARKETPLACE_RELEASE_CHANNELS.map((channel) => {
+      const entries = releases
+        .filter(({ release }) => release.coordinate.channel === channel)
+        .map(({ release, key }) => ({
+          pluginId: release.coordinate.pluginId,
+          version: release.coordinate.version,
+          digest: release.manifestDigest,
+          manifestUrl: release.manifestUrl,
+          publisherId: release.publisherId,
+          keyId: key.keyId
+        }))
+        .sort(comparePluginCatalogEntries)
+      return Object.freeze({
+        channel,
+        catalog: Object.freeze({
+          format: PLUGIN_CATALOG_FORMAT,
+          schemaVersion: PLUGIN_CATALOG_SCHEMA_VERSION,
+          catalogId: identity(`${marketplaceId}-${channel}`, 'marketplace catalog id'),
+          version: `1.0.${sequence}`,
+          generatedAt,
+          expiresAt,
+          entries
+        } satisfies PluginCatalogPayloadV1)
+      })
+    })
+  )
+}
+
+async function prepareCatalogs(
+  projections: readonly MarketplacePublicationCatalogProjectionV1[],
+  artifacts: MarketplaceArtifactStore,
+  config: MarketplacePublicationConfig
 ): Promise<readonly PreparedMarketplaceCatalog[]> {
   const result: PreparedMarketplaceCatalog[] = []
-  for (const channel of MARKETPLACE_RELEASE_CHANNELS) {
-    const entries = releases
-      .filter(({ release }) => release.coordinate.channel === channel)
-      .map(({ release, key }) => ({
-        pluginId: release.coordinate.pluginId,
-        version: release.coordinate.version,
-        digest: release.manifestDigest,
-        manifestUrl: release.manifestUrl,
-        publisherId: release.publisherId,
-        keyId: key.keyId
-      }))
-      .sort(comparePluginCatalogEntries)
-    const catalog = await signPluginCatalog(
-      {
-        format: PLUGIN_CATALOG_FORMAT,
-        schemaVersion: PLUGIN_CATALOG_SCHEMA_VERSION,
-        catalogId: identity(`${config.marketplaceId}-${channel}`, 'marketplace catalog id'),
-        version: `1.0.${sequence}`,
-        generatedAt,
-        expiresAt,
-        entries
-      },
-      config.rootPrivateKey,
-      { keyId: config.rootKeyId }
-    )
+  for (const { channel, catalog: payload } of projections) {
+    const catalog = await signPluginCatalog(payload, config.rootPrivateKey, {
+      keyId: config.rootKeyId
+    })
     const artifact = await artifacts.put(encoder.encode(serializePluginCatalog(catalog)))
     result.push({ channel, catalog, artifact })
   }
   return Object.freeze(result)
 }
 
-async function prepareRuntimeIndex(
+function publicationRuntimeIndexProjection(
   releases: readonly VerifiedRelease[],
-  artifacts: MarketplaceArtifactStore,
-  config: MarketplacePublicationConfig,
+  marketplaceId: string,
   sequence: number,
   generatedAt: string,
   expiresAt: string
-): Promise<PreparedMarketplaceRuntimeIndex | null> {
+): PluginRuntimeIndexPayloadV1 | null {
   const entriesByCoordinate = new Map<string, ReturnType<typeof runtimeEntry>>()
   for (const release of releases) {
     if (!release.runtime) continue
@@ -473,19 +496,26 @@ async function prepareRuntimeIndex(
     entriesByCoordinate.set(coordinate, entry)
   }
   if (entriesByCoordinate.size === 0) return null
-  const index = await signPluginRuntimeIndex(
-    {
-      format: PLUGIN_RUNTIME_INDEX_FORMAT,
-      schemaVersion: PLUGIN_RUNTIME_INDEX_SCHEMA_VERSION,
-      indexId: identity(`${config.marketplaceId}-runtime`, 'marketplace runtime index id'),
-      version: `1.0.${sequence}`,
-      generatedAt,
-      expiresAt,
-      entries: [...entriesByCoordinate.values()].sort(comparePluginRuntimeIndexEntries)
-    },
-    config.rootPrivateKey,
-    { keyId: config.rootKeyId }
-  )
+  return Object.freeze({
+    format: PLUGIN_RUNTIME_INDEX_FORMAT,
+    schemaVersion: PLUGIN_RUNTIME_INDEX_SCHEMA_VERSION,
+    indexId: identity(`${marketplaceId}-runtime`, 'marketplace runtime index id'),
+    version: `1.0.${sequence}`,
+    generatedAt,
+    expiresAt,
+    entries: [...entriesByCoordinate.values()].sort(comparePluginRuntimeIndexEntries)
+  })
+}
+
+async function prepareRuntimeIndex(
+  projection: PluginRuntimeIndexPayloadV1 | null,
+  artifacts: MarketplaceArtifactStore,
+  config: MarketplacePublicationConfig
+): Promise<PreparedMarketplaceRuntimeIndex | null> {
+  if (!projection) return null
+  const index = await signPluginRuntimeIndex(projection, config.rootPrivateKey, {
+    keyId: config.rootKeyId
+  })
   const artifact = await artifacts.put(encoder.encode(serializePluginRuntimeIndex(index)))
   return { index, artifact }
 }
@@ -505,12 +535,15 @@ function runtimeEntry(release: VerifiedRelease) {
   }
 }
 
-export async function prepareMarketplacePublication(
-  state: MarketplaceStateV1,
+export async function prepareMarketplacePublicationProjection(
+  stateValue: MarketplaceStateV1,
   artifacts: MarketplaceArtifactStore,
-  config: MarketplacePublicationConfig
-): Promise<PreparedMarketplacePublication> {
+  config: MarketplacePublicationProjectionConfig
+): Promise<MarketplacePublicationProjectionV1> {
+  const state = parseMarketplaceState(stateValue)
   const publicBaseURL = baseURL(config.publicBaseUrl)
+  const marketplaceId = identity(config.marketplaceId, 'marketplace id')
+  identity(config.rootKeyId, 'marketplace root key id')
   const generatedAt = publicationTime(config)
   const generatedAtMilliseconds = Date.parse(generatedAt)
   const expiresAt = new Date(
@@ -523,32 +556,57 @@ export async function prepareMarketplacePublication(
   }
   const sequence = currentPublicationSequence(state)
   const releases = await verifiedReleases(state, artifacts, publicBaseURL, generatedAtMilliseconds)
-  const catalogs = await prepareCatalogs(
+  const catalogs = publicationCatalogProjections(
     releases,
-    artifacts,
-    config,
+    marketplaceId,
     sequence,
     generatedAt,
     expiresAt
   )
-  const runtimeIndex = await prepareRuntimeIndex(
+  const runtimeIndex = publicationRuntimeIndexProjection(
     releases,
-    artifacts,
-    config,
+    marketplaceId,
     sequence,
     generatedAt,
     expiresAt
   )
-  const snapshot = await signMarketplaceSnapshot(
-    {
+  return Object.freeze({
+    catalogs,
+    runtimeIndex,
+    snapshot: Object.freeze({
       format: MARKETPLACE_SNAPSHOT_FORMAT,
       schemaVersion: MARKETPLACE_SNAPSHOT_SCHEMA_VERSION,
-      marketplaceId: identity(config.marketplaceId, 'marketplace id'),
+      marketplaceId,
       version: `1.0.${sequence}`,
       sequence,
       generatedAt,
       expiresAt,
       publisherDirectory: publisherDirectory(state),
+      listings: listings(state, releases),
+      auditHead: {
+        sequence: auditSequence,
+        headDigest: auditHead,
+        url: publicURL(publicBaseURL, '/v1/audit')
+      }
+    })
+  })
+}
+
+export async function prepareMarketplacePublication(
+  state: MarketplaceStateV1,
+  artifacts: MarketplaceArtifactStore,
+  config: MarketplacePublicationConfig
+): Promise<PreparedMarketplacePublication> {
+  const publicBaseURL = baseURL(config.publicBaseUrl)
+  const projection = await prepareMarketplacePublicationProjection(state, artifacts, config)
+  const { sequence, auditHead: snapshotAuditHead } = projection.snapshot
+  const auditSequence = snapshotAuditHead.sequence
+  const auditHead = snapshotAuditHead.headDigest
+  const catalogs = await prepareCatalogs(projection.catalogs, artifacts, config)
+  const runtimeIndex = await prepareRuntimeIndex(projection.runtimeIndex, artifacts, config)
+  const snapshot = await signMarketplaceSnapshot(
+    {
+      ...projection.snapshot,
       catalogs: catalogs.map(({ channel, catalog, artifact }) => ({
         channel,
         catalogId: catalog.catalogId,
@@ -556,12 +614,6 @@ export async function prepareMarketplacePublication(
         url: artifactURL(publicBaseURL, artifact.digest),
         digest: catalog.integrity.digest
       })),
-      listings: listings(state, releases),
-      auditHead: {
-        sequence: auditSequence,
-        headDigest: auditHead,
-        url: publicURL(publicBaseURL, '/v1/audit')
-      },
       ...(runtimeIndex
         ? {
             runtimeIndex: {

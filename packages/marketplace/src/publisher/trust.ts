@@ -1,4 +1,4 @@
-import type { MarketplacePublisherKeyV1, MarketplaceStateV1 } from './types'
+import type { MarketplacePublisherKeyV1, MarketplaceStateV1 } from '../types'
 
 export function findActiveMarketplacePublisherKey(
   state: MarketplaceStateV1,

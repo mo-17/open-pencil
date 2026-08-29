@@ -11,6 +11,7 @@ import {
   createMemoryMarketplaceNonceStore,
   digestMarketplaceArtifact,
   signMarketplaceRequest,
+  verifyMarketplaceRequestSignature,
   verifyMarketplaceRequest
 } from '@open-pencil/marketplace'
 
@@ -70,6 +71,42 @@ describe('marketplace artifact storage', () => {
 })
 
 describe('publisher request authentication', () => {
+  test('verifies a signed Publisher request without consuming its namespaced nonce', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const body = new TextEncoder().encode('{"submission":"atomic"}')
+    const timestamp = '2026-08-05T12:00:00.000Z'
+    const input = {
+      audience: AUDIENCE,
+      publisherId: 'publisher-one',
+      keyId: 'publisher-one-2026',
+      method: 'POST',
+      url: 'https://plugins.example.com/v1/submissions',
+      timestamp,
+      nonce: 'atomicnonce00001',
+      body
+    }
+    const headers = await signMarketplaceRequest(input, pair.privateKey)
+
+    const proof = await verifyMarketplaceRequestSignature(
+      { ...input, headers },
+      {
+        audience: AUDIENCE,
+        now: () => Date.parse(timestamp),
+        resolvePublicKey: async () => pair.publicKey
+      }
+    )
+
+    expect(proof).toMatchObject({
+      publisherId: input.publisherId,
+      keyId: input.keyId,
+      nonce: input.nonce,
+      timestamp,
+      bodyDigest: createHash('sha256').update(body).digest('base64url')
+    })
+    expect(proof.requestDigest).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(proof.signatureDigest).toMatch(/^[A-Za-z0-9_-]{43}$/)
+  })
+
   test('verifies a signed request once and rejects replay', async () => {
     const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
     const body = new TextEncoder().encode('{"submission":"one"}')

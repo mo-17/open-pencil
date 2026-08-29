@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
-import { stat, readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+/* eslint-disable max-lines -- The operator CLI keeps the complete review/sign/import ceremony visible in one command registry. */
+import { constants, type Stats } from 'node:fs'
+import { lstat, mkdir, open, readFile, stat, unlink } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 
 import { info } from 'agentfmt'
 import { defineCommand, runMain } from 'citty'
 
 import { importEd25519PrivateKeyPem, importEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
-import { createFileMarketplaceArtifactStore } from './artifacts'
+import { createFileMarketplaceArtifactStore, type MarketplaceArtifactStore } from './artifacts'
 import {
   idStatusTransitionArgs,
   pluginStatusTransitionArgs,
@@ -26,12 +28,43 @@ import {
 import { printMarketplaceCLIOutput as print } from './cli-output'
 import { createMarketplaceHttpApp } from './http'
 import {
+  createFileMarketplaceOfflineSignerPolicyStore,
+  initializeFileMarketplaceOfflineSignerPolicyStore
+} from './offline-signer-policy-store'
+import { prepareMarketplacePublicationProjection } from './publication'
+import {
+  MARKETPLACE_PUBLICATION_HANDOFF_LIMITS,
+  createMarketplacePublicationHandoff,
+  openMarketplacePublicationHandoff,
+  parseMarketplacePublicationHandoffBytes,
+  writeMarketplacePublicationHandoffFile
+} from './publication/handoff'
+import {
+  MARKETPLACE_SIGNED_PUBLICATION_BUNDLE_LIMITS,
+  createMarketplaceOfflineSignerPolicy,
+  createMarketplaceSignedPublicationBundle,
+  importMarketplaceSignedPublicationBundle,
+  loadMarketplacePreviousPublicationEvidence,
+  parseMarketplaceSignedPublicationBundleBytes,
+  serializeMarketplaceSignedPublicationBundle,
+  signMarketplacePublicationRequest,
+  verifyMarketplacePreviousPublicationEvidence
+} from './publication/offline'
+import {
+  MARKETPLACE_PUBLICATION_REQUEST_PURPOSES,
+  createMarketplacePublicationRequest,
+  marketplacePublicationRequestBytes,
+  marketplacePublicationRequestDigest,
+  type MarketplacePublicationRequestPurpose
+} from './publication/request'
+import { marketplacePublicationReservationFromRequest } from './publication/reservation'
+import {
   MARKETPLACE_PUBLISHER_REQUEST_MAX_BODY_BYTES,
   createMarketplacePublisherSignedEnvelope,
   marketplacePublisherRequestBodyDigest,
   writeMarketplacePublisherSignedEnvelope,
   type MarketplacePublisherRequestOperation
-} from './publisher-request'
+} from './publisher/request'
 import { positiveMarketplacePort, resolveMarketplaceServeMode } from './serve-mode'
 import { createMarketplaceService, type MarketplaceRootTrust } from './service'
 import {
@@ -52,6 +85,7 @@ const ENVIRONMENT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 interface OpenMarketplace {
   repository: SqliteMarketplaceRepository
+  artifacts: MarketplaceArtifactStore
   service: ReturnType<typeof createMarketplaceService>
 }
 
@@ -78,11 +112,51 @@ async function boundedText(path: string, maximum: number, label: string): Promis
 }
 
 async function boundedJSON(path: string, label: string): Promise<unknown> {
+  return boundedJSONFile(path, MAX_JSON_BYTES, label)
+}
+
+async function boundedJSONFile(path: string, maximum: number, label: string): Promise<unknown> {
   try {
-    return JSON.parse(await boundedText(path, MAX_JSON_BYTES, label))
+    return JSON.parse(await boundedText(path, maximum, label))
   } catch (error) {
     if (error instanceof Error && error.message.includes('must contain valid UTF-8')) throw error
     throw new Error(`${label} must contain valid JSON`)
+  }
+}
+
+async function writeExclusiveText(path: string, text: string, label: string): Promise<string> {
+  const absolute = resolve(path)
+  await mkdir(dirname(absolute), { recursive: true, mode: 0o700 })
+  let created = false
+  let handle: Awaited<ReturnType<typeof open>> | null = null
+  try {
+    handle = await open(absolute, 'wx', 0o600)
+    created = true
+    await handle.writeFile(text, 'utf8')
+    await handle.sync()
+    return absolute
+  } catch (cause) {
+    if (created) await unlink(absolute).catch(() => undefined)
+    const code = (cause as NodeJS.ErrnoException).code
+    if (code === 'EEXIST') throw new Error(`${label} already exists: ${absolute}`)
+    throw cause
+  } finally {
+    await handle?.close().catch(() => undefined)
+  }
+}
+
+function publicationPurpose(value: string): MarketplacePublicationRequestPurpose {
+  if (!(MARKETPLACE_PUBLICATION_REQUEST_PURPOSES as readonly string[]).includes(value)) {
+    throw new Error(
+      `Publication purpose must be one of ${MARKETPLACE_PUBLICATION_REQUEST_PURPOSES.join(', ')}`
+    )
+  }
+  return value as MarketplacePublicationRequestPurpose
+}
+
+function approvedDigest(actual: string, approved: string, label: string): void {
+  if (approved !== actual) {
+    throw new Error(`${label} approval digest does not match the exact reviewed bytes`)
   }
 }
 
@@ -112,30 +186,102 @@ async function referencedKey(
   return value
 }
 
-async function privateKey(args: PrivateKeyArguments): Promise<CryptoKey> {
-  try {
-    return await importEd25519PrivateKeyPem(
-      await referencedKey(args['private-key'], args['private-key-env'], 'private key')
+function assertOwnerOnlyPrivateKeyMetadata(metadata: Stats): void {
+  const userId = process.getuid?.()
+  if (
+    !metadata.isFile() ||
+    metadata.nlink !== 1 ||
+    metadata.size <= 0 ||
+    metadata.size > MAX_KEY_BYTES ||
+    (userId !== undefined && metadata.uid !== userId) ||
+    (metadata.mode & 0o077) !== 0
+  ) {
+    throw new Error(
+      `Private-key file must be a non-empty, owner-only regular file with one link and no more than ${MAX_KEY_BYTES} bytes`
     )
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Provide exactly')) throw error
-    throw new Error('Private key reference does not contain a valid Ed25519 PKCS8 key')
+  }
+}
+
+function samePrivateKeyFile(left: Stats, right: Stats): boolean {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.mode === right.mode &&
+    left.uid === right.uid &&
+    left.gid === right.gid &&
+    left.nlink === right.nlink &&
+    left.size === right.size &&
+    left.mtimeMs === right.mtimeMs &&
+    left.ctimeMs === right.ctimeMs
+  )
+}
+
+async function ownerOnlyPrivateKeyText(path: string): Promise<string> {
+  if (process.platform === 'win32') {
+    throw new Error(
+      'Private-key file permissions cannot be verified on Windows; use a named environment variable'
+    )
+  }
+  const absolute = resolve(path)
+  let handle: Awaited<ReturnType<typeof open>> | null = null
+  try {
+    const pathBeforeOpen = await lstat(absolute)
+    assertOwnerOnlyPrivateKeyMetadata(pathBeforeOpen)
+    handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const beforeRead = await handle.stat()
+    assertOwnerOnlyPrivateKeyMetadata(beforeRead)
+    if (!samePrivateKeyFile(pathBeforeOpen, beforeRead)) {
+      throw new Error('Private-key file changed while it was opened')
+    }
+    const boundedBytes = new Uint8Array(beforeRead.size + 1)
+    let byteLength = 0
+    while (byteLength < boundedBytes.byteLength) {
+      const { bytesRead } = await handle.read(
+        boundedBytes,
+        byteLength,
+        boundedBytes.byteLength - byteLength,
+        byteLength
+      )
+      if (bytesRead === 0) break
+      byteLength += bytesRead
+    }
+    const afterRead = await handle.stat()
+    const pathAfterRead = await lstat(absolute)
+    assertOwnerOnlyPrivateKeyMetadata(afterRead)
+    assertOwnerOnlyPrivateKeyMetadata(pathAfterRead)
+    if (
+      byteLength !== beforeRead.size ||
+      byteLength !== afterRead.size ||
+      !samePrivateKeyFile(beforeRead, afterRead) ||
+      !samePrivateKeyFile(afterRead, pathAfterRead)
+    ) {
+      throw new Error('Private-key file changed while it was read')
+    }
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(boundedBytes.subarray(0, byteLength))
+    } catch {
+      throw new Error('Private-key file must contain valid UTF-8')
+    }
+  } finally {
+    await handle?.close().catch(() => undefined)
   }
 }
 
 async function publisherRequestPrivateKey(args: PrivateKeyArguments): Promise<CryptoKey> {
-  if (args['private-key'] && !args['private-key-env']) {
-    if (process.platform === 'win32') {
-      throw new Error(
-        'Publisher request private-key file permissions cannot be verified on Windows; use a named environment variable'
-      )
-    }
-    const metadata = await stat(resolve(args['private-key']))
-    if (!metadata.isFile() || (metadata.mode & 0o077) !== 0) {
-      throw new Error('Publisher request private-key file must be a regular 0600 owner-only file')
-    }
+  if ((args['private-key'] ? 1 : 0) + (args['private-key-env'] ? 1 : 0) !== 1) {
+    throw new Error('Provide exactly one private key file or named environment variable')
   }
-  return privateKey(args)
+  const encoded = args['private-key']
+    ? await ownerOnlyPrivateKeyText(args['private-key'])
+    : environmentValue(args['private-key-env'] as string, 'private key')
+  if (new TextEncoder().encode(encoded).byteLength > MAX_KEY_BYTES) {
+    throw new Error(`Private key exceeds ${MAX_KEY_BYTES} bytes`)
+  }
+  try {
+    return await importEd25519PrivateKeyPem(encoded)
+  } catch {
+    throw new Error('Private key reference does not contain a valid Ed25519 PKCS8 key')
+  }
 }
 
 async function publicKey(args: PublicKeyArguments): Promise<CryptoKey> {
@@ -159,11 +305,13 @@ function rootKeyId(value: string | undefined, marketplaceId: string): string {
 
 function openMarketplace(args: StorageArguments, root?: MarketplaceRootTrust): OpenMarketplace {
   const repository = createSqliteMarketplaceRepository({ path: args.database })
+  const artifacts = createFileMarketplaceArtifactStore(args.artifacts)
   return {
     repository,
+    artifacts,
     service: createMarketplaceService({
       repository,
-      artifacts: createFileMarketplaceArtifactStore(args.artifacts),
+      artifacts,
       marketplaceId: args['marketplace-id'],
       publicBaseUrl: args['public-base-url'],
       ...(root ? { root } : {})
@@ -483,10 +631,318 @@ const review = defineCommand({
   }
 })
 
+async function publicationHandoff(path: string) {
+  const encoded = await boundedFile(
+    path,
+    MARKETPLACE_PUBLICATION_HANDOFF_LIMITS.maxJsonBytes,
+    'publication handoff'
+  )
+  return openMarketplacePublicationHandoff(parseMarketplacePublicationHandoffBytes(encoded))
+}
+
+const publicationRequestCreate = defineCommand({
+  meta: {
+    name: 'request',
+    description: 'Freeze one exact online state and signer-independent publication review'
+  },
+  args: {
+    ...storageArgs,
+    ...publicKeyArgs,
+    'root-key-id': { type: 'string' },
+    purpose: { type: 'string', default: 'routine' },
+    'emergency-plan': {
+      type: 'string',
+      description: 'Explicit reviewed shrink-only projection for emergency-revocation'
+    },
+    output: { type: 'string', required: true }
+  },
+  async run({ args }) {
+    const purpose = publicationPurpose(args.purpose)
+    if ((purpose === 'emergency-revocation') !== Boolean(args['emergency-plan'])) {
+      throw new Error(
+        'Exactly emergency-revocation requests require an explicit --emergency-plan projection'
+      )
+    }
+    const rootPublicKey = await publicKey(args)
+    await withMarketplace(args, async ({ repository, artifacts }) => {
+      const state = await repository.snapshot()
+      const previousPublication = await loadMarketplacePreviousPublicationEvidence(state, artifacts)
+      const authority = {
+        marketplaceId: args['marketplace-id'],
+        rootKeyId: rootKeyId(args['root-key-id'], args['marketplace-id']),
+        publicBaseUrl: args['public-base-url']
+      }
+      const baseline = previousPublication
+        ? await verifyMarketplacePreviousPublicationEvidence(
+            { state, previousPublication, ...authority },
+            rootPublicKey
+          )
+        : null
+      const derivedPlan = await prepareMarketplacePublicationProjection(state, artifacts, authority)
+      const plan = args['emergency-plan']
+        ? await boundedJSONFile(
+            args['emergency-plan'],
+            MARKETPLACE_PUBLICATION_HANDOFF_LIMITS.maxRequestJsonBytes,
+            'emergency publication plan'
+          )
+        : derivedPlan
+      const request = createMarketplacePublicationRequest({
+        state,
+        purpose,
+        baseline,
+        plan: plan as typeof derivedPlan,
+        ...authority
+      })
+      const handoff = createMarketplacePublicationHandoff({ request, state })
+      const output = await writeMarketplacePublicationHandoffFile(args.output, handoff)
+      const reservation = await repository.reservePublication(
+        marketplacePublicationReservationFromRequest(request)
+      )
+      print(args.json, {
+        output,
+        reservation: reservation.source,
+        purpose,
+        sequence: request.expectedNextSequence,
+        requestDigest: marketplacePublicationRequestDigest(request),
+        stateDigest: request.stateDigest,
+        reviewChanges: request.review.changes.length
+      })
+    })
+  }
+})
+
+const publicationInspect = defineCommand({
+  meta: { name: 'inspect', description: 'Inspect an exact offline publication handoff' },
+  args: {
+    handoff: { type: 'string', required: true },
+    json: { type: 'boolean', default: false }
+  },
+  async run({ args }) {
+    const opened = await publicationHandoff(args.handoff)
+    print(args.json, {
+      marketplaceId: opened.request.marketplaceId,
+      rootKeyId: opened.request.rootKeyId,
+      publicBaseUrl: opened.request.publicBaseUrl,
+      purpose: opened.request.purpose,
+      sequence: opened.request.expectedNextSequence,
+      requestDigest: marketplacePublicationRequestDigest(opened.request),
+      stateDigest: opened.request.stateDigest,
+      generatedAt: opened.request.generatedAt,
+      expiresAt: opened.request.expiresAt,
+      changes: opened.request.review.changes
+    })
+  }
+})
+
+const publicationReserve = defineCommand({
+  meta: {
+    name: 'reserve',
+    description: 'Idempotently reserve the exact online state captured by an existing handoff'
+  },
+  args: {
+    ...storageArgs,
+    handoff: { type: 'string', required: true }
+  },
+  async run({ args }) {
+    const opened = await publicationHandoff(args.handoff)
+    if (
+      opened.request.marketplaceId !== args['marketplace-id'] ||
+      opened.request.publicBaseUrl !== new URL(args['public-base-url']).href
+    ) {
+      throw new Error('Publication handoff authority does not match the selected marketplace')
+    }
+    await withMarketplace(args, async ({ repository }) => {
+      const execution = await repository.reservePublication(
+        marketplacePublicationReservationFromRequest(opened.request)
+      )
+      print(args.json, {
+        source: execution.source,
+        requestDigest: execution.reservation.requestDigest,
+        stateDigest: execution.reservation.stateDigest,
+        sequence: execution.reservation.expectedNextSequence
+      })
+    })
+  }
+})
+
+const publicationCancel = defineCommand({
+  meta: {
+    name: 'cancel',
+    description: 'Explicitly cancel one exact stuck publication reservation with audit evidence'
+  },
+  args: {
+    ...storageArgs,
+    'approve-request-digest': { type: 'string', required: true },
+    reason: { type: 'string', required: true },
+    actor: { type: 'string' }
+  },
+  async run({ args }) {
+    await withMarketplace(args, async ({ repository }) => {
+      const reservation = await repository.inspectPublicationReservation()
+      if (!reservation) throw new Error('No active publication reservation exists')
+      approvedDigest(
+        reservation.requestDigest,
+        args['approve-request-digest'],
+        'Publication cancellation request'
+      )
+      const event = await repository.cancelPublication(
+        reservation,
+        args['approve-request-digest'],
+        {
+          actor: actor(args.actor),
+          reason: args.reason,
+          correlationId: reservation.requestDigest
+        }
+      )
+      print(args.json, {
+        cancelled: true,
+        requestDigest: reservation.requestDigest,
+        stateDigest: reservation.stateDigest,
+        sequence: reservation.expectedNextSequence,
+        auditSequence: event.sequence,
+        auditHead: event.eventHash
+      })
+    })
+  }
+})
+
+const publicationSignerInit = defineCommand({
+  meta: {
+    name: 'signer-init',
+    description: 'Pin the first reviewed state and Root authority in an owner-only signer policy'
+  },
+  args: {
+    handoff: { type: 'string', required: true },
+    policy: { type: 'string', required: true },
+    'approve-state-digest': { type: 'string', required: true },
+    ...publicKeyArgs,
+    json: { type: 'boolean', default: false }
+  },
+  async run({ args }) {
+    const opened = await publicationHandoff(args.handoff)
+    approvedDigest(
+      opened.request.stateDigest,
+      args['approve-state-digest'],
+      'Signer bootstrap state'
+    )
+    const policy = await createMarketplaceOfflineSignerPolicy({
+      marketplaceId: opened.request.marketplaceId,
+      rootKeyId: opened.request.rootKeyId,
+      publicBaseUrl: opened.request.publicBaseUrl,
+      rootPublicKey: await publicKey(args),
+      bootstrapState: opened.state
+    })
+    await initializeFileMarketplaceOfflineSignerPolicyStore(args.policy, policy)
+    print(args.json, {
+      policy: resolve(args.policy),
+      marketplaceId: policy.marketplaceId,
+      rootKeyId: policy.rootKeyId,
+      stateDigest: policy.bootstrap.stateDigest,
+      auditSequence: policy.bootstrap.auditSequence,
+      auditHead: policy.bootstrap.auditHead
+    })
+  }
+})
+
+const publicationSign = defineCommand({
+  meta: { name: 'sign', description: 'Sign one exact reviewed handoff with the offline Root key' },
+  args: {
+    handoff: { type: 'string', required: true },
+    artifacts: { type: 'string', required: true },
+    policy: { type: 'string', required: true },
+    output: { type: 'string', required: true },
+    'approve-request-digest': { type: 'string', required: true },
+    ...privateKeyArgs,
+    ...publicKeyArgs,
+    json: { type: 'boolean', default: false }
+  },
+  async run({ args }) {
+    const opened = await publicationHandoff(args.handoff)
+    const requestDigest = marketplacePublicationRequestDigest(opened.request)
+    approvedDigest(requestDigest, args['approve-request-digest'], 'Publication request')
+    const artifacts = createFileMarketplaceArtifactStore(args.artifacts)
+    const previousPublication = await loadMarketplacePreviousPublicationEvidence(
+      opened.state,
+      artifacts
+    )
+    const signed = await signMarketplacePublicationRequest({
+      requestBytes: marketplacePublicationRequestBytes(opened.request),
+      state: opened.state,
+      previousPublication,
+      rootPublicKey: await publicKey(args),
+      rootPrivateKey: await publisherRequestPrivateKey(args),
+      artifacts,
+      policyStore: createFileMarketplaceOfflineSignerPolicyStore(args.policy)
+    })
+    const output = await writeExclusiveText(
+      args.output,
+      serializeMarketplaceSignedPublicationBundle(createMarketplaceSignedPublicationBundle(signed)),
+      'signed publication bundle output'
+    )
+    print(args.json, {
+      output,
+      sequence: signed.sequence,
+      requestDigest: signed.requestDigest,
+      stateDigest: signed.stateDigest,
+      snapshotDigest: signed.record.snapshotDigest,
+      snapshotArtifactDigest: signed.record.snapshotArtifactDigest
+    })
+  }
+})
+
+const publicationImport = defineCommand({
+  meta: {
+    name: 'import',
+    description: 'Verify and atomically import one Root-authorized signed publication bundle'
+  },
+  args: {
+    ...storageArgs,
+    bundle: { type: 'string', required: true },
+    ...publicKeyArgs,
+    actor: { type: 'string' }
+  },
+  async run({ args }) {
+    const bundle = parseMarketplaceSignedPublicationBundleBytes(
+      await boundedFile(
+        args.bundle,
+        MARKETPLACE_SIGNED_PUBLICATION_BUNDLE_LIMITS.maxJsonBytes,
+        'signed publication bundle'
+      )
+    )
+    const rootPublicKey = await publicKey(args)
+    await withMarketplace(args, async ({ repository, artifacts }) => {
+      const imported = await importMarketplaceSignedPublicationBundle({
+        bundle,
+        repository,
+        artifacts,
+        rootPublicKey,
+        actor: actor(args.actor)
+      })
+      print(args.json, imported.publication, 'Imported marketplace publication')
+    })
+  }
+})
+
+const publication = defineCommand({
+  meta: {
+    name: 'publication',
+    description: 'Operate the reserved online review, offline Root signer, and import workflow'
+  },
+  subCommands: {
+    request: publicationRequestCreate,
+    reserve: publicationReserve,
+    cancel: publicationCancel,
+    inspect: publicationInspect,
+    'signer-init': publicationSignerInit,
+    sign: publicationSign,
+    import: publicationImport
+  }
+})
+
 const publish = defineCommand({
   meta: {
     name: 'publish',
-    description: 'Build immutable catalogs and publish a root-signed marketplace snapshot'
+    description: 'Deprecated direct Root-signing entrypoint (always fails closed)'
   },
   args: {
     ...storageArgs,
@@ -495,19 +951,9 @@ const publish = defineCommand({
     'root-key-id': { type: 'string' },
     actor: { type: 'string' }
   },
-  async run({ args }) {
-    const root: MarketplaceRootTrust = {
-      keyId: rootKeyId(args['root-key-id'], args['marketplace-id']),
-      privateKey: await privateKey(args),
-      publicKey: await publicKey(args)
-    }
-    await withMarketplace(
-      args,
-      async ({ service }) => {
-        const result = await service.publish({ actor: actor(args.actor) })
-        print(args.json, result.publication, 'Published marketplace')
-      },
-      root
+  run() {
+    throw new Error(
+      'Direct marketplace publishing is disabled; use publication request, inspect, signer-init/sign, then publication import'
     )
   }
 })
@@ -536,24 +982,26 @@ const serve = defineCommand({
     'enable-admin': {
       type: 'boolean',
       default: false,
-      description: 'Opt in to loopback-only admin mutation routes'
+      description: 'Opt in to loopback-only admin routes'
     },
     'enable-online-signing': {
       type: 'boolean',
       default: false,
-      description: 'Opt in to loading the root private key and exposing loopback admin publish'
+      description: 'Deprecated compatibility flag; online HTTP root signing is disabled'
     },
     'require-admin-assertion': {
       type: 'boolean',
       default: false,
-      description: 'Require a versioned Portal service assertion instead of legacy bearer access'
+      description:
+        'Require versioned Portal assertions for admin reads; mutations always require V2 operator assertions'
     },
     host: { type: 'string', default: '127.0.0.1' },
     port: { type: 'string', default: '43121' },
     'admin-token-env': {
       type: 'string',
       default: 'OPENPENCIL_MARKETPLACE_ADMIN_TOKEN',
-      description: 'Named environment variable containing the admin bearer token'
+      description:
+        'Named environment variable containing the assertion secret (legacy bearer reads only)'
     }
   },
   async run({ args }) {
@@ -562,19 +1010,25 @@ const serve = defineCommand({
       args['enable-admin'],
       args['enable-online-signing']
     )
+    if (mode.onlineSigning) {
+      throw new Error(
+        'Online marketplace signing over HTTP is disabled; use the publication request/sign/import workflow'
+      )
+    }
     const token = mode.adminEnabled
       ? environmentValue(args['admin-token-env'], 'admin token')
       : undefined
     if (token !== undefined && (token.length < 32 || token.length > 512)) {
       throw new Error('Admin token must contain between 32 and 512 characters')
     }
-    if (!mode.onlineSigning && (args['private-key'] || args['private-key-env'])) {
-      throw new Error('Private key references require explicit --enable-online-signing')
+    if (args['private-key'] || args['private-key-env']) {
+      throw new Error(
+        'Marketplace serve does not accept private keys; use the offline publication signer'
+      )
     }
     const root: MarketplaceRootTrust = {
       keyId: rootKeyId(args['root-key-id'], args['marketplace-id']),
-      publicKey: await publicKey(args),
-      ...(mode.onlineSigning ? { privateKey: await privateKey(args) } : {})
+      publicKey: await publicKey(args)
     }
     const marketplace = openMarketplace(args, root)
     const app = createMarketplaceHttpApp({
@@ -583,8 +1037,7 @@ const serve = defineCommand({
       admin: {
         enabled: mode.adminEnabled,
         ...(token === undefined ? {} : { token }),
-        requireServiceAssertion: args['require-admin-assertion'],
-        onlinePublishing: mode.onlineSigning
+        requireServiceAssertion: args['require-admin-assertion']
       }
     })
     const server = Bun.serve({
@@ -593,7 +1046,7 @@ const serve = defineCommand({
       fetch: app.fetch
     })
     process.stdout.write(
-      `${info(`OpenPencil marketplace listening on http://${args.host}:${server.port} (admin HTTP ${mode.adminEnabled ? 'enabled' : 'disabled'}, online signing ${mode.onlineSigning ? 'enabled' : 'disabled'})`)}\n`
+      `${info(`OpenPencil marketplace listening on http://${args.host}:${server.port} (admin HTTP ${mode.adminEnabled ? 'enabled' : 'disabled'}, online signing disabled)`)}\n`
     )
     await new Promise<void>((resolvePromise) => {
       process.once('SIGINT', resolvePromise)
@@ -610,7 +1063,7 @@ export const marketplaceCommand = defineCommand({
     version: '0.0.0',
     description: 'Operate the local-first OpenPencil plugin marketplace control plane'
   },
-  subCommands: { request, init, publisher, submission, review, publish, audit, serve }
+  subCommands: { request, init, publisher, submission, review, publication, publish, audit, serve }
 })
 
 if (import.meta.main) await runMain(marketplaceCommand)

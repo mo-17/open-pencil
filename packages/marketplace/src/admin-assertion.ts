@@ -1,6 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 
-import type { MarketplaceNonceStore } from './auth'
+import { MARKETPLACE_NONCE_NAMESPACES, type MarketplaceNonceStore } from './auth'
 import { canonicalBase64URLBytes } from './canonical-base64url'
 import {
   parseMarketplaceOperatorAuthorization,
@@ -99,10 +99,8 @@ interface MarketplaceAdminAssertionSource {
 
 const ASSERTION_PREFIX =
   `OPENPENCIL-MARKETPLACE-ADMIN-ASSERTION-V${MARKETPLACE_ADMIN_ASSERTION_VERSION}` as const
-const ASSERTION_NONCE_NAMESPACE = 'admin-assertion-v1'
 const OPERATOR_ASSERTION_PREFIX =
   `OPENPENCIL-MARKETPLACE-ADMIN-ASSERTION-V${MARKETPLACE_OPERATOR_ASSERTION_VERSION}` as const
-const OPERATOR_ASSERTION_NONCE_NAMESPACE = 'admin-assertion-v2'
 const ASSERTION_KEYS = Object.freeze([
   'version',
   'audience',
@@ -512,9 +510,13 @@ export async function verifyMarketplaceAdminAssertion(
   const expiresAt = assertionExpiry(parsed.claims, input, options)
   if (
     !(await options.nonces.consume(
-      parsed.operator ? OPERATOR_ASSERTION_NONCE_NAMESPACE : ASSERTION_NONCE_NAMESPACE,
+      parsed.operator
+        ? MARKETPLACE_NONCE_NAMESPACES.operatorAssertionV2
+        : MARKETPLACE_NONCE_NAMESPACES.adminAssertionV1,
+      MARKETPLACE_ADMIN_ASSERTION_AUDIENCE,
       parsed.claims.nonce,
-      expiresAt
+      expiresAt,
+      (options.now ?? Date.now)()
     ))
   ) {
     throw new Error('Marketplace admin assertion nonce has already been used')

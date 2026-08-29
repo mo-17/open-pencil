@@ -24,6 +24,7 @@ import {
   pluginPayloadV2,
   pluginStorageProviderContribution
 } from '../plugins/helpers'
+import { recordTestMarketplacePublication } from './publication/helpers'
 
 const NOW = '2026-08-05T12:00:00.000Z'
 const BEFORE_OWNERSHIP_GRANT = '2026-08-05T11:59:00.000Z'
@@ -45,7 +46,6 @@ async function marketplaceFixture() {
     now: () => new Date(NOW),
     root: {
       keyId: 'marketplace-root-2026',
-      privateKey: root.privateKey,
       publicKey: root.publicKey
     }
   })
@@ -83,6 +83,32 @@ async function marketplaceFixture() {
 }
 
 describe('marketplace service publication pipeline', () => {
+  test('rejects legacy Root private-key configuration and exposes no online publish method', async () => {
+    const root = await keyPair()
+    expect(() =>
+      createMarketplaceService({
+        repository: createMemoryMarketplaceRepository(),
+        artifacts: createMemoryMarketplaceArtifactStore(),
+        marketplaceId: 'openpencil-marketplace',
+        publicBaseUrl: 'https://plugins.example.com/',
+        root: {
+          keyId: 'marketplace-root-2026',
+          publicKey: root.publicKey,
+          privateKey: root.privateKey
+        } as never
+      })
+    ).toThrow('does not accept Root private keys')
+
+    const service = createMarketplaceService({
+      repository: createMemoryMarketplaceRepository(),
+      artifacts: createMemoryMarketplaceArtifactStore(),
+      marketplaceId: 'openpencil-marketplace',
+      publicBaseUrl: 'https://plugins.example.com/',
+      root: { keyId: 'marketplace-root-2026', publicKey: root.publicKey }
+    })
+    expect('publish' in service).toBe(false)
+  })
+
   test('keeps signed manifest and CAS digests distinct and publishes root-bound artifacts', async () => {
     const { artifacts, publisher, repository, root, service } = await marketplaceFixture()
 
@@ -147,7 +173,18 @@ describe('marketplace service publication pipeline', () => {
       time: NOW
     })
     await service.publishSubmission(submission.id, { actor: 'admin:test', time: NOW })
-    const result = await service.publish({ actor: 'admin:test', time: NOW })
+    expect('publish' in service).toBe(false)
+    const result = await recordTestMarketplacePublication({
+      repository,
+      artifacts,
+      marketplaceId: 'openpencil-marketplace',
+      publicBaseUrl: 'https://plugins.example.com/',
+      rootKeyId: 'marketplace-root-2026',
+      rootPrivateKey: root.privateKey,
+      rootPublicKey: root.publicKey,
+      generatedAt: NOW,
+      actor: 'admin:test'
+    })
 
     expect(result.publication.sequence).toBe(1)
     expect(result.publication.auditSequence).toBeGreaterThan(0)
@@ -200,18 +237,28 @@ describe('marketplace service publication pipeline', () => {
       now: () => new Date(NOW),
       root: {
         keyId: 'marketplace-root-2026',
-        privateKey: wrongRoot.privateKey,
         publicKey: root.publicKey
       }
     })
-    await expect(mismatchedSigner.publish({ actor: 'admin:test', time: NOW })).rejects.toThrow(
-      'signature verification failed'
-    )
+    expect('publish' in mismatchedSigner).toBe(false)
+    await expect(
+      recordTestMarketplacePublication({
+        repository,
+        artifacts,
+        marketplaceId: 'openpencil-marketplace',
+        publicBaseUrl: 'https://plugins.example.com/',
+        rootKeyId: 'marketplace-root-2026',
+        rootPrivateKey: wrongRoot.privateKey,
+        rootPublicKey: root.publicKey,
+        generatedAt: NOW,
+        actor: 'admin:test'
+      })
+    ).rejects.toThrow('signature verification failed')
     expect((await repository.snapshot()).publications).toHaveLength(1)
   })
 
   test('submits and publishes schema-v2 manifests while unknown versions fail closed', async () => {
-    const { artifacts, publisher, service } = await marketplaceFixture()
+    const { artifacts, publisher, repository, root, service } = await marketplaceFixture()
     const payload = pluginPayloadV2()
     payload.contributions.storageProviders = [pluginStorageProviderContribution()]
     const manifest = await signVersionedPluginManifest(payload, publisher.privateKey)
@@ -245,7 +292,17 @@ describe('marketplace service publication pipeline', () => {
       time: NOW
     })
     await service.publishSubmission(submission.id, { actor: 'admin:test', time: NOW })
-    const published = await service.publish({ actor: 'admin:test', time: NOW })
+    const published = await recordTestMarketplacePublication({
+      repository,
+      artifacts,
+      marketplaceId: 'openpencil-marketplace',
+      publicBaseUrl: 'https://plugins.example.com/',
+      rootKeyId: 'marketplace-root-2026',
+      rootPrivateKey: root.privateKey,
+      rootPublicKey: root.publicKey,
+      generatedAt: NOW,
+      actor: 'admin:test'
+    })
     expect(published.prepared.catalogs[0].catalog.entries).toMatchObject([
       { pluginId: 'acme.analytics', version: '2.0.0', digest: manifest.integrity.digest }
     ])
@@ -280,7 +337,7 @@ describe('marketplace service publication pipeline', () => {
       marketplaceId: 'openpencil-marketplace',
       publicBaseUrl: 'https://plugins.example.com/',
       now: () => new Date(NOW),
-      root: { keyId: 'root', privateKey: root.privateKey, publicKey: root.publicKey }
+      root: { keyId: 'root', publicKey: root.publicKey }
     })
     await expect(
       service.withdrawSubmission('missing', 'acme', 'Publisher cancelled this review', {

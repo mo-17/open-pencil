@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  MARKETPLACE_ADMIN_ASSERTION_HEADER,
   MARKETPLACE_CONTROL_LIMITS,
   MARKETPLACE_LIMITS,
   createMarketplaceHttpApp,
@@ -12,7 +13,11 @@ import {
   parseMarketplaceControlPage,
   parseMarketplaceControlSubmission,
   parseMarketplaceControlSubmissionSummary,
+  signMarketplaceOperatorAssertion,
   signMarketplaceRequest,
+  MarketplacePublisherMutationAuthorityError,
+  type MarketplaceRepository,
+  type MarketplaceTransaction,
   type MarketplaceService
 } from '@open-pencil/marketplace'
 import {
@@ -31,6 +36,8 @@ const MARKETPLACE_ID = 'openpencil-marketplace'
 const OPERATOR_TOKEN = 'phase4-operator-credential'
 const EXPIRED_TOKEN = 'phase4-expired-credential'
 const LEGACY_TOKEN = 'l'.repeat(32)
+const V2_OPERATOR_ACTOR = `portal:${'A'.repeat(43)}`
+const V2_STEP_UP_GRANT_DIGEST = 'A'.repeat(43)
 const encoder = new TextEncoder()
 
 interface TestPublisher {
@@ -57,7 +64,6 @@ interface MarketplaceHttpTestPage {
 
 interface Phase4AdminOptions {
   enabled: boolean
-  onlinePublishing?: boolean
   token?: string
   authenticate?: (request: Request) => Promise<Phase4AdminPrincipal | null>
 }
@@ -65,7 +71,10 @@ interface Phase4AdminOptions {
 interface Phase4Fixture {
   app: ReturnType<typeof createMarketplaceHttpApp>
   artifacts: ReturnType<typeof createMemoryMarketplaceArtifactStore>
+  afterNextPublisherMutationOperation(operation: () => unknown): void
+  beforeNextTransaction(operation: (transaction: MarketplaceTransaction) => unknown): void
   createApp(admin?: Phase4AdminOptions): ReturnType<typeof createMarketplaceHttpApp>
+  mutateRepository(operation: (transaction: MarketplaceTransaction) => unknown): Promise<unknown>
   nextNonce(): string
   publishers: Record<'alpha' | 'beta', TestPublisher>
   service: MarketplaceService
@@ -113,7 +122,8 @@ function listing(publisherId: string, version: string, description = 'Phase 4 te
 async function registerPublisher(
   service: MarketplaceService,
   id: string,
-  pluginId: string
+  pluginId: string,
+  notAfter = '2027-01-01T00:00:00.000Z'
 ): Promise<TestPublisher> {
   const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
   const publisher = { id, keyId: `${id}.release`, keyPair, pluginId }
@@ -125,7 +135,7 @@ async function registerPublisher(
         publisherId: id,
         publicKeyPem: await exportEd25519PublicKeyPem(keyPair.publicKey),
         notBefore: '2026-01-01T00:00:00.000Z',
-        notAfter: '2027-01-01T00:00:00.000Z'
+        notAfter
       }
     },
     { actor: `publisher:${id}`, time: BEFORE }
@@ -189,18 +199,68 @@ function principalAdminOptions(): Phase4AdminOptions {
   }
 }
 
-async function phase4Fixture(): Promise<Phase4Fixture> {
-  const repository = createMemoryMarketplaceRepository()
+async function phase4Fixture(
+  clocks: { serviceNow?: string; httpNow?: string; publisherKeyNotAfter?: string } = {}
+): Promise<Phase4Fixture> {
+  const backingRepository = createMemoryMarketplaceRepository()
+  let afterNextPublisherMutationOperation: (() => unknown) | null = null
+  let beforeNextTransaction: ((transaction: MarketplaceTransaction) => unknown) | null = null
+  const repository: MarketplaceRepository = {
+    nonces: backingRepository.nonces,
+    snapshot: () => backingRepository.snapshot(),
+    async immutableSnapshot() {
+      return backingRepository.immutableSnapshot
+        ? backingRepository.immutableSnapshot()
+        : backingRepository.snapshot()
+    },
+    async transaction(operation) {
+      const before = beforeNextTransaction
+      beforeNextTransaction = null
+      if (before) {
+        await backingRepository.transaction(async (transaction) => {
+          await before(transaction)
+        })
+      }
+      return backingRepository.transaction(operation)
+    },
+    inspectPublisherMutation: (request, currentTime) =>
+      backingRepository.inspectPublisherMutation(request, currentTime),
+    async executePublisherMutation(request, currentTime, operation) {
+      const before = beforeNextTransaction
+      beforeNextTransaction = null
+      if (before) {
+        await backingRepository.transaction(async (transaction) => {
+          await before(transaction)
+        })
+      }
+      const after = afterNextPublisherMutationOperation
+      afterNextPublisherMutationOperation = null
+      return backingRepository.executePublisherMutation(
+        request,
+        currentTime,
+        async (transaction) => {
+          const result = await operation(transaction)
+          if (after) await after()
+          return result
+        }
+      )
+    }
+  }
   const artifacts = createMemoryMarketplaceArtifactStore()
   const service = createMarketplaceService({
     repository,
     artifacts,
     marketplaceId: MARKETPLACE_ID,
     publicBaseUrl: 'https://plugins.example.com/',
-    now: () => new Date(NOW)
+    now: () => new Date(clocks.serviceNow ?? NOW)
   })
-  const alpha = await registerPublisher(service, 'alpha', 'alpha.analytics')
-  const beta = await registerPublisher(service, 'beta', 'beta.toolbox')
+  const alpha = await registerPublisher(
+    service,
+    'alpha',
+    'alpha.analytics',
+    clocks.publisherKeyNotAfter
+  )
+  const beta = await registerPublisher(service, 'beta', 'beta.toolbox', clocks.publisherKeyNotAfter)
 
   const alphaReleaseResult = await submitVersion(service, alpha, 'alpha-release-v1', '1.0.0')
   await service.transitionSubmission(alphaReleaseResult.submission.id, 'approved', {
@@ -221,7 +281,7 @@ async function phase4Fixture(): Promise<Phase4Fixture> {
     createMarketplaceHttpApp({
       service,
       nonces: createMemoryMarketplaceNonceStore(() => Date.parse(NOW)),
-      now: () => Date.parse(NOW),
+      now: () => Date.parse(clocks.httpNow ?? NOW),
       ...(admin
         ? {
             // Fail-first compatibility: Phase 4 adds the trusted authenticator shape.
@@ -233,7 +293,18 @@ async function phase4Fixture(): Promise<Phase4Fixture> {
   return {
     app,
     artifacts,
+    afterNextPublisherMutationOperation(operation) {
+      if (afterNextPublisherMutationOperation) {
+        throw new Error('A Publisher mutation operation hook is already armed')
+      }
+      afterNextPublisherMutationOperation = operation
+    },
+    beforeNextTransaction(operation) {
+      if (beforeNextTransaction) throw new Error('A transaction race hook is already armed')
+      beforeNextTransaction = operation
+    },
     createApp,
+    mutateRepository: (operation) => backingRepository.transaction(operation),
     nextNonce,
     publishers: { alpha, beta },
     service,
@@ -265,7 +336,7 @@ async function signedInit(
   fixture: Phase4Fixture,
   publisherId: 'alpha' | 'beta',
   url: string,
-  options: { method?: 'GET' | 'POST'; value?: unknown; timestamp?: string } = {}
+  options: { method?: 'GET' | 'POST'; value?: unknown; timestamp?: string; nonce?: string } = {}
 ): Promise<RequestInit> {
   const publisher = fixture.publishers[publisherId]
   const method = options.method ?? 'GET'
@@ -278,7 +349,7 @@ async function signedInit(
       method,
       url,
       timestamp: options.timestamp ?? NOW,
-      nonce: fixture.nextNonce(),
+      nonce: options.nonce ?? fixture.nextNonce(),
       body: encoder.encode(body ?? '')
     },
     publisher.keyPair.privateKey
@@ -358,30 +429,6 @@ function tamperCursor(value: string): string {
   const index = Math.max(0, value.length - 1)
   const replacement = value[index] === 'A' ? 'B' : 'A'
   return `${value.slice(0, index)}${replacement}`
-}
-
-async function impactPreview(
-  app: ReturnType<typeof createMarketplaceHttpApp>,
-  publisherId: string,
-  status: string,
-  reason: string,
-  token = OPERATOR_TOKEN
-): Promise<string> {
-  const response = await adminRequest(app, '/admin/impact-preview', {
-    method: 'POST',
-    token,
-    value: {
-      operation: 'publisher.status',
-      subject: { publisherId },
-      target: { status, reason }
-    }
-  })
-  expect(response.status).toBe(200)
-  expect(response.headers.get('cache-control')).toBe('no-store')
-  const result = await jsonRecord(response)
-  expect(result.schemaVersion).toBe(1)
-  expect(typeof result.authorityDigest).toBe('string')
-  return result.authorityDigest as string
 }
 
 describe('marketplace Phase 4 publisher HTTP contract', () => {
@@ -522,6 +569,336 @@ describe('marketplace Phase 4 publisher HTTP contract', () => {
       })
     )
     expect(expired.status).toBe(401)
+  })
+
+  test('atomically replays one exact Publisher mutation result and rejects nonce collisions', async () => {
+    const fixture = await phase4Fixture()
+    const url = `${LOOPBACK_ORIGIN}/v1/ownerships`
+    const nonce = 'phase4atomicnonce01'
+    const value = { pluginId: 'alpha.atomic-plugin', publisherId: 'alpha' }
+    const init = await signedInit(fixture, 'alpha', url, {
+      method: 'POST',
+      value,
+      nonce
+    })
+
+    const first = await fixture.app.request(url, init)
+    const firstBody = await first.text()
+    expect(first.status).toBe(201)
+    const committed = await fixture.service.snapshot()
+
+    const replay = await fixture.app.request(url, init)
+    expect({ status: replay.status, body: await replay.text() }).toEqual({
+      status: 201,
+      body: firstBody
+    })
+    expect(await fixture.service.snapshot()).toEqual(committed)
+
+    const collision = await fixture.app.request(
+      url,
+      await signedInit(fixture, 'alpha', url, {
+        method: 'POST',
+        value: { ...value, pluginId: 'alpha.different-plugin' },
+        nonce
+      })
+    )
+    expect(collision.status).toBe(409)
+    expect(await collision.text()).not.toBe(firstBody)
+    expect(await fixture.service.snapshot()).toEqual(committed)
+  })
+
+  test('binds Publisher mutation commit and replay to the captured HTTP verification time', async () => {
+    const fixture = await phase4Fixture({
+      httpNow: NOW,
+      serviceNow: '2026-08-05T12:10:00.000Z'
+    })
+    const url = `${LOOPBACK_ORIGIN}/v1/ownerships`
+    const init = await signedInit(fixture, 'alpha', url, {
+      method: 'POST',
+      value: { pluginId: 'alpha.clock-bound', publisherId: 'alpha' },
+      nonce: 'phase4clockbound01'
+    })
+
+    const first = await fixture.app.request(url, init)
+    const firstBody = await first.text()
+    expect(first.status).toBe(201)
+    const committed = await fixture.service.snapshot()
+    expect(
+      committed.ownerships.find(({ pluginId }) => pluginId === 'alpha.clock-bound')?.requestedAt
+    ).toBe(NOW)
+
+    const replay = await fixture.app.request(url, init)
+    expect({ status: replay.status, body: await replay.text() }).toEqual({
+      status: 201,
+      body: firstBody
+    })
+    expect(await fixture.service.snapshot()).toEqual(committed)
+  })
+
+  test('does not let a signed read resample time and evict a live Publisher mutation receipt', async () => {
+    const fixture = await phase4Fixture()
+    const mutationURL = `${LOOPBACK_ORIGIN}/v1/ownerships`
+    const mutationInit = await signedInit(fixture, 'alpha', mutationURL, {
+      method: 'POST',
+      value: { pluginId: 'alpha.read-clock-bound', publisherId: 'alpha' },
+      nonce: 'phase4readclock001'
+    })
+    const committed = await fixture.app.request(mutationURL, mutationInit)
+    const committedResult = { status: committed.status, body: await committed.text() }
+    expect(committedResult.status).toBe(201)
+
+    let clockCalls = 0
+    const readApp = createMarketplaceHttpApp({
+      service: fixture.service,
+      now: () => {
+        clockCalls++
+        return clockCalls === 1 ? Date.parse(NOW) : Date.parse(NOW) + 10 * 60_000
+      }
+    })
+    const readURL = `${LOOPBACK_ORIGIN}/v1/publishers/me`
+    const read = await readApp.request(readURL, await signedInit(fixture, 'alpha', readURL))
+    expect(read.status).toBe(200)
+    expect(clockCalls).toBe(1)
+
+    const replay = await fixture.app.request(mutationURL, mutationInit)
+    expect({ status: replay.status, body: await replay.text() }).toEqual(committedResult)
+  })
+
+  test('resolves an active Publisher key at the same trusted time used for its signed read', async () => {
+    const keyNotAfter = new Date(Date.parse(NOW) + 1).toISOString()
+    const clocks = {
+      serviceNow: NOW,
+      httpNow: NOW,
+      publisherKeyNotAfter: keyNotAfter
+    }
+    const fixture = await phase4Fixture(clocks)
+    clocks.serviceNow = keyNotAfter
+
+    const url = `${LOOPBACK_ORIGIN}/v1/publishers/me`
+    const response = await fixture.app.request(
+      url,
+      await signedInit(fixture, 'alpha', url, { nonce: 'phase4keyclock0001' })
+    )
+
+    expect(response.status).toBe(200)
+  })
+
+  test('keeps Publisher authority storage failures generic and non-consuming', async () => {
+    const fixture = await phase4Fixture()
+    const url = `${LOOPBACK_ORIGIN}/v1/ownerships`
+    const init = await signedInit(fixture, 'alpha', url, {
+      method: 'POST',
+      value: { pluginId: 'alpha.authority-recovery', publisherId: 'alpha' },
+      nonce: 'phase4authorityfail1'
+    })
+    const before = await fixture.service.snapshot()
+    const unavailableService = new Proxy(fixture.service, {
+      get(target, property, receiver) {
+        if (property === 'resolvePublisherKey') {
+          return async () => {
+            throw new Error('SQLITE_IOERR /srv/private/marketplace.db')
+          }
+        }
+        return Reflect.get(target, property, receiver)
+      }
+    })
+    const unavailableApp = createMarketplaceHttpApp({
+      service: unavailableService,
+      now: () => Date.parse(NOW)
+    })
+
+    const failed = await unavailableApp.request(url, init)
+    const failedBody = await failed.text()
+    expect(failed.status).toBe(503)
+    expect(failedBody).toBe('{"error":"Marketplace publisher authority is unavailable"}')
+    expect(failedBody).not.toContain('SQLITE_IOERR')
+    expect(failedBody).not.toContain('/srv/private')
+    expect(await fixture.service.snapshot()).toEqual(before)
+
+    const committed = await fixture.app.request(url, init)
+    const committedBody = await committed.text()
+    expect(committed.status).toBe(201)
+    const replay = await fixture.app.request(url, init)
+    expect({ status: replay.status, body: await replay.text() }).toEqual({
+      status: 201,
+      body: committedBody
+    })
+  })
+
+  test('keeps signed read authority storage failures generic and non-consuming', async () => {
+    const fixture = await phase4Fixture()
+    const url = `${LOOPBACK_ORIGIN}/v1/publishers/me`
+    const init = await signedInit(fixture, 'alpha', url, {
+      nonce: 'phase4readauthfail1'
+    })
+    const unavailableService = new Proxy(fixture.service, {
+      get(target, property, receiver) {
+        if (property === 'resolveActivePublisherKey') {
+          return async () => {
+            throw new Error('SQLITE_IOERR /srv/private/marketplace.db')
+          }
+        }
+        return Reflect.get(target, property, receiver)
+      }
+    })
+    const unavailableApp = createMarketplaceHttpApp({
+      service: unavailableService,
+      now: () => Date.parse(NOW)
+    })
+
+    const failed = await unavailableApp.request(url, init)
+    const failedBody = await failed.text()
+    expect(failed.status).toBe(503)
+    expect(failedBody).toBe('{"error":"Marketplace publisher authority is unavailable"}')
+    expect(failedBody).not.toContain('SQLITE_IOERR')
+    expect(failedBody).not.toContain('/srv/private')
+
+    expect((await fixture.app.request(url, init)).status).toBe(200)
+    expect((await fixture.app.request(url, init)).status).toBe(401)
+  })
+
+  test('maps signed read nonce-store failures to a generic retryable outage', async () => {
+    const fixture = await phase4Fixture()
+    const url = `${LOOPBACK_ORIGIN}/v1/publishers/me`
+    const init = await signedInit(fixture, 'alpha', url, {
+      nonce: 'phase4readnoncefail1'
+    })
+    const unavailableService = new Proxy(fixture.service, {
+      get(target, property, receiver) {
+        if (property === 'nonces') {
+          return {
+            async consume() {
+              throw new Error('SQLITE_IOERR /srv/private/marketplace.db')
+            }
+          }
+        }
+        return Reflect.get(target, property, receiver)
+      }
+    })
+    const unavailableApp = createMarketplaceHttpApp({
+      service: unavailableService,
+      now: () => Date.parse(NOW)
+    })
+
+    const failed = await unavailableApp.request(url, init)
+    const failedBody = await failed.text()
+    expect(failed.status).toBe(503)
+    expect(failedBody).toBe('{"error":"Marketplace request nonce authority is unavailable"}')
+    expect(failedBody).not.toContain('SQLITE_IOERR')
+    expect(failedBody).not.toContain('/srv/private')
+
+    expect((await fixture.app.request(url, init)).status).toBe(200)
+    expect((await fixture.app.request(url, init)).status).toBe(401)
+  })
+
+  test('treats malformed self-registration key material as bad credentials, not storage outage', async () => {
+    const fixture = await phase4Fixture()
+    const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const url = `${LOOPBACK_ORIGIN}/v1/publishers/register`
+    const body = JSON.stringify({
+      publisher: { id: 'malformed-pem-publisher', displayName: 'Malformed PEM Publisher' },
+      key: {
+        keyId: 'malformed-pem-publisher-2026',
+        publisherId: 'malformed-pem-publisher',
+        publicKeyPem: '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n',
+        notBefore: '2026-01-01T00:00:00.000Z',
+        notAfter: '2027-01-01T00:00:00.000Z'
+      }
+    })
+    const signature = await signMarketplaceRequest(
+      {
+        audience: MARKETPLACE_ID,
+        publisherId: 'malformed-pem-publisher',
+        keyId: 'malformed-pem-publisher-2026',
+        method: 'POST',
+        url,
+        timestamp: NOW,
+        nonce: 'phase4malformedpem1',
+        body: encoder.encode(body)
+      },
+      pair.privateKey
+    )
+
+    const response = await fixture.app.request(url, {
+      method: 'POST',
+      headers: signedHeaderRecord(signature, true),
+      body
+    })
+    expect(response.status).toBe(401)
+    expect(await response.text()).toBe('{"error":"Marketplace request authentication failed"}')
+  })
+
+  test('does not publish immutable submission artifacts when the mutation callback fails', async () => {
+    const fixture = await phase4Fixture()
+    const manifest = await signPluginManifest(
+      payloadFor(fixture.publishers.alpha, '9.0.0', 'Deferred artifact submission'),
+      fixture.publishers.alpha.keyPair.privateKey
+    )
+    const artifactDigest = digestMarketplaceArtifact(
+      encoder.encode(serializeVersionedPluginManifest(manifest))
+    )
+    const url = `${LOOPBACK_ORIGIN}/v1/submissions`
+    const init = await signedInit(fixture, 'alpha', url, {
+      method: 'POST',
+      nonce: 'phase4artifactdefer1',
+      value: {
+        id: 'alpha-artifact-defer-v9',
+        publisherId: 'alpha',
+        channel: 'stable',
+        manifest,
+        listing: listing('alpha', '9.0.0')
+      }
+    })
+    const before = await fixture.service.snapshot()
+    fixture.afterNextPublisherMutationOperation(() => {
+      throw new Error('injected wrapper failure after callback')
+    })
+
+    const failed = await fixture.app.request(url, init)
+    expect(failed.status).toBe(500)
+    expect(await fixture.service.snapshot()).toEqual(before)
+    expect(await fixture.service.artifact(artifactDigest)).toBeNull()
+
+    const committed = await fixture.app.request(url, init)
+    expect(committed.status).toBe(201)
+    expect(await fixture.service.artifact(artifactDigest)).not.toBeNull()
+  })
+
+  test('allows only an exact committed replay after its Publisher key is revoked', async () => {
+    const fixture = await phase4Fixture()
+    const url = `${LOOPBACK_ORIGIN}/v1/ownerships`
+    const value = { pluginId: 'alpha.revocation-replay', publisherId: 'alpha' }
+    const init = await signedInit(fixture, 'alpha', url, {
+      method: 'POST',
+      value,
+      nonce: 'phase4revokednonce1'
+    })
+    const committed = await fixture.app.request(url, init)
+    const committedBody = await committed.text()
+    expect(committed.status).toBe(201)
+
+    await fixture.mutateRepository((transaction) =>
+      transaction.transitionPublisherKey('alpha.release', 'revoked', {
+        actor: 'admin:security',
+        reason: 'Compromised Publisher signing key',
+        time: NOW
+      })
+    )
+    const afterRevocation = await fixture.service.snapshot()
+
+    const replay = await fixture.app.request(url, init)
+    expect({ status: replay.status, body: await replay.text() }).toEqual({
+      status: 201,
+      body: committedBody
+    })
+    expect(await fixture.service.snapshot()).toEqual(afterRevocation)
+
+    const fresh = await signedRequest(fixture, 'alpha', '/v1/ownerships', {
+      method: 'POST',
+      value: { pluginId: 'alpha.revoked-fresh', publisherId: 'alpha' }
+    })
+    expect(fresh.status).toBe(401)
+    expect(await fixture.service.snapshot()).toEqual(afterRevocation)
   })
 
   test('uses server time for Publisher mutations instead of the signed freshness timestamp', async () => {
@@ -684,6 +1061,175 @@ describe('marketplace Phase 4 publisher HTTP contract', () => {
     const response = await fixture.app.request(url, signedBeforeRevocation)
     expect(response.status).toBe(401)
     expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
+  test('rejects key rotation when its authenticated predecessor is revoked before the mutation transaction', async () => {
+    const fixture = await phase4Fixture()
+    const nextKeyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
+      'sign',
+      'verify'
+    ])
+    const url = `${LOOPBACK_ORIGIN}/v1/publisher-keys`
+    const init = await signedInit(fixture, 'alpha', url, {
+      method: 'POST',
+      value: {
+        keyId: 'alpha.raced-release',
+        publisherId: 'alpha',
+        publicKeyPem: await exportEd25519PublicKeyPem(nextKeyPair.publicKey),
+        notBefore: NOW,
+        notAfter: '2027-08-05T12:00:00.000Z',
+        predecessorKeyId: 'alpha.release'
+      }
+    })
+    fixture.beforeNextTransaction((transaction) =>
+      transaction.transitionPublisherKey('alpha.release', 'revoked', {
+        actor: 'admin:security',
+        reason: 'Concurrent key revocation',
+        time: NOW
+      })
+    )
+
+    const response = await fixture.app.request(url, init)
+    expect(response.status).toBe(401)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const state = await fixture.service.snapshot()
+    expect(state.publisherKeys.find(({ keyId }) => keyId === 'alpha.release')?.status).toBe(
+      'revoked'
+    )
+    expect(state.publisherKeys.some(({ keyId }) => keyId === 'alpha.raced-release')).toBe(false)
+  })
+
+  test('rejects ownership request when its authenticated Publisher is suspended before the mutation transaction', async () => {
+    const fixture = await phase4Fixture()
+    const url = `${LOOPBACK_ORIGIN}/v1/ownerships`
+    const init = await signedInit(fixture, 'alpha', url, {
+      method: 'POST',
+      value: { pluginId: 'alpha.raced-ownership', publisherId: 'alpha' }
+    })
+    fixture.beforeNextTransaction((transaction) =>
+      transaction.transitionPublisher('alpha', 'suspended', {
+        actor: 'admin:security',
+        reason: 'Concurrent Publisher suspension',
+        time: NOW
+      })
+    )
+
+    const response = await fixture.app.request(url, init)
+    expect(response.status).toBe(401)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const state = await fixture.service.snapshot()
+    expect(state.publishers.find(({ id }) => id === 'alpha')?.status).toBe('suspended')
+    expect(state.ownerships.some(({ pluginId }) => pluginId === 'alpha.raced-ownership')).toBe(
+      false
+    )
+  })
+
+  test('rejects withdrawal when its authenticated key is revoked before the mutation transaction', async () => {
+    const fixture = await phase4Fixture()
+    const submissionId = fixture.submissions.alphaDraftV2.id
+    const url = `${LOOPBACK_ORIGIN}/v1/submissions/${submissionId}/withdraw`
+    const init = await signedInit(fixture, 'alpha', url, {
+      method: 'POST',
+      value: { reason: 'Withdrawal racing a key revocation' }
+    })
+    fixture.beforeNextTransaction((transaction) =>
+      transaction.transitionPublisherKey('alpha.release', 'revoked', {
+        actor: 'admin:security',
+        reason: 'Concurrent key revocation',
+        time: NOW
+      })
+    )
+
+    const response = await fixture.app.request(url, init)
+    expect(response.status).toBe(401)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const state = await fixture.service.snapshot()
+    expect(state.publisherKeys.find(({ keyId }) => keyId === 'alpha.release')?.status).toBe(
+      'revoked'
+    )
+    expect(state.submissions.find(({ id }) => id === submissionId)?.status).toBe('awaiting_review')
+  })
+
+  test('binds Publisher mutation service authority to the exact Publisher and key', async () => {
+    const fixture = await phase4Fixture()
+    const crossPublisherAuthority = {
+      publisherId: fixture.publishers.beta.id,
+      keyId: fixture.publishers.beta.keyId
+    }
+    const alternateKeyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
+      'sign',
+      'verify'
+    ])
+    await fixture.service.registerPublisherKey(
+      {
+        keyId: 'alpha.alternate-release',
+        publisherId: 'alpha',
+        publicKeyPem: await exportEd25519PublicKeyPem(alternateKeyPair.publicKey),
+        notBefore: NOW,
+        notAfter: '2027-08-05T12:00:00.000Z',
+        predecessorKeyId: 'alpha.release'
+      },
+      { actor: 'admin:fixture', time: NOW }
+    )
+    await fixture.service.transitionPublisherKey('alpha.alternate-release', 'active', {
+      actor: 'admin:fixture',
+      time: NOW
+    })
+    const mismatchedKeyAuthority = {
+      publisherId: fixture.publishers.alpha.id,
+      keyId: 'alpha.alternate-release'
+    }
+    const nextKeyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
+      'sign',
+      'verify'
+    ])
+
+    await expect(
+      fixture.service.registerPublisherKey(
+        {
+          keyId: 'alpha.mismatched-authority',
+          publisherId: 'alpha',
+          publicKeyPem: await exportEd25519PublicKeyPem(nextKeyPair.publicKey),
+          notBefore: NOW,
+          notAfter: '2027-08-05T12:00:00.000Z',
+          predecessorKeyId: 'alpha.release'
+        },
+        { actor: 'publisher:alpha', time: NOW },
+        mismatchedKeyAuthority
+      )
+    ).rejects.toBeInstanceOf(MarketplacePublisherMutationAuthorityError)
+    const mutableAuthority = { ...crossPublisherAuthority }
+    const ownershipRequest = fixture.service.requestOwnership(
+      'alpha.mismatched-authority',
+      'alpha',
+      { actor: 'publisher:alpha', time: NOW },
+      mutableAuthority
+    )
+    mutableAuthority.publisherId = fixture.publishers.alpha.id
+    mutableAuthority.keyId = fixture.publishers.alpha.keyId
+    await expect(ownershipRequest).rejects.toBeInstanceOf(
+      MarketplacePublisherMutationAuthorityError
+    )
+    await expect(
+      fixture.service.withdrawSubmission(
+        fixture.submissions.alphaDraftV3.id,
+        'alpha',
+        'Authority must not cross Publishers',
+        { actor: 'publisher:alpha', time: NOW },
+        crossPublisherAuthority
+      )
+    ).rejects.toBeInstanceOf(MarketplacePublisherMutationAuthorityError)
+
+    const state = await fixture.service.snapshot()
+    expect(state.publisherKeys.some(({ keyId }) => keyId === 'alpha.mismatched-authority')).toBe(
+      false
+    )
+    expect(state.ownerships.some(({ pluginId }) => pluginId === 'alpha.mismatched-authority')).toBe(
+      false
+    )
+    expect(
+      state.submissions.find(({ id }) => id === fixture.submissions.alphaDraftV3.id)?.status
+    ).toBe('awaiting_review')
   })
 
   test('keeps publisher mutation responses private and strips raw key material', async () => {
@@ -980,230 +1526,130 @@ describe('marketplace Phase 4 admin HTTP contract', () => {
     expect(preflight.headers.get('access-control-allow-credentials')).toBeNull()
   })
 
-  test('derives the audit actor on the server and requires an exact non-authorizing impact snapshot', async () => {
+  test('keeps custom and legacy bearer principals read-only across every legacy admin mutation', async () => {
     const fixture = await phase4Fixture()
-    const beforePreview = await fixture.service.snapshot()
-    const authorityDigest = await impactPreview(
-      fixture.app,
-      'alpha',
-      'suspended',
-      'Attempted body actor override'
-    )
-    expect(await fixture.service.snapshot()).toEqual(beforePreview)
-
-    const missingAuthority = await adminRequest(fixture.app, '/admin/publishers/alpha/status', {
-      method: 'POST',
-      value: { status: 'suspended', reason: 'Missing exact authority snapshot' }
-    })
-    expect(missingAuthority.status).toBe(400)
-
-    const bodySpoof = await adminRequest(fixture.app, '/admin/publishers/alpha/status', {
-      method: 'POST',
-      value: {
-        status: 'suspended',
-        reason: 'Attempted body actor override',
-        authorityDigest,
-        actor: 'admin:forged-body',
-        role: 'super-admin'
+    let customAuthentications = 0
+    const customApp = fixture.createApp({
+      enabled: true,
+      async authenticate(request) {
+        customAuthentications++
+        return request.headers.get('authorization') === `Bearer ${OPERATOR_TOKEN}`
+          ? {
+              actor: 'admin:operator-alice',
+              expiresAt: Date.parse(NOW) + 60_000
+            }
+          : null
       }
     })
-    expect(bodySpoof.status).toBe(400)
+    const legacyApp = fixture.createApp({
+      enabled: true,
+      token: LEGACY_TOKEN
+    })
 
-    const exactAuthorityDigest = await impactPreview(
-      fixture.app,
-      'alpha',
-      'suspended',
-      'Operator suspended the publisher'
+    expect((await adminRequest(customApp, '/admin/summary')).status).toBe(200)
+    expect(customAuthentications).toBe(1)
+    expect((await adminRequest(legacyApp, '/admin/summary', { token: LEGACY_TOKEN })).status).toBe(
+      200
     )
-    const accepted = await adminRequest(fixture.app, '/admin/publishers/alpha/status', {
-      method: 'POST',
-      headers: {
-        'x-openpencil-actor': 'admin:forged-header',
-        'x-openpencil-role': 'super-admin'
-      },
-      value: {
-        status: 'suspended',
-        reason: 'Operator suspended the publisher',
-        authorityDigest: exactAuthorityDigest
-      }
-    })
-    expect(accepted.status).toBe(200)
-    expect(accepted.headers.get('cache-control')).toBe('no-store')
-    const acceptedState = await fixture.service.snapshot()
-    expect(acceptedState.publishers.find(({ id }) => id === 'alpha')?.status).toBe('suspended')
-    expect(acceptedState.auditEvents.at(-1)).toMatchObject({
-      actor: 'admin:operator-alice',
-      action: 'publisher.status_changed',
-      subject: 'publisher:alpha'
-    })
 
-    const staleDigest = await impactPreview(
-      fixture.app,
-      'beta',
-      'suspended',
-      'This confirmation is stale'
-    )
-    await fixture.service.requestOwnership('beta.stale-preview-change', 'beta', {
-      actor: 'publisher:beta',
-      time: NOW
-    })
-    const stale = await adminRequest(fixture.app, '/admin/publishers/beta/status', {
-      method: 'POST',
-      value: {
-        status: 'suspended',
-        reason: 'This confirmation is stale',
-        authorityDigest: staleDigest
-      }
-    })
-    expect(stale.status).toBe(409)
-    expect(
-      (await fixture.service.snapshot()).publishers.find(({ id }) => id === 'beta')?.status
-    ).toBe('active')
-  })
-
-  test('never turns persisted reviewer text into a post-commit response failure', async () => {
-    for (const reason of [
-      '/Users/operator/private is an example in the review note',
-      'Do not call http://localhost:8787 from this plugin',
-      'The literal -----BEGIN PRIVATE KEY----- is documentation'
+    const before = await fixture.service.snapshot()
+    const mutationPaths = [
+      '/admin/impact-preview',
+      '/admin/publishers/alpha/status',
+      '/admin/publisher-keys/alpha.release/status',
+      '/admin/ownerships/alpha.analytics/status',
+      '/admin/submissions/alpha-draft-v2/status',
+      '/admin/submissions/alpha-draft-v2/publish',
+      '/admin/releases/yank',
+      '/admin/publish'
+    ]
+    for (const { app, token } of [
+      { app: customApp, token: OPERATOR_TOKEN },
+      { app: legacyApp, token: LEGACY_TOKEN }
     ]) {
-      const fixture = await phase4Fixture()
-      const before = await fixture.service.snapshot()
-      const authorityDigest = await impactPreview(fixture.app, 'alpha', 'suspended', reason)
-
-      const mismatched = await adminRequest(fixture.app, '/admin/publishers/alpha/status', {
-        method: 'POST',
-        value: {
-          status: 'suspended',
-          reason: `${reason} changed after preview`,
-          authorityDigest
-        }
-      })
-      expect(mismatched.status).toBe(409)
-      expect(await fixture.service.snapshot()).toEqual(before)
-
-      const accepted = await adminRequest(fixture.app, '/admin/publishers/alpha/status', {
-        method: 'POST',
-        value: { status: 'suspended', reason, authorityDigest }
-      })
-      if (accepted.status !== 200) {
-        expect(await fixture.service.snapshot()).toEqual(before)
-      }
-      expect(accepted.status).toBe(200)
-      expect(accepted.headers.get('cache-control')).toBe('no-store')
-      expect(await jsonRecord(accepted)).toMatchObject({
-        schemaVersion: 1,
-        id: 'alpha',
-        status: 'suspended',
-        statusReason: reason
-      })
-
-      const state = await fixture.service.snapshot()
-      expect(state.auditEvents).toHaveLength(before.auditEvents.length + 1)
-      expect(state.auditEvents.at(-1)).toMatchObject({
-        actor: 'admin:operator-alice',
-        action: 'publisher.status_changed',
-        subject: 'publisher:alpha'
-      })
-      for (const path of [
-        '/admin/publishers/alpha',
-        '/admin/publishers?status=suspended',
-        '/admin/audit?limit=100'
-      ]) {
-        const response = await adminRequest(fixture.app, path)
-        expect(response.status).toBe(200)
+      for (const path of mutationPaths) {
+        const response = await adminRequest(app, path, {
+          method: 'POST',
+          token,
+          value: {}
+        })
+        expect(response.status).toBe(path === '/admin/publish' ? 404 : 401)
         expect(response.headers.get('cache-control')).toBe('no-store')
+        expect(await response.json()).toEqual({
+          error:
+            path === '/admin/publish'
+              ? 'Online marketplace signing is disabled'
+              : 'A V2 operator assertion is required for admin mutations'
+        })
       }
     }
+
+    expect(customAuthentications).toBe(1)
+    expect(await fixture.service.snapshot()).toEqual(before)
   })
 
-  test('publishes an approved submission only through the dedicated exact-impact route', async () => {
+  test('publishes an approved submission only through a V2 operator assertion', async () => {
     const fixture = await phase4Fixture()
+    const app = fixture.createApp({ enabled: true, token: LEGACY_TOKEN })
     await fixture.service.transitionSubmission('alpha-draft-v2', 'approved', {
       actor: 'admin:fixture',
       time: NOW
     })
-    const previewResponse = await adminRequest(fixture.app, '/admin/impact-preview', {
-      method: 'POST',
-      value: {
-        operation: 'submission.publish',
-        subject: { submissionId: 'alpha-draft-v2' },
-        target: {}
-      }
+    const preview = await fixture.service.previewImpact({
+      operation: 'submission.publish',
+      submissionId: 'alpha-draft-v2'
     })
-    expect(previewResponse.status).toBe(200)
-    const preview = await jsonRecord(previewResponse)
-    expect(preview).toMatchObject({ schemaVersion: 1, allowed: true })
-    expect(typeof preview.authorityDigest).toBe('string')
-
-    const genericStatus = await adminRequest(
-      fixture.app,
-      '/admin/submissions/alpha-draft-v2/status',
+    const body = JSON.stringify({
+      reason: 'Release reviewed and approved',
+      typedIdentifier: 'submission:alpha-draft-v2',
+      authorityDigest: preview.authorityDigest
+    })
+    const path = '/admin/operator/submissions/alpha-draft-v2/publish'
+    const assertion = signMarketplaceOperatorAssertion(
       {
+        actor: V2_OPERATOR_ACTOR,
+        requestId: 'request_phase4_release_publish',
+        correlationId: 'correlation_phase4_release_publish',
+        authorization: {
+          realm: 'platform',
+          role: 'releaser',
+          operation: 'release.publish',
+          mfaVerifiedAt: BEFORE,
+          stepUp: {
+            verifiedAt: BEFORE,
+            grantIdDigest: V2_STEP_UP_GRANT_DIGEST
+          }
+        },
         method: 'POST',
-        value: {
-          status: 'published',
-          authorityDigest: preview.authorityDigest
-        }
-      }
+        url: `${LOOPBACK_ORIGIN}${path}`,
+        timestamp: NOW,
+        nonce: fixture.nextNonce(),
+        body: encoder.encode(body)
+      },
+      LEGACY_TOKEN
     )
-    expect(genericStatus.status).toBe(400)
+    const response = await app.request(`${LOOPBACK_ORIGIN}${path}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        [MARKETPLACE_ADMIN_ASSERTION_HEADER]: assertion
+      },
+      body
+    })
 
-    const publishedResponse = await adminRequest(
-      fixture.app,
-      '/admin/submissions/alpha-draft-v2/publish',
-      {
-        method: 'POST',
-        value: { authorityDigest: preview.authorityDigest }
-      }
-    )
-    expect(publishedResponse.status).toBe(200)
-    expect(publishedResponse.headers.get('cache-control')).toBe('no-store')
-    const body = await jsonRecord(publishedResponse)
-    expect(body).toMatchObject({
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
       schemaVersion: 1,
       submissionId: 'alpha-draft-v2',
-      submissionRevision: 1,
       publisherId: 'alpha'
     })
-    expect(JSON.stringify(body)).not.toContain('manifestUrl')
-    expect(JSON.stringify(body)).not.toContain('packageUrl')
-
     const state = await fixture.service.snapshot()
     expect(state.submissions.find(({ id }) => id === 'alpha-draft-v2')?.status).toBe('published')
-    expect(
-      state.releases.find(({ submissionId }) => submissionId === 'alpha-draft-v2')
-    ).toBeTruthy()
     expect(state.auditEvents.at(-1)).toMatchObject({
-      actor: 'admin:operator-alice',
+      actor: V2_OPERATOR_ACTOR,
       action: 'release.published',
       subject: 'release:alpha.analytics@2.0.0#stable'
     })
-  })
-
-  test('maps the legacy loopback token to one fixed legacy actor', async () => {
-    const fixture = await phase4Fixture()
-    const legacyApp = fixture.createApp({ enabled: true, token: LEGACY_TOKEN })
-    const authorityDigest = await impactPreview(
-      legacyApp,
-      'alpha',
-      'suspended',
-      'Legacy loopback operator action',
-      LEGACY_TOKEN
-    )
-    const response = await adminRequest(legacyApp, '/admin/publishers/alpha/status', {
-      method: 'POST',
-      token: LEGACY_TOKEN,
-      value: {
-        status: 'suspended',
-        reason: 'Legacy loopback operator action',
-        authorityDigest
-      }
-    })
-    expect(response.status).toBe(200)
-    expect((await fixture.service.snapshot()).auditEvents.at(-1)?.actor).toBe(
-      'admin:legacy-loopback'
-    )
   })
 })
 
@@ -1282,7 +1728,43 @@ describe('marketplace Phase 4 submission validation and revision HTTP contract',
     expect(await fixture.service.snapshot()).toEqual(before)
   })
 
-  test('returns the transaction result without a post-commit control-reader reread', async () => {
+  test('replays an authenticated revision conflict after state changes would make it valid', async () => {
+    const fixture = await phase4Fixture()
+    const revisedManifest = await signPluginManifest(
+      payloadFor(fixture.publishers.alpha, '2.0.0', 'Terminal conflict replay'),
+      fixture.publishers.alpha.keyPair.privateKey
+    )
+    const url = `${LOOPBACK_ORIGIN}/v1/submissions/alpha-draft-v2/revise`
+    const init = await signedInit(fixture, 'alpha', url, {
+      method: 'POST',
+      value: {
+        publisherId: 'alpha',
+        expectedRevision: 1,
+        manifest: revisedManifest,
+        listing: listing('alpha', '2.0.0', 'Terminal conflict replay')
+      }
+    })
+
+    const rejected = await fixture.app.request(url, init)
+    const exactFailure = { status: rejected.status, body: await rejected.text() }
+    expect(exactFailure.status).toBe(409)
+    expect(
+      (await fixture.service.snapshot()).submissions.find(({ id }) => id === 'alpha-draft-v2')
+    ).toMatchObject({ revision: 1, status: 'awaiting_review' })
+
+    await fixture.service.transitionSubmission('alpha-draft-v2', 'changes_requested', {
+      actor: 'admin:fixture',
+      reason: 'The same revision would now be accepted without its terminal receipt',
+      time: NOW
+    })
+    const replayed = await fixture.app.request(url, init)
+    expect({ status: replayed.status, body: await replayed.text() }).toEqual(exactFailure)
+    expect(
+      (await fixture.service.snapshot()).submissions.find(({ id }) => id === 'alpha-draft-v2')
+    ).toMatchObject({ revision: 1, status: 'changes_requested' })
+  })
+
+  test('returns the transaction result without an out-of-boundary control-reader read', async () => {
     const fixture = await phase4Fixture()
     await fixture.service.transitionSubmission('alpha-draft-v2', 'changes_requested', {
       actor: 'admin:fixture',
@@ -1330,7 +1812,7 @@ describe('marketplace Phase 4 submission validation and revision HTTP contract',
       id: 'alpha-draft-v2',
       revision: 2
     })
-    expect(submissionReads).toBe(1)
+    expect(submissionReads).toBe(0)
     const state = await fixture.service.snapshot()
     expect(state.auditEvents).toHaveLength(before.auditEvents.length + 1)
     expect(state.auditEvents.at(-1)?.action).toBe('submission.revised')

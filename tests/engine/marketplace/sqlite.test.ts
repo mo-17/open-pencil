@@ -5,7 +5,10 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { createSqliteMarketplaceRepository } from '@open-pencil/marketplace'
+import {
+  MARKETPLACE_NONCE_NAMESPACES,
+  createSqliteMarketplaceRepository
+} from '@open-pencil/marketplace'
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 const NOW = Date.parse('2026-08-05T12:00:00.000Z')
@@ -46,7 +49,14 @@ describe('SQLite marketplace repository', () => {
         { actor: 'test', time: new Date(NOW).toISOString() }
       )
     })
-    expect(await first.nonces.consume('acme', 'abcdefghijklmnop', NOW + 60_000)).toBe(true)
+    expect(
+      await first.nonces.consume(
+        MARKETPLACE_NONCE_NAMESPACES.publisherRequestV2,
+        'acme',
+        'abcdefghijklmnop',
+        NOW + 60_000
+      )
+    ).toBe(true)
     await first.close()
 
     const reopened = createSqliteMarketplaceRepository({ path, now: () => NOW })
@@ -57,7 +67,14 @@ describe('SQLite marketplace repository', () => {
       'publisher.created',
       'publisher_key.registered'
     ])
-    expect(await reopened.nonces.consume('acme', 'abcdefghijklmnop', NOW + 60_000)).toBe(false)
+    expect(
+      await reopened.nonces.consume(
+        MARKETPLACE_NONCE_NAMESPACES.publisherRequestV2,
+        'acme',
+        'abcdefghijklmnop',
+        NOW + 60_000
+      )
+    ).toBe(false)
     await reopened.close()
 
     const database = new Database(path, { strict: true })
@@ -103,5 +120,22 @@ describe('SQLite marketplace repository', () => {
     const tampered = createSqliteMarketplaceRepository({ path })
     await expect(tampered.snapshot()).rejects.toThrow('invalid eventHash')
     await tampered.close()
+  })
+
+  test('does not commit state when a transaction result cannot cross the repository boundary', async () => {
+    const repository = createSqliteMarketplaceRepository({ path: databasePath() })
+
+    await expect(
+      repository.transaction(async (transaction) => {
+        await transaction.createPublisher(
+          { id: 'uncloneable', displayName: 'Uncloneable Publisher' },
+          { actor: 'test', time: '2026-08-05T12:00:00.000Z' }
+        )
+        return () => undefined
+      })
+    ).rejects.toThrow()
+
+    expect((await repository.snapshot()).publishers).toHaveLength(0)
+    await repository.close()
   })
 })

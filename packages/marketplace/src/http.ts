@@ -10,8 +10,9 @@ import {
   verifyMarketplaceAdminAssertion
 } from './admin-assertion'
 import {
+  MARKETPLACE_NONCE_NAMESPACES,
   MARKETPLACE_REQUEST_AUTH_LIMITS,
-  verifyMarketplaceRequest,
+  verifyMarketplaceRequestSignature,
   type MarketplaceNonceStore,
   type MarketplaceSignedRequestHeaders
 } from './auth'
@@ -57,6 +58,14 @@ import {
   type MarketplaceOperatorOperation
 } from './operator-authorization'
 import { parseMarketplaceSubmissionPresentation } from './presentation'
+import {
+  MarketplacePublisherMutationCapacityError,
+  MarketplacePublisherMutationConflictError,
+  type MarketplacePublisherMutationExecution,
+  type MarketplacePublisherMutationOperation,
+  type MarketplaceVerifiedPublisherMutationRequest
+} from './publisher/idempotency'
+import { MarketplacePublisherMutationAuthorityError } from './repository'
 import { parseMarketplaceSubmissionRevisionDiff } from './revision-diff'
 import { isMarketplaceLoopbackHost } from './serve-mode'
 import {
@@ -94,14 +103,14 @@ import {
 export interface MarketplaceHttpAdminOptions {
   enabled?: boolean
   token?: string
-  onlinePublishing?: boolean
   requireServiceAssertion?: boolean
   authenticate?: (request: Request) => Promise<{ actor: string; expiresAt: number | string } | null>
 }
 
 export interface CreateMarketplaceHttpAppOptions {
   service: MarketplaceService
-  nonces: MarketplaceNonceStore
+  /** @deprecated Nonce authority is owned by service.repository and this value is ignored. */
+  nonces?: MarketplaceNonceStore
   admin?: MarketplaceHttpAdminOptions
   now?: () => number
   cursorKey?: CryptoKey
@@ -332,14 +341,41 @@ function signedHeaders(context: Context): MarketplaceSignedRequestHeaders {
   }
 }
 
+class MarketplacePublisherAuthorityResolutionFailureError extends Error {
+  constructor() {
+    super('Marketplace publisher authority resolution failed')
+    this.name = 'MarketplacePublisherAuthorityResolutionFailureError'
+  }
+}
+
 async function authenticate(
   context: Context,
   body: Uint8Array,
   options: CreateMarketplaceHttpAppOptions,
-  resolvePublicKey?: (publisherId: string, keyId: string) => Promise<CryptoKey | null>
+  resolvePublicKey?: (
+    publisherId: string,
+    keyId: string,
+    verifiedAt: number
+  ) => Promise<CryptoKey | null>
 ) {
+  const verifiedAt = (options.now ?? Date.now)()
+  if (!Number.isSafeInteger(verifiedAt)) {
+    throw new HttpError(503, 'Marketplace authentication clock is unavailable')
+  }
+  const resolve = async (publisherId: string, keyId: string): Promise<CryptoKey | null> => {
+    try {
+      return await (
+        resolvePublicKey ??
+        ((resolvedPublisherId, resolvedKeyId) =>
+          options.service.resolveActivePublisherKey(resolvedPublisherId, resolvedKeyId, verifiedAt))
+      )(publisherId, keyId, verifiedAt)
+    } catch {
+      throw new MarketplacePublisherAuthorityResolutionFailureError()
+    }
+  }
+  let proof
   try {
-    return await verifyMarketplaceRequest(
+    proof = await verifyMarketplaceRequestSignature(
       {
         method: context.req.method,
         url: context.req.url,
@@ -348,18 +384,78 @@ async function authenticate(
       },
       {
         audience: options.service.marketplaceId,
-        ...(options.now ? { now: options.now } : {}),
-        nonces: options.nonces,
-        resolvePublicKey:
-          resolvePublicKey ??
-          ((publisherId, keyId) => options.service.resolveActivePublisherKey(publisherId, keyId))
+        now: () => verifiedAt,
+        resolvePublicKey: resolve
       }
     )
   } catch (error) {
-    throw new HttpError(
-      401,
-      error instanceof Error ? error.message : 'Marketplace request authentication failed'
+    if (error instanceof MarketplacePublisherAuthorityResolutionFailureError) {
+      throw new HttpError(503, 'Marketplace publisher authority is unavailable')
+    }
+    throw new HttpError(401, 'Marketplace request authentication failed')
+  }
+  let consumed: boolean
+  try {
+    consumed = await options.service.nonces.consume(
+      MARKETPLACE_NONCE_NAMESPACES.publisherRequestV2,
+      proof.publisherId,
+      proof.nonce,
+      proof.freshUntil,
+      verifiedAt
     )
+  } catch {
+    throw new HttpError(503, 'Marketplace request nonce authority is unavailable')
+  }
+  if (!consumed) throw new HttpError(401, 'Marketplace request authentication failed')
+  return { publisherId: proof.publisherId, keyId: proof.keyId }
+}
+
+async function authenticatePublisherMutation(
+  context: Context,
+  body: Uint8Array,
+  options: CreateMarketplaceHttpAppOptions,
+  operation: MarketplacePublisherMutationOperation,
+  resolvePublicKey?: (publisherId: string, keyId: string) => Promise<CryptoKey | null>
+): Promise<
+  MarketplaceVerifiedPublisherMutationRequest & {
+    readonly verifiedAt: number
+  }
+> {
+  const verifiedAt = (options.now ?? Date.now)()
+  if (!Number.isSafeInteger(verifiedAt)) {
+    throw new HttpError(503, 'Marketplace authentication clock is unavailable')
+  }
+  const resolve = async (publisherId: string, keyId: string): Promise<CryptoKey | null> => {
+    try {
+      return await (
+        resolvePublicKey ??
+        ((resolvedPublisherId, resolvedKeyId) =>
+          options.service.resolvePublisherKey(resolvedPublisherId, resolvedKeyId))
+      )(publisherId, keyId)
+    } catch {
+      throw new MarketplacePublisherAuthorityResolutionFailureError()
+    }
+  }
+  try {
+    const proof = await verifyMarketplaceRequestSignature(
+      {
+        method: context.req.method,
+        url: context.req.url,
+        body,
+        headers: signedHeaders(context)
+      },
+      {
+        audience: options.service.marketplaceId,
+        now: () => verifiedAt,
+        resolvePublicKey: resolve
+      }
+    )
+    return Object.freeze({ ...proof, operation, verifiedAt })
+  } catch (error) {
+    if (error instanceof MarketplacePublisherAuthorityResolutionFailureError) {
+      throw new HttpError(503, 'Marketplace publisher authority is unavailable')
+    }
+    throw new HttpError(401, 'Marketplace request authentication failed')
   }
 }
 
@@ -443,6 +539,9 @@ async function authenticateAdmin(
     throw new HttpError(404, 'Admin HTTP routes are only available on loopback')
   }
   const assertion = context.req.header(MARKETPLACE_ADMIN_ASSERTION_HEADER)
+  if (context.req.method !== 'GET' && context.req.method !== 'HEAD' && assertion === undefined) {
+    throw new HttpError(401, 'A V2 operator assertion is required for admin mutations')
+  }
   if (assertion !== undefined) {
     return authenticateAdminServiceAssertion(
       context,
@@ -489,7 +588,7 @@ async function authenticateOperator(
     assertionTimestamp: string
   }
 > {
-  const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+  const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
   if (
     principal.source !== 'operator-v2' ||
     !principal.authorization ||
@@ -522,6 +621,34 @@ class HttpError extends Error {
     super(message)
     this.name = 'HttpError'
   }
+}
+
+async function publisherMutation<Value>(operation: () => Promise<Value>): Promise<Value> {
+  try {
+    return await operation()
+  } catch (error) {
+    if (error instanceof MarketplacePublisherMutationAuthorityError) {
+      throw new HttpError(401, error.message)
+    }
+    if (error instanceof MarketplacePublisherMutationConflictError) {
+      throw new HttpError(409, error.message)
+    }
+    if (error instanceof MarketplacePublisherMutationCapacityError) {
+      throw new HttpError(503, error.message)
+    }
+    throw new HttpError(500, 'Internal marketplace server error')
+  }
+}
+
+function publisherMutationResponse(execution: MarketplacePublisherMutationExecution): Response {
+  return new Response(execution.response.json, {
+    status: execution.response.status,
+    headers: {
+      'cache-control': 'no-store',
+      'content-type': 'application/json; charset=utf-8',
+      'x-content-type-options': 'nosniff'
+    }
+  })
 }
 
 function artifactResponse(
@@ -912,10 +1039,12 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   app.onError((error, context) => {
     let status: HttpError['status'] = 500
     if (error instanceof HttpError) status = error.status
+    else if (error instanceof MarketplacePublisherMutationConflictError) status = 409
+    else if (error instanceof MarketplacePublisherMutationCapacityError) status = 503
     else if (error instanceof MarketplaceControlStaleCursorError) status = 409
     else if (error instanceof MarketplaceImpactAuthorityError) status = 409
-    else if (error instanceof TypeError) status = 400
     else if (/already|cannot|changed|conflict/i.test(error.message)) status = 409
+    else if (error instanceof TypeError) status = 400
     return context.json(
       { error: status === 500 ? 'Internal marketplace server error' : error.message },
       status
@@ -1195,10 +1324,11 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
       },
       key: parseRegisterMarketplacePublisherKeyInput(key)
     }
-    const authenticated = await authenticate(
+    const authenticated = await authenticatePublisherMutation(
       context,
       body.bytes,
       options,
+      'publisher.register',
       async (publisherId, keyId) => {
         if (
           input.publisher.id !== publisherId ||
@@ -1207,69 +1337,74 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
         ) {
           return null
         }
-        return importEd25519PublicKeyPem(input.key.publicKeyPem)
+        try {
+          return await importEd25519PublicKeyPem(input.key.publicKeyPem)
+        } catch {
+          return null
+        }
       }
     )
-    const registrationAlreadyExists = async () => {
-      const [existingPublisher, existingKey] = await Promise.all([
-        options.service.control.publisher(input.publisher.id),
-        options.service.control.publisherKey(input.key.keyId)
-      ])
-      return existingPublisher !== null || existingKey !== null
-    }
-    if (await registrationAlreadyExists()) {
-      throw new HttpError(409, 'Marketplace publisher registration already exists')
-    }
-    let value
-    try {
-      value = await options.service.registerPublisher(input, {
-        actor: `publisher:${authenticated.publisherId}`
-      })
-    } catch (error) {
-      // Authentication and proof-of-possession have already succeeded. A
-      // concurrent winner is therefore safe to expose as a stable conflict so
-      // the Portal can reconcile exact live Publisher/key evidence. Other
-      // registration failures retain their original fail-closed status.
-      if (await registrationAlreadyExists()) {
-        throw new HttpError(409, 'Marketplace publisher registration already exists')
-      }
-      throw error
-    }
-    return privateJSON(parseMarketplacePublisher(value), 201)
+    return publisherMutationResponse(
+      await publisherMutation(() =>
+        options.service.executePublisherMutation(
+          authenticated,
+          {
+            type: 'publisher.register',
+            input
+          },
+          authenticated.verifiedAt
+        )
+      )
+    )
   })
 
   app.post('/v1/ownerships', async (context) => {
     const body = await boundedJSON(context)
     const source = exactRecord(body.value, 'ownership request', ['pluginId', 'publisherId'])
-    const authenticated = await authenticate(context, body.bytes, options)
-    if (source.publisherId !== authenticated.publisherId) {
-      throw new HttpError(401, 'Ownership request publisher does not match its signature')
-    }
-    const ownership = await options.service.requestOwnership(
-      stringValue(source.pluginId, 'ownership plugin id'),
-      authenticated.publisherId,
-      { actor: `publisher:${authenticated.publisherId}` }
+    const pluginId = stringValue(source.pluginId, 'ownership plugin id')
+    const publisherId = stringValue(source.publisherId, 'ownership publisher id')
+    const authenticated = await authenticatePublisherMutation(
+      context,
+      body.bytes,
+      options,
+      'ownership.request'
     )
-    return privateJSON(parseMarketplaceOwnership(ownership), 201)
+    return publisherMutationResponse(
+      await publisherMutation(() =>
+        options.service.executePublisherMutation(
+          authenticated,
+          {
+            type: 'ownership.request',
+            pluginId,
+            publisherId
+          },
+          authenticated.verifiedAt
+        )
+      )
+    )
   })
 
   app.post('/v1/publisher-keys', async (context) => {
     const body = await boundedJSON(context)
     const input = parseRegisterMarketplacePublisherKeyInput(body.value)
-    const authenticated = await authenticate(context, body.bytes, options)
-    if (
-      input.publisherId !== authenticated.publisherId ||
-      input.predecessorKeyId !== authenticated.keyId
-    ) {
-      throw new HttpError(
-        401,
-        'Publisher key rotation must be signed by its exact active predecessor key'
+    const authenticated = await authenticatePublisherMutation(
+      context,
+      body.bytes,
+      options,
+      'key.rotate'
+    )
+    return publisherMutationResponse(
+      await publisherMutation(() =>
+        options.service.executePublisherMutation(
+          authenticated,
+          {
+            type: 'key.rotate',
+            input
+          },
+          authenticated.verifiedAt
+        )
       )
-    }
-    const key = await options.service.registerPublisherKey(input, {
-      actor: `publisher:${authenticated.publisherId}`
-    })
-    return privateJSON(toMarketplaceControlPublisherKey(key), 201)
+    )
   })
 
   app.post('/v1/submissions', async (context) => {
@@ -1280,25 +1415,35 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
       ['id', 'publisherId', 'channel', 'manifest', 'listing', 'runtimePackage'],
       ['id', 'publisherId', 'channel', 'manifest', 'listing']
     )
-    const authenticated = await authenticate(context, body.bytes, options)
-    if (source.publisherId !== authenticated.publisherId) {
-      throw new HttpError(401, 'Submission publisher does not match its signature')
+    const input = {
+      id: stringValue(source.id, 'submission id'),
+      publisherId: stringValue(source.publisherId, 'submission publisher id'),
+      channel: channel(stringValue(source.channel, 'submission channel')),
+      manifest: source.manifest,
+      listing: source.listing as never,
+      ...(Object.hasOwn(source, 'runtimePackage') ? { runtimePackage: source.runtimePackage } : {})
     }
-    const submission = await options.service.submit(
-      {
-        id: stringValue(source.id, 'submission id'),
-        publisherId: authenticated.publisherId,
-        channel: channel(stringValue(source.channel, 'submission channel')),
-        manifest: source.manifest,
-        listing: source.listing as never,
-        ...(Object.hasOwn(source, 'runtimePackage')
-          ? { runtimePackage: source.runtimePackage }
-          : {}),
-        authenticatedRequestKeyId: authenticated.keyId
-      },
-      { actor: `publisher:${authenticated.publisherId}` }
+    const authenticated = await authenticatePublisherMutation(
+      context,
+      body.bytes,
+      options,
+      'submission.create'
     )
-    return privateJSON(toMarketplaceControlSubmissionSummary(submission), 201)
+    return publisherMutationResponse(
+      await publisherMutation(() =>
+        options.service.executePublisherMutation(
+          authenticated,
+          {
+            type: 'submission.create',
+            input: {
+              ...input,
+              authenticatedRequestKeyId: authenticated.keyId
+            }
+          },
+          authenticated.verifiedAt
+        )
+      )
+    )
   })
 
   app.post('/v1/submissions/validate', async (context) => {
@@ -1338,59 +1483,62 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
       ['publisherId', 'expectedRevision', 'manifest', 'listing', 'runtimePackage'],
       ['publisherId', 'expectedRevision', 'manifest', 'listing']
     )
-    const authenticated = await authenticate(context, body.bytes, options)
-    const submissionId = context.req.param('submissionId')
-    const current = await options.service.control.submission(
-      submissionId,
-      authenticated.publisherId
-    )
-    if (!current || source.publisherId !== authenticated.publisherId) {
-      throw new HttpError(404, 'Marketplace submission was not found')
+    const input = {
+      publisherId: stringValue(source.publisherId, 'submission publisher id'),
+      expectedRevision: positiveSafeIntegerValue(
+        source.expectedRevision,
+        'submission expectedRevision'
+      ),
+      manifest: source.manifest,
+      listing: source.listing as never,
+      ...(Object.hasOwn(source, 'runtimePackage') ? { runtimePackage: source.runtimePackage } : {})
     }
-    const currentRecord = record(current, 'current submission')
-    const coordinate = record(currentRecord.coordinate, 'current submission coordinate')
-    const revised = await options.service.reviseSubmission(
-      submissionId,
-      {
-        publisherId: authenticated.publisherId,
-        expectedRevision: positiveSafeIntegerValue(
-          source.expectedRevision,
-          'submission expectedRevision'
-        ),
-        channel: channel(stringValue(coordinate.channel, 'current submission channel')),
-        manifest: source.manifest,
-        listing: source.listing as never,
-        ...(Object.hasOwn(source, 'runtimePackage')
-          ? { runtimePackage: source.runtimePackage }
-          : {})
-      },
-      {
-        actor: `publisher:${authenticated.publisherId}`,
-        authenticatedRequestKeyId: authenticated.keyId
-      }
+    const authenticated = await authenticatePublisherMutation(
+      context,
+      body.bytes,
+      options,
+      'submission.revise'
     )
-    return privateJSON(toMarketplaceControlSubmissionSummary(revised))
+    const submissionId = context.req.param('submissionId')
+    return publisherMutationResponse(
+      await publisherMutation(() =>
+        options.service.executePublisherMutation(
+          authenticated,
+          {
+            type: 'submission.revise',
+            submissionId,
+            input
+          },
+          authenticated.verifiedAt
+        )
+      )
+    )
   })
 
   app.post('/v1/submissions/:submissionId/withdraw', async (context) => {
     const body = await boundedJSON(context)
     const source = exactRecord(body.value, 'submission withdrawal', ['reason'])
-    const authenticated = await authenticate(context, body.bytes, options)
-    if (
-      !(await options.service.control.submission(
-        context.req.param('submissionId'),
-        authenticated.publisherId
-      ))
-    ) {
-      throw new HttpError(404, 'Marketplace submission was not found')
-    }
-    const submission = await options.service.withdrawSubmission(
-      context.req.param('submissionId'),
-      authenticated.publisherId,
-      stringValue(source.reason, 'withdrawal reason'),
-      { actor: `publisher:${authenticated.publisherId}` }
+    const reason = stringValue(source.reason, 'withdrawal reason')
+    const authenticated = await authenticatePublisherMutation(
+      context,
+      body.bytes,
+      options,
+      'submission.withdraw'
     )
-    return privateJSON(toMarketplaceControlSubmissionSummary(submission))
+    return publisherMutationResponse(
+      await publisherMutation(() =>
+        options.service.executePublisherMutation(
+          authenticated,
+          {
+            type: 'submission.withdraw',
+            submissionId: context.req.param('submissionId'),
+            publisherId: authenticated.publisherId,
+            reason
+          },
+          authenticated.verifiedAt
+        )
+      )
+    )
   })
 
   app.get('/admin/operator/overview', async (context) => {
@@ -1824,7 +1972,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/summary', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     if (new URL(context.req.url).search !== '') {
       throw new TypeError('Admin summary does not accept query fields')
     }
@@ -1832,7 +1980,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/publishers', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const query = parseMarketplaceControlListQuery(new URL(context.req.url).search, {
       sorts: ['created'],
       defaultSort: 'created',
@@ -1861,7 +2009,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/publishers/:publisherId', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     rejectQuery(context, 'Admin publisher detail')
     const publisher = await options.service.control.publisher(context.req.param('publisherId'))
     if (!publisher) throw new HttpError(404, 'Marketplace publisher was not found')
@@ -1869,7 +2017,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/publishers/:publisherId/audit', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const publisherId = context.req.param('publisherId')
     if (!(await options.service.control.publisher(publisherId))) {
       throw new HttpError(404, 'Marketplace publisher was not found')
@@ -1885,7 +2033,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   app.get(
     '/admin/publishers/:publisherId/submissions/:submissionId/presentation',
     async (context) => {
-      await authenticateAdmin(context, options.admin, now, options.nonces)
+      await authenticateAdmin(context, options.admin, now, options.service.nonces)
       rejectQuery(context, 'Admin submission presentation')
       const presentation = await options.service.submissionPresentation(
         context.req.param('submissionId'),
@@ -1899,7 +2047,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   app.get(
     '/admin/publishers/:publisherId/submissions/:submissionId/revision-diff/:fromRevision/:toRevision',
     async (context) => {
-      await authenticateAdmin(context, options.admin, now, options.nonces)
+      await authenticateAdmin(context, options.admin, now, options.service.nonces)
       rejectQuery(context, 'Admin submission revision diff')
       const diff = await options.service.submissionRevisionDiff(
         context.req.param('submissionId'),
@@ -1913,7 +2061,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   )
 
   app.get('/admin/publisher-keys', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const query = parseMarketplaceControlListQuery(new URL(context.req.url).search, {
       sorts: ['created'],
       defaultSort: 'created',
@@ -1946,7 +2094,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/publisher-keys/:keyId', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     rejectQuery(context, 'Admin publisher key detail')
     const key = await options.service.control.publisherKey(context.req.param('keyId'))
     if (!key) throw new HttpError(404, 'Marketplace publisher key was not found')
@@ -1954,7 +2102,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/ownerships', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const query = parseMarketplaceControlListQuery(new URL(context.req.url).search, {
       sorts: ['created'],
       defaultSort: 'created',
@@ -1987,7 +2135,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/ownerships/:pluginId', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     rejectQuery(context, 'Admin ownership detail')
     const ownership = await options.service.control.ownership(context.req.param('pluginId'))
     if (!ownership) throw new HttpError(404, 'Marketplace ownership was not found')
@@ -1995,7 +2143,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/submissions', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const query = parseMarketplaceControlListQuery(new URL(context.req.url).search, {
       sorts: ['created'],
       defaultSort: 'created',
@@ -2040,7 +2188,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/submissions/:submissionId', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     rejectQuery(context, 'Admin submission detail')
     const submission = await options.service.control.submission(context.req.param('submissionId'))
     if (!submission) throw new HttpError(404, 'Marketplace submission was not found')
@@ -2048,7 +2196,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/releases', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const query = parseMarketplaceControlListQuery(new URL(context.req.url).search, {
       sorts: ['published'],
       defaultSort: 'published',
@@ -2083,7 +2231,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/releases/:channel/:pluginId/:version', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     if (new URL(context.req.url).search !== '') {
       throw new TypeError('Admin release detail does not accept query fields')
     }
@@ -2099,7 +2247,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/publications', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const query = parseMarketplaceControlListQuery(new URL(context.req.url).search, {
       sorts: ['sequence'],
       defaultSort: 'sequence'
@@ -2115,7 +2263,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/publications/:sequence', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     if (new URL(context.req.url).search !== '') {
       throw new TypeError('Admin publication detail does not accept query fields')
     }
@@ -2127,7 +2275,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/audit', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const query = parseMarketplaceControlListQuery(new URL(context.req.url).search, {
       sorts: ['sequence'],
       defaultSort: 'sequence',
@@ -2160,7 +2308,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.get('/admin/audit/:sequence', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     if (new URL(context.req.url).search !== '') {
       throw new TypeError('Admin audit detail does not accept query fields')
     }
@@ -2414,7 +2562,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/admin/impact-preview', async (context) => {
-    await authenticateAdmin(context, options.admin, now, options.nonces)
+    await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const body = await boundedJSON(context)
     return privateJSON(
       parseMarketplaceImpactPreview(await options.service.previewImpact(impactRequest(body.value)))
@@ -2422,7 +2570,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/admin/publishers/:publisherId/status', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const body = exactRecord(
       (await boundedJSON(context)).value,
       'publisher status',
@@ -2442,7 +2590,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/admin/publisher-keys/:keyId/status', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const body = exactRecord(
       (await boundedJSON(context)).value,
       'publisher key status',
@@ -2462,7 +2610,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/admin/ownerships/:pluginId/status', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const body = exactRecord(
       (await boundedJSON(context)).value,
       'ownership status',
@@ -2482,7 +2630,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/admin/submissions/:submissionId/status', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const body = exactRecord(
       (await boundedJSON(context)).value,
       'submission status',
@@ -2506,7 +2654,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/admin/submissions/:submissionId/publish', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const body = exactRecord((await boundedJSON(context)).value, 'submission publish', [
       'authorityDigest'
     ])
@@ -2522,7 +2670,7 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
   })
 
   app.post('/admin/releases/yank', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
+    const principal = await authenticateAdmin(context, options.admin, now, options.service.nonces)
     const body = exactRecord((await boundedJSON(context)).value, 'release yank', [
       'pluginId',
       'version',
@@ -2545,19 +2693,8 @@ export function createMarketplaceHttpApp(options: CreateMarketplaceHttpAppOption
     )
   })
 
-  app.post('/admin/publish', async (context) => {
-    const principal = await authenticateAdmin(context, options.admin, now, options.nonces)
-    if (!options.admin?.onlinePublishing) {
-      throw new HttpError(404, 'Online marketplace signing is disabled')
-    }
-    const body = exactRecord((await boundedJSON(context)).value, 'marketplace publication', [
-      'authorityDigest'
-    ])
-    const result = await options.service.publish(
-      { actor: principal.actor },
-      authorityDigest(body.authorityDigest)
-    )
-    return privateJSON(parseMarketplacePublication(result.publication), 201)
+  app.post('/admin/publish', () => {
+    throw new HttpError(404, 'Online marketplace signing is disabled')
   })
 
   return app

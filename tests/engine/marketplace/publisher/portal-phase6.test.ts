@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, link, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -37,7 +37,7 @@ import {
   pluginConnectorContract,
   pluginPayloadV2,
   pluginStorageProviderContribution
-} from '../plugins/helpers'
+} from '#tests/engine/plugins/helpers'
 
 const NOW = '2026-08-22T08:00:00.000Z'
 const BEFORE = '2026-08-22T07:59:00.000Z'
@@ -666,7 +666,7 @@ describe('Phase 6 local Publisher signed-envelope hand-off', () => {
     ])
     expect(exitCode).not.toBe(0)
     expect(stdout).toBe('')
-    expect(stderr).toContain('0600 owner-only')
+    expect(stderr).toContain('owner-only regular file')
     expect(stderr).not.toContain('PRIVATE KEY')
     await expect(stat(outputPath)).rejects.toThrow()
 
@@ -685,6 +685,62 @@ describe('Phase 6 local Publisher signed-envelope hand-off', () => {
     expect(secureStdout).not.toContain('PRIVATE KEY')
     expect(secureStdout).not.toContain('acme.analytics')
     expect((await stat(outputPath)).mode & 0o777).toBe(0o600)
+  })
+
+  test('rejects symlinked and multiply-linked private-key files before signing', async () => {
+    if (process.platform === 'win32') return
+    const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+    const directory = await mkdtemp(join(tmpdir(), 'openpencil-phase6-key-links-'))
+    temporaryDirectories.push(directory)
+    const keyPath = join(directory, 'private.pem')
+    const symlinkPath = join(directory, 'private-symlink.pem')
+    const hardlinkPath = join(directory, 'private-hardlink.pem')
+    const bodyPath = join(directory, 'body.json')
+    await writeFile(keyPath, await privateKeyPem(keyPair.privateKey), { mode: 0o600 })
+    await symlink(keyPath, symlinkPath)
+    await link(keyPath, hardlinkPath)
+    await writeFile(bodyPath, '{"pluginId":"acme.analytics","publisherId":"acme"}\n', {
+      mode: 0o600
+    })
+
+    for (const [label, privateKeyPath] of [
+      ['symlink', symlinkPath],
+      ['hardlink', hardlinkPath]
+    ] as const) {
+      const outputPath = join(directory, `${label}.opm-request.json`)
+      const processResult = Bun.spawn(
+        [
+          process.execPath,
+          join(process.cwd(), 'packages/marketplace/src/cli.ts'),
+          'request',
+          'sign',
+          '--operation',
+          'ownership.request',
+          '--audience',
+          MARKETPLACE_ID,
+          '--publisher',
+          'acme',
+          '--key-id',
+          'acme.release',
+          '--body',
+          bodyPath,
+          '--output',
+          outputPath,
+          '--private-key',
+          privateKeyPath
+        ],
+        { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' }
+      )
+      const [exitCode, stdout, stderr] = await Promise.all([
+        processResult.exited,
+        new Response(processResult.stdout).text(),
+        new Response(processResult.stderr).text()
+      ])
+      expect(exitCode).not.toBe(0)
+      expect(stdout).toBe('')
+      expect(stderr).toContain('Private-key file must be')
+      await expect(stat(outputPath)).rejects.toThrow()
+    }
   })
 })
 

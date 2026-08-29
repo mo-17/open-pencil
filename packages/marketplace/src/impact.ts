@@ -5,7 +5,7 @@ import {
   parseSha256Base64URL
 } from '@open-pencil/scene-graph'
 
-import { findActiveMarketplacePublisherKey } from './publisher-trust'
+import { findActiveMarketplacePublisherKey } from './publisher/trust'
 import {
   canTransitionMarketplaceOwnership,
   canTransitionMarketplacePublisher,

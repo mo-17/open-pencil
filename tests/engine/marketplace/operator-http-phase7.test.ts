@@ -278,7 +278,9 @@ describe('marketplace Phase 7 operator HTTP boundary', () => {
     }
     expect(publisherPage.publisherId).toBe('acme')
     expect(publisherPage.items.map(({ action }) => action)).toContain('publisher.created')
-    expect(publisherPage.items.map(({ action }) => action)).toContain('publisher_key.status_changed')
+    expect(publisherPage.items.map(({ action }) => action)).toContain(
+      'publisher_key.status_changed'
+    )
     expect(publisherPage.items.map(({ action }) => action)).toContain('publisher.status_changed')
     expect(publisherPage.items.every(({ subject }) => subject.includes('acme'))).toBe(true)
     expect(publisherPage.items.at(-1)?.contextDigest).toBe(event.contextDigest)

@@ -1,12 +1,54 @@
 /* eslint-disable max-lines -- Marketplace lifecycle mutations and transactional rollback share one state-machine boundary. */
-import { importEd25519PublicKeyPem } from '@open-pencil/scene-graph'
+import {
+  canonicalManifestJSON,
+  importEd25519PublicKeyPem,
+  parseSha256Base64URL
+} from '@open-pencil/scene-graph'
 
 import {
   appendMarketplaceAuditEvent,
   marketplaceAuditHead,
   verifyMarketplaceAuditChain
 } from './audit'
-import { findActiveMarketplacePublisherKey } from './publisher-trust'
+import {
+  MARKETPLACE_NONCE_NAMESPACES,
+  type MarketplaceNonceNamespace,
+  type MarketplaceNonceStore
+} from './auth'
+import {
+  MarketplacePublicationCompletionConflictError,
+  MarketplacePublicationQuiescedError,
+  MarketplacePublicationReservationConflictError,
+  assertMarketplacePublicationCompletionReceiptState,
+  assertMarketplacePublicationReservationCompletion,
+  assertMarketplacePublicationReservationState,
+  createMarketplacePublicationCompletionReceipt,
+  parseMarketplacePublicationCompletionReceipt,
+  parseMarketplacePublicationReservation,
+  sameMarketplacePublicationReservation,
+  type MarketplacePublicationCompletionExecution,
+  type MarketplacePublicationCompletionReceiptV1,
+  type MarketplacePublicationReservationExecution,
+  type MarketplacePublicationReservationV1
+} from './publication/reservation'
+import {
+  MARKETPLACE_PUBLISHER_MUTATION_LIMITS,
+  MarketplacePublisherMutationCommitPlan,
+  MarketplacePublisherMutationCapacityError,
+  MarketplacePublisherMutationConflictError,
+  MarketplacePublisherMutationTerminalError,
+  createMarketplacePublisherMutationTerminalResponse,
+  parseMarketplacePublisherMutationResponse,
+  parseMarketplacePublisherMutationSuccessResponse,
+  parseMarketplaceVerifiedPublisherMutationRequest,
+  sameMarketplacePublisherMutationRequest,
+  type MarketplacePublisherMutationExecution,
+  type MarketplacePublisherMutationReceipt,
+  type MarketplacePublisherMutationResponse,
+  type MarketplacePublisherMutationSuccessResponse,
+  type MarketplaceVerifiedPublisherMutationRequest
+} from './publisher/idempotency'
+import { findActiveMarketplacePublisherKey } from './publisher/trust'
 import {
   MARKETPLACE_LIMITS,
   MARKETPLACE_SCHEMA_VERSION,
@@ -55,9 +97,38 @@ import {
   type RequestMarketplaceOwnershipInput
 } from './types'
 
+export {
+  MarketplacePublicationCompletionConflictError,
+  MarketplacePublicationQuiescedError,
+  MarketplacePublicationReservationConflictError,
+  assertMarketplacePublicationCompletionReceiptState,
+  assertMarketplacePublicationReservationCompletion,
+  assertMarketplacePublicationReservationState,
+  createMarketplacePublicationCompletionReceipt,
+  parseMarketplacePublicationCompletionReceipt,
+  parseMarketplacePublicationReservation,
+  sameMarketplacePublicationReservation,
+  type MarketplacePublicationCompletionExecution,
+  type MarketplacePublicationCompletionReceiptV1,
+  type MarketplacePublicationReservationExecution,
+  type MarketplacePublicationReservationV1
+} from './publication/reservation'
+
 export interface MarketplaceMutationResult<Value> {
   state: MarketplaceStateV1
   value: Value
+}
+
+export interface MarketplacePublisherMutationAuthority {
+  readonly publisherId: string
+  readonly keyId: string
+}
+
+export class MarketplacePublisherMutationAuthorityError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'MarketplacePublisherMutationAuthorityError'
+  }
 }
 
 export interface MarketplaceRepositoryCapacityLimits {
@@ -132,7 +203,16 @@ export interface MarketplaceTransaction {
   ): Promise<MarketplacePublicationV1>
 }
 
+export interface MarketplacePublicationCompletionTransaction {
+  snapshot(): MarketplaceStateV1
+  recordPublication(
+    input: RecordMarketplacePublicationInput,
+    context: MarketplaceMutationContext
+  ): Promise<MarketplacePublicationV1>
+}
+
 export interface MarketplaceRepository {
+  readonly nonces: MarketplaceNonceStore
   snapshot(): Promise<MarketplaceStateV1>
   /**
    * Returns a deeply immutable, fully verified committed state for trusted
@@ -144,11 +224,51 @@ export interface MarketplaceRepository {
   transaction<Value>(
     operation: (transaction: MarketplaceTransaction) => Value | Promise<Value>
   ): Promise<Value>
+  inspectPublisherMutation(
+    request: MarketplaceVerifiedPublisherMutationRequest,
+    currentTime: number
+  ): Promise<MarketplacePublisherMutationExecution | null>
+  executePublisherMutation(
+    request: MarketplaceVerifiedPublisherMutationRequest,
+    currentTime: number,
+    operation: (
+      transaction: MarketplaceTransaction
+    ) =>
+      | MarketplacePublisherMutationCommitPlan
+      | MarketplacePublisherMutationSuccessResponse
+      | Promise<
+          MarketplacePublisherMutationCommitPlan | MarketplacePublisherMutationSuccessResponse
+        >
+  ): Promise<MarketplacePublisherMutationExecution>
+}
+
+export interface MarketplacePublicationReservationRepository extends MarketplaceRepository {
+  inspectPublicationReservation(): Promise<MarketplacePublicationReservationV1 | null>
+  inspectPublicationCompletion(
+    requestDigest: string,
+    bundleDigest: string
+  ): Promise<MarketplacePublicationCompletionReceiptV1 | null>
+  reservePublication(
+    reservation: MarketplacePublicationReservationV1
+  ): Promise<MarketplacePublicationReservationExecution>
+  completePublication(
+    reservation: MarketplacePublicationReservationV1,
+    bundleDigest: string,
+    operation: (
+      transaction: MarketplacePublicationCompletionTransaction
+    ) => MarketplacePublicationV1 | Promise<MarketplacePublicationV1>
+  ): Promise<MarketplacePublicationCompletionExecution>
+  cancelPublication(
+    reservation: MarketplacePublicationReservationV1,
+    confirmedRequestDigest: string,
+    context: MarketplaceMutationContext
+  ): Promise<MarketplaceAuditEventV1>
 }
 
 export interface CreateMemoryMarketplaceRepositoryOptions {
   initialState?: unknown
   capacity?: Partial<MarketplaceRepositoryCapacityLimits>
+  now?: () => number
 }
 
 const DEFAULT_CAPACITY: MarketplaceRepositoryCapacityLimits = Object.freeze({
@@ -238,6 +358,38 @@ function activeSigningKey(
   return key
 }
 
+/**
+ * Rechecks the exact Publisher request authority against transaction-local state.
+ * Call this only after entering the repository transaction that owns the mutation.
+ */
+export function assertActiveMarketplacePublisherMutationAuthority(
+  state: MarketplaceStateV1,
+  authority: MarketplacePublisherMutationAuthority,
+  expectedPublisherIdValue: string,
+  at: string
+): void {
+  const publisherId = parseMarketplaceIdentity(authority.publisherId, 'authenticated publisher id')
+  const keyId = parseMarketplaceIdentity(authority.keyId, 'authenticated publisher key id')
+  const expectedPublisherId = parseMarketplaceIdentity(
+    expectedPublisherIdValue,
+    'publisher mutation publisher id'
+  )
+  if (publisherId !== expectedPublisherId) {
+    throw new MarketplacePublisherMutationAuthorityError(
+      'Authenticated publisher does not match the Publisher mutation target'
+    )
+  }
+  try {
+    activePublisher(state, publisherId)
+    activeSigningKey(state, publisherId, keyId, at)
+  } catch (cause) {
+    throw new MarketplacePublisherMutationAuthorityError(
+      'Authenticated Publisher mutation authority is no longer active',
+      { cause }
+    )
+  }
+}
+
 function stateWithAudit(
   parsed: MarketplaceStateV1,
   auditEvents: readonly MarketplaceAuditEventV1[]
@@ -294,6 +446,9 @@ export async function createMarketplacePublisher(
   const state = parseMarketplaceState(value)
   const input = parseCreateMarketplacePublisherInput(inputValue)
   const context = resolveMarketplaceMutationContext(contextValue)
+  if (input.id === 'admin-assertion-v1' || input.id === 'admin-assertion-v2') {
+    throw new TypeError('Publisher id is reserved for a Marketplace authority namespace')
+  }
   if (state.publishers.some(({ id }) => id === input.id)) {
     throw new TypeError(`Publisher ${input.id} already exists`)
   }
@@ -1140,6 +1295,51 @@ function marketplaceMutationError(value: unknown): Error {
     : new Error('Marketplace transaction mutation failed')
 }
 
+interface MarketplaceCommittedNonce {
+  readonly namespace: MarketplaceNonceNamespace
+  readonly subjectId: string
+  readonly nonce: string
+  readonly expiresAt: number
+}
+
+function marketplaceNonceNamespace(value: unknown): MarketplaceNonceNamespace {
+  if (
+    typeof value !== 'string' ||
+    !(Object.values(MARKETPLACE_NONCE_NAMESPACES) as readonly string[]).includes(value)
+  ) {
+    throw new TypeError('Marketplace nonce namespace is invalid')
+  }
+  return value as MarketplaceNonceNamespace
+}
+
+function marketplaceNonceKey(
+  namespaceValue: MarketplaceNonceNamespace,
+  subjectIdValue: string,
+  nonceValue: string
+): string {
+  const namespace = marketplaceNonceNamespace(namespaceValue)
+  const subjectId = parseMarketplaceIdentity(subjectIdValue, 'marketplace nonce subject id')
+  if (typeof nonceValue !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(nonceValue)) {
+    throw new TypeError('Marketplace nonce must be bounded base64url text')
+  }
+  return JSON.stringify([namespace, subjectId, nonceValue])
+}
+
+function marketplaceNonceExpiry(value: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError('Marketplace nonce expiry must be a positive safe integer')
+  }
+  return value
+}
+
+function marketplaceClock(now: (() => number) | undefined): number {
+  const value = (now ?? Date.now)()
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError('Marketplace clock is invalid')
+  }
+  return value
+}
+
 function createTransaction(
   initialState: MarketplaceStateV1,
   capacity: MarketplaceRepositoryCapacityLimits
@@ -1294,9 +1494,51 @@ function createTransaction(
   return transaction
 }
 
+function createPublicationCompletionTransaction(
+  transaction: MarketplaceTransaction,
+  reservation: MarketplacePublicationReservationV1
+): {
+  readonly transaction: MarketplacePublicationCompletionTransaction
+  assertExactlyRecorded(): void
+} {
+  let recordCalls = 0
+  let violation = false
+
+  function reject(): never {
+    violation = true
+    throw new MarketplacePublicationReservationConflictError()
+  }
+
+  return Object.freeze({
+    transaction: Object.freeze({
+      snapshot() {
+        return transaction.snapshot()
+      },
+      recordPublication(
+        input: RecordMarketplacePublicationInput,
+        context: MarketplaceMutationContext
+      ) {
+        recordCalls++
+        if (recordCalls !== 1) reject()
+        const isolatedContext = structuredClone(context)
+        if (
+          isolatedContext.correlationId !== reservation.requestDigest ||
+          (isolatedContext.reason ?? null) !== null
+        ) {
+          reject()
+        }
+        return transaction.recordPublication(structuredClone(input), isolatedContext)
+      }
+    }),
+    assertExactlyRecorded() {
+      if (violation || recordCalls !== 1) reject()
+    }
+  })
+}
+
 export function createMemoryMarketplaceRepository(
   options: CreateMemoryMarketplaceRepositoryOptions = {}
-): MarketplaceRepository {
+): MarketplacePublicationReservationRepository {
   const capacity = resolveCapacity(options.capacity)
   let state =
     options.initialState === undefined
@@ -1308,6 +1550,10 @@ export function createMemoryMarketplaceRepository(
     verifyPublisherKeyMaterial(state)
   ]).then(() => undefined)
   let queue: Promise<void> = Promise.resolve()
+  const committedNonces = new Map<string, MarketplaceCommittedNonce>()
+  const publisherReceipts = new Map<string, MarketplacePublisherMutationReceipt>()
+  const publicationCompletions = new Map<string, MarketplacePublicationCompletionReceiptV1>()
+  let publicationReservation: MarketplacePublicationReservationV1 | null = null
 
   function enqueue<Value>(operation: () => Promise<Value>): Promise<Value> {
     const running = queue.then(async () => {
@@ -1321,7 +1567,141 @@ export function createMemoryMarketplaceRepository(
     return running
   }
 
+  function cleanupExpiredRequests(now: number): void {
+    for (const [key, nonce] of committedNonces) {
+      if (nonce.expiresAt < now) {
+        committedNonces.delete(key)
+        publisherReceipts.delete(key)
+      }
+    }
+  }
+
+  function prunePublicationCompletions(): void {
+    const retainedSequences = new Set(state.publications.map(({ sequence }) => sequence))
+    for (const [requestDigest, receipt] of publicationCompletions) {
+      if (!retainedSequences.has(receipt.publication.sequence)) {
+        publicationCompletions.delete(requestDigest)
+      }
+    }
+  }
+
+  function publicationCompletion(
+    requestDigestValue: unknown,
+    bundleDigestValue: unknown
+  ): MarketplacePublicationCompletionReceiptV1 | null {
+    const requestDigest = parseSha256Base64URL(
+      requestDigestValue,
+      'marketplace publication completion request digest'
+    )
+    const bundleDigest = parseSha256Base64URL(
+      bundleDigestValue,
+      'marketplace publication completion bundle digest'
+    )
+    const receipt = publicationCompletions.get(requestDigest)
+    if (!receipt) return null
+    if (receipt.bundleDigest !== bundleDigest) {
+      throw new MarketplacePublicationCompletionConflictError()
+    }
+    return assertMarketplacePublicationCompletionReceiptState(receipt, state)
+  }
+
+  function receiptExecution(
+    receipt: MarketplacePublisherMutationReceipt,
+    request: MarketplaceVerifiedPublisherMutationRequest
+  ): MarketplacePublisherMutationExecution {
+    if (!sameMarketplacePublisherMutationRequest(receipt, request)) {
+      const key = marketplaceNonceKey(
+        MARKETPLACE_NONCE_NAMESPACES.publisherRequestV2,
+        request.publisherId,
+        request.nonce
+      )
+      const existing = committedNonces.get(key)
+      if (existing && request.freshUntil > existing.expiresAt) {
+        committedNonces.set(key, Object.freeze({ ...existing, expiresAt: request.freshUntil }))
+      }
+      throw new MarketplacePublisherMutationConflictError()
+    }
+    return Object.freeze({
+      source: 'replayed' as const,
+      response: structuredClone(
+        parseMarketplacePublisherMutationResponse(receipt.operation, receipt.response)
+      )
+    })
+  }
+
+  function assertRequestCapacity(request: MarketplaceVerifiedPublisherMutationRequest): void {
+    if (publisherReceipts.size >= MARKETPLACE_PUBLISHER_MUTATION_LIMITS.maxReceipts) {
+      throw new MarketplacePublisherMutationCapacityError(
+        'Marketplace Publisher mutation receipt capacity is exhausted'
+      )
+    }
+    let publisherReceiptCount = 0
+    let subjectNonceCount = 0
+    let aggregateResponseBytes = 0
+    for (const receipt of publisherReceipts.values()) {
+      aggregateResponseBytes += receipt.response.byteLength
+      if (receipt.publisherId === request.publisherId) publisherReceiptCount++
+    }
+    for (const nonce of committedNonces.values()) {
+      if (
+        nonce.namespace === MARKETPLACE_NONCE_NAMESPACES.publisherRequestV2 &&
+        nonce.subjectId === request.publisherId
+      ) {
+        subjectNonceCount++
+      }
+    }
+    if (
+      publisherReceiptCount >= MARKETPLACE_PUBLISHER_MUTATION_LIMITS.maxReceiptsPerPublisher ||
+      subjectNonceCount >= MARKETPLACE_PUBLISHER_MUTATION_LIMITS.maxLiveNoncesPerSubject ||
+      committedNonces.size >= MARKETPLACE_PUBLISHER_MUTATION_LIMITS.maxLiveNonces ||
+      aggregateResponseBytes >= MARKETPLACE_PUBLISHER_MUTATION_LIMITS.maxAggregateResponseBytes
+    ) {
+      throw new MarketplacePublisherMutationCapacityError(
+        'Marketplace Publisher request capacity is exhausted'
+      )
+    }
+  }
+
+  const nonces: MarketplaceNonceStore = {
+    consume(namespaceValue, subjectId, nonce, expiresAtValue, currentTime) {
+      return enqueue(async () => {
+        const namespace = marketplaceNonceNamespace(namespaceValue)
+        const expiresAt = marketplaceNonceExpiry(expiresAtValue)
+        const now = currentTime ?? marketplaceClock(options.now)
+        if (!Number.isSafeInteger(now) || now < 0) {
+          throw new TypeError('Marketplace nonce current time is invalid')
+        }
+        cleanupExpiredRequests(now)
+        const key = marketplaceNonceKey(namespace, subjectId, nonce)
+        const existing = committedNonces.get(key)
+        if (existing) {
+          if (expiresAt > existing.expiresAt) {
+            committedNonces.set(key, Object.freeze({ ...existing, expiresAt }))
+          }
+          return false
+        }
+        if (committedNonces.size >= MARKETPLACE_PUBLISHER_MUTATION_LIMITS.maxLiveNonces) {
+          throw new MarketplacePublisherMutationCapacityError(
+            'Marketplace nonce capacity is exhausted'
+          )
+        }
+        let subjectCount = 0
+        for (const value of committedNonces.values()) {
+          if (value.namespace === namespace && value.subjectId === subjectId) subjectCount++
+        }
+        if (subjectCount >= MARKETPLACE_PUBLISHER_MUTATION_LIMITS.maxLiveNoncesPerSubject) {
+          throw new MarketplacePublisherMutationCapacityError(
+            'Marketplace nonce subject capacity is exhausted'
+          )
+        }
+        committedNonces.set(key, Object.freeze({ namespace, subjectId, nonce, expiresAt }))
+        return true
+      })
+    }
+  }
+
   return {
+    nonces,
     snapshot() {
       return enqueue(async () => isolatedState(state))
     },
@@ -1329,19 +1709,285 @@ export function createMemoryMarketplaceRepository(
       await initialization
       return state
     },
+    inspectPublicationReservation() {
+      return enqueue(async () =>
+        publicationReservation === null ? null : structuredClone(publicationReservation)
+      )
+    },
+    inspectPublicationCompletion(requestDigest, bundleDigest) {
+      return enqueue(async () => {
+        const receipt = publicationCompletion(requestDigest, bundleDigest)
+        return receipt === null ? null : structuredClone(receipt)
+      })
+    },
+    reservePublication(reservationValue) {
+      return enqueue(async () => {
+        const reservation = parseMarketplacePublicationReservation(reservationValue)
+        if (publicationReservation !== null) {
+          if (!sameMarketplacePublicationReservation(publicationReservation, reservation)) {
+            throw new MarketplacePublicationReservationConflictError()
+          }
+          assertMarketplacePublicationReservationState(publicationReservation, state)
+          return Object.freeze({
+            source: 'replayed' as const,
+            reservation: structuredClone(publicationReservation)
+          })
+        }
+        assertMarketplacePublicationReservationState(reservation, state)
+        publicationReservation = reservation
+        return Object.freeze({
+          source: 'reserved' as const,
+          reservation: structuredClone(reservation)
+        })
+      })
+    },
+    completePublication(reservationValue, bundleDigestValue, operation) {
+      return enqueue(async () => {
+        const reservation = parseMarketplacePublicationReservation(reservationValue)
+        const bundleDigest = parseSha256Base64URL(
+          bundleDigestValue,
+          'marketplace publication completion bundle digest'
+        )
+        const replayed = publicationCompletion(reservation.requestDigest, bundleDigest)
+        if (replayed) {
+          return Object.freeze({
+            source: 'replayed' as const,
+            receipt: structuredClone(replayed),
+            publication: structuredClone(replayed.publication)
+          })
+        }
+        if (
+          publicationReservation === null ||
+          !sameMarketplacePublicationReservation(publicationReservation, reservation)
+        ) {
+          throw new MarketplacePublicationReservationConflictError()
+        }
+        assertMarketplacePublicationReservationState(reservation, state)
+        const transaction = createTransaction(state, capacity)
+        const completion = createPublicationCompletionTransaction(transaction, reservation)
+        try {
+          const result = await operation(completion.transaction)
+          const returnedPublication = parseMarketplacePublication(
+            structuredClone(result),
+            'marketplace publication completion result'
+          )
+          completion.assertExactlyRecorded()
+          const next = await transaction.close()
+          const verifiedNext = assertMarketplacePublicationReservationCompletion(
+            reservation,
+            state,
+            next
+          )
+          const receipt = createMarketplacePublicationCompletionReceipt(
+            reservation,
+            bundleDigest,
+            verifiedNext
+          )
+          if (
+            canonicalManifestJSON(returnedPublication) !==
+            canonicalManifestJSON(receipt.publication)
+          ) {
+            throw new MarketplacePublicationReservationConflictError()
+          }
+          state = verifiedNext
+          publicationCompletions.set(receipt.requestDigest, receipt)
+          publicationReservation = null
+          return Object.freeze({
+            source: 'committed' as const,
+            receipt: structuredClone(receipt),
+            publication: structuredClone(receipt.publication)
+          })
+        } catch (error) {
+          await transaction.abort()
+          throw error
+        }
+      })
+    },
+    cancelPublication(reservationValue, confirmedRequestDigestValue, contextValue) {
+      return enqueue(async () => {
+        const reservation = parseMarketplacePublicationReservation(reservationValue)
+        const confirmedRequestDigest = parseSha256Base64URL(
+          confirmedRequestDigestValue,
+          'marketplace publication cancellation confirmed request digest'
+        )
+        if (
+          confirmedRequestDigest !== reservation.requestDigest ||
+          publicationReservation === null ||
+          !sameMarketplacePublicationReservation(publicationReservation, reservation)
+        ) {
+          throw new MarketplacePublicationReservationConflictError()
+        }
+        assertMarketplacePublicationReservationState(reservation, state)
+        const context = resolveMarketplaceMutationContext(contextValue)
+        if (!context.reason) {
+          throw new TypeError('Marketplace publication reservation cancellation requires a reason')
+        }
+        if (context.correlationId !== reservation.requestDigest) {
+          throw new MarketplacePublicationReservationConflictError()
+        }
+        const cancelled = await commitMutation(state, {}, null, {
+          action: 'publication.reservation_cancelled',
+          subject: `publication-reservation:${reservation.requestDigest}`,
+          payload: {
+            auditHead: reservation.auditHead,
+            auditSequence: reservation.auditSequence,
+            expectedNextSequence: reservation.expectedNextSequence,
+            requestDigest: reservation.requestDigest,
+            stateDigest: reservation.stateDigest
+          },
+          context
+        })
+        const event = cancelled.state.auditEvents.at(-1)
+        if (event?.action !== 'publication.reservation_cancelled') {
+          throw new MarketplacePublicationReservationConflictError()
+        }
+        state = cancelled.state
+        publicationReservation = null
+        return structuredClone(event)
+      })
+    },
     transaction(operation) {
       return enqueue(async () => {
+        if (publicationReservation !== null) throw new MarketplacePublicationQuiescedError()
         const transaction = createTransaction(state, capacity)
         let result: Awaited<ReturnType<typeof operation>>
         try {
           result = await operation(transaction)
           const next = await transaction.close()
           state = next
+          prunePublicationCompletions()
         } catch (error) {
           await transaction.abort()
           throw error
         }
         return structuredClone(result)
+      })
+    },
+    inspectPublisherMutation(requestValue, currentTime) {
+      return enqueue(async () => {
+        const request = parseMarketplaceVerifiedPublisherMutationRequest(requestValue)
+        const now = marketplaceClock(() => currentTime)
+        cleanupExpiredRequests(now)
+        const key = marketplaceNonceKey(
+          MARKETPLACE_NONCE_NAMESPACES.publisherRequestV2,
+          request.publisherId,
+          request.nonce
+        )
+        const receipt = publisherReceipts.get(key)
+        if (receipt) return receiptExecution(receipt, request)
+        const committedNonce = committedNonces.get(key)
+        if (committedNonce) {
+          if (request.freshUntil > committedNonce.expiresAt) {
+            committedNonces.set(
+              key,
+              Object.freeze({ ...committedNonce, expiresAt: request.freshUntil })
+            )
+          }
+          throw new MarketplacePublisherMutationConflictError()
+        }
+        return null
+      })
+    },
+    executePublisherMutation(requestValue, currentTime, operation) {
+      return enqueue(async () => {
+        const request = parseMarketplaceVerifiedPublisherMutationRequest(requestValue)
+        const now = marketplaceClock(() => currentTime)
+        if (publicationReservation !== null) throw new MarketplacePublicationQuiescedError()
+        cleanupExpiredRequests(now)
+        const key = marketplaceNonceKey(
+          MARKETPLACE_NONCE_NAMESPACES.publisherRequestV2,
+          request.publisherId,
+          request.nonce
+        )
+        const receipt = publisherReceipts.get(key)
+        if (receipt) return receiptExecution(receipt, request)
+        const committedNonce = committedNonces.get(key)
+        if (committedNonce) {
+          if (request.freshUntil > committedNonce.expiresAt) {
+            committedNonces.set(
+              key,
+              Object.freeze({ ...committedNonce, expiresAt: request.freshUntil })
+            )
+          }
+          throw new MarketplacePublisherMutationConflictError()
+        }
+        assertRequestCapacity(request)
+
+        const transaction = createTransaction(state, capacity)
+        let response: MarketplacePublisherMutationResponse | null = null
+        let next = state
+        let callbackResult:
+          | MarketplacePublisherMutationCommitPlan
+          | MarketplacePublisherMutationSuccessResponse
+          | undefined
+        let terminalFailure = false
+        try {
+          callbackResult = await operation(transaction)
+        } catch (error) {
+          await transaction.abort()
+          if (!(error instanceof MarketplacePublisherMutationTerminalError)) throw error
+          terminalFailure = true
+          response = createMarketplacePublisherMutationTerminalResponse(error)
+          if (
+            [...publisherReceipts.values()].reduce(
+              (sum, value) => sum + value.response.byteLength,
+              response.byteLength
+            ) > MARKETPLACE_PUBLISHER_MUTATION_LIMITS.maxAggregateResponseBytes
+          ) {
+            throw new MarketplacePublisherMutationCapacityError(
+              'Marketplace Publisher mutation response capacity is exhausted'
+            )
+          }
+        }
+        if (!terminalFailure) {
+          try {
+            const result = callbackResult as
+              | MarketplacePublisherMutationCommitPlan
+              | MarketplacePublisherMutationSuccessResponse
+            const plan = result instanceof MarketplacePublisherMutationCommitPlan ? result : null
+            response = parseMarketplacePublisherMutationSuccessResponse(
+              request.operation,
+              result instanceof MarketplacePublisherMutationCommitPlan ? result.response : result
+            )
+            if (
+              [...publisherReceipts.values()].reduce(
+                (sum, value) => sum + value.response.byteLength,
+                response.byteLength
+              ) > MARKETPLACE_PUBLISHER_MUTATION_LIMITS.maxAggregateResponseBytes
+            ) {
+              throw new MarketplacePublisherMutationCapacityError(
+                'Marketplace Publisher mutation response capacity is exhausted'
+              )
+            }
+            next = await transaction.close()
+            if (plan) await plan.commit()
+          } catch (error) {
+            await transaction.abort()
+            throw error
+          }
+        }
+        if (!response) {
+          throw new Error('Marketplace Publisher mutation did not produce a response')
+        }
+        const nextCommittedNonce = Object.freeze({
+          namespace: MARKETPLACE_NONCE_NAMESPACES.publisherRequestV2,
+          subjectId: request.publisherId,
+          nonce: request.nonce,
+          expiresAt: request.freshUntil
+        })
+        const committedReceipt: MarketplacePublisherMutationReceipt = Object.freeze({
+          ...request,
+          response: structuredClone(response),
+          committedAt: now
+        })
+        state = next
+        prunePublicationCompletions()
+        committedNonces.set(key, nextCommittedNonce)
+        publisherReceipts.set(key, committedReceipt)
+        return Object.freeze({
+          source: 'committed' as const,
+          response: structuredClone(response)
+        })
       })
     }
   }

@@ -29,11 +29,24 @@ import {
 import { marketplaceAuditPayloadDigest, verifyMarketplaceAuditChain } from './audit'
 import {
   assertMarketplaceSqliteSchema,
+  assertMarketplaceSqliteSchemaV1,
+  assertMarketplaceSqliteSchemaV2,
+  assertMarketplaceSqliteSchemaV3,
+  assertMarketplaceSqliteSchemaV4,
   MARKETPLACE_INCOMPLETE_GENERATION_FILE,
+  MARKETPLACE_LEGACY_SQLITE_SCHEMA_VERSION,
+  MARKETPLACE_PUBLICATION_RESERVATION_SQLITE_SCHEMA_VERSION,
+  MARKETPLACE_SUCCESS_RECEIPT_SQLITE_SCHEMA_VERSION,
   MARKETPLACE_SQLITE_SCHEMA_VERSION,
+  MARKETPLACE_TERMINAL_RECEIPT_SQLITE_SCHEMA_VERSION,
   marketplaceGenerationReservationPath
 } from './sqlite-layout'
-import type { SqliteMarketplaceRepository } from './sqlite-repository'
+import {
+  verifyMarketplaceSqlitePublicationCompletions,
+  verifyMarketplaceSqlitePublicationReservation,
+  verifyMarketplaceSqlitePublisherReceipts,
+  type SqliteMarketplaceRepository
+} from './sqlite-repository'
 import {
   parseMarketplacePublicURL,
   parseMarketplaceState,
@@ -834,7 +847,6 @@ async function readBackupState(databaseBytes: Uint8Array): Promise<MarketplaceSt
     if (quickCheck.length !== 1 || quickCheck[0] !== 'ok') {
       throw new Error('Marketplace backup SQLite quick_check failed')
     }
-    assertMarketplaceSqliteSchema(database, 'Marketplace backup SQLite')
     const stateRowCounts = database
       .query<{ count: number; expected: number }, []>(
         'SELECT COUNT(*) AS count, SUM(CASE WHEN id = 1 THEN 1 ELSE 0 END) AS expected FROM marketplace_state'
@@ -843,17 +855,57 @@ async function readBackupState(databaseBytes: Uint8Array): Promise<MarketplaceSt
     if (stateRowCounts?.count !== 1 || stateRowCounts.expected !== 1) {
       throw new Error('Marketplace backup SQLite must contain exactly one state row')
     }
-    // Force schema validation for the replay table even when it currently has no rows.
-    database.query('SELECT publisher_id, nonce, expires_at FROM marketplace_nonces LIMIT 1').get()
     const row = database
       .query<{ schema_version: number; state_json: string }, []>(
         'SELECT schema_version, state_json FROM marketplace_state WHERE id = 1'
       )
       .get()
-    if (!row || row.schema_version !== MARKETPLACE_SQLITE_SCHEMA_VERSION) {
+    if (!row) {
       throw new Error('Marketplace backup SQLite schema version is invalid')
     }
-    return parseMarketplaceState(JSON.parse(row.state_json))
+    let verifyPublicationReservation = false
+    let verifyPublicationCompletions = false
+    if (row.schema_version === MARKETPLACE_LEGACY_SQLITE_SCHEMA_VERSION) {
+      assertMarketplaceSqliteSchemaV1(database, 'Marketplace backup SQLite')
+      database.query('SELECT publisher_id, nonce, expires_at FROM marketplace_nonces LIMIT 1').get()
+    } else if (row.schema_version === MARKETPLACE_SUCCESS_RECEIPT_SQLITE_SCHEMA_VERSION) {
+      assertMarketplaceSqliteSchemaV2(database, 'Marketplace backup SQLite')
+      database
+        .query('SELECT namespace, subject_id, nonce, expires_at FROM marketplace_nonces LIMIT 1')
+        .get()
+      verifyMarketplaceSqlitePublisherReceipts(database)
+    } else if (row.schema_version === MARKETPLACE_TERMINAL_RECEIPT_SQLITE_SCHEMA_VERSION) {
+      assertMarketplaceSqliteSchemaV3(database, 'Marketplace backup SQLite')
+      database
+        .query('SELECT namespace, subject_id, nonce, expires_at FROM marketplace_nonces LIMIT 1')
+        .get()
+      verifyMarketplaceSqlitePublisherReceipts(database)
+    } else if (row.schema_version === MARKETPLACE_PUBLICATION_RESERVATION_SQLITE_SCHEMA_VERSION) {
+      assertMarketplaceSqliteSchemaV4(database, 'Marketplace backup SQLite')
+      database
+        .query('SELECT namespace, subject_id, nonce, expires_at FROM marketplace_nonces LIMIT 1')
+        .get()
+      verifyMarketplaceSqlitePublisherReceipts(database)
+      verifyPublicationReservation = true
+    } else if (row.schema_version === MARKETPLACE_SQLITE_SCHEMA_VERSION) {
+      assertMarketplaceSqliteSchema(database, 'Marketplace backup SQLite')
+      database
+        .query('SELECT namespace, subject_id, nonce, expires_at FROM marketplace_nonces LIMIT 1')
+        .get()
+      verifyMarketplaceSqlitePublisherReceipts(database)
+      verifyPublicationReservation = true
+      verifyPublicationCompletions = true
+    } else {
+      throw new Error('Marketplace backup SQLite schema version is invalid')
+    }
+    const state = parseMarketplaceState(JSON.parse(row.state_json))
+    if (verifyPublicationReservation) {
+      verifyMarketplaceSqlitePublicationReservation(database, state)
+    }
+    if (verifyPublicationCompletions) {
+      verifyMarketplaceSqlitePublicationCompletions(database, state)
+    }
+    return state
   } finally {
     database.close(false)
   }

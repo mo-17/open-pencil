@@ -30,6 +30,11 @@ import {
   type MarketplaceArtifact,
   type MarketplaceArtifactStore
 } from './artifacts'
+import { MARKETPLACE_REQUEST_AUTH_LIMITS, type MarketplaceNonceStore } from './auth'
+import {
+  toMarketplaceControlPublisherKey,
+  toMarketplaceControlSubmissionSummary
+} from './control-contract'
 import { createMarketplaceControlReader, type MarketplaceControlReader } from './control-reader'
 import {
   assertMarketplaceImpactAuthority,
@@ -44,12 +49,20 @@ import {
   type MarketplaceSubmissionPresentationV1
 } from './presentation'
 import {
-  prepareMarketplacePublication,
-  type MarketplacePublicationConfig,
-  type PreparedMarketplacePublication
-} from './publication'
-import { findActiveMarketplacePublisherKey } from './publisher-trust'
-import type { MarketplaceRepository } from './repository'
+  MarketplacePublisherMutationTerminalError,
+  MarketplacePublisherMutationCommitPlan,
+  createMarketplacePublisherMutationResponse,
+  type MarketplacePublisherMutationExecution,
+  type MarketplacePublisherMutationTerminalCode,
+  type MarketplaceVerifiedPublisherMutationRequest
+} from './publisher/idempotency'
+import { findActiveMarketplacePublisherKey } from './publisher/trust'
+import {
+  MarketplacePublisherMutationAuthorityError,
+  assertActiveMarketplacePublisherMutationAuthority,
+  type MarketplacePublisherMutationAuthority,
+  type MarketplaceRepository
+} from './repository'
 import {
   createMarketplaceSubmissionRevisionDiff,
   type MarketplaceSubmissionRevisionDiffV1
@@ -64,6 +77,7 @@ import {
 } from './submission-assurance'
 import {
   MARKETPLACE_RELEASE_CHANNELS,
+  canTransitionMarketplaceSubmission,
   parseMarketplaceSubmission,
   parseMarketplaceIdentity,
   marketplaceListingDigest,
@@ -78,7 +92,6 @@ import {
   type MarketplaceMutationContext,
   type MarketplaceOwnershipV1,
   type MarketplaceOwnershipStatus,
-  type MarketplacePublicationV1,
   type MarketplacePublisherKeyV1,
   type MarketplacePublisherKeyStatus,
   type MarketplacePublisherStatus,
@@ -95,7 +108,6 @@ import {
 export interface MarketplaceRootTrust {
   keyId: string
   publicKey?: CryptoKey
-  privateKey?: CryptoKey
 }
 
 export interface CreateMarketplaceServiceOptions {
@@ -105,7 +117,6 @@ export interface CreateMarketplaceServiceOptions {
   publicBaseUrl: string
   root?: MarketplaceRootTrust
   now?: () => Date
-  publicationValidityMilliseconds?: number
 }
 
 export interface RegisterMarketplacePublisherInput {
@@ -147,6 +158,33 @@ export interface MarketplaceSubmissionValidationV1 {
   runtimeByteLength: number | null
 }
 
+export type MarketplacePublisherMutationCommand =
+  | { readonly type: 'publisher.register'; readonly input: RegisterMarketplacePublisherInput }
+  | {
+      readonly type: 'ownership.request'
+      readonly pluginId: string
+      readonly publisherId: string
+    }
+  | {
+      readonly type: 'key.rotate'
+      readonly input: RegisterMarketplacePublisherKeyInput
+    }
+  | {
+      readonly type: 'submission.create'
+      readonly input: SubmitMarketplacePluginInput
+    }
+  | {
+      readonly type: 'submission.revise'
+      readonly submissionId: string
+      readonly input: Omit<ReviseMarketplaceSubmissionInput, 'channel'>
+    }
+  | {
+      readonly type: 'submission.withdraw'
+      readonly submissionId: string
+      readonly publisherId: string
+      readonly reason: string
+    }
+
 export interface MarketplaceAuthenticatedMutationContext extends MarketplaceMutationContext {
   authenticatedRequestKeyId?: string
 }
@@ -172,6 +210,7 @@ export interface MarketplacePublicAuditPage {
 export interface MarketplaceService {
   readonly control: MarketplaceControlReader
   readonly marketplaceId: string
+  readonly nonces: MarketplaceNonceStore
   snapshot(): Promise<MarketplaceStateV1>
   registerPublisher(
     input: RegisterMarketplacePublisherInput,
@@ -179,7 +218,8 @@ export interface MarketplaceService {
   ): Promise<MarketplacePublisherV1>
   registerPublisherKey(
     input: RegisterMarketplacePublisherKeyInput,
-    context: MarketplaceMutationContext
+    context: MarketplaceMutationContext,
+    authority?: MarketplacePublisherMutationAuthority
   ): Promise<MarketplacePublisherKeyV1>
   transitionPublisher(
     publisherId: string,
@@ -197,7 +237,8 @@ export interface MarketplaceService {
   requestOwnership(
     pluginId: string,
     publisherId: string,
-    context: MarketplaceMutationContext
+    context: MarketplaceMutationContext,
+    authority?: MarketplacePublisherMutationAuthority
   ): Promise<MarketplaceOwnershipV1>
   transitionOwnership(
     pluginId: string,
@@ -212,6 +253,11 @@ export interface MarketplaceService {
   validateSubmission(
     input: SubmitMarketplacePluginInput
   ): Promise<MarketplaceSubmissionValidationV1>
+  executePublisherMutation(
+    request: MarketplaceVerifiedPublisherMutationRequest,
+    command: MarketplacePublisherMutationCommand,
+    verifiedAt: number
+  ): Promise<MarketplacePublisherMutationExecution>
   reviseSubmission(
     submissionId: string,
     input: ReviseMarketplaceSubmissionInput,
@@ -227,7 +273,8 @@ export interface MarketplaceService {
     submissionId: string,
     publisherId: string,
     reason: string,
-    context: Omit<MarketplaceMutationContext, 'reason'>
+    context: Omit<MarketplaceMutationContext, 'reason'>,
+    authority?: MarketplacePublisherMutationAuthority
   ): Promise<MarketplaceSubmissionV1>
   publishSubmission(
     submissionId: string,
@@ -239,13 +286,6 @@ export interface MarketplaceService {
     context: MarketplaceMutationContext,
     authorityDigest?: string
   ): Promise<MarketplaceReleaseV1>
-  publish(
-    context: MarketplaceMutationContext,
-    authorityDigest?: string
-  ): Promise<{
-    publication: MarketplacePublicationV1
-    prepared: PreparedMarketplacePublication
-  }>
   previewImpact(input: MarketplaceImpactRequest): Promise<MarketplaceImpactPreviewV1>
   submissionPresentation(
     submissionId: string,
@@ -264,7 +304,12 @@ export interface MarketplaceService {
     submissionId: string,
     query: MarketplaceSubmissionReviewerHistoryQuery
   ): Promise<MarketplaceSubmissionReviewerHistoryV1 | null>
-  resolveActivePublisherKey(publisherId: string, keyId: string): Promise<CryptoKey | null>
+  resolveActivePublisherKey(
+    publisherId: string,
+    keyId: string,
+    verifiedAt?: number
+  ): Promise<CryptoKey | null>
+  resolvePublisherKey(publisherId: string, keyId: string): Promise<CryptoKey | null>
   artifact(digest: string): Promise<MarketplaceArtifact | null>
   publicArtifact(digest: string): Promise<MarketplaceArtifact | null>
   latestSnapshotArtifact(): Promise<MarketplaceArtifact | null>
@@ -292,6 +337,16 @@ function normalizedContext(
   fallbackTime: string
 ): MarketplaceMutationContext {
   return { ...context, time: context.time ?? fallbackTime }
+}
+
+function isolatedPublisherMutationAuthority(
+  authority: MarketplacePublisherMutationAuthority | undefined
+): MarketplacePublisherMutationAuthority | undefined {
+  if (!authority) return undefined
+  return Object.freeze({
+    publisherId: parseMarketplaceIdentity(authority.publisherId, 'authenticated publisher id'),
+    keyId: parseMarketplaceIdentity(authority.keyId, 'authenticated publisher key id')
+  })
 }
 
 function baseURL(value: string): string {
@@ -745,26 +800,479 @@ function submissionAtRevision(
   })
 }
 
-function publicationConfig(
-  options: CreateMarketplaceServiceOptions,
-  root: MarketplaceRootTrust
-): MarketplacePublicationConfig {
-  if (!root.privateKey) throw new Error('Marketplace publication requires a root private key')
-  return {
-    marketplaceId: options.marketplaceId,
-    rootKeyId: root.keyId,
-    rootPrivateKey: root.privateKey,
-    publicBaseUrl: options.publicBaseUrl,
-    ...(options.now ? { now: options.now } : {}),
-    ...(options.publicationValidityMilliseconds === undefined
-      ? {}
-      : { validityMilliseconds: options.publicationValidityMilliseconds })
+interface PublisherMutationExecutionContext {
+  readonly options: CreateMarketplaceServiceOptions
+  readonly publicBaseURL: string
+  readonly request: MarketplaceVerifiedPublisherMutationRequest
+  readonly actor: string
+  readonly mutationTime: string
+  readonly serverTime: number
+}
+
+type PublisherCommand<Type extends MarketplacePublisherMutationCommand['type']> = Extract<
+  MarketplacePublisherMutationCommand,
+  { readonly type: Type }
+>
+
+function unsupportedPublisherMutation(command: never): never {
+  throw new TypeError(`Unsupported Publisher mutation command: ${String(command)}`)
+}
+
+function terminalPublisherMutation(code: MarketplacePublisherMutationTerminalCode): never {
+  throw new MarketplacePublisherMutationTerminalError(code)
+}
+
+function publisherMutationInput<Value>(operation: () => Value): Value {
+  try {
+    return operation()
+  } catch (error) {
+    if (error instanceof MarketplacePublisherMutationTerminalError) throw error
+    if (error instanceof TypeError) terminalPublisherMutation('invalid-request')
+    throw error
   }
+}
+
+async function publisherMutationInputAsync<Value>(operation: () => Promise<Value>): Promise<Value> {
+  try {
+    return await operation()
+  } catch (error) {
+    if (error instanceof MarketplacePublisherMutationTerminalError) throw error
+    if (
+      error instanceof TypeError ||
+      (error instanceof DOMException &&
+        (error.name === 'DataError' || error.name === 'OperationError'))
+    ) {
+      terminalPublisherMutation('invalid-request')
+    }
+    throw error
+  }
+}
+
+function assertPublisherMutationAuthority(
+  state: MarketplaceStateV1,
+  request: MarketplaceVerifiedPublisherMutationRequest,
+  publisherId: string,
+  mutationTime: string
+): void {
+  try {
+    assertActiveMarketplacePublisherMutationAuthority(state, request, publisherId, mutationTime)
+  } catch (error) {
+    if (error instanceof MarketplacePublisherMutationAuthorityError) {
+      terminalPublisherMutation('authority-inactive')
+    }
+    throw error
+  }
+}
+
+async function preparePublisherSubmission(
+  context: PublisherMutationExecutionContext,
+  state: MarketplaceStateV1,
+  input: SubmitMarketplacePluginInput,
+  allowedSubmissionId?: string
+): Promise<PreparedMarketplaceSubmission> {
+  try {
+    return await prepareSubmission(
+      context.options,
+      context.publicBaseURL,
+      state,
+      input,
+      context.mutationTime,
+      allowedSubmissionId
+    )
+  } catch (error) {
+    if (error instanceof MarketplacePublisherMutationTerminalError) throw error
+    if (
+      error instanceof TypeError ||
+      (error instanceof DOMException &&
+        (error.name === 'DataError' || error.name === 'OperationError'))
+    ) {
+      terminalPublisherMutation('invalid-request')
+    }
+    if (error instanceof Error) {
+      if (
+        /^Publisher .+ is not active$/.test(error.message) ||
+        /^Publisher key .+ is not active at the submission time$/.test(error.message) ||
+        /^Authenticated request key .+ is not active at the submission time$/.test(error.message)
+      ) {
+        terminalPublisherMutation('authority-inactive')
+      }
+      if (
+        error.message === 'Publisher does not own the submitted plugin id' ||
+        /^Submission .+ already exists$/.test(error.message) ||
+        /^Release coordinate .+ already has a submission$/.test(error.message)
+      ) {
+        terminalPublisherMutation('state-conflict')
+      }
+      if (
+        error.message === 'Plugin manifest publisher does not match the authenticated publisher' ||
+        error.message === 'Plugin manifest digest mismatch' ||
+        error.message === 'Plugin manifest signature verification failed' ||
+        error.message.startsWith('Plugin requires OpenPencil ')
+      ) {
+        terminalPublisherMutation('invalid-request')
+      }
+    }
+    throw error
+  }
+}
+
+async function executePublisherRegistration(
+  context: PublisherMutationExecutionContext,
+  command: PublisherCommand<'publisher.register'>
+): Promise<MarketplacePublisherMutationExecution> {
+  const { actor, mutationTime, options, request } = context
+  const id = publisherMutationInput(() =>
+    parseMarketplaceIdentity(command.input.publisher.id, 'publisher id')
+  )
+  if (id === 'admin-assertion-v1' || id === 'admin-assertion-v2') {
+    terminalPublisherMutation('invalid-request')
+  }
+  if (
+    id !== request.publisherId ||
+    command.input.key.publisherId !== request.publisherId ||
+    command.input.key.keyId !== request.keyId
+  ) {
+    terminalPublisherMutation('authority-mismatch')
+  }
+  if (command.input.publisher.displayName.length > 128) {
+    terminalPublisherMutation('invalid-request')
+  }
+  const existing = await options.repository.snapshot()
+  if (
+    existing.publishers.some(({ id: publisherId }) => publisherId === id) ||
+    existing.publisherKeys.some(({ keyId }) => keyId === command.input.key.keyId)
+  ) {
+    terminalPublisherMutation('publisher-registration-conflict')
+  }
+  const canonical = await publisherMutationInputAsync(() => canonicalPublicKey(command.input.key))
+  return options.repository.executePublisherMutation(
+    request,
+    context.serverTime,
+    async (transaction) => {
+      const current = transaction.snapshot()
+      if (
+        current.publishers.some(({ id: publisherId }) => publisherId === id) ||
+        current.publisherKeys.some(({ keyId }) => keyId === canonical.input.keyId)
+      ) {
+        terminalPublisherMutation('publisher-registration-conflict')
+      }
+      const publisher = await transaction.createPublisher(
+        { id, displayName: command.input.publisher.displayName },
+        { actor, time: mutationTime }
+      )
+      await transaction.registerPublisherKey(canonical.input, { actor, time: mutationTime })
+      return createMarketplacePublisherMutationResponse('publisher.register', publisher)
+    }
+  )
+}
+
+function executePublisherOwnership(
+  context: PublisherMutationExecutionContext,
+  command: PublisherCommand<'ownership.request'>
+): Promise<MarketplacePublisherMutationExecution> {
+  const { actor, mutationTime, options, request } = context
+  const publisherId = publisherMutationInput(() =>
+    parseMarketplaceIdentity(command.publisherId, 'publisher id')
+  )
+  if (publisherId !== request.publisherId) {
+    terminalPublisherMutation('authority-mismatch')
+  }
+  const pluginId = publisherMutationInput(() =>
+    parseMarketplaceIdentity(command.pluginId, 'ownership plugin id')
+  )
+  return options.repository.executePublisherMutation(
+    request,
+    context.serverTime,
+    async (transaction) => {
+      const current = transaction.snapshot()
+      assertPublisherMutationAuthority(current, request, publisherId, mutationTime)
+      if (current.ownerships.some((ownership) => ownership.pluginId === pluginId)) {
+        terminalPublisherMutation('state-conflict')
+      }
+      const ownership = await transaction.requestOwnership(
+        { pluginId, publisherId },
+        { actor, time: mutationTime }
+      )
+      return createMarketplacePublisherMutationResponse('ownership.request', ownership)
+    }
+  )
+}
+
+async function executePublisherKeyRotation(
+  context: PublisherMutationExecutionContext,
+  command: PublisherCommand<'key.rotate'>
+): Promise<MarketplacePublisherMutationExecution> {
+  const { actor, mutationTime, options, request } = context
+  const canonical = await publisherMutationInputAsync(() => canonicalPublicKey(command.input))
+  if (
+    canonical.input.publisherId !== request.publisherId ||
+    canonical.input.predecessorKeyId !== request.keyId
+  ) {
+    terminalPublisherMutation('authority-mismatch')
+  }
+  return options.repository.executePublisherMutation(
+    request,
+    context.serverTime,
+    async (transaction) => {
+      const current = transaction.snapshot()
+      assertPublisherMutationAuthority(current, request, canonical.input.publisherId, mutationTime)
+      if (current.publisherKeys.some(({ keyId }) => keyId === canonical.input.keyId)) {
+        terminalPublisherMutation('state-conflict')
+      }
+      const predecessor = current.publisherKeys.find(({ keyId }) => keyId === request.keyId)
+      if (
+        !predecessor ||
+        Date.parse(predecessor.notBefore) >= Date.parse(canonical.input.notBefore)
+      ) {
+        terminalPublisherMutation('invalid-request')
+      }
+      const key = await transaction.registerPublisherKey(canonical.input, {
+        actor,
+        time: mutationTime
+      })
+      return createMarketplacePublisherMutationResponse(
+        'key.rotate',
+        toMarketplaceControlPublisherKey(key)
+      )
+    }
+  )
+}
+
+async function executePublisherSubmissionCreation(
+  context: PublisherMutationExecutionContext,
+  command: PublisherCommand<'submission.create'>
+): Promise<MarketplacePublisherMutationExecution> {
+  const { actor, mutationTime, options, publicBaseURL, request } = context
+  if (
+    command.input.publisherId !== request.publisherId ||
+    command.input.authenticatedRequestKeyId !== request.keyId
+  ) {
+    terminalPublisherMutation('authority-mismatch')
+  }
+  const initialState = await options.repository.snapshot()
+  assertPublisherMutationAuthority(initialState, request, command.input.publisherId, mutationTime)
+  const prepared = await preparePublisherSubmission(context, initialState, command.input)
+  return options.repository.executePublisherMutation(
+    request,
+    context.serverTime,
+    async (transaction) => {
+      const current = transaction.snapshot()
+      assertPublisherMutationAuthority(current, request, command.input.publisherId, mutationTime)
+      const currentKey = current.publisherKeys.find(
+        ({ keyId }) => keyId === prepared.validation.signingKeyId
+      )
+      if (currentKey?.publicKeyPem !== prepared.signingPublicKeyPem) {
+        terminalPublisherMutation('state-conflict')
+      }
+      if (
+        current.submissions.some(
+          (submission) =>
+            submission.id === command.input.id ||
+            (submission.coordinate.pluginId === prepared.validation.coordinate.pluginId &&
+              submission.coordinate.version === prepared.validation.coordinate.version &&
+              submission.coordinate.channel === prepared.validation.coordinate.channel)
+        )
+      ) {
+        terminalPublisherMutation('state-conflict')
+      }
+      const submission = await transaction.createSubmission(
+        {
+          id: parseMarketplaceIdentity(command.input.id, 'submission id'),
+          publisherId: prepared.validation.publisherId,
+          coordinate: prepared.validation.coordinate,
+          manifestDigest: prepared.validation.manifestDigest,
+          artifactDigest: prepared.validation.artifactDigest,
+          manifestUrl: artifactURL(publicBaseURL, prepared.validation.artifactDigest),
+          listing: prepared.listing,
+          listingDigest: prepared.validation.listingDigest,
+          runtimeCoordinate: prepared.runtimeCoordinate,
+          signingKeyId: prepared.validation.signingKeyId,
+          authenticatedRequestKeyId: prepared.validation.authenticatedRequestKeyId
+        },
+        { actor, time: mutationTime }
+      )
+      await transaction.transitionSubmission(submission.id, 'awaiting_review', {
+        actor,
+        time: mutationTime
+      })
+      const committed = transaction
+        .snapshot()
+        .submissions.find(({ id }) => id === submission.id) as MarketplaceSubmissionV1
+      return new MarketplacePublisherMutationCommitPlan(
+        'submission.create',
+        createMarketplacePublisherMutationResponse(
+          'submission.create',
+          toMarketplaceControlSubmissionSummary(committed)
+        ),
+        () => persistPreparedSubmissionArtifacts(options.artifacts, prepared)
+      )
+    }
+  )
+}
+
+async function executePublisherSubmissionRevision(
+  context: PublisherMutationExecutionContext,
+  command: PublisherCommand<'submission.revise'>
+): Promise<MarketplacePublisherMutationExecution> {
+  const { actor, mutationTime, options, publicBaseURL, request } = context
+  const submissionId = publisherMutationInput(() =>
+    parseMarketplaceIdentity(command.submissionId, 'submission id')
+  )
+  const publisherId = publisherMutationInput(() =>
+    parseMarketplaceIdentity(command.input.publisherId, 'publisher id')
+  )
+  if (publisherId !== request.publisherId) {
+    terminalPublisherMutation('resource-not-found')
+  }
+  if (!Number.isSafeInteger(command.input.expectedRevision) || command.input.expectedRevision < 1) {
+    terminalPublisherMutation('invalid-request')
+  }
+  const initialState = await options.repository.snapshot()
+  assertPublisherMutationAuthority(initialState, request, publisherId, mutationTime)
+  const current = initialState.submissions.find(({ id }) => id === submissionId)
+  if (!current || current.publisherId !== publisherId) {
+    terminalPublisherMutation('resource-not-found')
+  }
+  if (current.status !== 'validation_failed' && current.status !== 'changes_requested') {
+    terminalPublisherMutation('state-conflict')
+  }
+  if (current.revision !== command.input.expectedRevision) {
+    terminalPublisherMutation('state-conflict')
+  }
+  const prepared = await preparePublisherSubmission(
+    context,
+    initialState,
+    {
+      id: submissionId,
+      publisherId,
+      channel: current.coordinate.channel,
+      manifest: command.input.manifest,
+      listing: command.input.listing,
+      ...(command.input.runtimePackage === undefined
+        ? {}
+        : { runtimePackage: command.input.runtimePackage }),
+      authenticatedRequestKeyId: request.keyId
+    },
+    submissionId
+  )
+  if (
+    prepared.validation.coordinate.pluginId !== current.coordinate.pluginId ||
+    prepared.validation.coordinate.version !== current.coordinate.version ||
+    prepared.validation.coordinate.channel !== current.coordinate.channel
+  ) {
+    terminalPublisherMutation('state-conflict')
+  }
+  if (prepared.validation.manifestDigest === current.manifestDigest) {
+    terminalPublisherMutation('state-conflict')
+  }
+  return options.repository.executePublisherMutation(
+    request,
+    context.serverTime,
+    async (transaction) => {
+      const transactionState = transaction.snapshot()
+      assertPublisherMutationAuthority(transactionState, request, publisherId, mutationTime)
+      const transactionSubmission = transactionState.submissions.find(
+        ({ id }) => id === submissionId
+      )
+      if (!transactionSubmission || transactionSubmission.publisherId !== publisherId) {
+        terminalPublisherMutation('resource-not-found')
+      }
+      if (
+        (transactionSubmission.status !== 'validation_failed' &&
+          transactionSubmission.status !== 'changes_requested') ||
+        transactionSubmission.revision !== command.input.expectedRevision ||
+        transactionSubmission.coordinate.pluginId !== prepared.validation.coordinate.pluginId ||
+        transactionSubmission.coordinate.version !== prepared.validation.coordinate.version ||
+        transactionSubmission.coordinate.channel !== prepared.validation.coordinate.channel
+      ) {
+        terminalPublisherMutation('state-conflict')
+      }
+      const currentSigningKey = transactionState.publisherKeys.find(
+        ({ keyId }) => keyId === prepared.validation.signingKeyId
+      )
+      if (currentSigningKey?.publicKeyPem !== prepared.signingPublicKeyPem) {
+        terminalPublisherMutation('state-conflict')
+      }
+      const revised = await transaction.reviseSubmission(
+        {
+          id: submissionId,
+          publisherId,
+          coordinate: prepared.validation.coordinate,
+          manifestDigest: prepared.validation.manifestDigest,
+          artifactDigest: prepared.validation.artifactDigest,
+          manifestUrl: artifactURL(publicBaseURL, prepared.validation.artifactDigest),
+          listing: prepared.listing,
+          listingDigest: prepared.validation.listingDigest,
+          runtimeCoordinate: prepared.runtimeCoordinate,
+          signingKeyId: prepared.validation.signingKeyId,
+          authenticatedRequestKeyId: prepared.validation.authenticatedRequestKeyId
+        },
+        command.input.expectedRevision,
+        { actor, time: mutationTime }
+      )
+      return new MarketplacePublisherMutationCommitPlan(
+        'submission.revise',
+        createMarketplacePublisherMutationResponse(
+          'submission.revise',
+          toMarketplaceControlSubmissionSummary(revised)
+        ),
+        () => persistPreparedSubmissionArtifacts(options.artifacts, prepared)
+      )
+    }
+  )
+}
+
+function executePublisherSubmissionWithdrawal(
+  context: PublisherMutationExecutionContext,
+  command: PublisherCommand<'submission.withdraw'>
+): Promise<MarketplacePublisherMutationExecution> {
+  const { actor, mutationTime, options, request } = context
+  const publisherId = publisherMutationInput(() =>
+    parseMarketplaceIdentity(command.publisherId, 'publisher id')
+  )
+  if (publisherId !== request.publisherId) {
+    terminalPublisherMutation('authority-mismatch')
+  }
+  const submissionId = publisherMutationInput(() =>
+    parseMarketplaceIdentity(command.submissionId, 'submission id')
+  )
+  const reason = publisherMutationInput(() =>
+    parseMarketplaceReason(command.reason, 'withdrawal reason')
+  )
+  return options.repository.executePublisherMutation(
+    request,
+    context.serverTime,
+    async (transaction) => {
+      const current = transaction.snapshot()
+      assertPublisherMutationAuthority(current, request, publisherId, mutationTime)
+      const submission = current.submissions.find(({ id }) => id === submissionId)
+      if (!submission || submission.publisherId !== publisherId) {
+        terminalPublisherMutation('resource-not-found')
+      }
+      if (!canTransitionMarketplaceSubmission(submission.status, 'withdrawn')) {
+        terminalPublisherMutation('state-conflict')
+      }
+      const withdrawn = await transaction.transitionSubmission(submissionId, 'withdrawn', {
+        actor,
+        reason,
+        time: mutationTime
+      })
+      return createMarketplacePublisherMutationResponse(
+        'submission.withdraw',
+        toMarketplaceControlSubmissionSummary(withdrawn)
+      )
+    }
+  )
 }
 
 export function createMarketplaceService(
   options: CreateMarketplaceServiceOptions
 ): MarketplaceService {
+  if (options.root && Object.hasOwn(options.root, 'privateKey')) {
+    throw new TypeError(
+      'Marketplace service does not accept Root private keys; use the offline publication signer'
+    )
+  }
   const marketplaceId = parseMarketplaceIdentity(options.marketplaceId, 'marketplace id')
   const publicBaseURL = baseURL(options.publicBaseUrl)
   const root = options.root
@@ -809,9 +1317,13 @@ export function createMarketplaceService(
   return {
     control,
     marketplaceId,
+    nonces: options.repository.nonces,
     snapshot: () => options.repository.snapshot(),
     async registerPublisher(input, context) {
       const id = parseMarketplaceIdentity(input.publisher.id, 'publisher id')
+      if (id === 'admin-assertion-v1' || id === 'admin-assertion-v2') {
+        throw new TypeError('Publisher id is reserved for a Marketplace authority namespace')
+      }
       if (input.key.publisherId !== id) {
         throw new TypeError('Initial publisher key must belong to the registered publisher')
       }
@@ -829,14 +1341,26 @@ export function createMarketplaceService(
         return publisher
       })
     },
-    async registerPublisherKey(input, context) {
+    async registerPublisherKey(input, context, authority) {
+      const mutationAuthority = isolatedPublisherMutationAuthority(authority)
       const canonical = await canonicalPublicKey(input)
-      return options.repository.transaction((transaction) =>
-        transaction.registerPublisherKey(
-          canonical.input,
-          normalizedContext(context, currentTime(options.now))
-        )
-      )
+      return options.repository.transaction((transaction) => {
+        const mutationContext = normalizedContext(context, currentTime(options.now))
+        if (mutationAuthority) {
+          assertActiveMarketplacePublisherMutationAuthority(
+            transaction.snapshot(),
+            mutationAuthority,
+            canonical.input.publisherId,
+            mutationContext.time as string
+          )
+          if (canonical.input.predecessorKeyId !== mutationAuthority.keyId) {
+            throw new MarketplacePublisherMutationAuthorityError(
+              'Publisher key rotation is not bound to the authenticated predecessor key'
+            )
+          }
+        }
+        return transaction.registerPublisherKey(canonical.input, mutationContext)
+      })
     },
     transitionPublisher(publisherId, status, context, authorityDigest, activationIntent) {
       const mutationContext = normalizedContext(context, currentTime(options.now))
@@ -885,13 +1409,20 @@ export function createMarketplaceService(
         return transaction.transitionPublisherKey(keyId, status, mutationContext)
       })
     },
-    requestOwnership(pluginId, publisherId, context) {
-      return options.repository.transaction((transaction) =>
-        transaction.requestOwnership(
-          { pluginId, publisherId },
-          normalizedContext(context, currentTime(options.now))
-        )
-      )
+    requestOwnership(pluginId, publisherId, context, authority) {
+      const mutationAuthority = isolatedPublisherMutationAuthority(authority)
+      return options.repository.transaction((transaction) => {
+        const mutationContext = normalizedContext(context, currentTime(options.now))
+        if (mutationAuthority) {
+          assertActiveMarketplacePublisherMutationAuthority(
+            transaction.snapshot(),
+            mutationAuthority,
+            publisherId,
+            mutationContext.time as string
+          )
+        }
+        return transaction.requestOwnership({ pluginId, publisherId }, mutationContext)
+      })
     },
     transitionOwnership(pluginId, status, context, authorityDigest) {
       const mutationContext = normalizedContext(context, currentTime(options.now))
@@ -956,6 +1487,54 @@ export function createMarketplaceService(
       return (
         await prepareSubmission(options, publicBaseURL, state, input, currentTime(options.now))
       ).validation
+    },
+    async executePublisherMutation(request, command, verifiedAt) {
+      if (request.operation !== command.type) {
+        throw new TypeError('Publisher mutation command does not match its signed route')
+      }
+      const signedAt = Date.parse(request.timestamp)
+      if (
+        !Number.isSafeInteger(verifiedAt) ||
+        !Number.isSafeInteger(signedAt) ||
+        request.freshUntil !== signedAt + MARKETPLACE_REQUEST_AUTH_LIMITS.maxClockSkewMs ||
+        Math.abs(verifiedAt - signedAt) > MARKETPLACE_REQUEST_AUTH_LIMITS.maxClockSkewMs
+      ) {
+        throw new TypeError('Publisher mutation verification time is invalid')
+      }
+      const serverTime = verifiedAt
+      const mutationTime = new Date(serverTime).toISOString()
+      const cached = await options.repository.inspectPublisherMutation(request, serverTime)
+      if (cached) return cached
+      const context: PublisherMutationExecutionContext = {
+        options,
+        publicBaseURL,
+        request,
+        actor: `publisher:${request.publisherId}`,
+        mutationTime,
+        serverTime
+      }
+      try {
+        switch (command.type) {
+          case 'publisher.register':
+            return await executePublisherRegistration(context, command)
+          case 'ownership.request':
+            return await executePublisherOwnership(context, command)
+          case 'key.rotate':
+            return await executePublisherKeyRotation(context, command)
+          case 'submission.create':
+            return await executePublisherSubmissionCreation(context, command)
+          case 'submission.revise':
+            return await executePublisherSubmissionRevision(context, command)
+          case 'submission.withdraw':
+            return await executePublisherSubmissionWithdrawal(context, command)
+        }
+        return unsupportedPublisherMutation(command)
+      } catch (error) {
+        if (!(error instanceof MarketplacePublisherMutationTerminalError)) throw error
+        return options.repository.executePublisherMutation(request, serverTime, async () => {
+          throw error
+        })
+      }
     },
     async reviseSubmission(submissionIdValue, input, context) {
       const submissionId = parseMarketplaceIdentity(submissionIdValue, 'submission id')
@@ -1049,9 +1628,22 @@ export function createMarketplaceService(
         return transaction.transitionSubmission(submissionId, status, mutationContext)
       })
     },
-    withdrawSubmission(submissionId, publisherId, reason, context) {
+    withdrawSubmission(submissionId, publisherId, reason, context, authority) {
       const parsedReason = parseMarketplaceReason(reason, 'withdrawal reason')
+      const mutationAuthority = isolatedPublisherMutationAuthority(authority)
       return options.repository.transaction((transaction) => {
+        const mutationContext = normalizedContext(
+          { ...context, reason: parsedReason },
+          context.time ?? currentTime(options.now)
+        )
+        if (mutationAuthority) {
+          assertActiveMarketplacePublisherMutationAuthority(
+            transaction.snapshot(),
+            mutationAuthority,
+            publisherId,
+            mutationContext.time as string
+          )
+        }
         const submission = transaction.snapshot().submissions.find(({ id }) => id === submissionId)
         if (!submission || submission.publisherId !== publisherId) {
           throw new Error('Submission does not belong to the authenticated publisher')
@@ -1061,11 +1653,7 @@ export function createMarketplaceService(
             'Published submissions cannot be withdrawn; an administrator must yank them'
           )
         }
-        return transaction.transitionSubmission(submissionId, 'withdrawn', {
-          ...context,
-          reason: parsedReason,
-          time: context.time ?? currentTime(options.now)
-        })
+        return transaction.transitionSubmission(submissionId, 'withdrawn', mutationContext)
       })
     },
     publishSubmission(submissionId, context, authorityDigest) {
@@ -1115,46 +1703,6 @@ export function createMarketplaceService(
         )
         return transaction.yankRelease(coordinate, mutationContext)
       })
-    },
-    async publish(context, authorityDigest) {
-      if (!root) throw new Error('Marketplace root trust is not configured')
-      if (!root.publicKey) {
-        throw new Error('Marketplace publication requires the matching root public key')
-      }
-      const state = await options.repository.snapshot()
-      await assertMarketplaceImpactAuthority(
-        state,
-        { operation: 'marketplace.publish' },
-        context.time ?? currentTime(options.now),
-        authorityDigest
-      )
-      const prepared = await prepareMarketplacePublication(
-        state,
-        options.artifacts,
-        publicationConfig({ ...options, marketplaceId, publicBaseUrl: publicBaseURL }, root)
-      )
-      await verifyMarketplaceSnapshot(prepared.snapshot, root.publicKey, {
-        expectedMarketplaceId: marketplaceId,
-        expectedKeyId: root.keyId,
-        now: prepared.snapshot.generatedAt
-      })
-      const publication = await options.repository.transaction(async (transaction) => {
-        const current = transaction.snapshot()
-        const auditHead = current.auditEvents.at(-1)?.eventHash
-        const nextSequence = (current.publications.at(-1)?.sequence ?? 0) + 1
-        if (
-          current.auditEvents.length !== prepared.auditSequence ||
-          auditHead !== prepared.auditHead ||
-          nextSequence !== prepared.sequence
-        ) {
-          throw new Error('Marketplace state changed while publication artifacts were prepared')
-        }
-        return transaction.recordPublication(prepared.record, {
-          ...context,
-          time: prepared.snapshot.generatedAt
-        })
-      })
-      return { publication, prepared }
     },
     async previewImpact(input) {
       return createMarketplaceImpactPreview(
@@ -1315,16 +1863,27 @@ export function createMarketplaceService(
         query
       )
     },
-    async resolveActivePublisherKey(publisherId, keyId) {
+    async resolveActivePublisherKey(publisherId, keyId, verifiedAt) {
       const state = await options.repository.snapshot()
       try {
-        const trust = activePublisherKey(
-          state,
-          publisherId,
-          keyId,
-          Date.parse(currentTime(options.now))
-        )
+        const at = verifiedAt ?? Date.parse(currentTime(options.now))
+        if (!Number.isSafeInteger(at)) return null
+        const trust = activePublisherKey(state, publisherId, keyId, at)
         return await importEd25519PublicKeyPem(trust.key.publicKeyPem)
+      } catch {
+        return null
+      }
+    },
+    async resolvePublisherKey(publisherIdValue, keyIdValue) {
+      const publisherId = parseMarketplaceIdentity(publisherIdValue, 'publisher id')
+      const keyId = parseMarketplaceIdentity(keyIdValue, 'publisher key id')
+      const state = await options.repository.snapshot()
+      const key = state.publisherKeys.find(
+        (candidate) => candidate.publisherId === publisherId && candidate.keyId === keyId
+      )
+      if (!key) return null
+      try {
+        return await importEd25519PublicKeyPem(key.publicKeyPem)
       } catch {
         return null
       }

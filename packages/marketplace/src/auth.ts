@@ -6,6 +6,13 @@ import { validateModuleIdentity, webCryptoBuffer } from '@open-pencil/scene-grap
 import { canonicalBase64URLBytes } from './canonical-base64url'
 
 export const MARKETPLACE_REQUEST_AUTH_VERSION = 2 as const
+export const MARKETPLACE_NONCE_NAMESPACES = Object.freeze({
+  publisherRequestV2: 'publisher-request-v2',
+  adminAssertionV1: 'admin-assertion-v1',
+  operatorAssertionV2: 'admin-assertion-v2'
+} as const)
+export type MarketplaceNonceNamespace =
+  (typeof MARKETPLACE_NONCE_NAMESPACES)[keyof typeof MARKETPLACE_NONCE_NAMESPACES]
 export const MARKETPLACE_REQUEST_AUTH_LIMITS = Object.freeze({
   maxBodyBytes: 4 * 1024 * 1024,
   maxClockSkewMs: 5 * 60 * 1_000,
@@ -23,14 +30,38 @@ export interface MarketplaceSignedRequestHeaders {
 }
 
 export interface MarketplaceNonceStore {
-  consume(publisherId: string, nonce: string, expiresAt: number): Promise<boolean>
+  consume(
+    namespace: MarketplaceNonceNamespace,
+    subjectId: string,
+    nonce: string,
+    expiresAt: number,
+    currentTime?: number
+  ): Promise<boolean>
 }
 
-export interface VerifyMarketplaceRequestOptions {
+export interface VerifyMarketplaceRequestSignatureOptions {
   audience: string
   now?: () => number
   resolvePublicKey(publisherId: string, keyId: string): Promise<CryptoKey | null>
+}
+
+export interface VerifyMarketplaceRequestOptions extends VerifyMarketplaceRequestSignatureOptions {
   nonces: MarketplaceNonceStore
+}
+
+export interface MarketplaceVerifiedRequestSignature {
+  readonly authVersion: typeof MARKETPLACE_REQUEST_AUTH_VERSION
+  readonly audience: string
+  readonly publisherId: string
+  readonly keyId: string
+  readonly method: string
+  readonly target: string
+  readonly timestamp: string
+  readonly nonce: string
+  readonly bodyDigest: string
+  readonly requestDigest: string
+  readonly signatureDigest: string
+  readonly freshUntil: number
 }
 
 const REQUEST_PREFIX = `OPENPENCIL-MARKETPLACE-REQUEST-V${MARKETPLACE_REQUEST_AUTH_VERSION}`
@@ -140,6 +171,34 @@ export async function verifyMarketplaceRequest(
   },
   options: VerifyMarketplaceRequestOptions
 ): Promise<{ publisherId: string; keyId: string }> {
+  const verifiedAt = (options.now ?? Date.now)()
+  const proof = await verifyMarketplaceRequestSignature(input, {
+    ...options,
+    now: () => verifiedAt
+  })
+  if (
+    !(await options.nonces.consume(
+      MARKETPLACE_NONCE_NAMESPACES.publisherRequestV2,
+      proof.publisherId,
+      proof.nonce,
+      proof.freshUntil,
+      verifiedAt
+    ))
+  ) {
+    throw new Error('Marketplace request nonce has already been used')
+  }
+  return { publisherId: proof.publisherId, keyId: proof.keyId }
+}
+
+export async function verifyMarketplaceRequestSignature(
+  input: {
+    method: string
+    url: string
+    body: Uint8Array
+    headers: MarketplaceSignedRequestHeaders
+  },
+  options: VerifyMarketplaceRequestSignatureOptions
+): Promise<MarketplaceVerifiedRequestSignature> {
   const audience = identity(input.headers.audience, 'marketplace request audience')
   const expectedAudience = identity(options.audience, 'expected marketplace request audience')
   if (audience !== expectedAudience) {
@@ -181,10 +240,20 @@ export async function verifyMarketplaceRequest(
     throw new Error('Marketplace request signature is invalid')
   }
   const expiresAt = signedAt + MARKETPLACE_REQUEST_AUTH_LIMITS.maxClockSkewMs
-  if (!(await options.nonces.consume(publisherId, input.headers.nonce, expiresAt))) {
-    throw new Error('Marketplace request nonce has already been used')
-  }
-  return { publisherId, keyId }
+  return Object.freeze({
+    authVersion: MARKETPLACE_REQUEST_AUTH_VERSION,
+    audience,
+    publisherId,
+    keyId,
+    method: input.method.toUpperCase(),
+    target: requestTarget(input.url),
+    timestamp: input.headers.timestamp,
+    nonce: input.headers.nonce,
+    bodyDigest: digestMarketplaceRequestBody(input.body),
+    requestDigest: createHash('sha256').update(encoder.encode(canonical)).digest('base64url'),
+    signatureDigest: createHash('sha256').update(signature).digest('base64url'),
+    freshUntil: expiresAt
+  })
 }
 
 export function createMemoryMarketplaceNonceStore(
@@ -192,11 +261,15 @@ export function createMemoryMarketplaceNonceStore(
 ): MarketplaceNonceStore {
   const entries = new Map<string, number>()
   return {
-    async consume(publisherId, nonce, expiresAt) {
-      const current = now()
+    async consume(namespace, subjectId, nonce, expiresAt, currentTime) {
+      const current = currentTime ?? now()
       for (const [key, expiry] of entries) if (expiry < current) entries.delete(key)
-      const key = `${publisherId}:${nonce}`
-      if (entries.has(key)) return false
+      const key = JSON.stringify([namespace, subjectId, nonce])
+      const existingExpiry = entries.get(key)
+      if (existingExpiry !== undefined) {
+        if (expiresAt > existingExpiry) entries.set(key, expiresAt)
+        return false
+      }
       entries.set(key, expiresAt)
       return true
     }

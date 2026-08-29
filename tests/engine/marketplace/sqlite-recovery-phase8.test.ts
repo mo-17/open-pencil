@@ -171,7 +171,7 @@ describe('Phase 8 SQLite recovery invariants', () => {
     database.exec(`
       DROP INDEX marketplace_nonces_expiry;
       CREATE UNIQUE INDEX marketplace_nonces_expiry
-        ON marketplace_nonces (publisher_id, expires_at);
+        ON marketplace_nonces (subject_id, expires_at);
     `)
     database.close(false)
 
@@ -192,6 +192,7 @@ describe('Phase 8 SQLite recovery invariants', () => {
     )
     expect(
       await repository.nonces.consume(
+        'publisher-request-v2',
         'acme',
         'phase8-checkpoint-nonce',
         Date.parse('2026-08-22T00:01:00.000Z')
@@ -216,7 +217,7 @@ describe('Phase 8 SQLite recovery invariants', () => {
     expect(
       serialized
         .query<{ count: number }, []>(
-          "SELECT COUNT(*) AS count FROM marketplace_nonces WHERE publisher_id = 'acme'"
+          "SELECT COUNT(*) AS count FROM marketplace_nonces WHERE subject_id = 'acme'"
         )
         .get()?.count
     ).toBe(1)

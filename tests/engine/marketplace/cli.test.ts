@@ -19,12 +19,43 @@ afterEach(async () => {
 
 describe('marketplace CLI', () => {
   test('declares stable nested command names instead of deriving them from the entrypoint path', () => {
-    const publisher = marketplaceCommand.subCommands?.publisher
-    expect(publisher?.meta?.name).toBe('publisher')
-    expect(publisher?.subCommands?.create.meta?.name).toBe('create')
-    expect(marketplaceCommand.subCommands?.serve.args?.['require-admin-assertion']).toMatchObject({
+    const commands = marketplaceCommand.subCommands
+    if (!commands) throw new Error('Marketplace CLI must declare subcommands')
+    const publisher = commands.publisher
+    const publication = commands.publication
+    if (!publisher.subCommands || !publication.subCommands) {
+      throw new Error('Marketplace CLI nested commands are missing')
+    }
+    expect(publisher.meta?.name).toBe('publisher')
+    expect(publisher.subCommands.create.meta?.name).toBe('create')
+    expect(commands.serve.args?.['require-admin-assertion']).toMatchObject({
       type: 'boolean',
       default: false
+    })
+    expect(commands.serve.args?.['require-admin-assertion']?.description).toContain(
+      'mutations always require V2 operator assertions'
+    )
+    expect(publication.meta?.name).toBe('publication')
+    expect(Object.keys(publication.subCommands)).toEqual([
+      'request',
+      'reserve',
+      'cancel',
+      'inspect',
+      'signer-init',
+      'sign',
+      'import'
+    ])
+    expect(publication.subCommands.sign.args?.['approve-request-digest']).toMatchObject({
+      type: 'string',
+      required: true
+    })
+    expect(publication.subCommands.cancel.args?.['approve-request-digest']).toMatchObject({
+      type: 'string',
+      required: true
+    })
+    expect(publication.subCommands.cancel.args?.reason).toMatchObject({
+      type: 'string',
+      required: true
     })
   })
 
@@ -74,7 +105,7 @@ describe('marketplace CLI', () => {
     expect(isMarketplaceLoopbackHost('192.168.1.4')).toBe(false)
   })
 
-  test('keeps admin HTTP and online signing independently opt-in', () => {
+  test('validates legacy serve mode inputs before CLI policy is applied', () => {
     expect(resolveMarketplaceServeMode('0.0.0.0', false, false)).toEqual({
       adminEnabled: false,
       onlineSigning: false
@@ -93,5 +124,47 @@ describe('marketplace CLI', () => {
     expect(() => resolveMarketplaceServeMode('127.0.0.1', false, true)).toThrow(
       'requires explicit --enable-admin'
     )
+  })
+
+  test('rejects online root signing before loading an admin token or private key', async () => {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        'packages/marketplace/src/cli.ts',
+        'serve',
+        '--enable-admin',
+        '--enable-online-signing'
+      ],
+      { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' }
+    )
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text()
+    ])
+
+    expect(exitCode).not.toBe(0)
+    expect(stdout).toBe('')
+    expect(stderr).toContain(
+      'Online marketplace signing over HTTP is disabled; use the publication request/sign/import workflow'
+    )
+  })
+
+  test('fails closed on the legacy direct Root-signing command before reading keys', async () => {
+    const child = Bun.spawn([process.execPath, 'packages/marketplace/src/cli.ts', 'publish'], {
+      cwd: process.cwd(),
+      stdout: 'pipe',
+      stderr: 'pipe'
+    })
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text()
+    ])
+
+    expect(exitCode).not.toBe(0)
+    expect(stdout).toBe('')
+    expect(stderr).toContain('Direct marketplace publishing is disabled')
+    expect(stderr).not.toContain('private key')
   })
 })
