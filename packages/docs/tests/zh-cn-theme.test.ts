@@ -41,5 +41,6 @@ describe('Simplified Chinese documentation theme', () => {
     expect(links).toContain('/programmable/sdk/')
     expect(links).toContain('/reference/keyboard-shortcuts')
     expect(links).toContain('/development/contributing')
+    expect(links).toContain('/zh-cn/development/plugin-tutorial')
   })
 })

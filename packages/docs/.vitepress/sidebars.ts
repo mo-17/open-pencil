@@ -127,6 +127,10 @@ export const developmentSidebar = (
       ...(!prefix
         ? [
             { text: 'Plugin Architecture', link: '/development/plugins' },
+            {
+              text: 'Third-party Plugin Tutorial',
+              link: '/development/plugin-tutorial'
+            },
             { text: 'Roadmap', link: '/development/roadmap' },
             { text: 'Renderer Profiler', link: '/development/renderer-profiler' },
             { text: 'Vector Conversion', link: '/development/vector-conversion' }

@@ -120,6 +120,7 @@ export default defineConfig({
       alias: {
         '#docs': configDir,
         '#docs-api': resolve(docsRoot, 'programmable/sdk/api'),
+        '#docs-examples': resolve(repoRoot, 'examples'),
         '#vue': resolve(packagesRoot, 'vue/src')
       }
     },

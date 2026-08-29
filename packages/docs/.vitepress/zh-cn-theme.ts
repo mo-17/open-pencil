@@ -10,7 +10,8 @@ export const ZH_CN_TRANSLATED_ROUTES = [
   '/zh-cn/user-guide/plugins',
   '/zh-cn/user-guide/application-runtime',
   '/zh-cn/programmable/ai-chat',
-  '/zh-cn/programmable/mcp-server'
+  '/zh-cn/programmable/mcp-server',
+  '/zh-cn/development/plugin-tutorial'
 ] as const
 
 const guideSidebar: DefaultTheme.SidebarItem[] = [
@@ -76,6 +77,18 @@ const programmableSidebar: DefaultTheme.SidebarItem[] = [
   }
 ]
 
+const developmentSidebar: DefaultTheme.SidebarItem[] = [
+  {
+    text: '插件开发',
+    items: [
+      { text: '第三方插件入门', link: '/zh-cn/development/plugin-tutorial' },
+      { text: '插件架构（英文）', link: '/development/plugins' },
+      { text: '贡献指南（英文）', link: '/development/contributing' },
+      { text: '测试（英文）', link: '/development/testing' }
+    ]
+  }
+]
+
 export function zhCnThemeConfig(): DefaultTheme.Config {
   return {
     nav: [
@@ -85,12 +98,13 @@ export function zhCnThemeConfig(): DefaultTheme.Config {
       { text: 'AI 与 MCP', link: '/zh-cn/programmable/ai-chat' },
       { text: 'SDK（英文）', link: '/programmable/sdk/' },
       { text: '参考（英文）', link: '/reference/keyboard-shortcuts' },
-      { text: '开发（英文）', link: '/development/contributing' },
+      { text: '插件开发', link: '/zh-cn/development/plugin-tutorial' },
       { text: '打开应用', link: 'https://app.openpencil.dev' }
     ],
     sidebar: {
       '/zh-cn/user-guide/': userGuideSidebar,
       '/zh-cn/programmable/': programmableSidebar,
+      '/zh-cn/development/': developmentSidebar,
       '/zh-cn/guide/': guideSidebar,
       '/zh-cn/': guideSidebar
     }
