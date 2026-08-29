@@ -1,0 +1,57 @@
+{
+  "format": "openpencil-plugin",
+  "schemaVersion": 2,
+  "plugin": {
+    "id": "example.style-usage",
+    "name": "Style Usage",
+    "version": "1.0.0"
+  },
+  "publisher": {
+    "id": "example-publisher",
+    "name": "Example Publisher",
+    "keyId": "example-publisher-2026"
+  },
+  "engineRange": ">=0.15.0 <1.0.0",
+  "capabilities": [],
+  "contributions": {
+    "modules": [],
+    "commands": [
+      {
+        "commandId": "summarize-style-usage",
+        "name": "Summarize style usage",
+        "description": "Return bounded aggregate fill, stroke, and effect counts for visible document nodes.",
+        "adapterId": "open-pencil.example.style-usage",
+        "parameters": {
+          "schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "maxProperties": 0
+          },
+          "maxBytes": 2
+        },
+        "result": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "nodeCount": { "type": "integer", "minimum": 0 },
+              "visibleFillCount": { "type": "integer", "minimum": 0 },
+              "visibleStrokeCount": { "type": "integer", "minimum": 0 },
+              "visibleEffectCount": { "type": "integer", "minimum": 0 }
+            },
+            "required": [
+              "nodeCount",
+              "visibleFillCount",
+              "visibleStrokeCount",
+              "visibleEffectCount"
+            ],
+            "additionalProperties": false,
+            "maxProperties": 4
+          },
+          "maxBytes": 256
+        },
+        "permissions": ["document.read"]
+      }
+    ]
+  }
+}

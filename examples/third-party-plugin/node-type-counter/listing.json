@@ -1,0 +1,8 @@
+{
+  "displayName": "Node Type Counter",
+  "summary": "Count visible nodes with an optional reviewed type filter.",
+  "description": "A parameterized read-only example that demonstrates a closed enum input and returns one aggregate node count without names, IDs, text, or hidden host nodes.",
+  "categories": ["developer-tools", "productivity"],
+  "iconUrl": null,
+  "homepageUrl": null
+}

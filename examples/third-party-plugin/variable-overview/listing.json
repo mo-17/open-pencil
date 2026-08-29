@@ -1,0 +1,8 @@
+{
+  "displayName": "Variable Overview",
+  "summary": "Aggregate variable collection, mode, and publishing counts.",
+  "description": "A specialized permission example that reads variable metadata but returns only bounded counts, never variable IDs, names, values, aliases, or mode names.",
+  "categories": ["developer-tools", "design-tools"],
+  "iconUrl": null,
+  "homepageUrl": null
+}

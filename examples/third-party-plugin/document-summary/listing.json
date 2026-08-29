@@ -1,0 +1,8 @@
+{
+  "displayName": "Document Summary",
+  "summary": "Read-only aggregate counts for the current OpenPencil document.",
+  "description": "A minimal third-party reference plugin. It reports only page, node, and selection counts through a reviewed host adapter and never returns document content.",
+  "categories": ["developer-tools", "productivity"],
+  "iconUrl": null,
+  "homepageUrl": null
+}

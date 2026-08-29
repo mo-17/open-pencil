@@ -34,6 +34,19 @@ import { buildDeploymentPluginPlan } from './deployment/provider'
 import { runStaticDesignSystemAudit } from './design-system-audit'
 import { exportCurrentDocumentDesignTokens } from './design-tokens-exporter'
 import { exportCurrentDocumentAsElectronSource } from './electron-exporter'
+import {
+  EXAMPLE_DOCUMENT_SUMMARY_HOST_CONTRACT,
+  runExampleDocumentSummary
+} from './example/document-summary'
+import {
+  EXAMPLE_NODE_TYPE_COUNTER_HOST_CONTRACT,
+  runExampleNodeTypeCounter
+} from './example/node-type-counter'
+import { EXAMPLE_STYLE_USAGE_HOST_CONTRACT, runExampleStyleUsage } from './example/style-usage'
+import {
+  EXAMPLE_VARIABLE_OVERVIEW_HOST_CONTRACT,
+  runExampleVariableOverview
+} from './example/variable-overview'
 import { exportCurrentDocumentAsExpoReactNativeSource } from './expo-react-native-exporter'
 import { createPluginExportResultData } from './export-result'
 import { runAppPluginExportSession } from './export-session'
@@ -109,6 +122,8 @@ export type AppPluginHostContributionCompatibilityStatus =
   | 'manifest-version-mismatch'
   | 'file-extension-mismatch'
   | 'permissions-mismatch'
+  | 'parameters-mismatch'
+  | 'result-contract-mismatch'
   | 'outputs-mismatch'
   | 'mcp-exposure-disabled'
   | Exclude<AppPluginStorageProviderCompatibilityStatus, 'compatible'>
@@ -139,6 +154,8 @@ interface TrustedCommandAdapter {
   commandId: string
   schemaVersion: 1 | 2
   permissions?: readonly PluginHostPermissionV2[]
+  parameters?: DeclarativeCommandContributionV2['parameters']
+  result?: DeclarativeCommandContributionV2['result']
   mcpExposure: 'enabled' | 'disabled'
   mcpText?: Readonly<{ title: string; description: string }>
 }
@@ -245,6 +262,74 @@ const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
       schemaVersion: 2,
       permissions: AI_POPOUT_COMMAND.permissions,
       mcpExposure: 'disabled'
+    }
+  ] as const,
+  [
+    EXAMPLE_DOCUMENT_SUMMARY_HOST_CONTRACT.adapterId,
+    {
+      pluginId: EXAMPLE_DOCUMENT_SUMMARY_HOST_CONTRACT.pluginId,
+      commandId: EXAMPLE_DOCUMENT_SUMMARY_HOST_CONTRACT.commandId,
+      schemaVersion: 2,
+      permissions: EXAMPLE_DOCUMENT_SUMMARY_HOST_CONTRACT.permissions,
+      parameters: EXAMPLE_DOCUMENT_SUMMARY_HOST_CONTRACT.parameters,
+      result: EXAMPLE_DOCUMENT_SUMMARY_HOST_CONTRACT.result,
+      mcpExposure: 'enabled',
+      mcpText: Object.freeze({
+        title: 'Summarize document',
+        description:
+          'Return bounded aggregate page, node, and selection counts without document content.'
+      })
+    }
+  ] as const,
+  [
+    EXAMPLE_NODE_TYPE_COUNTER_HOST_CONTRACT.adapterId,
+    {
+      pluginId: EXAMPLE_NODE_TYPE_COUNTER_HOST_CONTRACT.pluginId,
+      commandId: EXAMPLE_NODE_TYPE_COUNTER_HOST_CONTRACT.commandId,
+      schemaVersion: 2,
+      permissions: EXAMPLE_NODE_TYPE_COUNTER_HOST_CONTRACT.permissions,
+      parameters: EXAMPLE_NODE_TYPE_COUNTER_HOST_CONTRACT.parameters,
+      result: EXAMPLE_NODE_TYPE_COUNTER_HOST_CONTRACT.result,
+      mcpExposure: 'enabled',
+      mcpText: Object.freeze({
+        title: 'Count visible node types',
+        description:
+          'Return one bounded aggregate count for a reviewed node-type filter without document content.'
+      })
+    }
+  ] as const,
+  [
+    EXAMPLE_STYLE_USAGE_HOST_CONTRACT.adapterId,
+    {
+      pluginId: EXAMPLE_STYLE_USAGE_HOST_CONTRACT.pluginId,
+      commandId: EXAMPLE_STYLE_USAGE_HOST_CONTRACT.commandId,
+      schemaVersion: 2,
+      permissions: EXAMPLE_STYLE_USAGE_HOST_CONTRACT.permissions,
+      parameters: EXAMPLE_STYLE_USAGE_HOST_CONTRACT.parameters,
+      result: EXAMPLE_STYLE_USAGE_HOST_CONTRACT.result,
+      mcpExposure: 'enabled',
+      mcpText: Object.freeze({
+        title: 'Summarize style usage',
+        description:
+          'Return bounded aggregate fill, stroke, and effect counts without document content.'
+      })
+    }
+  ] as const,
+  [
+    EXAMPLE_VARIABLE_OVERVIEW_HOST_CONTRACT.adapterId,
+    {
+      pluginId: EXAMPLE_VARIABLE_OVERVIEW_HOST_CONTRACT.pluginId,
+      commandId: EXAMPLE_VARIABLE_OVERVIEW_HOST_CONTRACT.commandId,
+      schemaVersion: 2,
+      permissions: EXAMPLE_VARIABLE_OVERVIEW_HOST_CONTRACT.permissions,
+      parameters: EXAMPLE_VARIABLE_OVERVIEW_HOST_CONTRACT.parameters,
+      result: EXAMPLE_VARIABLE_OVERVIEW_HOST_CONTRACT.result,
+      mcpExposure: 'enabled',
+      mcpText: Object.freeze({
+        title: 'Summarize variables',
+        description:
+          'Return bounded aggregate collection, variable, mode, and publishing counts without names or values.'
+      })
     }
   ] as const,
   ...REVIEWED_DEPLOYMENT_PLUGINS.map(
@@ -488,6 +573,18 @@ function resolveTrustedPluginCommandExecutor(
       }
     }
   }
+  if (adapterId === EXAMPLE_DOCUMENT_SUMMARY_HOST_CONTRACT.adapterId) {
+    return (editor, _args, signal) => runExampleDocumentSummary(editor, signal)
+  }
+  if (adapterId === EXAMPLE_NODE_TYPE_COUNTER_HOST_CONTRACT.adapterId) {
+    return (editor, args, signal) => runExampleNodeTypeCounter(editor, args, signal)
+  }
+  if (adapterId === EXAMPLE_STYLE_USAGE_HOST_CONTRACT.adapterId) {
+    return (editor, _args, signal) => runExampleStyleUsage(editor, signal)
+  }
+  if (adapterId === EXAMPLE_VARIABLE_OVERVIEW_HOST_CONTRACT.adapterId) {
+    return (editor, _args, signal) => runExampleVariableOverview(editor, signal)
+  }
   const deployment = REVIEWED_DEPLOYMENT_PLUGINS.find(
     (definition) => definition.mcpSafePlan.adapterId === adapterId
   )
@@ -550,17 +647,26 @@ export function inspectPluginCommandCompatibility(
       `Adapter ${contribution.adapterId} requires a schema version ${adapter.schemaVersion} command`
     )
   }
-  if (
-    schemaVersion === 2 &&
-    !samePermissions(
-      (contribution as DeclarativeCommandContributionV2).permissions,
-      adapter.permissions ?? []
-    )
-  ) {
-    return incompatible(
-      'permissions-mismatch',
-      `Adapter ${contribution.adapterId} requires its exact trusted permission set`
-    )
+  if (schemaVersion === 2) {
+    const versioned = contribution as DeclarativeCommandContributionV2
+    if (!samePermissions(versioned.permissions, adapter.permissions ?? [])) {
+      return incompatible(
+        'permissions-mismatch',
+        `Adapter ${contribution.adapterId} requires its exact trusted permission set`
+      )
+    }
+    if (adapter.parameters && !sameJSONAuthority(versioned.parameters, adapter.parameters)) {
+      return incompatible(
+        'parameters-mismatch',
+        `Adapter ${contribution.adapterId} requires its exact trusted parameter contract`
+      )
+    }
+    if (adapter.result && !sameJSONAuthority(versioned.result, adapter.result)) {
+      return incompatible(
+        'result-contract-mismatch',
+        `Adapter ${contribution.adapterId} requires its exact trusted result contract`
+      )
+    }
   }
   return { ok: true, status: 'compatible' }
 }

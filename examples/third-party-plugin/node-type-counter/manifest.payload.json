@@ -1,0 +1,63 @@
+{
+  "format": "openpencil-plugin",
+  "schemaVersion": 2,
+  "plugin": {
+    "id": "example.node-type-counter",
+    "name": "Node Type Counter",
+    "version": "1.0.0"
+  },
+  "publisher": {
+    "id": "example-publisher",
+    "name": "Example Publisher",
+    "keyId": "example-publisher-2026"
+  },
+  "engineRange": ">=0.15.0 <1.0.0",
+  "capabilities": [],
+  "contributions": {
+    "modules": [],
+    "commands": [
+      {
+        "commandId": "count-node-types",
+        "name": "Count visible node types",
+        "description": "Count all visible document nodes or one reviewed node type without returning document content.",
+        "adapterId": "open-pencil.example.node-type-counter",
+        "parameters": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "nodeType": {
+                "type": "string",
+                "title": "Node type",
+                "description": "Optional visible node type filter. Omit it to count all visible nodes.",
+                "enum": ["ALL", "FRAME", "TEXT", "RECTANGLE"]
+              }
+            },
+            "additionalProperties": false,
+            "maxProperties": 1
+          },
+          "maxBytes": 64
+        },
+        "result": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "nodeType": {
+                "type": "string",
+                "enum": ["ALL", "FRAME", "TEXT", "RECTANGLE"]
+              },
+              "matchingNodeCount": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["nodeType", "matchingNodeCount"],
+            "additionalProperties": false,
+            "maxProperties": 2
+          },
+          "maxBytes": 128
+        },
+        "permissions": ["document.read"]
+      }
+    ]
+  }
+}

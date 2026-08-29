@@ -1,0 +1,8 @@
+{
+  "displayName": "Style Usage",
+  "summary": "Aggregate visible fill, stroke, and effect usage.",
+  "description": "A read-only traversal example that counts enabled style entries on public document nodes without returning authored colors, content, node identities, or internal cache data.",
+  "categories": ["developer-tools", "design-tools"],
+  "iconUrl": null,
+  "homepageUrl": null
+}
