@@ -14,6 +14,7 @@ import {
 } from '@/app/automation/bridge/plugin-mcp-handler'
 import type { AutomationTarget } from '@/app/automation/bridge/target'
 import { createEditorStore } from '@/app/editor/session'
+import type { ThirdPartyPluginAIContributionGrant } from '@/app/plugins/ai-authorization'
 import { createBundledPluginCatalog } from '@/app/plugins/catalog'
 import {
   AIRTABLE_LIST_RECORDS_OPERATION_ID,
@@ -509,6 +510,140 @@ describe('automation plugin MCP handler', () => {
         args: {}
       })
     ).rejects.toThrow('is unavailable')
+  })
+
+  test('binds publisher commands to an exact AI grant and fails closed for missing or changed authority', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, true)
+    const installed = store
+      .installedCommands()
+      .find(({ plugin }) => plugin.package.manifest.plugin.id === ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    if (!installed) throw new Error('Expected accessibility audit command')
+    const publisherCommand = {
+      ...installed,
+      plugin: {
+        ...installed.plugin,
+        package: {
+          ...installed.plugin.package,
+          trustSource: 'publisher-signature' as const,
+          digest: 'P'.repeat(43)
+        }
+      }
+    }
+    const publisherStore: AppPluginMCPStore = {
+      installedModules: () => [],
+      installedCommands: () => [publisherCommand],
+      installedExporters: () => [],
+      installedConnectors: () => []
+    }
+    const mcpOptions = { publisherContributionExposure: () => true }
+    const events: string[] = []
+    let resolvedGrant: ThirdPartyPluginAIContributionGrant | null = null
+    const handlers = createAutomationPluginMCPHandlers(
+      async () => {
+        throw new Error('Publisher command must not dispatch a core module tool')
+      },
+      {
+        store: publisherStore,
+        mcpOptions,
+        runCommand: async () => {
+          events.push('run')
+          return { status: 'completed', message: 'Audit complete' }
+        },
+        runExporter: async () => ({ status: 'cancelled', message: 'unused' }),
+        resolvePublisherAIGrant: () => resolvedGrant
+      }
+    )
+    const catalog = (await handlers.handleList()).result
+    const descriptor = catalog.tools.find(
+      ({ pluginId }) => pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID
+    )
+    if (!descriptor || descriptor.kind !== 'command') {
+      throw new Error('Expected Publisher accessibility command descriptor')
+    }
+    const authority = descriptor.authority
+    resolvedGrant = Object.freeze({
+      pluginId: descriptor.pluginId,
+      kind: 'command',
+      contributionId: descriptor.contributionId,
+      adapterId: authority.adapterId,
+      packageDigest: authority.packageDigest,
+      pluginVersion: authority.pluginVersion,
+      publisherId: authority.publisherId,
+      publisherKeyId: authority.publisherKeyId,
+      grantId: 'publisher-command-grant',
+      grantedAt: 1
+    })
+    const bindings: unknown[] = []
+
+    await expect(
+      handlers.handleCall(
+        target(),
+        strictCall(catalog, descriptor),
+        {
+          onPluginMCPResolved(boundDescriptor, publisherGrantId) {
+            events.push('bind')
+            bindings.push({ descriptor: boundDescriptor, publisherGrantId })
+          }
+        },
+        { requireExpectedAuthority: true }
+      )
+    ).resolves.toMatchObject({
+      ok: true,
+      result: {
+        pluginId: descriptor.pluginId,
+        kind: 'command',
+        contributionId: descriptor.contributionId,
+        status: 'completed'
+      }
+    })
+    expect(bindings).toEqual([
+      {
+        descriptor: expectedDescriptor(descriptor),
+        publisherGrantId: resolvedGrant.grantId
+      }
+    ])
+    expect(events).toEqual(['bind', 'run'])
+
+    for (const unavailableGrant of [
+      null,
+      Object.freeze({ ...resolvedGrant, publisherKeyId: 'replacement-publisher-key' })
+    ]) {
+      let dispatches = 0
+      let binds = 0
+      const rejectingHandlers = createAutomationPluginMCPHandlers(
+        async () => {
+          throw new Error('Publisher command must not dispatch a core module tool')
+        },
+        {
+          store: publisherStore,
+          mcpOptions,
+          runCommand: async () => {
+            dispatches += 1
+            return { status: 'completed', message: 'unexpected' }
+          },
+          runExporter: async () => ({ status: 'cancelled', message: 'unused' }),
+          resolvePublisherAIGrant: () => unavailableGrant
+        }
+      )
+
+      await expect(
+        rejectingHandlers.handleCall(
+          target(),
+          strictCall(catalog, descriptor),
+          {
+            onPluginMCPResolved() {
+              binds += 1
+            }
+          },
+          { requireExpectedAuthority: true }
+        )
+      ).rejects.toThrow('grant authority changed')
+      expect(binds).toBe(0)
+      expect(dispatches).toBe(0)
+    }
   })
 
   test('dispatches the enabled Vue exporter through MCP and revokes its cached tool name', async () => {
