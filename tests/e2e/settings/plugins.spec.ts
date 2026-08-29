@@ -1018,17 +1018,52 @@ test('requires explicit runtime review and grant while exposing local audit deci
   await page.goto('/?test')
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
+  const runtimeRootFingerprint = `sha256-${'A'.repeat(43)}`
+  await openPlugins(page)
+  await selectPluginView(page, 'Installed')
 
   await page.evaluate(async (pluginId) => {
     const pluginApp = await import('/src/app/plugins/app.ts')
+    const marketplaceAuthority = {
+      sourceId: 'runtime-test-source',
+      trustDomainId: 'runtime-test-domain',
+      sourceGeneration: 1,
+      rootKeySpkiSha256: `sha256-${'A'.repeat(43)}`
+    } as const
     const storeSnapshot = pluginApp.appPluginStoreSnapshot.value
+    const installedPlugin = storeSnapshot.installed.find(
+      (candidate) => candidate.package.manifest.plugin.id === pluginId
+    )
+    if (!installedPlugin) throw new Error('Expected installed runtime test plugin')
+    const runtimePublisher = {
+      ...installedPlugin.package.manifest.publisher,
+      id: 'runtime-publisher',
+      name: 'Runtime Publisher',
+      keyId: 'runtime-key-v1'
+    }
+    const runtimeDeclarativeDigest = 'runtime-declarative-digest'
     pluginApp.appPluginStoreSnapshot.value = {
       ...storeSnapshot,
       installed: storeSnapshot.installed.map((candidate) =>
         candidate.package.manifest.plugin.id === pluginId
           ? {
               ...candidate,
-              package: { ...candidate.package, trustSource: 'publisher-signature' as const }
+              package: {
+                ...candidate.package,
+                digest: runtimeDeclarativeDigest,
+                trustSource: 'publisher-signature' as const,
+                marketplaceAuthority,
+                manifest: {
+                  ...candidate.package.manifest,
+                  publisher: runtimePublisher
+                },
+                verifiedPackage: candidate.package.verifiedPackage
+                  ? {
+                      ...candidate.package.verifiedPackage,
+                      verifiedKeyId: runtimePublisher.keyId
+                    }
+                  : candidate.package.verifiedPackage
+              }
             }
           : candidate
       )
@@ -1041,8 +1076,10 @@ test('requires explicit runtime review and grant while exposing local audit deci
     const capabilities = ['document.nodes.read'] as const
     const review: RuntimeReview = {
       pluginId,
-      declarativeManifestDigest: 'declarative-test-digest',
+      installationIncarnation: 'runtime-test-incarnation',
+      declarativeManifestDigest: runtimeDeclarativeDigest,
       runtimePackageDigest: 'runtime-test-digest',
+      marketplaceAuthority,
       kind: 'wasm',
       capabilities,
       executionStatus: 'eligible',
@@ -1066,10 +1103,11 @@ test('requires explicit runtime review and grant while exposing local audit deci
 
     function policy(revokedAt: string | null): RuntimePolicy {
       return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         pluginId,
         declarativeManifestDigest: review.declarativeManifestDigest,
         runtimePackageDigest: review.runtimePackageDigest,
+        marketplaceAuthority,
         grantedCapabilities: capabilities,
         grantedAt: '2026-08-05T08:00:00.000Z',
         revokedAt,
@@ -1115,8 +1153,6 @@ test('requires explicit runtime review and grant while exposing local audit deci
     }
   }, MAP_PLUGIN_ID)
 
-  await openPlugins(page)
-  await selectPluginView(page, 'Installed')
   const runtime = page.getByTestId(`plugin-runtime-${MAP_PLUGIN_ID}`)
   await expect(runtime).toBeVisible()
   await expect(page.getByTestId(`plugin-runtime-status-${MAP_PLUGIN_ID}`)).toContainText(
@@ -1129,6 +1165,15 @@ test('requires explicit runtime review and grant while exposing local audit deci
   await page.getByTestId(`plugin-runtime-review-${MAP_PLUGIN_ID}`).click()
   await expect(page.getByTestId(`plugin-runtime-status-${MAP_PLUGIN_ID}`)).toContainText('Eligible')
   await expect(runtime).toContainText('document.nodes.read')
+  await expect(page.getByTestId(`plugin-runtime-publisher-${MAP_PLUGIN_ID}`)).toContainText(
+    'Publisher Runtime Publisher (runtime-publisher) · signing key runtime-key-v1'
+  )
+  await expect(page.getByTestId(`plugin-runtime-provenance-${MAP_PLUGIN_ID}`)).toContainText(
+    'Verified cache'
+  )
+  await expect(page.getByTestId(`plugin-runtime-provenance-${MAP_PLUGIN_ID}`)).toContainText(
+    runtimeRootFingerprint
+  )
   await expect(page.getByTestId(`plugin-runtime-grant-${MAP_PLUGIN_ID}`)).toBeEnabled()
 
   await page.getByTestId(`plugin-runtime-grant-${MAP_PLUGIN_ID}`).click()
@@ -1154,6 +1199,45 @@ test('requires explicit runtime review and grant while exposing local audit deci
   await page.getByTestId(`plugin-runtime-revoke-${MAP_PLUGIN_ID}`).click()
   await expect(runtime).toContainText('revoke')
   await expect(page.getByTestId(`plugin-runtime-revoke-${MAP_PLUGIN_ID}`)).toBeDisabled()
+
+  await page.evaluate(async (pluginId) => {
+    const { appPluginStoreSnapshot } = await import('/src/app/plugins/app.ts')
+    const snapshot = appPluginStoreSnapshot.value
+    appPluginStoreSnapshot.value = {
+      ...snapshot,
+      installed: snapshot.installed.map((candidate) =>
+        candidate.package.manifest.plugin.id === pluginId
+          ? {
+              ...candidate,
+              package: {
+                ...candidate.package,
+                digest: 'runtime-declarative-digest-v2',
+                manifest: {
+                  ...candidate.package.manifest,
+                  publisher: {
+                    ...candidate.package.manifest.publisher,
+                    keyId: 'runtime-key-v2'
+                  }
+                },
+                verifiedPackage: candidate.package.verifiedPackage
+                  ? {
+                      ...candidate.package.verifiedPackage,
+                      verifiedKeyId: 'runtime-key-v2'
+                    }
+                  : candidate.package.verifiedPackage
+              }
+            }
+          : candidate
+      )
+    }
+  }, MAP_PLUGIN_ID)
+  await expect(page.getByTestId(`plugin-runtime-status-${MAP_PLUGIN_ID}`)).toContainText(
+    'Review required'
+  )
+  await expect(page.getByTestId(`plugin-runtime-publisher-${MAP_PLUGIN_ID}`)).toHaveCount(0)
+  await expect(page.getByTestId(`plugin-runtime-provenance-${MAP_PLUGIN_ID}`)).toHaveCount(0)
+  await expect(page.getByTestId(`plugin-runtime-grant-${MAP_PLUGIN_ID}`)).toBeDisabled()
+  await expect(page.getByTestId(`plugin-runtime-run-${MAP_PLUGIN_ID}`)).toBeDisabled()
 
   await page.getByTestId(`plugin-uninstall-${MAP_PLUGIN_ID}`).click()
   await page.getByTestId('plugin-uninstall-confirm').click()

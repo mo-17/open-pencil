@@ -166,7 +166,7 @@ const installedPluginViews = computed(() =>
     const id = pluginId(plugin)
     return {
       plugin,
-      runtimeReview: runtimeReviews.value[id],
+      runtimeReview: currentRuntimeReview(plugin, runtimeReviews.value[id]),
       runtimePolicy:
         appPluginRuntimeSnapshot.value.policies.find((policy) => policy.pluginId === id) ?? null,
       runtimeError: runtimeErrors.value[id],
@@ -287,6 +287,26 @@ function marketplaceStatusTone(
 
 function marketplaceKeyStatusLabel(status: PluginMarketplaceKeyStatus): string {
   return marketplaceStatusLabel(status)
+}
+
+function currentRuntimeReview(
+  plugin: InstalledAppPlugin,
+  review: PluginRuntimeReview | undefined
+): PluginRuntimeReview | undefined {
+  if (
+    !review ||
+    !plugin.enabled ||
+    Boolean(plugin.blockedReason) ||
+    review.pluginId !== pluginId(plugin) ||
+    review.declarativeManifestDigest !== plugin.package.digest ||
+    !sameAppPluginMarketplaceAuthority(
+      review.marketplaceAuthority,
+      plugin.package.marketplaceAuthority ?? null
+    )
+  ) {
+    return undefined
+  }
+  return review
 }
 
 function runtimeGrantActive(
@@ -1710,6 +1730,36 @@ function confirmResetLocalState(): void {
                       })
                     : dialogs.pluginRuntimeNoCapabilities
                 }}
+              </p>
+              <p
+                class="mt-0.5 break-all"
+                :data-test-id="`plugin-runtime-publisher-${pluginId(plugin)}`"
+              >
+                {{
+                  dialogs.pluginPackageReviewPublisherAuthority({
+                    publisherName: plugin.package.manifest.publisher.name,
+                    publisherId: plugin.package.manifest.publisher.id,
+                    keyId:
+                      plugin.package.verifiedPackage?.verifiedKeyId ??
+                      plugin.package.manifest.publisher.keyId
+                  })
+                }}
+              </p>
+              <p
+                class="mt-0.5 flex flex-wrap items-center gap-1 break-all"
+                :data-test-id="`plugin-runtime-provenance-${pluginId(plugin)}`"
+              >
+                <AppBadge tone="neutral">
+                  {{
+                    runtimeReview.source === 'network'
+                      ? dialogs.pluginRemoteFresh
+                      : dialogs.pluginRemoteCached
+                  }}
+                </AppBadge>
+                <span v-if="runtimeReview.marketplaceAuthority" class="font-mono">
+                  {{ dialogs.pluginMarketplaceSourceRootFingerprint }}:
+                  {{ runtimeReview.marketplaceAuthority.rootKeySpkiSha256 }}
+                </span>
               </p>
               <p class="mt-0.5 break-all font-mono">
                 {{ dialogs.pluginDigest({ digest: runtimeReview.runtimePackageDigest }) }}
