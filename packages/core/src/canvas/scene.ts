@@ -8,11 +8,19 @@ import {
 } from '@open-pencil/motion'
 import {
   getAbsolutePositionFull,
+  getWorldMatrix,
   type SceneNode,
   type SceneGraph,
   type Fill
 } from '@open-pencil/scene-graph'
+import type { ArrowEndpoint } from '@open-pencil/scene-graph/arrow-caps'
+import {
+  arrowCapOverflow,
+  collectArrowEndpoints,
+  lineArrowEndpoints
+} from '@open-pencil/scene-graph/arrow-caps'
 import { computeDescendantVisualBounds, polygonVertices } from '@open-pencil/scene-graph/geometry'
+import Matrix from '@open-pencil/scene-graph/matrix'
 import type { Color, Rect } from '@open-pencil/scene-graph/primitives'
 
 import {
@@ -43,13 +51,23 @@ import {
   motionTrimProjection
 } from './motion-projection'
 import type { SkiaRenderer, RenderOverlays } from './renderer'
+import {
+  canCacheEffectRaster,
+  deleteEffectRaster,
+  effectRasterScale,
+  effectRasterScaleMatches,
+  installEffectRaster,
+  touchEffectRaster
+} from './renderer/effect-raster-cache'
 import { makeSmoothRRectPath, nodeHasRadius, nodeHasSmoothCorners } from './shapes'
 import {
   configureStrokePaint,
+  drawArrowHeads,
   drawDashedRRectWithSolidCorners,
   drawStyledRRectStroke,
   getStrokeCapEntity,
-  getStrokeJoinEntity
+  getStrokeJoinEntity,
+  normalizeDashPattern
 } from './strokes'
 import {
   drawDerivedText,
@@ -686,6 +704,64 @@ function renderChildren(
     )
   }
 }
+export function renderNodeSelf(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  nodeId: string,
+  overlays: RenderOverlays = {}
+): void {
+  const authoredNode = graph.getNode(nodeId)
+  if (
+    !authoredNode ||
+    authoredNode.internalOnly ||
+    !authoredNode.visible ||
+    authoredNode.isMask ||
+    fontManager.isNodeBlocked(nodeId)
+  ) {
+    return
+  }
+  const node = motionLayoutNode(authoredNode, overlays)
+  const visual = motionVisual(overlays, nodeId)
+  const renderedNode = motionNode(node, visual)
+  canvas.save()
+  canvas.translate(node.x + visual.x, node.y + visual.y)
+  applyNodeTransforms(r, canvas, renderedNode, nodeId, overlays, visual)
+  applyIntrinsicGeometryScale(canvas, authoredNode, renderedNode)
+  renderNodeContent(r, canvas, graph, renderedNode, nodeId, overlays)
+  drawLayoutGrids(r, canvas, renderedNode)
+  canvas.restore()
+}
+
+function viewportLayerBounds(
+  r: SkiaRenderer,
+  graph: SceneGraph,
+  node: SceneNode,
+  padding: number
+): Float32Array | null {
+  if (!r.boundEffectLayersToViewport) return null
+  const inverse = Matrix.invert(getWorldMatrix(node, graph))
+  if (!inverse) return null
+  const viewport = r.worldViewport
+  const points = Matrix.mapPoints(inverse, [
+    viewport.x,
+    viewport.y,
+    viewport.x + viewport.w,
+    viewport.y,
+    viewport.x + viewport.w,
+    viewport.y + viewport.h,
+    viewport.x,
+    viewport.y + viewport.h
+  ])
+  const xs = [points[0], points[2], points[4], points[6]]
+  const ys = [points[1], points[3], points[5], points[7]]
+  return r.ck.LTRBRect(
+    Math.min(...xs) - padding,
+    Math.min(...ys) - padding,
+    Math.max(...xs) + padding,
+    Math.max(...ys) + padding
+  )
+}
 
 function beginNodeOpacityLayer(
   r: SkiaRenderer,
@@ -709,9 +785,12 @@ function beginNodeOpacityLayer(
   // on the canvas must not turn every isolated layer into an unbounded saveLayer.
   const hasAnimatedGeometry = subtreeHasMotionGeometry(graph, nodeId, overlays)
   const authoredPosition = graph.getAbsolutePosition(nodeId)
+  const viewportBounds = hasAnimatedGeometry ? null : viewportLayerBounds(r, graph, node, 0)
   let layerBounds: Parameters<Canvas['saveLayer']>[1]
   if (hasAnimatedGeometry) {
     layerBounds = null
+  } else if (viewportBounds) {
+    layerBounds = viewportBounds
   } else if (bounds) {
     layerBounds = r.ck.LTRBRect(
       bounds.minX - authoredPosition.x,
@@ -756,7 +835,13 @@ function beginNodeBlurLayer(
   const blurPadding = layerBlur.radius * 2
   const blurBounds = subtreeHasMotionGeometry(graph, nodeId, overlays)
     ? null
-    : r.ck.LTRBRect(-blurPadding, -blurPadding, node.width + blurPadding, node.height + blurPadding)
+    : (viewportLayerBounds(r, graph, node, blurPadding) ??
+      r.ck.LTRBRect(
+        -blurPadding,
+        -blurPadding,
+        node.width + blurPadding,
+        node.height + blurPadding
+      ))
   canvas.saveLayer(r.effectLayerPaint, blurBounds)
   return true
 }
@@ -925,6 +1010,16 @@ export function renderComponentSet(
   r.auxStroke.setPathEffect(null)
 }
 
+function canRasterCacheEffects(node: SceneNode): boolean {
+  const visibleEffects = node.effects.filter((effect) => effect.visible)
+  return (
+    visibleEffects.length > 0 &&
+    visibleEffects.every(
+      (effect) => effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW'
+    )
+  )
+}
+
 export function renderShape(
   r: SkiaRenderer,
   canvas: Canvas,
@@ -941,29 +1036,116 @@ export function renderShape(
   const isMotionProjection = authoredNode !== node
 
   try {
-    if (hasEffects && !isMotionProjection) {
-      const cached = r.nodePictureCache.get(node.id)
-      const cachedGeneration = r.nodePictureCacheGenerations.get(node.id)
-      if (cached && cachedGeneration === r.fontGeneration) {
-        canvas.drawPicture(cached)
-        return
-      }
-      if (cached) cached.delete()
-      r.nodePictureCache.delete(node.id)
-      r.nodePictureCacheGenerations.delete(node.id)
+    if (!hasEffects) {
+      r.renderShapeUncached(canvas, node, graph)
+      return
+    }
 
-      const margin = r.effectOverflow(node)
-      const bounds = r.ck.LTRBRect(-margin, -margin, node.width + margin, node.height + margin)
-      const recorder = new r.ck.PictureRecorder()
+    const canRasterCache =
+      !isMotionProjection && r.renderingSceneBacking && canRasterCacheEffects(node)
+    const targetScale = effectRasterScale(r.zoom * r.dpr)
+    const cachedRaster = canRasterCache ? touchEffectRaster(r.effectRasterCache, node.id) : null
+    if (
+      cachedRaster &&
+      (cachedRaster.fontGeneration !== r.fontGeneration ||
+        !effectRasterScaleMatches(cachedRaster.scale, targetScale))
+    ) {
+      deleteEffectRaster(r.effectRasterCache, node.id)
+    } else if (cachedRaster) {
+      canvas.drawImageRectOptions(
+        cachedRaster.image,
+        r.ck.LTRBRect(0, 0, cachedRaster.image.width(), cachedRaster.image.height()),
+        r.ck.LTRBRect(
+          cachedRaster.left,
+          cachedRaster.top,
+          cachedRaster.left + cachedRaster.width,
+          cachedRaster.top + cachedRaster.height
+        ),
+        r.ck.FilterMode.Linear,
+        r.ck.MipmapMode.None,
+        null
+      )
+      return
+    }
+
+    const margin = Math.max(
+      r.effectOverflow(node),
+      arrowCapOverflow(node.strokes, node.strokeCap, node.vectorNetwork)
+    )
+    const width = node.width + margin * 2
+    const height = node.height + margin * 2
+    const scale = targetScale
+    if (canRasterCache && canCacheEffectRaster(width, height, scale)) {
+      const surface = r.surface.makeSurface({
+        width: Math.ceil(width * scale),
+        height: Math.ceil(height * scale),
+        colorType: r.ck.ColorType.RGBA_8888,
+        alphaType: r.ck.AlphaType.Premul,
+        colorSpace: r.ck.ColorSpace.SRGB
+      })
+      const rasterCanvas = surface.getCanvas()
+      try {
+        rasterCanvas.clear(r.ck.TRANSPARENT)
+        rasterCanvas.scale(scale, scale)
+        rasterCanvas.translate(margin, margin)
+        r.renderShapeUncached(rasterCanvas, node, graph)
+        surface.flush()
+        const image = surface.makeImageSnapshot()
+        const shadowChild = getShadowShapeChild(node, graph)
+        installEffectRaster(r.effectRasterCache, node.id, {
+          image,
+          left: -margin,
+          top: -margin,
+          width,
+          height,
+          scale,
+          pixels: image.width() * image.height(),
+          fontGeneration: r.fontGeneration,
+          dependencyIds: shadowChild ? [shadowChild.id] : []
+        })
+        canvas.drawImageRectOptions(
+          image,
+          r.ck.LTRBRect(0, 0, image.width(), image.height()),
+          r.ck.LTRBRect(-margin, -margin, node.width + margin, node.height + margin),
+          r.ck.FilterMode.Linear,
+          r.ck.MipmapMode.None,
+          null
+        )
+        return
+      } finally {
+        surface.delete()
+      }
+    }
+
+    if (isMotionProjection) {
+      r.renderShapeUncached(canvas, node, graph)
+      return
+    }
+
+    const cached = r.nodePictureCache.get(node.id)
+    const cachedGeneration = r.nodePictureCacheGenerations.get(node.id)
+    if (cached && cachedGeneration === r.fontGeneration) {
+      canvas.drawPicture(cached)
+      return
+    }
+    if (cached) cached.delete()
+    r.nodePictureCache.delete(node.id)
+    r.nodePictureCacheGenerations.delete(node.id)
+    r.nodePictureCacheDependencies.delete(node.id)
+
+    const bounds = r.ck.LTRBRect(-margin, -margin, node.width + margin, node.height + margin)
+    const recorder = new r.ck.PictureRecorder()
+    try {
       const recCanvas = recorder.beginRecording(bounds)
       r.renderShapeUncached(recCanvas, node, graph)
       const picture = recorder.finishRecordingAsPicture()
-      recorder.delete()
       r.nodePictureCache.set(node.id, picture)
       r.nodePictureCacheGenerations.set(node.id, r.fontGeneration)
+      const shadowChild = getShadowShapeChild(node, graph)
+      r.nodePictureCacheDependencies.set(node.id, shadowChild ? [shadowChild.id] : [])
       canvas.drawPicture(picture)
-    } else {
-      r.renderShapeUncached(canvas, node, graph)
+    } finally {
+      recorder.delete()
     }
   } finally {
     // Projected vertices change every frame. Keep cache ownership bounded and
@@ -1043,12 +1225,12 @@ function drawVectorPathStrokes(
   projectedNode?: SceneNode
 ): void {
   const trim = projectedNode ? motionTrimProjection(projectedNode) : undefined
-  const dash = stroke.dashPattern
+  const dash = normalizeDashPattern(stroke.dashPattern)
   if (trim) {
     drawTrimmedVectorPaths(r, canvas, vectorPaths, stroke, sc, miterLimit, trim)
     return
   }
-  if (dash && dash.length > 0) {
+  if (dash.length > 0) {
     drawDashedVectorPaths(r, canvas, vectorPaths, stroke, sc, miterLimit, dash, dashPhase)
     return
   }
@@ -1295,6 +1477,30 @@ function isPathTextWithStrokeGeometry(node: SceneNode): boolean {
   )
 }
 
+/**
+ * Draws arrow-cap heads for a stroke on the node types that carry open path
+ * ends. Runs after the shaft regardless of which branch painted it, so heads
+ * survive fills, non-center alignment, corner radii, and dashed shafts.
+ */
+function drawNodeArrowHeads(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  node: SceneNode,
+  stroke: SceneNode['strokes'][0],
+  color: Color
+): void {
+  const cap = stroke.cap ?? node.strokeCap
+  let endpoints: ArrowEndpoint[] = []
+  if (node.type === 'LINE') {
+    endpoints = lineArrowEndpoints(node.width, node.height, cap)
+  } else if (node.type === 'VECTOR' && node.vectorNetwork) {
+    endpoints = collectArrowEndpoints(node.vectorNetwork, cap)
+  }
+  if (endpoints.length > 0) {
+    drawArrowHeads(r, canvas, endpoints, stroke.weight, color, stroke.opacity)
+  }
+}
+
 function paintNodeStrokes(
   r: SkiaRenderer,
   canvas: Canvas,
@@ -1327,9 +1533,11 @@ function paintNodeStrokes(
         node
       )
       centerline.delete()
+      drawNodeArrowHeads(r, canvas, node, stroke, color)
       return
     }
     drawNodeStroke(r, canvas, node, rect, hasRadius, stroke, color, sg, vectorPaths, vectorStroke)
+    drawNodeArrowHeads(r, canvas, node, stroke, color)
   })
 }
 
@@ -1456,7 +1664,7 @@ function drawPathOrUnavailableText(r: SkiaRenderer, canvas: Canvas, node: SceneN
   }
 
   const fontReadiness = r.nodeFontReadiness(node)
-  if (fontReadiness === 'ready') return false
+  if (fontReadiness === 'ready' || fontReadiness === 'substituted') return false
   if (fontReadiness === 'exhausted') {
     if (node.textPicture && r.isTextPictureCurrent(node)) {
       const pic = r.ck.MakePicture(node.textPicture)

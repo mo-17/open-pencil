@@ -51,6 +51,7 @@ import {
   FIGMA_CANVAS_METADATA_FIELD_KEYS,
   FIGMA_DOCUMENT_METADATA_FIELD_KEYS
 } from '#core/kiwi/fig/root-metadata'
+import { originalFigArchive } from '#core/kiwi/fig/session/original-archive'
 
 interface CompatibleFigProjection {
   runtime: FigNodeChangeExportRuntime
@@ -689,6 +690,10 @@ export async function exportFigFileWithOptions(
     renderThumbnail: renderHeadlessThumbnail = false
   } = options
   const profile = options.profile ?? 'roundtrip'
+  if (profile === 'roundtrip') {
+    const originalArchive = await originalFigArchive(sourceGraph)
+    if (originalArchive) return originalArchive.slice()
+  }
   // Lazy population synchronizes component trees and therefore mutates its graph. Saving must not
   // rewrite the live editor document or restore component values over edits made by the user.
   const graph = cloneSceneGraphForFigExport(sourceGraph)

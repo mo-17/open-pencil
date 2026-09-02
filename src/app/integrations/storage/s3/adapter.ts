@@ -16,8 +16,10 @@ import type {
   StorageAdapter,
   StorageDocument,
   StorageDocumentAuthority,
+  StorageGetDocumentResult,
   StorageDocumentMetadata,
   StorageProviderRuntime,
+  StorageTransferProgress,
   StorageTransferOptions
 } from '../types'
 import { assertS3StorageAuthority, ensureS3StorageAuthority } from './authority'
@@ -149,6 +151,13 @@ async function ensureNamespace(config: S3CompatibleConfig, signal?: AbortSignal)
 
 export interface S3StorageAdapter extends StorageAdapter {
   testConnection(options?: Pick<StorageTransferOptions, 'signal'>): Promise<S3ConnectionResult>
+  getDocument(id: string, options?: StorageTransferOptions): Promise<StorageGetDocumentResult>
+  /** Compatibility overload for the pre-options cancellation/progress call shape. */
+  getDocument(
+    id: string,
+    onProgress: ((progress: StorageTransferProgress) => void) | undefined,
+    signal?: AbortSignal
+  ): Promise<StorageGetDocumentResult>
 }
 
 export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3StorageAdapter {
@@ -213,7 +222,8 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
               return {
                 id,
                 ...metadata,
-                metadataAuthoritative: authoritative
+                metadataAuthoritative: authoritative,
+                contentTimestampAuthoritative: lastModified !== null
               } satisfies StorageDocument
             })
           ))
@@ -222,7 +232,19 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
       return documents.sort((first, second) => second.updatedAt.localeCompare(first.updatedAt))
     },
 
-    async getDocument(id, options) {
+    async getDocument(
+      id: string,
+      optionsOrProgress?: StorageTransferOptions | ((progress: StorageTransferProgress) => void),
+      legacySignal?: AbortSignal
+    ) {
+      const options: StorageTransferOptions | undefined =
+        typeof optionsOrProgress === 'function' || legacySignal
+          ? {
+              ...(typeof optionsOrProgress === 'function' ? { onProgress: optionsOrProgress } : {}),
+              ...(legacySignal ? { signal: legacySignal } : {})
+            }
+          : optionsOrProgress
+      options?.signal?.throwIfAborted()
       const config = await resolveConfig(runtime, options?.expectedAuthority)
       const bytes = await getObject(
         config,

@@ -27,7 +27,7 @@ const {
 
 describe('published core Worker URLs', () => {
   test('keeps Vite source URLs while rewriting published modules to emitted JavaScript', async () => {
-    expect(CORE_PUBLISHED_WORKER_URLS).toHaveLength(3)
+    expect(CORE_PUBLISHED_WORKER_URLS).toHaveLength(4)
 
     for (const target of CORE_PUBLISHED_WORKER_URLS) {
       const ownerPath = join(CORE_ROOT, target.ownerEntry)

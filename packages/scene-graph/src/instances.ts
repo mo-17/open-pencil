@@ -2,6 +2,13 @@ import type { SceneGraph, SceneNode } from './'
 import { cloneNodeProps, copyEffects, copyFills, copyStrokes, copyStyleRuns } from './copy'
 import type { NodeCloneMode } from './copy'
 import {
+  createInstanceOverrideState,
+  getInstanceOverride,
+  hasInstanceOverride as hasNodeInstanceOverride,
+  setInstanceOverride,
+  type InstanceOverrideState
+} from './instance-overrides'
+import {
   cloneGeneratedEffectSpec,
   cloneMotionDriverSpec,
   cloneMotionSceneSpec,
@@ -12,7 +19,16 @@ import {
 
 export type { NodeCloneMode } from './copy'
 
-const INSTANCE_SYNC_PROPS: (keyof SceneNode)[] = [
+export const INSTANCE_SYNC_TEXT_PROPS = [
+  'name',
+  'text',
+  'fontSize',
+  'fontWeight',
+  'fontFamily',
+  'textDirection'
+] as const
+
+export const INSTANCE_SYNC_PROPS: (keyof SceneNode)[] = [
   'width',
   'height',
   'minWidth',
@@ -71,6 +87,38 @@ const OPTIONAL_INSTANCE_SYNC_PROPS = [
   'transitionKey',
   'generatedEffect'
 ] as const satisfies readonly (keyof SceneNode)[]
+
+export const INSTANCE_SYNC_FIELDS = [...INSTANCE_SYNC_PROPS, ...INSTANCE_SYNC_TEXT_PROPS] as const
+
+function legacyOverrideKey(instanceId: string, nodeId: string, field: string): string {
+  return nodeId === instanceId ? field : `${nodeId}:${field}`
+}
+
+function hasProtectedInstanceOverride(
+  overrides: InstanceOverrideState,
+  legacyOverrides: Readonly<Record<string, unknown>>,
+  instanceId: string,
+  nodeId: string,
+  field: string
+): boolean {
+  return (
+    hasNodeInstanceOverride(overrides, instanceId, nodeId, field) ||
+    Object.hasOwn(legacyOverrides, legacyOverrideKey(instanceId, nodeId, field))
+  )
+}
+
+function getCompatibleInstanceOverride(
+  overrides: InstanceOverrideState,
+  legacyOverrides: Readonly<Record<string, unknown>>,
+  instanceId: string,
+  nodeId: string,
+  field: string
+): unknown {
+  const structured = getInstanceOverride(overrides, instanceId, nodeId, field)
+  return structured !== undefined || hasNodeInstanceOverride(overrides, instanceId, nodeId, field)
+    ? structured
+    : legacyOverrides[legacyOverrideKey(instanceId, nodeId, field)]
+}
 
 function setSceneProp<K extends keyof SceneNode>(
   target: Partial<SceneNode>,
@@ -183,7 +231,9 @@ function syncChildren(
   graph: SceneGraph,
   compParentId: string,
   instParentId: string,
-  overrides: Record<string, unknown>,
+  instanceId: string,
+  overrides: InstanceOverrideState,
+  legacyOverrides: Readonly<Record<string, unknown>>,
   idMap: Map<string, string>
 ): void {
   const compParent = graph.nodes.get(compParentId)
@@ -196,7 +246,14 @@ function syncChildren(
   for (const childId of instParent.childIds) {
     const child = graph.nodes.get(childId)
     if (!child) continue
-    const sourceComponentId = overrides[`${child.id}:sourceComponentId`]
+    const sourceComponentId = getCompatibleInstanceOverride(
+      overrides,
+      legacyOverrides,
+      instanceId,
+      child.id,
+      'sourceComponentId'
+    )
+
     const mappedComponentId =
       typeof sourceComponentId === 'string' ? sourceComponentId : child.componentId
     if (mappedComponentId) {
@@ -223,27 +280,25 @@ function syncChildren(
     const instChild = instChildMap.get(compChildId)
     if (!compChild || !instChild) continue
 
-    for (const key of INSTANCE_SYNC_PROPS) {
-      const overrideKey = `${instChild.id}:${key}`
-      if (overrideKey in overrides) continue
+    for (const key of INSTANCE_SYNC_FIELDS) {
+      if (hasProtectedInstanceOverride(overrides, legacyOverrides, instanceId, instChild.id, key)) {
+        continue
+      }
+
       copyProp(instChild, compChild, key)
     }
 
-    for (const key of [
-      'name',
-      'text',
-      'fontSize',
-      'fontWeight',
-      'fontFamily',
-      'textDirection'
-    ] as const) {
-      const overrideKey = `${instChild.id}:${key}`
-      if (overrideKey in overrides) continue
-      copyProp(instChild, compChild, key)
-    }
-
-    if (compChild.childIds.length > 0 && !(`${instChild.id}:componentId` in overrides)) {
-      syncChildren(graph, compChildId, instChild.id, overrides, idMap)
+    if (
+      compChild.childIds.length > 0 &&
+      !hasProtectedInstanceOverride(
+        overrides,
+        legacyOverrides,
+        instanceId,
+        instChild.id,
+        'componentId'
+      )
+    ) {
+      syncChildren(graph, compChildId, instChild.id, instanceId, overrides, legacyOverrides, idMap)
     }
   }
 
@@ -251,8 +306,25 @@ function syncChildren(
   instParent.childIds.sort((a, b) => {
     const nodeA = graph.nodes.get(a)
     const nodeB = graph.nodes.get(b)
-    const sourceA = nodeA ? overrides[`${nodeA.id}:sourceComponentId`] : undefined
-    const sourceB = nodeB ? overrides[`${nodeB.id}:sourceComponentId`] : undefined
+    const sourceA = nodeA
+      ? getCompatibleInstanceOverride(
+          overrides,
+          legacyOverrides,
+          instanceId,
+          nodeA.id,
+          'sourceComponentId'
+        )
+      : undefined
+    const sourceB = nodeB
+      ? getCompatibleInstanceOverride(
+          overrides,
+          legacyOverrides,
+          instanceId,
+          nodeB.id,
+          'sourceComponentId'
+        )
+      : undefined
+
     const mappedA = typeof sourceA === 'string' ? sourceA : nodeA?.componentId
     const mappedB = typeof sourceB === 'string' ? sourceB : nodeB?.componentId
     const idxA = mappedA ? compChildOrder.indexOf(mappedA) : -1
@@ -318,12 +390,31 @@ export function swapInstanceComponent(
   const updates: Partial<SceneNode> = { componentId }
   const fieldsToClear = OPTIONAL_INSTANCE_SYNC_PROPS.filter(
     (key) =>
-      instance[key] !== undefined && component[key] === undefined && !(key in instance.overrides)
+      instance[key] !== undefined &&
+      component[key] === undefined &&
+      !hasProtectedInstanceOverride(
+        instance.instanceOverrides,
+        instance.overrides,
+        instance.id,
+        instance.id,
+        key
+      )
   )
   for (const key of INSTANCE_SYNC_PROPS) {
-    if (key in instance.overrides) continue
+    if (
+      hasProtectedInstanceOverride(
+        instance.instanceOverrides,
+        instance.overrides,
+        instance.id,
+        instance.id,
+        key
+      )
+    ) {
+      continue
+    }
     copyProp(updates, component, key)
   }
+
   if (!previousComponent || instance.name === previousComponent.name) updates.name = component.name
 
   const childIds = Array.from(instance.childIds)
@@ -341,12 +432,29 @@ export function syncInstances(graph: SceneGraph, componentId: string): void {
 
   for (const instance of getInstances(graph, componentId)) {
     for (const key of INSTANCE_SYNC_PROPS) {
-      if (key in instance.overrides) continue
+      if (
+        hasProtectedInstanceOverride(
+          instance.instanceOverrides,
+          instance.overrides,
+          instance.id,
+          instance.id,
+          key
+        )
+      )
+        continue
       copyProp(instance, component, key)
     }
 
     const cloneIdMap = new Map([[component.id, instance.id]])
-    syncChildren(graph, component.id, instance.id, instance.overrides, cloneIdMap)
+    syncChildren(
+      graph,
+      component.id,
+      instance.id,
+      instance.id,
+      instance.instanceOverrides,
+      instance.overrides,
+      cloneIdMap
+    )
     graph.remapClonedNodeReferences(cloneIdMap)
   }
 }
@@ -354,12 +462,12 @@ export function syncInstances(graph: SceneGraph, componentId: string): void {
 export function detachInstance(graph: SceneGraph, instanceId: string): void {
   const node = graph.nodes.get(instanceId)
   if (node?.type !== 'INSTANCE') return
-  if (node.componentId) {
-    graph.instanceIndex.get(node.componentId)?.delete(instanceId)
-  }
-  node.type = 'FRAME'
-  node.componentId = null
-  node.overrides = {}
+  graph.updateNode(instanceId, {
+    type: 'FRAME',
+    componentId: null,
+    instanceOverrides: createInstanceOverrideState(),
+    overrides: {}
+  })
 }
 
 export function getMainComponent(graph: SceneGraph, instanceId: string): SceneNode | undefined {
@@ -377,4 +485,64 @@ export function getInstances(graph: SceneGraph, componentId: string): SceneNode[
     if (node) instances.push(node)
   }
   return instances
+}
+
+/** Nearest INSTANCE at or above `nodeId` — self, parent, grandparent, etc. */
+export function findInstanceAncestor(graph: SceneGraph, nodeId: string): SceneNode | undefined {
+  let current = graph.nodes.get(nodeId)
+  while (current) {
+    if (current.type === 'INSTANCE') return current
+    current = current.parentId ? graph.nodes.get(current.parentId) : undefined
+  }
+  return undefined
+}
+
+/**
+ * True when a node field is protected from instance synchronization.
+ */
+export function hasInstanceOverride(graph: SceneGraph, nodeId: string, field: string): boolean {
+  const instance = findInstanceAncestor(graph, nodeId)
+  if (!instance) return false
+  return hasProtectedInstanceOverride(
+    instance.instanceOverrides,
+    instance.overrides,
+    instance.id,
+    nodeId,
+    field
+  )
+}
+
+/*
+ * syncInstances) won't clobber them, and — if `nodeId` sits inside an INSTANCE —
+ * so the .fig exporter knows to write the diff out as a symbol override. A no-op
+ * for fields outside INSTANCE_SYNC_PROPS or nodes with no INSTANCE ancestor.
+ */
+export function recordInstanceOverrideValue(
+  graph: SceneGraph,
+  nodeId: string,
+  field: string,
+  value: unknown
+): void {
+  const instance = findInstanceAncestor(graph, nodeId)
+  if (!instance) return
+  setInstanceOverride(instance.instanceOverrides, instance.id, nodeId, field, value)
+  graph.updateNode(instance.id, { instanceOverrides: instance.instanceOverrides })
+}
+export function recordInstanceOverride(
+  graph: SceneGraph,
+  nodeId: string,
+  fields: Iterable<string>
+): void {
+  const instance = findInstanceAncestor(graph, nodeId)
+  if (!instance) return
+
+  const relevant = [...fields].filter((field) =>
+    (INSTANCE_SYNC_FIELDS as readonly string[]).includes(field)
+  )
+
+  if (relevant.length === 0) return
+
+  for (const field of relevant)
+    setInstanceOverride(instance.instanceOverrides, instance.id, nodeId, field)
+  graph.updateNode(instance.id, { instanceOverrides: instance.instanceOverrides })
 }

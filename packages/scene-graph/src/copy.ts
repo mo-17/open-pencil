@@ -24,6 +24,7 @@ import type {
   StyleRun
 } from './'
 import { geometryCommandCoordCount } from './geometry'
+import { cloneInstanceOverrideState, createInstanceOverrideState } from './instance-overrides'
 import {
   cloneGeneratedEffectSpec,
   cloneMotionDriverSpec,
@@ -560,12 +561,12 @@ function remapInstanceOverrideKey(
  * Bare keys describe overrides on the instance root; `<nodeId>:<field>` keys describe
  * descendants. Null values remain explicit tombstones and external references stay intact. */
 export function remapClonedInstanceOverrides(
-  node: Pick<SceneNode, 'overrides'>,
+  node: Pick<SceneNode, 'overrides' | 'instanceOverrides'>,
   idMap: ReadonlyMap<string, string>
-): Pick<SceneNode, 'overrides'> | null {
-  if (Object.keys(node.overrides).length === 0) return null
+): Pick<SceneNode, 'overrides' | 'instanceOverrides'> | null {
   const resolveNodeId = (nodeId: string) => idMap.get(nodeId)
   const overrides: Record<string, unknown> = {}
+  const instanceOverrides = createInstanceOverrideState()
   let changed = false
   for (const [key, value] of Object.entries(node.overrides)) {
     const remappedKey = remapInstanceOverrideKey(key, idMap)
@@ -573,7 +574,23 @@ export function remapClonedInstanceOverrides(
     overrides[remappedKey.key] = remappedValue.value
     changed ||= remappedKey.changed || remappedValue.changed
   }
-  return changed ? { overrides } : null
+  for (const [field, value] of node.instanceOverrides.self) {
+    const remappedValue = remapInstanceOverrideValue(field, value, resolveNodeId)
+    instanceOverrides.self.set(field, remappedValue.value)
+    changed ||= remappedValue.changed
+  }
+  for (const [sourceId, fields] of node.instanceOverrides.descendants) {
+    const cloneId = idMap.get(sourceId) ?? sourceId
+    const remappedFields = new Map<string, unknown>()
+    for (const [field, value] of fields) {
+      const remappedValue = remapInstanceOverrideValue(field, value, resolveNodeId)
+      remappedFields.set(field, remappedValue.value)
+      changed ||= remappedValue.changed
+    }
+    instanceOverrides.descendants.set(cloneId, remappedFields)
+    changed ||= cloneId !== sourceId
+  }
+  return changed ? { overrides, instanceOverrides } : null
 }
 
 /** Remap references inside the load-time, path-keyed instance override carrier. */
@@ -658,6 +675,7 @@ export function cloneNodeProps(
     boundVariables: { ...src.boundVariables },
     variableModes: { ...src.variableModes },
     overrides: Object.keys(src.overrides).length > 0 ? structuredClone(src.overrides) : {},
+    instanceOverrides: cloneInstanceOverrideState(src.instanceOverrides),
     componentPropertyAssignments: { ...src.componentPropertyAssignments },
     componentPropertyValues: { ...src.componentPropertyValues }
   }
@@ -670,6 +688,7 @@ export function cloneNodeProps(
   return {
     ...common,
     fills: copyOpt(src.fills, (value) => markCopySource(value, copyFills(value))),
+
     strokes: copyOpt(src.strokes, (value) => markCopySource(value, copyStrokes(value))),
     effects: copyOpt(src.effects, (value) => markCopySource(value, copyEffects(value))),
     layoutGrids: copyOpt(src.layoutGrids, copyLayoutGrids),

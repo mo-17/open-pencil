@@ -4,7 +4,7 @@ import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 
 import { FontManager } from '@open-pencil/core/text'
 
-import { createBrowserWebFontFetch } from '@/app/editor/fonts/browser-web-font-fetch'
+import { createBrowserWebFontFetch } from '@/app/editor/fonts/browser/web-font-fetch'
 
 const FONTSOURCE_VERSION = '5.3.0'
 const BEBAS_SUBSETS = ['latin', 'latin-ext'] as const

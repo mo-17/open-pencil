@@ -1,4 +1,7 @@
+/* eslint-disable max-lines -- scene node contracts are kept together as the public graph type surface */
+
 import type { CanvasGuide } from './guides'
+import type { InstanceOverrideState } from './instance-overrides'
 import type {
   GeneratedEffectSpecV1,
   MotionDriverSpecV1,
@@ -9,22 +12,50 @@ import type {
 } from './motion'
 import type { Color, Matrix, Rect, Vector } from './primitives'
 
+export type NodeMutationOrigin = 'derived-component-sync' | 'derived-layout' | 'source-hydration'
+
 export interface SceneGraphEvents {
-  'node:created': (node: SceneNode) => void
-  'node:updated': (id: string, changes: Partial<SceneNode>) => void
-  'node:previewUpdated': (id: string, changes: Partial<SceneNode>) => void
-  'node:deleted': (id: string) => void
-  'node:reparented': (nodeId: string, oldParentId: string | null, newParentId: string) => void
-  'node:reordered': (nodeId: string, parentId: string, index: number) => void
+  'node:created': (node: SceneNode, origin?: NodeMutationOrigin) => void
+  'node:updated': (id: string, changes: Partial<SceneNode>, origin?: NodeMutationOrigin) => void
+  'node:previewUpdated': (
+    id: string,
+    changes: Partial<SceneNode>,
+    origin?: NodeMutationOrigin
+  ) => void
+  'node:deleted': (id: string, parentId: string | null, origin?: NodeMutationOrigin) => void
+  'node:reparented': (
+    nodeId: string,
+    oldParentId: string | null,
+    newParentId: string,
+    origin?: NodeMutationOrigin
+  ) => void
+  'node:reordered': (
+    nodeId: string,
+    parentId: string,
+    index: number,
+    previousParentId: string | null,
+    origin?: NodeMutationOrigin
+  ) => void
 }
 
 export type SceneGraphEventHandlers = Partial<{
-  created: (node: SceneNode) => void
-  updated: (id: string, changes: Partial<SceneNode>) => void
-  previewUpdated: (id: string, changes: Partial<SceneNode>) => void
-  deleted: (id: string) => void
-  reparented: (nodeId: string, oldParentId: string | null, newParentId: string) => void
-  reordered: (nodeId: string, parentId: string, index: number) => void
+  created: (node: SceneNode, origin?: NodeMutationOrigin) => void
+  updated: (id: string, changes: Partial<SceneNode>, origin?: NodeMutationOrigin) => void
+  previewUpdated: (id: string, changes: Partial<SceneNode>, origin?: NodeMutationOrigin) => void
+  deleted: (id: string, parentId: string | null, origin?: NodeMutationOrigin) => void
+  reparented: (
+    nodeId: string,
+    oldParentId: string | null,
+    newParentId: string,
+    origin?: NodeMutationOrigin
+  ) => void
+  reordered: (
+    nodeId: string,
+    parentId: string,
+    index: number,
+    previousParentId: string | null,
+    origin?: NodeMutationOrigin
+  ) => void
 }>
 
 export type DocumentColorSpace = 'srgb' | 'display-p3'
@@ -687,6 +718,7 @@ export interface SceneNode {
   starInnerRadius: number
 
   componentId: string | null
+  /** Legacy OpenPencil Motion/lowcode override carrier retained for pluginData round-trips. */
   overrides: Record<string, unknown>
   /** Phase 3 §8 v11: load-time-only carrier for instance overrides restored from
    *  `lowcode/overrides` pluginData. Keyed by the STABLE master-child id
@@ -696,6 +728,8 @@ export interface SceneNode {
    *  cloned children — setting each child's value and rebuilding `overrides` keyed
    *  by the new child id — then clears this field. Never serialized. */
   pendingInstanceOverrides?: Record<string, unknown>
+  /** Structured Figma/component-property overrides used by instance synchronization. */
+  instanceOverrides: InstanceOverrideState
   componentPropertyDefinitions: ComponentPropertyDefinition[]
   componentPropertyReferences: ComponentPropertyReference[]
   componentPropertyAssignments: Record<string, string>

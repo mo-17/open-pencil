@@ -7,7 +7,7 @@ import { fontFaceDemand, fontResolver } from '#core/text/resolver'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
-type Readiness = 'ready' | 'pending' | 'exhausted'
+type Readiness = 'ready' | 'substituted' | 'pending' | 'exhausted'
 
 interface FontCheckResult {
   error?: string
@@ -158,6 +158,27 @@ describe('check_font', () => {
       exactLoaded: false,
       familyLoaded: true
     })
+  })
+
+  test('reports default-font substitution as renderable degradation', () => {
+    const { graph, figma } = setupToolTest()
+    const family = 'OpenPencil Check Font Substituted'
+    const node = graph.createNode('TEXT', figma.currentPageId, {
+      text: 'Fallback family',
+      fontFamily: family
+    })
+    attachReadiness(figma, 'substituted')
+
+    const result = getTool('check_font').execute(figma, {
+      id: node.id,
+      expected_family: family
+    }) as FontCheckResult
+
+    expect(result.status).toBe('degraded')
+    expect(result.effective).toBe(true)
+    expect(result.exactFacesLoaded).toBe(false)
+    expect(result.faces?.[0]?.mode).toBe('substituted')
+    expect(result.caveats?.join(' ')).toContain('default fallback font')
   })
 
   test('reports exhausted resolution as ineffective', () => {

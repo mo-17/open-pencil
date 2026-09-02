@@ -2,6 +2,8 @@ import { populateAndApplyOverrides } from '@open-pencil/fig/instance-overrides'
 import type { InstanceNodeChange } from '@open-pencil/fig/instance-overrides'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import { reapplyInstanceOverrides } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+
 export interface LazyFigImportContext {
   changeMap: Map<string, InstanceNodeChange>
   guidToNodeId: Map<string, string>
@@ -53,14 +55,17 @@ function applyPopulation(
   context: LazyFigImportContext,
   rootIds?: string[]
 ): void {
-  graph.preserveSourceMetadataDuring(() => {
-    populateAndApplyOverrides(
-      graph,
-      context.changeMap,
-      context.guidToNodeId,
-      context.blobs,
-      rootIds
-    )
+  graph.withNodeMutationOrigin('source-hydration', () => {
+    graph.preserveSourceMetadataDuring(() => {
+      populateAndApplyOverrides(
+        graph,
+        context.changeMap,
+        context.guidToNodeId,
+        context.blobs,
+        rootIds
+      )
+      reapplyInstanceOverrides(graph)
+    })
   })
   const populatedRootIds = rootIds ?? graph.getPages(true).map((page) => page.id)
   for (const id of populatedRootIds) context.populatedRootIds.add(id)

@@ -733,7 +733,8 @@ function childIndexPath(
  * to the freshly cloned descendant, set that child's prop to the snapshot value,
  * and rebuild `node.overrides` keyed by the new child id. Reserved empty-path
  * Motion contract entries restore root-instance overrides, including explicit
- * null clears. Clears the pending field so it is idempotent. */
+ * null clears. Entries whose descendant path has not been populated yet remain
+ * pending so a later lazy-page population pass can replay them safely. */
 export function reapplyInstanceOverrides(graph: SceneGraph, nodeIds?: Iterable<string>): void {
   const nodes = nodeIds
     ? Array.from(nodeIds, (id) => graph.getNode(id)).filter(
@@ -744,7 +745,8 @@ export function reapplyInstanceOverrides(graph: SceneGraph, nodeIds?: Iterable<s
     const pending = node.pendingInstanceOverrides
     if (node.type !== 'INSTANCE' || !pending) continue
     const componentReferences = instanceComponentReferenceMap(graph, node)
-    const remapped: Record<string, unknown> = {}
+    const remapped: Record<string, unknown> = { ...node.overrides }
+    const unresolved: Record<string, unknown> = {}
     for (const key of Object.keys(pending)) {
       const rootField = key.startsWith(':') ? key.slice(1) : ''
       const rootOverride = canonicalRootMotionOverride(rootField, pending[key])
@@ -774,7 +776,10 @@ export function reapplyInstanceOverrides(graph: SceneGraph, nodeIds?: Iterable<s
       // Root Motion contracts are handled narrowly above; descendants require a path.
       if (path === '') continue
       const child = resolveChildByPath(graph, node.id, path)
-      if (!child) continue
+      if (!child) {
+        unresolved[key] = pending[key]
+        continue
+      }
       const prop = key.slice(colon + 1)
       const value = pending[key]
       const contractOverride = canonicalRootMotionOverride(prop, value)
@@ -800,8 +805,12 @@ export function reapplyInstanceOverrides(graph: SceneGraph, nodeIds?: Iterable<s
       graph.updateNode(child.id, { [prop]: value } as Partial<SceneNode>)
       remapped[`${child.id}:${prop}`] = value
     }
-    node.overrides = remapped
-    delete node.pendingInstanceOverrides
+    graph.updateNode(node.id, { overrides: remapped })
+    if (Object.keys(unresolved).length > 0) {
+      graph.updateNode(node.id, { pendingInstanceOverrides: unresolved })
+    } else {
+      graph.clearNodeFields(node.id, ['pendingInstanceOverrides'])
+    }
   }
 }
 

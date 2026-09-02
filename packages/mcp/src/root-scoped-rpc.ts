@@ -1,10 +1,8 @@
+import type { RPCSendOptions } from '#mcp/rpc-types'
 import type { SafePathResult } from '#mcp/tool/output'
 import { resolveSafePath } from '#mcp/tool/output'
 
-export interface RPCSendOptions {
-  signal?: AbortSignal
-  onProgress?: (progress: unknown) => void
-}
+export type { RPCSendOptions } from '#mcp/rpc-types'
 
 export type RootScopedRPCSender = (
   body: Record<string, unknown>,

@@ -80,6 +80,8 @@ function createRenderer() {
     maskFilterCache: new Map(),
     nodePictureCache: new Map(),
     nodePictureCacheGenerations: new Map(),
+    nodePictureCacheDependencies: new Map(),
+    effectRasterCache: new Map(),
     subtreePictureCache: new Map(),
     labelCache: new LabelCache(),
     scenePicture: null,
@@ -99,12 +101,30 @@ function createRenderer() {
     viewportHeight: 100,
     pageColor: { r: 1, g: 1, b: 1 },
     pageId: 'page',
+    tiledScene: {
+      destroy: mock(),
+      invalidateStructure: mock()
+    } as Partial<SkiaRenderer['tiledScene']> as SkiaRenderer['tiledScene'],
+    labelParagraphCache: { clear: mock() } as SkiaRenderer['labelParagraphCache'],
     _flashPaint: null,
     profiler: { destroy: mock() } as Partial<SkiaRenderer['profiler']> as SkiaRenderer['profiler'],
     surface: deletable<Surface>()
   }
   return renderer as SkiaRenderer
 }
+
+test('destroyRenderer releases tiled resources before deleting the main surface', () => {
+  const renderer = createRenderer()
+  const teardown: string[] = []
+  renderer.tiledScene.destroy = mock(() => teardown.push('tiled'))
+  renderer.surface.delete = mock(() => teardown.push('surface')) as typeof renderer.surface.delete
+
+  destroyRenderer(renderer)
+
+  expect(renderer.tiledScene.destroy).toHaveBeenCalledTimes(1)
+  expect(renderer.surface.delete).toHaveBeenCalledTimes(1)
+  expect(teardown).toEqual(['tiled', 'surface'])
+})
 
 test('destroyRenderer deletes all renderer-owned paints and label fonts', () => {
   const renderer = createRenderer()

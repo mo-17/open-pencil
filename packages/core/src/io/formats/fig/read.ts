@@ -6,9 +6,17 @@ import { DynamicConcurrencyLimiter, type ConcurrencyLimiterState } from '#core/a
 import { IS_BROWSER } from '#core/constants'
 import { importNodeChanges } from '#core/kiwi/fig/import'
 import { createFigParseWorker } from '#core/kiwi/fig/parse/client'
-import { deserializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
-import type { SerializedSceneGraph } from '#core/kiwi/fig/parse/transfer'
-import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
+import { deserializeSceneGraph, type SerializedSceneGraph } from '#core/kiwi/fig/parse/transfer'
+import {
+  registerFigPopulationWorker,
+  registerOriginalArchiveRequest,
+  releaseFigPopulationWorker
+} from '#core/kiwi/fig/population/client'
+import {
+  createFigSessionOriginalArchiveRequester,
+  createFigSessionWorker
+} from '#core/kiwi/fig/session/client'
+import type { FigSessionResponse } from '#core/kiwi/fig/session/protocol'
 
 export interface ParseFigFileOptions {
   populate?: 'all' | 'first-page' | 'none'
@@ -101,6 +109,8 @@ function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}
   graph.figKiwiVersion = figKiwiVersion
   graph.figSchemaDeflated = figSchemaDeflated
   graph.figMessageObjectAnimations = objectAnimations
+  const originalArchive = new Uint8Array(buffer.slice(0))
+  registerOriginalArchiveRequest(graph, async () => originalArchive.slice())
   return graph
 }
 
@@ -161,10 +171,6 @@ function isExplicitOutOfMemoryError(error: Error): boolean {
   )
 }
 
-function canRetainFigPopulationWorker(meta: { env?: { DEV?: boolean } }): boolean {
-  return meta.env?.DEV ?? false
-}
-
 function transferableFigBuffer(data: FigSourceData): ArrayBuffer {
   if (data instanceof ArrayBuffer) return data
   if (
@@ -200,7 +206,17 @@ function parseViaStartedWorker(
   buffer: ArrayBuffer,
   options: ParseFigFileOptions
 ): Promise<SceneGraph> {
+  return options.populate === 'first-page'
+    ? parseViaStartedSessionWorker(buffer, options)
+    : parseViaStartedLegacyWorker(buffer, options)
+}
+
+function parseViaStartedLegacyWorker(
+  buffer: ArrayBuffer,
+  options: ParseFigFileOptions
+): Promise<SceneGraph> {
   return new Promise((resolve, reject) => {
+    const originalArchive = new Uint8Array(buffer.slice(0))
     const worker = createFigParseWorker()
     let settled = false
     const abort = () => fail(figParseAbortReason(options.signal))
@@ -219,14 +235,8 @@ function parseViaStartedWorker(
 
     const succeed = (graph: SceneGraph) => {
       if (settled) return
-      if (options.populate === 'first-page' && canRetainFigPopulationWorker(import.meta)) {
-        worker.onmessage = null
-        worker.onerror = null
-        worker.onmessageerror = null
-        registerFigPopulationWorker(graph, worker)
-      } else {
-        worker.terminate()
-      }
+      registerOriginalArchiveRequest(graph, async () => originalArchive.slice())
+      worker.terminate()
       settled = true
       cleanup()
       resolve(graph)
@@ -259,7 +269,6 @@ function parseViaStartedWorker(
         fail(error)
       }
     }
-
     worker.onerror = (err) => {
       fail(new Error(err.message || 'Worker failed to parse .fig file'))
     }
@@ -280,6 +289,117 @@ function parseViaStartedWorker(
         archiveLimits: options.archiveLimits
       }
       worker.postMessage({ buffer, options: workerOptions }, [buffer])
+    } catch (error) {
+      fail(error)
+    }
+  })
+}
+
+function parseViaStartedSessionWorker(
+  buffer: ArrayBuffer,
+  options: ParseFigFileOptions
+): Promise<SceneGraph> {
+  return new Promise((resolve, reject) => {
+    const worker = createFigSessionWorker()
+    const channel = new MessageChannel()
+    const port = channel.port1
+    let settled = false
+    const abort = () => fail(figParseAbortReason(options.signal))
+
+    const cleanup = () => {
+      options.signal?.removeEventListener('abort', abort)
+      port.removeEventListener('message', receive)
+      port.onmessageerror = null
+      worker.onerror = null
+      worker.onmessageerror = null
+    }
+    const disposeSession = () => {
+      try {
+        port.postMessage({ type: 'dispose' })
+      } catch {
+        // A failed transfer or worker crash may already have detached the port.
+      }
+      port.close()
+      worker.terminate()
+    }
+    const fail = (error: unknown) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      disposeSession()
+      reject(workerParseError(error))
+    }
+    const succeed = (serialized: SerializedSceneGraph) => {
+      if (settled) return
+      let graph: SceneGraph | undefined
+      let archiveRequester: ReturnType<typeof createFigSessionOriginalArchiveRequester> | undefined
+      // Remove the one-shot open handlers before the retained session clients
+      // install their own worker/port failure handlers.
+      cleanup()
+      try {
+        graph = deserializeSceneGraph(serialized)
+        archiveRequester = createFigSessionOriginalArchiveRequester(worker, port)
+        registerOriginalArchiveRequest(graph, archiveRequester.request, archiveRequester.dispose)
+        registerFigPopulationWorker(graph, worker, port)
+      } catch (error) {
+        archiveRequester?.dispose()
+        if (graph) releaseFigPopulationWorker(graph)
+        fail(error)
+        return
+      }
+      settled = true
+      resolve(graph)
+    }
+    const receive = (event: MessageEvent<FigSessionResponse>) => {
+      const response = event.data
+      if (response.type === 'page-manifest') {
+        try {
+          options.onPages?.(response.pages)
+        } catch (error) {
+          fail(error)
+        }
+        return
+      }
+      if (response.type !== 'graph') return
+      if ('error' in response) {
+        fail(
+          isDeterministicWorkerPhase(response.phase)
+            ? new DeterministicFigWorkerError(response.error, response.phase)
+            : new Error(response.error)
+        )
+        return
+      }
+      succeed(response.graph)
+    }
+
+    port.addEventListener('message', receive)
+    port.onmessageerror = () => {
+      fail(new Error('Worker .fig session response could not be deserialized'))
+    }
+    port.start()
+    worker.onerror = (event) => {
+      fail(new Error(event.message || 'Worker failed to parse .fig file'))
+    }
+    worker.onmessageerror = () => {
+      fail(new Error('Worker .fig session request could not be deserialized'))
+    }
+
+    if (options.signal?.aborted) {
+      fail(figParseAbortReason(options.signal))
+      return
+    }
+    options.signal?.addEventListener('abort', abort, { once: true })
+
+    try {
+      worker.postMessage(
+        {
+          type: 'open',
+          buffer,
+          options: { populate: 'first-page', archiveLimits: options.archiveLimits },
+          port: channel.port2
+        },
+        [buffer, channel.port2]
+      )
     } catch (error) {
       fail(error)
     }
@@ -345,6 +465,7 @@ export async function parseFigFile(
   buffer: ArrayBuffer,
   options: ParseFigFileOptions = {}
 ): Promise<SceneGraph> {
+  options.signal?.throwIfAborted()
   if (typeof Worker !== 'undefined' && IS_BROWSER) {
     return parseFigFileWithFallback(buffer, options)
   }

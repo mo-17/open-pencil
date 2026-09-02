@@ -47,7 +47,7 @@ import AppInput from '@/components/ui/AppInput.vue'
 type ProfileEditorMode = 'idle' | 'add' | 'rename' | 'delete'
 type ProfileSettingsHandle = { removeProfile(profileId: string): Promise<void> }
 
-const { dialogs } = useI18n()
+const { dialogs, storage, settings, common } = useI18n()
 const router = useRouter()
 const readiness = ref<Record<string, boolean>>({})
 const profileEditorMode = ref<ProfileEditorMode>('idle')
@@ -106,7 +106,7 @@ function providerLabel(providerId: StorageProviderID): string {
   if (providerId === ONEDRIVE_STORAGE_PROVIDER_ID) return 'OneDrive'
   if (providerId === ALIYUN_DRIVE_STORAGE_PROVIDER_ID) return 'Aliyun Drive'
   if (providerId === BAIDU_NETDISK_STORAGE_PROVIDER_ID) return 'Baidu Netdisk'
-  return dialogs.value.storageS3ProviderName
+  return storage.value.providerS3
 }
 
 function selectProvider(providerId: StorageProviderID): void {
@@ -303,7 +303,7 @@ watch(
 <template>
   <section class="flex flex-col gap-4" data-test-id="settings-storage-panel">
     <div>
-      <h3 class="text-xs font-semibold text-surface">{{ dialogs.settingsStorage }}</h3>
+      <h3 class="text-xs font-semibold text-surface">{{ settings.storage }}</h3>
       <p class="mt-1 text-[10px] leading-4 text-muted">
         {{ dialogs.storageProviderChoiceDescription }}
       </p>
@@ -433,7 +433,7 @@ watch(
           class="rounded px-2.5 py-1.5 text-[10px] text-muted hover:bg-hover"
           @click="cancelProfileAction"
         >
-          {{ dialogs.cancel }}
+          {{ common.cancel }}
         </button>
       </div>
 
@@ -467,7 +467,7 @@ watch(
             :disabled="profileActionBusy"
             @click="cancelProfileAction"
           >
-            {{ dialogs.cancel }}
+            {{ common.cancel }}
           </button>
         </div>
       </div>
@@ -525,7 +525,7 @@ watch(
       data-test-id="settings-storage-open-workspace"
       @click="openWorkspace"
     >
-      {{ dialogs.openStorageWorkspace }}
+      {{ storage.openWorkspace }}
     </button>
   </section>
 </template>

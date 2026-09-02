@@ -348,6 +348,13 @@ describe('CodePen AI shadow manager', () => {
 
   test('commits only through current host authority and clears the active reconstruction', async () => {
     const { store, manager, evidenceDigest } = await readyManager()
+    const previousGraph = store.graph
+    const releasedGraphs: (typeof previousGraph)[] = []
+    const releaseGraphResources = store.releaseGraphResources
+    store.releaseGraphResources = (graph = store.graph) => {
+      releasedGraphs.push(graph)
+      releaseGraphResources(graph)
+    }
     const created = await manager.createShadowDraft(evidenceDigest)
     await manager.renderShadowDraft({
       draftId: created.draftId,
@@ -371,6 +378,7 @@ describe('CodePen AI shadow manager', () => {
     expect(store.undo.canUndo).toBe(true)
     expect(manager.hasActiveReconstruction()).toBe(false)
     expect(manager.listSealedDraftsForReview()).toEqual([])
+    expect(releasedGraphs).toContain(previousGraph)
   })
 
   test('rejects host commit after source identity changes even when graph and revision match', async () => {

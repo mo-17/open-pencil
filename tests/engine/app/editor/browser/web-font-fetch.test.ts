@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   type BrowserWebFontFetchError,
   createBrowserWebFontFetch
-} from '@/app/editor/fonts/browser-web-font-fetch'
+} from '@/app/editor/fonts/browser/web-font-fetch'
 
 function responseAt(url: string, body: BodyInit | null, init: ResponseInit = {}): Response {
   const response = new Response(body, init)

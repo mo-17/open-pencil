@@ -6,20 +6,34 @@ export type ReloadSourceOptions = {
   documentName: string
   filePath: string | null
   fileHandle: FileSystemFileHandle | null
+  signal?: AbortSignal
 }
 
-export async function readReloadSource({ filePath, fileHandle }: ReloadSourceOptions) {
+export async function readReloadSource({ filePath, fileHandle, signal }: ReloadSourceOptions) {
+  signal?.throwIfAborted()
   if (filePath && isTauri()) {
     const { readFile: tauriRead, stat } = await import('@tauri-apps/plugin-fs')
     return readFigSource(
-      { size: async () => (await stat(filePath)).size, read: () => tauriRead(filePath) },
-      { populate: 'first-page' }
+      {
+        size: async () => {
+          signal?.throwIfAborted()
+          return (await stat(filePath)).size
+        },
+        read: async () => {
+          signal?.throwIfAborted()
+          const bytes = await tauriRead(filePath)
+          signal?.throwIfAborted()
+          return bytes
+        }
+      },
+      { populate: 'first-page', signal }
     )
   }
 
   if (fileHandle) {
     const file = await fileHandle.getFile()
-    return readFigFile(file, { populate: 'first-page' })
+    signal?.throwIfAborted()
+    return readFigFile(file, { populate: 'first-page', signal })
   }
 
   return null

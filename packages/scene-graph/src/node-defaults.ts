@@ -1,4 +1,5 @@
 import { BLACK, DEFAULT_FONT_FAMILY, DEFAULT_STROKE_MITER_LIMIT } from './constants'
+import { createInstanceOverrideState } from './instance-overrides'
 import type { Color } from './primitives'
 import type { Fill, NodeType, SceneNode, SourceMetadata, Stroke } from './types'
 
@@ -165,6 +166,7 @@ export function createDefaultNode(
     pointCount: 5,
     starInnerRadius: 0.38,
     componentId: null,
+    instanceOverrides: createInstanceOverrideState(),
     overrides: {},
     componentPropertyDefinitions: [],
     componentPropertyReferences: [],

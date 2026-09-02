@@ -68,6 +68,12 @@ export interface AIAdapterOptions {
     def: ToolDef,
     context: Pick<AIAdapterExecutionContext, 'args' | 'signal'>
   ) => void
+  executeTool?: (
+    def: ToolDef,
+    figma: FigmaAPI,
+    args: Record<string, unknown>,
+    context?: ToolCtx
+  ) => Promise<unknown>
   onAfterExecute?: (def: ToolDef, context: AIAdapterExecutionContext) => Promise<void> | void
   onFlashNodes?: (nodeIds: string[]) => void
   onToolLog?: (entry: ToolLogEntry) => void
@@ -193,7 +199,10 @@ async function executeToolDefinition(
   try {
     options.onBeforeExecute?.(def, { args, signal })
     if (signal?.aborted) throw abortError(TOOL_ABORT_MESSAGE)
-    const result = await def.execute(figma, args, { ...hostContext, signal })
+    const toolContext = { ...hostContext, signal }
+    const result = options.executeTool
+      ? await options.executeTool(def, figma, args, toolContext)
+      : await def.execute(figma, args, toolContext)
     if (signal?.aborted) throw abortError(TOOL_ABORT_MESSAGE)
     return {
       context: {

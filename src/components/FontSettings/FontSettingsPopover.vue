@@ -12,7 +12,7 @@ import Tip from '@/components/ui/Tip.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import { usePopoverUI } from '@/components/ui/popover'
 
-const { dialogs } = useI18n()
+const { dialogs, fonts, common } = useI18n()
 const emit = defineEmits<{ fontImported: [] }>()
 const cls = usePopoverUI({ content: 'isolate z-[51] w-80 p-3' })
 const trigger = 'shrink-0'
@@ -77,10 +77,10 @@ onMounted(() => {
 
 <template>
   <PopoverRoot v-model:open="popoverOpen" @update:open="setPopoverOpen">
-    <Tip :label="dialogs.fontSettings" :disabled="popoverOpen">
+    <Tip :label="fonts.settingsTitle" :disabled="popoverOpen">
       <PopoverTrigger
         data-test-id="font-settings-trigger"
-        :aria-label="dialogs.fontSettings"
+        :aria-label="fonts.settingsTitle"
         :class="trigger"
       >
         <icon-lucide-settings class="size-3.5" />
@@ -105,12 +105,12 @@ onMounted(() => {
               <icon-lucide-type class="size-4" />
             </div>
             <div>
-              <h3 class="text-[11px] font-semibold text-surface">{{ dialogs.fontSettings }}</h3>
+              <h3 class="text-[11px] font-semibold text-surface">{{ fonts.settingsTitle }}</h3>
               <p class="mt-0.5 text-[10px] leading-relaxed text-muted">
                 {{
                   showDownloadedFonts
-                    ? dialogs.fontSettingsDesktopDescription
-                    : dialogs.fontSettingsBrowserDescription
+                    ? fonts.settingsDesktopDescription
+                    : fonts.settingsBrowserDescription
                 }}
               </p>
             </div>
@@ -118,21 +118,21 @@ onMounted(() => {
 
           <div class="grid gap-1.5 rounded border border-border bg-input/40 p-2 text-[10px]">
             <div class="flex justify-between gap-3 text-muted">
-              <span>{{ dialogs.localFonts }}</span>
+              <span>{{ fonts.localFonts }}</span>
               <span class="text-surface">{{ accessStateLabel }}</span>
             </div>
             <div class="flex justify-between gap-3 text-muted">
-              <span>{{ dialogs.onlineFonts }}</span>
+              <span>{{ fonts.onlineFonts }}</span>
               <span class="text-surface">{{
-                onlineFontsEnabled ? dialogs.enabled : dialogs.disabled
+                onlineFontsEnabled ? common.enabled : common.disabled
               }}</span>
             </div>
             <div v-if="showDownloadedFonts" class="flex justify-between gap-3 text-muted">
-              <span>{{ dialogs.downloadedCache }}</span>
+              <span>{{ fonts.downloadedCache }}</span>
               <span class="text-surface">{{ cacheCount }} fonts · {{ cacheSize }}</span>
             </div>
             <div v-if="showDownloadedFonts" class="flex justify-between gap-3 text-muted">
-              <span>{{ dialogs.lastUpdated }}</span>
+              <span>{{ common.lastUpdated }}</span>
               <span class="text-surface">{{ cacheUpdatedLabel }}</span>
             </div>
           </div>
@@ -163,12 +163,12 @@ onMounted(() => {
 
             <div class="grid grid-cols-[1fr_auto] gap-2 rounded border border-border p-2">
               <div>
-                <p class="text-[10px] font-medium text-surface">{{ dialogs.systemFontAccess }}</p>
+                <p class="text-[10px] font-medium text-surface">{{ fonts.systemFontAccess }}</p>
                 <p class="mt-0.5 text-[10px] leading-relaxed text-muted">
                   {{
                     accessState === 'granted'
-                      ? dialogs.systemFontsAvailable
-                      : dialogs.allowBrowserFontAccess
+                      ? fonts.systemFontsAvailable
+                      : fonts.allowBrowserFontAccess
                   }}
                 </p>
               </div>
@@ -181,7 +181,7 @@ onMounted(() => {
                 :disabled="busyAction !== null || !canRequestLocalFonts"
                 @click="requestAccess"
               >
-                {{ busyAction === 'access' ? dialogs.requesting : dialogs.allow }}
+                {{ busyAction === 'access' ? common.requesting : common.allow }}
               </AppButton>
             </div>
 
@@ -189,10 +189,10 @@ onMounted(() => {
               <div class="grid grid-cols-[1fr_auto] gap-2">
                 <div>
                   <p class="text-[10px] font-medium text-surface">
-                    {{ dialogs.onlineFontProviders }}
+                    {{ fonts.onlineFontProviders }}
                   </p>
                   <p class="mt-0.5 text-[10px] leading-relaxed text-muted">
-                    {{ dialogs.downloadMissingWebFonts }}
+                    {{ fonts.downloadMissingWebFonts }}
                   </p>
                 </div>
                 <AppButton
@@ -204,7 +204,7 @@ onMounted(() => {
                   :disabled="busyAction !== null"
                   @click="setOnlineFontsEnabled(!onlineFontsEnabled)"
                 >
-                  {{ onlineFontsEnabled ? dialogs.disable : dialogs.enable }}
+                  {{ onlineFontsEnabled ? common.disable : common.enable }}
                 </AppButton>
               </div>
 
@@ -217,7 +217,7 @@ onMounted(() => {
                   <span>
                     {{ WEB_FONT_PROVIDER_LABELS[provider] }}
                     <span v-if="!isOnlineFontProviderAvailable(provider)">
-                      ({{ dialogs.unavailable }})
+                      ({{ common.unavailable }})
                     </span>
                   </span>
                   <input
@@ -241,9 +241,9 @@ onMounted(() => {
               class="grid grid-cols-[1fr_auto] gap-2 rounded border border-border p-2"
             >
               <div>
-                <p class="text-[10px] font-medium text-surface">{{ dialogs.fallbackPacks }}</p>
+                <p class="text-[10px] font-medium text-surface">{{ fonts.fallbackPacks }}</p>
                 <p class="mt-0.5 text-[10px] leading-relaxed text-muted">
-                  {{ dialogs.downloadFallbackPacksDescription }}
+                  {{ fonts.downloadFallbackPacksDescription }}
                 </p>
               </div>
               <AppButton
@@ -255,7 +255,7 @@ onMounted(() => {
                 :disabled="busyAction !== null"
                 @click="downloadFallbacks"
               >
-                {{ busyAction === 'download' ? dialogs.downloading : dialogs.download }}
+                {{ busyAction === 'download' ? common.downloading : common.download }}
               </AppButton>
             </div>
           </div>
@@ -270,7 +270,7 @@ onMounted(() => {
               :disabled="busyAction !== null"
               @click="refreshSummary"
             >
-              {{ dialogs.refresh }}
+              {{ common.refresh }}
             </AppButton>
             <AppButton
               type="button"
@@ -281,7 +281,7 @@ onMounted(() => {
               :disabled="busyAction !== null || cacheCount === 0"
               @click="clearCache"
             >
-              {{ dialogs.clearCache }}
+              {{ fonts.clearCache }}
             </AppButton>
           </div>
 

@@ -9,12 +9,19 @@ import { computeAllLayouts } from '@open-pencil/core/layout'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { setOpenPencilStore } from '@/app/browser-bridge'
+import { describeDiagnosticError, recordStorageFailure } from '@/app/diagnostics'
 import { readFigDocument, showFigPageManifest } from '@/app/document/io/fig'
+import { applyImportedDocument } from '@/app/document/io/imported-document'
 import type { DocumentSourceIdentity } from '@/app/document/io/types'
 import { getRecoveryStore, type RecoverySnapshotMeta } from '@/app/document/recovery'
 import { setActiveEditorStore } from '@/app/editor/active-store'
+import type {
+  EditorPreparationHandle as DocumentLoadSession,
+  EditorPreparationKind
+} from '@/app/editor/preparation/types'
 import { createEditorStore } from '@/app/editor/session'
 import type { EditorStore } from '@/app/editor/session'
+import { notificationMessages } from '@/app/i18n/notifications'
 import {
   activeStorageProviderID,
   createActiveStorageAdapter,
@@ -30,6 +37,7 @@ import {
   loadCachedRecentFileThumbnail,
   rememberRecentStorageDocument
 } from '@/app/recent-files'
+import { toast } from '@/app/shell/ui'
 import { assertCloudStorageDurability } from '@/app/storage/durability'
 import { getLocalCanvasStore } from '@/app/storage/local-store'
 import { withStorageProfileMutationLease } from '@/app/storage/mutation-drain'
@@ -71,6 +79,8 @@ export const allTabs = computed(() =>
     id: t.id,
     name: t.store.state.documentName,
     isHome: t.kind === 'home',
+    isPreparing: t.store.state.preparation !== null,
+    preparationProgress: t.store.state.preparation?.progress ?? null,
     isActive: t.id === activeTabId.value
   }))
 )
@@ -162,6 +172,7 @@ export async function closeTab(tabId: string): Promise<void> {
   const wasActive = activeTabId.value === tabId
   coverThumbnailListeners.get(closingTab.store)?.()
   coverThumbnailListeners.delete(closingTab.store)
+  closingTab.store.preparationController.dispose()
   await closingTab.store.persistRecoveryNow()
   closingTab.store.dispose()
   tabsRef.value = tabsRef.value.filter((t) => t.id !== tabId)
@@ -187,20 +198,28 @@ function isDOMImportFile(file: OpenFileSource): boolean {
   return /\.(html?|xhtml)$/i.test(file.name)
 }
 
-async function readDeferredFile(source: OpenFileSource): Promise<Uint8Array> {
-  return isDeferredOpenFile(source) ? source.read() : new Uint8Array(await source.arrayBuffer())
+async function readDeferredFile(source: OpenFileSource, signal?: AbortSignal): Promise<Uint8Array> {
+  signal?.throwIfAborted()
+  const bytes = isDeferredOpenFile(source)
+    ? await source.read()
+    : new Uint8Array(await source.arrayBuffer())
+  signal?.throwIfAborted()
+  return bytes
 }
 
 async function openDOMSource(
   store: EditorStore,
   source: OpenFileSource,
   handle?: FileSystemFileHandle,
-  path?: string
+  path?: string,
+  load?: DocumentLoadSession
 ): Promise<void> {
+  load?.signal.throwIfAborted()
   const file = isDeferredOpenFile(source)
     ? new File([exactArrayBuffer(await source.read())], source.name, { type: source.type })
     : source
-  await store.openDOMFile(file, { handle, path })
+  load?.signal.throwIfAborted()
+  await store.openDOMFile(file, { handle, path, preparation: load })
 }
 
 function reusableTabStore(): { store: EditorStore; created: boolean } {
@@ -229,27 +248,57 @@ function prepareFigGraphForTab(imported: SceneGraph): SceneGraph {
   return imported
 }
 
-async function readFigForTab(source: OpenFileSource, store: EditorStore): Promise<SceneGraph> {
+function prepareOwnedFigGraphForTab(
+  store: EditorStore,
+  imported: SceneGraph,
+  signal?: AbortSignal
+): SceneGraph {
+  try {
+    signal?.throwIfAborted()
+    return prepareFigGraphForTab(imported)
+  } catch (error) {
+    store.releaseGraphResources(imported)
+    throw error
+  }
+}
+
+async function readFigForTab(
+  source: OpenFileSource,
+  store: EditorStore,
+  load?: DocumentLoadSession
+): Promise<SceneGraph> {
   const imported = isDeferredOpenFile(source)
     ? await readFigSource(source, {
         populate: 'first-page',
+        signal: load?.signal,
         onPages: (pages) => showFigPageManifest(store, pages)
       })
-    : await readFigDocument(source, store)
-  return prepareFigGraphForTab(imported)
+    : await readFigDocument(source, load?.signal)
+  return prepareOwnedFigGraphForTab(store, imported, load?.signal)
 }
 
 async function showImportedGraph(
   store: EditorStore,
   graph: SceneGraph,
-  prepare?: () => void | Promise<void>
+  prepare?: () => void | Promise<void>,
+  load?: DocumentLoadSession
 ): Promise<void> {
-  store.replaceGraph(graph)
-  store.undo.clear()
+  let ownershipHandedOff = false
+  try {
+    load?.update({ phase: 'materializing', detail: store.state.documentName })
+    ownershipHandedOff = true
+    await applyImportedDocument(store, graph, load)
+  } finally {
+    if (!ownershipHandedOff) store.releaseGraphResources(graph)
+  }
+  load?.signal.throwIfAborted()
   await prepare?.()
-  store.clearSelection()
+  load?.signal.throwIfAborted()
   const pageId = store.graph.getPages()[0]?.id ?? store.graph.rootId
-  await store.switchPage(pageId)
+  load?.update({ phase: 'populating-page', detail: store.graph.getNode(pageId)?.name ?? null })
+  await store.switchPage(pageId, { preparation: load })
+  load?.signal.throwIfAborted()
+  load?.update({ phase: 'preparing-render', detail: store.state.documentName })
   await store.fitCurrentPageToViewport()
 }
 
@@ -323,12 +372,26 @@ function storageOpenIdentity(binding: StorageDocumentBindingInput): DocumentSour
   }
 }
 
+function failPreparation(
+  load: DocumentLoadSession,
+  code: 'read-failed' | 'decode-failed',
+  error: unknown
+): void {
+  if (load.signal.aborted) return
+  load.fail({
+    code,
+    message: error instanceof Error ? error.message : String(error),
+    retryable: true
+  })
+}
+
 type ExistingTabLookup = () => Tab | null | undefined | Promise<Tab | null | undefined>
 
 async function decideDocumentOpen(
   identity: DocumentSourceIdentity,
   documentName: string,
-  findExisting: ExistingTabLookup
+  findExisting: ExistingTabLookup,
+  preparationKind: EditorPreparationKind
 ) {
   return fileOpenCoordinator.decide(async () => {
     const pending = await fileOpenCoordinator.findPending(identity)
@@ -352,12 +415,15 @@ async function decideDocumentOpen(
 
     const { store, created } = reusableTabStore()
     store.state.documentName = documentName
-    const finishLoading = store.beginLoading()
+    const load = store.preparationController.begin({
+      kind: preparationKind,
+      subject: documentName
+    })
     const completion = Promise.withResolvers<undefined>()
     void completion.promise.catch(() => undefined)
     const pendingOpen = { completion: completion.promise, identity, store }
     fileOpenCoordinator.add(pendingOpen)
-    return { kind: 'owner' as const, completion, finishLoading, pendingOpen, store, created }
+    return { kind: 'owner' as const, completion, pendingOpen, store, created, load }
   })
 }
 
@@ -365,7 +431,8 @@ type DocumentOpenDecision = Awaited<ReturnType<typeof decideDocumentOpen>>
 
 async function completeDocumentOpen(
   decision: DocumentOpenDecision,
-  open: (store: EditorStore) => Promise<void>
+  open: (store: EditorStore, load: DocumentLoadSession) => Promise<void>,
+  failureCode: 'read-failed' | 'decode-failed' = 'decode-failed'
 ): Promise<void> {
   if (decision.kind === 'existing') return
   if (decision.kind === 'pending') {
@@ -373,11 +440,14 @@ async function completeDocumentOpen(
     return
   }
 
-  const { completion, created, finishLoading, pendingOpen, store } = decision
+  const { completion, pendingOpen, store, created, load } = decision
+  let succeeded = false
   try {
-    await open(store)
+    await open(store, load)
     completion.resolve(undefined)
+    succeeded = true
   } catch (error) {
+    failPreparation(load, failureCode, error)
     completion.reject(error)
     if (created) {
       const tab = getTabForStore(store)
@@ -385,7 +455,7 @@ async function completeDocumentOpen(
     }
     throw error
   } finally {
-    finishLoading()
+    if (succeeded) load.complete()
     fileOpenCoordinator.remove(pendingOpen)
   }
 }
@@ -413,69 +483,117 @@ export async function openStorageDocumentInNewTab(
       ...(authority ? { authority } : {})
     })
     const identity = storageOpenIdentity(binding)
-    const decision = await decideDocumentOpen(identity, document.name, () =>
-      findStorageTab(binding)
+    const decision = await decideDocumentOpen(
+      identity,
+      document.name,
+      () => findStorageTab(binding),
+      'storage-open'
     )
 
-    await completeDocumentOpen(decision, async (store) => {
-      options.signal?.throwIfAborted()
-      const local = getLocalCanvasStore()
-      const localMetadata = await local.getMeta(binding)
-      const localBytes = localMetadata?.hasFig ? await local.readFig(binding) : null
-      const localIsAuthoritative =
-        localMetadata?.syncStatus !== 'synced' || localMetadata.updatedAt >= document.updatedAt
-      let bytes = localBytes && localIsAuthoritative ? localBytes : null
+    try {
+      await completeDocumentOpen(
+        decision,
+        async (store, load) => {
+          const cancelFromExternal = () => load.cancel('user')
+          if (options.signal?.aborted) cancelFromExternal()
+          else options.signal?.addEventListener('abort', cancelFromExternal, { once: true })
+          try {
+            load.signal.throwIfAborted()
+            load.update({ phase: 'reading', detail: document.name })
+            const local = getLocalCanvasStore()
+            const localMetadata = await local.getMeta(binding)
+            load.signal.throwIfAborted()
+            const localBytes = localMetadata?.hasFig ? await local.readFig(binding) : null
+            load.signal.throwIfAborted()
+            const localIsAuthoritative =
+              localMetadata?.syncStatus !== 'synced' ||
+              (document.contentTimestampAuthoritative !== false &&
+                localMetadata.updatedAt >= document.updatedAt)
+            let bytes = localBytes && localIsAuthoritative ? localBytes : null
 
-      if (!bytes) {
-        const currentAuthority = (await adapter.getAuthority?.({ signal: options.signal })) ?? null
-        if (!storageDocumentAuthorityMatches(binding.authority, currentAuthority)) {
-          throw new Error('Storage authorization changed while opening the document')
-        }
-        const downloaded = await adapter.getDocument(document.id, {
-          ...options,
-          ...(binding.authority ? { expectedAuthority: binding.authority } : {})
-        })
-        options.signal?.throwIfAborted()
-        bytes = downloaded.bytes
-        await seedStorageCanvasFromRemote({
-          providerId: binding.providerId,
-          profileId: binding.profileId,
-          ...(binding.authority ? { authority: binding.authority } : {}),
-          canvasId: document.id,
-          name: downloaded.metadata.name,
-          updatedAt: downloaded.metadata.updatedAt,
-          figBytes: bytes,
-          remoteRevision: downloaded.remoteRevision
-        })
-      }
-
-      options.signal?.throwIfAborted()
-      let initialBytes: Uint8Array | null = bytes
-      const imported = await readFigSource(
-        {
-          size: bytes.byteLength,
-          async read() {
-            if (initialBytes) {
-              const current = initialBytes
-              initialBytes = null
-              return current
+            if (!bytes) {
+              const currentAuthority =
+                (await adapter.getAuthority?.({ signal: load.signal })) ?? null
+              if (!storageDocumentAuthorityMatches(binding.authority, currentAuthority)) {
+                throw new Error('Storage authorization changed while opening the document')
+              }
+              const downloaded = await adapter.getDocument(document.id, {
+                signal: load.signal,
+                onProgress: (progress) =>
+                  load.update({
+                    phase: 'reading',
+                    detail: document.name,
+                    completed: progress.transferredBytes,
+                    total: progress.totalBytes,
+                    unit: 'bytes'
+                  }),
+                ...(binding.authority ? { expectedAuthority: binding.authority } : {})
+              })
+              load.signal.throwIfAborted()
+              bytes = downloaded.bytes
+              await seedStorageCanvasFromRemote({
+                providerId: binding.providerId,
+                profileId: binding.profileId,
+                ...(binding.authority ? { authority: binding.authority } : {}),
+                canvasId: document.id,
+                name: downloaded.metadata.name,
+                updatedAt: downloaded.metadata.updatedAt,
+                figBytes: bytes,
+                remoteRevision: downloaded.remoteRevision
+              })
             }
-            const cached = await local.readFig(binding)
-            if (!cached) throw new Error('Cached .fig data is unavailable for parser recovery')
-            return cached
+
+            load.signal.throwIfAborted()
+            load.update({ phase: 'decoding', detail: document.name })
+            let initialBytes: Uint8Array | null = bytes
+            const imported = await readFigSource(
+              {
+                size: bytes.byteLength,
+                async read() {
+                  if (initialBytes) {
+                    const current = initialBytes
+                    initialBytes = null
+                    return current
+                  }
+                  const cached = await local.readFig(binding)
+                  if (!cached) {
+                    throw new Error('Cached .fig data is unavailable for parser recovery')
+                  }
+                  return cached
+                }
+              },
+              {
+                populate: 'first-page',
+                signal: load.signal,
+                onPages: (pages) => showFigPageManifest(store, pages)
+              }
+            )
+            const prepared = prepareOwnedFigGraphForTab(store, imported, load.signal)
+            await showImportedGraph(
+              store,
+              prepared,
+              () => store.setStorageDocumentSource(binding, document.name),
+              load
+            )
+          } finally {
+            options.signal?.removeEventListener('abort', cancelFromExternal)
           }
         },
-        {
-          populate: 'first-page',
-          signal: options.signal,
-          onPages: (pages) => showFigPageManifest(store, pages)
-        }
+        'read-failed'
       )
-      options.signal?.throwIfAborted()
-      await showImportedGraph(store, prepareFigGraphForTab(imported), () => {
-        store.setStorageDocumentSource(binding, document.name)
-      })
-    })
+    } catch (error) {
+      if (decision.kind === 'owner' && !decision.load.signal.aborted) {
+        const diagnostic = describeDiagnosticError(error)
+        recordStorageFailure({ operation: 'download', ...diagnostic })
+        toast.error(
+          notificationMessages.get().openFileFailed({
+            name: document.name,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        )
+      }
+      throw error
+    }
     rememberRecentStorageDocument(providerId, document.id, document.name)
   })
 }
@@ -489,28 +607,34 @@ export async function openFileInNewTab(
     handle: handle ?? null,
     path: path ?? null
   }
-  const decision = await decideDocumentOpen(identity, file.name.replace(/\.[^.]+$/i, ''), () =>
-    findTabByFileIdentity(tabsRef.value, identity)
+  const decision = await decideDocumentOpen(
+    identity,
+    file.name.replace(/\.[^.]+$/i, ''),
+    () => findTabByFileIdentity(tabsRef.value, identity),
+    isDOMImportFile(file) ? 'dom-import' : 'document-open'
   )
 
-  await completeDocumentOpen(decision, async (store) => {
+  await completeDocumentOpen(decision, async (store, load) => {
     if (isDOMImportFile(file)) {
-      await openDOMSource(store, file, handle, path)
+      await openDOMSource(store, file, handle, path, load)
       return
     }
 
     await yieldToUI()
+    load.signal.throwIfAborted()
+    load.update({ phase: 'reading', detail: file.name })
     const isFig = file.name.toLowerCase().endsWith('.fig')
     let imported: SceneGraph
     let sourceFormat: string
     if (isFig) {
-      imported = await readFigForTab(file, store)
+      load.update({ phase: 'decoding', detail: file.name })
+      imported = await readFigForTab(file, store, load)
       sourceFormat = 'fig'
     } else {
       const result = await io.readDocument({
         name: file.name,
         mimeType: file.type || undefined,
-        data: await readDeferredFile(file)
+        data: await readDeferredFile(file, load.signal)
       })
       imported = result.graph
       sourceFormat = result.sourceFormat
@@ -518,10 +642,15 @@ export async function openFileInNewTab(
       if (firstPageId) computeAllLayouts(imported, firstPageId)
     }
 
-    await showImportedGraph(store, imported, () => {
-      store.setDocumentSource(file.name, sourceFormat, handle, path)
-      if (isFig && path) watchOpenedFigCover(path, store)
-    })
+    await showImportedGraph(
+      store,
+      imported,
+      () => {
+        store.setDocumentSource(file.name, sourceFormat, handle, path)
+        if (isFig && path) watchOpenedFigCover(path, store)
+      },
+      load
+    )
     if (isFig && path) {
       void cacheOpenedFigCover(path, store).catch((error) => {
         console.warn('[Recent files] Failed to cache the Cover thumbnail', error)
@@ -543,26 +672,39 @@ export async function restoreRecoverySnapshot(id: string): Promise<void> {
   if (!snapshot) throw new Error('Recovery snapshot is no longer available')
 
   const { store, created } = reusableTabStore()
-  const finishLoading = store.beginLoading()
+  const load = store.preparationController.begin({
+    kind: 'recovery-restore',
+    subject: snapshot.documentName
+  })
+  let succeeded = false
   try {
+    load.update({ phase: 'reading', detail: snapshot.documentName })
     const fileBytes = new Uint8Array(snapshot.figBytes)
     const file = new File([fileBytes.buffer], `${snapshot.documentName}.fig`, {
       type: 'application/octet-stream'
     })
-    const imported = await readFigForTab(file, store)
+    load.update({ phase: 'decoding', detail: snapshot.documentName })
+    const imported = await readFigForTab(file, store, load)
 
-    await showImportedGraph(store, imported, async () => {
-      store.state.documentName = snapshot.documentName
-      await store.adoptRecoverySnapshot(id, snapshot.sceneVersion)
-    })
+    await showImportedGraph(
+      store,
+      imported,
+      async () => {
+        store.state.documentName = snapshot.documentName
+        await store.adoptRecoverySnapshot(id, snapshot.sceneVersion)
+      },
+      load
+    )
+    succeeded = true
   } catch (error) {
+    failPreparation(load, 'decode-failed', error)
     if (created) {
       const tab = getTabForStore(store)
       if (tab) await closeTab(tab.id)
     }
     throw error
   } finally {
-    finishLoading()
+    if (succeeded) load.complete()
   }
 }
 

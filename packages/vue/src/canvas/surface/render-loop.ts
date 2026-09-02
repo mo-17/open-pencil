@@ -19,6 +19,7 @@ type RenderLoopOptions = {
   getRenderState?: () => EditorState
   performanceMode?: CanvasPerformanceMode
   onActiveFrameSample?: (sample: CanvasActiveFrameSample) => void
+  shouldSuspendRender?: () => boolean
 }
 
 const MAX_CONSECUTIVE_RENDER_RETRIES = 2
@@ -283,6 +284,11 @@ export function createCanvasRenderLoop(
   function renderFrame(timestampMs: number) {
     frameScheduled = false
     if (!pageVisible || suspended || disposed) return
+    if (options.shouldSuspendRender?.() === true) {
+      dirty = true
+      scheduleFrame()
+      return
+    }
     if (getRenderState().loading) {
       dirty = true
       clearGeneratedEffectTimer()

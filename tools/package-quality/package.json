@@ -4,5 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "bun test tests"
+  },
+  "dependencies": {
+    "citty": "^0.1.6"
   }
 }

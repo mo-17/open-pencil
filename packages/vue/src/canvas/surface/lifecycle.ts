@@ -126,6 +126,8 @@ export function createCanvasSurfaceManager({
     try {
       const renderer = createRenderer(ck, surface, canvas.getContext('webgl2') ?? null)
       renderer.setPerformanceMode(performanceMode)
+      renderer.tracksSceneSettlement = options?.layer !== 'overlays'
+      renderer.tiledSceneEnabled = options?.sceneRenderer === 'tiled'
       return renderer
     } catch (error) {
       surface.delete()
@@ -267,10 +269,17 @@ export function createCanvasSurfaceManager({
         options?.layer ?? 'full'
       )
       renderLoop.markRendered()
+      options?.onPresented?.({
+        renderVersion: renderState.renderVersion,
+        sceneVersion: renderState.sceneVersion
+      })
       clearSceneBackingRenderTimer()
       clearSurfaceRecoveryTimer()
       surfaceRecoveryAttempts = 0
       delete canvas.dataset.surfaceError
+      if (options?.layer === 'scene' && renderer.tiledScenePending) {
+        renderLoop.markDirty()
+      }
       if (options?.layer === 'scene' && renderer.sceneBackingNeedsCrispRender) {
         const delay = Math.max(0, renderer.sceneBackingPreviewUntil - performance.now())
         sceneBackingRenderTimer = setTimeout(() => renderLoop.markDirty(), delay)
@@ -291,7 +300,8 @@ export function createCanvasSurfaceManager({
     layer: options?.layer,
     getRenderState: options?.getRenderState,
     performanceMode,
-    onActiveFrameSample: options?.onActiveFrameSample
+    onActiveFrameSample: options?.onActiveFrameSample,
+    shouldSuspendRender: options?.shouldSuspendRender
   })
 
   function setPerformanceMode(mode: CanvasPerformanceMode) {

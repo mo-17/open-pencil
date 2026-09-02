@@ -140,7 +140,6 @@ function createEditor() {
   const editor: TestEditor = {
     graph,
     state: {
-      loading: false,
       renderVersion: 0,
       sceneVersion: 0,
       selectedIds: new Set<string>(),
@@ -472,6 +471,41 @@ describe('canvas render loop', () => {
 
       viewState.loading = false
       emit('repaint:requested')
+      scheduler.flush()
+      expect(renders).toBe(2)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
+  test('renders after an injected suspension finishes without a version change', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const { editor, emit } = createEditor()
+      const viewState = { ...editor.state }
+      let suspended = false
+      let renders = 0
+      const loop = createCanvasRenderLoop(
+        editor,
+        () => {
+          renders++
+        },
+        {
+          getRenderState: () => viewState,
+          shouldSuspendRender: () => suspended
+        }
+      )
+
+      emit('repaint:requested')
+      scheduler.flush()
+      loop.markRendered()
+      suspended = true
+      emit('repaint:requested')
+      scheduler.flush()
+      expect(renders).toBe(1)
+      expect(scheduler.pendingCount).toBe(1)
+
+      suspended = false
       scheduler.flush()
       expect(renders).toBe(2)
     } finally {

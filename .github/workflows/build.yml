@@ -415,9 +415,9 @@ jobs:
             throw new Error('Release plan must publish MCP before CLI')
           }
           NODE
-          bun tools/package-quality/src/check/metadata.ts
-          bun tools/package-quality/src/check/publint.ts
-          bun tools/package-quality/src/check/attw.ts
+          bun tools/package-quality/src/checks/metadata.ts
+          bun tools/package-quality/src/checks/publint.ts
+          bun tools/package-quality/src/checks/attw.ts
 
       - name: Pack and audit release tarballs
         id: release_digest

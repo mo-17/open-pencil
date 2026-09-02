@@ -98,12 +98,17 @@ type LayoutSteps<T = void> = Generator<LayoutStep, T, void>
 function runWithLayoutMutations<T>(graph: LayoutGraph, operation: () => T): T {
   const mutationGraph = graph as LayoutGraph & {
     withLayoutMutations?: (operation: () => void) => void
+    withNodeMutationOrigin?: <R>(origin: 'derived-layout', operation: () => R) => R
   }
-  if (!mutationGraph.withLayoutMutations) return operation()
+  const runWithOrigin = () =>
+    mutationGraph.withNodeMutationOrigin
+      ? mutationGraph.withNodeMutationOrigin('derived-layout', operation)
+      : operation()
+  if (!mutationGraph.withLayoutMutations) return runWithOrigin()
 
   let result!: T
   mutationGraph.withLayoutMutations(() => {
-    result = operation()
+    result = runWithOrigin()
   })
   return result
 }
@@ -159,7 +164,7 @@ function resolveComputedLayoutDirection(
 }
 
 export function computeAllLayouts(graph: SceneGraph, scopeId?: string): void {
-  graph.withLayoutMutations(() => {
+  runWithLayoutMutations(graph, () => {
     const rootId = scopeId ?? graph.rootId
     const visited = new Set<string>()
     computeLayoutsBottomUp(graph, rootId, visited)

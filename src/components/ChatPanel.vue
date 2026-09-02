@@ -54,7 +54,7 @@ const {
 } = chatPanelController
 const { chatFailure, clearChatFailure } = useAIChat()
 const { copy } = useClipboard()
-const { dialogs } = useI18n()
+const { ai, common, dialogs } = useI18n()
 const messagesEnd = ref<HTMLDivElement>()
 const debugCopied = refAutoReset(false, 1500)
 const acpLogCopied = refAutoReset(false, 1500)
@@ -63,11 +63,11 @@ let scrollTimer: ReturnType<typeof setTimeout> | undefined
 const failureMessage = computed(() => {
   switch (chatFailure.value?.reason) {
     case 'insufficient-credit':
-      return dialogs.value.chatInsufficientCredit
+      return ai.value.chatInsufficientCredit
     case 'output-limit':
-      return dialogs.value.chatOutputLimit
+      return ai.value.chatOutputLimit
     case 'request-failed':
-      return dialogs.value.chatRequestFailed
+      return ai.value.chatRequestFailed
     default:
       return null
   }
@@ -105,7 +105,8 @@ watch(
 watch(
   () => chatFailure.value?.reason,
   (reason) => {
-    if (reason) toast.error(failureMessage.value ?? dialogs.value.chatRequestFailed)
+    if (!reason) return
+    toast.error(failureMessage.value ?? ai.value.chatRequestFailed)
   }
 )
 onBeforeUnmount(() => clearTimeout(scrollTimer))
@@ -145,7 +146,7 @@ async function handleClearChat(): Promise<void> {
           <AppPlaceholder
             v-if="messages.length === 0"
             data-test-id="chat-empty-state"
-            :label="dialogs.describeCreateOrChange"
+            :label="ai.describeCreateOrChange"
             :ui="{ root: 'h-full' }"
           >
             <template #icon>
@@ -232,7 +233,7 @@ async function handleClearChat(): Promise<void> {
           @click="handleClearChat"
         >
           <icon-lucide-trash-2 class="size-3" />
-          Clear
+          {{ common.clear }}
         </AppButton>
       </div>
 
@@ -257,7 +258,7 @@ async function handleClearChat(): Promise<void> {
           @click="handleClearChat"
         >
           <icon-lucide-trash-2 class="size-3" />
-          {{ dialogs.clear }}
+          {{ common.clear }}
         </AppButton>
       </div>
 

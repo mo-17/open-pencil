@@ -13,10 +13,15 @@ import { validatePackageResourceReferences } from './resource-references'
 
 const execFileAsync = promisify(execFile)
 
+type PackageExports = {
+  [key: string]: PackageExports | string | null | undefined
+}
+
 type PackageJSON = {
   bin?: Record<string, string> | string
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
+  exports?: PackageExports
   imports?: unknown
   name: string
   optionalDependencies?: Record<string, string>
@@ -37,6 +42,17 @@ const PUBLISHED_DEPENDENCY_FIELDS = [
 export function packageBinTargets(packageJSON: PackageJSON): Record<string, string> {
   if (typeof packageJSON.bin === 'string') return { [packageJSON.name]: packageJSON.bin }
   return packageJSON.bin ?? {}
+}
+
+function packageExportTargets(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(packageExportTargets)
+  if (!value || typeof value !== 'object') return []
+  return Object.values(value).flatMap(packageExportTargets)
+}
+
+export function packageExportTargetPaths(packageJSON: Pick<PackageJSON, 'exports'>): string[] {
+  return packageExportTargets(packageJSON.exports)
 }
 
 export async function tarballEntries(tarballPath: string): Promise<Set<string>> {
@@ -77,6 +93,19 @@ export async function validateTarballLicense(
   const packedLicense = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
   if (!packedLicense.equals(expectedLicense)) {
     throw new Error(`${tarballPath}: ${licenseEntry} does not match repository LICENSE`)
+  }
+}
+
+export async function validateTarballRequiredFiles(
+  tarballPath: string,
+  requiredFiles: readonly string[]
+): Promise<void> {
+  const entries = await tarballEntries(tarballPath)
+  for (const relativePath of requiredFiles) {
+    const entry = `package/${relativePath.replace(/^\.\//, '')}`
+    if (!entries.has(entry)) {
+      throw new Error(`${tarballPath}: required file is missing from tarball: ${entry}`)
+    }
   }
 }
 
@@ -182,6 +211,36 @@ async function auditTarballFiles(
   }
 }
 
+function exportTargetPattern(target: string): RegExp {
+  const escaped = target.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`^${escaped.replace(/\*/g, '.*')}$`)
+}
+
+export async function validateTarballExportTargets(tarballPath: string): Promise<void> {
+  const entries = await tarballEntries(tarballPath)
+  const packageJSON = await tarballPackageJSON(tarballPath)
+
+  for (const target of packageExportTargetPaths(packageJSON)) {
+    if (!target.startsWith('./')) continue
+    const relativeTarget = target.slice(2)
+    let matchingEntries: string[]
+    if (relativeTarget.includes('*')) {
+      const pattern = exportTargetPattern(relativeTarget)
+      matchingEntries = [...entries].filter(
+        (entry) => entry.startsWith('package/') && pattern.test(entry.slice('package/'.length))
+      )
+    } else {
+      const exactEntry = `package/${relativeTarget}`
+      matchingEntries = entries.has(exactEntry) ? [exactEntry] : []
+    }
+    if (matchingEntries.length === 0) {
+      throw new Error(
+        `${tarballPath}: export target missing from tarball: package/${relativeTarget}`
+      )
+    }
+  }
+}
+
 export async function validatePackedTarballs(
   directory: string,
   plan: PreparedPublishPlan,
@@ -212,7 +271,9 @@ export async function validatePackedTarballs(
     const packageJSON = await tarballPackageJSON(tarballPath)
     validatePublishedPackageJSON(packageJSON, expected, plan.repository)
     await validateTarballBinTargets(tarballPath)
+    await validateTarballExportTargets(tarballPath)
     await validateTarballLicense(tarballPath, expectedLicense)
+    await validateTarballRequiredFiles(tarballPath, expected.requiredFiles ?? [])
     await auditTarballFiles(tarballPath, forbiddenWorkspaceNames)
   }
 }

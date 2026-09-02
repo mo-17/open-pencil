@@ -14,6 +14,17 @@ import {
   validateSchema
 } from '../src/schema-runtime'
 
+interface RuntimeMessage {
+  [name: string]:
+    | boolean
+    | number
+    | string
+    | bigint
+    | Uint8Array
+    | RuntimeMessage
+    | RuntimeMessage[]
+}
+
 const schemaText = `
 package Example;
 
@@ -83,6 +94,59 @@ describe('Kiwi schema runtime', () => {
     )
   })
 
+  test('freezes codec limits and applies them through a ByteBuffer override', () => {
+    interface BatchCodec {
+      ByteBuffer: typeof ByteBuffer
+      decodeBatch(value: ByteBuffer | Uint8Array): unknown
+    }
+    const schema = parseSchema(`
+        message Batch {
+          uint[] values = 1;
+        }
+      `)
+    const limits = { maxArrayItems: 1 }
+    const codec = compileSchema(schema, { limits }) as BatchCodec
+    const encoded = new ByteBuffer()
+    encoded.writeVarUint(1)
+    encoded.writeVarUint(2)
+    encoded.writeVarUint(7)
+    encoded.writeVarUint(8)
+    encoded.writeVarUint(0)
+
+    limits.maxArrayItems = 10
+    expect(() => codec.decodeBatch(encoded.toUint8Array())).toThrow(
+      'Kiwi array item limit exceeded (1 per message)'
+    )
+
+    const validBaseBuffer = new ByteBuffer()
+    validBaseBuffer.writeVarUint(1)
+    validBaseBuffer.writeVarUint(1)
+    validBaseBuffer.writeVarUint(7)
+    validBaseBuffer.writeVarUint(0)
+    expect(codec.decodeBatch(validBaseBuffer)).toEqual({ values: [7] })
+    expect(validBaseBuffer.offset).toBe(validBaseBuffer.length)
+
+    const baseBuffer = new ByteBuffer(encoded.toUint8Array())
+    expect(() => codec.decodeBatch(baseBuffer)).toThrow(
+      'Kiwi array item limit exceeded (1 per message)'
+    )
+    expect(baseBuffer.offset).toBeGreaterThan(0)
+
+    class CustomByteBuffer extends ByteBuffer {
+      static constructions = 0
+
+      constructor(...args: ConstructorParameters<typeof ByteBuffer>) {
+        super(...args)
+        CustomByteBuffer.constructions++
+      }
+    }
+    codec.ByteBuffer = CustomByteBuffer
+    expect(() => codec.decodeBatch(encoded.toUint8Array())).toThrow(
+      'Kiwi array item limit exceeded (1 per message)'
+    )
+    expect(CustomByteBuffer.constructions).toBe(1)
+  })
+
   test('applies decode depth only to codecs compiled with limits and unwinds after failure', () => {
     interface LinkCodec {
       decodeLink(value: Uint8Array): unknown
@@ -130,7 +194,7 @@ describe('Kiwi schema runtime', () => {
     )
   })
 
-  test('applies per-definition and total schema budgets before generating decoder source', () => {
+  test('applies per-definition and total schema budgets before compiling the codec', () => {
     const field: Field = {
       name: 'value',
       line: 0,
@@ -218,6 +282,118 @@ describe('Kiwi schema runtime', () => {
     expect(() => compileSchema(duplicateId, { validateDynamicSchema: true })).toThrow(
       'The id for field "second" is used twice'
     )
+  })
+
+  test('compiles and round-trips without calling the Function constructor', () => {
+    const OriginalFunction = globalThis.Function
+    globalThis.Function = new Proxy(OriginalFunction, {
+      construct() {
+        throw new EvalError(
+          "Refused to evaluate a string as JavaScript because 'unsafe-eval' is not an allowed source of script"
+        )
+      }
+    })
+
+    try {
+      const codec = compileSchema(parseSchema(schemaText)) as {
+        encodeItem(value: unknown): Uint8Array
+        decodeItem(value: Uint8Array): unknown
+      }
+      const encoded = codec.encodeItem({ id: 7, name: 'CSP-safe', kind: 'BADGE', tags: [] })
+      expect(codec.decodeItem(encoded)).toEqual({
+        id: 7,
+        name: 'CSP-safe',
+        kind: 'BADGE',
+        tags: []
+      })
+    } finally {
+      globalThis.Function = OriginalFunction
+    }
+  })
+
+  test('uses the codec ByteBuffer override', () => {
+    class CustomByteBuffer extends ByteBuffer {}
+
+    const codec = compileSchema(parseSchema(schemaText))
+    codec.ByteBuffer = CustomByteBuffer
+
+    const encoded = (codec.encodeItem as (value: RuntimeMessage) => Uint8Array)({
+      id: 1,
+      name: 'custom',
+      kind: 'CARD',
+      tags: []
+    })
+    const decoded = (codec.decodeItem as (value: Uint8Array) => RuntimeMessage)(encoded)
+
+    expect(decoded.name).toBe('custom')
+  })
+
+  test('reports unknown field types at their source location', () => {
+    const malformedSchema = {
+      package: null,
+      definitions: [
+        {
+          name: 'Item',
+          line: 4,
+          column: 1,
+          kind: 'MESSAGE' as const,
+          fields: [
+            {
+              name: 'value',
+              line: 5,
+              column: 3,
+              type: 'MissingType',
+              isArray: false,
+              isDeprecated: false,
+              value: 1
+            }
+          ]
+        }
+      ]
+    }
+
+    expect(() => compileSchema(malformedSchema)).toThrow(
+      'Invalid type "MissingType" for field "value"'
+    )
+    try {
+      compileSchema(malformedSchema)
+    } catch (error) {
+      expect(error).toMatchObject({ line: 5, column: 3 })
+    }
+  })
+
+  test('rejects inherited names as field types', () => {
+    const malformedSchema = {
+      package: null,
+      definitions: [
+        {
+          name: 'Item',
+          line: 4,
+          column: 1,
+          kind: 'MESSAGE' as const,
+          fields: [
+            {
+              name: 'value',
+              line: 5,
+              column: 3,
+              type: 'constructor',
+              isArray: false,
+              isDeprecated: false,
+              value: 1
+            }
+          ]
+        }
+      ]
+    }
+
+    expect(() => compileSchema(malformedSchema)).toThrow(
+      'Invalid type "constructor" for field "value"'
+    )
+    try {
+      compileSchema(malformedSchema)
+    } catch (error) {
+      expect(error).toMatchObject({ line: 5, column: 3 })
+    }
   })
 })
 

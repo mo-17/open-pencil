@@ -261,9 +261,9 @@ describe('npm release workflow', () => {
       "uses: ./.github/actions/setup-bun\n        with:\n          cache: 'false'"
     )
     expect(prepare).toContain('OPENPENCIL_PACKAGE_ROOT: .publish')
-    expect(prepare).toContain('bun tools/package-quality/src/check/metadata.ts')
-    expect(prepare).toContain('bun tools/package-quality/src/check/publint.ts')
-    expect(prepare).toContain('bun tools/package-quality/src/check/attw.ts')
+    expect(prepare).toContain('bun tools/package-quality/src/checks/metadata.ts')
+    expect(prepare).toContain('bun tools/package-quality/src/checks/publint.ts')
+    expect(prepare).toContain('bun tools/package-quality/src/checks/attw.ts')
     expect(prepare).toContain('bun tools/package-quality/src/smoke.ts')
     expect(prepare).toContain('bun tools/release-packages/src/validate-tarballs.ts')
     expect(prepare).toContain('OPENPENCIL_PACKAGE_TARBALL_ROOT: npm-release')

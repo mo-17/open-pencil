@@ -3,6 +3,12 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { clearDecodedImageCache } from '#core/canvas/renderer/image-cache'
 
+import {
+  clearEffectRasterCache,
+  deleteEffectRaster,
+  deleteEffectRasterDependencies
+} from './effect-raster-cache'
+
 export function invalidateScenePicture(r: SkiaRenderer): void {
   r.scenePicture?.delete()
   r.scenePicture = null
@@ -22,6 +28,7 @@ export function invalidateScenePicture(r: SkiaRenderer): void {
  * reuse it or replace it with geometry matching the new viewport.
  */
 export function prepareSurfaceReplacement(r: SkiaRenderer): void {
+  r.tiledScene.destroy()
   const build = r.sceneBackingBuild
   r.sceneBackingBuild = null
   try {
@@ -78,7 +85,9 @@ export function clearSubtreePictureCache(r: SkiaRenderer): void {
 
 export function invalidateAllPictures(r: SkiaRenderer): void {
   invalidateScenePicture(r)
+  r.tiledScene.invalidateStructure()
   clearNodePictureCache(r)
+  clearEffectRasterCache(r.effectRasterCache)
   clearSubtreePictureCache(r)
 }
 
@@ -86,6 +95,7 @@ function clearNodePictureCache(r: SkiaRenderer): void {
   for (const pic of r.nodePictureCache.values()) pic?.delete()
   r.nodePictureCache.clear()
   r.nodePictureCacheGenerations.clear()
+  r.nodePictureCacheDependencies.clear()
 }
 
 function clearGeometryPathCaches(r: SkiaRenderer): void {
@@ -117,6 +127,7 @@ function clearEffectFilterCaches(r: SkiaRenderer): void {
 
 function clearNodeRenderCaches(r: SkiaRenderer): void {
   clearNodePictureCache(r)
+  clearEffectRasterCache(r.effectRasterCache)
   clearDecodedImageCache(r)
   clearGeometryPathCaches(r)
   clearEffectFilterCaches(r)
@@ -128,9 +139,12 @@ function clearNodeRenderCaches(r: SkiaRenderer): void {
 export function clearDocumentCaches(r: SkiaRenderer): void {
   // Pictures can retain decoded SkImages, so drop them before their decoded-image wrappers.
   invalidateScenePicture(r)
+  r.tiledScene.invalidateStructure()
+  clearEffectRasterCache(r.effectRasterCache)
   clearSubtreePictureCache(r)
   clearNodeRenderCaches(r)
   r.labelCache.invalidate()
+  r.labelParagraphCache.clear()
   r.renderCacheGraph = null
   r.renderCachePageId = null
 }
@@ -165,7 +179,9 @@ export function withIsolatedDocumentCaches<T>(
     fillGeometryCache: r.fillGeometryCache,
     strokeGeometryCache: r.strokeGeometryCache,
     nodePictureCache: r.nodePictureCache,
-    nodePictureCacheGenerations: r.nodePictureCacheGenerations
+    nodePictureCacheGenerations: r.nodePictureCacheGenerations,
+    nodePictureCacheDependencies: r.nodePictureCacheDependencies,
+    effectRasterCache: r.effectRasterCache
   }
 
   r.pendingFontNodes = new Map()
@@ -185,6 +201,8 @@ export function withIsolatedDocumentCaches<T>(
   r.strokeGeometryCache = new Map()
   r.nodePictureCache = new Map()
   r.nodePictureCacheGenerations = new Map()
+  r.nodePictureCacheDependencies = new Map()
+  r.effectRasterCache = new Map()
 
   try {
     return render()
@@ -209,16 +227,28 @@ export function withIsolatedDocumentCaches<T>(
       r.strokeGeometryCache = previous.strokeGeometryCache
       r.nodePictureCache = previous.nodePictureCache
       r.nodePictureCacheGenerations = previous.nodePictureCacheGenerations
+      r.nodePictureCacheDependencies = previous.nodePictureCacheDependencies
+      r.effectRasterCache = previous.effectRasterCache
     }
   }
 }
 
 export function invalidateNodePicture(r: SkiaRenderer, nodeId: string): void {
+  deleteEffectRaster(r.effectRasterCache, nodeId)
+  deleteEffectRasterDependencies(r.effectRasterCache, nodeId)
+  for (const [ownerId, dependencyIds] of r.nodePictureCacheDependencies) {
+    if (!dependencyIds.includes(nodeId)) continue
+    r.nodePictureCache.get(ownerId)?.delete()
+    r.nodePictureCache.delete(ownerId)
+    r.nodePictureCacheGenerations.delete(ownerId)
+    r.nodePictureCacheDependencies.delete(ownerId)
+  }
   const pic = r.nodePictureCache.get(nodeId)
   if (pic) {
     pic.delete()
     r.nodePictureCache.delete(nodeId)
     r.nodePictureCacheGenerations.delete(nodeId)
+    r.nodePictureCacheDependencies.delete(nodeId)
   }
   const subtree = r.subtreePictureCache.get(nodeId)
   if (subtree) {

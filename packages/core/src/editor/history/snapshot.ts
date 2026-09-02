@@ -50,7 +50,8 @@ export function snapshotDocument(graph: SceneGraph, currentPageId: string): Docu
     documentColorSpace: graph.documentColorSpace,
     figKiwiVersion: graph.figKiwiVersion,
     figMessageObjectAnimations: structuredClone(graph.figMessageObjectAnimations),
-    figSchemaDeflated: graph.figSchemaDeflated?.slice() ?? null,
+    // Imported schema bytes follow the same immutable shared-reference contract as images.
+    figSchemaDeflated: graph.figSchemaDeflated,
     images: new Map(graph.images),
     instanceIndex: structuredClone(graph.instanceIndex),
     nodes: snapshotNodes(graph.nodes),
@@ -115,7 +116,7 @@ export function restoreDocumentFromSnapshot(ctx: EditorContext, snapshot: Docume
   replaceMap(ctx.graph.instanceIndex, snapshot.instanceIndex)
   ctx.graph.rootId = snapshot.rootId
   ctx.graph.figKiwiVersion = snapshot.figKiwiVersion
-  ctx.graph.figSchemaDeflated = snapshot.figSchemaDeflated?.slice() ?? null
+  ctx.graph.figSchemaDeflated = snapshot.figSchemaDeflated
   ctx.graph.figMessageObjectAnimations = structuredClone(snapshot.figMessageObjectAnimations)
   ctx.graph.documentColorSpace = snapshot.documentColorSpace
   ctx.graph.positionPreviewVersion = snapshot.positionPreviewVersion

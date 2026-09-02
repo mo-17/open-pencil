@@ -2,8 +2,10 @@ import { unzipSync, zipSync, type Unzipped, type Zippable } from 'fflate'
 
 import type { FigPageManifestEntry } from '@open-pencil/kiwi/fig'
 import type { FigmaObjectAnimationList, NodeChange } from '@open-pencil/kiwi/fig/codec'
-import { buildFigKiwi } from '@open-pencil/kiwi/fig/container'
+import { buildFigKiwi, parseFigKiwiChunks } from '@open-pencil/kiwi/fig/container'
 import { decodeFigKiwiCanvas, type FigKiwiDecodeLimits } from '@open-pencil/kiwi/fig/parse'
+
+import { hasPNGSignature } from './thumbnail'
 
 export interface FigImageEntry {
   name: string
@@ -120,7 +122,20 @@ function isCanonicalCanvasEntry(name: string): boolean {
   return name === 'canvas.fig' || name === 'canvas'
 }
 
-/** Parse a complete zipped `.fig` file into its Figma protocol payload and binary resources. */
+function parseRawFigKiwi(
+  bytes: Uint8Array,
+  limits?: FigKiwiDecodeLimits,
+  onPages?: (pages: FigPageManifestEntry[]) => void
+): FigParseResult | null {
+  const chunks = parseFigKiwiChunks(bytes)
+  if (!chunks) return null
+
+  const decoded = decodeFigKiwiCanvas(bytes, limits, onPages)
+  const thumbnailPNG = chunks.slice(2).find(hasPNGSignature) ?? null
+  return { ...decoded, images: [], thumbnailPNG, metaJSON: null }
+}
+
+/** Parse a complete zipped or legacy raw `.fig` file into its protocol payload and resources. */
 export function parseFigBuffer(
   buffer: ArrayBuffer,
   input: ParseFigBufferInput = {}
@@ -137,6 +152,9 @@ export function parseFigBuffer(
   const maxTotalImageBytes = checkedLimit(limits?.maxTotalImageBytes, 'maxTotalImageBytes')
   assertFigArchiveByteLength(buffer.byteLength, limits)
   const bytes = new Uint8Array(buffer)
+  const raw = parseRawFigKiwi(bytes, limits, options.onPages)
+  if (raw) return raw
+
   const canvasArchive = unzipSync(bytes, {
     filter(entry) {
       entryCount += 1
@@ -168,7 +186,6 @@ export function parseFigBuffer(
       return isCanonicalCanvasEntry(entry.name)
     }
   })
-
   let canvasData = findCanvasData(canvasArchive)
   let archive: Unzipped
   let decoded: ReturnType<typeof decodeFigKiwiCanvas>

@@ -168,7 +168,7 @@ describe('Tauri font helpers', () => {
     const { loadFont } = await import('@/app/editor/fonts')
 
     await expect(loadFont('Missing Family', 'Regular')).resolves.toBe(fallback)
-    expect(loadFontSpy).toHaveBeenCalledWith('Missing Family', 'Regular', '')
+    expect(loadFontSpy).toHaveBeenCalledWith('Missing Family', 'Regular', '', undefined)
   })
 
   test('rolls back a staged manifest when persistence commits before its acknowledgement fails', async () => {

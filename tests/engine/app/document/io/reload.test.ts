@@ -6,6 +6,8 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 import { createReloadActions } from '@/app/document/io/read'
 import { captureReloadState, resolveReloadPageId } from '@/app/document/io/reload-state'
 
+import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
+
 function graphWithPages(pages: Array<{ name: string; sourceId: string }>) {
   const graph = new SceneGraph()
   const firstPage = graph.getPages()[0]
@@ -18,6 +20,12 @@ function graphWithPages(pages: Array<{ name: string; sourceId: string }>) {
     graph.updateNode(node.id, { source: { ...node.source, id: page.sourceId } })
   }
   return graph
+}
+
+function trackGraphResource(graph: SceneGraph) {
+  const terminate = mock(() => undefined)
+  registerFigPopulationWorker(graph, { terminate } as unknown as Worker)
+  return terminate
 }
 
 describe('document reload', () => {
@@ -43,6 +51,9 @@ describe('document reload', () => {
     const stale = graphWithPages([{ name: 'Stale', sourceId: 'source-1' }])
     const latest = graphWithPages([{ name: 'Latest', sourceId: 'source-1' }])
     const editor = createEditor({ graph: original, skipInitialGraphSetup: true })
+    const terminateOriginal = trackGraphResource(original)
+    const terminateStale = trackGraphResource(stale)
+    const terminateLatest = trackGraphResource(latest)
     const reads = [
       Promise.withResolvers<SceneGraph | null>(),
       Promise.withResolvers<SceneGraph | null>()
@@ -85,6 +96,7 @@ describe('document reload', () => {
     reads[0].resolve(stale)
     await secondStarted.promise
     expect(replaceGraph).not.toHaveBeenCalled()
+    expect(terminateStale).toHaveBeenCalledTimes(1)
 
     reads[1].resolve(latest)
     await Promise.all([first, second])
@@ -97,6 +109,39 @@ describe('document reload', () => {
     expect(editor.state.currentPageId).toBe(latest.getPages()[0].id)
     expect(editor.state.loading).toBe(false)
     expect(setSavedVersion).toHaveBeenCalledTimes(1)
+    expect(terminateOriginal).toHaveBeenCalledTimes(1)
+    expect(terminateLatest).not.toHaveBeenCalled()
+    editor.releaseGraphResources()
+  })
+
+  test('releases an imported graph when injected layout preparation fails', async () => {
+    const original = graphWithPages([{ name: 'Original', sourceId: 'source-1' }])
+    const imported = graphWithPages([{ name: 'Imported', sourceId: 'source-1' }])
+    const editor = createEditor({ graph: original, skipInitialGraphSetup: true })
+    const terminateOriginal = trackGraphResource(original)
+    const terminateImported = trackGraphResource(imported)
+    const { reloadFromDisk } = createReloadActions(
+      {
+        editor,
+        state: editor.state,
+        getFilePath: () => '/tmp/design.fig',
+        getFileHandle: () => null,
+        setSavedVersion: () => undefined
+      },
+      {
+        readSource: async () => imported,
+        computeLayouts: async () => {
+          throw new Error('layout failed')
+        }
+      }
+    )
+
+    await expect(reloadFromDisk()).rejects.toThrow('layout failed')
+
+    expect(editor.graph).toBe(original)
+    expect(terminateImported).toHaveBeenCalledTimes(1)
+    expect(terminateOriginal).not.toHaveBeenCalled()
+    editor.releaseGraphResources()
   })
 
   test('keeps the restored page observable during graph replacement', async () => {

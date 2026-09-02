@@ -112,7 +112,7 @@ export const DEFAULT_PACKAGES: PackagePublishConfig[] = [
   { dir: 'packages/plugin-contracts', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/lowcode', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/pen', include: ['dist'], extraFiles: ['README.md'] },
-  { dir: 'packages/kiwi', include: ['dist'], extraFiles: ['README.md'] },
+  { dir: 'packages/kiwi', include: ['dist'], extraFiles: ['README.md', 'NOTICE'] },
   { dir: 'packages/fig', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/core', include: ['dist', 'assets'], extraFiles: [] },
   { dir: 'packages/motion-runtime', include: ['dist'], extraFiles: ['README.md'] },
@@ -126,6 +126,7 @@ export const DEFAULT_PACKAGES: PackagePublishConfig[] = [
 export interface PreparedPublishPackage {
   dir: string
   name: string
+  requiredFiles?: string[]
   version: string
 }
 
@@ -468,6 +469,7 @@ export async function preparePublishDirectories(
     preparedPackages.push({
       dir: basename(pkg.dir),
       name: publishJSON.name,
+      requiredFiles: [...pkg.extraFiles],
       version: publishJSON.version
     })
     log?.(`Prepared ${destinationDir}`)

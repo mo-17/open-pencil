@@ -311,16 +311,15 @@ export async function putObject(
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength
   ) as ArrayBuffer
+  const headers: Record<string, string> = { 'Content-Type': contentType }
+  if (options?.ifMatch) headers['If-Match'] = options.ifMatch
+  if (options?.ifNoneMatch) headers['If-None-Match'] = options.ifNoneMatch
   const res = await s3Request(
     config,
     objectURL(config, key),
     {
       method: 'PUT',
-      headers: {
-        'Content-Type': contentType,
-        ...(options?.ifMatch ? { 'If-Match': options.ifMatch } : {}),
-        ...(options?.ifNoneMatch ? { 'If-None-Match': options.ifNoneMatch } : {})
-      },
+      headers,
       body: payload,
       signal
     },
@@ -363,12 +362,49 @@ export function s3ObjectResponseLimit(key: string): number {
   return S3_RESPONSE_LIMITS.metadataBytes
 }
 
+export async function readDownloadResponse(
+  res: Response,
+  onProgress?: (progress: DownloadProgress) => void,
+  signal?: AbortSignal
+): Promise<Uint8Array> {
+  signal?.throwIfAborted()
+  if (!onProgress || !res.body) return new Uint8Array(await res.arrayBuffer())
+
+  const contentLength = Number(res.headers.get('content-length'))
+  const totalBytes = Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let receivedBytes = 0
+  try {
+    for (;;) {
+      signal?.throwIfAborted()
+      const { done, value } = await reader.read()
+      signal?.throwIfAborted()
+      if (done) break
+      chunks.push(value)
+      receivedBytes += value.byteLength
+      onProgress({ receivedBytes, totalBytes })
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined)
+    throw error
+  }
+  const out = new Uint8Array(receivedBytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return out
+}
+
 export async function getObject(
   config: S3CompatibleConfig,
   key: string,
   onProgress?: (progress: DownloadProgress) => void,
   signal?: AbortSignal
 ): Promise<Uint8Array | null> {
+  signal?.throwIfAborted()
   const maxResponseBytes = s3ObjectResponseLimit(key)
   const url = objectURL(config, key)
   if (maxResponseBytes === S3_RESPONSE_LIMITS.documentBytes) {
@@ -398,31 +434,7 @@ export async function getObject(
   }
   const res = await s3Request(config, url, { method: 'GET', signal }, undefined, maxResponseBytes)
   if (res.status === 404) return null
-  if (!onProgress || !res.body) {
-    return new Uint8Array(await res.arrayBuffer())
-  }
-
-  // Stream so large figs can report download progress
-  const contentLength = Number(res.headers.get('content-length'))
-  const totalBytes = Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null
-  const reader = res.body.getReader()
-  const chunks: Uint8Array[] = []
-  let receivedBytes = 0
-  for (;;) {
-    signal?.throwIfAborted()
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
-    receivedBytes += value.byteLength
-    onProgress({ receivedBytes, totalBytes })
-  }
-  const out = new Uint8Array(receivedBytes)
-  let offset = 0
-  for (const chunk of chunks) {
-    out.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return out
+  return readDownloadResponse(res, onProgress, signal)
 }
 
 export async function deleteObject(

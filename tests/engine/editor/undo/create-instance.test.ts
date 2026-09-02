@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
+import { getInstanceOverride, setInstanceOverride } from '@open-pencil/scene-graph'
 import { getAxisAlignedWorldBounds } from '@open-pencil/scene-graph/coordinate'
 
 import { expectDefined } from '#tests/helpers/assert'
@@ -145,5 +146,47 @@ describe('create instance undo/redo', () => {
 
     expect(editor.graph.getNode(instanceId)).toBeUndefined()
     expect([...editor.state.selectedIds]).toEqual([previous.id])
+  })
+
+  test('detach undo restores structured and legacy override carriers', () => {
+    const editor = createEditor()
+    const pageId = editor.state.currentPageId
+    const component = editor.graph.createNode('COMPONENT', pageId, {
+      name: 'Button',
+      width: 100,
+      height: 40
+    })
+    const instanceId = expectDefined(
+      editor.createInstanceFromComponent(component.id, 200, 100, pageId),
+      'instanceId'
+    )
+    const instance = expectDefined(editor.graph.getNode(instanceId), 'instance')
+    const legacyOverrides = {
+      [instanceId]: {
+        lowcode: { expression: 'record.title' },
+        motion: { driverId: '0:999' }
+      }
+    }
+    editor.graph.updateNode(instanceId, { overrides: structuredClone(legacyOverrides) })
+    setInstanceOverride(instance.instanceOverrides, instanceId, instanceId, 'opacity', 0.5)
+
+    editor.select([instanceId])
+    editor.detachInstance()
+
+    expect(instance.type).toBe('FRAME')
+    expect(instance.overrides).toEqual({})
+    expect(getInstanceOverride(instance.instanceOverrides, instanceId, instanceId, 'opacity')).toBe(
+      undefined
+    )
+
+    editor.undo.undo()
+
+    const restored = expectDefined(editor.graph.getNode(instanceId), 'restored instance')
+    expect(restored.type).toBe('INSTANCE')
+    expect(restored.overrides).toEqual(legacyOverrides)
+    expect(getInstanceOverride(restored.instanceOverrides, instanceId, instanceId, 'opacity')).toBe(
+      0.5
+    )
+    expect(editor.graph.getInstances(component.id).map((node) => node.id)).toEqual([instanceId])
   })
 })

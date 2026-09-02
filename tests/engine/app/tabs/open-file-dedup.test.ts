@@ -26,6 +26,8 @@ import {
 } from '@/app/tabs'
 import { fileIdentitiesMatch, findTabByFileIdentity } from '@/app/tabs/open/identity'
 
+import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
+
 function setupGlobals() {
   globalThis.window = {
     innerWidth: 1024,
@@ -47,11 +49,47 @@ function setupGlobals() {
   globalThis.cancelAnimationFrame = window.cancelAnimationFrame
 }
 
+function acknowledgePendingPresentation(): void {
+  for (const tab of getTabsSnapshot()) {
+    if (tab.store.state.preparation?.phase !== 'preparing-render') continue
+    tab.store.preparationController.acknowledgePresentation(tab.store.state.sceneVersion)
+  }
+}
+
+type FileOpenOutcome = { status: 'fulfilled' } | { status: 'rejected'; reason: unknown }
+
+async function settleFileOpen(opening: Promise<void>): Promise<void> {
+  const outcome: Promise<FileOpenOutcome> = opening.then(
+    () => ({ status: 'fulfilled' }),
+    (reason: unknown) => ({ status: 'rejected', reason })
+  )
+
+  const awaitOutcome = async (): Promise<FileOpenOutcome> => {
+    acknowledgePendingPresentation()
+    const result = await Promise.race([
+      outcome,
+      new Promise<null>((resolve) => {
+        setTimeout(resolve, 0)
+      })
+    ])
+    return result ?? awaitOutcome()
+  }
+
+  const result = await awaitOutcome()
+  if (result.status === 'rejected') throw result.reason
+}
+
 function makeHandle(
   name: string,
   isSameEntry: (other: FileSystemFileHandle) => Promise<boolean>
 ): FileSystemFileHandle {
   return { kind: 'file', name, isSameEntry } as FileSystemFileHandle
+}
+
+function trackGraphResource(graph: SceneGraph) {
+  const terminate = vi.fn(() => undefined)
+  registerFigPopulationWorker(graph, { terminate } as unknown as Worker)
+  return terminate
 }
 
 describe('file identity', () => {
@@ -192,7 +230,9 @@ describe('tab opening deduplication', () => {
     const home = getTabsSnapshot().at(-1)
     const count = tabCount()
 
-    await openFileInNewTab(new File([], 'design.fig'), undefined, '/tmp/from-home.fig')
+    await settleFileOpen(
+      openFileInNewTab(new File([], 'design.fig'), undefined, '/tmp/from-home.fig')
+    )
 
     expect(tabCount()).toBe(count)
     expect(getTabsSnapshot().at(-1)?.id).toBe(home?.id)
@@ -203,9 +243,9 @@ describe('tab opening deduplication', () => {
     const initialCount = tabCount()
     const file = new File([], 'design.fig')
 
-    await openFileInNewTab(file, undefined, '/tmp/design.fig')
+    await settleFileOpen(openFileInNewTab(file, undefined, '/tmp/design.fig'))
     const openedStore = getActiveStore()
-    await openFileInNewTab(file, undefined, '/tmp/design.fig')
+    await settleFileOpen(openFileInNewTab(file, undefined, '/tmp/design.fig'))
 
     expect(tabCount()).toBe(initialCount)
     expect(getActiveStore()).toBe(openedStore)
@@ -229,23 +269,38 @@ describe('tab opening deduplication', () => {
 
     expect(figModule.readFigFile).toHaveBeenCalledTimes(1)
     read.resolve(new SceneGraph())
-    await Promise.all([first, second])
+    await Promise.all([settleFileOpen(first), settleFileOpen(second)])
     expect(tabCount()).toBe(initialCount)
   })
 
-  test('starts loading before a deferred desktop read and parses its buffer directly', async () => {
-    let loadingDuringRead = false
+  test('starts preparation before a deferred desktop read and parses its buffer directly', async () => {
+    let preparationDuringRead = false
     const read = vi.fn(async () => {
-      loadingDuringRead = getActiveStore().state.loading
+      preparationDuringRead = getActiveStore().state.preparation?.phase === 'decoding'
       return new Uint8Array([1, 2, 3])
     })
 
-    await openFileInNewTab({ name: 'large.fig', read }, undefined, '/tmp/large.fig')
+    await settleFileOpen(openFileInNewTab({ name: 'large.fig', read }, undefined, '/tmp/large.fig'))
 
-    expect(loadingDuringRead).toBe(true)
+    expect(preparationDuringRead).toBe(true)
     expect(read).toHaveBeenCalledTimes(1)
     expect(figModule.readFigSource).toHaveBeenCalledTimes(1)
     expect(figModule.readFigFile).not.toHaveBeenCalled()
+  })
+
+  test('releases a parsed tab graph when preparation throws before apply', async () => {
+    const imported = new SceneGraph()
+    const terminate = trackGraphResource(imported)
+    ;(figModule.readFigFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(imported)
+    ;(layoutModule.computeAllLayouts as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw new Error('layout failed')
+    })
+
+    await expect(
+      settleFileOpen(openFileInNewTab(new File([], 'broken.fig'), undefined, '/tmp/broken.fig'))
+    ).rejects.toThrow('layout failed')
+
+    expect(terminate).toHaveBeenCalledTimes(1)
   })
 
   test('allows different files to load concurrently', async () => {
@@ -266,7 +321,7 @@ describe('tab opening deduplication', () => {
     expect(figModule.readFigFile).toHaveBeenCalledTimes(2)
     reads[0].resolve(new SceneGraph())
     reads[1].resolve(new SceneGraph())
-    await Promise.all([first, second])
+    await Promise.all([settleFileOpen(first), settleFileOpen(second)])
     expect(tabCount()).toBe(initialCount + 1)
   })
 
@@ -276,10 +331,10 @@ describe('tab opening deduplication', () => {
       .mockResolvedValueOnce(new SceneGraph())
 
     await expect(
-      openFileInNewTab(new File([], 'retry.fig'), undefined, '/tmp/retry.fig')
+      settleFileOpen(openFileInNewTab(new File([], 'retry.fig'), undefined, '/tmp/retry.fig'))
     ).rejects.toThrow('read failed')
     await expect(
-      openFileInNewTab(new File([], 'retry.fig'), undefined, '/tmp/retry.fig')
+      settleFileOpen(openFileInNewTab(new File([], 'retry.fig'), undefined, '/tmp/retry.fig'))
     ).resolves.toBeUndefined()
 
     expect(figModule.readFigFile).toHaveBeenCalledTimes(2)
@@ -290,8 +345,8 @@ describe('tab opening deduplication', () => {
     const initialCount = tabCount()
     const file = new File([], 'same-name.fig')
 
-    await openFileInNewTab(file)
-    await openFileInNewTab(file)
+    await settleFileOpen(openFileInNewTab(file))
+    await settleFileOpen(openFileInNewTab(file))
 
     expect(tabCount()).toBe(initialCount + 1)
     expect(figModule.readFigFile).toHaveBeenCalledTimes(2)
@@ -326,7 +381,7 @@ describe('tab opening deduplication', () => {
       metadata: { name: document.name, updatedAt: document.updatedAt },
       remoteRevision: null
     })
-    await Promise.all([first, second])
+    await Promise.all([settleFileOpen(first), settleFileOpen(second)])
     expect(tabCount()).toBe(initialCount)
     expect(getActiveStore().getStorageBinding()).toEqual({
       providerId: storageModule.activeStorageProviderID.value,
@@ -360,9 +415,9 @@ describe('tab opening deduplication', () => {
     }
     const initialCount = tabCount()
 
-    await openStorageDocumentInNewTab(document, { ...binding, authority: grantOne })
+    await settleFileOpen(openStorageDocumentInNewTab(document, { ...binding, authority: grantOne }))
     const grantOneStore = getActiveStore()
-    await openStorageDocumentInNewTab(document, { ...binding, authority: grantTwo })
+    await settleFileOpen(openStorageDocumentInNewTab(document, { ...binding, authority: grantTwo }))
     const grantTwoStore = getActiveStore()
 
     expect(tabCount()).toBe(initialCount + 1)
@@ -421,7 +476,7 @@ describe('tab opening deduplication', () => {
     })
     downloads[0].resolve(downloaded('Grant one'))
     downloads[1].resolve(downloaded('Grant two'))
-    await Promise.all([first, second])
+    await Promise.all([settleFileOpen(first), settleFileOpen(second)])
     expect(grantOneStore.getStorageBinding()?.authority).toEqual(grantOne)
     expect(grantTwoStore.getStorageBinding()?.authority).toEqual(grantTwo)
   })
@@ -464,6 +519,7 @@ describe('tab opening deduplication', () => {
       expect(getAuthority).toHaveBeenCalledWith({ signal: controller.signal })
       expect(getDocument).toHaveBeenCalledWith(document.id, {
         signal: controller.signal,
+        onProgress: expect.any(Function),
         expectedAuthority: authority
       })
     })
@@ -500,20 +556,72 @@ describe('tab opening deduplication', () => {
       getDocument
     } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
 
-    await openStorageDocumentInNewTab(
-      {
-        id: binding.documentId,
-        name: 'Remote.fig',
-        updatedAt: '2026-08-10T00:00:00.000Z',
-        metadataAuthoritative: false
-      },
-      binding
+    await settleFileOpen(
+      openStorageDocumentInNewTab(
+        {
+          id: binding.documentId,
+          name: 'Remote.fig',
+          updatedAt: '2026-08-10T00:00:00.000Z',
+          metadataAuthoritative: false,
+          contentTimestampAuthoritative: true
+        },
+        binding
+      )
     )
 
     expect(getDocument).toHaveBeenCalledTimes(1)
     expect(getDocument).toHaveBeenCalledWith(binding.documentId, {
+      signal: expect.anything(),
+      onProgress: expect.any(Function),
       expectedAuthority: authority
     })
+  })
+
+  test('downloads S3 content when neither a sidecar nor object timestamp is authoritative', async () => {
+    const authority = {
+      accountId: 's3-profile-incarnation',
+      authorizationVersion: 's3-config-generation'
+    }
+    const binding = {
+      providerId: 's3-compatible' as const,
+      profileId: 'default',
+      documentId: 's3-unknown-remote-time',
+      authority
+    }
+    const local = createMemoryLocalCanvasStore()
+    resetLocalCanvasStoreForTests(local)
+    await local.writeCanvas({
+      ...binding,
+      id: binding.documentId,
+      name: 'Cached.fig',
+      updatedAt: '2026-08-09T00:00:00.000Z',
+      figBytes: new Uint8Array([1]),
+      syncStatus: 'synced'
+    })
+    const getDocument = vi.fn(async () => ({
+      bytes: new Uint8Array([2]),
+      metadata: { name: 'Remote.fig', updatedAt: new Date(0).toISOString() },
+      remoteRevision: null
+    }))
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getAuthority: vi.fn(async () => authority),
+      getDocument
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+
+    await settleFileOpen(
+      openStorageDocumentInNewTab(
+        {
+          id: binding.documentId,
+          name: binding.documentId,
+          updatedAt: new Date(0).toISOString(),
+          metadataAuthoritative: false,
+          contentTimestampAuthoritative: false
+        },
+        binding
+      )
+    )
+
+    expect(getDocument).toHaveBeenCalledTimes(1)
   })
 
   test('holds the profile mutation lease until a cached storage open is fully bound', async () => {
@@ -547,14 +655,16 @@ describe('tab opening deduplication', () => {
       }
     )
 
-    const opening = openStorageDocumentInNewTab(
-      {
-        id: binding.documentId,
-        name: 'Cached drain.fig',
-        updatedAt: '2026-08-10T00:00:00.000Z',
-        metadataAuthoritative: true
-      },
-      binding
+    const opening = settleFileOpen(
+      openStorageDocumentInNewTab(
+        {
+          id: binding.documentId,
+          name: 'Cached drain.fig',
+          updatedAt: '2026-08-10T00:00:00.000Z',
+          metadataAuthoritative: true
+        },
+        binding
+      )
     )
     await parsingStarted.promise
     let drained = false
@@ -596,8 +706,10 @@ describe('tab opening deduplication', () => {
       metadataAuthoritative: true
     }
 
-    await expect(openStorageDocumentInNewTab(document)).rejects.toThrow('parse failed')
-    await expect(openStorageDocumentInNewTab(document)).resolves.toBeUndefined()
+    await expect(settleFileOpen(openStorageDocumentInNewTab(document))).rejects.toThrow(
+      'parse failed'
+    )
+    await expect(settleFileOpen(openStorageDocumentInNewTab(document))).resolves.toBeUndefined()
 
     expect(figModule.readFigSource).toHaveBeenCalledTimes(2)
     expect(getDocument).toHaveBeenCalledTimes(1)
@@ -621,5 +733,44 @@ describe('tab opening deduplication', () => {
       )
     ).rejects.toHaveProperty('name', 'AbortError')
     expect(createAdapter).not.toHaveBeenCalled()
+  })
+
+  test('releases a parsed storage graph when cancellation wins before preparation', async () => {
+    const imported = new SceneGraph()
+    const terminate = trackGraphResource(imported)
+    const parsing = Promise.withResolvers<SceneGraph>()
+    const parsingStarted = Promise.withResolvers<undefined>()
+    ;(figModule.readFigSource as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (source) => {
+        await source.read()
+        parsingStarted.resolve(undefined)
+        return parsing.promise
+      }
+    )
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument: vi.fn(async () => ({
+        bytes: new Uint8Array([1, 2, 3]),
+        metadata: { name: 'Cancelled.fig', updatedAt: '2026-08-10T00:00:00.000Z' },
+        remoteRevision: null
+      }))
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    const controller = new AbortController()
+    const opening = openStorageDocumentInNewTab(
+      {
+        id: 'cancelled-after-parse',
+        name: 'Cancelled.fig',
+        updatedAt: '2026-08-10T00:00:00.000Z',
+        metadataAuthoritative: true
+      },
+      undefined,
+      { signal: controller.signal }
+    )
+
+    await parsingStarted.promise
+    controller.abort()
+    parsing.resolve(imported)
+
+    await expect(opening).rejects.toHaveProperty('name', 'AbortError')
+    expect(terminate).toHaveBeenCalledTimes(1)
   })
 })

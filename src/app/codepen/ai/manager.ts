@@ -500,7 +500,14 @@ export function createCodePenAIManager(
         return commitFailure(store, 'revision-conflict', 'Shadow draft authority changed.')
       }
       try {
-        store.replaceGraph(afterGraph, { currentPageId: record.workspace.pageId })
+        const previousGraph = store.graph
+        try {
+          store.replaceGraph(afterGraph, { currentPageId: record.workspace.pageId })
+        } finally {
+          if (store.graph === afterGraph && previousGraph !== afterGraph) {
+            store.releaseGraphResources(previousGraph)
+          }
+        }
         const after = store.snapshotDocument()
         store.pushUndoEntry({
           label: input.label?.trim() || 'AI: Apply reviewed CodePen reconstruction',

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { tv } from 'tailwind-variants'
-import { useUrlSearchParams } from '@vueuse/core'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 
 import { formatShortcut, useI18n, useViewportKind } from '@open-pencil/vue'
@@ -9,6 +8,7 @@ import { formatShortcut, useI18n, useViewportKind } from '@open-pencil/vue'
 import { useEditorStore } from '@/app/editor/active-store'
 import PreviewPane from '@/app/lowcode/preview-pane/PreviewPane.vue'
 import { compilerPreviewPopoutOpen } from '@/app/lowcode/preview-pane/popout/session'
+import { appRuntimeConfig } from '@/app/runtime/config'
 import {
   editorPanelDefaultSizes,
   loadEditorLayout,
@@ -28,10 +28,9 @@ import Tip from '@/components/ui/Tip.vue'
 import Toolbar from '@/components/Toolbar/Toolbar.vue'
 import splitterTheme from '@/theme/splitter'
 
-const params = useUrlSearchParams('history')
-const showChrome = !('no-chrome' in params)
+const showChrome = appRuntimeConfig.showChrome
 const store = useEditorStore()
-const { dialogs } = useI18n()
+const { editor } = useI18n()
 const { isMobile } = useViewportKind()
 const showPreviewPane = true
 const editorLayout = ref(loadEditorLayout())
@@ -168,7 +167,7 @@ function expandPreviewForAction(expand: () => void, complete: () => void): void 
           store.state.documentName
         }}</span>
         <Tip
-          :label="dialogs.showUI({ shortcut: formatShortcut(appMenuShortcut('toggle-ui')) ?? '' })"
+          :label="editor.showUI({ shortcut: formatShortcut(appMenuShortcut('toggle-ui')) ?? '' })"
         >
           <button
             data-test-id="editor-show-ui"

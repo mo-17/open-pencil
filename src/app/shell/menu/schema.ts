@@ -1,6 +1,35 @@
 import type { EditorCommandId } from '@open-pencil/vue'
 
 export type AppMenuTarget = 'all' | 'browser' | 'native'
+
+export type AppMenuIcon =
+  | 'download'
+  | 'eye'
+  | 'file'
+  | 'folder-open'
+  | 'layers'
+  | 'pencil'
+  | 'redo'
+  | 'save'
+  | 'settings'
+  | 'type'
+  | 'undo'
+  | 'zoom-in'
+  | 'zoom-out'
+
+export type AppMenuPaletteLabel =
+  | 'exportSelectionAsPNG'
+  | 'exportSelectionAsSVG'
+  | 'exportSelectionAsPPTX'
+  | 'exportSelectionAsFig'
+
+export interface AppMenuPaletteMetadata {
+  icon?: AppMenuIcon
+  label?: AppMenuPaletteLabel
+  description?: string
+  keywords?: string[]
+}
+
 export type AppMenuHandler = 'editor' | 'shell'
 
 export interface AppMenuActionItem {
@@ -13,6 +42,7 @@ export interface AppMenuActionItem {
   checkbox?: boolean
   target?: AppMenuTarget
   handler?: AppMenuHandler
+  palette?: AppMenuPaletteMetadata
   sub?: AppMenuEntry[]
 }
 
@@ -26,6 +56,7 @@ export type AppMenuEntry = AppMenuActionItem | AppMenuSeparatorItem
 export interface AppMenuGroupSchema {
   label: string
   target?: AppMenuTarget
+  paletteIcon?: AppMenuIcon
   items: AppMenuEntry[]
 }
 
@@ -50,6 +81,7 @@ export const PLUGIN_MENU_ACTION_IDS = Object.freeze({
 export const APP_MENU_SCHEMA = [
   {
     label: 'File',
+    paletteIcon: 'file',
     items: [
       { id: 'new', label: 'New', shortcut: 'MOD+N' },
       { id: 'open', label: 'Open…', shortcut: 'MOD+O' },
@@ -81,58 +113,48 @@ export const APP_MENU_SCHEMA = [
       { type: 'separator' },
       {
         id: 'export-selection',
-        label: 'Export',
+        label: 'Export Selection',
+        palette: { icon: 'download' },
         shortcut: 'MOD+SHIFT+E',
         sub: [
-          { id: 'export-png', label: 'PNG' },
-          { id: 'export-svg', label: 'SVG' },
-          { id: 'export-pptx', label: 'PPTX' },
-          { id: 'export-fig', label: '.fig' },
-          { type: 'separator' },
           {
-            id: PLUGIN_MENU_ACTION_IDS.exportTauriReact,
-            label: 'Tauri React Project…'
+            id: 'export-png',
+            label: 'PNG',
+            palette: { icon: 'download', label: 'exportSelectionAsPNG' }
           },
+          {
+            id: 'export-svg',
+            label: 'SVG',
+            palette: { icon: 'download', label: 'exportSelectionAsSVG' }
+          },
+          {
+            id: 'export-pptx',
+            label: 'PPTX',
+            palette: { icon: 'download', label: 'exportSelectionAsPPTX' }
+          },
+          {
+            id: 'export-fig',
+            label: '.fig',
+            palette: { icon: 'download', label: 'exportSelectionAsFig' }
+          },
+          { type: 'separator' },
+          { id: PLUGIN_MENU_ACTION_IDS.exportTauriReact, label: 'Tauri React Project…' },
           {
             id: PLUGIN_MENU_ACTION_IDS.exportExpoReactNative,
             label: 'Expo React Native Project…'
           },
-          {
-            id: PLUGIN_MENU_ACTION_IDS.exportFlutter,
-            label: 'Flutter Project…'
-          },
-          {
-            id: PLUGIN_MENU_ACTION_IDS.exportNextJs,
-            label: 'Next.js Project…'
-          },
-          {
-            id: PLUGIN_MENU_ACTION_IDS.exportVue,
-            label: 'Vue Project…'
-          },
-          {
-            id: PLUGIN_MENU_ACTION_IDS.exportCapacitor,
-            label: 'Capacitor Project…'
-          },
-          {
-            id: PLUGIN_MENU_ACTION_IDS.exportElectron,
-            label: 'Electron Project…'
-          },
+          { id: PLUGIN_MENU_ACTION_IDS.exportFlutter, label: 'Flutter Project…' },
+          { id: PLUGIN_MENU_ACTION_IDS.exportNextJs, label: 'Next.js Project…' },
+          { id: PLUGIN_MENU_ACTION_IDS.exportVue, label: 'Vue Project…' },
+          { id: PLUGIN_MENU_ACTION_IDS.exportCapacitor, label: 'Capacitor Project…' },
+          { id: PLUGIN_MENU_ACTION_IDS.exportElectron, label: 'Electron Project…' },
           {
             id: PLUGIN_MENU_ACTION_IDS.exportWechatMiniProgram,
             label: 'WeChat Mini Program…'
           },
-          {
-            id: PLUGIN_MENU_ACTION_IDS.exportTaro,
-            label: 'Taro Project…'
-          },
-          {
-            id: PLUGIN_MENU_ACTION_IDS.exportUniApp,
-            label: 'uni-app Project…'
-          },
-          {
-            id: PLUGIN_MENU_ACTION_IDS.exportMpx,
-            label: 'Mpx Project…'
-          }
+          { id: PLUGIN_MENU_ACTION_IDS.exportTaro, label: 'Taro Project…' },
+          { id: PLUGIN_MENU_ACTION_IDS.exportUniApp, label: 'uni-app Project…' },
+          { id: PLUGIN_MENU_ACTION_IDS.exportMpx, label: 'Mpx Project…' }
         ]
       },
       { type: 'separator' },
@@ -142,6 +164,7 @@ export const APP_MENU_SCHEMA = [
   },
   {
     label: 'Edit',
+    paletteIcon: 'pencil',
     items: [
       {
         id: 'edit.undo',
@@ -208,6 +231,7 @@ export const APP_MENU_SCHEMA = [
   },
   {
     label: 'View',
+    paletteIcon: 'eye',
     items: [
       {
         id: 'view.zoom100',
@@ -290,6 +314,7 @@ export const APP_MENU_SCHEMA = [
   },
   {
     label: 'Object',
+    paletteIcon: 'layers',
     items: [
       {
         id: 'selection.group',
@@ -426,6 +451,7 @@ export const APP_MENU_SCHEMA = [
   },
   {
     label: 'Text',
+    paletteIcon: 'type',
     items: [
       { id: 'text.bold', label: 'Bold', shortcut: 'MOD+B' },
       { id: 'text.italic', label: 'Italic', shortcut: 'MOD+I' },
@@ -434,6 +460,7 @@ export const APP_MENU_SCHEMA = [
   },
   {
     label: 'Arrange',
+    paletteIcon: 'layers',
     items: [
       {
         id: 'selection.wrapInAutoLayout',

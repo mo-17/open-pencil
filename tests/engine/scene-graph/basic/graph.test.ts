@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { generateId, SceneGraph } from '@open-pencil/core'
+import { generateId, SceneGraph } from '@open-pencil/scene-graph'
 
 import { expectDefined } from '#tests/helpers/assert'
 
@@ -397,7 +397,12 @@ describe('SceneGraph', () => {
 
     // Override the text on the instance child
     graph.updateNode(instLabel.id, { text: 'Custom' })
-    instance.overrides[`${instLabel.id}:text`] = 'Custom'
+    graph.updateNode(instance.id, {
+      instanceOverrides: {
+        self: new Map(),
+        descendants: new Map([[instLabel.id, new Map([['text', 'Custom']])]])
+      }
+    })
 
     // Change component
     graph.updateNode(graph.getChildren(comp.id)[0].id, { text: 'New Default', fontSize: 20 })
@@ -440,10 +445,25 @@ describe('SceneGraph', () => {
     const instance = graph.createInstance(comp.id, pageId(graph))
     expect(instance).toBeDefined()
     expect(expectDefined(instance, 'instance').type).toBe('INSTANCE')
+    const updates: Array<{ id: string; keys: string[] }> = []
+    const unbind = graph.onNodeEvents({
+      updated: (id, changes) => updates.push({ id, keys: Object.keys(changes).sort() })
+    })
 
     graph.detachInstance(expectDefined(instance, 'instance').id)
+    unbind()
+
     expect(expectDefined(instance, 'instance').type).toBe('FRAME')
     expect(instance.componentId).toBeNull()
     expect(graph.getInstances(comp.id)).toHaveLength(0)
+    expect(updates).toEqual([
+      {
+        id: instance.id,
+        keys: ['componentId', 'instanceOverrides', 'overrides', 'type']
+      }
+    ])
+
+    graph.updateNode(instance.id, { type: 'INSTANCE', componentId: comp.id })
+    expect(graph.getInstances(comp.id).map((node) => node.id)).toEqual([instance.id])
   })
 })

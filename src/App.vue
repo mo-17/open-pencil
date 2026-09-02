@@ -28,7 +28,7 @@ import { kickSyncEngine, resumeStorageSync } from '@/app/storage/sync'
 import { prepareForReload } from '@/app/tabs'
 
 const store = useEditorStore()
-const { dialogs, locale } = useI18n()
+const { updates, locale } = useI18n()
 const ApplicationRuntimeGuideDialog = defineAsyncComponent(
   () => import('@/components/help/ApplicationRuntimeGuideDialog.vue')
 )
@@ -66,7 +66,7 @@ useEventListener(window, 'pagehide', () => {
 
 onMounted(() => {
   toast.setupGlobalErrorHandler()
-  scheduleStartupUpdateCheck(dialogs)
+  scheduleStartupUpdateCheck(updates)
   void kickSyncEngine()
 })
 </script>

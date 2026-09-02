@@ -27,6 +27,10 @@ export const menuMessageDefaults = {
   exportTaroProject: 'Taro Project…',
   exportUniAppProject: 'uni-app Project…',
   exportMpxProject: 'Mpx Project…',
+  exportSelectionAsPNG: 'Export selection as PNG',
+  exportSelectionAsSVG: 'Export selection as SVG',
+  exportSelectionAsPPTX: 'Export selection as PPTX',
+  exportSelectionAsFig: 'Export selection as .fig',
   autosave: 'Auto-save to local file',
   closeTab: 'Close tab',
 

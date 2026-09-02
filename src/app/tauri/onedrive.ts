@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 
 import { randomHex } from '@open-pencil/core/random'
 
+import type { ParsedContentRange } from './content-range'
 import { withAbortSignal, type TauriHttpHeader } from './http'
 import { OneDriveNativeError, nativeOneDriveError } from './onedrive-oauth-error'
 
@@ -395,12 +396,6 @@ function nativeResponse(response: OneDriveNativeTransferResponse): Response {
     status: response.status,
     headers: response.headers.map(({ name, value }): [string, string] => [name, value])
   })
-}
-
-type ParsedContentRange = {
-  start: number
-  end: number
-  total: number
 }
 
 function parseContentRange(

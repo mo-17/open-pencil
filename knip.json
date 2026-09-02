@@ -9,6 +9,8 @@
     "/src/app/plugins/index.ts",
     "/src/app/plugins/app.ts",
     "/src/app/plugins/marketplace/index.ts",
+    "/packages/core/src/text/index.ts",
+    "/src/app/tabs/index.ts",
     "#core/*"
   ],
   "ignoreBinaries": ["figma-use", "identify", "magick", "open", "osascript", "tauri-wd"]

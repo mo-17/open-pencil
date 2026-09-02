@@ -129,6 +129,46 @@ describe('AI shadow drafts', () => {
     expect(editor.graph.getNode(node.id)?.name).toBe('Shadow')
   })
 
+  test('releases graphs replaced by commit, undo, and redo', async () => {
+    const { editor, graph, page, node } = setup()
+    const revision = editor.state.sceneVersion
+    const workspace = await createAIShadowDraftWorkspace({
+      graph,
+      pageId: page.id,
+      expectedRevision: revision
+    })
+    workspace.graph.updateNode(node.id, { name: 'Shadow' })
+    const draft = await sealAIShadowDraft(workspace)
+    const released: SceneGraph[] = []
+    const commitEditor = {
+      get graph() {
+        return editor.graph
+      },
+      state: editor.state,
+      undo: editor.undo,
+      replaceGraph: editor.replaceGraph,
+      pushUndoEntry: editor.pushUndoEntry,
+      releaseGraphResources: (releasedGraph: SceneGraph = editor.graph) => {
+        released.push(releasedGraph)
+      }
+    }
+
+    const result = await commitAIShadowDraft(commitEditor, draft, {
+      expectedRevision: revision,
+      approval: { approved: true, draftDigest: draft.draftDigest }
+    })
+    expect(result.ok).toBe(true)
+    expect(released).toEqual([graph])
+
+    const committedGraph = editor.graph
+    editor.undo.undo()
+    expect(released).toEqual([graph, committedGraph])
+
+    const restoredGraph = editor.graph
+    editor.undo.redo()
+    expect(released).toEqual([graph, committedGraph, restoredGraph])
+  })
+
   test('forks review work without changing the original live authority', async () => {
     const { editor, graph, page, node } = setup()
     const revision = editor.state.sceneVersion

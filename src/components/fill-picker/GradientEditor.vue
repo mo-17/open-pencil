@@ -34,7 +34,7 @@ const {
   fillIndex?: number | null
 }>()
 const emit = defineEmits<{ update: [fill: Fill] }>()
-const { panels, dialogs } = useI18n()
+const { panels, editor, common } = useI18n()
 const fillPicker = tv(fillPickerTheme)
 const colorProvider = useColorBindingProvider()
 
@@ -187,7 +187,7 @@ function listStopClass(active: boolean) {
             <VariableBindingPicker
               v-if="binding.state !== 'bound'"
               :trigger-label="panels.applyVariable"
-              :search-placeholder="dialogs.search"
+              :search-placeholder="common.search"
               :empty-label="panels.noVariablesFound"
               :detach-label="panels.detachVariable"
               :create-label="
@@ -216,7 +216,7 @@ function listStopClass(active: boolean) {
             <button
               v-if="root.stops.length > 2"
               class="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent p-0 text-muted hover:text-surface"
-              :aria-label="dialogs.removeGradientStop"
+              :aria-label="editor.removeGradientStop"
               @click.stop="s.actions.remove"
             >
               <icon-lucide-minus class="size-3" />

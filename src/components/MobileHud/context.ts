@@ -8,7 +8,7 @@ import IconImageDown from '~icons/lucide/image-down'
 import IconSave from '~icons/lucide/save'
 import IconZoomIn from '~icons/lucide/zoom-in'
 
-import { useEditorCommands, useI18n } from '@open-pencil/vue'
+import { useDialogMessages, useEditorCommands, useI18n } from '@open-pencil/vue'
 
 import { presenceEditingLabel } from '@/app/collab/presence-label'
 import { DEFAULT_COLLAB_STATE, useCollabInjected } from '@/app/collab/use'
@@ -28,7 +28,8 @@ function createMobileHudContext() {
   const collab = useCollabInjected()
   const store = useEditorStore()
   const { copy } = useClipboard()
-  const { dialogs } = useI18n()
+  const { common, collaboration } = useI18n()
+  const dialogs = useDialogMessages()
   const notifications = useNotificationMessages()
   const { getCommand } = useEditorCommands()
 
@@ -85,7 +86,8 @@ function createMobileHudContext() {
 
   return {
     store,
-    dialogs,
+    common,
+    messages: collaboration,
     collabState,
     collabPeers,
     followingPeer,

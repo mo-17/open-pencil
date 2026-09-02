@@ -26,6 +26,7 @@ export function installFigMutationJournal(graph: SceneGraph): FigMutationJournal
     createNode: graph.createNode.bind(graph),
     createNodeWithId: graph.createNodeWithId.bind(graph),
     updateNode: graph.updateNode.bind(graph),
+    clearNodeFields: graph.clearNodeFields.bind(graph),
     deleteNode: graph.deleteNode.bind(graph)
   }
   function touch(id: string | null | undefined, fields: Iterable<keyof SceneNode>): void {
@@ -63,6 +64,10 @@ export function installFigMutationJournal(graph: SceneGraph): FigMutationJournal
     }
     original.updateNode(id, changes)
   }) as SceneGraph['updateNode']
+  graph.clearNodeFields = ((id, keys) => {
+    touch(id, keys)
+    original.clearNodeFields(id, keys)
+  }) as SceneGraph['clearNodeFields']
   graph.deleteNode = ((id) => {
     const node = graph.getNode(id)
     touch(node?.parentId, ['childIds'])
@@ -87,6 +92,7 @@ export function installFigMutationJournal(graph: SceneGraph): FigMutationJournal
       graph.createNode = original.createNode
       graph.createNodeWithId = original.createNodeWithId
       graph.updateNode = original.updateNode
+      graph.clearNodeFields = original.clearNodeFields
       graph.deleteNode = original.deleteNode
     }
   }
@@ -122,12 +128,20 @@ export function buildFigPopulationDelta(
 }
 
 export function applyFigPopulationDelta(graph: SceneGraph, delta: FigPopulationDelta): void {
-  graph.preserveSourceMetadataDuring(() => {
-    for (const [, node] of delta.created) {
-      graph.createNodeWithId(node.id, node.type, node.parentId, node)
-    }
-    for (const [id, changes] of delta.updated) graph.updateNode(id, changes)
-    for (const id of delta.deleted) graph.deleteNode(id)
+  graph.withNodeMutationOrigin('source-hydration', () => {
+    graph.preserveSourceMetadataDuring(() => {
+      for (const [, node] of delta.created) {
+        graph.createNodeWithId(node.id, node.type, node.parentId, node)
+      }
+      for (const [id, changes] of delta.updated) {
+        graph.updateNode(id, changes)
+        const cleared = (Object.keys(changes) as (keyof SceneNode)[]).filter(
+          (key) => changes[key] === undefined
+        )
+        if (cleared.length > 0) graph.clearNodeFields(id, cleared)
+      }
+      for (const id of delta.deleted) graph.deleteNode(id)
+    })
   })
   graph.instanceIndex = new Map(delta.instanceIndex.map(([id, ids]) => [id, new Set(ids)]))
 }

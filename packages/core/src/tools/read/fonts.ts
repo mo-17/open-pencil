@@ -29,8 +29,14 @@ export type FontCheckStatus =
   | 'exhausted'
   | 'unverifiable'
   | 'mismatch'
-export type FontFaceMode = 'exact' | 'synthesized' | 'pending' | 'unavailable' | 'unverified'
-export type NodeFontReadiness = 'ready' | 'pending' | 'exhausted' | 'unavailable'
+export type FontFaceMode =
+  | 'exact'
+  | 'synthesized'
+  | 'substituted'
+  | 'pending'
+  | 'unavailable'
+  | 'unverified'
+export type NodeFontReadiness = 'ready' | 'substituted' | 'pending' | 'exhausted' | 'unavailable'
 
 export interface FontFaceCheck extends NodeFontFace {
   scopes: NodeFontScope[]
@@ -97,6 +103,7 @@ function faceMode(
   if (exactLoaded) return 'exact'
   if (readiness === 'unavailable') return 'unverified'
   if (readiness === 'pending') return 'pending'
+  if (readiness === 'substituted') return 'substituted'
   if (readiness === 'ready' && familyLoaded) return 'synthesized'
   return 'unavailable'
 }
@@ -123,6 +130,7 @@ function renderStatus(
 ): Exclude<FontCheckStatus, 'mismatch'> {
   if (readiness === 'unavailable') return 'unverifiable'
   if (readiness === 'pending') return 'pending'
+  if (readiness === 'substituted') return 'degraded'
   if (readiness === 'exhausted') {
     return faces.some((face) => face.resolution.state === 'failed') ? 'failed' : 'exhausted'
   }
@@ -147,6 +155,10 @@ function checkCaveats(
   } else if (readiness === 'pending') {
     caveats.push(
       'Font resolution is still pending; call check_font again after the renderer settles.'
+    )
+  } else if (readiness === 'substituted') {
+    caveats.push(
+      'The requested font family is unavailable; CanvasKit is rendering with the default fallback font.'
     )
   } else if (status === 'degraded') {
     caveats.push(

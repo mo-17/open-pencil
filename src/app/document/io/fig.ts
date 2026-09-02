@@ -1,11 +1,9 @@
-import type { Editor } from '@open-pencil/core/editor'
 import { readFigFile } from '@open-pencil/core/io/formats/fig'
 import type { FigPageManifestEntry } from '@open-pencil/kiwi/fig'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 interface FigPageManifestTarget {
   replaceGraph(graph: SceneGraph): void
-  state: { loading: boolean }
 }
 
 /** Show lightweight page shells while the FIG worker continues decoding the full document. */
@@ -26,12 +24,11 @@ export function showFigPageManifest(
   }
 
   editor.replaceGraph(graph)
-  editor.state.loading = true
 }
 
-export function readFigDocument(file: File, editor: Editor) {
+export function readFigDocument(file: File, signal?: AbortSignal) {
   return readFigFile(file, {
     populate: 'first-page',
-    onPages: (pages) => showFigPageManifest(editor, pages)
+    signal
   })
 }

@@ -19,7 +19,7 @@ import Tip from '@/components/ui/Tip.vue'
 import { useButtonUI } from '@/components/ui/button'
 
 const { providerID, providerDef, modelID, customModelID } = useAIChat()
-const { dialogs } = useI18n()
+const { ai, dialogs } = useI18n()
 
 const {
   status,
@@ -190,11 +190,11 @@ function handleSubmit(event: Event) {
         </ProviderModelSelect>
 
         <div class="ml-auto">
-          <Tip :label="dialogs.providerSettings">
+          <Tip :label="ai.providerSettings">
             <button
               type="button"
               data-test-id="provider-settings-trigger"
-              :aria-label="dialogs.providerSettings"
+              :aria-label="ai.providerSettings"
               class="rounded p-0.5 text-muted hover:bg-hover hover:text-surface"
               @click="openSettingsDialog('ai')"
             >
@@ -286,7 +286,7 @@ function handleSubmit(event: Event) {
         <textarea
           v-model="input"
           data-test-id="chat-input"
-          :placeholder="dialogs.describeChange"
+          :placeholder="ai.describeChange"
           :disabled="attachmentActionsDisabled"
           rows="2"
           class="min-h-8 min-w-0 flex-1 resize-none rounded border border-border bg-transparent px-2 py-1.5 text-xs leading-relaxed text-surface outline-none placeholder:text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
@@ -298,7 +298,7 @@ function handleSubmit(event: Event) {
         <Tip
           v-if="isStreaming"
           :label="
-            stopRetryAvailable ? 'Force stop' : stopping ? 'Stopping…' : dialogs.stopGenerating
+            stopRetryAvailable ? 'Force stop' : stopping ? 'Stopping…' : ai.stopGenerating
           "
         >
           <button
@@ -314,7 +314,7 @@ function handleSubmit(event: Event) {
             <icon-lucide-square v-else class="size-3" />
           </button>
         </Tip>
-        <Tip v-else :label="dialogs.sendMessage">
+        <Tip v-else :label="ai.sendMessage">
           <button
             type="submit"
             data-test-id="chat-send-button"

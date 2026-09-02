@@ -107,9 +107,9 @@ function updateChildFromYoga(graph: LayoutGraph, child: SceneNode, yogaChild: Yo
   if (!child.visible || child.layoutPositioning === 'ABSOLUTE') return
 
   const preservesImportedFrameGeometry =
-    child.type === 'FRAME' &&
     child.source.format === 'fig' &&
-    frameSourceIsFig(graph, child.parentId)
+    frameSourceIsFig(graph, child.parentId) &&
+    (child.type === 'FRAME' || child.type === 'LINE')
   const preservesImportedPosition =
     preservesImportedFrameGeometry ||
     (child.source.format === 'fig' && Math.abs(child.rotation) > 0.001)
@@ -205,10 +205,18 @@ export function applyYogaLayout(
   yogaNode: YogaNode,
   computeLayout: ComputeLayoutFn
 ): void {
-  const steps = applyYogaLayoutSteps(graph, frame, yogaNode, (nestedGraph, frameId) => {
-    computeLayout(nestedGraph, frameId)
-    return []
-  })
-  let state = steps.next()
-  while (!state.done) state = steps.next()
+  const apply = () => {
+    const steps = applyYogaLayoutSteps(graph, frame, yogaNode, (nestedGraph, frameId) => {
+      computeLayout(nestedGraph, frameId)
+      return []
+    })
+    let state = steps.next()
+    while (!state.done) state = steps.next()
+  }
+  const mutationGraph = graph as LayoutGraph & {
+    withNodeMutationOrigin?: <T>(origin: 'derived-layout', operation: () => T) => T
+  }
+  if (mutationGraph.withNodeMutationOrigin) {
+    mutationGraph.withNodeMutationOrigin('derived-layout', apply)
+  } else apply()
 }

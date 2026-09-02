@@ -51,6 +51,14 @@ export interface FontLoadOptions {
   timeoutMs?: number
 }
 
+type FontLoadArgument = FontLoadOptions | AbortSignal
+
+function normalizeFontLoadOptions(value: FontLoadArgument = {}): FontLoadOptions {
+  return 'aborted' in value && typeof value.addEventListener === 'function'
+    ? { signal: value as AbortSignal }
+    : (value as FontLoadOptions)
+}
+
 export const DEFAULT_FONT_LOAD_CONCURRENCY = 4
 
 export interface FontManagerOptions {
@@ -275,6 +283,10 @@ export class FontManager {
     this.webFonts.setRemoteFetch(fetcher)
   }
 
+  resetWebFontFailures(family?: string, style?: string): void {
+    this.webFonts.resetFailures(family, style)
+  }
+
   enabledOnlineFontProviders(): WebFontProviderId[] {
     return this.webFonts.enabledProviders()
   }
@@ -306,6 +318,10 @@ export class FontManager {
     if (imported) return imported
     const cached = await this.readDownloadedFont(family, style, characters)
     if (!cached) return null
+    const key = `${family}|${style}`
+    const loadedCoverage = this.remoteCoverage.get(key) ?? new Set<string>()
+    for (const character of normalizedCoverageText(characters)) loadedCoverage.add(character)
+    this.remoteCoverage.set(key, loadedCoverage)
     return this.registerAndCache(family, style, cached, 'cache')
   }
 
@@ -411,8 +427,10 @@ export class FontManager {
   async loadRemoteFont(
     family: string,
     style = 'Regular',
-    characters = ''
+    characters = '',
+    signal?: AbortSignal
   ): Promise<ArrayBuffer | null> {
+    signal?.throwIfAborted()
     if (typeof fetch === 'undefined') return null
     const coverage = this.remoteCoverage.get(`${family}|${style}`)
     if (coversAllCharacters(coverage, characters)) {
@@ -425,7 +443,7 @@ export class FontManager {
       )
       const normalized = normalizeFontFamily(family)
       const families = normalized === family ? [family] : [family, normalized]
-      const resolved = await this.webFonts.fetchFont(families, style, requestedCharacters)
+      const resolved = await this.webFonts.fetchFont(families, style, requestedCharacters, signal)
       if (!resolved) return null
       // Accept the pre-provider-attribution result shape while callers and test adapters migrate.
       const buffers = Array.isArray(resolved) ? resolved : resolved.buffers
@@ -447,6 +465,7 @@ export class FontManager {
       }
       return registered
     } catch (e) {
+      if (signal?.aborted) throw e
       console.warn(`Web font fetch failed for "${family}" ${style}:`, e)
       return null
     }
@@ -456,8 +475,9 @@ export class FontManager {
     family: string,
     style = 'Regular',
     characters = '',
-    options: FontLoadOptions = {}
+    optionsOrSignal: FontLoadArgument = {}
   ): Promise<ArrayBuffer | null> {
+    const options = normalizeFontLoadOptions(optionsOrSignal)
     throwIfFontLoadAborted(options.signal)
     const cacheKey = `${family}|${style}`
     const loaded = this.usableLoadedData(family, style)
@@ -671,8 +691,9 @@ export class FontManager {
   async ensureFallbackPack(
     scripts: FontFallbackScript[] = ['cjk', 'arabic'],
     characters = '',
-    options: FontLoadOptions = {}
+    optionsOrSignal: FontLoadArgument = {}
   ): Promise<Partial<Record<FontFallbackScript, string[]>>> {
+    const options = normalizeFontLoadOptions(optionsOrSignal)
     throwIfFontLoadAborted(options.signal)
     const result: Partial<Record<FontFallbackScript, string[]>> = {}
     await Promise.all(

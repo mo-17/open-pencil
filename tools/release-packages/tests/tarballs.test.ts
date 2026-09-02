@@ -9,8 +9,11 @@ import type { PreparedPublishPackage, PreparedPublishPlan } from '../src/publish
 import { PUBLISH_REPOSITORY_URL } from '../src/publish-dirs'
 import {
   packageBinTargets,
+  packageExportTargetPaths,
   validatePackedTarballs,
-  validatePublishedPackageJSON
+  validatePublishedPackageJSON,
+  validateTarballExportTargets,
+  validateTarballRequiredFiles
 } from '../src/tarballs'
 
 const expected: PreparedPublishPackage = {
@@ -37,7 +40,8 @@ function expectedTarballName(pkg: PreparedPublishPackage): string {
 async function writeTarballFixture(
   root: string,
   packageJSON: Record<string, unknown>,
-  files: Record<string, string> = {}
+  files: Record<string, string> = {},
+  pkg: PreparedPublishPackage = expected
 ): Promise<void> {
   const stagingRoot = join(root, 'staging')
   const packageRoot = join(stagingRoot, 'package')
@@ -50,7 +54,7 @@ async function writeTarballFixture(
   }
   await execFileAsync('tar', [
     '-czf',
-    join(root, expectedTarballName(expected)),
+    join(root, expectedTarballName(pkg)),
     '-C',
     stagingRoot,
     'package'
@@ -76,6 +80,73 @@ describe('packageBinTargets', () => {
     ).toEqual({
       openpencil: './bin/openpencil.js'
     })
+  })
+})
+
+describe('package export targets', () => {
+  test('collects nested conditional and wildcard targets', () => {
+    expect(
+      packageExportTargetPaths({
+        exports: {
+          '.': { types: './dist/index.d.ts', import: './dist/index.js' },
+          './feature/*': [{ import: './dist/features/*.js' }, null]
+        }
+      })
+    ).toEqual(['./dist/index.d.ts', './dist/index.js', './dist/features/*.js'])
+  })
+
+  test('rejects a wildcard export with no packed match', async () => {
+    const root = await fixtureRoot()
+    await writeTarballFixture(root, {
+      name: expected.name,
+      version: expected.version,
+      exports: { './feature/*': { import: './dist/features/*.js' } }
+    })
+
+    await expect(
+      validateTarballExportTargets(join(root, expectedTarballName(expected)))
+    ).rejects.toThrow('export target missing from tarball: package/dist/features/*.js')
+  })
+})
+
+describe('required package files', () => {
+  test('rejects a missing package-specific legal notice', async () => {
+    const root = await fixtureRoot()
+    const kiwi: PreparedPublishPackage = {
+      dir: 'kiwi',
+      name: '@open-pencil-lowcode/kiwi',
+      requiredFiles: ['README.md', 'NOTICE'],
+      version: expected.version
+    }
+    const packageJSON = {
+      name: kiwi.name,
+      version: kiwi.version,
+      repository: expectedRepository
+    }
+    await writeTarballFixture(
+      root,
+      packageJSON,
+      { LICENSE: LICENSE_BYTES.toString(), 'README.md': '# Kiwi\n' },
+      kiwi
+    )
+
+    await expect(
+      validateTarballRequiredFiles(join(root, expectedTarballName(kiwi)), kiwi.requiredFiles ?? [])
+    ).rejects.toThrow('required file is missing from tarball: package/NOTICE')
+
+    await writeTarballFixture(
+      root,
+      packageJSON,
+      {
+        LICENSE: LICENSE_BYTES.toString(),
+        'README.md': '# Kiwi\n',
+        NOTICE: 'Kiwi attribution\n'
+      },
+      kiwi
+    )
+    await expect(
+      validateTarballRequiredFiles(join(root, expectedTarballName(kiwi)), kiwi.requiredFiles ?? [])
+    ).resolves.toBeUndefined()
   })
 })
 
@@ -208,12 +279,17 @@ describe('validatePackedTarballs', () => {
         version: expected.version,
         repository: { type: 'git', url: expectedRepository },
         bin: { openpencil: './bin/openpencil.js' },
-        dependencies: { '@open-pencil-lowcode/motion': '^0.15.0' }
+        dependencies: { '@open-pencil-lowcode/motion': '^0.15.0' },
+        exports: {
+          '.': { import: './dist/index.js' },
+          './feature/*': { import: './dist/features/*.js' }
+        }
       },
       {
         LICENSE: LICENSE_BYTES.toString(),
         'bin/openpencil.js': '#!/usr/bin/env node\n',
         'dist/index.js': "export const owner = '@open-pencil-lowcode/core'\n",
+        'dist/features/example.js': 'export {}\n',
         'dist/io/formats/fig/export-worker.js': 'export {}\n',
         'dist/io/formats/fig/export.js':
           "new Worker(new URL('./export-worker.js', import.meta.url), { type: 'module' })\n",

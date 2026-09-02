@@ -25,7 +25,7 @@ import {
   fontFaceDemand,
   fontRemoteCoverageDemand,
   fontResolver,
-  missingGlyphCharacters,
+  missingGlyphOccurrences,
   type FontResolutionDemand,
   type FontResolutionSettled
 } from '#core/text/resolver'
@@ -60,13 +60,26 @@ function demandFace(
   return false
 }
 
-function languageForCharacter(node: SceneNode, character: string): string | null {
-  const index = node.text.indexOf(character)
-  const run = node.styleRuns.find((item) => index >= item.start && index < item.start + item.length)
+function languageForCharacter(node: SceneNode, sourceIndex: number): string | null {
+  const run = node.styleRuns.find(
+    (item) => sourceIndex >= item.start && sourceIndex < item.start + item.length
+  )
   return run?.style.textLanguage ?? node.textLanguage
 }
 
-export type NodeFontReadiness = 'ready' | 'pending' | 'exhausted'
+function transformedSourceOffsets(node: SceneNode): number[] {
+  const offsets: number[] = []
+  let sourceIndex = 0
+  for (const sourceCharacter of node.text) {
+    for (const _character of transformTextCase(sourceCharacter, node.textCase)) {
+      offsets.push(sourceIndex)
+    }
+    sourceIndex += sourceCharacter.length
+  }
+  return offsets
+}
+
+export type NodeFontReadiness = 'ready' | 'substituted' | 'pending' | 'exhausted'
 
 function requiredFacesReadiness(r: FontReadinessRenderer, node: SceneNode): NodeFontReadiness {
   let pending = false
@@ -87,6 +100,7 @@ function requiredFacesReadiness(r: FontReadinessRenderer, node: SceneNode): Node
     }
   }
   if (pending) return 'pending'
+  if (exhausted && fontManager.isStyleLoaded(DEFAULT_FONT_FAMILY, 'Regular')) return 'substituted'
   return exhausted ? 'exhausted' : 'ready'
 }
 
@@ -112,18 +126,22 @@ function missingCharactersByScript(
 ): { missingCount: number; byScript: Map<FontFallbackScript, string[]> } {
   const paragraph = buildParagraph(r, node)
   paragraph.layout(resolveParagraphLayoutWidth(node))
-  const missingCharacters = missingGlyphCharacters(node.text, paragraph.getShapedLines())
+  const missingOccurrences = missingGlyphOccurrences(
+    transformTextCase(node.text, node.textCase),
+    paragraph.getShapedLines(),
+    transformedSourceOffsets(node)
+  )
   paragraph.delete()
 
   const charactersByScript = new Map<FontFallbackScript, string[]>()
-  for (const character of missingCharacters) {
-    const script = fontFallbackScriptForCharacter(character, languageForCharacter(node, character))
+  for (const { character, utf16Start } of missingOccurrences) {
+    const script = fontFallbackScriptForCharacter(character, languageForCharacter(node, utf16Start))
     if (!script) continue
     const characters = charactersByScript.get(script) ?? []
     characters.push(character)
     charactersByScript.set(script, characters)
   }
-  return { missingCount: missingCharacters.length, byScript: charactersByScript }
+  return { missingCount: missingOccurrences.length, byScript: charactersByScript }
 }
 
 function observedGlyphReadiness(r: TextRenderer, node: SceneNode): NodeFontReadiness {
@@ -250,7 +268,8 @@ export function nodeFontReadiness(r: FontReadinessRenderer, node: SceneNode): No
 }
 
 export function isNodeFontLoaded(r: FontReadinessRenderer, node: SceneNode): boolean {
-  return nodeFontReadiness(r, node) === 'ready'
+  const readiness = nodeFontReadiness(r, node)
+  return readiness === 'ready' || readiness === 'substituted'
 }
 
 export function measureTextNode(

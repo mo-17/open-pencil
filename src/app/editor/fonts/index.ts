@@ -26,8 +26,8 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 import {
   createBrowserDownloadedFontCache,
   type BrowserDownloadedFontCache
-} from '@/app/editor/fonts/browser-downloaded-font-cache'
-import { createBrowserWebFontFetch } from '@/app/editor/fonts/browser-web-font-fetch'
+} from '@/app/editor/fonts/browser/downloaded-font-cache'
+import { createBrowserWebFontFetch } from '@/app/editor/fonts/browser/web-font-fetch'
 import {
   clearDownloadedFontCache as clearTauriDownloadedFontCache,
   createTauriDownloadedFontCache,
@@ -364,13 +364,10 @@ export async function loadFont(
   family: string,
   style = 'Regular',
   characters = '',
-  options?: FontLoadOptions
+  cancellation?: FontLoadCancellation
 ): Promise<ArrayBuffer | null> {
   configureTauriFontCache()
-  const loaded = options
-    ? await fontManager.loadFont(family, style, characters, options)
-    : await fontManager.loadFont(family, style, characters)
-  return loaded
+  return fontManager.loadFont(family, style, characters, fontLoadOptions(cancellation))
 }
 
 export async function importFontBytes(bytes: ArrayBuffer): Promise<ImportedFontCacheFace> {

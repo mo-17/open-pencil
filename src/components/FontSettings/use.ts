@@ -5,7 +5,7 @@ import type {
   LocalFontAccessState,
   WebFontProviderId
 } from '@open-pencil/core/text'
-import { useI18n } from '@open-pencil/vue'
+import { useDialogMessages, useI18n } from '@open-pencil/vue'
 
 import {
   clearDownloadedFontCache,
@@ -47,7 +47,8 @@ const defaultActions: FontSettingsActions = {
 }
 
 export function useFontSettings(actions: FontSettingsActions = defaultActions) {
-  const { dialogs } = useI18n()
+  const { common, fonts } = useI18n()
+  const dialogs = useDialogMessages()
   const cacheCount = ref(0)
   const cacheByteLength = ref(0)
   const cacheUpdatedAt = ref<number | null>(null)
@@ -58,10 +59,10 @@ export function useFontSettings(actions: FontSettingsActions = defaultActions) {
   const fontProviderSettings = actions.fontProviderSettings
 
   const accessStateLabel = computed(() => {
-    if (accessState.value === 'granted') return dialogs.value.enabled
-    if (accessState.value === 'denied') return dialogs.value.denied
-    if (accessState.value === 'unsupported') return dialogs.value.unavailable
-    return dialogs.value.notRequested
+    if (accessState.value === 'granted') return common.value.enabled
+    if (accessState.value === 'denied') return common.value.denied
+    if (accessState.value === 'unsupported') return common.value.unavailable
+    return common.value.notRequested
   })
 
   const cacheSize = computed(() => {
@@ -70,7 +71,7 @@ export function useFontSettings(actions: FontSettingsActions = defaultActions) {
   })
 
   const cacheUpdatedLabel = computed(() => {
-    if (cacheUpdatedAt.value === null) return dialogs.value.never
+    if (cacheUpdatedAt.value === null) return common.value.never
     return new Date(cacheUpdatedAt.value).toLocaleDateString()
   })
 
@@ -97,10 +98,10 @@ export function useFontSettings(actions: FontSettingsActions = defaultActions) {
     try {
       await actions.requestLocalFontAccess()
       accessState.value = actions.localFontAccessState()
-      status.value = dialogs.value.localFontAccessEnabled
+      status.value = fonts.value.localFontAccessEnabled
     } catch {
       accessState.value = actions.localFontAccessState()
-      status.value = dialogs.value.localFontAccessNotGranted
+      status.value = fonts.value.localFontAccessNotGranted
     } finally {
       busyAction.value = null
     }
@@ -109,15 +110,15 @@ export function useFontSettings(actions: FontSettingsActions = defaultActions) {
   function setOnlineFontsEnabled(enabled: boolean) {
     onlineFontsEnabled.value = enabled
     status.value = enabled
-      ? dialogs.value.onlineFontProvidersEnabled
-      : dialogs.value.onlineFontProvidersDisabled
+      ? fonts.value.onlineFontProvidersEnabled
+      : fonts.value.onlineFontProvidersDisabled
   }
 
   function setFontProviderEnabled(provider: WebFontProviderId, enabled: boolean) {
     fontProviderSettings.value = { ...fontProviderSettings.value, [provider]: enabled }
     status.value = enabled
-      ? dialogs.value.fontProviderEnabled({ provider })
-      : dialogs.value.fontProviderDisabled({ provider })
+      ? fonts.value.providerEnabled({ provider })
+      : fonts.value.providerDisabled({ provider })
   }
 
   async function downloadFallbacks() {
@@ -126,9 +127,9 @@ export function useFontSettings(actions: FontSettingsActions = defaultActions) {
     try {
       await actions.predownloadFallbackFonts()
       await refreshSummary()
-      status.value = dialogs.value.fallbackFontsDownloaded
+      status.value = fonts.value.fallbackDownloaded
     } catch {
-      status.value = dialogs.value.fallbackFontsDownloadFailed
+      status.value = fonts.value.fallbackDownloadFailed
     } finally {
       busyAction.value = null
     }
@@ -159,9 +160,9 @@ export function useFontSettings(actions: FontSettingsActions = defaultActions) {
     try {
       await actions.clearDownloadedFontCache()
       await refreshSummary()
-      status.value = dialogs.value.downloadedFontCacheCleared
+      status.value = fonts.value.downloadedFontCacheCleared
     } catch {
-      status.value = dialogs.value.downloadedFontCacheClearFailed
+      status.value = fonts.value.downloadedFontCacheClearFailed
     } finally {
       busyAction.value = null
     }

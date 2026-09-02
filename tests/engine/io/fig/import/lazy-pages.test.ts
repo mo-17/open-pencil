@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import { populateAndApplyOverrides } from '@open-pencil/fig/instance-overrides'
 import {
   getLazyFigImportContext,
   populateAllLazyFigImportRoots,
@@ -7,6 +8,8 @@ import {
   setLazyFigImportContext
 } from '@open-pencil/core/kiwi/fig/lazy-import'
 import { SceneGraph } from '@open-pencil/scene-graph'
+
+import { reapplyInstanceOverrides } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
 function createLazyGraph(pageCount: 2 | 3 = 2) {
   const graph = new SceneGraph()
@@ -128,5 +131,40 @@ describe('lazy .fig page population', () => {
 
     expect(getLazyFigImportContext(graph)).toBeUndefined()
     expect(populateAllLazyFigImportRoots(graph)).toBe(false)
+  })
+
+  test('retains and replays legacy overrides when a later page instance is populated', () => {
+    const { graph, page1, page2, page1Instance, page2Instance } = createLazyGraph()
+    graph.updateNode(page1Instance.id, {
+      pendingInstanceOverrides: { '0:opacity': 0.7 }
+    })
+    graph.updateNode(page2Instance.id, {
+      pendingInstanceOverrides: { '0:opacity': 0.35 }
+    })
+
+    // Match first-page import: only the visible page has real cloned descendants
+    // when the legacy snapshot is replayed for the first time.
+    populateAndApplyOverrides(graph, new Map(), new Map(), [], [page1.id])
+    reapplyInstanceOverrides(graph)
+
+    const populatedFirstChild = graph.getChildren(page1Instance.id)[0]
+    expect(populatedFirstChild?.opacity).toBe(0.7)
+    expect(page1Instance.pendingInstanceOverrides).toBeUndefined()
+    expect(graph.getChildren(page2Instance.id)).toHaveLength(0)
+    expect(page2Instance.pendingInstanceOverrides).toEqual({ '0:opacity': 0.35 })
+    expect(page2Instance.overrides).toEqual({})
+
+    page2Instance.instanceOverrides.self.set('structured-sentinel', true)
+    expect(populateLazyFigImportRoots(graph, [page2.id])).toBe(true)
+
+    const populatedLaterChild = graph.getChildren(page2Instance.id)[0]
+    expect(populatedLaterChild?.opacity).toBe(0.35)
+    expect(page2Instance.overrides).toEqual({ [`${populatedLaterChild.id}:opacity`]: 0.35 })
+    expect(page2Instance.pendingInstanceOverrides).toBeUndefined()
+    expect(page2Instance.instanceOverrides.self.get('structured-sentinel')).toBe(true)
+    const stillPopulatedFirstChild = graph.getChildren(page1Instance.id)[0]
+    expect(stillPopulatedFirstChild?.opacity).toBe(0.7)
+    expect(page1Instance.overrides).toEqual({ [`${stillPopulatedFirstChild.id}:opacity`]: 0.7 })
+    expect(getLazyFigImportContext(graph)).toBeUndefined()
   })
 })

@@ -9,17 +9,13 @@ import {
   serializedSceneGraphTransferList
 } from '#core/kiwi/fig/parse/transfer'
 import { buildFigPopulationDelta, installFigMutationJournal } from '#core/kiwi/fig/population/delta'
+import type { FigSessionPopulateRequest } from '#core/kiwi/fig/session/protocol'
 
 interface WorkerParseRequest {
   buffer: ArrayBuffer
   options?: { populate?: 'all' | 'first-page' | 'none'; archiveLimits?: FigArchiveLimits }
 }
-interface PopulateRequest {
-  type: 'populate'
-  requestId: string
-  baseRevision: number
-  pageId: string
-}
+type PopulateRequest = FigSessionPopulateRequest
 type WorkerRequest = ArrayBuffer | WorkerParseRequest | PopulateRequest
 type WorkerPostMessage = (message: unknown, transfer: Transferable[]) => void
 const postWorkerMessage: WorkerPostMessage = (message, transfer) => {
@@ -46,11 +42,11 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   if (isPopulateRequest(request)) {
     try {
       if (!graph) throw new Error('FIG parse worker has no retained graph')
+      const context = getLazyFigImportContext(graph)
+      if (!context) throw new Error('FIG population worker has no lazy import context')
       const journal = installFigMutationJournal(graph)
       try {
         const populated = populateLazyFigImportRoots(graph, [request.pageId])
-        const context = getLazyFigImportContext(graph)
-        if (!context) throw new Error('FIG population worker has no lazy import context')
         postWorkerMessage(
           {
             type: 'population-result',

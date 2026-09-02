@@ -15,6 +15,106 @@ describe('web font coverage requests', () => {
     expect(Array.from(normalizedCoverageText('𠀀'))).toEqual(['𠀀'])
   })
 
+  test('aborts a font load queued behind an active provider request', async () => {
+    const resolver = new WebFontResolver()
+    resolver.setEnabled({ google: true })
+    let requestStarted: (() => void) | null = null
+    let releaseRequest: (() => void) | null = null
+    const started = new Promise<void>((resolve) => {
+      requestStarted = resolve
+    })
+    const blocked = new Promise<Response>((resolve) => {
+      releaseRequest = () => resolve(new Response('{}', { status: 200 }))
+    })
+    resolver.setRemoteFetch(async () => {
+      requestStarted?.()
+      return blocked
+    })
+    const first = resolver.listFamilies('google')
+    await started
+    const abort = new AbortController()
+    const queued = resolver.fetchFont(['Inter'], 'Regular', '', abort.signal)
+
+    abort.abort()
+
+    await expect(queued).rejects.toHaveProperty('name', 'AbortError')
+    releaseRequest?.()
+    await first
+  })
+
+  test('aborts promptly while provider resolution is pending', async () => {
+    const resolver = new WebFontResolver()
+    resolver.setEnabled({ google: true })
+    let providerRequestStarted: (() => void) | null = null
+    let releaseProviderRequest: (() => void) | null = null
+    const started = new Promise<void>((resolve) => {
+      providerRequestStarted = resolve
+    })
+    const blocked = new Promise<Response>((resolve) => {
+      releaseProviderRequest = () => resolve(new Response('{}', { status: 200 }))
+    })
+    resolver.setRemoteFetch(async () => {
+      providerRequestStarted?.()
+      return blocked
+    })
+    const abort = new AbortController()
+    const loading = resolver.fetchFont(['Inter'], 'Regular', '', abort.signal)
+    await started
+
+    abort.abort()
+
+    await expect(loading).rejects.toHaveProperty('name', 'AbortError')
+    releaseProviderRequest?.()
+  })
+
+  test('keeps shared provider initialization alive when one waiter aborts', async () => {
+    const resolver = new WebFontResolver()
+    resolver.setEnabled({ google: true })
+    let providerRequestStarted: (() => void) | null = null
+    let releaseProviderRequest: (() => void) | null = null
+    const started = new Promise<void>((resolve) => {
+      providerRequestStarted = resolve
+    })
+    const blocked = new Promise<Response>((resolve) => {
+      releaseProviderRequest = () =>
+        resolve(
+          Response.json({
+            familyMetadataList: [{ family: 'Inter', axes: [], fonts: { '400': {} } }]
+          })
+        )
+    })
+    resolver.setRemoteFetch(async (url) => {
+      if (url.includes('fonts.google.com/metadata/fonts')) {
+        providerRequestStarted?.()
+        return blocked
+      }
+      if (url.includes('fonts.googleapis.com/css2')) {
+        return new Response(
+          "@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; src: url(https://fonts.gstatic.com/s/inter-test.ttf) format('truetype'); }",
+          { status: 200 }
+        )
+      }
+      if (url === 'https://fonts.gstatic.com/s/inter-test.ttf') {
+        return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 })
+      }
+      throw new Error(`Unexpected web font request: ${url}`)
+    })
+    const firstAbort = new AbortController()
+    const secondAbort = new AbortController()
+    const first = resolver.fetchFont(['Inter'], 'Regular', 'A', firstAbort.signal)
+    await started
+    const second = resolver.fetchFont(['Inter'], 'Regular', 'A', secondAbort.signal)
+
+    firstAbort.abort()
+
+    await expect(first).rejects.toHaveProperty('name', 'AbortError')
+    releaseProviderRequest?.()
+    const result = await second
+    expect(result?.provider).toBe('google')
+    expect(result?.buffers).toHaveLength(1)
+    expect(result?.buffers[0]?.byteLength).toBe(4)
+  })
+
   test('requests script-specific subsets instead of Latin only', () => {
     expect(webFontSubsetsForText('مرحبا')).toContain('arabic')
     expect(webFontSubsetsForText('한글')).toContain('korean')

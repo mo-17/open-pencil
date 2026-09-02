@@ -12,8 +12,8 @@ import {
 import { buildBrowserPreview } from '@open-pencil/compiler/browser-preview'
 import { fontManager } from '@open-pencil/core/text'
 
-import { createBrowserDownloadedFontCache } from '@/app/editor/fonts/browser-downloaded-font-cache'
-import { createBrowserWebFontFetch } from '@/app/editor/fonts/browser-web-font-fetch'
+import { createBrowserDownloadedFontCache } from '@/app/editor/fonts/browser/downloaded-font-cache'
+import { createBrowserWebFontFetch } from '@/app/editor/fonts/browser/web-font-fetch'
 import { restoreVueCompilerGraph } from '@/app/plugins/host/vue/compiler/protocol'
 
 import type { PreviewDiagnostic, PreviewHostBuildMetrics } from '../host/types'

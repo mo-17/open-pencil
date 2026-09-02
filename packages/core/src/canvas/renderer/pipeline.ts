@@ -7,6 +7,7 @@ import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry
 import type { RenderOverlays, SkiaRenderer } from '#core/canvas/renderer'
 import type { EditorState } from '#core/editor/types'
 import { computeMotionLayoutPreview } from '#core/layout'
+import { emitNavigationTrace } from '#core/profiler'
 
 import { beginDecodedImageCacheFrame, endDecodedImageCacheFrame } from './image-cache'
 import { drawChromePass, drawLabelPass, drawOverlayPass } from './overlay-pass'
@@ -104,6 +105,8 @@ export function renderFromEditorState(
   r.pageColor = state.pageColor
   r.rulerTheme = state.rulerTheme ?? null
   r.pageId = state.currentPageId
+  r.navigationPhase = state.navigation.phase
+  r.navigationGeneration = state.navigation.generation
   render(
     r,
     graph,
@@ -257,6 +260,13 @@ export function render(
   layer: RenderLayer = 'full'
 ): void {
   prepareRenderCacheScope(r, graph)
+  emitNavigationTrace('render:start', {
+    layer,
+    sceneVersion,
+    panX: r.panX,
+    panY: r.panY,
+    zoom: r.zoom
+  })
   r.syncFontGeneration()
   const p = r.profiler
   p.beginFrame()
@@ -308,17 +318,53 @@ export function render(
       canvas.scale(r.dpr, r.dpr)
 
       p.beginPhase('render:scene')
-      renderSceneLayer(
-        r,
-        canvas,
-        graph,
-        overlays,
-        sceneVersion,
-        layer,
-        hasVolatileOverlays,
-        canUsePicture,
-        cacheMissReason
-      )
+      let renderedScene = false
+      if (layer === 'scene' && !hasVolatileOverlays && r.tiledSceneEnabled) {
+        const backingPresented = renderSceneBacking(r, canvas, graph, sceneVersion)
+        if (!backingPresented) {
+          canvas.save()
+          try {
+            canvas.translate(r.panX, r.panY)
+            canvas.scale(r.zoom, r.zoom)
+            renderSceneContent(
+              r,
+              canvas,
+              graph,
+              overlays,
+              sceneVersion,
+              canUsePicture,
+              cacheMissReason,
+              hasVolatileOverlays
+            )
+          } finally {
+            canvas.restore()
+          }
+        }
+        const tiled = r.tiledScene.renderFrame(
+          r,
+          canvas,
+          graph,
+          sceneVersion,
+          r.navigationGeneration
+        )
+        r.tiledScenePending = tiled.pending
+        r.tiledSceneCovered = tiled.covered
+        renderedScene = true
+        p.setScenePictureMode('hit', tiled.covered ? 'tiled' : 'tiled-fallback')
+      }
+      if (!renderedScene) {
+        renderSceneLayer(
+          r,
+          canvas,
+          graph,
+          overlays,
+          sceneVersion,
+          layer,
+          hasVolatileOverlays,
+          canUsePicture,
+          cacheMissReason
+        )
+      }
       p.endPhase('render:scene')
 
       canvas.restore()
@@ -349,6 +395,17 @@ export function render(
     p.setNodeCounts(r._nodeCount, r._culledCount)
     p.endFrame()
     frameEnded = true
+    emitNavigationTrace('render:end', {
+      layer,
+      sceneVersion,
+      panX: r.panX,
+      panY: r.panY,
+      zoom: r.zoom,
+      flushMs: flushDuration,
+      nodes: r._nodeCount,
+      culledNodes: r._culledCount,
+      backingCrisp: !r.sceneBackingNeedsCrispRender
+    })
   } finally {
     // A CanvasKit exception in a node renderer must not poison the save stack
     // for the recovery frame or every render that follows it.

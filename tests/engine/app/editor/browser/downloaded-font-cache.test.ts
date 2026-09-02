@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import {
   createBrowserDownloadedFontCache,
   type BrowserDownloadedFontCache
-} from '@/app/editor/fonts/browser-downloaded-font-cache'
+} from '@/app/editor/fonts/browser/downloaded-font-cache'
 
 const caches: BrowserDownloadedFontCache[] = []
 let databaseSequence = 0

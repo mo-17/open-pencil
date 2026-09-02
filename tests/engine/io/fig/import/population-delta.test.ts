@@ -31,13 +31,17 @@ describe('FIG population deltas', () => {
   test('applies created, updated, deleted, indexed, and event-visible changes', () => {
     const source = new SceneGraph()
     const page = source.getPages()[0]
-    const updated = source.createNode('RECTANGLE', page.id, { name: 'Before' })
+    const updated = source.createNode('RECTANGLE', page.id, {
+      name: 'Before',
+      pendingInstanceOverrides: { '0:opacity': 0.5 }
+    })
     const deleted = source.createNode('RECTANGLE', page.id, { name: 'Deleted' })
     const target = new SceneGraph()
     target.rootId = source.rootId
     target.nodes = structuredClone(source.nodes)
     const journal = installFigMutationJournal(source)
     source.updateNode(updated.id, { name: 'After', visible: false })
+    source.clearNodeFields(updated.id, ['pendingInstanceOverrides'])
     source.deleteNode(deleted.id)
     const component = source.createNode('COMPONENT', page.id, { name: 'Component' })
     const created = source.createNode('INSTANCE', page.id, { componentId: component.id })
@@ -53,6 +57,8 @@ describe('FIG population deltas', () => {
     applyFigPopulationDelta(target, delta)
 
     expect(target.getNode(updated.id)).toMatchObject({ name: 'After', visible: false })
+    expect(target.getNode(updated.id)?.pendingInstanceOverrides).toBeUndefined()
+    expect(Object.hasOwn(target.getNode(updated.id) ?? {}, 'pendingInstanceOverrides')).toBe(false)
     expect(target.getNode(deleted.id)).toBeUndefined()
     expect(target.getNode(created.id)).toMatchObject({ componentId: component.id })
     expect(target.instanceIndex.get(component.id)).toEqual(new Set([created.id]))

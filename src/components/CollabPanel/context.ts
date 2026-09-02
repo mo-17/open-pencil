@@ -3,7 +3,7 @@ import { computed, inject, provide, proxyRefs, ref, watch } from 'vue'
 import type { InjectionKey, ShallowUnwrapRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { useI18n } from '@open-pencil/vue'
+import { useDialogMessages, useI18n } from '@open-pencil/vue'
 
 import { buildCollabNetworkConfig, describeCollabSignaling } from '@/app/collab/network-config'
 import { presenceEditingLabel } from '@/app/collab/presence-label'
@@ -20,7 +20,8 @@ function createCollabPanelContext() {
   const collab = useCollabInjected()
   const editor = useEditorStore()
   const { copy, copied } = useClipboard({ copiedDuring: 2000 })
-  const { dialogs } = useI18n()
+  const { common, collaboration } = useI18n()
+  const dialogs = useDialogMessages()
   const notifications = useNotificationMessages()
 
   const joinInput = ref('')
@@ -144,6 +145,8 @@ function createCollabPanelContext() {
   })
 
   return {
+    common,
+    messages: collaboration,
     dialogs,
     copied,
     joinInput,

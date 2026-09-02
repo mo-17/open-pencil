@@ -1,8 +1,26 @@
 /* eslint-disable max-lines -- SceneGraph exposes a stable facade over domain modules */
+export * from './mutation-impact'
+export * from './instance-overrides'
 export * from './images'
 export * from './image-inspection'
+export * from './components/properties'
 export * from './copy'
-export { copyInstanceComponentProps } from './instances'
+export {
+  copyInstanceComponentProps,
+  hasInstanceOverride,
+  INSTANCE_SYNC_FIELDS,
+  INSTANCE_SYNC_PROPS,
+  INSTANCE_SYNC_TEXT_PROPS,
+  recordInstanceOverride
+} from './instances'
+export {
+  clearInstanceOverrides,
+  cloneInstanceOverrideState,
+  forEachInstanceOverride,
+  getInstanceOverride,
+  setInstanceOverride,
+  type InstanceOverrideState
+} from './instance-overrides'
 export * from './snap'
 export * from './export-scale'
 export * from './coordinate'
@@ -56,6 +74,7 @@ import type { Color, Rect, Vector } from './primitives'
 import type {
   DocumentColorSpace,
   EnabledLibraryBinding,
+  NodeMutationOrigin,
   NodeType,
   SceneGraphEventHandlers,
   SceneGraphEvents,
@@ -153,6 +172,7 @@ export class SceneGraph {
   private previewMutationDepth = 0
   private sourceMetadataPreservationDepth = 0
   private layoutMutationDepth = 0
+  private nodeMutationOrigin: NodeMutationOrigin | undefined
   private readonly maxNodes: number | null
   private readonly maxDepth: number | null
   positionPreviewVersion = 0
@@ -413,7 +433,7 @@ export class SceneGraph {
       }
       set.add(node.id)
     }
-    this.emitter.emit('node:created', node)
+    this.emitNodeEvent((origin) => this.emitter.emit('node:created', node, origin))
     return node
   }
   createNode(type: NodeType, parentId: string, overrides: Partial<SceneNode> = {}): SceneNode {
@@ -496,6 +516,33 @@ export class SceneGraph {
       this.sourceMetadataPreservationDepth--
     }
   }
+  /**
+   * Tags synchronous node mutations that reproduce trusted source or runtime-derived state.
+   * The tag is cleared while listeners run so a listener's authored follow-up mutation cannot
+   * accidentally inherit the trusted origin.
+   */
+  withNodeMutationOrigin<T>(origin: NodeMutationOrigin, fn: () => T): T {
+    const previousOrigin = this.nodeMutationOrigin
+    this.nodeMutationOrigin = origin
+    try {
+      return fn()
+    } finally {
+      this.nodeMutationOrigin = previousOrigin
+    }
+  }
+  private emitNodeEvent(emit: (origin: NodeMutationOrigin | undefined) => void): void {
+    const origin = this.nodeMutationOrigin
+    this.nodeMutationOrigin = undefined
+    try {
+      emit(origin)
+    } finally {
+      this.nodeMutationOrigin = origin
+    }
+  }
+  /** Internal mutation helpers use this so every committed update carries provenance safely. */
+  emitNodeUpdated(id: string, changes: Partial<SceneNode>): void {
+    this.emitNodeEvent((origin) => this.emitter.emit('node:updated', id, changes, origin))
+  }
   withLayoutMutations(fn: () => void): void {
     this.layoutMutationDepth++
     try {
@@ -512,7 +559,11 @@ export class SceneGraph {
   }
   updateNodePreview(id: string, changes: Partial<SceneNode>): void {
     const appliedChanges = updateNodePreview(this, id, changes)
-    if (appliedChanges) this.emitter.emit('node:previewUpdated', id, appliedChanges)
+    if (appliedChanges) {
+      this.emitNodeEvent((origin) =>
+        this.emitter.emit('node:previewUpdated', id, appliedChanges, origin)
+      )
+    }
   }
   updateNode(id: string, changes: Partial<SceneNode>): void {
     if (this.previewMutationDepth > 0) {
@@ -536,17 +587,19 @@ export class SceneGraph {
     // Fills, strokes, effects, plugin data changes do NOT affect absolute position.
     const affectsLayout = Object.keys(changes).some((k) => SceneGraph.LAYOUT_AFFECTING_KEYS.has(k))
     if (affectsLayout) this.absPosCache.clear()
-    if (
-      node.type === 'INSTANCE' &&
-      'componentId' in changes &&
-      changes.componentId !== node.componentId
-    ) {
-      if (node.componentId) this.instanceIndex.get(node.componentId)?.delete(id)
-      if (changes.componentId) {
-        let set = this.instanceIndex.get(changes.componentId)
+    const previousIndexedComponentId = node.type === 'INSTANCE' ? node.componentId : null
+    const nextType = changes.type ?? node.type
+    const nextComponentId = 'componentId' in changes ? changes.componentId : node.componentId
+    const nextIndexedComponentId = nextType === 'INSTANCE' ? nextComponentId : null
+    if (previousIndexedComponentId !== nextIndexedComponentId) {
+      if (previousIndexedComponentId) {
+        this.instanceIndex.get(previousIndexedComponentId)?.delete(id)
+      }
+      if (nextIndexedComponentId) {
+        let set = this.instanceIndex.get(nextIndexedComponentId)
         if (!set) {
           set = new Set()
-          this.instanceIndex.set(changes.componentId, set)
+          this.instanceIndex.set(nextIndexedComponentId, set)
         }
         set.add(id)
       }
@@ -561,7 +614,7 @@ export class SceneGraph {
     Object.assign(node, changes)
     if (changes.fills) removeStaleBindings(node, 'fills', changes)
     if (changes.strokes) removeStaleBindings(node, 'strokes', changes)
-    this.emitter.emit('node:updated', id, changes)
+    this.emitNodeUpdated(id, changes)
   }
 
   /**
@@ -586,7 +639,7 @@ export class SceneGraph {
     if (this.sourceMetadataPreservationDepth === 0) {
       markSourceFieldsEdited(node, Object.keys(changes))
     }
-    this.emitter.emit('node:updated', id, changes as Partial<SceneNode>)
+    this.emitNodeUpdated(id, changes as Partial<SceneNode>)
   }
 
   reparentNode(nodeId: string, newParentId: string): void {
@@ -619,14 +672,17 @@ export class SceneGraph {
     node.x = absPos.x - newParentAbs.x
     node.y = absPos.y - newParentAbs.y
 
-    this.emitter.emit('node:reparented', nodeId, oldParentId, newParentId)
+    this.emitNodeEvent((origin) =>
+      this.emitter.emit('node:reparented', nodeId, oldParentId, newParentId, origin)
+    )
   }
 
   reorderChild(nodeId: string, parentId: string, insertIndex: number): void {
     const node = this.nodes.get(nodeId)
     if (!node) return
 
-    const oldParent = node.parentId ? this.nodes.get(node.parentId) : undefined
+    const previousParentId = node.parentId
+    const oldParent = previousParentId ? this.nodes.get(previousParentId) : undefined
     const newParent = this.nodes.get(parentId)
     if (!newParent || this.isDescendant(parentId, nodeId)) return
 
@@ -649,22 +705,27 @@ export class SceneGraph {
     idx = Math.min(idx, newParent.childIds.length)
     newParent.childIds.splice(idx, 0, nodeId)
 
-    this.emitter.emit('node:reordered', nodeId, parentId, idx)
+    this.emitNodeEvent((origin) =>
+      this.emitter.emit('node:reordered', nodeId, parentId, idx, previousParentId, origin)
+    )
   }
 
   insertChildAt(childId: string, parentId: string, index: number): void {
-    const oldParent = this.getNode(this.getNode(childId)?.parentId ?? '')
+    const node = this.getNode(childId)
+    const newParent = this.getNode(parentId)
+    if (!node || !newParent || childId === parentId || this.isDescendant(parentId, childId)) return
+    const previousParentId = node.parentId
+    const oldParent = previousParentId ? this.getNode(previousParentId) : undefined
     if (oldParent) {
       oldParent.childIds = oldParent.childIds.filter((id) => id !== childId)
     }
-    const newParent = this.getNode(parentId)
-    if (!newParent) return
     newParent.childIds = newParent.childIds.filter((id) => id !== childId)
     newParent.childIds.splice(index, 0, childId)
-    const node = this.getNode(childId)
-    if (node) node.parentId = parentId
+    node.parentId = parentId
     this.clearAbsPosCache()
-    this.emitter.emit('node:reordered', childId, parentId, index)
+    this.emitNodeEvent((origin) =>
+      this.emitter.emit('node:reordered', childId, parentId, index, previousParentId, origin)
+    )
   }
 
   deleteNode(id: string): void {
@@ -686,7 +747,7 @@ export class SceneGraph {
       this.instanceIndex.get(node.componentId)?.delete(id)
     }
     this.nodes.delete(id)
-    this.emitter.emit('node:deleted', id)
+    this.emitNodeEvent((origin) => this.emitter.emit('node:deleted', id, node.parentId, origin))
   }
 
   hitTest(px: number, py: number, scopeId?: string): SceneNode | null {

@@ -7,7 +7,7 @@ import {
   type SceneGraph,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry'
+import { computeDescendantVisualBounds, type VisualBounds } from '@open-pencil/scene-graph/geometry'
 
 import type { SkiaRenderer } from '#core/canvas'
 import type { RenderOverlays } from '#core/canvas/renderer'
@@ -17,12 +17,7 @@ import { extractExportGraph, findPageId } from '#core/io/subgraph'
 export type RasterExportFormat = 'PNG' | 'JPG' | 'WEBP'
 export type ExportFormat = RasterExportFormat | 'SVG'
 
-export interface RasterRenderBounds {
-  minX: number
-  minY: number
-  maxX: number
-  maxY: number
-}
+export type RasterRenderBounds = VisualBounds
 
 export interface RasterRenderOptions {
   scale: number

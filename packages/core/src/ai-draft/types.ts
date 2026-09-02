@@ -200,4 +200,5 @@ export interface AIShadowVisualComparisonResult {
 export type AIShadowCommitEditor = Pick<
   Editor,
   'graph' | 'replaceGraph' | 'pushUndoEntry' | 'state' | 'undo'
->
+> &
+  Partial<Pick<Editor, 'releaseGraphResources'>>

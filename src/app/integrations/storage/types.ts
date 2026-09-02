@@ -133,6 +133,8 @@ export type StorageDocument = StorageDocumentMetadata & {
   remoteRevision?: StorageRemoteRevision | null
   thumbnailURL?: string | null
   metadataAuthoritative?: boolean
+  /** False when the provider cannot prove whether remote content is newer than a synced cache. */
+  contentTimestampAuthoritative?: boolean
 }
 
 export type StorageTransferOptions = {

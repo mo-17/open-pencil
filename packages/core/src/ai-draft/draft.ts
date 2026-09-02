@@ -127,6 +127,21 @@ function failure(
   }
 }
 
+function replaceGraphAndReleasePrevious(
+  editor: AIShadowCommitEditor,
+  nextGraph: SceneGraph,
+  currentPageId: string
+): void {
+  const previousGraph = editor.graph
+  try {
+    editor.replaceGraph(nextGraph, { currentPageId })
+  } finally {
+    if (editor.graph === nextGraph && previousGraph !== nextGraph) {
+      editor.releaseGraphResources?.(previousGraph)
+    }
+  }
+}
+
 export async function commitAIShadowDraft(
   editor: AIShadowCommitEditor,
   draft: AIShadowDraft,
@@ -183,9 +198,9 @@ export async function commitAIShadowDraft(
   const beforePageId = editor.state.currentPageId
   const afterPageId = draft.pageId
   const replaceBefore = () =>
-    editor.replaceGraph(graphFromDetachedSnapshot(before), { currentPageId: beforePageId })
+    replaceGraphAndReleasePrevious(editor, graphFromDetachedSnapshot(before), beforePageId)
   const replaceAfter = () =>
-    editor.replaceGraph(graphFromDetachedSnapshot(after), { currentPageId: afterPageId })
+    replaceGraphAndReleasePrevious(editor, graphFromDetachedSnapshot(after), afterPageId)
 
   try {
     replaceAfter()

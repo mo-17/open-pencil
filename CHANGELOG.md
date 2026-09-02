@@ -12,6 +12,10 @@
 
 ### Added
 
+- Add a searchable command palette for editor and application actions.
+- Render triangle and line arrow stroke caps on lines and open vector paths, and choose them from the stroke cap picker.
+- Expose component properties and instance-swap targets through the Figma API and automation.
+- Normalize imported stroke dash patterns for more reliable `.fig` compatibility.
 - Add provider-neutral Backend/DataModel/Auth/Workflow/Migration contracts, data-only Backend
   Provider plugin declarations, a trusted deterministic Compiler Registry and artifact manifest,
   the first bundled Supabase provider, and a host-owned fail-closed release state machine with
@@ -79,25 +83,27 @@
 
 ### Changed
 
+- Vertically center shaped section titles and allow renaming a section by double-clicking its canvas label.
+- Load supported online fonts before revealing imported pages, preserve substituted text during editing, and shape canvas labels with bundled Inter typography.
 - Upgrade CanvasKit to 0.41 and migrate renderer geometry to immutable paths built through `PathBuilder`.
 - Upgrade direct model chat providers and transports to AI SDK 7 while retaining the local ACP execution path.
 - Localize file, clipboard, collaboration, chat, vectorization, storage, recovery, and component-library notifications in every supported language.
 - Move MCP connections into their own Settings destination instead of presenting them as part of model configuration.
 - Pan horizontally with Shift+wheel while preserving native horizontal trackpad movement.
 
-### Performance
-
-- Show the FIG page list from a lightweight Kiwi scan before materializing the full document, making large files feel responsive sooner.
-- Avoid redundant collaboration writes when synchronized node fields have not changed.
-- Release obsolete streamed Markdown parser history after each AI response completes, preventing chat memory from multiplying with every streamed chunk. (#544)
-- Open large documents faster by using cached world positions while finding layers under the pointer. (#527)
-- Coalesce writable-document autosaves that overlap an active `.fig` export while preserving a trailing save for newer edits. (#528)
-- Defer JSX generation and syntax highlighting until the Code panel is active, keeping large canvas selections responsive. (#500)
-- Index Figma clipboard children once during import instead of rescanning every pasted node, keeping large flat pastes linear. (#500)
-- Reduce peak memory during `.fig` export by sharing immutable binary resources with the isolated export graph.
-
 ### Fixed
 
+- Preserve source text offsets when resolving fallback languages after text-case transformations.
+- Track character coverage restored from downloaded font cache entries.
+- Preserve imported Figma divider-line geometry during auto-layout recomputation, preventing half-pixel shifts on save and reload.
+- Make published package export conditions resolve to files included in npm tarballs.
+- Use the user's home directory as the default MCP file root on Windows, avoiding the caller's unreliable working directory.
+- Open legacy raw `.fig` files that store the Kiwi document and thumbnail without a ZIP wrapper. (#582)
+- Preserve a frame's auto-layout HUG sizing mode when converting it into a component with `create_component`.
+- Run `openpencil import` on Node so npm-installed CLI users no longer encounter `Bun is not defined`. (#575)
+- Commit vector vertex and Bézier-handle edits when the pointer is released and keep transformed vector-edit overlays aligned. (#586)
+- Preserve selected layers when browser clipboard serialization fails during cut operations, and fall back to the session clipboard when system clipboard access is unavailable. (#568)
+- Treat MCP tool results with an omitted `isError` field as successful while preserving explicit MCP errors. (#583)
 - Isolate browser-development MCP servers behind worktree-aware Portless WebSocket routes and per-runtime socket/discovery paths, preventing concurrent worktrees from competing for port 7600 or the global MCP socket.
 
 - Generate and cache recent-file previews from the conventional `Cover` page after opening a `.fig`, without modifying the source file.
@@ -133,6 +139,19 @@
 - Preserve circles, ellipses, rectangles, lines, polylines, and polygons supplied as JSX children of inline SVG elements. (#452)
 - Preserve component links when pasting Figma instances so later component edits continue to update them.
 - Stop local MCP servers after the app disconnects instead of leaving orphaned background processes. (#494)
+
+### Performance
+
+- Scope automation and Figma API layout reconciliation to graph nodes and parent containers actually changed by each mutation.
+- Keep rapid trackpad zoom reversals and effect-heavy document navigation responsive by cancelling obsolete reconstruction and reusing safe raster snapshots.
+- Show the FIG page list from a lightweight Kiwi scan before materializing the full document, making large files feel responsive sooner.
+- Avoid redundant collaboration writes when synchronized node fields have not changed.
+- Release obsolete streamed Markdown parser history after each AI response completes, preventing chat memory from multiplying with every streamed chunk. (#544)
+- Open large documents faster by using cached world positions while finding layers under the pointer. (#527)
+- Coalesce writable-document autosaves that overlap an active `.fig` export while preserving a trailing save for newer edits. (#528)
+- Defer JSX generation and syntax highlighting until the Code panel is active, keeping large canvas selections responsive. (#500)
+- Index Figma clipboard children once during import instead of rescanning every pasted node, keeping large flat pastes linear. (#500)
+- Reduce peak memory during `.fig` export by sharing immutable binary resources with the isolated export graph.
 
 ## 0.14.0 — 2026-08-10
 

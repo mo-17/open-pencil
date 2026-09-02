@@ -16,6 +16,7 @@ import type { PreparedPublishPlan } from '../src/publish-dirs'
 
 const VERSION = '0.13.2'
 const LICENSE_BYTES = Buffer.from('OpenPencil fixture license\n\0binary-safe\n')
+const KIWI_NOTICE = 'Kiwi fixture attribution\nPermission notice must ship.\n'
 const fixtureRoots: string[] = []
 
 async function writeJSON(path: string, value: unknown): Promise<void> {
@@ -92,6 +93,7 @@ async function fixtureRoot(): Promise<string> {
     join(root, 'packages/scene-graph/README.md'),
     '# @open-pencil/scene-graph\n\nWorks with @open-pencil/yoga-layout.\n'
   )
+  await writeFile(join(root, 'packages/kiwi/NOTICE'), KIWI_NOTICE)
 
   const coreRuntimeFiles = {
     'dist/io/formats/fig/export-worker.js': 'export {}\n',
@@ -267,6 +269,7 @@ describe('preparePublishDirectories', () => {
     expect(await readFile(join(outRoot, 'scene-graph/README.md'), 'utf8')).toBe(
       '# @open-pencil-lowcode/scene-graph\n\nWorks with @open-pencil/yoga-layout.\n'
     )
+    expect(await readFile(join(outRoot, 'kiwi/NOTICE'), 'utf8')).toBe(KIWI_NOTICE)
     const coreManifest = await readJSON<Record<string, unknown>>(join(outRoot, 'core/package.json'))
     expect(coreManifest.name).toBe('@open-pencil-lowcode/core')
     expect(coreManifest.imports).toBeUndefined()
@@ -280,6 +283,7 @@ describe('preparePublishDirectories', () => {
       packages: DEFAULT_PACKAGES.map((pkg) => ({
         dir: basename(pkg.dir),
         name: `@open-pencil-lowcode/${basename(pkg.dir)}`,
+        requiredFiles: pkg.extraFiles,
         version: VERSION
       })),
       repository: PUBLISH_REPOSITORY_URL,

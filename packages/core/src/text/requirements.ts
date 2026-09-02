@@ -85,6 +85,19 @@ function textLanguageAt(node: SceneNode, index: number): string | null {
   return run?.style.textLanguage ?? node.textLanguage
 }
 
+function transformedCharactersWithSourceOffsets(
+  node: SceneNode
+): Array<{ character: string; sourceIndex: number }> {
+  const result: Array<{ character: string; sourceIndex: number }> = []
+  let sourceIndex = 0
+  for (const sourceCharacter of node.text) {
+    for (const character of transformTextCase(sourceCharacter, node.textCase)) {
+      result.push({ character, sourceIndex })
+    }
+    sourceIndex += sourceCharacter.length
+  }
+  return result
+}
 export interface GraphFontRequirements {
   characters: string
   nodes: SceneNode[]
@@ -104,12 +117,10 @@ export function collectGraphFontRequirements(
     const textNode = lowcodeTextNode(node) ?? node
     nodes.push(textNode)
     if (textNode.type === 'TEXT') {
-      let index = 0
-      for (const character of transformTextCase(textNode.text, textNode.textCase)) {
+      for (const { character, sourceIndex } of transformedCharactersWithSourceOffsets(textNode)) {
         characters.add(character)
-        const script = fallbackScriptForCharacter(character, textLanguageAt(textNode, index))
+        const script = fallbackScriptForCharacter(character, textLanguageAt(textNode, sourceIndex))
         if (script) scripts.add(script)
-        index += character.length
       }
     }
     for (const childId of node.childIds) collect(childId)

@@ -1,7 +1,7 @@
 export type { Schema, Definition, Field } from './schema'
 export { ByteBuffer } from './bb'
 export { KIWI_RUNTIME_LIMITS, type KiwiRuntimeLimits } from './limits'
-export { compileSchema, type CompileSchemaOptions } from './js'
+export { compileSchemaRuntime as compileSchema, type CompileSchemaOptions } from './interpreter'
 export { decodeBinarySchema, encodeBinarySchema } from './binary'
 export { parseSchema } from './parser'
 export {

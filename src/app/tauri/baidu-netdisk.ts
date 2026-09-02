@@ -17,6 +17,7 @@ import type {
 } from '@/app/integrations/storage/baidu-netdisk/types'
 
 import { BaiduNetdiskNativeError, nativeBaiduNetdiskError } from './baidu-netdisk-oauth-error'
+import type { ParsedContentRange } from './content-range'
 import { withAbortSignal, type TauriHttpHeader } from './http'
 
 export {
@@ -391,8 +392,6 @@ function linkedAbortController(signal: AbortSignal): {
   else signal.addEventListener('abort', abort, { once: true })
   return { controller, cleanup: () => signal.removeEventListener('abort', abort) }
 }
-
-type ParsedContentRange = { start: number; end: number; total: number }
 
 function parseContentRange(
   value: string | null,

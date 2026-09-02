@@ -33,7 +33,7 @@ const {
 const emit = defineEmits<{
   toolApproval: [messageId: string, id: string, approved: boolean]
 }>()
-const { dialogs } = useI18n()
+const { ai, dialogs } = useI18n()
 const isDark = computed(() => resolvedAppTheme.value === 'dark')
 const markdownMode = computed(() => (streaming ? 'streaming' : 'static'))
 
@@ -178,16 +178,16 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
                 <span class="text-[10px] text-muted">
                   {{
                     toolState(part) === 'pending'
-                      ? dialogs.toolRunning
+                      ? ai.toolRunning
                       : toolState(part) === 'approval'
                         ? dialogs.toolApprovalRequired
                         : toolState(part) === 'done'
-                          ? dialogs.toolFinished
+                          ? ai.toolFinished
                           : toolState(part) === 'cancelled'
                             ? dialogs.toolCancelled
                             : toolState(part) === 'denied'
                               ? dialogs.denied
-                              : dialogs.toolError
+                              : ai.toolError
                   }}
                 </span>
                 <icon-lucide-chevron-down

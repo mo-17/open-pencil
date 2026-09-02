@@ -647,7 +647,7 @@ export function importNodeChanges(
     })
     applyVariantPropSpecs(graph)
 
-    const firstPageId = graph.getPages()[0]?.id
+    const firstPageId = graph.getPages().find((page) => !page.internalOnly)?.id
     const componentPageIds =
       options.populate === 'first-page'
         ? componentPageIdsForLazyPopulation(graph)

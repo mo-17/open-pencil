@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 
 import { randomHex } from '@open-pencil/core/random'
 
+import type { ParsedContentRange } from './content-range'
 import { GoogleDriveNativeError, nativeGoogleDriveError } from './drive-oauth-error'
 import {
   defaultGoogleDriveTransferSleep,
@@ -307,12 +308,6 @@ function responseFromNative(response: GoogleDriveNativeTransferResponse): Respon
     status: response.status,
     headers: response.headers.map(({ name, value }): [string, string] => [name, value])
   })
-}
-
-type ParsedContentRange = {
-  start: number
-  end: number
-  total: number
 }
 
 function parseDownloadContentRange(
