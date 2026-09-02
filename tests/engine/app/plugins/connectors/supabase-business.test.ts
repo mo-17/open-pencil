@@ -111,9 +111,9 @@ describe('Supabase Tables business connector', () => {
       },
       {
         slotId: SUPABASE_ACCESS_TOKEN_SLOT_ID,
-        label: 'Supabase user access token or legacy anon key',
+        label: 'Supabase user access token (optional; legacy anon JWT supported)',
         kind: 'bearer-token',
-        required: true
+        required: false
       }
     ])
     expect(SUPABASE_BUSINESS_CREDENTIAL_REFS).toEqual({
@@ -267,40 +267,83 @@ describe('Supabase Tables business connector', () => {
     )
   })
 
-  test('rejects server-side Supabase keys in either runtime credential slot', async () => {
+  test('routes publishable keys only to apikey and rejects elevated keys in both slots', async () => {
     const signal = new AbortController().signal
+    const slots = new Map(
+      SUPABASE_BUSINESS_CONNECTOR_CONTRACT.credentialSlots.map((slot) => [slot.slotId, slot])
+    )
+    const validate = (slotId: string, value: string) => {
+      const slot = slots.get(slotId)
+      if (!slot) throw new Error(`Missing credential slot: ${slotId}`)
+      return Promise.resolve(
+        SUPABASE_BUSINESS_CONNECTOR_ADAPTER.validateCredential?.({
+          contract: SUPABASE_BUSINESS_CONNECTOR_CONTRACT,
+          operation: operation(SUPABASE_TABLE_OPERATION_IDS.query),
+          slot,
+          signal,
+          value
+        })
+      )
+    }
+
+    await expect(
+      validate(SUPABASE_PUBLISHABLE_KEY_SLOT_ID, 'sb_publishable_example')
+    ).resolves.toBe(true)
+    await expect(validate(SUPABASE_ACCESS_TOKEN_SLOT_ID, 'sb_publishable_example')).resolves.toBe(
+      false
+    )
+    await expect(validate(SUPABASE_ACCESS_TOKEN_SLOT_ID, 'user-access-token')).resolves.toBe(true)
+    const legacyAnonJWT = 'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.signature'
+    await expect(validate(SUPABASE_PUBLISHABLE_KEY_SLOT_ID, legacyAnonJWT)).resolves.toBe(true)
+    await expect(validate(SUPABASE_ACCESS_TOKEN_SLOT_ID, legacyAnonJWT)).resolves.toBe(true)
+
     for (const slot of SUPABASE_BUSINESS_CONNECTOR_CONTRACT.credentialSlots) {
-      const base = {
-        contract: SUPABASE_BUSINESS_CONNECTOR_CONTRACT,
-        operation: operation(SUPABASE_TABLE_OPERATION_IDS.query),
-        slot,
-        signal
-      }
+      await expect(validate(slot.slotId, 'sb_secret_server_only')).resolves.toBe(false)
+      await expect(validate(slot.slotId, 'sbp_management_token')).resolves.toBe(false)
       await expect(
-        Promise.resolve(
-          SUPABASE_BUSINESS_CONNECTOR_ADAPTER.validateCredential?.({
-            ...base,
-            value: 'sb_publishable_example'
-          })
-        )
-      ).resolves.toBe(true)
-      await expect(
-        Promise.resolve(
-          SUPABASE_BUSINESS_CONNECTOR_ADAPTER.validateCredential?.({
-            ...base,
-            value: 'sb_secret_server_only'
-          })
-        )
-      ).resolves.toBe(false)
-      await expect(
-        Promise.resolve(
-          SUPABASE_BUSINESS_CONNECTOR_ADAPTER.validateCredential?.({
-            ...base,
-            value: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.fake'
-          })
+        validate(
+          slot.slotId,
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.fake'
         )
       ).resolves.toBe(false)
     }
+  })
+
+  test('executes anonymous RLS requests with apikey only when the user token is absent', async () => {
+    const contracts = new PluginConnectorContractRegistry()
+    contracts.register(SUPABASE_BUSINESS_CONNECTOR_CONTRACT)
+    const adapters = new ConnectorHostAdapterRegistry(contracts)
+    adapters.register(SUPABASE_BUSINESS_CONNECTOR_ADAPTER)
+    const authorization = new ConnectorAuthorizationRegistry()
+    const plugin = installedPlugin()
+    authorization.authorize(SUPABASE_BUSINESS_CONNECTOR_CONTRACT, plugin.package.digest, 1)
+    let capturedInit: RequestInit | undefined
+    const broker = createConnectorExecutionBroker({
+      adapters,
+      authorization,
+      credentialResolver: {
+        resolve: async (reference) =>
+          reference.field === SUPABASE_PUBLISHABLE_KEY_SLOT_ID
+            ? 'sb_publishable_runtime_only'
+            : null
+      },
+      audit: new RedactedConnectorAuditLog(),
+      fetch: async (_input, init) => {
+        capturedInit = init
+        return new Response('[]')
+      }
+    })
+
+    await broker.execute({
+      plugin,
+      contract: SUPABASE_BUSINESS_CONNECTOR_CONTRACT,
+      operationId: SUPABASE_TABLE_OPERATION_IDS.query,
+      parameters: { projectRef: 'project-ref', table: 'tasks', limit: 1 },
+      credentialRefs: SUPABASE_BUSINESS_CREDENTIAL_REFS
+    })
+    const headers = new Headers(capturedInit?.headers)
+    expect(headers.get('apikey')).toBe('sb_publishable_runtime_only')
+    expect(headers.has('authorization')).toBe(false)
   })
 
   test('executes through the Broker with dynamic origin, runtime-only secrets, and transport caps', async () => {

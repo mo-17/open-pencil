@@ -314,9 +314,9 @@ export const SUPABASE_BUSINESS_CONNECTOR_CONTRACT: PluginConnectorContractV1 =
       },
       {
         slotId: SUPABASE_ACCESS_TOKEN_SLOT_ID,
-        label: 'Supabase user access token or legacy anon key',
+        label: 'Supabase user access token (optional; legacy anon JWT supported)',
         kind: 'bearer-token',
-        required: true
+        required: false
       }
     ],
     operations: [
@@ -822,12 +822,13 @@ function normalizeMutationResponse(value: unknown): Readonly<{ ok: true }> {
 function validateSupabaseCredential(context: ValidateConnectorCredentialContext): boolean {
   context.signal.throwIfAborted()
   const value = context.value
-  return (
+  const safe =
     value.length > 0 &&
     value === value.trim() &&
     !/\p{Cc}/u.test(value) &&
     !detectSupabaseSecretKey(value)
-  )
+  if (!safe) return false
+  return !(context.slot.slotId === SUPABASE_ACCESS_TOKEN_SLOT_ID && /^sb_publishable_/i.test(value))
 }
 
 export const SUPABASE_BUSINESS_CONNECTOR_ADAPTER: ConnectorHostAdapter = Object.freeze({
