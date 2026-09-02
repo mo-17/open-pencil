@@ -5,7 +5,10 @@ import { aiModelSettings, modelConnectionCredentialRef } from '@/app/ai/models'
 import { VECTORIZE_CREDENTIAL_REFS } from '@/app/editor/vectorize/credentials'
 import { mcpConnectionSettings, mcpConnectionCredentialRef } from '@/app/integrations/mcp'
 import { storageCredentialRefs, storageProviderRegistry } from '@/app/integrations/storage'
-import { SUPABASE_MANAGEMENT_PAT_CREDENTIAL } from '@/app/lowcode/supabase/credentials'
+import {
+  SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL,
+  SUPABASE_MANAGEMENT_PAT_CREDENTIAL
+} from '@/app/lowcode/supabase/credentials'
 import { REVIEWED_EXTERNAL_SERVICE_CONNECTORS } from '@/app/plugins/connectors/services'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import {
@@ -44,6 +47,7 @@ export function appCredentialRefs(): CredentialRef[] {
     PEXELS_CREDENTIAL,
     UNSPLASH_CREDENTIAL,
     SUPABASE_MANAGEMENT_PAT_CREDENTIAL,
+    SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL,
     ...VECTORIZE_CREDENTIAL_REFS,
     ...remoteMCPCredentialRefs(),
     ...mcpConnectionSettings.value.connections.map((connection) =>

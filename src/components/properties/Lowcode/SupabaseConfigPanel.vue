@@ -35,15 +35,17 @@ const urlInput = computed(() => config.value?.url ?? '')
 const anonKeyInput = computed(() => config.value?.anonKey ?? '')
 const schemaInput = computed(() => config.value?.schema ?? '')
 
-// Local mirror of the anon key DOM input. `buildPatch` refuses to persist
+// Local mirror of the public-key DOM input. `anonKey` remains the serialized
+// compatibility field while the UI prefers current publishable keys.
+// `buildPatch` refuses to persist
 // an elevated Supabase key, so deriving `secretKeyDetected` from the committed
 // config (`anonKeyInput`) would mean the bad value never reaches reactivity
 // — banner, red border, and disabled Test button would all stay silent
 // even though §2.7 risk row 1 demands all four indicators. Tracking what
 // the user has typed locally lets the banner fire live on @input while
 // the committed config stays clean. The watch resyncs only when the
-// committed anon key actually changes (undo/redo, external load), so a
-// rejected secret/service_role attempt stays visible until the user clears it.
+// committed public key actually changes (undo/redo, external load), so a
+// rejected secret/service_role/management attempt stays visible until cleared.
 const anonKeyTyped = ref<string>(config.value?.anonKey ?? '')
 watch(
   () => config.value?.anonKey,
@@ -91,7 +93,7 @@ async function copyRlsSql(req: RlsTableRequirement): Promise<void> {
 }
 
 // Toast guard: §2.2 #j — the RLS reminder fires once per editor session the
-// first time the user opens this panel with both url + anonKey filled in.
+// first time the user opens this panel with both URL + public key filled in.
 // Module-scoped so navigating between root and other selections doesn't
 // re-fire it; survives panel remounts within the same browser tab.
 let rlsToastShown = false
@@ -102,8 +104,8 @@ function maybeFireRlsToast(): void {
   toast.info(panels.value.lowcodeSupabaseRlsToast)
 }
 
-// Phase 3 §2.7 risk row 1 — secret/service_role keys carry full DB privileges and
-// MUST never land in .fig / pluginData / git. The detector lives in
+// Phase 3 §2.7 risk row 1 — secret/service_role keys and Management PATs are
+// elevated credentials and MUST never land in .fig / pluginData / git. The detector lives in
 // `@open-pencil/lowcode` so the editor UI here and the
 // lowcode AI tool (Phase 3 §3) share one source — a divergence between
 // the two would be silent on this side (banner still shows) and dangerous
@@ -161,10 +163,10 @@ async function testConnection(): Promise<void> {
     // current Supabase versions `/rest/v1/` requires the service_role key
     // (returns 401 with hint "Only the 'service_role' API key can be used
     // for this endpoint"). `/auth/v1/settings` is the only public endpoint
-    // that takes the anon `apikey` header AND returns 200, so it validates
+    // that takes a public `apikey` header AND returns 200, so it validates
     // URL + key in a single round-trip without ever asking for elevated
     // credentials. A successful settings fetch implies the project is
-    // reachable and the anon key is accepted by the same gateway PostgREST
+    // reachable and the publishable/legacy anon key is accepted by the gateway PostgREST
     // sits behind, so subsequent table queries will authenticate.
     const url = urlInput.value.replace(/\/$/, '') + '/auth/v1/settings'
     const res = await fetch(url, {

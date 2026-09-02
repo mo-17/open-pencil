@@ -269,12 +269,51 @@ function uniqueRelations(relations: readonly SupabaseSchemaRelation[]): Supabase
   return result
 }
 
+function hasOnlyNonTablePaths(value: unknown): boolean {
+  const paths = asRecord(value)
+  if (!paths) return false
+  return Object.entries(paths).every(
+    ([path, pathItem]) => (path === '/' || path.startsWith('/rpc/')) && asRecord(pathItem) !== null
+  )
+}
+
+function hasTablePaths(value: unknown): boolean {
+  const paths = asRecord(value)
+  return paths
+    ? Object.keys(paths).some((path) => path !== '/' && !path.startsWith('/rpc/'))
+    : false
+}
+
+function checkedSchemaMap(value: unknown, label: string, openAPI: UnknownRecord): UnknownRecord {
+  const schemas = asRecord(value)
+  if (!schemas) throw new Error(`Supabase OpenAPI response contains invalid ${label}.`)
+  if (Object.keys(schemas).length === 0 && hasTablePaths(openAPI.paths)) {
+    throw new Error(`Supabase OpenAPI response has table paths without ${label}.`)
+  }
+  return schemas
+}
+
+function isSchemaFreeOpenAPIDocument(openAPI: UnknownRecord): boolean {
+  const isSwagger2 = openAPI.swagger === '2.0'
+  const isOpenAPI3 =
+    typeof openAPI.openapi === 'string' && /^3\.\d+\.\d+(?:[-+].*)?$/.test(openAPI.openapi)
+  return (isSwagger2 || isOpenAPI3) && hasOnlyNonTablePaths(openAPI.paths)
+}
+
 function definitionMap(openAPI: UnknownRecord): UnknownRecord {
-  const definitions = asRecord(openAPI.definitions)
-  if (definitions) return definitions
-  const components = asRecord(openAPI.components)
-  const schemas = asRecord(components?.schemas)
-  if (schemas) return schemas
+  if (Object.hasOwn(openAPI, 'definitions')) {
+    return checkedSchemaMap(openAPI.definitions, 'definitions', openAPI)
+  }
+
+  if (Object.hasOwn(openAPI, 'components')) {
+    const components = asRecord(openAPI.components)
+    if (!components) throw new Error('Supabase OpenAPI response contains invalid components.')
+    if (Object.hasOwn(components, 'schemas')) {
+      return checkedSchemaMap(components.schemas, 'components.schemas', openAPI)
+    }
+  }
+
+  if (isSchemaFreeOpenAPIDocument(openAPI)) return {}
   throw new Error('Supabase OpenAPI response does not contain definitions or components.schemas.')
 }
 

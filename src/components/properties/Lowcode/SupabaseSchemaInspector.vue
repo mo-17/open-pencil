@@ -1,23 +1,32 @@
 <script setup lang="ts">
-import { computed, onScopeDispose, ref, toRef } from 'vue'
+import { computed, onScopeDispose, ref, toRef, watch } from 'vue'
 
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
 import { useSupabaseSchemaInspector } from '@/app/lowcode/supabase/schema-inspector'
+import { useSupabaseBackendProviderReview } from '@/app/lowcode/supabase/backend-provider-review'
 import type {
   SupabaseSchemaRelation,
   SupabaseSchemaTable
 } from '@/app/lowcode/supabase/schema-catalog'
+import { useEditorStore } from '@/app/editor/active-store'
+import { isTauri } from '@/app/tauri/env'
 
 const { config } = defineProps<{ config?: SupabaseConfig }>()
 const { panels } = useI18n()
-const inspector = useSupabaseSchemaInspector(toRef(() => config))
+const configRef = toRef(() => config)
+const inspector = useSupabaseSchemaInspector(configRef)
+const editor = useEditorStore()
+const backendReview = useSupabaseBackendProviderReview(configRef, () => editor.graph)
+const backendReviewAvailable = isTauri()
 const patInput = ref<HTMLInputElement>()
 const expandedTables = ref<ReadonlySet<string>>(new Set())
 const copiedIdentifier = ref('')
 const copyFailed = ref(false)
+const reviewSqlCopyState = ref<'idle' | 'copied' | 'error'>('idle')
 let copiedTimer: ReturnType<typeof setTimeout> | undefined
+let reviewSqlCopiedTimer: ReturnType<typeof setTimeout> | undefined
 
 const credentialStatusLabel = computed(() => {
   if (inspector.credentialStatus.value === 'loading') {
@@ -81,6 +90,23 @@ const messageTone = computed(() => {
   return 'muted'
 })
 
+const backendReviewErrorMessage = computed(() => {
+  const code = backendReview.error.value
+  if (code === 'desktop-required') return panels.value.lowcodeSupabaseBackendReviewDesktopOnly
+  if (code === 'invalid-config') return panels.value.lowcodeSupabaseBackendReviewInvalidConfig
+  if (code === 'credential-missing' || code === 'grant-unavailable' || code === 'grant-changed') {
+    return panels.value.lowcodeSupabaseBackendReviewCredentialError
+  }
+  if (code === 'backend-provider-missing') {
+    return panels.value.lowcodeSupabaseBackendReviewProviderMissing
+  }
+  if (code === 'backend-provider-unavailable') {
+    return panels.value.lowcodeSupabaseBackendReviewProviderUnavailable
+  }
+  if (code === 'review-stale') return panels.value.lowcodeSupabaseBackendReviewStale
+  return code ? panels.value.lowcodeSupabaseBackendReviewFailed : ''
+})
+
 function toggleTable(tableName: string): void {
   const next = new Set(expandedTables.value)
   if (next.has(tableName)) next.delete(tableName)
@@ -131,8 +157,40 @@ async function copyName(key: string, value: string): Promise<void> {
   }
 }
 
+function resetReviewSqlCopyState(): void {
+  if (reviewSqlCopiedTimer) {
+    clearTimeout(reviewSqlCopiedTimer)
+    reviewSqlCopiedTimer = undefined
+  }
+  reviewSqlCopyState.value = 'idle'
+}
+
+async function copyReviewSql(): Promise<void> {
+  const sql = backendReview.result.value?.artifact.inspectedReview.sql
+  if (!sql) return
+  resetReviewSqlCopyState()
+  try {
+    await navigator.clipboard.writeText(sql)
+    reviewSqlCopyState.value = 'copied'
+    reviewSqlCopiedTimer = setTimeout(() => {
+      reviewSqlCopyState.value = 'idle'
+      reviewSqlCopiedTimer = undefined
+    }, 1500)
+  } catch {
+    reviewSqlCopyState.value = 'error'
+  }
+}
+
+watch(
+  () => backendReview.state.value,
+  (state) => {
+    if (state === 'idle' || state === 'loading') resetReviewSqlCopyState()
+  }
+)
+
 onScopeDispose(() => {
   if (copiedTimer) clearTimeout(copiedTimer)
+  resetReviewSqlCopyState()
   if (patInput.value) patInput.value.value = ''
 })
 </script>
@@ -347,6 +405,135 @@ onScopeDispose(() => {
           </div>
         </div>
       </article>
+    </div>
+
+    <div
+      data-test-id="lowcode-supabase-backend-review"
+      class="mt-1 flex flex-col gap-1.5 border-t border-border pt-2"
+    >
+      <div>
+        <label class="text-[11px] text-muted">{{ panels.lowcodeSupabaseBackendReview }}</label>
+        <p class="mt-0.5 text-[10px] text-muted">
+          {{ panels.lowcodeSupabaseBackendReviewDescription }}
+        </p>
+        <p class="mt-0.5 text-[10px] text-amber-500">
+          {{ panels.lowcodeSupabaseBackendReviewOnly }}
+        </p>
+      </div>
+
+      <p
+        v-if="!backendReviewAvailable"
+        data-test-id="lowcode-supabase-backend-review-desktop-only"
+        class="rounded border border-border bg-input px-2 py-1 text-[10px] text-muted"
+      >
+        {{ panels.lowcodeSupabaseBackendReviewDesktopOnly }}
+      </p>
+      <button
+        type="button"
+        data-test-id="lowcode-supabase-backend-review-action"
+        :disabled="!backendReviewAvailable || backendReview.state.value === 'loading'"
+        class="rounded border border-border px-2 py-1 text-[11px] text-muted hover:bg-hover hover:text-surface disabled:cursor-not-allowed disabled:opacity-50"
+        @click="backendReview.review"
+      >
+        {{
+          backendReview.state.value === 'loading'
+            ? panels.lowcodeSupabaseBackendReviewing
+            : panels.lowcodeSupabaseBackendReviewAction
+        }}
+      </button>
+
+      <p
+        v-if="backendReviewErrorMessage"
+        data-test-id="lowcode-supabase-backend-review-error"
+        class="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+      >
+        {{ backendReviewErrorMessage }}
+      </p>
+
+      <div
+        v-if="backendReview.result.value"
+        data-test-id="lowcode-supabase-backend-review-artifact"
+        class="flex flex-col gap-1.5 rounded border border-border bg-input p-2"
+      >
+        <div class="flex items-center justify-between gap-2">
+          <span
+            :class="[
+              'text-[10px]',
+              backendReview.result.value.reviewReady ? 'text-green-500' : 'text-amber-500'
+            ]"
+          >
+            {{
+              backendReview.result.value.reviewReady
+                ? panels.lowcodeSupabaseBackendReviewReady
+                : panels.lowcodeSupabaseBackendReviewBlocked
+            }}
+          </span>
+          <span class="text-[9px] uppercase text-muted">staging</span>
+        </div>
+        <p class="text-[10px] text-amber-500">
+          {{ panels.lowcodeSupabaseBackendReviewApplyUnavailable }}
+        </p>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[9px] text-muted">
+          <dt>{{ panels.lowcodeSupabaseBackendReviewProject }}</dt>
+          <dd class="min-w-0 break-all font-mono text-surface">
+            {{ backendReview.result.value.projectRef }} /
+            {{ backendReview.result.value.accountId }}
+          </dd>
+          <dt>{{ panels.lowcodeSupabaseBackendReviewPlanDigest }}</dt>
+          <dd class="min-w-0 break-all font-mono text-surface">
+            {{ backendReview.result.value.artifact.manifest.compiler.planDigest }}
+          </dd>
+          <dt>{{ panels.lowcodeSupabaseBackendReviewSchemaDigest }}</dt>
+          <dd class="min-w-0 break-all font-mono text-surface">
+            {{ backendReview.result.value.artifact.manifest.remoteAuthority.inspectedSchemaDigest }}
+          </dd>
+        </dl>
+        <div v-if="backendReview.result.value.blockerCount > 0">
+          <p class="text-[10px] text-amber-500">
+            {{ panels.lowcodeSupabaseBackendReviewBlockers }}
+          </p>
+          <ul class="mt-0.5 flex list-disc flex-col gap-0.5 pl-4 text-[9px] text-muted">
+            <li
+              v-for="blocker in backendReview.result.value.artifact.inspectedReview.manifest
+                .blockers"
+              :key="`${blocker.code}:${blocker.path}`"
+            >
+              <code>{{ blocker.code }}</code> — {{ blocker.path }}
+            </li>
+          </ul>
+        </div>
+        <details>
+          <summary class="cursor-pointer text-[10px] text-muted">
+            {{ panels.lowcodeSupabaseBackendReviewSql }}
+          </summary>
+          <div class="mt-1 flex justify-end">
+            <button
+              type="button"
+              data-test-id="lowcode-supabase-backend-review-copy-sql"
+              class="rounded border border-border px-2 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+              @click="copyReviewSql"
+            >
+              {{
+                reviewSqlCopyState === 'copied'
+                  ? panels.lowcodeSupabaseBackendReviewCopied
+                  : panels.lowcodeSupabaseBackendReviewCopySql
+              }}
+            </button>
+          </div>
+          <p
+            v-if="reviewSqlCopyState === 'error'"
+            data-test-id="lowcode-supabase-backend-review-copy-error"
+            class="mt-1 text-[10px] text-red-500"
+          >
+            {{ panels.lowcodeSupabaseBackendReviewCopyFailed }}
+          </p>
+          <pre
+            data-test-id="lowcode-supabase-backend-review-sql"
+            class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-panel p-1.5 font-mono text-[9px] text-surface"
+            >{{ backendReview.result.value.artifact.inspectedReview.sql }}</pre
+          >
+        </details>
+      </div>
     </div>
   </section>
 </template>

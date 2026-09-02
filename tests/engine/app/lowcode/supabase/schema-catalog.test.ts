@@ -9,6 +9,32 @@ import {
 const identity = { projectRef: 'project-ref', schema: 'public' }
 
 describe('Supabase schema catalog parser', () => {
+  test('normalizes empty schema maps and schema-free OpenAPI documents', () => {
+    const emptyDocuments = [
+      { swagger: '2.0', definitions: {} },
+      { openapi: '3.0.0', components: { schemas: {} } },
+      { swagger: '2.0', paths: {} },
+      {
+        swagger: '2.0',
+        info: { title: 'PostgREST API', version: '14.12' },
+        paths: { '/': { get: { produces: ['application/openapi+json'] } } }
+      },
+      {
+        openapi: '3.1.0',
+        info: { title: 'PostgREST API', version: '14.12' },
+        paths: { '/': {}, '/rpc/search': { post: {} } }
+      }
+    ]
+
+    for (const document of emptyDocuments) {
+      expect(parseSupabaseSchemaCatalog(document, identity)).toEqual({
+        version: 1,
+        ...identity,
+        tables: []
+      })
+    }
+  })
+
   test('normalizes PostgREST definitions, required columns, and FK markup', () => {
     const catalog = parseSupabaseSchemaCatalog(
       {
@@ -108,5 +134,59 @@ describe('Supabase schema catalog parser', () => {
     expect(
       validateSupabaseSchemaCatalog(catalog, { projectRef: 'another-project', schema: 'public' })
     ).toBeNull()
+  })
+
+  test('rejects malformed documents instead of treating them as an empty schema', () => {
+    expect(() => parseSupabaseSchemaCatalog({}, identity)).toThrow('does not contain definitions')
+    expect(() => parseSupabaseSchemaCatalog({ message: 'ok' }, identity)).toThrow(
+      'does not contain definitions'
+    )
+    expect(() =>
+      parseSupabaseSchemaCatalog(
+        {
+          swagger: '2.0',
+          info: { title: 'PostgREST API', version: '14.12' },
+          paths: { '/todos': { get: {} } }
+        },
+        identity
+      )
+    ).toThrow('does not contain definitions')
+    expect(() =>
+      parseSupabaseSchemaCatalog(
+        {
+          swagger: '2.0',
+          info: { title: 'PostgREST API', version: '14.12' },
+          paths: { '/': {} },
+          definitions: null
+        },
+        identity
+      )
+    ).toThrow('invalid definitions')
+    expect(() =>
+      parseSupabaseSchemaCatalog(
+        {
+          swagger: '2.0',
+          definitions: {},
+          paths: { '/todos': { get: {} } }
+        },
+        identity
+      )
+    ).toThrow('table paths without definitions')
+    expect(() =>
+      parseSupabaseSchemaCatalog(
+        { openapi: '3.0.0', paths: {}, components: { schemas: null } },
+        identity
+      )
+    ).toThrow('invalid components.schemas')
+    expect(() =>
+      parseSupabaseSchemaCatalog(
+        {
+          openapi: '3.0.0',
+          components: { schemas: {} },
+          paths: { '/todos': { get: {} } }
+        },
+        identity
+      )
+    ).toThrow('table paths without components.schemas')
   })
 })

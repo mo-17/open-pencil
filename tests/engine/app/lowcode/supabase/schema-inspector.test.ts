@@ -100,6 +100,40 @@ describe('Supabase schema inspector state', () => {
     ).not.toContain(secret)
   })
 
+  test('treats a schema-free PostgREST document as a live empty catalog', async () => {
+    let cached: SupabaseSchemaCatalog | null = null
+    const { inspector } = createInspector(undefined, {
+      readCache: async () => ({ status: 'miss' }),
+      credentialStatus: async () => 'configured',
+      resolveCredential: async () => 'transient-pat',
+      fetchOpenAPI: async () => ({
+        projectRef: 'project-ref',
+        schema: 'public',
+        openApi: {
+          swagger: '2.0',
+          info: { title: 'PostgREST API', version: '14.12' },
+          paths: { '/': { get: { produces: ['application/openapi+json'] } } }
+        }
+      }),
+      writeCache: async (catalog) => {
+        cached = catalog
+      }
+    })
+
+    await inspector.inspect()
+
+    expect(inspector.requestState.value).toBe('success')
+    expect(inspector.source.value).toBe('live')
+    expect(inspector.error.value).toBeNull()
+    expect(inspector.catalog.value).toEqual({
+      version: 1,
+      projectRef: 'project-ref',
+      schema: 'public',
+      tables: []
+    })
+    expect(cached).toEqual(inspector.catalog.value)
+  })
+
   test('keeps a cached catalog visible when no PAT is configured', async () => {
     let fetchCalls = 0
     const { inspector } = createInspector(undefined, {
