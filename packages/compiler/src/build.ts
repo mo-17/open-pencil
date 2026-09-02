@@ -21,6 +21,8 @@ import { build, type PluginOption } from 'vite'
 
 import { detectSupabaseSecretKey } from '@open-pencil/lowcode'
 
+import { BACKEND_ARTIFACT_MANIFEST_PATH } from './backend/emit'
+import type { CompilerArtifactOwnership } from './types'
 import {
   inMemoryVFS,
   prepareVfsRoot,
@@ -33,6 +35,8 @@ export interface BuildOptions {
   /** Compiled project files — `CompilerOutput.files` (emit with devMode:false
    *  so the deployable bundle carries no canvas↔preview bridge). */
   files: PreviewFiles
+  /** Compiler-provided ownership for every server-only source in `files`. */
+  artifactOwnership?: CompilerArtifactOwnership
   /** Real directory the static `dist/` is written into. */
   outDir: string
   /**
@@ -53,6 +57,8 @@ export interface BuildOptions {
    */
   env?: {
     VITE_SUPABASE_URL?: string
+    VITE_SUPABASE_PUBLISHABLE_KEY?: string
+    /** @deprecated Compatibility input; prefer VITE_SUPABASE_PUBLISHABLE_KEY. */
     VITE_SUPABASE_ANON_KEY?: string
     VITE_SUPABASE_SCHEMA?: string
   }
@@ -67,6 +73,10 @@ export interface BuildResult {
   staticFiles: string[]
   /** Server-only paths delivered under `openpencil-server/`, never for static upload. */
   serverFiles: string[]
+  /** Data-only Backend Provider artifacts that require review/apply, not function deploy. */
+  backendReviewFiles: string[]
+  /** Executable server workflow artifacts that require a separate runtime deploy. */
+  executableServerWorkflowFiles: string[]
 }
 
 /** Non-secret operator instructions returned when a build contains server
@@ -93,7 +103,12 @@ const SERVER_ARTIFACT_FILES = new Set([
 
 /** Server-only compiler sources that must bypass Vite and static hosting. */
 export function isServerArtifactSourcePath(path: string): boolean {
-  return path.startsWith('supabase/') || SERVER_ARTIFACT_FILES.has(path)
+  return (
+    path.startsWith('supabase/') ||
+    path.startsWith('backend/') ||
+    path === BACKEND_ARTIFACT_MANIFEST_PATH ||
+    SERVER_ARTIFACT_FILES.has(path)
+  )
 }
 
 /** Build output paths that belong to the separately deployed server bundle. */
@@ -111,6 +126,10 @@ export function createSupabaseBuildDefines(env: BuildOptions['env']): Record<str
   return {
     'import.meta.env.VITE_SUPABASE_URL':
       env?.VITE_SUPABASE_URL === undefined ? 'undefined' : JSON.stringify(env.VITE_SUPABASE_URL),
+    'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY':
+      env?.VITE_SUPABASE_PUBLISHABLE_KEY === undefined
+        ? 'undefined'
+        : JSON.stringify(env.VITE_SUPABASE_PUBLISHABLE_KEY),
     'import.meta.env.VITE_SUPABASE_ANON_KEY':
       env?.VITE_SUPABASE_ANON_KEY === undefined
         ? 'undefined'
@@ -124,13 +143,22 @@ export function createSupabaseBuildDefines(env: BuildOptions['env']): Record<str
 
 /** Reject secrets before any client build starts writing output. */
 export function assertSafeClientBuildEnvironment(env: BuildOptions['env']): void {
+  const publishableKey = env?.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
+  const legacyAnonKey = env?.VITE_SUPABASE_ANON_KEY?.trim()
   if (
-    env?.VITE_SUPABASE_ANON_KEY !== undefined &&
-    detectSupabaseSecretKey(env.VITE_SUPABASE_ANON_KEY)
+    (env?.VITE_SUPABASE_PUBLISHABLE_KEY !== undefined && !publishableKey) ||
+    (env?.VITE_SUPABASE_ANON_KEY !== undefined && !legacyAnonKey)
   ) {
+    throw new Error('Supabase public key build overrides must not be empty.')
+  }
+  const keys = [publishableKey, legacyAnonKey]
+  if (keys.some((key) => key !== undefined && detectSupabaseSecretKey(key))) {
     throw new Error(
-      'Refusing to embed a Supabase secret/service_role key in a client bundle; use a publishable or legacy anon key.'
+      'Refusing to embed a Supabase secret/service_role/management key in a client bundle; use a publishable or legacy anon key.'
     )
+  }
+  if (publishableKey && legacyAnonKey && publishableKey !== legacyAnonKey) {
+    throw new Error('Conflicting Supabase publishable and legacy anon key build overrides.')
   }
 }
 
@@ -153,6 +181,49 @@ function browserPreviewFiles(files: PreviewFiles): PreviewFiles {
     if (!isServerArtifactSourcePath(path)) browserFiles.set(path, contents)
   }
   return browserFiles
+}
+
+function normalizeArtifactOwnership(
+  files: PreviewFiles,
+  ownership: CompilerArtifactOwnership | undefined
+): CompilerArtifactOwnership | undefined {
+  if (ownership === undefined) return undefined
+  if (
+    !Array.isArray(ownership.backendReviewFiles) ||
+    !Array.isArray(ownership.executableServerWorkflowFiles)
+  ) {
+    throw new TypeError('Compiler artifact ownership is invalid')
+  }
+  const normalize = (paths: readonly string[], category: string): readonly string[] => {
+    const normalized = [...paths].sort((left, right) => left.localeCompare(right, 'en'))
+    if (new Set(normalized).size !== normalized.length) {
+      throw new TypeError(`Compiler artifact ownership contains duplicate ${category} paths`)
+    }
+    for (const path of normalized) {
+      if (!isSafeBuildPath(path) || !isServerArtifactSourcePath(path) || !files.has(path)) {
+        throw new TypeError(`Compiler artifact ownership contains an invalid ${category} path`)
+      }
+    }
+    return normalized
+  }
+  const backendReviewFiles = normalize(ownership.backendReviewFiles, 'backend review')
+  const executableServerWorkflowFiles = normalize(
+    ownership.executableServerWorkflowFiles,
+    'server workflow'
+  )
+  const owned = new Set([...backendReviewFiles, ...executableServerWorkflowFiles])
+  if (owned.size !== backendReviewFiles.length + executableServerWorkflowFiles.length) {
+    throw new TypeError('Compiler artifact ownership categories overlap')
+  }
+  const serverSources = [...files.keys()].filter(isServerArtifactSourcePath)
+  if (serverSources.length !== owned.size || serverSources.some((path) => !owned.has(path))) {
+    throw new TypeError('Compiler artifact ownership does not classify every server source')
+  }
+  return Object.freeze({ backendReviewFiles, executableServerWorkflowFiles })
+}
+
+function outputArtifactPaths(paths: readonly string[]): string[] {
+  return paths.map((path) => `${OPENPENCIL_SERVER_OUTPUT_DIR}/${path}`).sort()
 }
 
 /** Recursively list files under `dir`, returning `dir`-relative POSIX-ish paths. */
@@ -271,22 +342,43 @@ function writeBuildOutputManifest(outDir: string, files: readonly string[]): voi
  * builds so neither path grows a subtly different cleanup or server-artifact
  * policy.
  */
-export function completeManagedBuildOutput(files: PreviewFiles, outDir: string): BuildResult {
+export function completeManagedBuildOutput(
+  files: PreviewFiles,
+  outDir: string,
+  artifactOwnership?: CompilerArtifactOwnership
+): BuildResult {
+  const ownership = normalizeArtifactOwnership(files, artifactOwnership)
   copyServerArtifacts(files, outDir)
-  return recordManagedBuildOutput(outDir)
+  return recordManagedBuildOutput(outDir, ownership)
 }
 
 /** Record a build whose additional verified artifacts were already written by
  * an owning compiler pipeline (for example copied local microfrontends). */
-export function recordManagedBuildOutput(outDir: string): BuildResult {
+export function recordManagedBuildOutput(
+  outDir: string,
+  artifactOwnership?: CompilerArtifactOwnership
+): BuildResult {
   const written = listFiles(outDir).map(portableBuildPath).sort()
-  writeBuildOutputManifest(outDir, written)
   const serverFiles = written.filter(isServerArtifactOutputPath)
+  const backendReviewFiles = outputArtifactPaths(artifactOwnership?.backendReviewFiles ?? [])
+  const executableServerWorkflowFiles = outputArtifactPaths(
+    artifactOwnership?.executableServerWorkflowFiles ?? []
+  )
+  const classified = new Set([...backendReviewFiles, ...executableServerWorkflowFiles])
+  if (
+    artifactOwnership !== undefined &&
+    (serverFiles.length !== classified.size || serverFiles.some((path) => !classified.has(path)))
+  ) {
+    throw new TypeError('Compiler artifact ownership does not match the written server bundle')
+  }
+  writeBuildOutputManifest(outDir, written)
   return {
     outDir,
     files: written,
     staticFiles: written.filter((path) => !isServerArtifactOutputPath(path)),
-    serverFiles
+    serverFiles,
+    backendReviewFiles,
+    executableServerWorkflowFiles
   }
 }
 
@@ -342,8 +434,7 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
     }
   })
 
-  // Server workflows are emitted beside the browser project in the VFS, but
-  // they must not enter Rollup or a static-host upload. Preserve them as a
-  // separate operator-owned bundle instead.
-  return completeManagedBuildOutput(files, outDir)
+  // Server workflows and Backend Provider review artifacts are emitted beside
+  // the browser project in the VFS, but must not enter Rollup/static hosting.
+  return completeManagedBuildOutput(files, outDir, opts.artifactOwnership)
 }

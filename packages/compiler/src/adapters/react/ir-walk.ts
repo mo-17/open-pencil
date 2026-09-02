@@ -258,14 +258,16 @@ export function pageUsesSupabase(ir: IRTree): boolean {
   // §18: a file-upload INPUT calls getSupabaseClient().storage in its onChange.
   if (ir.children.some(treeHasUpload)) return true
   return ir.children.some((c) =>
-    treeHasHandler(
-      c,
-      (h) =>
-        h.kind === 'supabaseQuery' ||
-        h.kind === 'supabaseMutation' ||
-        h.kind === 'supabaseAuth' ||
-        ((h.kind === 'stripeCheckout' || h.kind === 'stripeCustomerPortal') &&
-          h.includeAuthToken === true)
+    treeHasHandler(c, (h) =>
+      handlerTreeMatches(
+        h,
+        (nested) =>
+          nested.kind === 'supabaseQuery' ||
+          nested.kind === 'supabaseMutation' ||
+          nested.kind === 'supabaseAuth' ||
+          ((nested.kind === 'stripeCheckout' || nested.kind === 'stripeCustomerPortal') &&
+            nested.includeAuthToken === true)
+      )
     )
   )
 }

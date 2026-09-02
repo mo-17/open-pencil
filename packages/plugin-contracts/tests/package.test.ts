@@ -7,6 +7,7 @@ import {
   parsePluginPackageJSON,
   serializePluginManifest,
   signPluginManifest,
+  signVersionedPluginManifest,
   validatePluginManifest,
   verifyPluginPackage
 } from '@open-pencil/plugin-contracts'
@@ -20,7 +21,7 @@ import {
   stableSemverParts
 } from '@open-pencil/scene-graph'
 
-import { pluginPayload } from './helpers'
+import { pluginPayload, pluginPayloadV2 } from './helpers'
 
 async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
@@ -37,6 +38,9 @@ const V1_GOLDEN_PRIVATE_KEY = {
 const V1_GOLDEN_DIGEST = 'C2jbOQ2TgFTqjQzk_DFCxCfEKO2-3H1aMA28ZrYLzJ4'
 const V1_GOLDEN_SIGNATURE =
   '0IaajlWJCT1h84O4w4NMH0pZIIOysfsdd6PSmo2tKiqCarZambSVbMBd1ic7L1eh3_lCCthfjh-D7F3HlQZTDw'
+const V2_GOLDEN_DIGEST = 'RNlaEMU9wVQUQIVnZPjaacLXcgQJ8nY36UBWResKPnk'
+const V2_GOLDEN_SIGNATURE =
+  'nJxFg_MeNsUzQywWDqhR44svFb47cJaU3GYKV-By3bDf5IOADW3szwumJFNYc1aIte05v6KiMgLzCs2BBOjkDg'
 
 describe('shared signed manifest primitives', () => {
   test('canonicalizes keys and implements bounded stable SemVer ranges', () => {
@@ -69,6 +73,20 @@ describe('signed declarative plugin packages', () => {
     expect(manifest.schemaVersion).toBe(1)
     expect(manifest.integrity.digest).toBe(V1_GOLDEN_DIGEST)
     expect(manifest.integrity.signature.value).toBe(V1_GOLDEN_SIGNATURE)
+  })
+
+  test('preserves the pre-backend-provider schema-v2 canonical digest and signature golden', async () => {
+    const privateKey = await crypto.subtle.importKey(
+      'jwk',
+      V1_GOLDEN_PRIVATE_KEY,
+      { name: 'Ed25519' },
+      false,
+      ['sign']
+    )
+    const manifest = await signVersionedPluginManifest(pluginPayloadV2(), privateKey)
+    expect(manifest.schemaVersion).toBe(2)
+    expect(manifest.integrity.digest).toBe(V2_GOLDEN_DIGEST)
+    expect(manifest.integrity.signature.value).toBe(V2_GOLDEN_SIGNATURE)
   })
 
   test('signs, serializes, parses, and verifies a single bounded JSON package', async () => {

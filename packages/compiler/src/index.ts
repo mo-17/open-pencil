@@ -7,6 +7,7 @@ import {
 import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/scene-graph'
 
 import { derivePagePaths } from './adapters/react/route-paths'
+import { compileBackendArtifacts } from './compile/backend'
 import {
   applyCompilerFontManifest,
   applyExpoCompilerFontManifest,
@@ -30,6 +31,7 @@ import { selectAdapter } from './select-adapter'
 import { buildDesignTokenThemeCSS } from './theme-css'
 import type {
   CompilerInput,
+  CompilerArtifactOwnership,
   CompilerMicrofrontendBuildDescriptor,
   CompilerOptions,
   CompilerOutput,
@@ -39,6 +41,8 @@ import type {
 
 export type {
   CompileWarning,
+  CompilerArtifactOwnership,
+  CompilerBackendProviderRequest,
   HTMLMetadata,
   HTMLMetadataOptions,
   CompilerInput,
@@ -99,6 +103,8 @@ export {
   type MiniProgramProjectBudgetDiagnostic,
   type MiniProgramProjectBudgetDiagnosticCode
 } from './adapters/miniprogram-shared'
+export * from './backend'
+export { BackendProviderCompilationError } from './compile/backend'
 
 const DEFAULT_OPTIONS: CompilerOptions = {
   packageName: 'openpencil-output',
@@ -166,7 +172,11 @@ export function compile(input: CompilerInput): CompilerOutput {
     collectTree(input.graph, id, registry, i18n, styleOptions, motionCache, serverWorkflows ?? null)
   )
   assertMicrofrontendFeaturePolicy(options, irs, components)
-  const { files, warnings: adapterWarnings } = adapter.emit(irs, options, components)
+  const {
+    files,
+    warnings: adapterWarnings,
+    executableServerWorkflowFiles = []
+  } = adapter.emit(irs, options, components)
   let fontWarnings: CompileWarning[] = []
   if (input.fontManifest) {
     if (options.target === 'expo') {
@@ -205,6 +215,7 @@ export function compile(input: CompilerInput): CompilerOutput {
       )
     }
   }
+  const backend = integrateBackend(input.graph, options, files, executableServerWorkflowFiles)
   const navigationWarnings = auditLowcodeNavigation(input.graph, {
     pageIds: input.pageIds
   })
@@ -217,19 +228,78 @@ export function compile(input: CompilerInput): CompilerOutput {
       ...(issue.nodeId || issue.pageId ? { nodeId: issue.nodeId ?? issue.pageId } : {})
     }))
   const microfrontend = buildMicrofrontendDescriptor(options, irs)
-  return {
+  return compilerOutput(
     files,
-    warnings: [
+    [
       ...selectionWarnings,
       ...serverWorkflowWarnings,
       ...componentWarnings,
       ...irs.flatMap((ir) => ir.warnings),
       ...adapterWarnings,
+      ...backend.warnings,
       ...navigationWarnings,
       ...fontWarnings
     ],
+    backend.artifactOwnership,
+    microfrontend
+  )
+}
+
+function integrateBackend(
+  graph: SceneGraph,
+  options: CompilerOptions,
+  files: Map<string, string | Uint8Array>,
+  executableServerWorkflowFiles: readonly string[]
+): { warnings: readonly CompileWarning[]; artifactOwnership?: CompilerArtifactOwnership } {
+  const backend = compileBackendArtifacts(graph, options, [...files.keys()])
+  mergeCompilerFiles(files, backend?.files)
+  const artifactOwnership = createArtifactOwnership(
+    backend?.files.keys() ?? [],
+    executableServerWorkflowFiles
+  )
+  return {
+    warnings: backend?.warnings ?? [],
+    ...(artifactOwnership ? { artifactOwnership } : {})
+  }
+}
+
+function compilerOutput(
+  files: Map<string, string | Uint8Array>,
+  warnings: CompileWarning[],
+  artifactOwnership: CompilerArtifactOwnership | undefined,
+  microfrontend: CompilerMicrofrontendBuildDescriptor | undefined
+): CompilerOutput {
+  return {
+    files,
+    warnings,
+    ...(artifactOwnership ? { artifactOwnership } : {}),
     ...(microfrontend ? { microfrontend } : {})
   }
+}
+
+function createArtifactOwnership(
+  backendReviewFiles: Iterable<string>,
+  executableServerWorkflowFiles: readonly string[]
+): CompilerArtifactOwnership | undefined {
+  const backend = Object.freeze(
+    [...backendReviewFiles].sort((left, right) => left.localeCompare(right, 'en'))
+  )
+  const workflows = Object.freeze(
+    [...executableServerWorkflowFiles].sort((left, right) => left.localeCompare(right, 'en'))
+  )
+  if (backend.length === 0 && workflows.length === 0) return undefined
+  return Object.freeze({
+    backendReviewFiles: backend,
+    executableServerWorkflowFiles: workflows
+  })
+}
+
+function mergeCompilerFiles(
+  files: Map<string, string | Uint8Array>,
+  additions: ReadonlyMap<string, string | Uint8Array> | undefined
+): void {
+  if (!additions) return
+  for (const [path, content] of additions) files.set(path, content)
 }
 
 function buildMicrofrontendDescriptor(

@@ -259,7 +259,11 @@ export async function buildMicrofrontendProject(
   })
   const manifestArtifact = writeRuntimeManifest(options.outDir, manifest)
 
-  const result = completeManagedBuildOutput(options.output.files, options.outDir)
+  const result = completeManagedBuildOutput(
+    options.output.files,
+    options.outDir,
+    options.output.artifactOwnership
+  )
   return {
     ...result,
     manifest,

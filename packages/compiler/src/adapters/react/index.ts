@@ -1,3 +1,4 @@
+import { LEGACY_SUPABASE_SERVER_WORKFLOW_ARTIFACT_PATHS } from '#compiler/backend/supabase/legacy-react-artifacts'
 import type {
   ComponentDef,
   IRAsset,
@@ -363,7 +364,7 @@ function emitSinglePage(
     analyticsConsentBanner,
     microfrontend: options.packaging?.kind === 'microfrontend'
   })
-  emitServerWorkflowFiles(files, serverWorkflows)
+  const executableServerWorkflowFiles = emitServerWorkflowFiles(files, serverWorkflows)
   emitReactModuleRuntimes(files, moduleProject, {
     devMode: options.devMode,
     microfrontend: options.packaging?.kind === 'microfrontend'
@@ -409,7 +410,11 @@ function emitSinglePage(
   const coverage = i18nActive
     ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations)
     : []
-  return { files, warnings: [...warnings, ...prototype.warnings, ...coverage] }
+  return {
+    files,
+    warnings: [...warnings, ...prototype.warnings, ...coverage],
+    ...(executableServerWorkflowFiles.length > 0 ? { executableServerWorkflowFiles } : {})
+  }
 }
 
 function emitMultiPage(
@@ -477,7 +482,7 @@ function emitMultiPage(
     analyticsConsentBanner,
     microfrontend: options.packaging?.kind === 'microfrontend'
   })
-  emitServerWorkflowFiles(files, serverWorkflows)
+  const executableServerWorkflowFiles = emitServerWorkflowFiles(files, serverWorkflows)
   emitReactModuleRuntimes(files, moduleProject, {
     devMode: options.devMode,
     microfrontend: options.packaging?.kind === 'microfrontend'
@@ -536,7 +541,8 @@ function emitMultiPage(
     : []
   return {
     files,
-    warnings: [...collectSlugWarnings(infos), ...prototype.warnings, ...coverage]
+    warnings: [...collectSlugWarnings(infos), ...prototype.warnings, ...coverage],
+    ...(executableServerWorkflowFiles.length > 0 ? { executableServerWorkflowFiles } : {})
   }
 }
 
@@ -647,14 +653,17 @@ function emitLowcodeRuntimes(files: Map<string, string | Uint8Array>, e: Lowcode
 function emitServerWorkflowFiles(
   files: Map<string, string | Uint8Array>,
   workflows: readonly IRServerWorkflow[]
-): void {
-  if (workflows.length === 0) return
+): readonly string[] {
+  if (workflows.length === 0) return []
   const artifacts = buildServerArtifacts(workflows)
   files.set(LOWCODE_SERVER_FILE, buildLowcodeServerClientRuntime())
-  files.set('supabase/functions/openpencil-runtime/index.ts', artifacts.edgeFunction)
-  files.set('.env.server.example', artifacts.envExample)
-  files.set('openpencil-server.manifest.json', artifacts.manifest)
-  files.set('SERVER_DEPLOYMENT.md', artifacts.readme)
+  const [edgeFunctionPath, envPath, manifestPath, readmePath] =
+    LEGACY_SUPABASE_SERVER_WORKFLOW_ARTIFACT_PATHS
+  files.set(edgeFunctionPath, artifacts.edgeFunction)
+  files.set(envPath, artifacts.envExample)
+  files.set(manifestPath, artifacts.manifest)
+  files.set(readmePath, artifacts.readme)
+  return LEGACY_SUPABASE_SERVER_WORKFLOW_ARTIFACT_PATHS
 }
 
 /** Emit runtime artifacts and reusable component modules in their stable order. */

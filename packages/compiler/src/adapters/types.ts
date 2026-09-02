@@ -29,4 +29,6 @@ export interface FrameworkAdapter {
 export interface AdapterEmission {
   files: Map<string, string | Uint8Array>
   warnings: CompileWarning[]
+  /** Explicit adapter-owned server workflow sources, excluding browser clients. */
+  executableServerWorkflowFiles?: readonly string[]
 }

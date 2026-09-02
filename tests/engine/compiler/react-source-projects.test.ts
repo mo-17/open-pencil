@@ -66,9 +66,9 @@ function fixture(): Map<string, string | Uint8Array> {
     ['src/vite-env.d.ts', '/// <reference types="vite/client" />\n'],
     [
       'src/_lowcode_supabase.ts',
-      'const url = import.meta.env.VITE_SUPABASE_URL\nconst key = import.meta.env.VITE_SUPABASE_ANON_KEY\n'
+      'const url = import.meta.env.VITE_SUPABASE_URL\nconst key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY\n'
     ],
-    ['.env.example', 'VITE_SUPABASE_URL=https://example.test\nVITE_SUPABASE_ANON_KEY=key\n'],
+    ['.env.example', 'VITE_SUPABASE_URL=https://example.test\nVITE_SUPABASE_PUBLISHABLE_KEY=key\n'],
     ['index.html', '<div id="root"></div>\n'],
     [
       'vite.config.ts',
@@ -153,7 +153,7 @@ describe('React source project builders', () => {
     expect(String(files.get('src/_lowcode_supabase.ts'))).toContain(
       'process.env.NEXT_PUBLIC_SUPABASE_URL'
     )
-    expect(String(files.get('.env.example'))).toContain('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    expect(String(files.get('.env.example'))).toContain('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')
     expect(files.has('app/[[...path]]/page.tsx')).toBe(true)
     expect(String(files.get('README.md'))).toContain('does not claim server-component or SSR')
     expect(files.get('public/original.bin')).toEqual(new Uint8Array([1, 2, 3]))

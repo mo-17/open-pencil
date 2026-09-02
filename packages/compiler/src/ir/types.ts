@@ -1168,9 +1168,9 @@ export interface IRAnalyticsConsentCopy {
 }
 
 /** Phase 3 §2: IR-local mirror of `SupabaseConfig` from scene-graph, so the
- *  adapter layer never has to reach into core. Same shape — anonKey is the
- *  public anon JWT (safe per Supabase RLS design); `schema` defaults to
- *  `'public'` at runtime. */
+ *  adapter layer never has to reach into core. `anonKey` remains the serialized
+ *  compatibility field for a publishable key or legacy anon JWT; `schema`
+ *  defaults to `'public'` at runtime. */
 export interface IRSupabaseConfig {
   url: string
   anonKey: string

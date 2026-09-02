@@ -2,6 +2,12 @@ import path from 'node:path'
 
 import { parse as parseVueSfc } from 'vue/compiler-sfc'
 
+import {
+  noBackendApplyAuthorityInUntrustedRuntimes,
+  noBackendProviderRuntimeAuthorityInCompiler,
+  noBackendProviderRuntimeEffectsInCompiler,
+  noHostCredentialsOrDatabaseClientsInBackendSandboxes
+} from './backend-provider-boundary.ts'
 import { noCrossPackageReexportShims } from './cross-package-reexport-shims.ts'
 import {
   noDynamicTailwindStateClasses,
@@ -549,6 +555,10 @@ export const openPencilArchitecturePlugin = {
     noShortcutTextInLabels,
     noHardcodedMacOSShortcutGlyphs,
     noUIImportsInCore,
-    noCrossLayerInCompiler
+    noCrossLayerInCompiler,
+    noBackendApplyAuthorityInUntrustedRuntimes,
+    noHostCredentialsOrDatabaseClientsInBackendSandboxes,
+    noBackendProviderRuntimeAuthorityInCompiler,
+    noBackendProviderRuntimeEffectsInCompiler
   ]
 }

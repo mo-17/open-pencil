@@ -16,6 +16,7 @@ import {
 } from '@open-pencil/plugin-contracts'
 
 import {
+  pluginBackendProviderContribution,
   pluginConnectorContract,
   pluginPayload,
   pluginPayloadV2,
@@ -47,7 +48,12 @@ function firstOutput(payload: PluginManifestPayloadV2) {
 describe('plugin manifest schema version 2', () => {
   test('parses a strict versioned payload without changing the v1 parser boundary', () => {
     const payload = pluginPayloadV2()
-    expect(parseVersionedPluginManifestPayload(payload)).toEqual(payload)
+    const parsed = parseVersionedPluginManifestPayload(payload)
+    expect(parsed).toEqual(payload)
+    if (parsed.schemaVersion !== PLUGIN_MANIFEST_SCHEMA_VERSION_V2) {
+      throw new Error('Expected schema-v2 manifest fixture')
+    }
+    expect(Object.hasOwn(parsed.contributions, 'backendProviders')).toBe(false)
     expect(() => parsePluginManifestPayload(payload)).toThrow('schemaVersion')
   })
 
@@ -129,10 +135,60 @@ describe('plugin manifest schema version 2', () => {
     expect(() => parseVersionedPluginManifestPayload(tooMany)).toThrow('may not contain more than')
   })
 
+  test('adds bounded backend-provider declarations without changing the v1 boundary', () => {
+    const payload = pluginPayloadV2()
+    payload.contributions.backendProviders = [pluginBackendProviderContribution()]
+    const parsed = parseVersionedPluginManifestPayload(payload)
+    if (parsed.schemaVersion !== PLUGIN_MANIFEST_SCHEMA_VERSION_V2) {
+      throw new Error('Expected schema-v2 manifest fixture')
+    }
+    expect(parsed.contributions.backendProviders).toEqual(payload.contributions.backendProviders)
+
+    const backendOnly = pluginPayloadV2()
+    backendOnly.contributions.modules = []
+    Reflect.deleteProperty(backendOnly.contributions, 'commands')
+    Reflect.deleteProperty(backendOnly.contributions, 'exporters')
+    backendOnly.contributions.backendProviders = [pluginBackendProviderContribution()]
+    expect(parseVersionedPluginManifestPayload(backendOnly)).toEqual(backendOnly)
+
+    const legacy = pluginPayload()
+    Reflect.set(legacy.contributions, 'backendProviders', [pluginBackendProviderContribution()])
+    expect(() => parsePluginManifestPayload(legacy)).toThrow('unsupported fields')
+
+    const duplicateProvider = structuredClone(payload)
+    duplicateProvider.contributions.backendProviders = [
+      pluginBackendProviderContribution(),
+      { ...pluginBackendProviderContribution(), contributionId: 'supabase.other' }
+    ]
+    expect(() => parseVersionedPluginManifestPayload(duplicateProvider)).toThrow(
+      'duplicate provider IDs'
+    )
+
+    const duplicateContribution = structuredClone(payload)
+    duplicateContribution.contributions.backendProviders = [
+      pluginBackendProviderContribution(),
+      {
+        ...pluginBackendProviderContribution('firebase'),
+        contributionId: 'supabase.backend'
+      }
+    ]
+    expect(() => parseVersionedPluginManifestPayload(duplicateContribution)).toThrow(
+      'duplicate contribution IDs'
+    )
+
+    const tooMany = structuredClone(payload)
+    tooMany.contributions.backendProviders = Array.from(
+      { length: PLUGIN_MANIFEST_LIMITS.maxBackendProviders + 1 },
+      (_, index) => pluginBackendProviderContribution(`provider-${index}`)
+    )
+    expect(() => parseVersionedPluginManifestPayload(tooMany)).toThrow('may not contain more than')
+  })
+
   test('signs, serializes, parses, and verifies v2 bytes', async () => {
     const keyPair = await keys()
     const payload = pluginPayloadV2()
     payload.contributions.storageProviders = [pluginStorageProviderContribution()]
+    payload.contributions.backendProviders = [pluginBackendProviderContribution()]
     const manifest = await signVersionedPluginManifest(payload, keyPair.privateKey)
     if (manifest.schemaVersion !== PLUGIN_MANIFEST_SCHEMA_VERSION_V2) {
       throw new Error('Expected schema-v2 manifest')
@@ -149,6 +205,20 @@ describe('plugin manifest schema version 2', () => {
       verifiedDigest: manifest.integrity.digest,
       verifiedKeyId: 'acme.release'
     })
+    expect(parseVerifiedPluginPackageSnapshot(verified)).toEqual(verified)
+  })
+
+  test('preserves pre-backend-provider v2 package round trips', async () => {
+    const keyPair = await keys()
+    const manifest = await signVersionedPluginManifest(pluginPayloadV2(), keyPair.privateKey)
+    if (manifest.schemaVersion !== PLUGIN_MANIFEST_SCHEMA_VERSION_V2) {
+      throw new Error('Expected schema-v2 manifest')
+    }
+    expect(Object.hasOwn(manifest.contributions, 'backendProviders')).toBe(false)
+    const serialized = serializeVersionedPluginManifest(manifest)
+    expect(parseVersionedPluginPackageJSON(serialized)).toEqual(manifest)
+    expect(parseVersionedPluginPackageBytes(new TextEncoder().encode(serialized))).toEqual(manifest)
+    const verified = await verifyVersionedPluginPackage(manifest, keyPair.publicKey)
     expect(parseVerifiedPluginPackageSnapshot(verified)).toEqual(verified)
   })
 
@@ -194,6 +264,18 @@ describe('plugin manifest schema version 2', () => {
     const tampered = structuredClone(manifest)
     Reflect.set(firstOutput(tampered), 'extension', '.txt')
     await expect(verifyVersionedPluginPackage(tampered, keyPair.publicKey)).rejects.toThrow(
+      'digest mismatch'
+    )
+
+    const backendPayload = pluginPayloadV2()
+    backendPayload.contributions.backendProviders = [pluginBackendProviderContribution()]
+    const backendManifest = await signVersionedPluginManifest(backendPayload, keyPair.privateKey)
+    const tamperedBackend = structuredClone(backendManifest)
+    if (tamperedBackend.schemaVersion !== PLUGIN_MANIFEST_SCHEMA_VERSION_V2) {
+      throw new Error('Expected schema-v2 manifest')
+    }
+    Reflect.set(tamperedBackend.contributions.backendProviders?.[0] ?? {}, 'adapterId', 'hostile')
+    await expect(verifyVersionedPluginPackage(tamperedBackend, keyPair.publicKey)).rejects.toThrow(
       'digest mismatch'
     )
   })

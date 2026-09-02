@@ -26,7 +26,7 @@ import {
   type TrustedPluginPublisherKeyV1
 } from '@open-pencil/plugin-contracts'
 
-import { pluginPayload, pluginPayloadV2 } from './helpers'
+import { pluginBackendProviderContribution, pluginPayload, pluginPayloadV2 } from './helpers'
 
 const GENERATED_AT = '2026-08-05T00:00:00.000Z'
 const EXPIRES_AT = '2026-08-10T00:00:00.000Z'
@@ -156,6 +156,50 @@ describe('signed remote plugin catalog', () => {
         { catalog: verifiedCatalog, now: NOW }
       )
     ).rejects.toThrow('schemaVersion')
+
+    const providerPayload = pluginPayloadV2('2.0.1')
+    providerPayload.contributions.backendProviders = [pluginBackendProviderContribution()]
+    const providerManifest = await signVersionedPluginManifest(
+      providerPayload,
+      publisher.privateKey
+    )
+    const providerCatalog = await signPluginCatalog(
+      catalogPayload([catalogEntry(providerManifest)]),
+      root.privateKey
+    )
+    const verifiedProviderCatalog = await verifyPluginCatalog(providerCatalog, root.publicKey, {
+      now: NOW
+    })
+    await expect(
+      verifyCatalogPluginPackage(providerCatalog.entries[0], providerManifest, trustedKeys, {
+        catalog: verifiedProviderCatalog,
+        now: NOW
+      })
+    ).resolves.toMatchObject({
+      verifiedPackage: {
+        manifest: {
+          schemaVersion: 2,
+          contributions: { backendProviders: [expect.objectContaining({ providerId: 'supabase' })] }
+        }
+      }
+    })
+
+    const differentProviderPayload = pluginPayloadV2('2.0.1')
+    differentProviderPayload.contributions.backendProviders = [
+      { ...pluginBackendProviderContribution(), adapterId: 'open-pencil.backend.different' }
+    ]
+    const differentProviderManifest = await signVersionedPluginManifest(
+      differentProviderPayload,
+      publisher.privateKey
+    )
+    await expect(
+      verifyCatalogPluginPackage(
+        providerCatalog.entries[0],
+        differentProviderManifest,
+        trustedKeys,
+        { catalog: verifiedProviderCatalog, now: NOW }
+      )
+    ).rejects.toMatchObject({ code: 'catalog-entry-mismatch' })
   })
 
   test('rejects untrusted roots, tampering, future catalogs, and expiration with stable codes', async () => {

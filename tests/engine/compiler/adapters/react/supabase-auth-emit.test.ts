@@ -100,15 +100,21 @@ describe('buildLowcodeSupabaseRuntime (Phase 3 §2)', () => {
       'const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "https://example.supabase.co"'
     )
     expect(out).toContain(
-      'const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiJ9.anon.sig"'
+      'const SUPABASE_PUBLISHABLE_KEY_INPUT = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY'
     )
+    expect(out).toContain(
+      'const SUPABASE_LEGACY_ANON_KEY_INPUT = import.meta.env.VITE_SUPABASE_ANON_KEY'
+    )
+    expect(out).toContain('const SUPABASE_PUBLISHABLE_KEY = resolveSupabasePublicKey(')
+    expect(out).toContain('"eyJhbGciOiJIUzI1NiJ9.anon.sig"')
     expect(out).toContain(
       'const SUPABASE_SCHEMA = import.meta.env.VITE_SUPABASE_SCHEMA ?? "public"'
     )
     // createClient now takes the resolved consts, not inline literals.
-    expect(out).toContain(
-      'createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: SUPABASE_SCHEMA } })'
-    )
+    expect(out).toContain('createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {')
+    expect(out).toContain('/^sbp_/i.test(key)')
+    expect(out).toContain("legacySupabaseRole(key) === 'service_role'")
+    expect(out).toContain('publishable !== legacy')
   })
 
   test('passes the configured schema to createClient', () => {
@@ -116,7 +122,7 @@ describe('buildLowcodeSupabaseRuntime (Phase 3 §2)', () => {
     expect(out).toContain(
       'const SUPABASE_SCHEMA = import.meta.env.VITE_SUPABASE_SCHEMA ?? "private"'
     )
-    expect(out).toContain('{ db: { schema: SUPABASE_SCHEMA } }')
+    expect(out).toContain('db: { schema: SUPABASE_SCHEMA }')
   })
 })
 
@@ -180,7 +186,8 @@ describe('React adapter — emit lowcode Supabase runtime + dep inject (Phase 3 
     expect(out.files.get('src/vite-env.d.ts')).toContain('vite/client')
     const envExample = out.files.get('.env.example') as string
     expect(envExample).toContain('VITE_SUPABASE_URL=https://example.supabase.co')
-    expect(envExample).toContain('VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiJ9.anon.sig')
+    expect(envExample).toContain('VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiJ9.anon.sig')
+    expect(envExample).not.toContain('VITE_SUPABASE_ANON_KEY=')
     expect(envExample).toContain('VITE_SUPABASE_SCHEMA=public')
   })
 

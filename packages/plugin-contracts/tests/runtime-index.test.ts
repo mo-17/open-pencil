@@ -29,7 +29,7 @@ import {
   type TrustedPluginPublisherKeyV1
 } from '@open-pencil/plugin-contracts'
 
-import { pluginPayload, pluginPayloadV2 } from './helpers'
+import { pluginBackendProviderContribution, pluginPayload, pluginPayloadV2 } from './helpers'
 
 const GENERATED_AT = '2026-08-05T00:00:00.000Z'
 const EXPIRES_AT = '2026-08-10T00:00:00.000Z'
@@ -228,6 +228,59 @@ describe('root-signed executable plugin index', () => {
 
     const differentPayload = pluginPayloadV2('2.0.0')
     differentPayload.plugin.name = 'Different signed package'
+    const differentManifest = await signVersionedPluginManifest(
+      differentPayload,
+      publisher.privateKey
+    )
+    const differentPackage = await verifyVersionedPluginPackage(
+      differentManifest,
+      publisher.publicKey
+    )
+    await expectRuntimeTrustCode(
+      verifyIndexedPluginRuntimePackage(entry, runtimePackage, keyring(publisher.publicKey), {
+        index: verifiedIndex,
+        declarativePackage: differentPackage,
+        now: NOW
+      }),
+      'runtime-declarative-package-mismatch'
+    )
+  })
+
+  test('double-binds a backend-provider declaration and rejects adapter substitution', async () => {
+    const root = await keys()
+    const publisher = await keys()
+    const providerPayload = pluginPayloadV2('2.0.0')
+    providerPayload.contributions.backendProviders = [pluginBackendProviderContribution()]
+    const manifest = await signVersionedPluginManifest(providerPayload, publisher.privateKey)
+    const declarativePackage = await verifyVersionedPluginPackage(manifest, publisher.publicKey)
+    const runtimePackage = await signPluginRuntimePackage(
+      await runtimePackagePayload(declarativePackage.verifiedDigest, '2.0.0'),
+      publisher.privateKey
+    )
+    const entry = indexEntry(declarativePackage.verifiedDigest, runtimePackage, '2.0.0')
+    const index = await signPluginRuntimeIndex(indexPayload([entry]), root.privateKey)
+    const verifiedIndex = await verifyPluginRuntimeIndex(index, root.publicKey, { now: NOW })
+
+    await expect(
+      verifyIndexedPluginRuntimePackage(entry, runtimePackage, keyring(publisher.publicKey), {
+        index: verifiedIndex,
+        declarativePackage,
+        now: NOW
+      })
+    ).resolves.toMatchObject({
+      declarativePackage: {
+        manifest: {
+          contributions: {
+            backendProviders: [expect.objectContaining({ providerId: 'supabase' })]
+          }
+        }
+      }
+    })
+
+    const differentPayload = pluginPayloadV2('2.0.0')
+    differentPayload.contributions.backendProviders = [
+      { ...pluginBackendProviderContribution(), adapterId: 'open-pencil.backend.different' }
+    ]
     const differentManifest = await signVersionedPluginManifest(
       differentPayload,
       publisher.privateKey

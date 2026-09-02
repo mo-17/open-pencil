@@ -1,3 +1,7 @@
+import {
+  assembleLegacySupabaseServerArtifacts,
+  type LegacySupabaseServerArtifactSet
+} from '#compiler/backend/supabase/legacy-react-artifacts'
 import type {
   IRSupabaseFilter,
   IRSupabasePayloadEntry,
@@ -13,62 +17,15 @@ interface EmitScope {
   nextLocal: number
 }
 
-export interface ServerArtifactSet {
-  edgeFunction: string
-  envExample: string
-  manifest: string
-  readme: string
-}
+export type ServerArtifactSet = LegacySupabaseServerArtifactSet
 
 export function buildServerArtifacts(workflows: readonly IRServerWorkflow[]): ServerArtifactSet {
   const envNames = collectEnvironmentNames(workflows)
-  return {
+  return assembleLegacySupabaseServerArtifacts({
     edgeFunction: buildEdgeFunction(workflows),
-    envExample:
-      ['SUPABASE_URL=', 'SUPABASE_ANON_KEY=', ...envNames.map((name) => `${name}=`)].join('\n') +
-      '\n',
-    manifest: buildManifest(workflows, envNames),
-    readme: buildReadme(envNames)
-  }
-}
-
-function buildManifest(
-  workflows: readonly IRServerWorkflow[],
-  envNames: readonly string[]
-): string {
-  return (
-    JSON.stringify(
-      {
-        version: 1,
-        function: 'openpencil-runtime',
-        deploy: 'manual',
-        auth: 'supabase-user',
-        workflows: workflows.map((workflow) => ({
-          id: workflow.id,
-          name: workflow.name,
-          method: 'POST',
-          params: workflow.params
-        })),
-        environment: ['SUPABASE_URL', 'SUPABASE_ANON_KEY', ...envNames]
-      },
-      null,
-      2
-    ) + '\n'
-  )
-}
-
-function buildReadme(envNames: readonly string[]): string {
-  const custom = envNames.length > 0 ? ` plus ${envNames.join(', ')}` : ''
-  return `# OpenPencil server workflows
-
-This directory is generated deployment source. It is intentionally excluded from the static web bundle and is never deployed automatically.
-
-1. Review \`supabase/functions/openpencil-runtime/index.ts\`.
-2. Configure \`SUPABASE_URL\`, \`SUPABASE_ANON_KEY\`${custom} in the target Supabase project. Never commit populated secret values.
-3. From this directory, run \`supabase functions deploy openpencil-runtime\`.
-
-The function accepts authenticated POST requests only and uses the caller's bearer token for Row Level Security. It never uses a service-role credential.
-`
+    workflows,
+    environmentNames: envNames
+  })
 }
 
 function collectEnvironmentNames(workflows: readonly IRServerWorkflow[]): string[] {
@@ -301,6 +258,8 @@ const CORS_HEADERS = {
 const JSON_HEADERS = { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8' }
 const MAX_REQUEST_BYTES = 64 * 1024
 const MAX_RESPONSE_BYTES = 1024 * 1024
+const MAX_SUPABASE_PUBLIC_KEY_BYTES = 4096
+const MAX_SUPABASE_PUBLISHABLE_KEYS_BYTES = 16 * 1024
 const HTTP_TIMEOUT_MS = 8_000
 
 function json(body: unknown, status: number): Response {
@@ -330,6 +289,57 @@ function requiredEnvironment(name: string): string {
   const value = Deno.env.get(name)
   if (!value) throw new Error('Required environment is unavailable')
   return value
+}
+
+function legacySupabaseRole(key: string): unknown {
+  const parts = key.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const base64 = parts[1].replaceAll('-', '+').replaceAll('_', '/')
+    const binary = atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4))
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+    const payload: unknown = JSON.parse(new TextDecoder().decode(bytes))
+    return isRecord(payload) ? payload.role : null
+  } catch {
+    return null
+  }
+}
+
+function isSupabasePublicKey(value: string): boolean {
+  if (
+    value.length === 0 ||
+    new TextEncoder().encode(value).byteLength > MAX_SUPABASE_PUBLIC_KEY_BYTES ||
+    [...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+  ) return false
+  return value.startsWith('sb_publishable_') || legacySupabaseRole(value) === 'anon'
+}
+
+function requiredSupabasePublicKey(): string {
+  const encoded = Deno.env.get('SUPABASE_PUBLISHABLE_KEYS')
+  if (encoded !== undefined) {
+    if (
+      encoded.length === 0 ||
+      new TextEncoder().encode(encoded).byteLength > MAX_SUPABASE_PUBLISHABLE_KEYS_BYTES
+    ) throw new Error('Supabase publishable keys are unavailable')
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(encoded)
+    } catch {
+      throw new Error('Supabase publishable keys are unavailable')
+    }
+    const key = isRecord(parsed) ? parsed.default : undefined
+    if (typeof key !== 'string' || !key.startsWith('sb_publishable_') || !isSupabasePublicKey(key)) {
+      throw new Error('Supabase publishable keys are unavailable')
+    }
+    const legacyValue = Deno.env.get('SUPABASE_ANON_KEY')
+    if (legacyValue !== undefined && !isSupabasePublicKey(legacyValue.trim())) {
+      throw new Error('Supabase public key is unavailable')
+    }
+    return key
+  }
+  const legacy = requiredEnvironment('SUPABASE_ANON_KEY').trim()
+  if (!isSupabasePublicKey(legacy)) throw new Error('Supabase public key is unavailable')
+  return legacy
 }
 
 function isPrivateHostname(rawHostname: string): boolean {
@@ -445,7 +455,7 @@ const EDGE_HANDLER = `Deno.serve(async (request) => {
     if (!token) return json({ error: 'Unauthorized.' }, 401)
     const supabase = createClient(
       requiredEnvironment('SUPABASE_URL'),
-      requiredEnvironment('SUPABASE_ANON_KEY'),
+      requiredSupabasePublicKey(),
       {
         global: { headers: { Authorization: 'Bearer ' + token } },
         auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }

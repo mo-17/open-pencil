@@ -1,5 +1,7 @@
+import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import type { BackendCompilationMode, BackendProviderSelection } from './backend/contracts'
 import type { OpenPencilMicrofrontendAppV1 } from './microfrontend/types'
 
 export interface CompilerInput {
@@ -90,6 +92,18 @@ export type CompilerRouter =
   | 'mpx-router'
   | 'none'
 
+/**
+ * Exact data-only Backend Provider authority prepared by a trusted host for one
+ * compile. The Compiler still revalidates the selection against its static
+ * adapter registry and normalizes the application before plan/emit; it never
+ * receives the host store, credentials, network handles, or executable plugin
+ * code through this contract.
+ */
+export interface CompilerBackendProviderRequest {
+  readonly selection: BackendProviderSelection
+  readonly application: BackendApplicationSpecV1
+}
+
 export interface CompilerOptions {
   /** package.json `name` field of the output project */
   packageName: string
@@ -115,6 +129,20 @@ export interface CompilerOptions {
    * clean. See docs/lowcode-phase-0.md §5.4.
    */
   devMode: boolean
+  /**
+   * Explicit Backend capability policy. Omit to derive `preview` from
+   * `devMode:true` and `production` from `devMode:false`. Targets that only
+   * emit a static prototype must opt into `source-only-prototype`; production
+   * never silently downgrades required Backend behavior.
+   */
+  backendCompilationMode?: BackendCompilationMode
+  /**
+   * Host-resolved explicit Backend Provider request. When present it is the
+   * only Provider authority for this compile: invalid/inactive authority fails
+   * closed and never falls back to legacy Supabase lowering. A document that
+   * also contains legacy Backend intent is rejected as ambiguous.
+   */
+  backendProvider?: CompilerBackendProviderRequest
   /**
    * Phase 3 §9 — emit an i18n runtime (react-intl). When true, every visible
    * design string (TEXT content, BUTTON text, SELECT/RADIO/CHECKBOX option
@@ -256,11 +284,24 @@ export interface CompilerOutput {
   files: Map<string, string | Uint8Array>
   warnings: CompileWarning[]
   /**
+   * Explicit ownership for non-browser artifacts mixed into `files`. Provider
+   * review material is data-only and must not be treated as executable server
+   * workflow source. Omitted when the compile emitted neither category.
+   */
+  artifactOwnership?: CompilerArtifactOwnership
+  /**
    * Present only for an explicit microfrontend compile. The build layer must
    * consume this compiler-owned identity instead of accepting a second set of
    * caller overrides that could make the manifest disagree with the bundle.
    */
   microfrontend?: CompilerMicrofrontendBuildDescriptor
+}
+
+export interface CompilerArtifactOwnership {
+  /** Provider-owned schema, policy, migration, plan, and review artifacts. */
+  backendReviewFiles: readonly string[]
+  /** Server workflow deployment sources that require a separate runtime deploy. */
+  executableServerWorkflowFiles: readonly string[]
 }
 
 export interface CompilerMicrofrontendBuildDescriptor {

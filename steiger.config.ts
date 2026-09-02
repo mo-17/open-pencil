@@ -42,7 +42,11 @@ export default defineConfig([
       'open-pencil/no-ui-imports-in-core': 'error',
       'open-pencil/scripts-are-entrypoint-shims': 'error',
       'open-pencil/strict-tools-layout': 'error',
-      'open-pencil/no-cross-layer-in-compiler': 'error'
+      'open-pencil/no-cross-layer-in-compiler': 'error',
+      'open-pencil/no-backend-apply-authority-in-untrusted-runtimes': 'error',
+      'open-pencil/no-host-credentials-or-database-clients-in-backend-sandboxes': 'error',
+      'open-pencil/no-backend-provider-runtime-authority-in-compiler': 'error',
+      'open-pencil/no-backend-provider-runtime-effects-in-compiler': 'error'
     }
   }
 ])

@@ -10,6 +10,10 @@ import {
 } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
+import {
+  parsePluginBackendProviderContribution,
+  type PluginBackendProviderContributionV1
+} from './backend-provider-contract'
 import { parsePluginConnectorContract, type PluginConnectorContractV1 } from './connector-contract'
 import {
   parsePluginObjectParameterSchema,
@@ -51,6 +55,7 @@ export const PLUGIN_MANIFEST_LIMITS = Object.freeze({
   maxExporters: 64,
   maxConnectors: 64,
   maxStorageProviders: 16,
+  maxBackendProviders: 16,
   maxFieldsPerModule: 64,
   maxFieldPathDepth: 8,
   maxOptionsPerField: 128,
@@ -202,6 +207,7 @@ export interface PluginManifestPayloadV2 extends Omit<
     exporters?: readonly DeclarativeExporterContributionV2[]
     connectors?: readonly PluginConnectorContractV1[]
     storageProviders?: readonly PluginStorageProviderContributionV2[]
+    backendProviders?: readonly PluginBackendProviderContributionV1[]
   }
 }
 
@@ -238,7 +244,8 @@ const CONTRIBUTIONS_KEYS_V2 = new Set([
   'commands',
   'exporters',
   'connectors',
-  'storageProviders'
+  'storageProviders',
+  'backendProviders'
 ])
 const REQUIRED_CONTRIBUTIONS_KEYS = new Set(['modules'])
 const MODULE_KEYS = new Set([
@@ -742,7 +749,7 @@ type ContributionParser<TContribution> = (value: unknown, index: number) => TCon
 
 function optionalContributions<TContribution>(
   source: Record<string, unknown>,
-  key: 'commands' | 'exporters' | 'storageProviders',
+  key: 'commands' | 'exporters' | 'storageProviders' | 'backendProviders',
   maximum: number,
   parser: ContributionParser<TContribution>,
   identityOf: (contribution: TContribution) => string,
@@ -755,6 +762,32 @@ function optionalContributions<TContribution>(
     throw new TypeError(`${path} contains duplicate ${duplicateLabel}`)
   }
   return contributions
+}
+
+function backendProviderContributions(
+  source: Record<string, unknown>
+): readonly PluginBackendProviderContributionV1[] | undefined {
+  const providers = optionalContributions(
+    source,
+    'backendProviders',
+    PLUGIN_MANIFEST_LIMITS.maxBackendProviders,
+    (value, index) =>
+      parsePluginBackendProviderContribution(
+        value,
+        `manifest.contributions.backendProviders[${index}]`
+      ),
+    (provider) => provider.providerId,
+    'provider IDs'
+  )
+  if (
+    providers &&
+    new Set(providers.map(({ contributionId }) => contributionId)).size !== providers.length
+  ) {
+    throw new TypeError(
+      'manifest.contributions.backendProviders contains duplicate contribution IDs'
+    )
+  }
+  return providers
 }
 
 function connectorContributions(
@@ -817,12 +850,15 @@ function parsedContributions<TCommand, TExporter>(
           (provider) => provider.providerId,
           'provider IDs'
         )
+  const backendProviders =
+    connectorPluginId === undefined ? undefined : backendProviderContributions(source)
   if (
     modules.length +
       (commands?.length ?? 0) +
       (exporters?.length ?? 0) +
       (connectors?.length ?? 0) +
-      (storageProviders?.length ?? 0) ===
+      (storageProviders?.length ?? 0) +
+      (backendProviders?.length ?? 0) ===
     0
   ) {
     throw new TypeError('manifest must declare at least one contribution')
@@ -832,7 +868,8 @@ function parsedContributions<TCommand, TExporter>(
     ...(commands ? { commands } : {}),
     ...(exporters ? { exporters } : {}),
     ...(connectors ? { connectors } : {}),
-    ...(storageProviders ? { storageProviders } : {})
+    ...(storageProviders ? { storageProviders } : {}),
+    ...(backendProviders ? { backendProviders } : {})
   }
 }
 

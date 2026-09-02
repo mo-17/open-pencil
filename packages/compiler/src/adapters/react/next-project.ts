@@ -12,6 +12,8 @@ const REMOVED_VITE_DEV_DEPENDENCIES = ['@tailwindcss/vite', '@vitejs/plugin-reac
 
 const NEXT_PUBLIC_ENV_REPLACEMENTS = Object.freeze({
   'import.meta.env.VITE_SUPABASE_URL': 'process.env.NEXT_PUBLIC_SUPABASE_URL',
+  'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY':
+    'process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
   'import.meta.env.VITE_SUPABASE_ANON_KEY': 'process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'import.meta.env.VITE_SUPABASE_SCHEMA': 'process.env.NEXT_PUBLIC_SUPABASE_SCHEMA'
 })

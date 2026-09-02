@@ -16,6 +16,7 @@ import {
   buildPreviewProject,
   createSupabaseBuildDefines,
   assertSafeBuildOutputDirectory,
+  assertSafeClientBuildEnvironment,
   OPENPENCIL_BUILD_OUTPUT_MANIFEST,
   type PreviewFiles
 } from '@open-pencil/compiler/build'
@@ -155,18 +156,20 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
   test('pins all Supabase Vite defines instead of inheriting ambient build values', () => {
     expect(createSupabaseBuildDefines(undefined)).toEqual({
       'import.meta.env.VITE_SUPABASE_URL': 'undefined',
+      'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': 'undefined',
       'import.meta.env.VITE_SUPABASE_ANON_KEY': 'undefined',
       'import.meta.env.VITE_SUPABASE_SCHEMA': 'undefined'
     })
     expect(
       createSupabaseBuildDefines({
         VITE_SUPABASE_URL: 'https://explicit.supabase.co',
-        VITE_SUPABASE_ANON_KEY: 'sb_publishable_explicit',
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_explicit',
         VITE_SUPABASE_SCHEMA: 'app'
       })
     ).toEqual({
       'import.meta.env.VITE_SUPABASE_URL': '"https://explicit.supabase.co"',
-      'import.meta.env.VITE_SUPABASE_ANON_KEY': '"sb_publishable_explicit"',
+      'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': '"sb_publishable_explicit"',
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': 'undefined',
       'import.meta.env.VITE_SUPABASE_SCHEMA': '"app"'
     })
   })
@@ -306,7 +309,7 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
         'src/App.tsx',
         'export default function App() {\n' +
           '  const u = import.meta.env.VITE_SUPABASE_URL ?? "FALLBACK_DESIGN_URL"\n' +
-          '  const k = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "FALLBACK_DESIGN_KEY"\n' +
+          '  const k = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? "FALLBACK_DESIGN_KEY"\n' +
           '  const s = import.meta.env.VITE_SUPABASE_SCHEMA ?? "FALLBACK_DESIGN_SCHEMA"\n' +
           '  return <div>{u}:{k}:{s}</div>\n' +
           '}\n'
@@ -326,7 +329,7 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
         outDir: withOverride,
         env: {
           VITE_SUPABASE_URL: 'https://prod.override.co',
-          VITE_SUPABASE_ANON_KEY: 'sb_publishable_override',
+          VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_override',
           VITE_SUPABASE_SCHEMA: 'private'
         }
       })
@@ -340,10 +343,12 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
 
       const ambient = {
         url: process.env.VITE_SUPABASE_URL,
-        key: process.env.VITE_SUPABASE_ANON_KEY,
+        publishableKey: process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        legacyAnonKey: process.env.VITE_SUPABASE_ANON_KEY,
         schema: process.env.VITE_SUPABASE_SCHEMA
       }
       process.env.VITE_SUPABASE_URL = 'https://ambient-must-not-leak.supabase.co'
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_ambient_must_not_leak'
       process.env.VITE_SUPABASE_ANON_KEY = 'sb_publishable_ambient_must_not_leak'
       process.env.VITE_SUPABASE_SCHEMA = 'ambient_must_not_leak'
       try {
@@ -351,8 +356,10 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
       } finally {
         if (ambient.url === undefined) delete process.env.VITE_SUPABASE_URL
         else process.env.VITE_SUPABASE_URL = ambient.url
-        if (ambient.key === undefined) delete process.env.VITE_SUPABASE_ANON_KEY
-        else process.env.VITE_SUPABASE_ANON_KEY = ambient.key
+        if (ambient.publishableKey === undefined) delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+        else process.env.VITE_SUPABASE_PUBLISHABLE_KEY = ambient.publishableKey
+        if (ambient.legacyAnonKey === undefined) delete process.env.VITE_SUPABASE_ANON_KEY
+        else process.env.VITE_SUPABASE_ANON_KEY = ambient.legacyAnonKey
         if (ambient.schema === undefined) delete process.env.VITE_SUPABASE_SCHEMA
         else process.env.VITE_SUPABASE_SCHEMA = ambient.schema
       }
@@ -373,8 +380,25 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
       buildPreviewProject({
         files: fixture,
         outDir,
-        env: { VITE_SUPABASE_ANON_KEY: 'sb_secret_do_not_embed' }
+        env: { VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_secret_do_not_embed' }
       })
     ).rejects.toThrow('secret/service_role')
+  })
+
+  test('rejects a Supabase Management API PAT before it can enter the client bundle', () => {
+    expect(() =>
+      assertSafeClientBuildEnvironment({
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'sbp_do_not_embed'
+      })
+    ).toThrow('secret/service_role/management')
+  })
+
+  test('rejects conflicting publishable and legacy anon build aliases', () => {
+    expect(() =>
+      assertSafeClientBuildEnvironment({
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_new',
+        VITE_SUPABASE_ANON_KEY: 'sb_publishable_stale'
+      })
+    ).toThrow('Conflicting Supabase')
   })
 })

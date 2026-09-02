@@ -232,6 +232,12 @@ describe('publisher-signed plugin runtime packages', () => {
     expect(() => parsePluginRuntimePackagePayload(unsupportedCapability)).toThrow(
       'runtime capability'
     )
+    const backendCapability = structuredClone(signedPayload)
+    backendCapability.runtime.capabilities = ['data.read'] as never
+    expect(() => parsePluginRuntimePackagePayload(backendCapability)).toThrow('runtime capability')
+    const backendExecutor = structuredClone(signedPayload)
+    Reflect.set(backendExecutor.runtime, 'backendExecutor', 'open-pencil.backend.supabase')
+    expect(() => parsePluginRuntimePackagePayload(backendExecutor)).toThrow('unsupported fields')
     const duplicateCapabilities = structuredClone(signedPayload)
     duplicateCapabilities.runtime.capabilities = ['document.nodes.read', 'document.nodes.read']
     expect(() => parsePluginRuntimePackagePayload(duplicateCapabilities)).toThrow(

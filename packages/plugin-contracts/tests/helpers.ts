@@ -1,15 +1,66 @@
 import {
+  PLUGIN_BACKEND_PROVIDER_CONTRACT_VERSION,
+  PLUGIN_BACKEND_PROVIDER_MODEL_VERSION,
   PLUGIN_CONNECTOR_CONTRACT_FORMAT,
   PLUGIN_CONNECTOR_CONTRACT_SCHEMA_VERSION,
   PLUGIN_MANIFEST_FORMAT,
   PLUGIN_MANIFEST_SCHEMA_VERSION,
   PLUGIN_MANIFEST_SCHEMA_VERSION_V2,
   type PluginContributionDataContractV2,
+  type PluginBackendProviderContributionV1,
   type PluginConnectorContractV1,
   type PluginManifestPayloadV1,
   type PluginManifestPayloadV2,
   type PluginStorageProviderContributionV2
 } from '@open-pencil/plugin-contracts'
+
+export function pluginBackendProviderContribution(
+  providerId = 'supabase'
+): PluginBackendProviderContributionV1 {
+  return {
+    providerId,
+    contributionId: `${providerId}.backend`,
+    name: 'Supabase Backend',
+    description: 'Emits reviewed backend artifacts through a trusted compiler adapter.',
+    adapterId: 'open-pencil.backend.supabase',
+    contractVersion: PLUGIN_BACKEND_PROVIDER_CONTRACT_VERSION,
+    supportedModelVersions: [PLUGIN_BACKEND_PROVIDER_MODEL_VERSION],
+    capabilities: [
+      'auth.identity',
+      'data.read',
+      'data.write',
+      'migrations.schema',
+      'policy.row-level',
+      'server.functions'
+    ],
+    configuration: {
+      schema: {
+        type: 'object',
+        properties: {
+          options: {
+            type: 'object',
+            properties: { enabled: { type: 'boolean' } },
+            additionalProperties: false
+          },
+          projectRef: { type: 'string', minLength: 1, maxLength: 64 },
+          region: { type: 'string', enum: ['ap-southeast-1', 'us-east-1'] }
+        },
+        required: ['projectRef', 'region'],
+        additionalProperties: false
+      },
+      maxBytes: 512
+    },
+    outputKinds: [
+      'client-config',
+      'database-schema',
+      'deployment-manifest',
+      'migration-plan',
+      'security-policy',
+      'server-runtime'
+    ],
+    permissions: []
+  }
+}
 
 export function pluginConnectorContract(
   description = 'Reads bounded analytics records.'

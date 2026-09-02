@@ -28,6 +28,11 @@
       "bun": "./src/ir/*.ts",
       "default": "./dist/ir/*.mjs"
     },
+    "./backend": {
+      "types": "./src/backend/index.ts",
+      "bun": "./src/backend/index.ts",
+      "default": "./dist/backend/index.mjs"
+    },
     "./adapters/react": {
       "types": "./src/adapters/react/index.ts",
       "bun": "./src/adapters/react/index.ts",
@@ -85,7 +90,9 @@
     }
   },
   "scripts": {
-    "build": "bunx tsdown --config tsdown.config.ts"
+    "build": "bunx tsdown --config tsdown.config.ts",
+    "check": "bun run build && bun run smoke:dist",
+    "smoke:dist": "bun scripts/smoke-dist.ts"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.123",
