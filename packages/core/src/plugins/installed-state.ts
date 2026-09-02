@@ -36,6 +36,9 @@ export interface PluginUpdateDiff {
   addedStorageProviders: string[]
   removedStorageProviders: string[]
   updatedStorageProviders: string[]
+  addedBackendProviders: string[]
+  removedBackendProviders: string[]
+  updatedBackendProviders: string[]
 }
 
 export interface PluginUpdateReview {
@@ -75,7 +78,10 @@ const DIFF_KEYS = new Set([
   'updatedConnectors',
   'addedStorageProviders',
   'removedStorageProviders',
-  'updatedStorageProviders'
+  'updatedStorageProviders',
+  'addedBackendProviders',
+  'removedBackendProviders',
+  'updatedBackendProviders'
 ])
 const LEGACY_DIFF_KEYS = new Set([
   'fromVersion',
@@ -152,6 +158,21 @@ function updateDiff(value: unknown): PluginUpdateDiff {
       source,
       'updatedStorageProviders',
       'storage provider ID'
+    ),
+    addedBackendProviders: optionalContributionList(
+      source,
+      'addedBackendProviders',
+      'backend provider contribution ID'
+    ),
+    removedBackendProviders: optionalContributionList(
+      source,
+      'removedBackendProviders',
+      'backend provider contribution ID'
+    ),
+    updatedBackendProviders: optionalContributionList(
+      source,
+      'updatedBackendProviders',
+      'backend provider contribution ID'
     )
   }
 }
@@ -217,7 +238,13 @@ function requireConsistentHistoricalVersion(
 
 function contributionMap(
   entries: readonly object[] | undefined,
-  identityKey: 'moduleType' | 'commandId' | 'exporterId' | 'connectorId' | 'providerId'
+  identityKey:
+    | 'moduleType'
+    | 'commandId'
+    | 'exporterId'
+    | 'connectorId'
+    | 'providerId'
+    | 'contributionId'
 ): Map<string, string> {
   return new Map(
     entries?.map((entry) => [
@@ -274,11 +301,24 @@ export function diffPluginPackages(
       : undefined,
     'providerId'
   )
+  const beforeBackendProviders = contributionMap(
+    current?.manifest.schemaVersion === 2
+      ? current.manifest.contributions.backendProviders
+      : undefined,
+    'contributionId'
+  )
+  const afterBackendProviders = contributionMap(
+    candidate.manifest.schemaVersion === 2
+      ? candidate.manifest.contributions.backendProviders
+      : undefined,
+    'contributionId'
+  )
   const modules = contributionDiff(beforeModules, afterModules)
   const commands = contributionDiff(beforeCommands, afterCommands)
   const exporters = contributionDiff(beforeExporters, afterExporters)
   const connectors = contributionDiff(beforeConnectors, afterConnectors)
   const storageProviders = contributionDiff(beforeStorageProviders, afterStorageProviders)
+  const backendProviders = contributionDiff(beforeBackendProviders, afterBackendProviders)
   return {
     fromVersion: current?.manifest.plugin.version ?? null,
     toVersion: candidate.manifest.plugin.version,
@@ -296,7 +336,10 @@ export function diffPluginPackages(
     updatedConnectors: connectors.updated,
     addedStorageProviders: storageProviders.added,
     removedStorageProviders: storageProviders.removed,
-    updatedStorageProviders: storageProviders.updated
+    updatedStorageProviders: storageProviders.updated,
+    addedBackendProviders: backendProviders.added,
+    removedBackendProviders: backendProviders.removed,
+    updatedBackendProviders: backendProviders.updated
   }
 }
 

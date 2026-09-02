@@ -54,6 +54,7 @@ import {
   type AppPluginRecordIssueKind,
   type AppPluginStoreSnapshot,
   type InstalledAppPlugin,
+  type InstalledPluginBackendProvider,
   type InstalledPluginCommand,
   type InstalledPluginConnector,
   type InstalledPluginExporter,
@@ -2000,6 +2001,20 @@ export function createAppPluginStore(options: CreateAppPluginStoreOptions) {
     })
   }
 
+  function installedBackendProviders(): InstalledPluginBackendProvider[] {
+    if (!ready) return []
+    return [...installed.values()].flatMap((plugin) => {
+      const runtimePlugin = runtimePluginState(plugin)
+      if (!runtimePlugin.enabled || runtimePlugin.package.manifest.schemaVersion !== 2) return []
+      return (runtimePlugin.package.manifest.contributions.backendProviders ?? []).map(
+        (contribution) => ({
+          plugin: structuredClone(runtimePlugin),
+          contribution: structuredClone(contribution)
+        })
+      )
+    })
+  }
+
   function canCreateModule(pluginId: string, moduleType: string): boolean {
     return installedModules().some(
       ({ plugin, contribution }) =>
@@ -2055,6 +2070,18 @@ export function createAppPluginStore(options: CreateAppPluginStoreOptions) {
     )
   }
 
+  function backendProvider(
+    pluginId: string,
+    providerId: string
+  ): InstalledPluginBackendProvider | null {
+    return (
+      installedBackendProviders().find(
+        ({ plugin, contribution }) =>
+          plugin.package.manifest.plugin.id === pluginId && contribution.providerId === providerId
+      ) ?? null
+    )
+  }
+
   return {
     snapshot,
     assertPublisherStateCurrent,
@@ -2083,11 +2110,13 @@ export function createAppPluginStore(options: CreateAppPluginStoreOptions) {
     installedExporters,
     installedConnectors,
     installedStorageProviders,
+    installedBackendProviders,
     canCreateModule,
     module,
     command,
     exporter,
     connector,
-    storageProvider
+    storageProvider,
+    backendProvider
   }
 }

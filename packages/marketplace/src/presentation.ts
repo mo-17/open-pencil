@@ -54,6 +54,7 @@ export interface MarketplaceManifestPresentationV1 {
   readonly commandIds: readonly string[]
   readonly exporterIds: readonly string[]
   readonly storageProviderIds: readonly string[]
+  readonly backendProviderIds: readonly string[]
   readonly connectors: readonly MarketplaceConnectorPresentationV1[]
 }
 
@@ -116,8 +117,12 @@ const MANIFEST_KEYS = new Set([
   'commandIds',
   'exporterIds',
   'storageProviderIds',
+  'backendProviderIds',
   'connectors'
 ])
+const LEGACY_MANIFEST_KEYS = new Set(
+  [...MANIFEST_KEYS].filter((key) => key !== 'backendProviderIds')
+)
 const PLUGIN_KEYS = new Set(['id', 'name', 'version'])
 const PUBLISHER_KEYS = new Set(['id', 'name', 'keyId'])
 const CONNECTOR_KEYS = new Set([
@@ -218,6 +223,9 @@ function manifestProjection(manifest: PluginManifest): MarketplaceManifestPresen
     storageProviderIds: sortedUnique(
       (version2?.contributions.storageProviders ?? []).map(({ providerId }) => providerId)
     ),
+    backendProviderIds: sortedUnique(
+      (version2?.contributions.backendProviders ?? []).map(({ contributionId }) => contributionId)
+    ),
     connectors: Object.freeze(
       (version2?.contributions.connectors ?? [])
         .map(connectorProjection)
@@ -300,7 +308,7 @@ function parseConnector(value: unknown, path: string): MarketplaceConnectorPrese
 }
 
 function parseManifest(value: unknown, path: string): MarketplaceManifestPresentationV1 {
-  const source = parseExactManifestRecord(value, path, MANIFEST_KEYS)
+  const source = parseExactManifestRecord(value, path, MANIFEST_KEYS, LEGACY_MANIFEST_KEYS)
   if (
     source.format !== PLUGIN_MANIFEST_FORMAT ||
     (source.schemaVersion !== 1 && source.schemaVersion !== 2)
@@ -365,6 +373,13 @@ function parseManifest(value: unknown, path: string): MarketplaceManifestPresent
       `${path}.storageProviderIds`,
       PLUGIN_MANIFEST_LIMITS.maxStorageProviders
     ),
+    backendProviderIds: Object.hasOwn(source, 'backendProviderIds')
+      ? identityArray(
+          source.backendProviderIds,
+          `${path}.backendProviderIds`,
+          PLUGIN_MANIFEST_LIMITS.maxBackendProviders
+        )
+      : Object.freeze([]),
     connectors: Object.freeze(connectors)
   })
 }

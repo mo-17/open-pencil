@@ -23,6 +23,7 @@ import {
 } from '@open-pencil/plugin-contracts'
 
 import {
+  pluginBackendProviderContribution,
   pluginConnectorContract,
   pluginPayload,
   pluginPayloadV2,
@@ -80,7 +81,10 @@ describe('installed plugin state', () => {
       updatedConnectors: [],
       addedStorageProviders: [],
       removedStorageProviders: [],
-      updatedStorageProviders: []
+      updatedStorageProviders: [],
+      addedBackendProviders: [],
+      removedBackendProviders: [],
+      updatedBackendProviders: []
     })
     const accepted = acceptPluginUpdate(reviewing)
     expect(accepted.accepted.manifest.plugin.version).toBe('1.1.0')
@@ -253,7 +257,10 @@ describe('installed plugin state', () => {
       updatedConnectors: [],
       addedStorageProviders: [],
       removedStorageProviders: [],
-      updatedStorageProviders: []
+      updatedStorageProviders: [],
+      addedBackendProviders: [],
+      removedBackendProviders: [],
+      updatedBackendProviders: []
     })
   })
 
@@ -303,6 +310,34 @@ describe('installed plugin state', () => {
     expect(
       reviewPluginUpdate(createInstalledPluginState(changed), removed).pending?.diff
     ).toMatchObject({ removedStorageProviders: ['acme-cloud'] })
+  })
+
+  test('reviews added, removed, and changed backend-provider authority', async () => {
+    const keyPair = await keys()
+    const initial = await verifiedV2(keyPair, '2.0.0')
+    const added = await verifiedV2(keyPair, '2.1.0', (payload) => {
+      payload.contributions.backendProviders = [pluginBackendProviderContribution()]
+    })
+    expect(
+      reviewPluginUpdate(createInstalledPluginState(initial), added).pending?.diff
+    ).toMatchObject({ addedBackendProviders: ['supabase.backend'] })
+
+    const changed = await verifiedV2(keyPair, '2.2.0', (payload) => {
+      payload.contributions.backendProviders = [
+        {
+          ...pluginBackendProviderContribution(),
+          description: 'Emits a newly reviewed bounded backend artifact set.'
+        }
+      ]
+    })
+    expect(
+      reviewPluginUpdate(createInstalledPluginState(added), changed).pending?.diff
+    ).toMatchObject({ updatedBackendProviders: ['supabase.backend'] })
+
+    const removed = await verifiedV2(keyPair, '2.3.0')
+    expect(
+      reviewPluginUpdate(createInstalledPluginState(changed), removed).pending?.diff
+    ).toMatchObject({ removedBackendProviders: ['supabase.backend'] })
   })
 
   test('reviews a v1-to-v2 migration and preserves the accepted versioned snapshot', async () => {
@@ -403,7 +438,10 @@ describe('installed plugin state', () => {
       updatedConnectors: [],
       addedStorageProviders: [],
       removedStorageProviders: [],
-      updatedStorageProviders: []
+      updatedStorageProviders: [],
+      addedBackendProviders: [],
+      removedBackendProviders: [],
+      updatedBackendProviders: []
     })
   })
 

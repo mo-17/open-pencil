@@ -10,6 +10,8 @@ import type {
 import { parsePluginObjectParameterValue } from '@open-pencil/plugin-contracts'
 import type { JSONObject, JSONValue } from '@open-pencil/scene-graph/primitives'
 
+export * from './backend-provider'
+
 import type { EditorStore } from '@/app/editor/active-store'
 
 import type {
@@ -22,6 +24,11 @@ import {
   APPLICATION_SECURITY_READINESS_HOST_CONTRACT,
   runApplicationSecurityReadiness
 } from './application-security-readiness'
+import {
+  APP_BACKEND_PROVIDER_MCP_COMMANDS,
+  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
+  runAppBackendProviderMCPCommand
+} from './backend-provider'
 import { exportCurrentDocumentAsCapacitorSource } from './capacitor-exporter'
 import { executeClipboardCommand } from './clipboard'
 import {
@@ -181,7 +188,8 @@ export type AppPluginExporterExecutor = (
 export type AppPluginCommandExecutor = (
   editor: EditorStore,
   args: JSONObject,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  plugin?: InstalledAppPlugin
 ) => Promise<AppPluginHostExecutionResult> | AppPluginHostExecutionResult
 
 export interface AppPluginHostExecutors {
@@ -244,6 +252,22 @@ const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
       })
     }
   ] as const,
+  ...Object.values(APP_BACKEND_PROVIDER_MCP_COMMANDS).map(
+    (command) =>
+      [
+        command.adapterId,
+        {
+          pluginId: SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
+          commandId: command.commandId,
+          schemaVersion: 2 as const,
+          permissions: command.permissions,
+          parameters: command.parameters,
+          result: command.result,
+          mcpExposure: 'enabled' as const,
+          mcpText: Object.freeze({ title: command.name, description: command.description })
+        }
+      ] as const
+  ),
   [
     COMPILER_PREVIEW_POPOUT_COMMAND.adapterId,
     {
@@ -549,6 +573,25 @@ function resolveTrustedPluginCommandExecutor(
         status: 'completed',
         message: `Application security readiness: ${data.status}; ${data.errorCount} error(s) and ${data.warningCount} warning(s).`,
         data
+      }
+    }
+  }
+  const backendProviderCommand = Object.entries(APP_BACKEND_PROVIDER_MCP_COMMANDS).find(
+    ([, command]) => command.adapterId === adapterId
+  )
+  if (backendProviderCommand) {
+    const operation = backendProviderCommand[0] as keyof typeof APP_BACKEND_PROVIDER_MCP_COMMANDS
+    return (editor, args, signal, plugin) => {
+      if (!plugin) throw new Error('Backend Provider MCP command package authority is unavailable')
+      if (signal?.aborted) {
+        const error = new Error('Backend Provider MCP command was cancelled')
+        error.name = 'AbortError'
+        throw error
+      }
+      return {
+        status: 'completed',
+        message: `Backend Provider ${operation} is ready; no credential, artifact emission, Apply, or remote operation was performed.`,
+        data: runAppBackendProviderMCPCommand(plugin, editor.graph, operation, args)
       }
     }
   }
@@ -987,7 +1030,7 @@ export async function runInstalledPluginCommand(
   const validatedArgs = contributionArguments(declared, args)
   const execute = executors.resolveCommand?.(declared.adapterId)
   if (execute) {
-    return validatedExecutionResult(declared, await execute(editor, validatedArgs, signal))
+    return validatedExecutionResult(declared, await execute(editor, validatedArgs, signal, plugin))
   }
   if (commandSchemaVersion(declared) === 2) {
     throw new Error(`Plugin command executor is unavailable: ${declared.adapterId}`)

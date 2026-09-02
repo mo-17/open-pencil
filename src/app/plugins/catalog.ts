@@ -47,6 +47,7 @@ import {
   type DeclarativeCommandContributionV2,
   type DeclarativeExporterContributionV1,
   type DeclarativeExporterContributionV2,
+  type PluginBackendProviderContributionV1,
   type PluginContributionDataContractV2,
   type PluginConnectorContractV1,
   type PluginManifestPayloadV1,
@@ -95,6 +96,11 @@ import {
   SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID
 } from './connectors/supabase-schema-inspector'
 import { APPLICATION_SECURITY_READINESS_HOST_CONTRACT } from './host/application-security-readiness'
+import {
+  APP_BACKEND_PROVIDER_MCP_COMMANDS,
+  SUPABASE_BACKEND_PROVIDER_CONTRIBUTION,
+  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+} from './host/backend-provider'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from './host/deployment/contract'
 import {
   ACCESSIBILITY_AUDIT_COMMAND,
@@ -229,6 +235,7 @@ function bundledUtilityManifestV2(
     exporters?: readonly DeclarativeExporterContributionV2[]
     connectors?: readonly PluginConnectorContractV1[]
     storageProviders?: readonly PluginStorageProviderContributionV2[]
+    backendProviders?: readonly PluginBackendProviderContributionV1[]
   }>
 ): PluginManifestPayloadV2 {
   return {
@@ -247,6 +254,11 @@ function bundledUtilityManifestV2(
       ...(contributions.storageProviders
         ? {
             storageProviders: contributions.storageProviders.map((value) => structuredClone(value))
+          }
+        : {}),
+      ...(contributions.backendProviders
+        ? {
+            backendProviders: contributions.backendProviders.map((value) => structuredClone(value))
           }
         : {})
     }
@@ -762,6 +774,20 @@ function baiduNetdiskStorageManifest(): PluginManifestPayloadV2 {
   )
 }
 
+function supabaseBackendProviderManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
+      name: 'Supabase Backend Provider',
+      version: '1.0.0'
+    },
+    {
+      commands: Object.values(APP_BACKEND_PROVIDER_MCP_COMMANDS),
+      backendProviders: [SUPABASE_BACKEND_PROVIDER_CONTRIBUTION]
+    }
+  )
+}
+
 function deploymentPlanManifest(
   definition: (typeof REVIEWED_DEPLOYMENT_PLUGINS)[number]
 ): PluginManifestPayloadV2 {
@@ -1123,6 +1149,12 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
       installedByDefault: definition.installation.installedByDefault,
       enabledByDefault: definition.installation.enabledByDefault
     })),
+    {
+      trustSource: 'app-bundle',
+      manifest: supabaseBackendProviderManifest(),
+      installedByDefault: true,
+      enabledByDefault: true
+    },
     {
       trustSource: 'app-bundle',
       manifest: googleDriveStorageManifest(),

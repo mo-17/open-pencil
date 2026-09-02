@@ -101,6 +101,7 @@ export {
   type AppPluginStorageProviderCompatibility,
   type AppPluginStorageProviderCompatibilityStatus
 } from './host'
+export * from './host/backend-provider'
 export * from './remote'
 export * from './marketplace'
 export * from './runtime'
@@ -135,6 +136,7 @@ export type {
   AppPluginTrustSource,
   InstalledAppPlugin,
   InstalledPluginCommand,
+  InstalledPluginBackendProvider,
   InstalledPluginConnector,
   InstalledPluginExporter,
   InstalledPluginModule,

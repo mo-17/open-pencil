@@ -2,6 +2,8 @@ import {
   searchMarketplaceListings,
   type MarketplacePluginListingV1,
   type MarketplacePublisherV1,
+  type PluginBackendProviderCapabilityV1,
+  type PluginBackendProviderOutputKindV1,
   type PluginExporterOutputV2,
   type PluginHostPermissionV2,
   type PluginManifestPayload,
@@ -43,7 +45,7 @@ export interface PluginMarketplaceSnapshotView {
 }
 
 export interface PluginV2ContractSummary {
-  readonly kind: 'command' | 'exporter' | 'connector' | 'storage-provider'
+  readonly kind: 'command' | 'exporter' | 'connector' | 'storage-provider' | 'backend-provider'
   readonly contributionId: string
   readonly permissions: readonly (PluginHostPermissionV2 | `network.${string}`)[]
   readonly outputs: readonly PluginExporterOutputV2[]
@@ -52,8 +54,13 @@ export interface PluginV2ContractSummary {
   readonly networkOrigins?: readonly string[]
   readonly networkMethods?: readonly string[]
   readonly credentialSlots?: readonly string[]
-  readonly capabilities?: readonly PluginStorageProviderCapabilityV2[]
+  readonly capabilities?: readonly (
+    | PluginStorageProviderCapabilityV2
+    | PluginBackendProviderCapabilityV1
+  )[]
   readonly configVersion?: number
+  readonly outputKinds?: readonly PluginBackendProviderOutputKindV1[]
+  readonly configurationMaxBytes?: number
 }
 
 /**
@@ -124,6 +131,19 @@ export function pluginV2ContractSummaries(
       configVersion: provider.configVersion
     })
   }
+  for (const provider of manifest.contributions.backendProviders ?? []) {
+    summaries.push({
+      kind: 'backend-provider',
+      contributionId: provider.contributionId,
+      permissions: Object.freeze([]),
+      outputs: Object.freeze([]),
+      parameterMaxBytes: 0,
+      resultMaxBytes: 0,
+      capabilities: Object.freeze([...provider.capabilities]),
+      outputKinds: Object.freeze([...provider.outputKinds]),
+      configurationMaxBytes: provider.configuration.maxBytes
+    })
+  }
   return Object.freeze(summaries.map((summary) => Object.freeze(summary)))
 }
 
@@ -178,6 +198,18 @@ function localCatalogSearchText(item: AppPluginCatalogItem): string {
           provider.description,
           provider.adapterId,
           provider.capabilities.join(' ')
+        ])
+      : []),
+    ...(manifest.schemaVersion === 2
+      ? (manifest.contributions.backendProviders ?? []).flatMap((provider) => [
+          provider.providerId,
+          provider.contributionId,
+          provider.name,
+          provider.description,
+          provider.adapterId,
+          provider.capabilities.join(' '),
+          provider.outputKinds.join(' '),
+          String(provider.configuration.maxBytes)
         ])
       : [])
   ]

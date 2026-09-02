@@ -52,7 +52,15 @@ function joined(values: readonly string[] | undefined): string {
         <p class="break-words font-mono">capabilities: {{ joined(contract.capabilities) }}</p>
         <p class="font-mono">configVersion: {{ contract.configVersion }}</p>
       </template>
-      <p v-else class="font-mono">
+      <template v-if="contract.kind === 'backend-provider'">
+        <p class="break-words font-mono">capabilities: {{ joined(contract.capabilities) }}</p>
+        <p class="break-words font-mono">outputKinds: {{ joined(contract.outputKinds) }}</p>
+        <p class="font-mono">configuration.maxBytes: {{ contract.configurationMaxBytes }} B</p>
+      </template>
+      <p
+        v-if="contract.kind !== 'storage-provider' && contract.kind !== 'backend-provider'"
+        class="font-mono"
+      >
         parameters.maxBytes: {{ contract.parameterMaxBytes }} B · result.maxBytes:
         {{ contract.resultMaxBytes }} B
       </p>

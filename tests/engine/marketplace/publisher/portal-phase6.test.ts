@@ -34,6 +34,7 @@ import {
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 import {
+  pluginBackendProviderContribution,
   pluginConnectorContract,
   pluginPayloadV2,
   pluginStorageProviderContribution
@@ -122,7 +123,8 @@ async function phase6Fixture() {
       contributions: {
         ...payload.contributions,
         connectors: [pluginConnectorContract()],
-        storageProviders: [pluginStorageProviderContribution()]
+        storageProviders: [pluginStorageProviderContribution()],
+        backendProviders: [pluginBackendProviderContribution()]
       }
     },
     acme.keyPair.privateKey
@@ -837,6 +839,12 @@ describe('Phase 6 verified Submission presentation', () => {
       credentialKinds: ['bearer-token'],
       operationIds: ['list-records']
     })
+    expect(presentation.manifest.backendProviderIds).toEqual(['supabase.backend'])
+    const legacyPresentation = structuredClone(wire)
+    delete legacyPresentation.manifest.backendProviderIds
+    expect(
+      parseMarketplaceSubmissionPresentation(legacyPresentation).manifest.backendProviderIds
+    ).toEqual([])
     expect(presentation.runtime).toMatchObject({
       kind: 'javascript',
       abi: PLUGIN_RUNTIME_COMPUTE_ABI,

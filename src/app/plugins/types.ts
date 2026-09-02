@@ -5,6 +5,7 @@ import type {
   DeclarativeExporterContributionV1,
   DeclarativeExporterContributionV2,
   DeclarativeModuleContributionV1,
+  PluginBackendProviderContributionV1,
   PluginConnectorContractV1,
   PluginManifest,
   PluginManifestPayload,
@@ -282,4 +283,9 @@ export type InstalledPluginConnector = Readonly<{
 export type InstalledPluginStorageProvider = Readonly<{
   plugin: InstalledAppPlugin
   contribution: PluginStorageProviderContributionV2
+}>
+
+export type InstalledPluginBackendProvider = Readonly<{
+  plugin: InstalledAppPlugin
+  contribution: PluginBackendProviderContributionV1
 }>

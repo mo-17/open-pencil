@@ -22,6 +22,11 @@ import {
   RESEND_EMAIL_PLUGIN_ID,
   STRIPE_BILLING_CONNECTOR_ID,
   STRIPE_BILLING_PLUGIN_ID,
+  APP_BACKEND_PROVIDER_MCP_COMMANDS,
+  SUPABASE_BACKEND_PROVIDER_CAPABILITIES,
+  SUPABASE_BACKEND_PROVIDER_CONTRIBUTION,
+  SUPABASE_BACKEND_PROVIDER_CONTRIBUTION_ID,
+  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
   SUPABASE_BUSINESS_CONNECTOR_ID,
   SUPABASE_BUSINESS_PLUGIN_ID,
   SUPABASE_SCHEMA_INSPECTOR_CONNECTOR_ID,
@@ -218,6 +223,35 @@ describe('plugin settings marketplace view model', () => {
         configVersion: GOOGLE_DRIVE_STORAGE_CONFIG_VERSION
       }
     ])
+    expect(pluginV2ContractSummaries(manifest(SUPABASE_BACKEND_PROVIDER_PLUGIN_ID))).toEqual([
+      {
+        kind: 'command',
+        contributionId: APP_BACKEND_PROVIDER_MCP_COMMANDS.audit.commandId,
+        permissions: ['document.read'],
+        outputs: [],
+        parameterMaxBytes: 256,
+        resultMaxBytes: 32 * 1024
+      },
+      {
+        kind: 'command',
+        contributionId: APP_BACKEND_PROVIDER_MCP_COMMANDS.plan.commandId,
+        permissions: ['document.read'],
+        outputs: [],
+        parameterMaxBytes: 256,
+        resultMaxBytes: 32 * 1024
+      },
+      {
+        kind: 'backend-provider',
+        contributionId: SUPABASE_BACKEND_PROVIDER_CONTRIBUTION_ID,
+        permissions: [],
+        outputs: [],
+        parameterMaxBytes: 0,
+        resultMaxBytes: 0,
+        capabilities: SUPABASE_BACKEND_PROVIDER_CAPABILITIES,
+        outputKinds: SUPABASE_BACKEND_PROVIDER_CONTRIBUTION.outputKinds,
+        configurationMaxBytes: SUPABASE_BACKEND_PROVIDER_CONTRIBUTION.configuration.maxBytes
+      }
+    ])
 
     const connectorManifest = pluginPayloadV2()
     connectorManifest.contributions.connectors = [pluginConnectorContract()]
@@ -251,6 +285,31 @@ describe('plugin settings marketplace view model', () => {
       keyStatus: 'active',
       channels: ['stable']
     })
+  })
+
+  test('indexes backend-provider authority fields for local discovery', () => {
+    const catalog = createBundledPluginCatalog().map((entry) => ({
+      package: {
+        trustSource: entry.trustSource,
+        manifest: entry.manifest,
+        digest: 'app-bundle-test-digest'
+      },
+      installed: true
+    })) satisfies readonly AppPluginCatalogItem[]
+
+    for (const query of [
+      SUPABASE_BACKEND_PROVIDER_CONTRIBUTION_ID,
+      'open-pencil.backend.supabase',
+      'server.http',
+      'storage.objects',
+      'deployment-manifest'
+    ]) {
+      expect(
+        filterPluginDiscoverCatalog(catalog, null, query).map(
+          (entry) => entry.package.manifest.plugin.id
+        )
+      ).toContain(SUPABASE_BACKEND_PROVIDER_PLUGIN_ID)
+    }
   })
 
   test('keeps signed manifests unchanged while exposing reviewed Simplified Chinese copy', () => {

@@ -85,6 +85,11 @@ import {
   SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID
 } from '@/app/plugins'
 import { APPLICATION_SECURITY_READINESS_PLUGIN_ID } from '@/app/plugins/host/application-security-readiness'
+import {
+  APP_BACKEND_PROVIDER_MCP_COMMANDS,
+  SUPABASE_BACKEND_PROVIDER_CONTRIBUTION,
+  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+} from '@/app/plugins/host/backend-provider'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import {
   ACCESSIBILITY_AUDIT_COMMAND,
@@ -144,7 +149,7 @@ function bundledManifest(pluginId: string) {
 }
 
 describe('bundled plugin catalog contributions', () => {
-  test('publishes the sixty-seven reviewed built-in plugin identities', () => {
+  test('publishes the sixty-eight reviewed built-in plugin identities', () => {
     const catalog = createBundledPluginCatalog()
     const ids = catalog.map((entry) => entry.manifest.plugin.id)
 
@@ -197,6 +202,7 @@ describe('bundled plugin catalog contributions', () => {
         (descriptor) => descriptor.connector.contract.pluginId
       ),
       ...REVIEWED_DEPLOYMENT_PLUGINS.map((definition) => definition.pluginId),
+      SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
       ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
@@ -211,11 +217,12 @@ describe('bundled plugin catalog contributions', () => {
           (entry.manifest.contributions.exporters?.length ?? 0) +
           (entry.manifest.schemaVersion === 2
             ? (entry.manifest.contributions.connectors?.length ?? 0) +
-              (entry.manifest.contributions.storageProviders?.length ?? 0)
+              (entry.manifest.contributions.storageProviders?.length ?? 0) +
+              (entry.manifest.contributions.backendProviders?.length ?? 0)
             : 0),
         0
       )
-    ).toBe(70)
+    ).toBe(73)
     for (const descriptor of REVIEWED_EXTERNAL_SERVICE_CATALOG) {
       const entry = catalog.find(
         (candidate) => candidate.manifest.plugin.id === descriptor.connector.contract.pluginId
@@ -229,6 +236,18 @@ describe('bundled plugin catalog contributions', () => {
         }
       })
     }
+    expect(
+      catalog.find((entry) => entry.manifest.plugin.id === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID)
+    ).toMatchObject({
+      installedByDefault: true,
+      enabledByDefault: true,
+      manifest: {
+        contributions: {
+          commands: Object.values(APP_BACKEND_PROVIDER_MCP_COMMANDS),
+          backendProviders: [SUPABASE_BACKEND_PROVIDER_CONTRIBUTION]
+        }
+      }
+    })
     expect(
       catalog.find((entry) => entry.manifest.plugin.id === GOOGLE_DRIVE_STORAGE_PLUGIN_ID)
     ).toMatchObject({ installedByDefault: true, enabledByDefault: true })
@@ -687,7 +706,8 @@ describe('bundled plugin catalog contributions', () => {
     })
 
     await store.load()
-    expect(store.installedCommands()).toHaveLength(2)
+    const defaultCommandCount = 2 + Object.keys(APP_BACKEND_PROVIDER_MCP_COMMANDS).length
+    expect(store.installedCommands()).toHaveLength(defaultCommandCount)
     expect(
       store.command(COMPILER_PREVIEW_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_COMMAND.commandId)
         ?.contribution
@@ -722,17 +742,19 @@ describe('bundled plugin catalog contributions', () => {
     expect(store.installedStorageProviders()).toHaveLength(4)
 
     await store.install(CLIPBOARD_TOOLKIT_PLUGIN_ID)
-    expect(store.installedCommands()).toHaveLength(2)
+    expect(store.installedCommands()).toHaveLength(defaultCommandCount)
     expect(store.command(CLIPBOARD_TOOLKIT_PLUGIN_ID, CLIPBOARD_COMMANDS.text.commandId)).toBeNull()
 
     await store.setEnabled(CLIPBOARD_TOOLKIT_PLUGIN_ID, true)
-    expect(store.installedCommands()).toHaveLength(Object.keys(CLIPBOARD_COMMANDS).length + 2)
+    expect(store.installedCommands()).toHaveLength(
+      Object.keys(CLIPBOARD_COMMANDS).length + defaultCommandCount
+    )
     expect(
       store.command(CLIPBOARD_TOOLKIT_PLUGIN_ID, CLIPBOARD_COMMANDS.svg.commandId)?.contribution
     ).toMatchObject(CLIPBOARD_COMMANDS.svg)
 
     await store.setEnabled(CLIPBOARD_TOOLKIT_PLUGIN_ID, false)
-    expect(store.installedCommands()).toHaveLength(2)
+    expect(store.installedCommands()).toHaveLength(defaultCommandCount)
     expect(store.command(CLIPBOARD_TOOLKIT_PLUGIN_ID, CLIPBOARD_COMMANDS.svg.commandId)).toBeNull()
 
     await store.install(TAURI_REACT_EXPORTER_PLUGIN_ID)
