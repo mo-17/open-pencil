@@ -39,7 +39,15 @@ describe('audit_application_runtime tool', () => {
     const result = tool().execute(new FigmaAPI(graph), {
       environment: 'production',
       known_tables: ['orders']
-    }) as { ok: true; data: { ready: boolean; issues: { code: string }[] } }
+    }) as {
+      ok: true
+      data: {
+        ready: boolean
+        backendDeploymentVerified: boolean
+        backendDeploymentRequired: boolean
+        issues: { code: string }[]
+      }
+    }
 
     expect(CORE_TOOLS.some((candidate) => candidate.name === 'audit_application_runtime')).toBe(
       true
@@ -51,6 +59,18 @@ describe('audit_application_runtime tool', () => {
       'server-workflows-deploy-required'
     ])
     expect(JSON.stringify(result)).not.toContain('sb_publishable_example')
+
+    const workflowOnly = tool().execute(new FigmaAPI(graph), {
+      environment: 'production',
+      known_tables: ['orders'],
+      rls_verified: true,
+      server_workflows_deployed: true
+    }) as typeof result
+    expect(workflowOnly.data.backendDeploymentVerified).toBe(false)
+    expect(workflowOnly.data.backendDeploymentRequired).toBe(true)
+    expect(workflowOnly.data.issues.map((issue) => issue.code)).not.toContain(
+      'server-workflows-deploy-required'
+    )
   })
 
   test('rejects an unknown target environment when called without schema coercion', () => {

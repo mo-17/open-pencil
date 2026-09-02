@@ -22,6 +22,17 @@ async function readOnboardingDemoFixture() {
   return (await io.readDocument({ name: ONBOARDING_DEMO_FIG_PATH, data })).graph
 }
 
+function expectBackendReviewWarnings(warnings: readonly { code: string }[]): void {
+  expect(warnings.map((warning) => warning.code)).toEqual([
+    'legacy-backend-auth-intent-required',
+    'legacy-backend-auth-intent-required',
+    'supabase-external-rls-live-review-required',
+    'supabase-external-rls-live-review-required',
+    'supabase-external-rls-live-review-required',
+    'supabase-external-rls-live-review-required'
+  ])
+}
+
 describe('lowcode onboarding demo fixture', () => {
   test('covers the documented onboarding capabilities without external secrets', () => {
     const graph = buildLowcodeOnboardingDemo()
@@ -117,14 +128,16 @@ describe('lowcode onboarding demo fixture', () => {
         uiKit: 'shadcn'
       })
     })
-    expect(out.warnings).toEqual([])
+    expectBackendReviewWarnings(out.warnings)
+    expect(out.artifactOwnership?.backendReviewFiles.length).toBeGreaterThan(0)
     expect(out.files.get('src/App.tsx')).toContain('/api/demo-checkout')
     expect(out.files.get('src/App.tsx')).toContain('/api/demo-customer-portal')
   })
 
   test('compiles into validation, Supabase, Stripe checkout, analytics, i18n, and shadcn runtime files', () => {
     const out = compileLowcodeOnboardingDemo()
-    expect(out.warnings).toEqual([])
+    expectBackendReviewWarnings(out.warnings)
+    expect(out.artifactOwnership?.backendReviewFiles.length).toBeGreaterThan(0)
     expect(out.files.has('src/_lowcode_supabase.ts')).toBe(true)
     expect(out.files.has('src/_lowcode_validation.tsx')).toBe(true)
     expect(out.files.has('src/_lowcode_analytics.ts')).toBe(true)

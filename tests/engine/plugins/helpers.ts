@@ -1,15 +1,55 @@
 import {
+  PLUGIN_BACKEND_PROVIDER_CONTRACT_VERSION,
+  PLUGIN_BACKEND_PROVIDER_MODEL_VERSION,
   PLUGIN_CONNECTOR_CONTRACT_FORMAT,
   PLUGIN_CONNECTOR_CONTRACT_SCHEMA_VERSION,
   PLUGIN_MANIFEST_FORMAT,
   PLUGIN_MANIFEST_SCHEMA_VERSION,
   PLUGIN_MANIFEST_SCHEMA_VERSION_V2,
   type PluginContributionDataContractV2,
+  type PluginBackendProviderContributionV1,
   type PluginConnectorContractV1,
   type PluginManifestPayloadV1,
   type PluginManifestPayloadV2,
   type PluginStorageProviderContributionV2
 } from '@open-pencil/plugin-contracts'
+
+export function pluginBackendProviderContribution(
+  providerId = 'supabase'
+): PluginBackendProviderContributionV1 {
+  return {
+    providerId,
+    contributionId: `${providerId}.backend`,
+    name: 'Supabase Backend',
+    description: 'Emits reviewed backend artifacts through a trusted compiler adapter.',
+    adapterId: 'open-pencil.backend.supabase',
+    contractVersion: PLUGIN_BACKEND_PROVIDER_CONTRACT_VERSION,
+    supportedModelVersions: [PLUGIN_BACKEND_PROVIDER_MODEL_VERSION],
+    capabilities: [
+      'auth.identity',
+      'data.read',
+      'data.write',
+      'migrations.schema',
+      'policy.row-level',
+      'server.functions',
+      'server.http',
+      'storage.objects'
+    ],
+    configuration: {
+      schema: { type: 'object', properties: {}, additionalProperties: false, maxProperties: 0 },
+      maxBytes: 2
+    },
+    outputKinds: [
+      'client-config',
+      'database-schema',
+      'deployment-manifest',
+      'migration-plan',
+      'security-policy',
+      'server-runtime'
+    ],
+    permissions: []
+  }
+}
 
 export function pluginConnectorContract(
   description = 'Reads bounded analytics records.'

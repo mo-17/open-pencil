@@ -18,7 +18,10 @@ import {
   type VerifiedPluginPackage
 } from '@open-pencil/plugin-contracts'
 
+import { ALIYUN_DRIVE_STORAGE_PLUGIN_ID } from '@/app/integrations/storage/aliyun-drive/config'
+import { BAIDU_NETDISK_STORAGE_PLUGIN_ID } from '@/app/integrations/storage/baidu-netdisk/config'
 import { GOOGLE_DRIVE_STORAGE_PLUGIN_ID } from '@/app/integrations/storage/google-drive/config'
+import { ONEDRIVE_STORAGE_PLUGIN_ID } from '@/app/integrations/storage/onedrive/config'
 import {
   appPluginStoreReady,
   createAppPluginStore as createAppPluginStoreBase,
@@ -32,6 +35,7 @@ import {
   type PersistedAppPluginStateV2,
   type PersistedAppPluginStateV3
 } from '@/app/plugins'
+import { SUPABASE_BACKEND_PROVIDER_PLUGIN_ID } from '@/app/plugins/host/backend-provider'
 import { AI_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_PLUGIN_ID } from '@/app/plugins/host/ids'
 
 import { pluginPayload } from '#tests/engine/plugins/helpers'
@@ -182,7 +186,7 @@ describe('app plugin store', () => {
 
     const loaded = await store.load()
     expect(loaded.error).toBeNull()
-    expect(loaded.installed).toHaveLength(4)
+    expect(loaded.installed).toHaveLength(8)
     expect(
       loaded.installed.find(({ package: value }) => value.manifest.plugin.id === MAP_PLUGIN_ID)
     ).toMatchObject({
@@ -234,9 +238,13 @@ describe('app plugin store', () => {
       store.snapshot().installed.map(({ package: value }) => value.manifest.plugin.id)
     ).toEqual([
       AI_POPOUT_PLUGIN_ID,
+      ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
+      BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
-      MAP_PLUGIN_ID
+      ONEDRIVE_STORAGE_PLUGIN_ID,
+      MAP_PLUGIN_ID,
+      SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
     ])
 
     const reloaded = createAppPluginStore({ storage, catalog, engineVersion: ENGINE_VERSION })
@@ -245,9 +253,13 @@ describe('app plugin store', () => {
       reloaded.snapshot().installed.map(({ package: value }) => value.manifest.plugin.id)
     ).toEqual([
       AI_POPOUT_PLUGIN_ID,
+      ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
+      BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
-      MAP_PLUGIN_ID
+      ONEDRIVE_STORAGE_PLUGIN_ID,
+      MAP_PLUGIN_ID,
+      SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
     ])
   })
 
@@ -497,8 +509,12 @@ describe('app plugin store', () => {
     expect(loaded.recordIssues).toEqual([{ pluginId: MAP_PLUGIN_ID, kind: 'unsupported-schema' }])
     expect(loaded.installed.map(({ package: value }) => value.manifest.plugin.id)).toEqual([
       AI_POPOUT_PLUGIN_ID,
+      ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
+      BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
-      GOOGLE_DRIVE_STORAGE_PLUGIN_ID
+      GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      ONEDRIVE_STORAGE_PLUGIN_ID,
+      SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
     ])
 
     const reset = await store.resetLocalState(MAP_PLUGIN_ID)
@@ -603,8 +619,12 @@ describe('app plugin store', () => {
     expect(loaded.error).toBeNull()
     expect(loaded.installed.map(({ package: value }) => value.manifest.plugin.id)).toEqual([
       AI_POPOUT_PLUGIN_ID,
+      ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
+      BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
-      GOOGLE_DRIVE_STORAGE_PLUGIN_ID
+      GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      ONEDRIVE_STORAGE_PLUGIN_ID,
+      SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
     ])
     expect(store.canCreateModule(MAP_PLUGIN_ID, MAP_MODULE_TYPE)).toBe(false)
   })
