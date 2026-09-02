@@ -1,4 +1,7 @@
+import type { ApplicationRuntimeAudit } from '@open-pencil/lowcode/application-runtime'
+import type { BackendReleaseStateV1 } from '@open-pencil/lowcode/backend'
 import { parsePluginObjectParameterValue } from '@open-pencil/plugin-contracts'
+import type { SceneGraph } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
@@ -13,19 +16,38 @@ import {
   type DeployI18n,
   type DeployUIKit
 } from '@/app/lowcode/preview-pane/deploy/runner'
+import {
+  preflightDeployRuntime,
+  type DeployRuntimePreflightOptions
+} from '@/app/lowcode/preview-pane/deploy/runtime-preflight'
 import { deployScopeForStore } from '@/app/lowcode/preview-pane/deploy/scope'
 import type { CredentialResolver } from '@/app/settings/credentials/types'
+import { isTauri } from '@/app/tauri/env'
 
+import {
+  AppBackendProviderBuildError,
+  prepareAppBackendProviderDocumentBuild,
+  readAppBackendProviderDocumentRequest,
+  resolveAppBackendProviderReleaseAuthority,
+  type AppBackendProviderHostStore,
+  type PreparedAppBackendProviderBuild
+} from '../backend-provider'
+import { cancelAppBackendReleaseReview, prepareAppBackendReleaseReview } from './backend/release'
 import { type DeploymentPluginDefinition, type DeploymentPluginProvider } from './contract'
 import { boundedDeploymentText } from './text'
 
 export type DeploymentPluginErrorCode =
   | 'invalid-parameters'
+  | 'desktop-required'
   | 'saved-document-required'
   | 'review-required'
   | 'review-changed'
   | 'confirmation-required'
   | 'confirmation-denied'
+  | 'runtime-preflight-failed'
+  | 'backend-provider-request-invalid'
+  | 'backend-provider-unavailable'
+  | 'backend-provider-build-failed'
   | 'credential-missing'
   | 'aborted'
   | 'outcome-unknown'
@@ -66,6 +88,19 @@ export interface DeploymentPluginReview {
   readonly documentLabel: string
   /** Host-private opaque identity. Never include this value in the MCP-safe plan result. */
   readonly documentIdentity: string
+  /** Secret-free exact Backend Provider build authority bound into this confirmation. */
+  readonly backendProvider?: DeploymentPluginBackendProviderReview
+}
+
+export interface DeploymentPluginBackendProviderReview {
+  readonly pluginId: string
+  readonly contributionId: string
+  readonly providerId: string
+  readonly adapterId: string
+  readonly packageDigest: string
+  readonly applicationDigest: string
+  readonly planDigest: string
+  readonly manifestDigest: string
 }
 
 export interface DeploymentPluginPlan extends JSONObject {
@@ -84,7 +119,7 @@ export interface DeploymentPluginResult extends JSONObject {
   readonly url: string
   readonly deployId: string
   readonly fileCount: number
-  readonly serverDeploymentRequired: boolean
+  readonly backendDeploymentRequired: boolean
 }
 
 export interface DeploymentPluginExecutionOptions {
@@ -92,9 +127,14 @@ export interface DeploymentPluginExecutionOptions {
   readonly confirm?: (review: DeploymentPluginReview) => boolean | Promise<boolean>
   /** Exact host review snapshot shown to the user for this invocation. */
   readonly expectedReview?: DeploymentPluginReview
+  /** Receives secret-free authenticated Release Core states; it cannot authorize Backend Apply. */
+  readonly onBackendReleaseState?: (state: BackendReleaseStateV1) => void
 }
 
 export type DeploymentPluginRunner = typeof runDeployCLI
+export type DeploymentPluginRuntimePreflight = (
+  options: DeployRuntimePreflightOptions
+) => Promise<ApplicationRuntimeAudit>
 
 export interface DeploymentPluginHostAdapter {
   readonly definition: DeploymentPluginDefinition
@@ -270,7 +310,8 @@ function reviewFor(
   editor: EditorStore,
   definition: DeploymentPluginDefinition,
   parameters: DeploymentPluginParameters,
-  path: string
+  path: string,
+  backendProvider?: DeploymentPluginBackendProviderReview
 ): DeploymentPluginReview {
   return Object.freeze({
     pluginId: definition.pluginId,
@@ -284,6 +325,7 @@ function reviewFor(
     environmentNotice: definition.ui.environmentNotice,
     sideEffects: definition.ui.confirmationItems,
     credentialLabel: definition.ui.tokenLabel,
+    ...(backendProvider ? { backendProvider } : {}),
     ...deploymentDocumentReview(editor, path)
   })
 }
@@ -308,18 +350,98 @@ function reviewMatches(expected: DeploymentPluginReview, current: DeploymentPlug
     sameStrings(expected.sideEffects, current.sideEffects) &&
     expected.credentialLabel === current.credentialLabel &&
     expected.documentLabel === current.documentLabel &&
-    expected.documentIdentity === current.documentIdentity
+    expected.documentIdentity === current.documentIdentity &&
+    sameBackendProviderReview(expected.backendProvider, current.backendProvider)
   )
+}
+
+function sameBackendProviderReview(
+  expected: DeploymentPluginBackendProviderReview | undefined,
+  current: DeploymentPluginBackendProviderReview | undefined
+): boolean {
+  if (!expected || !current) return expected === current
+  return (
+    expected.pluginId === current.pluginId &&
+    expected.contributionId === current.contributionId &&
+    expected.providerId === current.providerId &&
+    expected.adapterId === current.adapterId &&
+    expected.packageDigest === current.packageDigest &&
+    expected.applicationDigest === current.applicationDigest &&
+    expected.planDigest === current.planDigest &&
+    expected.manifestDigest === current.manifestDigest
+  )
+}
+
+function backendProviderReview(
+  build: PreparedAppBackendProviderBuild
+): DeploymentPluginBackendProviderReview {
+  return Object.freeze({
+    pluginId: build.descriptor.pluginId,
+    contributionId: build.descriptor.contributionId,
+    providerId: build.descriptor.providerId,
+    adapterId: build.descriptor.adapterId,
+    packageDigest: build.descriptor.packageAuthority.packageDigest,
+    applicationDigest: build.plan.applicationDigest,
+    planDigest: build.plan.planDigest,
+    manifestDigest: build.emission.manifestDigest
+  })
+}
+
+function backendProviderFailure(cause: unknown): never {
+  if (!(cause instanceof AppBackendProviderBuildError)) throw cause
+  let code: DeploymentPluginErrorCode = 'backend-provider-build-failed'
+  if (cause.code === 'request-invalid') code = 'backend-provider-request-invalid'
+  if (cause.code === 'provider-unavailable') code = 'backend-provider-unavailable'
+  throw new DeploymentPluginError(code, cause.message, { cause })
+}
+
+function runtimeEditorGraph(editor: EditorStore): SceneGraph | undefined {
+  return Reflect.get(editor, 'graph')
+}
+
+function prepareBackendProviderBuild(
+  editor: EditorStore,
+  store: AppBackendProviderHostStore | undefined
+): PreparedAppBackendProviderBuild | null {
+  try {
+    const graph = runtimeEditorGraph(editor)
+    if (!graph) return null
+    if (!store) {
+      if (!readAppBackendProviderDocumentRequest(graph)) return null
+      throw new AppBackendProviderBuildError(
+        'provider-unavailable',
+        'Backend Provider host lifecycle is unavailable for this deployment.'
+      )
+    }
+    return prepareAppBackendProviderDocumentBuild(store, graph, {
+      target: 'react',
+      mode: 'production'
+    })
+  } catch (cause) {
+    return backendProviderFailure(cause)
+  }
 }
 
 function reviewedExecution(
   editor: EditorStore,
   definition: DeploymentPluginDefinition,
   parameters: DeploymentPluginParameters,
-  expected: DeploymentPluginReview | undefined
-): Readonly<{ path: string; review: DeploymentPluginReview }> {
+  expected: DeploymentPluginReview | undefined,
+  backendProviderStore: AppBackendProviderHostStore | undefined
+): Readonly<{
+  path: string
+  review: DeploymentPluginReview
+  backendProviderBuild: PreparedAppBackendProviderBuild | null
+}> {
   const path = savedDocumentPath(editor)
-  const review = reviewFor(editor, definition, parameters, path)
+  const backendProviderBuild = prepareBackendProviderBuild(editor, backendProviderStore)
+  const review = reviewFor(
+    editor,
+    definition,
+    parameters,
+    path,
+    backendProviderBuild ? backendProviderReview(backendProviderBuild) : undefined
+  )
   if (!expected) {
     throw new DeploymentPluginError(
       'review-required',
@@ -332,7 +454,33 @@ function reviewedExecution(
       'The document or deployment settings changed after review. Review them again before deploying.'
     )
   }
-  return Object.freeze({ path, review })
+  return Object.freeze({ path, review, backendProviderBuild })
+}
+
+async function reviewedBackendReleaseState(
+  execution: ReturnType<typeof reviewedExecution>,
+  parameters: DeploymentPluginParameters,
+  backendProviderStore: AppBackendProviderHostStore | undefined,
+  onTransition: DeploymentPluginExecutionOptions['onBackendReleaseState']
+): Promise<BackendReleaseStateV1 | null> {
+  const build = execution.backendProviderBuild
+  if (!build) return null
+  const backendProvider = backendProviderStore
+    ? resolveAppBackendProviderReleaseAuthority(backendProviderStore, build.descriptor)
+    : null
+  if (!backendProvider) {
+    throw new DeploymentPluginError(
+      'backend-provider-unavailable',
+      'Backend Provider authority changed before Release review. Review the deployment again.'
+    )
+  }
+  return prepareAppBackendReleaseReview({
+    build,
+    backendProvider,
+    documentIdentity: execution.review.documentIdentity,
+    environment: parameters.environment,
+    ...(onTransition ? { onTransition } : {})
+  })
 }
 
 /** MCP-safe plan: bounded validation and disclosure only; no credential read, build, or network. */
@@ -368,7 +516,8 @@ function abortBeforeDispatch(signal?: AbortSignal): void {
 function validatedResult(
   definition: DeploymentPluginDefinition,
   parameters: DeploymentPluginParameters,
-  result: Awaited<ReturnType<DeploymentPluginRunner>>
+  result: Awaited<ReturnType<DeploymentPluginRunner>>,
+  runtimeAudit: ApplicationRuntimeAudit
 ): DeploymentPluginResult {
   if (result.provider !== definition.provider || result.environment !== parameters.environment) {
     throw new DeploymentPluginError(
@@ -382,7 +531,8 @@ function validatedResult(
     url: result.url,
     deployId: result.deployId,
     fileCount: result.fileCount,
-    serverDeploymentRequired: result.serverDeployment?.required === true
+    backendDeploymentRequired:
+      runtimeAudit.backendDeploymentRequired || result.serverDeployment?.required === true
   }
   let url: URL
   try {
@@ -426,13 +576,22 @@ function validatedResult(
 export function createDeploymentPluginHostAdapter(
   definition: DeploymentPluginDefinition,
   credentials: CredentialResolver,
-  runner: DeploymentPluginRunner = runDeployCLI
+  runner: DeploymentPluginRunner = runDeployCLI,
+  runtimePreflight: DeploymentPluginRuntimePreflight = preflightDeployRuntime,
+  backendProviderStore?: AppBackendProviderHostStore
 ): DeploymentPluginHostAdapter {
   return Object.freeze({
     definition,
     review(editor: EditorStore, value: unknown) {
       const path = savedDocumentPath(editor)
-      return reviewFor(editor, definition, parseDeploymentPluginParameters(definition, value), path)
+      const build = prepareBackendProviderBuild(editor, backendProviderStore)
+      return reviewFor(
+        editor,
+        definition,
+        parseDeploymentPluginParameters(definition, value),
+        path,
+        build ? backendProviderReview(build) : undefined
+      )
     },
     async execute(
       editor: EditorStore,
@@ -446,12 +605,57 @@ export function createDeploymentPluginHostAdapter(
           'Deployment requires explicit confirmation for this invocation.'
         )
       }
-      const initial = reviewedExecution(editor, definition, parameters, options.expectedReview)
+      const initial = reviewedExecution(
+        editor,
+        definition,
+        parameters,
+        options.expectedReview,
+        backendProviderStore
+      )
+      const backendReleaseState = await reviewedBackendReleaseState(
+        initial,
+        parameters,
+        backendProviderStore,
+        options.onBackendReleaseState
+      )
       if (!(await options.confirm(initial.review))) {
+        if (backendReleaseState) {
+          cancelAppBackendReleaseReview(backendReleaseState, options.onBackendReleaseState)
+        }
         throw new DeploymentPluginError('confirmation-denied', 'Deployment was not approved.')
       }
+      // Frontend-hosting confirmation cannot authorize Backend Apply. The secret-free Backend
+      // proposal remains in Review until a separate Backend-specific confirmation flow exists.
       abortBeforeDispatch(options.signal)
-      reviewedExecution(editor, definition, parameters, options.expectedReview)
+      reviewedExecution(
+        editor,
+        definition,
+        parameters,
+        options.expectedReview,
+        backendProviderStore
+      )
+      const runtimeAudit = await runtimePreflight({
+        graph: editor.graph,
+        environment: parameters.environment,
+        runtimeConfig: parameters.runtimeConfig,
+        backendProviderDeclared: initial.backendProviderBuild !== null
+      })
+      if (!runtimeAudit.ready) {
+        throw new DeploymentPluginError(
+          'runtime-preflight-failed',
+          runtimeAudit.issues
+            .filter((issue) => issue.severity === 'error')
+            .map((issue) => issue.message)
+            .join(' ') || 'Application runtime preflight failed.'
+        )
+      }
+      reviewedExecution(
+        editor,
+        definition,
+        parameters,
+        options.expectedReview,
+        backendProviderStore
+      )
       const token = (await credentials.resolve(definition.credentialRef))?.trim()
       if (!token) {
         throw new DeploymentPluginError(
@@ -459,14 +663,21 @@ export function createDeploymentPluginHostAdapter(
           `${definition.ui.tokenLabel} is not configured.`
         )
       }
-      const dispatch = reviewedExecution(editor, definition, parameters, options.expectedReview)
+      const dispatch = reviewedExecution(
+        editor,
+        definition,
+        parameters,
+        options.expectedReview,
+        backendProviderStore
+      )
       abortBeforeDispatch(options.signal)
       const i18n: DeployI18n = {
         enabled: parameters.locales.length > 0,
         locales: [...parameters.locales]
       }
+      let result: Awaited<ReturnType<DeploymentPluginRunner>>
       try {
-        const result = await runner(
+        result = await runner(
           dispatch.path,
           token,
           definition.provider,
@@ -476,17 +687,44 @@ export function createDeploymentPluginHostAdapter(
           i18n,
           parameters.runtimeConfig
         )
-        return validatedResult(definition, parameters, result)
       } catch (cause) {
-        if (options.signal?.aborted) {
-          throw new DeploymentPluginError(
-            'outcome-unknown',
-            'Deployment was interrupted after remote dispatch; verify the provider dashboard before retrying.',
-            cause instanceof Error ? { cause } : undefined
-          )
-        }
-        throw cause
+        throw new DeploymentPluginError(
+          'outcome-unknown',
+          'Frontend deployment failed after dispatch began; reconcile the provider dashboard before any retry.',
+          cause instanceof Error ? { cause } : undefined
+        )
       }
+      return validatedResult(definition, parameters, result, runtimeAudit)
+    }
+  })
+}
+
+/** Production Desktop wiring: live plugin lifecycle + pure backend plan/emit before deployment. */
+export function createDesktopDeploymentPluginHostAdapter(
+  definition: DeploymentPluginDefinition,
+  credentials: CredentialResolver,
+  backendProviderStore: AppBackendProviderHostStore
+): DeploymentPluginHostAdapter {
+  const adapter = createDeploymentPluginHostAdapter(
+    definition,
+    credentials,
+    runDeployCLI,
+    preflightDeployRuntime,
+    backendProviderStore
+  )
+  return Object.freeze({
+    definition: adapter.definition,
+    review(editor: EditorStore, value: unknown) {
+      return adapter.review(editor, value)
+    },
+    async execute(editor: EditorStore, value: unknown, options?: DeploymentPluginExecutionOptions) {
+      if (!isTauri()) {
+        throw new DeploymentPluginError(
+          'desktop-required',
+          'Live deployment is available only in the Tauri desktop app.'
+        )
+      }
+      return adapter.execute(editor, value, options)
     }
   })
 }

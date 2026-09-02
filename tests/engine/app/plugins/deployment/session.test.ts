@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import { DeploymentPluginError } from '@/app/plugins/host/deployment/provider'
 import {
   clearDeploymentPluginSession,
   deploymentPluginSessionSnapshot,
@@ -7,14 +8,14 @@ import {
   runDeploymentPluginSession
 } from '@/app/plugins/host/deployment/session'
 
-function result(deployId: string) {
+function result(deployId: string, backendDeploymentRequired = false) {
   return {
     provider: 'vercel' as const,
     environment: 'preview' as const,
     url: `https://${deployId}.example.test`,
     deployId,
     fileCount: 3,
-    serverDeploymentRequired: false
+    backendDeploymentRequired
   }
 }
 
@@ -53,6 +54,26 @@ describe('deployment plugin session lifecycle', () => {
     expect(deploymentPluginSessionSnapshot.value['test.deployment.session.success']).toBeUndefined()
   })
 
+  test('records static frontend success as partial while backend deployment is required', async () => {
+    const pluginId = 'test.deployment.session.backend-required'
+    const completion = await runDeploymentPluginSession({
+      pluginId,
+      documentScope: 'scope-backend',
+      documentLabel: 'backend.fig',
+      operation: async () => ({ result: result('frontend-only', true) })
+    })
+
+    expect(completion.result.backendDeploymentRequired).toBe(true)
+    expect(completion.notice).toContain('backend deployment has not been verified')
+    expect(deploymentPluginSessionSnapshot.value[pluginId]).toMatchObject({
+      status: 'frontend-deployed',
+      result: { backendDeploymentRequired: true },
+      notice: expect.stringContaining('application as complete')
+    })
+    expect(deploymentPluginSessionSnapshot.value[pluginId]?.status).not.toBe('succeeded')
+    clearDeploymentPluginSession(pluginId)
+  })
+
   test('rejects overlapping runs and keeps a bounded failure for reopened settings', async () => {
     const gate = Promise.withResolvers<undefined>()
     const pluginId = 'test.deployment.session.failure'
@@ -82,5 +103,31 @@ describe('deployment plugin session lifecycle', () => {
     expect(state?.documentLabel).toBe('unsafe label.fig')
     expect(state?.error).not.toContain('\u0000')
     expect(state?.error?.length).toBeLessThanOrEqual(512)
+  })
+
+  test('preserves an unknown post-dispatch outcome and forbids automatic retry', async () => {
+    const pluginId = 'test.deployment.session.outcome-unknown'
+    await expect(
+      runDeploymentPluginSession({
+        pluginId,
+        documentScope: 'scope-unknown',
+        documentLabel: 'unknown.fig',
+        operation: async () => {
+          throw new DeploymentPluginError(
+            'outcome-unknown',
+            'Frontend dispatch lost its transport acknowledgement.'
+          )
+        }
+      })
+    ).rejects.toMatchObject({ code: 'outcome-unknown' })
+
+    expect(deploymentPluginSessionSnapshot.value[pluginId]).toMatchObject({
+      status: 'outcome-unknown',
+      automaticRetryAllowed: false,
+      reconcileRequired: true,
+      error: 'Frontend dispatch lost its transport acknowledgement.'
+    })
+    expect(isDeploymentPluginSessionActive(pluginId)).toBe(false)
+    clearDeploymentPluginSession(pluginId)
   })
 })

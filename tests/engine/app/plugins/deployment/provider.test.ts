@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { SceneGraph } from '@open-pencil/scene-graph'
+
 import type { EditorStore } from '@/app/editor/active-store'
 import {
   CLOUDFLARE_DEPLOYMENT_PLUGIN,
@@ -7,6 +9,7 @@ import {
 } from '@/app/plugins/host/deployment/contract'
 import {
   buildDeploymentPluginPlan,
+  createDesktopDeploymentPluginHostAdapter,
   createDeploymentPluginHostAdapter,
   DEPLOYMENT_PLUGIN_DOCUMENT_LIMITS,
   DeploymentPluginError,
@@ -17,8 +20,9 @@ import {
 } from '@/app/plugins/host/deployment/provider'
 import type { CredentialResolver } from '@/app/settings/credentials'
 
-function editor(path = '/tmp/design.fig'): EditorStore {
+function editor(path = '/tmp/design.fig', graph = new SceneGraph()): EditorStore {
   return {
+    graph,
     getDocumentPath: () => path,
     getSourceIdentity: () => ({ handle: null, path: path || null }),
     getStorageBinding: () => null
@@ -32,6 +36,7 @@ function mutableEditor(initialPath: string): Readonly<{
   let path = initialPath
   return {
     store: {
+      graph: new SceneGraph(),
       getDocumentPath: () => path,
       getSourceIdentity: () => ({ handle: null, path: path || null }),
       getStorageBinding: () => null
@@ -102,7 +107,10 @@ describe('reviewed deployment plugin wrappers', () => {
     expect(source).toContain(':disabled="unavailable || controlsBusy"')
     expect(source).toContain(':required="definition.ui.targetRequired"')
     expect(source).toContain("deploymentSession.value?.status === 'deploying'")
+    expect(source).toContain("deploymentSession.value?.status === 'succeeded'")
     expect(source).toContain('runDeploymentPluginSession')
+    expect(source).toContain('createDesktopDeploymentPluginHostAdapter')
+    expect(source).toContain('appPluginStore')
     expect(source).toContain(':aria-busy="deploymentActive"')
     expect(source).not.toContain(':disabled="unavailable || !configured || controlsBusy"')
     expect(source).toContain('AI can create the plan, but cannot deploy directly.')
@@ -121,6 +129,8 @@ describe('reviewed deployment plugin wrappers', () => {
       expect(definition.authority.cancellation).toBe('before-dispatch-only')
       expect(definition.parameters.schema.properties).not.toHaveProperty('token')
       expect(definition.result.schema.properties).not.toHaveProperty('token')
+      expect(definition.result.schema.properties).toHaveProperty('backendDeploymentRequired')
+      expect(definition.result.schema.properties).not.toHaveProperty('serverDeploymentRequired')
       expect(definition.mcpSafePlan.permissions).toEqual(['document.read'])
       expect(definition.mcpSafePlan.description).toContain('without reading credentials')
     }
@@ -159,6 +169,22 @@ describe('reviewed deployment plugin wrappers', () => {
     expect(plan).not.toHaveProperty('documentLabel')
     expect(plan).not.toHaveProperty('documentIdentity')
     expect(JSON.stringify(plan)).not.toContain('/Users/alice')
+  })
+
+  test('keeps the production adapter reviewable but blocks Browser execution before credentials', async () => {
+    const credentialCalls: string[] = []
+    const adapter = createDesktopDeploymentPluginHostAdapter(
+      VERCEL_DEPLOYMENT_PLUGIN,
+      resolver('unused', credentialCalls),
+      { installedBackendProviders: () => [] }
+    )
+    const store = editor()
+    const review = adapter.review(store, {})
+
+    expect(
+      await errorCode(adapter.execute(store, {}, { confirm: () => true, expectedReview: review }))
+    ).toBe('desktop-required')
+    expect(credentialCalls).toEqual([])
   })
 
   test('returns a bounded host-private document review without exposing the absolute path', () => {
@@ -230,6 +256,43 @@ describe('reviewed deployment plugin wrappers', () => {
       locales: ['zh-CN', 'en'],
       runtimeConfig: undefined
     })
+    expect(
+      parseDeploymentPluginParameters(VERCEL_DEPLOYMENT_PLUGIN, {
+        runtimeConfig: {
+          supabaseUrl: 'https://staging.supabase.co',
+          supabasePublishableKey: 'sb_publishable_staging',
+          supabaseSchema: 'app'
+        }
+      })
+    ).toMatchObject({
+      runtimeConfig: {
+        supabaseUrl: 'https://staging.supabase.co',
+        supabasePublishableKey: 'sb_publishable_staging',
+        supabaseSchema: 'app'
+      }
+    })
+    expect(
+      parseDeploymentPluginParameters(VERCEL_DEPLOYMENT_PLUGIN, {
+        runtimeConfig: {
+          supabaseUrl: 'https://legacy.supabase.co',
+          supabaseAnonKey: 'legacy-anon-jwt'
+        }
+      })
+    ).toMatchObject({
+      runtimeConfig: {
+        supabaseUrl: 'https://legacy.supabase.co',
+        supabasePublishableKey: 'legacy-anon-jwt'
+      }
+    })
+    expect(() =>
+      parseDeploymentPluginParameters(VERCEL_DEPLOYMENT_PLUGIN, {
+        runtimeConfig: {
+          supabaseUrl: 'https://conflict.supabase.co',
+          supabasePublishableKey: 'sb_publishable_current',
+          supabaseAnonKey: 'legacy-anon-stale'
+        }
+      })
+    ).toThrow('conflict')
     expect(() => parseDeploymentPluginParameters(CLOUDFLARE_DEPLOYMENT_PLUGIN, {})).toThrow(
       'requires a target'
     )
@@ -334,7 +397,7 @@ describe('reviewed deployment plugin wrappers', () => {
       url: 'https://cloudflare.example/deploy',
       deployId: 'deploy_123',
       fileCount: 4,
-      serverDeploymentRequired: false
+      backendDeploymentRequired: false
     })
     expect(JSON.stringify(result)).not.toContain('ephemeral-token')
   })
@@ -504,6 +567,30 @@ describe('reviewed deployment plugin wrappers', () => {
         )
       )
     ).toBe('outcome-unknown')
+
+    for (const message of ['request timed out', 'transport connection closed']) {
+      const uncertainRunner: DeploymentPluginRunner = async () => {
+        throw new Error(message)
+      }
+      const uncertainAdapter = createDeploymentPluginHostAdapter(
+        VERCEL_DEPLOYMENT_PLUGIN,
+        resolver('token'),
+        uncertainRunner
+      )
+      const uncertainStore = editor()
+      expect(
+        await errorCode(
+          uncertainAdapter.execute(
+            uncertainStore,
+            {},
+            {
+              confirm: async () => true,
+              expectedReview: expectedReview(uncertainAdapter, uncertainStore)
+            }
+          )
+        )
+      ).toBe('outcome-unknown')
+    }
   })
 
   test('rejects a runner result outside the reviewed provider authority', async () => {

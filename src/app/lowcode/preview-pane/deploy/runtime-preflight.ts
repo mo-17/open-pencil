@@ -21,6 +21,10 @@ export interface DeployRuntimePreflightOptions {
   knownTables?: readonly string[]
   rlsVerified?: boolean
   serverWorkflowsDeployed?: boolean
+  /** Host-trusted fact from fresh, exact Backend receipt/evidence; static deploy callers omit it. */
+  backendDeploymentVerified?: boolean
+  /** Set only after resolving a provider-neutral BackendApplicationSpec through the live host. */
+  backendProviderDeclared?: boolean
 }
 
 /** Build the configuration that the generated browser runtime can actually
@@ -35,7 +39,10 @@ export function resolveEffectiveDeploySupabaseConfig(
   if (!validateSupabaseConfig(designConfig).ok) return designConfig
   return {
     url: runtimeConfig?.supabaseUrl ?? designConfig.url,
-    anonKey: runtimeConfig?.supabaseAnonKey ?? designConfig.anonKey,
+    anonKey:
+      runtimeConfig?.supabasePublishableKey ??
+      runtimeConfig?.supabaseAnonKey ??
+      designConfig.anonKey,
     schema: runtimeConfig?.supabaseSchema ?? designConfig.schema
   }
 }
@@ -68,6 +75,21 @@ export function auditDeployRuntime(
     ),
     knownTables: options.knownTables,
     rlsVerified: options.rlsVerified,
-    serverWorkflowsDeployed: options.serverWorkflowsDeployed
+    serverWorkflowsDeployed: options.serverWorkflowsDeployed,
+    backendDeploymentVerified: options.backendDeploymentVerified,
+    backendProviderDeclared: options.backendProviderDeclared
   })
+}
+
+/** Shared Desktop preflight for every static deployment entry point. It is read-only and
+ * secret-free; a missing schema cache remains a warning rather than bypassing the audit. */
+export async function preflightDeployRuntime(
+  options: DeployRuntimePreflightOptions
+): Promise<ApplicationRuntimeAudit> {
+  const knownTables =
+    options.knownTables ??
+    (await readDeployKnownTables(
+      resolveEffectiveDeploySupabaseConfig(options.graph, options.runtimeConfig)
+    ))
+  return auditDeployRuntime({ ...options, knownTables })
 }

@@ -10,7 +10,7 @@ describe('lowcode deploy command environment', () => {
     expect(
       buildDeployProcessEnv('cloudflare', 'provider-secret', {
         supabaseUrl: 'https://staging.supabase.co',
-        supabaseAnonKey: 'sb_publishable_example',
+        supabasePublishableKey: 'sb_publishable_example',
         supabaseSchema: 'app'
       })
     ).toEqual({
@@ -18,7 +18,7 @@ describe('lowcode deploy command environment', () => {
       OPENPENCIL_DEPLOY_RUNTIME_MODE: 'explicit',
       OPENPENCIL_DEPLOY_IGNORE_AMBIENT_TARGET: '1',
       OPENPENCIL_DEPLOY_SUPABASE_URL: 'https://staging.supabase.co',
-      OPENPENCIL_DEPLOY_SUPABASE_ANON_KEY: 'sb_publishable_example',
+      OPENPENCIL_DEPLOY_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
       OPENPENCIL_DEPLOY_SUPABASE_SCHEMA: 'app'
     })
   })

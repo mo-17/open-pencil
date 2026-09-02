@@ -334,7 +334,7 @@ describe('lowcode deploy history', () => {
 
     const runtimeConfig = {
       supabaseUrl: 'https://rollback.supabase.co',
-      supabaseAnonKey: 'sb_publishable_rollback',
+      supabasePublishableKey: 'sb_publishable_rollback',
       supabaseSchema: 'release'
     }
 
@@ -687,7 +687,7 @@ describe('lowcode deploy history', () => {
       })
     ).toEqual({
       supabaseUrl: 'https://staging.supabase.co/',
-      supabaseAnonKey: 'sb_publishable_example',
+      supabasePublishableKey: 'sb_publishable_example',
       supabaseSchema: 'app'
     })
 
@@ -704,7 +704,7 @@ describe('lowcode deploy history', () => {
     })
     expect(readDeployTargetPresets().staging?.runtimeConfig).toEqual({
       supabaseUrl: 'https://staging.supabase.co',
-      supabaseAnonKey: 'sb_publishable_example',
+      supabasePublishableKey: 'sb_publishable_example',
       supabaseSchema: 'app'
     })
   })
@@ -725,6 +725,12 @@ describe('lowcode deploy history', () => {
     ).toMatchObject({ ok: false })
     expect(
       validateDeployRuntimeConfig({
+        supabaseUrl: 'https://x.supabase.co',
+        supabasePublishableKey: 'sbp_do-not-persist'
+      })
+    ).toMatchObject({ ok: false })
+    expect(
+      validateDeployRuntimeConfig({
         supabaseUrl: 'https://user:password@x.supabase.co',
         supabaseAnonKey: 'sb_publishable_example'
       })
@@ -732,6 +738,13 @@ describe('lowcode deploy history', () => {
     expect(validateDeployRuntimeConfig({ supabaseSchema: 'bad schema' })).toMatchObject({
       ok: false
     })
+    expect(
+      validateDeployRuntimeConfig({
+        supabaseUrl: 'https://x.supabase.co',
+        supabasePublishableKey: 'sb_publishable_current',
+        supabaseAnonKey: 'legacy-anon-stale'
+      })
+    ).toMatchObject({ ok: false, reason: expect.stringContaining('conflict') })
     expect(() =>
       deployRuntimeConfigSnapshot({
         supabaseUrl: 'https://x.supabase.co',

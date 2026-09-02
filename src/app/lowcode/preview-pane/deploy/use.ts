@@ -16,6 +16,11 @@ import { ref, type Ref } from 'vue'
 import type { ApplicationRuntimeAudit } from '@open-pencil/lowcode/application-runtime'
 
 import { getActiveEditorStore } from '@/app/editor/active-store'
+import { appPluginStore } from '@/app/plugins/app'
+import {
+  prepareAppBackendProviderDocumentBuild,
+  type PreparedAppBackendProviderBuild
+} from '@/app/plugins/host/backend-provider'
 import { isTauri } from '@/app/tauri/env'
 
 import type { DeployCLIResult } from './command'
@@ -27,19 +32,62 @@ import {
   type DeployRuntimeConfig
 } from './history'
 import { runDeployCLI, type DeployI18n, type DeployProvider, type DeployUIKit } from './runner'
-import {
-  auditDeployRuntime,
-  readDeployKnownTables,
-  resolveEffectiveDeploySupabaseConfig
-} from './runtime-preflight'
+import { preflightDeployRuntime } from './runtime-preflight'
 import { deployScopeForStore } from './scope'
 
 export type { DeployI18n, DeployProvider, DeployUIKit } from './runner'
+export const BACKEND_DEPLOYMENT_REQUIRED_NOTICE =
+  'Static frontend deployment completed, but the backend deployment is not verified. Deploy and verify the backend before treating the application as complete.'
+
+export type DeployCompletedStatus =
+  | { kind: 'done'; url: string; result: DeployCLIResult }
+  | {
+      kind: 'frontend-deployed'
+      url: string
+      result: DeployCLIResult
+      backendDeploymentRequired: true
+      notice: string
+    }
+
 export type DeployStatus =
   | { kind: 'idle' }
   | { kind: 'deploying' }
-  | { kind: 'done'; url: string; result: DeployCLIResult }
+  | DeployCompletedStatus
   | { kind: 'error'; message: string }
+
+export function deployCompletionStatus(
+  result: DeployCLIResult,
+  audit: ApplicationRuntimeAudit
+): DeployCompletedStatus {
+  if (audit.backendDeploymentRequired || result.serverDeployment?.required === true) {
+    return {
+      kind: 'frontend-deployed',
+      url: result.url,
+      result,
+      backendDeploymentRequired: true,
+      notice: BACKEND_DEPLOYMENT_REQUIRED_NOTICE
+    }
+  }
+  return { kind: 'done', url: result.url, result }
+}
+
+function sameBackendBuild(
+  expected: PreparedAppBackendProviderBuild | null,
+  current: PreparedAppBackendProviderBuild | null
+): boolean {
+  if (!expected || !current) return expected === current
+  return (
+    expected.plan.planDigest === current.plan.planDigest &&
+    expected.emission.manifestDigest === current.emission.manifestDigest
+  )
+}
+
+function deployScopeIsCurrent(
+  requestStore: ReturnType<typeof getActiveEditorStore>,
+  scope: string | undefined
+): boolean {
+  return requestStore === getActiveEditorStore() && deployScopeForStore(requestStore) === scope
+}
 
 interface UseDeployResult {
   status: Ref<DeployStatus>
@@ -108,23 +156,27 @@ export function useDeploy(): UseDeployResult {
       return
     }
 
-    const effectiveSupabaseConfig = resolveEffectiveDeploySupabaseConfig(
-      requestStore.graph,
-      runtimeConfig
-    )
-    const knownTables = await readDeployKnownTables(effectiveSupabaseConfig)
-    if (
-      requestStore !== getActiveEditorStore() ||
-      deployScopeForStore(requestStore) !== requestScope
-    ) {
+    let backendBuild: PreparedAppBackendProviderBuild | null
+    let audit: ApplicationRuntimeAudit
+    try {
+      backendBuild = prepareAppBackendProviderDocumentBuild(appPluginStore, requestStore.graph, {
+        target: 'react',
+        mode: 'production'
+      })
+      audit = await preflightDeployRuntime({
+        graph: requestStore.graph,
+        environment,
+        runtimeConfig,
+        backendProviderDeclared: backendBuild !== null
+      })
+    } catch (cause) {
+      status.value = {
+        kind: 'error',
+        message: cause instanceof Error ? cause.message : String(cause)
+      }
       return
     }
-    const audit = auditDeployRuntime({
-      graph: requestStore.graph,
-      environment,
-      runtimeConfig,
-      knownTables
-    })
+    if (!deployScopeIsCurrent(requestStore, requestScope)) return
     runtimeAudit.value = audit
     if (!audit.ready) {
       status.value = {
@@ -139,6 +191,16 @@ export function useDeploy(): UseDeployResult {
 
     status.value = { kind: 'deploying' }
     try {
+      const dispatchBackendBuild = prepareAppBackendProviderDocumentBuild(
+        appPluginStore,
+        requestStore.graph,
+        { target: 'react', mode: 'production' }
+      )
+      if (!sameBackendBuild(backendBuild, dispatchBackendBuild)) {
+        throw new Error(
+          'Backend Provider selection or application changed after preflight. Review the deployment again.'
+        )
+      }
       const result = await runDeployCLI(
         path,
         trimmed,
@@ -160,21 +222,11 @@ export function useDeploy(): UseDeployResult {
         },
         requestScope
       )
-      if (
-        requestStore !== getActiveEditorStore() ||
-        deployScopeForStore(requestStore) !== requestScope
-      ) {
-        return
-      }
+      if (!deployScopeIsCurrent(requestStore, requestScope)) return
       history.value = recorded
-      status.value = { kind: 'done', url: result.url, result }
+      status.value = deployCompletionStatus(result, audit)
     } catch (e) {
-      if (
-        requestStore !== getActiveEditorStore() ||
-        deployScopeForStore(requestStore) !== requestScope
-      ) {
-        return
-      }
+      if (!deployScopeIsCurrent(requestStore, requestScope)) return
       status.value = { kind: 'error', message: e instanceof Error ? e.message : String(e) }
     }
   }

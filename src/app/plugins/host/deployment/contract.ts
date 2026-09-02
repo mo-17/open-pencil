@@ -52,11 +52,16 @@ const RUNTIME_CONFIG_SCHEMA = Object.freeze({
   type: 'object' as const,
   properties: Object.freeze({
     supabaseUrl: Object.freeze({ type: 'string' as const, minLength: 1, maxLength: 2_048 }),
+    supabasePublishableKey: Object.freeze({
+      type: 'string' as const,
+      minLength: 1,
+      maxLength: 8_192
+    }),
     supabaseAnonKey: Object.freeze({ type: 'string' as const, minLength: 1, maxLength: 8_192 }),
     supabaseSchema: Object.freeze({ type: 'string' as const, minLength: 1, maxLength: 63 })
   }),
   additionalProperties: false as const,
-  maxProperties: 3
+  maxProperties: 4
 })
 
 export const DEPLOYMENT_PLUGIN_PARAMETERS = Object.freeze({
@@ -112,7 +117,7 @@ export const DEPLOYMENT_PLUGIN_RESULT = Object.freeze({
       url: Object.freeze({ type: 'string' as const, minLength: 1, maxLength: 4_096 }),
       deployId: Object.freeze({ type: 'string' as const, minLength: 1, maxLength: 1_024 }),
       fileCount: Object.freeze({ type: 'integer' as const, minimum: 0 }),
-      serverDeploymentRequired: Object.freeze({ type: 'boolean' as const })
+      backendDeploymentRequired: Object.freeze({ type: 'boolean' as const })
     }),
     required: Object.freeze([
       'provider',
@@ -120,7 +125,7 @@ export const DEPLOYMENT_PLUGIN_RESULT = Object.freeze({
       'url',
       'deployId',
       'fileCount',
-      'serverDeploymentRequired'
+      'backendDeploymentRequired'
     ]),
     additionalProperties: false as const,
     minProperties: 6,

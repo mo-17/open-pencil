@@ -27,6 +27,9 @@ const TOKEN_ENV: Record<DeployCommandProvider, string> = {
 
 export const OPENPENCIL_DEPLOY_RUNTIME_MODE_ENV = 'OPENPENCIL_DEPLOY_RUNTIME_MODE'
 export const OPENPENCIL_DEPLOY_SUPABASE_URL_ENV = 'OPENPENCIL_DEPLOY_SUPABASE_URL'
+export const OPENPENCIL_DEPLOY_SUPABASE_PUBLISHABLE_KEY_ENV =
+  'OPENPENCIL_DEPLOY_SUPABASE_PUBLISHABLE_KEY'
+/** @deprecated Read by older CLI callers; new desktop runs emit the publishable-key variable. */
 export const OPENPENCIL_DEPLOY_SUPABASE_ANON_KEY_ENV = 'OPENPENCIL_DEPLOY_SUPABASE_ANON_KEY'
 export const OPENPENCIL_DEPLOY_SUPABASE_SCHEMA_ENV = 'OPENPENCIL_DEPLOY_SUPABASE_SCHEMA'
 export const OPENPENCIL_DEPLOY_IGNORE_AMBIENT_TARGET_ENV = 'OPENPENCIL_DEPLOY_IGNORE_AMBIENT_TARGET'
@@ -142,8 +145,8 @@ export function buildDeployProcessEnv(
   if (safeRuntimeConfig?.supabaseUrl) {
     env[OPENPENCIL_DEPLOY_SUPABASE_URL_ENV] = safeRuntimeConfig.supabaseUrl
   }
-  if (safeRuntimeConfig?.supabaseAnonKey) {
-    env[OPENPENCIL_DEPLOY_SUPABASE_ANON_KEY_ENV] = safeRuntimeConfig.supabaseAnonKey
+  if (safeRuntimeConfig?.supabasePublishableKey) {
+    env[OPENPENCIL_DEPLOY_SUPABASE_PUBLISHABLE_KEY_ENV] = safeRuntimeConfig.supabasePublishableKey
   }
   if (safeRuntimeConfig?.supabaseSchema) {
     env[OPENPENCIL_DEPLOY_SUPABASE_SCHEMA_ENV] = safeRuntimeConfig.supabaseSchema

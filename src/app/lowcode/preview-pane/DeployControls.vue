@@ -64,7 +64,7 @@ const uiKit = ref<DeployUIKit>('none')
 const i18nEnabled = ref(false)
 const localesInput = ref('')
 const supabaseURL = ref('')
-const supabaseAnonKey = ref('')
+const supabasePublishableKey = ref('')
 const supabaseSchema = ref('')
 const runtimeError = ref<string | null>(null)
 const rollbackNotice = ref<string | null>(null)
@@ -80,14 +80,14 @@ function currentDocumentScope(): string | undefined {
 function currentRuntimeConfig(): DeployRuntimeConfig | undefined {
   return deployRuntimeConfigSnapshot({
     supabaseUrl: supabaseURL.value,
-    supabaseAnonKey: supabaseAnonKey.value,
+    supabasePublishableKey: supabasePublishableKey.value,
     supabaseSchema: supabaseSchema.value
   })
 }
 
 function clearRuntimeOverrides(): void {
   supabaseURL.value = ''
-  supabaseAnonKey.value = ''
+  supabasePublishableKey.value = ''
   supabaseSchema.value = ''
 }
 
@@ -102,7 +102,7 @@ function resetTargetFields(): void {
 
 function applyRuntimeConfig(config: DeployRuntimeConfig | undefined): void {
   supabaseURL.value = config?.supabaseUrl ?? ''
-  supabaseAnonKey.value = config?.supabaseAnonKey ?? ''
+  supabasePublishableKey.value = config?.supabasePublishableKey ?? config?.supabaseAnonKey ?? ''
   supabaseSchema.value = config?.supabaseSchema ?? ''
 }
 
@@ -173,7 +173,7 @@ async function submit(): Promise<void> {
     },
     runtimeConfig
   )
-  if (status.value.kind === 'done') token.value = ''
+  if (status.value.kind === 'done' || status.value.kind === 'frontend-deployed') token.value = ''
 }
 
 function restoreForRollback(entry: DeployHistoryEntry): void {
@@ -377,9 +377,11 @@ onBeforeUnmount(() => {
             class="mb-1.5 w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
             :disabled="status.kind === 'deploying'"
           />
-          <label class="mb-1 block text-[11px] text-muted">Publishable / anon key</label>
+          <label class="mb-1 block text-[11px] text-muted">
+            Publishable key (legacy anon accepted)
+          </label>
           <input
-            v-model="supabaseAnonKey"
+            v-model="supabasePublishableKey"
             type="password"
             data-test-id="lowcode-deploy-supabase-anon-key"
             placeholder="sb_publishable_… or anon JWT"
@@ -502,7 +504,7 @@ onBeforeUnmount(() => {
           class="mt-2 text-xs text-muted"
           data-test-id="lowcode-deploy-done"
         >
-          ✓ Deployed —
+          ✓ Application deployed —
           <button type="button" class="text-accent underline" @click="openDeployed(status.url)">
             open site
           </button>
@@ -511,8 +513,32 @@ onBeforeUnmount(() => {
             {{ status.result.deployId }}
           </span>
         </p>
+        <p
+          v-if="status.kind === 'frontend-deployed'"
+          class="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-muted"
+          data-test-id="lowcode-deploy-frontend-only"
+        >
+          <span class="font-medium text-surface">
+            Static frontend deployed — backend verification required.
+          </span>
+          <button
+            type="button"
+            class="ml-1 text-accent underline"
+            @click="openDeployed(status.url)"
+          >
+            open static site
+          </button>
+          <span class="mt-1 block">
+            {{ status.result.environment }} · {{ status.result.provider }} ·
+            {{ status.result.deployId }}
+          </span>
+          <span class="mt-1 block">{{ status.notice }}</span>
+        </p>
         <div
-          v-if="status.kind === 'done' && status.result.serverDeployment"
+          v-if="
+            (status.kind === 'done' || status.kind === 'frontend-deployed') &&
+            status.result.serverDeployment
+          "
           class="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-muted"
           data-test-id="lowcode-deploy-server-manual"
         >

@@ -8,6 +8,7 @@ import {
 } from 'reka-ui'
 
 import { useI18n } from '@open-pencil/vue'
+import type { BackendReleaseStateV1 } from '@open-pencil/lowcode/backend'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import {
@@ -19,11 +20,12 @@ import {
 } from '@/app/lowcode/preview-pane/deploy/history'
 import { deployScopeForStore } from '@/app/lowcode/preview-pane/deploy/scope'
 import {
-  createDeploymentPluginHostAdapter,
+  createDesktopDeploymentPluginHostAdapter,
   type DeploymentPluginParameters,
   type DeploymentPluginPlan,
   type DeploymentPluginReview
 } from '@/app/plugins/host/deployment/provider'
+import { appPluginStore } from '@/app/plugins/app'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import {
   deploymentPluginSessionSnapshot,
@@ -89,7 +91,10 @@ const notice = computed(() => deploymentSession.value?.notice)
 const displayError = computed(
   () =>
     error.value ??
-    (deploymentSession.value?.status === 'failed' ? deploymentSession.value.error : undefined)
+    (deploymentSession.value?.status === 'failed' ||
+    deploymentSession.value?.status === 'outcome-unknown'
+      ? deploymentSession.value.error
+      : undefined)
 )
 
 const copy = computed(() =>
@@ -265,7 +270,11 @@ async function review(): Promise<void> {
     let hostReview: DeploymentPluginReview | null = null
     let historyScope: string | null = null
     if (plan.documentSaved) {
-      const adapter = createDeploymentPluginHostAdapter(current, appCredentialServices.resolver)
+      const adapter = createDesktopDeploymentPluginHostAdapter(
+        current,
+        appCredentialServices.resolver,
+        appPluginStore
+      )
       hostReview = adapter.review(editor, reviewedParameters)
       historyScope = deployScopeForStore(editor) ?? null
       if (!historyScope) throw new Error(copy.value.noSavedDocument)
@@ -306,15 +315,23 @@ async function deploy(): Promise<void> {
   const historyWarning = copy.value.historyWarning
   const documentChanged = copy.value.documentChanged
   try {
-    const adapter = createDeploymentPluginHostAdapter(current, appCredentialServices.resolver)
+    const adapter = createDesktopDeploymentPluginHostAdapter(
+      current,
+      appCredentialServices.resolver,
+      appPluginStore
+    )
     await runDeploymentPluginSession({
       pluginId: current.pluginId,
       documentScope: requestScope,
       documentLabel: reviewedDocument.documentLabel,
       operation: async () => {
+        let backendRelease: BackendReleaseStateV1 | undefined
         const deployed = await adapter.execute(editor, reviewedParameters, {
           confirm: () => true,
-          expectedReview: reviewedDocument
+          expectedReview: reviewedDocument,
+          onBackendReleaseState: (state) => {
+            backendRelease = state
+          }
         })
         let completionNotice: string | undefined
         try {
@@ -338,7 +355,11 @@ async function deploy(): Promise<void> {
             ? `${completionNotice} ${documentChanged}`
             : documentChanged
         }
-        return { result: deployed, ...(completionNotice ? { notice: completionNotice } : {}) }
+        return {
+          result: deployed,
+          ...(backendRelease ? { backendRelease } : {}),
+          ...(completionNotice ? { notice: completionNotice } : {})
+        }
       }
     })
   } catch (cause) {

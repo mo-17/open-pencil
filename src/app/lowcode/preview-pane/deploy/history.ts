@@ -39,6 +39,8 @@ export interface DeployBuildOptions {
  * provider access tokens and service-role/secret keys are not. */
 export interface DeployRuntimeConfig {
   supabaseUrl?: string
+  supabasePublishableKey?: string
+  /** @deprecated Persisted compatibility field; migrated on snapshot. */
   supabaseAnonKey?: string
   supabaseSchema?: string
 }
@@ -273,6 +275,8 @@ function isDeployRuntimeConfig(value: unknown): value is DeployRuntimeConfig {
   if (!config) return false
   const fieldsValid =
     (config.supabaseUrl === undefined || typeof config.supabaseUrl === 'string') &&
+    (config.supabasePublishableKey === undefined ||
+      typeof config.supabasePublishableKey === 'string') &&
     (config.supabaseAnonKey === undefined || typeof config.supabaseAnonKey === 'string') &&
     (config.supabaseSchema === undefined || typeof config.supabaseSchema === 'string')
   return fieldsValid && validateDeployRuntimeConfig(config as DeployRuntimeConfig).ok
@@ -388,15 +392,50 @@ function validateRuntimeSupabaseURL(supabaseURL: string | undefined): string | u
   return undefined
 }
 
+type RuntimeSupabasePublicKeyValidation =
+  | { ok: true; value: string | undefined }
+  | { ok: false; reason: string }
+
+function trimmedRuntimeValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed || undefined
+}
+
+function validateRuntimeSupabasePublicKey(
+  config: DeployRuntimeConfig
+): RuntimeSupabasePublicKeyValidation {
+  const publishableKey = trimmedRuntimeValue(config.supabasePublishableKey)
+  const legacyAnonKey = trimmedRuntimeValue(config.supabaseAnonKey)
+  if (
+    (publishableKey && detectSupabaseSecretKey(publishableKey)) ||
+    (legacyAnonKey && detectSupabaseSecretKey(legacyAnonKey))
+  ) {
+    return {
+      ok: false,
+      reason:
+        'Supabase secret/service-role/management keys cannot be saved or sent to a browser build.'
+    }
+  }
+  if (publishableKey && legacyAnonKey && publishableKey !== legacyAnonKey) {
+    return {
+      ok: false,
+      reason: 'Supabase publishable and legacy anon key overrides conflict.'
+    }
+  }
+  return { ok: true, value: publishableKey || legacyAnonKey }
+}
+
 export function validateDeployRuntimeConfig(
   config: DeployRuntimeConfig | undefined
 ): DeployRuntimeConfigValidation {
   if (!config) return { ok: true, value: undefined }
-  const supabaseURL = config.supabaseUrl?.trim()
-  const supabaseAnonKey = config.supabaseAnonKey?.trim()
-  const supabaseSchema = config.supabaseSchema?.trim()
-  if (!supabaseURL && !supabaseAnonKey && !supabaseSchema) return { ok: true, value: undefined }
-  if (!!supabaseURL !== !!supabaseAnonKey) {
+  const supabaseURL = trimmedRuntimeValue(config.supabaseUrl)
+  const publicKeyValidation = validateRuntimeSupabasePublicKey(config)
+  if (!publicKeyValidation.ok) return publicKeyValidation
+  const publicKey = publicKeyValidation.value
+  const supabaseSchema = trimmedRuntimeValue(config.supabaseSchema)
+  if (!supabaseURL && !publicKey && !supabaseSchema) return { ok: true, value: undefined }
+  if (!!supabaseURL !== !!publicKey) {
     return {
       ok: false,
       reason: 'Supabase URL and publishable/anon key must be overridden together.'
@@ -404,12 +443,6 @@ export function validateDeployRuntimeConfig(
   }
   const urlError = validateRuntimeSupabaseURL(supabaseURL)
   if (urlError) return { ok: false, reason: urlError }
-  if (supabaseAnonKey && detectSupabaseSecretKey(supabaseAnonKey)) {
-    return {
-      ok: false,
-      reason: 'Supabase secret/service-role keys cannot be saved or sent to a browser build.'
-    }
-  }
   if (supabaseSchema && !/^[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(supabaseSchema)) {
     return {
       ok: false,
@@ -418,7 +451,7 @@ export function validateDeployRuntimeConfig(
   }
   const value: DeployRuntimeConfig = {
     ...(supabaseURL ? { supabaseUrl: supabaseURL } : {}),
-    ...(supabaseAnonKey ? { supabaseAnonKey } : {}),
+    ...(publicKey ? { supabasePublishableKey: publicKey } : {}),
     ...(supabaseSchema ? { supabaseSchema } : {})
   }
   return { ok: true, value }

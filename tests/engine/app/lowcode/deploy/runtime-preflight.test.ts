@@ -4,6 +4,7 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 
 import {
   auditDeployRuntime,
+  preflightDeployRuntime,
   resolveEffectiveDeploySupabaseConfig
 } from '@/app/lowcode/preview-pane/deploy/runtime-preflight'
 
@@ -27,12 +28,12 @@ function graphWithSupabaseList(config = true): SceneGraph {
 }
 
 describe('deploy runtime preflight', () => {
-  test('merges a complete public environment override into an emitted runtime', () => {
+  test('merges a complete public environment override through the shared preflight', async () => {
     const graph = graphWithSupabaseList()
     expect(
       resolveEffectiveDeploySupabaseConfig(graph, {
         supabaseUrl: 'https://staging.supabase.co',
-        supabaseAnonKey: 'sb_publishable_staging',
+        supabasePublishableKey: 'sb_publishable_staging',
         supabaseSchema: 'app'
       })
     ).toEqual({
@@ -46,14 +47,42 @@ describe('deploy runtime preflight', () => {
       environment: 'staging',
       runtimeConfig: {
         supabaseUrl: 'https://staging.supabase.co',
-        supabaseAnonKey: 'sb_publishable_staging',
+        supabasePublishableKey: 'sb_publishable_staging',
         supabaseSchema: 'app'
       },
       knownTables: ['products']
     })
     expect(report.ready).toBe(true)
+    expect(report.backendDeploymentVerified).toBe(false)
+    expect(report.backendDeploymentRequired).toBe(true)
     expect(report.issues).toEqual([])
     expect(report.rlsRequirements[0]?.schema).toBe('app')
+
+    const sharedReport = await preflightDeployRuntime({
+      graph,
+      environment: 'staging',
+      runtimeConfig: {
+        supabaseUrl: 'https://staging.supabase.co',
+        supabasePublishableKey: 'sb_publishable_staging',
+        supabaseSchema: 'app'
+      },
+      knownTables: ['products']
+    })
+    expect(sharedReport).toEqual(report)
+
+    const verifiedReport = auditDeployRuntime({
+      graph,
+      environment: 'staging',
+      runtimeConfig: {
+        supabaseUrl: 'https://staging.supabase.co',
+        supabasePublishableKey: 'sb_publishable_staging',
+        supabaseSchema: 'app'
+      },
+      knownTables: ['products'],
+      backendDeploymentVerified: true
+    })
+    expect(verifiedReport.backendDeploymentVerified).toBe(true)
+    expect(verifiedReport.backendDeploymentRequired).toBe(false)
   })
 
   test('does not let overrides pretend an omitted compiler runtime exists', () => {
@@ -70,6 +99,19 @@ describe('deploy runtime preflight', () => {
     expect(resolveEffectiveDeploySupabaseConfig(graph)).toBeNull()
     expect(report.ready).toBe(false)
     expect(report.issues.map((issue) => issue.code)).toContain('supabase-config-required')
+  })
+
+  test('marks a host-resolved provider-neutral backend as deployment-required', () => {
+    const report = auditDeployRuntime({
+      graph: new SceneGraph(),
+      environment: 'staging',
+      backendProviderDeclared: true
+    })
+
+    expect(report.ready).toBe(true)
+    expect(report.usesSupabase).toBe(false)
+    expect(report.backendDeploymentVerified).toBe(false)
+    expect(report.backendDeploymentRequired).toBe(true)
   })
 
   test('blocks invalid design configuration even when an override looks valid', () => {
