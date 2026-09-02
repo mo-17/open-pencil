@@ -17,7 +17,7 @@ import type {
 } from '@open-pencil/compiler'
 import type { BuildOptions } from '@open-pencil/compiler/build'
 import { detectSupabaseSecretKey } from '@open-pencil/lowcode'
-import type { SceneNode } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import {
   routerForCodegenTarget,
@@ -43,19 +43,21 @@ export function formatWarning(w: CompileWarning): string {
 }
 
 type SupabaseBuildFlags = Partial<
-  Record<'supabaseUrl' | 'supabaseAnonKey' | 'supabaseSchema', string>
+  Record<'supabaseUrl' | 'supabasePublishableKey' | 'supabaseAnonKey' | 'supabaseSchema', string>
 >
 
 function inheritedSupabaseBuildFlags(environment: NodeJS.ProcessEnv): SupabaseBuildFlags {
   if (environment.OPENPENCIL_DEPLOY_RUNTIME_MODE === 'explicit') {
     return {
       supabaseUrl: environment.OPENPENCIL_DEPLOY_SUPABASE_URL,
+      supabasePublishableKey: environment.OPENPENCIL_DEPLOY_SUPABASE_PUBLISHABLE_KEY,
       supabaseAnonKey: environment.OPENPENCIL_DEPLOY_SUPABASE_ANON_KEY,
       supabaseSchema: environment.OPENPENCIL_DEPLOY_SUPABASE_SCHEMA
     }
   }
   return {
     supabaseUrl: environment.VITE_SUPABASE_URL,
+    supabasePublishableKey: environment.VITE_SUPABASE_PUBLISHABLE_KEY,
     supabaseAnonKey: environment.VITE_SUPABASE_ANON_KEY,
     supabaseSchema: environment.VITE_SUPABASE_SCHEMA
   }
@@ -66,14 +68,40 @@ function optionalTrim(value: string | undefined): string | undefined {
   return trimmed || undefined
 }
 
+function resolvePublicSupabaseKey(flags: SupabaseBuildFlags, source: string): string | undefined {
+  const publishableKey = optionalTrim(flags.supabasePublishableKey)
+  const legacyAnonKey = optionalTrim(flags.supabaseAnonKey)
+  for (const key of [publishableKey, legacyAnonKey]) {
+    if (key !== undefined && detectSupabaseSecretKey(key)) {
+      throw new Error(
+        'Refusing to embed a Supabase secret/service_role/management key in a client bundle; use a publishable or legacy anon key.'
+      )
+    }
+  }
+  if (
+    publishableKey !== undefined &&
+    legacyAnonKey !== undefined &&
+    publishableKey !== legacyAnonKey
+  ) {
+    throw new Error(`Conflicting Supabase publishable and legacy anon key values in ${source}.`)
+  }
+  return publishableKey ?? legacyAnonKey
+}
+
 function validateSupabaseBuildFlags(flags: SupabaseBuildFlags): void {
-  const { supabaseUrl: url, supabaseAnonKey: anonKey, supabaseSchema: schema } = flags
-  if (anonKey !== undefined && detectSupabaseSecretKey(anonKey)) {
+  const {
+    supabaseUrl: url,
+    supabasePublishableKey: publishableKey,
+    supabaseAnonKey: legacyAnonKey,
+    supabaseSchema: schema
+  } = flags
+  const publicKey = publishableKey ?? legacyAnonKey
+  if (publicKey !== undefined && detectSupabaseSecretKey(publicKey)) {
     throw new Error(
-      'Refusing to embed a Supabase secret/service_role key in a client bundle; use a publishable or legacy anon key.'
+      'Refusing to embed a Supabase secret/service_role/management key in a client bundle; use a publishable or legacy anon key.'
     )
   }
-  if (Boolean(url) !== Boolean(anonKey)) {
+  if (Boolean(url) !== Boolean(publicKey)) {
     throw new Error(
       'Supabase URL and publishable/anon key overrides must be provided together to avoid mixing projects.'
     )
@@ -101,18 +129,25 @@ function validateSupabaseBuildURL(url: string): void {
 }
 
 function buildSupabaseEnvironment(flags: SupabaseBuildFlags): BuildOptions['env'] {
-  const { supabaseUrl: url, supabaseAnonKey: anonKey, supabaseSchema: schema } = flags
-  if (url === undefined && anonKey === undefined && schema === undefined) return undefined
+  const {
+    supabaseUrl: url,
+    supabasePublishableKey: publishableKey,
+    supabaseAnonKey: legacyAnonKey,
+    supabaseSchema: schema
+  } = flags
+  const publicKey = publishableKey ?? legacyAnonKey
+  if (url === undefined && publicKey === undefined && schema === undefined) return undefined
   return {
     ...(url === undefined ? {} : { VITE_SUPABASE_URL: url }),
-    ...(anonKey === undefined ? {} : { VITE_SUPABASE_ANON_KEY: anonKey }),
+    ...(publicKey === undefined ? {} : { VITE_SUPABASE_PUBLISHABLE_KEY: publicKey }),
     ...(schema === undefined ? {} : { VITE_SUPABASE_SCHEMA: schema })
   }
 }
 
 /**
  * Resolve the per-environment Supabase override for `build` / `deploy` (§5):
- * explicit flags win over `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` /
+ * explicit flags win over `VITE_SUPABASE_URL` /
+ * `VITE_SUPABASE_PUBLISHABLE_KEY` (or legacy `VITE_SUPABASE_ANON_KEY`) /
  * `VITE_SUPABASE_SCHEMA` in the environment; returns undefined when none is set
  * so the build keeps the design-time fallbacks baked into the emitted runtime.
  */
@@ -121,9 +156,15 @@ export function resolveBuildEnv(
   environment: NodeJS.ProcessEnv = process.env
 ): BuildOptions['env'] {
   const inherited = inheritedSupabaseBuildFlags(environment)
+  const hasExplicitConnection =
+    flags.supabaseUrl !== undefined ||
+    flags.supabasePublishableKey !== undefined ||
+    flags.supabaseAnonKey !== undefined
+  const connectionSource = hasExplicitConnection ? flags : inherited
+  const sourceLabel = hasExplicitConnection ? 'CLI flags' : 'environment variables'
   const resolved = {
-    supabaseUrl: optionalTrim(flags.supabaseUrl ?? inherited.supabaseUrl),
-    supabaseAnonKey: optionalTrim(flags.supabaseAnonKey ?? inherited.supabaseAnonKey),
+    supabaseUrl: optionalTrim(connectionSource.supabaseUrl),
+    supabasePublishableKey: resolvePublicSupabaseKey(connectionSource, sourceLabel),
     supabaseSchema: optionalTrim(flags.supabaseSchema ?? inherited.supabaseSchema)
   }
   validateSupabaseBuildFlags(resolved)
@@ -154,6 +195,7 @@ export function resolvePageIds(pages: readonly SceneNode[], page?: string): Page
 
 export interface CompiledDocument {
   compiled: CompilerOutput
+  graph: SceneGraph
   packageName: string
   target: CodegenWebTarget
 }
@@ -287,7 +329,7 @@ export async function loadAndCompile(opts: {
     process.exit(1)
   }
 
-  return { compiled, packageName, target }
+  return { compiled, graph, packageName, target }
 }
 
 /**
@@ -308,6 +350,11 @@ export function reportCodegenResult(opts: {
     digest: string
     byteLength: number
   }
+  backendDeployment?: {
+    required: boolean
+    backendReviewFiles: readonly string[]
+    executableServerWorkflowFiles: readonly string[]
+  }
 }): void {
   if (opts.json) {
     console.log(
@@ -319,6 +366,7 @@ export function reportCodegenResult(opts: {
           ...(opts.microfrontendManifest
             ? { microfrontend: { manifest: opts.microfrontendManifest } }
             : {}),
+          ...(opts.backendDeployment ? { backendDeployment: opts.backendDeployment } : {}),
           files: opts.files,
           warnings: opts.warnings
         },

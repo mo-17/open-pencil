@@ -25,6 +25,7 @@ interface BuildArgs {
   page?: string
   base?: string
   'supabase-url'?: string
+  'supabase-publishable-key'?: string
   'supabase-anon-key'?: string
   'supabase-schema'?: string
   i18n?: boolean
@@ -77,10 +78,16 @@ export default defineCommand({
         'Override the Supabase URL for this build (else VITE_SUPABASE_URL, else design-time).',
       required: false
     },
+    'supabase-publishable-key': {
+      type: 'string',
+      description:
+        'Override the Supabase publishable key for this build (else VITE_SUPABASE_PUBLISHABLE_KEY, else legacy anon/design-time).',
+      required: false
+    },
     'supabase-anon-key': {
       type: 'string',
       description:
-        'Override the Supabase anon key for this build (else VITE_SUPABASE_ANON_KEY, else design-time).',
+        'Legacy alias for --supabase-publishable-key (also reads VITE_SUPABASE_ANON_KEY).',
       required: false
     },
     'supabase-schema': {
@@ -126,6 +133,7 @@ export default defineCommand({
     try {
       env = resolveBuildEnv({
         supabaseUrl: (args as BuildArgs)['supabase-url'],
+        supabasePublishableKey: (args as BuildArgs)['supabase-publishable-key'],
         supabaseAnonKey: (args as BuildArgs)['supabase-anon-key'],
         supabaseSchema: (args as BuildArgs)['supabase-schema']
       })
@@ -157,6 +165,7 @@ export default defineCommand({
         return {
           result: await buildPreviewProject({
             files: compiled.files,
+            artifactOwnership: compiled.artifactOwnership,
             outDir,
             base,
             env,
@@ -194,7 +203,12 @@ export default defineCommand({
       verb: 'Built',
       nextLine,
       target,
-      microfrontendManifest
+      microfrontendManifest,
+      backendDeployment: {
+        required: result.serverFiles.length > 0,
+        backendReviewFiles: result.backendReviewFiles,
+        executableServerWorkflowFiles: result.executableServerWorkflowFiles
+      }
     })
 
     if (serverNotice && !args.json) printManualServerDeploymentNotice(serverNotice)

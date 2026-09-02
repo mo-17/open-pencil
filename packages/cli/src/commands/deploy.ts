@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import process from 'node:process'
 
 import { defineCommand } from 'citty'
@@ -11,6 +11,11 @@ import {
   resolveDeployEnvironment,
   type DeployEnvironment
 } from '@open-pencil/core/lowcode-deployment'
+import {
+  auditApplicationRuntime,
+  type ApplicationRuntimeAudit,
+  type ApplicationRuntimeGraph
+} from '@open-pencil/lowcode/application-runtime'
 
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
 import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
@@ -33,6 +38,7 @@ interface DeployArgs {
   page?: string
   base?: string
   'supabase-url'?: string
+  'supabase-publishable-key'?: string
   'supabase-anon-key'?: string
   'supabase-schema'?: string
   'ui-kit'?: string
@@ -54,6 +60,49 @@ const TOKEN_HELP: Record<DeployProvider, string> = {
   netlify: 'https://app.netlify.com/user/applications#personal-access-tokens',
   vercel: 'https://vercel.com/account/tokens',
   cloudflare: 'https://dash.cloudflare.com/profile/api-tokens'
+}
+
+const BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID = 'open-pencil'
+const BACKEND_PROVIDER_DOCUMENT_KEY = 'lowcode/backendProvider.v1'
+
+export interface DirectDeployBackendState {
+  readonly audit: ApplicationRuntimeAudit
+  readonly backendProviderDeclared: boolean
+  readonly backendDeploymentRequired: boolean
+  readonly status: 'frontend-deployed' | 'succeeded'
+}
+
+/**
+ * Resolve application completion independently from emitted server files.
+ * A Host-owned, data-only Backend Provider request may intentionally emit no
+ * executable server bundle in the direct CLI, but still requires a separately
+ * reviewed and verified Backend release before the application is Live.
+ */
+export function resolveDirectDeployBackendState(
+  graph: ApplicationRuntimeGraph,
+  options: {
+    readonly environment: DeployEnvironment
+    readonly serverFiles: readonly string[]
+  }
+): DirectDeployBackendState {
+  const root = graph.getNode(graph.rootId)
+  const backendProviderDeclared = (root?.pluginData ?? []).some(
+    (entry) =>
+      entry.pluginId === BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID &&
+      entry.key === BACKEND_PROVIDER_DOCUMENT_KEY
+  )
+  const audit = auditApplicationRuntime(graph, {
+    environment: options.environment,
+    backendProviderDeclared
+  })
+  const backendDeploymentRequired =
+    audit.backendDeploymentRequired || options.serverFiles.length > 0
+  return Object.freeze({
+    audit,
+    backendProviderDeclared,
+    backendDeploymentRequired,
+    status: backendDeploymentRequired ? 'frontend-deployed' : 'succeeded'
+  })
 }
 
 export function resolveDeployProvider(raw: string | undefined): DeployProvider {
@@ -144,10 +193,16 @@ export default defineCommand({
         'Override the Supabase URL for this deploy (else VITE_SUPABASE_URL, else design-time).',
       required: false
     },
+    'supabase-publishable-key': {
+      type: 'string',
+      description:
+        'Override the Supabase publishable key for this deploy (else VITE_SUPABASE_PUBLISHABLE_KEY, else legacy anon/design-time).',
+      required: false
+    },
     'supabase-anon-key': {
       type: 'string',
       description:
-        'Override the Supabase anon key for this deploy (else VITE_SUPABASE_ANON_KEY, else design-time).',
+        'Legacy alias for --supabase-publishable-key (also reads VITE_SUPABASE_ANON_KEY).',
       required: false
     },
     'supabase-schema': {
@@ -191,7 +246,7 @@ export default defineCommand({
 
     const buildDir = mkdtempSync(join(tmpdir(), 'op-deploy-'))
     try {
-      const { compiled } = await loadAndCompile({
+      const { compiled, graph } = await loadAndCompile({
         file,
         page,
         outDir: buildDir,
@@ -207,6 +262,7 @@ export default defineCommand({
       try {
         env = resolveBuildEnv({
           supabaseUrl: (args as DeployArgs)['supabase-url'],
+          supabasePublishableKey: (args as DeployArgs)['supabase-publishable-key'],
           supabaseAnonKey: (args as DeployArgs)['supabase-anon-key'],
           supabaseSchema: (args as DeployArgs)['supabase-schema']
         })
@@ -219,6 +275,7 @@ export default defineCommand({
       const built = await withCompilerBuildRoot((fsRoot) =>
         buildPreviewProject({
           files: compiled.files,
+          artifactOwnership: compiled.artifactOwnership,
           outDir: buildDir,
           base,
           env,
@@ -230,8 +287,15 @@ export default defineCommand({
       // providers receive browser assets only; this command never deploys the
       // function or configures its secrets as a side effect.
       const dist = readStaticDist(built)
+      const backendState = resolveDirectDeployBackendState(graph, {
+        environment,
+        serverFiles: built.serverFiles
+      })
+      const { backendDeploymentRequired } = backendState
       const serverDeployment =
-        built.serverFiles.length > 0 && file ? createDeployServerDeploymentNotice(file) : undefined
+        built.serverFiles.length > 0 && file
+          ? createDeployServerDeploymentNotice(file, resolve('openpencil-build'), built)
+          : undefined
 
       let result: DeployResult
       try {
@@ -255,7 +319,20 @@ export default defineCommand({
       }
 
       if (args.json) {
-        console.log(JSON.stringify({ ...result, environment, target, serverDeployment }, null, 2))
+        console.log(
+          JSON.stringify(
+            {
+              ...result,
+              environment,
+              target,
+              status: backendState.status,
+              backendDeploymentRequired,
+              serverDeployment
+            },
+            null,
+            2
+          )
+        )
         return
       }
 
@@ -264,8 +341,15 @@ export default defineCommand({
         bold(`  Deployed ${result.fileCount} files to ${result.provider} (${environment})`)
       )
       console.log('')
-      console.log(ok(`Live at ${result.url}`))
+      console.log(ok(`${backendDeploymentRequired ? 'Frontend live' : 'Live'} at ${result.url}`))
       if (serverDeployment) printManualServerDeploymentNotice(serverDeployment)
+      else if (backendDeploymentRequired) {
+        console.log(
+          dim(
+            '  Backend deployment remains required; static hosting did not verify or apply Backend state.'
+          )
+        )
+      }
     } finally {
       rmSync(buildDir, { recursive: true, force: true })
     }

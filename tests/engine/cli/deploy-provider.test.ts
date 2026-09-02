@@ -1,9 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 
 import { resolveDeployEnvironment } from '@open-pencil/core/lowcode-deployment'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { resolveBuildEnv } from '#cli/codegen'
-import { resolveCloudflareAccountId, resolveDeployProvider } from '#cli/commands/deploy'
+import {
+  resolveCloudflareAccountId,
+  resolveDeployProvider,
+  resolveDirectDeployBackendState
+} from '#cli/commands/deploy'
 
 describe('deploy CLI provider parsing', () => {
   test('accepts all deploy providers exposed by help text', () => {
@@ -54,12 +59,12 @@ describe('deploy CLI provider parsing', () => {
     expect(
       resolveBuildEnv({
         supabaseUrl: 'https://staging.supabase.co',
-        supabaseAnonKey: 'sb_publishable_example',
+        supabasePublishableKey: 'sb_publishable_example',
         supabaseSchema: 'app'
       })
     ).toEqual({
       VITE_SUPABASE_URL: 'https://staging.supabase.co',
-      VITE_SUPABASE_ANON_KEY: 'sb_publishable_example',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
       VITE_SUPABASE_SCHEMA: 'app'
     })
   })
@@ -67,6 +72,12 @@ describe('deploy CLI provider parsing', () => {
   test('rejects an explicit secret key before it can be embedded in the client bundle', () => {
     expect(() => resolveBuildEnv({ supabaseAnonKey: 'sb_secret_do_not_embed' })).toThrow(
       'secret/service_role'
+    )
+  })
+
+  test('rejects a Management API PAT before it can be embedded in the client bundle', () => {
+    expect(() => resolveBuildEnv({ supabasePublishableKey: 'sbp_do_not_embed' })).toThrow(
+      'secret/service_role/management'
     )
   })
 
@@ -96,7 +107,7 @@ describe('deploy CLI provider parsing', () => {
       )
     ).toEqual({
       VITE_SUPABASE_URL: 'https://private.supabase.co',
-      VITE_SUPABASE_ANON_KEY: 'sb_publishable_private',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_private',
       VITE_SUPABASE_SCHEMA: 'private_schema'
     })
   })
@@ -113,7 +124,7 @@ describe('deploy CLI provider parsing', () => {
       )
     ).toEqual({
       VITE_SUPABASE_URL: 'https://direct.supabase.co',
-      VITE_SUPABASE_ANON_KEY: 'sb_publishable_direct',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_direct',
       VITE_SUPABASE_SCHEMA: 'direct_schema'
     })
   })
@@ -132,6 +143,102 @@ describe('deploy CLI provider parsing', () => {
         }
       )
     ).toThrow('must be provided together')
+  })
+
+  test('prefers the new alias, preserves legacy-only input, and rejects alias conflicts', () => {
+    expect(
+      resolveBuildEnv(
+        {},
+        {
+          VITE_SUPABASE_URL: 'https://new.supabase.co',
+          VITE_SUPABASE_PUBLISHABLE_KEY: ' sb_publishable_new '
+        }
+      )
+    ).toEqual({
+      VITE_SUPABASE_URL: 'https://new.supabase.co',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_new'
+    })
+    expect(
+      resolveBuildEnv(
+        {},
+        {
+          VITE_SUPABASE_URL: 'https://legacy.supabase.co',
+          VITE_SUPABASE_ANON_KEY: ' legacy-anon-jwt '
+        }
+      )
+    ).toEqual({
+      VITE_SUPABASE_URL: 'https://legacy.supabase.co',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'legacy-anon-jwt'
+    })
+    expect(() =>
+      resolveBuildEnv(
+        {},
+        {
+          VITE_SUPABASE_URL: 'https://conflict.supabase.co',
+          VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_new',
+          VITE_SUPABASE_ANON_KEY: 'legacy-anon-jwt'
+        }
+      )
+    ).toThrow('Conflicting Supabase')
+    expect(() =>
+      resolveBuildEnv(
+        {},
+        {
+          VITE_SUPABASE_URL: 'https://secret.supabase.co',
+          VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_new',
+          VITE_SUPABASE_ANON_KEY: 'sb_secret_stale'
+        }
+      )
+    ).toThrow('secret/service_role')
+  })
+
+  test('does not combine an explicit URL or key with the inherited connection group', () => {
+    expect(() =>
+      resolveBuildEnv(
+        { supabaseUrl: 'https://explicit.supabase.co' },
+        { VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_ambient' }
+      )
+    ).toThrow('must be provided together')
+    expect(() =>
+      resolveBuildEnv(
+        { supabasePublishableKey: 'sb_publishable_explicit' },
+        { VITE_SUPABASE_URL: 'https://ambient.supabase.co' }
+      )
+    ).toThrow('must be provided together')
+  })
+
+  test('reports a data-only Backend Provider as frontend-deployed without server files', () => {
+    const graph = new SceneGraph()
+    graph.updateNode(graph.rootId, {
+      pluginData: [
+        {
+          pluginId: 'open-pencil',
+          key: 'lowcode/backendProvider.v1',
+          value: JSON.stringify({ format: 'openpencil.backend-provider-request.v1' })
+        }
+      ]
+    })
+
+    const state = resolveDirectDeployBackendState(graph, {
+      environment: 'staging',
+      serverFiles: []
+    })
+
+    expect(state.backendProviderDeclared).toBe(true)
+    expect(state.audit.backendDeploymentRequired).toBe(true)
+    expect(state.backendDeploymentRequired).toBe(true)
+    expect(state.status).toBe('frontend-deployed')
+  })
+
+  test('reports succeeded only when runtime audit and build require no Backend deployment', () => {
+    const state = resolveDirectDeployBackendState(new SceneGraph(), {
+      environment: 'production',
+      serverFiles: []
+    })
+
+    expect(state.backendProviderDeclared).toBe(false)
+    expect(state.backendDeploymentRequired).toBe(false)
+    expect(state.status).toBe('succeeded')
   })
 
   test('validates Supabase URLs and schemas before building', () => {

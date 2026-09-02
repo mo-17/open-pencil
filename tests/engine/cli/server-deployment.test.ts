@@ -27,7 +27,28 @@ describe('server artifact CLI delivery', () => {
       artifactDirectory: '/workspace/dist/openpencil-server',
       commands: [
         "supabase functions deploy openpencil-runtime --workdir '/workspace/dist/openpencil-server'"
-      ]
+      ],
+      backendReviewRequired: false,
+      serverRuntimeDeploymentRequired: true
+    })
+  })
+
+  test('never recommends a function deploy for data-only Backend review artifacts', () => {
+    expect(
+      createBuildServerDeploymentNotice({
+        outDir: '/workspace/dist',
+        serverFiles: ['openpencil-server/backend/supabase/rls-policy.json'],
+        backendReviewFiles: ['openpencil-server/backend/supabase/rls-policy.json'],
+        executableServerWorkflowFiles: []
+      })
+    ).toEqual({
+      required: true,
+      warning:
+        'Backend Provider review artifacts were generated but were not applied. Static hosting does not modify remote schema, RLS, storage policy, or Backend runtime.',
+      artifactDirectory: '/workspace/dist/openpencil-server',
+      commands: [],
+      backendReviewRequired: true,
+      serverRuntimeDeploymentRequired: false
     })
   })
 
@@ -43,6 +64,8 @@ describe('server artifact CLI delivery', () => {
     ])
     expect(notice.warning).toContain('does not upload server code')
     expect(notice.warning).toContain('configure server secrets')
+    expect(notice.backendReviewRequired).toBe(false)
+    expect(notice.serverRuntimeDeploymentRequired).toBe(true)
   })
 
   test('static upload payload cannot include the server directory or its env example', () => {
