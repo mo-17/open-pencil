@@ -12,6 +12,12 @@ interface SchemaWalkState {
   nodes: number
 }
 
+interface PluginMCPOutputSchemaIdentity {
+  readonly pluginId: string
+  readonly kind: PluginMCPToolKind
+  readonly contributionId: string
+}
+
 const SCHEMA_KEYS = new Set([
   'type',
   'title',
@@ -53,6 +59,50 @@ function record(value: unknown, path: string): JSONRecord {
     throw new TypeError(`${path} must be a plain object`)
   }
   return value as JSONRecord
+}
+
+function exactDataRecord(
+  value: unknown,
+  path: string,
+  expectedKeys: readonly string[]
+): JSONRecord {
+  const source = record(value, path)
+  const keys = Reflect.ownKeys(source)
+  if (
+    keys.length !== expectedKeys.length ||
+    keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))
+  ) {
+    throw new TypeError(`${path} must contain exactly: ${expectedKeys.join(', ')}`)
+  }
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(source, key)
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
+      throw new TypeError(`${path}.${String(key)} must be an enumerable JSON data property`)
+    }
+  }
+  return source
+}
+
+function exactStringEnumSchema(value: unknown, path: string, expected: readonly string[]): void {
+  const schema = exactDataRecord(value, path, ['type', 'enum'])
+  if (
+    schema.type !== 'string' ||
+    !Array.isArray(schema.enum) ||
+    schema.enum.length !== expected.length ||
+    schema.enum.some((entry, index) => entry !== expected[index])
+  ) {
+    throw new TypeError(`${path} must bind the exact output identity`)
+  }
+}
+
+function exactStringArray(value: unknown, path: string, expected: readonly string[]): void {
+  if (
+    !Array.isArray(value) ||
+    value.length !== expected.length ||
+    value.some((entry, index) => entry !== expected[index])
+  ) {
+    throw new TypeError(`${path} must contain exactly: ${expected.join(', ')}`)
+  }
 }
 
 function finiteNumber(value: unknown, path: string): number {
@@ -215,4 +265,102 @@ export function parsePluginMCPInputSchema(
     throw new TypeError(`${path} could not be converted to a runtime schema`, { cause })
   }
   return parsed
+}
+
+export function parsePluginMCPOutputSchema(
+  value: unknown,
+  path: string,
+  identity: PluginMCPOutputSchemaIdentity
+): Readonly<Record<string, unknown>> {
+  if (identity.kind !== 'command' && identity.kind !== 'exporter') {
+    throw new TypeError(`${path} is supported only for command and exporter tools`)
+  }
+  if (jsonBytes(value) > PLUGIN_MCP_CATALOG_LIMITS.maxSchemaBytes) {
+    throw new TypeError(`${path} exceeds the JSON Schema byte limit`)
+  }
+  const source = exactDataRecord(value, path, [
+    'type',
+    'properties',
+    'required',
+    'additionalProperties',
+    'minProperties',
+    'maxProperties'
+  ])
+  const properties = exactDataRecord(source.properties, `${path}.properties`, [
+    'pluginId',
+    'kind',
+    'contributionId',
+    'status',
+    'message',
+    'data'
+  ])
+  const dataSchema = parsePluginObjectParameterSchema(properties.data, `${path}.properties.data`)
+  const dataRequired =
+    (dataSchema.required?.length ?? 0) > 0 ||
+    (typeof dataSchema.minProperties === 'number' && dataSchema.minProperties > 0)
+  const required = [
+    'pluginId',
+    'kind',
+    'contributionId',
+    'status',
+    'message',
+    ...(dataRequired ? ['data'] : [])
+  ]
+  const emptyDataSchema = Object.freeze({
+    type: 'object' as const,
+    properties: Object.freeze({}),
+    additionalProperties: false
+  })
+  const parsedShell = parsePluginObjectParameterSchema(
+    {
+      ...source,
+      properties: { ...properties, data: emptyDataSchema }
+    },
+    path
+  )
+  if (parsedShell.minProperties !== required.length || parsedShell.maxProperties !== 6) {
+    throw new TypeError(`${path} must use the exact execution output property bounds`)
+  }
+  exactStringArray(parsedShell.required, `${path}.required`, required)
+  exactStringEnumSchema(parsedShell.properties.pluginId, `${path}.properties.pluginId`, [
+    identity.pluginId
+  ])
+  exactStringEnumSchema(parsedShell.properties.kind, `${path}.properties.kind`, [identity.kind])
+  exactStringEnumSchema(
+    parsedShell.properties.contributionId,
+    `${path}.properties.contributionId`,
+    [identity.contributionId]
+  )
+  exactStringEnumSchema(parsedShell.properties.status, `${path}.properties.status`, [
+    'completed',
+    'cancelled'
+  ])
+  const messageSchema = exactDataRecord(
+    parsedShell.properties.message,
+    `${path}.properties.message`,
+    ['type', 'minLength', 'maxLength']
+  )
+  if (
+    messageSchema.type !== 'string' ||
+    messageSchema.minLength !== 1 ||
+    messageSchema.maxLength !== PLUGIN_MCP_CATALOG_LIMITS.maxDescriptionLength
+  ) {
+    throw new TypeError(`${path}.properties.message must use the exact bounded message contract`)
+  }
+  const wireSchema = record(
+    Object.freeze({
+      ...parsedShell,
+      properties: Object.freeze({
+        ...parsedShell.properties,
+        data: dataSchema
+      })
+    }),
+    path
+  )
+  try {
+    z.fromJSONSchema(wireSchema)
+  } catch (cause) {
+    throw new TypeError(`${path} could not be converted to a runtime schema`, { cause })
+  }
+  return wireSchema
 }

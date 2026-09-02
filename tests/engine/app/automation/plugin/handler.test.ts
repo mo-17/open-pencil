@@ -134,7 +134,10 @@ describe('automation plugin MCP handler', () => {
       runExporter: async () => ({ status: 'completed', message: 'export' })
     }
     const handlers = createAutomationPluginMCPHandlers(handleAutomationTool, dependencies)
-    const descriptor = (await handlers.handleList()).result.tools[0]
+    const descriptor = (await handlers.handleList()).result.tools.find(
+      ({ pluginId }) => pluginId === MAP_PLUGIN_ID
+    )
+    if (!descriptor) throw new Error('Expected Map MCP descriptor')
 
     const response = await handlers.handleCall(target(), {
       name: descriptor.name,
@@ -771,13 +774,20 @@ describe('automation plugin MCP handler', () => {
     await store.install(AIRTABLE_RECORDS_PLUGIN_ID)
     await store.setEnabled(AIRTABLE_RECORDS_PLUGIN_ID, true)
     let authorized = true
+    let credentialReady = true
+    let credentialReadinessRefreshes = 0
     const received: unknown[] = []
     const controller = new AbortController()
     const dependencies: AutomationPluginMCPDependencies = {
       store,
-      mcpOptions: { connectorExposure: () => authorized },
+      mcpOptions: { connectorExposure: () => authorized && credentialReady },
+      connectorRefreshEligibility: () => authorized,
       runCommand: async () => ({ status: 'cancelled', message: 'unused' }),
       runExporter: async () => ({ status: 'cancelled', message: 'unused' }),
+      refreshConnectorCredentialReadiness: async () => {
+        credentialReadinessRefreshes += 1
+        credentialReady = true
+      },
       runConnector: async (connector, operation, args, signal) => {
         received.push({ connectorId: connector.contribution.connectorId, operation, args, signal })
         return {
@@ -795,6 +805,7 @@ describe('automation plugin MCP handler', () => {
       (tool) => tool.pluginId === AIRTABLE_RECORDS_PLUGIN_ID
     )
     if (!descriptor) throw new Error('Expected Airtable connector MCP descriptor')
+    expect(credentialReadinessRefreshes).toBe(1)
 
     await expect(
       handlers.handleCall(
@@ -816,6 +827,7 @@ describe('automation plugin MCP handler', () => {
       }
     })
     expect(received).toHaveLength(1)
+    expect(credentialReadinessRefreshes).toBe(2)
     expect(received[0]).toMatchObject({
       operation: { operationId: AIRTABLE_LIST_RECORDS_OPERATION_ID },
       args: { baseId: 'app1234', tableId: 'tbl5678', pageSize: 25 },
@@ -830,6 +842,21 @@ describe('automation plugin MCP handler', () => {
       })
     ).rejects.toThrow('not supported')
     expect(received).toHaveLength(1)
+    expect(credentialReadinessRefreshes).toBe(3)
+
+    credentialReady = false
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: descriptor.pluginId,
+        args: { baseId: 'app1234', tableId: 'tbl5678', pageSize: 10 }
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      result: { pluginId: AIRTABLE_RECORDS_PLUGIN_ID, kind: 'connector', httpStatus: 200 }
+    })
+    expect(received).toHaveLength(2)
+    expect(credentialReadinessRefreshes).toBe(4)
 
     authorized = false
     await expect(
@@ -839,7 +866,8 @@ describe('automation plugin MCP handler', () => {
         args: { baseId: 'app1234', tableId: 'tbl5678' }
       })
     ).rejects.toThrow('is unavailable')
-    expect(received).toHaveLength(1)
+    expect(received).toHaveLength(2)
+    expect(credentialReadinessRefreshes).toBe(4)
   })
 
   test('requires and compares the exact catalog authority on the cross-process call boundary', async () => {

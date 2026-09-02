@@ -12,6 +12,7 @@ import {
   AIRTABLE_RECORDS_CONNECTOR_ID,
   AIRTABLE_RECORDS_PLUGIN_ID
 } from '@/app/plugins/connectors/airtable-records'
+import { SUPABASE_BACKEND_PROVIDER_PLUGIN_ID } from '@/app/plugins/host/backend-provider'
 import {
   appPluginMCPConnectorContributionId as appPluginMCPConnectorContributionID,
   appPluginMCPToolName,
@@ -86,8 +87,13 @@ function response(tools: unknown[], revision = 'revision-1') {
 
 function expectedDescriptor(
   value: ReturnType<typeof descriptor>
-): Omit<ReturnType<typeof descriptor>, 'description' | 'inputSchema'> {
-  const { description: _description, inputSchema: _inputSchema, ...expected } = value
+): Omit<ReturnType<typeof descriptor>, 'description' | 'inputSchema' | 'outputSchema'> {
+  const {
+    description: _description,
+    inputSchema: _inputSchema,
+    outputSchema: _outputSchema,
+    ...expected
+  } = value
   return expected
 }
 
@@ -105,12 +111,53 @@ function commandInputSchema(valueType: 'integer' | 'string' = 'string') {
   }
 }
 
+function executionOutputSchema(
+  kind: 'command' | 'exporter',
+  contributionId: string,
+  dataSchema: Record<string, unknown> = {
+    type: 'object',
+    properties: { inserted: { type: 'boolean' } },
+    required: ['inserted'],
+    additionalProperties: false,
+    minProperties: 1,
+    maxProperties: 1
+  }
+) {
+  const dataRequired =
+    (Array.isArray(dataSchema.required) && dataSchema.required.length > 0) ||
+    (typeof dataSchema.minProperties === 'number' && dataSchema.minProperties > 0)
+  const required = [
+    'pluginId',
+    'kind',
+    'contributionId',
+    'status',
+    'message',
+    ...(dataRequired ? ['data'] : [])
+  ]
+  return {
+    type: 'object',
+    properties: {
+      pluginId: { type: 'string', enum: ['acme.analytics'] },
+      kind: { type: 'string', enum: [kind] },
+      contributionId: { type: 'string', enum: [contributionId] },
+      status: { type: 'string', enum: ['completed', 'cancelled'] },
+      message: { type: 'string', minLength: 1, maxLength: 2_000 },
+      data: dataSchema
+    },
+    required,
+    additionalProperties: false,
+    minProperties: required.length,
+    maxProperties: 6
+  }
+}
+
 function commandDescriptor(inputSchema: unknown = commandInputSchema()) {
   return descriptor({
     name: AUDIT_TOOL_NAME,
     title: 'Run Accessibility Audit',
     description: 'Run the installed accessibility audit command.',
     inputSchema,
+    outputSchema: executionOutputSchema('command', 'accessibility-audit'),
     pluginId: 'acme.analytics',
     kind: 'command',
     contributionId: 'accessibility-audit',
@@ -128,6 +175,7 @@ function exporterDescriptor(inputSchema: unknown = commandInputSchema()) {
     title: 'Export Design Tokens',
     description: 'Run the installed design tokens exporter.',
     inputSchema,
+    outputSchema: executionOutputSchema('exporter', 'design-tokens'),
     pluginId: 'acme.analytics',
     kind: 'exporter',
     contributionId: 'design-tokens',
@@ -175,6 +223,45 @@ function connectorDescriptor(
 function nestedArraySchema(depth: number): Record<string, unknown> {
   if (depth === 0) return { type: 'boolean' }
   return { type: 'array', items: nestedArraySchema(depth - 1) }
+}
+
+function maxDepthResultSchema(arrayCount: number): Record<string, unknown> {
+  let value: Record<string, unknown> = { type: 'boolean' }
+  for (let index = 0; index < arrayCount; index += 1) {
+    value = { type: 'array', items: value, maxItems: 1 }
+  }
+  return {
+    type: 'object',
+    properties: { value },
+    required: ['value'],
+    additionalProperties: false
+  }
+}
+
+function rawNodeBoundaryResultSchema(extraNode = false): Record<string, unknown> {
+  return {
+    type: 'object',
+    title: 't',
+    description: 'd',
+    properties: Object.fromEntries(
+      Array.from({ length: 84 }, (_, index) => [
+        `g${index}`,
+        {
+          type: 'object',
+          properties: {
+            value: {
+              type: 'boolean',
+              ...(extraNode && index === 0 ? { title: 'x' } : {})
+            }
+          },
+          additionalProperties: false
+        }
+      ])
+    ),
+    additionalProperties: false,
+    minProperties: 0,
+    maxProperties: 84
+  }
 }
 
 describe('plugin MCP catalog validation', () => {
@@ -317,6 +404,13 @@ describe('plugin MCP catalog validation', () => {
         required: ['scope'],
         additionalProperties: false
       })
+      expect(tool.outputSchema).toMatchObject({
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          data: { type: 'object', additionalProperties: false }
+        }
+      })
     }
     expect(parsed.tools.find(({ kind }) => kind === 'connector')).toMatchObject({
       name: AIRTABLE_TOOL_NAME,
@@ -344,6 +438,39 @@ describe('plugin MCP catalog validation', () => {
     const live = listAppPluginMCPTools(store, { connectorExposure: () => true })
     const parsed = parsePluginMCPCatalogResponse(response(live.tools, live.revision))
     expect(parsed.tools.some(({ kind }) => kind === 'module')).toBe(true)
+    expect(
+      parsed.tools.filter(({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID)
+    ).toHaveLength(2)
+    for (const tool of parsed.tools.filter(
+      ({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+    )) {
+      expect(tool.outputSchema).toMatchObject({
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          pluginId: { type: 'string', enum: [SUPABASE_BACKEND_PROVIDER_PLUGIN_ID] },
+          kind: { type: 'string', enum: ['command'] },
+          contributionId: { type: 'string', enum: [tool.contributionId] },
+          status: { type: 'string', enum: ['completed', 'cancelled'] },
+          data: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              safety: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  credentialResolution: { type: 'string', enum: ['forbidden'] },
+                  sideEffects: { type: 'string', enum: ['none'] },
+                  applyAvailable: { type: 'boolean', enum: [false] }
+                }
+              }
+            }
+          }
+        }
+      })
+      expect(tool.outputSchema?.required).toContain('data')
+    }
     expect(parsed.tools.find(({ kind }) => kind === 'connector')).toMatchObject({
       pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
       contributionId: AIRTABLE_CONNECTOR_CONTRIBUTION_ID
@@ -514,6 +641,115 @@ describe('plugin MCP catalog validation', () => {
         ])
       )
     ).toThrow('node limit')
+
+    for (const invalidOutputSchema of [
+      { ...executionOutputSchema('command', 'accessibility-audit'), additionalProperties: true },
+      {
+        type: 'object',
+        properties: {
+          result: nestedArraySchema(PLUGIN_MCP_CATALOG_LIMITS.maxSchemaDepth + 1)
+        },
+        additionalProperties: false
+      }
+    ]) {
+      expect(() =>
+        parsePluginMCPCatalogResponse(
+          response([
+            {
+              ...commandDescriptor(),
+              outputSchema: invalidOutputSchema
+            }
+          ])
+        )
+      ).toThrow()
+    }
+  })
+
+  test('budgets a fixed execution envelope separately from its bounded result schema', () => {
+    for (const dataSchema of [maxDepthResultSchema(11), rawNodeBoundaryResultSchema()]) {
+      expect(
+        parsePluginMCPCatalogResponse(
+          response([
+            descriptor(),
+            {
+              ...commandDescriptor(),
+              outputSchema: executionOutputSchema('command', 'accessibility-audit', dataSchema)
+            }
+          ])
+        ).tools
+      ).toHaveLength(2)
+    }
+
+    for (const dataSchema of [maxDepthResultSchema(12), rawNodeBoundaryResultSchema(true)]) {
+      expect(() =>
+        parsePluginMCPCatalogResponse(
+          response([
+            {
+              ...commandDescriptor(),
+              outputSchema: executionOutputSchema('command', 'accessibility-audit', dataSchema)
+            }
+          ])
+        )
+      ).toThrow()
+    }
+
+    const valid = executionOutputSchema('command', 'accessibility-audit')
+    const properties = valid.properties
+    for (const outputSchema of [
+      { ...valid, maxProperties: 7 },
+      { ...valid, unexpected: true },
+      { ...valid, properties: { ...properties, pluginId: { type: 'string', enum: ['wrong'] } } },
+      { ...valid, properties: { ...properties, kind: { type: 'string', enum: ['exporter'] } } },
+      {
+        ...valid,
+        properties: {
+          ...properties,
+          contributionId: { type: 'string', enum: ['wrong-contribution'] }
+        }
+      },
+      { ...valid, required: ['pluginId'], minProperties: 1 }
+    ]) {
+      expect(() =>
+        parsePluginMCPCatalogResponse(response([{ ...commandDescriptor(), outputSchema }]))
+      ).toThrow()
+    }
+
+    expect(() =>
+      parsePluginMCPCatalogResponse(
+        response([
+          descriptor({
+            outputSchema: executionOutputSchema('command', 'slide-menu')
+          })
+        ])
+      )
+    ).toThrow('only for command and exporter')
+
+    const nearLimitDataSchema = {
+      type: 'object',
+      properties: Object.fromEntries(
+        Array.from({ length: 8 }, (_, index) => [
+          `p${index}`,
+          { type: 'string', description: 'x'.repeat(4_000) }
+        ])
+      ),
+      additionalProperties: false
+    }
+    const oversizedWireSchema = executionOutputSchema(
+      'command',
+      'accessibility-audit',
+      nearLimitDataSchema
+    )
+    expect(new TextEncoder().encode(JSON.stringify(nearLimitDataSchema)).byteLength).toBeLessThan(
+      PLUGIN_MCP_CATALOG_LIMITS.maxSchemaBytes
+    )
+    expect(
+      new TextEncoder().encode(JSON.stringify(oversizedWireSchema)).byteLength
+    ).toBeGreaterThan(PLUGIN_MCP_CATALOG_LIMITS.maxSchemaBytes)
+    expect(() =>
+      parsePluginMCPCatalogResponse(
+        response([{ ...commandDescriptor(), outputSchema: oversizedWireSchema }])
+      )
+    ).toThrow('byte limit')
   })
 })
 
@@ -527,6 +763,7 @@ describe('dynamic plugin MCP registration', () => {
   test('changes tools/list, emits list_changed, and revalidates calls through the app', async () => {
     const catalog = createPluginMCPCatalog()
     const rpcCalls: Record<string, unknown>[] = []
+    let commandFailure: 'domain' | 'rpc' | 'throw' | null = null
     const server = new McpServer({ name: 'plugin-test-server', version: '0.0.0' })
     server.registerTool('static_tool', { inputSchema: z.object({}) }, async () => ({
       content: [{ type: 'text', text: '{}' }]
@@ -535,6 +772,25 @@ describe('dynamic plugin MCP registration', () => {
       catalog,
       async sendRPC(body) {
         rpcCalls.push(body)
+        const args = body.args as { pluginId?: unknown }
+        if (args.pluginId === 'acme.analytics') {
+          if (commandFailure === 'rpc') return { ok: false, error: 'RPC command denied' }
+          if (commandFailure === 'domain') {
+            return { ok: true, result: { ok: false, error: 'Domain command denied' } }
+          }
+          if (commandFailure === 'throw') throw new Error('Command transport failed')
+          return {
+            ok: true,
+            result: {
+              pluginId: 'acme.analytics',
+              kind: 'command',
+              contributionId: 'accessibility-audit',
+              status: 'completed',
+              message: 'Audit completed',
+              data: { inserted: true }
+            }
+          }
+        }
         return { ok: true, result: { inserted: true } }
       }
     })
@@ -559,8 +815,8 @@ describe('dynamic plugin MCP registration', () => {
     expect(listed.find((tool) => tool.name === SLIDE_MENU_TOOL_NAME)?.inputSchema).toMatchObject({
       type: 'object',
       properties: {
-        document_id: { type: 'string' },
-        page_id: { type: 'string' }
+        document_id: { type: 'string', minLength: 1, maxLength: 128 },
+        page_id: { type: 'string', minLength: 1, maxLength: 128 }
       }
     })
     expect(listed.find((tool) => tool.name === SLIDE_MENU_TOOL_NAME)?._meta).toMatchObject({
@@ -588,14 +844,38 @@ describe('dynamic plugin MCP registration', () => {
     ])
 
     catalog.replace(response([commandDescriptor()], 'command-string'))
-    expect((await client.listTools()).tools.map(({ name }) => name).sort()).toEqual([
-      AUDIT_TOOL_NAME,
-      'static_tool'
-    ])
-    await client.callTool({
+    const commandTools = (await client.listTools()).tools
+    expect(commandTools.map(({ name }) => name).sort()).toEqual([AUDIT_TOOL_NAME, 'static_tool'])
+    expect(commandTools.find(({ name }) => name === AUDIT_TOOL_NAME)?.outputSchema).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      properties: { data: { type: 'object', additionalProperties: false } }
+    })
+    const commandCall = await client.callTool({
       name: AUDIT_TOOL_NAME,
       arguments: { scope: 'selection', document_id: 'document-2' }
     })
+    expect(commandCall.structuredContent).toMatchObject({
+      pluginId: 'acme.analytics',
+      kind: 'command',
+      contributionId: 'accessibility-audit',
+      data: { inserted: true }
+    })
+    for (const [failure, message] of [
+      ['rpc', 'RPC command denied'],
+      ['domain', 'Domain command denied'],
+      ['throw', 'Command transport failed']
+    ] as const) {
+      commandFailure = failure
+      const failed = await client.callTool({
+        name: AUDIT_TOOL_NAME,
+        arguments: { scope: 'selection', document_id: 'document-2' }
+      })
+      expect(failed.isError).toBe(true)
+      expect(failed.structuredContent).toBeUndefined()
+      expect(JSON.stringify(failed.content)).toContain(message)
+    }
+    commandFailure = null
     expect(rpcCalls.at(-1)).toEqual({
       command: 'plugin_mcp_tool',
       args: {

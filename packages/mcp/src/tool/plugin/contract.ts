@@ -30,6 +30,7 @@ export interface PluginMCPToolDescriptor {
   readonly title?: string
   readonly description: string
   readonly inputSchema: Readonly<Record<string, unknown>>
+  readonly outputSchema?: Readonly<Record<string, unknown>>
   readonly pluginId: string
   readonly kind: PluginMCPToolKind
   readonly contributionId: string
@@ -39,7 +40,7 @@ export interface PluginMCPToolDescriptor {
 /**
  * The immutable portion of a catalog descriptor that a tools/call request is
  * authorized to invoke. The catalog revision binds the remaining advertised
- * metadata and input schema; these fields bind the live executable identity.
+ * metadata and schemas; these fields bind the live executable identity.
  */
 export interface PluginMCPToolCallDescriptor {
   readonly name: string

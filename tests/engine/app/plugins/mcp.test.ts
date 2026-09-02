@@ -15,6 +15,12 @@ import {
   AIRTABLE_RECORDS_PLUGIN_ID
 } from '@/app/plugins/connectors/airtable-records'
 import {
+  APP_BACKEND_PROVIDER_MCP_COMMANDS,
+  SUPABASE_BACKEND_PROVIDER_ADAPTER_ID,
+  SUPABASE_BACKEND_PROVIDER_PACKAGE_DIGEST,
+  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+} from '@/app/plugins/host/backend-provider'
+import {
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
   AI_POPOUT_PLUGIN_ID,
   CAPACITOR_EXPORTER,
@@ -67,7 +73,7 @@ function createStore() {
 describe('app plugin MCP catalog', () => {
   test('exposes all bundled contributions after all bundled plugins are enabled', async () => {
     const catalog = createBundledPluginCatalog()
-    expect(catalog).toHaveLength(64)
+    expect(catalog).toHaveLength(68)
 
     const store = createStore()
     await store.load()
@@ -81,12 +87,130 @@ describe('app plugin MCP catalog', () => {
     }
 
     const tools = listAppPluginMCPTools(store).tools
-    expect(tools).toHaveLength(31)
+    expect(tools).toHaveLength(33)
     expect(tools.filter((tool) => tool.kind === 'module')).toHaveLength(20)
-    expect(tools.filter((tool) => tool.kind === 'command')).toHaveLength(9)
+    expect(tools.filter((tool) => tool.kind === 'command')).toHaveLength(11)
     expect(tools.filter((tool) => tool.kind === 'exporter')).toHaveLength(2)
     expect(tools.some((tool) => tool.pluginId === COMPILER_PREVIEW_POPOUT_PLUGIN_ID)).toBe(false)
     expect(tools.some((tool) => tool.pluginId === AI_POPOUT_PLUGIN_ID)).toBe(false)
+  })
+
+  test('projects only reviewed Backend Provider audit and plan commands into MCP', async () => {
+    const store = createStore()
+    await store.load()
+
+    const enabled = listAppPluginMCPTools(store)
+    const backendTools = enabled.tools.filter(
+      ({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+    )
+    expect(backendTools).toHaveLength(2)
+    expect(
+      backendTools
+        .map(({ contributionId }) => contributionId)
+        .sort((left, right) => left.localeCompare(right))
+    ).toEqual(
+      Object.values(APP_BACKEND_PROVIDER_MCP_COMMANDS)
+        .map(({ commandId }) => commandId)
+        .sort((left, right) => left.localeCompare(right))
+    )
+    for (const tool of backendTools) {
+      expect(tool).toMatchObject({
+        kind: 'command',
+        authority: {
+          trustSource: 'app-bundle',
+          packageDigest: SUPABASE_BACKEND_PROVIDER_PACKAGE_DIGEST,
+          publisherId: 'open-pencil',
+          publisherKeyId: 'app-bundle-v1'
+        },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            target: {
+              type: 'string',
+              enum: [
+                'react',
+                'vue',
+                'expo',
+                'flutter',
+                'wechat-miniprogram',
+                'taro',
+                'uni-app',
+                'mpx'
+              ]
+            },
+            mode: {
+              type: 'string',
+              enum: ['preview', 'source-only-prototype', 'production']
+            }
+          },
+          required: ['target', 'mode'],
+          additionalProperties: false,
+          minProperties: 2,
+          maxProperties: 2
+        },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            pluginId: { type: 'string', enum: [SUPABASE_BACKEND_PROVIDER_PLUGIN_ID] },
+            kind: { type: 'string', enum: ['command'] },
+            contributionId: { type: 'string', enum: [tool.contributionId] },
+            status: { type: 'string', enum: ['completed', 'cancelled'] },
+            data: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                safety: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    credentialResolution: { type: 'string', enum: ['forbidden'] },
+                    sideEffects: { type: 'string', enum: ['none'] },
+                    applyAvailable: { type: 'boolean', enum: [false] }
+                  }
+                }
+              }
+            }
+          },
+          additionalProperties: false,
+          maxProperties: 6
+        }
+      })
+      expect(tool.outputSchema?.required).toContain('data')
+      expect(tool.authority.adapterId).not.toBe(SUPABASE_BACKEND_PROVIDER_ADAPTER_ID)
+      expect(tool.name).toMatch(/^plugin__[a-z0-9_]+__run_[a-z0-9_]+_[a-f0-9]{64}$/)
+      const resolved = resolveAppPluginMCPTool(store, tool.name, tool.pluginId)
+      expect(resolved.kind).toBe('command')
+    }
+    expect(
+      backendTools.some((tool) =>
+        /apply|deploy|migrat|credential|secret/i.test(tool.contributionId)
+      )
+    ).toBe(false)
+
+    await store.setEnabled(SUPABASE_BACKEND_PROVIDER_PLUGIN_ID, false)
+    const disabled = listAppPluginMCPTools(store)
+    expect(
+      disabled.tools.some(({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID)
+    ).toBe(false)
+    expect(disabled.revision).not.toBe(enabled.revision)
+    for (const tool of backendTools) {
+      expect(() => resolveAppPluginMCPTool(store, tool.name, tool.pluginId)).toThrow(
+        'Plugin MCP tool is unavailable'
+      )
+    }
+
+    await store.setEnabled(SUPABASE_BACKEND_PROVIDER_PLUGIN_ID, true)
+    expect(
+      listAppPluginMCPTools(store)
+        .tools.filter(({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID)
+        .map(({ name }) => name)
+    ).toEqual(backendTools.map(({ name }) => name))
+    await store.uninstall(SUPABASE_BACKEND_PROVIDER_PLUGIN_ID)
+    expect(
+      listAppPluginMCPTools(store).tools.some(
+        ({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+      )
+    ).toBe(false)
   })
 
   test('permanently binds slug-colliding names to canonical plugin identity', () => {
@@ -113,8 +237,9 @@ describe('app plugin MCP catalog', () => {
     await store.load()
 
     const enabled = listAppPluginMCPTools(store)
-    expect(enabled.tools).toHaveLength(1)
-    const mapTool = enabled.tools[0]
+    expect(enabled.tools).toHaveLength(3)
+    const mapTool = enabled.tools.find(({ pluginId }) => pluginId === MAP_PLUGIN_ID)
+    if (!mapTool) throw new Error('Expected Map MCP tool')
     const installedMap = store
       .installedModules()
       .find(({ plugin }) => plugin.package.manifest.plugin.id === MAP_PLUGIN_ID)
@@ -148,7 +273,7 @@ describe('app plugin MCP catalog', () => {
 
     await store.setEnabled(MAP_PLUGIN_ID, false)
     const disabled = listAppPluginMCPTools(store)
-    expect(disabled.tools).toEqual([])
+    expect(disabled.tools.some(({ pluginId }) => pluginId === MAP_PLUGIN_ID)).toBe(false)
     expect(disabled.revision).not.toBe(enabled.revision)
     expect(() => resolveAppPluginMCPTool(store, mapTool.name, MAP_PLUGIN_ID)).toThrow(
       'Plugin MCP tool is unavailable'
@@ -157,7 +282,9 @@ describe('app plugin MCP catalog', () => {
     await store.setEnabled(MAP_PLUGIN_ID, true)
     expect(listAppPluginMCPTools(store).revision).toBe(enabled.revision)
     await store.uninstall(MAP_PLUGIN_ID)
-    expect(listAppPluginMCPTools(store).tools).toEqual([])
+    expect(
+      listAppPluginMCPTools(store).tools.some(({ pluginId }) => pluginId === MAP_PLUGIN_ID)
+    ).toBe(false)
     expect(() => resolveAppPluginMCPTool(store, mapTool.name, MAP_PLUGIN_ID)).toThrow(
       'Plugin MCP tool is unavailable'
     )

@@ -175,15 +175,21 @@ export function isAppConnectorMCPExposed(
   connector: InstalledPluginConnector,
   operation: PluginConnectorOperationV1
 ): boolean {
-  if (!isAppConnectorMCPStaticallyEligible(connector.contribution, operation)) return false
+  if (!isAppConnectorMCPRefreshEligible(connector, operation)) return false
   const requiredCredentials = requiredConnectorCredentialRefs(connector)
   return Boolean(
-    appConnectorAuthorization.isAuthorized(
-      connector.contribution,
-      connector.plugin.package.digest
-    ) &&
-    requiredCredentials &&
-    appConnectorCredentialReadiness.areConfigured(requiredCredentials)
+    requiredCredentials && appConnectorCredentialReadiness.areConfigured(requiredCredentials)
+  )
+}
+
+/** Readiness-independent authorization used only to decide whether credential status may refresh. */
+export function isAppConnectorMCPRefreshEligible(
+  connector: InstalledPluginConnector,
+  operation: PluginConnectorOperationV1
+): boolean {
+  return Boolean(
+    isAppConnectorMCPStaticallyEligible(connector.contribution, operation) &&
+    appConnectorAuthorization.isAuthorized(connector.contribution, connector.plugin.package.digest)
   )
 }
 

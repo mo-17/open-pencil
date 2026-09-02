@@ -25,6 +25,7 @@ import {
 import {
   executeInstalledAppConnector,
   isAppConnectorMCPExposed,
+  isAppConnectorMCPRefreshEligible,
   refreshAppConnectorCredentialReadiness
 } from '@/app/plugins/connectors/app'
 import type { ConnectorParameterObject } from '@/app/plugins/connectors/types'
@@ -34,6 +35,7 @@ import {
   type AppPluginHostExecutionResult
 } from '@/app/plugins/host'
 import {
+  isAppPluginMCPConnectorCall,
   listAppPluginMCPTools,
   PLUGIN_MCP_LIMITS,
   resolveAppPluginMCPTool,
@@ -119,6 +121,8 @@ export interface AutomationPluginMCPDependencies {
   ): ReturnType<typeof executeInstalledAppConnector>
   publisherPrivilegeBoundary?<T>(operation: () => Promise<T>): Promise<T>
   checkpointPublisherTrust?(): Promise<unknown>
+  /** Readiness-independent host authorization for deciding whether connector status may refresh. */
+  connectorRefreshEligibility?: NonNullable<AppPluginMCPOptions['connectorExposure']>
   refreshConnectorCredentialReadiness?(): Promise<void>
   resolvePublisherAIGrant?(
     resolved: Extract<ResolvedAppPluginMCPTool, { kind: 'command' | 'connector' }>
@@ -244,6 +248,7 @@ const DEFAULT_DEPENDENCIES: AutomationPluginMCPDependencies = Object.freeze({
   runConnector: runDefaultConnector,
   publisherPrivilegeBoundary: withAppPluginPublisherPrivilege,
   checkpointPublisherTrust: checkpointAppPluginMarketplacePrivilegeClock,
+  connectorRefreshEligibility: isAppConnectorMCPRefreshEligible,
   refreshConnectorCredentialReadiness: () =>
     refreshAppConnectorCredentialReadiness(appPluginStore.installedConnectors()).then(
       () => undefined
@@ -632,6 +637,155 @@ export function createAutomationPluginMCPHandlers(
     })
   }
 
+  type LiveCall = {
+    liveCatalog: AppPluginMCPToolCatalog
+    resolved: ResolvedAppPluginMCPTool
+  }
+
+  function resolveLiveCall(
+    call: ParsedPluginMCPRequest,
+    context?: AutomationRequestContext
+  ): LiveCall | Promise<LiveCall> {
+    const refreshEligibility = dependencies.connectorRefreshEligibility
+    const classificationOptions = refreshEligibility
+      ? {
+          ...dependencies.mcpOptions,
+          connectorExposure: refreshEligibility,
+          connectorNonGetReadOnlyExposure: refreshEligibility
+        }
+      : dependencies.mcpOptions
+    // Classify only the exact installed connector identity through a readiness-independent,
+    // host-owned authorization gate. Non-connectors remain synchronous, and unauthorized
+    // connectors cannot cause the credential manager to be inspected.
+    const connectorCall = isAppPluginMCPConnectorCall(
+      dependencies.store,
+      call.name,
+      call.pluginId,
+      classificationOptions
+    )
+    if (!connectorCall) {
+      const liveCatalog = listAppPluginMCPTools(dependencies.store, dependencies.mcpOptions)
+      const resolved = resolveAppPluginMCPTool(
+        dependencies.store,
+        call.name,
+        call.pluginId,
+        dependencies.mcpOptions
+      )
+      if (resolved.kind === 'connector') {
+        throw new Error('Plugin connector MCP refresh authorization is unavailable')
+      }
+      return { liveCatalog, resolved }
+    }
+    return (async () => {
+      await dependencies.refreshConnectorCredentialReadiness?.()
+      throwIfAborted(context?.signal)
+      const refreshedCatalog = listAppPluginMCPTools(dependencies.store, dependencies.mcpOptions)
+      const refreshed = resolveAppPluginMCPTool(
+        dependencies.store,
+        call.name,
+        call.pluginId,
+        dependencies.mcpOptions
+      )
+      if (refreshed.kind !== 'connector') {
+        throw new Error('Plugin MCP connector authority changed during credential refresh')
+      }
+      return { liveCatalog: refreshedCatalog, resolved: refreshed }
+    })()
+  }
+
+  async function executeResolvedCall(
+    target: AutomationTarget,
+    call: ParsedPluginMCPRequest,
+    context: AutomationRequestContext | undefined,
+    options: AutomationPluginMCPCallOptions,
+    { liveCatalog, resolved }: LiveCall
+  ): Promise<unknown> {
+    throwIfAborted(context?.signal)
+    // The stable tool name intentionally excludes package revision. Bind the cross-process call to
+    // the exact catalog and executable authority after live resolution, immediately before policy
+    // checks and dispatch, so a digest/key/version/adapter replacement fails closed.
+    validateExpectedAuthority(call, liveCatalog, resolved)
+    const resolvedDescriptor = callDescriptor(resolved.descriptor)
+    const publisherGrantId = publisherGrantIdForCall(resolved, dependencies)
+    context?.onPluginMCPResolved?.(resolvedDescriptor, publisherGrantId)
+    options.beforeExecute?.(resolved)
+    if (resolved.kind === 'module') {
+      const args = moduleArguments(call.args)
+      if (args.config !== undefined) {
+        const compatibility = inspectInstalledPluginModuleCompatibility(resolved.value)
+        if (!compatibility.ok) throw new Error(compatibility.reason)
+        compatibility.definition.createInstance(args.config)
+      }
+      const createArgs = {
+        ...args,
+        plugin_id: resolved.descriptor.pluginId,
+        module_type: resolved.descriptor.contributionId
+      }
+      return options.executeModule
+        ? options.executeModule(createArgs)
+        : handleAutomationTool(target, { name: 'create_module', args: createArgs }, context)
+    }
+
+    if (resolved.kind === 'connector') {
+      if (!dependencies.runConnector) {
+        throw new Error('Plugin connector MCP execution is unavailable')
+      }
+      const args = parsePluginObjectParameterValue(
+        call.args,
+        resolved.operation.parameters.schema,
+        resolved.operation.parameters.maxBytes,
+        'Plugin MCP connector arguments'
+      )
+      const execution = await dependencies.runConnector(
+        resolved.value,
+        resolved.operation,
+        args,
+        context?.signal
+      )
+      throwIfAborted(context?.signal)
+      return {
+        ok: true,
+        result: {
+          pluginId: resolved.descriptor.pluginId,
+          kind: resolved.kind,
+          contributionId: resolved.descriptor.contributionId,
+          ...execution
+        }
+      }
+    }
+
+    const args = contributionArguments(resolved.value.contribution, call.args)
+    const execution =
+      resolved.kind === 'command'
+        ? await dependencies.runCommand(
+            target.store,
+            resolved.value.plugin,
+            resolved.value.contribution,
+            args,
+            context?.signal
+          )
+        : await dependencies.runExporter(
+            target.store,
+            resolved.value.plugin,
+            resolved.value.contribution,
+            context?.signal,
+            args
+          )
+    // Exporters own the last cancellation check before their atomic/durable
+    // write boundary. A generic post-write check could report failure after a
+    // file was already committed. Commands have no such deferred side effect.
+    if (resolved.kind === 'command') throwIfAborted(context?.signal)
+    return {
+      ok: true,
+      result: {
+        pluginId: resolved.descriptor.pluginId,
+        kind: resolved.kind,
+        contributionId: resolved.descriptor.contributionId,
+        ...execution
+      }
+    }
+  }
+
   async function handleCall(
     target: AutomationTarget,
     rawRequest: unknown,
@@ -642,100 +796,12 @@ export function createAutomationPluginMCPHandlers(
     const call = request(rawRequest, options.requireExpectedAuthority === true)
     return withPublisherPrivilege(async () => {
       throwIfAborted(context?.signal)
-      await dependencies.refreshConnectorCredentialReadiness?.()
-      throwIfAborted(context?.signal)
       // Rebuild and resolve from current installed state for every invocation. A descriptor cached by
       // an MCP client cannot outlive disable/uninstall or a trust/compatibility change.
-      const liveCatalog = listAppPluginMCPTools(dependencies.store, dependencies.mcpOptions)
-      const resolved = resolveAppPluginMCPTool(
-        dependencies.store,
-        call.name,
-        call.pluginId,
-        dependencies.mcpOptions
-      )
-      // The stable tool name intentionally excludes package revision. Bind the cross-process call to
-      // the exact catalog and executable authority after live resolution, immediately before policy
-      // checks and dispatch, so a digest/key/version/adapter replacement fails closed.
-      validateExpectedAuthority(call, liveCatalog, resolved)
-      const resolvedDescriptor = callDescriptor(resolved.descriptor)
-      const publisherGrantId = publisherGrantIdForCall(resolved, dependencies)
-      context?.onPluginMCPResolved?.(resolvedDescriptor, publisherGrantId)
-      options.beforeExecute?.(resolved)
-      if (resolved.kind === 'module') {
-        const args = moduleArguments(call.args)
-        if (args.config !== undefined) {
-          const compatibility = inspectInstalledPluginModuleCompatibility(resolved.value)
-          if (!compatibility.ok) throw new Error(compatibility.reason)
-          compatibility.definition.createInstance(args.config)
-        }
-        const createArgs = {
-          ...args,
-          plugin_id: resolved.descriptor.pluginId,
-          module_type: resolved.descriptor.contributionId
-        }
-        return options.executeModule
-          ? options.executeModule(createArgs)
-          : handleAutomationTool(target, { name: 'create_module', args: createArgs }, context)
-      }
-
-      if (resolved.kind === 'connector') {
-        if (!dependencies.runConnector) {
-          throw new Error('Plugin connector MCP execution is unavailable')
-        }
-        const args = parsePluginObjectParameterValue(
-          call.args,
-          resolved.operation.parameters.schema,
-          resolved.operation.parameters.maxBytes,
-          'Plugin MCP connector arguments'
-        )
-        const execution = await dependencies.runConnector(
-          resolved.value,
-          resolved.operation,
-          args,
-          context?.signal
-        )
-        throwIfAborted(context?.signal)
-        return {
-          ok: true,
-          result: {
-            pluginId: resolved.descriptor.pluginId,
-            kind: resolved.kind,
-            contributionId: resolved.descriptor.contributionId,
-            ...execution
-          }
-        }
-      }
-
-      const args = contributionArguments(resolved.value.contribution, call.args)
-      const execution =
-        resolved.kind === 'command'
-          ? await dependencies.runCommand(
-              target.store,
-              resolved.value.plugin,
-              resolved.value.contribution,
-              args,
-              context?.signal
-            )
-          : await dependencies.runExporter(
-              target.store,
-              resolved.value.plugin,
-              resolved.value.contribution,
-              context?.signal,
-              args
-            )
-      // Exporters own the last cancellation check before their atomic/durable
-      // write boundary. A generic post-write check could report failure after a
-      // file was already committed. Commands have no such deferred side effect.
-      if (resolved.kind === 'command') throwIfAborted(context?.signal)
-      return {
-        ok: true,
-        result: {
-          pluginId: resolved.descriptor.pluginId,
-          kind: resolved.kind,
-          contributionId: resolved.descriptor.contributionId,
-          ...execution
-        }
-      }
+      const live = resolveLiveCall(call, context)
+      return live instanceof Promise
+        ? live.then((resolved) => executeResolvedCall(target, call, context, options, resolved))
+        : executeResolvedCall(target, call, context, options, live)
     })
   }
 

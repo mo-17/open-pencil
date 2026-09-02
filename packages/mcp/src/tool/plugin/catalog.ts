@@ -17,7 +17,7 @@ import {
   type PluginMCPToolDescriptor,
   type PluginMCPToolKind
 } from '#mcp/tool/plugin/contract'
-import { parsePluginMCPInputSchema } from '#mcp/tool/plugin/schema'
+import { parsePluginMCPInputSchema, parsePluginMCPOutputSchema } from '#mcp/tool/plugin/schema'
 import type { RPCSender, ToolRequestExtra } from '#mcp/tool/registration'
 
 export { PLUGIN_MCP_CATALOG_LIMITS }
@@ -50,7 +50,7 @@ const DESCRIPTOR_REQUIRED_KEYS = Object.freeze([
   'contributionId',
   'authority'
 ])
-const DESCRIPTOR_OPTIONAL_KEYS = Object.freeze(['title'])
+const DESCRIPTOR_OPTIONAL_KEYS = Object.freeze(['title', 'outputSchema'])
 const AUTHORITY_KEYS = Object.freeze([
   'trustSource',
   'packageDigest',
@@ -67,11 +67,15 @@ const APP_BUNDLE_SHA_256 = /^app-bundle-sha256:[A-Za-z0-9_-]{43}$/
 const AUTOMATION_TARGET_PROPERTIES = Object.freeze({
   document_id: Object.freeze({
     type: 'string',
-    description: 'Optional OpenPencil document/tab ID to target'
+    description: 'Optional OpenPencil document/tab ID to target',
+    minLength: 1,
+    maxLength: PLUGIN_MCP_CATALOG_LIMITS.maxIdentityLength
   }),
   page_id: Object.freeze({
     type: 'string',
-    description: 'Optional page ID to target within the document'
+    description: 'Optional page ID to target within the document',
+    minLength: 1,
+    maxLength: PLUGIN_MCP_CATALOG_LIMITS.maxIdentityLength
   })
 })
 
@@ -256,6 +260,15 @@ function parseDescriptor(value: unknown, index: number): PluginMCPToolDescriptor
       PLUGIN_MCP_CATALOG_LIMITS.maxDescriptionLength
     ),
     inputSchema: parsePluginMCPInputSchema(source.inputSchema, `${path}.inputSchema`, kind),
+    ...(source.outputSchema === undefined
+      ? {}
+      : {
+          outputSchema: parsePluginMCPOutputSchema(source.outputSchema, `${path}.outputSchema`, {
+            pluginId,
+            kind,
+            contributionId
+          })
+        }),
     pluginId,
     kind,
     contributionId,
@@ -429,6 +442,10 @@ function toolInputSchema(descriptor: PluginMCPToolDescriptor): z.ZodType {
   })
 }
 
+function toolOutputSchema(descriptor: PluginMCPToolDescriptor): z.ZodType {
+  return descriptor.outputSchema ? z.fromJSONSchema(descriptor.outputSchema) : z.looseObject({})
+}
+
 function splitAutomationTarget(args: Record<string, unknown>): {
   target: { document_id?: string; page_id?: string }
   args: Record<string, unknown>
@@ -494,6 +511,7 @@ async function callPluginTool(
   sendRPC: RPCSender,
   expectedCatalogRevision: string,
   expectedDescriptor: PluginMCPToolCallDescriptor,
+  hasOutputSchema: boolean,
   args: Record<string, unknown>,
   extra?: ToolRequestExtra
 ): Promise<MCPResult> {
@@ -504,8 +522,10 @@ async function callPluginTool(
     !descriptor ||
     !sameCallDescriptor(callDescriptor(descriptor), expectedDescriptor)
   ) {
-    return fail(
-      `Plugin tool "${expectedDescriptor.name}" catalog authority changed; refresh tools/list before calling it`
+    return pluginToolFailure(
+      `Plugin tool "${expectedDescriptor.name}" catalog authority changed; refresh tools/list before calling it`,
+      undefined,
+      hasOutputSchema
     )
   }
   const { target, args: toolArgs } = splitAutomationTarget(args)
@@ -530,16 +550,32 @@ async function callPluginTool(
       },
       { signal: extra?.signal }
     )) as { ok?: boolean; result?: unknown; error?: string }
-    if (response.ok === false) return fail(response.error ?? 'Plugin MCP tool failed', meta)
+    if (response.ok === false) {
+      return pluginToolFailure(response.error ?? 'Plugin MCP tool failed', meta, hasOutputSchema)
+    }
     const domainFailure = getDomainFailure(response.result)
-    if (domainFailure) return fail(domainFailure.error, meta)
+    if (domainFailure) return pluginToolFailure(domainFailure.error, meta, hasOutputSchema)
     return ok(response.result, descriptor.name, meta)
   } catch (error) {
     if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
       throw error
     }
-    return fail(error, meta)
+    return pluginToolFailure(error, meta, hasOutputSchema)
   }
+}
+
+function pluginToolFailure(
+  error: unknown,
+  meta: Record<string, unknown> | undefined,
+  hasOutputSchema: boolean
+): MCPResult {
+  const result = fail(error, meta)
+  if (!hasOutputSchema) return result
+  // The MCP SDK client validates structuredContent whenever it is present, even
+  // for isError results. Do not feed its success-only output schema an error
+  // envelope; the required text content and isError flag remain intact.
+  const { structuredContent: _structuredContent, ...failure } = result
+  return failure
 }
 
 export function registerPluginMCPTools(
@@ -573,7 +609,7 @@ export function registerPluginMCPTools(
           ...(descriptor.title ? { title: descriptor.title } : {}),
           description: descriptor.description,
           inputSchema: toolInputSchema(descriptor),
-          outputSchema: z.looseObject({}),
+          outputSchema: toolOutputSchema(descriptor),
           _meta: {
             openpencil: {
               pluginId: descriptor.pluginId,
@@ -590,6 +626,7 @@ export function registerPluginMCPTools(
             options.sendRPC,
             snapshot.revision,
             expectedDescriptor,
+            descriptor.outputSchema !== undefined,
             record(args, `pluginTool.${descriptor.name}.args`),
             { signal: extra.signal }
           )

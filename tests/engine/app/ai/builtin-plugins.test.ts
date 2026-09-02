@@ -13,12 +13,18 @@ import {
 } from '@/app/ai/tools/builtin'
 import { createEditorStore } from '@/app/editor/session'
 import { createBundledPluginCatalog } from '@/app/plugins/catalog'
+import {
+  APP_BACKEND_PROVIDER_MCP_COMMANDS,
+  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+} from '@/app/plugins/host/backend-provider'
 import type {
   AppPluginMCPToolCatalog,
   AppPluginMCPToolDescriptor,
   AppPluginMCPToolKind
 } from '@/app/plugins/mcp'
-import { appPluginMCPConnectorContributionId } from '@/app/plugins/mcp'
+import { appPluginMCPConnectorContributionId, listAppPluginMCPTools } from '@/app/plugins/mcp'
+import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
+import { createAppPluginStore } from '@/app/plugins/store'
 import type {
   AppPluginCatalogItem,
   AppPluginStoreSnapshot,
@@ -166,6 +172,59 @@ function pluginUseInput(
 }
 
 describe('built-in plugin AI tools', () => {
+  test('discovers only live Backend Provider audit and plan commands', async () => {
+    const store = createAppPluginStore({
+      storage: createMemoryAppPluginStateStorage(),
+      catalog: createBundledPluginCatalog(),
+      activationCompatibilityPolicy: () => ({ ok: true }),
+      engineVersion: '0.0.0'
+    })
+    const loaded = await store.load()
+    if (loaded.error) throw loaded.error
+
+    const live = listAppPluginMCPTools(store)
+    const result = searchBuiltinPluginCapabilities(store.snapshot(), live, {
+      query: 'Supabase Backend Provider',
+      kind: 'command',
+      limit: BUILTIN_PLUGIN_AI_LIMITS.maxMatches
+    })
+    const backendMatches = result.matches.filter(
+      ({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+    )
+    expect(backendMatches).toHaveLength(2)
+    expect(
+      backendMatches
+        .map(({ contributionId }) => contributionId)
+        .sort((left, right) => left.localeCompare(right))
+    ).toEqual(
+      Object.values(APP_BACKEND_PROVIDER_MCP_COMMANDS)
+        .map(({ commandId }) => commandId)
+        .sort((left, right) => left.localeCompare(right))
+    )
+    expect(backendMatches.every(({ availability }) => availability === 'ready')).toBe(true)
+    expect(
+      searchBuiltinPluginCapabilities(store.snapshot(), live, {
+        query: 'apply',
+        kind: 'command',
+        limit: BUILTIN_PLUGIN_AI_LIMITS.maxMatches
+      }).matches.some(({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID)
+    ).toBe(false)
+
+    await store.setEnabled(SUPABASE_BACKEND_PROVIDER_PLUGIN_ID, false)
+    const disabled = searchBuiltinPluginCapabilities(
+      store.snapshot(),
+      listAppPluginMCPTools(store),
+      {
+        query: 'Supabase Backend Provider',
+        kind: 'command',
+        limit: BUILTIN_PLUGIN_AI_LIMITS.maxMatches
+      }
+    ).matches.filter(({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID)
+    expect(disabled).toHaveLength(2)
+    expect(disabled.every(({ availability }) => availability === 'disabled')).toBe(true)
+    expect(disabled.every(({ toolName }) => toolName === undefined)).toBe(true)
+  })
+
   test('searches reviewed app-bundle capabilities in English and Chinese and reports disabled state', () => {
     const map = catalogItem(MAP_PLUGIN_ID)
     const readyCatalog = toolCatalog([
