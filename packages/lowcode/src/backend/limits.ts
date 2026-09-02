@@ -1,0 +1,20 @@
+export const BACKEND_LIMITS = Object.freeze({
+  maxCanonicalBytes: 1_048_576,
+  maxDepth: 24,
+  maxNodes: 20_000,
+  maxIdentifierLength: 64,
+  maxTextLength: 1_024,
+  maxReasonLength: 512,
+  maxEntities: 256,
+  maxFieldsPerEntity: 256,
+  maxEnums: 128,
+  maxEnumValues: 256,
+  maxRelations: 512,
+  maxConstraintsPerEntity: 256,
+  maxPolicies: 1_024,
+  maxWorkflows: 256,
+  maxWorkflowSteps: 2_048,
+  maxCapabilities: 64,
+  maxSecretRefs: 128,
+  maxMigrationOperations: 2_048
+})

@@ -8,6 +8,7 @@ import type {
   WorkflowDef
 } from '@open-pencil/scene-graph'
 
+import { commandsForSupabaseAction } from './rls-action-commands'
 import {
   collectRlsRequirements,
   type RlsListQueryUsage,
@@ -46,6 +47,12 @@ export interface ApplicationRuntimeAuditOptions {
   rlsVerified?: boolean
   /** Set by a deploy orchestrator only after the generated server runtime is live. */
   serverWorkflowsDeployed?: boolean
+  /** Trusted-caller fact derived only from fresh evidence for the exact backend, target, and
+   * application revision. A server workflow upload alone is not complete backend verification. */
+  backendDeploymentVerified?: boolean
+  /** Host-validated provider-neutral BackendApplicationSpec selection. This is a declaration
+   * fact only; it never substitutes for fresh backend deployment verification. */
+  backendProviderDeclared?: boolean
   /** Optional schema-catalog table names for typo/staleness diagnostics. */
   knownTables?: readonly string[]
 }
@@ -58,9 +65,14 @@ export interface ApplicationRuntimeGraph {
 
 export interface ApplicationRuntimeAudit {
   environment: ApplicationRuntimeEnvironment
+  /** Static/frontend deployment may proceed when ready is true; this flag still blocks claiming
+   * the complete application is deployed until its generated backend is live. */
   ready: boolean
   usesSupabase: boolean
   serverWorkflowCount: number
+  /** True only when the caller supplied fresh, exact backend deployment evidence. */
+  backendDeploymentVerified: boolean
+  backendDeploymentRequired: boolean
   requiredServerEnvironment: string[]
   rlsRequirements: RlsTableRequirement[]
   issues: ApplicationRuntimeIssue[]
@@ -171,15 +183,6 @@ function collectClientUsage(
   }
 }
 
-function serverCommands(action: ServerActionDef): SqlCommand[] {
-  if (action.kind === 'supabaseQuery') return ['SELECT']
-  if (action.kind !== 'supabaseMutation') return []
-  if (action.operation === 'insert') return ['INSERT']
-  if (action.operation === 'update') return ['SELECT', 'UPDATE']
-  if (action.operation === 'delete') return ['SELECT', 'DELETE']
-  return ['SELECT', 'INSERT', 'UPDATE']
-}
-
 function walkServerActions(
   actions: readonly ServerActionDef[],
   visit: (action: ServerActionDef) => void
@@ -199,7 +202,7 @@ function collectServerRlsRequirements(
   const byTable = new Map<string, Set<SqlCommand>>()
   for (const workflow of workflows) {
     walkServerActions(workflow.actions, (action) => {
-      const commands = serverCommands(action)
+      const commands = commandsForSupabaseAction(action)
       if (commands.length === 0 || !('table' in action)) return
       const table = action.table.trim()
       if (!table) return
@@ -260,6 +263,24 @@ function effectiveConfig(
 ): SupabaseConfig | undefined {
   if (options.effectiveSupabaseConfig === null) return undefined
   return options.effectiveSupabaseConfig ?? rootConfig
+}
+
+function declaresBackend(
+  rootConfig: SupabaseConfig | undefined,
+  effectiveOverride: SupabaseConfig | null | undefined,
+  usesSupabase: boolean
+): boolean {
+  if (usesSupabase || rootConfig !== undefined) return true
+  return effectiveOverride !== undefined && effectiveOverride !== null
+}
+
+function declaresAnyBackend(
+  rootConfig: SupabaseConfig | undefined,
+  options: ApplicationRuntimeAuditOptions,
+  usesSupabase: boolean
+): boolean {
+  if (options.backendProviderDeclared === true) return true
+  return declaresBackend(rootConfig, options.effectiveSupabaseConfig, usesSupabase)
 }
 
 function validateRuntimeConfig(
@@ -401,6 +422,8 @@ export function auditApplicationRuntime(
 
   const config = effectiveConfig(root?.lowcodeSupabaseConfig, options)
   const usesSupabase = client.usesSupabase || rawServerWorkflows.length > 0
+  const backendDeclared = declaresAnyBackend(root?.lowcodeSupabaseConfig, options, usesSupabase)
+  const backendDeploymentVerified = options.backendDeploymentVerified === true
   if (usesSupabase && !config) {
     issues.push({
       code: 'supabase-config-required',
@@ -426,7 +449,7 @@ export function auditApplicationRuntime(
   appendServerDeploymentIssues(
     rawServerWorkflows.length,
     requiredServerEnvironment,
-    options.serverWorkflowsDeployed === true,
+    backendDeploymentVerified || options.serverWorkflowsDeployed === true,
     issues
   )
 
@@ -435,6 +458,8 @@ export function auditApplicationRuntime(
     ready: !issues.some((issue) => issue.severity === 'error'),
     usesSupabase,
     serverWorkflowCount: rawServerWorkflows.length,
+    backendDeploymentVerified,
+    backendDeploymentRequired: backendDeclared && !backendDeploymentVerified,
     requiredServerEnvironment,
     rlsRequirements,
     issues

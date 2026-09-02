@@ -4,6 +4,7 @@ import {
   decodeJwtPayload,
   detectServiceRole,
   detectSupabaseSecretKey,
+  findCodePenSecretKinds,
   validateSupabaseConfig
 } from '@open-pencil/lowcode'
 
@@ -58,15 +59,23 @@ describe('detectServiceRole', () => {
 })
 
 describe('detectSupabaseSecretKey', () => {
-  test('rejects current opaque secret keys and legacy service_role JWTs', () => {
+  test('rejects current opaque secret keys, management PATs, and legacy service_role JWTs', () => {
     expect(detectSupabaseSecretKey('sb_secret_example')).toBe(true)
     expect(detectSupabaseSecretKey('  SB_SECRET_example  ')).toBe(true)
+    expect(detectSupabaseSecretKey('sbp_management_token')).toBe(true)
+    expect(detectSupabaseSecretKey('  SBP_MANAGEMENT_TOKEN  ')).toBe(true)
     expect(detectSupabaseSecretKey(FAKE_SERVICE_ROLE_JWT)).toBe(true)
   })
 
   test('allows current publishable keys and legacy anon JWTs', () => {
     expect(detectSupabaseSecretKey('sb_publishable_example')).toBe(false)
     expect(detectSupabaseSecretKey(FAKE_ANON_JWT)).toBe(false)
+  })
+
+  test('detects Management API PATs in CodePen-bound source', () => {
+    expect(findCodePenSecretKinds('const value = "sbp_management_token"')).toContain(
+      'a Supabase elevated key'
+    )
   })
 })
 
@@ -114,6 +123,19 @@ describe('validateSupabaseConfig', () => {
     })
     expect(r.ok).toBe(false)
     expect(r.reason).toContain('secret')
+  })
+
+  test('rejects a Management API PAT in anonKey', () => {
+    expect(
+      validateSupabaseConfig({
+        url: 'https://example.supabase.co',
+        anonKey: 'sbp_management_token'
+      })
+    ).toEqual({
+      ok: false,
+      reason:
+        'anonKey is a Supabase secret/service_role/management key; only a publishable or legacy anon key is allowed'
+    })
   })
 
   test('accepts a current sb_publishable key', () => {

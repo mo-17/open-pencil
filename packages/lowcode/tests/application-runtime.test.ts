@@ -33,6 +33,8 @@ describe('auditApplicationRuntime', () => {
     const report = auditApplicationRuntime(graph)
     expect(report.ready).toBe(false)
     expect(report.usesSupabase).toBe(true)
+    expect(report.backendDeploymentVerified).toBe(false)
+    expect(report.backendDeploymentRequired).toBe(true)
     expect(report.issues.map((issue) => issue.code)).toContain('supabase-config-required')
     expect(report.rlsRequirements).toEqual([
       {
@@ -103,6 +105,9 @@ describe('auditApplicationRuntime', () => {
       knownTables: ['orders']
     })
     expect(report.ready).toBe(true)
+    expect(report.serverWorkflowCount).toBe(1)
+    expect(report.backendDeploymentVerified).toBe(false)
+    expect(report.backendDeploymentRequired).toBe(true)
     expect(report.requiredServerEnvironment).toEqual(['ORDER_TOKEN', 'ORDER_WEBHOOK_URL'])
     expect(report.rlsRequirements).toEqual([
       {
@@ -117,6 +122,103 @@ describe('auditApplicationRuntime', () => {
       'server-workflows-deploy-required',
       'server-environment-required'
     ])
+
+    const deployedReport = auditApplicationRuntime(graph, {
+      environment: 'production',
+      knownTables: ['orders'],
+      serverWorkflowsDeployed: true
+    })
+    expect(deployedReport.backendDeploymentVerified).toBe(false)
+    expect(deployedReport.backendDeploymentRequired).toBe(true)
+    expect(deployedReport.issues.map((issue) => issue.code)).not.toContain(
+      'server-workflows-deploy-required'
+    )
+
+    const verifiedReport = auditApplicationRuntime(graph, {
+      environment: 'production',
+      knownTables: ['orders'],
+      backendDeploymentVerified: true
+    })
+    expect(verifiedReport.backendDeploymentVerified).toBe(true)
+    expect(verifiedReport.backendDeploymentRequired).toBe(false)
+    expect(verifiedReport.issues.map((issue) => issue.code)).not.toContain(
+      'server-workflows-deploy-required'
+    )
+  })
+
+  test('requires exact backend verification for declared schema, data, RLS, and storage without workflows', () => {
+    const schemaOnly = auditApplicationRuntime(configuredGraph())
+    expect(schemaOnly.usesSupabase).toBe(false)
+    expect(schemaOnly.serverWorkflowCount).toBe(0)
+    expect(schemaOnly.backendDeploymentVerified).toBe(false)
+    expect(schemaOnly.backendDeploymentRequired).toBe(true)
+
+    const graph = configuredGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('LIST', page.id, {
+      interactiveProps: {
+        dataSourceRef: {
+          kind: 'supabaseQuery',
+          query: { table: 'products' }
+        }
+      }
+    })
+    graph.createNode('INPUT', page.id, {
+      interactiveProps: { upload: { bucket: 'attachments' } }
+    })
+
+    const unverified = auditApplicationRuntime(graph, {
+      environment: 'production',
+      knownTables: ['products'],
+      rlsVerified: true
+    })
+    expect(unverified.ready).toBe(true)
+    expect(unverified.usesSupabase).toBe(true)
+    expect(unverified.serverWorkflowCount).toBe(0)
+    expect(unverified.backendDeploymentVerified).toBe(false)
+    expect(unverified.backendDeploymentRequired).toBe(true)
+    expect(unverified.rlsRequirements).toEqual([
+      {
+        schema: 'app',
+        table: 'products',
+        commands: ['SELECT'],
+        needsWriteWarning: false
+      },
+      {
+        schema: 'storage',
+        table: 'objects',
+        commands: ['SELECT', 'INSERT', 'UPDATE'],
+        needsWriteWarning: true,
+        storageBucket: 'attachments'
+      }
+    ])
+
+    const verified = auditApplicationRuntime(graph, {
+      environment: 'production',
+      knownTables: ['products'],
+      rlsVerified: true,
+      backendDeploymentVerified: true
+    })
+    expect(verified.backendDeploymentVerified).toBe(true)
+    expect(verified.backendDeploymentRequired).toBe(false)
+  })
+
+  test('requires backend verification for a provider-neutral declaration without legacy Supabase usage', () => {
+    const graph = new SceneGraph()
+    const unverified = auditApplicationRuntime(graph, { backendProviderDeclared: true })
+
+    expect(unverified.ready).toBe(true)
+    expect(unverified.usesSupabase).toBe(false)
+    expect(unverified.serverWorkflowCount).toBe(0)
+    expect(unverified.backendDeploymentVerified).toBe(false)
+    expect(unverified.backendDeploymentRequired).toBe(true)
+
+    const verified = auditApplicationRuntime(graph, {
+      backendProviderDeclared: true,
+      backendDeploymentVerified: true
+    })
+    expect(verified.backendDeploymentVerified).toBe(true)
+    expect(verified.backendDeploymentRequired).toBe(false)
   })
 
   test('fails closed on invalid server workflow data without echoing a secret', () => {

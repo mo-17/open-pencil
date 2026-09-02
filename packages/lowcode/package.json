@@ -28,6 +28,12 @@
       "bun": "./src/application-runtime.ts",
       "import": "./dist/application-runtime.js",
       "default": "./dist/application-runtime.js"
+    },
+    "./backend": {
+      "types": "./dist/backend.d.ts",
+      "bun": "./src/backend/index.ts",
+      "import": "./dist/backend.js",
+      "default": "./dist/backend.js"
     }
   },
   "publishConfig": {

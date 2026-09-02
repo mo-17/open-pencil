@@ -26,6 +26,8 @@
  */
 import type { ActionDef, WorkflowDef } from '@open-pencil/scene-graph'
 
+import { commandsForSupabaseAction } from './rls-action-commands'
+
 /** The four Postgres RLS-relevant SQL commands a policy can target. */
 export type SqlCommand = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE'
 
@@ -69,23 +71,6 @@ const COMMAND_ORDER: readonly SqlCommand[] = ['SELECT', 'INSERT', 'UPDATE', 'DEL
 // UPDATE and filtered DELETE also need SELECT under Supabase/PostgREST RLS.
 // Upsert therefore needs SELECT + INSERT + UPDATE; omitting a required read
 // policy can make a mutation appear to succeed while changing no row.
-function commandsForAction(action: ActionDef): SqlCommand[] {
-  if (action.kind === 'supabaseQuery') return ['SELECT']
-  if (action.kind === 'supabaseMutation') {
-    switch (action.operation) {
-      case 'insert':
-        return ['INSERT']
-      case 'update':
-        return ['SELECT', 'UPDATE']
-      case 'delete':
-        return ['SELECT', 'DELETE']
-      case 'upsert':
-        return ['SELECT', 'INSERT', 'UPDATE']
-    }
-  }
-  return []
-}
-
 /** Phase 3 §10 / §10 v3: a `condition` or `confirm` action nests `consequent` /
  *  `alternate` ActionDef chains that may themselves contain Supabase actions.
  *  Flatten the workflow tree so RLS requirements from inside branches are not
@@ -177,7 +162,7 @@ export function collectRlsRequirements(
   const byResource = new Map<string, RequirementAccumulator>()
   for (const action of flattenActions(actions, workflows, new Set())) {
     if (action.kind !== 'supabaseQuery' && action.kind !== 'supabaseMutation') continue
-    addRequirement(byResource, schema, action.table, commandsForAction(action))
+    addRequirement(byResource, schema, action.table, commandsForSupabaseAction(action))
   }
   for (const query of options.listQueries ?? []) {
     addRequirement(byResource, schema, query.table, ['SELECT'])

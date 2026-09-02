@@ -1576,9 +1576,9 @@ export interface ServerWorkflowDef {
 
 /** Phase 3 §2: connection settings for a Supabase project. Persisted on the
  *  root node via `lowcode/supabaseConfig` pluginData. `anonKey` is the
- *  public anon JWT — safe to commit because Supabase enforces auth via
- *  Row Level Security in the database. NEVER store a service_role key here;
- *  the editor UI rejects them on entry. `schema` defaults to `'public'`. */
+ *  serialized compatibility field for a current publishable key or legacy
+ *  anon JWT. Both are public; authorization comes from Auth policies and RLS.
+ *  NEVER store `sb_secret_*` or service_role keys here. */
 export interface SupabaseConfig {
   url: string
   anonKey: string

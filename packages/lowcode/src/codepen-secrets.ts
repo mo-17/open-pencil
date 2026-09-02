@@ -9,7 +9,7 @@ export type CodePenSecretKind =
   | 'a private key'
   | 'URL credentials'
   | 'a sensitive literal assignment'
-  | 'a Supabase secret/service_role key'
+  | 'a Supabase elevated key'
 
 const KNOWN_SECRET_PATTERNS: readonly Readonly<{
   kind: CodePenSecretKind
@@ -46,7 +46,7 @@ const KNOWN_SECRET_PATTERNS: readonly Readonly<{
 const SENSITIVE_LITERAL_ASSIGNMENT =
   /(?:^|[^\w$-])(["']?)([A-Za-z_$][\w$-]{1,80})\1\s*[:=]\s*(["'`])([^\r\n"'`]{8,})\3/gim
 const JWT_CANDIDATE = /\b[A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,8192}\.[A-Za-z0-9_-]{1,8192}\b/g
-const SUPABASE_OPAQUE_SECRET = /\bsb_secret_[A-Za-z0-9_-]*/gi
+const SUPABASE_OPAQUE_SECRET = /\b(?:sb_secret_|sbp_)[A-Za-z0-9_-]*/gi
 
 function isSensitiveAssignmentName(name: string): boolean {
   const normalized = name.replace(/[$_-]/g, '').toLowerCase()
@@ -88,7 +88,7 @@ export function findCodePenSecretKinds(source: string): CodePenSecretKind[] {
     kinds.push('a sensitive literal assignment')
     break
   }
-  if (hasSupabaseSecret(source)) kinds.push('a Supabase secret/service_role key')
+  if (hasSupabaseSecret(source)) kinds.push('a Supabase elevated key')
   return kinds
 }
 

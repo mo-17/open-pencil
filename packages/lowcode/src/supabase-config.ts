@@ -33,25 +33,27 @@ export function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   }
 }
 
-/** True when `anonKey` decodes to a JWT whose payload has `role: 'service_role'`. */
-export function detectServiceRole(anonKey: string): boolean {
-  return decodeJwtPayload(anonKey)?.role === 'service_role'
+/** True when a key decodes to a JWT whose payload has `role: 'service_role'`. */
+export function detectServiceRole(key: string): boolean {
+  return decodeJwtPayload(key)?.role === 'service_role'
 }
 
-/** True when a value is any Supabase server-side key that must never be
- * persisted in a design or emitted client bundle. Covers both the legacy
- * service_role JWT and the current opaque `sb_secret_*` format. Keep this as
- * the single persistence-boundary classifier used by editor and app profiles;
- * unknown/non-JWT values are not classified as secret merely because they are
- * malformed, while the known elevated formats always fail closed. */
+/** True when a value is any Supabase credential that must never be persisted
+ * in a design or emitted client bundle. Covers legacy service_role JWTs,
+ * current opaque `sb_secret_*` keys, and `sbp_*` Management API personal
+ * access tokens. Keep this as the single persistence-boundary classifier used
+ * by editor and app profiles; unknown/non-JWT values are not classified as
+ * secret merely because they are malformed, while known elevated formats fail
+ * closed. */
 export function detectSupabaseSecretKey(key: string): boolean {
   const trimmed = key.trim()
-  return /^sb_secret_/i.test(trimmed) || detectServiceRole(trimmed)
+  return /^sb_secret_/i.test(trimmed) || /^sbp_/i.test(trimmed) || detectServiceRole(trimmed)
 }
 
 /** Validate a `SupabaseConfig` for persistence. Rejects:
- *  - missing required fields (`url` / `anonKey`)
- *  - a current `sb_secret_*` key or legacy service_role JWT
+ *  - missing required fields (`url` / serialized compatibility field `anonKey`)
+ *  - a current `sb_secret_*` key, `sbp_*` Management PAT, or legacy
+ *    service_role JWT
  *  - obviously malformed `url` (non-http(s) protocol)
  *
  *  Whitespace-only fields count as missing — the editor trims them before
@@ -69,7 +71,7 @@ export function validateSupabaseConfig(config: SupabaseConfig): ValidationResult
     return {
       ok: false,
       reason:
-        'anonKey is a Supabase secret/service_role key; only a publishable or legacy anon key is allowed'
+        'anonKey is a Supabase secret/service_role/management key; only a publishable or legacy anon key is allowed'
     }
   }
   return { ok: true }

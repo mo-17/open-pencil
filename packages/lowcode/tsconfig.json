@@ -14,8 +14,10 @@
     "resolveJsonModule": true,
     "types": ["bun"],
     "paths": {
+      "#lowcode/*": ["./src/*"],
       "@open-pencil/lowcode": ["./src/index.ts"],
-      "@open-pencil/lowcode/application-runtime": ["./src/application-runtime.ts"]
+      "@open-pencil/lowcode/application-runtime": ["./src/application-runtime.ts"],
+      "@open-pencil/lowcode/backend": ["./src/backend/index.ts"]
     }
   },
   "include": ["src/**/*.ts"],
