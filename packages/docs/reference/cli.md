@@ -460,20 +460,21 @@ Build a `.fig` or `.pen` document into a deployable static SPA bundle.
 openpencil build <file> -o dist
 ```
 
-| Option                | Alias | Description                                                  |
-| --------------------- | ----- | ------------------------------------------------------------ |
-| `--out`               | `-o`  | Output directory for the static bundle (default: `dist`)     |
-| `--package-name`      |       | `package.json` name (default: sanitized from input filename) |
-| `--page`              |       | Restrict output to a single page by name                     |
-| `--base`              |       | Public base path for assets (default: `/`)                   |
-| `--supabase-url`      |       | Override the Supabase URL for this build                     |
-| `--supabase-anon-key` |       | Override the Supabase anon key for this build                |
-| `--supabase-schema`   |       | Override the Supabase database schema for this build         |
-| `--i18n`              |       | Enable the react-intl runtime and locale catalogs            |
-| `--locale`            |       | Target locale; repeatable, implies `--i18n`                  |
-| `--source-locale`     |       | Source locale for authored canvas strings; implies `--i18n`  |
-| `--ui-kit`            |       | Emit supported controls with a code UI kit (`shadcn`)        |
-| `--json`              |       | Output a JSON summary                                        |
+| Option                       | Alias | Description                                                  |
+| ---------------------------- | ----- | ------------------------------------------------------------ |
+| `--out`                      | `-o`  | Output directory for the static bundle (default: `dist`)     |
+| `--package-name`             |       | `package.json` name (default: sanitized from input filename) |
+| `--page`                     |       | Restrict output to a single page by name                     |
+| `--base`                     |       | Public base path for assets (default: `/`)                   |
+| `--supabase-url`             |       | Override the Supabase URL for this build                     |
+| `--supabase-publishable-key` |       | Override the Supabase publishable key for this build         |
+| `--supabase-anon-key`        |       | Deprecated alias for a legacy anon key                       |
+| `--supabase-schema`          |       | Override the Supabase database schema for this build         |
+| `--i18n`                     |       | Enable the react-intl runtime and locale catalogs            |
+| `--locale`                   |       | Target locale; repeatable, implies `--i18n`                  |
+| `--source-locale`            |       | Source locale for authored canvas strings; implies `--i18n`  |
+| `--ui-kit`                   |       | Emit supported controls with a code UI kit (`shadcn`)        |
+| `--json`                     |       | Output a JSON summary                                        |
 
 When the document contains server workflows, `build` keeps their generated Supabase Edge Function
 bundle under `<out>/openpencil-server/`. The JSON result separates `staticFiles` from `serverFiles`;
@@ -489,22 +490,23 @@ openpencil deploy <file> --provider vercel --site my-project
 openpencil deploy <file> --provider cloudflare --account-id <account-id> --site my-pages-project
 ```
 
-| Option                | Description                                                                |
-| --------------------- | -------------------------------------------------------------------------- |
-| `--provider`          | `netlify` (default), `vercel`, or `cloudflare`                             |
-| `--token`             | Provider access token; falls back to provider-specific env vars            |
-| `--site`              | Netlify site id/subdomain, Vercel project name, or Cloudflare project name |
-| `--account-id`        | Cloudflare account id; also supported through `CLOUDFLARE_ACCOUNT_ID`      |
-| `--page`              | Restrict output to a single page by name                                   |
-| `--base`              | Public base path for assets                                                |
-| `--supabase-url`      | Override the Supabase URL for this deploy                                  |
-| `--supabase-anon-key` | Override the Supabase anon key for this deploy                             |
-| `--supabase-schema`   | Override the Supabase database schema for this deploy                      |
-| `--ui-kit`            | Emit supported controls with a code UI kit (`shadcn`)                      |
-| `--i18n`              | Enable the react-intl runtime and locale catalogs                          |
-| `--locale`            | Target locale; repeatable, implies `--i18n`                                |
-| `--source-locale`     | Source locale for authored canvas strings; implies `--i18n`                |
-| `--json`              | Output the deploy result as JSON                                           |
+| Option                       | Description                                                                |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| `--provider`                 | `netlify` (default), `vercel`, or `cloudflare`                             |
+| `--token`                    | Provider access token; falls back to provider-specific env vars            |
+| `--site`                     | Netlify site id/subdomain, Vercel project name, or Cloudflare project name |
+| `--account-id`               | Cloudflare account id; also supported through `CLOUDFLARE_ACCOUNT_ID`      |
+| `--page`                     | Restrict output to a single page by name                                   |
+| `--base`                     | Public base path for assets                                                |
+| `--supabase-url`             | Override the Supabase URL for this deploy                                  |
+| `--supabase-publishable-key` | Override the Supabase publishable key for this deploy                      |
+| `--supabase-anon-key`        | Deprecated alias for a legacy anon key                                     |
+| `--supabase-schema`          | Override the Supabase database schema for this deploy                      |
+| `--ui-kit`                   | Emit supported controls with a code UI kit (`shadcn`)                      |
+| `--i18n`                     | Enable the react-intl runtime and locale catalogs                          |
+| `--locale`                   | Target locale; repeatable, implies `--i18n`                                |
+| `--source-locale`            | Source locale for authored canvas strings; implies `--i18n`                |
+| `--json`                     | Output the deploy result as JSON                                           |
 
 Static deploy uploads browser files only. If server workflows are present, human and JSON output
 include a non-secret manual deployment recipe; the command does not deploy functions, link a

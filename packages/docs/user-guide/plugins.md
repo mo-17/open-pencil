@@ -31,11 +31,11 @@ or beta channel, publisher/key identity, snapshot status, the audit head, and wh
 authorizes an executable runtime index. Search matches the signed name, summary, category, keyword,
 plugin ID, and publisher metadata; it does not trust an unsigned search-service response.
 
-The current **Unreleased** source line contains 67 reviewed plugins with 70 contributions: 20
-modules, 11 commands, 13 exporters, 22 connectors, and four storage providers. A definition,
+The current **Unreleased** source line contains 68 reviewed plugins with 73 contributions: 20
+modules, 13 commands, 13 exporters, 22 connectors, four storage providers, and one Backend Provider. A definition,
 renderer, contract, or exporter source file alone does not make a plugin available; the contribution
 must also have its reviewed central host registration. Map, Google Drive Storage, OneDrive Storage,
-Aliyun Drive Storage, Baidu Netdisk Storage, Compiler Preview Popout, and AI Popout are installed and enabled on a new profile; every other bundled
+Aliyun Drive Storage, Baidu Netdisk Storage, Supabase Backend Provider, Compiler Preview Popout, and AI Popout are installed and enabled on a new profile; every other bundled
 plugin is opt-in.
 
 - **Map** is installed and enabled on a new profile. It creates a native editable map `FRAME` and
@@ -51,6 +51,13 @@ plugin is opt-in.
   **Settings → Storage**.
 - **Baidu Netdisk Storage** is an installed-and-enabled, host-owned storage-provider declaration. Its
   reviewed adapter is confined to `/apps/OpenPencil`; connect it from **Settings → Storage**.
+- **Supabase Backend Provider** is an installed-and-enabled, data-only declaration backed by the
+  exact Compiler/App adapter shipped with OpenPencil. It can validate, plan, and emit deterministic
+  local schema/RLS/function/config artifacts; enabling it never connects an account, applies a
+  migration, changes RLS, or deploys a function. Production Apply remains a separately confirmed
+  host operation. MCP/AI receives only the reviewed `audit` and `plan` tools: each accepts `target`
+  and `mode`, returns bounded secret-free planning metadata, and cannot read credentials, emit files
+  or SQL, apply migrations, or deploy. See [Backend Provider Architecture](/development/backend-providers).
 - **Compiler Preview Popout** is installed and enabled on a new profile and is available only in the
   Tauri desktop application. Use **Pop out** in the Compiler Preview toolbar to open the active local
   preview in a separate window. The plugin receives no URL, window label, or native window options:
@@ -1153,6 +1160,10 @@ host-reviewed fixed `POST` projects to a query tool; arbitrary `POST` and connec
 unavailable to MCP. Installation or enablement alone does not authorize a connector tool: a saved
 credential and current-session exact-digest grant are also required. Revocation or credential
 clearing removes the tool immediately.
+
+For the default-enabled Supabase Backend Provider, the only MCP/AI projections are its reviewed
+`audit` and `plan` run tools. They recheck the live plugin and provider authority before planning and
+never expose credentials, artifact content, Apply, migration execution, or deployment.
 
 ## Review updates and roll back
 

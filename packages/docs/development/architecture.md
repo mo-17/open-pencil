@@ -97,6 +97,21 @@ Real-time peer-to-peer collaboration via Trystero (WebRTC) + Yjs CRDT. No server
 
 When the desktop app is running, CLI commands connect to it via WebSocket instead of requiring a .fig file. The automation server runs on `127.0.0.1:7600` (HTTP) and `127.0.0.1:7601` (WebSocket). Commands execute against the live editor state, enabling automation scripts and AI agents to interact with the running app.
 
+### Backend Providers
+
+Backend behavior is split across four trust boundaries. `@open-pencil/lowcode/backend` owns the
+provider-neutral model, `@open-pencil/plugin-contracts` owns signed data-only declarations,
+`@open-pencil/compiler/backend` owns reviewed deterministic adapters, and the App host owns remote
+inspection, credentials, confirmation, Apply, verification, and receipts. Browser preview, MCP,
+plugin WASM, and Compiler adapters cannot receive remote mutation authority.
+
+Supabase is the first built-in Provider. Compilation can emit local schema, RLS, server, and
+deployment review artifacts, but a static frontend deployment is never evidence that those artifacts
+were applied. The current live Supabase adapter is not wired; the strict inspected-review path is
+limited to an empty managed baseline and remains `applyAllowed: false`. See
+[Backend Provider Architecture](/development/backend-providers) for the current status matrix,
+release state machine, and Manual/Live gates.
+
 ## What's Next
 
 ### Automation coverage

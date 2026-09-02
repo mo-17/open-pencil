@@ -5,7 +5,7 @@ application. It focuses on the operational path: Supabase configuration, authent
 Level Security (RLS), server workflows, environment separation, static hosting, and production
 troubleshooting.
 
-For a reference to every authoring control and action, see [Lowcode Apps](./lowcode-apps). You can
+For a reference to every authoring control and action, see [Lowcode Apps](/user-guide/lowcode-apps). You can
 also reopen this page from **Help → Application Runtime Guide** in OpenPencil.
 
 ::: warning Production boundary
@@ -14,6 +14,20 @@ and emit a server-workflow bundle. It does not change your database, prove that 
 live, configure production secrets, or deploy the server bundle automatically. Those remain
 explicit operator actions.
 :::
+
+## Backend Provider Boundary
+
+Backend intent is normalized into provider-neutral DataModel, Auth, Workflow, Capability, Migration,
+and Secret-Reference IR. A signed plugin manifest can declare a Backend Provider, but it cannot carry
+provider code, SQL, URLs, credentials, or deployment commands. Only a matching adapter bundled in the
+reviewed Compiler/App registry can validate, plan, and emit local artifacts.
+
+`build` and Compiler Preview never apply those artifacts. A real release is a separate host-owned
+`Inspect → Plan → Emit → Review → Confirm → Apply → Verify → Receipt` workflow. Any changed document,
+schema, target, environment, package digest, adapter version, project, account, or grant makes the
+plan stale. A static-host success still reports backend deployment as required until every relevant
+backend gate has fresh evidence. See [Backend Provider Architecture](/development/backend-providers)
+for the complete trust and release model.
 
 ## What You Will Deploy
 
@@ -57,8 +71,8 @@ Before starting, prepare:
   server workflows.
 
 ::: danger Never use an elevated key in the client
-Do not put an `sb_secret_...` or legacy `service_role` key in the document, generated SPA, command
-line, or `VITE_SUPABASE_*` variables. OpenPencil rejects known elevated keys at client-build
+Do not put an `sb_secret_...`, `sbp_...` Management PAT, or legacy `service_role` key in the
+document, generated SPA, command line, or `VITE_SUPABASE_*` variables. OpenPencil rejects known elevated keys at client-build
 boundaries. A browser key is public by design; database access must be protected with grants, Auth,
 and RLS.
 :::
@@ -375,13 +389,14 @@ Build all pages as a static SPA:
 ```sh
 bun open-pencil build app.fig -o dist \
   --supabase-url https://your-project.supabase.co \
-  --supabase-anon-key "$SUPABASE_PUBLISHABLE_KEY" \
+  --supabase-publishable-key "$SUPABASE_PUBLISHABLE_KEY" \
   --supabase-schema public
 ```
 
-You can use `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_SUPABASE_SCHEMA` instead. An
-explicit flag wins over its matching environment variable. URL and key overrides must be supplied
-together so values from two projects cannot be mixed.
+You can use `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and
+`VITE_SUPABASE_SCHEMA` instead. Legacy anon-key flag/environment names remain compatible. Explicit
+connection flags form one complete URL/key source and override the environment group; aliases with
+different values in the same source fail closed.
 
 Useful options include:
 
@@ -468,9 +483,11 @@ The manifest lists workflow IDs, parameters, the authentication contract, and re
 variable names. Never put populated secrets in `.env.server.example` or commit a copied secret
 file.
 
-Hosted Supabase Edge Functions provide `SUPABASE_URL` and the legacy `SUPABASE_ANON_KEY` by default.
-Set only the additional environment names referenced by your workflows, either in the Dashboard or
-through the CLI:
+Hosted Supabase Edge Functions provide `SUPABASE_URL` and a `SUPABASE_PUBLISHABLE_KEYS` JSON
+dictionary. The generated handler selects its `default` key. It falls back to the legacy
+`SUPABASE_ANON_KEY` only when the new variable is completely absent; an empty or malformed new
+value fails closed. Set only the additional environment names referenced by your workflows, either
+in the Dashboard or through the CLI:
 
 ```sh
 supabase login
@@ -509,7 +526,7 @@ After deployment:
 | Query succeeds but returns zero rows                | RLS hides the rows, the user is signed out, or the filter is wrong               | Test `$currentUser`, policy `USING`, grants, and the same query as the affected user                    |
 | INSERT is rejected                                  | Missing grant, RLS `WITH CHECK`, required column, or invalid payload             | Inspect the Supabase error target and test the final row against the INSERT policy                      |
 | UPDATE changes nothing                              | Missing SELECT visibility, UPDATE policy, or matching filter                     | Add the required SELECT policy and confirm the filter selects an owned row                              |
-| OpenPencil rejects the key                          | An elevated `sb_secret_...` or `service_role` key was entered                    | Replace it with a publishable or legacy `anon` key and rotate the elevated key if it was exposed        |
+| OpenPencil rejects the key                          | An elevated `sb_secret_...`, `sbp_...` PAT, or `service_role` key was entered    | Replace it with a publishable or legacy `anon` key and rotate the elevated credential if it was exposed |
 | Preview works but production uses the wrong project | Production overrides were omitted or point to a different project                | Supply URL and public key together through flags or the matching `VITE_SUPABASE_*` variables            |
 | Preview is unavailable                              | The browser app cannot start the local compiler sidecar                          | Use the desktop app or build through the CLI                                                            |
 | Server action returns 401                           | No valid signed-in Supabase session reached the function                         | Sign in, verify the session, and keep JWT verification enabled for this generated contract              |

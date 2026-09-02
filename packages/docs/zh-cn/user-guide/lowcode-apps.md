@@ -139,7 +139,7 @@ Supabase 的生产环境公开值应来自环境变量或命令行，而不是�
 
 ```sh
 VITE_SUPABASE_URL=https://example.supabase.co \
-VITE_SUPABASE_ANON_KEY=... \
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_... \
 VITE_SUPABASE_SCHEMA=app \
 openpencil build app.fig -o dist
 ```
@@ -149,7 +149,7 @@ openpencil build app.fig -o dist
 ```sh
 openpencil build app.fig -o dist \
   --supabase-url https://example.supabase.co \
-  --supabase-anon-key ... \
+  --supabase-publishable-key sb_publishable_... \
   --supabase-schema app
 ```
 
@@ -158,7 +158,7 @@ openpencil build app.fig -o dist \
 根节点的 **Supabase** 面板会区分浏览器公开配置和管理访问：
 
 - 项目 URL、publishable/legacy anon key 与可选 schema 可以进入浏览器运行时。
-- 已知 `sb_secret_*` 和旧版 `service_role` key 会在写入设计或客户端 Bundle 前被拒绝。
+- 已知 `sb_secret_*`、`sbp_*` Management PAT 和旧版 `service_role` key 会在写入设计或客户端 Bundle 前被拒绝。
 - **数据库结构**检查器使用统一凭据存储中的 Supabase Personal Access Token。PAT 不会写入 `.fig` 或响应式编辑器状态；缓存只保存有界、规范化的表/列/关系目录。
 - RLS Advisor 生成的是可审查起点，不证明数据库已经应用策略。`UPDATE` 与 `DELETE` 通常还需要相同用户行的 `SELECT` 可见性。
 
@@ -183,6 +183,11 @@ openpencil build app.fig -o dist \
 - `SERVER_DEPLOYMENT.md`
 
 `build` 将这些文件保留在 `<outDir>/openpencil-server/`。静态 `deploy` 只上传浏览器文件，并打印手动执行 `supabase functions deploy openpencil-runtime` 的步骤。OpenPencil 不会自动关联 Supabase 项目、上传函数或配置秘密。
+
+托管 Edge Function 会提供新版 `SUPABASE_PUBLISHABLE_KEYS` JSON 字典。生成的 handler 读取其中
+的 `default` key；只有整个新版变量不存在时才回退旧 `SUPABASE_ANON_KEY`。新版变量为空或格式
+错误会失败关闭。`apikey` 与调用者的 Bearer 用户 JWT 保持分离，handler 仍通过 `auth.getUser`
+验证用户身份。
 
 ## 部署
 
@@ -242,7 +247,7 @@ Cloudflare 也可以从 `CLOUDFLARE_ACCOUNT_ID` 读取账号 ID，或使用 `--s
 ## 常见问题
 
 - **预览不可用**：请使用桌面应用；浏览器版没有本地 preview sidecar。
-- **Supabase 只在预览中工作**：为 `build` / `deploy` 设置 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_ANON_KEY`，或使用相应 CLI 参数。
+- **Supabase 只在预览中工作**：为 `build` / `deploy` 设置 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_PUBLISHABLE_KEY`，或使用 `--supabase-url` 与 `--supabase-publishable-key`。旧 anon-key 名称仅作为兼容后备；同一来源中的新旧别名若值不同会失败关闭。
 - **部署后的路由刷新返回 404**：把主机配置为 SPA，并将未知路径回退到 `index.html`。
 - **Cloudflare 上传前失败**：传入 `--account-id`，设置 `CLOUDFLARE_ACCOUNT_ID`，或使用 `--site <account>/<project>`。
 - **i18n 有缺失翻译**：检查生成的 `src/locales/_coverage.json` 并补齐目标语言目录。

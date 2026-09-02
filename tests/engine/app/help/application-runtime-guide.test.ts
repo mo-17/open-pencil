@@ -77,7 +77,10 @@ describe('bundled Application Runtime guide', () => {
     )
 
     expect(headings.length).toBeGreaterThan(15)
-    expect(headings[0]).toEqual({ depth: 2, title: 'What You Will Deploy' })
+    expect(headings.slice(0, 2)).toEqual([
+      { depth: 2, title: 'Backend Provider Boundary' },
+      { depth: 2, title: 'What You Will Deploy' }
+    ])
     expect(headings.at(-1)).toEqual({ depth: 2, title: 'Production Checklist' })
   })
 
@@ -87,7 +90,10 @@ describe('bundled Application Runtime guide', () => {
     )
 
     expect(headings.length).toBeGreaterThan(15)
-    expect(headings[0]).toEqual({ depth: 2, title: '你将部署什么' })
+    expect(headings.slice(0, 2)).toEqual([
+      { depth: 2, title: 'Backend Provider 边界' },
+      { depth: 2, title: '你将部署什么' }
+    ])
     expect(headings.at(-1)).toEqual({ depth: 2, title: '生产检查清单' })
   })
 

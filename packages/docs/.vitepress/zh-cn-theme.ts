@@ -11,7 +11,8 @@ export const ZH_CN_TRANSLATED_ROUTES = [
   '/zh-cn/user-guide/application-runtime',
   '/zh-cn/programmable/ai-chat',
   '/zh-cn/programmable/mcp-server',
-  '/zh-cn/development/plugin-tutorial'
+  '/zh-cn/development/plugin-tutorial',
+  '/zh-cn/development/backend-providers'
 ] as const
 
 const guideSidebar: DefaultTheme.SidebarItem[] = [
@@ -82,6 +83,7 @@ const developmentSidebar: DefaultTheme.SidebarItem[] = [
     text: '插件开发',
     items: [
       { text: '第三方插件入门', link: '/zh-cn/development/plugin-tutorial' },
+      { text: 'Backend Provider 架构', link: '/zh-cn/development/backend-providers' },
       { text: '插件架构（英文）', link: '/development/plugins' },
       { text: '贡献指南（英文）', link: '/development/contributing' },
       { text: '测试（英文）', link: '/development/testing' }

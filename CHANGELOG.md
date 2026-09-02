@@ -12,6 +12,10 @@
 
 ### Added
 
+- Add provider-neutral Backend/DataModel/Auth/Workflow/Migration contracts, data-only Backend
+  Provider plugin declarations, a trusted deterministic Compiler Registry and artifact manifest,
+  the first bundled Supabase provider, and a host-owned fail-closed release state machine with
+  stale-plan checks, destructive confirmations, strict production gates, and secret-free receipts.
 - Duplicate guides with Option/Alt-drag, show active guide coordinates in rulers, measure ruler-created guides against selected frames and their contents, and remove guides from the context menu.
 - Create, select, move, transfer, and delete canvas and frame guides directly from rulers, with undoable edits and `.fig` round-trip fidelity.
 - Open to a unified home with recent and configured storage documents, including grid or list layouts.

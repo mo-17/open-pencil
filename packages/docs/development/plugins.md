@@ -17,14 +17,14 @@ publishes root-signed discovery state. The optional executable channel runs only
 root-indexed, import-free WASM compute packages after an exact local grant. No manifest path or URL
 is dynamically imported as JavaScript, HTML, CSS, native code, or privileged host functionality.
 
-The current **Unreleased** source line contains 64 reviewed plugins and 67 contributions: 20 module
-contributions; 11 commands (four Clipboard Toolkit commands, Compiler Preview Popout, AI Popout,
+The current **Unreleased** source line contains 68 reviewed plugins and 73 contributions: 20 module
+contributions; 13 commands (four Clipboard Toolkit commands, Compiler Preview Popout, AI Popout,
 Static Accessibility Audit, Static Design System Audit, Application Security Readiness, and safe
-Vercel and Cloudflare deployment-plan reviews); 13 exporters (Tauri React, Next.js, Vue, Capacitor,
+Vercel and Cloudflare deployment-plan reviews, plus Backend Provider audit and plan); 13 exporters (Tauri React, Next.js, Vue, Capacitor,
 Electron, Expo React Native, Flutter, native WeChat Mini Program, Taro, uni-app, Mpx, Design Tokens
-JSON, and Figma Editable Projection); 22
-connectors; and one Google Drive storage provider. Map, Google Drive Storage, Compiler Preview
-Popout, and AI Popout are installed and enabled by default. Catalog count is an application snapshot,
+JSON, and Figma Editable Projection); 22 connectors; four storage providers; and one data-only
+Supabase Backend Provider. Map, all four storage providers, Supabase Backend Provider, Compiler
+Preview Popout, and AI Popout are installed and enabled by default. Catalog count is an application snapshot,
 not a promise that a signed remote manifest can introduce a new host implementation.
 
 ## Package and trust model
@@ -86,7 +86,15 @@ and execution remain in `@open-pencil/core/plugins` and the application.
 
 Schema v2 keeps module contributions declarative and adds closed parameter/result JSON schemas,
 declared host permissions, explicit output extension/MIME pairs to commands and exporters, and
-bounded connector contracts under `contributions.connectors`. The
+bounded connector contracts under `contributions.connectors`. It also permits an optional,
+data-only `contributions.backendProviders` declaration. That declaration binds provider and adapter
+identity, the supported Backend model/contract versions, closed capability and output vocabularies,
+and a bounded configuration schema; contract v1 permissions must be empty. It cannot carry an
+endpoint, credential, URL, SQL, JavaScript, shell/native driver, deployment command, or executor.
+The declaration is inert unless the App and Compiler resolve its exact identity and signed package
+authority to a bundled, code-reviewed adapter. See [Backend Provider
+Architecture](/development/backend-providers) for the IR, deterministic artifact, and release
+controller boundaries. The
 only permission strings are `document.read`, `document.selection.read`, `document.variables.read`,
 and `file.save`. Object schemas must reject additional properties, result sizes are bounded,
 and safe MIME values cannot include parameters. Unknown keys, permissions, automation targets, and
@@ -873,7 +881,10 @@ The application projects each installed, enabled, host-compatible declarative co
 host explicitly marks MCP-safe into the MCP catalog: modules become add tools, commands become run
 tools, cancellable exporters become export tools, and explicitly session-authorized connector
 queries become query tools. Connector mutations stay out of MCP and require a fresh confirmation in
-the installed-plugin UI. Vue source export is MCP-visible only while its opt-in plugin is installed
+the installed-plugin UI. With all bundled plugins installed and enabled but no connector session
+grant, the current snapshot contains 33 dynamic tools: 20 module add tools, 11 command run tools, and
+two exporter tools. Authorized connector queries can add temporary query tools. Vue source export is
+MCP-visible only while its opt-in plugin is installed
 and enabled. The Tauri, Next.js, Capacitor, Electron, Expo,
 Flutter, and Figma source/projection exporters remain UI-only until their synchronous
 Compiler/encoder stages support cooperative cancellation. WeChat Mini Program, Taro, uni-app, and
@@ -886,6 +897,13 @@ registered. Tool names contain a canonical contribution SHA-256 identity. Store 
 and execution rechecks live state so a client-cached name cannot bypass revocation. Manifests cannot
 supply arbitrary MCP handlers, and an installed-but-disabled contribution remains absent. Revoking a
 connector grant removes its query descriptor and aborts matching in-flight calls.
+
+The default-enabled Supabase Backend Provider contributes only the exact-reviewed
+`audit-backend-provider` and `plan-backend-provider` run tools. Their closed input is `target` plus
+`mode`; execution re-resolves live package, command, contribution, provider, and adapter authority,
+then calls Backend planning without artifact emission. Results are bounded secret-free metadata.
+The tools cannot accept or resolve credentials, emit files or SQL, Apply a migration, change RLS,
+deploy a function or frontend, or invoke a provider network API.
 
 ## Publisher and catalog workflow
 

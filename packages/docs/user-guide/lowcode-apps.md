@@ -408,7 +408,7 @@ For Supabase-backed apps, production public runtime values should come from the 
 
 ```sh
 VITE_SUPABASE_URL=https://example.supabase.co \
-VITE_SUPABASE_ANON_KEY=... \
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_... \
 VITE_SUPABASE_SCHEMA=app \
 openpencil build app.fig -o dist
 ```
@@ -418,11 +418,15 @@ or:
 ```sh
 openpencil build app.fig -o dist \
   --supabase-url https://example.supabase.co \
-  --supabase-anon-key ... \
+  --supabase-publishable-key sb_publishable_... \
   --supabase-schema app
 ```
 
-The emitted app uses design-time Supabase values only as a fallback. Prefer environment-specific values for staging and production.
+The emitted app uses design-time Supabase values only as a fallback. Prefer environment-specific
+values for staging and production. Legacy `--supabase-anon-key` and
+`VITE_SUPABASE_ANON_KEY` inputs remain compatible, but new output uses the publishable-key name. Do
+not set the new and legacy aliases to different values in one CLI/environment source; ambiguous
+overrides fail closed.
 
 ## Application Runtime Readiness
 
@@ -433,8 +437,8 @@ isolation, static hosting, and manual server deployment, follow the dedicated
 The root **Supabase** panel separates public app configuration from management access:
 
 - The project URL, publishable/legacy anon key, and optional schema are the browser runtime values.
-  Known `sb_secret_*` and legacy `service_role` keys are rejected before they can enter a design or
-  generated client bundle.
+  Known `sb_secret_*`, `sbp_*` Management PATs, and legacy `service_role` keys are rejected before
+  they can enter a design or generated client bundle.
 - **Schema Inspector** uses a Supabase personal access token from OpenPencil's unified credential
   store. The PAT is not written to the `.fig` document or reactive editor state. The local cache
   contains only a bounded normalized table/column/relation catalog, never the PAT or raw OpenAPI
@@ -485,6 +489,11 @@ its result through success/error action branches.
 files and prints a manual recipe for rebuilding a durable server bundle and running
 `supabase functions deploy openpencil-runtime`. OpenPencil does not link a Supabase project, upload
 the function, or configure its secrets automatically.
+
+Hosted Edge Functions expose the new `SUPABASE_PUBLISHABLE_KEYS` JSON dictionary. The generated
+handler selects its `default` key and falls back to the legacy `SUPABASE_ANON_KEY` only when the new
+variable is completely absent. Empty or malformed new-key JSON fails closed. The `apikey` remains
+separate from the caller's Bearer user JWT, which the handler verifies with `auth.getUser`.
 
 ## Analytics
 
@@ -673,7 +682,7 @@ Use this checklist when validating a lowcode document before sharing it:
 ## Current Boundaries
 
 - Lowcode app output is a static React SPA, not SSR or SSG.
-- Secrets must not be embedded in designs. Use Supabase anon keys and provider tokens through CLI flags or environment variables.
+- Secrets must not be embedded in designs. Use Supabase publishable keys (or legacy anon JWTs) and provider tokens through CLI flags or environment variables.
 - Stripe checkout and customer portal actions are frontend triggers only. Put Stripe secret keys,
   webhooks, subscriptions, portal sessions, and customer lookup on your server endpoint.
 - Analytics config is client-side only. Use public GA4 / Plausible / PostHog project ids, enable consent/DNT gates when required, and verify CSP requirements for your deployment.
@@ -685,7 +694,7 @@ Use this checklist when validating a lowcode document before sharing it:
 ## Common Fixes
 
 - Preview says it is unavailable: use the desktop app; the sidecar is not available in the browser app.
-- Supabase works in preview but not production: pass `--supabase-url` and `--supabase-anon-key`, or set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` before `build` / `deploy`.
+- Supabase works in preview but not production: pass `--supabase-url` and `--supabase-publishable-key`, or set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` before `build` / `deploy`. The old anon-key names are compatibility fallbacks only.
 - Analytics events do not appear: confirm the provider id, check that the host allows the provider script in CSP, and wait for the provider dashboard's normal ingestion delay.
 - A deployed route returns 404 after refresh: configure the host as an SPA and route unknown paths to `index.html`.
 - Cloudflare deploy fails before upload: pass `--account-id`, set `CLOUDFLARE_ACCOUNT_ID`, or use `--site <account>/<project>`.

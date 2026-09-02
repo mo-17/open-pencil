@@ -127,6 +127,7 @@ export const developmentSidebar = (
       ...(!prefix
         ? [
             { text: 'Plugin Architecture', link: '/development/plugins' },
+            { text: 'Backend Provider Architecture', link: '/development/backend-providers' },
             {
               text: 'Third-party Plugin Tutorial',
               link: '/development/plugin-tutorial'

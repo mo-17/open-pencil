@@ -10,8 +10,8 @@ Bun workspace with focused packages:
 
 - `packages/scene-graph` — `@open-pencil/scene-graph`: framework-agnostic node types, graph storage, variables, libraries, copy/snap/undo, and geometry primitives.
 - `packages/motion` — `@open-pencil/motion`: framework-agnostic deterministic Motion planning, sampling, path/easing/timing, advanced-channel projection, generated effects, scene choreography, and continuous-input controller primitives.
-- `packages/lowcode` — `@open-pencil/lowcode`: framework-agnostic lowcode expressions, validation, routing, forms, Supabase/server-workflow policy, and application-runtime audits shared by core, compiler, app, CLI, and external consumers.
-- `packages/plugin-contracts` — `@open-pencil/plugin-contracts`: portable declarative plugin manifests, parameter and connector schemas, signed packages/catalogs, publisher trust, runtime package/index contracts, and marketplace snapshot verification. Host registries, built-in modules, persistence, and execution remain in core or the app.
+- `packages/lowcode` — `@open-pencil/lowcode`: framework-agnostic lowcode expressions, validation, routing, forms, provider-neutral Backend/DataModel/Auth/Workflow/Migration contracts, release gates/state, Supabase/server-workflow compatibility policy, and application-runtime audits shared by core, compiler, app, CLI, and external consumers.
+- `packages/plugin-contracts` — `@open-pencil/plugin-contracts`: portable declarative plugin manifests, parameter, connector, and data-only Backend Provider schemas, signed packages/catalogs, publisher trust, runtime package/index contracts, and marketplace snapshot verification. Host registries, built-in modules, persistence, and execution remain in core or the app.
 - `packages/pen` — `@open-pencil/pen`: Pencil.dev `.pen` document model, parser, SceneGraph import adapter, and source-preserving MotionSpec writer. The writer accepts imported `.pen` graphs and rejects non-Motion edits rather than emitting a lossy document.
 - `packages/kiwi` — `@open-pencil/kiwi`: pure Kiwi schema/runtime/protocol package. Owns low-level Figma Kiwi codec/container/parse helpers and stays SceneGraph-agnostic.
 - `packages/fig` — `@open-pencil/fig`: `.fig` archive/parser package owning Figma-specific SceneGraph conversion, raw metadata policy, and component/instance interpretation. Core keeps format-neutral IO registration and runtime rendering/font integration.
@@ -19,7 +19,7 @@ Bun workspace with focused packages:
 - `packages/motion-runtime` — `@open-pencil/motion-runtime`: public SSR-safe Motion playback SDK. Owns the shared scheduler, manual clock, reversible DOM projection, and Vanilla/Vue lifecycle adapters while reusing `@open-pencil/motion` prepared plans.
 - `packages/dom-css` — `@open-pencil/dom-css`: DOM/CSS/Tailwind/JSX import and HTML export pipelines.
 - `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
-- `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React or Vite + Vue 3 TypeScript + Tailwind projects, plus source-only Expo React Native, Flutter, native WeChat Mini Program, Taro, uni-app, and Mpx projects. Both web targets support the preview VFS, static builds, and deploy bundles; Vue v1 emits editable SFCs, Vue Router v4, route/query bindings, a bounded lowcode subset, and explicit warnings for unsupported advanced runtimes. Native/mobile and mini-program targets remain explicit source-only MVPs with fail-closed warnings, not WebViews or post-processed React output.
+- `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React or Vite + Vue 3 TypeScript + Tailwind projects, plus source-only Expo React Native, Flutter, native WeChat Mini Program, Taro, uni-app, and Mpx projects. A separate trusted static Backend Provider Registry consumes only normalized Backend IR and deterministically plans/emits bounded provider artifacts. Both web targets support the preview VFS, static builds, and deploy bundles; Vue v1 emits editable SFCs, Vue Router v4, route/query bindings, a bounded lowcode subset, and explicit warnings for unsupported advanced runtimes. Native/mobile and mini-program targets remain explicit source-only MVPs with fail-closed warnings, not WebViews or post-processed React output.
 - `packages/cli` — `@open-pencil/cli`: headless CLI for `.fig`/`.pen` inspection, conversion, export, linting, XPath query, and compiler build/deploy flows. Uses `citty` + `agentfmt`.
 - `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + Streamable HTTP (Hono) + browser WebSocket RPC. Reuses core ToolDefs.
 - `packages/harness` — `@open-pencil/harness`: optional Node companion CLI for backend-neutral coding-agent sessions. Owns HarnessAgent adapters, opaque resume-state persistence, and the bounded JSONL host protocol; the desktop launches the separately installed command instead of bundling a JavaScript runtime.
@@ -47,6 +47,7 @@ Use public package exports across package/app boundaries. Do not import workspac
 | `@open-pencil/motion`                           | deterministic Motion planning, sampling, projection, drivers, and scene choreography | —                         |
 | `@open-pencil/lowcode`                          | expressions, validation, routes, forms, Supabase/server and security audit contracts | —                         |
 | `@open-pencil/lowcode/application-runtime`      | focused application runtime readiness audit                                          | —                         |
+| `@open-pencil/lowcode/backend`                  | provider-neutral Backend IR, migrations, canonical digests, release gates and state  | —                         |
 | `@open-pencil/plugin-contracts`                 | declarative plugin manifests, catalogs, trust, runtime, and marketplace contracts    | —                         |
 | `@open-pencil/plugin-contracts/adapter-helpers` | bounded data parsers for reviewed host adapters                                      | —                         |
 | `@open-pencil/core/color`                       | parseColor, colorToHex, color management, OkHCL                                      | culori                    |
@@ -242,6 +243,8 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun open-pencil microfrontend compose <composition.json> -o <dir> [--base /suite/] [--json]` — assemble verified local or digest-pinned remote React/Vue microfrontends into the route/slot composition shell
 - `bun open-pencil microfrontend preview <dir> [--base /suite/] [--host 127.0.0.1] [--port 4173]` — preview a built composition through the loopback-only SPA server
 - `bun open-pencil deploy <file> --provider netlify|vercel|cloudflare [--target react|vue]` — build and deploy either web target; token comes from a CLI arg or provider environment variable
+- `bun open-pencil backend validate|plan|emit|audit <backend-application.json>` — validate provider-neutral Backend IR and plan, emit, or audit deterministic local artifacts; this command family has no network, credential resolution, or Apply capability
+- `bun open-pencil backend release <backend-application.json> -o <new-dir>` — run the local release pipeline and deliberately stop before remote Apply with `backendDeploymentRequired`
 - `bun open-pencil analyze colors <file>` — color palette usage
 - `bun open-pencil analyze typography <file>` — font/size/weight stats
 - `bun open-pencil analyze spacing <file>` — gap/padding values
@@ -433,9 +436,10 @@ Release commits are the exception: keep using `Release v0.x.y`.
   deterministic and offline; Compiler adapters may emit a trusted local package runtime, but must
   reject arbitrary script/style URLs, raw executable configuration, credentials, and unsupported
   config versions.
-- The bundled catalog currently contains 67 reviewed plugins with 70 contributions: 20 modules,
-  11 commands, 13 exporters, 22 connectors, and four storage providers. Map, Google Drive Storage,
-  OneDrive Storage, Aliyun Drive Storage, and Baidu Netdisk Storage are installed and enabled for a new profile; all other bundled entries,
+- The bundled catalog currently contains 68 reviewed plugins with 73 contributions: 20 modules,
+  13 commands, 13 exporters, 22 connectors, four storage providers, and one Backend Provider. Map,
+  Google Drive Storage, OneDrive Storage, Aliyun Drive Storage, Baidu Netdisk Storage, and Supabase
+  Backend Provider are installed and enabled for a new profile; all other bundled entries,
   including the 17 external-service connectors, Application Security Readiness, Vercel, and
   Cloudflare Pages, are opt-in. Keep this aggregate and both user-guide translations synchronized
   when adding or removing a bundled manifest or contribution.
@@ -518,7 +522,9 @@ Release commits are the exception: keep using `Release v0.x.y`.
 
 - `packages/compiler` is private and is the source of truth for design-to-code output. Data flow is one-way: `SceneGraph` → `packages/compiler/src/ir/**` → `packages/compiler/src/adapters/**`.
 - `packages/compiler/src/ir/**` must not import adapters. `packages/compiler/src/adapters/**` must not import `@open-pencil/scene-graph`; adapters consume only IR types. Steiger enforces this with `open-pencil/no-cross-layer-in-compiler`.
-- Public compiler entrypoints: `compile()`, `withDefaults()`, lowcode validators re-exported from `@open-pencil/lowcode`, route helpers, VFS/dev-server/build/deploy subpaths.
+- Public compiler entrypoints: `compile()`, `withDefaults()`, lowcode validators re-exported from `@open-pencil/lowcode`, route helpers, VFS/dev-server/build/deploy subpaths, and the focused `@open-pencil/compiler/backend` contract.
+- Provider-neutral Backend contracts and release state live in `@open-pencil/lowcode/backend`; data-only declarations live in `@open-pencil/plugin-contracts`; deterministic reviewed bundles, exact Registry resolution, capability negotiation, plan/emit, and artifact manifests live in `packages/compiler/src/backend/`. Backend adapters consume only normalized Backend IR and must not read SceneGraph, `process.env`, credentials, filesystem, or network state. Framework targets and Backend Providers remain independent.
+- Manifest `backendProviders` declarations never supply executable code or authority. The App must re-resolve exact publisher/package digest, plugin/contribution/provider/adapter/version/capability/permission/output identity against its bundled allowlist. Browser may validate/plan/emit; MCP/AI may only perform bounded secret-free audit/plan. Apply, RLS/schema changes, function/bucket creation, and production deployment remain explicit host-owned operations.
 - React adapter output is Vite + React + TypeScript + Tailwind. It supports multi-page `react-router-dom`, preview bridge `data-node-id` wiring, i18n via `react-intl`, optional shadcn UI kit emission, Supabase auth/data helpers, workflows, validation, uploads, and static builds.
 - Vue adapter output is Vite + Vue 3 + TypeScript + Tailwind. It supports Vue Router v4, dynamic route/query bindings, basic state/events, and the reviewed Vue lowcode/module subset while failing closed with deterministic warnings for React-only or server-backed features.
 - The reviewed Vue lowcode subset includes Toast (`info`/`success`/`error`, six positions, bounded/deduplicated accessible stacks), focus-managed two-branch Confirm, and local `required`/`pattern`/length/range/custom-expression form validation with inline/summary errors and invalid-submit blocking. Remote asynchronous validation must never emit a URL or `fetch`; it blocks submission and emits `vue-validation-async-unsupported`.

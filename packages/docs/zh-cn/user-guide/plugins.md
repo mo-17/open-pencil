@@ -25,10 +25,10 @@ OpenPencil 插件系统分为两个明确隔离的层级：
 
 配置远程市场根之后，页面还会显示 stable/beta 渠道、发布者与密钥身份、快照状态、审计头，以及该快照是否授权可执行运行时索引。搜索只匹配签名内容中的名称、摘要、分类、关键词、插件 ID 和发布者元数据，不会信任未签名搜索服务返回的身份信息。
 
-当前 **Unreleased** 源码线包含 67 个经过审查的插件、70 项 contribution：20 个模块、
-11 个命令、13 个导出器、22 个连接器与 4 个存储服务商。只有定义、渲染器、合同或导出源码
+当前 **Unreleased** 源码线包含 68 个经过审查的插件、73 项 contribution：20 个模块、
+13 个命令、13 个导出器、22 个连接器、4 个存储服务商与 1 个 Backend Provider。只有定义、渲染器、合同或导出源码
 文件，并不代表插件已经可以使用；该 contribution 还必须完成中央主机注册。新配置中 Map、
-Google Drive Storage、OneDrive Storage、Aliyun Drive Storage、Baidu Netdisk Storage、Compiler Preview Popout 与 AI Popout 默认安装并启用，
+Google Drive Storage、OneDrive Storage、Aliyun Drive Storage、Baidu Netdisk Storage、Supabase Backend Provider、Compiler Preview Popout 与 AI Popout 默认安装并启用，
 其余内置插件都需要用户选择安装并启用。
 
 - **Map**：新配置中默认安装并启用，创建可原生编辑的地图 `FRAME`，并通过经过审查的
@@ -42,6 +42,13 @@ Google Drive Storage、OneDrive Storage、Aliyun Drive Storage、Baidu Netdisk S
   阿里云盘的 folder-style 授权根目录限制访问范围。请从 **设置 → 存储** 连接。
 - **Baidu Netdisk Storage**：默认安装并启用的主机自有存储服务商声明；经过审查的适配器只在
   `/apps/OpenPencil` 下管理文档。请从 **设置 → 存储** 连接。
+- **Supabase Backend Provider**：默认安装并启用的 data-only 声明，只能绑定到 OpenPencil
+  随应用发布且经过审查的精确 Compiler/App Adapter。它可以在本地 validate、plan，并生成
+  确定性的 Schema、RLS、Function 与 Config Artifact；启用不会自动连接账号、Apply Migration、
+  修改 RLS 或部署 Function。Production Apply 始终是需要单独确认的宿主操作。参阅
+  [Backend Provider Architecture](/development/backend-providers)。MCP/AI 只会获得经过审查的
+  `audit` 与 `plan` 工具：输入仅包含 `target` 和 `mode`，返回有界且不含秘密的规划元数据，
+  不能读取凭据、生成文件或 SQL、执行迁移或部署。
 - **Compiler Preview Popout（编译器预览悬浮窗）**：新配置中默认安装并启用，仅在
   Tauri 桌面应用中可用。使用 Compiler Preview 工具栏的 **Pop out** 可在独立窗口打开当前
   本机预览。插件不会收到 URL、窗口标签或原生窗口参数；宿主只从当前 Loopback 预览服务与路由
@@ -978,6 +985,10 @@ OpenPencil 会拒绝已签名快照的回滚，并按当前时间重新验证缓
 工具；符合上述条件的连接器查询会投影为 query 工具。任意 `POST` 与连接器变更都不能进入 MCP，
 变更只能在 UI 中逐次确认。仅安装或启用并不会自动授权连接器 MCP 工具；还必须保存凭据并授予
 当前会话的精确摘要权限。撤权或清除凭据会立即移除工具。
+
+对于默认启用的 Supabase Backend Provider，MCP/AI 只投影经过审查的 `audit` 与 `plan` run
+工具。每次规划前都会重新检查实时插件与 Provider 权限，且绝不暴露凭据、Artifact 内容、Apply、
+迁移执行或部署能力。
 
 ## 更新与回滚
 

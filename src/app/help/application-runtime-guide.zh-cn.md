@@ -8,6 +8,19 @@
 OpenPencil 可以校验文档、生成可供审查的 RLS 建议、构建浏览器应用，并产出服务端工作流包。它不会修改你的数据库、证明某条 RLS 策略已经生效、配置生产密钥，也不会自动部署服务端包。这些仍然是需要操作者明确执行的步骤。
 :::
 
+## Backend Provider 边界
+
+后端意图会先规范化为与服务商无关的 DataModel、Auth、Workflow、Capability、Migration 和
+Secret-Reference IR。签名插件 Manifest 可以声明 Backend Provider，但不能携带 Provider 代码、
+SQL、URL、凭据或部署命令；只有 Compiler/App 内置且经过审查的 Registry 中存在精确匹配的
+Adapter 时，才能在本地执行 validate、plan 与 emit。
+
+`build` 与 Compiler Preview 都不会 Apply 这些产物。真实发布属于宿主持有的独立流程：
+`Inspect → Plan → Emit → Review → Confirm → Apply → Verify → Receipt`。文档、Schema、Target、
+Environment、Package Digest、Adapter Version、Project、Account 或 Grant 任一变化都会令 Plan
+stale。静态托管成功后，只要后端门禁还没有新鲜证据，仍必须报告 `backendDeploymentRequired`。
+完整信任与发布模型请参阅 [Backend Provider Architecture](/development/backend-providers)。
+
 ## 你将部署什么
 
 包含服务端工作流的应用会生成两个需要独立部署的产物：
@@ -46,7 +59,7 @@ flowchart LR
 - 如果文档包含服务端工作流，则需要安装 [Supabase CLI](https://supabase.com/docs/reference/cli/getting-started)。
 
 ::: danger 切勿在客户端使用高权限密钥
-不要把 `sb_secret_...` 或旧版 `service_role` key 放入文档、生成的 SPA、命令行或 `VITE_SUPABASE_*` 变量。OpenPencil 会在客户端构建边界拒绝已知的高权限密钥。浏览器 key 在设计上就是公开的；数据库访问必须通过授权、Auth 与 RLS 保护。
+不要把 `sb_secret_...`、`sbp_...` Management PAT 或旧版 `service_role` key 放入文档、生成的 SPA、命令行或 `VITE_SUPABASE_*` 变量。OpenPencil 会在客户端构建边界拒绝已知的高权限凭据。浏览器 key 在设计上就是公开的；数据库访问必须通过授权、Auth 与 RLS 保护。
 :::
 
 ## 1. 连接数据之前先建立应用模型
@@ -302,11 +315,11 @@ Deploy（部署）面板会在开始构建前运行应用运行时预检。部�
 ```sh
 bun open-pencil build app.fig -o dist \
   --supabase-url https://your-project.supabase.co \
-  --supabase-anon-key "$SUPABASE_PUBLISHABLE_KEY" \
+  --supabase-publishable-key "$SUPABASE_PUBLISHABLE_KEY" \
   --supabase-schema public
 ```
 
-也可以使用 `VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY` 与 `VITE_SUPABASE_SCHEMA`。显式 flag 的优先级高于对应环境变量。URL 与 key 覆盖值必须同时提供，避免把两个项目的值混在一起。
+也可以使用 `VITE_SUPABASE_URL`、`VITE_SUPABASE_PUBLISHABLE_KEY` 与 `VITE_SUPABASE_SCHEMA`。旧 anon-key flag/环境变量仍可兼容。显式连接 flag 必须提供完整 URL/key 组合并整体覆盖环境变量组；同一来源中的新旧别名若值不同会失败关闭。
 
 常用选项包括：
 
@@ -381,7 +394,7 @@ less dist/openpencil-server/openpencil-server.manifest.json
 
 manifest 会列出工作流 ID、参数、身份验证约定，以及所需环境变量名称。切勿在 `.env.server.example` 中填入真实密钥，也不要提交复制出的密钥文件。
 
-托管的 Supabase Edge Functions 默认提供 `SUPABASE_URL` 与旧版 `SUPABASE_ANON_KEY`。只需设置工作流引用的其他环境变量名称，可在 Dashboard 中配置，也可通过 CLI：
+托管的 Supabase Edge Functions 默认提供 `SUPABASE_URL` 与新版 `SUPABASE_PUBLISHABLE_KEYS` JSON 字典。生成的 handler 读取其中的 `default` key；只有整个新版变量不存在时才回退旧 `SUPABASE_ANON_KEY`，新版变量为空或格式错误会失败关闭。只需设置工作流引用的其他环境变量名称，可在 Dashboard 中配置，也可通过 CLI：
 
 ```sh
 supabase login
@@ -408,24 +421,24 @@ supabase functions deploy openpencil-runtime \
 
 ## 故障排查
 
-| 现象                                | 可能原因                                            | 检查内容                                                                          |
-| ----------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **测试连接**失败                    | URL 无效、公开 key 错误、项目离线，或网络/CORS 失败 | 从同一个 Supabase 项目复制 URL 与 publishable/anon key；绝不能改用 secret key     |
-| **数据库结构**提示缺少凭据          | PAT 未保存，或应用本地凭据存储不可用                 | 保存 Supabase personal access token；若仍失败，请检查应用数据目录权限             |
-| Schema 检查返回 forbidden/not found | PAT 无权访问项目，或 URL 指向另一个项目             | 确认 PAT 所属账号、组织成员身份和项目 reference                                   |
-| 查询成功但返回零行                  | RLS 隐藏了数据、用户未登录，或过滤器错误            | 使用受影响用户测试 `$currentUser`、策略 `USING`、授权与相同查询                   |
-| INSERT 被拒绝                       | 缺少授权、RLS `WITH CHECK`、必填列，或 payload 无效 | 检查 Supabase 错误目标，并用 INSERT 策略验证最终数据行                            |
-| UPDATE 没有修改任何内容             | 缺少 SELECT 可见性、UPDATE 策略或匹配过滤器         | 添加所需 SELECT 策略，并确认过滤器选中了当前用户拥有的数据行                      |
-| OpenPencil 拒绝 key                 | 输入了高权限 `sb_secret_...` 或 `service_role` key  | 换成 publishable 或旧版 `anon` key；如果高权限 key 已暴露，请立即轮换             |
-| 预览正常，但生产环境使用了错误项目  | 未设置生产覆盖值，或覆盖值指向其他项目              | 通过 flags 或对应 `VITE_SUPABASE_*` 变量同时提供 URL 与公开 key                   |
-| 无法使用预览                        | 浏览器应用无法启动本地编译器 sidecar                | 使用桌面应用，或通过 CLI 构建                                                     |
-| 服务端动作返回 401                  | 没有有效的已登录 Supabase session 到达函数          | 登录并验证 session；对于此生成约定，保持 JWT 校验开启                             |
-| 服务端动作返回 400                  | 工作流 ID/参数不匹配，或请求超过 64 KiB             | 对照生成的 manifest 检查调用，并缩小 payload                                      |
-| 服务端动作返回笼统的 500            | 环境变量缺失、出站目标被拒绝、超时或下游错误        | 将 Edge Function secrets 与 manifest 对照，并检查脱敏后的函数日志                 |
-| 未生成服务端包                      | 服务端定义无效，或缺少设计级 Supabase 配置          | 解决编译器警告、配置文档并重新构建                                                |
-| 静态部署成功，但服务端动作失败      | 静态托管从未部署 `openpencil-server/`               | 单独部署 `openpencil-runtime`，然后再设置审计标记                                 |
-| 路由页面刷新后出现 404              | 托管平台缺少 SPA fallback                           | 将未知路径重写到 `index.html`                                                     |
-| Cloudflare 在上传前停止部署         | 缺少账户或 Pages 项目目标                           | 传入 `--account-id`、设置 `CLOUDFLARE_ACCOUNT_ID`，或使用 CLI 支持的账户/项目目标 |
+| 现象                                | 可能原因                                                          | 检查内容                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **测试连接**失败                    | URL 无效、公开 key 错误、项目离线，或网络/CORS 失败               | 从同一个 Supabase 项目复制 URL 与 publishable/anon key；绝不能改用 secret key     |
+| **数据库结构**提示缺少凭据          | PAT 未保存，或应用本地凭据存储不可用                              | 保存 Supabase personal access token；若仍失败，请检查应用数据目录权限             |
+| Schema 检查返回 forbidden/not found | PAT 无权访问项目，或 URL 指向另一个项目                           | 确认 PAT 所属账号、组织成员身份和项目 reference                                   |
+| 查询成功但返回零行                  | RLS 隐藏了数据、用户未登录，或过滤器错误                          | 使用受影响用户测试 `$currentUser`、策略 `USING`、授权与相同查询                   |
+| INSERT 被拒绝                       | 缺少授权、RLS `WITH CHECK`、必填列，或 payload 无效               | 检查 Supabase 错误目标，并用 INSERT 策略验证最终数据行                            |
+| UPDATE 没有修改任何内容             | 缺少 SELECT 可见性、UPDATE 策略或匹配过滤器                       | 添加所需 SELECT 策略，并确认过滤器选中了当前用户拥有的数据行                      |
+| OpenPencil 拒绝 key                 | 输入了高权限 `sb_secret_...`、`sbp_...` PAT 或 `service_role` key | 换成 publishable 或旧版 `anon` key；如果高权限凭据已暴露，请立即轮换              |
+| 预览正常，但生产环境使用了错误项目  | 未设置生产覆盖值，或覆盖值指向其他项目                            | 通过 flags 或对应 `VITE_SUPABASE_*` 变量同时提供 URL 与公开 key                   |
+| 无法使用预览                        | 浏览器应用无法启动本地编译器 sidecar                              | 使用桌面应用，或通过 CLI 构建                                                     |
+| 服务端动作返回 401                  | 没有有效的已登录 Supabase session 到达函数                        | 登录并验证 session；对于此生成约定，保持 JWT 校验开启                             |
+| 服务端动作返回 400                  | 工作流 ID/参数不匹配，或请求超过 64 KiB                           | 对照生成的 manifest 检查调用，并缩小 payload                                      |
+| 服务端动作返回笼统的 500            | 环境变量缺失、出站目标被拒绝、超时或下游错误                      | 将 Edge Function secrets 与 manifest 对照，并检查脱敏后的函数日志                 |
+| 未生成服务端包                      | 服务端定义无效，或缺少设计级 Supabase 配置                        | 解决编译器警告、配置文档并重新构建                                                |
+| 静态部署成功，但服务端动作失败      | 静态托管从未部署 `openpencil-server/`                             | 单独部署 `openpencil-runtime`，然后再设置审计标记                                 |
+| 路由页面刷新后出现 404              | 托管平台缺少 SPA fallback                                         | 将未知路径重写到 `index.html`                                                     |
+| Cloudflare 在上传前停止部署         | 缺少账户或 Pages 项目目标                                         | 传入 `--account-id`、设置 `CLOUDFLARE_ACCOUNT_ID`，或使用 CLI 支持的账户/项目目标 |
 
 ## 生产检查清单
 

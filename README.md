@@ -41,9 +41,14 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   Motion Runtime SDK; and generate a fail-closed Figma Motion Plugin API adapter for the verified
   native subset
 - **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase schema inspection and RLS guidance, authenticated client/server workflows, environment-scoped runtime configuration, i18n, shadcn/ui output, preview diagnostics, build, and deploy flows. Switch Compiler Preview and the `compile`/`build`/`deploy` CLI between the full React target and the bounded Vue 3 target; preview refresh supports Real-time, Auto, and Manual policies with single-flight latest-change scheduling
-- **Built-in plugin marketplace** — manage 67 reviewed plugins with 70 module, command, exporter,
-  connector, and storage-provider contributions: 20 editable modules, 11 bounded commands, 13
-  source/data exporters, 22 host-reviewed connectors, and four default-enabled Google Drive,
+- **Backend Provider boundary** — normalize data, auth, workflow, capability, and migration intent into
+  provider-neutral IR; resolve only data-only declarations backed by trusted static adapters; emit
+  deterministic local artifacts; and keep Inspect/Review/Confirm/Apply/Verify plus strict production
+  evidence in a separate host-owned release controller. Supabase is the first bundled Provider;
+  compilation and preview never modify a remote database or deploy a server runtime
+- **Built-in plugin marketplace** — manage 68 reviewed plugins with 73 module, command, exporter,
+  connector, storage-provider, and backend-provider contributions: 20 editable modules, 13 bounded commands, 13
+  source/data exporters, 22 host-reviewed connectors, one bundled Supabase Backend Provider, and four default-enabled Google Drive,
   OneDrive, Aliyun Drive, and Baidu Netdisk Storage declarations. The opt-in additions include 17 read-only external-service connectors, local
   Application Security Readiness, and safe deployment-plan reviews for Vercel and Cloudflare Pages
 - **Local-first cloud documents** — connect the Tauri desktop app to Google Drive, OneDrive, Aliyun
@@ -233,6 +238,22 @@ openpencil eval -c "figma.currentPage.name"   # Query the editor
 
 Applicable inspect and report commands support `--json` for machine-readable output.
 
+### Generate backend artifacts locally
+
+Backend Provider commands consume a strict local `BackendApplicationSpecV1` JSON file and can
+validate, plan, emit, and audit deterministic artifacts without connecting to a database or reading
+credentials:
+
+```sh
+openpencil backend validate backend-application.json --json
+openpencil backend plan backend-application.json --backend-provider supabase --target react --json
+openpencil backend emit backend-application.json -o local-backend-artifacts --json
+```
+
+There is no Backend Apply command. The local `backend release` orchestration always stops before
+remote changes and reports `backendDeploymentRequired`; a real migration, policy change, server
+deployment, or production-ready receipt remains a separately authorized host operation.
+
 ### Build lowcode apps
 
 OpenPencil can compile a `.fig` or `.pen` document into a runnable Vite + React + TypeScript app by default, or a Vite + Vue 3 + TypeScript app with `--target vue`. The full React target preserves layout, resolved web-font assets and script fallbacks, routes, interactive state, bindings, validation, workflows, Supabase auth/data actions, authenticated server workflows, Stripe checkout and customer portal redirects through your own server endpoints, i18n catalogs, analytics hooks, controlled custom head/CSS metadata, and optional shadcn/ui components. Button, Input, and Textarea nodes expose per-control text colors, while Input and Textarea also expose placeholder colors; both remain consistent between the CanvasKit canvas, generated Tailwind code, and Figma-compatible exports. Desktop Font settings can also import validated TTF, OTF, or WOFF files for persistent offline use; previews embed the same loaded face bytes as the CanvasKit canvas unless OpenType metadata explicitly restricts embedding. Restricted faces are omitted with a `font-license-embedding-restricted` compiler warning, while unknown or incomplete redistribution evidence remains visible for manual review.
@@ -311,7 +332,7 @@ CLOUDFLARE_API_TOKEN=... openpencil deploy app.fig --provider cloudflare --accou
 VERCEL_TOKEN=... openpencil deploy app.fig --target vue --provider vercel --site my-vue-project
 ```
 
-For Supabase-backed apps, override production public runtime values at build/deploy time with `--supabase-url`, `--supabase-anon-key`, and `--supabase-schema`, or the matching `VITE_SUPABASE_*` environment variables. The editor can inspect a normalized schema catalog with a management PAT held only in the credential store; the PAT and raw catalog never enter the design. Server workflows compile to `openpencil-server/` beside the static bundle. Static deploys intentionally exclude that directory and leave function deployment plus server environment values to the operator. Stripe checkout actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `checkoutUrl`; Stripe customer portal actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `portalUrl`. Stripe secret keys, webhook handling, subscriptions, and customer lookup stay on your server, never in the document or generated SPA. Lowcode analytics supports GA4, Plausible, and PostHog configuration stored in the document plus `trackEvent` actions, optional page views, Do Not Track, and a generated consent banner with local preference persistence, configurable copy, a configurable Analytics default state, and an EEA-style opt-in starter preset. Custom head/CSS support is limited to structured `<meta>`, `<link>`, `<style>`, and `index.css` output; arbitrary JavaScript is intentionally out of scope. See the repository's [Lowcode Apps guide](packages/docs/user-guide/lowcode-apps.md) for authoring. For the fork-specific Supabase, RLS, server-workflow, and deployment path, open **Help → Application Runtime Guide** in the app; that complete guide is bundled for offline use.
+For Supabase-backed apps, override production public runtime values at build/deploy time with `--supabase-url`, `--supabase-publishable-key`, and `--supabase-schema`, or the matching `VITE_SUPABASE_*` environment variables. The deprecated `--supabase-anon-key` / `VITE_SUPABASE_ANON_KEY` aliases remain accepted for legacy anon JWTs. The editor can inspect a normalized schema catalog with a management PAT held only in the credential store; the PAT and raw catalog never enter the design. Server workflows compile to `openpencil-server/` beside the static bundle. Static deploys intentionally exclude that directory and leave function deployment plus server environment values to the operator. Stripe checkout actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `checkoutUrl`; Stripe customer portal actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `portalUrl`. Stripe secret keys, webhook handling, subscriptions, and customer lookup stay on your server, never in the document or generated SPA. Lowcode analytics supports GA4, Plausible, and PostHog configuration stored in the document plus `trackEvent` actions, optional page views, Do Not Track, and a generated consent banner with local preference persistence, configurable copy, a configurable Analytics default state, and an EEA-style opt-in starter preset. Custom head/CSS support is limited to structured `<meta>`, `<link>`, `<style>`, and `index.css` output; arbitrary JavaScript is intentionally out of scope. See the repository's [Lowcode Apps guide](packages/docs/user-guide/lowcode-apps.md) for authoring. For the fork-specific Supabase, RLS, server-workflow, and deployment path, open **Help → Application Runtime Guide** in the app; that complete guide is bundled for offline use.
 
 Open **Settings → Plugins** to manage the bundled offline catalog or a self-hosted marketplace rooted
 in one packaged Ed25519 public key. The marketplace publishes a signed publisher directory,
@@ -319,15 +340,16 @@ stable/beta catalogs, searchable listings, immutable artifact coordinates, an ap
 checkpoint, and an optional executable-runtime index. Explicit update review, verified rollback,
 digest pins, cache status, and portable document dependency locks remain enforced.
 After enablement, insert module plugins from the canvas toolbar, run Clipboard Toolkit commands from
-the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 67
-reviewed built-ins expose 70 contributions: twenty modules (including Map, Rich Text, sandboxed
+the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 68
+reviewed built-ins expose 73 contributions: twenty modules (including Map, Rich Text, sandboxed
 HTML, Video, Lottie, Carousel, Advanced Data Grid, Tabs, Accordion, QR/Code 128, Markdown, Code
-Block, PDF Viewer, Audio Player, Modal, Dropdown Menu, and Upload Button), 11 commands (four Clipboard Toolkit
+Block, PDF Viewer, Audio Player, Modal, Dropdown Menu, and Upload Button), 13 commands (four Clipboard Toolkit
 actions, Compiler Preview Popout, AI Popout, Static Accessibility Audit, Static Design System Audit,
-Application Security Readiness, and safe Vercel and Cloudflare Pages deployment-plan reviews), 13 exporters (Tauri React, Expo React Native, Flutter,
+Application Security Readiness, safe Vercel and Cloudflare Pages deployment-plan reviews, and the
+Supabase Backend Provider audit/plan reviews), 13 exporters (Tauri React, Expo React Native, Flutter,
 Next.js, Vue, Capacitor, Electron, native WeChat Mini Program, Taro, uni-app, Mpx, Design Tokens JSON,
-and Figma Editable Projection), 22 connectors, and
-four storage providers for Google Drive, OneDrive, Aliyun Drive, and Baidu Netdisk. The connector set includes the original five bounded business
+and Figma Editable Projection), 22 connectors, four storage providers for Google Drive, OneDrive,
+Aliyun Drive, and Baidu Netdisk, and one data-only Supabase Backend Provider declaration. The connector set includes the original five bounded business
 integrations plus opt-in read-only Neon, Sentry, HubSpot, Apollo, PostHog, Asana, Zotero, HeyGen,
 Linear, OpenAI, Box, Slack, Google Calendar, SharePoint, Outlook Email, Outlook Calendar, and
 Microsoft Teams integrations.
@@ -715,8 +737,8 @@ The Dev Container supports the web editor, packages, CLI, and automated checks. 
 packages/
   scene-graph/    @open-pencil/scene-graph — nodes, primitives, hit testing, copy/snap/undo
   motion/         @open-pencil/motion — deterministic Motion planning, sampling, and projection
-  lowcode/        @open-pencil/lowcode — expressions, validation, routes, forms, runtime audits
-  plugin-contracts/ @open-pencil/plugin-contracts — portable plugin schemas, trust, runtime contracts
+  lowcode/        @open-pencil/lowcode — lowcode policy, Backend IR, migrations, release gates/state
+  plugin-contracts/ @open-pencil/plugin-contracts — portable data-only schemas and trust contracts
   pen/            @open-pencil/pen — Pencil document format helpers
   kiwi/           @open-pencil/kiwi — Kiwi runtime and low-level .fig container parsing
   fig/            @open-pencil/fig — .fig archives, SceneGraph conversion, instances, metadata
@@ -724,7 +746,7 @@ packages/
   motion-runtime/ @open-pencil/motion-runtime — shared scheduler and DOM/Vanilla/Vue adapters
   dom-css/        @open-pencil/dom-css — HTML/CSS/Tailwind to editable design documents
   vue/            @open-pencil/vue — headless Vue SDK
-  compiler/       @open-pencil/compiler — private design-to-code compiler for React/Tailwind apps
+  compiler/       @open-pencil/compiler — design-to-code targets and trusted Backend Provider bundles
   cli/            @open-pencil/cli — headless CLI
   mcp/            @open-pencil/mcp — MCP server (stdio + HTTP)
   docs/           Documentation site (openpencil.dev)
