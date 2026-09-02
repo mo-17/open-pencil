@@ -4,6 +4,7 @@ export const APP_DATABASE_NAMES = {
   libraries: 'open-pencil-libraries',
   localCanvas: 'open-pencil-cloud-local',
   outbox: 'open-pencil-cloud-outbox',
+  backendReleaseJournal: 'open-pencil-backend-release-journal',
   recovery: 'open-pencil-recovery',
   diagnostics: 'open-pencil-diagnostics'
 } as const
