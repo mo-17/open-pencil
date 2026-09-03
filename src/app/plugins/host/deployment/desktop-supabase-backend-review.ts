@@ -1,4 +1,9 @@
-import type { BackendReleaseProviderAuthorityV1 } from '@open-pencil/lowcode/backend'
+import {
+  digestStagedMigrationExecutionPlan,
+  validateStagedMigrationExecutionPlan,
+  type BackendReleaseProviderAuthorityV1,
+  type StagedMigrationExecutionPlanV1
+} from '@open-pencil/lowcode/backend'
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
@@ -34,6 +39,7 @@ export type DesktopSupabaseBackendReviewErrorCode =
   | 'invalid-config'
   | 'review-failed'
   | 'review-stale'
+  | 'staged-plan-invalid'
 
 const ERROR_MESSAGES = Object.freeze({
   aborted: 'Supabase Backend Provider review was cancelled.',
@@ -48,7 +54,8 @@ const ERROR_MESSAGES = Object.freeze({
   'grant-unavailable': 'Supabase credential authority is unavailable. Save the token again.',
   'invalid-config': 'A canonical Supabase project URL is required for Backend Provider review.',
   'review-failed': 'Supabase Backend Provider review failed closed before Apply.',
-  'review-stale': 'The document or Supabase configuration changed during review. Review again.'
+  'review-stale': 'The document or Supabase configuration changed during review. Review again.',
+  'staged-plan-invalid': 'The staged migration execution plan is invalid or unsafe.'
 }) satisfies Readonly<Record<DesktopSupabaseBackendReviewErrorCode, string>>
 
 export class DesktopSupabaseBackendReviewError extends Error {
@@ -63,6 +70,8 @@ export interface DesktopSupabaseBackendReviewInput {
   /** Live reread used to reject configuration changes that happen during network inspection. */
   readonly readConfig?: () => SupabaseConfig | undefined
   readonly graph: AppBackendProviderDocumentGraph
+  /** Optional transient, secret-free expand/backfill/contract plan selected for this review. */
+  readonly stagedExecutionPlan?: unknown
   readonly signal?: AbortSignal
 }
 
@@ -73,6 +82,7 @@ export interface DesktopSupabaseStrictReviewInput {
   readonly environment: 'staging'
   readonly projectRef: string
   readonly grantGeneration: string
+  readonly stagedExecutionPlan?: StagedMigrationExecutionPlanV1
   /** Transient only. Implementations must not retain or return this value. */
   readonly personalAccessToken: string
   /** Rebuilds the live local authority immediately before each remote catalog inspection. */
@@ -177,6 +187,7 @@ interface ExpectedReviewArtifactAuthority {
   readonly documentDigest: string
   readonly projectRef: string
   readonly grantGeneration: string
+  readonly stagedExecutionPlanDigest: string | null
 }
 
 function runtimeField(value: object, key: PropertyKey): unknown {
@@ -207,8 +218,21 @@ function matchesReviewAuthority(
     sameAuthority(manifest.backendProvider, expected.backendProvider) &&
     manifest.remoteAuthority.projectRef === expected.projectRef &&
     manifest.remoteAuthority.grantGeneration === expected.grantGeneration &&
+    artifact.inspectedReview.manifest.stagedExecutionPlanDigest ===
+      expected.stagedExecutionPlanDigest &&
     Boolean(manifest.remoteAuthority.accountId)
   )
+}
+
+function normalizedStagedExecutionPlan(value: unknown): StagedMigrationExecutionPlanV1 | undefined {
+  if (value === undefined) return undefined
+  const parsed = validateStagedMigrationExecutionPlan(value)
+  if (!parsed.ok) fail('staged-plan-invalid')
+  try {
+    return Object.freeze(structuredClone(parsed.value))
+  } catch {
+    return fail('staged-plan-invalid')
+  }
 }
 
 function isReviewOnlyArtifact(artifact: SupabaseBackendReleaseReviewArtifactV1): boolean {
@@ -259,6 +283,10 @@ export function createDesktopSupabaseBackendReviewService(
       let personalAccessToken: string | null = null
       try {
         throwIfAborted(input.signal)
+        const stagedExecutionPlan = normalizedStagedExecutionPlan(input.stagedExecutionPlan)
+        const stagedExecutionPlanDigest = stagedExecutionPlan
+          ? await digestStagedMigrationExecutionPlan(stagedExecutionPlan)
+          : null
         const initialConfig = normalizedConfig(input.readConfig?.() ?? input.config)
         if (!initialConfig) fail('invalid-config')
         const { projectRef, schema } = initialConfig
@@ -338,6 +366,7 @@ export function createDesktopSupabaseBackendReviewService(
             environment: 'staging',
             projectRef,
             grantGeneration,
+            ...(stagedExecutionPlan ? { stagedExecutionPlan } : {}),
             personalAccessToken,
             revalidateLocalAuthority: () => revalidateLocalAuthority(),
             signal: input.signal
@@ -354,7 +383,8 @@ export function createDesktopSupabaseBackendReviewService(
           backendProvider,
           documentDigest,
           projectRef,
-          grantGeneration
+          grantGeneration,
+          stagedExecutionPlanDigest
         })
         if (JSON.stringify(artifact).includes(personalAccessToken)) fail('artifact-invalid')
 

@@ -40,27 +40,46 @@ const RESULT: DesktopSupabaseBackendReviewResult = {
 }
 
 describe('Supabase Backend Provider review composable', () => {
-  test('keeps the product entry explicit and review-only with no Apply action', async () => {
+  test('keeps Review non-mutating and exposes Apply only in the separate staging section', async () => {
     const source = await Bun.file(
       'src/components/properties/Lowcode/SupabaseSchemaInspector.vue'
     ).text()
-    const reviewSection = source.slice(
-      source.indexOf('data-test-id="lowcode-supabase-backend-review"')
-    )
+    const reviewStart = source.indexOf('data-test-id="lowcode-supabase-backend-review"')
+    const stagingStart = source.indexOf('data-test-id="lowcode-supabase-backend-staging-release"')
+    const reviewSection = source.slice(reviewStart, stagingStart)
+    const stagingSection = source.slice(stagingStart)
 
+    expect(reviewStart).toBeGreaterThan(-1)
+    expect(stagingStart).toBeGreaterThan(reviewStart)
     expect(reviewSection).toContain('data-test-id="lowcode-supabase-backend-review-action"')
-    expect(reviewSection).toContain('@click="backendReview.review"')
+    expect(reviewSection).toContain('@click="runBackendReview"')
+    expect(reviewSection).toContain('data-test-id="lowcode-supabase-backend-staged-plan-file"')
+    expect(source).toContain('stagedMigrationPlan.plan.value ?? undefined')
     expect(reviewSection).toContain('panels.lowcodeSupabaseBackendReviewOnly')
     expect(reviewSection).toContain('panels.lowcodeSupabaseBackendReviewApplyUnavailable')
-    expect(reviewSection).toContain(
-      'data-test-id="lowcode-supabase-backend-review-copy-sql"'
-    )
+    expect(reviewSection).toContain('data-test-id="lowcode-supabase-backend-review-copy-sql"')
     expect(reviewSection).toContain('@click="copyReviewSql"')
     expect(source).toContain('navigator.clipboard.writeText(sql)')
     expect(reviewSection).toContain('panels.lowcodeSupabaseBackendReviewCopySql')
     expect(reviewSection).toContain('panels.lowcodeSupabaseBackendReviewCopied')
     expect(reviewSection).toContain('panels.lowcodeSupabaseBackendReviewCopyFailed')
     expect(reviewSection).not.toMatch(/@click="[^"]*(?:apply|deploy)/iu)
+
+    expect(stagingSection).toContain('data-test-id="lowcode-supabase-backend-staging-apply"')
+    expect(stagingSection).toContain('@click="runStagingRelease"')
+    expect(stagingSection).toContain(':disabled="!stagingCanApply"')
+    expect(stagingSection).toContain('lowcodeSupabaseBackendStagingProductionBlocked')
+    expect(stagingSection).toContain('lowcodeSupabaseBackendStagingRlsManual')
+    expect(stagingSection).toContain('lowcodeSupabaseBackendStagingBadge')
+    expect(stagingSection).toContain('lowcodeSupabaseBackendStagingWriteCredentialIndependent')
+    expect(stagingSection).toContain('lowcodeSupabaseBackendStagingNoRetry')
+    expect(stagingSection).toContain('stagingRelease.result.value.receipt.gates')
+    expect(source).toContain('if (!stagingCanApply.value) return')
+    expect(source).toContain("stagingRelease.state.value !== 'outcome-unknown'")
+    expect(source).toContain("stagingRelease.state.value === 'outcome-unknown'")
+    expect(source).toContain(
+      "if (stagingWritePatInput.value) stagingWritePatInput.value.value = ''"
+    )
   })
 
   test('runs only after an explicit review call and exposes the result', async () => {
@@ -85,6 +104,31 @@ describe('Supabase Backend Provider review composable', () => {
     expect(calls).toBe(1)
     expect(review.state.value).toBe('ready')
     expect(review.result.value).toBe(RESULT)
+    scope.stop()
+  })
+
+  test('forwards a transient staged execution plan only for the explicit review call', async () => {
+    const stagedExecutionPlan = Object.freeze({ format: 'test-staged-plan' })
+    let captured: unknown
+    const service: DesktopSupabaseBackendReviewService = {
+      async review(input) {
+        captured = input.stagedExecutionPlan
+        return RESULT
+      }
+    }
+    const scope = effectScope()
+    const review = scope.run(() =>
+      useSupabaseBackendProviderReview(
+        ref<SupabaseConfig>({ url: PROJECT_URL, anonKey: '' }),
+        () => GRAPH,
+        { service }
+      )
+    )
+    if (!review) throw new Error('Missing composable')
+
+    await review.review(stagedExecutionPlan)
+    expect(captured).toBe(stagedExecutionPlan)
+    expect(review.state.value).toBe('ready')
     scope.stop()
   })
 

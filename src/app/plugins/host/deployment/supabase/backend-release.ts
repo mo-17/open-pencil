@@ -1,6 +1,7 @@
 import {
   createSupabaseInspectedMigrationReview,
-  type SupabaseInspectedMigrationReviewV1
+  type SupabaseInspectedMigrationReviewV1,
+  type SupabaseStagedMigrationReviewInputV1
 } from '@open-pencil/compiler/backend'
 import {
   digestDataModel,
@@ -20,11 +21,16 @@ import {
   createBackendHostReleaseController,
   type BackendHostReleaseConfirmationInput,
   type BackendHostReleaseInspectionInput,
+  type BackendHostReleasePreparedApply,
+  type BackendHostReleasePrepareApplyInput,
+  type BackendHostReleaseReconcileInput,
+  type BackendHostReleaseReconcileResult,
   type BackendHostReleaseReviewInput,
   type BackendHostReleaseRunInput
 } from '../backend/release-controller'
 import { deepFreeze } from '../backend/release-controller/normalization'
 import type { BackendHostReleaseDispatchJournal } from '../backend/release-journal'
+import { verifySupabaseStagingRelease } from './staging-verifier'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -41,7 +47,7 @@ export interface SupabaseBackendReleaseSnapshotEvidence {
 }
 
 export interface SupabaseBackendReleaseSnapshotRequest {
-  readonly stage: BackendHostReleaseInspectionInput['stage']
+  readonly stage: BackendHostReleaseInspectionInput['stage'] | 'post-apply' | 'reconcile'
   readonly projectRef: string
   readonly accountId: string
   readonly expectedTargetModelDigest: string
@@ -49,7 +55,7 @@ export interface SupabaseBackendReleaseSnapshotRequest {
 }
 
 export interface SupabaseBackendReleaseLocalAuthorityRequest {
-  readonly stage: BackendHostReleaseInspectionInput['stage']
+  readonly stage: SupabaseBackendReleaseSnapshotRequest['stage']
 }
 
 export interface SupabaseBackendReleaseHostReviewManifestV1 {
@@ -100,6 +106,59 @@ export interface SupabaseBackendReleaseConfirmationContext {
   readonly release: BackendHostReleaseConfirmationInput
 }
 
+export interface SupabaseBackendStagingApplyContext {
+  readonly artifact: SupabaseBackendReleaseReviewArtifactV1
+  readonly release: BackendHostReleasePrepareApplyInput
+}
+
+const trustedStagingApplyContexts = new WeakSet<object>()
+const consumedStagingApplyContexts = new WeakSet<object>()
+
+function trustedStagingApplyContext(
+  artifact: SupabaseBackendReleaseReviewArtifactV1,
+  release: BackendHostReleasePrepareApplyInput
+): SupabaseBackendStagingApplyContext {
+  const context = Object.freeze({ artifact, release })
+  trustedStagingApplyContexts.add(context)
+  return context
+}
+
+/**
+ * Consumes an identity-minted context exactly once. Only this module can mint one, and it does so
+ * after the complete build/artifact/staging eligibility check inside the Release Controller.
+ */
+export function consumeTrustedSupabaseBackendStagingApplyContext(
+  value: unknown
+): value is SupabaseBackendStagingApplyContext {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !trustedStagingApplyContexts.has(value) ||
+    consumedStagingApplyContexts.has(value)
+  ) {
+    return false
+  }
+  consumedStagingApplyContexts.add(value)
+  return true
+}
+
+export interface SupabaseBackendStagingReconcileContext {
+  readonly artifact: SupabaseBackendReleaseReviewArtifactV1
+  readonly release: BackendHostReleaseReconcileInput
+}
+
+/**
+ * One operation-scoped Host capability. The review artifact itself remains non-authoritative and
+ * keeps applyAllowed=false; only this separately injected staging capability may dispatch.
+ */
+export interface SupabaseBackendStagingApplyCapability {
+  readonly expectedReviewArtifactDigest: string
+  prepareApply(input: SupabaseBackendStagingApplyContext): Promise<BackendHostReleasePreparedApply>
+  reconcile(
+    input: SupabaseBackendStagingReconcileContext
+  ): Promise<BackendHostReleaseReconcileResult>
+}
+
 export interface CreateSupabaseBackendReleaseOptions {
   readonly build: SupabaseBackendReleaseBuild
   readonly backendProvider: BackendReleaseProviderAuthorityV1
@@ -109,6 +168,8 @@ export interface CreateSupabaseBackendReleaseOptions {
   readonly projectRef: string
   readonly accountId: string
   readonly grantGeneration: string
+  /** Optional source-only staged phase selected by the Host for this exact inspection. */
+  readonly stagedExecution?: SupabaseStagedMigrationReviewInputV1
   readonly dispatchJournal: BackendHostReleaseDispatchJournal
   /**
    * Rebuild and compare the live graph/config/Provider/grant authority. Throw on any mismatch.
@@ -128,6 +189,7 @@ export interface CreateSupabaseBackendReleaseOptions {
   readonly confirmBackendRelease: (
     input: SupabaseBackendReleaseConfirmationContext
   ) => MaybePromise<readonly BackendReleaseDestructiveConfirmationV1[] | null>
+  readonly stagingApply?: SupabaseBackendStagingApplyCapability
   readonly now: () => string
 }
 
@@ -250,6 +312,63 @@ function sameMigrationPlan(
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+const STAGING_OPERATION_KINDS = new Set(['create-enum', 'create-entity'])
+
+function hasEmptyManagedBaseline(review: SupabaseInspectedMigrationReviewV1): boolean {
+  const currentModel = review.snapshot.currentModel
+  return (
+    currentModel.entities.length === 0 &&
+    currentModel.enums.length === 0 &&
+    currentModel.relations.length === 0 &&
+    review.snapshot.objects.every((entry) => entry.management !== 'managed')
+  )
+}
+
+function artifactForSchemaDigest(
+  artifactsByDigest: ReadonlyMap<string, SupabaseBackendReleaseReviewArtifactV1>,
+  digest: string | null
+): SupabaseBackendReleaseReviewArtifactV1 {
+  const artifact = digest ? artifactsByDigest.get(digest) : undefined
+  if (!artifact) throw new TypeError('Supabase Backend Release review artifact is unavailable.')
+  return artifact
+}
+
+function assertStagingApplyEligibility(
+  environment: BackendReleaseEnvironment,
+  build: SupabaseBackendReleaseBuild,
+  artifact: SupabaseBackendReleaseReviewArtifactV1,
+  expectedReviewArtifactDigest: string
+): void {
+  const review = artifact.inspectedReview
+  const operations = review.manifest.migrationPlan.operations
+  const rendered = [...review.manifest.renderedMigrationOperationIds].sort()
+  const planned = operations.map((entry) => entry.operation.id).sort()
+  const unsupportedCapability = build.plan.capabilities.some(
+    (decision) =>
+      decision.included &&
+      (decision.capability === 'server.functions' ||
+        decision.capability === 'server.http' ||
+        decision.capability === 'storage.objects')
+  )
+  if (
+    environment !== 'staging' ||
+    artifact.manifest.environment !== 'staging' ||
+    artifact.manifestDigest !== expectedReviewArtifactDigest ||
+    !review.manifest.reviewReady ||
+    review.manifest.blockers.length !== 0 ||
+    !hasEmptyManagedBaseline(review) ||
+    operations.length === 0 ||
+    operations.some(
+      (entry) => entry.risk !== 'low' || !STAGING_OPERATION_KINDS.has(entry.operation.kind)
+    ) ||
+    JSON.stringify(rendered) !== JSON.stringify(planned) ||
+    /(^|[^A-Za-z])DROP([^A-Za-z]|$)/iu.test(review.sql) ||
+    unsupportedCapability
+  ) {
+    throw new BackendHostReleaseApplyError('precondition', 'supabase-staging-apply-not-eligible')
+  }
+}
+
 /**
  * Creates the current fail-closed Supabase Host bridge. It can inspect and present the independent
  * Backend review artifact, but its executor has no dispatch capability by construction.
@@ -266,11 +385,13 @@ export function createSupabaseBackendRelease(
     projectRef,
     accountId,
     grantGeneration,
+    stagedExecution,
     dispatchJournal,
     revalidateLocalAuthority,
     snapshotProvider,
     reviewBackendRelease,
     confirmBackendRelease,
+    stagingApply,
     now
   } = options
   const backendProvider = normalizeBackendReleaseProviderAuthority(requestedBackendProvider)
@@ -284,11 +405,24 @@ export function createSupabaseBackendRelease(
   const controller = createBackendHostReleaseController({
     dispatchJournal,
     reconciler: {
-      async reconcile() {
-        throw new BackendHostReleaseApplyError(
-          'precondition',
-          'supabase-live-reconcile-unavailable'
+      async reconcile(release) {
+        if (!stagingApply) {
+          throw new BackendHostReleaseApplyError(
+            'precondition',
+            'supabase-live-reconcile-unavailable'
+          )
+        }
+        const artifact = artifactForSchemaDigest(
+          artifactsByDigest,
+          release.artifacts.schemaArtifactDigest
         )
+        assertStagingApplyEligibility(
+          environment,
+          build,
+          artifact,
+          stagingApply.expectedReviewArtifactDigest
+        )
+        return stagingApply.reconcile({ artifact, release })
       }
     },
     inspector: {
@@ -316,7 +450,8 @@ export function createSupabaseBackendRelease(
           expectedProjectRef: projectRef,
           expectedAccountId: accountId,
           expectedInspectedSchemaDigest: evidence.expectedInspectedSchemaDigest,
-          expectedTargetModelDigest: targetModelDigest
+          expectedTargetModelDigest: targetModelDigest,
+          ...(stagedExecution ? { stagedExecution } : {})
         })
         if (inspectedReview.manifest.applicationDigest !== build.plan.applicationDigest) {
           throw new TypeError(
@@ -424,13 +559,60 @@ export function createSupabaseBackendRelease(
       }
     },
     executor: {
-      async prepareApply() {
-        throw new BackendHostReleaseApplyError('precondition', 'supabase-live-apply-unavailable')
+      async prepareApply(release) {
+        if (!stagingApply) {
+          throw new BackendHostReleaseApplyError('precondition', 'supabase-live-apply-unavailable')
+        }
+        const artifact = artifactForSchemaDigest(
+          artifactsByDigest,
+          release.artifacts.schemaArtifactDigest
+        )
+        assertStagingApplyEligibility(
+          environment,
+          build,
+          artifact,
+          stagingApply.expectedReviewArtifactDigest
+        )
+        return stagingApply.prepareApply(trustedStagingApplyContext(artifact, release))
       }
     },
     verifier: {
-      async verify() {
-        throw new Error('Supabase verification is unreachable while live Apply is unavailable.')
+      async verify(release) {
+        if (!stagingApply) {
+          throw new Error('Supabase verification is unreachable while live Apply is unavailable.')
+        }
+        const artifact = artifactForSchemaDigest(
+          artifactsByDigest,
+          release.artifacts.schemaArtifactDigest
+        )
+        await revalidateLocalAuthority({ stage: 'post-apply' })
+        const evidence = await snapshotProvider({
+          stage: 'post-apply',
+          projectRef,
+          accountId,
+          expectedTargetModelDigest: artifact.inspectedReview.manifest.targetModelDigest,
+          requiredCredentialRefs: release.requiredCredentialRefs
+        })
+        const verification = await verifySupabaseStagingRelease({
+          application: build.request.application,
+          capabilities: build.plan.capabilities,
+          backendProvider,
+          reviewedBackendProvider: artifact.manifest.backendProvider,
+          projectRef,
+          accountId,
+          grantGeneration,
+          planDigest: release.plan.planDigest,
+          reviewedArtifactDigest: artifact.manifestDigest,
+          expectedReviewedArtifactDigest: stagingApply.expectedReviewArtifactDigest,
+          reviewed: artifact.inspectedReview,
+          postApplySnapshot: evidence.snapshot,
+          expectedPostApplySchemaDigest: evidence.expectedInspectedSchemaDigest,
+          remoteOperationIds: release.remoteOperationIds,
+          requiredEnvironmentNames: release.requiredEnvironmentNames,
+          requiredCredentialRefs: release.requiredCredentialRefs,
+          checkedAt: now()
+        })
+        return verification.gates
       }
     },
     now

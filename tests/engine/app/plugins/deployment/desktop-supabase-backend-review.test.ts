@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test'
 
 import type {
   BackendApplicationSpecV1,
-  BackendReleaseProviderAuthorityV1
+  BackendReleaseProviderAuthorityV1,
+  StagedMigrationExecutionPlanV1
+} from '@open-pencil/lowcode/backend'
+import {
+  STAGED_MIGRATION_EXECUTION_FORMAT,
+  digestStagedMigrationExecutionPlan
 } from '@open-pencil/lowcode/backend'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
@@ -116,6 +121,9 @@ async function artifactFor(
   const inspectedSchemaDigest = 'inspected-schema-digest'
   const inspectedManifest = {
     inspectedSchemaDigest,
+    stagedExecutionPlanDigest: input.stagedExecutionPlan
+      ? await digestStagedMigrationExecutionPlan(input.stagedExecutionPlan)
+      : null,
     reviewReady: true,
     applyAllowed: false,
     releaseReady: false,
@@ -164,6 +172,38 @@ async function artifactFor(
   return artifact
 }
 
+async function stagedPlan(): Promise<StagedMigrationExecutionPlanV1> {
+  return {
+    format: STAGED_MIGRATION_EXECUTION_FORMAT,
+    version: 1,
+    executionId: 'execution:expand-title',
+    changeId: 'change:title',
+    sourceMigrationPlan: {
+      version: 1,
+      planId: 'migration:title',
+      planDigest: await digestCanonicalManifest({ plan: 'title' }),
+      fromModelDigest: await digestCanonicalManifest({ model: 'before' }),
+      targetModelDigest: await digestCanonicalManifest({ model: 'after' })
+    },
+    phase: 'expand',
+    predecessor: null,
+    operations: [
+      {
+        operation: {
+          id: 'staged:add-title',
+          kind: 'add-nullable-field',
+          sourceOperationIds: ['op-0001'],
+          entityId: 'notes',
+          field: { id: 'title', name: 'title', type: 'string', nullable: true }
+        },
+        risk: 'low'
+      }
+    ],
+    highestRisk: 'low',
+    requiresHumanApproval: false
+  }
+}
+
 function dependencies(
   overrides: Partial<DesktopSupabaseBackendReviewDependencies> = {}
 ): DesktopSupabaseBackendReviewDependencies {
@@ -187,6 +227,59 @@ async function errorCode(operation: Promise<unknown>): Promise<string | undefine
 }
 
 describe('Desktop Supabase Backend Provider review service', () => {
+  test('validates, snapshots, and binds an explicit staged plan before credential use', async () => {
+    const plan = await stagedPlan()
+    let captured: StagedMigrationExecutionPlanV1 | undefined
+    const service = createDesktopSupabaseBackendReviewService(
+      dependencies({
+        async prepareStrictReview(input) {
+          captured = input.stagedExecutionPlan
+          return artifactFor(input)
+        }
+      })
+    )
+
+    const operation = service.review({
+      config: { url: PROJECT_URL, anonKey: '' },
+      graph: GRAPH,
+      stagedExecutionPlan: plan
+    })
+    const firstOperation = plan.operations[0]
+    if (!firstOperation) throw new Error('Missing staged migration operation')
+    firstOperation.operation.sourceOperationIds[0] = 'tampered-after-call'
+    const result = await operation
+
+    expect(captured).toBeDefined()
+    expect(captured).not.toBe(plan)
+    expect(captured?.operations[0]?.operation.sourceOperationIds).toEqual(['op-0001'])
+    expect(result.artifact.inspectedReview.manifest.stagedExecutionPlanDigest).toBe(
+      await digestStagedMigrationExecutionPlan(captured)
+    )
+  })
+
+  test('rejects an invalid staged plan before resolving credentials', async () => {
+    let credentialCalls = 0
+    const service = createDesktopSupabaseBackendReviewService(
+      dependencies({
+        async resolveCredential() {
+          credentialCalls += 1
+          return PAT
+        }
+      })
+    )
+
+    expect(
+      await errorCode(
+        service.review({
+          config: { url: PROJECT_URL, anonKey: '' },
+          graph: GRAPH,
+          stagedExecutionPlan: { format: 'untrusted-plan', secretValue: PAT }
+        })
+      )
+    ).toBe('staged-plan-invalid')
+    expect(credentialCalls).toBe(0)
+  })
+
   test('binds a secret-free review artifact to stable grant and Provider authority', async () => {
     const calls: string[] = []
     let grantReads = 0

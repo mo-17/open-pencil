@@ -57,7 +57,7 @@ export function useSupabaseBackendProviderReview(
     result.value = null
   }
 
-  async function review(): Promise<void> {
+  async function review(stagedExecutionPlan?: unknown): Promise<void> {
     const version = cancelActiveRun()
     const controller = new AbortController()
     activeController = controller
@@ -69,6 +69,7 @@ export function useSupabaseBackendProviderReview(
         config: config.value,
         readConfig: () => config.value,
         graph,
+        ...(stagedExecutionPlan === undefined ? {} : { stagedExecutionPlan }),
         signal: controller.signal
       })
       if (version !== runVersion || controller.signal.aborted) return

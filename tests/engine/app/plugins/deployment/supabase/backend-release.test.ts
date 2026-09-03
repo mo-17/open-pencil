@@ -29,7 +29,8 @@ import { createMemoryBackendHostReleaseDispatchJournal } from '@/app/plugins/hos
 import {
   createSupabaseBackendRelease,
   type SupabaseBackendReleaseReviewArtifactV1,
-  type SupabaseBackendReleaseSnapshotRequest
+  type SupabaseBackendReleaseSnapshotRequest,
+  type SupabaseBackendStagingApplyCapability
 } from '@/app/plugins/host/deployment/supabase/backend-release'
 
 const NOW = '2026-08-30T09:00:00.000Z'
@@ -49,6 +50,8 @@ const COMPLETE_COVERAGE = {
   roleMemberships: 'complete',
   rls: 'complete',
   policies: 'complete',
+  storageBuckets: 'complete',
+  storagePolicies: 'complete',
   privileges: 'complete'
 } as const
 
@@ -152,6 +155,8 @@ function emptyInspection(
     ],
     roleMemberships: [],
     policies: [],
+    storageBuckets: [],
+    storagePolicies: [],
     privileges: [],
     defaultPrivileges: []
   }
@@ -576,6 +581,88 @@ describe('Supabase Backend Host Release review bridge', () => {
       outcome: 'cancelled',
       dispatch: 'not-dispatched',
       failureCode: 'review-denied'
+    })
+  })
+
+  test('keeps repeat migrations reviewable but rejects them from live staging Apply', async () => {
+    const application = ownerApplication()
+    application.dataModel.entities = []
+    application.dataModel.enums = [
+      { id: 'note-status', name: 'note_status', values: ['draft', 'published'] }
+    ]
+    application.auth.identities = []
+    application.auth.ownership = []
+    application.auth.rowAccess = []
+    application.workflows.workflows = []
+    const { build, backendProvider } = await prepared(application)
+    const snapshot = await createSupabaseInspectedMigrationSnapshot({
+      ...emptyInspection(),
+      currentModel: {
+        version: 1,
+        entities: [],
+        enums: [{ id: 'note-status', name: 'note_status', values: ['draft'] }],
+        relations: []
+      },
+      objects: [
+        {
+          kind: 'enum',
+          schema: 'public',
+          name: 'note_status',
+          management: 'managed',
+          openPencilId: 'note-status',
+          values: ['draft'],
+          address: { classOid: '1247', objectOid: '50000', subId: 0 }
+        }
+      ]
+    })
+    let expectedReviewArtifactDigest = ''
+    let prepareApplyCalls = 0
+    const stagingApply: SupabaseBackendStagingApplyCapability = {
+      get expectedReviewArtifactDigest() {
+        return expectedReviewArtifactDigest
+      },
+      async prepareApply() {
+        prepareApplyCalls += 1
+        throw new Error('repeat staging Apply must remain unreachable')
+      },
+      async reconcile() {
+        return {
+          outcome: 'outcome-unknown',
+          code: 'repeat-staging-reconcile-unreachable',
+          remoteOperationIds: []
+        }
+      }
+    }
+    const bridge = createSupabaseBackendRelease({
+      ...baseOptions(build, backendProvider, snapshot),
+      documentDigest: await documentDigest(),
+      reviewBackendRelease({ artifact }) {
+        expectedReviewArtifactDigest = artifact.manifestDigest
+        expect(
+          artifact.inspectedReview.manifest.migrationPlan.operations.map(
+            (entry) => entry.operation.kind
+          )
+        ).toEqual(['add-enum-value'])
+        return true
+      },
+      confirmBackendRelease: () => [],
+      stagingApply
+    })
+
+    const state = await bridge.run({
+      releaseId: 'supabase-release-repeat-staging',
+      planId: 'supabase-plan-repeat-staging',
+      receiptId: 'supabase-receipt-repeat-staging'
+    })
+
+    expect(prepareApplyCalls).toBe(0)
+    expect(state).toMatchObject({
+      phase: 'receipt',
+      outcome: 'failed',
+      dispatch: 'not-dispatched',
+      receipt: {
+        failure: { code: 'supabase-staging-apply-not-eligible', outcomeUnknown: false }
+      }
     })
   })
 

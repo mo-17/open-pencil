@@ -102,6 +102,9 @@ async function prepareStrictReview(
     projectRef: input.projectRef,
     accountId: projectAuthority.organizationId,
     grantGeneration: input.grantGeneration,
+    ...(input.stagedExecutionPlan
+      ? { stagedExecution: { executionPlan: input.stagedExecutionPlan } }
+      : {}),
     dispatchJournal,
     revalidateLocalAuthority: input.revalidateLocalAuthority,
     async snapshotProvider() {
