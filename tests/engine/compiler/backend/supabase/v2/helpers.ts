@@ -249,6 +249,88 @@ export function supabaseAtomicTransactionApplicationV2(): BackendApplicationSpec
   }
 }
 
+export function supabaseBackfillApplicationV2(): BackendApplicationSpecV2 {
+  return {
+    format: 'openpencil.backend-application',
+    version: 2,
+    applicationId: 'test.supabase-receipt-backfill',
+    dataModel: {
+      version: 1,
+      entities: [
+        {
+          id: 'accounts',
+          name: 'accounts',
+          management: 'managed',
+          fields: [
+            {
+              id: 'account-id',
+              name: 'id',
+              type: 'integer',
+              nullable: false,
+              default: { kind: 'generated', generator: 'identity' }
+            },
+            {
+              id: 'account-status',
+              name: 'status',
+              type: 'string',
+              nullable: false,
+              default: { kind: 'literal', value: 'pending' }
+            }
+          ],
+          primaryKey: { fields: ['account-id'] }
+        }
+      ],
+      enums: [],
+      relations: []
+    },
+    auth: {
+      version: 1,
+      identities: [],
+      roles: [],
+      ownership: [],
+      tenants: [],
+      rowAccess: []
+    },
+    workflows: { version: 1, workflows: [] },
+    realtime: { version: 1, subscriptions: [] },
+    transactions: { version: 1, transactions: [] },
+    dataMigrations: {
+      version: 1,
+      migrations: [
+        {
+          id: 'backfill-account-status',
+          name: 'Backfill account status',
+          entityId: 'accounts',
+          cursor: { kind: 'monotonic-identity-primary-key', fieldId: 'account-id' },
+          batchSize: 250,
+          predicate: { kind: 'field-is-null', fieldId: 'account-status' },
+          transforms: [{ kind: 'set-literal', fieldId: 'account-status', value: 'pending' }],
+          postconditions: [
+            { kind: 'field-not-null', fieldId: 'account-status' },
+            { kind: 'matched-row-count', minimum: 1 }
+          ],
+          dryRunRequired: true,
+          resumePolicy: 'from-receipt'
+        }
+      ]
+    },
+    automations: {
+      version: 1,
+      queues: [],
+      webhookDestinations: [],
+      automations: [],
+      telemetry: { logs: false, metrics: false, traces: false, auditEvents: false },
+      driftDetection: { enabled: false }
+    },
+    capabilities: [
+      { capability: 'migrations.backfill', required: true },
+      { capability: 'migrations.data', required: true },
+      { capability: 'migrations.schema', required: true }
+    ],
+    secrets: []
+  }
+}
+
 export function supabasePrivateRealtimeSelectionV2(bundle: BackendProviderBundleV2) {
   return {
     descriptor: bundle.descriptor,

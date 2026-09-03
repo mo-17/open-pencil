@@ -9,13 +9,9 @@ import { SUPABASE_BACKEND_PROVIDER_ID, SUPABASE_BACKEND_PROVIDER_PLUGIN_ID } fro
 
 export const SUPABASE_BACKEND_PROVIDER_CONTRIBUTION_ID_V2 = 'supabase.backend.v2' as const
 export const SUPABASE_BACKEND_PROVIDER_ADAPTER_ID_V2 = 'open-pencil.backend.supabase.v2' as const
-export const SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2 = '2.1.0' as const
+export const SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2 = '2.2.0' as const
 
-/**
- * Deliberately narrow first V2 slice. `migrations.schema` is present because a managed entity is
- * an actual capability of Backend Application V2; this adapter emits only review artifacts and a
- * prerequisite manifest, never schema Apply authority.
- */
+/** Shared schema capability for the isolated Realtime, Atomic, and Backfill review slices. */
 export const SUPABASE_AUTH_CAPABILITIES_V2 = Object.freeze([
   'auth.identity'
 ] as const satisfies readonly BackendCapabilityV2[])
@@ -43,11 +39,18 @@ export const SUPABASE_ATOMIC_TRANSACTION_CAPABILITIES_V2 = Object.freeze([
   'transactions.atomic'
 ] as const satisfies readonly BackendCapabilityV2[])
 
+export const SUPABASE_BACKFILL_CAPABILITIES_V2 = Object.freeze([
+  'migrations.backfill',
+  'migrations.data'
+] as const satisfies readonly BackendCapabilityV2[])
+
 export const SUPABASE_BACKEND_PROVIDER_CAPABILITIES_V2 = Object.freeze([
   'auth.identity',
   'data.read',
   'data.write',
   'events.data-change',
+  'migrations.backfill',
+  'migrations.data',
   'migrations.schema',
   'policy.row-level',
   'realtime.subscribe',
