@@ -17,10 +17,23 @@ export function emitSupabaseBackfillReviewSQLV2(application: BackendApplicationS
   const migration = resolvedSupabaseBackfillV2(application)
   const entity = application.dataModel.entities.at(0)
   if (!entity) throw new TypeError('Supabase backfill SQL requires one managed entity.')
+  const targetField = entity.fields.find((field) => field.id === migration.transform.fieldId)
+  if (!targetField) throw new TypeError('Supabase backfill SQL requires the resolved target field.')
+  const targetEnum =
+    targetField.type === 'enum'
+      ? application.dataModel.enums.find((entry) => entry.id === targetField.enumId)
+      : undefined
+  if (targetField.type === 'enum' && !targetEnum) {
+    throw new TypeError('Supabase backfill SQL requires the resolved target enum.')
+  }
   const tablePath = qualified(migration.table)
   const cursorName = quoteIdentifier(migration.cursor.field)
   const targetName = quoteIdentifier(migration.transform.field)
   const desiredDefaultJSON = JSON.stringify(migration.transform.value)
+  const expectedTypeKind = targetField.type === 'enum' ? 'e' : 'b'
+  const enumMarkerAndLabelsSQL = targetEnum
+    ? `COALESCE((SELECT "pg_catalog"."obj_description"("actual_type_oid", 'pg_type') = ${quoteLiteral(formatSupabaseManagedMarker('enum', targetEnum.id))} AND (SELECT COALESCE("pg_catalog"."jsonb_agg"("enum_entry"."enumlabel" ORDER BY "enum_entry"."enumsortorder"), '[]'::"pg_catalog"."jsonb") FROM "pg_catalog"."pg_enum" AS "enum_entry" WHERE "enum_entry"."enumtypid" = "target_column"."actual_type_oid") = ${quoteLiteral(JSON.stringify(targetEnum.values))}::"pg_catalog"."jsonb" FROM "target_column"), FALSE)`
+    : 'TRUE'
   const matchedRows = migration.postconditions.find(
     (condition) => condition.kind === 'matched-row-count'
   )
@@ -29,6 +42,7 @@ export function emitSupabaseBackfillReviewSQLV2(application: BackendApplicationS
     '-- OpenPencil Supabase receipt-driven backfill read-only review v1.',
     '-- REVIEW ONLY: no direct DML or DDL is emitted; this file is not execution authority.',
     '-- A trusted Host must enforce a database READ ONLY transaction because SELECT can invoke policy functions.',
+    '-- Row reads additionally require one fixed role/search_path and row_security=off failure semantics.',
     '-- Statement 1 reports a partial catalog checklist; its generated text is not live evidence.',
     'WITH "managed_table" AS (',
     '  SELECT "table_class"."oid", "table_class"."relrowsecurity", "table_class"."relforcerowsecurity"',
@@ -55,11 +69,20 @@ export function emitSupabaseBackfillReviewSQLV2(application: BackendApplicationS
     '  SELECT',
     '    "column_entry"."attrelid",',
     '    "column_entry"."attnum",',
+    '    "column_entry"."atttypmod" AS "actual_type_modifier",',
+    '    "column_entry"."attgenerated" AS "generated_kind",',
     '    NOT "column_entry"."attnotnull" AS "currently_nullable",',
     '    "column_entry"."atttypid" AS "actual_type_oid",',
+    '    "type_namespace"."nspname" AS "actual_type_schema",',
+    '    "type_entry"."typname" AS "actual_type_name",',
+    '    "type_entry"."typtype" AS "actual_type_kind",',
     '    "pg_catalog"."pg_get_expr"("column_default"."adbin", "column_default"."adrelid") AS "actual_default_expression"',
     '  FROM "pg_catalog"."pg_attribute" AS "column_entry"',
     '  JOIN "managed_table" ON "managed_table"."oid" = "column_entry"."attrelid"',
+    '  JOIN "pg_catalog"."pg_type" AS "type_entry"',
+    '    ON "type_entry"."oid" = "column_entry"."atttypid"',
+    '  JOIN "pg_catalog"."pg_namespace" AS "type_namespace"',
+    '    ON "type_namespace"."oid" = "type_entry"."typnamespace"',
     '  LEFT JOIN "pg_catalog"."pg_attrdef" AS "column_default"',
     '    ON "column_default"."adrelid" = "column_entry"."attrelid"',
     '   AND "column_default"."adnum" = "column_entry"."attnum"',
@@ -67,6 +90,33 @@ export function emitSupabaseBackfillReviewSQLV2(application: BackendApplicationS
     '    AND "column_entry"."attnum" > 0',
     '    AND NOT "column_entry"."attisdropped"',
     `    AND "pg_catalog"."col_description"("column_entry"."attrelid", "column_entry"."attnum") = ${quoteLiteral(formatSupabaseManagedMarker('field', migration.transform.fieldId))}`,
+    '),',
+    '"table_write_hazards" AS (',
+    '  SELECT',
+    '    (SELECT COUNT(*) FROM "pg_catalog"."pg_constraint" AS "constraint_entry"',
+    '      JOIN "managed_table" ON "managed_table"."oid" = "constraint_entry"."conrelid"',
+    '      WHERE "constraint_entry"."contype" IN (\'u\', \'x\')) AS "non_primary_unique_or_exclusion_constraint_count",',
+    '    (SELECT COUNT(*) FROM "pg_catalog"."pg_index" AS "index_entry"',
+    '      JOIN "managed_table" ON "managed_table"."oid" = "index_entry"."indrelid"',
+    '      WHERE NOT "index_entry"."indisprimary") AS "non_primary_index_count",',
+    '    (SELECT COUNT(*) FROM "pg_catalog"."pg_index" AS "index_entry"',
+    '      JOIN "managed_table" ON "managed_table"."oid" = "index_entry"."indrelid"',
+    '      WHERE ("index_entry"."indpred" IS NOT NULL',
+    '         OR "index_entry"."indexprs" IS NOT NULL)) AS "partial_or_expression_index_count",',
+    '    (SELECT COUNT(*) FROM "pg_catalog"."pg_constraint" AS "constraint_entry"',
+    '      JOIN "managed_table" ON "managed_table"."oid" = "constraint_entry"."conrelid"',
+    '      WHERE "constraint_entry"."contype" = \'c\') AS "check_constraint_count",',
+    '    (SELECT COUNT(*) FROM "pg_catalog"."pg_constraint" AS "constraint_entry"',
+    '      JOIN "managed_table" ON "managed_table"."oid" = "constraint_entry"."conrelid"',
+    '      WHERE "constraint_entry"."contype" = \'f\') AS "outbound_foreign_key_constraint_count",',
+    '    (SELECT COUNT(*) FROM "pg_catalog"."pg_attribute" AS "generated_column"',
+    '      JOIN "managed_table" ON "managed_table"."oid" = "generated_column"."attrelid"',
+    '      WHERE "generated_column"."attnum" > 0',
+    '        AND NOT "generated_column"."attisdropped"',
+    '        AND "generated_column"."attgenerated" <> \'\') AS "generated_column_count",',
+    '    (SELECT COUNT(*) FROM "pg_catalog"."pg_inherits" AS "inheritance_entry"',
+    '      JOIN "managed_table" ON "managed_table"."oid" = "inheritance_entry"."inhrelid"',
+    '        OR "managed_table"."oid" = "inheritance_entry"."inhparent") AS "inheritance_relation_count"',
     '),',
     '"primary_key" AS (',
     '  SELECT "constraint_entry"."oid"',
@@ -122,16 +172,40 @@ export function emitSupabaseBackfillReviewSQLV2(application: BackendApplicationS
     '  (SELECT COUNT(*) FROM "primary_key") = 1 AS "primary_key_marker_and_shape_match",',
     '  COALESCE((SELECT "relrowsecurity" AND "relforcerowsecurity" FROM "managed_table"), FALSE) AS "rls_enabled_and_forced",',
     '  (SELECT COUNT(*) FROM "target_column") = 1 AS "target_marker_matches",',
-    `  COALESCE((SELECT "actual_type_oid" = "pg_catalog"."to_regtype"(${quoteLiteral(migration.transform.expectedPostgresType)}) FROM "target_column"), FALSE) AS "target_type_matches",`,
+    '  (SELECT "actual_type_schema" FROM "target_column") AS "target_actual_type_schema",',
+    '  (SELECT "actual_type_name" FROM "target_column") AS "target_actual_type_name",',
+    '  (SELECT "actual_type_kind" FROM "target_column") AS "target_actual_type_kind",',
+    '  (SELECT "actual_type_modifier" FROM "target_column") AS "target_actual_type_modifier",',
+    '  (SELECT "generated_kind" FROM "target_column") AS "target_generated_kind",',
+    `  COALESCE((SELECT "actual_type_oid" = "pg_catalog"."to_regtype"(${quoteLiteral(migration.transform.expectedPostgresType)}) AND "actual_type_kind" = ${quoteLiteral(expectedTypeKind)} AND "actual_type_modifier" = -1 AND "generated_kind" = '' FROM "target_column"), FALSE) AS "target_type_shape_matches",`,
+    `  ${enumMarkerAndLabelsSQL} AS "target_enum_marker_and_ordered_labels_match",`,
     '  COALESCE((SELECT "currently_nullable" FROM "target_column"), FALSE) AS "target_is_currently_nullable",',
     '  (SELECT "actual_default_expression" FROM "target_column") AS "target_actual_default_expression",',
     `  ${quoteLiteral(desiredDefaultJSON)}::"pg_catalog"."jsonb" AS "target_expected_literal_json",`,
+    '  FALSE AS "target_default_expression_equivalence_proven",',
+    '  (SELECT "non_primary_unique_or_exclusion_constraint_count" FROM "table_write_hazards") AS "non_primary_unique_or_exclusion_constraint_count",',
+    '  (SELECT "non_primary_index_count" FROM "table_write_hazards") AS "non_primary_index_count",',
+    '  (SELECT "partial_or_expression_index_count" FROM "table_write_hazards") AS "partial_or_expression_index_count",',
+    '  (SELECT "check_constraint_count" FROM "table_write_hazards") AS "check_constraint_count",',
+    '  (SELECT "outbound_foreign_key_constraint_count" FROM "table_write_hazards") AS "outbound_foreign_key_constraint_count",',
+    '  (SELECT "generated_column_count" FROM "table_write_hazards") AS "generated_column_count",',
+    '  (SELECT "inheritance_relation_count" FROM "table_write_hazards") AS "inheritance_relation_count",',
+    '  COALESCE((SELECT "non_primary_unique_or_exclusion_constraint_count" = 0 AND "non_primary_index_count" = 0 AND "partial_or_expression_index_count" = 0 AND "check_constraint_count" = 0 AND "outbound_foreign_key_constraint_count" = 0 AND "generated_column_count" = 0 AND "inheritance_relation_count" = 0 FROM "table_write_hazards"), FALSE) AS "table_has_no_backfill_write_hazards",',
+    '  (SELECT "oid" FROM "managed_table") AS "managed_table_oid",',
+    '  (SELECT "attnum" FROM "cursor_column") AS "cursor_attribute_number",',
+    '  (SELECT "attnum" FROM "target_column") AS "target_attribute_number",',
     '  (SELECT COUNT(*) FROM "identity_sequence") = 1 AS "identity_sequence_owned_by_cursor",',
+    '  (SELECT "oid" FROM "identity_sequence") AS "identity_sequence_oid",',
     '  NOT "pg_catalog"."pg_is_in_recovery"() AS "database_is_primary",',
     '  COALESCE((SELECT "sequence_state_readable" FROM "identity_sequence"), FALSE) AS "identity_sequence_state_readable",',
     `  COALESCE((SELECT "seqincrement" = 1 AND "seqmin" >= 0 AND "seqmax" <= ${SUPABASE_BACKFILL_MAX_SAFE_CURSOR_V2} AND "seqcache" = 1 AND NOT "seqcycle" FROM "identity_sequence"), FALSE) AS "identity_sequence_properties_safe",`,
     `  COALESCE((SELECT "sequence_state_readable" AND NOT "pg_catalog"."pg_is_in_recovery"() AND ("last_value" IS NULL OR "last_value" BETWEEN 0 AND ${SUPABASE_BACKFILL_MAX_SAFE_CURSOR_V2}) FROM "identity_sequence"), FALSE) AS "identity_sequence_current_value_safe",`,
     `  COALESCE((SELECT "sequence_state_readable" AND NOT "pg_catalog"."pg_is_in_recovery"() AND (("last_value" IS NOT NULL AND "last_value" >= COALESCE((SELECT MAX(${cursorName}) FROM ${tablePath}), 0)) OR ("last_value" IS NULL AND (SELECT COUNT(*) = 0 FROM ${tablePath}))) FROM "identity_sequence"), FALSE) AS "identity_sequence_not_behind_cursor",`,
+    '  CURRENT_USER::"pg_catalog"."text" AS "current_role",',
+    '  SESSION_USER::"pg_catalog"."text" AS "session_role",',
+    '  "pg_catalog"."current_setting"(\'row_security\') AS "row_security_setting",',
+    '  "pg_catalog"."current_setting"(\'search_path\') AS "search_path_setting",',
+    '  COALESCE((SELECT "pg_catalog"."row_security_active"("oid") FROM "managed_table"), TRUE) AS "row_security_active_for_table",',
     '  (SELECT "user_trigger_count" FROM "user_behavior") AS "user_trigger_count",',
     '  (SELECT "user_rule_count" FROM "user_behavior") AS "user_rule_count";',
     '',

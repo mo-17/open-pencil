@@ -14,6 +14,14 @@ import {
 } from '@open-pencil/lowcode/backend'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
+import {
+  expectedSupabaseBackfillPostgresTypeV2,
+  isBackendLiteral,
+  literalMatchesSupabaseBackfillTargetV2,
+  sameBackendLiteral,
+  supabaseBackfillProtectedFieldsV2
+} from './backfill-field'
+
 export const SUPABASE_BACKFILL_ARTIFACT_PATHS_V2 = Object.freeze({
   migrationPlan: 'backend/supabase-v2/backfill/migration-plan.json',
   reviewManifest: 'backend/supabase-v2/backfill/review-manifest.json',
@@ -35,6 +43,13 @@ export const SUPABASE_BACKFILL_RELEASE_BLOCKERS_V2 = Object.freeze([
   'p1-identity-by-default-not-upgraded-to-always',
   'identity-always-and-sequence-properties-not-proven',
   'live-cursor-immutability-and-append-monotonicity-not-proven',
+  'live-table-backfill-write-hazards-not-proven-absent',
+  'live-target-default-and-enum-domain-not-proven',
+  'trusted-query-role-row-visibility-and-search-path-not-bound',
+  'write-barrier-and-high-water-capture-lock-not-implemented',
+  'runtime-sequence-and-cursor-mutation-authority-not-inspected',
+  'live-schema-object-identity-and-catalog-digest-not-bound-per-batch',
+  'runtime-table-policy-trigger-rule-function-and-acl-authority-not-inspected',
   'trusted-read-only-query-authority-not-bound',
   'p1-unbounded-staged-backfill-path-not-retired',
   'provider-v2-receipt-binding-not-implemented',
@@ -60,6 +75,7 @@ export interface ResolvedSupabaseBackfillV2 {
   readonly batchSize: number
   readonly maximumReceiptCount: number
   readonly maximumBatchReceiptCount: number
+  readonly maximumMatchedRowCountByReceiptCapacity: number
   readonly predicate: {
     readonly kind: 'field-is-null'
     readonly fieldId: string
@@ -90,87 +106,10 @@ function diagnostic(
   return backendDiagnostic(code, severity, path, message)
 }
 
-function sameLiteral(left: BackendLiteral, right: BackendLiteral): boolean {
-  return Object.is(left, right)
-}
-
-function isBackendLiteral(value: unknown): value is BackendLiteral {
-  return (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'boolean' ||
-    (typeof value === 'number' && Number.isFinite(value))
-  )
-}
-
 function isSafeIntegerBetween(value: unknown, minimum: number, maximum: number): value is number {
   return (
     typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum && value <= maximum
   )
-}
-
-function qualifiedPostgresType(schema: string, name: string): string {
-  const quote = (value: string): string => `"${value.replaceAll('"', '""')}"`
-  return `${quote(schema)}.${quote(name)}`
-}
-
-function expectedPostgresType(application: BackendApplicationSpecV2, field: DataFieldIR): string {
-  switch (field.type) {
-    case 'string':
-      return 'pg_catalog.text'
-    case 'integer':
-      return 'pg_catalog.int8'
-    case 'number':
-      return 'pg_catalog.float8'
-    case 'boolean':
-      return 'pg_catalog.bool'
-    case 'date':
-      return 'pg_catalog.date'
-    case 'datetime':
-      return 'pg_catalog.timestamptz'
-    case 'uuid':
-      return 'pg_catalog.uuid'
-    case 'json':
-      return 'pg_catalog.jsonb'
-    case 'bytes':
-      throw new TypeError('Byte-literal Supabase backfills are outside the reviewed subset.')
-    case 'enum': {
-      const dataEnum = application.dataModel.enums.find((entry) => entry.id === field.enumId)
-      if (!dataEnum) throw new TypeError('Backfill target enum binding is unavailable.')
-      return qualifiedPostgresType('public', dataEnum.name)
-    }
-    default: {
-      const exhaustive: never = field.type
-      void exhaustive
-      throw new TypeError('Supabase backfill field type is unsupported.')
-    }
-  }
-}
-
-function protectedFields(
-  application: BackendApplicationSpecV2,
-  entity: DataEntityIR
-): ReadonlySet<string> {
-  const protectedIds = new Set(entity.primaryKey?.fields)
-  for (const foreignKey of entity.foreignKeys ?? []) {
-    for (const fieldId of foreignKey.fields) protectedIds.add(fieldId)
-  }
-  for (const candidate of application.dataModel.entities) {
-    for (const foreignKey of candidate.foreignKeys ?? []) {
-      if (foreignKey.targetEntityId !== entity.id) continue
-      for (const fieldId of foreignKey.targetFields) protectedIds.add(fieldId)
-    }
-  }
-  for (const ownership of application.auth.ownership) {
-    if (ownership.entityId === entity.id) protectedIds.add(ownership.identityFieldId)
-  }
-  for (const tenant of application.auth.tenants) {
-    if (tenant.entityId === entity.id) protectedIds.add(tenant.tenantFieldId)
-    if (tenant.membershipEntityId !== entity.id) continue
-    if (tenant.membershipIdentityFieldId) protectedIds.add(tenant.membershipIdentityFieldId)
-    if (tenant.membershipTenantFieldId) protectedIds.add(tenant.membershipTenantFieldId)
-  }
-  return protectedIds
 }
 
 function validateActualCapabilities(
@@ -268,6 +207,20 @@ function validateApplicationBoundary(
       )
     )
   }
+  const entity = application.dataModel.entities.at(0)
+  if (
+    (entity?.indexes?.length ?? 0) > 0 ||
+    (entity?.uniques?.length ?? 0) > 0 ||
+    (entity?.foreignKeys?.length ?? 0) > 0
+  ) {
+    diagnostics.push(
+      diagnostic(
+        'supabase-v2-backfill-secondary-table-authority-unsupported',
+        '$.application.dataModel.entities[0]',
+        'The first backfill slice requires a table without secondary indexes, unique constraints, or foreign keys.'
+      )
+    )
+  }
   if (application.dataModel.relations.length > 0) {
     diagnostics.push(
       diagnostic(
@@ -344,13 +297,26 @@ function validateTarget(
     !isBackendLiteral(transform.value) ||
     target.default.value === null ||
     transform.value === null ||
-    !sameLiteral(target.default.value, transform.value)
+    !sameBackendLiteral(target.default.value, transform.value)
   ) {
     diagnostics.push(
       diagnostic(
         'supabase-v2-backfill-target-default-invalid',
         '$.application.dataMigrations.migrations[0].transforms[0]',
         'The target must be desired non-null with the exact same non-null literal default as the set-literal transform.'
+      )
+    )
+  }
+  if (
+    target?.default?.kind === 'literal' &&
+    (!literalMatchesSupabaseBackfillTargetV2(application, target, target.default.value) ||
+      !literalMatchesSupabaseBackfillTargetV2(application, target, transform.value))
+  ) {
+    diagnostics.push(
+      diagnostic(
+        'supabase-v2-backfill-target-literal-invalid',
+        '$.application.dataMigrations.migrations[0].transforms[0].value',
+        'The default and transform literals must match the target type, enum domain, and PostgreSQL text/JSON encoding rules.'
       )
     )
   }
@@ -372,12 +338,12 @@ function validateTarget(
       )
     )
   }
-  if (entity && protectedFields(application, entity).has(transform.fieldId)) {
+  if (entity && supabaseBackfillProtectedFieldsV2(application, entity).has(transform.fieldId)) {
     diagnostics.push(
       diagnostic(
         'supabase-v2-backfill-protected-target-forbidden',
         '$.application.dataMigrations.migrations[0].transforms[0].fieldId',
-        'Backfill targets cannot be cursor, primary-key, foreign-key, owner, tenant, or membership fields.'
+        'Backfill targets cannot be cursor, primary-key, unique, foreign-key, owner, tenant, or membership fields.'
       )
     )
   }
@@ -433,6 +399,29 @@ function validateExecutionBounds(
   )
 }
 
+function validateReceiptCapacity(
+  migration: BackendDataMigrationDefinitionIR | undefined,
+  diagnostics: BackendDiagnostic[]
+): void {
+  const matchedRows = migration?.postconditions.find((entry) => entry.kind === 'matched-row-count')
+  if (
+    !migration ||
+    !isSafeIntegerBetween(migration.batchSize, 1, 1_000) ||
+    !matchedRows ||
+    !isSafeIntegerBetween(matchedRows.minimum, 0, Number.MAX_SAFE_INTEGER) ||
+    matchedRows.minimum <= migration.batchSize * SUPABASE_BACKFILL_MAX_BATCH_RECEIPTS_V2
+  ) {
+    return
+  }
+  diagnostics.push(
+    diagnostic(
+      'supabase-v2-backfill-receipt-capacity-exceeded',
+      '$.application.dataMigrations.migrations[0].postconditions',
+      'The matched-row minimum cannot exceed batchSize times the available batch receipt count.'
+    )
+  )
+}
+
 /** Reject every application outside the deliberately small read-only review slice. */
 export function validateSupabaseBackfillV2(
   context: BackendProviderAdapterContextV2
@@ -446,6 +435,7 @@ export function validateSupabaseBackfillV2(
   const target = validateTarget(context.application, entity, migration, diagnostics)
   validatePostconditions(migration, target, diagnostics)
   validateExecutionBounds(migration, diagnostics)
+  validateReceiptCapacity(migration, diagnostics)
   diagnostics.push(
     diagnostic(
       'supabase-v2-backfill-trusted-host-required',
@@ -473,6 +463,7 @@ function resolvedPostconditions(
   ])
 }
 
+// oxlint-disable-next-line complexity -- The internal resolver defensively repeats the narrow validated boundary.
 export function resolvedSupabaseBackfillV2(
   application: BackendApplicationSpecV2
 ): ResolvedSupabaseBackfillV2 {
@@ -489,17 +480,25 @@ export function resolvedSupabaseBackfillV2(
     !migration ||
     cursor?.type !== 'integer' ||
     transform?.kind !== 'set-literal' ||
-    !isBackendLiteral(transform.value) ||
-    transform.value === null ||
+    !target ||
+    target.nullable ||
+    target.default?.kind !== 'literal' ||
+    !sameBackendLiteral(target.default.value, transform.value) ||
+    !literalMatchesSupabaseBackfillTargetV2(application, target, target.default.value) ||
+    !literalMatchesSupabaseBackfillTargetV2(application, target, transform.value) ||
     !isSafeIntegerBetween(migration.batchSize, 1, 1_000)
   ) {
     throw new TypeError('Supabase backfill resolution requires the validated narrow subset.')
   }
-  if (!target || target.type === 'bytes') {
+  if (target.type === 'bytes') {
     throw new TypeError('Supabase backfill resolution requires a supported target field.')
   }
   const matchedRows = migration.postconditions.find((entry) => entry.kind === 'matched-row-count')
-  if (matchedRows && !isSafeIntegerBetween(matchedRows.minimum, 0, Number.MAX_SAFE_INTEGER)) {
+  if (
+    matchedRows &&
+    (!isSafeIntegerBetween(matchedRows.minimum, 0, Number.MAX_SAFE_INTEGER) ||
+      matchedRows.minimum > migration.batchSize * SUPABASE_BACKFILL_MAX_BATCH_RECEIPTS_V2)
+  ) {
     throw new TypeError('Supabase backfill resolution requires a safe matched-row count.')
   }
   return Object.freeze({
@@ -519,6 +518,8 @@ export function resolvedSupabaseBackfillV2(
     batchSize: migration.batchSize,
     maximumReceiptCount: SUPABASE_BACKFILL_MAX_RECEIPTS_V2,
     maximumBatchReceiptCount: SUPABASE_BACKFILL_MAX_BATCH_RECEIPTS_V2,
+    maximumMatchedRowCountByReceiptCapacity:
+      migration.batchSize * SUPABASE_BACKFILL_MAX_BATCH_RECEIPTS_V2,
     predicate: Object.freeze({
       kind: 'field-is-null' as const,
       fieldId: target.id,
@@ -529,7 +530,7 @@ export function resolvedSupabaseBackfillV2(
       fieldId: target.id,
       field: target.name,
       fieldType: target.type,
-      expectedPostgresType: expectedPostgresType(application, target),
+      expectedPostgresType: expectedSupabaseBackfillPostgresTypeV2(application, target),
       value: transform.value
     }),
     postconditions: resolvedPostconditions(migration, target),
@@ -542,6 +543,7 @@ export function createSupabaseBackfillPlanV2(context: BackendProviderAdapterCont
   if (validateSupabaseBackfillV2(context).some((entry) => entry.severity === 'error')) {
     throw new TypeError('Supabase backfill plan requires the validated narrow subset.')
   }
+  const migration = resolvedSupabaseBackfillV2(context.application)
   return canonicalBackendValue(
     {
       format: 'openpencil.supabase-backfill-plan.v1',
@@ -560,9 +562,10 @@ export function createSupabaseBackfillPlanV2(context: BackendProviderAdapterCont
         databaseBatchLedgerAvailable: false,
         receiptBindingAvailable: false,
         maximumReceiptCount: SUPABASE_BACKFILL_MAX_RECEIPTS_V2,
-        maximumBatchReceiptCount: SUPABASE_BACKFILL_MAX_BATCH_RECEIPTS_V2
+        maximumBatchReceiptCount: SUPABASE_BACKFILL_MAX_BATCH_RECEIPTS_V2,
+        maximumMatchedRowCountByReceiptCapacity: migration.maximumMatchedRowCountByReceiptCapacity
       },
-      migration: resolvedSupabaseBackfillV2(context.application),
+      migration,
       releaseBlockers: SUPABASE_BACKFILL_RELEASE_BLOCKERS_V2
     },
     '$.supabaseBackfill.plan'

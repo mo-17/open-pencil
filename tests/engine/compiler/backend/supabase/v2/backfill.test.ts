@@ -3,7 +3,6 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   backendProviderPlanDigestV2,
-  createSupabaseBackfillPlanV2,
   createBackendProviderPlanV2,
   createBackendProviderRegistryV2,
   emitBackendProviderPlanV2,
@@ -71,9 +70,16 @@ function backfillAdapter() {
   return { ...adapter, validate: adapter.validate }
 }
 
+function planBackfillDirect(context: BackendProviderAdapterContextV2) {
+  const plan = SUPABASE_BACKEND_PROVIDER_BUNDLE_V2.dataMigrations?.plan
+  if (!plan) throw new Error('Missing Supabase backfill planner')
+  return plan(context)
+}
+
 describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts', () => {
   test('keeps raw resolution and SQL emission outside the public Compiler API', async () => {
     const compilerPublicAPI = await import('@open-pencil/compiler')
+    expect('createSupabaseBackfillPlanV2' in compilerPublicAPI).toBe(false)
     expect('resolvedSupabaseBackfillV2' in compilerPublicAPI).toBe(false)
     expect('emitSupabaseBackfillReadOnlySQLV2' in compilerPublicAPI).toBe(false)
     expect('emitSupabaseBackfillReviewSQLV2' in compilerPublicAPI).toBe(false)
@@ -113,13 +119,15 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
         databaseBatchLedgerAvailable: false,
         receiptBindingAvailable: false,
         maximumReceiptCount: 10_000,
-        maximumBatchReceiptCount: 9_999
+        maximumBatchReceiptCount: 9_999,
+        maximumMatchedRowCountByReceiptCapacity: 2_499_750
       },
       migration: {
         id: 'backfill-account-status',
         batchSize: 250,
         maximumReceiptCount: 10_000,
         maximumBatchReceiptCount: 9_999,
+        maximumMatchedRowCountByReceiptCapacity: 2_499_750,
         cursor: {
           field: 'id',
           type: 'integer',
@@ -182,6 +190,7 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
         resumeSource: 'host-accepted-receipt-head',
         maximumReceiptCount: SUPABASE_BACKFILL_MAX_RECEIPTS_V2,
         maximumBatchReceiptCount: SUPABASE_BACKFILL_MAX_BATCH_RECEIPTS_V2,
+        maximumMatchedRowCountByReceiptCapacity: 2_499_750,
         highWaterReceiptCount: 1,
         runnerEmitted: false
       },
@@ -201,27 +210,52 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
         reviewSqlTemplate: true
       },
       catalogChecks: {
-        executionStatus: 'required-live-check',
+        evidenceStatus: 'not-inspected',
         compilerObservedLiveCatalog: false,
-        identityGeneration: 'always-required',
-        sequenceIncrement: 1,
-        sequenceCache: 1,
-        sequenceCycle: false,
-        sequenceMaximumAtMost: Number.MAX_SAFE_INTEGER,
-        sequenceStateReadable: 'required',
-        databasePrimary: 'required',
-        targetCurrentlyNullable: true,
-        targetDesiredNotNull: true,
-        targetLiteralDefault: 'pending',
-        cursorImmutabilityAndAppendMonotonicity: 'required-independent-host-proof',
-        tableAndColumnAclInventory: 'required-independent-host-proof',
-        rowPolicyInventory: 'required-independent-host-proof',
-        triggerRuleAndFunctionInventory: 'required-independent-host-proof'
+        observed: null,
+        required: {
+          identityGeneration: 'always',
+          sequenceIncrement: 1,
+          sequenceCache: 1,
+          sequenceCycle: false,
+          sequenceMaximumAtMost: Number.MAX_SAFE_INTEGER,
+          sequenceStateReadable: true,
+          databaseRole: 'primary',
+          targetCurrentNullability: 'nullable',
+          desiredTargetNullability: 'not-null',
+          targetLiteralDefault: 'pending',
+          targetDefaultExpressionEquivalence: 'trusted-inspector-proof',
+          targetEnumMarkerAndOrderedLabels: 'required-when-enum',
+          tableBackfillWriteHazards: {
+            nonPrimaryUniqueOrExclusionConstraints: 'absent',
+            nonPrimaryIndexes: 'absent',
+            partialOrExpressionIndexes: 'absent',
+            checkConstraints: 'absent',
+            outboundForeignKeys: 'absent',
+            generatedColumns: 'absent',
+            tableInheritance: 'absent'
+          },
+          queryAuthority: {
+            currentRoleBound: true,
+            sessionRoleBound: true,
+            rowSecuritySetting: 'off',
+            rowSecurityActiveForTable: false,
+            searchPathBound: true
+          },
+          writeBarrierAndLockedHighWaterCapture: 'trusted-host-proof',
+          liveObjectIdentityAndCatalogDigestRevalidatedPerBatch: 'trusted-host-proof',
+          cursorImmutabilityAndAppendMonotonicity: 'independent-host-proof',
+          tableAndColumnAclInventory: 'independent-host-proof',
+          rowPolicyInventory: 'independent-host-proof',
+          triggerRuleAndFunctionInventory: 'independent-host-proof'
+        }
       },
       reviewSqlTemplate: {
         containsDirectMutationStatement: false,
         databaseEnforcedReadOnly: false,
         requiresTrustedHostReadOnlyTransaction: true,
+        requiresTrustedHostFixedRoleAndSearchPath: true,
+        requiresRowSecurityOffFailureSemantics: true,
         selectMayInvokePolicyFunctions: true
       },
       receiptAuthority: {
@@ -232,6 +266,7 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
         providerAuthorityBound: false,
         maximumReceiptCount: 10_000,
         maximumBatchReceiptCount: 9_999,
+        maximumMatchedRowCountByReceiptCapacity: 2_499_750,
         highWaterReceiptCount: 1
       },
       legacyAuthority: {
@@ -245,6 +280,13 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     )
     expect(review.requiredManualChecks).toContain(
       'enforce-database-read-only-transaction-for-every-review-query'
+    )
+    expect(review.requiredManualChecks).toContain('prove-table-backfill-write-hazards-absent')
+    expect(review.requiredManualChecks).toContain(
+      'bind-current-role-session-role-row-visibility-and-fixed-search-path'
+    )
+    expect(Object.keys(review.catalogChecks).sort()).toEqual(
+      ['compilerObservedLiveCatalog', 'evidenceStatus', 'observed', 'required'].sort()
     )
     expect(review.requiredManualChecks).toContain('retire-p1-unbounded-staged-backfill-path')
     expect(review.requiredManualChecks).toContain(
@@ -276,6 +318,27 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     expect(sql).toContain(String(Number.MAX_SAFE_INTEGER))
     expect(sql).toContain('"target_actual_default_expression"')
     expect(sql).toContain('"target_expected_literal_json"')
+    expect(sql).toContain('"target_default_expression_equivalence_proven"')
+    expect(sql).toContain('"target_type_shape_matches"')
+    expect(sql).toContain('"target_actual_type_modifier"')
+    expect(sql).toContain('"target_generated_kind"')
+    expect(sql).toContain('"target_enum_marker_and_ordered_labels_match"')
+    expect(sql).toContain('"non_primary_unique_or_exclusion_constraint_count"')
+    expect(sql).toContain('"non_primary_index_count"')
+    expect(sql).toContain('"partial_or_expression_index_count"')
+    expect(sql).toContain('"check_constraint_count"')
+    expect(sql).toContain('"outbound_foreign_key_constraint_count"')
+    expect(sql).toContain('"generated_column_count"')
+    expect(sql).toContain('"inheritance_relation_count"')
+    expect(sql).toContain('"table_has_no_backfill_write_hazards"')
+    expect(sql).toContain('"managed_table_oid"')
+    expect(sql).toContain('"cursor_attribute_number"')
+    expect(sql).toContain('"target_attribute_number"')
+    expect(sql).toContain('"identity_sequence_oid"')
+    expect(sql).toContain('CURRENT_USER::"pg_catalog"."text" AS "current_role"')
+    expect(sql).toContain('SESSION_USER::"pg_catalog"."text" AS "session_role"')
+    expect(sql).toContain('"row_security_active"("oid")')
+    expect(sql).toContain('"current_setting"(\'search_path\')')
     expect(sql).toContain('"eligible_batch_count"')
     expect(sql).toContain('"cursor_range_batch_count"')
     expect(sql).toContain('10000::"pg_catalog"."int8" AS "maximum_total_receipt_count"')
@@ -292,6 +355,7 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     expect(sql).not.toContain('set-literal')
     expect(sql).not.toContain("'pending'::text")
     expect(sql).not.toContain('"constraint_entry"."conname"')
+    expect(sql).not.toContain('ANY("index_entry"."indkey")')
   })
 
   test('quotes uppercase enum type identity exactly and remains valid across table or field renames', () => {
@@ -316,6 +380,8 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     expect(sql).toContain('FROM "public"."RenamedAccounts"')
     expect(sql).toContain('MAX("RenamedId")')
     expect(sql).toContain('"pg_catalog"."to_regtype"(E\'"public"."StatusType"\')')
+    expect(sql).toContain('openpencil:v1:enum:account-status-type')
+    expect(sql).toContain('["pending","active"]')
     expect(sql).toContain('openpencil:v1:primary-key:accounts')
     expect(sql).not.toContain('"constraint_entry"."conname"')
   })
@@ -432,6 +498,92 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     expect(adapter.validate(directContext(tenantTarget))).toContainEqual(
       expect.objectContaining({ code: 'supabase-v2-backfill-protected-target-forbidden' })
     )
+
+    const uniqueTarget = supabaseBackfillApplicationV2()
+    uniqueTarget.dataModel.entities[0].uniques = [
+      { id: 'unique-account-status', fields: ['account-id', 'account-status'] }
+    ]
+    expect(adapter.validate(directContext(uniqueTarget))).toContainEqual(
+      expect.objectContaining({ code: 'supabase-v2-backfill-protected-target-forbidden' })
+    )
+    expect(createPlan(uniqueTarget).result).toMatchObject({ ok: false })
+
+    const unrelatedUnique = supabaseBackfillApplicationV2()
+    unrelatedUnique.dataModel.entities[0].uniques = [
+      { id: 'unique-account-id', fields: ['account-id'] }
+    ]
+    expect(adapter.validate(directContext(unrelatedUnique))).not.toContainEqual(
+      expect.objectContaining({ code: 'supabase-v2-backfill-protected-target-forbidden' })
+    )
+    expect(adapter.validate(directContext(unrelatedUnique))).toContainEqual(
+      expect.objectContaining({
+        code: 'supabase-v2-backfill-secondary-table-authority-unsupported'
+      })
+    )
+  })
+
+  test('revalidates literal field types, enum domains, and PostgreSQL-safe Unicode at the adapter boundary', () => {
+    const adapter = backfillAdapter()
+    const invalidCases = [
+      { type: 'string', value: 42 },
+      { type: 'integer', value: '42' },
+      { type: 'integer', value: Number.MAX_SAFE_INTEGER + 1 },
+      { type: 'boolean', value: 'true' },
+      { type: 'date', value: '2026-02-30' },
+      { type: 'datetime', value: '2026-01-01 00:00:00Z' },
+      { type: 'uuid', value: 'not-a-uuid' }
+    ] as const
+    for (const invalid of invalidCases) {
+      const application = supabaseBackfillApplicationV2()
+      application.dataModel.entities[0].fields[1].type = invalid.type
+      Reflect.set(application.dataModel.entities[0].fields[1].default, 'value', invalid.value)
+      Reflect.set(application.dataMigrations.migrations[0].transforms[0], 'value', invalid.value)
+      expect(adapter.validate(directContext(application))).toContainEqual(
+        expect.objectContaining({ code: 'supabase-v2-backfill-target-literal-invalid' })
+      )
+      expect(() => planBackfillDirect(directContext(application))).toThrow()
+    }
+
+    const invalidEnum = supabaseBackfillApplicationV2()
+    invalidEnum.dataModel.enums = [
+      { id: 'account-status-type', name: 'StatusType', values: ['pending', 'active'] }
+    ]
+    invalidEnum.dataModel.entities[0].fields[1].type = 'enum'
+    invalidEnum.dataModel.entities[0].fields[1].enumId = 'account-status-type'
+    Reflect.set(invalidEnum.dataModel.entities[0].fields[1].default, 'value', 'archived')
+    Reflect.set(invalidEnum.dataMigrations.migrations[0].transforms[0], 'value', 'archived')
+    expect(adapter.validate(directContext(invalidEnum))).toContainEqual(
+      expect.objectContaining({ code: 'supabase-v2-backfill-target-literal-invalid' })
+    )
+
+    for (const type of ['string', 'json', 'enum'] as const) {
+      for (const value of ['contains\0nul', '\ud800', '\udc00']) {
+        const application = supabaseBackfillApplicationV2()
+        application.dataModel.entities[0].fields[1].type = type
+        if (type === 'enum') {
+          application.dataModel.enums = [
+            { id: 'account-status-type', name: 'StatusType', values: [value] }
+          ]
+          application.dataModel.entities[0].fields[1].enumId = 'account-status-type'
+        }
+        Reflect.set(application.dataModel.entities[0].fields[1].default, 'value', value)
+        Reflect.set(application.dataMigrations.migrations[0].transforms[0], 'value', value)
+        expect(adapter.validate(directContext(application))).toContainEqual(
+          expect.objectContaining({ code: 'supabase-v2-backfill-target-literal-invalid' })
+        )
+        expect(() => planBackfillDirect(directContext(application))).toThrow()
+      }
+    }
+
+    const emoji = supabaseBackfillApplicationV2()
+    emoji.dataModel.entities[0].fields[1].default = { kind: 'literal', value: 'pending 🚀' }
+    emoji.dataMigrations.migrations[0].transforms = [
+      { kind: 'set-literal', fieldId: 'account-status', value: 'pending 🚀' }
+    ]
+    expect(adapter.validate(directContext(emoji))).not.toContainEqual(
+      expect.objectContaining({ code: 'supabase-v2-backfill-target-literal-invalid' })
+    )
+    expect(() => planBackfillDirect(directContext(emoji))).not.toThrow()
   })
 
   test('rejects cursor and application shapes outside one managed identity-key migration', () => {
@@ -469,7 +621,7 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     expect(adapter.validate(directContext(injectedBatchSize))).toContainEqual(
       expect.objectContaining({ code: 'supabase-v2-backfill-batch-size-invalid' })
     )
-    expect(() => createSupabaseBackfillPlanV2(directContext(injectedBatchSize))).toThrow()
+    expect(() => planBackfillDirect(directContext(injectedBatchSize))).toThrow()
 
     const injectedMinimum = supabaseBackfillApplicationV2()
     Reflect.set(
@@ -480,7 +632,30 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     expect(adapter.validate(directContext(injectedMinimum))).toContainEqual(
       expect.objectContaining({ code: 'supabase-v2-backfill-postconditions-invalid' })
     )
-    expect(() => createSupabaseBackfillPlanV2(directContext(injectedMinimum))).toThrow()
+    expect(() => planBackfillDirect(directContext(injectedMinimum))).toThrow()
+
+    const impossibleMinimum = supabaseBackfillApplicationV2()
+    impossibleMinimum.dataMigrations.migrations[0].batchSize = 1
+    impossibleMinimum.dataMigrations.migrations[0].postconditions[1] = {
+      kind: 'matched-row-count',
+      minimum: SUPABASE_BACKFILL_MAX_BATCH_RECEIPTS_V2 + 1
+    }
+    expect(adapter.validate(directContext(impossibleMinimum))).toContainEqual(
+      expect.objectContaining({ code: 'supabase-v2-backfill-receipt-capacity-exceeded' })
+    )
+    expect(createPlan(impossibleMinimum).result).toMatchObject({ ok: false })
+    expect(() => planBackfillDirect(directContext(impossibleMinimum))).toThrow()
+
+    const exactCapacity = supabaseBackfillApplicationV2()
+    exactCapacity.dataMigrations.migrations[0].batchSize = 1
+    exactCapacity.dataMigrations.migrations[0].postconditions[1] = {
+      kind: 'matched-row-count',
+      minimum: SUPABASE_BACKFILL_MAX_BATCH_RECEIPTS_V2
+    }
+    expect(adapter.validate(directContext(exactCapacity))).not.toContainEqual(
+      expect.objectContaining({ code: 'supabase-v2-backfill-receipt-capacity-exceeded' })
+    )
+    expect(createPlan(exactCapacity).result).toMatchObject({ ok: true })
   })
 
   test('rejects every unrelated capability and keeps Realtime and Atomic validators closed', () => {
