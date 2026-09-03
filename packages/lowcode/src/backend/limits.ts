@@ -14,6 +14,11 @@ export const BACKEND_LIMITS = Object.freeze({
   maxPolicies: 1_024,
   maxWorkflows: 256,
   maxWorkflowSteps: 2_048,
+  maxStorageBuckets: 128,
+  maxStoragePathRules: 512,
+  maxStoragePrefixSegments: 16,
+  maxStorageMimeTypes: 64,
+  maxStorageObjectBytes: 5_368_709_120,
   maxCapabilities: 64,
   maxSecretRefs: 128,
   maxMigrationOperations: 2_048

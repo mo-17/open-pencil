@@ -64,7 +64,13 @@ export function deriveBackendApplicationCapabilities(
   if (application.dataModel.entities.some((entity) => entity.management === 'managed')) {
     capabilities.add('migrations.schema')
   }
-  if (modelUsesObjectStorage(application.dataModel)) capabilities.add('storage.objects')
+  if ((application.storage?.buckets.length ?? 0) > 0) {
+    capabilities.add('auth.identity')
+    capabilities.add('policy.row-level')
+    capabilities.add('storage.objects')
+  } else if (modelUsesObjectStorage(application.dataModel)) {
+    capabilities.add('storage.objects')
+  }
   return [...capabilities].sort((left, right) => left.localeCompare(right, 'en'))
 }
 

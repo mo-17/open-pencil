@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Workflow parsing and cross-reference validation share one fail-closed authority boundary. */
 import { parseExpression } from '../expression'
 import { discriminatedRecord } from './discriminated-record'
 import { BACKEND_LIMITS } from './limits'

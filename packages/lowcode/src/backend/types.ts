@@ -2,6 +2,7 @@ export const BACKEND_APPLICATION_SPEC_VERSION = 1 as const
 export const DATA_MODEL_IR_VERSION = 1 as const
 export const AUTH_POLICY_IR_VERSION = 1 as const
 export const BACKEND_WORKFLOW_IR_VERSION = 1 as const
+export const BACKEND_STORAGE_IR_VERSION = 1 as const
 export const MIGRATION_PLAN_VERSION = 1 as const
 
 export type BackendCapability =
@@ -233,6 +234,37 @@ export interface BackendWorkflowIR {
   workflows: BackendWorkflowDefinitionIR[]
 }
 
+export type BackendStorageOperation = 'read' | 'create' | 'update' | 'delete' | 'upsert'
+
+/**
+ * Storage paths are partitioned immediately after a bounded literal prefix.
+ * For example, prefix ["users"] + owner means users/<auth-user-id>/... .
+ */
+export type BackendStoragePrincipalIntent =
+  | { kind: 'owner' }
+  | { kind: 'tenant-member'; tenantId: string }
+
+export interface BackendStoragePathRuleIR {
+  id: string
+  prefix: string[]
+  principal: BackendStoragePrincipalIntent
+  operations: BackendStorageOperation[]
+}
+
+export interface BackendStorageBucketIR {
+  id: string
+  name: string
+  access: 'private' | 'public-read'
+  maxObjectBytes: number
+  allowedMimeTypes: string[]
+  pathRules: BackendStoragePathRuleIR[]
+}
+
+export interface BackendStorageIR {
+  version: typeof BACKEND_STORAGE_IR_VERSION
+  buckets: BackendStorageBucketIR[]
+}
+
 export type BackendCredentialRef = `credential.${string}-${string}-${string}-${string}-${string}`
 
 export type BackendSecretRef =
@@ -257,6 +289,8 @@ export interface BackendApplicationSpecV1 {
   dataModel: DataModelIR
   auth: AuthPolicyIR
   workflows: BackendWorkflowIR
+  /** Optional for backwards-compatible Backend application v1 documents. */
+  storage?: BackendStorageIR
   capabilities: BackendCapabilityRequirement[]
   secrets: BackendSecretRef[]
 }

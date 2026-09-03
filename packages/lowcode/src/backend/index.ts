@@ -24,6 +24,8 @@ export {
   planBackendMigration,
   validateMigrationPlan
 } from './migration'
+export * from './migration-execution'
+export * from './migration-ledger'
 export {
   type LegacyBackendGraph,
   type LegacySupabaseLoweringResult,

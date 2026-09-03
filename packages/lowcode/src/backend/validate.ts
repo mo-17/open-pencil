@@ -2,6 +2,7 @@ import { parseAuthPolicyIR, parseBackendWorkflowIR } from './auth-workflow-valid
 import { BACKEND_LIMITS } from './limits'
 import { parseDataModelIR } from './model-validation'
 import { assertBackendSecretFreeData } from './secret-boundary'
+import { parseBackendStorageIR } from './storage-validation'
 import {
   BACKEND_APPLICATION_SPEC_VERSION,
   type BackendApplicationSpecV1,
@@ -173,6 +174,7 @@ export function validateDataModelIR(value: unknown): BackendValidationResult<Dat
     : { ok: false, diagnostics: context.diagnostics }
 }
 
+// oxlint-disable-next-line complexity -- This strict aggregate parser owns the final cross-section validity gate.
 export function parseBackendApplicationSpecV1(
   value: unknown
 ): BackendValidationResult<BackendApplicationSpecV1> {
@@ -180,16 +182,32 @@ export function parseBackendApplicationSpecV1(
   if (!isSafeBackendInput(value, context)) {
     return { ok: false, diagnostics: context.diagnostics }
   }
-  const source = record(value, '$', context, [
-    'format',
-    'version',
-    'applicationId',
-    'dataModel',
-    'auth',
-    'workflows',
-    'capabilities',
-    'secrets'
-  ])
+  const source = record(
+    value,
+    '$',
+    context,
+    [
+      'format',
+      'version',
+      'applicationId',
+      'dataModel',
+      'auth',
+      'workflows',
+      'storage',
+      'capabilities',
+      'secrets'
+    ],
+    [
+      'format',
+      'version',
+      'applicationId',
+      'dataModel',
+      'auth',
+      'workflows',
+      'capabilities',
+      'secrets'
+    ]
+  )
   if (!source) return { ok: false, diagnostics: context.diagnostics }
   if (source.format !== 'openpencil.backend-application') {
     context.diagnostics.push({
@@ -213,6 +231,10 @@ export function parseBackendApplicationSpecV1(
   const workflows = dataModel
     ? parseBackendWorkflowIR(source.workflows, '$.workflows', dataModel, context)
     : undefined
+  const storage =
+    auth && source.storage !== undefined
+      ? parseBackendStorageIR(source.storage, '$.storage', auth, context)
+      : undefined
   const rawCapabilities = array(
     source.capabilities,
     '$.capabilities',
@@ -268,6 +290,7 @@ export function parseBackendApplicationSpecV1(
       dataModel,
       auth,
       workflows,
+      ...(storage ? { storage } : {}),
       capabilities: sorted(capabilities, (entry) => entry.capability),
       secrets: sorted(secrets, (entry) =>
         entry.kind === 'credential'
