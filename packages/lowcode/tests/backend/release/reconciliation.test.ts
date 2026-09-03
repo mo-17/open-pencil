@@ -17,6 +17,11 @@ async function digest(label: string): Promise<string> {
   return digestCanonicalManifest({ label })
 }
 
+function required<T>(value: T | null | undefined, label: string): T {
+  if (value === null || value === undefined) throw new Error(`Missing ${label}`)
+  return value
+}
+
 async function plan(): Promise<VerifiedBackendReleasePlanV1> {
   const authority: BackendReleaseAuthorityV1 = {
     documentDigest: await digest('reconcile-document'),
@@ -99,10 +104,14 @@ async function applyState(
 describe('Backend Release reconciled Apply state', () => {
   test('moves an already-applied journal claim directly to Verify without a dispatch event', async () => {
     const releasePlan = await plan()
-    const state = reduceBackendReleaseState(await applyState(releasePlan), {
+    const beforeReconciliation = await applyState(releasePlan)
+    const state = reduceBackendReleaseState(beforeReconciliation, {
       type: 'apply-reconciled',
       planDigest: releasePlan.planDigest,
-      singleFlightKey: backendReleaseSingleFlightKey(releasePlan),
+      singleFlightKey: backendReleaseSingleFlightKey(
+        releasePlan,
+        required(beforeReconciliation.artifacts, 'release artifacts')
+      ),
       outcome: 'applied',
       code: null,
       remoteOperationIds: ['remote-1'],
@@ -122,10 +131,14 @@ describe('Backend Release reconciled Apply state', () => {
   test('keeps failed and unknown journal results terminal and fail closed', async () => {
     const releasePlan = await plan()
     for (const outcome of ['failed', 'outcome-unknown'] as const) {
-      const state = reduceBackendReleaseState(await applyState(releasePlan), {
+      const beforeReconciliation = await applyState(releasePlan)
+      const state = reduceBackendReleaseState(beforeReconciliation, {
         type: 'apply-reconciled',
         planDigest: releasePlan.planDigest,
-        singleFlightKey: backendReleaseSingleFlightKey(releasePlan),
+        singleFlightKey: backendReleaseSingleFlightKey(
+          releasePlan,
+          required(beforeReconciliation.artifacts, 'release artifacts')
+        ),
         outcome,
         code: `reconciled-${outcome}`,
         remoteOperationIds: [],

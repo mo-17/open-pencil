@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Release transition invariants remain together so every terminal state is reviewed in one reducer. */
 import { canonicalManifestBytes } from '@open-pencil/scene-graph'
 
 import {
@@ -66,6 +67,16 @@ function requirePlan(state: BackendReleaseStateV1): VerifiedBackendReleasePlanV1
   if (!state.plan)
     transitionError('backend-release-plan-required', 'A reviewed release plan is required.')
   return state.plan
+}
+
+function requireArtifacts(state: BackendReleaseStateV1): BackendReleaseArtifactsV1 {
+  if (!state.artifacts) {
+    transitionError(
+      'backend-release-artifacts-required',
+      'Reviewed Backend Release artifacts are required.'
+    )
+  }
+  return state.artifacts
 }
 
 function requirePlanDigest(plan: BackendReleasePlanV1, digest: string): void {
@@ -377,11 +388,11 @@ function applyDispatched(
     )
   }
   releaseTimestamp(event.dispatchedAt, 'event.dispatchedAt')
-  const expectedKey = backendReleaseSingleFlightKey(plan)
+  const expectedKey = backendReleaseSingleFlightKey(plan, requireArtifacts(state))
   if (event.singleFlightKey !== expectedKey) {
     return transitionError(
       'backend-release-single-flight-key-mismatch',
-      'Single-flight key must bind project, account, grant generation, and plan digest.'
+      'Single-flight key must bind the semantic remote mutation authority.'
     )
   }
   return {
@@ -428,7 +439,7 @@ function applyReconciled(
     )
   }
   releaseTimestamp(event.reconciledAt, 'event.reconciledAt')
-  const expectedKey = backendReleaseSingleFlightKey(plan)
+  const expectedKey = backendReleaseSingleFlightKey(plan, requireArtifacts(state))
   if (event.singleFlightKey !== expectedKey) {
     return transitionError(
       'backend-release-single-flight-key-mismatch',

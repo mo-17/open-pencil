@@ -220,7 +220,9 @@ describe('Backend Host Release Controller', () => {
     })
     expect(prepareInput?.requiredCredentialRefs).toEqual([CREDENTIAL_REF])
     expect(dispatchKey).toBe(
-      prepareInput ? backendReleaseSingleFlightKey(prepareInput.plan) : undefined
+      prepareInput
+        ? backendReleaseSingleFlightKey(prepareInput.plan, prepareInput.artifacts)
+        : undefined
     )
     expect(dispatchedBeforeApply).toBe(true)
     expect(JSON.stringify(state.receipt)).not.toContain('supabase-service-role-secret')

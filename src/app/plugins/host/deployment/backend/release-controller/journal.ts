@@ -7,11 +7,12 @@ import type {
   BackendHostReleaseReconciler
 } from '../release-controller'
 import {
+  BACKEND_RELEASE_DISPATCH_JOURNAL_VERSION,
   parseBackendHostReleaseDispatchJournalRecord,
   type BackendHostReleaseDispatchClaimInput,
   type BackendHostReleaseDispatchClaimResult,
   type BackendHostReleaseDispatchJournal,
-  type BackendHostReleaseDispatchJournalRecordV1,
+  type BackendHostReleaseDispatchJournalRecord,
   type BackendHostReleaseDispatchSettlementInput
 } from '../release-journal'
 
@@ -63,14 +64,16 @@ function boundRecord(
   binding: JournalBinding,
   releaseId?: string,
   claim?: BackendHostReleaseDispatchClaimInput
-): BackendHostReleaseDispatchJournalRecordV1 {
+): BackendHostReleaseDispatchJournalRecord {
   const record = parseBackendHostReleaseDispatchJournalRecord(value)
   if (
     record.singleFlightKey !== binding.singleFlightKey ||
     record.planDigest !== binding.planDigest ||
     (releaseId !== undefined && record.releaseId !== releaseId) ||
     (claim !== undefined &&
-      (record.ownerId !== claim.ownerId ||
+      (record.version !== BACKEND_RELEASE_DISPATCH_JOURNAL_VERSION ||
+        record.dispatchScopeKey !== claim.dispatchScopeKey ||
+        record.ownerId !== claim.ownerId ||
         record.claimedAt !== claim.claimedAt ||
         record.leaseExpiresAt !== claim.leaseExpiresAt))
   ) {
@@ -88,12 +91,16 @@ export async function claimBackendReleaseDispatch(
   if (typeof result.claimed !== 'boolean') {
     throw new TypeError('Backend Release journal claim marker is invalid.')
   }
-  const record = boundRecord(
-    result.record,
-    input,
-    result.claimed ? input.releaseId : undefined,
-    result.claimed ? input : undefined
-  )
+  const parsed = parseBackendHostReleaseDispatchJournalRecord(result.record)
+  // An existing semantic claim may have been written by an earlier plan/grant generation. Its
+  // historical planDigest and releaseId must remain immutable for settlement, while the stable key
+  // prevents a fresh dispatch and routes the current run through reconciliation.
+  const record = result.claimed
+    ? boundRecord(result.record, input, input.releaseId, input)
+    : boundRecord(result.record, {
+        singleFlightKey: input.singleFlightKey,
+        planDigest: parsed.planDigest
+      })
   if (result.claimed && record.outcome !== 'pending') {
     throw new TypeError('A new Backend Release journal claim must be pending.')
   }
@@ -107,7 +114,7 @@ function sameValues(left: readonly string[], right: readonly string[]): boolean 
 export async function settleBackendReleaseDispatch(
   journal: BackendHostReleaseDispatchJournal,
   input: BackendHostReleaseDispatchSettlementInput
-): Promise<BackendHostReleaseDispatchJournalRecordV1> {
+): Promise<BackendHostReleaseDispatchJournalRecord> {
   const record = boundRecord(await journal.settle(input), input, input.releaseId)
   if (
     record.outcome !== input.outcome ||
@@ -129,7 +136,7 @@ function applyFailureOutcome(
 }
 
 export function settlementForApplyResult(
-  claim: BackendHostReleaseDispatchJournalRecordV1,
+  claim: BackendHostReleaseDispatchJournalRecord,
   result: BackendHostReleaseApplyResult,
   settledAt: string
 ): BackendHostReleaseDispatchSettlementInput {
@@ -146,7 +153,7 @@ export function settlementForApplyResult(
 
 function normalizedReconcileResult(
   value: unknown,
-  claim: BackendHostReleaseDispatchJournalRecordV1,
+  claim: BackendHostReleaseDispatchJournalRecord,
   settledAt: string
 ): BackendHostReleaseDispatchSettlementInput {
   const result = exactRecord(value, 'Backend Release reconciliation result', [
@@ -195,7 +202,7 @@ export async function reconcileBackendReleaseDispatch(
 }
 
 export function unknownSettlement(
-  claim: BackendHostReleaseDispatchJournalRecordV1,
+  claim: BackendHostReleaseDispatchJournalRecord,
   settledAt: string,
   code: string
 ): BackendHostReleaseDispatchSettlementInput {

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   BACKEND_PRODUCTION_GATE_IDS,
   assessFrontendDeployment,
+  backendReleaseDispatchScopeKey,
   backendReleaseSingleFlightKey,
   createBackendReleasePlan,
   createBackendReleaseReceipt,
@@ -24,6 +25,11 @@ const NOW = '2026-08-30T00:00:00Z'
 
 async function digest(label: string): Promise<string> {
   return digestCanonicalManifest({ label })
+}
+
+function required<T>(value: T | null | undefined, label: string): T {
+  if (value === null || value === undefined) throw new Error(`Missing ${label}`)
+  return value
 }
 
 async function fixturePlan(): Promise<VerifiedBackendReleasePlanV1> {
@@ -271,7 +277,10 @@ describe('Backend Release pure reducer and receipt', () => {
     verifyState = reduceBackendReleaseState(verifyState, {
       type: 'apply-dispatched',
       planDigest: plan.planDigest,
-      singleFlightKey: backendReleaseSingleFlightKey(plan),
+      singleFlightKey: backendReleaseSingleFlightKey(
+        plan,
+        required(verifyState.artifacts, 'release artifacts')
+      ),
       dispatchedAt: NOW
     })
     verifyState = reduceBackendReleaseState(verifyState, {
@@ -397,7 +406,10 @@ describe('Backend Release pure reducer and receipt', () => {
     dispatched = reduceBackendReleaseState(dispatched, {
       type: 'apply-dispatched',
       planDigest: plan.planDigest,
-      singleFlightKey: backendReleaseSingleFlightKey(plan),
+      singleFlightKey: backendReleaseSingleFlightKey(
+        plan,
+        required(dispatched.artifacts, 'release artifacts')
+      ),
       dispatchedAt: NOW
     })
     expect(() =>
@@ -417,7 +429,7 @@ describe('Backend Release pure reducer and receipt', () => {
     ).toThrow('post-dispatch failure')
   })
 
-  test('requires fresh authority and a project/account/grant scoped single-flight key', async () => {
+  test('requires fresh authority and a semantic project/account single-flight key', async () => {
     const plan = await fixturePlan()
     const state = await advanceToApply(plan)
     expect(() =>
@@ -442,7 +454,48 @@ describe('Backend Release pure reducer and receipt', () => {
         dispatchedAt: NOW
       })
     ).toThrow('Single-flight key')
-    expect(backendReleaseSingleFlightKey(plan)).toContain('project-1:account-1:grant-1')
+    const artifacts = required(inspected.artifacts, 'release artifacts')
+    const key = backendReleaseSingleFlightKey(plan, artifacts)
+    const dispatchScopeKey = backendReleaseDispatchScopeKey(plan)
+    expect(key).toContain('project-1:account-1')
+    expect(key).not.toContain('grant-1')
+    expect(
+      backendReleaseSingleFlightKey(
+        {
+          ...plan,
+          planId: 'rebuilt-plan-id',
+          planDigest: 'rebuilt-plan-digest',
+          authority: { ...plan.authority, grantGeneration: 'rotated-grant' }
+        },
+        artifacts
+      )
+    ).toBe(key)
+    const rebuilt = {
+      ...plan,
+      planId: 'rebuilt-plan-id',
+      planDigest: 'rebuilt-plan-digest',
+      authority: {
+        ...plan.authority,
+        grantGeneration: 'rotated-grant',
+        environment: 'staging' as const,
+        target: 'vue',
+        documentDigest: await digest('changed-document')
+      }
+    }
+    expect(backendReleaseSingleFlightKey(rebuilt, artifacts)).not.toBe(key)
+    expect(
+      backendReleaseSingleFlightKey(plan, {
+        ...artifacts,
+        schemaArtifactDigest: await digest('corrected-schema-artifact')
+      })
+    ).not.toBe(key)
+    expect(backendReleaseDispatchScopeKey(rebuilt)).toBe(dispatchScopeKey)
+    expect(
+      backendReleaseDispatchScopeKey({
+        ...plan,
+        authority: { ...plan.authority, projectId: 'project-2' }
+      })
+    ).not.toBe(dispatchScopeKey)
   })
 
   test('maps post-dispatch timeout to outcome-unknown and records no secret-bearing receipt fields', async () => {
@@ -455,7 +508,10 @@ describe('Backend Release pure reducer and receipt', () => {
     state = reduceBackendReleaseState(state, {
       type: 'apply-dispatched',
       planDigest: plan.planDigest,
-      singleFlightKey: backendReleaseSingleFlightKey(plan),
+      singleFlightKey: backendReleaseSingleFlightKey(
+        plan,
+        required(state.artifacts, 'release artifacts')
+      ),
       dispatchedAt: NOW
     })
     state = reduceBackendReleaseState(state, {
@@ -496,7 +552,10 @@ describe('Backend Release pure reducer and receipt', () => {
     applied = reduceBackendReleaseState(applied, {
       type: 'apply-dispatched',
       planDigest: plan.planDigest,
-      singleFlightKey: backendReleaseSingleFlightKey(plan),
+      singleFlightKey: backendReleaseSingleFlightKey(
+        plan,
+        required(applied.artifacts, 'release artifacts')
+      ),
       dispatchedAt: NOW
     })
     applied = reduceBackendReleaseState(applied, {

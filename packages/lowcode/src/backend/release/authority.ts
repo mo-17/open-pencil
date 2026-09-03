@@ -2,6 +2,7 @@ import { DATA_MODEL_IR_VERSION, type BackendCapability } from '../types'
 import { BACKEND_CAPABILITIES } from '../validate'
 import type {
   BackendReleaseApplySnapshotV1,
+  BackendReleaseArtifactsV1,
   BackendReleaseAuthorityV1,
   BackendReleasePlanV1,
   BackendReleaseProviderAuthorityV1,
@@ -276,9 +277,69 @@ export function compareBackendReleaseAuthority(
   return issues
 }
 
-export function backendReleaseSingleFlightKey(plan: BackendReleasePlanV1): string {
-  const { projectId, accountId, grantGeneration } = plan.authority
-  return ['backend-release-v1', projectId, accountId, grantGeneration, plan.planDigest]
+function artifactDigestPart(value: string | null, path: string): string {
+  return value === null ? 'none' : releaseDigest(value, path)
+}
+
+export function backendReleaseSingleFlightKey(
+  plan: BackendReleasePlanV1,
+  artifacts: BackendReleaseArtifactsV1
+): string {
+  const authority = plan.authority
+  const provider = authority.backendProvider
+  const artifactDigests = {
+    static: artifactDigestPart(artifacts.staticArtifactDigest, 'artifacts.staticArtifactDigest'),
+    server: artifactDigestPart(artifacts.serverArtifactDigest, 'artifacts.serverArtifactDigest'),
+    schema: artifactDigestPart(artifacts.schemaArtifactDigest, 'artifacts.schemaArtifactDigest')
+  }
+  for (const kind of plan.requiredArtifactKinds) {
+    if (artifactDigests[kind] === 'none') {
+      throw new TypeError(`Required ${kind} Backend Release artifact digest is unavailable`)
+    }
+  }
+  // Dispatch identity is semantic and deliberately excludes planId and grantGeneration. Rotating a
+  // credential or rebuilding the same reviewed bytes must never create a second mutation slot after
+  // a pending/unknown claim. Binding the exact reviewed artifacts lets a corrected emission create a
+  // distinct slot only after the prior claim has a known terminal outcome; the stable project scope
+  // still blocks every different artifact while any older claim is unresolved.
+  return [
+    'backend-release-v3',
+    provider.providerId,
+    authority.projectId,
+    authority.accountId,
+    authority.environment,
+    authority.target,
+    authority.documentDigest,
+    authority.irDigest,
+    authority.inspectedSchemaDigest,
+    authority.compilerVersion,
+    provider.publisherId,
+    ...provider.packageDigest.split(':'),
+    provider.pluginId,
+    provider.contributionId,
+    provider.providerId,
+    provider.adapterId,
+    provider.adapterVersion,
+    String(provider.contractVersion),
+    plan.migration.planDigest,
+    'static',
+    artifactDigests.static,
+    'server',
+    artifactDigests.server,
+    'schema',
+    artifactDigests.schema
+  ]
+    .map((part) => encodeURIComponent(part))
+    .join(':')
+}
+
+export function backendReleaseDispatchScopeKey(plan: BackendReleasePlanV1): string {
+  const authority = plan.authority
+  return [
+    'backend-release-dispatch-scope-v1',
+    authority.backendProvider.providerId,
+    authority.projectId
+  ]
     .map((part) => encodeURIComponent(part))
     .join(':')
 }

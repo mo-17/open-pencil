@@ -1,4 +1,5 @@
 import {
+  backendReleaseDispatchScopeKey,
   backendReleaseSingleFlightKey,
   reduceBackendReleaseState,
   type BackendReleaseAuthorityV1,
@@ -15,9 +16,10 @@ import type {
 } from '../release-controller'
 import {
   BACKEND_RELEASE_DISPATCH_LEASE_MS,
+  BackendHostReleaseUnresolvedScopeError,
   type BackendHostReleaseDispatchClaimResult,
   type BackendHostReleaseDispatchJournal,
-  type BackendHostReleaseDispatchJournalRecordV1
+  type BackendHostReleaseDispatchJournalRecord
 } from '../release-journal'
 import {
   claimBackendReleaseDispatch,
@@ -55,6 +57,23 @@ function journalClaimFailure(input: JournaledApplyInput): BackendReleaseStateV1 
       planDigest: input.plan.planDigest,
       code: 'backend-release-journal-claim-failed',
       occurredAt: input.now()
+    })
+  )
+}
+
+function unresolvedScope(
+  input: JournaledApplyInput,
+  singleFlightKey: string
+): BackendReleaseStateV1 {
+  return input.transition(
+    reduceBackendReleaseState(input.state, {
+      type: 'apply-reconciled',
+      planDigest: input.plan.planDigest,
+      singleFlightKey,
+      outcome: 'outcome-unknown',
+      code: 'backend-release-unresolved-scope',
+      remoteOperationIds: [],
+      reconciledAt: input.now()
     })
   )
 }
@@ -127,15 +146,15 @@ async function dispatchNewClaim(
 }
 
 function syntheticUnknown(
-  record: BackendHostReleaseDispatchJournalRecordV1
-): BackendHostReleaseDispatchJournalRecordV1 {
+  record: BackendHostReleaseDispatchJournalRecord
+): BackendHostReleaseDispatchJournalRecord {
   return { ...record, outcome: 'outcome-unknown' }
 }
 
 async function settleReconciliationFailure(
   input: JournaledApplyInput,
-  record: BackendHostReleaseDispatchJournalRecordV1
-): Promise<BackendHostReleaseDispatchJournalRecordV1> {
+  record: BackendHostReleaseDispatchJournalRecord
+): Promise<BackendHostReleaseDispatchJournalRecord> {
   if (record.outcome !== 'pending') return record
   try {
     return await settleBackendReleaseDispatch(
@@ -149,8 +168,8 @@ async function settleReconciliationFailure(
 
 async function resolveExistingClaim(
   input: JournaledApplyInput,
-  record: BackendHostReleaseDispatchJournalRecordV1
-): Promise<BackendHostReleaseDispatchJournalRecordV1> {
+  record: BackendHostReleaseDispatchJournalRecord
+): Promise<BackendHostReleaseDispatchJournalRecord> {
   if (record.outcome === 'applied' || record.outcome === 'failed') return record
   let proposed
   try {
@@ -180,7 +199,7 @@ async function resolveExistingClaim(
 
 function reconciliationCode(
   outcome: 'applied' | 'failed' | 'outcome-unknown',
-  resolution: BackendHostReleaseDispatchJournalRecordV1
+  resolution: BackendHostReleaseDispatchJournalRecord
 ): string | null {
   if (outcome === 'applied') return null
   if (resolution.settledAt === null) return 'backend-release-journal-settle-failed'
@@ -202,7 +221,7 @@ function leaseExpiration(claimedAt: string): string {
 }
 
 function pendingLeaseIsActive(
-  record: BackendHostReleaseDispatchJournalRecordV1,
+  record: BackendHostReleaseDispatchJournalRecord,
   observedAt: string
 ): boolean {
   return (
@@ -214,18 +233,61 @@ function pendingLeaseIsActive(
 
 function blockedByActiveLease(
   input: JournaledApplyInput,
-  record: BackendHostReleaseDispatchJournalRecordV1,
+  singleFlightKey: string,
+  record: BackendHostReleaseDispatchJournalRecord,
   reconciledAt: string
 ): BackendReleaseStateV1 {
   return input.transition(
     reduceBackendReleaseState(input.state, {
       type: 'apply-reconciled',
       planDigest: input.plan.planDigest,
-      singleFlightKey: record.singleFlightKey,
+      singleFlightKey,
       outcome: 'outcome-unknown',
       code: 'backend-release-dispatch-in-flight',
       remoteOperationIds: record.remoteOperationIds,
       reconciledAt
+    })
+  )
+}
+
+function reconciledState(
+  input: JournaledApplyInput,
+  singleFlightKey: string,
+  resolution: BackendHostReleaseDispatchJournalRecord
+): BackendReleaseStateV1 {
+  const outcome = resolution.outcome === 'pending' ? 'outcome-unknown' : resolution.outcome
+  return input.transition(
+    reduceBackendReleaseState(input.state, {
+      type: 'apply-reconciled',
+      planDigest: input.plan.planDigest,
+      singleFlightKey,
+      outcome,
+      code: reconciliationCode(outcome, resolution),
+      remoteOperationIds: resolution.remoteOperationIds,
+      reconciledAt: input.now()
+    })
+  )
+}
+
+function reconciledPriorClaimState(
+  input: JournaledApplyInput,
+  singleFlightKey: string,
+  resolution: BackendHostReleaseDispatchJournalRecord
+): BackendReleaseStateV1 {
+  const code =
+    resolution.outcome === 'applied'
+      ? 'backend-release-prior-claim-applied-review-required'
+      : 'backend-release-prior-claim-failed-review-required'
+  return input.transition(
+    reduceBackendReleaseState(input.state, {
+      type: 'apply-reconciled',
+      planDigest: input.plan.planDigest,
+      singleFlightKey,
+      outcome: 'failed',
+      code,
+      // The current plan never owned the prior claim's provider operation identifiers.
+      remoteOperationIds: [],
+      reconciledAt: input.now()
     })
   )
 }
@@ -236,40 +298,68 @@ async function reconcileExistingClaim(
   observedAt: string
 ): Promise<BackendReleaseStateV1> {
   if (pendingLeaseIsActive(claim.record, observedAt)) {
-    return blockedByActiveLease(input, claim.record, observedAt)
+    return blockedByActiveLease(input, claim.record.singleFlightKey, claim.record, observedAt)
   }
   const resolution = await resolveExistingClaim(input, claim.record)
-  const outcome = resolution.outcome === 'pending' ? 'outcome-unknown' : resolution.outcome
-  return input.transition(
-    reduceBackendReleaseState(input.state, {
-      type: 'apply-reconciled',
-      planDigest: input.plan.planDigest,
-      singleFlightKey: claim.record.singleFlightKey,
-      outcome,
-      code: reconciliationCode(outcome, resolution),
-      remoteOperationIds: resolution.remoteOperationIds,
-      reconciledAt: input.now()
-    })
-  )
+  return reconciledState(input, claim.record.singleFlightKey, resolution)
+}
+
+async function reconcileUnresolvedScope(
+  input: JournaledApplyInput,
+  singleFlightKey: string,
+  dispatchScopeKey: string,
+  observedAt: string
+): Promise<BackendReleaseStateV1> {
+  let records: readonly BackendHostReleaseDispatchJournalRecord[]
+  try {
+    records = await input.dispatchJournal.listUnresolvedForScope(dispatchScopeKey)
+  } catch {
+    return unresolvedScope(input, singleFlightKey)
+  }
+  const record = records[0]
+  if (
+    records.length !== 1 ||
+    record.singleFlightKey === singleFlightKey ||
+    (record.outcome !== 'pending' && record.outcome !== 'outcome-unknown')
+  ) {
+    return unresolvedScope(input, singleFlightKey)
+  }
+  try {
+    if (pendingLeaseIsActive(record, observedAt)) {
+      return blockedByActiveLease(input, singleFlightKey, record, observedAt)
+    }
+    const resolution = await resolveExistingClaim(input, record)
+    if (resolution.outcome !== 'applied' && resolution.outcome !== 'failed') {
+      return unresolvedScope(input, singleFlightKey)
+    }
+    return reconciledPriorClaimState(input, singleFlightKey, resolution)
+  } catch {
+    return unresolvedScope(input, singleFlightKey)
+  }
 }
 
 export async function advanceJournaledApply(
   input: JournaledApplyInput
 ): Promise<BackendReleaseStateV1> {
-  const singleFlightKey = backendReleaseSingleFlightKey(input.plan)
+  const singleFlightKey = backendReleaseSingleFlightKey(input.plan, input.reviewInput.artifacts)
+  const dispatchScopeKey = backendReleaseDispatchScopeKey(input.plan)
   let claim: BackendHostReleaseDispatchClaimResult
-  let observedAt: string
+  let observedAt: string | null = null
   try {
     observedAt = input.now()
     claim = await claimBackendReleaseDispatch(input.dispatchJournal, {
       singleFlightKey,
+      dispatchScopeKey,
       releaseId: input.releaseId,
       ownerId: input.ownerId,
       planDigest: input.plan.planDigest,
       claimedAt: observedAt,
       leaseExpiresAt: leaseExpiration(observedAt)
     })
-  } catch {
+  } catch (cause) {
+    if (cause instanceof BackendHostReleaseUnresolvedScopeError && observedAt !== null) {
+      return reconcileUnresolvedScope(input, singleFlightKey, dispatchScopeKey, observedAt)
+    }
     return journalClaimFailure(input)
   }
   return claim.claimed

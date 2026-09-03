@@ -28,7 +28,7 @@ import {
 } from './release-controller/normalization'
 import type {
   BackendHostReleaseDispatchJournal,
-  BackendHostReleaseDispatchJournalRecordV1
+  BackendHostReleaseDispatchJournalRecord
 } from './release-journal'
 
 type MaybePromise<T> = T | Promise<T>
@@ -56,7 +56,7 @@ export interface BackendHostReleaseInspectionResult {
   readonly migrationPlan: MigrationPlan
 }
 
-export interface BackendHostReleasePrepareApplyInput extends BackendHostReleaseReviewInput {
+export interface BackendHostReleasePrepareApplyInput extends BackendHostReleaseConfirmationInput {
   readonly authority: BackendReleaseAuthorityV1
   readonly confirmations: readonly BackendReleaseDestructiveConfirmationV1[]
 }
@@ -87,7 +87,7 @@ export interface BackendHostReleaseVerificationInput extends BackendHostReleaseR
 
 export interface BackendHostReleaseReconcileInput extends BackendHostReleaseReviewInput {
   readonly authority: BackendReleaseAuthorityV1
-  readonly claim: BackendHostReleaseDispatchJournalRecordV1
+  readonly claim: BackendHostReleaseDispatchJournalRecord
 }
 
 export interface BackendHostReleaseReconcileResult {
@@ -340,6 +340,7 @@ function createRunner(dependencies: BackendHostReleaseControllerDependencies) {
     try {
       preparedApply = await dependencies.executor.prepareApply({
         ...reviewInput,
+        review: state.review ?? review,
         authority: plan.authority,
         confirmations: state.confirmations
       })

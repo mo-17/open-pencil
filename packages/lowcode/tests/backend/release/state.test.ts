@@ -25,6 +25,11 @@ async function digest(label: string): Promise<string> {
   return digestCanonicalManifest({ label })
 }
 
+function required<T>(value: T | null | undefined, label: string): T {
+  if (value === null || value === undefined) throw new Error(`Missing ${label}`)
+  return value
+}
+
 async function fixturePlan(): Promise<VerifiedBackendReleasePlanV1> {
   const authority: BackendReleaseAuthorityV1 = {
     documentDigest: await digest('state-document'),
@@ -138,7 +143,10 @@ async function releaseLifecycle() {
   const dispatched = reduceBackendReleaseState(reinspected, {
     type: 'apply-dispatched',
     planDigest: plan.planDigest,
-    singleFlightKey: backendReleaseSingleFlightKey(plan),
+    singleFlightKey: backendReleaseSingleFlightKey(
+      plan,
+      required(reinspected.artifacts, 'release artifacts')
+    ),
     dispatchedAt: NOW
   })
   const applied = reduceBackendReleaseState(dispatched, {

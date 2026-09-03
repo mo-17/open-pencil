@@ -63,7 +63,11 @@ async function migrationPlan(): Promise<MigrationPlan> {
 interface FixtureOptions {
   readonly journal: BackendHostReleaseDispatchJournal
   readonly dispatch: () => Promise<BackendHostReleaseApplyResult>
+  readonly schemaArtifactDigest?: string
   readonly now?: () => string
+  readonly onInspect?: () => void
+  readonly onReview?: () => void
+  readonly onVerify?: () => void
   readonly reconcile?: (
     input: BackendHostReleaseReconcileInput
   ) => Promise<BackendHostReleaseReconcileResult>
@@ -74,7 +78,8 @@ async function dependencies(
 ): Promise<BackendHostReleaseControllerDependencies> {
   const releaseAuthority = await authority()
   const releaseMigrationPlan = await migrationPlan()
-  const schemaArtifactDigest = await digest('restart-schema-artifact')
+  const schemaArtifactDigest =
+    options.schemaArtifactDigest ?? (await digest('restart-schema-artifact'))
   return {
     dispatchJournal: options.journal,
     reconciler: {
@@ -88,6 +93,7 @@ async function dependencies(
     },
     inspector: {
       async inspect() {
+        options.onInspect?.()
         return { authority: releaseAuthority, migrationPlan: releaseMigrationPlan }
       }
     },
@@ -101,7 +107,10 @@ async function dependencies(
       }
     },
     reviewer: {
-      review: () => true,
+      review: () => {
+        options.onReview?.()
+        return true
+      },
       confirm: () => []
     },
     executor: {
@@ -111,6 +120,7 @@ async function dependencies(
     },
     verifier: {
       async verify() {
+        options.onVerify?.()
         return []
       }
     },
@@ -181,6 +191,60 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
       ownerId: 'active-winner-receipt',
       outcome: 'pending'
     })
+
+    finishDispatch({ ok: true, remoteOperationIds: ['winner-operation'] })
+    await expect(firstRun).resolves.toMatchObject({ outcome: 'succeeded' })
+  })
+
+  test('does not reconcile a different artifact while the scope winner lease is active', async () => {
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    const firstArtifact = await digest('active-scope-artifact-v1')
+    const nextArtifact = await digest('active-scope-artifact-v2')
+    let dispatchCalls = 0
+    let reconcileCalls = 0
+    let dispatchStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      dispatchStarted = resolve
+    })
+    let finishDispatch!: (result: BackendHostReleaseApplyResult) => void
+    const dispatchResult = new Promise<BackendHostReleaseApplyResult>((resolve) => {
+      finishDispatch = resolve
+    })
+    const firstRun = createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        schemaArtifactDigest: firstArtifact,
+        async dispatch() {
+          dispatchCalls += 1
+          dispatchStarted()
+          return dispatchResult
+        }
+      })
+    ).run(runInput('active-scope-winner-receipt'))
+    await started
+
+    const blocked = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        schemaArtifactDigest: nextArtifact,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['unexpected-second-dispatch'] }
+        },
+        async reconcile() {
+          reconcileCalls += 1
+          return { outcome: 'applied', code: null, remoteOperationIds: [] }
+        }
+      })
+    ).run(runInput('active-scope-blocked-receipt'))
+
+    expect(blocked).toMatchObject({
+      outcome: 'outcome-unknown',
+      failureCode: 'backend-release-dispatch-in-flight',
+      reconcileRequired: true
+    })
+    expect(dispatchCalls).toBe(1)
+    expect(reconcileCalls).toBe(0)
 
     finishDispatch({ ok: true, remoteOperationIds: ['winner-operation'] })
     await expect(firstRun).resolves.toMatchObject({ outcome: 'succeeded' })
@@ -365,5 +429,320 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
       failureCode: 'backend-release-journal-settle-failed'
     })
     expect(await stored.listPending()).toHaveLength(1)
+  })
+
+  test('dispatches a corrected artifact after a known failure and still deduplicates identical bytes', async () => {
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    const firstArtifact = await digest('restart-schema-artifact-v1')
+    const correctedArtifact = await digest('restart-schema-artifact-v2')
+    let dispatchCalls = 0
+
+    const first = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        schemaArtifactDigest: firstArtifact,
+        async dispatch() {
+          dispatchCalls += 1
+          return {
+            ok: false,
+            kind: 'provider-rejected',
+            code: 'previous-artifact-rejected'
+          }
+        }
+      })
+    ).run(runInput('artifact-v1-receipt'))
+    expect(first).toMatchObject({ outcome: 'failed', failureCode: 'previous-artifact-rejected' })
+
+    const correctedDependencies = await dependencies({
+      journal,
+      schemaArtifactDigest: correctedArtifact,
+      async dispatch() {
+        dispatchCalls += 1
+        return { ok: true, remoteOperationIds: ['corrected-artifact-operation'] }
+      }
+    })
+    const corrected = await createBackendHostReleaseController(correctedDependencies).run(
+      runInput('artifact-v2-receipt')
+    )
+    const duplicate = await createBackendHostReleaseController(correctedDependencies).run(
+      runInput('artifact-v2-duplicate-receipt')
+    )
+
+    expect(dispatchCalls).toBe(2)
+    expect(first.singleFlightKey).not.toBe(corrected.singleFlightKey)
+    expect(duplicate.singleFlightKey).toBe(corrected.singleFlightKey)
+    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({ outcome: 'failed' })
+    expect(await journal.read(corrected.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'applied'
+    })
+  })
+
+  test('read-only reconciles a different artifact claim to failed before a later run dispatches', async () => {
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    const firstArtifact = await digest('scope-recovery-artifact-v1')
+    const correctedArtifact = await digest('scope-recovery-artifact-v2')
+    let dispatchCalls = 0
+    let reconcileCalls = 0
+
+    const first = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        schemaArtifactDigest: firstArtifact,
+        async dispatch() {
+          dispatchCalls += 1
+          return {
+            ok: false,
+            kind: 'transport',
+            code: 'previous-artifact-outcome-unknown'
+          }
+        }
+      })
+    ).run(runInput('scope-recovery-v1-receipt'))
+    expect(first).toMatchObject({ outcome: 'outcome-unknown' })
+
+    const recoveryDependencies = await dependencies({
+      journal,
+      schemaArtifactDigest: correctedArtifact,
+      async dispatch() {
+        dispatchCalls += 1
+        return { ok: true, remoteOperationIds: ['corrected-artifact-operation'] }
+      },
+      async reconcile(input) {
+        reconcileCalls += 1
+        expect(input.claim.singleFlightKey).toBe(first.singleFlightKey)
+        return {
+          outcome: 'failed',
+          code: 'previous-artifact-proven-not-applied',
+          remoteOperationIds: []
+        }
+      }
+    })
+    const recovered = await createBackendHostReleaseController(recoveryDependencies).run(
+      runInput('scope-recovery-readonly-receipt')
+    )
+
+    expect(recovered).toMatchObject({
+      outcome: 'failed',
+      failureCode: 'backend-release-prior-claim-failed-review-required',
+      remoteOperationIds: []
+    })
+    expect(recovered.singleFlightKey).not.toBe(first.singleFlightKey)
+    expect(dispatchCalls).toBe(1)
+    expect(reconcileCalls).toBe(1)
+    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({ outcome: 'failed' })
+    expect(await journal.read(recovered.singleFlightKey ?? '')).toBeNull()
+
+    const dispatched = await createBackendHostReleaseController(recoveryDependencies).run(
+      runInput('scope-recovery-v2-receipt')
+    )
+    expect(dispatchCalls).toBe(2)
+    expect(reconcileCalls).toBe(1)
+    expect(dispatched.singleFlightKey).toBe(recovered.singleFlightKey)
+    expect(await journal.read(dispatched.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'applied'
+    })
+  })
+
+  test('requires a new reviewed run after a different artifact claim reconciles as applied', async () => {
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    const firstArtifact = await digest('scope-applied-artifact-v1')
+    const nextArtifact = await digest('scope-applied-artifact-v2')
+    let dispatchCalls = 0
+    let reconcileCalls = 0
+    let reconciledVerifyCalls = 0
+
+    const first = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        schemaArtifactDigest: firstArtifact,
+        async dispatch() {
+          dispatchCalls += 1
+          return {
+            ok: false,
+            kind: 'transport',
+            code: 'scope-applied-outcome-unknown',
+            remoteOperationIds: ['original-operation']
+          }
+        }
+      })
+    ).run(runInput('scope-applied-v1-receipt'))
+
+    const reconciled = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        schemaArtifactDigest: nextArtifact,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['unexpected-second-dispatch'] }
+        },
+        async reconcile() {
+          reconcileCalls += 1
+          return {
+            outcome: 'applied',
+            code: null,
+            remoteOperationIds: ['original-operation']
+          }
+        },
+        onVerify() {
+          reconciledVerifyCalls += 1
+        }
+      })
+    ).run(runInput('scope-applied-v2-receipt'))
+
+    expect(reconciled).toMatchObject({
+      outcome: 'failed',
+      failureCode: 'backend-release-prior-claim-applied-review-required'
+    })
+    expect(reconciled.singleFlightKey).not.toBe(first.singleFlightKey)
+    expect(dispatchCalls).toBe(1)
+    expect(reconcileCalls).toBe(1)
+    expect(reconciledVerifyCalls).toBe(0)
+    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'applied',
+      remoteOperationIds: ['original-operation']
+    })
+    expect(await journal.read(reconciled.singleFlightKey ?? '')).toBeNull()
+
+    let nextInspectionCalls = 0
+    let nextReviewCalls = 0
+    const next = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        schemaArtifactDigest: nextArtifact,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['next-artifact-operation'] }
+        },
+        onInspect() {
+          nextInspectionCalls += 1
+        },
+        onReview() {
+          nextReviewCalls += 1
+        }
+      })
+    ).run(runInput('scope-applied-v2-reviewed-receipt'))
+
+    expect(next).toMatchObject({ outcome: 'succeeded' })
+    expect(next.singleFlightKey).toBe(reconciled.singleFlightKey)
+    expect(nextInspectionCalls).toBe(2)
+    expect(nextReviewCalls).toBe(1)
+    expect(dispatchCalls).toBe(2)
+    expect(reconcileCalls).toBe(1)
+    expect(await journal.read(next.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'applied',
+      remoteOperationIds: ['next-artifact-operation']
+    })
+  })
+
+  test('keeps a different artifact blocked when read-only scope reconciliation stays unknown', async () => {
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    const firstArtifact = await digest('scope-unknown-artifact-v1')
+    const nextArtifact = await digest('scope-unknown-artifact-v2')
+    let dispatchCalls = 0
+    let reconcileCalls = 0
+
+    const first = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        schemaArtifactDigest: firstArtifact,
+        async dispatch() {
+          dispatchCalls += 1
+          return {
+            ok: false,
+            kind: 'transport',
+            code: 'scope-outcome-unknown'
+          }
+        }
+      })
+    ).run(runInput('scope-unknown-v1-receipt'))
+
+    const blocked = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        schemaArtifactDigest: nextArtifact,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['unexpected-second-dispatch'] }
+        },
+        async reconcile() {
+          reconcileCalls += 1
+          return {
+            outcome: 'outcome-unknown',
+            code: 'remote-state-still-unknown',
+            remoteOperationIds: []
+          }
+        }
+      })
+    ).run(runInput('scope-unknown-v2-receipt'))
+
+    expect(blocked).toMatchObject({
+      outcome: 'outcome-unknown',
+      failureCode: 'backend-release-unresolved-scope',
+      reconcileRequired: true
+    })
+    expect(dispatchCalls).toBe(1)
+    expect(reconcileCalls).toBe(1)
+    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'outcome-unknown'
+    })
+    expect(await journal.read(blocked.singleFlightKey ?? '')).toBeNull()
+  })
+
+  test('fails closed when same-scope recovery lookup fails or returns multiple records', async () => {
+    const firstArtifact = await digest('scope-lookup-artifact-v1')
+    const nextArtifact = await digest('scope-lookup-artifact-v2')
+    for (const lookup of ['throws', 'multiple'] as const) {
+      const stored = createMemoryBackendHostReleaseDispatchJournal()
+      let dispatchCalls = 0
+      let reconcileCalls = 0
+      const first = await createBackendHostReleaseController(
+        await dependencies({
+          journal: stored,
+          schemaArtifactDigest: firstArtifact,
+          async dispatch() {
+            dispatchCalls += 1
+            return {
+              ok: false,
+              kind: 'transport',
+              code: 'scope-lookup-outcome-unknown'
+            }
+          }
+        })
+      ).run(runInput(`scope-lookup-${lookup}-v1-receipt`))
+      const unresolved = await stored.listUnresolved()
+      expect(unresolved).toHaveLength(1)
+      const journal: BackendHostReleaseDispatchJournal = {
+        ...stored,
+        async listUnresolvedForScope() {
+          if (lookup === 'throws') throw new Error('simulated scope lookup failure')
+          return [
+            unresolved[0],
+            { ...unresolved[0], singleFlightKey: `${unresolved[0].singleFlightKey}:duplicate` }
+          ]
+        }
+      }
+      const blocked = await createBackendHostReleaseController(
+        await dependencies({
+          journal,
+          schemaArtifactDigest: nextArtifact,
+          async dispatch() {
+            dispatchCalls += 1
+            return { ok: true, remoteOperationIds: ['unexpected-second-dispatch'] }
+          },
+          async reconcile() {
+            reconcileCalls += 1
+            return { outcome: 'applied', code: null, remoteOperationIds: [] }
+          }
+        })
+      ).run(runInput(`scope-lookup-${lookup}-v2-receipt`))
+
+      expect(first).toMatchObject({ outcome: 'outcome-unknown' })
+      expect(blocked).toMatchObject({
+        outcome: 'outcome-unknown',
+        failureCode: 'backend-release-unresolved-scope'
+      })
+      expect(dispatchCalls).toBe(1)
+      expect(reconcileCalls).toBe(0)
+    }
   })
 })
