@@ -26,6 +26,7 @@ import {
   unsupportedBackendCompilationModeDiagnostic
 } from '../diagnostics'
 import { negotiateBackendCapabilitiesV2 } from './capability-matrix'
+import { backendCapabilityAdapterSlotV2 } from './capability-routing'
 import {
   BACKEND_PROVIDER_ADAPTER_SLOTS_V2,
   BACKEND_PROVIDER_PLAN_VERSION_V2,
@@ -122,16 +123,13 @@ export function activeBackendProviderAdapterSlotsV2(
       .filter((decision) => decision.included && actual.has(decision.capability))
       .map((decision) => decision.capability)
   )
-  return Object.freeze(
-    BACKEND_PROVIDER_ADAPTER_SLOTS_V2.filter((slot) => {
-      const adapter = bundle[slot]
-      return Boolean(
-        adapter &&
-        (adapter.capabilities.length === 0 ||
-          adapter.capabilities.some((capability) => included.has(capability)))
-      )
-    })
-  )
+  const active = new Set<BackendProviderAdapterSlotV2>()
+  for (const capability of included) {
+    const slot = backendCapabilityAdapterSlotV2(capability)
+    const adapter = slot ? bundle[slot] : undefined
+    if (slot && adapter?.capabilities.includes(capability)) active.add(slot)
+  }
+  return Object.freeze(BACKEND_PROVIDER_ADAPTER_SLOTS_V2.filter((slot) => active.has(slot)))
 }
 
 function providerDiagnosticsV2(

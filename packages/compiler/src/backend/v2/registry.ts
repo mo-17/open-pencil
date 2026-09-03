@@ -1,9 +1,11 @@
 import type { BackendCapabilityV2, BackendDiagnostic } from '@open-pencil/lowcode/backend'
 
+import { backendCapabilityAdapterSlotV2 } from './capability-routing'
 import {
   BACKEND_PROVIDER_ADAPTER_SLOTS_V2,
   BACKEND_PROVIDER_OUTPUT_KINDS_V2,
   type BackendProviderAdapterV2,
+  type BackendProviderAdapterSlotV2,
   type BackendProviderBundleV2,
   type BackendProviderDescriptorV2,
   type BackendProviderOutputKindV2,
@@ -129,6 +131,49 @@ function freezeAdapterV2(adapter: BackendProviderAdapterV2): BackendProviderAdap
   })
 }
 
+function registerAdapterCapabilitiesV2(
+  adapterCapabilities: readonly BackendCapabilityV2[],
+  slot: BackendProviderAdapterSlotV2,
+  capabilities: Set<BackendCapabilityV2>,
+  capabilityOwners: Map<BackendCapabilityV2, BackendProviderAdapterSlotV2>,
+  diagnostics: BackendDiagnostic[]
+): void {
+  for (let index = 0; index < adapterCapabilities.length; index += 1) {
+    const capability = adapterCapabilities[index]
+    const owningSlot = backendCapabilityAdapterSlotV2(capability)
+    if (owningSlot === undefined) {
+      diagnostics.push(
+        errorV2(
+          'backend-provider-v2-registry-capability-unmapped',
+          `$.${slot}.capabilities[${index}]`,
+          'Trusted Backend Provider V2 capability has no semantic adapter slot.'
+        )
+      )
+    } else if (owningSlot !== slot) {
+      diagnostics.push(
+        errorV2(
+          'backend-provider-v2-registry-capability-slot-mismatch',
+          `$.${slot}.capabilities[${index}]`,
+          `Backend Provider V2 capability must be declared by the ${owningSlot} adapter.`
+        )
+      )
+    }
+    const previousOwner = capabilityOwners.get(capability)
+    if (previousOwner !== undefined && previousOwner !== slot) {
+      diagnostics.push(
+        errorV2(
+          'backend-provider-v2-registry-capability-duplicate',
+          `$.${slot}.capabilities[${index}]`,
+          `Backend Provider V2 capability is already declared by the ${previousOwner} adapter.`
+        )
+      )
+    } else {
+      capabilityOwners.set(capability, slot)
+    }
+    capabilities.add(capability)
+  }
+}
+
 function normalizeTrustedBundleV2(bundle: BackendProviderBundleV2): {
   readonly bundle?: BackendProviderBundleV2
   readonly diagnostics: readonly BackendDiagnostic[]
@@ -144,6 +189,7 @@ function normalizeTrustedBundleV2(bundle: BackendProviderBundleV2): {
 
   const diagnostics: BackendDiagnostic[] = []
   const capabilities = new Set<BackendCapabilityV2>()
+  const capabilityOwners = new Map<BackendCapabilityV2, BackendProviderAdapterSlotV2>()
   const outputs = new Set<BackendProviderOutputKindV2>()
   const normalizedAdapters: Partial<
     Record<(typeof BACKEND_PROVIDER_ADAPTER_SLOTS_V2)[number], BackendProviderAdapterV2>
@@ -177,7 +223,13 @@ function normalizeTrustedBundleV2(bundle: BackendProviderBundleV2): {
         `$.${slot}.outputs`,
         diagnostics
       )
-      for (const capability of adapter.capabilities) capabilities.add(capability)
+      registerAdapterCapabilitiesV2(
+        adapter.capabilities,
+        slot,
+        capabilities,
+        capabilityOwners,
+        diagnostics
+      )
       for (const output of adapter.outputs) outputs.add(output)
       if (typeof adapter.plan !== 'function' || typeof adapter.emit !== 'function') {
         diagnostics.push(

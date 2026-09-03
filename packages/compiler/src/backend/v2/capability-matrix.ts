@@ -8,6 +8,7 @@ import {
 } from '@open-pencil/lowcode/backend'
 
 import { backendDiagnostic, unsupportedBackendCompilationModeDiagnostic } from '../diagnostics'
+import { backendCapabilityAdapterSlotV2 } from './capability-routing'
 import {
   isBackendCompilationModeV2,
   type BackendCapabilityDecisionV2,
@@ -194,10 +195,10 @@ function sourceOnlyCapabilityV2(
 function serverBridgeCapabilityV2(
   requirement: BackendCapabilityRequirementV2,
   mode: BackendCompilationModeV2,
-  serverCapabilities: ReadonlySet<BackendCapabilityV2>
+  routedCapabilities: ReadonlySet<BackendCapabilityV2>
 ): CapabilityResolutionV2 {
   const { capability, required } = requirement
-  if (mode === 'production' && serverCapabilities.has(capability)) {
+  if (mode === 'production' && routedCapabilities.has(capability)) {
     return { resolution: 'supported', included: true, diagnostics: [] }
   }
   if (mode === 'source-only-prototype') {
@@ -259,7 +260,7 @@ function resolveCapabilityV2(
   providerSupported: boolean,
   targetStatus: BackendTargetCapabilityStatusV2,
   mode: BackendCompilationModeV2,
-  serverCapabilities: ReadonlySet<BackendCapabilityV2>
+  routedCapabilities: ReadonlySet<BackendCapabilityV2>
 ): CapabilityResolutionV2 {
   if (!providerSupported) return missingProviderCapabilityV2(requirement)
   if (targetStatus === 'supported') {
@@ -267,7 +268,7 @@ function resolveCapabilityV2(
   }
   if (targetStatus === 'source-only') return sourceOnlyCapabilityV2(requirement, mode)
   if (targetStatus === 'requires-server-bridge') {
-    return serverBridgeCapabilityV2(requirement, mode, serverCapabilities)
+    return serverBridgeCapabilityV2(requirement, mode, routedCapabilities)
   }
   return unsupportedTargetCapabilityV2(requirement)
 }
@@ -311,7 +312,12 @@ export function negotiateBackendCapabilitiesV2(
   const diagnostics: BackendDiagnostic[] = []
   const seen = new Set<BackendCapabilityV2>()
   const providerCapabilities = new Set(input.bundle.descriptor.capabilities)
-  const serverCapabilities = new Set(input.bundle.server?.capabilities)
+  const routedCapabilities = new Set<BackendCapabilityV2>()
+  for (const capability of providerCapabilities) {
+    const slot = backendCapabilityAdapterSlotV2(capability)
+    const adapter = slot ? input.bundle[slot] : undefined
+    if (adapter?.capabilities.includes(capability)) routedCapabilities.add(capability)
+  }
   const requirements = [...input.requirements].sort((left, right) =>
     left.capability.localeCompare(right.capability, 'en')
   )
@@ -330,14 +336,15 @@ export function negotiateBackendCapabilitiesV2(
       continue
     }
     seen.add(capability)
-    const providerSupported = providerCapabilities.has(capability)
+    const providerSupported =
+      providerCapabilities.has(capability) && routedCapabilities.has(capability)
     const targetStatus = DEFAULT_TARGET_CAPABILITY_MATRIX_V2[target as CompilerTarget][capability]
     const resolution = resolveCapabilityV2(
       requirement,
       providerSupported,
       targetStatus,
       mode,
-      serverCapabilities
+      routedCapabilities
     )
     diagnostics.push(...resolution.diagnostics)
     decisions.push(

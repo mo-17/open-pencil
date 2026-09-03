@@ -1,4 +1,5 @@
 export * from './capability-matrix'
+export * from './capability-routing'
 export * from './contracts'
 export * from './descriptor'
 export * from './emit'
