@@ -211,12 +211,31 @@ SELECT policy、只发送最小 invalidation payload 的有界 trigger function�
 compile、App 或 CLI 路径，不授予 Apply/Deploy 权限；真实 staging 仍必须完成 source ledger、Dashboard、既有
 policy inventory、可信 release、A/B 隔离、refresh、reconnect、trigger 与 dispose 检查。
 
-P2 仍**尚未**实现 atomic RPC、queue worker、Cron job、webhook endpoint 或 monitoring drain。剩余 Provider
-工作继续按受限切片推进：`SECURITY INVOKER` atomic RPC；Receipt 驱动的 backfill；带
-idempotency/retry/DLQ 的 private queue 与 transactional outbox；签名 webhook intake；最后接入 drift 与
-observability Receipt。对应当前 Supabase 边界见
+第二个隔离的 Provider v2 切片把 candidate adapter 更新为 `2.1.0`，并生成一个有界 atomic transaction
+审查包。它只接受：一个 transaction、一个源码管理 entity、互不相同且 non-null 的 UUID 主键与 owner
+字段、一个默认值为字面量 0 的 non-null `int8` version 字段，以及 expected-version update。生成的 public
+PostgREST function 使用 `SECURITY INVOKER` 和 serializable isolation，校验 `auth.uid()`，锁定 owner row，
+执行 compare-and-swap update，并在 commit 前校验 version 后置条件；函数 EXECUTE 只授予
+`authenticated`。Apply-time catalog preflight 会绑定 managed table、field、primary key、forced RLS、预期的
+owner policy name/command/role/marker、table ACL、function signature/configuration 与最终 function ACL。
+React/Vue neutral client 只发出一次 `.rpc()`，不会触发 response accessor，只接收已知 PostgREST transport
+envelope，返回固定 typed error，并且既不自动 retry，也不接收 Credential。
+
+这个 atomic slice 刻意保持 **non-exclusive**，且不是 release-ready。P1 owner RLS 与 authenticated table
+SELECT/UPDATE grant 仍允许通过 REST 直接访问，所以它只保证这一次已审查 RPC call 内部的原子性，不能
+宣称所有写入都被强制纳入 compare-and-swap。该 package 尚未绑定 P1 source-ledger Receipt、精确 P1
+artifact digest 或 owner-policy expression evidence，未进入 built-in/compile/App/CLI/Apply 路径，也没有真实
+staging 的 PostgREST schema cache、A/B 隔离、并发冲突与 rollback 证据。
+
+P2 仍**尚未**实现 exclusive atomic write authority、queue worker、Cron job、webhook endpoint 或 monitoring
+drain。剩余 Provider 工作继续按受限切片推进：Receipt 驱动的 backfill；带 idempotency/retry/DLQ 的
+private queue 与 transactional outbox；签名 webhook intake；最后接入 drift 与 observability Receipt。
+后续 release-authority 切片必须移除或进一步约束 direct REST update，才能宣称 exclusive atomic write。
+对应当前 Supabase 与 PostgREST 边界见
 [Realtime authorization](https://supabase.com/docs/guides/realtime/authorization)、
 [Database Functions](https://supabase.com/docs/guides/database/functions)、
+[Functions as RPC](https://docs.postgrest.org/en/stable/references/api/functions.html)、
+[Transactions](https://docs.postgrest.org/en/stable/references/transactions.html)、
 [Queues](https://supabase.com/docs/guides/queues)、[Cron](https://supabase.com/docs/guides/cron) 与
 [Database Webhooks](https://supabase.com/docs/guides/database/webhooks)。
 

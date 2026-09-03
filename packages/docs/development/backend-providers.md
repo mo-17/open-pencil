@@ -553,13 +553,37 @@ candidate: it is not in the built-in registry or compile/App/CLI path, grants no
 authority, and still requires source-ledger, dashboard, existing-policy inventory, trusted-release,
 A/B isolation, refresh, reconnect, trigger, and disposal checks in a real staging project.
 
-P2 still does **not** implement an atomic RPC, queue worker, Cron job, webhook endpoint, or monitoring
-drain. The remaining Provider work follows in bounded slices: `SECURITY INVOKER` RPC for atomic
-transactions; receipt-driven backfill; private queue and transactional outbox with
-idempotency/retry/DLQ; signed webhook intake; then drift and observability receipts. These choices
-follow the current Supabase
+The second isolated Provider v2 slice updates the candidate adapter to `2.1.0` and emits one bounded
+atomic-transaction review package. It accepts exactly one transaction over one source-managed
+entity with distinct non-null UUID primary-key and owner fields, a non-null `int8` version field with
+literal zero default, and an expected-version update. The generated public PostgREST function is
+`SECURITY INVOKER`, pins serializable isolation, checks `auth.uid()`, locks the owner row, performs a
+compare-and-swap update, verifies the version postcondition before commit, and grants function
+execution only to `authenticated`. Apply-time catalog checks bind the managed table, fields, primary
+key, forced RLS, expected owner-policy names/commands/roles/markers, table ACLs, function
+signature/configuration, and final function ACL. The React/Vue-neutral client makes one `.rpc()`
+request, accepts the known
+PostgREST transport envelope without invoking accessors, returns fixed typed errors, and never
+retries or accepts credentials.
+
+This atomic slice is deliberately **non-exclusive** and not release-ready. P1 owner RLS and direct
+authenticated table SELECT/UPDATE grants remain available through REST, so the guarantee applies
+only inside this one reviewed RPC call; it does not force every write through compare-and-swap. The
+package is not bound to a P1 source-ledger receipt, exact P1 artifact digests, or owner-policy
+expression evidence, is not registered in the built-in/compile/App/CLI/Apply path, and still lacks
+live staging evidence for PostgREST schema cache, A/B isolation, concurrency, conflict, and rollback
+behavior.
+
+P2 still does **not** implement exclusive atomic write authority, a queue worker, Cron job, webhook
+endpoint, or monitoring drain. The remaining Provider work follows in bounded slices:
+receipt-driven backfill; private queue and transactional outbox with idempotency/retry/DLQ; signed
+webhook intake; then drift and observability receipts. A later release-authority slice must remove or
+otherwise constrain direct REST updates before claiming exclusive atomic writes. These choices
+follow the current Supabase and PostgREST
 [Realtime authorization](https://supabase.com/docs/guides/realtime/authorization),
 [database functions](https://supabase.com/docs/guides/database/functions),
+[functions as RPC](https://docs.postgrest.org/en/stable/references/api/functions.html),
+[transactions](https://docs.postgrest.org/en/stable/references/transactions.html),
 [Queues](https://supabase.com/docs/guides/queues), [Cron](https://supabase.com/docs/guides/cron),
 and [Database Webhooks](https://supabase.com/docs/guides/database/webhooks) boundaries.
 
