@@ -12,9 +12,17 @@ adapter, model-version, capability, configuration-schema, and output-kind metada
 grants no host permissions: reviewed Compiler bundles remain static host code, while credentials,
 network introspection, confirmation, deployment, and verification remain host-owned.
 
+Backend Provider contract V2 is an explicit opt-in parser for the expanded Backend model V2
+capability vocabulary. It is intentionally not accepted by the existing signed Manifest V2 schema:
+hosts must not reinterpret an already signed Manifest or select a V2 adapter through the V1
+registry path. A future Manifest/Host authority revision may adopt it only together with a reviewed
+static adapter and release-evidence flow.
+
 ```ts
 import {
   parsePluginBackendProviderContribution,
+  parsePluginBackendProviderContributionV2,
+  parseVersionedPluginBackendProviderContribution,
   parseVersionedPluginManifest,
   verifyVersionedPluginPackage,
   type PluginManifest
