@@ -508,6 +508,59 @@ gate JSON is reported with `gateEvidenceTrusted: false`; even a complete passed 
 `auditPassed` true without an accepted authority-bound receipt. A Compiler plan digest is not
 compared with a Host Release plan digest because those values belong to different authority domains.
 
+## P2 contract foundation
+
+P2 starts with a new semantic version instead of silently adding authority to a v1 document.
+`BackendApplicationSpecV2` keeps the provider-neutral data, Auth, workflow, Storage, capability, and
+secret-reference sections, and adds independently versioned Realtime, atomic transaction, data
+migration/backfill, and automation IR. A strict compatibility lowering maps a validated v1
+application to v2 with empty P2 sections; existing v1 parsing and canonical bytes do not change.
+The P2 parser accepts bounded plain data only, rejects unknown fields and undeclared references, and
+derives required capabilities from actual use so an optional or omitted declaration cannot hide a
+runtime requirement.
+
+Backend Provider contract v2 is a separate opt-in data-only contract. It can describe the expanded
+P2 capability vocabulary and model v2 support, but still grants no network, credential, filesystem,
+process, Apply, or Deploy permission. It is deliberately not accepted by the existing signed
+Manifest schema v2 path yet: enabling it there requires an explicit manifest/Host authority revision
+and a reviewed registry adapter. The bundled Supabase contribution therefore remains on contract and
+model v1 until its P2 artifact, release, and live-verification paths exist.
+
+Production evidence is no longer modeled as one fixed list for every application. The v2 foundation
+derives three invariant integrity requirements plus exact evidence and verifier checks for every
+capability used by the normalized IR, including the distinct `events.data-change` capability and
+dedicated HMAC-credential-purpose checks for inbound and outbound webhooks. Unknown capabilities,
+missing, expired, future, or out-of-scope evidence fail closed. A receipt digest provides integrity
+only; release readiness exists only relative to the Host-authenticated subject and accepted receipt
+store, and never replaces the authority-bound Backend Release receipt.
+
+`BackendOperationalEventV1` is a payload-free append-only envelope that binds provider, environment,
+authority, release/plan/single-flight/remote-operation identifiers, phase, outcome, duration, stable
+error code, evidence, trace, and the previous event digest. Verification requires a Host-authenticated
+head, clock, domain, and prior closed-segment boundary. Append parses those values into immutable
+snapshots before asynchronous hashing and returns the expected CAS head; persistence must reserve
+event and attempt IDs globally and atomically compare-and-swap that same head. The bounded chain then
+detects modification, deletion, reordering, duplication, future timestamps, concurrent single-flight
+attempts, and untrusted tail insertion. Events never contain request/response bodies or credentials.
+
+This foundation does **not** implement a Supabase Realtime channel, RPC, queue worker, Cron job,
+webhook endpoint, or monitoring drain. Provider work follows in bounded slices: private Realtime
+Broadcast plus `realtime.messages` authorization; `SECURITY INVOKER` RPC for atomic transactions;
+receipt-driven backfill; private queue and transactional outbox with idempotency/retry/DLQ; signed
+webhook intake; then drift and observability receipts. These choices follow the current Supabase
+[Realtime authorization](https://supabase.com/docs/guides/realtime/authorization),
+[database functions](https://supabase.com/docs/guides/database/functions),
+[Queues](https://supabase.com/docs/guides/queues), [Cron](https://supabase.com/docs/guides/cron),
+and [Database Webhooks](https://supabase.com/docs/guides/database/webhooks) boundaries.
+
+The first resumable backfill subset intentionally uses only a non-null, single-field integer identity
+primary key that the Provider proves is immutable and append-monotonic. Source IR names that cursor
+but does not contain an environment-specific high-water value. Each environment captures its own
+high water in a Host/CAS-bound receipt chain whose scope also binds provider, authority, application,
+migration, and batch size; progress cannot move backwards, exceed the captured high water, or extend
+a terminal receipt. Similarly, primary-key idempotency for data-change automations is restricted to
+insert events; update and delete require a future Provider-issued immutable event identifier.
+
 ## Manual and live gates
 
 Unit tests and deterministic fixtures prove parsing, negotiation, emission, transport envelopes,

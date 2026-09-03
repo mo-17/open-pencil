@@ -174,6 +174,51 @@ blocked，且永远不会开启 production readiness。
 
 CLI 接收的 gates JSON 是调用者提供的数据，因此报告 `gateEvidenceTrusted: false`。即使所有 gate 写成 passed，没有 Host authority 绑定且可接受的 Receipt，`auditPassed` 仍为 false。Compiler plan digest 也不会冒充 Host Release plan digest。CLI 不拥有 App 的已安装 package 生命周期、publisher review 或 live Store authority，因此不会把文档中的原始 `backendProviders` 声明直接当作可信 Adapter 权限；应使用 Desktop Host 导出，或给 CLI 显式传入本地 Backend spec。
 
+## P2 Contract Foundation
+
+P2 不会静默扩大 v1 文档的权限，而是从新的语义版本开始。`BackendApplicationSpecV2` 保留
+Provider-neutral 的数据、Auth、workflow、Storage、capability 与 Secret reference，并新增各自版本化的
+Realtime、atomic transaction、data migration/backfill 与 automation IR。严格兼容 lowering 会把已验证的
+v1 应用映射成 P2 section 为空的 v2；既有 v1 parser 与 canonical bytes 不变。P2 parser 只接受有界 plain
+data，拒绝未知字段和未声明引用，并从实际使用派生 required capability，不能用漏写或 optional 声明隐藏
+运行时需求。
+
+Backend Provider contract v2 是独立 opt-in 的 data-only contract。它可以声明 P2 能力与 model v2 支持，
+但依然不授予 network、Credential、filesystem、process、Apply 或 Deploy 权限。它暂时不会进入既有已签名
+Manifest schema v2 的解析路径；启用它需要显式的 Manifest/Host authority revision 与审查过的 registry
+adapter。因此，内置 Supabase contribution 在 P2 artifact、release 与 live verification 完成前仍保持
+contract/model v1，不能提前宣称支持。
+
+Production evidence 也不再要求每个应用通过同一份固定列表。v2 foundation 会派生 3 个完整性 invariant，
+再从 normalized IR 的实际能力派生精确 evidence 与 verifier check；其中数据库变更事件使用独立的
+`events.data-change` capability，入站与出站 Webhook 还要求验证 dedicated HMAC credential purpose。未知
+capability，以及缺失、过期、未来时间或应用未要求的 evidence 都会 fail closed。Receipt digest 只能证明
+完整性；release readiness 仅在 Host 已认证 subject 与 accepted receipt store 的上下文中成立，不能代替已有的
+authority-bound Backend Release receipt。
+
+`BackendOperationalEventV1` 是不含 payload 的 append-only envelope，绑定 Provider、environment、authority、
+release/plan/single-flight/remote-operation id、phase、outcome、duration、稳定 error code、evidence、trace 与
+前一事件 digest。验证必须提供 Host 已认证的 head、clock、domain 与前一个已关闭 segment 边界；append 会在
+异步 hash 前把输入解析为 immutable snapshot，并返回必须用于持久化 CAS 的 expected head。Host 还必须全局
+预留 event/attempt ID，并用同一个 head 做 atomic compare-and-swap。这样有界事件链可检测修改、删除、乱序、
+重复、未来时间、并发 single-flight attempt 与未授权尾部插入；事件绝不记录请求/响应 body 或 Credential。
+
+这一 foundation **尚未**实现 Supabase Realtime channel、RPC、queue worker、Cron job、webhook endpoint 或
+monitoring drain。后续 Provider 实现按受限切片推进：private Realtime Broadcast 与 `realtime.messages`
+authorization；`SECURITY INVOKER` atomic RPC；Receipt 驱动的 backfill；带 idempotency/retry/DLQ 的 private
+queue 与 transactional outbox；签名 webhook intake；最后接入 drift 与 observability Receipt。对应当前
+Supabase 边界见 [Realtime authorization](https://supabase.com/docs/guides/realtime/authorization)、
+[Database Functions](https://supabase.com/docs/guides/database/functions)、
+[Queues](https://supabase.com/docs/guides/queues)、[Cron](https://supabase.com/docs/guides/cron) 与
+[Database Webhooks](https://supabase.com/docs/guides/database/webhooks)。
+
+第一版 resumable backfill 有意只接受 non-null、单字段 integer identity 主键，且 Provider 必须证明它
+immutable 并只会 append-monotonic 增长。Source IR 只声明 cursor，不保存某个环境的 high-water；dev、
+staging、production 各自在 Host/CAS 绑定的 Receipt chain 中捕获自己的 high-water。该 scope 还会绑定
+Provider、authority、application、migration 与 batch size，进度不能倒退、越过 high-water 或在 terminal
+Receipt 后继续。data-change automation 的主键幂等也只允许 insert；update/delete 必须等后续
+Provider-issued immutable event identifier 才能开放。
+
 ## Manual / Live Gate
 
 真实 staging 至少需要：
