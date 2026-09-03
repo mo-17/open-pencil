@@ -543,11 +543,21 @@ event and attempt IDs globally and atomically compare-and-swap that same head. T
 detects modification, deletion, reordering, duplication, future timestamps, concurrent single-flight
 attempts, and untrusted tail insertion. Events never contain request/response bodies or credentials.
 
-This foundation does **not** implement a Supabase Realtime channel, RPC, queue worker, Cron job,
-webhook endpoint, or monitoring drain. Provider work follows in bounded slices: private Realtime
-Broadcast plus `realtime.messages` authorization; `SECURITY INVOKER` RPC for atomic transactions;
-receipt-driven backfill; private queue and transactional outbox with idempotency/retry/DLQ; signed
-webhook intake; then drift and observability receipts. These choices follow the current Supabase
+The first Provider v2 slice now emits a private Supabase Realtime Broadcast review bundle. Separate
+Auth, migration, security-policy, and Realtime adapters own their exact capabilities; the common
+adapters reuse the validated v1 target-schema, inspection-required migration, and owner-RLS review
+artifacts under v2-specific paths. The Realtime adapter emits an owner-topic SELECT policy, bounded
+trigger functions with minimal invalidation payloads, and a React/Vue helper that uses the Host-owned
+authenticated Supabase client without accepting or retaining a token. The bundle remains an isolated
+candidate: it is not in the built-in registry or compile/App/CLI path, grants no Apply or Deploy
+authority, and still requires source-ledger, dashboard, existing-policy inventory, trusted-release,
+A/B isolation, refresh, reconnect, trigger, and disposal checks in a real staging project.
+
+P2 still does **not** implement an atomic RPC, queue worker, Cron job, webhook endpoint, or monitoring
+drain. The remaining Provider work follows in bounded slices: `SECURITY INVOKER` RPC for atomic
+transactions; receipt-driven backfill; private queue and transactional outbox with
+idempotency/retry/DLQ; signed webhook intake; then drift and observability receipts. These choices
+follow the current Supabase
 [Realtime authorization](https://supabase.com/docs/guides/realtime/authorization),
 [database functions](https://supabase.com/docs/guides/database/functions),
 [Queues](https://supabase.com/docs/guides/queues), [Cron](https://supabase.com/docs/guides/cron),

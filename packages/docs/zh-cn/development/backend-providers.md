@@ -203,11 +203,19 @@ release/plan/single-flight/remote-operation id、phase、outcome、duration、�
 预留 event/attempt ID，并用同一个 head 做 atomic compare-and-swap。这样有界事件链可检测修改、删除、乱序、
 重复、未来时间、并发 single-flight attempt 与未授权尾部插入；事件绝不记录请求/响应 body 或 Credential。
 
-这一 foundation **尚未**实现 Supabase Realtime channel、RPC、queue worker、Cron job、webhook endpoint 或
-monitoring drain。后续 Provider 实现按受限切片推进：private Realtime Broadcast 与 `realtime.messages`
-authorization；`SECURITY INVOKER` atomic RPC；Receipt 驱动的 backfill；带 idempotency/retry/DLQ 的 private
-queue 与 transactional outbox；签名 webhook intake；最后接入 drift 与 observability Receipt。对应当前
-Supabase 边界见 [Realtime authorization](https://supabase.com/docs/guides/realtime/authorization)、
+第一个 Provider v2 切片现在会生成 private Supabase Realtime Broadcast 审查包。Auth、migration、
+security-policy 与 Realtime adapter 分别承担精确 capability；common adapter 在 v2 专用路径下复用已经验证的
+v1 target schema、必须 inspection 的 migration 与 owner-RLS 审查产物。Realtime adapter 生成 owner topic 的
+SELECT policy、只发送最小 invalidation payload 的有界 trigger function，以及不接收或保存 token、只使用 Host
+已认证 Supabase client 的 React/Vue helper。该 bundle 仍是隔离的 candidate：未进入 built-in registry、
+compile、App 或 CLI 路径，不授予 Apply/Deploy 权限；真实 staging 仍必须完成 source ledger、Dashboard、既有
+policy inventory、可信 release、A/B 隔离、refresh、reconnect、trigger 与 dispose 检查。
+
+P2 仍**尚未**实现 atomic RPC、queue worker、Cron job、webhook endpoint 或 monitoring drain。剩余 Provider
+工作继续按受限切片推进：`SECURITY INVOKER` atomic RPC；Receipt 驱动的 backfill；带
+idempotency/retry/DLQ 的 private queue 与 transactional outbox；签名 webhook intake；最后接入 drift 与
+observability Receipt。对应当前 Supabase 边界见
+[Realtime authorization](https://supabase.com/docs/guides/realtime/authorization)、
 [Database Functions](https://supabase.com/docs/guides/database/functions)、
 [Queues](https://supabase.com/docs/guides/queues)、[Cron](https://supabase.com/docs/guides/cron) 与
 [Database Webhooks](https://supabase.com/docs/guides/database/webhooks)。
