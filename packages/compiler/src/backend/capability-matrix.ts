@@ -52,26 +52,6 @@ const WEB_CAPABILITIES = capabilityRow({
   'transactions.atomic': 'requires-server-bridge'
 })
 
-/**
- * Vue v1 emits Backend review artifacts, but its generated client deliberately
- * omits Supabase/auth/server/storage runtimes. Explicit prototype exports may
- * retain a static shell with warnings; production must fail closed.
- */
-const VUE_CAPABILITIES = capabilityRow({
-  'data.read': 'source-only',
-  'data.write': 'source-only',
-  'auth.identity': 'source-only',
-  'auth.roles': 'source-only',
-  'policy.row-level': 'supported',
-  'server.functions': 'source-only',
-  'server.http': 'source-only',
-  'storage.objects': 'source-only',
-  'migrations.schema': 'supported',
-  'migrations.data': 'supported',
-  'realtime.subscribe': 'source-only',
-  'transactions.atomic': 'source-only'
-})
-
 const NATIVE_SOURCE_CAPABILITIES = capabilityRow({
   'data.read': 'source-only',
   'data.write': 'source-only',
@@ -96,7 +76,7 @@ const MINI_PROGRAM_SOURCE_CAPABILITIES = capabilityRow({
 
 export const DEFAULT_TARGET_CAPABILITY_MATRIX: TargetCapabilityMatrix = Object.freeze({
   react: WEB_CAPABILITIES,
-  vue: VUE_CAPABILITIES,
+  vue: WEB_CAPABILITIES,
   expo: NATIVE_SOURCE_CAPABILITIES,
   flutter: NATIVE_SOURCE_CAPABILITIES,
   'wechat-miniprogram': MINI_PROGRAM_SOURCE_CAPABILITIES,

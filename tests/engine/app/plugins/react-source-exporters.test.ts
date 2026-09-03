@@ -2,8 +2,21 @@ import { describe, expect, test } from 'bun:test'
 
 import { unzipSync } from 'fflate'
 
+import { compile, type CompilerInput } from '@open-pencil/compiler'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import {
+  createAppPluginStore,
+  createBundledPluginCatalog,
+  createMemoryAppPluginStateStorage
+} from '@/app/plugins'
+import {
+  APP_BACKEND_PROVIDER_REQUEST_FORMAT,
+  SUPABASE_BACKEND_PROVIDER_ID,
+  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
+  appBackendProviderDocumentValue,
+  listAppBackendProviderDescriptors
+} from '@/app/plugins/host/backend-provider'
 import {
   exportCurrentDocumentAsCapacitorSource,
   type CapacitorExporterDependencies
@@ -51,6 +64,125 @@ const EXPORTERS = [
 
 function editor(documentName = 'Product Demo'): SourceExporterEditor {
   return { graph: new SceneGraph(), state: { documentName } }
+}
+
+async function backendProviderEditor(): Promise<{
+  source: SourceExporterEditor
+  store: ReturnType<typeof createAppPluginStore>
+}> {
+  const bundled = createBundledPluginCatalog().find(
+    ({ manifest }) => manifest.plugin.id === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+  )
+  if (!bundled) throw new Error('Expected bundled Supabase Backend Provider')
+  const store = createAppPluginStore({
+    storage: createMemoryAppPluginStateStorage(),
+    catalog: [bundled],
+    activationCompatibilityPolicy: () => ({ ok: true }),
+    engineVersion: '0.13.2'
+  })
+  await store.load()
+  if (!store.backendProvider(SUPABASE_BACKEND_PROVIDER_PLUGIN_ID, SUPABASE_BACKEND_PROVIDER_ID)) {
+    throw new Error('Expected installed Supabase Backend Provider')
+  }
+  const [descriptor] = listAppBackendProviderDescriptors(store)
+  if (!descriptor) throw new Error('Expected reviewed Supabase Backend Provider descriptor')
+  const source = editor('React Backend Provider')
+  source.graph.updateNode(source.graph.rootId, {
+    lowcodeSupabaseConfig: {
+      url: 'https://example.supabase.co',
+      anonKey: 'react-runtime-public-key',
+      schema: 'public'
+    },
+    lowcodeDocumentState: [{ id: 'notes', name: 'notes', type: 'array', defaultValue: [] }],
+    pluginData: [
+      {
+        pluginId: 'open-pencil',
+        key: 'lowcode/backendProvider.v1',
+        value: appBackendProviderDocumentValue({
+          format: APP_BACKEND_PROVIDER_REQUEST_FORMAT,
+          selection: descriptor,
+          application: {
+            format: 'openpencil.backend-application',
+            version: 1,
+            applicationId: 'react-backend-provider-test',
+            dataModel: {
+              version: 1,
+              entities: [
+                {
+                  id: 'notes',
+                  name: 'notes',
+                  management: 'managed',
+                  fields: [{ id: 'id', name: 'id', type: 'uuid', nullable: false }],
+                  primaryKey: { fields: ['id'] },
+                  indexes: []
+                }
+              ],
+              enums: [],
+              relations: []
+            },
+            auth: {
+              version: 1,
+              identities: [{ id: 'user', kind: 'user' }],
+              roles: [],
+              ownership: [],
+              tenants: [],
+              rowAccess: []
+            },
+            workflows: {
+              version: 1,
+              workflows: [
+                {
+                  id: 'backend-health',
+                  name: 'Backend health',
+                  trigger: { kind: 'http', method: 'POST', access: 'authenticated' },
+                  parameters: [],
+                  steps: [{ id: 'respond', kind: 'respond', value: 'true', status: 200 }]
+                }
+              ]
+            },
+            capabilities: [
+              { capability: 'auth.identity', required: true },
+              { capability: 'data.read', required: true },
+              { capability: 'data.write', required: true },
+              { capability: 'migrations.schema', required: true },
+              { capability: 'policy.row-level', required: true },
+              { capability: 'server.functions', required: true },
+              { capability: 'server.http', required: true }
+            ],
+            secrets: []
+          }
+        })
+      }
+    ]
+  })
+  source.graph.createNode('BUTTON', source.graph.getPages()[0].id, {
+    name: 'Load notes',
+    events: {
+      onClick: [
+        {
+          id: 'load-notes',
+          kind: 'supabaseQuery',
+          table: 'notes',
+          columns: 'id',
+          resultTarget: 'notes'
+        }
+      ]
+    }
+  })
+  source.graph.createNode('BUTTON', source.graph.getPages()[0].id, {
+    name: 'Backend health',
+    events: {
+      onClick: [
+        {
+          id: 'backend-health-call',
+          kind: 'invokeServerWorkflow',
+          workflowId: 'backend-health',
+          args: {}
+        }
+      ]
+    }
+  })
+  return { source, store }
 }
 
 function compiledFixture(extraFiles: ReadonlyMap<string, string | Uint8Array> = new Map()) {
@@ -118,6 +250,53 @@ describe('React source project plugin exporters', () => {
       expect(new TextDecoder().decode(readme)).toStartWith('# Product Demo\n')
     })
   }
+
+  test('resolves the document Backend Provider while preserving React client usage', async () => {
+    const { source, store } = await backendProviderEditor()
+    let bytes: Uint8Array | undefined
+    let compilerInput: CompilerInput | undefined
+    const dependencies: NextJsExporterDependencies = {
+      resolveBackendProviderStore: () => store,
+      async chooseDestination() {
+        return {
+          async write(data) {
+            bytes = data
+          }
+        }
+      },
+      async resolveFontManifest() {
+        return { faces: [] }
+      },
+      compile(input) {
+        compilerInput = input
+        return compile(input)
+      },
+      archive: archiveProjectFiles
+    }
+
+    await exportCurrentDocumentAsNextJsSource(source, dependencies)
+    expect(compilerInput?.options.backendProvider).toMatchObject({
+      selection: {
+        descriptor: { providerId: 'supabase', adapterId: 'open-pencil.backend.supabase' },
+        enabled: true
+      },
+      application: { applicationId: 'react-backend-provider-test' }
+    })
+    if (!bytes) throw new Error('Expected React Backend Provider archive')
+    const files = unzipSync(bytes)
+    expect(files['openpencil-backend.manifest.json']).toBeDefined()
+    expect(files['backend/supabase/database-schema.json']).toBeDefined()
+    expect(new TextDecoder().decode(files['src/_lowcode_supabase.ts'])).toContain(
+      'react-runtime-public-key'
+    )
+    expect(new TextDecoder().decode(files['src/App.tsx'])).toContain('.from("notes").select("id")')
+    expect(new TextDecoder().decode(files['src/App.tsx'])).toContain(
+      'invokeServerWorkflow("backend-health"'
+    )
+    expect(files['supabase/functions/openpencil-runtime/index.ts']).toEqual(
+      files['backend/supabase/functions/openpencil-runtime/index.ts']
+    )
+  })
 
   test('selects a destination before resolving fonts or entering synchronous compile', async () => {
     const calls: string[] = []

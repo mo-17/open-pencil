@@ -3,9 +3,9 @@ import {
   type LegacySupabaseServerArtifactSet
 } from '#compiler/backend/supabase/legacy-react-artifacts'
 import type {
-  IRSupabaseFilter,
-  IRSupabasePayloadEntry,
   IRServerAction,
+  IRServerPayloadEntry,
+  IRServerSupabaseFilter,
   IRServerValueSource,
   IRServerWorkflow
 } from '#compiler/ir/types'
@@ -39,6 +39,13 @@ function collectEnvironmentNames(workflows: readonly IRServerWorkflow[]): string
         value(action.url)
         value(action.body)
         for (const header of action.headers ?? []) value(header.value)
+      } else if (action.kind === 'supabaseQuery') {
+        for (const filter of action.filters) value(filter.value)
+      } else if (action.kind === 'supabaseMutation') {
+        for (const entry of action.payloadEntries ?? []) value(entry.value)
+        for (const filter of action.filters) value(filter.value)
+      } else if (action.kind === 'callServerWorkflow') {
+        for (const entry of action.args) value(entry.value)
       } else if (action.kind === 'condition') {
         actions(action.consequent)
         actions(action.alternate ?? [])
@@ -200,17 +207,18 @@ function emitMutationAction(
   return output
 }
 
-function emitFilters(filters: readonly IRSupabaseFilter[], scope: EmitScope): string {
+function emitFilters(filters: readonly IRServerSupabaseFilter[], scope: EmitScope): string {
   return filters
     .map(
-      (filter) => `.${filter.op}(${JSON.stringify(filter.column)}, ${emitAst(filter.ast, scope)})`
+      (filter) =>
+        `.${filter.op}(${JSON.stringify(filter.column)}, ${emitValue(filter.value, scope)})`
     )
     .join('')
 }
 
-function emitEntries(entries: readonly IRSupabasePayloadEntry[], scope: EmitScope): string {
+function emitEntries(entries: readonly IRServerPayloadEntry[], scope: EmitScope): string {
   return `{ ${entries
-    .map((entry) => `${JSON.stringify(entry.key)}: ${emitAst(entry.ast, scope)}`)
+    .map((entry) => `${JSON.stringify(entry.key)}: ${emitValue(entry.value, scope)}`)
     .join(', ')} }`
 }
 

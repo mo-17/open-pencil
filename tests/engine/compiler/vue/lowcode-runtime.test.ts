@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { vueAdapter } from '#compiler/adapters/vue'
+import type { IRElement, IRTree } from '#compiler/ir/types'
 import { compileTemplate, parse as parseVueSfc } from 'vue/compiler-sfc'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
@@ -21,6 +23,18 @@ function textFile(files: ReadonlyMap<string, string | Uint8Array>, path: string)
   const value = files.get(path)
   if (typeof value !== 'string') throw new Error(`Missing text file: ${path}`)
   return value
+}
+
+function element(overrides: Partial<IRElement> = {}): IRElement {
+  return {
+    kind: 'element',
+    sourceId: 'element',
+    tag: 'div',
+    className: '',
+    attrs: {},
+    children: [],
+    ...overrides
+  }
 }
 
 function expectValidVueFiles(files: ReadonlyMap<string, string | Uint8Array>): void {
@@ -46,6 +60,286 @@ function maybeWriteVerificationProject(files: ReadonlyMap<string, string | Uint8
 }
 
 describe('Vue local low-code runtimes', () => {
+  test('emits production Supabase Auth, CRUD, list, Storage, and authenticated workflow parity', () => {
+    const docStates: IRTree['docStates'] = [
+      {
+        id: 'current-user',
+        name: '$currentUser',
+        type: 'object',
+        defaultValue: { id: null, email: null, signedIn: false }
+      },
+      { id: 'email', name: 'email', type: 'string', defaultValue: '' },
+      { id: 'password', name: 'password', type: 'string', defaultValue: '' },
+      { id: 'result', name: 'result', type: 'object', defaultValue: {} },
+      { id: 'error', name: 'error', type: 'object', defaultValue: {} },
+      { id: 'asset-url', name: 'assetUrl', type: 'string', defaultValue: '' }
+    ]
+    const supabaseConfig = {
+      url: 'https://example.supabase.co',
+      anonKey: 'sb_publishable_example',
+      schema: 'public'
+    }
+    const serverWorkflows: NonNullable<IRTree['serverWorkflows']> = [
+      {
+        id: 'complete-task',
+        name: 'Complete task',
+        params: ['taskId'],
+        actions: [{ kind: 'return', status: 200, valueAst: { kind: 'string', value: 'ok' } }]
+      }
+    ]
+    const currentUserId = {
+      kind: 'member' as const,
+      object: { kind: 'ident' as const, name: '$currentUser' },
+      property: 'id'
+    }
+    const query = {
+      kind: 'supabaseQuery' as const,
+      table: 'tasks',
+      columns: 'id,title,owner_id',
+      filters: [
+        { column: 'owner_id', op: 'eq' as const, ast: currentUserId, references: ['$currentUser'] }
+      ],
+      single: false,
+      resultTarget: 'result',
+      errorTarget: 'error'
+    }
+    const protectedPage: IRTree = {
+      pageId: 'tasks-page',
+      pageName: 'Tasks',
+      usesRouteParams: false,
+      requiresAuth: true,
+      authRedirect: '/login',
+      children: [
+        {
+          kind: 'list',
+          arrayName: 'tasksRows',
+          itemName: 'task',
+          indexName: 'index',
+          template: element({ sourceId: 'task-row', tag: 'article' })
+        },
+        element({
+          sourceId: 'search',
+          tag: 'input',
+          events: { onChange: [query] }
+        }),
+        element({
+          sourceId: 'create-task',
+          tag: 'button',
+          events: {
+            onClick: [
+              {
+                kind: 'supabaseMutation',
+                operation: 'insert',
+                table: 'tasks',
+                payloadEntries: [
+                  {
+                    key: 'owner_id',
+                    ast: currentUserId,
+                    references: ['$currentUser']
+                  }
+                ],
+                filters: [],
+                resultTarget: 'result',
+                errorTarget: 'error'
+              }
+            ]
+          }
+        }),
+        element({
+          sourceId: 'sign-in',
+          tag: 'button',
+          events: {
+            onClick: [
+              {
+                kind: 'supabaseAuth',
+                operation: 'signIn',
+                emailAst: { kind: 'ident', name: 'email' },
+                passwordAst: { kind: 'ident', name: 'password' },
+                references: ['email', 'password'],
+                errorTarget: 'error'
+              }
+            ]
+          }
+        }),
+        element({
+          sourceId: 'asset-upload',
+          tag: 'input',
+          upload: {
+            bucket: 'task-assets',
+            resultTarget: 'assetUrl',
+            resultAccess: 'private',
+            pathAst: currentUserId,
+            accept: 'image/png,image/jpeg'
+          }
+        }),
+        element({
+          sourceId: 'complete-task',
+          tag: 'button',
+          events: {
+            onClick: [
+              {
+                kind: 'invokeServerWorkflow',
+                workflowId: 'complete-task',
+                args: [{ key: 'taskId', ast: { kind: 'string', value: 'task-1' }, references: [] }]
+              }
+            ]
+          }
+        })
+      ],
+      states: [],
+      docStates,
+      docStateReads: ['$currentUser', 'email', 'password'],
+      docStateWrites: ['result', 'error', 'assetUrl'],
+      serverWorkflows,
+      listQueries: [
+        {
+          rowsName: 'tasksRows',
+          setterName: 'setTasksRows',
+          table: 'tasks',
+          columns: 'id,title,owner_id',
+          filters: [
+            {
+              column: 'owner_id',
+              op: 'eq',
+              ast: currentUserId,
+              references: ['$currentUser']
+            }
+          ],
+          orderBy: [{ column: 'created_at', ascending: false }],
+          limit: 20,
+          deps: ['JSON.stringify($currentUser)']
+        }
+      ],
+      supabaseConfig,
+      warnings: []
+    }
+    const loginPage: IRTree = {
+      ...protectedPage,
+      pageId: 'login-page',
+      pageName: 'Login',
+      requiresAuth: undefined,
+      authRedirect: undefined,
+      children: []
+    }
+
+    const output = vueAdapter.emit([protectedPage, loginPage], vueOptions())
+    maybeWriteVerificationProject(output.files)
+    const page = textFile(output.files, 'src/pages/index.vue')
+    const runtime = textFile(output.files, 'src/lowcode-supabase.ts')
+    const serverClient = textFile(output.files, 'src/lowcode-server.ts')
+    const packageJSON = JSON.parse(textFile(output.files, 'package.json')) as {
+      dependencies: Record<string, string>
+    }
+
+    expect(packageJSON.dependencies['@supabase/supabase-js']).toBe('^2.100.0')
+    expect(runtime).toContain("from './lowcode-state'")
+    expect(runtime).not.toContain("from './_lowcode_state'")
+    expect(runtime).toContain('supabase.auth.onAuthStateChange')
+    expect(output.files.has('.env.example')).toBe(true)
+    expect(page).toContain("from '../lowcode-supabase'")
+    expect(page).toContain("from '../lowcode-server'")
+    expect(page).toContain('__vueWatch(')
+    expect(page).toMatch(/if \(!__opDoc_\$currentUser_[a-z0-9]+\.value\?\.signedIn\)/)
+    expect(page).toContain('.from("tasks").select("id,title,owner_id")')
+    expect(page).toContain('.from("tasks").insert({ "owner_id":')
+    expect(page).toContain('.auth.signInWithPassword({ email:')
+    expect(page).toContain('.storage.from("task-assets")')
+    expect(page).toContain('__setDocState("assetUrl", __opPath)')
+    expect(page).not.toContain('getPublicUrl(__opPath)')
+    expect(page).toContain('__opInvokeServerWorkflow("complete-task"')
+    expect(page).toContain('data-openpencil-auth-guard')
+    expect(page).toContain('__opRouter.replace("/login")')
+    expect(page).toContain('const __opRequestsInFlight = new Set<string>()')
+    expect(page).toContain('__opRequestThrottleUntil.set(key, now + 300)')
+    expect(page).toContain('__opDebounceChange(')
+    expect(page).toContain('}, 250)')
+    expect(page).toContain(':data-op-request-pending=')
+    expect(page).toContain(':disabled=')
+    expect(serverClient).toContain('Server workflow requires an authenticated user.')
+    expect(serverClient).toContain('Authorization: `Bearer ${token}`')
+    expect(output.files.has('supabase/functions/openpencil-runtime/index.ts')).toBe(true)
+    expect(output.executableServerWorkflowFiles).toEqual([
+      'supabase/functions/openpencil-runtime/index.ts',
+      '.env.server.example',
+      'openpencil-server.manifest.json',
+      'SERVER_DEPLOYMENT.md'
+    ])
+    expect(output.warnings.map((warning) => warning.code)).not.toEqual(
+      expect.arrayContaining([
+        'vue-supabase-unsupported',
+        'vue-auth-guard-unsupported',
+        'vue-server-workflow-unsupported'
+      ])
+    )
+    expectValidVueFiles(output.files)
+  })
+
+  test('injects the auth binding and keeps malformed authenticated output fail-closed', () => {
+    const protectedPage: IRTree = {
+      pageId: 'protected-page',
+      pageName: 'Protected',
+      usesRouteParams: false,
+      requiresAuth: true,
+      authRedirect: '/login',
+      children: [element({ sourceId: 'protected-content', tag: 'button' })],
+      states: [],
+      docStates: [],
+      docStateReads: [],
+      docStateWrites: [],
+      serverWorkflows: [],
+      listQueries: [],
+      supabaseConfig: {
+        url: 'https://example.supabase.co',
+        anonKey: 'sb_publishable_example',
+        schema: 'public'
+      },
+      warnings: []
+    }
+    const protectedOutput = vueAdapter.emit([protectedPage], vueOptions())
+    const protectedSource = textFile(protectedOutput.files, 'src/pages/index.vue')
+    expect(protectedSource).toMatch(/__useDocState<unknown>\("\$currentUser"\)/)
+    expect(protectedSource).toContain('data-openpencil-auth-guard')
+    expect(protectedSource).toContain('<button>')
+
+    const malformedPage: IRTree = {
+      ...protectedPage,
+      pageId: 'malformed-page',
+      pageName: 'Malformed',
+      supabaseConfig: undefined,
+      serverWorkflows: [
+        {
+          id: 'server-action',
+          name: 'Server action',
+          params: [],
+          actions: [{ kind: 'return', status: 200 }]
+        }
+      ],
+      children: [
+        element({
+          sourceId: 'server-action',
+          tag: 'button',
+          events: {
+            onClick: [{ kind: 'invokeServerWorkflow', workflowId: 'server-action', args: [] }]
+          }
+        })
+      ]
+    }
+    const malformedOutput = vueAdapter.emit([malformedPage], vueOptions())
+    const malformedSource = textFile(malformedOutput.files, 'src/pages/index.vue')
+    expect(malformedSource).toContain('data-openpencil-unsupported="auth-guard"')
+    expect(malformedSource).not.toContain('<button')
+    expect(malformedSource).not.toContain("from '../lowcode-server'")
+    expect(malformedOutput.files.has('src/lowcode-server.ts')).toBe(false)
+    expect(malformedOutput.files.has('supabase/functions/openpencil-runtime/index.ts')).toBe(false)
+    expect(malformedOutput.warnings.map((warning) => warning.code)).toEqual(
+      expect.arrayContaining([
+        'vue-supabase-config-required',
+        'vue-server-workflow-definition-required'
+      ])
+    )
+    expectValidVueFiles(malformedOutput.files)
+  })
+
   test('collector-to-Vue emits accessible bounded toast/confirm and local validation', () => {
     const graph = makeSceneGraph('Local interactions')
     const pageId = firstPageId(graph)

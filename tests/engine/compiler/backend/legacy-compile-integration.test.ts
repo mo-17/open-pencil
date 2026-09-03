@@ -18,7 +18,10 @@ import {
   type BackendArtifactManifestV1
 } from '@open-pencil/compiler/backend'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
-import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
+import {
+  digestBackendApplication,
+  type BackendApplicationSpecV1
+} from '@open-pencil/lowcode/backend'
 import { SceneGraph, type ServerWorkflowDef } from '@open-pencil/scene-graph'
 
 const LEGACY_ANON_VALUE = 'legacy-public-anon-value'
@@ -45,6 +48,7 @@ function legacyGraph(): { graph: SceneGraph; pageId: string } {
       anonKey: LEGACY_ANON_VALUE,
       schema: 'public'
     },
+    lowcodeDocumentState: [{ id: 'notes', name: 'notes', type: 'array', defaultValue: [] }],
     lowcodeServerWorkflows: [LEGACY_SERVER_WORKFLOW]
   })
   graph.createNode('BUTTON', pageId, {
@@ -54,10 +58,9 @@ function legacyGraph(): { graph: SceneGraph; pageId: string } {
         {
           id: 'load-notes',
           kind: 'supabaseQuery',
-          operation: 'select',
           table: 'notes',
-          columns: ['id'],
-          resultName: 'notes'
+          columns: 'id',
+          resultTarget: 'notes'
         }
       ]
     }
@@ -97,8 +100,29 @@ function explicitBackendApplication(): BackendApplicationSpecV1 {
   }
 }
 
+function explicitWorkflowBackendApplication(): BackendApplicationSpecV1 {
+  const application = explicitBackendApplication()
+  application.auth.identities = [{ id: 'user', kind: 'user' }]
+  application.workflows.workflows = [
+    {
+      id: 'health-check',
+      name: 'Health check',
+      trigger: { kind: 'http', method: 'POST', access: 'authenticated' },
+      parameters: [],
+      steps: [{ id: 'return', kind: 'respond', value: 'true', status: 200 }]
+    }
+  ]
+  application.capabilities.push(
+    { capability: 'auth.identity', required: true },
+    { capability: 'server.functions', required: true },
+    { capability: 'server.http', required: true }
+  )
+  return application
+}
+
 function explicitBackendRequest(
-  overrides: Partial<CompilerBackendProviderRequest['selection']> = {}
+  overrides: Partial<CompilerBackendProviderRequest['selection']> = {},
+  application = explicitBackendApplication()
 ): CompilerBackendProviderRequest {
   return {
     selection: {
@@ -107,7 +131,7 @@ function explicitBackendRequest(
       enabled: true,
       ...overrides
     },
-    application: explicitBackendApplication()
+    application
   }
 }
 
@@ -129,30 +153,25 @@ function textFile(output: CompilerOutput, path: string): string {
 }
 
 describe('legacy Backend Provider compile integration', () => {
-  test('fails Vue production instead of silently shipping omitted runtime behavior', () => {
+  test('preserves the Vue production client and authenticated server workflow artifacts', () => {
     const { graph, pageId } = legacyGraph()
-    let failure: unknown
-    try {
-      compile({
-        graph,
-        pageIds: [pageId],
-        options: withDefaults({ target: 'vue', devMode: false })
-      })
-    } catch (error) {
-      failure = error
-    }
-    expect(failure).toBeInstanceOf(BackendProviderCompilationError)
-    expect(failure).toMatchObject({
-      diagnostics: expect.arrayContaining([
-        expect.objectContaining({
-          code: 'backend-capability-source-only-mode-required',
-          severity: 'error'
-        })
-      ])
+    const output = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ target: 'vue', devMode: false })
     })
+
+    expect(textFile(output, 'src/lowcode-supabase.ts')).toContain(LEGACY_ANON_VALUE)
+    expect(textFile(output, 'src/lowcode-server.ts')).toContain('Authorization: `Bearer ${token}`')
+    expect(output.artifactOwnership?.executableServerWorkflowFiles).toEqual(
+      EXECUTABLE_SERVER_WORKFLOW_PATHS
+    )
+    expect(output.warnings.map((entry) => entry.code)).not.toContain(
+      'backend-capability-source-only-mode-required'
+    )
   })
 
-  test('allows only an explicit Vue source-only prototype omission', () => {
+  test('keeps explicit Vue prototype mode fail-closed for omitted server bridges', () => {
     const { graph, pageId } = legacyGraph()
     const output = compile({
       graph,
@@ -166,9 +185,10 @@ describe('legacy Backend Provider compile integration', () => {
     expect(output.files.has('src/main.ts')).toBe(true)
     expect(output.warnings).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: 'backend-capability-source-only-omitted' })
+        expect.objectContaining({ code: 'backend-capability-server-bridge-omitted' })
       ])
     )
+    expect(textFile(output, 'src/lowcode-supabase.ts')).toContain(LEGACY_ANON_VALUE)
   })
 
   test('preserves the React client while emitting external-only, deny-default review artifacts', () => {
@@ -363,29 +383,91 @@ describe('explicit Backend Provider compile integration', () => {
     }
   })
 
-  test('rejects explicit and legacy Backend authorities in the same document', () => {
+  test('keeps explicit authority while preserving React and Vue client runtime usage', async () => {
+    const application = explicitWorkflowBackendApplication()
+    const explicitApplicationDigest = await digestBackendApplication(application)
+    for (const target of ['react', 'vue'] as const) {
+      const { graph, pageId } = legacyGraph()
+      graph.createNode('BUTTON', pageId, {
+        name: 'Health check',
+        events: {
+          onClick: [
+            {
+              id: 'invoke-health',
+              kind: 'invokeServerWorkflow',
+              workflowId: 'health-check',
+              args: {}
+            }
+          ]
+        }
+      })
+      const output = compile({
+        graph,
+        pageIds: [pageId],
+        options: withDefaults({
+          target,
+          devMode: false,
+          backendProvider: explicitBackendRequest({}, application)
+        })
+      })
+
+      expect(
+        textFile(output, target === 'vue' ? 'src/lowcode-supabase.ts' : 'src/_lowcode_supabase.ts')
+      ).toContain(LEGACY_ANON_VALUE)
+      expect(textFile(output, target === 'vue' ? 'src/pages/index.vue' : 'src/App.tsx')).toContain(
+        '.from("notes").select("id")'
+      )
+      expect(textFile(output, target === 'vue' ? 'src/pages/index.vue' : 'src/App.tsx')).toContain(
+        target === 'vue'
+          ? '__opInvokeServerWorkflow("health-check"'
+          : 'invokeServerWorkflow("health-check"'
+      )
+      expect(textFile(output, 'supabase/functions/openpencil-runtime/index.ts')).toBe(
+        textFile(output, 'backend/supabase/functions/openpencil-runtime/index.ts')
+      )
+      const manifest = JSON.parse(
+        textFile(output, BACKEND_ARTIFACT_MANIFEST_PATH)
+      ) as BackendArtifactManifestV1
+      expect(manifest.authority.providerId).toBe('supabase')
+      expect(manifest.applicationDigest).toBe(explicitApplicationDigest)
+      expect(output.warnings.map((entry) => entry.code)).not.toContain(
+        'backend-provider-authority-conflict'
+      )
+    }
+  })
+
+  test('fails closed when legacy server workflows drift from explicit authority', () => {
     const { graph, pageId } = legacyGraph()
-    let failure: unknown
+    const application = explicitWorkflowBackendApplication()
+    application.workflows.workflows[0].steps = [
+      { id: 'return', kind: 'respond', value: 'false', status: 200 }
+    ]
+
+    expect(() =>
+      compile({
+        graph,
+        pageIds: [pageId],
+        options: withDefaults({
+          devMode: false,
+          backendProvider: explicitBackendRequest({}, application)
+        })
+      })
+    ).toThrow(BackendProviderCompilationError)
     try {
       compile({
         graph,
         pageIds: [pageId],
         options: withDefaults({
           devMode: false,
-          backendProvider: explicitBackendRequest()
+          backendProvider: explicitBackendRequest({}, application)
         })
       })
-    } catch (cause) {
-      failure = cause
+    } catch (failure) {
+      expect(failure).toMatchObject({
+        diagnostics: [
+          expect.objectContaining({ code: 'backend-server-workflow-authority-conflict' })
+        ]
+      })
     }
-    expect(failure).toBeInstanceOf(BackendProviderCompilationError)
-    expect(failure).toMatchObject({
-      diagnostics: expect.arrayContaining([
-        expect.objectContaining({
-          code: 'backend-provider-authority-conflict',
-          severity: 'error'
-        })
-      ])
-    })
   })
 })

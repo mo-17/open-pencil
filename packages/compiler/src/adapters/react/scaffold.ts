@@ -3,6 +3,7 @@ import type { IRNode, IRTree } from '#compiler/ir/types'
 import { buildComponentImports, buildLucideIconImport } from './emit/component'
 import { emitElement } from './emit/element'
 import { emitListQueryHook } from './emit/list-query'
+import { buildRequestGateHookLines, buildRequestGatePageAttrs } from './emit/request-gate'
 import { emitStateDecl } from './emit/state'
 import {
   hasIntlAttr,
@@ -28,6 +29,7 @@ import {
 import { buildReactModuleImports } from './modules/registry'
 import { motionDriverToken } from './motion/drivers'
 import { motionToken } from './motion/key'
+import { pageUsesRequestDebounce, pageUsesRequestGate } from './request-timing'
 import type { PagePathInfo } from './route-paths'
 import { collectKitImports, kitImportLine } from './ui-kit/registry'
 import type { UIKitAdapter } from './ui-kit/types'
@@ -196,7 +198,7 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
 
 /**
  * Build the multi-page router shell `src/App.tsx`. Uses `BrowserRouter` from
- * `react-router-dom@^6.27` per Phase 1 §11.3 decision #2.
+ * the v6-compatible declarative API provided by the pinned React Router v7 release.
  */
 export function buildRouterApp(infos: readonly PagePathInfo[], options: BuildAppOptions): string {
   const bridgeImport = options.devMode ? `import './__preview-bridge'\n` : ''
@@ -309,11 +311,14 @@ function buildReactImport(ir: IRTree): string {
   const hasRemoteValidation = validationUsesRemote(ir.validatedFields ?? [])
   const hasComputedState = ir.states.some((s) => s.computed)
   const hasWritableState = ir.states.some((s) => !s.computed && s.computedInvalid !== true)
+  const hasRequestGate = pageUsesRequestGate(ir)
+  const hasRequestDebounce = pageUsesRequestDebounce(ir)
   const hooks: string[] = []
-  if (hasWritableState || hasListQueries || hasValidation) hooks.push('useState')
-  if (hasRemoteValidation) hooks.push('useRef')
+  if (hasWritableState || hasListQueries || hasValidation || hasRequestGate) hooks.push('useState')
+  if (hasRemoteValidation || hasRequestGate) hooks.push('useRef')
   if (hasComputedState) hooks.push('useMemo')
-  if (hasListQueries || buildMotionDriverStateHooks(ir) !== '') hooks.push('useEffect')
+  if (hasListQueries || buildMotionDriverStateHooks(ir) !== '' || hasRequestDebounce)
+    hooks.push('useEffect')
   return hooks.length > 0 ? `import { ${hooks.join(', ')} } from 'react'\n` : ''
 }
 
@@ -406,6 +411,8 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   // helpers. After the doc-state hoists (custom-rule exprs reference them).
   const validationGlue =
     (ir.validatedFields?.length ?? 0) > 0 ? buildValidationGlue(ir.validatedFields ?? []) : ''
+  const requestGateActive = pageUsesRequestGate(ir)
+  const requestGateLines = buildRequestGateHookLines(requestGateActive, pageUsesRequestDebounce(ir))
   // Phase 4 §16.3: redirect-if-unauthenticated guard. Comes after the hooks (it
   // reads the `$currentUser` doc-state declared above) and short-circuits the
   // render before the page body when the session isn't signed in.
@@ -419,6 +426,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     stateLines,
     motionDriverStateLines,
     listQueryLines,
+    requestGateLines,
     validationGlue,
     intlHookLine,
     guardLine
@@ -426,7 +434,8 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     .filter((l) => l !== '')
     .join('\n')
 
-  const wrapperOpen = `<div className="${WRAPPER_CLASS_ATTR}"${pageMotionAttrs(ir, devMode)}${pagePrototypeAttrs(ir, prototypeRuntime)}>`
+  const requestStateAttrs = buildRequestGatePageAttrs(requestGateActive)
+  const wrapperOpen = `<div className="${WRAPPER_CLASS_ATTR}"${requestStateAttrs}${pageMotionAttrs(ir, devMode)}${pagePrototypeAttrs(ir, prototypeRuntime)}>`
 
   if (ir.children.length === 0) {
     if (hookLines === '') {

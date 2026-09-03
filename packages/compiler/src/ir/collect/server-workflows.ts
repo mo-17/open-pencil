@@ -7,13 +7,32 @@ import type {
 } from '@open-pencil/scene-graph'
 
 import type {
-  IRSupabaseFilter,
-  IRSupabasePayloadEntry,
   IRServerAction,
+  IRServerPayloadEntry,
+  IRServerSupabaseFilter,
   IRServerValueSource,
   IRServerWorkflow,
   IRWarning
 } from '../types'
+
+export type ServerWorkflowCollectionResult =
+  | Readonly<{ ok: true; workflows?: readonly IRServerWorkflow[] }>
+  | Readonly<{ ok: false }>
+
+/** Strict compatibility parser used when a newer Backend application is also
+ * present. Invalid legacy declarations must be distinguishable from absence so
+ * the authority resolver can fail closed instead of silently accepting drift. */
+export function parseServerWorkflows(raw: unknown): ServerWorkflowCollectionResult {
+  if (raw === undefined) return { ok: true }
+  const validated = validateServerWorkflows(raw, 'lowcodeServerWorkflows')
+  if (!validated.ok) return { ok: false }
+  if (validated.workflows.length === 0) return { ok: true }
+  try {
+    return { ok: true, workflows: validated.workflows.map(lowerWorkflow) }
+  } catch {
+    return { ok: false }
+  }
+}
 
 /** Revalidate untrusted document data and lower it into adapter-only IR. No
  *  validator detail is surfaced because the rejected payload can contain a
@@ -22,25 +41,15 @@ export function collectServerWorkflows(
   raw: unknown,
   warnings: IRWarning[]
 ): IRServerWorkflow[] | undefined {
-  if (raw === undefined) return undefined
-  const validated = validateServerWorkflows(raw, 'lowcodeServerWorkflows')
-  if (!validated.ok) {
+  const parsed = parseServerWorkflows(raw)
+  if (!parsed.ok) {
     warnings.push({
       code: 'server-workflows-invalid',
       message: 'Server workflows are invalid and were omitted from generated output.'
     })
     return undefined
   }
-  if (validated.workflows.length === 0) return undefined
-  try {
-    return validated.workflows.map(lowerWorkflow)
-  } catch {
-    warnings.push({
-      code: 'server-workflows-invalid',
-      message: 'Server workflows are invalid and were omitted from generated output.'
-    })
-    return undefined
-  }
+  return parsed.workflows ? [...parsed.workflows] : undefined
 }
 
 function lowerWorkflow(workflow: ServerWorkflowDef): IRServerWorkflow {
@@ -65,23 +74,31 @@ function lowerValue(source: ServerValueSource): IRServerValueSource {
 
 function filtersOf(
   filters: Extract<ServerActionDef, { kind: 'supabaseQuery' | 'supabaseMutation' }>['filters']
-): IRSupabaseFilter[] {
+): IRServerSupabaseFilter[] {
   return (filters ?? []).map((filter) => ({
     column: filter.column,
     op: filter.op,
-    ...expression(filter.valueExpr)
+    value: { kind: 'expr', ...expression(filter.valueExpr) }
   }))
 }
 
 function payloadOf(
   entries: Extract<ServerActionDef, { kind: 'supabaseMutation' }>['payloadEntries']
-): IRSupabasePayloadEntry[] | undefined {
+): IRServerPayloadEntry[] | undefined {
   if (!entries) return undefined
-  return entries.map((entry) => ({ key: entry.key, ...expression(entry.valueExpr) }))
+  return entries.map((entry) => ({
+    key: entry.key,
+    value: { kind: 'expr', ...expression(entry.valueExpr) }
+  }))
 }
 
-function argsOf(args: Record<string, string> | undefined): IRSupabasePayloadEntry[] {
-  return Object.entries(args ?? {}).map(([key, source]) => ({ key, ...expression(source) }))
+function argsOf(args: Record<string, string> | undefined): IRServerPayloadEntry[] {
+  return Object.entries(args ?? {})
+    .sort(([left], [right]) => left.localeCompare(right, 'en'))
+    .map(([key, source]) => ({
+      key,
+      value: { kind: 'expr', ...expression(source) }
+    }))
 }
 
 function lowerAction(action: ServerActionDef): IRServerAction {

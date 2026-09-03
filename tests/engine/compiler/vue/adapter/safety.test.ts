@@ -15,7 +15,8 @@ function vueOptions(router: 'vue-router-v4' | 'none' = 'none') {
     packageName: 'vue-demo',
     target: 'vue',
     router,
-    devMode: false
+    devMode: false,
+    backendCompilationMode: 'source-only-prototype'
   })
 }
 
@@ -277,7 +278,7 @@ describe('Vue compiler adapter safety and state', () => {
     expectValidSfc(page)
   })
 
-  test('types document-state refs and keeps unsupported current-user reads runnable', () => {
+  test('types document-state refs and syncs bounded current-user reads through Supabase', () => {
     const graph = makeSceneGraph('Typed state')
     const pageId = firstPageId(graph)
     graph.updateNode(graph.rootId, {
@@ -321,18 +322,19 @@ describe('Vue compiler adapter safety and state', () => {
     const output = compile({ graph, pageIds: [pageId], options: vueOptions() })
     const page = textFile(output.files, 'src/pages/index.vue')
 
-    expect(output.warnings.map((warning) => warning.code)).toEqual(
+    expect(output.warnings.map((warning) => warning.code)).not.toEqual(
       expect.arrayContaining(['vue-supabase-unsupported', 'vue-current-user-binding-unsupported'])
     )
+    expect(output.files.has('src/lowcode-supabase.ts')).toBe(true)
     expect(page).toContain(
-      'const $currentUser = Object.freeze({ id: null, email: null, signedIn: false })'
+      "import { getSupabaseClient as __opGetSupabaseClient } from '../lowcode-supabase'"
     )
     expect(page).toMatch(/__useDocState<number>\("amount"\)/)
     expect(page).toMatch(/__useDocState<unknown\[]>\("incoming"\)/)
     expect(page).toMatch(/__vueRef<unknown\[]>\(\[\]\)/)
     expect(page).toMatch(/__opState_items_[a-z0-9]+\.value = __opDoc_incoming_[a-z0-9]+\.value/)
     expect(page).toMatch(/__vueComputed<number>\(\(\) => __opDoc_amount_[a-z0-9]+\.value \+ 1\)/)
-    expect(page).toContain('__vueComputed(() => $currentUser.email)')
+    expect(page).toMatch(/__vueComputed\(\(\) => __opDoc_\$currentUser_[a-z0-9]+\.value\.email\)/)
     expect(page).toContain('__vueComputed(() => undefined)')
     expectValidSfc(page)
     maybeWriteVerificationProject(output.files)

@@ -4,18 +4,27 @@ export interface VueLowcodeUsage {
   toast: boolean
   confirm: boolean
   validation: boolean
+  supabase: boolean
+  serverWorkflow: boolean
 }
 
 const EMPTY_USAGE: VueLowcodeUsage = {
   toast: false,
   confirm: false,
-  validation: false
+  validation: false,
+  supabase: false,
+  serverWorkflow: false
 }
 
 export function collectVueTreeLowcodeUsage(ir: IRTree): VueLowcodeUsage {
   return mergeUsage(collectNodeUsage(ir.children), {
     ...EMPTY_USAGE,
-    validation: (ir.validatedFields?.length ?? 0) > 0
+    validation: (ir.validatedFields?.length ?? 0) > 0,
+    supabase:
+      ir.supabaseConfig !== undefined &&
+      ((ir.listQueries?.length ?? 0) > 0 ||
+        ir.requiresAuth === true ||
+        ir.docStateReads.includes('$currentUser'))
   })
 }
 
@@ -33,7 +42,10 @@ export function collectVueProjectLowcodeUsage(
   irs: readonly IRTree[],
   components: readonly ComponentDef[]
 ): VueLowcodeUsage {
-  let usage = { ...EMPTY_USAGE }
+  let usage: VueLowcodeUsage = {
+    ...EMPTY_USAGE,
+    supabase: irs.some((ir) => ir.supabaseConfig !== undefined)
+  }
   for (const ir of irs) usage = mergeUsage(usage, collectVueTreeLowcodeUsage(ir))
   for (const definition of components) {
     usage = mergeUsage(usage, collectVueComponentLowcodeUsage(definition))
@@ -54,7 +66,10 @@ function collectNodeUsage(nodes: readonly IRNode[]): VueLowcodeUsage {
       return
     }
     usage = mergeUsage(usage, collectEventUsage(node.events))
-    if (node.kind === 'element') node.children.forEach(visit)
+    if (node.kind === 'element') {
+      if (node.upload) usage = mergeUsage(usage, { ...EMPTY_USAGE, supabase: true })
+      node.children.forEach(visit)
+    }
   }
   nodes.forEach(visit)
   return usage
@@ -74,7 +89,13 @@ function collectHandlerUsage(handler: IREventHandler): VueLowcodeUsage {
   let usage: VueLowcodeUsage = {
     ...EMPTY_USAGE,
     toast: handler.kind === 'toast',
-    confirm: handler.kind === 'confirm'
+    confirm: handler.kind === 'confirm',
+    supabase:
+      handler.kind === 'supabaseQuery' ||
+      handler.kind === 'supabaseMutation' ||
+      handler.kind === 'supabaseAuth' ||
+      handler.kind === 'invokeServerWorkflow',
+    serverWorkflow: handler.kind === 'invokeServerWorkflow'
   }
   if (handler.kind === 'condition' || handler.kind === 'confirm') {
     for (const item of handler.consequent) {
@@ -83,7 +104,12 @@ function collectHandlerUsage(handler: IREventHandler): VueLowcodeUsage {
     for (const item of handler.alternate ?? []) {
       usage = mergeUsage(usage, collectHandlerUsage(item))
     }
-  } else if (handler.kind === 'apiCall') {
+  } else if (
+    handler.kind === 'apiCall' ||
+    handler.kind === 'supabaseQuery' ||
+    handler.kind === 'supabaseMutation' ||
+    handler.kind === 'invokeServerWorkflow'
+  ) {
     for (const item of handler.onSuccess ?? []) {
       usage = mergeUsage(usage, collectHandlerUsage(item))
     }
@@ -98,6 +124,8 @@ function mergeUsage(left: VueLowcodeUsage, right: VueLowcodeUsage): VueLowcodeUs
   return {
     toast: left.toast || right.toast,
     confirm: left.confirm || right.confirm,
-    validation: left.validation || right.validation
+    validation: left.validation || right.validation,
+    supabase: left.supabase || right.supabase,
+    serverWorkflow: left.serverWorkflow || right.serverWorkflow
   }
 }

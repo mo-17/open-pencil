@@ -4,21 +4,34 @@ import {
   validateLowcodeCustomCSS,
   validateSupabaseConfig
 } from '@open-pencil/lowcode'
-import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/scene-graph'
+import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
+import type {
+  LowcodeHeadMetadata,
+  SceneGraph,
+  SeoMetadata,
+  SupabaseConfig
+} from '@open-pencil/scene-graph'
 
 import { derivePagePaths } from './adapters/react/route-paths'
-import { compileBackendArtifacts } from './compile/backend'
+import { SUPABASE_ARTIFACT_PATHS } from './backend'
+import {
+  BackendProviderCompilationError,
+  compileBackendArtifacts,
+  resolveCompilerBackendApplication
+} from './compile/backend'
 import {
   applyCompilerFontManifest,
   applyExpoCompilerFontManifest,
   applyFlutterCompilerFontManifest,
   applyMiniProgramCompilerFontManifest
 } from './font-manifest'
+import { resolveServerWorkflowAuthority } from './ir/collect/backend-server-workflows'
 import { buildComponentRegistry } from './ir/collect/components'
 import type { MotionLoweringCache } from './ir/collect/motion'
 import { collectServerWorkflows } from './ir/collect/server-workflows'
 import { collectComponents, collectTree } from './ir/collect/tree'
 import type { IRMotion } from './ir/motion'
+import type { IRServerWorkflow } from './ir/types'
 import {
   parseOpenPencilMicrofrontendRuntimeApp,
   parseOpenPencilMicrofrontendRuntimeRoutes
@@ -147,29 +160,35 @@ export function compile(input: CompilerInput): CompilerOutput {
   // threads into both page walks and component-body walks.
   const i18n = options.i18n === true
   const motionCache: MotionLoweringCache = new Map<string, IRMotion>()
+  const backendApplication = resolveCompilerBackendApplication(options)
+  const root = input.graph.getNode(input.graph.rootId)
   const serverWorkflowWarnings: CompileWarning[] = []
-  let serverWorkflows = collectServerWorkflows(
-    input.graph.getNode(input.graph.rootId)?.lowcodeServerWorkflows,
+  const serverWorkflows = resolveCompileServerWorkflows(
+    root?.lowcodeServerWorkflows,
+    root?.lowcodeSupabaseConfig,
+    backendApplication,
     serverWorkflowWarnings
   )
-  const rootSupabase = input.graph.getNode(input.graph.rootId)?.lowcodeSupabaseConfig
-  if (serverWorkflows && (!rootSupabase || !validateSupabaseConfig(rootSupabase).ok)) {
-    serverWorkflowWarnings.push({
-      code: 'server-workflows-supabase-config-required',
-      message: 'Server workflows require a valid Supabase configuration and were omitted.'
-    })
-    serverWorkflows = undefined
-  }
   const { defs: components, warnings: componentWarnings } = collectComponents(
     input.graph,
     registry,
     i18n,
     styleOptions,
     motionCache,
-    serverWorkflows ?? null
+    serverWorkflows ?? null,
+    backendApplication
   )
   const irs = input.pageIds.map((id) =>
-    collectTree(input.graph, id, registry, i18n, styleOptions, motionCache, serverWorkflows ?? null)
+    collectTree(
+      input.graph,
+      id,
+      registry,
+      i18n,
+      styleOptions,
+      motionCache,
+      serverWorkflows ?? null,
+      backendApplication
+    )
   )
   assertMicrofrontendFeaturePolicy(options, irs, components)
   const {
@@ -215,7 +234,13 @@ export function compile(input: CompilerInput): CompilerOutput {
       )
     }
   }
-  const backend = integrateBackend(input.graph, options, files, executableServerWorkflowFiles)
+  const backend = integrateBackend(
+    input.graph,
+    options,
+    files,
+    executableServerWorkflowFiles,
+    backendApplication !== undefined
+  )
   const navigationWarnings = auditLowcodeNavigation(input.graph, {
     pageIds: input.pageIds
   })
@@ -245,13 +270,55 @@ export function compile(input: CompilerInput): CompilerOutput {
   )
 }
 
+function resolveCompileServerWorkflows(
+  legacyRaw: unknown,
+  supabaseConfig: SupabaseConfig | undefined,
+  backendApplication: BackendApplicationSpecV1 | undefined,
+  warnings: CompileWarning[]
+): readonly IRServerWorkflow[] | undefined {
+  let workflows: readonly IRServerWorkflow[] | undefined
+  if (backendApplication) {
+    const authority = resolveServerWorkflowAuthority(backendApplication, legacyRaw)
+    if (!authority.ok) {
+      throw new BackendProviderCompilationError([
+        {
+          code: 'backend-server-workflow-authority-conflict',
+          severity: 'error',
+          path: '$.workflows',
+          message:
+            'Legacy server workflows do not match the authoritative Backend application workflows.'
+        }
+      ])
+    }
+    workflows = authority.workflows
+  } else {
+    workflows = collectServerWorkflows(legacyRaw, warnings)
+  }
+  if (!workflows || (supabaseConfig && validateSupabaseConfig(supabaseConfig).ok)) return workflows
+  warnings.push({
+    code: 'server-workflows-supabase-config-required',
+    message: 'Server workflows require a valid Supabase configuration and were omitted.'
+  })
+  return undefined
+}
+
 function integrateBackend(
   graph: SceneGraph,
   options: CompilerOptions,
   files: Map<string, string | Uint8Array>,
-  executableServerWorkflowFiles: readonly string[]
+  executableServerWorkflowFiles: readonly string[],
+  explicitBackendAuthority: boolean
 ): { warnings: readonly CompileWarning[]; artifactOwnership?: CompilerArtifactOwnership } {
   const backend = compileBackendArtifacts(graph, options, [...files.keys()])
+  if (
+    explicitBackendAuthority &&
+    executableServerWorkflowFiles.includes('supabase/functions/openpencil-runtime/index.ts')
+  ) {
+    const runtime = backend?.files.get(SUPABASE_ARTIFACT_PATHS.serverRuntimeSource)
+    if (runtime !== undefined) {
+      files.set('supabase/functions/openpencil-runtime/index.ts', runtime)
+    }
+  }
   mergeCompilerFiles(files, backend?.files)
   const artifactOwnership = createArtifactOwnership(
     backend?.files.keys() ?? [],

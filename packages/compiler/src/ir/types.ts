@@ -225,8 +225,8 @@ export interface IRElement extends IRPrototypeDecoration {
   controlled?: IRControlledInput
   /** Phase 4 §18 — file-upload wiring for an INPUT carrying
    *  `interactiveProps.upload`. The adapter emits `<input type="file">` + an
-   *  onChange that uploads to Supabase Storage and writes the public URL into a
-   *  doc-state. Mutually exclusive with `controlled` (a file input is
+   *  onChange that uploads to Supabase Storage and writes either the private
+   *  object path or a public-read URL into a doc-state. Mutually exclusive with `controlled` (a file input is
    *  uncontrolled); collect skips controlled wiring when this is set. */
   upload?: IRUpload
   /** Phase 3 §15 Phase B — semantic hint identifying an interactive form
@@ -600,14 +600,16 @@ export interface IRList {
 
 /** Phase 4 §18: a file-upload INPUT (Supabase Storage). The adapter emits
  *  `<input type="file">` whose onChange uploads the chosen file to
- *  `storage.from(bucket).upload(path, file, { upsert: true })`, then writes the
- *  public URL of the stored object into `resultTarget` (a doc-state) for a later
- *  form submit / display. `pathAst`, when set, evaluates to a folder prefix the
- *  file name is appended to (e.g. `$currentUser.id` → `<id>/<filename>`);
- *  otherwise the bare file name is used. */
+ *  `storage.from(bucket).upload(path, file, { upsert: true })`. `resultAccess`
+ *  is copied from the authoritative Backend application bucket declaration so
+ *  adapters can keep private object paths private instead of manufacturing a
+ *  public URL. `pathAst`, when set, evaluates to a folder prefix the file name
+ *  is appended to (e.g. `$currentUser.id` → `<id>/<filename>`); otherwise the
+ *  bare file name is used. */
 export interface IRUpload {
   bucket: string
   resultTarget: string
+  resultAccess?: 'private' | 'public-read'
   pathAst?: ExprAst
   accept?: string
 }
@@ -1192,6 +1194,17 @@ export interface IRServerHeader {
   value: IRServerValueSource
 }
 
+export interface IRServerSupabaseFilter {
+  column: string
+  op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'in'
+  value: IRServerValueSource
+}
+
+export interface IRServerPayloadEntry {
+  key: string
+  value: IRServerValueSource
+}
+
 export interface IRServerHttpRequestAction {
   kind: 'httpRequest'
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -1205,7 +1218,7 @@ export interface IRServerSupabaseQueryAction {
   kind: 'supabaseQuery'
   table: string
   columns: string
-  filters: IRSupabaseFilter[]
+  filters: IRServerSupabaseFilter[]
   single: boolean
   resultName: string
 }
@@ -1214,8 +1227,8 @@ export interface IRServerSupabaseMutationAction {
   kind: 'supabaseMutation'
   operation: 'insert' | 'update' | 'delete' | 'upsert'
   table: string
-  payloadEntries?: IRSupabasePayloadEntry[]
-  filters: IRSupabaseFilter[]
+  payloadEntries?: IRServerPayloadEntry[]
+  filters: IRServerSupabaseFilter[]
   resultName?: string
 }
 
@@ -1237,7 +1250,7 @@ export interface IRServerReturnAction {
 export interface IRServerCallWorkflowAction {
   kind: 'callServerWorkflow'
   workflowId: string
-  args: IRSupabasePayloadEntry[]
+  args: IRServerPayloadEntry[]
 }
 
 export type IRServerAction =

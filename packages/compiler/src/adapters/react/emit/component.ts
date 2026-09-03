@@ -15,9 +15,11 @@ import {
   validationUsesRemote
 } from '../lowcode/validation'
 import { buildReactModuleImports } from '../modules/registry'
+import { nodesUseRequestDebounce, nodesUseRequestGate } from '../request-timing'
 import { collectKitImports, kitImportLine } from '../ui-kit/registry'
 import type { UIKitAdapter } from '../ui-kit/types'
 import { emitElement } from './element'
+import { buildRequestGateHookLines } from './request-gate'
 
 /**
  * Phase 3 §8 — build `src/components/<Name>.tsx` for one reusable component.
@@ -43,6 +45,8 @@ export function buildComponentModule(
 ): string {
   const bodyNodes = componentBodyNodes(def)
   const needsNavigate = routerAvailable && nodesHaveNavigateHandler(bodyNodes)
+  const usesRequestGate = nodesUseRequestGate(bodyNodes)
+  const usesRequestDebounce = nodesUseRequestDebounce(bodyNodes)
   // Phase 3 §9: a component body with i18n-tagged visible text needs
   // FormattedMessage; §9 v3: a translated attribute (placeholder) needs useIntl.
   const usesIntl = componentHasIntlAttr(def)
@@ -61,7 +65,12 @@ export function buildComponentModule(
   const serverImport = nodesUseServerWorkflow(bodyNodes)
     ? `import { invokeServerWorkflow } from '../_lowcode_server'\n`
     : ''
-  const reactImport = buildComponentReactImport(def, rootEventsBoundary)
+  const reactImport = buildComponentReactImport(
+    def,
+    rootEventsBoundary,
+    usesRequestGate,
+    usesRequestDebounce
+  )
   const routerImport = buildComponentRouterImport(needsNavigate, nodesHaveNavigateParams(bodyNodes))
   const lowcodeStateImport = buildComponentLowcodeStateImport(def)
   const validationImport = buildComponentValidationImport(def)
@@ -88,7 +97,9 @@ export function buildComponentModule(
       rootEventsBoundary,
       motionScopeBoundary,
       prototypeBoundary,
-      needsNavigate
+      needsNavigate,
+      usesRequestGate,
+      usesRequestDebounce
     )
   )
 }
@@ -122,11 +133,19 @@ function buildComponentBody(
   rootEventsBoundary: boolean,
   motionScopeBoundary: boolean,
   prototypeBoundary: boolean,
-  needsNavigate: boolean
+  needsNavigate: boolean,
+  usesRequestGate: boolean,
+  usesRequestDebounce: boolean
 ): string {
   // Phase 3 §9 v3: the `const intl = useIntl()` hook line (empty when the body
   // has no translated attribute → byte-identical to the pre-§9-v3 output).
-  const hookBlock = buildComponentHookBlock(def, usesIntl, needsNavigate)
+  const hookBlock = buildComponentHookBlock(
+    def,
+    usesIntl,
+    needsNavigate,
+    usesRequestGate,
+    usesRequestDebounce
+  )
   // Phase 3 §8 v4: a COMPONENT_SET emits per-axis variant props + a subtree
   // switch instead of the single shared body.
   if (def.variantAxes && def.variants) {
@@ -350,10 +369,16 @@ function componentPropLine(prop: ComponentProp): string {
   return `\n  ${prop.name}?: ${type}`
 }
 
-function buildComponentReactImport(def: ComponentDef, rootEventsBoundary: boolean): string {
+function buildComponentReactImport(
+  def: ComponentDef,
+  rootEventsBoundary: boolean,
+  usesRequestGate: boolean,
+  usesRequestDebounce: boolean
+): string {
   const names: string[] = []
-  if ((def.validatedFields?.length ?? 0) > 0) names.push('useState')
-  if (validationUsesRemote(def.validatedFields ?? [])) names.push('useRef')
+  if ((def.validatedFields?.length ?? 0) > 0 || usesRequestGate) names.push('useState')
+  if (validationUsesRemote(def.validatedFields ?? []) || usesRequestGate) names.push('useRef')
+  if (usesRequestDebounce) names.push('useEffect')
   const valueImport = names.length > 0 ? `import { ${names.join(', ')} } from 'react'\n` : ''
   const typeNames = ['CSSProperties', ...(rootEventsBoundary ? ['HTMLAttributes'] : [])]
   return `${valueImport}import type { ${typeNames.join(', ')} } from 'react'\n`
@@ -384,13 +409,16 @@ function buildComponentValidationImport(def: ComponentDef): string {
 function buildComponentHookBlock(
   def: ComponentDef,
   usesIntl: boolean,
-  needsNavigate: boolean
+  needsNavigate: boolean,
+  usesRequestGate: boolean,
+  usesRequestDebounce: boolean
 ): string {
   const lines = [
     needsNavigate ? '  const navigate = useNavigate()' : '',
     ...(def.docStateReads ?? []).map(
       (name) => `  const ${name} = useDocState(${JSON.stringify(name)})`
     ),
+    usesRequestGate ? buildRequestGateHookLines(true, usesRequestDebounce) : '',
     (def.validatedFields?.length ?? 0) > 0 ? buildValidationGlue(def.validatedFields ?? []) : '',
     usesIntl ? '  const intl = useIntl()' : ''
   ].filter((line) => line !== '')

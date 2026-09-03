@@ -19,6 +19,8 @@ export const CURRENT_USER_FALLBACK =
 export interface VueEmitContext {
   devMode: boolean
   routerAvailable: boolean
+  supabaseAvailable: boolean
+  serverWorkflowAvailable: boolean
   refNames: Set<string>
   writableStateNames: ReadonlyMap<string, string>
   identAliases: ReadonlyMap<string, string>
@@ -35,6 +37,11 @@ export interface VueEmitContext {
   safeHrefRequired: boolean
 }
 
+export interface VueSourceEmission {
+  source: string
+  warnings: CompileWarning[]
+}
+
 export interface VueLocalBinding {
   name: string
   alias: string
@@ -48,11 +55,14 @@ export function createContext(
   identAliases: ReadonlyMap<string, string> = new Map(),
   listAliases: ReadonlyMap<string, string> = new Map(),
   docStateTypes: ReadonlyMap<string, IRTree['docStates'][number]['type']> = new Map(),
-  componentAliases: ReadonlyMap<string, string> = new Map()
+  componentAliases: ReadonlyMap<string, string> = new Map(),
+  runtime: { supabase?: boolean; serverWorkflow?: boolean } = {}
 ): VueEmitContext {
   return {
     devMode,
     routerAvailable,
+    supabaseAvailable: runtime.supabase === true,
+    serverWorkflowAvailable: runtime.serverWorkflow === true,
     refNames,
     writableStateNames: new Map(
       states

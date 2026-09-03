@@ -20,6 +20,7 @@ import {
   validateStateName,
   validateSupabaseConfig
 } from '@open-pencil/lowcode'
+import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 import {
   isAutoLayoutMode,
   getMotionChannels,
@@ -140,6 +141,15 @@ function collectRootRuntime(
   }
 }
 
+function backendStorageBucketAccess(
+  application: BackendApplicationSpecV1 | undefined
+): ReadonlyMap<string, 'private' | 'public-read'> | undefined {
+  if (!application) return undefined
+  return new Map(
+    (application.storage?.buckets ?? []).map((bucket) => [bucket.name, bucket.access] as const)
+  )
+}
+
 export function collectTree(
   graph: SceneGraph,
   pageId: string,
@@ -147,7 +157,8 @@ export function collectTree(
   i18n = false,
   styleOptions: CompilerStyleOptions = {},
   motionCache: MotionLoweringCache = new Map(),
-  prevalidatedServerWorkflows?: readonly IRServerWorkflow[] | null
+  prevalidatedServerWorkflows?: readonly IRServerWorkflow[] | null,
+  backendApplication?: BackendApplicationSpecV1
 ): IRTree {
   const page = graph.getNode(pageId)
   const warnings: IRWarning[] = []
@@ -220,6 +231,7 @@ export function collectTree(
     components,
     workflows,
     serverWorkflows: serverWorkflowsById,
+    storageBucketAccess: backendStorageBucketAccess(backendApplication),
     i18n,
     styleOptions,
     listQueries,
@@ -488,7 +500,8 @@ export function collectComponents(
   i18n = false,
   styleOptions: CompilerStyleOptions = {},
   motionCache: MotionLoweringCache = new Map(),
-  prevalidatedServerWorkflows?: readonly IRServerWorkflow[] | null
+  prevalidatedServerWorkflows?: readonly IRServerWorkflow[] | null,
+  backendApplication?: BackendApplicationSpecV1
 ): { defs: ComponentDef[]; warnings: IRWarning[] } {
   const warnings: IRWarning[] = []
   // Discard doc-state warnings here — they're already surfaced per page.
@@ -537,6 +550,7 @@ export function collectComponents(
       components,
       workflows,
       serverWorkflows: serverWorkflowsById,
+      storageBucketAccess: backendStorageBucketAccess(backendApplication),
       i18n,
       styleOptions,
       assets,
@@ -942,6 +956,9 @@ interface WalkCtx {
   workflows: ReadonlyMap<string, WorkflowDef>
   /** Strictly validated server workflows available to invoke actions. */
   serverWorkflows: ReadonlyMap<string, IRServerWorkflow>
+  /** Explicit Backend bucket names and their declared result visibility. When
+   *  present, legacy upload bindings may reference only these buckets. */
+  storageBucketAccess?: ReadonlyMap<string, 'private' | 'public-read'>
   /** Phase 3 §8 v2/v3: when collecting a component body, the master-descendant
    *  node id → prop slot map for that component. A TEXT node whose id is a key
    *  emits `{prop}` instead of its literal (text slot); an element whose id is a
@@ -3222,6 +3239,15 @@ function applyUploadInput(
     })
     return undefined
   }
+  const resultAccess = ctx.storageBucketAccess?.get(bucket)
+  if (ctx.storageBucketAccess && !resultAccess) {
+    ctx.warnings.push({
+      code: 'upload-backend-bucket-unavailable',
+      message: `INPUT ${node.id} upload bucket is not declared by the authoritative Backend application; upload disabled`,
+      nodeId: node.id
+    })
+    return undefined
+  }
   const resultTarget = typeof upload.resultTarget === 'string' ? upload.resultTarget.trim() : ''
   if (resultTarget === '' || !ctx.docStates.has(resultTarget)) {
     ctx.warnings.push({
@@ -3248,6 +3274,7 @@ function applyUploadInput(
   return {
     bucket,
     resultTarget,
+    ...(resultAccess ? { resultAccess } : {}),
     pathAst,
     accept:
       typeof upload.accept === 'string' && upload.accept.trim() !== ''
@@ -4011,12 +4038,24 @@ type InteractiveProps = Record<string, unknown>
  *  §9 v3: the placeholder is a user-facing label → externalized to i18n when
  *  enabled (the `value`/defaultValue is user data, kept literal). */
 function applyTextInputProps(
+  node: SceneNode,
   ip: InteractiveProps,
   attrs: Record<string, IRAttrValue>,
   ctx: WalkCtx
 ): void {
   if (typeof ip.placeholder === 'string') attrs.placeholder = displayAttr(ip.placeholder, ctx)
   if (typeof ip.value === 'string' && ip.value !== '') attrs.defaultValue = ip.value
+  if (node.type === 'INPUT' && typeof ip.inputType === 'string') {
+    if (ip.inputType === 'text' || ip.inputType === 'email' || ip.inputType === 'password') {
+      attrs.type = ip.inputType
+    } else {
+      ctx.warnings.push({
+        code: 'input-type-unsupported',
+        message: `INPUT ${node.id} interactiveProps.inputType must be text, email, or password; type dropped`,
+        nodeId: node.id
+      })
+    }
+  }
 }
 
 /** CHECKBOX / SWITCH — a checkbox input; SWITCH adds the `switch` ARIA role
@@ -4504,7 +4543,7 @@ function applyInteractiveProps(
   switch (node.type) {
     case 'INPUT':
     case 'TEXTAREA':
-      applyTextInputProps(ip, attrs, ctx)
+      applyTextInputProps(node, ip, attrs, ctx)
       return
     case 'CHECKBOX':
       // Phase 3 §3.v4 step 8 — options[] → multi-select group (mirrors

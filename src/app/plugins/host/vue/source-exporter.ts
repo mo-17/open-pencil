@@ -12,6 +12,11 @@ import {
   type NodeFontFace
 } from '@open-pencil/core/text'
 
+import {
+  prepareAppBackendProviderCompilerOptions,
+  readAppBackendProviderDocumentRequest,
+  type AppBackendProviderHostStore
+} from '../backend-provider'
 import { throwIfPluginExportAborted } from '../exporter-abort'
 import {
   buildSourceProjectExportFiles,
@@ -28,8 +33,20 @@ import { archiveVueSourceProjectInWorker } from './archive/client'
 import { compileVueSourceProjectInWorker } from './compiler/client'
 
 export type VueSourceExportEditor = SourceExporterEditor
-export type VueSourceExporterDependencies = SourceProjectExporterDependencies<VueSourceExportEditor>
+export interface VueSourceExporterDependencies extends SourceProjectExporterDependencies<VueSourceExportEditor> {
+  /** Test/embedding seam; the default resolves the live app store only for declared documents. */
+  readonly resolveBackendProviderStore?: () =>
+    | AppBackendProviderHostStore
+    | Promise<AppBackendProviderHostStore>
+}
 export type VueSourceExportResult = SourceProjectExportResult
+
+async function resolveLiveBackendProviderStore(): Promise<AppBackendProviderHostStore> {
+  // Dynamic import avoids app bootstrap -> Host registry -> Vue exporter -> app bootstrap cycles.
+  const { appPluginStore, appPluginStoreReady } = await import('@/app/plugins/app')
+  await appPluginStoreReady
+  return appPluginStore
+}
 
 const DEFAULT_DEPENDENCIES = Object.freeze({
   ...createDefaultSourceProjectExporterDependencies<VueSourceExportEditor>('Vue project'),
@@ -163,18 +180,27 @@ export async function exportCurrentDocumentAsVueSource(
     signal,
     compilerTargetName: 'Vue',
     applyFontPolicy: applyVueRedistributionFontPolicy,
-    createCompilerInput({ pageIds, fontManifest }) {
+    async createCompilerInput({ pageIds, fontManifest }) {
+      const baseOptions = withDefaults({
+        packageName: names.package,
+        productName: names.product,
+        target: 'vue',
+        router: pageIds.length > 1 ? 'vue-router-v4' : 'none',
+        devMode: false
+      })
+      const options = readAppBackendProviderDocumentRequest(editor.graph)
+        ? prepareAppBackendProviderCompilerOptions(
+            await (dependencies.resolveBackendProviderStore?.() ??
+              resolveLiveBackendProviderStore()),
+            editor.graph,
+            baseOptions
+          )
+        : baseOptions
       return {
         graph: editor.graph,
         pageIds,
         fontManifest,
-        options: withDefaults({
-          packageName: names.package,
-          productName: names.product,
-          target: 'vue',
-          router: pageIds.length > 1 ? 'vue-router-v4' : 'none',
-          devMode: false
-        })
+        options
       }
     },
     buildProject(compiledFiles, warnings) {

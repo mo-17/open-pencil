@@ -1,5 +1,5 @@
 import type { ComponentDef, IRElement, IRNode, IRTree } from '#compiler/ir/types'
-import type { CompileWarning, CompilerOptions } from '#compiler/types'
+import type { CompilerOptions } from '#compiler/types'
 
 import {
   emitVueElementAttributes,
@@ -8,6 +8,13 @@ import {
 } from './element-attributes'
 import { emitEventAttributes } from './events'
 import { safeVueTag, VUE_VOID_TAGS } from './html'
+import { buildVueAuthGuardRuntime, wrapVueAuthGuard } from './lowcode/auth'
+import {
+  buildVueRequestGateRuntime,
+  nodesUseVueRequestDebounce,
+  nodesUseVueRequestGate
+} from './lowcode/request-gate'
+import { emitVueListQueryRuntime } from './lowcode/supabase'
 import { collectVueComponentLowcodeUsage, collectVueTreeLowcodeUsage } from './lowcode/usage'
 import {
   buildVueValidationGlue,
@@ -16,6 +23,7 @@ import {
 } from './lowcode/validation'
 import { emitVueModuleElement } from './modules/emit'
 import { buildVueModuleImports, findVueModuleAdapter } from './modules/registry'
+import { componentRootAttrs, pageRootAttrs } from './root-attributes'
 import {
   componentPropAlias,
   componentRuntimeAlias,
@@ -35,18 +43,14 @@ import {
   templateExpression,
   withLocalAliases,
   type VueEmitContext,
-  type VueLocalBinding
+  type VueLocalBinding,
+  type VueSourceEmission
 } from './shared'
 
 export { sanitizeVueHrefLiteral } from './shared'
 
 const ROUTE_PARAMS_IDENT = '$params'
 const QUERY_PARAMS_IDENT = '$query'
-
-export interface VueSourceEmission {
-  source: string
-  warnings: CompileWarning[]
-}
 
 function appendVueContextRuntime(
   scriptLines: string[],
@@ -63,9 +67,22 @@ function appendVueContextRuntime(
 export function buildVuePageModule(
   ir: IRTree,
   options: CompilerOptions,
-  routerAvailable: boolean
+  routerAvailable: boolean,
+  runtime: { supabase?: boolean; serverWorkflow?: boolean } = {}
 ): VueSourceEmission {
   const lowcode = collectVueTreeLowcodeUsage(ir)
+  const supabaseAvailable =
+    runtime.supabase === true || (runtime.supabase === undefined && ir.supabaseConfig !== undefined)
+  const serverWorkflowAvailable =
+    supabaseAvailable &&
+    (runtime.serverWorkflow === true ||
+      (runtime.serverWorkflow === undefined && (ir.serverWorkflows?.length ?? 0) > 0))
+  const requestRuntime = {
+    supabase: supabaseAvailable,
+    serverWorkflow: serverWorkflowAvailable
+  }
+  const requestGateActive = nodesUseVueRequestGate(ir.children, requestRuntime)
+  const requestDebounceActive = nodesUseVueRequestDebounce(ir.children, requestRuntime)
   const validatedFields = ir.validatedFields ?? []
   const identAliases = new Map<string, string>()
   const listAliases = new Map<string, string>()
@@ -76,9 +93,13 @@ export function buildVuePageModule(
   const componentAliases = new Map(
     componentNames.map((name) => [name, componentRuntimeAlias(name)])
   )
+  const currentUserFallback = ir.docStateReads.includes('$currentUser') && !supabaseAvailable
   const docStateReads = ir.docStateReads.filter(
-    (name) => name !== '$currentUser' || !ir.supabaseConfig
+    (name) => name !== '$currentUser' || supabaseAvailable
   )
+  if (ir.requiresAuth && supabaseAvailable && !docStateReads.includes('$currentUser')) {
+    docStateReads.push('$currentUser')
+  }
   for (const name of docStateReads) {
     if (!identAliases.has(name)) identAliases.set(name, generatedAlias('Doc', name))
   }
@@ -96,8 +117,10 @@ export function buildVuePageModule(
     identAliases,
     listAliases,
     docStateTypes,
-    componentAliases
+    componentAliases,
+    requestRuntime
   )
+  if (currentUserFallback) context.warnings.push(currentUserBindingWarning())
   for (const name of docStateReads) {
     if (pageStateNames.has(name)) {
       context.warnings.push(identifierShadowWarning(name, 'document state', 'page state'))
@@ -108,13 +131,15 @@ export function buildVuePageModule(
       context.warnings.push(identifierShadowWarning(query.rowsName, 'list rows', 'page state'))
     }
   }
-  if (ir.supabaseConfig && ir.docStateReads.includes('$currentUser')) {
-    context.warnings.push(currentUserBindingWarning())
+  const body = emitNodes(ir.children, context, ir.requiresAuth ? 3 : 1, [])
+  const currentUser = identAliases.get('$currentUser')
+  const template = wrapVueAuthGuard(body, ir.requiresAuth === true, currentUser)
+  const vueNames = ['computed as __vueComputed', 'ref as __vueRef']
+  if ((ir.listQueries?.length ?? 0) > 0 || (ir.requiresAuth && routerAvailable)) {
+    vueNames.push('watch as __vueWatch')
   }
-  const template = ir.requiresAuth
-    ? '    <section data-openpencil-unsupported="auth-guard">Authentication required.</section>\n'
-    : emitNodes(ir.children, context, 1, [])
-  const vueImports = `import { computed as __vueComputed, ref as __vueRef } from 'vue'`
+  if (requestDebounceActive) vueNames.push('onBeforeUnmount as __vueOnBeforeUnmount')
+  const vueImports = `import { ${vueNames.join(', ')} } from 'vue'`
   const routerImports = routerAvailable
     ? `\nimport { useRoute as __useRoute, useRouter as __useRouter } from 'vue-router'`
     : ''
@@ -123,7 +148,7 @@ export function buildVuePageModule(
     .join('\n')
   const moduleImports = buildVueModuleImports(ir.children)
   const docStateActive =
-    ir.docStates.length > 0 || ir.docStateReads.length > 0 || ir.docStateWrites.length > 0
+    ir.docStates.length > 0 || docStateReads.length > 0 || ir.docStateWrites.length > 0
   const docImport = docStateActive
     ? `import { getDocState as __getDocState, setDocState as __setDocState, useDocState as __useDocState } from '../lowcode-state'`
     : ''
@@ -135,6 +160,16 @@ export function buildVuePageModule(
   if (lowcode.validation) {
     scriptLines.push(`import { __opValidateValue } from '../lowcode-validation'`)
   }
+  if ((lowcode.supabase || currentUser) && supabaseAvailable) {
+    scriptLines.push(
+      `import { getSupabaseClient as __opGetSupabaseClient } from '../lowcode-supabase'`
+    )
+  }
+  if (lowcode.serverWorkflow && serverWorkflowAvailable) {
+    scriptLines.push(
+      `import { invokeServerWorkflow as __opInvokeServerWorkflow } from '../lowcode-server'`
+    )
+  }
   scriptLines.push(...vueStyleAssetImportLines(context))
   if (docImport) scriptLines.push(docImport)
   if (routerAvailable) {
@@ -144,7 +179,7 @@ export function buildVuePageModule(
     scriptLines.push('const $params: Record<string, string> = {}')
     scriptLines.push('const $query: Record<string, string> = {}')
   }
-  if (ir.supabaseConfig) scriptLines.push(CURRENT_USER_FALLBACK)
+  if (currentUserFallback) scriptLines.push(CURRENT_USER_FALLBACK)
   for (const query of ir.listQueries ?? []) {
     scriptLines.push(`const ${listAliases.get(query.rowsName)} = __vueRef<unknown[]>([])`)
   }
@@ -155,6 +190,15 @@ export function buildVuePageModule(
       `const ${identAliases.get(name)} = __useDocState<${docStateTypeScript(docStateTypes.get(name))}>(${scriptJSON(name)})`
     )
   }
+  if (requestGateActive) {
+    scriptLines.push(...buildVueRequestGateRuntime(requestDebounceActive))
+  }
+  for (const query of ir.listQueries ?? []) {
+    scriptLines.push(emitVueListQueryRuntime(query, context, ir.requiresAuth === true))
+  }
+  if (ir.requiresAuth && routerAvailable && currentUser && supabaseAvailable) {
+    scriptLines.push(...buildVueAuthGuardRuntime(currentUser, ir.authRedirect ?? '/login'))
+  }
   appendVueContextRuntime(scriptLines, validatedFields, context)
   return {
     source: `<script setup lang="ts">
@@ -162,7 +206,7 @@ ${scriptLines.filter(Boolean).join('\n')}
 </script>
 
 <template>
-  <main${pageRootAttrs(ir, options.devMode)}>
+  <main${pageRootAttrs(ir, options.devMode, requestGateActive)}>
 ${template}  </main>
 </template>
 `,
@@ -175,16 +219,22 @@ export function buildVueComponentModule(
   definition: ComponentDef,
   options: CompilerOptions,
   routerAvailable: boolean,
-  docStateTypes: ReadonlyMap<string, IRTree['docStates'][number]['type']> = new Map()
+  docStateTypes: ReadonlyMap<string, IRTree['docStates'][number]['type']> = new Map(),
+  runtime: { supabase?: boolean; serverWorkflow?: boolean } = {}
 ): VueSourceEmission {
   const lowcode = collectVueComponentLowcodeUsage(definition)
   const validatedFields = definition.validatedFields ?? []
   const rawDocStateReads = definition.docStateReads ?? []
-  const currentUserUnsupported = rawDocStateReads.includes('$currentUser')
+  const supabaseAvailable = runtime.supabase === true
+  const serverWorkflowAvailable = runtime.serverWorkflow === true && supabaseAvailable
+  const currentUserUnsupported = rawDocStateReads.includes('$currentUser') && !supabaseAvailable
   const usesRouteParams = rawDocStateReads.includes(ROUTE_PARAMS_IDENT)
   const usesQueryParams = rawDocStateReads.includes(QUERY_PARAMS_IDENT)
   const docStateReads = rawDocStateReads.filter(
-    (name) => name !== '$currentUser' && name !== ROUTE_PARAMS_IDENT && name !== QUERY_PARAMS_IDENT
+    (name) =>
+      (name !== '$currentUser' || supabaseAvailable) &&
+      name !== ROUTE_PARAMS_IDENT &&
+      name !== QUERY_PARAMS_IDENT
   )
   const propDefs = [
     ...definition.props,
@@ -199,6 +249,12 @@ export function buildVueComponentModule(
   const bodyNodes = definition.variants
     ? definition.variants.flatMap((variant) => variant.children)
     : definition.children
+  const requestRuntime = {
+    supabase: supabaseAvailable,
+    serverWorkflow: serverWorkflowAvailable
+  }
+  const requestGateActive = nodesUseVueRequestGate(bodyNodes, requestRuntime)
+  const requestDebounceActive = nodesUseVueRequestDebounce(bodyNodes, requestRuntime)
   const componentNames = referencedComponents(bodyNodes).filter((name) => name !== definition.name)
   const componentAliases = new Map(
     componentNames.map((name) => [name, componentRuntimeAlias(name)])
@@ -216,7 +272,8 @@ export function buildVueComponentModule(
     identAliases,
     new Map(),
     docStateTypes,
-    componentAliases
+    componentAliases,
+    requestRuntime
   )
   if (currentUserUnsupported) context.warnings.push(currentUserBindingWarning())
   for (const name of docStateReads) {
@@ -224,9 +281,10 @@ export function buildVueComponentModule(
       context.warnings.push(identifierShadowWarning(name, 'document state', 'component prop'))
     }
   }
-  const vueImports = lowcode.validation
-    ? `import { computed as __vueComputed, ref as __vueRef } from 'vue'`
-    : `import { computed as __vueComputed } from 'vue'`
+  const vueNames = ['computed as __vueComputed']
+  if (lowcode.validation || requestGateActive) vueNames.push('ref as __vueRef')
+  if (requestDebounceActive) vueNames.push('onBeforeUnmount as __vueOnBeforeUnmount')
+  const vueImports = `import { ${vueNames.join(', ')} } from 'vue'`
   const scriptLines = [vueImports]
   if (routerAvailable) {
     const imports = [
@@ -254,6 +312,16 @@ export function buildVueComponentModule(
   if (lowcode.confirm) scriptLines.push(`import { __opConfirm } from '../lowcode-confirm'`)
   if (lowcode.validation) {
     scriptLines.push(`import { __opValidateValue } from '../lowcode-validation'`)
+  }
+  if ((lowcode.supabase || rawDocStateReads.includes('$currentUser')) && supabaseAvailable) {
+    scriptLines.push(
+      `import { getSupabaseClient as __opGetSupabaseClient } from '../lowcode-supabase'`
+    )
+  }
+  if (lowcode.serverWorkflow && serverWorkflowAvailable) {
+    scriptLines.push(
+      `import { invokeServerWorkflow as __opInvokeServerWorkflow } from '../lowcode-server'`
+    )
   }
   if (docStateReads.length > 0 || (definition.docStateWrites?.length ?? 0) > 0) {
     scriptLines.push(
@@ -285,6 +353,9 @@ export function buildVueComponentModule(
     scriptLines.push(
       `const ${identAliases.get(name)} = __useDocState<${docStateTypeScript(docStateTypes.get(name))}>(${scriptJSON(name)})`
     )
+  }
+  if (requestGateActive) {
+    scriptLines.push(...buildVueRequestGateRuntime(requestDebounceActive))
   }
 
   let template: string
@@ -320,7 +391,7 @@ ${scriptLines.join('\n')}
 </script>
 
 <template>
-  <div${options.devMode ? ` data-node-id="${escapeAttr(definition.componentId)}"` : ''}>
+  <div${componentRootAttrs(definition.componentId, options.devMode, requestGateActive)}>
 ${template}  </div>
 </template>
 `,
@@ -515,12 +586,6 @@ function referencedComponents(nodes: readonly IRNode[]): string[] {
   }
   nodes.forEach(visit)
   return [...names].sort((a, b) => a.localeCompare(b))
-}
-
-function pageRootAttrs(ir: IRTree, devMode: boolean): string {
-  const attrs = [`class="min-h-screen"`]
-  if (devMode) attrs.push(`data-node-id="${escapeAttr(ir.pageId)}"`)
-  return ` ${attrs.join(' ')}`
 }
 
 function serializeDefault(value: unknown, type: IRTree['states'][number]['type']): string {

@@ -12,6 +12,28 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
  * radio-group `<div>` of `<label><input type="radio">…</label>`.
  */
 describe('collectTree — Phase 2 §8 interactive components', () => {
+  test('INPUT emits only the bounded text/email/password input types', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('INPUT', pageId, {
+      interactiveProps: { placeholder: 'Email', inputType: 'email' }
+    })
+    graph.createNode('INPUT', pageId, {
+      interactiveProps: { placeholder: 'Password', inputType: 'password' }
+    })
+    graph.createNode('INPUT', pageId, {
+      interactiveProps: { placeholder: 'Upload', inputType: 'file' }
+    })
+
+    const ir = collectTree(graph, pageId)
+    expect((ir.children[0] as IRElement).attrs.type).toBe('email')
+    expect((ir.children[1] as IRElement).attrs.type).toBe('password')
+    expect((ir.children[2] as IRElement).attrs.type).toBeUndefined()
+    expect(ir.warnings).toContainEqual(
+      expect.objectContaining({ code: 'input-type-unsupported' })
+    )
+  })
+
   test('TEXTAREA → <textarea> with placeholder + defaultValue', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

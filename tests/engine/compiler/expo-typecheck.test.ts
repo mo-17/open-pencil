@@ -75,7 +75,8 @@ describe('Expo generated project typecheck', () => {
         packageName: 'expo-typecheck',
         target: 'expo',
         router: 'none',
-        devMode: true
+        devMode: true,
+        backendCompilationMode: 'source-only-prototype'
       })
     })
     expect(output.warnings.map(({ code }) => code)).toEqual(

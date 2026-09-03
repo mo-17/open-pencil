@@ -35,20 +35,16 @@ describe('Compiler Backend TargetCapabilityMatrix', () => {
       'data.write',
       'auth.identity',
       'auth.roles',
-      'server.functions',
-      'server.http',
       'storage.objects',
       'realtime.subscribe',
-      'transactions.atomic'
-    ] as const) {
-      expect(DEFAULT_TARGET_CAPABILITY_MATRIX.vue[capability]).toBe('source-only')
-    }
-    for (const capability of [
       'policy.row-level',
       'migrations.schema',
       'migrations.data'
     ] as const) {
       expect(DEFAULT_TARGET_CAPABILITY_MATRIX.vue[capability]).toBe('supported')
+    }
+    for (const capability of ['server.functions', 'server.http', 'transactions.atomic'] as const) {
+      expect(DEFAULT_TARGET_CAPABILITY_MATRIX.vue[capability]).toBe('requires-server-bridge')
     }
     expect(DEFAULT_TARGET_CAPABILITY_MATRIX.expo['data.read']).toBe('source-only')
     expect(DEFAULT_TARGET_CAPABILITY_MATRIX.mpx['policy.row-level']).toBe('unsupported')
@@ -93,7 +89,7 @@ describe('Compiler Backend TargetCapabilityMatrix', () => {
     expect(targetReads).toBe(1)
   })
 
-  test('fails Vue runtime capabilities in production but preserves explicit prototype omission', () => {
+  test('negotiates Vue data capabilities with the same production contract as React', () => {
     const bundle = createFakeBackendProviderBundle({ capabilities: ['data.read'] })
     const registry = createBackendProviderRegistry([bundle])
     const production = createBackendProviderPlan(registry, {
@@ -103,13 +99,11 @@ describe('Compiler Backend TargetCapabilityMatrix', () => {
       mode: 'production'
     })
     expect(production).toMatchObject({
-      ok: false,
-      diagnostics: expect.arrayContaining([
-        expect.objectContaining({
-          code: 'backend-capability-source-only-mode-required',
-          severity: 'error'
-        })
-      ])
+      ok: true,
+      diagnostics: [],
+      plan: {
+        capabilities: [expect.objectContaining({ targetStatus: 'supported', included: true })]
+      }
     })
 
     const prototype = createBackendProviderPlan(registry, {
@@ -118,20 +112,12 @@ describe('Compiler Backend TargetCapabilityMatrix', () => {
       target: 'vue',
       mode: 'source-only-prototype'
     })
-    expect(prototype).toMatchObject({
-      ok: true,
-      diagnostics: expect.arrayContaining([
-        expect.objectContaining({
-          code: 'backend-capability-source-only-omitted',
-          severity: 'warning'
-        })
-      ])
-    })
+    expect(prototype).toMatchObject({ ok: true, diagnostics: [] })
     if (!prototype.ok) return
     expect(prototype.plan.capabilities).toEqual([
-      expect.objectContaining({ targetStatus: 'source-only', included: false })
+      expect.objectContaining({ targetStatus: 'supported', included: true })
     ])
-    expect(prototype.plan.adapterPlans).toEqual({})
+    expect(prototype.plan.adapterPlans).toEqual({ data: expect.anything() })
 
     const react = createBackendProviderPlan(registry, {
       selection: fakeSelection(bundle),
@@ -147,7 +133,7 @@ describe('Compiler Backend TargetCapabilityMatrix', () => {
     })
   })
 
-  test('keeps Vue backend-only migrations while refusing a server runtime bridge', () => {
+  test('keeps Vue migrations and requires the same real server bridge as React', () => {
     const serverBundle = createFakeBackendProviderBundle({
       slot: 'server',
       capabilities: ['server.functions']
@@ -158,12 +144,14 @@ describe('Compiler Backend TargetCapabilityMatrix', () => {
       target: 'vue',
       mode: 'production'
     })
-    expect(serverResult.diagnostics).toContainEqual(
+    expect(serverResult.diagnostics).toEqual([])
+    expect(serverResult.decisions).toEqual([
       expect.objectContaining({
-        code: 'backend-capability-source-only-mode-required',
-        severity: 'error'
+        targetStatus: 'requires-server-bridge',
+        resolution: 'supported',
+        included: true
       })
-    )
+    ])
 
     const migrationBundle = createFakeBackendProviderBundle({
       slot: 'migrations',

@@ -1,7 +1,14 @@
-import type { IRElement, IREventHandler, IREventName } from '#compiler/ir/types'
+import type { IRElement, IREventHandler, IREventName, IRUpload } from '#compiler/ir/types'
 
 import { inspectLowcodeRouteParameters, lowcodeNavigationPathname } from '@open-pencil/lowcode'
 
+import { emitVueBackendHandler } from './lowcode/backend-actions'
+import {
+  eventUsesRequestDebounce,
+  eventUsesRequestGate,
+  handlersHaveVueExecutableRequest,
+  vueRequestKey
+} from './lowcode/request-gate'
 import { vueValidationErrorId, vueValidationKeyBinding } from './lowcode/validation'
 import {
   docStateTypeScript,
@@ -33,7 +40,11 @@ const SUPPORTED_EVENT_KINDS = new Set<IREventHandler['kind']>([
   'stop',
   'toast',
   'confirm',
-  'clipboard'
+  'clipboard',
+  'supabaseQuery',
+  'supabaseMutation',
+  'supabaseAuth',
+  'invokeServerWorkflow'
 ])
 
 export function emitControlledAttribute(
@@ -70,7 +81,10 @@ export function emitControlledAttribute(
     const key = vueValidationKeyBinding(context, node.validation.key)
     prelude.push(`__validateFieldValue(${key}, ${raw})`)
   }
-  registerEventFunction(context, functionName, authored, locals, prelude)
+  registerEventFunction(context, functionName, authored, locals, prelude, {
+    eventName: 'onChange',
+    requestKey: vueRequestKey(node.sourceId, 'onChange')
+  })
   const args = ['$event', ...locals.map((local) => local.alias)].join(', ')
   return {
     attrs: [binding, `@${directive}="${functionName}(${escapeAttr(args)})"`],
@@ -150,14 +164,17 @@ export function emitEventAttributes(
     IREventHandler[] | undefined
   ][]) {
     if (eventSkipped(eventName, skip) || !rawHandlers) continue
-    const handlers = supportedHandlers(rawHandlers, context.routerAvailable)
+    const handlers = supportedHandlers(rawHandlers, context)
     const directive = EVENT_DIRECTIVES[eventName]
     if (handlers.length === 0) {
       if (eventName === 'onSubmit') attrs.push('@submit.prevent')
       continue
     }
     const functionName = eventFunctionName(context, sourceId, directive)
-    registerEventFunction(context, functionName, handlers, locals)
+    registerEventFunction(context, functionName, handlers, locals, [], {
+      eventName,
+      requestKey: vueRequestKey(sourceId, eventName)
+    })
     const args = ['$event', ...locals.map((local) => local.alias)].join(', ')
     const modifier = eventName === 'onSubmit' ? '.prevent' : ''
     attrs.push(`@${directive}${modifier}="${functionName}(${escapeAttr(args)})"`)
@@ -203,14 +220,27 @@ export function emitValidatedSubmitAttribute(
   locals: readonly VueLocalBinding[]
 ): string {
   const keys = node.formValidationKeys ?? []
-  const handlers = supportedHandlers(node.events?.onSubmit ?? [], context.routerAvailable)
+  const handlers = supportedHandlers(node.events?.onSubmit ?? [], context)
   const functionName = eventFunctionName(context, node.sourceId, 'submit')
   const keySource = keys.map((key) => scriptJSON(key)).join(', ')
-  registerEventFunction(context, functionName, handlers, locals, [
-    `if (!__validateFields([${keySource}])) return`
-  ])
+  registerEventFunction(
+    context,
+    functionName,
+    handlers,
+    locals,
+    [`if (!__validateFields([${keySource}])) return`],
+    {
+      eventName: 'onSubmit',
+      requestKey: vueRequestKey(node.sourceId, 'onSubmit')
+    }
+  )
   const args = ['$event', ...locals.map((local) => local.alias)].join(', ')
   return `@submit.prevent="${functionName}(${escapeAttr(args)})"`
+}
+
+interface VueEventRequestOptions {
+  eventName: IREventName
+  requestKey: string
 }
 
 function registerEventFunction(
@@ -218,7 +248,8 @@ function registerEventFunction(
   name: string,
   handlers: readonly IREventHandler[],
   locals: readonly VueLocalBinding[],
-  prelude: readonly string[] = []
+  prelude: readonly string[] = [],
+  request?: VueEventRequestOptions
 ): void {
   const handlerAliases = new Map(context.identAliases)
   const localParams = locals.map((local) => {
@@ -227,16 +258,37 @@ function registerEventFunction(
   })
   const params = ['__opEvent: Event', ...localParams].join(', ')
   const statements = emitHandlerList(handlers, context, handlerAliases)
-  const body = [
+  const eventLocals = [
     `const $event = __opEvent`,
-    `const $value = (__opEvent.target as HTMLInputElement | null)?.value ?? ''`,
-    ...prelude,
-    ...statements
+    `const $value = (__opEvent.target as HTMLInputElement | null)?.value ?? ''`
   ]
+  let body = [...eventLocals, ...prelude, ...statements]
+  const executableRequest = handlersHaveVueExecutableRequest(handlers, {
+    supabase: context.supabaseAvailable,
+    serverWorkflow: context.serverWorkflowAvailable
+  })
+  if (request && executableRequest && eventUsesRequestDebounce(request.eventName, handlers)) {
+    body = [
+      ...eventLocals,
+      ...prelude,
+      `__opDebounceChange(__opEvent.currentTarget, ${scriptJSON(request.requestKey)}, async () => { ${statements.join(
+        '; '
+      )} })`
+    ]
+  } else if (request && executableRequest && eventUsesRequestGate(request.eventName, handlers)) {
+    body = [
+      ...eventLocals,
+      `await __opRunRequest(${scriptJSON(request.requestKey)}, async () => { ${[
+        ...prelude,
+        ...statements
+      ].join('; ')} })`
+    ]
+  }
+  const source = body
     .filter(Boolean)
     .map((line) => `  ${line}`)
     .join('\n')
-  context.eventFunctions.push(`async function ${name}(${params}): Promise<void> {\n${body}\n}`)
+  context.eventFunctions.push(`async function ${name}(${params}): Promise<void> {\n${source}\n}`)
 }
 
 function emitHandlerList(
@@ -255,6 +307,15 @@ function emitHandler(
   context: VueEmitContext,
   aliases: ReadonlyMap<string, string>
 ): string[] {
+  if (
+    (handler.kind === 'supabaseQuery' ||
+      handler.kind === 'supabaseMutation' ||
+      handler.kind === 'supabaseAuth') &&
+    !context.supabaseAvailable
+  ) {
+    return []
+  }
+  if (handler.kind === 'invokeServerWorkflow' && !context.serverWorkflowAvailable) return []
   switch (handler.kind) {
     case 'setState': {
       if (!context.writableStateNames.has(handler.stateName)) return []
@@ -306,6 +367,15 @@ function emitHandler(
         `try { const __opResponse = await fetch(${url}${init}); const __opData = await __opResponse.json(); if (!__opResponse.ok) throw __opData; __setDocState(${scriptJSON(handler.docStateName)}, __opData); ${success} } catch (__opError) { ${errorWrite}${failure || 'console.error(__opError)'} }`
       ]
     }
+    case 'supabaseQuery':
+    case 'supabaseMutation':
+    case 'supabaseAuth':
+    case 'invokeServerWorkflow':
+      return [
+        emitVueBackendHandler(handler, context, aliases, (nested, nestedAliases) =>
+          emitHandlerList(nested, context, nestedAliases)
+        )
+      ]
     case 'condition': {
       const consequent = emitHandlerList(handler.consequent, context, aliases).join('; ')
       const alternate = emitHandlerList(handler.alternate ?? [], context, aliases).join('; ')
@@ -329,6 +399,45 @@ function emitHandler(
     default:
       return []
   }
+}
+
+export function emitVueUploadAttribute(
+  upload: IRUpload,
+  context: VueEmitContext,
+  sourceId: string,
+  locals: readonly VueLocalBinding[]
+): string {
+  const name = eventFunctionName(context, sourceId, 'upload')
+  const handlerAliases = withLocalAliases(context.identAliases, locals)
+  const localParams = locals.map((local) => `${local.alias}: any`)
+  const params = ['__opEvent: Event', ...localParams].join(', ')
+  const path = upload.pathAst
+    ? '`${' +
+      scriptExpression(upload.pathAst, context.refNames, handlerAliases) +
+      '}/${__opFile.name}`'
+    : '__opFile.name'
+  const result =
+    upload.resultAccess === 'private'
+      ? '__opPath'
+      : '__opBucket.getPublicUrl(__opPath).data.publicUrl'
+  const key = scriptJSON(vueRequestKey(sourceId, 'upload'))
+  context.eventFunctions.push(`async function ${name}(${params}): Promise<void> {
+  const __opInput = __opEvent.target as HTMLInputElement | null
+  const __opFile = __opInput?.files?.[0]
+  if (!__opFile) return
+  await __opRunRequest(${key}, async () => {
+    const __opPath = ${path}
+    const __opBucket = __opGetSupabaseClient().storage.from(${scriptJSON(upload.bucket)})
+    const { error: __opError } = await __opBucket.upload(__opPath, __opFile, { upsert: true })
+    if (__opError) {
+      console.error('Supabase Storage upload failed:', __opError)
+      return
+    }
+    __setDocState(${scriptJSON(upload.resultTarget)}, ${result})
+  })
+}`)
+  const args = ['$event', ...locals.map((local) => local.alias)].join(', ')
+  return `@change="${name}(${escapeAttr(args)})"`
 }
 
 function emitToast(
@@ -430,11 +539,20 @@ function emitNavigate(
 
 function supportedHandlers(
   handlers: readonly IREventHandler[],
-  routerAvailable: boolean
+  context: VueEmitContext
 ): IREventHandler[] {
   return handlers.filter((handler) => {
     if (!SUPPORTED_EVENT_KINDS.has(handler.kind)) return false
-    return handler.kind !== 'navigate' || routerAvailable
+    if (handler.kind === 'navigate') return context.routerAvailable
+    if (
+      handler.kind === 'supabaseQuery' ||
+      handler.kind === 'supabaseMutation' ||
+      handler.kind === 'supabaseAuth'
+    ) {
+      return context.supabaseAvailable
+    }
+    if (handler.kind === 'invokeServerWorkflow') return context.serverWorkflowAvailable
+    return true
   })
 }
 

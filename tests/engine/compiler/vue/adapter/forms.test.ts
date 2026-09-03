@@ -102,7 +102,8 @@ describe('Vue compiler form fail-closed behavior', () => {
     expect(page).toMatch(/<form @submit\.prevent="__op_validation_form_submit_[0-9]+\(\$event\)">/)
     expect(page).toContain('if (!__validateFields(["field"])) return')
     expect(page).toContain('__opState_count_')
-    expect(output.warnings.map((warning) => warning.code)).toContain('vue-supabase-unsupported')
+    expect(output.warnings.map((warning) => warning.code)).toContain('vue-supabase-config-required')
+    expect(output.warnings.map((warning) => warning.code)).not.toContain('vue-supabase-unsupported')
     expect(output.warnings.map((warning) => warning.code)).not.toContain(
       'vue-validation-unsupported'
     )

@@ -1,17 +1,26 @@
 import { buildPreviewBridge } from '#compiler/adapters/preview-bridge'
+import { buildServerArtifacts } from '#compiler/adapters/react/lowcode/server-edge'
 import { derivePagePaths } from '#compiler/adapters/react/route-paths'
 import type { AdapterEmission, FrameworkAdapter } from '#compiler/adapters/types'
-import type { ComponentDef, IREventHandler, IRNode, IRTree } from '#compiler/ir/types'
+import { LEGACY_SUPABASE_SERVER_WORKFLOW_ARTIFACT_PATHS } from '#compiler/backend/supabase/legacy-react-artifacts'
+import type { ComponentDef, IRNode, IRTree } from '#compiler/ir/types'
 import { buildOpenPencilMicrofrontendTypes } from '#compiler/microfrontend/runtime'
 import type { CompileWarning, CompilerOptions, HTMLMetadata } from '#compiler/types'
 
-import { buildVueComponentModule, buildVuePageModule, sanitizeVueHrefLiteral } from './emit'
+import { buildVueComponentModule, buildVuePageModule } from './emit'
 import {
   buildVueConfirmHost,
   buildVueConfirmRuntime,
   VUE_CONFIRM_HOST_FILE,
   VUE_CONFIRM_RUNTIME_FILE
 } from './lowcode/confirm'
+import { buildVueServerClientRuntime } from './lowcode/server-client'
+import {
+  buildVueSupabaseClientRuntime,
+  buildVueSupabaseEnvironmentExample,
+  buildVueSupabaseViteEnvironmentTypes,
+  SUPABASE_JS_VERSION
+} from './lowcode/supabase'
 import {
   buildVueToastHost,
   buildVueToastRuntime,
@@ -25,11 +34,7 @@ import {
   VUE_VALIDATION_CSS_FILE,
   VUE_VALIDATION_RUNTIME_FILE
 } from './lowcode/validation'
-import {
-  collectVueModuleProject,
-  emitVueModuleRuntimes,
-  supportsVueModule
-} from './modules/registry'
+import { collectVueModuleProject, emitVueModuleRuntimes } from './modules/registry'
 import {
   buildVueApp,
   buildVueIndexCSSFile,
@@ -41,9 +46,9 @@ import {
   buildVueReadme,
   buildVueRouter,
   buildVueTsConfig,
-  buildVueViteConfig,
-  normalizeVueSourceLocale
+  buildVueViteConfig
 } from './project'
+import { collectVueWarnings } from './warnings'
 
 export const vueAdapter: FrameworkAdapter = {
   emit(
@@ -55,6 +60,7 @@ export const vueAdapter: FrameworkAdapter = {
   }
 }
 
+// oxlint-disable-next-line complexity -- Project emission coordinates optional runtime and packaging artifacts.
 function emitVueProject(
   irs: readonly IRTree[],
   options: CompilerOptions,
@@ -65,6 +71,9 @@ function emitVueProject(
   const infos = derivePagePaths(irs)
   const router = irs.length > 1
   const lowcode = collectVueProjectLowcodeUsage(irs, components)
+  const supabaseConfig = irs.find((ir) => ir.supabaseConfig)?.supabaseConfig
+  const serverWorkflows =
+    irs.find((ir) => (ir.serverWorkflows?.length ?? 0) > 0)?.serverWorkflows ?? []
   const moduleProject = collectVueModuleProject(
     irs.map((ir) => ir.children),
     components
@@ -78,22 +87,47 @@ function emitVueProject(
     microfrontend: options.packaging?.kind === 'microfrontend'
   })
   emitVueLowcodeRuntimes(files, lowcode)
+  if (supabaseConfig) {
+    files.set('src/lowcode-supabase.ts', buildVueSupabaseClientRuntime(supabaseConfig))
+    files.set('.env.example', buildVueSupabaseEnvironmentExample(supabaseConfig))
+  }
+  const executableServerWorkflowFiles = supabaseConfig
+    ? emitVueServerWorkflowFiles(files, serverWorkflows)
+    : []
   for (const definition of components) {
-    const emitted = buildVueComponentModule(definition, options, router, docStateTypes)
+    const emitted = buildVueComponentModule(definition, options, router, docStateTypes, {
+      supabase: supabaseConfig !== undefined,
+      serverWorkflow: supabaseConfig !== undefined && serverWorkflows.length > 0
+    })
     files.set(`src/components/${definition.name}.vue`, emitted.source)
     warnings.push(...emitted.warnings)
   }
   for (const info of infos) {
-    const emitted = buildVuePageModule(info.ir, options, router)
+    const emitted = buildVuePageModule(info.ir, options, router, {
+      supabase: supabaseConfig !== undefined,
+      serverWorkflow: supabaseConfig !== undefined && serverWorkflows.length > 0
+    })
     files.set(`src/pages/${info.slug}.vue`, emitted.source)
     warnings.push(...emitted.warnings)
   }
 
   const firstComponent = infos[0]?.component ?? 'PageIndex'
-  files.set('package.json', buildVuePackageJSON(options, router))
+  files.set(
+    'package.json',
+    buildVuePackageJSON(
+      options,
+      router,
+      supabaseConfig ? { '@supabase/supabase-js': SUPABASE_JS_VERSION } : {}
+    )
+  )
   files.set('vite.config.ts', buildVueViteConfig())
   files.set('tsconfig.json', buildVueTsConfig())
-  files.set('src/env.d.ts', '/// <reference types="vite/client" />\n')
+  files.set(
+    'src/env.d.ts',
+    supabaseConfig
+      ? buildVueSupabaseViteEnvironmentTypes()
+      : '/// <reference types="vite/client" />\n'
+  )
   files.set(
     'src/main.ts',
     buildVueMain(router, lowcode, options.devMode, options.packaging?.kind === 'microfrontend')
@@ -122,7 +156,11 @@ function emitVueProject(
   )
   files.set('README.md', buildVueReadme(router))
   files.set('.gitignore', 'node_modules\ndist\n*.local\n')
-  return { files, warnings: dedupeWarnings(warnings) }
+  return {
+    files,
+    warnings: dedupeWarnings(warnings),
+    ...(executableServerWorkflowFiles.length > 0 ? { executableServerWorkflowFiles } : {})
+  }
 }
 
 function emitVueLowcodeRuntimes(
@@ -141,6 +179,22 @@ function emitVueLowcodeRuntimes(
     files.set(VUE_VALIDATION_RUNTIME_FILE, buildVueValidationRuntime())
     files.set(VUE_VALIDATION_CSS_FILE, buildVueValidationCSS())
   }
+}
+
+function emitVueServerWorkflowFiles(
+  files: Map<string, string | Uint8Array>,
+  workflows: readonly NonNullable<IRTree['serverWorkflows']>[number][]
+): readonly string[] {
+  if (workflows.length === 0) return []
+  const artifacts = buildServerArtifacts(workflows)
+  files.set('src/lowcode-server.ts', buildVueServerClientRuntime())
+  const [edgeFunctionPath, envPath, manifestPath, readmePath] =
+    LEGACY_SUPABASE_SERVER_WORKFLOW_ARTIFACT_PATHS
+  files.set(edgeFunctionPath, artifacts.edgeFunction)
+  files.set(envPath, artifacts.envExample)
+  files.set(manifestPath, artifacts.manifest)
+  files.set(readmePath, artifacts.readme)
+  return LEGACY_SUPABASE_SERVER_WORKFLOW_ARTIFACT_PATHS
 }
 
 function buildVueDocStateRuntime(
@@ -253,329 +307,6 @@ function collectClassNames(irs: readonly IRTree[], components: readonly Componen
     }
   }
   return [...result].sort((a, b) => a.localeCompare(b))
-}
-
-// oxlint-disable-next-line complexity -- Capability auditing intentionally enumerates every fail-closed Vue v1 boundary.
-function collectVueWarnings(
-  irs: readonly IRTree[],
-  components: readonly ComponentDef[],
-  options: CompilerOptions
-): CompileWarning[] {
-  const warnings: CompileWarning[] = []
-  const seen = new Set<string>()
-  const warn = (code: string, message: string, nodeId?: string): void => {
-    if (seen.has(code)) return
-    seen.add(code)
-    warnings.push({ code, message, ...(nodeId ? { nodeId } : {}) })
-  }
-  if (irs.length > 1 && options.router !== 'vue-router-v4') {
-    warn(
-      'vue-router-option-normalized',
-      `Vue multi-page output requires vue-router v4; router option '${options.router}' was normalized for the generated project.`
-    )
-  }
-  if (options.i18n) {
-    warn(
-      'vue-i18n-unsupported',
-      'Vue v1 does not emit an i18n runtime; source-language text is preserved without translation controls.'
-    )
-  }
-  if (options.uiKit) {
-    warn(
-      'vue-ui-kit-unsupported',
-      `Vue v1 does not emit the '${options.uiKit}' React UI kit; semantic nodes use plain HTML.`
-    )
-  }
-  if (options.themeSwitch) {
-    warn(
-      'vue-theme-switch-unsupported',
-      'Vue v1 preserves generated theme CSS but omits the interactive theme switch runtime.'
-    )
-  }
-  if (
-    options.sourceLocale?.trim() &&
-    normalizeVueSourceLocale(options.sourceLocale) !== options.sourceLocale.trim()
-  ) {
-    warn(
-      'vue-source-locale-invalid',
-      `Vue v1 replaced the invalid source locale '${options.sourceLocale.trim()}' with 'en'.`
-    )
-  }
-  if (irs.length > 1 && Object.keys(options.metadata?.pages ?? {}).length > 0) {
-    warn(
-      'vue-page-metadata-unsupported',
-      'Vue v1 emits one HTML shell for multi-page output, so route-specific metadata overrides are omitted.'
-    )
-  }
-  const router = irs.length > 1
-  for (const ir of irs) {
-    if (!router && (ir.usesRouteParams || ir.usesQueryParams)) {
-      warn(
-        'vue-route-context-unavailable',
-        'Vue single-page output cannot provide route or query parameters without vue-router; those bindings use empty objects.',
-        ir.pageId
-      )
-    }
-    if (ir.motion || ir.motionDrivers || ir.motionScene) motionWarning(warn, ir.pageId)
-    if (ir.prototype || ir.prototypeTarget || ir.transitionKey) prototypeWarning(warn, ir.pageId)
-    if (ir.supabaseConfig || (ir.listQueries?.length ?? 0) > 0 || ir.requiresAuth) {
-      supabaseWarning(warn, ir.pageId)
-    }
-    if (ir.requiresAuth) {
-      warn(
-        'vue-auth-guard-unsupported',
-        'Vue v1 cannot enforce Supabase auth guards; guarded page content is omitted.',
-        ir.pageId
-      )
-    }
-    if (ir.validatedFields?.some((field) => field.async)) {
-      asyncValidationWarning(warn, ir.pageId)
-    }
-    if (ir.serverWorkflows?.length) {
-      warn(
-        'vue-server-workflow-unsupported',
-        'Vue v1 omits server workflow clients and their actions.',
-        ir.pageId
-      )
-    }
-    if (ir.analyticsConfig) {
-      warn(
-        'vue-analytics-unsupported',
-        'Vue v1 omits analytics providers and tracking actions.',
-        ir.pageId
-      )
-    }
-    ir.children.forEach((node) => scanNode(node, warn, router))
-  }
-  for (const definition of components) {
-    const componentReadsRouteContext = (definition.docStateReads ?? []).some(
-      (name) => name === '$params' || name === '$query'
-    )
-    if (!router && componentReadsRouteContext) {
-      warn(
-        'vue-route-context-unavailable',
-        'Vue single-page output cannot provide route or query parameters without vue-router; those bindings use empty objects.',
-        definition.componentId
-      )
-    }
-    if (definition.prototypeBody) prototypeWarning(warn, definition.componentId)
-    if (definition.validatedFields?.some((field) => field.async)) {
-      asyncValidationWarning(warn, definition.componentId)
-    }
-    definition.children.forEach((node) => scanNode(node, warn, router))
-    definition.variants?.forEach((variant) =>
-      variant.children.forEach((node) => scanNode(node, warn, router))
-    )
-  }
-  for (const state of irs[0]?.docStates ?? []) {
-    if (state.persist) {
-      warn(
-        'vue-doc-state-persistence-unsupported',
-        'Vue v1 keeps document state in memory and omits localStorage persistence.'
-      )
-    }
-  }
-  return warnings
-}
-
-// oxlint-disable-next-line complexity -- This exhaustive IR capability scanner keeps unsupported behaviors visible.
-function scanNode(
-  node: IRNode,
-  warn: (code: string, message: string, nodeId?: string) => void,
-  router: boolean
-): void {
-  if (node.kind === 'conditional') return scanNode(node.consequent, warn, router)
-  if (node.kind === 'list') return scanNode(node.template, warn, router)
-  if (node.kind === 'text' || node.kind === 'expression') return
-  if (node.motion || node.motionDrivers || node.motionDriverMarker)
-    motionWarning(warn, node.sourceId)
-  if (
-    (node.kind === 'componentRef' && node.prototypeBody) ||
-    node.transitionKey ||
-    node.prototypeTarget
-  ) {
-    prototypeWarning(warn, node.sourceId)
-  }
-  scanEvents(node.events, warn, node.sourceId, router)
-  if (node.kind === 'componentRef') return
-  if (node.motionScene || node.generatedEffect) motionWarning(warn, node.sourceId)
-  if (node.module && !supportsVueModule(node.module)) {
-    warn(
-      'vue-module-unsupported',
-      'Vue v1 has no runtime for this trusted plugin module and preserves only its static node shell.',
-      node.sourceId
-    )
-  }
-  if (node.upload) supabaseWarning(warn, node.sourceId)
-  if (node.link?.hrefLiteral !== undefined) {
-    if (sanitizeVueHrefLiteral(node.link.hrefLiteral) === undefined) {
-      warn(
-        'vue-link-href-unsafe',
-        'Vue v1 blocked an unsafe or non-allowlisted link URL.',
-        node.sourceId
-      )
-    }
-  }
-  if (node.link?.hrefExpr) {
-    warn(
-      'vue-link-href-runtime-sanitized',
-      'Vue v1 applies a runtime allowlist to this dynamic link URL and removes unsafe values.',
-      node.sourceId
-    )
-  }
-  if ((node.image?.sources?.length ?? 0) > 0) {
-    warn(
-      'vue-responsive-image-unsupported',
-      'Vue v1 omits responsive image sources and preserves only the fallback image.',
-      node.sourceId
-    )
-  }
-  if (node.rawHtml !== undefined) {
-    warn(
-      'vue-raw-html-unsupported',
-      'Vue v1 omits authored raw HTML instead of emitting an injectable v-html binding.',
-      node.sourceId
-    )
-  }
-  if (node.validation?.async) asyncValidationWarning(warn, node.sourceId)
-  if (node.icon || node.displayKind || node.overlay) {
-    warn(
-      'vue-advanced-ui-unsupported',
-      'Vue v1 preserves the static HTML shell but omits advanced icon/display/overlay behavior.',
-      node.sourceId
-    )
-  }
-  for (const value of Object.values(node.attrs)) {
-    if (typeof value === 'object' && value.kind === 'intlMessage') {
-      warn(
-        'vue-i18n-unsupported',
-        'Vue v1 preserves source-language attributes but omits the i18n runtime.',
-        node.sourceId
-      )
-    }
-  }
-  node.children.forEach((child) => scanNode(child, warn, router))
-}
-
-function scanEvents(
-  events: Partial<Record<string, IREventHandler[]>> | undefined,
-  warn: (code: string, message: string, nodeId?: string) => void,
-  nodeId: string,
-  router: boolean
-): void {
-  for (const handlers of Object.values(events ?? {})) {
-    for (const handler of handlers ?? []) scanHandler(handler, warn, nodeId, router)
-  }
-}
-
-function scanHandler(
-  handler: IREventHandler,
-  warn: (code: string, message: string, nodeId?: string) => void,
-  nodeId: string,
-  router: boolean
-): void {
-  if (handler.kind === 'navigate' && !router) {
-    warn(
-      'vue-navigation-no-router',
-      'Vue single-page output omitted an internal navigate action because no router is present.',
-      nodeId
-    )
-    return
-  }
-  if (handler.kind === 'condition' || handler.kind === 'confirm') {
-    handler.consequent.forEach((item) => scanHandler(item, warn, nodeId, router))
-    handler.alternate?.forEach((item) => scanHandler(item, warn, nodeId, router))
-    return
-  }
-  if (handler.kind === 'apiCall') {
-    handler.onSuccess?.forEach((item) => scanHandler(item, warn, nodeId, router))
-    handler.onError?.forEach((item) => scanHandler(item, warn, nodeId, router))
-    return
-  }
-  if (handler.kind.startsWith('supabase')) {
-    supabaseWarning(warn, nodeId)
-    return
-  }
-  if (['playMotion', 'stopMotion', 'toggleMotion', 'awaitMotion'].includes(handler.kind)) {
-    motionWarning(warn, nodeId)
-    return
-  }
-  if (handler.kind === 'invokeServerWorkflow') {
-    warn('vue-server-workflow-unsupported', 'Vue v1 omitted a server workflow action.', nodeId)
-    return
-  }
-  if (handler.kind === 'stripeCheckout' || handler.kind === 'stripeCustomerPortal') {
-    warn('vue-stripe-unsupported', 'Vue v1 omitted a Stripe redirect action.', nodeId)
-    return
-  }
-  if (handler.kind === 'trackEvent') {
-    warn('vue-analytics-unsupported', 'Vue v1 omitted an analytics tracking action.', nodeId)
-    return
-  }
-  if (!SUPPORTED_HANDLER_KINDS.has(handler.kind)) {
-    warn(
-      `vue-event-${handler.kind}-unsupported`,
-      `Vue v1 omitted unsupported '${handler.kind}' event behavior.`,
-      nodeId
-    )
-  }
-}
-
-const SUPPORTED_HANDLER_KINDS = new Set<IREventHandler['kind']>([
-  'setState',
-  'setVariable',
-  'navigate',
-  'apiCall',
-  'condition',
-  'delay',
-  'stop',
-  'toast',
-  'confirm',
-  'clipboard'
-])
-
-function motionWarning(
-  warn: (code: string, message: string, nodeId?: string) => void,
-  nodeId: string
-): void {
-  warn(
-    'vue-motion-unsupported',
-    'Vue v1 preserves the static visual state but omits MotionSpec playback and generated effects.',
-    nodeId
-  )
-}
-
-function prototypeWarning(
-  warn: (code: string, message: string, nodeId?: string) => void,
-  nodeId: string
-): void {
-  warn(
-    'vue-prototype-unsupported',
-    'Vue v1 omits prototype transitions and Smart Animate behavior.',
-    nodeId
-  )
-}
-
-function supabaseWarning(
-  warn: (code: string, message: string, nodeId?: string) => void,
-  nodeId: string
-): void {
-  warn(
-    'vue-supabase-unsupported',
-    'Vue v1 omits Supabase auth, query, mutation, list-query, and upload runtimes.',
-    nodeId
-  )
-}
-
-function asyncValidationWarning(
-  warn: (code: string, message: string, nodeId?: string) => void,
-  nodeId: string
-): void {
-  warn(
-    'vue-validation-async-unsupported',
-    'Vue v1 supports local validation but blocks submit when a field still requires remote validation.',
-    nodeId
-  )
 }
 
 function indexMetadata(irs: readonly IRTree[], options: CompilerOptions): HTMLMetadata | undefined {

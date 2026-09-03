@@ -23,6 +23,7 @@ import type { ReactModuleAdapter } from '../modules/types'
 import { motionDriverToken } from '../motion/drivers'
 import { motionToken } from '../motion/key'
 import { instrumentVectorMotionHTML } from '../motion/target'
+import { eventUsesRequestDebounce, eventUsesRequestGate } from '../request-timing'
 import type { UIKitAdapter } from '../ui-kit/types'
 import { emitEventHandler, emitFormSubmitHandler } from './event'
 import { setterName } from './state'
@@ -238,6 +239,7 @@ function tagOpenParts(
   uiKit: UIKitAdapter | null
 ): { attrsStr: string; tagName: string } {
   const className = ensureCardClipClass(node)
+  const requestState = requestStateAttrs(node)
   const standardAttrs = formatAttrs(
     className,
     node.attrs,
@@ -255,10 +257,13 @@ function tagOpenParts(
     node.validation?.key,
     node.formValidationKeys,
     node.image,
-    node.link
+    node.link,
+    node.sourceId,
+    requestState.overriddenAttrs
   )
   const baseAttrsStr = joinAttrs(
     standardAttrs,
+    requestState.attrs,
     prototypeAttrs(node),
     motionSceneOwnerAttrs(node),
     motionDriverAttrs(node),
@@ -392,7 +397,8 @@ function emitLucideIconElement(node: IRElement, indent: number, devMode: boolean
     undefined,
     undefined,
     undefined,
-    undefined
+    undefined,
+    node.sourceId
   )
   const iconAttrs = lucideIconAttrParts(icon)
   const allAttrs = [attrsStr, prototypeAttrs(node), ...iconAttrs]
@@ -582,7 +588,9 @@ function formatAttrs(
   validationKey?: string,
   formValidationKeys?: readonly string[],
   image?: IRImage,
-  link?: IRLink
+  link?: IRLink,
+  requestSourceId?: string,
+  overriddenAttrs: ReadonlySet<string> = new Set()
 ): string {
   const parts: string[] = []
   const classAttr = classNameAttr(className, classNameProp, classNamePropFallback)
@@ -592,25 +600,29 @@ function formatAttrs(
   if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
   if (motionKey !== undefined) parts.push(`data-op-motion="${motionKey}"`)
   for (const [key, value] of Object.entries(attrs)) {
+    if (overriddenAttrs.has(key)) continue
     if (key === 'style' && styleAttr) continue
     parts.push(formatAttr(key, value))
   }
   // §18: a file-upload INPUT emits `type="file"` + an onChange that uploads to
-  // Supabase Storage and writes the public URL into a doc-state. It's
-  // uncontrolled, so collect leaves `controlled` undefined here.
+  // Supabase Storage and preserves the bucket's private/public-read result
+  // semantics. It's uncontrolled, so collect leaves `controlled` undefined here.
   if (upload) parts.push(...uploadAttrParts(upload))
   // §24.1: an image node emits `src` (literal URL or a bound expression) + alt.
   if (image) parts.push(...imageAttrParts(image))
   // §25: a linked element emits `<a href target rel>` attrs.
   if (link) parts.push(...linkAttrParts(link))
   if (controlled)
-    parts.push(...controlledAttrParts(controlled, attrs, events?.onChange, validationKey))
+    parts.push(
+      ...controlledAttrParts(controlled, attrs, events?.onChange, validationKey, requestSourceId)
+    )
   // §19: a validated field gets `aria-invalid` + an `onBlur` that validates it.
   if (validationKey !== undefined)
     parts.push(...validationFieldParts(validationKey, events?.onBlur, controlled))
   parts.push(
     ...eventAttrParts(events, formValidationKeys, {
-      skip: eventSkipSet(controlled, validationKey)
+      skip: eventSkipSet(controlled, validationKey),
+      requestSourceId
     })
   )
   return parts.join(' ')
@@ -678,7 +690,8 @@ function controlledAttrParts(
   controlled: IRControlledInput,
   attrs: Record<string, IRAttrValue>,
   onChangeHandlers: IREventHandler[] | undefined,
-  validationKey: string | undefined
+  validationKey: string | undefined,
+  requestSourceId: string | undefined
 ): string[] {
   // §3.v4 dispatch:
   //  - type="radio" → per-option `checked={read === <opt>}`.
@@ -686,7 +699,14 @@ function controlledAttrParts(
   //  - targetType=boolean → `checked={read}` + e.target.checked.
   //  - text-like → `value={read}` + e.target.value.
   if (attrs.type === 'radio') {
-    return controlledOptionAttrParts(controlled, attrs, 'radio', onChangeHandlers, validationKey)
+    return controlledOptionAttrParts(
+      controlled,
+      attrs,
+      'radio',
+      onChangeHandlers,
+      validationKey,
+      requestSourceId
+    )
   }
   if (attrs.type === 'checkbox' && controlled.write.targetType === 'array') {
     return controlledOptionAttrParts(
@@ -694,7 +714,8 @@ function controlledAttrParts(
       attrs,
       'checkbox-group',
       onChangeHandlers,
-      validationKey
+      validationKey,
+      requestSourceId
     )
   }
   if (controlled.write.targetType === 'boolean') {
@@ -704,11 +725,18 @@ function controlledAttrParts(
         controlled,
         controlledEventValue(controlled.write.targetType),
         onChangeHandlers,
-        validationKey
+        validationKey,
+        requestSourceId
       )
     ]
   }
-  return controlledValueAttrParts(controlled, attrs, onChangeHandlers, validationKey)
+  return controlledValueAttrParts(
+    controlled,
+    attrs,
+    onChangeHandlers,
+    validationKey,
+    requestSourceId
+  )
 }
 
 function controlledOptionAttrParts(
@@ -716,7 +744,8 @@ function controlledOptionAttrParts(
   attrs: Record<string, IRAttrValue>,
   mode: 'radio' | 'checkbox-group',
   onChangeHandlers: IREventHandler[] | undefined,
-  validationKey: string | undefined
+  validationKey: string | undefined,
+  requestSourceId: string | undefined
 ): string[] {
   const optValue = optionValueExpression(attrs.value)
   const checked =
@@ -727,7 +756,14 @@ function controlledOptionAttrParts(
     mode === 'radio'
       ? controlledEventValue(controlled.write.targetType)
       : `e.target.checked ? [...${controlled.read}, ${optValue}] : ${controlled.read}.filter((v) => v !== ${optValue})`
-  return controlledCheckedParts(controlled, checked, value, onChangeHandlers, validationKey)
+  return controlledCheckedParts(
+    controlled,
+    checked,
+    value,
+    onChangeHandlers,
+    validationKey,
+    requestSourceId
+  )
 }
 
 function controlledCheckedParts(
@@ -735,11 +771,12 @@ function controlledCheckedParts(
   checkedExpr: string,
   valueExpr: string,
   onChangeHandlers: IREventHandler[] | undefined,
-  validationKey: string | undefined
+  validationKey: string | undefined,
+  requestSourceId: string | undefined
 ): string[] {
   return [
     `checked={${checkedExpr}}`,
-    controlledOnChangeAttr(controlled, valueExpr, onChangeHandlers, validationKey)
+    controlledOnChangeAttr(controlled, valueExpr, onChangeHandlers, validationKey, requestSourceId)
   ]
 }
 
@@ -753,7 +790,8 @@ function controlledValueAttrParts(
   controlled: IRControlledInput,
   attrs: Record<string, IRAttrValue>,
   onChangeHandlers: IREventHandler[] | undefined,
-  validationKey: string | undefined
+  validationKey: string | undefined,
+  requestSourceId: string | undefined
 ): string[] {
   const parts: string[] = []
   if (controlled.write.targetType === 'number' && !('type' in attrs)) {
@@ -765,7 +803,8 @@ function controlledValueAttrParts(
       controlled,
       controlledEventValue(controlled.write.targetType),
       onChangeHandlers,
-      validationKey
+      validationKey,
+      requestSourceId
     )
   )
   return parts
@@ -804,7 +843,7 @@ function validationFieldParts(
 function eventAttrParts(
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
   formValidationKeys: readonly string[] | undefined,
-  options: { skip?: ReadonlySet<IREventName> } = {}
+  options: { skip?: ReadonlySet<IREventName>; requestSourceId?: string } = {}
 ): string[] {
   const parts: string[] = []
   if (events) {
@@ -813,17 +852,122 @@ function eventAttrParts(
       if (options.skip?.has(name)) continue
       // The wrapped onSubmit is emitted below from the same handlers.
       if (name === 'onSubmit' && formValidationKeys) continue
-      parts.push(`${name}={${emitEventHandler(handlers, eventHandlerOptions(name))}}`)
+      parts.push(
+        `${name}={${emitEventHandler(
+          handlers,
+          eventHandlerOptions(name, eventRequestTiming(options.requestSourceId, name, handlers))
+        )}}`
+      )
     }
   }
   if (formValidationKeys) {
-    parts.push(`onSubmit={${emitFormSubmitHandler(events?.onSubmit ?? [], formValidationKeys)}}`)
+    const submitHandlers = events?.onSubmit ?? []
+    parts.push(
+      `onSubmit={${emitFormSubmitHandler(
+        submitHandlers,
+        formValidationKeys,
+        eventRequestTiming(options.requestSourceId, 'onSubmit', submitHandlers)?.requestKey
+      )}}`
+    )
   }
   return parts
 }
 
-function eventHandlerOptions(name: IREventName): { eventLocals?: boolean } {
-  return name === 'onChange' || name === 'onFocus' || name === 'onBlur' ? { eventLocals: true } : {}
+function eventHandlerOptions(
+  name: IREventName,
+  request?: RequestTimingOptions
+): {
+  eventLocals?: boolean
+  preventDefault?: boolean
+  requestKey?: string
+  debounceRequest?: boolean
+} {
+  const eventLocals = name === 'onChange' || name === 'onFocus' || name === 'onBlur'
+  return {
+    ...(eventLocals ? { eventLocals: true } : {}),
+    ...(name === 'onSubmit' ? { preventDefault: true } : {}),
+    ...request
+  }
+}
+
+interface RequestTimingOptions {
+  requestKey: string
+  debounceRequest?: boolean
+}
+
+function eventRequestTiming(
+  sourceId: string | undefined,
+  name: IREventName,
+  handlers: readonly IREventHandler[]
+): RequestTimingOptions | undefined {
+  if (sourceId === undefined) return undefined
+  const requestKey = `${sourceId}:${name}`
+  if (eventUsesRequestGate(name, handlers)) return { requestKey }
+  if (eventUsesRequestDebounce(name, handlers)) return { requestKey, debounceRequest: true }
+  return undefined
+}
+
+const DISABLEABLE_REQUEST_TAGS: ReadonlySet<string> = new Set([
+  'button',
+  'fieldset',
+  'input',
+  'optgroup',
+  'option',
+  'select',
+  'textarea'
+])
+
+/** Pending UI for a network-bearing event. The ref-backed handler is still the
+ * authority; these reactive attrs make the state visible and disable native
+ * controls after React commits it. Authored accessibility/disabled attrs are
+ * OR-merged with the pending state rather than duplicated in JSX. */
+function requestStateAttrs(node: IRElement): {
+  attrs: string
+  overriddenAttrs: ReadonlySet<string>
+} {
+  const keys = requestKeys(node.events, node.sourceId)
+  if (keys.length === 0) return { attrs: '', overriddenAttrs: new Set() }
+  const pending = keys.map((key) => `__opPendingRequests.has(${JSON.stringify(key)})`).join(' || ')
+  const parts: string[] = []
+  const overriddenAttrs = new Set<string>(['data-op-request-pending', 'aria-busy'])
+  parts.push(`data-op-request-pending={(${pending}) ? "true" : undefined}`)
+  parts.push(`aria-busy={${pending}${authoredBooleanTail(node.attrs['aria-busy'], true)}}`)
+  if (DISABLEABLE_REQUEST_TAGS.has(node.tag)) {
+    overriddenAttrs.add('disabled')
+    parts.push(`disabled={${pending}${authoredBooleanTail(node.attrs.disabled, false)}}`)
+  } else {
+    overriddenAttrs.add('aria-disabled')
+    const authored = authoredBooleanTail(node.attrs['aria-disabled'], true)
+    parts.push(`aria-disabled={(${pending}${authored}) || undefined}`)
+  }
+  return { attrs: parts.join(' '), overriddenAttrs }
+}
+
+function authoredBooleanTail(value: IRAttrValue | undefined, aria: boolean): string {
+  if (value === undefined) return ''
+  if (typeof value === 'boolean') return value ? ' || true' : ''
+  if (typeof value === 'number') return value === 0 ? '' : ' || true'
+  if (typeof value === 'string') {
+    const truthy = aria ? value.toLowerCase() === 'true' : value.length > 0
+    return truthy ? ' || true' : ''
+  }
+  if (value.kind === 'exprAttr') return ` || Boolean(${emitExpression(value.ast)})`
+  if (value.kind === 'intlMessage') {
+    return ` || Boolean(intl.formatMessage({ id: ${JSON.stringify(value.messageId)}, defaultMessage: ${JSON.stringify(value.defaultMessage)} }))`
+  }
+  return ' || true'
+}
+
+function requestKeys(
+  events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
+  sourceId: string
+): string[] {
+  if (!events) return []
+  const keys: string[] = []
+  for (const [name, handlers] of Object.entries(events) as [IREventName, IREventHandler[]][]) {
+    if (eventUsesRequestGate(name, handlers)) keys.push(`${sourceId}:${name}`)
+  }
+  return keys
 }
 
 /** Phase 4 §24.1: the JSX attrs for an image node — `src` (a literal URL or a
@@ -893,18 +1037,23 @@ function uploadAttrParts(upload: IRUpload): string[] {
 /** Phase 4 §18: the async onChange for a file-upload INPUT. Reads the chosen
  *  file, uploads it to `storage.from(bucket).upload(path, file, { upsert: true })`
  *  (path = `<pathExpr>/<filename>` when a prefix is set, else the bare file
- *  name), then writes the object's public URL into the result doc-state. A
- *  failed upload is left silent (no URL written). */
+ *  name), then writes either the private object path or the public bucket URL
+ *  into the result doc-state. Legacy uploads without authoritative bucket
+ *  metadata retain their historical public-URL behavior. */
 function emitUploadHandler(u: IRUpload): string {
   const bucket = JSON.stringify(u.bucket)
   const target = JSON.stringify(u.resultTarget)
   const path = u.pathAst ? '`${' + emitExpression(u.pathAst) + '}/${__file.name}`' : '__file.name'
+  const result =
+    u.resultAccess === 'private'
+      ? '__path'
+      : `getSupabaseClient().storage.from(${bucket}).getPublicUrl(__path).data.publicUrl`
   return (
     'async (e) => { ' +
     'const __file = e.target.files?.[0]; if (!__file) return; ' +
     `const __path = ${path}; ` +
     `const { error: __err } = await getSupabaseClient().storage.from(${bucket}).upload(__path, __file, { upsert: true }); ` +
-    `if (!__err) setDocState(${target}, getSupabaseClient().storage.from(${bucket}).getPublicUrl(__path).data.publicUrl); ` +
+    `if (!__err) setDocState(${target}, ${result}); ` +
     '}'
   )
 }
@@ -918,7 +1067,8 @@ function controlledOnChangeAttr(
   c: IRControlledInput,
   valueExpr: string,
   handlers: IREventHandler[] | undefined,
-  validationKey: string | undefined
+  validationKey: string | undefined,
+  requestSourceId: string | undefined
 ): string {
   const write = controlledWriteCall(c, valueExpr)
   const prelude = [write]
@@ -929,7 +1079,11 @@ function controlledOnChangeAttr(
     if (prelude.length === 1) return `onChange={(e) => ${write}}`
     return `onChange={${emitEventHandler([], { prelude, forceAsync: true })}}`
   }
-  return `onChange={${emitEventHandler(handlers, { eventLocals: true, prelude, forceAsync: validationKey !== undefined })}}`
+  return `onChange={${emitEventHandler(handlers, {
+    ...eventHandlerOptions('onChange', eventRequestTiming(requestSourceId, 'onChange', handlers)),
+    prelude,
+    forceAsync: validationKey !== undefined
+  })}}`
 }
 
 /** Phase 3 §3.x / §15 Phase B — the writer call for a controlled input: a
@@ -972,7 +1126,7 @@ function componentRefAttrs(
   if (node.className) attrs.push(`className="${escapeAttr(node.className)}"`)
   if (node.styleAttr) attrs.push(`style={${formatStyleAttr(node.styleAttr.declarations)}}`)
   attrs.push(...node.props.map(componentRefPropAttr))
-  const rootEvents = componentRefRootEventsAttr(node.events)
+  const rootEvents = componentRefRootEventsAttr(node.events, node.sourceId)
   if (rootEvents) attrs.push(rootEvents)
   if (node.motion) {
     attrs.push(`__opMotionKey="${motionToken(node.motion)}"`)
@@ -1017,13 +1171,19 @@ function componentPrototypeProp(name: string, value: string, scoped: true | unde
 }
 
 function componentRefRootEventsAttr(
-  events: Extract<IRNode, { kind: 'componentRef' }>['events']
+  events: Extract<IRNode, { kind: 'componentRef' }>['events'],
+  sourceId: string
 ): string | undefined {
   if (!events) return undefined
   const entries: string[] = []
   for (const [name, handlers] of Object.entries(events) as [IREventName, IREventHandler[]][]) {
     if (handlers.length === 0) continue
-    entries.push(`${name}: ${emitEventHandler(handlers, eventHandlerOptions(name))}`)
+    entries.push(
+      `${name}: ${emitEventHandler(
+        handlers,
+        eventHandlerOptions(name, eventRequestTiming(sourceId, name, handlers))
+      )}`
+    )
   }
   return entries.length > 0 ? `__opRootEvents={{ ${entries.join(', ')} }}` : undefined
 }

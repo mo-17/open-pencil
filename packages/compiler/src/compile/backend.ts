@@ -1,5 +1,7 @@
 import {
   lowerLegacySupabaseApplication,
+  parseBackendApplicationSpecV1,
+  type BackendApplicationSpecV1,
   type BackendDiagnostic,
   type LegacyBackendGraph
 } from '@open-pencil/lowcode/backend'
@@ -110,6 +112,20 @@ function explicitBackendProviderRequest(
   }
 }
 
+/** Resolve the normalized application owned by an explicit Backend Provider
+ * request. This is shared with frontend IR collection so workflow and Storage
+ * bindings cannot read a second, legacy declaration as their authority. */
+export function resolveCompilerBackendApplication(
+  options: CompilerOptions
+): BackendApplicationSpecV1 | undefined {
+  const explicit = explicitBackendProviderRequest(options)
+  if (!explicit.ok) throw new BackendProviderCompilationError(explicit.diagnostics)
+  if (!explicit.request) return undefined
+  const parsed = parseBackendApplicationSpecV1(explicit.request.application)
+  if (!parsed.ok) throw new BackendProviderCompilationError(parsed.diagnostics)
+  return parsed.value
+}
+
 function compilationMode(options: CompilerOptions): BackendCompilationMode {
   return options.backendCompilationMode ?? (options.devMode ? 'preview' : 'production')
 }
@@ -160,8 +176,10 @@ function blockedCompilation(
 
 /**
  * Backend bridge for the real Compiler entrypoint. An explicit Host-resolved
- * request is authoritative; legacy Supabase lowering is used only when that
- * request is absent. The trusted Provider receives only normalized Backend IR.
+ * request is the sole Backend authority; legacy Supabase lowering is used only when that
+ * request is absent. Existing Supabase config and client Auth/CRUD/server/Storage actions remain
+ * frontend runtime usage and do not constitute a second Provider authority. The trusted Provider
+ * receives only normalized Backend IR.
  * Planning or emission failures stop the compile with structured diagnostics;
  * a production build can never silently ship only the frontend half.
  */
@@ -174,15 +192,6 @@ export function compileBackendArtifacts(
   const legacyIntent = hasLegacyBackendIntent(graph, lowered)
   const explicit = explicitBackendProviderRequest(options)
   if (!explicit.ok) return blockedCompilation(lowered.diagnostics, explicit.diagnostics)
-  if (explicit.request && legacyIntent) {
-    return blockedCompilation(lowered.diagnostics, [
-      compilationDiagnostic(
-        'backend-provider-authority-conflict',
-        '$.options.backendProvider',
-        'Explicit Backend Provider authority cannot be combined with legacy Supabase Backend intent.'
-      )
-    ])
-  }
   if (!explicit.request && !legacyIntent) return null
 
   const selection = explicit.request?.selection ?? COMPILER_BUNDLED_SUPABASE_SELECTION

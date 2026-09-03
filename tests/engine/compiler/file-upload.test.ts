@@ -1,11 +1,46 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
+import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 const SUPA_CONFIG = { url: 'https://x.supabase.co', anonKey: 'eyJ.anon.sig' }
 const URL_STATE = [{ id: 'd1', name: 'avatarUrl', type: 'string', defaultValue: '' }]
+
+function backendStorage(access: 'private' | 'public-read'): BackendApplicationSpecV1 {
+  return {
+    format: 'openpencil.backend-application',
+    version: 1,
+    applicationId: 'upload-ir-test',
+    dataModel: { version: 1, entities: [], enums: [], relations: [] },
+    auth: {
+      version: 1,
+      identities: [{ id: 'user', kind: 'user' }],
+      roles: [],
+      ownership: [],
+      tenants: [],
+      rowAccess: []
+    },
+    workflows: { version: 1, workflows: [] },
+    storage: {
+      version: 1,
+      buckets: [
+        {
+          id: 'avatars',
+          name: 'avatars',
+          access,
+          maxObjectBytes: 1_048_576,
+          allowedMimeTypes: ['image/png'],
+          pathRules: []
+        }
+      ]
+    },
+    capabilities: [],
+    secrets: []
+  }
+}
 
 /**
  * Phase 4 §18 — an INPUT carrying `interactiveProps.upload` emits
@@ -92,5 +127,49 @@ describe('compile — file upload (Phase 4 §18)', () => {
   test('missing bucket → no upload', () => {
     const app = compileUpload({ resultTarget: 'avatarUrl' })
     expect(app).not.toContain('type="file"')
+  })
+
+  test('carries authoritative Backend bucket access into upload IR and rejects undeclared buckets', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeSupabaseConfig: SUPA_CONFIG,
+      lowcodeDocumentState: URL_STATE
+    })
+    graph.createNode('INPUT', pageId, {
+      interactiveProps: { upload: { bucket: 'avatars', resultTarget: 'avatarUrl' } }
+    })
+
+    const privateTree = collectTree(
+      graph,
+      pageId,
+      new Map(),
+      false,
+      {},
+      new Map(),
+      null,
+      backendStorage('private')
+    )
+    expect(privateTree.children[0]).toMatchObject({
+      upload: { bucket: 'avatars', resultAccess: 'private' }
+    })
+
+    const undeclared = backendStorage('private')
+    if (!undeclared.storage) throw new Error('Missing Backend Storage fixture')
+    undeclared.storage.buckets = []
+    const blockedTree = collectTree(
+      graph,
+      pageId,
+      new Map(),
+      false,
+      {},
+      new Map(),
+      null,
+      undeclared
+    )
+    expect(blockedTree.children[0]).not.toHaveProperty('upload')
+    expect(blockedTree.warnings).toContainEqual(
+      expect.objectContaining({ code: 'upload-backend-bucket-unavailable' })
+    )
   })
 })

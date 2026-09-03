@@ -104,7 +104,9 @@ export interface RunSourceProjectExportOptions<TEditor extends SourceExporterEdi
   applyFontPolicy?: (
     manifest: CompilerFontManifest
   ) => SourceProjectFontPolicyResult | Promise<SourceProjectFontPolicyResult>
-  createCompilerInput(context: SourceProjectCompilerInputContext<TEditor>): CompilerInput
+  createCompilerInput(
+    context: SourceProjectCompilerInputContext<TEditor>
+  ): CompilerInput | Promise<CompilerInput>
   buildProject(
     compiledFiles: ReadonlyMap<string, string | Uint8Array>,
     warnings: readonly CompileWarning[]
@@ -166,7 +168,7 @@ export async function runSourceProjectExport<TEditor extends SourceExporterEdito
   throwIfPluginExportAborted(signal)
   updateActiveAppPluginExportStage('compiling')
   const compiled = await dependencies.compile(
-    options.createCompilerInput({ editor, pageIds, fontManifest: fontPolicy.manifest }),
+    await options.createCompilerInput({ editor, pageIds, fontManifest: fontPolicy.manifest }),
     signal
   )
   throwIfPluginExportAborted(signal)

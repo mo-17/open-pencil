@@ -7,6 +7,7 @@ const INVALID_KNOWN_FIELDS = [
   ['BUTTON', 'textColor', 'black', 'a #RRGGBB color'],
   ['INPUT', 'placeholder', false, 'a string'],
   ['INPUT', 'value', 42, 'a string'],
+  ['INPUT', 'inputType', 'file', 'text, email, or password'],
   ['INPUT', 'textColor', 'white', 'a #RRGGBB color'],
   ['INPUT', 'placeholderColor', '#12345G', 'a #RRGGBB color'],
   ['TEXTAREA', 'placeholder', [], 'a string'],
@@ -90,6 +91,7 @@ describe('validateInteractiveProps', () => {
         {
           placeholder: 'Email',
           value: '',
+          inputType: 'email',
           textColor: '#F7F4EE',
           placeholderColor: '#8B8B93'
         }

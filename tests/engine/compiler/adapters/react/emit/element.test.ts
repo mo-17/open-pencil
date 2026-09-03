@@ -12,7 +12,8 @@ function element(overrides: Partial<IRElement> & { tag: string }): IRElement {
     attrs: overrides.attrs ?? {},
     children: overrides.children ?? [],
     ...(overrides.events ? { events: overrides.events } : {}),
-    ...(overrides.controlled ? { controlled: overrides.controlled } : {})
+    ...(overrides.controlled ? { controlled: overrides.controlled } : {}),
+    ...(overrides.upload ? { upload: overrides.upload } : {})
   }
 }
 
@@ -109,6 +110,35 @@ describe('emitElement (React adapter)', () => {
         '    </form>'
       ].join('\n')
     )
+  })
+
+  test('keeps private Storage results as object paths and exposes only public-read URLs', () => {
+    const privateUpload = emitElement(
+      element({
+        tag: 'input',
+        upload: {
+          bucket: 'private-assets',
+          resultTarget: 'assetPath',
+          resultAccess: 'private'
+        }
+      }),
+      0
+    )
+    expect(privateUpload).toContain('setDocState("assetPath", __path)')
+    expect(privateUpload).not.toContain('getPublicUrl')
+
+    const publicUpload = emitElement(
+      element({
+        tag: 'input',
+        upload: {
+          bucket: 'public-assets',
+          resultTarget: 'assetUrl',
+          resultAccess: 'public-read'
+        }
+      }),
+      0
+    )
+    expect(publicUpload).toContain('.getPublicUrl(__path).data.publicUrl')
   })
 
   // Phase 3 §3.x: controlled INPUT emission. The `controlled` IR field

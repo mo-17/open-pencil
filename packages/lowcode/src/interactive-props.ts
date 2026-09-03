@@ -51,7 +51,12 @@ export function normalizeLowcodeTextColor(value: unknown, fallback: string): str
   return isLowcodeTextColor(value) ? value.toUpperCase() : fallback
 }
 
-type KnownInteractivePropKind = 'string' | 'boolean' | 'string-array' | 'color'
+type KnownInteractivePropKind =
+  | 'string'
+  | 'boolean'
+  | 'string-array'
+  | 'color'
+  | 'text-input-type'
 
 const KNOWN_INTERACTIVE_PROP_TYPES: Partial<
   Record<NodeType, Readonly<Record<string, KnownInteractivePropKind>>>
@@ -60,6 +65,7 @@ const KNOWN_INTERACTIVE_PROP_TYPES: Partial<
   INPUT: {
     placeholder: 'string',
     value: 'string',
+    inputType: 'text-input-type',
     textColor: 'color',
     placeholderColor: 'color'
   },
@@ -84,6 +90,9 @@ function matchesKnownPropKind(value: unknown, kind: KnownInteractivePropKind): b
   if (kind === 'string') return typeof value === 'string'
   if (kind === 'boolean') return typeof value === 'boolean'
   if (kind === 'color') return isLowcodeTextColor(value)
+  if (kind === 'text-input-type') {
+    return value === 'text' || value === 'email' || value === 'password'
+  }
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
 }
 
@@ -101,6 +110,7 @@ function knownPropTypeIssues(
     let expected = `a ${kind}`
     if (kind === 'string-array') expected = 'an array of strings'
     if (kind === 'color') expected = 'a #RRGGBB color'
+    if (kind === 'text-input-type') expected = 'text, email, or password'
     issues.push(error(`interactive-props-${key}-type`, path, `${path} must be ${expected}`))
   }
   return issues

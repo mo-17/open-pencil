@@ -8,9 +8,14 @@ import type { VueLowcodeUsage } from './lowcode/usage'
 const VUE_VERSION = '^3.5.29'
 const VUE_ROUTER_VERSION = '^4.6.4'
 
-export function buildVuePackageJSON(options: CompilerOptions, router: boolean): string {
+export function buildVuePackageJSON(
+  options: CompilerOptions,
+  router: boolean,
+  extraDependencies: Readonly<Record<string, string>> = {}
+): string {
   const dependencies: Record<string, string> = { vue: VUE_VERSION }
   if (router) dependencies['vue-router'] = VUE_ROUTER_VERSION
+  Object.assign(dependencies, extraDependencies)
   return `${JSON.stringify(
     {
       name: options.packageName,
@@ -101,7 +106,13 @@ ${extra}  </head>
 
 export function buildVueMain(
   router: boolean,
-  lowcode: VueLowcodeUsage = { toast: false, confirm: false, validation: false },
+  lowcode: VueLowcodeUsage = {
+    toast: false,
+    confirm: false,
+    validation: false,
+    supabase: false,
+    serverWorkflow: false
+  },
   devMode = false,
   microfrontend = false
 ): string {
@@ -129,7 +140,13 @@ createApp(App)${routerUse}.mount('#app')
 export function buildVueApp(
   router: boolean,
   firstPageComponent: string,
-  lowcode: VueLowcodeUsage = { toast: false, confirm: false, validation: false }
+  lowcode: VueLowcodeUsage = {
+    toast: false,
+    confirm: false,
+    validation: false,
+    supabase: false,
+    serverWorkflow: false
+  }
 ): string {
   const imports = router
     ? [`import { RouterView } from 'vue-router'`]
@@ -337,14 +354,15 @@ bun run dev
 bun run build
 \`\`\`
 
-This Vue v1 target preserves static design output, bundled image assets, reusable components,
-basic state and form bindings, local validation, accessible toast/confirm actions, and supported
-navigation/actions.
+This Vue target preserves static design output, bundled image assets, reusable components,
+state and form bindings, local validation, accessible toast/confirm actions, supported
+navigation/actions, and the reviewed Supabase Auth, Data, Storage, and authenticated server-workflow
+client runtimes when the source document declares them.
 
 Font files are included only when the caller supplies redistribution-safe font assets. Otherwise,
 check the export warnings and add the licensed files and notices yourself. Check all compiler
-warnings before publishing: advanced React-only low-code modules and runtimes are deliberately
-omitted.
+warnings before publishing: capabilities that still require a trusted server bridge or an unsupported
+advanced runtime remain fail-closed.
 `
 }
 

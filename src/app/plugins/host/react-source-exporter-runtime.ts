@@ -1,6 +1,11 @@
 import { withDefaults } from '@open-pencil/compiler'
 
 import {
+  prepareAppBackendProviderCompilerOptions,
+  readAppBackendProviderDocumentRequest,
+  type AppBackendProviderHostStore
+} from './backend-provider'
+import {
   applySourceProjectRedistributionFontPolicy,
   buildSourceProjectExportFiles,
   createDefaultSourceProjectExporterDependencies,
@@ -18,8 +23,12 @@ export type ReactSourceProjectBuilder = (
   productName: string
 ) => Map<string, string | Uint8Array>
 
-export type ReactSourceExporterDependencies =
-  SourceProjectExporterDependencies<SourceExporterEditor>
+export interface ReactSourceExporterDependencies extends SourceProjectExporterDependencies<SourceExporterEditor> {
+  /** Test/embedding seam; the default resolves the live app store only for declared documents. */
+  readonly resolveBackendProviderStore?: () =>
+    | AppBackendProviderHostStore
+    | Promise<AppBackendProviderHostStore>
+}
 
 export type ReactSourceProjectExporter = (
   editor: SourceExporterEditor,
@@ -50,21 +59,28 @@ const TARGETS = Object.freeze({
   })
 })
 
+async function resolveLiveBackendProviderStore(): Promise<AppBackendProviderHostStore> {
+  // Dynamic import avoids app bootstrap -> Host registry -> React exporter -> app bootstrap cycles.
+  const { appPluginStore, appPluginStoreReady } = await import('@/app/plugins/app')
+  await appPluginStoreReady
+  return appPluginStore
+}
+
 export function createReactSourceProjectExporter(
   target: ReactSourceExporterTarget,
   buildProject: ReactSourceProjectBuilder
 ): ReactSourceProjectExporter {
   const definition = TARGETS[target]
-  const defaultDependencies = createDefaultSourceProjectExporterDependencies<SourceExporterEditor>(
-    definition.description
-  )
+  const defaultDependencies: ReactSourceExporterDependencies =
+    createDefaultSourceProjectExporterDependencies<SourceExporterEditor>(definition.description)
 
   return async (editor, dependenciesOrSignal, explicitSignal) => {
-    const { dependencies, signal } = resolveSourceExporterInvocation(
-      dependenciesOrSignal,
-      defaultDependencies,
-      explicitSignal
-    )
+    const { dependencies, signal } =
+      resolveSourceExporterInvocation<ReactSourceExporterDependencies>(
+        dependenciesOrSignal,
+        defaultDependencies,
+        explicitSignal
+      )
     const names = sourceProjectNames(editor.state.documentName)
     const fileName = `${names.package}-${definition.archiveSuffix}.zip`
     return runSourceProjectExport({
@@ -79,18 +95,27 @@ export function createReactSourceProjectExporter(
           definition.name,
           definition.fontWarningCode
         ),
-      createCompilerInput({ pageIds, fontManifest }) {
+      async createCompilerInput({ pageIds, fontManifest }) {
+        const baseOptions = withDefaults({
+          packageName: names.package,
+          productName: names.product,
+          target: 'react',
+          router: pageIds.length > 1 ? 'react-router-v6' : 'none',
+          devMode: false
+        })
+        const options = readAppBackendProviderDocumentRequest(editor.graph)
+          ? prepareAppBackendProviderCompilerOptions(
+              await (dependencies.resolveBackendProviderStore?.() ??
+                resolveLiveBackendProviderStore()),
+              editor.graph,
+              baseOptions
+            )
+          : baseOptions
         return {
           graph: editor.graph,
           pageIds,
           fontManifest,
-          options: withDefaults({
-            packageName: names.package,
-            productName: names.product,
-            target: 'react',
-            router: pageIds.length > 1 ? 'react-router-v6' : 'none',
-            devMode: false
-          })
+          options
         }
       },
       buildProject(compiledFiles, warnings) {

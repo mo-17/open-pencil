@@ -3,9 +3,11 @@ import type { IRElement, IRStyleAttr } from '#compiler/ir/types'
 import {
   emitControlledAttribute,
   emitEventAttributes,
+  emitVueUploadAttribute,
   emitValidatedSubmitAttribute,
   emitValidationEventAttributes
 } from './events'
+import { buildVueRequestStateAttributes } from './lowcode/request-gate'
 import {
   attrName,
   escapeAttr,
@@ -25,7 +27,8 @@ export function emitVueElementAttributes(
   context: VueEmitContext,
   locals: readonly VueLocalBinding[]
 ): string[] {
-  const attrs: string[] = []
+  const requestState = buildVueRequestStateAttributes(node, context, locals)
+  const attrs: string[] = [...requestState.attrs]
   if (node.classNameProp) {
     const prop = scopedIdentifier(node.classNameProp, context.identAliases, locals)
     const fallback = node.classNamePropFallback ? ` ?? ${scriptJSON(node.className)}` : ''
@@ -46,7 +49,9 @@ export function emitVueElementAttributes(
   }
   if (context.devMode) attrs.push(`data-node-id="${escapeAttr(node.sourceId)}"`)
   for (const [rawName, value] of Object.entries(node.attrs)) {
+    if (requestState.overridden.has(rawName)) continue
     if (rawName === 'style' || rawName === 'className' || rawName.startsWith('on')) continue
+    if (node.upload && (rawName === 'type' || rawName === 'accept')) continue
     if (node.controlled && (rawName === 'defaultValue' || rawName === 'defaultChecked')) continue
     if (node.image && ['src', 'alt', 'loading'].includes(rawName)) continue
     const name = attrName(rawName)
@@ -90,11 +95,19 @@ export function emitVueElementAttributes(
     attrs.push(`alt="${escapeAttr(node.image.alt)}"`)
     if (node.image.loading) attrs.push(`loading="${node.image.loading}"`)
   }
+  if (node.upload) {
+    attrs.push('type="file"')
+    if (node.upload.accept) attrs.push(`accept="${escapeAttr(node.upload.accept)}"`)
+    if (context.supabaseAvailable) {
+      attrs.push(emitVueUploadAttribute(node.upload, context, node.sourceId, locals))
+    }
+  }
   const controlled = emitControlledAttribute(node, context, locals)
   if (controlled) attrs.push(...controlled.attrs)
   attrs.push(...emitValidationEventAttributes(node, context, locals))
   const skippedEvents = new Set<string>()
   if (controlled) skippedEvents.add(controlled.skip)
+  if (node.upload) skippedEvents.add('onChange')
   if (node.validation) skippedEvents.add('onBlur')
   if (node.formValidationKeys && node.formValidationKeys.length > 0) {
     attrs.push(emitValidatedSubmitAttribute(node, context, locals))

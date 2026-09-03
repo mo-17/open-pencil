@@ -17,6 +17,7 @@ import type {
 import { emitExpression } from '@open-pencil/lowcode'
 import type { ExprAst } from '@open-pencil/lowcode'
 
+import { handlersUseRequestGate } from '../request-timing'
 import { setterName } from './state'
 
 /** Handler kinds that splice a single expression statement (eligible for the
@@ -84,6 +85,12 @@ interface EmitEventHandlerOptions {
   eventLocals?: boolean
   prelude?: string[]
   forceAsync?: boolean
+  /** Suppress native form navigation before any request gate can return early. */
+  preventDefault?: boolean
+  /** Stable page/component-local key used by the generated single-flight gate. */
+  requestKey?: string
+  /** Defer the remote-bearing action chain until the latest input settles. */
+  debounceRequest?: boolean
 }
 
 function handlersContainMotion(handlers: readonly IREventHandler[]): boolean {
@@ -124,8 +131,10 @@ export function emitEventHandler(
   options: EmitEventHandlerOptions = {}
 ): string {
   const prelude = options.prelude ?? []
+  const requestKey =
+    options.requestKey && handlersUseRequestGate(handlers) ? options.requestKey : undefined
   const motionScope = handlersContainMotion(handlers) ? '__opMotionScope' : undefined
-  const needsEventArg = options.eventLocals || prelude.length > 0 || motionScope !== undefined
+  const needsEventArg = eventNeedsArgument(options, prelude, motionScope, requestKey)
   const params = needsEventArg ? '(e)' : '()'
   const arrow =
     options.forceAsync || handlersAreAsync(handlers) ? `async ${params} =>` : `${params} =>`
@@ -137,10 +146,58 @@ export function emitEventHandler(
     : ''
   const prefix = prelude.map((stmt) => `${stmt};`).join(' ')
   const scopeCapture = motionScope ? 'const __opMotionScope = e.currentTarget;' : ''
-  const body = [scopeCapture, locals, prefix, emitStatementList(handlers, motionScope)]
-    .filter(Boolean)
-    .join(' ')
-  return `${arrow} { ${body} }`
+  const preventDefault = options.preventDefault === true ? 'e.preventDefault();' : ''
+  const deferred = emitStatementList(handlers, motionScope)
+  const body = joinHandlerParts(scopeCapture, locals, prefix, deferred)
+  if (requestKey !== undefined) {
+    return emitRequestTimedArrow({
+      arrow,
+      requestKey,
+      debounce: options.debounceRequest === true,
+      preventDefault,
+      immediate: joinHandlerParts(scopeCapture, locals, prefix),
+      body,
+      deferred
+    })
+  }
+  return `${arrow} { ${joinHandlerParts(preventDefault, body)} }`
+}
+
+function eventNeedsArgument(
+  options: EmitEventHandlerOptions,
+  prelude: readonly string[],
+  motionScope: string | undefined,
+  requestKey: string | undefined
+): boolean {
+  return Boolean(
+    options.eventLocals ||
+    prelude.length > 0 ||
+    motionScope !== undefined ||
+    options.preventDefault ||
+    requestKey !== undefined
+  )
+}
+
+function joinHandlerParts(...parts: string[]): string {
+  return parts.filter(Boolean).join(' ')
+}
+
+function emitRequestTimedArrow(options: {
+  arrow: string
+  requestKey: string
+  debounce: boolean
+  preventDefault: string
+  immediate: string
+  body: string
+  deferred: string
+}): string {
+  const request = options.debounce
+    ? joinHandlerParts(
+        options.immediate,
+        `__opDebounceChange(e.currentTarget, async () => { ${options.deferred} });`
+      )
+    : `await __opRunRequest(${JSON.stringify(options.requestKey)}, async () => { ${options.body} });`
+  return `${options.arrow} { ${joinHandlerParts(options.preventDefault, request)} }`
 }
 
 /** Phase 4 §19: a `<form>`'s onSubmit when it has validated descendant fields —
@@ -149,15 +206,21 @@ export function emitEventHandler(
  *  `e.preventDefault()`. The arrow is async whenever the user's handlers are. */
 export function emitFormSubmitHandler(
   handlers: IREventHandler[],
-  validationKeys: readonly string[]
+  validationKeys: readonly string[],
+  requestKey?: string
 ): string {
   const arrow = 'async (e) =>'
   const ids = validationKeys.map((k) => JSON.stringify(k)).join(', ')
-  const guard = `e.preventDefault(); if (!(await __validateFields([${ids}]))) return;`
+  const validationGuard = `if (!(await __validateFields([${ids}]))) return;`
   const motionScope = handlersContainMotion(handlers) ? '__opMotionScope' : undefined
   const scopeCapture = motionScope ? 'const __opMotionScope = e.currentTarget; ' : ''
-  const body = handlers.length > 0 ? ` ${emitStatementList(handlers, motionScope)}` : ''
-  return `${arrow} { ${scopeCapture}${guard}${body} }`
+  const body = `${scopeCapture}${validationGuard}${
+    handlers.length > 0 ? ` ${emitStatementList(handlers, motionScope)}` : ''
+  }`
+  if (requestKey !== undefined && handlersUseRequestGate(handlers)) {
+    return `${arrow} { e.preventDefault(); await __opRunRequest(${JSON.stringify(requestKey)}, async () => { ${body} }); }`
+  }
+  return `${arrow} { e.preventDefault(); ${body} }`
 }
 
 /** Join handlers as statements: expression / `return` statements get a
