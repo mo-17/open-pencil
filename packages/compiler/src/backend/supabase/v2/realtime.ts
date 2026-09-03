@@ -13,8 +13,6 @@ import type {
 } from '@open-pencil/lowcode/backend'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
-import { SUPABASE_BACKEND_PROVIDER_CAPABILITIES_V2 } from './descriptor'
-
 export const SUPABASE_PRIVATE_REALTIME_ARTIFACT_PATHS_V2 = Object.freeze({
   client: 'backend/supabase-v2/realtime/client.ts',
   databasePrerequisites: 'backend/supabase-v2/realtime/database-prerequisites.json',
@@ -205,7 +203,7 @@ export function validateSupabasePrivateRealtimeV2(
 ): readonly BackendDiagnostic[] {
   const diagnostics: BackendDiagnostic[] = []
   const actual = new Set(context.actualCapabilities)
-  const supported = new Set<string>(SUPABASE_BACKEND_PROVIDER_CAPABILITIES_V2)
+  const supported = new Set<string>(REQUIRED_ACTUAL_CAPABILITIES)
   for (const capability of REQUIRED_ACTUAL_CAPABILITIES) {
     if (!actual.has(capability)) {
       diagnostics.push(
