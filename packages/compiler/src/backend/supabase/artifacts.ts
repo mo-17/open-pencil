@@ -8,6 +8,7 @@ import type {
 
 import { canonicalBackendValue, digestCanonicalBackendValue } from '../canonical'
 import type { BackendArtifactSource, BackendProviderAdapterContext } from '../contracts'
+import { buildSupabaseBackendEdgeFunction } from './edge-runtime'
 
 export const SUPABASE_ARTIFACT_PATHS = Object.freeze({
   clientConfig: 'backend/supabase/client-config.json',
@@ -16,7 +17,10 @@ export const SUPABASE_ARTIFACT_PATHS = Object.freeze({
   migrationPlan: 'backend/supabase/migration-plan.json',
   securityPolicy: 'backend/supabase/rls-policy.sql',
   securityPolicyManifest: 'backend/supabase/rls-policy.json',
+  storagePolicy: 'backend/supabase/storage-policy.sql',
+  storagePolicyManifest: 'backend/supabase/storage-policy.json',
   serverRuntime: 'backend/supabase/functions/openpencil-runtime/workflows.json',
+  serverRuntimeSource: 'backend/supabase/functions/openpencil-runtime/index.ts',
   deploymentManifest: 'backend/supabase/deployment-manifest.json'
 } as const)
 
@@ -162,6 +166,9 @@ function plannedArtifactPaths(context: BackendProviderAdapterContext): readonly 
     SUPABASE_ARTIFACT_PATHS.serverRuntime,
     SUPABASE_ARTIFACT_PATHS.deploymentManifest
   ]
+  if (hasIncludedCapability(context, 'server.functions')) {
+    paths.push(SUPABASE_ARTIFACT_PATHS.serverRuntimeSource)
+  }
   if (
     hasIncludedCapability(context, 'data.read') ||
     hasIncludedCapability(context, 'data.write') ||
@@ -181,6 +188,12 @@ function plannedArtifactPaths(context: BackendProviderAdapterContext): readonly 
       SUPABASE_ARTIFACT_PATHS.securityPolicy,
       SUPABASE_ARTIFACT_PATHS.securityPolicyManifest
     )
+  }
+  if (
+    hasIncludedCapability(context, 'storage.objects') &&
+    context.application.storage?.buckets.length
+  ) {
+    paths.push(SUPABASE_ARTIFACT_PATHS.storagePolicy, SUPABASE_ARTIFACT_PATHS.storagePolicyManifest)
   }
   return paths.sort((left, right) => left.localeCompare(right, 'en'))
 }
@@ -289,13 +302,15 @@ export function createSupabaseServerPlan(context: BackendProviderAdapterContext)
       format: 'openpencil.supabase-server-runtime.v1',
       version: 1,
       applicationId: context.application.applicationId,
-      runtime: 'declarative-reviewed-adapter-required',
+      runtime: hasIncludedCapability(context, 'server.functions')
+        ? 'reviewed-edge-function-source'
+        : 'not-requested',
       auth: 'caller-user-rls',
       workflows: context.application.workflows,
       environment: environmentNames(context.application),
       privilegedCredentialAllowed: false,
       outboundHttp: hasIncludedCapability(context, 'server.http')
-        ? 'explicit-host-policy-required'
+        ? 'exact-host-allowlist-required'
         : 'not-requested'
     },
     '$.supabase.serverPlan'
@@ -359,7 +374,7 @@ export function createSupabaseDeploymentManifest(context: BackendProviderAdapter
 export function emitSupabaseServerArtifacts(
   context: BackendProviderAdapterContext
 ): readonly BackendArtifactSource[] {
-  return Object.freeze([
+  const artifacts: BackendArtifactSource[] = [
     jsonArtifact(
       SUPABASE_ARTIFACT_PATHS.serverRuntime,
       'server-runtime',
@@ -370,5 +385,16 @@ export function emitSupabaseServerArtifacts(
       'deployment-manifest',
       createSupabaseDeploymentManifest(context)
     )
-  ])
+  ]
+  if (hasIncludedCapability(context, 'server.functions')) {
+    artifacts.push(
+      Object.freeze({
+        path: SUPABASE_ARTIFACT_PATHS.serverRuntimeSource,
+        kind: 'server-runtime',
+        mediaType: 'text/typescript; charset=utf-8',
+        content: buildSupabaseBackendEdgeFunction(context.application)
+      })
+    )
+  }
+  return Object.freeze(artifacts)
 }

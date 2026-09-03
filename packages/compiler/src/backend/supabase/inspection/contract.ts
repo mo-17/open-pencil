@@ -21,6 +21,8 @@ export const INSPECTION_COVERAGE_KEYS = [
   'roleMemberships',
   'rls',
   'policies',
+  'storageBuckets',
+  'storagePolicies',
   'privileges'
 ] as const
 
@@ -91,11 +93,20 @@ export type SupabaseInspectionCoverageV1 = Readonly<
   Record<SupabaseInspectionCoverageKey, 'complete'>
 >
 
+/** Immutable PostgreSQL catalog address captured by the fixed inspection query. */
+export interface SupabaseInspectionCatalogAddressV1 {
+  readonly classOid: string
+  readonly objectOid: string
+  readonly subId: number
+}
+
 interface SupabaseInspectionObjectBaseV1 {
   readonly kind: SupabaseInspectionObjectKind
   readonly schema: 'public'
   readonly name: string
   readonly management: SupabaseInspectionObjectManagement
+  /** Optional only for backwards-compatible parsing; Apply requires it for managed targets. */
+  readonly address?: SupabaseInspectionCatalogAddressV1
 }
 
 export interface SupabaseInspectionTableObjectV1 extends SupabaseInspectionObjectBaseV1 {
@@ -138,6 +149,25 @@ export type SupabaseInspectionObjectV1 =
 export interface SupabaseInspectionPolicyV1 {
   readonly schema: 'public'
   readonly tableName: string
+  readonly name: string
+  readonly command: (typeof INSPECTION_POLICY_COMMANDS)[number]
+  readonly mode: (typeof INSPECTION_POLICY_MODES)[number]
+  readonly roles: readonly string[]
+  readonly source: SupabaseInspectionInventorySource
+  readonly usingExpressionDigest: string | null
+  readonly withCheckExpressionDigest: string | null
+}
+
+export interface SupabaseInspectionStorageBucketV1 {
+  readonly id: string
+  readonly name: string
+  readonly public: boolean
+  readonly fileSizeLimit: number | null
+  readonly allowedMimeTypes: readonly string[] | null
+}
+
+export interface SupabaseInspectionStoragePolicyV1 {
+  readonly address: SupabaseInspectionCatalogAddressV1
   readonly name: string
   readonly command: (typeof INSPECTION_POLICY_COMMANDS)[number]
   readonly mode: (typeof INSPECTION_POLICY_MODES)[number]
@@ -204,6 +234,12 @@ export interface SupabaseInspectionColumnV1 {
   readonly enumName?: string
   readonly nullable: boolean
   readonly default: SupabaseInspectionColumnDefaultV1
+  /** Optional only for backwards-compatible parsing; Apply requires it for managed targets. */
+  readonly address?: SupabaseInspectionCatalogAddressV1
+  readonly typeOid?: string
+  readonly defaultExpressionDigest?: string | null
+  readonly identityKind?: '' | 'a' | 'd'
+  readonly generatedKind?: '' | 's'
 }
 
 interface SupabaseInspectionConstraintBaseV1 {
@@ -213,6 +249,10 @@ interface SupabaseInspectionConstraintBaseV1 {
   readonly management: SupabaseInspectionObjectManagement
   readonly openPencilId?: string
   readonly kind: (typeof INSPECTION_CONSTRAINT_KINDS)[number]
+  /** Optional only for backwards-compatible parsing; Apply requires it for managed targets. */
+  readonly address?: SupabaseInspectionCatalogAddressV1
+  readonly definitionDigest?: string
+  readonly validated?: boolean
 }
 
 export interface SupabaseInspectionPrimaryKeyConstraintV1 extends SupabaseInspectionConstraintBaseV1 {
@@ -252,6 +292,11 @@ export interface SupabaseInspectionIndexV1 {
   readonly management: SupabaseInspectionObjectManagement
   readonly openPencilId?: string
   readonly fields: readonly Readonly<{ name: string; order: 'asc' | 'desc' }>[]
+  /** Optional only for backwards-compatible parsing; Apply requires it for managed targets. */
+  readonly address?: SupabaseInspectionCatalogAddressV1
+  readonly definitionDigest?: string
+  readonly valid?: boolean
+  readonly ready?: boolean
 }
 
 export interface SupabaseInspectionDefaultPrivilegeV1 {
@@ -275,6 +320,8 @@ export interface CreateSupabaseInspectedMigrationSnapshotInputV1 {
   readonly roles: readonly SupabaseInspectionRoleV1[]
   readonly roleMemberships: readonly SupabaseInspectionRoleMembershipV1[]
   readonly policies: readonly SupabaseInspectionPolicyV1[]
+  readonly storageBuckets: readonly SupabaseInspectionStorageBucketV1[]
+  readonly storagePolicies: readonly SupabaseInspectionStoragePolicyV1[]
   readonly privileges: readonly SupabaseInspectionPrivilegeV1[]
   readonly defaultPrivileges: readonly SupabaseInspectionDefaultPrivilegeV1[]
 }
@@ -285,6 +332,10 @@ export interface SupabaseInspectedMigrationSnapshotV1 extends CreateSupabaseInsp
   readonly providerId: 'supabase'
   readonly schema: 'public'
   readonly currentModelDigest: string
+  /** Addressable PostgreSQL schema projection; excludes relation labels after validating FK backing. */
+  readonly physicalSchemaDigest: string
   readonly objectPrivilegeDigest: string
   readonly inspectedSchemaDigest: string
+  /** Full capture integrity, including the canonical observation timestamp. */
+  readonly captureDigest: string
 }

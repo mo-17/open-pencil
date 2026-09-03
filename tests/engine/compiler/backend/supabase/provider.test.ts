@@ -71,12 +71,19 @@ function supabaseApplication(): BackendApplicationSpecV1 {
           trigger: { kind: 'http', method: 'POST', access: 'authenticated' },
           parameters: ['id', 'title'],
           steps: [
-            { id: 'read', kind: 'data.read', entityId: 'notes', resultName: 'rows' },
+            {
+              id: 'read',
+              kind: 'data.read',
+              entityId: 'notes',
+              fields: ['id', 'title', 'owner_id'],
+              resultName: 'rows'
+            },
             {
               id: 'insert',
               kind: 'data.mutate',
               entityId: 'notes',
               operation: 'insert',
+              resultName: 'created',
               values: [
                 { field: 'id', value: { kind: 'expression', expression: 'id' } },
                 {
@@ -223,6 +230,7 @@ describe('built-in Supabase Backend Provider', () => {
       'backend/supabase/database-schema.json',
       'backend/supabase/database.types.ts',
       'backend/supabase/deployment-manifest.json',
+      'backend/supabase/functions/openpencil-runtime/index.ts',
       'backend/supabase/functions/openpencil-runtime/workflows.json',
       'backend/supabase/migration-plan.json',
       'backend/supabase/rls-policy.json',
@@ -282,6 +290,25 @@ describe('built-in Supabase Backend Provider', () => {
     expect(runtime).toContain('caller-user-rls')
     expect(runtime).not.toContain('service_role')
     expect(runtime).not.toContain('SUPABASE_SERVICE_ROLE_KEY')
+    const source = fileText(emission.files, SUPABASE_ARTIFACT_PATHS.serverRuntimeSource)
+    expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(source)).not.toThrow()
+    expect(source).toMatch(/^const OPENPENCIL_EDGE_BUILD_IDENTITY = "[A-Za-z0-9_-]{43}"$/mu)
+    expect(source).toContain("parsed.workflowId === '__openpencil_health_v1'")
+    expect(source).toContain('buildIdentity: OPENPENCIL_EDGE_BUILD_IDENTITY')
+    expect(source).toContain("requiredEnvironment('SUPABASE_URL')")
+    expect(source).toContain("requiredEnvironment('SUPABASE_PUBLISHABLE_KEYS')")
+    expect(source).toContain('supabase.auth.getUser(userAccess)')
+    expect(source).toContain('request.body?.getReader()')
+    expect(source).toContain('await reader.cancel()')
+    expect(source).toContain('.select("id,title,owner_id").limit(100)')
+    expect(source).toContain('.select().limit(100)')
+    expect(source).toContain('assertBoundedJSONValue(')
+    expect(source).toContain('serializeBoundedJSON(input.body, MAX_REQUEST_BYTES')
+    expect(source).toContain('serializeBoundedJSON(body, MAX_RESPONSE_BYTES')
+    expect(source).toContain('https://esm.sh/@supabase/supabase-js@2.100.0')
+    expect(source).not.toContain("https://esm.sh/@supabase/supabase-js@2'")
+    expect(source).not.toContain('await request.text()')
+    expect(source).not.toContain('service_role')
 
     const deploymentText = fileText(emission.files, SUPABASE_ARTIFACT_PATHS.deploymentManifest)
     const deployment = JSON.parse(deploymentText)
@@ -562,6 +589,55 @@ describe('built-in Supabase Backend Provider', () => {
     }
   })
 
+  test('requires Edge workflow environment references to be required server secrets', () => {
+    const registry = createBuiltinBackendProviderRegistry()
+    const clientEnvironment = supabaseApplication()
+    clientEnvironment.workflows.workflows[0].steps.unshift({
+      id: 'client-env-http',
+      kind: 'http.request',
+      method: 'GET',
+      url: { kind: 'environment', name: 'BACKEND_PUBLIC_URL' }
+    })
+    const clientResult = createBackendProviderPlan(registry, {
+      selection: selection(),
+      application: clientEnvironment,
+      target: 'react',
+      mode: 'production'
+    })
+    expect(clientResult.ok).toBe(false)
+    if (!clientResult.ok) {
+      expect(clientResult.diagnostics.map((entry) => entry.code)).toContain(
+        'supabase-workflow-server-environment-required'
+      )
+    }
+
+    const optionalEnvironment = supabaseApplication()
+    optionalEnvironment.secrets.push({
+      kind: 'environment',
+      name: 'OPTIONAL_WEBHOOK_URL',
+      exposure: 'server',
+      required: false
+    })
+    optionalEnvironment.workflows.workflows[0].steps.unshift({
+      id: 'optional-env-http',
+      kind: 'http.request',
+      method: 'GET',
+      url: { kind: 'environment', name: 'OPTIONAL_WEBHOOK_URL' }
+    })
+    const optionalResult = createBackendProviderPlan(registry, {
+      selection: selection(),
+      application: optionalEnvironment,
+      target: 'react',
+      mode: 'production'
+    })
+    expect(optionalResult.ok).toBe(false)
+    if (!optionalResult.ok) {
+      expect(optionalResult.diagnostics.map((entry) => entry.code)).toContain(
+        'supabase-workflow-required-environment-required'
+      )
+    }
+  })
+
   test('blocks broad authenticated intent before production emission', () => {
     const application = supabaseApplication()
     application.auth.rowAccess.push({
@@ -631,7 +707,7 @@ describe('built-in Supabase Backend Provider', () => {
     const { emission } = emitApplication(application)
     const sql = fileText(emission.files, SUPABASE_ARTIFACT_PATHS.securityPolicy)
     expect(sql).toContain("auth.jwt()) -> 'app_metadata' -> 'roles'")
-    expect(sql).toContain("? 'editor'")
+    expect(sql).toContain("? E'editor'")
     expect(sql).not.toContain("? 'role-editor'")
     expect(sql).not.toContain('user_metadata')
     expect(

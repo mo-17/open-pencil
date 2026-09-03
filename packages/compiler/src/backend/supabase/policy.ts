@@ -18,6 +18,7 @@ import {
   supabasePolicyOperationClause,
   supabasePolicyTargetRole
 } from './policy-helpers'
+import { emitSupabaseStoragePolicyArtifacts } from './storage'
 
 const OPERATION_ORDER: readonly AuthAccessOperation[] = Object.freeze([
   'select',
@@ -115,7 +116,10 @@ export function createSupabaseSecurityProposal(context: BackendProviderAdapterCo
       .map((policy) => `${table.entityId}:${policy.sourceIntentId}:${policy.operation}`)
   )
   if (
-    context.capabilities.some((entry) => entry.capability === 'storage.objects' && entry.included)
+    context.capabilities.some(
+      (entry) => entry.capability === 'storage.objects' && entry.included
+    ) &&
+    !application.storage?.buckets.length
   ) {
     blockers.push('storage.objects:explicit-bucket-and-object-policy-required')
   }
@@ -209,7 +213,8 @@ export function emitSupabaseSecurityArtifacts(
       SUPABASE_ARTIFACT_PATHS.securityPolicyManifest,
       'security-policy',
       createSupabaseSecurityProposal(context)
-    )
+    ),
+    ...emitSupabaseStoragePolicyArtifacts(context)
   ])
 }
 

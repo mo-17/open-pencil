@@ -11,7 +11,7 @@ export function quoteSupabaseIdentifier(value: string): string {
 }
 
 function quoteSupabaseLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`
+  return `E'${value.replaceAll('\\', '\\\\').replaceAll("'", "''")}'`
 }
 
 export function qualifiedSupabaseTable(entity: DataEntityIR): string {

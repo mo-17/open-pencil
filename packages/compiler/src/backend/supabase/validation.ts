@@ -106,6 +106,16 @@ function validateCapabilities(
       )
     )
   }
+  if (storage && !hasRequirement(context, 'auth.identity')) {
+    diagnostics.push(
+      backendDiagnostic(
+        'supabase-storage-auth-capability-required',
+        'error',
+        '$.capabilities.auth.identity',
+        'Owner and tenant Storage paths require the auth.identity capability.'
+      )
+    )
+  }
   if (context.application.workflows.workflows.length > 0) {
     if (!hasRequirement(context, 'server.functions')) {
       diagnostics.push(
@@ -214,6 +224,88 @@ function validateAuthFieldTypes(
           'error',
           `$.auth.tenants.${tenant.id}.membershipTenantFieldId`,
           'Supabase target and membership tenant fields must have the same database type.'
+        )
+      )
+    }
+  }
+}
+
+function tenantAuthoritiesInUse(context: BackendProviderAdapterContext): ReadonlySet<string> {
+  const tenantIds = new Set<string>()
+  for (const policy of context.application.auth.rowAccess) {
+    if (policy.principal.kind === 'tenant-member') tenantIds.add(policy.principal.tenantId)
+  }
+  for (const bucket of context.application.storage?.buckets ?? []) {
+    for (const rule of bucket.pathRules) {
+      if (rule.principal.kind === 'tenant-member') tenantIds.add(rule.principal.tenantId)
+    }
+  }
+  return tenantIds
+}
+
+/**
+ * Tenant predicates query the membership table in the caller's RLS session. Managed Supabase
+ * tables are emitted with FORCE ROW LEVEL SECURITY, so an explicit owner SELECT policy is the
+ * minimum non-recursive authority that lets the membership subquery see the current user's rows.
+ */
+function validateTenantMembershipReadAuthority(
+  context: BackendProviderAdapterContext,
+  diagnostics: BackendDiagnostic[]
+): void {
+  const inUse = tenantAuthoritiesInUse(context)
+  for (const tenant of context.application.auth.tenants) {
+    if (!inUse.has(tenant.id)) continue
+    const ownership = context.application.auth.ownership.find(
+      (entry) =>
+        entry.entityId === tenant.membershipEntityId &&
+        entry.identityFieldId === tenant.membershipIdentityFieldId
+    )
+    const readable = Boolean(
+      ownership &&
+      context.application.auth.rowAccess.some(
+        (entry) =>
+          entry.entityId === tenant.membershipEntityId &&
+          entry.effect === 'allow' &&
+          entry.operations.includes('select') &&
+          entry.principal.kind === 'owner' &&
+          entry.principal.ownershipId === ownership.id
+      )
+    )
+    if (readable) continue
+    diagnostics.push(
+      backendDiagnostic(
+        'supabase-tenant-membership-select-policy-required',
+        'error',
+        `$.auth.tenants.${tenant.id}.membershipEntityId`,
+        'Supabase tenant predicates require an owner SELECT policy on the membership entity so the current user can read their membership rows under RLS.'
+      )
+    )
+  }
+}
+
+function validateStorageOperationDependencies(
+  context: BackendProviderAdapterContext,
+  diagnostics: BackendDiagnostic[]
+): void {
+  for (const bucket of context.application.storage?.buckets ?? []) {
+    for (const rule of bucket.pathRules) {
+      const operations = new Set(rule.operations)
+      const missing = new Set<string>()
+      if (operations.has('update') || operations.has('delete')) {
+        if (!operations.has('read')) missing.add('read')
+      }
+      if (operations.has('upsert')) {
+        for (const operation of ['read', 'create', 'update'] as const) {
+          if (!operations.has(operation)) missing.add(operation)
+        }
+      }
+      if (missing.size === 0) continue
+      diagnostics.push(
+        backendDiagnostic(
+          'supabase-storage-operation-dependency-required',
+          'error',
+          `$.storage.buckets.${bucket.id}.pathRules.${rule.id}.operations`,
+          `Supabase Storage requires explicit ${[...missing].sort().join(', ')} permission intent for the selected update, delete, or upsert operations.`
         )
       )
     }
@@ -398,10 +490,10 @@ function validateWorkflowSecretBoundary(
   context: BackendProviderAdapterContext,
   diagnostics: BackendDiagnostic[]
 ): void {
-  const declaredEnvironment = new Set(
+  const declaredEnvironment = new Map(
     context.application.secrets
       .filter((entry) => entry.kind === 'environment')
-      .map((entry) => entry.name)
+      .map((entry) => [entry.name, entry] as const)
   )
   for (const workflow of context.application.workflows.workflows) {
     visitSupabaseWorkflowSteps(workflow.steps, (step) => {
@@ -422,7 +514,8 @@ function validateWorkflowSecretBoundary(
       }
       for (const source of stepValueSources(step)) {
         if (source.kind === 'environment') {
-          if (!declaredEnvironment.has(source.name)) {
+          const declared = declaredEnvironment.get(source.name)
+          if (!declared) {
             diagnostics.push(
               backendDiagnostic(
                 'supabase-workflow-environment-undeclared',
@@ -431,6 +524,27 @@ function validateWorkflowSecretBoundary(
                 'Supabase workflow environment references must be declared as explicit secret requirements.'
               )
             )
+          } else {
+            if (declared.exposure !== 'server') {
+              diagnostics.push(
+                backendDiagnostic(
+                  'supabase-workflow-server-environment-required',
+                  'error',
+                  path,
+                  'Supabase Edge workflow environment references must use server exposure so the release host can verify them.'
+                )
+              )
+            }
+            if (!declared.required) {
+              diagnostics.push(
+                backendDiagnostic(
+                  'supabase-workflow-required-environment-required',
+                  'error',
+                  path,
+                  'Supabase Edge workflow environment references must be required because the generated runtime has no optional fallback.'
+                )
+              )
+            }
           }
           if (containsPrivilegedMaterial(source.name)) {
             diagnostics.push(privilegedDiagnostic(path, 'credential'))
@@ -493,14 +607,27 @@ function addReviewDiagnostics(
     )
   }
   if (hasRequirement(context, 'storage.objects')) {
-    diagnostics.push(
-      backendDiagnostic(
-        'supabase-storage-policy-review-required',
-        'warning',
-        '$.capabilities.storage.objects',
-        'Storage bucket/object policy is never inferred; release requires explicit SELECT, INSERT, and UPDATE checks for upsert.'
+    if (!context.application.storage?.buckets.length) {
+      diagnostics.push(
+        backendDiagnostic(
+          'supabase-storage-policy-review-required',
+          'warning',
+          '$.capabilities.storage.objects',
+          'Storage capability has no first-class bucket/path policy; release requires explicit SELECT, INSERT, and UPDATE checks for upsert.'
+        )
       )
-    )
+    }
+    for (const bucket of context.application.storage?.buckets ?? []) {
+      if (bucket.access !== 'public-read') continue
+      diagnostics.push(
+        backendDiagnostic(
+          'supabase-public-storage-production-review-required',
+          context.mode === 'production' ? 'error' : 'warning',
+          `$.storage.buckets.${bucket.id}.access`,
+          'Public-read buckets require an explicit production review and are not emitted in production mode.'
+        )
+      )
+    }
   }
   if (hasRequirement(context, 'server.http')) {
     diagnostics.push(
@@ -533,6 +660,8 @@ export function validateSupabaseBackendProvider(
   const diagnostics: BackendDiagnostic[] = []
   validateCapabilities(context, diagnostics)
   validateAuthFieldTypes(context, diagnostics)
+  validateTenantMembershipReadAuthority(context, diagnostics)
+  validateStorageOperationDependencies(context, diagnostics)
   validatePolicyIntents(context, diagnostics)
   validateWorkflowPolicyCoverage(context, diagnostics)
   validateSecretBoundary(context, diagnostics)

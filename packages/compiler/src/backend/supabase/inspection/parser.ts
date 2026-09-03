@@ -15,6 +15,8 @@ import {
   parsePrivilege,
   parseProvenance,
   parseRoleMembership,
+  parseStorageBucket,
+  parseStoragePolicy,
   privilegeObjectKey
 } from './object-parser'
 import { array, exactRecord, invalid } from './primitives'
@@ -48,6 +50,8 @@ export function normalizeSupabaseInspectionInput(
     'roles',
     'roleMemberships',
     'policies',
+    'storageBuckets',
+    'storagePolicies',
     'privileges',
     'defaultPrivileges'
   ])
@@ -66,6 +70,26 @@ export function normalizeSupabaseInspectionInput(
   const policies = array(source.policies, '$.policies', BACKEND_LIMITS.maxPolicies)
     .map(parsePolicy)
     .sort(compareTableMembers)
+  const storageBuckets = array(
+    source.storageBuckets,
+    '$.storageBuckets',
+    BACKEND_LIMITS.maxStorageBuckets
+  )
+    .map(parseStorageBucket)
+    .sort((left, right) => left.id.localeCompare(right.id, 'en'))
+  if (new Set(storageBuckets.map((bucket) => bucket.id)).size !== storageBuckets.length) {
+    invalid('$.storageBuckets', 'bucket ids must be unique')
+  }
+  const storagePolicies = array(
+    source.storagePolicies,
+    '$.storagePolicies',
+    BACKEND_LIMITS.maxPolicies
+  )
+    .map(parseStoragePolicy)
+    .sort((left, right) => left.name.localeCompare(right.name, 'en'))
+  if (new Set(storagePolicies.map((policy) => policy.name)).size !== storagePolicies.length) {
+    invalid('$.storagePolicies', 'Storage policy names must be unique')
+  }
   const roles = array(source.roles, '$.roles', MAX_PRIVILEGES)
     .map(parseInspectionRole)
     .sort((left, right) => left.roleName.localeCompare(right.roleName, 'en'))
@@ -145,6 +169,8 @@ export function normalizeSupabaseInspectionInput(
     roles,
     roleMemberships,
     policies,
+    storageBuckets,
+    storagePolicies,
     privileges,
     defaultPrivileges
   }

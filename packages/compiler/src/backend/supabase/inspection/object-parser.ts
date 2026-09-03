@@ -20,19 +20,25 @@ import {
   type SupabaseInspectionPrivilegeV1,
   type SupabaseInspectionProvenanceV1,
   type SupabaseInspectionRoleMembershipV1,
-  type SupabaseInspectionRoleV1
+  type SupabaseInspectionRoleV1,
+  type SupabaseInspectionStorageBucketV1,
+  type SupabaseInspectionStoragePolicyV1
 } from './contract'
 import {
   array,
   boolean,
+  boundedText,
+  catalogOid,
   exactRecord,
   identifier,
   invalid,
   oneOf,
   optionalStableId,
+  parseCatalogAddress,
   parseNamedObjectIdentity,
   parseTableObjectIdentity,
   record,
+  nonNegativeSafeInteger,
   schema,
   stableId,
   validateDigest
@@ -106,6 +112,7 @@ export function parseManagedIdentity(
   return openPencilId
 }
 
+// oxlint-disable-next-line complexity -- Closed object variants share identity and catalog-address validation in one parser boundary.
 export function parseObject(value: unknown, index: number): SupabaseInspectionObjectV1 {
   const path = `$.objects[${String(index)}]`
   const raw = record(value, path)
@@ -114,16 +121,30 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
     const source = exactRecord(
       raw,
       path,
-      ['kind', 'schema', 'name', 'management', 'openPencilId', 'rlsEnabled', 'rlsForced'],
+      [
+        'kind',
+        'schema',
+        'name',
+        'management',
+        'openPencilId',
+        'rlsEnabled',
+        'rlsForced',
+        'address'
+      ],
       ['kind', 'schema', 'name', 'management', 'rlsEnabled', 'rlsForced']
     )
     const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
     const openPencilId = parseManagedIdentity(management, source.openPencilId, path)
+    const address =
+      source.address === undefined
+        ? undefined
+        : parseCatalogAddress(source.address, `${path}.address`)
     return {
       kind,
       ...parseNamedObjectIdentity(source, path),
       management,
       ...(openPencilId ? { openPencilId } : {}),
+      ...(address ? { address } : {}),
       rlsEnabled: boolean(source.rlsEnabled, `${path}.rlsEnabled`),
       rlsForced: boolean(source.rlsForced, `${path}.rlsForced`)
     }
@@ -132,11 +153,15 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
     const source = exactRecord(
       raw,
       path,
-      ['kind', 'schema', 'name', 'management', 'openPencilId', 'values'],
+      ['kind', 'schema', 'name', 'management', 'openPencilId', 'values', 'address'],
       ['kind', 'schema', 'name', 'management', 'values']
     )
     const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
     const openPencilId = parseManagedIdentity(management, source.openPencilId, path)
+    const address =
+      source.address === undefined
+        ? undefined
+        : parseCatalogAddress(source.address, `${path}.address`)
     const values = array(source.values, `${path}.values`, BACKEND_LIMITS.maxEnumValues).map(
       (entry, valueIndex) => identifier(entry, `${path}.values[${String(valueIndex)}]`)
     )
@@ -148,6 +173,7 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
       ...parseNamedObjectIdentity(source, path),
       management,
       ...(openPencilId ? { openPencilId } : {}),
+      ...(address ? { address } : {}),
       values
     }
   }
@@ -155,10 +181,14 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
     const source = exactRecord(
       raw,
       path,
-      ['kind', 'schema', 'name', 'management', 'ownedBy'],
+      ['kind', 'schema', 'name', 'management', 'ownedBy', 'address'],
       ['kind', 'schema', 'name', 'management']
     )
     const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
+    const address =
+      source.address === undefined
+        ? undefined
+        : parseCatalogAddress(source.address, `${path}.address`)
     let ownedBy: { entityId: string; fieldId: string } | undefined
     if (source.ownedBy !== undefined) {
       const owner = exactRecord(source.ownedBy, `${path}.ownedBy`, ['entityId', 'fieldId'])
@@ -174,33 +204,53 @@ export function parseObject(value: unknown, index: number): SupabaseInspectionOb
       kind,
       ...parseNamedObjectIdentity(source, path),
       management,
+      ...(address ? { address } : {}),
       ...(ownedBy ? { ownedBy } : {})
     }
   }
   if (kind === 'view') {
-    const source = exactRecord(raw, path, [
-      'kind',
-      'schema',
-      'name',
-      'management',
-      'securityInvoker'
-    ])
+    const source = exactRecord(
+      raw,
+      path,
+      ['kind', 'schema', 'name', 'management', 'securityInvoker', 'address'],
+      ['kind', 'schema', 'name', 'management', 'securityInvoker']
+    )
     const management = oneOf(source.management, `${path}.management`, ['external', 'unbound'])
+    const address =
+      source.address === undefined
+        ? undefined
+        : parseCatalogAddress(source.address, `${path}.address`)
     return {
       kind,
       ...parseNamedObjectIdentity(source, path),
       management,
+      ...(address ? { address } : {}),
       securityInvoker: boolean(source.securityInvoker, `${path}.securityInvoker`)
     }
   }
-  const source = exactRecord(raw, path, ['kind', 'schema', 'name', 'management', 'securityDefiner'])
+  const source = exactRecord(
+    raw,
+    path,
+    ['kind', 'schema', 'name', 'management', 'securityDefiner', 'address'],
+    ['kind', 'schema', 'name', 'management', 'securityDefiner']
+  )
   const management = oneOf(source.management, `${path}.management`, ['external', 'unbound'])
+  const address =
+    source.address === undefined
+      ? undefined
+      : parseCatalogAddress(source.address, `${path}.address`)
   return {
     kind,
     ...parseNamedObjectIdentity(source, path),
     management,
+    ...(address ? { address } : {}),
     securityDefiner: boolean(source.securityDefiner, `${path}.securityDefiner`)
   }
+}
+
+function optionalNullableDigest(value: unknown, path: string): string | null | undefined {
+  if (value === undefined || value === null) return value
+  return validateDigest(value, path)
 }
 
 export function parseRole(value: unknown, path: string): string {
@@ -267,6 +317,77 @@ export function parsePolicy(value: unknown, index: number): SupabaseInspectionPo
   return {
     schema: schema(source.schema, `${path}.schema`),
     tableName: identifier(source.tableName, `${path}.tableName`),
+    name: identifier(source.name, `${path}.name`),
+    command: oneOf(source.command, `${path}.command`, INSPECTION_POLICY_COMMANDS),
+    mode: oneOf(source.mode, `${path}.mode`, INSPECTION_POLICY_MODES),
+    roles,
+    source: oneOf(source.source, `${path}.source`, INSPECTION_INVENTORY_SOURCES),
+    usingExpressionDigest:
+      source.usingExpressionDigest === null
+        ? null
+        : validateDigest(source.usingExpressionDigest, `${path}.usingExpressionDigest`),
+    withCheckExpressionDigest:
+      source.withCheckExpressionDigest === null
+        ? null
+        : validateDigest(source.withCheckExpressionDigest, `${path}.withCheckExpressionDigest`)
+  }
+}
+
+export function parseStorageBucket(
+  value: unknown,
+  index: number
+): SupabaseInspectionStorageBucketV1 {
+  const path = `$.storageBuckets[${String(index)}]`
+  const source = exactRecord(value, path, [
+    'id',
+    'name',
+    'public',
+    'fileSizeLimit',
+    'allowedMimeTypes'
+  ])
+  const fileSizeLimit =
+    source.fileSizeLimit === null
+      ? null
+      : nonNegativeSafeInteger(source.fileSizeLimit, `${path}.fileSizeLimit`)
+  const allowedMimeTypes =
+    source.allowedMimeTypes === null
+      ? null
+      : array(source.allowedMimeTypes, `${path}.allowedMimeTypes`, 128).map((entry, itemIndex) =>
+          boundedText(entry, `${path}.allowedMimeTypes[${String(itemIndex)}]`, 255)
+        )
+  if (allowedMimeTypes && new Set(allowedMimeTypes).size !== allowedMimeTypes.length) {
+    invalid(`${path}.allowedMimeTypes`, 'MIME types must be unique')
+  }
+  return {
+    id: boundedText(source.id, `${path}.id`, 255),
+    name: boundedText(source.name, `${path}.name`, 255),
+    public: boolean(source.public, `${path}.public`),
+    fileSizeLimit,
+    allowedMimeTypes
+  }
+}
+
+export function parseStoragePolicy(
+  value: unknown,
+  index: number
+): SupabaseInspectionStoragePolicyV1 {
+  const path = `$.storagePolicies[${String(index)}]`
+  const source = exactRecord(value, path, [
+    'address',
+    'name',
+    'command',
+    'mode',
+    'roles',
+    'source',
+    'usingExpressionDigest',
+    'withCheckExpressionDigest'
+  ])
+  const roles = array(source.roles, `${path}.roles`, 64)
+    .map((entry, roleIndex) => parseRole(entry, `${path}.roles[${String(roleIndex)}]`))
+    .sort()
+  if (new Set(roles).size !== roles.length) invalid(`${path}.roles`, 'roles must be unique')
+  return {
+    address: parseCatalogAddress(source.address, `${path}.address`),
     name: identifier(source.name, `${path}.name`),
     command: oneOf(source.command, `${path}.command`, INSPECTION_POLICY_COMMANDS),
     mode: oneOf(source.mode, `${path}.mode`, INSPECTION_POLICY_MODES),
@@ -368,6 +489,7 @@ function parseColumnDefault(value: unknown, path: string): SupabaseInspectionCol
   }
 }
 
+// oxlint-disable-next-line complexity -- Column normalization validates legacy-optional physical metadata alongside semantic shape.
 export function parseColumn(value: unknown, index: number): SupabaseInspectionColumnV1 {
   const path = `$.columns[${String(index)}]`
   const source = exactRecord(
@@ -383,7 +505,12 @@ export function parseColumn(value: unknown, index: number): SupabaseInspectionCo
       'type',
       'enumName',
       'nullable',
-      'default'
+      'default',
+      'address',
+      'typeOid',
+      'defaultExpressionDigest',
+      'identityKind',
+      'generatedKind'
     ],
     [
       'schema',
@@ -420,6 +547,24 @@ export function parseColumn(value: unknown, index: number): SupabaseInspectionCo
   if (management === 'managed' && columnDefault?.kind === 'unbound') {
     invalid(`${path}.default`, 'managed columns cannot carry an unbound provider expression')
   }
+  const address =
+    source.address === undefined
+      ? undefined
+      : parseCatalogAddress(source.address, `${path}.address`)
+  const typeOid =
+    source.typeOid === undefined ? undefined : catalogOid(source.typeOid, `${path}.typeOid`)
+  const defaultExpressionDigest = optionalNullableDigest(
+    source.defaultExpressionDigest,
+    `${path}.defaultExpressionDigest`
+  )
+  const identityKind =
+    source.identityKind === undefined
+      ? undefined
+      : oneOf(source.identityKind, `${path}.identityKind`, ['', 'a', 'd'])
+  const generatedKind =
+    source.generatedKind === undefined
+      ? undefined
+      : oneOf(source.generatedKind, `${path}.generatedKind`, ['', 's'])
   return {
     ...parseTableObjectIdentity(source, path),
     columnPrivilegesPresent: false,
@@ -428,7 +573,12 @@ export function parseColumn(value: unknown, index: number): SupabaseInspectionCo
     type,
     ...(enumName ? { enumName } : {}),
     nullable: boolean(source.nullable, `${path}.nullable`),
-    default: columnDefault
+    default: columnDefault,
+    ...(address ? { address } : {}),
+    ...(typeOid ? { typeOid } : {}),
+    ...(defaultExpressionDigest !== undefined ? { defaultExpressionDigest } : {}),
+    ...(identityKind !== undefined ? { identityKind } : {}),
+    ...(generatedKind !== undefined ? { generatedKind } : {})
   }
 }
 

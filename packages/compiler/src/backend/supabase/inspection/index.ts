@@ -21,9 +21,12 @@ import {
   type SupabaseInspectionPrivilegeV1,
   type SupabaseInspectionProvenanceV1,
   type SupabaseInspectionRoleMembershipV1,
-  type SupabaseInspectionRoleV1
+  type SupabaseInspectionRoleV1,
+  type SupabaseInspectionStorageBucketV1,
+  type SupabaseInspectionStoragePolicyV1
 } from './contract'
 import { normalizeSupabaseInspectionInput } from './parser'
+import { digestSupabasePhysicalSchema } from './physical-schema'
 import { exactRecord, invalid, schema, validateDigest } from './primitives'
 
 export { SUPABASE_INSPECTED_SCHEMA_FORMAT, SUPABASE_INSPECTED_SCHEMA_VERSION } from './contract'
@@ -36,9 +39,16 @@ export {
   type SupabaseManagedMarkerV1
 } from './marker'
 export { deriveSupabaseManagedDataModel, type SupabaseManagedModelInventory } from './managed-model'
+export {
+  digestSupabasePhysicalSchema,
+  projectSupabasePhysicalSchema,
+  SUPABASE_PHYSICAL_SCHEMA_PROJECTION_FORMAT,
+  type SupabasePhysicalSchemaProjectionV1
+} from './physical-schema'
 export type {
   CreateSupabaseInspectedMigrationSnapshotInputV1,
   SupabaseInspectedMigrationSnapshotV1,
+  SupabaseInspectionCatalogAddressV1,
   SupabaseInspectionCheckConstraintV1,
   SupabaseInspectionColumnDefaultV1,
   SupabaseInspectionColumnV1,
@@ -63,6 +73,8 @@ export type {
   SupabaseInspectionProvenanceV1,
   SupabaseInspectionRoleMembershipV1,
   SupabaseInspectionRoleV1,
+  SupabaseInspectionStorageBucketV1,
+  SupabaseInspectionStoragePolicyV1,
   SupabaseInspectionSequenceObjectV1,
   SupabaseInspectionTableObjectV1,
   SupabaseInspectionUniqueConstraintV1,
@@ -74,13 +86,26 @@ export async function createSupabaseInspectedMigrationSnapshot(
 ): Promise<SupabaseInspectedMigrationSnapshotV1> {
   const normalized = normalizeSupabaseInspectionInput(input)
   const currentModelDigest = await digestDataModel(normalized.currentModel)
+  const physicalSchemaDigest = digestSupabasePhysicalSchema(normalized.currentModel)
+  // `observedAt` proves when this particular capture happened, but it is not part of the remote
+  // schema/ACL state. Keeping it out of the semantic inventory digest allows an unchanged initial
+  // and pre-Apply inspection to compare equal while every authority-bearing provenance field stays
+  // bound. The timestamp remains strict, canonical, and retained on the snapshot itself.
+  const inventoryProvenance = {
+    projectRef: normalized.provenance.projectRef,
+    accountId: normalized.provenance.accountId,
+    querySchemaVersion: normalized.provenance.querySchemaVersion,
+    databaseRole: normalized.provenance.databaseRole,
+    completeness: normalized.provenance.completeness,
+    truncated: normalized.provenance.truncated
+  }
   const objectPrivilegeDigest = digestCanonicalBackendValue(
     {
       format: 'openpencil.supabase-inspected-inventory.v1',
       version: 1,
       providerId: 'supabase',
       schema: 'public',
-      provenance: normalized.provenance,
+      provenance: inventoryProvenance,
       coverage: normalized.coverage,
       objects: normalized.objects,
       columns: normalized.columns,
@@ -89,6 +114,8 @@ export async function createSupabaseInspectedMigrationSnapshot(
       roles: normalized.roles,
       roleMemberships: normalized.roleMemberships,
       policies: normalized.policies,
+      storageBuckets: normalized.storageBuckets,
+      storagePolicies: normalized.storagePolicies,
       privileges: normalized.privileges,
       defaultPrivileges: normalized.defaultPrivileges
     },
@@ -101,9 +128,36 @@ export async function createSupabaseInspectedMigrationSnapshot(
       providerId: 'supabase',
       schema: 'public',
       currentModelDigest,
+      physicalSchemaDigest,
       objectPrivilegeDigest
     },
     '$.supabaseInspectedSchemaDigest'
+  )
+  const captureDigest = digestCanonicalBackendValue(
+    {
+      format: 'openpencil.supabase-inspected-capture.v1',
+      version: 1,
+      providerId: 'supabase',
+      schema: 'public',
+      provenance: normalized.provenance,
+      currentModelDigest,
+      physicalSchemaDigest,
+      objectPrivilegeDigest,
+      inspectedSchemaDigest,
+      coverage: normalized.coverage,
+      objects: normalized.objects,
+      columns: normalized.columns,
+      constraints: normalized.constraints,
+      indexes: normalized.indexes,
+      roles: normalized.roles,
+      roleMemberships: normalized.roleMemberships,
+      policies: normalized.policies,
+      storageBuckets: normalized.storageBuckets,
+      storagePolicies: normalized.storagePolicies,
+      privileges: normalized.privileges,
+      defaultPrivileges: normalized.defaultPrivileges
+    },
+    '$.supabaseInspectedCapture'
   )
   return freezeBackendValue({
     format: SUPABASE_INSPECTED_SCHEMA_FORMAT,
@@ -112,8 +166,10 @@ export async function createSupabaseInspectedMigrationSnapshot(
     schema: 'public',
     ...normalized,
     currentModelDigest,
+    physicalSchemaDigest,
     objectPrivilegeDigest,
-    inspectedSchemaDigest
+    inspectedSchemaDigest,
+    captureDigest
   }) as SupabaseInspectedMigrationSnapshotV1
 }
 
@@ -136,11 +192,15 @@ export async function parseSupabaseInspectedMigrationSnapshot(
     'roles',
     'roleMemberships',
     'policies',
+    'storageBuckets',
+    'storagePolicies',
     'privileges',
     'defaultPrivileges',
     'currentModelDigest',
+    'physicalSchemaDigest',
     'objectPrivilegeDigest',
-    'inspectedSchemaDigest'
+    'inspectedSchemaDigest',
+    'captureDigest'
   ])
   if (source.format !== SUPABASE_INSPECTED_SCHEMA_FORMAT) {
     invalid('$.format', 'unsupported inspected schema format')
@@ -151,8 +211,10 @@ export async function parseSupabaseInspectedMigrationSnapshot(
   if (source.providerId !== 'supabase') invalid('$.providerId', 'provider must be supabase')
   schema(source.schema, '$.schema')
   const declaredCurrent = validateDigest(source.currentModelDigest, '$.currentModelDigest')
+  const declaredPhysical = validateDigest(source.physicalSchemaDigest, '$.physicalSchemaDigest')
   const declaredInventory = validateDigest(source.objectPrivilegeDigest, '$.objectPrivilegeDigest')
   const declaredInspection = validateDigest(source.inspectedSchemaDigest, '$.inspectedSchemaDigest')
+  const declaredCapture = validateDigest(source.captureDigest, '$.captureDigest')
   const computed = await createSupabaseInspectedMigrationSnapshot({
     provenance: source.provenance as SupabaseInspectionProvenanceV1,
     currentModel: source.currentModel as DataModelIR,
@@ -164,17 +226,28 @@ export async function parseSupabaseInspectedMigrationSnapshot(
     roles: source.roles as SupabaseInspectionRoleV1[],
     roleMemberships: source.roleMemberships as SupabaseInspectionRoleMembershipV1[],
     policies: source.policies as SupabaseInspectionPolicyV1[],
+    storageBuckets: source.storageBuckets as SupabaseInspectionStorageBucketV1[],
+    storagePolicies: source.storagePolicies as SupabaseInspectionStoragePolicyV1[],
     privileges: source.privileges as SupabaseInspectionPrivilegeV1[],
     defaultPrivileges: source.defaultPrivileges as SupabaseInspectionDefaultPrivilegeV1[]
   })
   if (declaredCurrent !== computed.currentModelDigest) {
     invalid('$.currentModelDigest', 'digest does not match the normalized current DataModelIR')
   }
+  if (declaredPhysical !== computed.physicalSchemaDigest) {
+    invalid(
+      '$.physicalSchemaDigest',
+      'digest does not match the explicit physical schema projection'
+    )
+  }
   if (declaredInventory !== computed.objectPrivilegeDigest) {
     invalid('$.objectPrivilegeDigest', 'digest does not match the complete live inventory')
   }
   if (declaredInspection !== computed.inspectedSchemaDigest) {
     invalid('$.inspectedSchemaDigest', 'digest does not bind the model and inventory digests')
+  }
+  if (declaredCapture !== computed.captureDigest) {
+    invalid('$.captureDigest', 'digest does not bind the complete timestamped catalog capture')
   }
   return computed
 }

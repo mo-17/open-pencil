@@ -7,7 +7,7 @@ export function quoteIdentifier(value: string): string {
 }
 
 export function quoteLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`
+  return `E'${value.replaceAll('\\', '\\\\').replaceAll("'", "''")}'`
 }
 
 export function qualified(name: string): string {
@@ -53,6 +53,9 @@ export function reviewSQL(statements: readonly string[]): string {
     '-- OpenPencil Supabase inspected migration review v1.',
     '-- Review only. The Compiler has no network, credential, filesystem, or Apply authority.',
     'BEGIN;',
+    "SET LOCAL lock_timeout = '5s';",
+    "SET LOCAL statement_timeout = '15s';",
+    'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;',
     ...statements,
     'COMMIT;',
     ''

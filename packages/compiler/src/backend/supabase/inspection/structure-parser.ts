@@ -20,6 +20,7 @@ import {
   identifier,
   invalid,
   oneOf,
+  parseCatalogAddress,
   parseTableObjectIdentity,
   record,
   schema,
@@ -44,16 +45,47 @@ function constraintBase(
   source: UnknownRecord
   management: SupabaseInspectionObjectManagement
   openPencilId?: string
+  address?: ReturnType<typeof parseCatalogAddress>
+  definitionDigest?: string
+  validated?: boolean
 } {
   const source = exactRecord(
     raw,
     path,
-    ['kind', 'schema', 'tableName', 'name', 'management', 'openPencilId', ...allowed],
+    [
+      'kind',
+      'schema',
+      'tableName',
+      'name',
+      'management',
+      'openPencilId',
+      'address',
+      'definitionDigest',
+      'validated',
+      ...allowed
+    ],
     ['kind', 'schema', 'tableName', 'name', 'management', ...allowed]
   )
   const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
   const openPencilId = parseManagedIdentity(management, source.openPencilId, path)
-  return { source, management, ...(openPencilId ? { openPencilId } : {}) }
+  const address =
+    source.address === undefined
+      ? undefined
+      : parseCatalogAddress(source.address, `${path}.address`)
+  const definitionDigest =
+    source.definitionDigest === undefined
+      ? undefined
+      : validateDigest(source.definitionDigest, `${path}.definitionDigest`)
+  const validated =
+    source.validated === undefined ? undefined : boolean(source.validated, `${path}.validated`)
+  return {
+    source,
+    management,
+    ...(openPencilId ? { openPencilId } : {}),
+    ...(address ? { address } : {}),
+    ...(definitionDigest ? { definitionDigest } : {}),
+    ...(validated !== undefined ? { validated } : {})
+  }
 }
 
 function parsedConstraintBase<
@@ -64,6 +96,9 @@ function parsedConstraintBase<
     ...parseTableObjectIdentity(parsed.source, path),
     management: parsed.management,
     ...(parsed.openPencilId ? { openPencilId: parsed.openPencilId } : {}),
+    ...(parsed.address ? { address: parsed.address } : {}),
+    ...(parsed.definitionDigest ? { definitionDigest: parsed.definitionDigest } : {}),
+    ...(parsed.validated !== undefined ? { validated: parsed.validated } : {}),
     fields: parseIdentifierList(parsed.source.fields, `${path}.fields`)
   }
 }
@@ -79,14 +114,30 @@ export function parseConstraint(value: unknown, index: number): SupabaseInspecti
       'tableName',
       'name',
       'management',
-      'expressionDigest'
+      'expressionDigest',
+      'address',
+      'definitionDigest',
+      'validated'
     ])
     const management = oneOf(source.management, `${path}.management`, ['external', 'unbound'])
+    const address =
+      source.address === undefined
+        ? undefined
+        : parseCatalogAddress(source.address, `${path}.address`)
+    const definitionDigest =
+      source.definitionDigest === undefined
+        ? undefined
+        : validateDigest(source.definitionDigest, `${path}.definitionDigest`)
+    const validated =
+      source.validated === undefined ? undefined : boolean(source.validated, `${path}.validated`)
     return {
       kind,
       ...parseTableObjectIdentity(source, path),
       management,
-      expressionDigest: validateDigest(source.expressionDigest, `${path}.expressionDigest`)
+      expressionDigest: validateDigest(source.expressionDigest, `${path}.expressionDigest`),
+      ...(address ? { address } : {}),
+      ...(definitionDigest ? { definitionDigest } : {}),
+      ...(validated !== undefined ? { validated } : {})
     }
   }
   if (kind === 'foreign-key') {
@@ -112,11 +163,32 @@ export function parseIndex(value: unknown, index: number): SupabaseInspectionInd
   const source = exactRecord(
     value,
     path,
-    ['schema', 'tableName', 'name', 'management', 'openPencilId', 'fields'],
+    [
+      'schema',
+      'tableName',
+      'name',
+      'management',
+      'openPencilId',
+      'fields',
+      'address',
+      'definitionDigest',
+      'valid',
+      'ready'
+    ],
     ['schema', 'tableName', 'name', 'management', 'fields']
   )
   const management = oneOf(source.management, `${path}.management`, INSPECTION_OBJECT_MANAGEMENT)
   const openPencilId = parseManagedIdentity(management, source.openPencilId, path)
+  const address =
+    source.address === undefined
+      ? undefined
+      : parseCatalogAddress(source.address, `${path}.address`)
+  const definitionDigest =
+    source.definitionDigest === undefined
+      ? undefined
+      : validateDigest(source.definitionDigest, `${path}.definitionDigest`)
+  const valid = source.valid === undefined ? undefined : boolean(source.valid, `${path}.valid`)
+  const ready = source.ready === undefined ? undefined : boolean(source.ready, `${path}.ready`)
   const fields = array(source.fields, `${path}.fields`, BACKEND_LIMITS.maxFieldsPerEntity).map(
     (entry, fieldIndex) => {
       const field = exactRecord(entry, `${path}.fields[${String(fieldIndex)}]`, ['name', 'order'])
@@ -131,6 +203,10 @@ export function parseIndex(value: unknown, index: number): SupabaseInspectionInd
     ...parseTableObjectIdentity(source, path),
     management,
     ...(openPencilId ? { openPencilId } : {}),
+    ...(address ? { address } : {}),
+    ...(definitionDigest ? { definitionDigest } : {}),
+    ...(valid !== undefined ? { valid } : {}),
+    ...(ready !== undefined ? { ready } : {}),
     fields
   }
 }

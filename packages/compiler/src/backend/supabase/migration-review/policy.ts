@@ -20,24 +20,53 @@ import type {
   SupabasePrivilegeReviewOperationV1,
   SupabaseTablePrivilegeReviewOperationV1
 } from './contract'
+import type { SupabasePlannedPolicyPreconditionV1 } from './precondition'
 
 const OPERATION_ORDER: readonly AuthAccessOperation[] = ['select', 'insert', 'update', 'delete']
 const TABLE_PRIVILEGES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] as const
 
 function requiredOperations(
-  application: BackendApplicationSpecV1
+  application: BackendApplicationSpecV1,
+  blockers: SupabaseMigrationReviewBlockerV1[]
 ): ReadonlyMap<string, ReadonlySet<AuthAccessOperation>> {
   const result = new Map<string, Set<AuthAccessOperation>>()
+  const add = (entityId: string, operationsToAdd: readonly AuthAccessOperation[]): void => {
+    let operations = result.get(entityId)
+    if (!operations) {
+      operations = new Set<AuthAccessOperation>()
+      result.set(entityId, operations)
+    }
+    for (const operation of operationsToAdd) operations.add(operation)
+  }
   for (const workflow of application.workflows.workflows) {
     visitSupabaseWorkflowSteps(workflow.steps, (step) => {
       if (step.kind !== 'data.read' && step.kind !== 'data.mutate') return
-      let operations = result.get(step.entityId)
-      if (!operations) {
-        operations = new Set<AuthAccessOperation>()
-        result.set(step.entityId, operations)
-      }
-      for (const operation of requiredSupabasePolicyOperations(step)) operations.add(operation)
+      add(step.entityId, requiredSupabasePolicyOperations(step))
     })
+  }
+  for (const intent of application.auth.rowAccess) {
+    if (intent.effect !== 'allow') continue
+    const path = `$.targetModel.auth.rowAccess.${intent.id}.operations`
+    let valid = true
+    if (intent.operations.includes('update') && !intent.operations.includes('select')) {
+      addBlocker(
+        blockers,
+        'supabase-update-select-policy-required',
+        path,
+        'Supabase UPDATE policy intent must also include SELECT and emits both USING and WITH CHECK.'
+      )
+      valid = false
+    }
+    if (intent.operations.includes('delete') && !intent.operations.includes('select')) {
+      addBlocker(
+        blockers,
+        'supabase-delete-select-policy-required',
+        path,
+        'Supabase DELETE policy intent must also include SELECT for filtered user-scoped mutations.'
+      )
+      valid = false
+    }
+    if (valid) add(intent.entityId, intent.operations)
   }
   return result
 }
@@ -69,14 +98,12 @@ function reviewedWorkflowEntity(
     return null
   }
   const liveTable = snapshot.objects.find(
-    (object) => object.kind === 'table' && object.name === entity.name
+    (object) =>
+      object.kind === 'table' &&
+      object.management === 'managed' &&
+      object.openPencilId === entity.id
   )
-  if (
-    !createdEntityIds.has(entity.id) &&
-    (liveTable?.kind !== 'table' ||
-      liveTable.management !== 'managed' ||
-      liveTable.openPencilId !== entity.id)
-  ) {
+  if (!createdEntityIds.has(entity.id) && liveTable?.kind !== 'table') {
     addBlocker(
       blockers,
       'supabase-live-table-binding-required',
@@ -137,7 +164,7 @@ function addPolicyCoverageBlockers(
       blockers,
       'supabase-grant-policy-coverage-required',
       `$.targetModel.entities.${entity.id}.${operation}`,
-      'Workflow data access lacks an executable allow policy for every granted operation.'
+      'Required data access lacks an executable allow policy for every granted operation.'
     )
   }
 }
@@ -195,9 +222,17 @@ function renderIntentPolicies(
   required: ReadonlySet<AuthAccessOperation>,
   intents: readonly SupabasePolicyIntent[],
   blockers: SupabaseMigrationReviewBlockerV1[],
-  desiredPolicyNames: Set<string>
+  desiredPolicyNames: Set<string>,
+  plannedPolicies: SupabasePlannedPolicyPreconditionV1[]
 ): readonly string[] {
   const statements: string[] = []
+  const inspectedTableName =
+    snapshot.objects.find(
+      (object) =>
+        object.kind === 'table' &&
+        object.management === 'managed' &&
+        object.openPencilId === entity.id
+    )?.name ?? entity.name
   for (const intent of intents) {
     const relevant = OPERATION_ORDER.filter(
       (operation) => required.has(operation) && intent.operations.includes(operation)
@@ -218,9 +253,12 @@ function renderIntentPolicies(
         'openpencil_policy',
         `${entity.id}:${intent.id}:${intent.effect}:${operation}`
       )
+      const mode = intent.effect === 'deny' ? 'restrictive' : 'permissive'
+      const role = supabasePolicyTargetRole(intent.principal)
+      const policyTail = `AS ${mode.toUpperCase()} FOR ${operation.toUpperCase()} TO ${quoteIdentifier(role)} ${supabasePolicyOperationClause(operation, predicate)}`
       desiredPolicyNames.add(policyName)
       const existingPolicy = snapshot.policies.find(
-        (policy) => policy.tableName === entity.name && policy.name === policyName
+        (policy) => policy.tableName === inspectedTableName && policy.name === policyName
       )
       if (existingPolicy?.source === 'openpencil') {
         statements.push(`DROP POLICY ${quoteIdentifier(policyName)} ON ${qualified(entity.name)};`)
@@ -233,11 +271,20 @@ function renderIntentPolicies(
         )
       }
       statements.push(
-        `CREATE POLICY ${quoteIdentifier(policyName)} ON ${qualified(entity.name)} AS ${intent.effect === 'deny' ? 'RESTRICTIVE' : 'PERMISSIVE'} FOR ${operation.toUpperCase()} TO ${quoteIdentifier(supabasePolicyTargetRole(intent.principal))} ${supabasePolicyOperationClause(operation, predicate)};`
+        `CREATE POLICY ${quoteIdentifier(policyName)} ON ${qualified(entity.name)} ${policyTail};`
       )
       statements.push(
         `COMMENT ON POLICY ${quoteIdentifier(policyName)} ON ${qualified(entity.name)} IS ${quoteLiteral(formatSupabaseManagedMarker('policy', policyName))};`
       )
+      plannedPolicies.push({
+        tableName: entity.name,
+        openPencilId: entity.id,
+        name: policyName,
+        command: operation,
+        mode,
+        role,
+        policyTail
+      })
     }
   }
   return statements
@@ -260,17 +307,31 @@ function addStaleManagedPolicyBlockers(
 }
 
 function addStaleManagedGrantBlockers(
+  application: BackendApplicationSpecV1,
   snapshot: SupabaseInspectedMigrationSnapshotV1,
   desired: readonly SupabaseTablePrivilegeReviewOperationV1[],
   blockers: SupabaseMigrationReviewBlockerV1[]
 ): void {
-  const desiredKeys = new Set(
-    desired.flatMap((entry) =>
-      entry.privileges.map(
-        (privilege) => `table:public:${entry.tableName}:${entry.grantee}:${privilege}`
-      )
+  const desiredKeys = new Set<string>()
+  for (const entry of desired) {
+    const entity = application.dataModel.entities.find(
+      (candidate) => candidate.management === 'managed' && candidate.name === entry.tableName
     )
-  )
+    const inspectedName = entity
+      ? snapshot.objects.find(
+          (object) =>
+            object.kind === 'table' &&
+            object.management === 'managed' &&
+            object.openPencilId === entity.id
+        )?.name
+      : undefined
+    for (const privilege of entry.privileges) {
+      desiredKeys.add(`table:public:${entry.tableName}:${entry.grantee}:${privilege}`)
+      if (inspectedName) {
+        desiredKeys.add(`table:public:${inspectedName}:${entry.grantee}:${privilege}`)
+      }
+    }
+  }
   for (const role of new Set(desired.map((entry) => entry.grantee))) {
     desiredKeys.add(`schema:public:public:${role}:USAGE`)
   }
@@ -295,6 +356,7 @@ function addStaleManagedGrantBlockers(
 }
 
 function createPrivilegeGrantPlan(
+  application: BackendApplicationSpecV1,
   snapshot: SupabaseInspectedMigrationSnapshotV1,
   desired: readonly SupabaseTablePrivilegeReviewOperationV1[]
 ): {
@@ -326,9 +388,22 @@ function createPrivilegeGrantPlan(
     )
   }
   for (const entry of desired) {
+    const entity = application.dataModel.entities.find(
+      (candidate) => candidate.management === 'managed' && candidate.name === entry.tableName
+    )
+    const inspectedName = entity
+      ? snapshot.objects.find(
+          (object) =>
+            object.kind === 'table' &&
+            object.management === 'managed' &&
+            object.openPencilId === entity.id
+        )?.name
+      : undefined
     const missing = entry.privileges.filter(
       (privilege) =>
-        !existingKeys.has(`table:public:${entry.tableName}:${entry.grantee}:${privilege}`)
+        !existingKeys.has(`table:public:${entry.tableName}:${entry.grantee}:${privilege}`) &&
+        (!inspectedName ||
+          !existingKeys.has(`table:public:${inspectedName}:${entry.grantee}:${privilege}`))
     )
     if (missing.length === 0) continue
     operations.push({
@@ -353,11 +428,15 @@ export function renderPoliciesAndPrivileges(
   readonly desired: readonly SupabaseTablePrivilegeReviewOperationV1[]
   readonly operations: readonly SupabasePrivilegeReviewOperationV1[]
   readonly grantStatements: readonly string[]
+  readonly existingTableNames: readonly string[]
+  readonly plannedPolicies: readonly SupabasePlannedPolicyPreconditionV1[]
 } {
-  const usage = requiredOperations(application)
+  const usage = requiredOperations(application, blockers)
   const policyStatements: string[] = []
   const desired: SupabaseTablePrivilegeReviewOperationV1[] = []
   const desiredPolicyNames = new Set<string>()
+  const existingTableNames = new Set<string>()
+  const plannedPolicies: SupabasePlannedPolicyPreconditionV1[] = []
   const createdEntityIds = new Set(
     plan.operations.flatMap((entry) =>
       entry.operation.kind === 'create-entity' ? [entry.operation.entity.id] : []
@@ -383,6 +462,15 @@ export function renderPoliciesAndPrivileges(
       blockers
     )
     if (!entity) continue
+    if (!createdEntityIds.has(entity.id)) {
+      const inspectedName = snapshot.objects.find(
+        (object) =>
+          object.kind === 'table' &&
+          object.management === 'managed' &&
+          object.openPencilId === entity.id
+      )?.name
+      existingTableNames.add(inspectedName ?? entity.name)
+    }
     const intents = sortedEntityIntents(application, entity.id)
     const coverage = allowPolicyCoverage(application, intents)
     addPolicyCoverageBlockers(entity, required, coverage, blockers)
@@ -395,17 +483,22 @@ export function renderPoliciesAndPrivileges(
         required,
         intents,
         blockers,
-        desiredPolicyNames
+        desiredPolicyNames,
+        plannedPolicies
       )
     )
   }
   addStaleManagedPolicyBlockers(snapshot, desiredPolicyNames, blockers)
-  addStaleManagedGrantBlockers(snapshot, desired, blockers)
-  const grants = createPrivilegeGrantPlan(snapshot, desired)
+  addStaleManagedGrantBlockers(application, snapshot, desired, blockers)
+  const grants = createPrivilegeGrantPlan(application, snapshot, desired)
   return {
     policyStatements,
     desired,
     operations: grants.operations,
-    grantStatements: grants.statements
+    grantStatements: grants.statements,
+    existingTableNames: [...existingTableNames].sort((left, right) =>
+      left.localeCompare(right, 'en')
+    ),
+    plannedPolicies
   }
 }
