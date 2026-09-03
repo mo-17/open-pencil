@@ -32,16 +32,19 @@ These stages are intentionally different:
 
 ## Current implementation status
 
-| Layer                                          | Current status                                                                                                  | Explicit limit                                                                                                                      |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Backend Core and plugin contract               | Implemented and covered by package tests                                                                        | Data-only; no provider SDK, credential, URL, SQL executor, or runtime permission                                                    |
-| Compiler registry and built-in Supabase bundle | Implemented                                                                                                     | Pure local plan/emit; ordinary build artifacts remain review-only                                                                   |
-| Inspected Supabase migration review            | Implemented as a strict safety MVP with bounded repeat reviews                                                  | Existing managed state must be address-validated and carry exact OpenPencil markers; only the reviewed additive subset can continue |
-| Host Release Controller                        | Implemented with a durable dispatch-journal boundary and injected Inspect/Emit/Review/Apply/Verify capabilities | The Desktop review path never reaches a journal claim; no live Supabase executor or verifier is wired into Desktop or CLI           |
-| Desktop Supabase Backend review                | Implemented as an explicit, Tauri-only, review-only action                                                      | Exact `public` schema only; Browser, Apply, Verify, and production-readiness claims are unavailable                                 |
-| Desktop frontend deployment                    | Implemented as a partial deployment                                                                             | Frontend confirmation does not confirm Backend Apply; Backend remains at the separate confirmation boundary                         |
-| CLI Backend commands                           | Implemented as local-only validation, plan, emit, and audit                                                     | No Inspect, credential resolution, Apply, or accepted remote receipt                                                                |
-| Live Supabase Apply and verification           | Not implemented in the product UI                                                                               | Manual/live gate; no current build may claim production readiness from local evidence                                               |
+| Layer                                          | Current status                                                                                                      | Explicit limit                                                                                                                             |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Backend Core and plugin contract               | Implemented for DataModel, Auth, Workflow, first-class Storage, staged migrations, source ledger, and release gates | Data-only; no provider SDK, credential, URL, SQL executor, or runtime permission                                                           |
+| Visual Backend editor                          | Implemented in the Design panel for model, relations, ownership/tenant/RLS, workflows, Storage, Provider, and risk  | Saving changes the document declaration only; it never inspects, applies, or deploys                                                       |
+| Compiler registry and built-in Supabase bundle | Implemented                                                                                                         | Pure local plan/emit; ordinary build artifacts remain review-only                                                                          |
+| Inspected Supabase migration review            | Implemented for additive and explicit expand/backfill/contract reviews                                              | Existing managed state must be address-validated; destructive and production operations remain separately approved                         |
+| Source migration ledger                        | Implemented with canonical SQL/ledger artifacts, dev→staging→production ordering, drift, rollback, and restore      | Desktop exports a reviewed ZIP; merging it into source control and executing it remain operator/CI actions                                 |
+| Edge Function release authority                | Implemented as a bounded Host deploy/secret/health/Receipt boundary                                                 | Not auto-run by build; real deployment still requires operation-scoped credentials and explicit release orchestration                      |
+| Storage release verification                   | Implemented for bucket catalog checks and two-account CRUD/upsert isolation Receipts                                | Not auto-run by build; real object probes are destructive test operations and require explicit staging authority                           |
+| React and Vue web runtimes                     | Implemented for Supabase Auth, CRUD, Storage upload, and authenticated server workflow invoke                       | Server and Storage remain provider release gates; generated frontend success is not backend readiness                                      |
+| Host Release Controller                        | Implemented with durable dispatch claims and injected Inspect/Emit/Review/Apply/Verify capabilities                 | The legacy live database Apply path remains a bounded staging create-only MVP; Browser, CLI, and production database Apply are unavailable |
+| Desktop Supabase Backend review                | Implemented as an explicit, Tauri-only, review-only action                                                          | Exact `public` schema only; the review artifact itself never grants Apply or production readiness                                          |
+| CLI Backend commands                           | Implemented as local-only validation, plan, emit, and audit                                                         | No Inspect, credential resolution, Apply, or accepted remote receipt                                                                       |
 
 The strict inspected-review MVP requires project/account/query provenance, a non-truncated complete
 coverage declaration, and explicit object, column, constraint, index, RLS policy, object ACL, and
@@ -61,24 +64,38 @@ while ACL rows preserve grantor and grant-option state. Older catalogs that cann
 membership options must fail before creating a snapshot rather than infer safe defaults. Every role,
 membership, grantor, and grant-option field participates in the inventory digest, and missing or
 tampered evidence is rejected. A first review may render deterministic additive `CREATE TYPE` and
-`CREATE TABLE` SQL plus exact `COMMENT` markers, forced RLS, closed policies, and the intersection of
-workflow operations with emittable allow policies. A later inspection binds those markers to the
+`CREATE TABLE` SQL plus exact `COMMENT` markers, forced RLS, closed policies, and least-privilege
+grants for the union of workflow-required operations and explicitly declared allow row-access
+operations, narrowed to emittable allow-policy coverage. A later inspection binds those markers to the
 same-snapshot PostgreSQL OID/attnum addresses and reconstructs the current `DataModelIR`; every
 structural member of a managed table must be marked, and an unmarked or malformed managed claim fails
-closed. Constraint-backed indexes are excluded from the ordinary-index inventory. From that exact
-baseline, repeat reviews support only new enum values, nullable fields, and ordinary indexes. Marked
-policies are explicitly replaced in the reviewed transaction, while an exact already-inspected set
-of runtime grants is reused rather than broadened. An enum-value extension must be reviewed as a
-dedicated migration: if the same plan contains any other operation, review fails closed instead of
-placing an operation that could consume the new value in the transaction that creates it.
+closed. Constraint-backed indexes are excluded from the ordinary-index inventory. The ordinary
+repeat-review path remains limited to new enum values, nullable fields, and ordinary indexes. A
+separately validated staged execution plan can review indexed foreign keys, unique constraints,
+UUID/identity generated defaults, typed non-null backfills, constraint validation, compatible
+renames, and explicit retirement through ordered `expand`, `backfill`, and `contract` phases. Every
+staged operation is bound back to the semantic `MigrationPlan`; backfill/contract require a
+successful predecessor Receipt, while direct destructive or production review remains blocked until
+the independent approval/recovery authority is supplied. This does not widen the existing live
+Desktop Apply allowlist. In the Desktop review panel, the optional staged-plan file input validates
+and normalizes a bounded, secret-free `StagedMigrationExecutionPlanV1` before any credential or
+network use, displays its phase/operation count/risk, and binds it into the inspected artifact and
+source ZIP. Ordinary reviews leave this input empty. Marked policies are explicitly replaced in the
+reviewed transaction, while an exact already-inspected set of runtime grants is reused rather than
+broadened. An enum-value extension must still be reviewed as a dedicated migration.
+
+OpenPencil always emits explicit least-privilege table grants after forced RLS and policy creation; it
+does not depend on Supabase's legacy default table privileges. This is required by Supabase's 2026
+[Data API exposure change](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically).
 
 The standard non-grantable `USAGE` grants on Supabase's `public` schema for `PUBLIC`, `anon`,
 `authenticated`, `service_role`, and the inspected database role are accepted as provider baseline;
-schema `CREATE`, grant options, column grants, object grants not required by the reviewed plan, third-party grants,
-and non-owner default privileges remain blocking. Name collisions, foreign keys, non-null field
-additions, destructive operations, unknown ACL or permissive policy state, UUID function authority,
-identity sequences, unsupported defaults, or RLS that is not both enabled and forced also produce
-blockers. A blocked review contains comments only; every review keeps `applyAllowed: false` and
+schema `CREATE`, grant options, column grants, object grants not required by the reviewed plan,
+third-party grants, and non-owner default privileges remain blocking. Name collisions, an unscoped
+foreign key/non-null/rename/destructive change, unknown ACL or permissive policy state, arbitrary
+default expressions, or RLS that is not both enabled and forced also produce blockers. UUID and
+identity defaults are accepted only through the explicit staged generated-default vocabulary. A
+blocked review contains comments only; every review keeps `applyAllowed: false` and
 `releaseReady: false`.
 
 A referenced runtime role with superuser or `BYPASSRLS` authority, any direct or transitive parent
@@ -107,10 +124,11 @@ The main `compile()` entrypoint participates in this boundary. When it finds leg
 actions, storage, or server workflows, it lowers them once to provider-neutral IR and runs the
 reviewed built-in Provider plan/emission beside the existing frontend compatibility output. A
 Provider plan or emission error throws `BackendProviderCompilationError`; production never keeps a
-frontend-only result and downgrades the missing Backend half to a warning. A target such as Vue v1,
-whose generated client omits Backend runtime behavior, must explicitly select
-`backendCompilationMode: 'source-only-prototype'` to retain a static prototype with omission
-diagnostics. Vue production remains fail closed.
+frontend-only result and downgrades the missing Backend half to a warning. React and Vue web targets
+both emit the supported Supabase Auth, CRUD, Storage upload, and authenticated Edge workflow client
+surface. They share request single-flight, pending UI, throttling/debouncing, session propagation,
+and missing-configuration fail-closed behavior. Other targets must explicitly use a supported
+source-only prototype mode when their runtime omits a required Backend capability.
 
 A trusted Host can instead supply `CompilerOptions.backendProvider` as the exact data-only
 `CompilerBackendProviderRequest` for one ordinary compile/build. The request contains only the
@@ -128,7 +146,10 @@ available only when no explicit request exists.
 ## Backend Core
 
 `BackendApplicationSpecV1` is strict, bounded plain JSON. It contains versioned `DataModelIR`,
-`AuthPolicyIR`, `BackendWorkflowIR`, capability requirements, and `BackendSecretRef` values. Unknown
+`AuthPolicyIR`, `BackendWorkflowIR`, `BackendStorageIR`, capability requirements, and
+`BackendSecretRef` values. Storage declares bounded bucket names, private/public-read intent,
+per-object size and MIME limits, literal path prefixes, owner/tenant principals, and exact
+read/create/update/delete/upsert operations. Unknown
 versions, fields, scalar types, capabilities, auth intents, malformed references, managed foreign-key
 cycles, accessors, custom prototypes, sparse arrays, and cyclic values fail closed.
 
@@ -267,11 +288,46 @@ malformed aggregate responses, row-limit tampering, or changed graph/config/Prov
 authority fail closed. The PAT is not stored in reactive state, SceneGraph data, artifacts,
 manifests, logs, or receipts.
 
-The resulting artifact is explicitly review-only: `applyAllowed: false`, `releaseReady: false`, and
-the UI reports that live Apply/Verify is unavailable. Its Backend review callback deliberately
-denies continuation before confirmation, journal claim, or dispatch. Browser builds keep this
-action unavailable. Automated tests exercise the fixed transport and runtime composition with
-fakes; this does not prove connectivity to a real Supabase project.
+The resulting artifact remains explicitly review-only: `applyAllowed: false` and
+`releaseReady: false`. It cannot authorize a mutation by itself. Packaged Tauri exposes a separate
+staging-only action that can consume that exact artifact only after the user saves a distinct
+database-write Management PAT, binds the exact project ref as an independent staging target, and
+confirms that target again. Browser and CLI builds keep Apply unavailable. Automated tests exercise
+the transports and runtime composition with fakes; this does not prove connectivity to a real
+Supabase project.
+
+The staging executor accepts only an empty inspected OpenPencil-managed baseline, the compiler's
+reviewed `create-enum` / `create-entity` operation set, and its exact SQL digest. "Empty" means no
+managed entities, enums, relations, or managed catalog objects; unrelated external objects may
+remain in `public` unless they collide with a planned name. Repeat `add-*` migrations remain
+reviewable but cannot use live Apply in this MVP. It rejects caller SQL, destructive
+operations, a changed review, a changed
+Provider/package, and any project, organization, grant, graph, or configuration drift. The Host
+checks project authority before preparing the request, performs another catalog inspection, and
+revalidates both local and remote project/organization authority again immediately before the exact
+Management API query request. The write PAT is operation-scoped and must differ from the read
+credential. The Host does not introspect PAT scopes; Supabase remains the authority that accepts or
+rejects the required database-write permission. Neither value may enter
+reactive state, the document, an artifact, a log, the journal, or a receipt.
+
+Immediately before dispatch, the durable journal atomically claims a semantic release key and a
+separate provider/project mutation scope. Target, environment, document, organization transfer, or
+credential rotation therefore cannot create a second mutation slot while any claim for that remote
+project is pending or `outcome-unknown`. Legacy unresolved journal records block conservatively by
+project. The query endpoint returns no durable remote operation identifier, so an uncertain claim
+cannot be treated as failed merely because a new review exists, the catalog still equals its
+pre-dispatch baseline, or local time elapsed. Read-only reconciliation therefore keeps Supabase
+pending/unknown claims locked unless provider-authoritative evidence can bind the exact operation to
+a terminal result; that evidence path is not yet available for the Management query endpoint. A new
+independent staging project has a separate mutation scope and is the safe continuation when such
+evidence is unavailable. Reconciliation never retries in the same run; the operator must generate
+and confirm a new review after the old claim reaches a terminal result. After a known Apply response, the
+Host inspects the catalog again and binds the complete timestamped capture digest into verification
+evidence. Catalog gates may pass, but JWT-backed Auth and table row-policy behavior remain a separate
+`unknown` gate until the required anonymous/owner/cross-user checks have trusted evidence. Storage
+isolation has its own two-account verifier and does not prove table RLS.
+The Desktop staging result, rather than `BackendReleaseReceiptV1`, always reports
+`productionReleaseReady: false`.
 
 ## Release controller
 
@@ -286,9 +342,101 @@ reinspection, migration-plan drift detection, an atomic durable dispatch claim, 
 reconciliation, pre-dispatch failure receipts, outcome-unknown handling, failed verification gates,
 and secret-free receipts. The durable IndexedDB journal preserves pending/applied/failed/unknown
 claims across Desktop restarts and never treats an uncertain outcome as permission to retry. The
-fixed Supabase `pg_catalog` inspector and its single-statement Management transport are wired only to
-the explicit Desktop review action. The current executor and verifier remain deliberately
-unavailable, so no product path can dispatch a migration or issue live verification evidence.
+fixed Supabase `pg_catalog` inspector and its single-statement Management transport are used by both
+the explicit Desktop review action and the bounded staging release action. A provider-specific
+database executor and post-Apply catalog verifier exist only for that staging subset. Edge Function
+and Storage use separate operation-scoped Host authorities: neither reuses the migration executor or
+inherits authority from a frontend build. Browser and CLI expose no remote executor, and production
+database Apply remains unavailable.
+
+### Source migrations and environment promotion
+
+Every ready inspected review can be exported from the Desktop review panel as an exact ZIP containing
+`supabase/migrations/<UTC timestamp>_<slug>.sql`,
+`supabase/openpencil-inspected-source-ledger.json`,
+`supabase/openpencil-migration-ledger.json`, and a digest-bound Host export manifest. The
+inspected-source ledger retains review and Provider-emission evidence for ordinary additive and
+explicit staged reviews. The promotion ledger binds every source SQL file to exact execution
+authority: explicit staged reviews retain their reviewed phase plan, while an ordinary safe review
+is compiler-normalized to one low-risk `apply-reviewed-migration` expand operation that binds all
+source operation ids, the review manifest, the migration plan, and the final composed SQL digest.
+That final digest includes an inspected Storage delta when one exists; an empty source-operation set
+is therefore allowed only inside this digest-bound authority (for example, a Storage-only change).
+Omit both ledger inputs only for the first export; every later export must import both ledgers from
+the previous ZIP or it intentionally starts a separate history. When a
+Storage policy artifact exists, the Host unwraps the two exact trusted renderings and emits the
+schema and Storage changes inside one outer `BEGIN`/`COMMIT`, so the source migration cannot commit
+only one half. Before and after saving, the Host re-resolves the live document,
+configuration, reviewed build, and installed Provider authority. It never accepts a credential,
+writes into the repository, or executes SQL. If saving has started and completion cannot be proved,
+the result is `outcome-unknown`; inspect the chosen destination before retrying.
+
+The offline CLI makes the promotion ledger an operator/CI product surface rather than a library-only
+contract. `openpencil backend ledger inspect <ledger> --source-root <repo> --json` verifies its
+complete digest-bound history and re-hashes every referenced regular, non-symlink migration file
+below the explicit repository root. `openpencil backend ledger transition <ledger> --event
+<event.json> --source-root <repo> --output <next.json> --json` appends exactly one validated
+registration, promotion, drift, rollback, restore, or authority-rebind event to a new file only after
+every resulting source-file digest is verified; it never overwrites its input or output and has no
+network, Apply, or Deploy authority.
+`openpencil backend ledger init --ledger-id <id> --created-at <UTC> --output <ledger.json>` is
+available for an explicitly separate history. Provider/CI automation must create the secret-free
+Receipt in `event.json`; the CLI validates it but never fabricates remote evidence.
+
+Extract the reviewed files, merge them into the repository, and let the normal source-control/CI
+workflow own execution. Use `supabase migration list`, exercise the chain locally with
+`supabase db reset`, and promote it with a controlled `supabase db push`; running copied SQL directly
+in the remote SQL Editor does not update this OpenPencil source ledger. The promotion ledger admits
+only `source -> dev -> staging -> production`, requires no-drift evidence at the destination,
+requires successful execution Receipts, requires each promoted migration to prove the same logical
+post-schema digest as its source environment, enforces predecessor phases, and requires exact human
+approval scopes for production or destructive work. Drift and recovery use canonical, secret-free
+provider Receipts bound to the exact authority, schema transition, timestamp, outcome, and evidence;
+only successful Receipts enter the structured ledger, while failed or outcome-unknown results remain
+in the Host journal. A healthy environment can only roll back its latest migration. Restore is
+reserved for detected drift and must bind a canonical provider backup/recovery point to the resulting
+source prefix and schema. This follows Supabase's
+[source-controlled migration workflow](https://supabase.com/docs/guides/deployment/database-migrations)
+without treating local generation as a remote deployment.
+
+PAT rotation never silently edits an environment authority. An explicit
+`rebind-environment-authority` event may change **only** `grantGeneration`; Provider identity and
+authority digest, project, account, and environment must remain byte-for-byte equal. The event must
+reference the latest environment event, which must be a successful no-drift observation against the
+current schema, and embed separately digested successful Provider Receipts from both the previous and
+next authority. Each Receipt explicitly proves `unresolvedMutation: false`; reused, stale, failed,
+unknown, or mismatched proof fails closed. Production additionally requires exact `production` human
+approval. The rebind is appended to immutable history and replayed to derive the new environment
+summary; subsequent drift, promotion, and recovery evidence must use the new generation. The offline
+CLI only validates these supplied proofs. If the Provider/CI cannot authoritatively prove that no
+remote mutation is unresolved, rotation remains blocked rather than being inferred from local state.
+
+### Edge Function and Storage release evidence
+
+The Supabase Edge runtime is emitted as reviewed Deno source with JWT authentication, bounded
+workflow inputs/responses, a fixed health workflow, manual redirects, private-address rejection, and
+an exact outbound-host allowlist. A separate Host transport rechecks project/organization authority,
+proves required secret **names** (never values), creates a bounded deterministic ZIP, calls the
+documented Management deployment endpoint with `verify_jwt=true`, invokes the deployed health route
+with an authenticated user token, and returns a secret-free Receipt. Supabase currently injects both
+`SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEYS`; only application-defined names, such as an outbound
+host allowlist secret, are required in the Management secrets inventory. See Supabase's
+[Edge Function deployment](https://supabase.com/docs/guides/functions/deploy) and
+[secret management](https://supabase.com/docs/guides/functions/secrets).
+
+First-class Storage emission creates a review-only bucket configuration and `storage.objects` RLS
+matrix. Owner predicates use `(select auth.uid())`; tenant paths query only the declared membership
+table; upsert always expands to SELECT + INSERT + UPDATE. Generated React and Vue upload handlers
+store only the object path for private buckets; only an explicitly `public-read` bucket emits
+`getPublicUrl`, so private delivery must go through a separately authorized signed-URL workflow.
+The live verifier rechecks project authority,
+uses a read-only catalog query for exact bucket limits, binds two distinct `/auth/v1/user` sessions,
+and probes owner CRUD/upsert plus anonymous, second-user, prefix escape, MIME, and size denial. For a
+bucket limited to at most 16 MiB the size check uses an exact `max + 1` rejection probe; a larger
+limit is proven from the read-only bucket catalog instead of granting a potentially large upload. A
+transient or ambiguous response after the first object request produces `outcome-unknown`, not an
+automatic retry. Only exact, successful, no-residual Receipts can satisfy the Storage production
+gate. See Supabase's [Storage RLS model](https://supabase.com/docs/guides/storage/security/access-control).
 
 Build and compile stop after local validation, planning, and emission. Apply is a separate authority.
 Immediately before Apply the host inspects again and compares the document/IR/schema digests, target,
@@ -299,8 +447,9 @@ migration.
 
 Cancellation before dispatch is safe. A timeout, abort, or transport error after dispatch is recorded
 as `outcome-unknown`, disables automatic retry, and requires a fresh inspect/reconcile. Apply is
-single-flight through the durable claim key, and its scope cannot be reused across projects,
-accounts, or grant generations. The Supabase bridge additionally requires a fresh host callback to
+single-flight through the durable claim key. Supabase additionally locks the provider and remote
+project independently of target, environment, document, account, or grant generation until an
+uncertain write is reconciled. The Supabase bridge additionally requires a fresh host callback to
 rebuild graph/config/Provider/grant authority immediately before both initial and pre-Apply
 inspection; captured build state cannot authorize a later remote read or future Apply.
 
@@ -308,6 +457,16 @@ Production `releaseReady` is fail closed. Missing, unknown, future-dated, duplic
 evidence for migration application, schema drift, auth/RLS, server workflows, required secret names,
 storage policy, health, artifact/document match, provider authority, or target capabilities blocks
 release.
+A separate **Staging backend capabilities** action now creates those Edge and Storage Receipts through
+the real Desktop Host composition after proving that the inspected schema already equals the exact
+review target. User JWTs are operation-scoped, cleared from the form before dispatch, and never
+persisted. The verifier rejects stale project/account/grant/provider bindings,
+incomplete secrets, unauthenticated health, public or only partially probeable Storage rules, future
+evidence, duplicate coverage, and a Receipt bound to another artifact. A supplied Receipt cannot
+choose its own expected digest. Required host credential references remain unknown until a separate
+trusted credential-evidence authority is attached. Table Auth/RLS evidence also remains independent,
+so a successful Edge/Storage run can still return a blocked overall staging Receipt and never enables
+production readiness.
 A successful static-host upload returns `backendDeploymentRequired` while required backend work is
 not verified. Core binds every passed gate's `checkedAt` to be no later than the enclosing
 `verifiedAt`; any additional evidence TTL or provider-specific freshness window remains an explicit
@@ -335,6 +494,11 @@ bun open-pencil backend emit backend-application.json -o local-backend-artifacts
 bun open-pencil backend audit backend-application.json --gates production-gates.json --receipt release-receipt.json --environment production --json
 ```
 
+Unlike App-owned React/Vue source export, the CLI has no installed-package lifecycle, publisher
+review, or live App Store authority with which to resolve a document's `backendProviders`
+declaration. It therefore does not consume a raw declaration as trusted adapter authority; use the
+Desktop Host export or an explicit local Backend spec instead.
+
 `emit` requires a new output directory and never overwrites an existing path. `audit` parses strict
 gate evidence and an optional secret-free receipt, but it cannot accept that receipt as proof of an
 Apply because the CLI has no reducer-owned remote execution state. `backend release` composes the
@@ -346,9 +510,11 @@ compared with a Host Release plan digest because those values belong to differen
 
 ## Manual and live gates
 
-Unit tests and deterministic fixtures prove parsing, negotiation, emission, and state-machine
-behavior. They do not prove a real database or production deployment. Apply authority and remote
-proof belong to the Host, and live database verification remains a Manual gate. A release still
+Unit tests and deterministic fixtures prove parsing, negotiation, emission, transport envelopes,
+and state-machine behavior. They do not prove a real database or production deployment. The first
+real staging Apply, packaged-Tauri persistence, and runtime table auth/RLS verification remain Manual
+gates. The Desktop capability action can perform an explicitly authorized Edge deploy and destructive
+Storage test-object probes, but local mocks do not prove the user's project. A release still
 needs an authorized operator to review the generated proposal, inspect a real project, test
 anonymous and authenticated owner/cross-tenant behavior, exercise
 insert/update/delete/upsert/storage denial paths, deploy and verify server workflows, validate
@@ -359,6 +525,7 @@ For the first staging exercise, use an independent project and record the projec
 generation without exposing credential values. A minimal database/RLS gate needs two confirmed Auth
 users, a complete read-only catalog snapshot, an operator-reviewed additive migration plus backup
 plan, and Data API tests showing owner success and second-user denial for every required operation.
-Function, Storage, SMTP, and frontend-origin setup are separate gates and are required only when the
-application actually declares those capabilities. After any dispatch timeout or restart, do not
+Function, Storage, SMTP, leaked-password protection where the plan supports it, and frontend-origin
+setup are separate production gates and are required only when the application declares those
+capabilities or the operator's policy requires them. After any dispatch timeout or restart, do not
 retry automatically: re-inspect first, compare the reviewed plan, and reconcile the remote outcome.
