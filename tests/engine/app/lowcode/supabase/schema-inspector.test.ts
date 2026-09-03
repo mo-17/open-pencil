@@ -259,8 +259,11 @@ describe('Supabase schema inspector component', () => {
     const parentSource = await Bun.file(
       'src/components/properties/Lowcode/SupabaseConfigPanel.vue'
     ).text()
-    expect(source).toContain('type="password"')
-    expect(source).not.toContain('v-model')
+    const passwordInputs = [...source.matchAll(/<input\b[\s\S]*?\/>/gu)]
+      .map((match) => match[0])
+      .filter((input) => input.includes('type="password"'))
+    expect(passwordInputs.length).toBeGreaterThanOrEqual(2)
+    for (const input of passwordInputs) expect(input).not.toContain('v-model')
     expect(source).toContain("input.value = ''")
     expect(parentSource).toContain('<SupabaseSchemaInspector :config="config" />')
   })
