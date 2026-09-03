@@ -553,7 +553,7 @@ candidate: it is not in the built-in registry or compile/App/CLI path, grants no
 authority, and still requires source-ledger, dashboard, existing-policy inventory, trusted-release,
 A/B isolation, refresh, reconnect, trigger, and disposal checks in a real staging project.
 
-The second isolated Provider v2 slice updates the candidate adapter to `2.1.0` and emits one bounded
+The second isolated Provider v2 slice was introduced with adapter `2.1.0` and emits one bounded
 atomic-transaction review package. It accepts exactly one transaction over one source-managed
 entity with distinct non-null UUID primary-key and owner fields, a non-null `int8` version field with
 literal zero default, and an expected-version update. The generated public PostgREST function is
@@ -574,16 +574,60 @@ expression evidence, is not registered in the built-in/compile/App/CLI/Apply pat
 live staging evidence for PostgREST schema cache, A/B isolation, concurrency, conflict, and rollback
 behavior.
 
-P2 still does **not** implement exclusive atomic write authority, a queue worker, Cron job, webhook
-endpoint, or monitoring drain. The remaining Provider work follows in bounded slices:
-receipt-driven backfill; private queue and transactional outbox with idempotency/retry/DLQ; signed
-webhook intake; then drift and observability receipts. A later release-authority slice must remove or
-otherwise constrain direct REST updates before claiming exclusive atomic writes. These choices
-follow the current Supabase and PostgREST
+The third isolated slice updates the candidate adapter to `2.2.0` and adds a strict
+data-migration/backfill review package. It accepts exactly one source-managed entity and one
+`set-literal` migration whose cursor is a non-null, single-column `int8` identity primary key. The
+target must be the same nullable-live/non-null-desired field used by the null predicate and the
+field-not-null postcondition. Its literal is revalidated against the field type and enum domain and
+must contain neither NUL nor an unpaired UTF-16 surrogate. Primary-key, unique, foreign-key, owner,
+tenant, and membership fields are rejected. This first slice also refuses source models with any
+secondary index, unique constraint, or foreign key so its live review can require their complete
+absence. The adapter emits only a deterministic migration plan, review manifest, and SELECT-only
+query template. It emits no client configuration, DML/DDL runner, credential, Apply hook, or release
+claim; the raw planner and SQL emitter are not public Compiler exports.
+
+The query template reports a **partial checklist, never live evidence**: managed markers, exact
+primary-key column shape, forced RLS, identity `ALWAYS`, sequence
+ownership/increment/cache/cycle/range/state visibility, primary-server status, target OID/type-kind/
+typmod/generated shape, enum marker plus ordered labels, raw default expression, complete-table
+write-hazard counts, current/session roles, `row_security`, `search_path`, object OIDs, a high-water
+summary, and one keyset-paginated batch preview. The whole-table hazard gate conservatively blocks
+every non-primary index, unique/exclusion or CHECK constraint, outbound foreign key, generated
+column, and inheritance edge; this avoids treating expression, partial, or INCLUDE index metadata as
+safe without a trusted Inspector. The primary-key check intentionally uses the stable marker plus
+ordered column numbers rather than a name derived from the current table and field names, so a
+reviewed P1 rename does not create a false blocker. A 10,000-entry receipt-chain ceiling reserves
+index 0 for high water and therefore permits at most 9,999 batch checkpoints and
+`batchSize * 9,999` matched rows. The estimate counts the complete cursor range, not only rows still
+matching the null predicate, because every scanned range must advance the receipt head.
+
+This backfill slice is also review-only and not release-ready. Its manifest separates
+`catalogChecks.required` from `observed: null`. SELECT can invoke policy functions and RLS can hide
+rows, so the template is not independently side-effect-free or complete: a future trusted Host must
+use one fixed current/session role and search path, enforce a database read-only transaction plus
+`row_security=off` fail-closed behavior, and verify complete ACL, role-membership, policy, trigger,
+rule, function, enum/default, and table-hazard inventories. Before capture it must install a new-NULL
+write barrier and take the reviewed lock; every batch and the final postcondition must rebind the live
+table/column/sequence OIDs and catalog digest. Live catalog evidence, `GENERATED ALWAYS` conversion,
+cursor immutability, sequence/cursor mutation-authority proof, source-ledger/artifact/provider
+binding, an atomic database batch ledger, receipt-v2 authority, the actual bounded mutation runner,
+P1 unbounded-backfill retirement, dry run, and exact postconditions all remain explicit blockers.
+
+P2 still does **not** implement exclusive atomic write authority, an executable receipt-driven
+backfill, a queue worker, Cron job, webhook endpoint, or monitoring drain. The remaining Provider
+work follows in bounded slices: trusted backfill Inspector plus receipt-v2/database-ledger runner;
+private queue and transactional outbox with idempotency/retry/DLQ; signed webhook intake; then drift
+and observability receipts. A later release-authority slice must remove or otherwise constrain direct
+REST updates before claiming exclusive atomic writes. These choices follow the current Supabase,
+PostgREST, and PostgreSQL
 [Realtime authorization](https://supabase.com/docs/guides/realtime/authorization),
 [database functions](https://supabase.com/docs/guides/database/functions),
 [functions as RPC](https://docs.postgrest.org/en/stable/references/api/functions.html),
 [transactions](https://docs.postgrest.org/en/stable/references/transactions.html),
+[identity columns](https://www.postgresql.org/docs/current/ddl-identity-columns.html),
+[sequences](https://www.postgresql.org/docs/current/sql-createsequence.html),
+[index catalog](https://www.postgresql.org/docs/current/catalog-pg-index.html),
+[constraint catalog](https://www.postgresql.org/docs/current/catalog-pg-constraint.html),
 [Queues](https://supabase.com/docs/guides/queues), [Cron](https://supabase.com/docs/guides/cron),
 and [Database Webhooks](https://supabase.com/docs/guides/database/webhooks) boundaries.
 
@@ -592,7 +636,8 @@ primary key that the Provider proves is immutable and append-monotonic. Source I
 but does not contain an environment-specific high-water value. Each environment captures its own
 high water in a Host/CAS-bound receipt chain whose scope also binds provider, authority, application,
 migration, and batch size; progress cannot move backwards, exceed the captured high water, or extend
-a terminal receipt. Similarly, primary-key idempotency for data-change automations is restricted to
+a terminal receipt. The current Provider review package does not yet construct or persist that
+authority chain. Similarly, primary-key idempotency for data-change automations is restricted to
 insert events; update and delete require a future Provider-issued immutable event identifier.
 
 ## Manual and live gates

@@ -211,7 +211,7 @@ SELECT policy、只发送最小 invalidation payload 的有界 trigger function�
 compile、App 或 CLI 路径，不授予 Apply/Deploy 权限；真实 staging 仍必须完成 source ledger、Dashboard、既有
 policy inventory、可信 release、A/B 隔离、refresh、reconnect、trigger 与 dispose 检查。
 
-第二个隔离的 Provider v2 切片把 candidate adapter 更新为 `2.1.0`，并生成一个有界 atomic transaction
+第二个隔离的 Provider v2 切片在 adapter `2.1.0` 中引入，并生成一个有界 atomic transaction
 审查包。它只接受：一个 transaction、一个源码管理 entity、互不相同且 non-null 的 UUID 主键与 owner
 字段、一个默认值为字面量 0 的 non-null `int8` version 字段，以及 expected-version update。生成的 public
 PostgREST function 使用 `SECURITY INVOKER` 和 serializable isolation，校验 `auth.uid()`，锁定 owner row，
@@ -227,15 +227,53 @@ SELECT/UPDATE grant 仍允许通过 REST 直接访问，所以它只保证这一
 artifact digest 或 owner-policy expression evidence，未进入 built-in/compile/App/CLI/Apply 路径，也没有真实
 staging 的 PostgREST schema cache、A/B 隔离、并发冲突与 rollback 证据。
 
-P2 仍**尚未**实现 exclusive atomic write authority、queue worker、Cron job、webhook endpoint 或 monitoring
-drain。剩余 Provider 工作继续按受限切片推进：Receipt 驱动的 backfill；带 idempotency/retry/DLQ 的
-private queue 与 transactional outbox；签名 webhook intake；最后接入 drift 与 observability Receipt。
-后续 release-authority 切片必须移除或进一步约束 direct REST update，才能宣称 exclusive atomic write。
-对应当前 Supabase 与 PostgREST 边界见
+第三个隔离切片把 candidate adapter 更新为 `2.2.0`，并加入严格的 data migration/backfill 审查包。它只
+接受一个源码管理 entity 和一个 `set-literal` migration；cursor 必须是 non-null、单列 `int8` identity
+主键。target 必须同时是 null predicate 与 field-not-null 后置条件所引用的同一字段，并呈现 live nullable、
+desired non-null 状态；literal 会再次按 field type 与 enum domain 校验，并拒绝 NUL 与不成对 UTF-16
+surrogate。主键、unique、外键、owner、tenant 与 membership 字段都会被拒绝。第一版还拒绝带任意
+secondary index、unique constraint 或 foreign key 的 source model，使 live review 可以要求它们完全不存在。
+adapter 只生成确定性的 migration plan、review manifest 和 SELECT-only query template，不生成 client
+config、DML/DDL runner、Credential、Apply hook 或 release-ready 声明；raw planner 与 SQL emitter 也不会
+从 Compiler public API 导出。
+
+查询模板只报告 **partial checklist，绝不等于 live evidence**：managed marker、主键精确列形状、forced
+RLS、identity `ALWAYS`、sequence 的 ownership/increment/cache/cycle/range/state visibility、
+primary-server 状态、target 的 OID/type-kind/typmod/generated shape、enum marker 与有序 labels、raw default
+expression、整表 write-hazard 计数、current/session role、`row_security`、`search_path`、object OID、
+high-water 汇总与一批 keyset pagination 预览。整表 hazard gate 会保守阻断所有 non-primary index、
+unique/exclusion 或 CHECK constraint、outbound foreign key、generated column 与 inheritance edge，避免在
+没有 trusted Inspector 时把 expression、partial 或 INCLUDE index metadata 误判成安全。主键检查有意使用
+稳定 marker 加有序列号，不再根据当前 table/field 名重算 constraint name，因此合法 P1 rename 不会造成
+永久误拦截。Receipt chain 总上限为 10,000，其中 index 0 专用于 high-water，所以最多只能有 9,999 个
+batch checkpoint 与 `batchSize * 9,999` 条 matched row。估算使用完整 cursor range，而不是只数仍满足 null
+predicate 的行，因为每个被扫描区间都必须推进 Receipt head。
+
+这个 backfill slice 同样仅供审查，并非 release-ready；manifest 会把 `catalogChecks.required` 与
+`observed: null` 分开。SELECT 可能调用 policy function，RLS 也可能隐藏行，因此模板本身既不能证明无
+副作用，也不能证明全量可见。未来 trusted Host 必须绑定固定 current/session role 与 search path，在数据库
+强制的 read-only transaction 中使用 `row_security=off` fail-closed 语义，并验证完整 ACL、role membership、
+policy、trigger、rule、function、enum/default 与 table-hazard inventory。capture 前还必须安装阻止新增 NULL
+的 write barrier 并取得已审查的 lock；每批与最终 postcondition 前都要重绑 live table/column/sequence OID
+与 catalog digest。live catalog 证据、转换为 `GENERATED ALWAYS`、cursor immutable/source
+append-monotonic 证明、sequence/cursor mutation authority、source-ledger/artifact/Provider authority 绑定、
+atomic database batch ledger、receipt-v2 authority、实际有界 mutation runner、退役 P1 unbounded backfill、
+dry run 与精确 postcondition 仍全部是 blocker。
+
+P2 仍**尚未**实现 exclusive atomic write authority、可执行的 Receipt 驱动 backfill、queue worker、Cron
+job、webhook endpoint 或 monitoring drain。剩余 Provider 工作继续按受限切片推进：trusted backfill
+Inspector 加 receipt-v2/database-ledger runner；带 idempotency/retry/DLQ 的 private queue 与 transactional
+outbox；签名 webhook intake；最后接入 drift 与 observability Receipt。后续 release-authority 切片必须
+移除或进一步约束 direct REST update，才能宣称 exclusive atomic write。对应当前 Supabase、PostgREST 与
+PostgreSQL 边界见
 [Realtime authorization](https://supabase.com/docs/guides/realtime/authorization)、
 [Database Functions](https://supabase.com/docs/guides/database/functions)、
 [Functions as RPC](https://docs.postgrest.org/en/stable/references/api/functions.html)、
 [Transactions](https://docs.postgrest.org/en/stable/references/transactions.html)、
+[Identity Columns](https://www.postgresql.org/docs/current/ddl-identity-columns.html)、
+[Sequences](https://www.postgresql.org/docs/current/sql-createsequence.html)、
+[Index Catalog](https://www.postgresql.org/docs/current/catalog-pg-index.html)、
+[Constraint Catalog](https://www.postgresql.org/docs/current/catalog-pg-constraint.html)、
 [Queues](https://supabase.com/docs/guides/queues)、[Cron](https://supabase.com/docs/guides/cron) 与
 [Database Webhooks](https://supabase.com/docs/guides/database/webhooks)。
 
@@ -243,7 +281,8 @@ private queue 与 transactional outbox；签名 webhook intake；最后接入 dr
 immutable 并只会 append-monotonic 增长。Source IR 只声明 cursor，不保存某个环境的 high-water；dev、
 staging、production 各自在 Host/CAS 绑定的 Receipt chain 中捕获自己的 high-water。该 scope 还会绑定
 Provider、authority、application、migration 与 batch size，进度不能倒退、越过 high-water 或在 terminal
-Receipt 后继续。data-change automation 的主键幂等也只允许 insert；update/delete 必须等后续
+Receipt 后继续。当前 Provider 审查包尚不会构造或持久化这条 authority chain。data-change automation
+的主键幂等也只允许 insert；update/delete 必须等后续
 Provider-issued immutable event identifier 才能开放。
 
 ## Manual / Live Gate
