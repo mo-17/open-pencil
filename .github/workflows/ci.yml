@@ -60,6 +60,9 @@ jobs:
       - name: Validate package exports
         run: bun run check:packages
 
+      - name: Smoke Compiler Backend public export
+        run: bun --filter @open-pencil/compiler smoke:dist
+
       - name: Detect unused dependencies and files
         run: bun run check:deps
 
