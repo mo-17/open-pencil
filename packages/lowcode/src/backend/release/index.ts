@@ -30,3 +30,6 @@ export {
   createBackendReleaseState,
   reduceBackendReleaseState
 } from './reducer'
+export * from './capability-evidence'
+export * from './operational-event'
+export * from './backfill-execution'

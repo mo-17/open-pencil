@@ -7,6 +7,8 @@ import { isBackendCredentialRef } from '../validate'
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$/u
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]{0,127}$/u
 const TIMESTAMP = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?Z$/u
+const EXACT_TIMESTAMP =
+  /^(\d{4}-\d{2}-\d{2})T((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d{1,9}))?Z$/u
 
 export const RELEASE_MAX_LIST_ITEMS = 256
 export const RELEASE_MAX_DESCRIPTION_LENGTH = 2_048
@@ -91,6 +93,31 @@ export function releaseTimestamp(value: string, path: string): string {
     throw new TypeError(`${path} must be a UTC RFC 3339 timestamp`)
   }
   return value
+}
+
+export function releaseTimestampInstantNanoseconds(value: string, path: string): bigint {
+  const timestamp = releaseTimestamp(value, path)
+  const match = EXACT_TIMESTAMP.exec(timestamp)
+  if (!match?.[1] || !match[2]) {
+    throw new TypeError(`${path} must be a UTC RFC 3339 timestamp`)
+  }
+  const epochMilliseconds = Date.parse(`${match[1]}T${match[2]}Z`)
+  const fractionalNanoseconds = BigInt((match[3] ?? '').padEnd(9, '0'))
+  return BigInt(epochMilliseconds / 1_000) * 1_000_000_000n + fractionalNanoseconds
+}
+
+/** Compare validated RFC 3339 UTC instants without truncating fractional nanoseconds. */
+export function compareReleaseTimestamps(
+  left: string,
+  right: string,
+  leftPath = '$.leftTimestamp',
+  rightPath = '$.rightTimestamp'
+): -1 | 0 | 1 {
+  const leftNanoseconds = releaseTimestampInstantNanoseconds(left, leftPath)
+  const rightNanoseconds = releaseTimestampInstantNanoseconds(right, rightPath)
+  if (leftNanoseconds < rightNanoseconds) return -1
+  if (leftNanoseconds > rightNanoseconds) return 1
+  return 0
 }
 
 export function releaseEnvironmentName(value: string, path: string): string {
