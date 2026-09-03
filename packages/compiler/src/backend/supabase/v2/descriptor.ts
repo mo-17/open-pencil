@@ -1,0 +1,63 @@
+import type {
+  BackendProviderDescriptorV2,
+  BackendProviderOutputKindV2
+} from '#compiler/backend/v2/contracts'
+
+import type { BackendCapabilityV2 } from '@open-pencil/lowcode/backend'
+
+import { SUPABASE_BACKEND_PROVIDER_ID, SUPABASE_BACKEND_PROVIDER_PLUGIN_ID } from '../descriptor'
+
+export const SUPABASE_BACKEND_PROVIDER_CONTRIBUTION_ID_V2 = 'supabase.backend.v2' as const
+export const SUPABASE_BACKEND_PROVIDER_ADAPTER_ID_V2 = 'open-pencil.backend.supabase.v2' as const
+export const SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2 = '2.0.0' as const
+
+/**
+ * Deliberately narrow first V2 slice. `migrations.schema` is present because a managed entity is
+ * an actual capability of Backend Application V2; this adapter emits only review artifacts and a
+ * prerequisite manifest, never schema Apply authority.
+ */
+export const SUPABASE_AUTH_CAPABILITIES_V2 = Object.freeze([
+  'auth.identity'
+] as const satisfies readonly BackendCapabilityV2[])
+
+export const SUPABASE_MIGRATION_CAPABILITIES_V2 = Object.freeze([
+  'migrations.schema'
+] as const satisfies readonly BackendCapabilityV2[])
+
+export const SUPABASE_SECURITY_POLICY_CAPABILITIES_V2 = Object.freeze([
+  'policy.row-level'
+] as const satisfies readonly BackendCapabilityV2[])
+
+export const SUPABASE_PRIVATE_REALTIME_CAPABILITIES_V2 = Object.freeze([
+  'events.data-change',
+  'realtime.subscribe'
+] as const satisfies readonly BackendCapabilityV2[])
+
+export const SUPABASE_BACKEND_PROVIDER_CAPABILITIES_V2 = Object.freeze([
+  'auth.identity',
+  'events.data-change',
+  'migrations.schema',
+  'policy.row-level',
+  'realtime.subscribe'
+] as const satisfies readonly BackendCapabilityV2[])
+
+export const SUPABASE_PRIVATE_REALTIME_OUTPUTS_V2 = Object.freeze([
+  'client-config',
+  'database-schema',
+  'deployment-manifest',
+  'migration-plan',
+  'security-policy'
+] as const satisfies readonly BackendProviderOutputKindV2[])
+
+/** Candidate descriptor only; it is intentionally absent from the built-in provider registry. */
+export const SUPABASE_BACKEND_PROVIDER_DESCRIPTOR_V2 = Object.freeze({
+  pluginId: SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
+  contributionId: SUPABASE_BACKEND_PROVIDER_CONTRIBUTION_ID_V2,
+  providerId: SUPABASE_BACKEND_PROVIDER_ID,
+  adapterId: SUPABASE_BACKEND_PROVIDER_ADAPTER_ID_V2,
+  adapterVersion: SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2,
+  contractVersion: 2,
+  supportedModelVersions: Object.freeze([2] as const),
+  capabilities: SUPABASE_BACKEND_PROVIDER_CAPABILITIES_V2,
+  outputs: SUPABASE_PRIVATE_REALTIME_OUTPUTS_V2
+}) satisfies BackendProviderDescriptorV2
