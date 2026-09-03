@@ -16,13 +16,15 @@ import {
   type SupabaseInspectionPrivilegeV1,
   type SupabaseInspectionRoleMembershipV1,
   type SupabaseInspectionRoleV1,
+  type SupabaseInspectionStorageBucketV1,
+  type SupabaseInspectionStoragePolicyV1,
   type SupabaseManagedMarkerKind,
   type SupabaseManagedMarkerV1
 } from '@open-pencil/compiler/backend'
 import { BACKEND_LIMITS } from '@open-pencil/lowcode/backend'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
-export const SUPABASE_PG_CATALOG_QUERY_VERSION = 'openpencil-pg-catalog-v5' as const
+export const SUPABASE_PG_CATALOG_QUERY_VERSION = 'openpencil-pg-catalog-v6' as const
 export const SUPABASE_PG_CATALOG_QUERY_IDS = [
   'provenance',
   'objects',
@@ -30,6 +32,8 @@ export const SUPABASE_PG_CATALOG_QUERY_IDS = [
   'constraints',
   'indexes',
   'policies',
+  'storage-buckets',
+  'storage-policies',
   'roles',
   'role-memberships',
   'privileges',
@@ -52,6 +56,8 @@ const QUERY_LIMITS = Object.freeze({
   constraints: BACKEND_LIMITS.maxMigrationOperations,
   indexes: BACKEND_LIMITS.maxMigrationOperations,
   policies: BACKEND_LIMITS.maxPolicies,
+  'storage-buckets': BACKEND_LIMITS.maxStorageBuckets,
+  'storage-policies': BACKEND_LIMITS.maxPolicies,
   roles: BACKEND_LIMITS.maxMigrationOperations,
   'role-memberships': BACKEND_LIMITS.maxMigrationOperations,
   privileges: BACKEND_LIMITS.maxMigrationOperations,
@@ -215,6 +221,7 @@ const CONSTRAINTS_SQL = `SELECT
   ), '[]'::jsonb) AS "targetFields",
   con.confdeltype::text AS "onDeleteCode",
   pg_catalog.pg_get_constraintdef(con.oid, true)::text AS "definition",
+  con.convalidated AS "validated",
   CASE WHEN pg_catalog.obj_description(con.oid, 'pg_constraint') LIKE 'openpencil:%'
     THEN pg_catalog.obj_description(con.oid, 'pg_constraint') ELSE NULL END AS "marker"
 FROM pg_catalog.pg_constraint AS con
@@ -244,6 +251,9 @@ const INDEXES_SQL = `SELECT
   ), '[]'::jsonb) AS "fields",
   pg_catalog.pg_get_expr(ind.indpred, ind.indrelid)::text AS "predicate",
   pg_catalog.pg_get_expr(ind.indexprs, ind.indrelid)::text AS "expressions",
+  pg_catalog.pg_get_indexdef(idx.oid)::text AS "definition",
+  ind.indisvalid AS "valid",
+  ind.indisready AS "ready",
   CASE WHEN pg_catalog.obj_description(idx.oid, 'pg_class') LIKE 'openpencil:%'
     THEN pg_catalog.obj_description(idx.oid, 'pg_class') ELSE NULL END AS "marker"
 FROM pg_catalog.pg_index AS ind
@@ -284,6 +294,45 @@ WHERE n.nspname = $1
 ORDER BY n.nspname, rel.relname, pol.polname, pol.oid
 LIMIT $2`
 
+const STORAGE_BUCKETS_SQL = `SELECT
+  bucket.id::text AS "bucketId",
+  bucket.name::text AS "bucketName",
+  bucket.public AS "public",
+  bucket.file_size_limit::text AS "fileSizeLimit",
+  pg_catalog.to_jsonb(bucket.allowed_mime_types) AS "allowedMimeTypes"
+FROM storage.buckets AS bucket
+WHERE $1 = 'public'
+ORDER BY bucket.id
+LIMIT $2`
+
+const STORAGE_POLICIES_SQL = `SELECT
+  'pg_policy'::regclass::oid::text AS "classOid",
+  pol.oid::text AS "objectOid",
+  0::integer AS "subId",
+  rel.oid::text AS "tableOid",
+  pol.polname::text AS "policyName",
+  pol.polpermissive AS "permissive",
+  CASE pol.polcmd WHEN '*' THEN 'all' WHEN 'r' THEN 'select' WHEN 'a' THEN 'insert'
+    WHEN 'w' THEN 'update' WHEN 'd' THEN 'delete' END::text AS "command",
+  COALESCE((SELECT jsonb_agg(CASE WHEN policy_role.role_oid = 0 THEN 'PUBLIC'
+      ELSE role.rolname END
+    ORDER BY CASE WHEN policy_role.role_oid = 0 THEN 'PUBLIC' ELSE role.rolname END)
+    FROM unnest(pol.polroles) AS policy_role(role_oid)
+    LEFT JOIN pg_catalog.pg_roles AS role ON role.oid = policy_role.role_oid
+  ), '[]'::jsonb) AS "roles",
+  pg_catalog.pg_get_expr(pol.polqual, pol.polrelid)::text AS "usingExpression",
+  pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid)::text AS "withCheckExpression",
+  CASE WHEN pg_catalog.obj_description(pol.oid, 'pg_policy') LIKE 'openpencil:%'
+    THEN pg_catalog.obj_description(pol.oid, 'pg_policy') ELSE NULL END AS "marker"
+FROM pg_catalog.pg_policy AS pol
+JOIN pg_catalog.pg_class AS rel ON rel.oid = pol.polrelid
+JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = rel.relnamespace
+WHERE $1 = 'public'
+  AND namespace.nspname = 'storage'
+  AND rel.relname = 'objects'
+ORDER BY pol.polname, pol.oid
+LIMIT $2`
+
 const ROLES_SQL = `SELECT
   role.oid::text AS "roleOid",
   role.rolname::text AS "roleName",
@@ -303,8 +352,8 @@ const ROLE_MEMBERSHIPS_SQL = `SELECT
   membership.grantor::text AS "grantorOid",
   grantor.rolname::text AS "grantorName",
   membership.admin_option AS "adminOption",
-  membership.inherit_option AS "inheritOption",
-  membership.set_option AS "setOption"
+  COALESCE((pg_catalog.to_jsonb(membership)->>'inherit_option')::boolean, true) AS "inheritOption",
+  COALESCE((pg_catalog.to_jsonb(membership)->>'set_option')::boolean, true) AS "setOption"
 FROM pg_catalog.pg_auth_members AS membership
 JOIN pg_catalog.pg_roles AS role ON role.oid = membership.roleid
 JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
@@ -389,6 +438,8 @@ const QUERY_SQL = Object.freeze({
   constraints: CONSTRAINTS_SQL,
   indexes: INDEXES_SQL,
   policies: POLICIES_SQL,
+  'storage-buckets': STORAGE_BUCKETS_SQL,
+  'storage-policies': STORAGE_POLICIES_SQL,
   roles: ROLES_SQL,
   'role-memberships': ROLE_MEMBERSHIPS_SQL,
   privileges: PRIVILEGES_SQL,
@@ -929,10 +980,10 @@ function parseProvenance(
     fail('supabase-pg-catalog-row-invalid', 'Supabase server version is invalid.', queryId)
   }
   const serverVersionNum = Number(source.serverVersionNum)
-  if (serverVersionNum < 160_000) {
+  if (serverVersionNum < 150_000) {
     fail(
       'supabase-pg-catalog-query-version-unsupported',
-      'Strict role-membership inspection requires PostgreSQL 16 or newer; membership options cannot be defaulted.',
+      'Strict Supabase catalog inspection requires PostgreSQL 15 or newer.',
       queryId
     )
   }
@@ -983,6 +1034,7 @@ function parseObjects(rows: readonly unknown[], schemaOid: string): ParsedObject
         name,
         management: managed ? 'managed' : 'external',
         ...(managed ? { openPencilId: managed.id } : {}),
+        address: { classOid, objectOid, subId: parsedSubId },
         rlsEnabled: boolean(source.rlsEnabled, queryId),
         rlsForced: boolean(source.rlsForced, queryId)
       }
@@ -994,11 +1046,18 @@ function parseObjects(rows: readonly unknown[], schemaOid: string): ParsedObject
         name,
         management: managed ? 'managed' : 'external',
         ...(managed ? { openPencilId: managed.id } : {}),
+        address: { classOid, objectOid, subId: parsedSubId },
         values: stringArray(source.enumValues, queryId)
       }
     } else if (source.kind === 'sequence') {
       marker(source.marker, null, queryId)
-      value = { kind: 'sequence', schema: 'public', name, management: 'external' }
+      value = {
+        kind: 'sequence',
+        schema: 'public',
+        name,
+        management: 'external',
+        address: { classOid, objectOid, subId: parsedSubId }
+      }
     } else if (source.kind === 'view') {
       marker(source.marker, null, queryId)
       value = {
@@ -1006,6 +1065,7 @@ function parseObjects(rows: readonly unknown[], schemaOid: string): ParsedObject
         schema: 'public',
         name,
         management: 'external',
+        address: { classOid, objectOid, subId: parsedSubId },
         securityInvoker: boolean(source.securityInvoker, queryId)
       }
     } else if (source.kind === 'function') {
@@ -1015,6 +1075,7 @@ function parseObjects(rows: readonly unknown[], schemaOid: string): ParsedObject
         schema: 'public',
         name,
         management: 'external',
+        address: { classOid, objectOid, subId: parsedSubId },
         securityDefiner: boolean(source.securityDefiner, queryId)
       }
     } else {
@@ -1122,6 +1183,12 @@ async function columnDefault(
   }
   if (identityKind) return { kind: 'generated', generator: 'identity' }
   if (expression === null) return null
+  if (
+    type === 'uuid' &&
+    (expression === 'gen_random_uuid()' || expression === 'pg_catalog.gen_random_uuid()')
+  ) {
+    return { kind: 'generated', generator: 'uuid' }
+  }
   if (expression === 'CURRENT_TIMESTAMP' && (type === 'date' || type === 'datetime')) {
     return { kind: 'generated', generator: 'created-at' }
   }
@@ -1248,6 +1315,15 @@ async function parseColumns(
       queryId
     )
     const parsedDefault = await columnDefault(source, type, queryId)
+    const defaultExpression = nullableString(source.defaultExpression, queryId)
+    const identityKind = nullableString(source.identityKind, queryId)
+    const generatedKind = nullableString(source.generatedKind, queryId)
+    if (identityKind === null || !['', 'a', 'd'].includes(identityKind)) {
+      fail('supabase-pg-catalog-row-invalid', 'Supabase identity metadata is absent.', queryId)
+    }
+    if (generatedKind === null || !['', 's'].includes(generatedKind)) {
+      fail('supabase-pg-catalog-row-invalid', 'Supabase generated metadata is absent.', queryId)
+    }
     if (managed && parsedDefault?.kind === 'unbound') {
       fail(
         'supabase-pg-catalog-row-invalid',
@@ -1265,7 +1341,15 @@ async function parseColumns(
       type,
       ...(type === 'enum' ? { enumName: typeName } : {}),
       nullable: boolean(source.nullable, queryId),
-      default: parsedDefault
+      default: parsedDefault,
+      address: { classOid, objectOid: tableOid, subId: parsedSubId },
+      typeOid,
+      defaultExpressionDigest:
+        defaultExpression === null
+          ? null
+          : await expressionDigest('column-default', defaultExpression),
+      identityKind: identityKind as '' | 'a' | 'd',
+      generatedKind: generatedKind as '' | 's'
     })
     addresses.push(addressKey(classOid, tableOid, parsedSubId))
   }
@@ -1309,6 +1393,13 @@ interface ParsedConstraintBase {
   readonly name: string
   readonly management: 'managed' | 'external'
   readonly openPencilId?: string
+  readonly address: {
+    readonly classOid: string
+    readonly objectOid: string
+    readonly subId: number
+  }
+  readonly definitionDigest: string
+  readonly validated: boolean
 }
 
 async function constraintValue(
@@ -1386,6 +1477,7 @@ async function parseConstraints(
         'targetFields',
         'onDeleteCode',
         'definition',
+        'validated',
         'marker'
       ],
       queryId
@@ -1431,7 +1523,18 @@ async function parseConstraints(
       tableName,
       name: identifier(source.constraintName, queryId),
       management: managed ? ('managed' as const) : ('external' as const),
-      ...(managed ? { openPencilId: managed.id } : {})
+      ...(managed ? { openPencilId: managed.id } : {}),
+      address: { classOid, objectOid, subId: parsedSubId },
+      definitionDigest: await expressionDigest(
+        'constraint-definition',
+        nullableString(source.definition, queryId) ??
+          fail(
+            'supabase-pg-catalog-row-invalid',
+            'Supabase constraint definition is absent.',
+            queryId
+          )
+      ),
+      validated: boolean(source.validated, queryId)
     }
     const fields = requiredStringArray(source.fields, queryId)
     values.push(await constraintValue(source, base, fields, objectsByOid, queryId))
@@ -1441,11 +1544,11 @@ async function parseConstraints(
   return values
 }
 
-function parseIndexes(
+async function parseIndexes(
   rows: readonly unknown[],
   schemaOid: string,
   objectsByOid: ReadonlyMap<string, SupabaseInspectionObjectV1>
-): readonly SupabaseInspectionIndexV1[] {
+): Promise<readonly SupabaseInspectionIndexV1[]> {
   const queryId = 'indexes'
   const values: SupabaseInspectionIndexV1[] = []
   const addresses: string[] = []
@@ -1464,6 +1567,9 @@ function parseIndexes(
         'fields',
         'predicate',
         'expressions',
+        'definition',
+        'valid',
+        'ready',
         'marker'
       ],
       queryId
@@ -1509,7 +1615,15 @@ function parseIndexes(
       name: identifier(source.indexName, queryId),
       management: managed ? 'managed' : 'external',
       ...(managed ? { openPencilId: managed.id } : {}),
-      fields
+      fields,
+      address: { classOid, objectOid, subId: parsedSubId },
+      definitionDigest: await expressionDigest(
+        'index-definition',
+        nullableString(source.definition, queryId) ??
+          fail('supabase-pg-catalog-row-invalid', 'Supabase index definition is absent.', queryId)
+      ),
+      valid: boolean(source.valid, queryId),
+      ready: boolean(source.ready, queryId)
     })
     addresses.push(addressKey(classOid, objectOid, parsedSubId))
   }
@@ -1581,6 +1695,148 @@ async function parsePolicies(
       tableName,
       name: policyName,
       command: source.command as SupabaseInspectionPolicyV1['command'],
+      mode: boolean(source.permissive, queryId) ? 'permissive' : 'restrictive',
+      roles,
+      source: managed ? 'openpencil' : 'unknown',
+      usingExpressionDigest: usingExpression
+        ? await expressionDigest('policy-using', usingExpression)
+        : null,
+      withCheckExpressionDigest: withCheckExpression
+        ? await expressionDigest('policy-check', withCheckExpression)
+        : null
+    })
+    addresses.push(addressKey(classOid, objectOid, parsedSubId))
+  }
+  validateUniqueAddresses(addresses, queryId)
+  return values
+}
+
+function storageText(value: unknown, queryId: SupabasePgCatalogQueryId): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 255 ||
+    /\p{Cc}/u.test(value)
+  ) {
+    return fail('supabase-pg-catalog-row-invalid', 'Supabase Storage text is invalid.', queryId)
+  }
+  return value
+}
+
+function parseStorageBuckets(
+  rows: readonly unknown[]
+): readonly SupabaseInspectionStorageBucketV1[] {
+  const queryId = 'storage-buckets'
+  return rows.map((row) => {
+    const source = exactRecord(
+      row,
+      ['bucketId', 'bucketName', 'public', 'fileSizeLimit', 'allowedMimeTypes'],
+      queryId
+    )
+    let fileSizeLimit: number | null = null
+    if (source.fileSizeLimit !== null) {
+      if (
+        typeof source.fileSizeLimit !== 'string' ||
+        !/^(?:0|[1-9][0-9]*)$/u.test(source.fileSizeLimit)
+      ) {
+        fail('supabase-pg-catalog-row-invalid', 'Supabase Storage size limit is invalid.', queryId)
+      }
+      fileSizeLimit = Number(source.fileSizeLimit)
+      if (!Number.isSafeInteger(fileSizeLimit)) {
+        fail(
+          'supabase-pg-catalog-row-invalid',
+          'Supabase Storage size limit is out of range.',
+          queryId
+        )
+      }
+    }
+    let allowedMimeTypes: readonly string[] | null = null
+    if (source.allowedMimeTypes !== null) {
+      if (
+        !Array.isArray(source.allowedMimeTypes) ||
+        source.allowedMimeTypes.length > BACKEND_LIMITS.maxStorageMimeTypes
+      ) {
+        fail(
+          'supabase-pg-catalog-row-invalid',
+          'Supabase Storage MIME inventory is invalid.',
+          queryId
+        )
+      }
+      allowedMimeTypes = source.allowedMimeTypes.map((entry) => storageText(entry, queryId))
+      if (new Set(allowedMimeTypes).size !== allowedMimeTypes.length) {
+        fail(
+          'supabase-pg-catalog-row-invalid',
+          'Supabase Storage MIME inventory is duplicated.',
+          queryId
+        )
+      }
+    }
+    return {
+      id: storageText(source.bucketId, queryId),
+      name: storageText(source.bucketName, queryId),
+      public: boolean(source.public, queryId),
+      fileSizeLimit,
+      allowedMimeTypes
+    }
+  })
+}
+
+async function parseStoragePolicies(
+  rows: readonly unknown[]
+): Promise<readonly SupabaseInspectionStoragePolicyV1[]> {
+  const queryId = 'storage-policies'
+  const addresses: string[] = []
+  const values: SupabaseInspectionStoragePolicyV1[] = []
+  for (const row of rows) {
+    const source = exactRecord(
+      row,
+      [
+        'classOid',
+        'objectOid',
+        'subId',
+        'tableOid',
+        'policyName',
+        'permissive',
+        'command',
+        'roles',
+        'usingExpression',
+        'withCheckExpression',
+        'marker'
+      ],
+      queryId
+    )
+    const classOid = oid(source.classOid, queryId)
+    const objectOid = oid(source.objectOid, queryId)
+    const parsedSubId = subId(source.subId, queryId)
+    oid(source.tableOid, queryId)
+    const policyName = identifier(source.policyName, queryId)
+    const managed = marker(source.marker, 'policy', queryId)
+    if (managed && managed.id !== policyName) {
+      fail(
+        'supabase-pg-catalog-managed-marker-invalid',
+        'Managed Storage policy marker must equal the addressed policy name.',
+        queryId
+      )
+    }
+    if (!['all', 'select', 'insert', 'update', 'delete'].includes(String(source.command))) {
+      fail(
+        'supabase-pg-catalog-row-invalid',
+        'Supabase Storage policy command is invalid.',
+        queryId
+      )
+    }
+    if (!Array.isArray(source.roles) || source.roles.length > 64) {
+      fail('supabase-pg-catalog-row-invalid', 'Supabase Storage policy roles are invalid.', queryId)
+    }
+    const roles = source.roles.map((role) =>
+      role === 'PUBLIC' ? 'PUBLIC' : identifier(role, queryId)
+    )
+    const usingExpression = nullableString(source.usingExpression, queryId)
+    const withCheckExpression = nullableString(source.withCheckExpression, queryId)
+    values.push({
+      address: { classOid, objectOid, subId: parsedSubId },
+      name: policyName,
+      command: source.command as SupabaseInspectionStoragePolicyV1['command'],
       mode: boolean(source.permissive, queryId) ? 'permissive' : 'restrictive',
       roles,
       source: managed ? 'openpencil' : 'unknown',
@@ -1953,7 +2209,11 @@ export async function inspectSupabasePgCatalog(
     provenance.schemaOid,
     objects.byOid
   )
-  const indexes = parseIndexes(readRows(results, 'indexes'), provenance.schemaOid, objects.byOid)
+  const indexes = await parseIndexes(
+    readRows(results, 'indexes'),
+    provenance.schemaOid,
+    objects.byOid
+  )
   let currentModel: CreateSupabaseInspectedMigrationSnapshotInputV1['currentModel']
   try {
     currentModel = deriveSupabaseManagedDataModel({
@@ -1991,6 +2251,8 @@ export async function inspectSupabasePgCatalog(
       functions: 'complete',
       rls: 'complete',
       policies: 'complete',
+      storageBuckets: 'complete',
+      storagePolicies: 'complete',
       roles: 'complete',
       roleMemberships: 'complete',
       privileges: 'complete'
@@ -2004,6 +2266,8 @@ export async function inspectSupabasePgCatalog(
       provenance.schemaOid,
       objects.byOid
     ),
+    storageBuckets: parseStorageBuckets(readRows(results, 'storage-buckets')),
+    storagePolicies: await parseStoragePolicies(readRows(results, 'storage-policies')),
     roles: roles.values,
     roleMemberships: parseRoleMemberships(readRows(results, 'role-memberships'), roles.namesByOid),
     privileges: parsePrivileges(

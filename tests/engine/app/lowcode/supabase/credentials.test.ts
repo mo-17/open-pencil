@@ -1,12 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL,
   SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL,
   SUPABASE_MANAGEMENT_PAT_CREDENTIAL,
+  clearSupabaseManagementDatabaseWritePat,
   clearSupabaseManagementPat,
+  resolveSupabaseManagementDatabaseWritePat,
   resolveSupabaseManagementGrantGeneration,
   resolveSupabaseManagementPat,
+  setSupabaseManagementDatabaseWritePat,
   setSupabaseManagementPat,
+  supabaseManagementDatabaseWritePatStatus,
   supabaseManagementPatStatus
 } from '@/app/lowcode/supabase/credentials'
 import { MemoryCredentialStore } from '@/app/settings/credentials/memory'
@@ -20,10 +25,35 @@ describe('Supabase management credentials', () => {
       'v1:supabase-management:default:personal-access-token'
     )
     expect(appCredentialRefs()).toContainEqual(SUPABASE_MANAGEMENT_PAT_CREDENTIAL)
+    expect(credentialKey(SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL)).toBe(
+      'v1:supabase-management:default:database-write-personal-access-token'
+    )
+    expect(appCredentialRefs()).toContainEqual(SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL)
     expect(credentialKey(SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL)).toBe(
       'v1:supabase-management:default:grant-generation'
     )
     expect(appCredentialRefs()).toContainEqual(SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL)
+  })
+
+  test('keeps database-write authority separate and rotates the shared grant', async () => {
+    const services = createCredentialServices(new MemoryCredentialStore())
+    await setSupabaseManagementPat('sbp_read_token', services)
+    const readGeneration = await resolveSupabaseManagementGrantGeneration(services)
+
+    await expect(supabaseManagementDatabaseWritePatStatus(services)).resolves.toBe('missing')
+    await setSupabaseManagementDatabaseWritePat('  sbp_write_token  ', services)
+    await expect(supabaseManagementDatabaseWritePatStatus(services)).resolves.toBe('configured')
+    await expect(resolveSupabaseManagementDatabaseWritePat(services)).resolves.toBe(
+      'sbp_write_token'
+    )
+    await expect(resolveSupabaseManagementPat(services)).resolves.toBe('sbp_read_token')
+    await expect(resolveSupabaseManagementGrantGeneration(services)).resolves.not.toBe(
+      readGeneration
+    )
+
+    await clearSupabaseManagementDatabaseWritePat(services)
+    await expect(resolveSupabaseManagementDatabaseWritePat(services)).resolves.toBeNull()
+    await expect(resolveSupabaseManagementPat(services)).resolves.toBe('sbp_read_token')
   })
 
   test('manages status separately from runtime resolution', async () => {
@@ -70,6 +100,57 @@ describe('Supabase management credentials', () => {
       'simulated PAT write failure'
     )
     await expect(resolveSupabaseManagementPat(base)).resolves.toBe('old-token')
+    await expect(resolveSupabaseManagementGrantGeneration(base)).resolves.toBeNull()
+  })
+
+  test('serializes read and write token rotation under one shared grant generation', async () => {
+    const base = createCredentialServices(new MemoryCredentialStore())
+    let markReadMutationStarted: () => void = () => undefined
+    let releaseReadMutation: () => void = () => undefined
+    const readMutationStarted = new Promise<void>((resolve) => {
+      markReadMutationStarted = resolve
+    })
+    const readMutationGate = new Promise<void>((resolve) => {
+      releaseReadMutation = resolve
+    })
+    let writeMutationStarted = false
+    let publishedGenerations = 0
+    const services = {
+      resolver: base.resolver,
+      manager: {
+        ...base.manager,
+        async set(reference: typeof SUPABASE_MANAGEMENT_PAT_CREDENTIAL, value: string) {
+          if (reference === SUPABASE_MANAGEMENT_PAT_CREDENTIAL) {
+            markReadMutationStarted()
+            await readMutationGate
+          }
+          if (reference === SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL) {
+            writeMutationStarted = true
+          }
+          if (
+            reference === SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL &&
+            !value.startsWith('pending:')
+          ) {
+            publishedGenerations += 1
+            if (publishedGenerations === 2) throw new Error('simulated second publish failure')
+          }
+          await base.manager.set(reference, value)
+        }
+      }
+    }
+
+    const readRotation = setSupabaseManagementPat('read-token', services)
+    await readMutationStarted
+    const writeRotation = setSupabaseManagementDatabaseWritePat('write-token', services)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(writeMutationStarted).toBe(false)
+
+    releaseReadMutation()
+    const results = await Promise.allSettled([readRotation, writeRotation])
+    expect(results.map(({ status }) => status)).toEqual(['fulfilled', 'rejected'])
+    await expect(resolveSupabaseManagementPat(base)).resolves.toBe('read-token')
+    await expect(resolveSupabaseManagementDatabaseWritePat(base)).resolves.toBe('write-token')
     await expect(resolveSupabaseManagementGrantGeneration(base)).resolves.toBeNull()
   })
 })

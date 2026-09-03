@@ -261,6 +261,7 @@ describe('Supabase fixed read-only pg_catalog inspector', () => {
         schema: 'public',
         name: 'safe_notes',
         management: 'external',
+        address: { classOid: '1259', objectOid: '16384', subId: 0 },
         securityInvoker: true
       }
     ])
@@ -315,11 +316,18 @@ describe('Supabase fixed read-only pg_catalog inspector', () => {
     )
   })
 
-  test('fails closed for PG15 membership evidence and malformed managed markers', async () => {
-    await expectDiagnostic(
-      inspect(transport({ result: readResult({ provenance: [provenanceRow('150000')] }) })),
-      'supabase-pg-catalog-query-version-unsupported'
+  test('supports PG15 membership evidence and rejects malformed managed markers', async () => {
+    const pg15 = await inspect(
+      transport({ result: readResult({ provenance: [provenanceRow('150000')] }) })
     )
+    expect(pg15.provenance.querySchemaVersion).toBe(SUPABASE_PG_CATALOG_QUERY_VERSION)
+    const membershipsSQL = SUPABASE_PG_CATALOG_FIXED_QUERIES.find(
+      ({ queryId }) => queryId === 'role-memberships'
+    )?.sql
+    expect(membershipsSQL).toContain("to_jsonb(membership)->>'inherit_option'")
+    expect(membershipsSQL).toContain("to_jsonb(membership)->>'set_option'")
+    expect(membershipsSQL).not.toContain('membership.inherit_option')
+    expect(membershipsSQL).not.toContain('membership.set_option')
 
     const markerSecret = `openpencil:${SECRET}`
     const object = {
@@ -400,6 +408,7 @@ describe('Supabase fixed read-only pg_catalog inspector', () => {
       targetFields: [],
       onDeleteCode: ' ',
       definition: 'PRIMARY KEY (id)',
+      validated: true,
       marker: formatSupabaseManagedMarker('primary-key', 'notes')
     }
     const snapshot = await inspect(
