@@ -5,6 +5,7 @@ import type { ActionDef, DocumentStateDef, StateDef, WorkflowDef } from '@open-p
 import { useI18n } from '@open-pencil/vue'
 
 import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
+import type { ServerWorkflowOption } from '@/app/lowcode/action/server-workflow-options'
 import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
 import ActionList from './ActionList.vue'
 
@@ -17,17 +18,26 @@ import ActionList from './ActionList.vue'
  * itself contain control-flow / result branches and even nested `callWorkflow`s.
  * Emits the whole new workflow on every edit; the panel owns persistence / undo.
  */
-const { workflow, workflows, pages, pageStates, docStates, motionOptions, analyticsConfigured } =
-  defineProps<{
-    workflow: WorkflowDef
-    /** The full workflow list, so a nested `callWorkflow` can target peers. */
-    workflows: readonly WorkflowDef[]
-    pages: readonly { id: string; name: string }[]
-    pageStates: readonly StateDef[]
-    docStates: readonly DocumentStateDef[]
-    motionOptions: MotionActionOptions
-    analyticsConfigured?: boolean
-  }>()
+const {
+  workflow,
+  workflows,
+  serverWorkflows,
+  pages,
+  pageStates,
+  docStates,
+  motionOptions,
+  analyticsConfigured
+} = defineProps<{
+  workflow: WorkflowDef
+  /** The full workflow list, so a nested `callWorkflow` can target peers. */
+  workflows: readonly WorkflowDef[]
+  serverWorkflows?: readonly ServerWorkflowOption[]
+  pages: readonly { id: string; name: string }[]
+  pageStates: readonly StateDef[]
+  docStates: readonly DocumentStateDef[]
+  motionOptions: MotionActionOptions
+  analyticsConfigured?: boolean
+}>()
 
 const emit = defineEmits<{
   'update:workflow': [WorkflowDef]
@@ -265,6 +275,7 @@ function setParamOptional(index: number, optional: boolean): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :server-workflows="serverWorkflows"
         :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         data-test-id="lowcode-workflow-action-add"

@@ -36,6 +36,7 @@ import InspectorWorkspaceBar from './properties/InspectorWorkspaceBar.vue'
 import LayoutGridSection from './properties/LayoutSection/LayoutGridSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
 import AnalyticsConfigPanel from './properties/Lowcode/AnalyticsConfigPanel.vue'
+import BackendEditorPanel from './properties/Lowcode/BackendEditorPanel.vue'
 import ComponentPropsPanel from './properties/Lowcode/ComponentPropsPanel.vue'
 import CustomCodePanel from './properties/Lowcode/CustomCodePanel.vue'
 import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
@@ -885,6 +886,7 @@ const emptyHasMatches = computed(
         v-bind="inspectorSectionState('lowcode-document-services')"
         :highlighted="sectionHighlighted('lowcode-document-services', 'Services & Workflows')"
       >
+        <BackendEditorPanel />
         <SupabaseConfigPanel />
         <AnalyticsConfigPanel />
         <CustomCodePanel />

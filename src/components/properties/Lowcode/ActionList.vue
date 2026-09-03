@@ -6,6 +6,7 @@ import { useI18n } from '@open-pencil/vue'
 
 import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
 import { makeAction } from '@/app/lowcode/action/factory'
+import type { ServerWorkflowOption } from '@/app/lowcode/action/server-workflow-options'
 // Mutually recursive with ActionRow (a list renders rows, a row renders nested
 // branch lists) — intentional cycle, resolved lazily at render time.
 // eslint-disable-next-line import/no-cycle
@@ -23,6 +24,7 @@ const {
   pageStates,
   docStates,
   workflows,
+  serverWorkflows,
   motionOptions,
   analyticsConfigured,
   actionPathPrefix
@@ -32,6 +34,8 @@ const {
   docStates: readonly DocumentStateDef[]
   /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
   workflows: readonly WorkflowDef[]
+  /** Backend application workflows an `invokeServerWorkflow` row can target. */
+  serverWorkflows?: readonly ServerWorkflowOption[]
   motionOptions: MotionActionOptions
   analyticsConfigured?: boolean
   actionPathPrefix?: string
@@ -84,6 +88,7 @@ function add(): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :server-workflows="serverWorkflows"
         :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path="actionPathPrefix ? `${actionPathPrefix}[${i}]` : `[${i}]`"

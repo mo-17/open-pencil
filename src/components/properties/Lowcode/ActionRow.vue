@@ -22,6 +22,7 @@ import {
   type ActionErrors
 } from '@/app/lowcode/action/errors'
 import { ACTION_KINDS, makeAction } from '@/app/lowcode/action/factory'
+import type { ServerWorkflowOption } from '@/app/lowcode/action/server-workflow-options'
 // ActionRow ↔ ActionList are mutually recursive components (a row renders nested
 // branch lists, a list renders rows) — the import cycle is intentional and
 // resolved lazily at render time, the canonical Vue recursive-component pattern.
@@ -38,17 +39,27 @@ import ActionList from './ActionList.vue'
  * Controlled: takes the action via `action`, emits the edited replacement via
  * `update:action` (or `remove`). The parent list owns array identity.
  */
-const { action, pageStates, docStates, workflows, motionOptions, analyticsConfigured, actionPath } =
-  defineProps<{
-    action: ActionDef
-    pageStates: readonly StateDef[]
-    docStates: readonly DocumentStateDef[]
-    /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
-    workflows: readonly WorkflowDef[]
-    motionOptions: MotionActionOptions
-    analyticsConfigured?: boolean
-    actionPath: string
-  }>()
+const {
+  action,
+  pageStates,
+  docStates,
+  workflows,
+  serverWorkflows = [],
+  motionOptions,
+  analyticsConfigured,
+  actionPath
+} = defineProps<{
+  action: ActionDef
+  pageStates: readonly StateDef[]
+  docStates: readonly DocumentStateDef[]
+  /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
+  workflows: readonly WorkflowDef[]
+  /** Authoritative Backend application workflows available to server calls. */
+  serverWorkflows?: readonly ServerWorkflowOption[]
+  motionOptions: MotionActionOptions
+  analyticsConfigured?: boolean
+  actionPath: string
+}>()
 
 const emit = defineEmits<{
   'update:action': [ActionDef]
@@ -354,6 +365,22 @@ function updateInvokeServerArg(index: number, next: Partial<InvokeServerArg>): v
         : entry
     )
   )
+}
+
+function changeServerWorkflow(id: string): void {
+  if (action.kind !== 'invokeServerWorkflow') return
+  const target = serverWorkflows.find((workflow) => workflow.id === id)
+  if (!target) {
+    patch({ workflowId: id, args: undefined } as Partial<ActionDef>)
+    return
+  }
+  const args = Object.fromEntries(
+    target.parameters.map((name) => [name, action.args?.[name] ?? ''])
+  )
+  patch({
+    workflowId: target.id,
+    args: target.parameters.length > 0 ? args : undefined
+  } as Partial<ActionDef>)
 }
 </script>
 
@@ -844,7 +871,25 @@ function updateInvokeServerArg(index: number, next: Partial<InvokeServerArg>): v
       </template>
 
       <template v-else-if="action.kind === 'invokeServerWorkflow'">
+        <select
+          v-if="serverWorkflows.length > 0"
+          :value="action.workflowId"
+          aria-label="Server workflow"
+          :aria-invalid="errors.workflow ? 'true' : undefined"
+          data-test-id="lowcode-action-server-workflow"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
+            errors.workflow ? 'border-red-500' : 'border-border'
+          ]"
+          @change="changeServerWorkflow(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">Select a server workflow…</option>
+          <option v-for="workflow in serverWorkflows" :key="workflow.id" :value="workflow.id">
+            {{ workflow.name }}
+          </option>
+        </select>
         <input
+          v-else
           :value="action.workflowId"
           aria-label="Server workflow id"
           :aria-invalid="errors.workflow ? 'true' : undefined"
@@ -1298,6 +1343,7 @@ function updateInvokeServerArg(index: number, next: Partial<InvokeServerArg>): v
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :server-workflows="serverWorkflows"
         :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/onSuccess`"
@@ -1310,6 +1356,7 @@ function updateInvokeServerArg(index: number, next: Partial<InvokeServerArg>): v
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :server-workflows="serverWorkflows"
         :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/onError`"
@@ -1331,6 +1378,7 @@ function updateInvokeServerArg(index: number, next: Partial<InvokeServerArg>): v
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :server-workflows="serverWorkflows"
         :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/consequent`"
@@ -1345,6 +1393,7 @@ function updateInvokeServerArg(index: number, next: Partial<InvokeServerArg>): v
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :server-workflows="serverWorkflows"
         :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/alternate`"

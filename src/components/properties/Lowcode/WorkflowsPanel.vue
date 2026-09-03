@@ -8,6 +8,7 @@ import Tip from '@/components/ui/Tip.vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { requestLowcodeActionFocus } from '@/app/lowcode/action/focus'
+import { collectServerWorkflowOptions } from '@/app/lowcode/action/server-workflow-options'
 import { collectMotionActionOptions } from '@/app/lowcode/motion-action-options'
 import {
   analyzeWorkflowGraph,
@@ -69,6 +70,8 @@ const docStates = useSceneComputed<DocumentStateDef[]>(() => {
   const root = editor.graph.getNode(editor.graph.rootId)
   return root?.lowcodeDocumentState ?? []
 })
+
+const serverWorkflows = useSceneComputed(() => collectServerWorkflowOptions(editor.graph))
 
 const analyticsConfigured = useSceneComputed<boolean>(() => {
   const config = editor.graph.getNode(editor.graph.rootId)?.lowcodeAnalyticsConfig
@@ -1456,6 +1459,7 @@ function containingPageId(node: SceneNode): string | undefined {
         :key="wf.id"
         :workflow="wf"
         :workflows="workflows"
+        :server-workflows="serverWorkflows"
         :pages="pages"
         :page-states="pageStatesFor(wf)"
         :doc-states="docStates"

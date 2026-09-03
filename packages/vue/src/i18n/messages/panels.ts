@@ -1222,7 +1222,8 @@ export const panelMessageDefaults = {
   lowcodeSupabaseBackendReviewing: 'Generating review...',
   lowcodeSupabaseBackendReviewReady: 'Review artifact ready',
   lowcodeSupabaseBackendReviewBlocked: 'Review artifact blocked',
-  lowcodeSupabaseBackendReviewApplyUnavailable: 'Not applied - live Apply is unavailable.',
+  lowcodeSupabaseBackendReviewApplyUnavailable:
+    'Not applied - this Review action never changes the database.',
   lowcodeSupabaseBackendReviewProject: 'Project authority',
   lowcodeSupabaseBackendReviewPlanDigest: 'Plan digest',
   lowcodeSupabaseBackendReviewSchemaDigest: 'Inspected schema digest',
@@ -1241,6 +1242,154 @@ export const panelMessageDefaults = {
   lowcodeSupabaseBackendReviewStale:
     'The document or Supabase configuration changed. Generate the review again.',
   lowcodeSupabaseBackendReviewFailed: 'Backend review failed closed before Apply.',
+  lowcodeSupabaseBackendStagedPlanTitle: 'Explicit staged migration plan',
+  lowcodeSupabaseBackendStagedPlanDescription:
+    'Optional. Import a validated, secret-free expand, backfill, or contract plan before review. Predecessor phases still require their exact successful Receipt.',
+  lowcodeSupabaseBackendStagedPlanChoose: 'Choose staged plan JSON',
+  lowcodeSupabaseBackendStagedPlanClear: 'Clear',
+  lowcodeSupabaseBackendStagedPlanFile: 'File',
+  lowcodeSupabaseBackendStagedPlanPhase: 'Phase',
+  lowcodeSupabaseBackendStagedPlanOperations: 'Operations',
+  lowcodeSupabaseBackendStagedPlanRisk: 'Highest risk',
+  lowcodeSupabaseBackendStagedPlanApprovalRequired:
+    'This destructive plan requires separate human approval before promotion.',
+  lowcodeSupabaseBackendStagedPlanErrorFile: 'Choose a staged migration plan JSON file.',
+  lowcodeSupabaseBackendStagedPlanErrorTooLarge:
+    'The staged migration plan exceeds the 1 MiB input limit.',
+  lowcodeSupabaseBackendStagedPlanErrorInvalid:
+    'The staged migration plan is invalid, unsafe, or does not match the inspected change.',
+  lowcodeSupabaseBackendStagingTitle: 'Staging Apply and Verify',
+  lowcodeSupabaseBackendStagingBadge: 'Staging only',
+  lowcodeSupabaseBackendStagingDescription:
+    'Apply only the reviewed, low-risk additive migration to the exact bound staging project, then inspect it again.',
+  lowcodeSupabaseBackendStagingProductionBlocked:
+    'Production release readiness remains false. This action cannot target production.',
+  lowcodeSupabaseBackendStagingRlsManual:
+    'Table-row JWT/RLS isolation still needs a separate User A / User B test. Storage isolation can be verified below with operation-scoped sessions.',
+  lowcodeSupabaseBackendStagingDesktopOnly:
+    'Staging Apply and Verify are available only in the desktop app.',
+  lowcodeSupabaseBackendStagingWriteCredential: 'Database-write personal access token',
+  lowcodeSupabaseBackendStagingWriteCredentialIndependent:
+    'This token must be different from the read-only Management API token.',
+  lowcodeSupabaseBackendStagingWriteCredentialPlaceholder:
+    'Paste a separate token with database_write access',
+  lowcodeSupabaseBackendStagingWriteCredentialConfiguredPlaceholder:
+    'Saved separately - paste to replace',
+  lowcodeSupabaseBackendStagingSaveWriteCredential: 'Save',
+  lowcodeSupabaseBackendStagingClearWriteCredential: 'Clear',
+  lowcodeSupabaseBackendStagingWriteCredentialLoading: 'Checking write credential storage...',
+  lowcodeSupabaseBackendStagingWriteCredentialConfigured: 'Separate database-write token saved.',
+  lowcodeSupabaseBackendStagingWriteCredentialMissing: 'No separate database-write token is saved.',
+  lowcodeSupabaseBackendStagingWriteCredentialLocked: 'Credential storage is locked.',
+  lowcodeSupabaseBackendStagingWriteCredentialUnavailable: 'Credential storage is unavailable.',
+  lowcodeSupabaseBackendStagingWriteCredentialError: 'Could not update the database-write token.',
+  lowcodeSupabaseBackendStagingWriteCredentialNotIndependent:
+    'The database-write token matches the read-only token. Save a different token.',
+  lowcodeSupabaseBackendStagingExpectedTarget: 'Reviewed target',
+  lowcodeSupabaseBackendStagingProjectConfirmation: 'Type the exact staging project ref',
+  lowcodeSupabaseBackendStagingIndependentConfirmation:
+    'I confirm this is an independent staging project and not production.',
+  lowcodeSupabaseBackendStagingBindTarget: 'Bind exact staging target',
+  lowcodeSupabaseBackendStagingClearTarget: 'Clear binding',
+  lowcodeSupabaseBackendStagingTargetBound: 'The exact reviewed staging target is bound.',
+  lowcodeSupabaseBackendStagingTargetMissing: 'No staging target is bound.',
+  lowcodeSupabaseBackendStagingTargetMismatch:
+    'The saved staging target does not match this review.',
+  lowcodeSupabaseBackendStagingTargetError: 'Could not read or update the staging target binding.',
+  lowcodeSupabaseBackendStagingApply: 'Apply reviewed migration to staging',
+  lowcodeSupabaseBackendStagingApplying: 'Applying and verifying...',
+  lowcodeSupabaseBackendStagingBindingError:
+    'Bind and reconfirm the exact independent staging target.',
+  lowcodeSupabaseBackendStagingCredentialError:
+    'Save the read and write Management API tokens again.',
+  lowcodeSupabaseBackendStagingProviderError:
+    'The declared Supabase Backend Provider is missing, unavailable, or changed.',
+  lowcodeSupabaseBackendStagingReviewStale:
+    'The review, document, Supabase configuration, or authority changed. Generate a new review.',
+  lowcodeSupabaseBackendStagingFailed: 'Staging Apply ended with a failure receipt.',
+  lowcodeSupabaseBackendStagingSucceeded: 'Staging Apply and catalog verification succeeded.',
+  lowcodeSupabaseBackendStagingBlocked: 'Staging verification completed with blocking gates.',
+  lowcodeSupabaseBackendStagingOutcomeUnknown:
+    'The request crossed the dispatch boundary, so the staging outcome is unknown.',
+  lowcodeSupabaseBackendStagingNoRetry:
+    'Do not retry. Reconcile this receipt and inspect the project manually first.',
+  lowcodeSupabaseBackendStagingReceiptId: 'Receipt ID',
+  lowcodeSupabaseBackendStagingVerifiedAt: 'Verified at',
+  lowcodeSupabaseBackendStagingNotVerified: 'not verified',
+  lowcodeSupabaseBackendStagingFailure: 'Failure',
+  lowcodeSupabaseBackendStagingVerificationGates: 'Verification gates',
+  lowcodeSupabaseBackendStagingGatePassed: 'passed',
+  lowcodeSupabaseBackendStagingGateUnknown: 'unknown',
+  lowcodeSupabaseBackendStagingGateFailed: 'failed',
+  lowcodeSupabaseBackendCapabilityTitle: 'Staging backend capabilities',
+  lowcodeSupabaseBackendCapabilityDescription:
+    'First prove the reviewed schema is applied, then deploy the bounded Edge runtime, inspect required secret names, and run live Storage isolation probes.',
+  lowcodeSupabaseBackendCapabilityTransientNotice:
+    'User JWTs are operation-scoped, cleared from the form before dispatch, and never saved in the document or credential vault.',
+  lowcodeSupabaseBackendCapabilityEdgeToken: 'Authenticated Edge health-check access token',
+  lowcodeSupabaseBackendCapabilityUserAId: 'Storage User A ID',
+  lowcodeSupabaseBackendCapabilityUserAToken: 'Storage User A access token',
+  lowcodeSupabaseBackendCapabilityUserBId: 'Storage User B ID',
+  lowcodeSupabaseBackendCapabilityUserBToken: 'Storage User B access token',
+  lowcodeSupabaseBackendCapabilityTenantPartitions: 'Tenant partitions (optional JSON)',
+  lowcodeSupabaseBackendCapabilityTenantPlaceholder:
+    '{"bucket/rule":{"allowedPartition":"tenant-a","deniedPartition":"tenant-b"}}',
+  lowcodeSupabaseBackendCapabilityVerify: 'Deploy and verify staging capabilities',
+  lowcodeSupabaseBackendCapabilityVerifying: 'Deploying and verifying…',
+  lowcodeSupabaseBackendCapabilityTenantInvalid: 'Tenant partition JSON is invalid.',
+  lowcodeSupabaseBackendCapabilitySchemaNotApplied:
+    'The staging schema does not match this review. Apply the source migration first.',
+  lowcodeSupabaseBackendCapabilityAuthMissing:
+    'Enter the operation-scoped authenticated sessions required by the declared Edge or Storage capability.',
+  lowcodeSupabaseBackendCapabilityCancelled: 'Staging capability verification was cancelled.',
+  lowcodeSupabaseBackendCapabilityFailed: 'Staging capability verification failed closed.',
+  lowcodeSupabaseBackendCapabilityReceiptDigest: 'Receipt digest',
+  lowcodeSupabaseBackendCapabilityEdgeVersion: 'Deployed Edge version',
+  lowcodeSupabaseBackendCapabilityStorageReceipts: 'Storage isolation receipts',
+  lowcodeSupabaseSourceMigrationTitle: 'Source migration',
+  lowcodeSupabaseSourceMigrationSourceOnly: 'Source only',
+  lowcodeSupabaseSourceMigrationDescription:
+    'Export a review-bound Supabase migration ZIP for source control. Omit ledgers only for the first export; later exports must import both ledgers from the previous ZIP to avoid forking history. This never applies or deploys it.',
+  lowcodeSupabaseSourceMigrationNameLabel: 'Migration name',
+  lowcodeSupabaseSourceMigrationNamePlaceholder: 'add-project-tasks',
+  lowcodeSupabaseSourceMigrationInspectedLedger: 'Inspected ledger (optional)',
+  lowcodeSupabaseSourceMigrationPromotionLedger: 'Promotion ledger (optional)',
+  lowcodeSupabaseSourceMigrationInspectedFileLabel: 'Inspected',
+  lowcodeSupabaseSourceMigrationPromotionFileLabel: 'Promotion',
+  lowcodeSupabaseSourceMigrationExport: 'Export source migration ZIP',
+  lowcodeSupabaseSourceMigrationExporting: 'Exporting…',
+  lowcodeSupabaseSourceMigrationSaved: 'Source migration ZIP saved.',
+  lowcodeSupabaseSourceMigrationResultFile: 'File',
+  lowcodeSupabaseSourceMigrationResultPath: 'Migration',
+  lowcodeSupabaseSourceMigrationResultDigest: 'Manifest digest',
+  lowcodeSupabaseSourceMigrationResultPromotion: 'Promotion ledger',
+  lowcodeSupabaseSourceMigrationPromotionIncluded: 'included',
+  lowcodeSupabaseSourceMigrationPromotionNotGenerated:
+    'not generated for an ordinary additive migration',
+  lowcodeSupabaseSourceMigrationPostSaveHint:
+    'Review the ZIP, extract it at the repository root, then commit and promote it through the source-controlled migration workflow.',
+  lowcodeSupabaseSourceMigrationErrorInvalidFile: 'Select a JSON migration ledger file.',
+  lowcodeSupabaseSourceMigrationErrorInvalidLedger:
+    'The migration ledger is invalid, belongs to another project, was tampered with, or exceeds 1 MiB.',
+  lowcodeSupabaseSourceMigrationErrorInvalidName:
+    'Use lowercase letters, numbers, and hyphens for the migration name.',
+  lowcodeSupabaseSourceMigrationErrorReviewNotReady:
+    'The current Backend review still has blockers.',
+  lowcodeSupabaseSourceMigrationErrorReviewStale:
+    'The document, Supabase configuration, or review changed. Review it again.',
+  lowcodeSupabaseSourceMigrationErrorProvider:
+    'The declared Supabase Backend Provider is unavailable or changed.',
+  lowcodeSupabaseSourceMigrationErrorDesktopOnly:
+    'Source migration ZIP export is available only in the desktop app.',
+  lowcodeSupabaseSourceMigrationErrorOutcomeUnknown:
+    'The save outcome is unknown. Inspect the selected destination before reviewing again; do not retry blindly.',
+  lowcodeSupabaseSourceMigrationErrorCancelled: 'Export cancelled.',
+  lowcodeSupabaseSourceMigrationErrorAlreadyRunning:
+    'A source migration export is already running.',
+  lowcodeSupabaseSourceMigrationErrorBundleInvalid:
+    'The Compiler migration bundle failed its integrity checks.',
+  lowcodeSupabaseSourceMigrationErrorFailed:
+    'Source migration export failed without confirming a complete file.',
   lowcodeActionSupabaseQuery: 'Supabase query',
   lowcodeActionSupabaseMutation: 'Supabase mutation',
   lowcodeActionSupabaseOperation: 'Operation',

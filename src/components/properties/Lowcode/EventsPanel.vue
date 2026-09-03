@@ -8,6 +8,7 @@ import { useSectionUI } from '@/components/ui/section'
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import { clearLowcodeActionFocus, peekLowcodeActionFocus } from '@/app/lowcode/action/focus'
+import { collectServerWorkflowOptions } from '@/app/lowcode/action/server-workflow-options'
 import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
 import { collectMotionActionOptions } from '@/app/lowcode/motion-action-options'
 
@@ -61,6 +62,8 @@ const docWorkflows = useSceneComputed<WorkflowDef[]>(() => {
   const root = editor.graph.getNode(editor.graph.rootId)
   return root?.lowcodeWorkflows ?? []
 })
+
+const serverWorkflows = useSceneComputed(() => collectServerWorkflowOptions(editor.graph))
 
 const analyticsConfigured = useSceneComputed<boolean>(() => {
   const config = editor.graph.getNode(editor.graph.rootId)?.lowcodeAnalyticsConfig
@@ -144,6 +147,7 @@ watch(
       :page-states="pageStates"
       :doc-states="docStates"
       :workflows="docWorkflows"
+      :server-workflows="serverWorkflows"
       :motion-options="motionOptions"
       :analytics-configured="analyticsConfigured"
       :action-path-prefix="eventName ?? ''"
