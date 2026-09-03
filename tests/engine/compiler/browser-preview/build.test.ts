@@ -93,6 +93,26 @@ describe('compiler browser preview bundler', () => {
     expect(() => structuredClone(result)).not.toThrow()
   })
 
+  test('pins both current and legacy Supabase env aliases to design-time fallbacks', async () => {
+    const files = compileBrowserPreviewFixture()
+    files.set(
+      'src/App.tsx',
+      `export default function App() {
+  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+    import.meta.env.VITE_SUPABASE_ANON_KEY ??
+    'browser-preview-public-fallback'
+  return <div>{key}</div>
+}
+`
+    )
+    const result = await buildBrowserPreview(await browserPreviewInput(files))
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    expect(result.html).toContain('browser-preview-public-fallback')
+    expect(result.html).not.toContain('VITE_SUPABASE_PUBLISHABLE_KEY')
+    expect(result.html).not.toContain('VITE_SUPABASE_ANON_KEY')
+  })
+
   test('returns an explicit unsupported result for Vue', async () => {
     const files = compileBrowserPreviewFixture()
     const result = await buildBrowserPreview(await browserPreviewInput(files, { target: 'vue' }))

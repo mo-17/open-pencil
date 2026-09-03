@@ -199,6 +199,7 @@ async function bundleReactProject(
     define: {
       'import.meta.env.BASE_URL': JSON.stringify('/'),
       'import.meta.env.VITE_SUPABASE_URL': 'undefined',
+      'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': 'undefined',
       'import.meta.env.VITE_SUPABASE_ANON_KEY': 'undefined',
       'import.meta.env.VITE_SUPABASE_SCHEMA': 'undefined',
       'process.env.NODE_ENV': JSON.stringify('production')
