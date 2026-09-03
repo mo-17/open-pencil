@@ -87,6 +87,7 @@ describe('backend provider declaration contract v2', () => {
     expect(parsed.capabilities).toContain('observability.metrics')
     expect(parsed.capabilities).toContain('observability.traces')
     expect(parsed.capabilities).toContain('drift.detect')
+    expect(parsed.capabilities).toContain('events.data-change')
     expect(parsed.capabilities).toContain('audit.events')
   })
 

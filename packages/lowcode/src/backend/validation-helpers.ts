@@ -10,6 +10,10 @@ export interface BackendUnknownRecord {
   readonly [key: string]: unknown
 }
 
+interface BackendRecordSnapshot {
+  [key: string]: unknown
+}
+
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/u
 const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u
 const SAFE_ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]{0,127}$/u
@@ -228,9 +232,38 @@ export function record(
     diagnostic(context, 'backend-object-required', path, 'Value must be an object.')
     return undefined
   }
-  const source = value as BackendUnknownRecord
+  const source = value as object
+  const snapshot = Object.create(null) as BackendRecordSnapshot
   const allowedKeys = new Set(allowed)
-  for (const key of Object.keys(source)) {
+  for (const key of Reflect.ownKeys(source)) {
+    if (typeof key !== 'string') {
+      diagnostic(
+        context,
+        'backend-object-property',
+        path,
+        'Object symbol properties are not allowed.'
+      )
+      continue
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(source, key)
+    if (!descriptor?.enumerable) {
+      diagnostic(
+        context,
+        'backend-object-property',
+        `${path}.${key}`,
+        'Object properties must be enumerable data properties.'
+      )
+      continue
+    }
+    if (UNSAFE_KEYS.has(key)) {
+      diagnostic(context, 'backend-unsafe-key', path, 'Unsafe object key is not allowed.')
+      continue
+    }
+    if (!Object.hasOwn(descriptor, 'value')) {
+      diagnostic(context, 'backend-accessor', `${path}.${key}`, 'Accessors are not allowed.')
+      continue
+    }
+    snapshot[key] = descriptor.value
     if (!allowedKeys.has(key)) {
       diagnostic(
         context,
@@ -241,11 +274,11 @@ export function record(
     }
   }
   for (const key of required) {
-    if (!(key in source)) {
+    if (!Object.hasOwn(snapshot, key)) {
       diagnostic(context, 'backend-required-field', `${path}.${key}`, 'Required field is missing.')
     }
   }
-  return source
+  return snapshot
 }
 
 export function array(

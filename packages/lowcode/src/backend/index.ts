@@ -1,5 +1,7 @@
 export { BACKEND_LIMITS } from './limits'
 export * from './types'
+export * from './application-v2-types'
+export * from './application-v2'
 export {
   BACKEND_CAPABILITIES,
   isBackendCredentialRef,

@@ -42,6 +42,7 @@ export const PLUGIN_BACKEND_PROVIDER_CAPABILITIES_V2 = Object.freeze([
   'data.read',
   'data.write',
   'drift.detect',
+  'events.data-change',
   'jobs.schedule',
   'migrations.backfill',
   'migrations.data',
