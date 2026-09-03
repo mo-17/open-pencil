@@ -12,6 +12,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { derivePagePaths, type PagePathInfo } from '@open-pencil/compiler'
+import { IS_TAURI } from '@open-pencil/core/constants'
 import type { IRTree } from '@open-pencil/compiler/ir/types'
 
 import { useCollabInjected } from '@/app/collab/use'
@@ -49,6 +50,7 @@ import {
   type PreviewEditorPayload,
   type PreviewInboundMessage
 } from './iframe/messages'
+import { consumePreviewWebdriverAutomationRequest } from './iframe/webdriver-storage'
 import MicrofrontendExportControls from './MicrofrontendExportControls.vue'
 import {
   compilerPreviewPopoutBusy,
@@ -166,6 +168,7 @@ const compilerPreviewPopoutReady = computed(
 )
 
 const iframeKey = ref(0)
+const webdriverAutomationIframeKey = ref<number | null>(null)
 const iframeEl = ref<HTMLIFrameElement | null>(null)
 let browserMessagePort: MessagePort | null = null
 let browserMessagePortChannel: string | null = null
@@ -297,8 +300,10 @@ let suppressOutboundNavigate = false
 
 function reload(): void {
   resetMotionDebugForReload()
+  const nextIframeKey = iframeKey.value + 1
+  webdriverAutomationIframeKey.value = consumeWebdriverAutomationForReload() ? nextIframeKey : null
+  iframeKey.value = nextIframeKey
   forceRecompile()
-  iframeKey.value++
 }
 
 function recompilePreviewOptions(): void {
@@ -325,14 +330,29 @@ watch(activeFrame, (frame) => {
   }
 })
 const url = computed(() => activeFrame.value?.src ?? null)
+
+function consumeWebdriverAutomationForReload(): boolean {
+  if (!(import.meta.env.DEV && IS_TAURI && hostKind.value === 'tauri-sidecar')) return false
+  return consumePreviewWebdriverAutomationRequest()
+}
+
 const frameName = computed(() => {
   const frame = activeFrame.value
   if (!frame) return undefined
   try {
+    // The one-shot storage decision is latched to one iframe generation by
+    // reload(). Keep this computed pure so later status/frame updates cannot
+    // consume the flag again and silently revoke the boot capability.
+    const automation =
+      import.meta.env.DEV &&
+      IS_TAURI &&
+      hostKind.value === 'tauri-sidecar' &&
+      webdriverAutomationIframeKey.value === iframeKey.value
     return serializePreviewFrameName(
       frame.channelId,
       window.location.origin,
-      hostKind.value === 'browser-worker' ? 'message-port' : 'window'
+      hostKind.value === 'browser-worker' ? 'message-port' : 'window',
+      automation
     )
   } catch {
     return undefined
@@ -717,7 +737,10 @@ function handlePreviewContentMessage(
   if (data.type === 'select') handlePreviewSelectMessage(data)
   else if (data.type === 'navigate') handlePreviewNavigateMessage(data)
   else if (data.type === 'docState') handlePreviewDocStateMessage(data)
-  else handleMotionDebugMessage(data)
+  else if (data.type === 'motionDebug') handleMotionDebugMessage(data)
+  // A WebDriver caller installs its own correlated listener before posting
+  // an automation request. The application listener validates but deliberately
+  // does not retain or surface these test-only results.
 }
 
 function installBrowserMessagePort(port: MessagePort, channelId: string): void {

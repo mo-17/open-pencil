@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/max-lines -- One browser lifecycle exercises the complete cross-origin bridge. */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
 import { chromium, expect as playwrightExpect, type Browser, type Page } from '@playwright/test'
@@ -24,6 +25,9 @@ interface PreviewMessage {
   error?: unknown
   observedOrigin?: unknown
   observedSource?: unknown
+  requestId?: unknown
+  ok?: unknown
+  text?: unknown
 }
 
 interface BridgeFixture {
@@ -135,7 +139,8 @@ async function loadBridge(page: Page, target: WebTarget): Promise<LoadedBridge> 
         protocol: context.protocol,
         channel: context.channel,
         parentOrigin: context.parentOrigin,
-        transport: 'window'
+        transport: 'window',
+        automation: true
       })
       frame.src = context.url
       body.prepend(frame)
@@ -367,7 +372,11 @@ async function exerciseInboundValidation(loaded: LoadedBridge): Promise<void> {
 }
 
 async function exerciseFrameContextOriginPolicy(loaded: LoadedBridge): Promise<void> {
-  async function mountContextFrame(id: string, parentOrigin: string): Promise<void> {
+  async function mountContextFrame(
+    id: string,
+    parentOrigin: string,
+    automation?: boolean
+  ): Promise<void> {
     await loaded.page.locator('body').evaluate(
       (body, value) => {
         const frame = document.createElement('iframe')
@@ -376,7 +385,8 @@ async function exerciseFrameContextOriginPolicy(loaded: LoadedBridge): Promise<v
           protocol: value.protocol,
           channel: value.channel,
           parentOrigin: value.parentOrigin,
-          transport: 'window'
+          transport: 'window',
+          ...(value.automation === undefined ? {} : { automation: value.automation })
         })
         frame.src = value.url
         body.appendChild(frame)
@@ -386,6 +396,7 @@ async function exerciseFrameContextOriginPolicy(loaded: LoadedBridge): Promise<v
         protocol: CHANNEL_PROTOCOL,
         channel: loaded.channel,
         parentOrigin,
+        automation,
         url: loaded.server.url
       }
     )
@@ -403,6 +414,48 @@ async function exerciseFrameContextOriginPolicy(loaded: LoadedBridge): Promise<v
   await playwrightExpect(
     loaded.page.frameLocator('#untrusted-context-preview').locator('[data-op-preview-overlay]')
   ).toHaveCount(0)
+
+  await mountContextFrame('disabled-automation-preview', loaded.parentOrigin, false)
+  const disabledFrame = loaded.page.frameLocator('#disabled-automation-preview')
+  await disabledFrame.locator('body').evaluate((body) => {
+    const button = document.createElement('button')
+    button.dataset.testid = 'disabled-automation-button'
+    button.dataset.clicks = '0'
+    button.textContent = 'Disabled automation'
+    button.addEventListener('click', () => {
+      button.dataset.clicks = String(Number(button.dataset.clicks ?? '0') + 1)
+    })
+    body.append(button)
+  })
+  await clearMessages(loaded.page)
+  await loaded.page.locator('#disabled-automation-preview').evaluate(
+    (element, context) => {
+      ;(element as HTMLIFrameElement).contentWindow?.postMessage(
+        {
+          source: context.source,
+          channel: context.channel,
+          type: 'automation',
+          requestId: 'webdriver_disabled_gate_0001',
+          action: 'click',
+          by: 'testId',
+          locator: 'disabled-automation-button'
+        },
+        context.targetOrigin
+      )
+    },
+    { channel: loaded.channel, source: EDITOR_SOURCE, targetOrigin: loaded.previewOrigin }
+  )
+  await loaded.page.waitForTimeout(100)
+  expect(
+    (await messages(loaded.page)).some(
+      (message) =>
+        message.type === 'automationResult' && message.requestId === 'webdriver_disabled_gate_0001'
+    )
+  ).toBe(false)
+  await playwrightExpect(disabledFrame.getByTestId('disabled-automation-button')).toHaveAttribute(
+    'data-clicks',
+    '0'
+  )
 }
 
 async function exerciseMotionDebugValidation(loaded: LoadedBridge): Promise<void> {
@@ -471,6 +524,222 @@ async function exerciseMotionDebugValidation(loaded: LoadedBridge): Promise<void
   expect((thrown.error as string).length).toBe(65_536)
 }
 
+async function exerciseWebDriverAutomation(loaded: LoadedBridge): Promise<void> {
+  const frame = loaded.page.frameLocator('#preview')
+  await frame.locator('body').evaluate((body) => {
+    const region = document.createElement('section')
+    region.dataset.testid = 'webdriver-crud-region'
+    const marker = document.createElement('p')
+    marker.dataset.testid = 'webdriver-marker'
+    marker.setAttribute('data-op-automation-readable', '')
+    const sensitiveMarker = document.createElement('span')
+    sensitiveMarker.setAttribute('data-op-sensitive', '')
+    sensitiveMarker.textContent = 'nested-sensitive-value'
+    const nestedControl = document.createElement('button')
+    nestedControl.textContent = 'nested-control-value'
+    marker.append('Visible task marker', sensitiveMarker, nestedControl)
+    const ordinary = document.createElement('p')
+    ordinary.dataset.nodeId = 'webdriver-unmarked-node'
+    ordinary.textContent = 'ordinary-unmarked-value'
+    const editable = document.createElement('div')
+    editable.dataset.testid = 'webdriver-contenteditable'
+    editable.contentEditable = 'true'
+    editable.textContent = 'contenteditable-value'
+    const textbox = document.createElement('div')
+    textbox.dataset.testid = 'webdriver-role-textbox'
+    textbox.setAttribute('role', 'group TEXTBOX')
+    textbox.textContent = 'role-textbox-value'
+    const title = document.createElement('input')
+    title.dataset.testid = 'webdriver-task-title'
+    title.placeholder = 'Task title'
+    const password = document.createElement('input')
+    password.dataset.testid = 'webdriver-password'
+    password.type = 'password'
+    password.placeholder = 'Staging password'
+    password.value = 'top-secret-value'
+    const email = document.createElement('input')
+    email.dataset.testid = 'webdriver-email'
+    email.type = 'email'
+    email.placeholder = 'Staging email'
+    const button = document.createElement('button')
+    button.dataset.testid = 'webdriver-create'
+    button.textContent = 'Create fixture'
+    button.addEventListener('click', () => {
+      const count = Number(region.dataset.clicks ?? '0') + 1
+      region.dataset.clicks = String(count)
+      marker.replaceChildren(
+        document.createTextNode(`Created fixture ${count}`),
+        sensitiveMarker,
+        nestedControl
+      )
+    })
+    region.append(marker, ordinary, editable, textbox, title, password, email, button)
+    body.append(region)
+  })
+
+  async function request(payload: Record<string, unknown>): Promise<PreviewMessage> {
+    await clearMessages(loaded.page)
+    await postToPreview(loaded, payload)
+    await playwrightExpect
+      .poll(async () =>
+        (await messages(loaded.page)).some(
+          (message) =>
+            message.type === 'automationResult' && message.requestId === payload.requestId
+        )
+      )
+      .toBe(true)
+    const result = (await messages(loaded.page)).find(
+      (message) => message.type === 'automationResult' && message.requestId === payload.requestId
+    )
+    if (!result) throw new Error('Missing WebDriver automation result')
+    expect(result.observedOrigin).toBe(loaded.previewOrigin)
+    expect(result.observedSource).toBe(true)
+    return result
+  }
+
+  expect(
+    await request({
+      type: 'automation',
+      requestId: 'webdriver_set_title_0001',
+      action: 'set',
+      by: 'testId',
+      locator: 'webdriver-task-title',
+      value: 'OpenPencil staging task'
+    })
+  ).toMatchObject({ ok: true, status: 'set', text: null, error: null })
+  await playwrightExpect(frame.getByTestId('webdriver-task-title')).toHaveValue(
+    'OpenPencil staging task'
+  )
+
+  const clickRequest = {
+    type: 'automation',
+    requestId: 'webdriver_click_create_0001',
+    action: 'click',
+    by: 'buttonText',
+    locator: 'Create fixture'
+  }
+  expect(await request(clickRequest)).toMatchObject({
+    ok: true,
+    status: 'clicked',
+    text: null,
+    error: null
+  })
+  await playwrightExpect(frame.getByTestId('webdriver-marker')).toContainText('Created fixture 1')
+  expect(await request(clickRequest)).toMatchObject({
+    ok: false,
+    status: 'rejected',
+    text: null,
+    error: 'invalid-request'
+  })
+  await playwrightExpect(frame.getByTestId('webdriver-marker')).toContainText('Created fixture 1')
+
+  expect(
+    await request({
+      type: 'automation',
+      requestId: 'webdriver_wait_created_0001',
+      action: 'wait',
+      by: 'testId',
+      locator: 'webdriver-marker',
+      text: 'Created fixture 1',
+      timeoutMs: 1_000
+    })
+  ).toMatchObject({ ok: true, status: 'matched', text: null, error: null })
+
+  const snapshot = await request({
+    type: 'automation',
+    requestId: 'webdriver_read_marker_0001',
+    action: 'read-safe-text',
+    by: 'testId',
+    locator: 'webdriver-marker'
+  })
+  expect(snapshot).toMatchObject({ ok: true, status: 'read', error: null })
+  expect(snapshot.text).toContain('Created fixture 1')
+  expect(snapshot.text).not.toContain('nested-sensitive-value')
+  expect(snapshot.text).not.toContain('nested-control-value')
+  expect(Object.keys(snapshot)).not.toContain('value')
+  expect(Object.keys(snapshot)).not.toContain('headers')
+  expect(Object.keys(snapshot)).not.toContain('body')
+
+  expect(
+    await request({
+      type: 'automation',
+      requestId: 'webdriver_forbid_body_wait_0001',
+      action: 'wait',
+      by: 'body',
+      locator: '',
+      text: 'top-secret-value',
+      timeoutMs: 1_000
+    })
+  ).toMatchObject({
+    ok: false,
+    status: 'rejected',
+    text: null,
+    error: 'forbidden-target'
+  })
+
+  for (const target of [
+    { requestId: 'webdriver_forbid_body_read_0001', by: 'body', locator: '' },
+    {
+      requestId: 'webdriver_forbid_contenteditable_0001',
+      by: 'testId',
+      locator: 'webdriver-contenteditable'
+    },
+    {
+      requestId: 'webdriver_forbid_role_textbox_0001',
+      by: 'testId',
+      locator: 'webdriver-role-textbox'
+    },
+    {
+      requestId: 'webdriver_forbid_native_control_0001',
+      by: 'testId',
+      locator: 'webdriver-create'
+    },
+    {
+      requestId: 'webdriver_forbid_unmarked_node_0001',
+      by: 'testId',
+      locator: 'webdriver-unmarked-node'
+    }
+  ]) {
+    expect(
+      await request({
+        type: 'automation',
+        requestId: target.requestId,
+        action: 'read-safe-text',
+        by: target.by,
+        locator: target.locator
+      })
+    ).toMatchObject({
+      ok: false,
+      status: 'rejected',
+      text: null,
+      error: 'forbidden-target'
+    })
+  }
+
+  for (const target of [
+    { requestId: 'webdriver_forbid_password_0001', locator: 'Staging password' },
+    { requestId: 'webdriver_forbid_email_0001', locator: 'Staging email' }
+  ]) {
+    expect(
+      await request({
+        type: 'automation',
+        requestId: target.requestId,
+        action: 'set',
+        by: 'placeholder',
+        locator: target.locator,
+        value: 'must-not-be-written'
+      })
+    ).toMatchObject({
+      ok: false,
+      status: 'rejected',
+      text: null,
+      error: 'forbidden-target'
+    })
+  }
+  await playwrightExpect(frame.getByTestId('webdriver-password')).toHaveValue('top-secret-value')
+  await playwrightExpect(frame.getByTestId('webdriver-email')).toHaveValue('')
+}
+
 describe('generated web preview bridge in a real parent/iframe channel', () => {
   let browser: Browser | null = null
 
@@ -491,6 +760,7 @@ describe('generated web preview bridge in a real parent/iframe channel', () => {
         loaded = await loadBridge(page, target)
         await exerciseInboundValidation(loaded)
         await exerciseSharedBridge(target, loaded)
+        await exerciseWebDriverAutomation(loaded)
         if (target === 'react') {
           await exerciseMotionDebugValidation(loaded)
           await exerciseFrameContextOriginPolicy(loaded)

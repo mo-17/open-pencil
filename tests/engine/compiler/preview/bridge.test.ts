@@ -17,15 +17,16 @@ describe('preview-bridge — channel sources (regression of Phase 0 §5.4)', () 
   test('boots from an exact iframe.name capability context', () => {
     expect(bridge).toContain("const CHANNEL_PROTOCOL = 'open-pencil-preview-v2'")
     expect(bridge).toContain('const candidate: unknown = JSON.parse(window.name)')
-    expect(bridge).toContain(
-      "hasExactKeys(candidate, ['protocol', 'channel', 'parentOrigin', 'transport'])"
-    )
+    expect(bridge).toContain('const legacyContext = hasExactKeys(candidate, [')
+    expect(bridge).toContain('const automationContext = hasExactKeys(candidate, [')
     expect(bridge).toContain('candidate.channel.length < 16')
     expect(bridge).toContain(
       "const canonicalTauriOrigin = candidate.parentOrigin === 'tauri://localhost'"
     )
     expect(bridge).toContain('!canonicalTauriOrigin &&')
     expect(bridge).toContain('parsed.origin !== candidate.parentOrigin')
+    expect(bridge).toContain("'transport',\n      'automation'")
+    expect(bridge).toContain("typeof candidate.automation !== 'boolean'")
   })
 
   test('authenticates source window, origin, channel, and exact payload shape', () => {
@@ -51,6 +52,75 @@ describe('preview-bridge — channel sources (regression of Phase 0 §5.4)', () 
   test('still mounts at most once per window via the __openPencilPreviewBridge guard', () => {
     expect(bridge).toContain('window.__openPencilPreviewBridge')
     expect(bridge).toContain('!window.__openPencilPreviewBridge')
+  })
+})
+
+describe('preview-bridge — gated WebDriver automation', () => {
+  test('requires the explicit window-transport loopback or Tauri capability', () => {
+    expect(bridge).toContain('if (!import.meta.env.DEV) return false')
+    expect(bridge).toContain("context.transport !== 'window'")
+    expect(bridge).toContain("context.parentOrigin === 'tauri://localhost'")
+    expect(bridge).toContain("parsed.protocol === 'http:'")
+    expect(bridge).toContain("parsed.hostname === 'localhost'")
+    expect(bridge).toContain("parsed.hostname === '127.0.0.1'")
+    expect(bridge).toContain("parsed.port !== ''")
+    expect(bridge).toContain('if (!allowsAutomationContext(frameContext)) return')
+  })
+
+  test('accepts only exact bounded locators and deduplicated request ids', () => {
+    expect(bridge).toContain(
+      "type AutomationLocator = 'testId' | 'buttonText' | 'placeholder' | 'body'"
+    )
+    expect(bridge).toContain('const MAX_AUTOMATION_INPUT_LENGTH = 4096')
+    expect(bridge).toContain('const MAX_AUTOMATION_TIMEOUT_MS = 15000')
+    expect(bridge).toContain('const MAX_AUTOMATION_SCAN_ELEMENTS = 4096')
+    expect(bridge).toContain('if (automationRequestIds.has(requestId)) return false')
+    expect(bridge).toContain("'[data-testid],[data-test-id],[data-node-id]'")
+    expect(bridge).not.toContain('document.querySelector(data.locator)')
+  })
+
+  test('rejects credential fields and emits no value, html, attribute, or network data', () => {
+    expect(bridge).toContain("type === 'password'")
+    expect(bridge).toContain("type === 'email'")
+    expect(bridge).toContain("type === 'file'")
+    expect(bridge).toContain("type === 'hidden'")
+    expect(bridge).toContain('password|passcode|secret|token|one[- ]?time|otp|verification code')
+    expect(bridge).toContain(
+      "postToParent({ type: 'automationResult', requestId, ok, status, text, error })"
+    )
+    expect(bridge).not.toContain("type: 'automationResult', requestId, value")
+    expect(bridge).not.toContain("type: 'automationResult', requestId, html")
+    expect(bridge).not.toContain("type: 'automationResult', requestId, headers")
+    expect(bridge).not.toContain("type: 'automationResult', requestId, body")
+  })
+
+  test('rejects body reads and body substring waits before extracting text', () => {
+    expect(bridge).toContain("if (data.text !== null && data.by !== 'testId')")
+    expect(bridge).toContain(
+      "if (by !== 'testId' || element === document.body || element === document.documentElement)"
+    )
+  })
+
+  test('authorizes readable text only through an exact test id or explicit marker', () => {
+    expect(bridge).toContain("element.getAttribute('data-testid') === locator")
+    expect(bridge).toContain("element.getAttribute('data-test-id') === locator")
+    expect(bridge).toContain("element.hasAttribute('data-op-automation-readable')")
+    expect(bridge).toContain('if (!exactTestId && !element.hasAttribute')
+    expect(bridge).toContain('!readableAutomationTextTarget(result.element, data.by, data.locator)')
+  })
+
+  test('safe text excludes editable, textbox, native-control, and sensitive subtrees', () => {
+    expect(bridge).toContain(
+      "'a[href],button,input,textarea,select,option,optgroup,datalist,fieldset,legend,label,output,progress,meter,details,summary'"
+    )
+    expect(bridge).toContain(
+      `'script,style,noscript,template,[contenteditable]:not([contenteditable="false"]),[role~="textbox" i],[data-op-sensitive]'`
+    )
+    expect(bridge).toContain('parent.isContentEditable')
+    expect(bridge).toContain('parent.closest(AUTOMATION_PRIVATE_TEXT_SELECTOR)')
+    expect(bridge).toContain('element.closest(AUTOMATION_NATIVE_CONTROL_SELECTOR) === null')
+    expect(bridge).toContain('MAX_AUTOMATION_TEXT_LENGTH')
+    expect(bridge).toContain('safeVisibleText(result.element)')
   })
 })
 

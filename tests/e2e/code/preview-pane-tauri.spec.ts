@@ -1,6 +1,8 @@
 /* oxlint-disable eslint/max-lines -- Preview toolbar workflows share one stateful Tauri IPC fixture. */
 import type { Page } from '@playwright/test'
 
+import { PREVIEW_WEBDRIVER_AUTOMATION_STORAGE_KEY } from '@/app/lowcode/preview-pane/iframe/messages'
+
 import { expect, test } from '#tests/e2e/fixtures'
 
 type TauriInternals = {
@@ -329,6 +331,7 @@ async function installPreviewIframeRoute(page: Page): Promise<void> {
 <html>
   <body>Preview theme bridge fixture</body>
   <script>
+    document.documentElement.dataset.bootFrameName = window.name
     window.addEventListener('message', (event) => {
       const data = event.data
       if (data?.source !== 'op-lowcode-editor' || data.type !== 'theme') return
@@ -459,6 +462,91 @@ test('Tauri preview waits for the initial VFS acknowledgement before mounting', 
   await expect(previewFrame).toBeVisible()
   await expect(pane).toContainText('http://127.0.0.1:60140/')
   await expect(page.getByTestId('lowcode-preview-popout-toggle')).toBeEnabled()
+  await page.close()
+})
+
+test('Tauri preview latches WebDriver automation to exactly one acknowledged reload', async ({
+  browser
+}) => {
+  const page = await browser.newPage()
+  await installTauriPreviewMock(page, { autoUpdateAck: false })
+  await installPreviewIframeRoute(page)
+  await page.setViewportSize({ width: 2200, height: 900 })
+  await page.goto('/')
+  const newDocument = page.getByTestId('home-new-document')
+  if (await newDocument.isVisible()) await newDocument.click()
+  await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
+  await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
+  await page.getByRole('tab', { name: 'Code', exact: true }).click()
+
+  const previewFrame = page.locator('iframe[aria-label="lowcode preview"]')
+  const reloadPreview = async () => {
+    const inlineReload = page.getByTestId('lowcode-preview-reload')
+    if (await inlineReload.isVisible()) {
+      await inlineReload.click()
+      return
+    }
+    await page.getByRole('button', { name: '↻', exact: true }).click()
+  }
+  const pendingAcknowledgements = () =>
+    page.evaluate(() => (window as TauriWindow).__OP_PREVIEW_PENDING_ACKS__?.length ?? 0)
+  const frameAutomationEnabled = async () => {
+    const name = await previewFrame.getAttribute('name')
+    if (!name) return false
+    const context: unknown = JSON.parse(name)
+    return Object.getOwnPropertyDescriptor(context, 'automation')?.value === true
+  }
+  const bootAutomationEnabled = async () => {
+    const name = await page
+      .frameLocator('iframe[aria-label="lowcode preview"]')
+      .locator('html')
+      .getAttribute('data-boot-frame-name')
+    if (!name) return false
+    const context: unknown = JSON.parse(name)
+    return Object.getOwnPropertyDescriptor(context, 'automation')?.value === true
+  }
+  const settleReactiveFrameUpdate = () =>
+    page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        })
+    )
+
+  await expect.poll(pendingAcknowledgements).toBeGreaterThan(0)
+  await page.evaluate(() => (window as TauriWindow).__OP_PREVIEW_RELEASE_ACKS__?.())
+  await expect(previewFrame).toBeVisible()
+
+  await page.evaluate((key) => {
+    // oxlint-disable-next-line open-pencil/no-direct-storage-access -- WebDriver sets this explicit one-shot test capability through the browser boundary.
+    sessionStorage.setItem(key, '1')
+  }, PREVIEW_WEBDRIVER_AUTOMATION_STORAGE_KEY)
+  await reloadPreview()
+  await expect.poll(frameAutomationEnabled).toBe(true)
+  await expect.poll(bootAutomationEnabled).toBe(true)
+  await expect
+    .poll(() =>
+      page.evaluate((key) => {
+        // oxlint-disable-next-line open-pencil/no-direct-storage-access -- The test verifies that the one-shot browser capability was consumed.
+        return sessionStorage.getItem(key)
+      }, PREVIEW_WEBDRIVER_AUTOMATION_STORAGE_KEY)
+    )
+    .toBeNull()
+
+  await expect.poll(pendingAcknowledgements).toBeGreaterThan(0)
+  await page.evaluate(() => (window as TauriWindow).__OP_PREVIEW_RELEASE_ACKS__?.())
+  await settleReactiveFrameUpdate()
+  await expect.poll(frameAutomationEnabled).toBe(true)
+  await expect.poll(bootAutomationEnabled).toBe(true)
+
+  await reloadPreview()
+  await expect.poll(frameAutomationEnabled).toBe(false)
+  await expect.poll(bootAutomationEnabled).toBe(false)
+  await expect.poll(pendingAcknowledgements).toBeGreaterThan(0)
+  await page.evaluate(() => (window as TauriWindow).__OP_PREVIEW_RELEASE_ACKS__?.())
+  await settleReactiveFrameUpdate()
+  await expect.poll(frameAutomationEnabled).toBe(false)
+  await expect.poll(bootAutomationEnabled).toBe(false)
   await page.close()
 })
 

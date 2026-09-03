@@ -27,11 +27,22 @@ describe('preview iframe message protocol', () => {
       parentOrigin: 'https://editor.example',
       transport: 'message-port'
     })
-    expect(JSON.parse(serializePreviewFrameName(CHANNEL, 'tauri://localhost'))).toEqual({
+    expect(
+      JSON.parse(serializePreviewFrameName(CHANNEL, 'tauri://localhost', 'window', false))
+    ).toEqual({
       protocol: PREVIEW_FRAME_PROTOCOL,
       channel: CHANNEL,
       parentOrigin: 'tauri://localhost',
       transport: 'window'
+    })
+    expect(
+      JSON.parse(serializePreviewFrameName(CHANNEL, 'http://localhost:1420', 'window', true))
+    ).toEqual({
+      protocol: PREVIEW_FRAME_PROTOCOL,
+      channel: CHANNEL,
+      parentOrigin: 'http://localhost:1420',
+      transport: 'window',
+      automation: true
     })
     expect(() => serializePreviewFrameName('short', 'https://editor.example')).toThrow(
       'Invalid preview channel id'
@@ -42,6 +53,9 @@ describe('preview iframe message protocol', () => {
     expect(() => serializePreviewFrameName(CHANNEL, 'https://user:secret@example.com')).toThrow(
       'Invalid preview parent origin'
     )
+    expect(() =>
+      serializePreviewFrameName(CHANNEL, 'http://localhost:1420', 'window', 'yes' as never)
+    ).toThrow('Invalid preview automation capability')
   })
 
   test('accepts only the correlated channel and exact payload shape', () => {
@@ -261,5 +275,88 @@ describe('preview iframe message protocol', () => {
       createPreviewEditorMessage(CHANNEL, { type: 'motionDebug', enabled: true, extra: true })
     ).toBeNull()
     expect(createPreviewEditorMessage(CHANNEL, { type: 'theme', theme: 'system' })).toBeNull()
+  })
+
+  test('creates only bounded WebDriver automation requests and safe correlated results', () => {
+    const requestId = 'webdriver_request_0001'
+    expect(
+      createPreviewEditorMessage(CHANNEL, {
+        type: 'automation',
+        requestId,
+        action: 'set',
+        by: 'placeholder',
+        locator: 'Task title',
+        value: 'Bounded test task'
+      })
+    ).toEqual({
+      source: 'op-lowcode-editor',
+      channel: CHANNEL,
+      type: 'automation',
+      requestId,
+      action: 'set',
+      by: 'placeholder',
+      locator: 'Task title',
+      value: 'Bounded test task'
+    })
+    expect(
+      createPreviewEditorMessage(CHANNEL, {
+        type: 'automation',
+        requestId,
+        action: 'set',
+        by: 'selector',
+        locator: 'input',
+        value: 'no arbitrary selectors'
+      })
+    ).toBeNull()
+    expect(
+      createPreviewEditorMessage(CHANNEL, {
+        type: 'automation',
+        requestId,
+        action: 'set',
+        by: 'placeholder',
+        locator: 'Task title',
+        value: 'x'.repeat(PREVIEW_MESSAGE_LIMITS.automationInputLength + 1)
+      })
+    ).toBeNull()
+
+    const result = {
+      source: 'op-lowcode-preview',
+      channel: CHANNEL,
+      type: 'automationResult',
+      requestId,
+      ok: true,
+      status: 'read',
+      text: 'Task created',
+      error: null
+    }
+    expect(parsePreviewInboundMessage(result, CHANNEL)).toEqual(result)
+    expect(parsePreviewInboundMessage({ ...result, value: 'must-not-leak' }, CHANNEL)).toBeNull()
+    expect(parsePreviewInboundMessage({ ...result, headers: {} }, CHANNEL)).toBeNull()
+    expect(parsePreviewInboundMessage({ ...result, body: 'must-not-leak' }, CHANNEL)).toBeNull()
+    expect(parsePreviewInboundMessage({ ...result, text: 'x'.repeat(8_193) }, CHANNEL)).toBeNull()
+    expect(
+      parsePreviewInboundMessage(
+        { ...result, ok: true, status: 'timeout', text: null, error: null },
+        CHANNEL
+      )
+    ).toBeNull()
+    expect(
+      parsePreviewInboundMessage(
+        { ...result, ok: false, status: 'clicked', text: null, error: 'not-found' },
+        CHANNEL
+      )
+    ).toBeNull()
+    expect(
+      parsePreviewInboundMessage(
+        { ...result, ok: true, status: 'clicked', text: null, error: null },
+        CHANNEL
+      )
+    ).toEqual({ ...result, ok: true, status: 'clicked', text: null, error: null })
+    expect(
+      parsePreviewInboundMessage(
+        { ...result, ok: false, status: 'timeout', text: null, error: 'not-found' },
+        CHANNEL
+      )
+    ).toEqual({ ...result, ok: false, status: 'timeout', text: null, error: 'not-found' })
   })
 })

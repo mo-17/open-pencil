@@ -25,15 +25,25 @@ const __opChannel = ${channel}
 const __opParentOrigin = (() => {
   try {
     const context = JSON.parse(window.name)
+    const contextKeys = context && typeof context === 'object' ? Object.keys(context) : []
+    const legacyContext =
+      contextKeys.length === 4 &&
+      ['protocol', 'channel', 'parentOrigin', 'transport'].every((key) => contextKeys.includes(key))
+    const automationContext =
+      contextKeys.length === 5 &&
+      ['protocol', 'channel', 'parentOrigin', 'transport', 'automation'].every((key) =>
+        contextKeys.includes(key)
+      )
     if (
       !context ||
       typeof context !== 'object' ||
       Array.isArray(context) ||
-      Object.keys(context).length !== 4 ||
+      (!legacyContext && !automationContext) ||
       context.protocol !== 'open-pencil-preview-v2' ||
       context.channel !== __opChannel ||
       typeof context.parentOrigin !== 'string' ||
-      (context.transport !== 'window' && context.transport !== 'message-port')
+      (context.transport !== 'window' && context.transport !== 'message-port') ||
+      (automationContext && typeof context.automation !== 'boolean')
     ) return null
     const parsed = new URL(context.parentOrigin)
     const canonicalTauriOrigin = context.parentOrigin === 'tauri://localhost'

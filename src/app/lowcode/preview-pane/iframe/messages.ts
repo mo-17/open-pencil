@@ -1,5 +1,7 @@
+/* oxlint-disable eslint/max-lines -- Preview protocol parsers intentionally share one exact-shape boundary. */
 export const PREVIEW_FRAME_PROTOCOL = 'open-pencil-preview-v2'
 export type PreviewFrameTransport = 'window' | 'message-port'
+export const PREVIEW_WEBDRIVER_AUTOMATION_STORAGE_KEY = 'open-pencil:webdriver-preview-automation'
 
 export const PREVIEW_MESSAGE_LIMITS = Object.freeze({
   channelLength: 128,
@@ -11,6 +13,11 @@ export const PREVIEW_MESSAGE_LIMITS = Object.freeze({
   motionEntries: 256,
   motionTimingFields: 64,
   runtimeErrorLength: 2_048,
+  automationRequestIdLength: 128,
+  automationLocatorLength: 512,
+  automationInputLength: 4_096,
+  automationTextLength: 8_192,
+  automationTimeoutMs: 15_000,
   messageBytes: 256 * 1024
 })
 
@@ -61,6 +68,36 @@ interface PreviewRuntimeErrorMessage {
   message: string
 }
 
+export type PreviewAutomationLocator = 'testId' | 'buttonText' | 'placeholder' | 'body'
+export type PreviewAutomationAction = 'click' | 'set' | 'wait' | 'read-safe-text'
+export type PreviewAutomationStatus =
+  | 'clicked'
+  | 'set'
+  | 'matched'
+  | 'read'
+  | 'rejected'
+  | 'timeout'
+export type PreviewAutomationError =
+  | 'ambiguous-target'
+  | 'forbidden-target'
+  | 'invalid-request'
+  | 'not-found'
+  | 'not-visible'
+  | 'operation-failed'
+  | 'scan-limit'
+  | null
+
+interface PreviewAutomationResultMessage {
+  source: typeof PREVIEW_SOURCE
+  channel: string
+  type: 'automationResult'
+  requestId: string
+  ok: boolean
+  status: PreviewAutomationStatus
+  text: string | null
+  error: PreviewAutomationError
+}
+
 export type PreviewInboundMessage =
   | PreviewSelectMessage
   | PreviewNavigateMessage
@@ -68,6 +105,40 @@ export type PreviewInboundMessage =
   | PreviewMotionDebugMessage
   | PreviewReadyMessage
   | PreviewRuntimeErrorMessage
+  | PreviewAutomationResultMessage
+
+export type PreviewAutomationPayload =
+  | {
+      type: 'automation'
+      requestId: string
+      action: 'click'
+      by: Exclude<PreviewAutomationLocator, 'body' | 'placeholder'>
+      locator: string
+    }
+  | {
+      type: 'automation'
+      requestId: string
+      action: 'set'
+      by: Extract<PreviewAutomationLocator, 'testId' | 'placeholder'>
+      locator: string
+      value: string
+    }
+  | {
+      type: 'automation'
+      requestId: string
+      action: 'wait'
+      by: PreviewAutomationLocator
+      locator: string
+      text: string | null
+      timeoutMs: number
+    }
+  | {
+      type: 'automation'
+      requestId: string
+      action: 'read-safe-text'
+      by: PreviewAutomationLocator
+      locator: string
+    }
 
 export type PreviewEditorPayload =
   | { type: 'select'; id: string | null }
@@ -75,6 +146,7 @@ export type PreviewEditorPayload =
   | { type: 'theme'; theme: 'light' | 'dark' }
   | { type: 'motionDebug'; enabled: boolean }
   | { type: 'docState'; name: string; value: unknown }
+  | PreviewAutomationPayload
 
 export type PreviewEditorMessage = PreviewEditorPayload & {
   source: typeof EDITOR_SOURCE
@@ -86,6 +158,7 @@ interface FrameBootContext {
   channel: string
   parentOrigin: string
   transport: PreviewFrameTransport
+  automation?: true
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -163,25 +236,55 @@ function hasASCIIControl(value: string): boolean {
 export function serializePreviewFrameName(
   channel: string,
   parentOrigin: string,
-  transport?: PreviewFrameTransport
+  transport?: PreviewFrameTransport,
+  automation?: boolean
 ): string
 export function serializePreviewFrameName(
   channel: string,
   parentOrigin: string,
-  transport: unknown = 'window'
+  transport: unknown = 'window',
+  automation: unknown = false
 ): string {
   if (!isPreviewChannelId(channel)) throw new Error('Invalid preview channel id')
   if (!isCanonicalOrigin(parentOrigin)) throw new Error('Invalid preview parent origin')
   if (transport !== 'window' && transport !== 'message-port') {
     throw new Error('Invalid preview frame transport')
   }
+  if (typeof automation !== 'boolean') throw new Error('Invalid preview automation capability')
   const context: FrameBootContext = {
     protocol: PREVIEW_FRAME_PROTOCOL,
     channel,
     parentOrigin,
-    transport
+    transport,
+    ...(automation ? { automation: true } : {})
   }
   return JSON.stringify(context)
+}
+
+function isAutomationRequestId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= 16 &&
+    value.length <= PREVIEW_MESSAGE_LIMITS.automationRequestIdLength &&
+    /^[A-Za-z0-9_-]+$/.test(value)
+  )
+}
+
+function isAutomationLocator(value: unknown): value is PreviewAutomationLocator {
+  return value === 'testId' || value === 'buttonText' || value === 'placeholder' || value === 'body'
+}
+
+function isBoundedAutomationText(
+  value: unknown,
+  maximum: number,
+  allowEmpty = false
+): value is string {
+  return (
+    typeof value === 'string' &&
+    (allowEmpty || value.length > 0) &&
+    value.length <= maximum &&
+    !hasASCIIControl(value)
+  )
 }
 
 function isRoute(value: unknown): value is string {
@@ -418,6 +521,89 @@ function parseRuntimeErrorMessage(
   return { source: PREVIEW_SOURCE, channel, type: 'runtimeError', message: data.message }
 }
 
+function isAutomationStatus(value: unknown): value is PreviewAutomationStatus {
+  return (
+    value === 'clicked' ||
+    value === 'set' ||
+    value === 'matched' ||
+    value === 'read' ||
+    value === 'rejected' ||
+    value === 'timeout'
+  )
+}
+
+function isAutomationError(value: unknown): value is PreviewAutomationError {
+  return (
+    value === null ||
+    value === 'ambiguous-target' ||
+    value === 'forbidden-target' ||
+    value === 'invalid-request' ||
+    value === 'not-found' ||
+    value === 'not-visible' ||
+    value === 'operation-failed' ||
+    value === 'scan-limit'
+  )
+}
+
+const SUCCESSFUL_AUTOMATION_STATUSES = new Set<PreviewAutomationStatus>([
+  'clicked',
+  'set',
+  'matched',
+  'read'
+])
+
+function validAutomationResultState(
+  ok: boolean,
+  status: PreviewAutomationStatus,
+  text: string | null,
+  error: PreviewAutomationError
+): boolean {
+  if (SUCCESSFUL_AUTOMATION_STATUSES.has(status)) {
+    if (!ok || error !== null) return false
+    return status === 'read' ? text !== null : text === null
+  }
+  return !ok && error !== null && text === null
+}
+
+function parseAutomationResultMessage(
+  data: Record<string, unknown>,
+  channel: string
+): PreviewAutomationResultMessage | null {
+  if (
+    !hasExactKeys(data, [
+      'source',
+      'channel',
+      'type',
+      'requestId',
+      'ok',
+      'status',
+      'text',
+      'error'
+    ]) ||
+    !isAutomationRequestId(data.requestId) ||
+    typeof data.ok !== 'boolean' ||
+    !isAutomationStatus(data.status) ||
+    (data.text !== null &&
+      !isBoundedAutomationText(data.text, PREVIEW_MESSAGE_LIMITS.automationTextLength, true)) ||
+    !isAutomationError(data.error)
+  ) {
+    return null
+  }
+  if (!validAutomationResultState(data.ok, data.status, data.text, data.error)) {
+    return null
+  }
+  return {
+    source: PREVIEW_SOURCE,
+    channel,
+    type: 'automationResult',
+    requestId: data.requestId,
+    ok: data.ok,
+    status: data.status,
+    text: data.text,
+    error: data.error
+  }
+}
+
 export function parsePreviewInboundMessage(
   value: unknown,
   expectedChannel: string
@@ -433,6 +619,9 @@ export function parsePreviewInboundMessage(
   if (data.type === 'motionDebug') return parseMotionDebugMessage(data, expectedChannel)
   if (data.type === 'ready') return parseReadyMessage(data, expectedChannel)
   if (data.type === 'runtimeError') return parseRuntimeErrorMessage(data, expectedChannel)
+  if (data.type === 'automationResult') {
+    return parseAutomationResultMessage(data, expectedChannel)
+  }
   return null
 }
 
@@ -502,6 +691,76 @@ function createEditorDocStateMessage(
   }
 }
 
+function validAutomationLocator(by: unknown, locator: unknown): by is PreviewAutomationLocator {
+  if (!isAutomationLocator(by) || typeof locator !== 'string') return false
+  if (by === 'body') return locator === ''
+  return isBoundedAutomationText(locator, PREVIEW_MESSAGE_LIMITS.automationLocatorLength)
+}
+
+function validAutomationClick(data: Record<string, unknown>): boolean {
+  return (
+    hasExactKeys(data, ['type', 'requestId', 'action', 'by', 'locator']) &&
+    (data.by === 'testId' || data.by === 'buttonText') &&
+    validAutomationLocator(data.by, data.locator)
+  )
+}
+
+function validAutomationSet(data: Record<string, unknown>): boolean {
+  return (
+    hasExactKeys(data, ['type', 'requestId', 'action', 'by', 'locator', 'value']) &&
+    (data.by === 'testId' || data.by === 'placeholder') &&
+    validAutomationLocator(data.by, data.locator) &&
+    typeof data.value === 'string' &&
+    data.value.length <= PREVIEW_MESSAGE_LIMITS.automationInputLength
+  )
+}
+
+function validAutomationWait(data: Record<string, unknown>): boolean {
+  return (
+    hasExactKeys(data, ['type', 'requestId', 'action', 'by', 'locator', 'text', 'timeoutMs']) &&
+    validAutomationLocator(data.by, data.locator) &&
+    (data.text === null ||
+      isBoundedAutomationText(data.text, PREVIEW_MESSAGE_LIMITS.automationInputLength)) &&
+    Number.isSafeInteger(data.timeoutMs) &&
+    (data.timeoutMs as number) >= 0 &&
+    (data.timeoutMs as number) <= PREVIEW_MESSAGE_LIMITS.automationTimeoutMs
+  )
+}
+
+function validAutomationRead(data: Record<string, unknown>): boolean {
+  return (
+    hasExactKeys(data, ['type', 'requestId', 'action', 'by', 'locator']) &&
+    validAutomationLocator(data.by, data.locator)
+  )
+}
+
+function automationEditorMessage(
+  data: Record<string, unknown>,
+  channel: string
+): PreviewEditorMessage {
+  return { source: EDITOR_SOURCE, channel, ...data } as PreviewEditorMessage
+}
+
+function createEditorAutomationMessage(
+  data: Record<string, unknown>,
+  channel: string
+): PreviewEditorMessage | null {
+  if (!isAutomationRequestId(data.requestId)) return null
+  if (data.action === 'click' && validAutomationClick(data)) {
+    return automationEditorMessage(data, channel)
+  }
+  if (data.action === 'set' && validAutomationSet(data)) {
+    return automationEditorMessage(data, channel)
+  }
+  if (data.action === 'wait' && validAutomationWait(data)) {
+    return automationEditorMessage(data, channel)
+  }
+  if (data.action === 'read-safe-text' && validAutomationRead(data)) {
+    return automationEditorMessage(data, channel)
+  }
+  return null
+}
+
 export function createPreviewEditorMessage(
   channel: string,
   payload: unknown
@@ -514,5 +773,6 @@ export function createPreviewEditorMessage(
   if (data.type === 'theme') return createEditorThemeMessage(data, channel)
   if (data.type === 'motionDebug') return createEditorMotionMessage(data, channel)
   if (data.type === 'docState') return createEditorDocStateMessage(data, channel)
+  if (data.type === 'automation') return createEditorAutomationMessage(data, channel)
   return null
 }

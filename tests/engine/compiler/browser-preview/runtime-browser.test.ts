@@ -90,7 +90,8 @@ describe('compiler browser preview runtime', () => {
           protocol: 'open-pencil-preview-v2',
           channel,
           parentOrigin: location.origin,
-          transport: 'message-port'
+          transport: 'message-port',
+          automation: false
         })
         const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
         iframe.src = url
