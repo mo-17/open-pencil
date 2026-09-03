@@ -25,6 +25,7 @@ import {
   type LocalBackendEmission,
   type ReceiptAudit
 } from './common'
+import ledger from './ledger'
 
 interface PipelineArgs {
   readonly application: string
@@ -284,5 +285,5 @@ export default defineCommand({
   meta: {
     description: 'Validate, plan, emit, and audit Backend artifacts without network or Apply'
   },
-  subCommands: { validate, plan, emit, audit, release }
+  subCommands: { validate, plan, emit, audit, release, ledger }
 })

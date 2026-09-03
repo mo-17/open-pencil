@@ -1,10 +1,24 @@
+/* eslint-disable max-lines -- Backend CLI authority, local emission, audit, and ledger integration scenarios share one end-to-end harness. */
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { SUPABASE_BACKEND_PROVIDER_DESCRIPTOR } from '@open-pencil/compiler/backend'
-import { BACKEND_PRODUCTION_GATE_IDS } from '@open-pencil/lowcode/backend'
+import {
+  BACKEND_PRODUCTION_GATE_IDS,
+  SOURCE_MIGRATION_AUTHORITY_REBIND_RECEIPT_FORMAT,
+  SOURCE_MIGRATION_DRIFT_RECEIPT_FORMAT,
+  STAGED_MIGRATION_EXECUTION_FORMAT,
+  digestSourceMigrationAuthorityRebindReceipt,
+  digestSourceMigrationDriftReceipt,
+  digestStagedMigrationExecutionPlan,
+  type SourceMigrationAuthorityRebindReceiptV1,
+  type SourceMigrationDriftReceiptV1,
+  type StagedMigrationExecutionTargetAuthorityV1,
+  type StagedMigrationExecutionPlanV1
+} from '@open-pencil/lowcode/backend'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import { runOpenPencilCLI } from '#tests/helpers/cli'
@@ -114,7 +128,421 @@ function jsonReport(stdout: string): BackendCLIReport {
   return parsed as BackendCLIReport
 }
 
+function sourceDigest(content: string): string {
+  return createHash('sha256').update(content).digest('base64url')
+}
+
 describe('CLI backend local-only workflow', () => {
+  test('initializes, transitions, and inspects a source migration ledger without remote authority', async () => {
+    const { root } = await workspace()
+    const ledgerPath = join(root, 'migration-ledger.json')
+    const initialized = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'init',
+      '--ledger-id',
+      'supabase:project-test:promotion',
+      '--created-at',
+      '2026-09-04T00:00:00.000Z',
+      '--output',
+      ledgerPath,
+      '--json'
+    ])
+    expect(initialized.exitCode).toBe(0)
+    expect(jsonReport(initialized.stdout)).toMatchObject({
+      operation: 'init',
+      ledgerId: 'supabase:project-test:promotion',
+      entries: 0,
+      networkPerformed: false,
+      applyPerformed: false,
+      deployPerformed: false
+    })
+
+    const planDigest = await digestCanonicalManifest({ plan: 'source-plan' })
+    const reviewManifestDigest = await digestCanonicalManifest({ review: 'source-review' })
+    const fromModelDigest = await digestCanonicalManifest({ model: 'before' })
+    const targetModelDigest = await digestCanonicalManifest({ model: 'after' })
+    const registeredAt = '2026-09-04T00:01:00.000Z'
+    const migrationSourcePath = 'supabase/migrations/20260904000100_expand-title.sql'
+    const migrationSource =
+      'BEGIN;\nALTER TABLE "public"."tasks" ADD COLUMN "title" text;\nCOMMIT;\n'
+    const executionPlan: StagedMigrationExecutionPlanV1 = {
+      format: STAGED_MIGRATION_EXECUTION_FORMAT,
+      version: 1,
+      executionId: 'execution:expand-title',
+      changeId: 'change:title',
+      sourceMigrationPlan: {
+        version: 1,
+        planId: 'migration:title',
+        planDigest,
+        fromModelDigest,
+        targetModelDigest
+      },
+      phase: 'expand',
+      predecessor: null,
+      operations: [
+        {
+          operation: {
+            id: 'reviewed:add-title',
+            kind: 'apply-reviewed-migration',
+            sourceOperationIds: ['op-0001'],
+            reviewManifestDigest,
+            migrationPlanDigest: planDigest,
+            sqlDigest: sourceDigest(migrationSource),
+            appliesTo: 'reviewed-source-sql'
+          },
+          risk: 'low'
+        }
+      ],
+      highestRisk: 'low',
+      requiresHumanApproval: false
+    }
+    const migrationSourceFile = join(root, migrationSourcePath)
+    await mkdir(dirname(migrationSourceFile), { recursive: true })
+    await writeFile(migrationSourceFile, migrationSource, 'utf8')
+    const eventPath = join(root, 'register-event.json')
+    await writeFile(
+      eventPath,
+      JSON.stringify({
+        type: 'register-migration',
+        entry: {
+          migrationId: 'migration:0001:expand-title',
+          sequence: 1,
+          name: 'expand title',
+          source: {
+            path: migrationSourcePath,
+            digest: sourceDigest(migrationSource)
+          },
+          executionPlan,
+          executionPlanDigest: await digestStagedMigrationExecutionPlan(executionPlan),
+          registeredAt
+        },
+        occurredAt: registeredAt
+      }),
+      'utf8'
+    )
+    const transitionedPath = join(root, 'migration-ledger-next.json')
+    const transitioned = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'transition',
+      ledgerPath,
+      '--event',
+      eventPath,
+      '--source-root',
+      root,
+      '--output',
+      transitionedPath,
+      '--json'
+    ])
+    expect(transitioned.exitCode).toBe(0)
+    expect(jsonReport(transitioned.stdout)).toMatchObject({
+      operation: 'transition',
+      entries: 1,
+      eventType: 'register-migration',
+      sourceFilesVerified: true,
+      sourceFileCount: 1,
+      sourceFileBytes: Buffer.byteLength(migrationSource),
+      networkPerformed: false,
+      applyPerformed: false,
+      deployPerformed: false
+    })
+
+    const inspected = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'inspect',
+      transitionedPath,
+      '--source-root',
+      root,
+      '--json'
+    ])
+    expect(inspected.exitCode).toBe(0)
+    expect(jsonReport(inspected.stdout)).toMatchObject({
+      operation: 'inspect',
+      entries: 1,
+      promotions: 0,
+      driftRecords: 0,
+      recoveryRecords: 0,
+      sourceFilesVerified: true,
+      sourceFileCount: 1,
+      sourceFileBytes: Buffer.byteLength(migrationSource),
+      environments: [
+        { environment: 'dev', drift: 'unknown' },
+        { environment: 'staging', drift: 'unknown' },
+        { environment: 'production', drift: 'unknown' }
+      ]
+    })
+
+    const repeated = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'transition',
+      ledgerPath,
+      '--event',
+      eventPath,
+      '--source-root',
+      root,
+      '--output',
+      transitionedPath,
+      '--json'
+    ])
+    expect(repeated.exitCode).toBe(1)
+    expect(repeated.stderr).toContain('never overwritten')
+
+    await writeFile(migrationSourceFile, `${migrationSource}-- tampered\n`, 'utf8')
+    const tampered = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'inspect',
+      transitionedPath,
+      '--source-root',
+      root,
+      '--json'
+    ])
+    expect(tampered.exitCode).toBe(1)
+    expect(tampered.stderr).toContain('digest does not match')
+
+    const unverifiedOutput = join(root, 'unverified-transition.json')
+    const blockedTransition = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'transition',
+      ledgerPath,
+      '--event',
+      eventPath,
+      '--source-root',
+      root,
+      '--output',
+      unverifiedOutput,
+      '--json'
+    ])
+    expect(blockedTransition.exitCode).toBe(1)
+    expect(blockedTransition.stderr).toContain('digest does not match')
+    await expect(readFile(unverifiedOutput, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+
+    await rm(migrationSourceFile)
+    const missing = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'inspect',
+      transitionedPath,
+      '--source-root',
+      root,
+      '--json'
+    ])
+    expect(missing.exitCode).toBe(1)
+    expect(missing.stderr).toContain('missing or inaccessible')
+
+    const symlinkTarget = join(root, 'migration-source-target.sql')
+    await writeFile(symlinkTarget, migrationSource, 'utf8')
+    await symlink(symlinkTarget, migrationSourceFile)
+    const linked = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'inspect',
+      transitionedPath,
+      '--source-root',
+      root,
+      '--json'
+    ])
+    expect(linked.exitCode).toBe(1)
+    expect(linked.stderr).toContain('must not contain symbolic links')
+
+    const unsafeLedgerPath = join(root, 'unsafe-migration-ledger.json')
+    const unsafeLedger = JSON.parse(await readFile(transitionedPath, 'utf8')) as {
+      entries: Array<{ source: { path: string } }>
+    }
+    unsafeLedger.entries[0].source.path = '../escaped.sql'
+    await writeFile(unsafeLedgerPath, JSON.stringify(unsafeLedger), 'utf8')
+    const escaped = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'inspect',
+      unsafeLedgerPath,
+      '--source-root',
+      root,
+      '--json'
+    ])
+    expect(escaped.exitCode).toBe(1)
+    expect(escaped.stderr).toContain('backend-migration-ledger-source-path-invalid')
+  })
+
+  test('exposes an append-only grantGeneration authority rebind through the offline CLI', async () => {
+    const { root } = await workspace()
+    const initialPath = join(root, 'authority-ledger.json')
+    const initialized = await runOpenPencilCLI([
+      'backend',
+      'ledger',
+      'init',
+      '--ledger-id',
+      'supabase:authority-rotation',
+      '--created-at',
+      '2026-09-04T00:00:00.000Z',
+      '--output',
+      initialPath,
+      '--json'
+    ])
+    expect(initialized.exitCode).toBe(0)
+
+    const schemaDigest = sourceDigest('schema:baseline')
+    const providerAuthorityDigest = sourceDigest('provider:authority')
+    const previousAuthority: StagedMigrationExecutionTargetAuthorityV1 = {
+      providerId: 'supabase',
+      providerAuthorityDigest,
+      projectRef: 'project-dev',
+      accountId: 'account-dev',
+      grantGeneration: 'grant-dev-1',
+      environment: 'dev'
+    }
+    const nextAuthority = { ...previousAuthority, grantGeneration: 'grant-dev-2' }
+    const transition = async (
+      ledger: string,
+      event: unknown,
+      name: string
+    ): Promise<{ output: string; report: BackendCLIReport }> => {
+      const eventPath = join(root, `${name}-event.json`)
+      const output = join(root, `${name}-ledger.json`)
+      await writeFile(eventPath, JSON.stringify(event), 'utf8')
+      const result = await runOpenPencilCLI([
+        'backend',
+        'ledger',
+        'transition',
+        ledger,
+        '--event',
+        eventPath,
+        '--source-root',
+        root,
+        '--output',
+        output,
+        '--json'
+      ])
+      expect(result.exitCode).toBe(0)
+      return { output, report: jsonReport(result.stdout) }
+    }
+    const driftEvent = async (
+      driftId: string,
+      expectedSchemaDigest: string | null,
+      checkedAt: string
+    ) => {
+      const evidenceDigest = sourceDigest(`evidence:${driftId}`)
+      const providerReceipt: SourceMigrationDriftReceiptV1 = {
+        format: SOURCE_MIGRATION_DRIFT_RECEIPT_FORMAT,
+        version: 1,
+        receiptId: `receipt:${driftId}`,
+        driftId,
+        targetAuthority: previousAuthority,
+        expectedSchemaDigest,
+        observedSchemaDigest: schemaDigest,
+        status: 'none',
+        outcome: 'succeeded',
+        checkedAt,
+        evidenceDigest
+      }
+      return {
+        type: 'record-drift',
+        record: {
+          driftId,
+          environment: 'dev',
+          targetAuthority: previousAuthority,
+          expectedSchemaDigest,
+          observedSchemaDigest: schemaDigest,
+          status: 'none',
+          providerReceipt,
+          providerReceiptDigest: await digestSourceMigrationDriftReceipt(providerReceipt),
+          evidenceDigest,
+          checkedAt
+        },
+        occurredAt: checkedAt
+      }
+    }
+
+    const bound = await transition(
+      initialPath,
+      await driftEvent('drift:dev:baseline', null, '2026-09-04T00:01:00.000Z'),
+      'bound'
+    )
+    const verified = await transition(
+      bound.output,
+      await driftEvent('drift:dev:verified', schemaDigest, '2026-09-04T00:02:00.000Z'),
+      'verified'
+    )
+    const latestNoDriftReceiptDigest = (
+      JSON.parse(await readFile(verified.output, 'utf8')) as {
+        driftRecords: Array<{ providerReceiptDigest: string }>
+      }
+    ).driftRecords.at(-1)?.providerReceiptDigest
+    if (!latestNoDriftReceiptDigest) throw new Error('missing CLI no-drift fixture')
+    const rebindId = 'authority-rebind:dev:grant-dev-2'
+    const authorityReceipt = (
+      role: SourceMigrationAuthorityRebindReceiptV1['role'],
+      targetAuthority: StagedMigrationExecutionTargetAuthorityV1,
+      checkedAt: string
+    ): SourceMigrationAuthorityRebindReceiptV1 => ({
+      format: SOURCE_MIGRATION_AUTHORITY_REBIND_RECEIPT_FORMAT,
+      version: 1,
+      receiptId: `authority-receipt:${role}:grant-dev-2`,
+      rebindId,
+      role,
+      targetAuthority,
+      schemaDigest,
+      latestNoDriftReceiptDigest,
+      unresolvedMutation: false,
+      outcome: 'succeeded',
+      checkedAt,
+      evidenceDigest: sourceDigest(`authority-evidence:${role}`)
+    })
+    const previousAuthorityReceipt = authorityReceipt(
+      'previous',
+      previousAuthority,
+      '2026-09-04T00:03:00.000Z'
+    )
+    const nextAuthorityReceipt = authorityReceipt('next', nextAuthority, '2026-09-04T00:04:00.000Z')
+    const reboundAt = '2026-09-04T00:05:00.000Z'
+    const rebound = await transition(
+      verified.output,
+      {
+        type: 'rebind-environment-authority',
+        record: {
+          rebindId,
+          environment: 'dev',
+          previousTargetAuthority: previousAuthority,
+          nextTargetAuthority: nextAuthority,
+          schemaDigest,
+          latestNoDriftId: 'drift:dev:verified',
+          latestNoDriftReceiptDigest,
+          previousAuthorityReceipt,
+          previousAuthorityReceiptDigest:
+            await digestSourceMigrationAuthorityRebindReceipt(previousAuthorityReceipt),
+          nextAuthorityReceipt,
+          nextAuthorityReceiptDigest:
+            await digestSourceMigrationAuthorityRebindReceipt(nextAuthorityReceipt),
+          approval: null,
+          reboundAt
+        },
+        occurredAt: reboundAt
+      },
+      'rebound'
+    )
+    expect(rebound.report).toMatchObject({
+      operation: 'transition',
+      eventType: 'rebind-environment-authority',
+      authorityRebindings: 1,
+      sourceFilesVerified: true,
+      sourceFileCount: 0,
+      networkPerformed: false,
+      applyPerformed: false
+    })
+    expect((rebound.report.environments as unknown[])[0]).toMatchObject({
+      environment: 'dev',
+      providerId: 'supabase',
+      projectRef: 'project-dev',
+      accountId: 'account-dev',
+      grantGeneration: 'grant-dev-2',
+      drift: 'none'
+    })
+  })
+
   test('validates and deterministically plans with explicit provider names', async () => {
     const { application } = await workspace()
     const validated = await runOpenPencilCLI(['backend', 'validate', application, '--json'])
@@ -176,32 +604,42 @@ describe('CLI backend local-only workflow', () => {
     expect(invalid.stderr).toContain('Backend validation failed closed')
     expect(invalid.stderr).not.toContain('must-not-be-accepted')
 
-    for (const target of ['flutter', 'vue']) {
-      const unsupported = await runOpenPencilCLI([
-        'backend',
-        'plan',
-        application,
-        '--target',
-        target,
-        '--mode',
-        'production',
-        '--json'
-      ])
-      expect(unsupported.exitCode).toBe(1)
-      expect(unsupported.stderr).toContain('backend-capability-source-only-mode-required')
+    const unsupported = await runOpenPencilCLI([
+      'backend',
+      'plan',
+      application,
+      '--target',
+      'flutter',
+      '--mode',
+      'production',
+      '--json'
+    ])
+    expect(unsupported.exitCode).toBe(1)
+    expect(unsupported.stderr).toContain('backend-capability-source-only-mode-required')
 
-      const sourceOnly = await runOpenPencilCLI([
-        'backend',
-        'plan',
-        application,
-        '--target',
-        target,
-        '--mode',
-        'source-only-prototype',
-        '--json'
-      ])
-      expect(sourceOnly.exitCode).toBe(0)
-    }
+    const flutterSourceOnly = await runOpenPencilCLI([
+      'backend',
+      'plan',
+      application,
+      '--target',
+      'flutter',
+      '--mode',
+      'source-only-prototype',
+      '--json'
+    ])
+    expect(flutterSourceOnly.exitCode).toBe(0)
+
+    const vueProduction = await runOpenPencilCLI([
+      'backend',
+      'plan',
+      application,
+      '--target',
+      'vue',
+      '--mode',
+      'production',
+      '--json'
+    ])
+    expect(vueProduction.exitCode).toBe(0)
   })
 
   test('emits to a new directory and never overwrites an existing output', async () => {
