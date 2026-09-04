@@ -104,7 +104,7 @@ async function capturedError(promise: Promise<unknown>): Promise<unknown> {
 
 describe('Supabase Backend Provider V2 atomic transaction review artifacts', () => {
   test('routes data and atomic authority through distinct deterministic adapter slots', () => {
-    expect(SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2).toBe('2.2.0')
+    expect(SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2).toBe('2.3.0')
     expect(SUPABASE_BACKEND_PROVIDER_BUNDLE_V2.data).toMatchObject({
       capabilities: ['data.read', 'data.write'],
       outputs: []

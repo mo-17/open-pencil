@@ -85,8 +85,8 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     expect('emitSupabaseBackfillReviewSQLV2' in compilerPublicAPI).toBe(false)
   })
 
-  test('routes the exact capabilities through a deterministic 2.2.0 dataMigrations adapter', () => {
-    expect(SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2).toBe('2.2.0')
+  test('routes the exact capabilities through a deterministic 2.3.0 dataMigrations adapter', () => {
+    expect(SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2).toBe('2.3.0')
     expect(SUPABASE_BACKEND_PROVIDER_BUNDLE_V2.dataMigrations).toMatchObject({
       capabilities: ['migrations.backfill', 'migrations.data'],
       outputs: ['deployment-manifest', 'migration-plan', 'server-runtime']
@@ -220,6 +220,7 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
           sequenceCycle: false,
           sequenceMaximumAtMost: Number.MAX_SAFE_INTEGER,
           sequenceStateReadable: true,
+          sequenceNextValueAndIsCalled: 'trusted-inspector-proof',
           databaseRole: 'primary',
           targetCurrentNullability: 'nullable',
           desiredTargetNullability: 'not-null',
@@ -314,9 +315,15 @@ describe('Supabase Backend Provider V2 receipt-driven backfill review artifacts'
     expect(sql).toContain('"seqcache" = 1')
     expect(sql).toContain('NOT "seqcycle"')
     expect(sql).toContain('"identity_sequence_current_value_safe"')
-    expect(sql).toContain('"identity_sequence_not_behind_cursor"')
+    expect(sql).toContain('"identity_sequence_next_value_definitely_above_cursor"')
+    expect(sql).toContain('"identity_sequence_next_value_and_is_called_proven"')
+    expect(sql).toContain('"last_value" > COALESCE')
+    expect(sql).not.toContain('"identity_sequence_not_behind_cursor"')
+    expect(sql).toContain('AS "observed_high_water_candidate"')
     expect(sql).toContain(String(Number.MAX_SAFE_INTEGER))
-    expect(sql).toContain('"target_actual_default_expression"')
+    expect(sql).toContain('"target_has_default_expression"')
+    expect(sql).not.toContain('"target_actual_default_expression"')
+    expect(sql).not.toContain('"pg_get_expr"')
     expect(sql).toContain('"target_expected_literal_json"')
     expect(sql).toContain('"target_default_expression_equivalence_proven"')
     expect(sql).toContain('"target_type_shape_matches"')

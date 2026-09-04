@@ -9,7 +9,7 @@ import { SUPABASE_BACKEND_PROVIDER_ID, SUPABASE_BACKEND_PROVIDER_PLUGIN_ID } fro
 
 export const SUPABASE_BACKEND_PROVIDER_CONTRIBUTION_ID_V2 = 'supabase.backend.v2' as const
 export const SUPABASE_BACKEND_PROVIDER_ADAPTER_ID_V2 = 'open-pencil.backend.supabase.v2' as const
-export const SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2 = '2.2.0' as const
+export const SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION_V2 = '2.3.0' as const
 
 /** Shared schema capability for the isolated Realtime, Atomic, and Backfill review slices. */
 export const SUPABASE_AUTH_CAPABILITIES_V2 = Object.freeze([

@@ -104,7 +104,7 @@ export function emitSupabaseBackfillArtifactsV2(
         sequenceCycle: false,
         sequenceMinimumAtLeast: migration.cursor.minimum,
         sequenceMaximumAtMost: migration.cursor.maximum,
-        sequenceCurrentValueSafeAndNotBehindCursor: true,
+        sequenceNextValueAndIsCalled: 'trusted-inspector-proof',
         sequenceStateReadable: true,
         databaseRole: 'primary',
         targetCurrentNullability: 'nullable',

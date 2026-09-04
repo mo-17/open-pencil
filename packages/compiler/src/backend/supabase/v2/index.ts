@@ -8,6 +8,7 @@ export {
   SUPABASE_BACKFILL_RELEASE_BLOCKERS_V2,
   validateSupabaseBackfillV2
 } from './backfill'
+export * from './backfill-inspection'
 export { emitSupabaseBackfillArtifactsV2 } from './backfill-artifacts'
 export * from './bundle'
 export * from './client'
