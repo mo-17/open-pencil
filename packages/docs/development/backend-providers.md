@@ -574,8 +574,8 @@ expression evidence, is not registered in the built-in/compile/App/CLI/Apply pat
 live staging evidence for PostgREST schema cache, A/B isolation, concurrency, conflict, and rollback
 behavior.
 
-The third isolated slice updates the candidate adapter to `2.2.0` and adds a strict
-data-migration/backfill review package. It accepts exactly one source-managed entity and one
+The third isolated slice introduced a strict data-migration/backfill review package in candidate
+adapter `2.2.0`. It accepts exactly one source-managed entity and one
 `set-literal` migration whose cursor is a non-null, single-column `int8` identity primary key. The
 target must be the same nullable-live/non-null-desired field used by the null predicate and the
 field-not-null postcondition. Its literal is revalidated against the field type and enum domain and
@@ -589,9 +589,9 @@ claim; the raw planner and SQL emitter are not public Compiler exports.
 The query template reports a **partial checklist, never live evidence**: managed markers, exact
 primary-key column shape, forced RLS, identity `ALWAYS`, sequence
 ownership/increment/cache/cycle/range/state visibility, primary-server status, target OID/type-kind/
-typmod/generated shape, enum marker plus ordered labels, raw default expression, complete-table
-write-hazard counts, current/session roles, `row_security`, `search_path`, object OIDs, a high-water
-summary, and one keyset-paginated batch preview. The whole-table hazard gate conservatively blocks
+typmod/generated shape, enum marker plus ordered labels, default presence, complete-table
+write-hazard counts, current/session roles, `row_security`, `search_path`, object OIDs, an observed
+high-water candidate, and one keyset-paginated batch preview. The whole-table hazard gate conservatively blocks
 every non-primary index, unique/exclusion or CHECK constraint, outbound foreign key, generated
 column, and inheritance edge; this avoids treating expression, partial, or INCLUDE index metadata as
 safe without a trusted Inspector. The primary-key check intentionally uses the stable marker plus
@@ -612,6 +612,24 @@ table/column/sequence OIDs and catalog digest. Live catalog evidence, `GENERATED
 cursor immutability, sequence/cursor mutation-authority proof, source-ledger/artifact/provider
 binding, an atomic database batch ledger, receipt-v2 authority, the actual bounded mutation runner,
 P1 unbounded-backfill retirement, dry run, and exact postconditions all remain explicit blockers.
+
+A fourth review-only foundation slice updates the candidate adapter to `2.3.0` and exports
+`createSupabaseBackfillInspectionSubjectV1()`. It accepts only a trusted Provider Registry, a
+validated V2 plan, and the current selection; internally it replans, re-emits, and rechecks the
+application, plan, adapter-plan, and manifest digests before deriving a canonical Inspection Subject
+bound to the Provider package authority, application,
+migration, managed markers, expected PostgreSQL type/default/enum, and all three review-artifact
+digests. A Host may use that Subject only to select its own built-in catalog-only query family. The
+generated SQL file is not query authority, and the Subject creates no execution Receipt, Apply, or
+release authority.
+
+The same slice removes two misleading review semantics. `MAX(cursor)` without a write barrier or
+lock is now named `observed_high_water_candidate` and cannot become a captured execution high water.
+Because `pg_sequences.last_value` does not expose `is_called`, the template emits only a conservative
+strict-`>` check and fixes the complete next-value proof to false for a future trusted Inspector. It
+also stops returning raw default expressions, reports only default presence, and retains the
+equivalence blocker. The Desktop fixed Management read-only transport, single-snapshot strict parser,
+freshness, and live authority revalidation are not connected yet.
 
 P2 still does **not** implement exclusive atomic write authority, an executable receipt-driven
 backfill, a queue worker, Cron job, webhook endpoint, or monitoring drain. The remaining Provider

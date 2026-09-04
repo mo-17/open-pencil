@@ -227,7 +227,7 @@ SELECT/UPDATE grant 仍允许通过 REST 直接访问，所以它只保证这一
 artifact digest 或 owner-policy expression evidence，未进入 built-in/compile/App/CLI/Apply 路径，也没有真实
 staging 的 PostgREST schema cache、A/B 隔离、并发冲突与 rollback 证据。
 
-第三个隔离切片把 candidate adapter 更新为 `2.2.0`，并加入严格的 data migration/backfill 审查包。它只
+第三个隔离切片在 candidate adapter `2.2.0` 中加入严格的 data migration/backfill 审查包。它只
 接受一个源码管理 entity 和一个 `set-literal` migration；cursor 必须是 non-null、单列 `int8` identity
 主键。target 必须同时是 null predicate 与 field-not-null 后置条件所引用的同一字段，并呈现 live nullable、
 desired non-null 状态；literal 会再次按 field type 与 enum domain 校验，并拒绝 NUL 与不成对 UTF-16
@@ -239,9 +239,9 @@ config、DML/DDL runner、Credential、Apply hook 或 release-ready 声明；raw
 
 查询模板只报告 **partial checklist，绝不等于 live evidence**：managed marker、主键精确列形状、forced
 RLS、identity `ALWAYS`、sequence 的 ownership/increment/cache/cycle/range/state visibility、
-primary-server 状态、target 的 OID/type-kind/typmod/generated shape、enum marker 与有序 labels、raw default
-expression、整表 write-hazard 计数、current/session role、`row_security`、`search_path`、object OID、
-high-water 汇总与一批 keyset pagination 预览。整表 hazard gate 会保守阻断所有 non-primary index、
+primary-server 状态、target 的 OID/type-kind/typmod/generated shape、enum marker 与有序 labels、default
+是否存在、整表 write-hazard 计数、current/session role、`row_security`、`search_path`、object OID、
+observed high-water candidate 与一批 keyset pagination 预览。整表 hazard gate 会保守阻断所有 non-primary index、
 unique/exclusion 或 CHECK constraint、outbound foreign key、generated column 与 inheritance edge，避免在
 没有 trusted Inspector 时把 expression、partial 或 INCLUDE index metadata 误判成安全。主键检查有意使用
 稳定 marker 加有序列号，不再根据当前 table/field 名重算 constraint name，因此合法 P1 rename 不会造成
@@ -259,6 +259,19 @@ policy、trigger、rule、function、enum/default 与 table-hazard inventory。c
 append-monotonic 证明、sequence/cursor mutation authority、source-ledger/artifact/Provider authority 绑定、
 atomic database batch ledger、receipt-v2 authority、实际有界 mutation runner、退役 P1 unbounded backfill、
 dry run 与精确 postcondition 仍全部是 blocker。
+
+第四个 review-only 基础切片把 candidate adapter 更新为 `2.3.0`，并新增公开的
+`createSupabaseBackfillInspectionSubjectV1()`。它只接收 trusted Provider Registry、已经验证的 V2 plan 与
+current selection，并在内部重新 replan/emit 与校验 application/plan/adapter-plan/manifest digest，然后生成绑定 Provider package authority、
+应用、migration、managed marker、预期 PostgreSQL type/default/enum 和三个审查 artifact digest 的 canonical
+Inspection Subject。该 Subject 只允许 Host 选择自己内置的 catalog-only query family；生成的 SQL 文件不是
+查询 authority，Subject 也不能创建 execution Receipt、Apply 或 release authority。
+
+同一切片修正了两个容易被误解的审查字段：未加 write barrier/lock 的 `MAX(cursor)` 现在明确命名为
+`observed_high_water_candidate`，不能作为 captured high water；`pg_sequences.last_value` 不含 `is_called`，
+因此模板只给出保守的 strict-`>` 判断，并把完整 next-value proof 固定为 false，留给未来 trusted Inspector。
+模板也不再返回 raw default expression，只报告 default 是否存在并保留 equivalence blocker。Desktop 的固定
+Management read-only transport、单快照严格 parser、freshness 与 live authority revalidation 尚未接入。
 
 P2 仍**尚未**实现 exclusive atomic write authority、可执行的 Receipt 驱动 backfill、queue worker、Cron
 job、webhook endpoint 或 monitoring drain。剩余 Provider 工作继续按受限切片推进：trusted backfill
