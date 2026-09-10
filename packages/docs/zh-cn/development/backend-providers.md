@@ -111,9 +111,10 @@ release/verification 文件为 39 passed。非测试配置的 Native library
 installation authority、经过认证的 server cancellation，以及 authenticated
 settlement path。raw observation 不能 settle journal、允许自动 retry、签发 Receipt V2 或授权 release。
 `absent` 不证明先前 mutation 已停止，`advanced-head` 也不等于完整 portable Receipt V2 chain 已认证。
-[PostgreSQL driver 准入草稿](../../development/receipt-zero-postgres-driver-admission.md) 已列出具体待决事项：
-保留 text-only contract，在 type-discovery 请求前拒绝异常 metadata，在 scalar sink 前限制分配，核验 TLS
-identity，并由明确 owner 管理 cancel/rollback cleanup。stock `tokio-postgres` 尚未通过准入，草稿仅为下一步依赖决策列出尚未获准的固定版本候选；这些 production binding 与 live 检查仍是本地 B3c composition 之后需要分别完成的门禁。
+[PostgreSQL driver 边界](../../development/receipt-zero-postgres-driver-admission.md) 记录了已实现的 text-only contract
+以及仍需证明的 production 条件：在 type-discovery 请求前拒绝异常 metadata，在 scalar sink 前限制分配，核验
+TLS identity，并由明确 owner 管理 cancel/rollback cleanup。当前没有已准入的 PostgreSQL driver；这些
+production binding 与 live 检查仍是本地 B3c composition 之后需要分别完成的门禁。
 
 - Desktop Review 已接入固定只读 `pg_catalog` Inspector、Management project authority 校验与 Credential grant generation；CLI 仍不接入这些 live 能力。
 - 只有 Desktop staging safety MVP 接入 database Executor 与 post-Apply catalog Verifier；Edge/Storage 使用彼此独立的 operation-scoped authority，但尚未由普通 build、Browser 或 CLI 自动执行；production database executor 仍不可用。

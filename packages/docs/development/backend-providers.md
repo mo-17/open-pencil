@@ -2122,12 +2122,11 @@ project/account/grant or installation authority, certified server cancellation, 
 settlement path. Raw observations cannot settle
 the journal, allow automatic retry, issue Receipt V2, or authorize release. In particular, `absent`
 never proves the old mutation stopped, and `advanced-head` still lacks full portable Receipt V2 chain
-verification. The [PostgreSQL driver admission draft](./receipt-zero-postgres-driver-admission.md)
-records the concrete remaining driver decisions: preserve the text-only contract, reject unexpected
+verification. The [PostgreSQL driver boundary](./receipt-zero-postgres-driver-admission.md)
+records the implemented text-only contract and remaining production evidence: reject unexpected
 metadata before type-discovery requests, bound allocation before the scalar sink, verify TLS
-identity, and own cancellation/rollback cleanup. Stock `tokio-postgres` has not been admitted, and
-the draft names an unapproved pinned candidate for the next dependency decision. These production bindings and live checks remain
-separate gates after the local B3c composition.
+identity, and own cancellation/rollback cleanup. No PostgreSQL driver is currently admitted.
+These production bindings and live checks remain separate gates after the local B3c composition.
 
 Unit tests and deterministic fixtures prove parsing, negotiation, emission, transport envelopes,
 and state-machine behavior. They do not prove a real database or production deployment. The first
