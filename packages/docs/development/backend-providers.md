@@ -2032,6 +2032,52 @@ insert events; update and delete require a future Provider-issued immutable even
 
 ## Manual and live gates
 
+The Receipt-zero native independent-read contract now has a private fixed runner and a **test-only
+fused recovery composition**. This does not complete production B3c. The contract pins the exact
+checked-in reconciliation SQL (115,192 bytes and SHA-256),
+shares the writer's complete journal-material validation and 28-position parameter projection, and
+accepts exactly one ordered row of 29 typed PostgreSQL text-protocol columns. Its bounded scalar
+sink rejects wrong names/types, duplicate or extra columns/rows, invalid UTF-8, noncanonical integer
+or boolean representations, illegal NULLs, and oversized cells before allocation. A callback error
+permanently poisons the sink. Native code recomputes all five relational states and cross-checks the
+reported status; historical-marker drift or an observed read-write transaction lowers the result to
+`precondition-failed`. The scalar transcript digest is domain-separated and is not the Management
+parser's canonical-JSON response digest.
+
+The recovery future is inert until its first poll, which fixes a 30-second overall deadline before
+journal work. It consumes an opaque recovery handle, persists and consumes the 60-second
+reconciliation lease, derives all 28 parameters exclusively from journal-owned material, and
+consumes the single-use read window. Admission binds the same journal instance, exact durable
+record and material, lease generation, and authority digest. A distinct read-only execution ceiling
+projects the remaining budget once and retains the original journal wall and monotonic clocks for
+freshness checks throughout execution; neither the journal prefix nor any database stage refreshes
+the deadline. An independently owned sealed connector then follows eight fixed stages: Connect,
+BeginReadOnly, SearchPath (`pg_catalog`), RowSecurity (`off`), StatementTimeout (15,000 ms), Prepare,
+Execute, and FinishReadOnly (`ROLLBACK`). Pending connect cancellation/drop only cancels the
+connection attempt; a pending session request is cancelled before aborting the transaction.
+Completed failures do not receive a late cancel. The final freshness check runs after
+`ROLLBACK`, and the returned observation carries no settlement or release authority. Success, error,
+expiry, and drop retain the original `OutcomeUnknown` fence.
+
+The current local regression snapshot is 105 passing native `receipt_zero` tests, including 14
+scalar-contract tests, nine fixed-runner tests, and nine fused-recovery tests. The separately run
+native journal module passes 86 tests, including eight B3c execution/instance-binding regressions;
+these filters overlap and must not be added together. The three selected Host journal/staging
+release/verification files pass 32 tests. The non-test native library passes offline `cargo check`,
+the scoped secret scan is clean, and documentation integrity checks pass. `bun run check` completed
+the package builds but stopped at existing repository-wide structural lint findings: 32 errors and
+116 warnings. The full check is therefore not green. These deterministic fixtures exercise local
+journal persistence, injected clocks, and fake connectors; they do not certify a live database.
+
+There is still no production constructor or connector, credential/endpoint source, authenticated
+project/account/grant or installation authority, production active timer, certified server
+cancellation, or authenticated settlement path. The local poll-time deadline and cleanup checks do
+not prove that a real pending server request wakes or stops on time. Raw observations cannot settle
+the journal, allow automatic retry, issue Receipt V2, or authorize release. In particular, `absent`
+never proves the old mutation stopped, and `advanced-head` still lacks full portable Receipt V2 chain
+verification. These production bindings and live checks remain separate gates after this local B3c
+composition.
+
 Unit tests and deterministic fixtures prove parsing, negotiation, emission, transport envelopes,
 and state-machine behavior. They do not prove a real database or production deployment. The first
 real staging Apply, packaged-Tauri persistence, and runtime table auth/RLS verification remain Manual

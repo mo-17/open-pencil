@@ -46,6 +46,41 @@ authority fail closed。只有完全没有显式 request 时才保留 legacy low
 
 ## 当前明确限制
 
+Receipt-zero Native 独立回查 contract 现在已有 private fixed runner 和 **test-only fused recovery
+composition**；production B3c 尚未完成。contract 固定既有 reconciliation SQL 的 115,192 字节和 SHA-256，
+复用 writer 的完整 journal-material 校验与
+28 位参数投影，并严格接收一行、有序的 29 个 PostgreSQL text-protocol typed column。有界 scalar sink
+会在分配前拒绝超长值、错误列名/类型、额外或重复行列、非法 NULL、UTF-8 与非规范数字/布尔值；任何
+callback 错误都会永久 poison 当前 sink。Native 独立重算五态并核对 reported status；历史 marker 漂移
+或观察到 read-write transaction 时降为 `precondition-failed`。该 scalar transcript digest 有独立 domain，
+不能冒充 Management parser 的 canonical-JSON response digest。
+
+recovery future 在首次 poll 前没有副作用；首次 poll 会在 journal 操作前固定 30 秒 overall deadline，然后按值
+消费 opaque recovery handle，持久化并消费 60 秒 reconciliation lease，仅从 journal-owned material 派生完整
+28 参数，再消费 single-use read window。admission 绑定同一个 journal 实例、精确 durable record 与 material、
+lease generation 和 authority digest。独立的只读 execution ceiling 只投影一次剩余预算，并持续使用原始 journal
+wall/monotonic 双时钟检查 freshness；journal 前缀操作与后续数据库阶段都不会刷新 deadline。随后独立持有的
+sealed connector 执行固定八阶段：Connect、BeginReadOnly、SearchPath（`pg_catalog`）、RowSecurity（`off`）、
+StatementTimeout（15,000 ms）、Prepare、Execute、FinishReadOnly（`ROLLBACK`）。pending connect 遇到 cancel/drop
+时仅取消连接尝试；pending session 请求则先 cancel 再 abort transaction。已完成的失败不会收到迟发 cancel。
+`ROLLBACK` 后再次检查 freshness，最终 observation
+不携带 settlement 或 release authority；成功、失败、到期与 drop 都保留原来的 `OutcomeUnknown` fence。
+
+本轮本地回归快照为 Native `receipt_zero` 测试 105 passed，其中包括 14 项 scalar contract、9 项 fixed runner
+和 9 项 fused recovery 测试；另行运行的 Native journal 模块为 86 passed，包含 8 项 B3c execution/instance-binding
+回归。这两个过滤范围有重叠，不能相加。指定的三个 Host journal/staging release/verification 文件为 32 passed。
+非测试配置的 Native library 离线 `cargo check`、范围内 secret scan 和文档完整性检查均已通过。
+`bun run check` 已完成 packages build，但停在全仓既有 structural lint 的 32 errors / 116 warnings，不能称
+全量 check 通过。这些 deterministic fixture 验证的是本地 journal 持久化、注入 clock 与 fake connector，
+并未证明真实数据库连接。
+
+当前仍没有 production constructor/connector、credential/endpoint 来源、经过认证的 project/account/grant 或
+installation authority、production active timer、经过认证的 server cancellation，以及 authenticated settlement
+path。本地 poll-time deadline 与 cleanup 检查不证明真实 pending server request 能按时唤醒或停止。raw
+observation 不能 settle journal、允许自动 retry、签发 Receipt V2 或授权 release。`absent` 不证明先前 mutation
+已停止，`advanced-head` 也不等于完整 portable Receipt V2 chain 已认证；这些 production binding 与 live 检查仍是
+本地 B3c composition 之后需要分别完成的门禁。
+
 - Desktop Review 已接入固定只读 `pg_catalog` Inspector、Management project authority 校验与 Credential grant generation；CLI 仍不接入这些 live 能力。
 - 只有 Desktop staging safety MVP 接入 database Executor 与 post-Apply catalog Verifier；Edge/Storage 使用彼此独立的 operation-scoped authority，但尚未由普通 build、Browser 或 CLI 自动执行；production database executor 仍不可用。
 - Inspected migration review 既接受空基线，也接受全部结构成员都有精确 OpenPencil marker、并通过同一 snapshot 的 OID/attnum 地址校验后还原出的 managed 基线；普通 repeat review 仍只开放新增 enum value、nullable field 和普通 index，更高风险的支持项必须进入显式 staged phase。
