@@ -331,7 +331,30 @@ async function validateApplyContext(
   }
 }
 
-async function boundedJSON(response: Response, maximum: number): Promise<unknown> {
+async function readBodyChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal | undefined
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  throwIfAborted(signal)
+  if (!signal) return reader.read()
+  let onAbort: () => void = () => undefined
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(new SupabaseManagementDatabaseApplyTransportError('aborted'))
+    signal.addEventListener('abort', onAbort, { once: true })
+    if (signal.aborted) onAbort()
+  })
+  const chunk = await Promise.race([reader.read(), aborted]).finally(() => {
+    signal.removeEventListener('abort', onAbort)
+  })
+  throwIfAborted(signal)
+  return chunk
+}
+
+async function boundedJSON(
+  response: Response,
+  maximum: number,
+  signal: AbortSignal | undefined
+): Promise<unknown> {
   const contentType = response.headers.get('content-type')
   if (!contentType || !/^application\/json(?:\s*;.*)?$/iu.test(contentType)) {
     fail('invalid-response')
@@ -340,23 +363,30 @@ async function boundedJSON(response: Response, maximum: number): Promise<unknown
   if (contentLength !== null) {
     const parsed = Number(contentLength)
     if (!Number.isSafeInteger(parsed) || parsed < 0) fail('invalid-response')
-    if (parsed > maximum) fail('response-too-large')
+    if (parsed > maximum) {
+      void response.body?.cancel().catch(() => undefined)
+      fail('response-too-large')
+    }
   }
   if (!response.body) fail('invalid-response')
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
   let byteLength = 0
   try {
-    let chunk = await reader.read()
+    let chunk = await readBodyChunk(reader, signal)
     while (!chunk.done) {
       byteLength += chunk.value.byteLength
-      if (byteLength > maximum) {
-        await reader.cancel()
-        fail('response-too-large')
-      }
+      if (byteLength > maximum) fail('response-too-large')
       chunks.push(chunk.value)
-      chunk = await reader.read()
+      chunk = await readBodyChunk(reader, signal)
     }
+  } catch (cause) {
+    // Cleanup cannot delay the result or replace its classification. In particular, a response
+    // failure after the query POST never proves non-dispatch or authorizes retry.
+    void reader.cancel().catch(() => undefined)
+    throwIfAborted(signal)
+    if (cause instanceof SupabaseManagementDatabaseApplyTransportError) throw cause
+    fail('network-failed')
   } finally {
     reader.releaseLock()
   }
@@ -397,7 +427,7 @@ async function requestJSON(
   throwIfAborted(signal)
   if (response.redirected || (response.url !== '' && response.url !== url)) fail('http-error')
   if (response.status !== expectedStatus) fail('http-error')
-  return boundedJSON(response, maximum)
+  return boundedJSON(response, maximum, signal)
 }
 
 function validateProjectAuthority(value: unknown, request: ReviewedApplySnapshot): void {
