@@ -2,20 +2,24 @@
 
 import { invoke } from '@tauri-apps/api/core'
 
-import { randomHex } from '@open-pencil/core/random'
-
 import { ALIYUN_DRIVE_OPENAPI_ORIGIN } from '@/app/integrations/storage/aliyun-drive/config'
 
-import { withAbortSignal, type TauriHttpHeader } from './http'
+import { AliyunDriveNativeError, nativeAliyunDriveError } from './aliyun-drive-oauth-error'
+import type { TauriHttpHeader } from './http'
 import {
-  AliyunDriveNativeError,
-  nativeAliyunDriveError
-} from './aliyun-drive-oauth-error'
+  boundedStorageRequestBody,
+  createBoundedStorageInteger,
+  invokeCancellableStorageOAuth,
+  invokeStorageNative,
+  parseStorageJSONBody,
+  rememberBoundedStorageCapability,
+  storageNativeHeaders,
+  storageNativeResponse,
+  storageNativeResponseHeader,
+  type StorageNativeInvoke
+} from './storage-native-common'
 
-export {
-  AliyunDriveNativeError,
-  type AliyunDriveNativeErrorCode
-} from './aliyun-drive-oauth-error'
+export { AliyunDriveNativeError, type AliyunDriveNativeErrorCode } from './aliyun-drive-oauth-error'
 
 export type AliyunDriveNativeOAuthClient =
   | Readonly<{ mode: 'publisher-broker-confidential' }>
@@ -91,10 +95,7 @@ export type AliyunDriveNativeTransferResponse = {
   body: number[]
 }
 
-export type AliyunDriveInvoke = <T>(
-  command: string,
-  args?: Record<string, unknown>
-) => Promise<T>
+export type AliyunDriveInvoke = StorageNativeInvoke
 
 export type AliyunDriveNativeTransferInvoker = (
   request: AliyunDriveNativeTransferRequest,
@@ -130,125 +131,29 @@ const TRANSFER_TIMEOUT_MS = 120_000
 
 const DEFAULT_INVOKE = invoke as AliyunDriveInvoke
 
-function abortReason(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException('The operation was aborted', 'AbortError')
-}
-
-async function cancelOAuthOperation(
-  invokeCommand: AliyunDriveInvoke,
-  operationId: string
-): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      if (await invokeCommand<boolean>('aliyun_drive_oauth_cancel', { operationId })) return
-    } catch {
-      return
-    }
-    if (attempt < 2) {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 25)
-      })
-    }
-  }
-}
-
-async function invokeWithAbort<T>(
-  invokeCommand: AliyunDriveInvoke,
-  command: string,
-  args: Record<string, unknown>,
-  signal?: AbortSignal
-): Promise<T> {
-  signal?.throwIfAborted()
-  let pending: Promise<T>
-  try {
-    pending = invokeCommand<T>(command, args)
-  } catch (error) {
-    throw nativeAliyunDriveError(error)
-  }
-  if (!signal) {
-    try {
-      return await pending
-    } catch (error) {
-      throw nativeAliyunDriveError(error)
-    }
-  }
-  return withAbortSignal(pending, signal, nativeAliyunDriveError)
-}
-
-async function invokeCancellableOAuth<T>(
-  invokeCommand: AliyunDriveInvoke,
-  command: 'aliyun_drive_oauth_authorize' | 'aliyun_drive_oauth_refresh',
-  request: object,
-  signal?: AbortSignal
-): Promise<T> {
-  signal?.throwIfAborted()
-  const operationId = randomHex(16)
-  let pending: Promise<T>
-  try {
-    pending = invokeCommand<T>(command, {
-      request: { ...request, operationId }
-    })
-  } catch (error) {
-    throw nativeAliyunDriveError(error)
-  }
-  if (!signal) {
-    try {
-      return await pending
-    } catch (error) {
-      throw nativeAliyunDriveError(error)
-    }
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    let aborting = false
-    const cleanup = () => signal.removeEventListener('abort', onAbort)
-    const onAbort = () => {
-      if (aborting) return
-      aborting = true
-      cleanup()
-      reject(abortReason(signal))
-      void cancelOAuthOperation(invokeCommand, operationId)
-      void pending.catch(() => undefined)
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-    void pending.then(
-      (value) => {
-        if (aborting) return undefined
-        cleanup()
-        resolve(value)
-        return undefined
-      },
-      (error) => {
-        if (aborting) return undefined
-        cleanup()
-        reject(nativeAliyunDriveError(error))
-        return undefined
-      }
-    )
-  })
-}
-
 export function createAliyunDriveNativeBridge(
   invokeCommand: AliyunDriveInvoke = DEFAULT_INVOKE
 ): AliyunDriveNativeBridge {
   return Object.freeze({
     authorize(request: AliyunDriveNativeAuthorizeRequest, signal?: AbortSignal) {
-      return invokeCancellableOAuth<AliyunDriveNativeAuthorizeResult>(
+      return invokeCancellableStorageOAuth<AliyunDriveNativeAuthorizeResult>({
         invokeCommand,
-        'aliyun_drive_oauth_authorize',
+        command: 'aliyun_drive_oauth_authorize',
+        cancelCommand: 'aliyun_drive_oauth_cancel',
         request,
+        mapError: nativeAliyunDriveError,
         signal
-      )
+      })
     },
     refresh(request: AliyunDriveNativeRefreshRequest, signal?: AbortSignal) {
-      return invokeCancellableOAuth<AliyunDriveNativeRefreshResult>(
+      return invokeCancellableStorageOAuth<AliyunDriveNativeRefreshResult>({
         invokeCommand,
-        'aliyun_drive_oauth_refresh',
+        command: 'aliyun_drive_oauth_refresh',
+        cancelCommand: 'aliyun_drive_oauth_cancel',
         request,
+        mapError: nativeAliyunDriveError,
         signal
-      )
+      })
     }
   })
 }
@@ -259,10 +164,11 @@ export function createAliyunDriveNativeTransfer(
   invokeCommand: AliyunDriveInvoke = DEFAULT_INVOKE
 ): AliyunDriveNativeTransferInvoker {
   return (request, signal) =>
-    invokeWithAbort<AliyunDriveNativeTransferResponse>(
+    invokeStorageNative<AliyunDriveNativeTransferResponse>(
       invokeCommand,
       'aliyun_drive_transfer',
       { request },
+      nativeAliyunDriveError,
       signal
     )
 }
@@ -277,12 +183,9 @@ function responseError(message: string): AliyunDriveNativeError {
   return new AliyunDriveNativeError('invalid-response', { cause: new TypeError(message) })
 }
 
-function boundedPositiveInteger(value: number, maximum: number): number {
-  if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {
-    throw transportError('Aliyun Drive native transfer limit is invalid')
-  }
-  return value
-}
+const boundedPositiveInteger = createBoundedStorageInteger(() =>
+  transportError('Aliyun Drive native transfer limit is invalid')
+)
 
 type AliyunDriveCapabilityKind = Exclude<AliyunDriveTransferKind, 'api'>
 
@@ -311,21 +214,7 @@ function rememberCapability(
   const url = safeCapabilityURL(rawURL)
   if (!url) return
   const key = url.toString()
-  if (capabilities.size >= MAX_CAPABILITIES && !capabilities.has(key)) {
-    const oldest = capabilities.keys().next().value
-    if (typeof oldest === 'string') capabilities.delete(oldest)
-  }
-  capabilities.set(key, kind)
-}
-
-function responseHeader(
-  response: AliyunDriveNativeTransferResponse,
-  expectedName: string
-): string | null {
-  return (
-    response.headers.find(({ name }) => name.toLowerCase() === expectedName.toLowerCase())?.value ??
-    null
-  )
+  rememberBoundedStorageCapability(capabilities, key, kind, MAX_CAPABILITIES)
 }
 
 function rememberPartCapabilities(
@@ -346,15 +235,12 @@ function rememberAPICapabilities(
   capabilities: Map<string, AliyunDriveCapabilityKind>
 ): void {
   if (response.status < 200 || response.status >= 300 || response.body.length === 0) return
-  const contentType = responseHeader(response, 'content-type')?.split(';', 1)[0]?.trim()
+  const contentType = storageNativeResponseHeader(response, 'content-type')
+    ?.split(';', 1)[0]
+    ?.trim()
   if (contentType?.toLowerCase() !== 'application/json') return
-  let value: unknown
-  try {
-    value = JSON.parse(new TextDecoder().decode(new Uint8Array(response.body))) as unknown
-  } catch {
-    return
-  }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return
+  const value = parseStorageJSONBody(response.body)
+  if (!value) return
   if (requestURL.pathname === '/adrive/v1.0/openFile/getDownloadUrl') {
     const downloadURL = Reflect.get(value, 'url')
     if (typeof downloadURL === 'string') rememberCapability(capabilities, downloadURL, 'download')
@@ -381,10 +267,7 @@ function transferKind(
   ) {
     throw transportError('Aliyun Drive native transfer URL is invalid')
   }
-  if (
-    url.origin === ALIYUN_DRIVE_OPENAPI_ORIGIN &&
-    url.pathname.startsWith('/adrive/v1.0/')
-  ) {
+  if (url.origin === ALIYUN_DRIVE_OPENAPI_ORIGIN && url.pathname.startsWith('/adrive/v1.0/')) {
     return 'api'
   }
   const capability = capabilities.get(url.toString())
@@ -396,42 +279,9 @@ async function boundedRequestBody(
   request: Request,
   maxBytes: number
 ): Promise<number[] | undefined> {
-  if (!request.body) return undefined
-  const declaredLength = request.headers.get('content-length')
-  if (
-    declaredLength !== null &&
-    (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)
-  ) {
-    throw transportError('Aliyun Drive request body is too large')
-  }
-  const chunks: Uint8Array[] = []
-  const reader = request.body.getReader()
-  let total = 0
-  try {
-    let next = await reader.read()
-    while (!next.done) {
-      total += next.value.byteLength
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => undefined)
-        throw transportError('Aliyun Drive request body is too large')
-      }
-      chunks.push(next.value)
-      next = await reader.read()
-    }
-  } finally {
-    reader.releaseLock()
-  }
-  const bytes = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return [...bytes]
-}
-
-function nativeHeaders(headers: Headers): AliyunDriveTransferHeader[] {
-  return [...headers.entries()].map(([name, value]) => ({ name, value }))
+  return boundedStorageRequestBody(request, maxBytes, () =>
+    transportError('Aliyun Drive request body is too large')
+  )
 }
 
 function validatedHeaders(headers: AliyunDriveTransferHeader[]): Headers {
@@ -462,20 +312,12 @@ function nativeResponse(
   response: AliyunDriveNativeTransferResponse,
   maxResponseBytes: number
 ): Response {
-  if (
-    !Number.isSafeInteger(response.status) ||
-    response.status < 200 ||
-    response.status > 599 ||
-    response.body.length > maxResponseBytes ||
-    response.body.some((value) => !Number.isSafeInteger(value) || value < 0 || value > 255)
-  ) {
-    throw responseError('Aliyun Drive returned an invalid native response')
-  }
-  const body = [204, 205, 304].includes(response.status) ? null : new Uint8Array(response.body)
-  return new Response(body, {
-    status: response.status,
-    headers: validatedHeaders(response.headers)
-  })
+  return storageNativeResponse(
+    response,
+    () => responseError('Aliyun Drive returned an invalid native response'),
+    maxResponseBytes,
+    validatedHeaders
+  )
 }
 
 type AliyunDriveMethod = AliyunDriveNativeTransferRequest['method']
@@ -522,6 +364,7 @@ export function createAliyunDriveTauriTransport(
   const transfer = options.transfer ?? aliyunDriveNativeTransfer
   const maxDownloadBytes = boundedPositiveInteger(
     options.maxDownloadBytes ?? DEFAULT_MAX_DOWNLOAD_BYTES,
+    1,
     MAX_DOWNLOAD_BYTES
   )
   const capabilities = new Map<string, AliyunDriveCapabilityKind>()
@@ -537,7 +380,7 @@ export function createAliyunDriveTauriTransport(
         kind,
         url: url.toString(),
         method,
-        headers: nativeHeaders(request.headers),
+        headers: storageNativeHeaders(request.headers),
         ...(body ? { body } : {}),
         maxResponseBytes,
         timeoutMs: TRANSFER_TIMEOUT_MS

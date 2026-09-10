@@ -1,3 +1,8 @@
+import {
+  LocalOAuthMetadataStore,
+  MemoryOAuthMetadataStore,
+  type OAuthMetadataStoreConfig
+} from '@/app/integrations/storage/oauth-shared/metadata-store'
 import { requireStorageProfileID } from '@/app/integrations/storage/types'
 import { browserCredentialStorage } from '@/app/settings/credentials/storage'
 
@@ -13,10 +18,6 @@ function invalidMetadata(): TypeError {
   return new TypeError('Stored Aliyun Drive account metadata is invalid')
 }
 
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength
-}
-
 function metadataKey(profileId: string): string {
   return `${STORAGE_PREFIX}${requireStorageProfileID(profileId)}`
 }
@@ -27,53 +28,30 @@ export interface AliyunDriveOAuthMetadataStore {
   remove(profileId: string): Promise<void>
 }
 
+const metadataStoreConfig = {
+  key: metadataKey,
+  maxBytes: MAX_ALIYUN_DRIVE_OAUTH_METADATA_BYTES,
+  parse: parseAliyunDriveOAuthPublicMetadata,
+  invalid: invalidMetadata,
+  unavailableMessage: 'Aliyun Drive account metadata storage is unavailable'
+} satisfies OAuthMetadataStoreConfig<AliyunDriveOAuthPublicMetadata>
+
 /** Profile-scoped, non-secret account binding stored outside the credential vault. */
-export class LocalAliyunDriveOAuthMetadataStore implements AliyunDriveOAuthMetadataStore {
-  constructor(private readonly storage: Storage | null = browserCredentialStorage()) {}
-
-  async read(profileId: string): Promise<AliyunDriveOAuthPublicMetadata | null> {
-    const raw = this.storage?.getItem(metadataKey(profileId))
-    if (!raw) return null
-    if (utf8Bytes(raw) > MAX_ALIYUN_DRIVE_OAUTH_METADATA_BYTES) throw invalidMetadata()
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      throw invalidMetadata()
-    }
-    return parseAliyunDriveOAuthPublicMetadata(parsed)
-  }
-
-  async write(metadata: AliyunDriveOAuthPublicMetadata): Promise<void> {
-    if (!this.storage) throw new Error('Aliyun Drive account metadata storage is unavailable')
-    const parsed = parseAliyunDriveOAuthPublicMetadata(metadata)
-    const serialized = JSON.stringify(parsed)
-    if (utf8Bytes(serialized) > MAX_ALIYUN_DRIVE_OAUTH_METADATA_BYTES) {
-      throw invalidMetadata()
-    }
-    this.storage.setItem(metadataKey(parsed.profileId), serialized)
-  }
-
-  async remove(profileId: string): Promise<void> {
-    this.storage?.removeItem(metadataKey(profileId))
+export class LocalAliyunDriveOAuthMetadataStore
+  extends LocalOAuthMetadataStore<AliyunDriveOAuthPublicMetadata>
+  implements AliyunDriveOAuthMetadataStore
+{
+  constructor(storage: Storage | null = browserCredentialStorage()) {
+    super(storage, metadataStoreConfig)
   }
 }
 
-export class MemoryAliyunDriveOAuthMetadataStore implements AliyunDriveOAuthMetadataStore {
-  readonly #values = new Map<string, AliyunDriveOAuthPublicMetadata>()
-
-  async read(profileId: string): Promise<AliyunDriveOAuthPublicMetadata | null> {
-    const value = this.#values.get(metadataKey(profileId))
-    return value ? parseAliyunDriveOAuthPublicMetadata(value) : null
-  }
-
-  async write(metadata: AliyunDriveOAuthPublicMetadata): Promise<void> {
-    const parsed = parseAliyunDriveOAuthPublicMetadata(metadata)
-    this.#values.set(metadataKey(parsed.profileId), parsed)
-  }
-
-  async remove(profileId: string): Promise<void> {
-    this.#values.delete(metadataKey(profileId))
+export class MemoryAliyunDriveOAuthMetadataStore
+  extends MemoryOAuthMetadataStore<AliyunDriveOAuthPublicMetadata>
+  implements AliyunDriveOAuthMetadataStore
+{
+  constructor() {
+    super(metadataStoreConfig)
   }
 }
 

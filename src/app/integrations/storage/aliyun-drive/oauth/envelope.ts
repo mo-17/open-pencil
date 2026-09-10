@@ -1,8 +1,15 @@
-import { isStorageProfileID } from '@/app/integrations/storage/types'
 import {
-  isAliyunDriveClientId,
-  parseAliyunDriveLoopbackRedirectURI
-} from '../config'
+  hasExactOAuthKeys as hasExactKeys,
+  isBoundedASCIISecret,
+  isBoundedOAuthText,
+  isBoundedOAuthToken,
+  isOAuthRecord as isRecord,
+  parseBoundedOAuthJSON,
+  stringifyBoundedOAuthJSON
+} from '@/app/integrations/storage/oauth-shared/validation'
+import { isStorageProfileID } from '@/app/integrations/storage/types'
+
+import { isAliyunDriveClientId, parseAliyunDriveLoopbackRedirectURI } from '../config'
 
 export const ALIYUN_DRIVE_OAUTH_ENVELOPE_VERSION = 1 as const
 export const MAX_ALIYUN_DRIVE_AUTHORIZATION_BYTES = 16 * 1024
@@ -93,7 +100,6 @@ export type AliyunDriveOAuthPublicMetadata =
   | AliyunDriveAccessGrantPublicMetadata
 
 const AUTHORIZATION_VERSION_PATTERN = /^[a-z0-9][a-z0-9._-]{15,127}$/
-const ASCII_GRAPHIC_PATTERN = /^[\x21-\x7e]+$/
 const MAX_TOKEN_BYTES = 8 * 1024
 const MAX_SECRET_BYTES = 4 * 1024
 const MAX_TIMESTAMP = 8_640_000_000_000_000
@@ -106,83 +112,25 @@ function invalidMetadata(): TypeError {
   return new TypeError('Stored Aliyun Drive account metadata is invalid')
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function hasExactKeys(
-  value: Record<string, unknown>,
-  required: readonly string[],
-  optional: readonly string[] = []
-): boolean {
-  const allowed = new Set([...required, ...optional])
-  const keys = Object.keys(value)
-  return required.every((key) => Object.hasOwn(value, key)) && keys.every((key) => allowed.has(key))
-}
-
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength
-}
-
-function boundedText(value: unknown, maxBytes: number): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.trim() === value &&
-    utf8Bytes(value) <= maxBytes &&
-    !/\p{Cc}/u.test(value)
-  )
-}
-
 function validAuthorizationVersion(value: unknown): value is string {
   return typeof value === 'string' && AUTHORIZATION_VERSION_PATTERN.test(value)
 }
 
 function validSecret(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    utf8Bytes(value) >= 8 &&
-    utf8Bytes(value) <= MAX_SECRET_BYTES &&
-    ASCII_GRAPHIC_PATTERN.test(value)
-  )
+  return isBoundedASCIISecret(value, 8, MAX_SECRET_BYTES)
 }
 
 function validToken(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    utf8Bytes(value) > 0 &&
-    utf8Bytes(value) <= MAX_TOKEN_BYTES &&
-    value.trim() === value &&
-    !/\s/u.test(value) &&
-    !/\p{Cc}/u.test(value)
-  )
+  return isBoundedOAuthToken(value, MAX_TOKEN_BYTES)
 }
 
 function validTimestamp(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= MAX_TIMESTAMP
 }
 
-function parseJSON(value: string, invalid: () => TypeError): unknown {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    utf8Bytes(value) > MAX_ALIYUN_DRIVE_AUTHORIZATION_BYTES
-  ) {
-    throw invalid()
-  }
-  try {
-    return JSON.parse(value) as unknown
-  } catch {
-    throw invalid()
-  }
-}
-
 export function parseAliyunDriveOAuthClient(value: unknown): AliyunDriveOAuthClient {
   if (!isRecord(value) || !isAliyunDriveClientId(value.clientId)) throw invalidAuthorization()
-  if (
-    value.mode === 'publisher-broker-confidential' &&
-    hasExactKeys(value, ['mode', 'clientId'])
-  ) {
+  if (value.mode === 'publisher-broker-confidential' && hasExactKeys(value, ['mode', 'clientId'])) {
     return Object.freeze({
       mode: 'publisher-broker-confidential',
       clientId: value.clientId
@@ -222,11 +170,9 @@ export function parseAliyunDriveOAuthPublicClient(value: unknown): AliyunDriveOA
     !isRecord(value) ||
     !hasExactKeys(value, ['mode', 'clientId']) ||
     !isAliyunDriveClientId(value.clientId) ||
-    ![
-      'publisher-broker-confidential',
-      'self-hosted-confidential',
-      'self-hosted-public'
-    ].includes(String(value.mode))
+    !['publisher-broker-confidential', 'self-hosted-confidential', 'self-hosted-public'].includes(
+      String(value.mode)
+    )
   ) {
     throw invalidMetadata()
   }
@@ -246,10 +192,7 @@ export function aliyunDriveOAuthClientsEqual(
   left: AliyunDriveOAuthClient,
   right: AliyunDriveOAuthClient
 ): boolean {
-  if (
-    left.mode !== right.mode ||
-    left.clientId !== right.clientId
-  ) {
+  if (left.mode !== right.mode || left.clientId !== right.clientId) {
     return false
   }
   if (left.mode === 'publisher-broker-confidential') {
@@ -278,7 +221,7 @@ export function parseAliyunDriveAuthorizationEnvelope(
   if (
     !isRecord(value) ||
     value.schemaVersion !== ALIYUN_DRIVE_OAUTH_ENVELOPE_VERSION ||
-    !boundedText(value.subject, 512) ||
+    !isBoundedOAuthText(value.subject, { maxBytes: 512, requireTrimmed: true }) ||
     !validAuthorizationVersion(value.authorizationVersion) ||
     !validToken(value.accessToken) ||
     !validTimestamp(value.accessExpiresAt)
@@ -340,18 +283,19 @@ export function parseAliyunDriveAuthorizationEnvelope(
 export function parseAliyunDriveAuthorizationEnvelopeJSON(
   value: string
 ): AliyunDriveAuthorizationEnvelope {
-  return parseAliyunDriveAuthorizationEnvelope(parseJSON(value, invalidAuthorization))
+  return parseAliyunDriveAuthorizationEnvelope(
+    parseBoundedOAuthJSON(value, MAX_ALIYUN_DRIVE_AUTHORIZATION_BYTES, invalidAuthorization)
+  )
 }
 
 export function serializeAliyunDriveAuthorizationEnvelope(
   value: AliyunDriveAuthorizationEnvelope
 ): string {
-  const parsed = parseAliyunDriveAuthorizationEnvelope(value)
-  const serialized = JSON.stringify(parsed)
-  if (utf8Bytes(serialized) > MAX_ALIYUN_DRIVE_AUTHORIZATION_BYTES) {
-    throw invalidAuthorization()
-  }
-  return serialized
+  return stringifyBoundedOAuthJSON(
+    parseAliyunDriveAuthorizationEnvelope(value),
+    MAX_ALIYUN_DRIVE_AUTHORIZATION_BYTES,
+    invalidAuthorization
+  )
 }
 
 export function parseAliyunDriveOAuthPublicMetadata(
@@ -362,8 +306,9 @@ export function parseAliyunDriveOAuthPublicMetadata(
     !isRecord(value) ||
     value.schemaVersion !== ALIYUN_DRIVE_OAUTH_ENVELOPE_VERSION ||
     !isStorageProfileID(profileId) ||
-    !boundedText(value.subject, 512) ||
-    (value.email !== undefined && !boundedText(value.email, 512)) ||
+    !isBoundedOAuthText(value.subject, { maxBytes: 512, requireTrimmed: true }) ||
+    (value.email !== undefined &&
+      !isBoundedOAuthText(value.email, { maxBytes: 512, requireTrimmed: true })) ||
     !validAuthorizationVersion(value.authorizationVersion)
   ) {
     throw invalidMetadata()
@@ -410,11 +355,17 @@ export function parseAliyunDriveOAuthPublicMetadata(
 export function parseAliyunDriveOAuthPublicMetadataJSON(
   value: string
 ): AliyunDriveOAuthPublicMetadata {
-  return parseAliyunDriveOAuthPublicMetadata(parseJSON(value, invalidMetadata))
+  return parseAliyunDriveOAuthPublicMetadata(
+    parseBoundedOAuthJSON(value, MAX_ALIYUN_DRIVE_AUTHORIZATION_BYTES, invalidMetadata)
+  )
 }
 
 export function serializeAliyunDriveOAuthPublicMetadata(
   value: AliyunDriveOAuthPublicMetadata
 ): string {
-  return JSON.stringify(parseAliyunDriveOAuthPublicMetadata(value))
+  return stringifyBoundedOAuthJSON(
+    parseAliyunDriveOAuthPublicMetadata(value),
+    MAX_ALIYUN_DRIVE_AUTHORIZATION_BYTES,
+    invalidMetadata
+  )
 }

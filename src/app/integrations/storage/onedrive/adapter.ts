@@ -1,12 +1,22 @@
+import {
+  createConflictFigName,
+  createDistinctDocumentIdReservation,
+  createDocumentIdReservation,
+  createStorageDocumentAdapterMethods,
+  createStorageDocumentConflictCopyWriter,
+  createStorageDocumentUploadOptions,
+  createStorageDocumentWritePreparation,
+  createStorageWriteRacePreserver,
+  describeStorageDocument,
+  isStorageWriteRace,
+  normalizePortableFigBaseName,
+  truncateCharacters,
+  writeStorageDocumentOrPreserveRace
+} from '../shared/adapter'
 import type {
   StorageAdapter,
-  StorageConnectionResult,
-  StorageDocument,
   StorageDocumentAuthority,
-  StorageDocumentMetadata,
   StorageGetDocumentResult,
-  StoragePutDocumentOptions,
-  StoragePutDocumentResult,
   StorageRemoteRevision,
   StorageTransferOptions
 } from '../types'
@@ -14,7 +24,6 @@ import type { OneDriveClient } from './client'
 import { OneDriveError } from './errors'
 import type { OneDriveDocumentFile, OneDriveUploadOptions, OneDriveUploadResult } from './types'
 
-const DOCUMENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const RESERVED_BASENAMES = /^(?:\.lock|con|prn|aux|nul|com[0-9]|lpt[0-9])$/i
 
 export interface OneDriveClientLike {
@@ -49,45 +58,20 @@ export type OneDriveStorageAdapterOptions = Readonly<{
 
 export type OneDriveStorageAdapter = StorageAdapter
 
-function truncateCharacters(value: string, maxCharacters: number): string {
-  return Array.from(value).slice(0, maxCharacters).join('')
-}
-
 export function normalizeOneDriveFigName(input: string): string {
-  const cleaned = Array.from(input.trim(), (character) => {
-    const code = character.charCodeAt(0)
-    return code < 32 || code === 127 || /["*/:<>?\\|#%]/.test(character) ? '-' : character
+  const base = normalizePortableFigBaseName(input, {
+    forbiddenCharacters: /["*/:<>?\\|#%]/,
+    trimLeadingTildes: true,
+    requiredError: () => new OneDriveError('invalid-input', 'OneDrive document name is required')
   })
-    .join('')
-    .replace(/-+/g, '-')
-    .replace(/[. ]+$/g, '')
-    .replace(/^~+/, '')
-  const withoutExtension = cleaned.toLocaleLowerCase().endsWith('.fig')
-    ? cleaned.slice(0, -4)
-    : cleaned
-  const base = withoutExtension.trim().replace(/[. ]+$/g, '')
-  if (!base) {
-    throw new OneDriveError('invalid-input', 'OneDrive document name is required')
-  }
   const safeBase = RESERVED_BASENAMES.test(base) ? `_${base}` : base
   return `${truncateCharacters(safeBase, 240)}.fig`
 }
 
 function conflictName(name: string, now: Date): string {
-  const base = normalizeOneDriveFigName(name).slice(0, -4)
-  const timestamp = now.toISOString().replace('T', ' ').slice(0, 19).replace(/:/g, '-')
-  return normalizeOneDriveFigName(`${truncateCharacters(base, 190)} (conflict ${timestamp}).fig`)
-}
-
-function validateGeneratedDocumentId(value: string): string {
-  const normalized = value.toLocaleLowerCase()
-  if (normalized !== value || !DOCUMENT_ID_PATTERN.test(value)) {
-    throw new OneDriveError(
-      'invalid-response',
-      'OneDrive document ID generator returned a non-canonical UUID v4'
-    )
-  }
-  return value
+  return createConflictFigName(name, now, normalizeOneDriveFigName, (base) =>
+    truncateCharacters(base, 190)
+  )
 }
 
 function isRevision(
@@ -120,178 +104,89 @@ function revisionFor(document: OneDriveDocumentFile): StorageRemoteRevision {
   return { itemId, etag }
 }
 
-function isWriteRace(error: unknown): boolean {
-  return (
-    error instanceof OneDriveError &&
-    (error.code === 'conflict' ||
-      error.code === 'precondition' ||
-      error.status === 409 ||
-      error.status === 412)
-  )
-}
-
-function connectionMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'OneDrive connection failed'
-}
+const isOneDriveWriteRace = (error: unknown): boolean =>
+  error instanceof OneDriveError && isStorageWriteRace(error)
 
 export function createOneDriveStorageAdapter(
   client: OneDriveClientLike | OneDriveClient,
   options: OneDriveStorageAdapterOptions = {}
 ): OneDriveStorageAdapter {
   const now = options.now ?? (() => new Date())
-  const createDocumentId = options.createDocumentId ?? (() => crypto.randomUUID())
-
-  const reserveId = (): string => validateGeneratedDocumentId(createDocumentId())
-
-  const createConflictCopy = async (
-    originalId: string,
-    originalRevision: StorageRemoteRevision | null,
-    bytes: Uint8Array,
-    metadata: StorageDocumentMetadata,
-    transfer: StoragePutDocumentOptions
-  ): Promise<StoragePutDocumentResult> => {
-    let conflictDocumentId = reserveId()
-    for (let attempt = 0; conflictDocumentId === originalId && attempt < 3; attempt++) {
-      conflictDocumentId = reserveId()
-    }
-    if (conflictDocumentId === originalId) {
-      throw new OneDriveError('invalid-response', 'OneDrive could not reserve a conflict copy ID')
-    }
-    const uploaded = await client.createDocument({
-      documentId: conflictDocumentId,
-      name: conflictName(metadata.name, now()),
-      bytes,
-      signal: transfer.signal,
-      onProgress: transfer.onProgress,
-      expectedAuthority: transfer.expectedAuthority
-    })
-    return {
-      outcome: 'conflict-copy',
-      remoteRevision: originalRevision,
-      conflictDocumentId,
-      conflictCopyRevision: uploaded.remoteRevision
-    }
-  }
-
-  const preserveWriteRace = async (
-    id: string,
-    bytes: Uint8Array,
-    metadata: StorageDocumentMetadata,
-    transfer: StoragePutDocumentOptions
-  ): Promise<StoragePutDocumentResult> => {
-    const latest = await client.getDocumentFile(id, {
-      signal: transfer.signal,
-      expectedAuthority: transfer.expectedAuthority
-    })
-    return createConflictCopy(id, latest ? revisionFor(latest) : null, bytes, metadata, transfer)
-  }
+  const reserveId = createDocumentIdReservation(
+    options.createDocumentId ?? (() => crypto.randomUUID()),
+    () =>
+      new OneDriveError(
+        'invalid-response',
+        'OneDrive document ID generator returned a non-canonical UUID v4'
+      )
+  )
+  const reserveConflictId = createDistinctDocumentIdReservation(
+    reserveId,
+    () => new OneDriveError('invalid-response', 'OneDrive could not reserve a conflict copy ID')
+  )
+  const createConflictCopy = createStorageDocumentConflictCopyWriter(
+    (upload) => client.createDocument(upload),
+    (originalId, reservedId) => reservedId ?? reserveConflictId(originalId),
+    (name) => conflictName(name, now())
+  )
+  const prepareWrite = createStorageDocumentWritePreparation(
+    client,
+    revisionFor,
+    oneDriveRevisionsMatch,
+    createConflictCopy
+  )
+  const preserveWriteRace = createStorageWriteRacePreserver(client, revisionFor, createConflictCopy)
+  const common = createStorageDocumentAdapterMethods(client, {
+    providerName: 'OneDrive',
+    reserveDocumentId: reserveId,
+    describeDocument: (document) =>
+      describeStorageDocument(
+        document.documentId,
+        document.file.name,
+        document.file.lastModifiedDateTime,
+        revisionFor(document)
+      ),
+    documentSize: (document) => document.file.size ?? 0
+  })
 
   return {
-    async testConnection(connectionOptions): Promise<StorageConnectionResult> {
-      try {
-        await client.testConnection(connectionOptions?.signal)
-        return { ok: true, message: 'Connected to OneDrive.' }
-      } catch (error) {
-        return { ok: false, message: connectionMessage(error) }
-      }
-    },
-
-    async getAuthority(authorityOptions) {
-      return client.getAuthority(authorityOptions?.signal)
-    },
-
-    async listDocuments(listOptions) {
-      const documents = await client.listDocuments(listOptions?.signal)
-      return documents.map(
-        (document): StorageDocument => ({
-          id: document.documentId,
-          name: document.file.name,
-          updatedAt: document.file.lastModifiedDateTime,
-          remoteRevision: revisionFor(document),
-          metadataAuthoritative: true
-        })
-      )
-    },
-
-    async reserveDocumentId() {
-      return reserveId()
-    },
-
-    getDocument(id, transferOptions) {
-      return client.downloadDocument(id, transferOptions)
-    },
+    ...common,
 
     async putDocument(id, bytes, metadata, transferOptions = {}) {
-      const current = await client.getDocumentFile(id, {
-        signal: transferOptions.signal,
-        expectedAuthority: transferOptions.expectedAuthority
-      })
-      const currentRevision = current ? revisionFor(current) : null
-      const expectedRevision = transferOptions.expectedRemoteRevision
-
-      if (current && !oneDriveRevisionsMatch(expectedRevision, currentRevision)) {
-        return createConflictCopy(id, currentRevision, bytes, metadata, transferOptions)
-      }
-      if (!current && expectedRevision !== undefined && expectedRevision !== null) {
-        return createConflictCopy(id, null, bytes, metadata, transferOptions)
-      }
-
-      const uploadOptions: OneDriveUploadOptions = {
-        documentId: id,
-        name: normalizeOneDriveFigName(metadata.name),
+      const prepared = await prepareWrite(id, bytes, metadata, transferOptions)
+      if (prepared.conflictResult) return prepared.conflictResult
+      const current = prepared.current
+      const uploadOptions: OneDriveUploadOptions = createStorageDocumentUploadOptions(
+        id,
+        normalizeOneDriveFigName(metadata.name),
         bytes,
-        signal: transferOptions.signal,
-        onProgress: transferOptions.onProgress,
-        expectedAuthority: transferOptions.expectedAuthority
-      }
+        transferOptions
+      )
 
       if (!current) {
-        try {
-          const created = await client.createDocument(uploadOptions)
-          return { outcome: 'created', remoteRevision: created.remoteRevision }
-        } catch (error) {
-          if (!isWriteRace(error)) throw error
-          return preserveWriteRace(id, bytes, metadata, transferOptions)
-        }
+        return writeStorageDocumentOrPreserveRace(
+          'created',
+          () => client.createDocument(uploadOptions),
+          isOneDriveWriteRace,
+          () => preserveWriteRace(id, bytes, metadata, transferOptions)
+        )
       }
 
-      try {
-        const updated = await client.updateDocument({
-          ...uploadOptions,
-          itemId: current.file.id,
-          expectedEtag: current.file.eTag ?? undefined
-        })
-        return { outcome: 'updated', remoteRevision: updated.remoteRevision }
-      } catch (error) {
-        if (!isWriteRace(error)) throw error
-        return preserveWriteRace(id, bytes, metadata, transferOptions)
-      }
+      return writeStorageDocumentOrPreserveRace(
+        'updated',
+        () =>
+          client.updateDocument({
+            ...uploadOptions,
+            itemId: current.file.id,
+            expectedEtag: current.file.eTag ?? undefined
+          }),
+        isOneDriveWriteRace,
+        () => preserveWriteRace(id, bytes, metadata, transferOptions)
+      )
     },
 
     deleteDocument(id, deleteOptions) {
       return client.deleteDocumentFile(id, deleteOptions?.signal, deleteOptions?.expectedAuthority)
-    },
-
-    async getDocumentMetadata(id, metadataOptions) {
-      const document = await client.getDocumentFile(id, {
-        signal: metadataOptions?.signal,
-        expectedAuthority: metadataOptions?.expectedAuthority
-      })
-      if (!document) return null
-      return {
-        name: document.file.name,
-        updatedAt: document.file.lastModifiedDateTime,
-        remoteRevision: revisionFor(document)
-      }
-    },
-
-    async getUsage(usageOptions) {
-      const documents = await client.listDocuments(usageOptions?.signal)
-      return {
-        bytesUsed: documents.reduce((total, document) => total + (document.file.size ?? 0), 0),
-        objectCount: documents.length,
-        documentCount: documents.length
-      }
     }
   }
 }

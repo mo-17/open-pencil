@@ -1,3 +1,14 @@
+import {
+  hasExactOAuthKeys as hasExactKeys,
+  hasExactOAuthValueSet,
+  isBoundedOAuthText,
+  isBoundedOAuthToken,
+  isOAuthRecord as isRecord,
+  oauthSerializedBytes as serializedBytes,
+  parseBoundedOAuthJSON,
+  stringifyBoundedOAuthJSON
+} from '@/app/integrations/storage/oauth-shared/validation'
+
 const ONEDRIVE_OAUTH_SCHEMA_VERSION = 1 as const
 
 const MAX_REFRESH_TOKEN_BYTES = 12 * 1024
@@ -50,43 +61,6 @@ function invalidMetadata(): TypeError {
   return new TypeError('Stored OneDrive account metadata is invalid')
 }
 
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength
-}
-
-function serializedBytes(value: unknown): number | null {
-  try {
-    const serialized = JSON.stringify(value)
-    return typeof serialized === 'string' ? utf8Bytes(serialized) : null
-  } catch {
-    return null
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function hasExactKeys(
-  value: Record<string, unknown>,
-  required: readonly string[],
-  optional: readonly string[] = []
-): boolean {
-  const allowed = new Set([...required, ...optional])
-  const keys = Object.keys(value)
-  return required.every((key) => Object.hasOwn(value, key)) && keys.every((key) => allowed.has(key))
-}
-
-function boundedText(value: unknown, maxLength: number): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.length <= maxLength &&
-    value.trim() === value &&
-    !/\p{Cc}/u.test(value)
-  )
-}
-
 function validAuthorizationVersion(value: unknown): value is string {
   return typeof value === 'string' && AUTHORIZATION_VERSION_PATTERN.test(value)
 }
@@ -96,25 +70,13 @@ export function isOneDriveClientId(value: unknown): value is string {
 }
 
 function validRefreshToken(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    utf8Bytes(value) > 0 &&
-    utf8Bytes(value) <= MAX_REFRESH_TOKEN_BYTES &&
-    value.trim() === value &&
-    !/\s/u.test(value) &&
-    !/\p{Cc}/u.test(value)
-  )
+  return isBoundedOAuthToken(value, MAX_REFRESH_TOKEN_BYTES)
 }
 
 export function hasExactOneDriveOAuthScopes(
   value: unknown
 ): value is readonly OneDriveOAuthScope[] {
-  if (!Array.isArray(value) || value.length !== ONEDRIVE_OAUTH_SCOPES.length) return false
-  const values = new Set(value)
-  return (
-    values.size === ONEDRIVE_OAUTH_SCOPES.length &&
-    ONEDRIVE_OAUTH_SCOPES.every((scope) => values.has(scope))
-  )
+  return hasExactOAuthValueSet(value, ONEDRIVE_OAUTH_SCOPES)
 }
 
 /**
@@ -147,7 +109,10 @@ export function parseOneDriveRefreshTokenEnvelope(value: unknown): OneDriveRefre
     !validRefreshToken(value.refreshToken) ||
     !isOneDriveClientId(value.clientId) ||
     !validAuthorizationVersion(value.authorizationVersion) ||
-    !boundedText(value.subject, MAX_SUBJECT_LENGTH)
+    !isBoundedOAuthText(value.subject, {
+      maxLength: MAX_SUBJECT_LENGTH,
+      requireTrimmed: true
+    })
   ) {
     throw invalidAuthorization()
   }
@@ -167,28 +132,17 @@ export function parseOneDriveRefreshTokenEnvelope(value: unknown): OneDriveRefre
 }
 
 export function parseOneDriveRefreshTokenEnvelopeJSON(value: string): OneDriveRefreshTokenEnvelope {
-  if (
-    value.length === 0 ||
-    utf8Bytes(value) === 0 ||
-    utf8Bytes(value) > MAX_ONEDRIVE_OAUTH_CREDENTIAL_BYTES
-  ) {
-    throw invalidAuthorization()
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    throw invalidAuthorization()
-  }
-  return parseOneDriveRefreshTokenEnvelope(parsed)
+  return parseOneDriveRefreshTokenEnvelope(
+    parseBoundedOAuthJSON(value, MAX_ONEDRIVE_OAUTH_CREDENTIAL_BYTES, invalidAuthorization)
+  )
 }
 
 export function serializeOneDriveRefreshTokenEnvelope(value: OneDriveRefreshTokenEnvelope): string {
-  const serialized = JSON.stringify(parseOneDriveRefreshTokenEnvelope(value))
-  if (utf8Bytes(serialized) > MAX_ONEDRIVE_OAUTH_CREDENTIAL_BYTES) {
-    throw invalidAuthorization()
-  }
-  return serialized
+  return stringifyBoundedOAuthJSON(
+    parseOneDriveRefreshTokenEnvelope(value),
+    MAX_ONEDRIVE_OAUTH_CREDENTIAL_BYTES,
+    invalidAuthorization
+  )
 }
 
 export function parseOneDriveOAuthPublicMetadata(value: unknown): OneDriveOAuthPublicMetadata {
@@ -200,12 +154,19 @@ export function parseOneDriveOAuthPublicMetadata(value: unknown): OneDriveOAuthP
       ['schemaVersion', 'profileId', 'subject', 'authorizationVersion', 'grantedScopes'],
       ['email']
     ) ||
-    !boundedText(value.profileId, 64) ||
+    !isBoundedOAuthText(value.profileId, { maxLength: 64, requireTrimmed: true }) ||
     !/^[a-z0-9._-]+$/.test(value.profileId) ||
-    !boundedText(value.subject, MAX_SUBJECT_LENGTH) ||
+    !isBoundedOAuthText(value.subject, {
+      maxLength: MAX_SUBJECT_LENGTH,
+      requireTrimmed: true
+    }) ||
     !validAuthorizationVersion(value.authorizationVersion) ||
     !hasExactOneDriveOAuthScopes(value.grantedScopes) ||
-    (value.email !== undefined && !boundedText(value.email, MAX_EMAIL_LENGTH))
+    (value.email !== undefined &&
+      !isBoundedOAuthText(value.email, {
+        maxLength: MAX_EMAIL_LENGTH,
+        requireTrimmed: true
+      }))
   ) {
     throw invalidMetadata()
   }

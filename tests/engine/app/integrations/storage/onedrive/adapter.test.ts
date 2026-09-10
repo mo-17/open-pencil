@@ -121,11 +121,40 @@ describe('OneDriveStorageAdapter', () => {
     })
   })
 
+  test('keeps list metadata exact and computes usage without requiring a revision', async () => {
+    let listCalls = 0
+    const listed = document()
+    const withoutEtag = document('item-without-etag', '')
+    const client = fakeClient({
+      listDocuments: () => Promise.resolve([listCalls++ === 0 ? listed : withoutEtag])
+    })
+    const adapter = createOneDriveStorageAdapter(client)
+
+    await expect(adapter.listDocuments()).resolves.toEqual([
+      {
+        id: DOCUMENT_ID,
+        name: '惊悚.fig',
+        updatedAt: '2026-08-26T01:02:03.000Z',
+        remoteRevision: { itemId: 'item-1', etag: '"etag-1"' },
+        metadataAuthoritative: true
+      }
+    ])
+    await expect(adapter.getUsage()).resolves.toEqual({
+      bytesUsed: 3,
+      objectCount: 1,
+      documentCount: 1
+    })
+  })
+
   test('updates only after exact itemId and ETag matching', async () => {
     let captured: OneDriveUploadOptions | null = null
+    let lookupOptions: unknown
     const current = document()
     const client = fakeClient({
-      getDocumentFile: () => Promise.resolve(current),
+      getDocumentFile: (_id, options) => {
+        lookupOptions = options
+        return Promise.resolve(current)
+      },
       updateDocument(options) {
         captured = options
         return Promise.resolve(uploaded('item-1', '"etag-2"'))
@@ -137,7 +166,11 @@ describe('OneDriveStorageAdapter', () => {
       DOCUMENT_ID,
       new Uint8Array([4, 5, 6]),
       { name: '惊悚.fig', updatedAt: '2026-08-26T02:00:00.000Z' },
-      { expectedRemoteRevision: { itemId: 'item-1', etag: '"etag-1"' } }
+      {
+        expectedRemoteRevision: { itemId: 'item-1', etag: '"etag-1"' },
+        expectedAuthority: AUTHORITY,
+        onProgress: () => undefined
+      }
     )
 
     expect(result).toEqual({
@@ -145,6 +178,7 @@ describe('OneDriveStorageAdapter', () => {
       remoteRevision: { itemId: 'item-1', etag: '"etag-2"' }
     })
     expect(captured).toMatchObject({ itemId: 'item-1', expectedEtag: '"etag-1"' })
+    expect(lookupOptions).toEqual({ signal: undefined, expectedAuthority: AUTHORITY })
   })
 
   test('preserves revision mismatch in a separate UUID folder without rebinding the original', async () => {

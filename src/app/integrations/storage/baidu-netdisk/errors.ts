@@ -15,56 +15,38 @@ export type BaiduNetdiskErrorCode =
   | 'resource-limit'
   | 'server'
 
-export type BaiduNetdiskErrorOptions = Readonly<{
-  status?: number
-  errno?: number
-  retryable?: boolean
-  cause?: unknown
-}>
+export type BaiduNetdiskErrorOptions = StorageProviderErrorOptions &
+  Readonly<{
+    errno?: number
+  }>
 
-export class BaiduNetdiskError extends Error {
-  readonly status: number | null
+export class BaiduNetdiskError extends StorageProviderError<BaiduNetdiskErrorCode> {
   readonly errno: number | null
-  readonly retryable: boolean
 
   constructor(
-    readonly code: BaiduNetdiskErrorCode,
+    code: BaiduNetdiskErrorCode,
     message: string,
     options: BaiduNetdiskErrorOptions = {}
   ) {
-    super(message, options.cause === undefined ? undefined : { cause: options.cause })
+    super(code, message, options)
     this.name = 'BaiduNetdiskError'
-    this.status = options.status ?? null
     this.errno = options.errno ?? null
-    this.retryable = options.retryable ?? false
   }
 }
 
 export function throwIfBaiduNetdiskAborted(signal?: AbortSignal): void {
-  if (!signal?.aborted) return
-  throw new BaiduNetdiskError('aborted', 'Baidu Netdisk operation was cancelled', {
-    cause: signal.reason
-  })
-}
-
-export function isBaiduNetdiskAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === 'AbortError') ||
-    (error instanceof Error && error.name === 'AbortError') ||
-    (error instanceof BaiduNetdiskError && error.code === 'aborted')
+  throwIfStorageProviderAborted(
+    signal,
+    (cause) => new BaiduNetdiskError('aborted', 'Baidu Netdisk operation was cancelled', { cause })
   )
 }
 
+export function isBaiduNetdiskAbortError(error: unknown): boolean {
+  return isStorageProviderAbortError(error, error instanceof BaiduNetdiskError)
+}
+
 export function baiduNetdiskErrorCodeForStatus(status: number): BaiduNetdiskErrorCode {
-  if (status === 401) return 'auth'
-  if (status === 403) return 'permission'
-  if (status === 404) return 'not-found'
-  if (status === 409) return 'conflict'
-  if (status === 412) return 'precondition'
-  if (status === 429) return 'rate-limited'
-  if (status === 507) return 'quota'
-  if (status >= 500) return 'server'
-  return 'invalid-response'
+  return storageErrorCodeForStatus(status, true)
 }
 
 export function baiduNetdiskErrorCodeForErrno(errno: number): BaiduNetdiskErrorCode {
@@ -81,5 +63,13 @@ export function baiduNetdiskErrorCodeForErrno(errno: number): BaiduNetdiskErrorC
 }
 
 export function isRetryableBaiduNetdiskStatus(status: number): boolean {
-  return status === 408 || status === 423 || status === 429 || status >= 500
+  return isRetryableStorageStatus(status, 'all-server-errors')
 }
+import {
+  isRetryableStorageStatus,
+  isStorageProviderAbortError,
+  StorageProviderError,
+  type StorageProviderErrorOptions,
+  storageErrorCodeForStatus,
+  throwIfStorageProviderAborted
+} from '../shared/errors'

@@ -1,7 +1,16 @@
+import {
+  createConflictFigName,
+  createDistinctDocumentIdReservation,
+  createDocumentIdReservation,
+  createStorageConflictCopyResult,
+  createStorageDocumentAdapterMethods,
+  createStorageDocumentWriteInspector,
+  describeStorageDocument,
+  normalizePortableFigBaseName,
+  truncateCharacters
+} from '../shared/adapter'
 import type {
   StorageAdapter,
-  StorageConnectionResult,
-  StorageDocument,
   StorageDocumentMetadata,
   StoragePutDocumentOptions,
   StoragePutDocumentResult,
@@ -15,8 +24,6 @@ import {
 import { BaiduNetdiskError } from './errors'
 import type { BaiduNetdiskClientContract, BaiduNetdiskDocumentFile } from './types'
 
-const DOCUMENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-
 export type BaiduNetdiskClientLike = BaiduNetdiskClientContract
 
 export type BaiduNetdiskStorageAdapterOptions = Readonly<{
@@ -26,48 +33,19 @@ export type BaiduNetdiskStorageAdapterOptions = Readonly<{
 
 export type BaiduNetdiskStorageAdapter = StorageAdapter
 
-function truncateCharacters(value: string, maxCharacters: number): string {
-  return Array.from(value).slice(0, maxCharacters).join('')
-}
-
 export function normalizeBaiduNetdiskFigName(input: string): string {
-  const cleaned = Array.from(input.trim(), (character) => {
-    const code = character.charCodeAt(0)
-    return code < 32 || code === 127 || /[\\/]/.test(character) ? '-' : character
+  const base = normalizePortableFigBaseName(input, {
+    forbiddenCharacters: /[\\/]/,
+    requiredError: () =>
+      new BaiduNetdiskError('invalid-input', 'Baidu Netdisk document name is required')
   })
-    .join('')
-    .replace(/-+/g, '-')
-    .replace(/[. ]+$/g, '')
-  const withoutExtension = cleaned.toLocaleLowerCase().endsWith('.fig')
-    ? cleaned.slice(0, -4)
-    : cleaned
-  const base = withoutExtension.trim().replace(/[. ]+$/g, '')
-  if (!base) {
-    throw new BaiduNetdiskError('invalid-input', 'Baidu Netdisk document name is required')
-  }
   return `${truncateCharacters(base, 220)}.fig`
 }
 
 function conflictName(name: string, now: Date): string {
-  const base = normalizeBaiduNetdiskFigName(name).slice(0, -4)
-  const timestamp = now.toISOString().replace('T', ' ').slice(0, 19).replace(/:/g, '-')
-  return normalizeBaiduNetdiskFigName(
-    `${truncateCharacters(base, 170)} (conflict ${timestamp}).fig`
+  return createConflictFigName(name, now, normalizeBaiduNetdiskFigName, (base) =>
+    truncateCharacters(base, 170)
   )
-}
-
-function validateGeneratedDocumentId(value: string): string {
-  if (!DOCUMENT_ID_PATTERN.test(value)) {
-    throw new BaiduNetdiskError(
-      'invalid-response',
-      'Baidu Netdisk document ID generator returned a non-canonical UUID v4'
-    )
-  }
-  return value
-}
-
-function connectionMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Baidu Netdisk connection failed'
 }
 
 function isTerminalAuthorizationError(error: unknown): boolean {
@@ -82,20 +60,39 @@ export function createBaiduNetdiskStorageAdapter(
   options: BaiduNetdiskStorageAdapterOptions = {}
 ): BaiduNetdiskStorageAdapter {
   const now = options.now ?? (() => new Date())
-  const createDocumentId = options.createDocumentId ?? (() => crypto.randomUUID())
-
-  const reserveId = (): string => validateGeneratedDocumentId(createDocumentId())
-
-  const reserveDistinctId = (documentId: string): string => {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const candidate = reserveId()
-      if (candidate !== documentId) return candidate
-    }
-    throw new BaiduNetdiskError(
-      'invalid-response',
-      'Baidu Netdisk could not reserve a distinct staging document ID'
-    )
-  }
+  const reserveId = createDocumentIdReservation(
+    options.createDocumentId ?? (() => crypto.randomUUID()),
+    () =>
+      new BaiduNetdiskError(
+        'invalid-response',
+        'Baidu Netdisk document ID generator returned a non-canonical UUID v4'
+      )
+  )
+  const reserveDistinctId = createDistinctDocumentIdReservation(
+    reserveId,
+    () =>
+      new BaiduNetdiskError(
+        'invalid-response',
+        'Baidu Netdisk could not reserve a distinct staging document ID'
+      )
+  )
+  const common = createStorageDocumentAdapterMethods(client, {
+    providerName: 'Baidu Netdisk',
+    reserveDocumentId: reserveId,
+    describeDocument: (document) =>
+      describeStorageDocument(
+        document.documentId,
+        document.name,
+        new Date(document.item.serverMtime * 1_000).toISOString(),
+        baiduNetdiskRemoteRevision(document)
+      ),
+    documentSize: (document) => document.item.size
+  })
+  const inspectWrite = createStorageDocumentWriteInspector(
+    client,
+    baiduNetdiskRemoteRevision,
+    baiduNetdiskRevisionsMatch
+  )
 
   const uploadConflict = async (
     originalId: string,
@@ -114,12 +111,11 @@ export function createBaiduNetdiskStorageAdapter(
       expectedAuthority: transfer.expectedAuthority,
       onProgress: transfer.onProgress
     })
-    return {
-      outcome: 'conflict-copy',
-      remoteRevision: originalRevision,
+    return createStorageConflictCopyResult(
+      originalRevision,
       conflictDocumentId,
-      conflictCopyRevision: uploaded.remoteRevision
-    }
+      uploaded.remoteRevision
+    )
   }
 
   const stagedWrite = async (
@@ -141,12 +137,8 @@ export function createBaiduNetdiskStorageAdapter(
     })
     const conflictResult = (
       remoteRevision: StorageRemoteRevision | null
-    ): StoragePutDocumentResult => ({
-      outcome: 'conflict-copy',
-      remoteRevision,
-      conflictDocumentId: stagingId,
-      conflictCopyRevision: staged.remoteRevision
-    })
+    ): StoragePutDocumentResult =>
+      createStorageConflictCopyResult(remoteRevision, stagingId, staged.remoteRevision)
 
     const latest = await client.getDocumentFile(documentId, {
       signal: transfer.signal,
@@ -196,53 +188,12 @@ export function createBaiduNetdiskStorageAdapter(
   }
 
   return {
-    async testConnection(connectionOptions): Promise<StorageConnectionResult> {
-      try {
-        await client.testConnection(connectionOptions?.signal)
-        return { ok: true, message: 'Connected to Baidu Netdisk.' }
-      } catch (error) {
-        return { ok: false, message: connectionMessage(error) }
-      }
-    },
-
-    getAuthority(authorityOptions) {
-      return client.getAuthority(authorityOptions?.signal)
-    },
-
-    async listDocuments(listOptions) {
-      const documents = await client.listDocuments(listOptions?.signal)
-      return documents.map(
-        (document): StorageDocument => ({
-          id: document.documentId,
-          name: document.name,
-          updatedAt: new Date(document.item.serverMtime * 1_000).toISOString(),
-          remoteRevision: baiduNetdiskRemoteRevision(document),
-          metadataAuthoritative: true
-        })
-      )
-    },
-
-    async reserveDocumentId() {
-      return reserveId()
-    },
-
-    getDocument(id, transferOptions) {
-      return client.downloadDocument(id, transferOptions)
-    },
+    ...common,
 
     async putDocument(id, bytes, metadata, transferOptions = {}) {
-      const current = await client.getDocumentFile(id, {
-        signal: transferOptions.signal,
-        expectedAuthority: transferOptions.expectedAuthority
-      })
-      const actualRevision = current ? baiduNetdiskRemoteRevision(current) : null
-      const expectedRevision = transferOptions.expectedRemoteRevision
-
-      if (current && !baiduNetdiskRevisionsMatch(expectedRevision, actualRevision)) {
-        return uploadConflict(id, actualRevision, bytes, metadata, transferOptions)
-      }
-      if (!current && expectedRevision !== undefined && expectedRevision !== null) {
-        return uploadConflict(id, null, bytes, metadata, transferOptions)
+      const { current, conflict } = await inspectWrite(id, transferOptions)
+      if (conflict) {
+        return uploadConflict(id, conflict.remoteRevision, bytes, metadata, transferOptions)
       }
       return stagedWrite(id, current, bytes, metadata, transferOptions)
     },
@@ -257,28 +208,6 @@ export function createBaiduNetdiskStorageAdapter(
         signal: deleteOptions?.signal,
         expectedAuthority: deleteOptions?.expectedAuthority
       })
-    },
-
-    async getDocumentMetadata(id, metadataOptions) {
-      const document = await client.getDocumentFile(id, {
-        signal: metadataOptions?.signal,
-        expectedAuthority: metadataOptions?.expectedAuthority
-      })
-      if (!document) return null
-      return {
-        name: document.name,
-        updatedAt: new Date(document.item.serverMtime * 1_000).toISOString(),
-        remoteRevision: baiduNetdiskRemoteRevision(document)
-      }
-    },
-
-    async getUsage(usageOptions) {
-      const documents = await client.listDocuments(usageOptions?.signal)
-      return {
-        bytesUsed: documents.reduce((total, document) => total + document.item.size, 0),
-        objectCount: documents.length,
-        documentCount: documents.length
-      }
     }
   }
 }

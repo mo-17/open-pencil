@@ -1,11 +1,9 @@
 import { IS_TAURI } from '@open-pencil/core/constants'
 
 import type { CredentialManager, CredentialResolver } from '@/app/settings/credentials/types'
-import {
-  aliyunDriveNativeBridge,
-  aliyunDriveTauriTransport
-} from '@/app/tauri/aliyun-drive'
+import { aliyunDriveNativeBridge, aliyunDriveTauriTransport } from '@/app/tauri/aliyun-drive'
 
+import { createStorageRuntimeRegistry } from '../shared/runtime'
 import { requireStorageProfileID, type StorageProviderRuntime } from '../types'
 import { createAliyunDriveStorageAdapter, type AliyunDriveStorageAdapter } from './adapter'
 import { AliyunDriveClient } from './client'
@@ -13,10 +11,7 @@ import {
   resolveAliyunDrivePublisherOAuthConfig,
   type AliyunDrivePublisherOAuthBuildConfig
 } from './config'
-import {
-  aliyunDriveOAuthMetadataStore,
-  type AliyunDriveOAuthMetadataStore
-} from './oauth/metadata'
+import { aliyunDriveOAuthMetadataStore, type AliyunDriveOAuthMetadataStore } from './oauth/metadata'
 import {
   createAliyunDriveOAuthSession,
   type CreateAliyunDriveOAuthSessionOptions
@@ -46,8 +41,7 @@ type RuntimeEntry = AliyunDriveRuntimeServices & {
   metadataStore: AliyunDriveOAuthMetadataStore
 }
 
-let entriesByManager = new WeakMap<CredentialManager, Map<string, RuntimeEntry>>()
-const liveEntries = new Set<RuntimeEntry>()
+const runtimeRegistry = createStorageRuntimeRegistry<CredentialManager, RuntimeEntry>()
 
 function publisherConfigsEqual(
   left: AliyunDrivePublisherOAuthBuildConfig | null,
@@ -65,68 +59,50 @@ export function getAliyunDriveRuntimeServices(
   const native = options.native ?? (IS_TAURI ? aliyunDriveNativeBridge : undefined)
   const transport = options.transport ?? (IS_TAURI ? aliyunDriveTauriTransport : undefined)
   const metadataStore = options.metadataStore ?? aliyunDriveOAuthMetadataStore
-  let entries = entriesByManager.get(runtime.credentialManager)
-  if (!entries) {
-    entries = new Map()
-    entriesByManager.set(runtime.credentialManager, entries)
-  }
-  const existing = entries.get(profileId)
-  if (
-    existing &&
-    publisherConfigsEqual(existing.publisherConfig, publisherConfig) &&
-    existing.credentialResolver === runtime.credentialResolver &&
-    existing.native === native &&
-    existing.transport === transport &&
-    existing.metadataStore === metadataStore
-  ) {
-    return existing
-  }
-  existing?.oauth.dispose()
-  if (existing) liveEntries.delete(existing)
-
-  const oauth = createAliyunDriveOAuthSession({
-    publisherConfig,
+  return runtimeRegistry.getOrCreate(
+    runtime.credentialManager,
     profileId,
-    manager: runtime.credentialManager,
-    resolver: runtime.credentialResolver,
-    metadataStore,
-    ...(native ? { native } : {})
-  })
-  const client = new AliyunDriveClient({
-    resolveAccessToken: (signal) => oauth.getAccessToken(signal),
-    ...(transport ? { transport } : {})
-  })
-  const entry: RuntimeEntry = Object.freeze({
-    publisherConfig,
-    profileId,
-    oauth,
-    client,
-    adapter: createAliyunDriveStorageAdapter(client),
-    credentialResolver: runtime.credentialResolver,
-    metadataStore,
-    ...(native ? { native } : {}),
-    ...(transport ? { transport } : {})
-  })
-  entries.set(profileId, entry)
-  liveEntries.add(entry)
-  return entry
+    (entry) =>
+      publisherConfigsEqual(entry.publisherConfig, publisherConfig) &&
+      entry.credentialResolver === runtime.credentialResolver &&
+      entry.native === native &&
+      entry.transport === transport &&
+      entry.metadataStore === metadataStore,
+    () => {
+      const oauth = createAliyunDriveOAuthSession({
+        publisherConfig,
+        profileId,
+        manager: runtime.credentialManager,
+        resolver: runtime.credentialResolver,
+        metadataStore,
+        ...(native ? { native } : {})
+      })
+      const client = new AliyunDriveClient({
+        resolveAccessToken: (signal) => oauth.getAccessToken(signal),
+        ...(transport ? { transport } : {})
+      })
+      return Object.freeze({
+        publisherConfig,
+        profileId,
+        oauth,
+        client,
+        adapter: createAliyunDriveStorageAdapter(client),
+        credentialResolver: runtime.credentialResolver,
+        metadataStore,
+        ...(native ? { native } : {}),
+        ...(transport ? { transport } : {})
+      })
+    }
+  )
 }
 
 export function disposeAliyunDriveRuntimeProfile(
   manager: CredentialManager,
   profileId: string
 ): void {
-  const id = requireStorageProfileID(profileId)
-  const entries = entriesByManager.get(manager)
-  const entry = entries?.get(id)
-  if (!entry) return
-  entry.oauth.dispose()
-  entries?.delete(id)
-  liveEntries.delete(entry)
+  runtimeRegistry.dispose(manager, requireStorageProfileID(profileId))
 }
 
 export function resetAliyunDriveRuntimeServicesForTests(): void {
-  for (const entry of liveEntries) entry.oauth.dispose()
-  liveEntries.clear()
-  entriesByManager = new WeakMap()
+  runtimeRegistry.reset()
 }

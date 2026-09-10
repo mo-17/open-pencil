@@ -1,3 +1,9 @@
+import {
+  storageNativeErrorDetails,
+  validStorageRetryAfterMs,
+  type StorageNativeErrorOptions
+} from './storage-native-common'
+
 export const ONEDRIVE_NATIVE_ERROR_CODES = [
   'invalid-request',
   'unsupported',
@@ -46,25 +52,7 @@ const SAFE_MESSAGES: Readonly<Record<OneDriveNativeErrorCode, string>> = Object.
   'rate-limited': 'Microsoft temporarily rate limited OneDrive'
 })
 
-type OneDriveNativeErrorOptions = ErrorOptions & {
-  retryAfterMs?: number
-}
-
-function validRetryAfterMs(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= 300_000
-}
-
-function ownValue(value: object, key: string): unknown {
-  return Object.getOwnPropertyDescriptor(value, key)?.value
-}
-
-function errorCode(value: unknown): OneDriveNativeErrorCode {
-  if (typeof value !== 'object' || value === null) return 'oauth-failed'
-  const code = ownValue(value, 'code')
-  return typeof code === 'string' && ERROR_CODES.has(code)
-    ? (code as OneDriveNativeErrorCode)
-    : 'oauth-failed'
-}
+type OneDriveNativeErrorOptions = StorageNativeErrorOptions
 
 export class OneDriveNativeError extends Error {
   readonly retryAfterMs: number | undefined
@@ -76,7 +64,7 @@ export class OneDriveNativeError extends Error {
     super(SAFE_MESSAGES[code], options)
     this.name = 'OneDriveNativeError'
     const retryAfterMs = options?.retryAfterMs
-    this.retryAfterMs = validRetryAfterMs(retryAfterMs) ? retryAfterMs : undefined
+    this.retryAfterMs = validStorageRetryAfterMs(retryAfterMs) ? retryAfterMs : undefined
   }
 }
 
@@ -86,13 +74,11 @@ export class OneDriveNativeError extends Error {
  */
 export function nativeOneDriveError(error: unknown): OneDriveNativeError {
   if (error instanceof OneDriveNativeError) return error
-  const code = errorCode(error)
-  const retryAfterMs =
-    code === 'rate-limited' && typeof error === 'object' && error !== null
-      ? ownValue(error, 'retryAfterMs')
-      : undefined
-  return new OneDriveNativeError(
-    code,
-    validRetryAfterMs(retryAfterMs) ? { retryAfterMs } : undefined
+  const [code, retryAfterMs] = storageNativeErrorDetails<OneDriveNativeErrorCode>(
+    error,
+    ERROR_CODES,
+    'oauth-failed',
+    'rate-limited'
   )
+  return new OneDriveNativeError(code, retryAfterMs === undefined ? undefined : { retryAfterMs })
 }

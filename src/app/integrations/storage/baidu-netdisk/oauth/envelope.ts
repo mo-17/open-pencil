@@ -1,3 +1,15 @@
+import {
+  hasExactOAuthKeys as hasExactKeys,
+  hasExactOAuthValueSet,
+  isBoundedASCIISecret,
+  isBoundedOAuthText,
+  isBoundedOAuthToken,
+  isOAuthRecord as isRecord,
+  oauthSerializedBytes as serializedBytes,
+  parseBoundedOAuthJSON,
+  stringifyBoundedOAuthJSON
+} from '@/app/integrations/storage/oauth-shared/validation'
+
 import { isBaiduNetdiskAppKey } from '../config'
 
 const BAIDU_NETDISK_OAUTH_SCHEMA_VERSION = 1 as const
@@ -8,7 +20,6 @@ const MAX_UK_LENGTH = 32
 const MAX_ACCOUNT_NAME_LENGTH = 256
 const AUTHORIZATION_VERSION_PATTERN = /^[a-f0-9]{32}$/
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d*)$/
-const ASCII_GRAPHIC_PATTERN = /^[\x21-\x7e]+$/
 
 export const MAX_BAIDU_NETDISK_OAUTH_CREDENTIAL_BYTES = 16 * 1024
 
@@ -71,43 +82,6 @@ function invalidMetadata(): TypeError {
   return new TypeError('Stored Baidu Netdisk account metadata is invalid')
 }
 
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength
-}
-
-function serializedBytes(value: unknown): number | null {
-  try {
-    const serialized = JSON.stringify(value)
-    return typeof serialized === 'string' ? utf8Bytes(serialized) : null
-  } catch {
-    return null
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function hasExactKeys(
-  value: Record<string, unknown>,
-  required: readonly string[],
-  optional: readonly string[] = []
-): boolean {
-  const allowed = new Set([...required, ...optional])
-  const keys = Object.keys(value)
-  return required.every((key) => Object.hasOwn(value, key)) && keys.every((key) => allowed.has(key))
-}
-
-function boundedText(value: unknown, maxLength: number): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.length <= maxLength &&
-    value.trim() === value &&
-    !/\p{Cc}/u.test(value)
-  )
-}
-
 function validAuthorizationVersion(value: unknown): value is string {
   return typeof value === 'string' && AUTHORIZATION_VERSION_PATTERN.test(value)
 }
@@ -122,34 +96,17 @@ export function isBaiduNetdiskUk(value: unknown): value is string {
 }
 
 function validSecretKey(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    utf8Bytes(value) >= MIN_SECRET_KEY_BYTES &&
-    utf8Bytes(value) <= MAX_SECRET_KEY_BYTES &&
-    ASCII_GRAPHIC_PATTERN.test(value)
-  )
+  return isBoundedASCIISecret(value, MIN_SECRET_KEY_BYTES, MAX_SECRET_KEY_BYTES)
 }
 
 function validRefreshToken(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    utf8Bytes(value) > 0 &&
-    utf8Bytes(value) <= MAX_REFRESH_TOKEN_BYTES &&
-    value.trim() === value &&
-    !/\s/u.test(value) &&
-    !/\p{Cc}/u.test(value)
-  )
+  return isBoundedOAuthToken(value, MAX_REFRESH_TOKEN_BYTES)
 }
 
 export function hasExactBaiduNetdiskOAuthScopes(
   value: unknown
 ): value is readonly BaiduNetdiskOAuthScope[] {
-  if (!Array.isArray(value) || value.length !== BAIDU_NETDISK_OAUTH_SCOPES.length) return false
-  const scopes = new Set(value)
-  return (
-    scopes.size === BAIDU_NETDISK_OAUTH_SCOPES.length &&
-    BAIDU_NETDISK_OAUTH_SCOPES.every((scope) => scopes.has(scope))
-  )
+  return hasExactOAuthValueSet(value, BAIDU_NETDISK_OAUTH_SCOPES)
 }
 
 export function parseBaiduNetdiskOAuthClient(value: unknown): BaiduNetdiskOAuthClient {
@@ -234,30 +191,19 @@ export function parseBaiduNetdiskRefreshTokenEnvelope(
 export function parseBaiduNetdiskRefreshTokenEnvelopeJSON(
   value: string
 ): BaiduNetdiskRefreshTokenEnvelope {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    utf8Bytes(value) > MAX_BAIDU_NETDISK_OAUTH_CREDENTIAL_BYTES
-  ) {
-    throw invalidAuthorization()
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    throw invalidAuthorization()
-  }
-  return parseBaiduNetdiskRefreshTokenEnvelope(parsed)
+  return parseBaiduNetdiskRefreshTokenEnvelope(
+    parseBoundedOAuthJSON(value, MAX_BAIDU_NETDISK_OAUTH_CREDENTIAL_BYTES, invalidAuthorization)
+  )
 }
 
 export function serializeBaiduNetdiskRefreshTokenEnvelope(
   value: BaiduNetdiskRefreshTokenEnvelope
 ): string {
-  const serialized = JSON.stringify(parseBaiduNetdiskRefreshTokenEnvelope(value))
-  if (utf8Bytes(serialized) > MAX_BAIDU_NETDISK_OAUTH_CREDENTIAL_BYTES) {
-    throw invalidAuthorization()
-  }
-  return serialized
+  return stringifyBoundedOAuthJSON(
+    parseBaiduNetdiskRefreshTokenEnvelope(value),
+    MAX_BAIDU_NETDISK_OAUTH_CREDENTIAL_BYTES,
+    invalidAuthorization
+  )
 }
 
 export function parseBaiduNetdiskOAuthPublicMetadata(
@@ -271,13 +217,21 @@ export function parseBaiduNetdiskOAuthPublicMetadata(
       ['schemaVersion', 'profileId', 'uk', 'authorizationVersion', 'grantedScopes', 'oauthClient'],
       ['baiduName', 'netdiskName']
     ) ||
-    !boundedText(value.profileId, 64) ||
+    !isBoundedOAuthText(value.profileId, { maxLength: 64, requireTrimmed: true }) ||
     !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(value.profileId) ||
     !isBaiduNetdiskUk(value.uk) ||
     !validAuthorizationVersion(value.authorizationVersion) ||
     !hasExactBaiduNetdiskOAuthScopes(value.grantedScopes) ||
-    (value.baiduName !== undefined && !boundedText(value.baiduName, MAX_ACCOUNT_NAME_LENGTH)) ||
-    (value.netdiskName !== undefined && !boundedText(value.netdiskName, MAX_ACCOUNT_NAME_LENGTH))
+    (value.baiduName !== undefined &&
+      !isBoundedOAuthText(value.baiduName, {
+        maxLength: MAX_ACCOUNT_NAME_LENGTH,
+        requireTrimmed: true
+      })) ||
+    (value.netdiskName !== undefined &&
+      !isBoundedOAuthText(value.netdiskName, {
+        maxLength: MAX_ACCOUNT_NAME_LENGTH,
+        requireTrimmed: true
+      }))
   ) {
     throw invalidMetadata()
   }

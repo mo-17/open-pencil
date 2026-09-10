@@ -1,3 +1,15 @@
+import {
+  hasExactOAuthKeys as hasExactKeys,
+  isBoundedASCIISecret,
+  isBoundedOAuthText,
+  isBoundedOAuthToken,
+  isOAuthRecord as isRecord,
+  oauthSerializedBytes as serializedBytes,
+  oauthUTF8Bytes as utf8Bytes,
+  parseBoundedOAuthJSON,
+  stringifyBoundedOAuthJSON
+} from '@/app/integrations/storage/oauth-shared/validation'
+
 const LEGACY_GOOGLE_DRIVE_OAUTH_ENVELOPE_VERSION = 1 as const
 const GOOGLE_DRIVE_OAUTH_ENVELOPE_VERSION = 2 as const
 
@@ -15,7 +27,6 @@ const MAX_EMAIL_LENGTH = 320
 const AUTHORIZATION_VERSION_PATTERN = /^[a-f0-9]{32}$/
 const CLIENT_ID_SUFFIX = '.apps.googleusercontent.com'
 const CLIENT_ID_PREFIX_PATTERN = /^[a-zA-Z0-9_-]+$/
-const ASCII_GRAPHIC_PATTERN = /^[\x21-\x7e]+$/
 
 export const MAX_GOOGLE_DRIVE_OAUTH_CREDENTIAL_BYTES = 16 * 1024
 
@@ -125,42 +136,6 @@ function invalidMetadata(): TypeError {
   return new TypeError('Stored Google Drive account metadata is invalid')
 }
 
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength
-}
-
-function serializedBytes(value: unknown): number | null {
-  try {
-    const serialized = JSON.stringify(value)
-    return typeof serialized === 'string' ? utf8Bytes(serialized) : null
-  } catch {
-    return null
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function hasExactKeys(
-  value: Record<string, unknown>,
-  required: readonly string[],
-  optional: readonly string[] = []
-): boolean {
-  const allowed = new Set([...required, ...optional])
-  const keys = Object.keys(value)
-  return required.every((key) => Object.hasOwn(value, key)) && keys.every((key) => allowed.has(key))
-}
-
-function boundedText(value: unknown, maxLength: number): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.length <= maxLength &&
-    !/\p{Cc}/u.test(value)
-  )
-}
-
 function validAuthorizationVersion(value: unknown): value is string {
   return typeof value === 'string' && AUTHORIZATION_VERSION_PATTERN.test(value)
 }
@@ -177,23 +152,7 @@ function validClientId(value: unknown): value is string {
 }
 
 function validClientSecret(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    utf8Bytes(value) >= MIN_CLIENT_SECRET_BYTES &&
-    utf8Bytes(value) <= MAX_CLIENT_SECRET_BYTES &&
-    ASCII_GRAPHIC_PATTERN.test(value)
-  )
-}
-
-function validRefreshToken(value: unknown, maxBytes: number): value is string {
-  return (
-    typeof value === 'string' &&
-    utf8Bytes(value) > 0 &&
-    utf8Bytes(value) <= maxBytes &&
-    value.trim() === value &&
-    !/\s/u.test(value) &&
-    !/\p{Cc}/u.test(value)
-  )
+  return isBoundedASCIISecret(value, MIN_CLIENT_SECRET_BYTES, MAX_CLIENT_SECRET_BYTES)
 }
 
 function validScopes(value: unknown): value is readonly GoogleDriveOAuthScope[] {
@@ -259,9 +218,9 @@ export function parseGoogleDriveRefreshTokenEnvelope(
   if (
     value.schemaVersion === LEGACY_GOOGLE_DRIVE_OAUTH_ENVELOPE_VERSION &&
     hasExactKeys(value, ['schemaVersion', 'refreshToken', 'authorizationVersion', 'subject']) &&
-    validRefreshToken(value.refreshToken, MAX_LEGACY_REFRESH_TOKEN_BYTES) &&
+    isBoundedOAuthToken(value.refreshToken, MAX_LEGACY_REFRESH_TOKEN_BYTES) &&
     validAuthorizationVersion(value.authorizationVersion) &&
-    boundedText(value.subject, MAX_SUBJECT_LENGTH)
+    isBoundedOAuthText(value.subject, { maxLength: MAX_SUBJECT_LENGTH })
   ) {
     parsed = Object.freeze({
       schemaVersion: LEGACY_GOOGLE_DRIVE_OAUTH_ENVELOPE_VERSION,
@@ -278,9 +237,9 @@ export function parseGoogleDriveRefreshTokenEnvelope(
       'subject',
       'oauthClient'
     ]) &&
-    validRefreshToken(value.refreshToken, MAX_REFRESH_TOKEN_BYTES) &&
+    isBoundedOAuthToken(value.refreshToken, MAX_REFRESH_TOKEN_BYTES) &&
     validAuthorizationVersion(value.authorizationVersion) &&
-    boundedText(value.subject, MAX_SUBJECT_LENGTH)
+    isBoundedOAuthText(value.subject, { maxLength: MAX_SUBJECT_LENGTH })
   ) {
     parsed = Object.freeze({
       schemaVersion: GOOGLE_DRIVE_OAUTH_ENVELOPE_VERSION,
@@ -303,43 +262,40 @@ export function parseGoogleDriveRefreshTokenEnvelope(
 export function parseGoogleDriveRefreshTokenEnvelopeJSON(
   value: string
 ): GoogleDriveRefreshTokenEnvelope {
-  if (
-    value.length === 0 ||
-    utf8Bytes(value) === 0 ||
-    utf8Bytes(value) > MAX_GOOGLE_DRIVE_OAUTH_CREDENTIAL_BYTES
-  ) {
-    throw invalidAuthorization()
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    throw invalidAuthorization()
-  }
-  return parseGoogleDriveRefreshTokenEnvelope(parsed)
+  return parseGoogleDriveRefreshTokenEnvelope(
+    parseBoundedOAuthJSON(value, MAX_GOOGLE_DRIVE_OAUTH_CREDENTIAL_BYTES, invalidAuthorization)
+  )
 }
 
 export function serializeGoogleDriveRefreshTokenEnvelope(
   value: GoogleDriveRefreshTokenEnvelope
 ): string {
-  const serialized = JSON.stringify(parseGoogleDriveRefreshTokenEnvelope(value))
-  if (utf8Bytes(serialized) > MAX_GOOGLE_DRIVE_OAUTH_CREDENTIAL_BYTES) {
-    throw invalidAuthorization()
-  }
-  return serialized
+  return stringifyBoundedOAuthJSON(
+    parseGoogleDriveRefreshTokenEnvelope(value),
+    MAX_GOOGLE_DRIVE_OAUTH_CREDENTIAL_BYTES,
+    invalidAuthorization
+  )
 }
 
 export function parseGoogleDriveOAuthPublicMetadata(
   value: unknown
 ): GoogleDriveOAuthPublicMetadata {
   if (!isRecord(value)) throw invalidMetadata()
-  if (!boundedText(value.profileId, 64) || !/^[a-z0-9._-]+$/.test(value.profileId)) {
+  if (
+    !isBoundedOAuthText(value.profileId, { maxLength: 64 }) ||
+    !/^[a-z0-9._-]+$/.test(value.profileId)
+  ) {
     throw invalidMetadata()
   }
-  if (!boundedText(value.subject, MAX_SUBJECT_LENGTH)) throw invalidMetadata()
+  if (!isBoundedOAuthText(value.subject, { maxLength: MAX_SUBJECT_LENGTH })) {
+    throw invalidMetadata()
+  }
   if (!validAuthorizationVersion(value.authorizationVersion)) throw invalidMetadata()
   if (!validScopes(value.grantedScopes)) throw invalidMetadata()
-  if (value.email !== undefined && !boundedText(value.email, MAX_EMAIL_LENGTH)) {
+  if (
+    value.email !== undefined &&
+    !isBoundedOAuthText(value.email, { maxLength: MAX_EMAIL_LENGTH })
+  ) {
     throw invalidMetadata()
   }
   const profileId = value.profileId

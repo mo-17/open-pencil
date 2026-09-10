@@ -1,3 +1,8 @@
+import {
+  LocalOAuthMetadataStore,
+  MemoryOAuthMetadataStore,
+  type OAuthMetadataStoreConfig
+} from '@/app/integrations/storage/oauth-shared/metadata-store'
 import { browserCredentialStorage } from '@/app/settings/credentials/storage'
 
 import {
@@ -10,10 +15,6 @@ const MAX_GOOGLE_DRIVE_OAUTH_METADATA_BYTES = 4 * 1024
 
 function invalidMetadata(): TypeError {
   return new TypeError('Stored Google Drive account metadata is invalid')
-}
-
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength
 }
 
 export interface GoogleDriveOAuthMetadataStore {
@@ -33,49 +34,28 @@ function metadataKey(profileId: string): string {
   return `${STORAGE_PREFIX}${metadata.profileId}`
 }
 
-export class LocalGoogleDriveOAuthMetadataStore implements GoogleDriveOAuthMetadataStore {
-  constructor(private readonly storage: Storage | null = browserCredentialStorage()) {}
+const metadataStoreConfig = {
+  key: metadataKey,
+  maxBytes: MAX_GOOGLE_DRIVE_OAUTH_METADATA_BYTES,
+  parse: parseGoogleDriveOAuthPublicMetadata,
+  invalid: invalidMetadata,
+  unavailableMessage: 'Google Drive account metadata storage is unavailable'
+} satisfies OAuthMetadataStoreConfig<GoogleDriveOAuthPublicMetadata>
 
-  async read(profileId: string): Promise<GoogleDriveOAuthPublicMetadata | null> {
-    const raw = this.storage?.getItem(metadataKey(profileId))
-    if (!raw) return null
-    if (utf8Bytes(raw) > MAX_GOOGLE_DRIVE_OAUTH_METADATA_BYTES) throw invalidMetadata()
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      throw invalidMetadata()
-    }
-    return parseGoogleDriveOAuthPublicMetadata(parsed)
-  }
-
-  async write(metadata: GoogleDriveOAuthPublicMetadata): Promise<void> {
-    if (!this.storage) throw new Error('Google Drive account metadata storage is unavailable')
-    const parsed = parseGoogleDriveOAuthPublicMetadata(metadata)
-    const serialized = JSON.stringify(parsed)
-    if (utf8Bytes(serialized) > MAX_GOOGLE_DRIVE_OAUTH_METADATA_BYTES) throw invalidMetadata()
-    this.storage.setItem(metadataKey(parsed.profileId), serialized)
-  }
-
-  async remove(profileId: string): Promise<void> {
-    this.storage?.removeItem(metadataKey(profileId))
+export class LocalGoogleDriveOAuthMetadataStore
+  extends LocalOAuthMetadataStore<GoogleDriveOAuthPublicMetadata>
+  implements GoogleDriveOAuthMetadataStore
+{
+  constructor(storage: Storage | null = browserCredentialStorage()) {
+    super(storage, metadataStoreConfig)
   }
 }
 
-export class MemoryGoogleDriveOAuthMetadataStore implements GoogleDriveOAuthMetadataStore {
-  readonly #values = new Map<string, GoogleDriveOAuthPublicMetadata>()
-
-  async read(profileId: string): Promise<GoogleDriveOAuthPublicMetadata | null> {
-    const value = this.#values.get(metadataKey(profileId))
-    return value ? parseGoogleDriveOAuthPublicMetadata(value) : null
-  }
-
-  async write(metadata: GoogleDriveOAuthPublicMetadata): Promise<void> {
-    const parsed = parseGoogleDriveOAuthPublicMetadata(metadata)
-    this.#values.set(metadataKey(parsed.profileId), parsed)
-  }
-
-  async remove(profileId: string): Promise<void> {
-    this.#values.delete(metadataKey(profileId))
+export class MemoryGoogleDriveOAuthMetadataStore
+  extends MemoryOAuthMetadataStore<GoogleDriveOAuthPublicMetadata>
+  implements GoogleDriveOAuthMetadataStore
+{
+  constructor() {
+    super(metadataStoreConfig)
   }
 }

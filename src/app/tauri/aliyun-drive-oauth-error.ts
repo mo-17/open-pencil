@@ -1,3 +1,9 @@
+import {
+  storageNativeErrorDetails,
+  validStorageRetryAfterMs,
+  type StorageNativeErrorOptions
+} from './storage-native-common'
+
 export const ALIYUN_DRIVE_NATIVE_ERROR_CODES = [
   'invalid-request',
   'invalid-response',
@@ -50,25 +56,7 @@ const SAFE_MESSAGES: Readonly<Record<AliyunDriveNativeErrorCode, string>> = Obje
   'broker-unavailable': 'The Aliyun Drive OAuth Broker is temporarily unavailable'
 })
 
-type AliyunDriveNativeErrorOptions = ErrorOptions & {
-  retryAfterMs?: number
-}
-
-function validRetryAfterMs(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= 300_000
-}
-
-function ownValue(value: object, key: string): unknown {
-  return Object.getOwnPropertyDescriptor(value, key)?.value
-}
-
-function errorCode(value: unknown): AliyunDriveNativeErrorCode {
-  if (typeof value !== 'object' || value === null) return 'oauth-failed'
-  const code = ownValue(value, 'code')
-  return typeof code === 'string' && ERROR_CODES.has(code)
-    ? (code as AliyunDriveNativeErrorCode)
-    : 'oauth-failed'
-}
+type AliyunDriveNativeErrorOptions = StorageNativeErrorOptions
 
 export class AliyunDriveNativeError extends Error {
   readonly retryAfterMs: number | undefined
@@ -80,7 +68,7 @@ export class AliyunDriveNativeError extends Error {
     super(SAFE_MESSAGES[code], options)
     this.name = 'AliyunDriveNativeError'
     const retryAfterMs = options?.retryAfterMs
-    this.retryAfterMs = validRetryAfterMs(retryAfterMs) ? retryAfterMs : undefined
+    this.retryAfterMs = validStorageRetryAfterMs(retryAfterMs) ? retryAfterMs : undefined
   }
 }
 
@@ -90,13 +78,11 @@ export class AliyunDriveNativeError extends Error {
  */
 export function nativeAliyunDriveError(error: unknown): AliyunDriveNativeError {
   if (error instanceof AliyunDriveNativeError) return error
-  const code = errorCode(error)
-  const retryAfterMs =
-    code === 'rate-limited' && typeof error === 'object' && error !== null
-      ? ownValue(error, 'retryAfterMs')
-      : undefined
-  return new AliyunDriveNativeError(
-    code,
-    validRetryAfterMs(retryAfterMs) ? { retryAfterMs } : undefined
+  const [code, retryAfterMs] = storageNativeErrorDetails<AliyunDriveNativeErrorCode>(
+    error,
+    ERROR_CODES,
+    'oauth-failed',
+    'rate-limited'
   )
+  return new AliyunDriveNativeError(code, retryAfterMs === undefined ? undefined : { retryAfterMs })
 }

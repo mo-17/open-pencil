@@ -1,3 +1,5 @@
+import { parseStrongStorageEtag } from './storage-native-common'
+
 type NativeTransferResponse = {
   status: number
   headers: ReadonlyArray<{ name: string; value: string }>
@@ -65,17 +67,7 @@ function retryableError(error: unknown): boolean {
   return code === 'network-failed' || code === 'timeout'
 }
 
-export function parseStrongGoogleDriveEtag(value: string | null): string | null | undefined {
-  if (value === null) return null
-  if (value.length < 2 || value.length > 1_024 || value[0] !== '"' || value.at(-1) !== '"') {
-    return undefined
-  }
-  for (let index = 1; index < value.length - 1; index++) {
-    const code = value.charCodeAt(index)
-    if (code !== 0x21 && (code < 0x23 || code > 0x7e)) return undefined
-  }
-  return value
-}
+export const parseStrongGoogleDriveEtag = parseStrongStorageEtag
 
 export function linkedGoogleDriveAbortController(signal: AbortSignal): {
   controller: AbortController

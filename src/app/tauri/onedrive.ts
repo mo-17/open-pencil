@@ -1,11 +1,26 @@
 /* eslint-disable max-lines -- OAuth cancellation and capability transport share one native bridge. */
 import { invoke } from '@tauri-apps/api/core'
 
-import { randomHex } from '@open-pencil/core/random'
-
 import type { ParsedContentRange } from './content-range'
-import { withAbortSignal, type TauriHttpHeader } from './http'
+import type { TauriHttpHeader } from './http'
 import { OneDriveNativeError, nativeOneDriveError } from './onedrive-oauth-error'
+import {
+  boundedStorageRequestBody,
+  createBoundedStorageInteger,
+  createStorageContentRangeParser,
+  invokeCancellableStorageOAuth,
+  invokeStorageNative,
+  linkedStorageAbortController,
+  parseStorageJSONBody,
+  parseStrongStorageEtag,
+  rememberBoundedStorageCapability,
+  storageNativeHeaders,
+  storageNativeResponse,
+  storageNativeResponseHeader,
+  storageNativeTransferRequest,
+  storageRangedDownloadStream,
+  type StorageNativeInvoke
+} from './storage-native-common'
 
 export { OneDriveNativeError, type OneDriveNativeErrorCode } from './onedrive-oauth-error'
 
@@ -53,7 +68,7 @@ export type OneDriveNativeTransferResponse = {
   body: number[]
 }
 
-export type OneDriveInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+export type OneDriveInvoke = StorageNativeInvoke
 
 export type OneDriveNativeTransferInvoker = (
   request: OneDriveNativeTransferRequest,
@@ -88,123 +103,29 @@ const TRANSFER_TIMEOUT_MS = 120_000
 
 const DEFAULT_INVOKE = invoke as OneDriveInvoke
 
-function abortReason(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException('The operation was aborted', 'AbortError')
-}
-
-async function cancelOAuthOperation(
-  invokeCommand: OneDriveInvoke,
-  operationId: string
-): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      if (await invokeCommand<boolean>('onedrive_oauth_cancel', { operationId })) return
-    } catch {
-      return
-    }
-    if (attempt < 2) {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 25)
-      })
-    }
-  }
-}
-
-async function invokeWithAbort<T>(
-  invokeCommand: OneDriveInvoke,
-  command: string,
-  args: Record<string, unknown>,
-  signal?: AbortSignal
-): Promise<T> {
-  signal?.throwIfAborted()
-  let pending: Promise<T>
-  try {
-    pending = invokeCommand<T>(command, args)
-  } catch (error) {
-    throw nativeOneDriveError(error)
-  }
-  if (!signal) {
-    try {
-      return await pending
-    } catch (error) {
-      throw nativeOneDriveError(error)
-    }
-  }
-  return withAbortSignal(pending, signal, nativeOneDriveError)
-}
-
-async function invokeCancellableOAuth<T>(
-  invokeCommand: OneDriveInvoke,
-  command: 'onedrive_oauth_authorize' | 'onedrive_oauth_refresh',
-  request: object,
-  signal?: AbortSignal
-): Promise<T> {
-  signal?.throwIfAborted()
-  const operationId = randomHex(16)
-  let pending: Promise<T>
-  try {
-    pending = invokeCommand<T>(command, { request: { ...request, operationId } })
-  } catch (error) {
-    throw nativeOneDriveError(error)
-  }
-  if (!signal) {
-    try {
-      return await pending
-    } catch (error) {
-      throw nativeOneDriveError(error)
-    }
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    let aborting = false
-    const cleanup = () => signal.removeEventListener('abort', onAbort)
-    const onAbort = () => {
-      if (aborting) return
-      aborting = true
-      cleanup()
-      reject(abortReason(signal))
-      void cancelOAuthOperation(invokeCommand, operationId)
-      void pending.catch(() => undefined)
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-    void pending.then(
-      (value) => {
-        if (aborting) return undefined
-        cleanup()
-        resolve(value)
-        return undefined
-      },
-      (error) => {
-        if (aborting) return undefined
-        cleanup()
-        reject(nativeOneDriveError(error))
-        return undefined
-      }
-    )
-  })
-}
-
 export function createOneDriveNativeBridge(
   invokeCommand: OneDriveInvoke = DEFAULT_INVOKE
 ): OneDriveNativeBridge {
   return Object.freeze({
     authorize(request: OneDriveNativeAuthorizeRequest = {}, signal?: AbortSignal) {
-      return invokeCancellableOAuth<OneDriveNativeAuthorizeResult>(
+      return invokeCancellableStorageOAuth<OneDriveNativeAuthorizeResult>({
         invokeCommand,
-        'onedrive_oauth_authorize',
+        command: 'onedrive_oauth_authorize',
+        cancelCommand: 'onedrive_oauth_cancel',
         request,
+        mapError: nativeOneDriveError,
         signal
-      )
+      })
     },
     refresh(request: OneDriveNativeRefreshRequest, signal?: AbortSignal) {
-      return invokeCancellableOAuth<OneDriveNativeRefreshResult>(
+      return invokeCancellableStorageOAuth<OneDriveNativeRefreshResult>({
         invokeCommand,
-        'onedrive_oauth_refresh',
+        command: 'onedrive_oauth_refresh',
+        cancelCommand: 'onedrive_oauth_cancel',
         request,
+        mapError: nativeOneDriveError,
         signal
-      )
+      })
     }
   })
 }
@@ -215,10 +136,11 @@ export function createOneDriveNativeTransfer(
   invokeCommand: OneDriveInvoke = DEFAULT_INVOKE
 ): OneDriveNativeTransferInvoker {
   return (request, signal) =>
-    invokeWithAbort<OneDriveNativeTransferResponse>(
+    invokeStorageNative<OneDriveNativeTransferResponse>(
       invokeCommand,
       'onedrive_transfer',
       { request },
+      nativeOneDriveError,
       signal
     )
 }
@@ -229,12 +151,14 @@ function transportError(message: string): OneDriveNativeError {
   return new OneDriveNativeError('invalid-request', { cause: new TypeError(message) })
 }
 
-function boundedPositiveInteger(value: number, minimum: number, maximum: number): number {
-  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
-    throw transportError('OneDrive native transfer limit is invalid')
-  }
-  return value
-}
+const boundedPositiveInteger = createBoundedStorageInteger(() =>
+  transportError('OneDrive native transfer limit is invalid')
+)
+
+const parseContentRange = createStorageContentRangeParser(
+  () => transportError('OneDrive returned an invalid download Content-Range'),
+  () => transportError('OneDrive returned inconsistent ranged download bytes')
+)
 
 function isSubdomain(host: string, suffix: string): boolean {
   return host.length > suffix.length + 1 && host.endsWith(`.${suffix}`)
@@ -297,38 +221,21 @@ function rememberCapability(
   }
   if (!capabilityHostAllowed(url, kind)) return
   const key = url.toString()
-  if (capabilities.size >= 128 && !capabilities.has(key)) {
-    const oldest = capabilities.keys().next().value
-    if (typeof oldest === 'string') capabilities.delete(oldest)
-  }
-  capabilities.set(key, kind)
-}
-
-function responseHeader(
-  response: OneDriveNativeTransferResponse,
-  expectedName: string
-): string | null {
-  return (
-    response.headers.find(({ name }) => name.toLowerCase() === expectedName.toLowerCase())?.value ??
-    null
-  )
+  rememberBoundedStorageCapability(capabilities, key, kind, 128)
 }
 
 function rememberGraphCapabilities(
   response: OneDriveNativeTransferResponse,
   capabilities: Map<string, OneDriveCapabilityKind>
 ): void {
-  const location = responseHeader(response, 'location')
+  const location = storageNativeResponseHeader(response, 'location')
   if (location) rememberCapability(capabilities, location, 'download')
-  const contentType = responseHeader(response, 'content-type')?.split(';', 1)[0]?.trim()
+  const contentType = storageNativeResponseHeader(response, 'content-type')
+    ?.split(';', 1)[0]
+    ?.trim()
   if (contentType?.toLowerCase() !== 'application/json' || response.body.length === 0) return
-  let value: unknown
-  try {
-    value = JSON.parse(new TextDecoder().decode(new Uint8Array(response.body))) as unknown
-  } catch {
-    return
-  }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return
+  const value = parseStorageJSONBody(response.body)
+  if (!value) return
   const uploadURL = Reflect.get(value, 'uploadUrl')
   if (typeof uploadURL === 'string') {
     rememberCapability(capabilities, uploadURL, 'upload-session')
@@ -343,118 +250,20 @@ async function boundedRequestBody(
   request: Request,
   maxBytes: number
 ): Promise<number[] | undefined> {
-  if (!request.body) return undefined
-  const declaredLength = request.headers.get('content-length')
-  if (
-    declaredLength !== null &&
-    (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)
-  ) {
-    throw transportError('OneDrive request body is too large')
-  }
-
-  const chunks: Uint8Array[] = []
-  const reader = request.body.getReader()
-  let total = 0
-  try {
-    let next = await reader.read()
-    while (!next.done) {
-      total += next.value.byteLength
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => undefined)
-        throw transportError('OneDrive request body is too large')
-      }
-      chunks.push(next.value)
-      next = await reader.read()
-    }
-  } finally {
-    reader.releaseLock()
-  }
-  const bytes = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return [...bytes]
-}
-
-function nativeHeaders(headers: Headers): OneDriveTransferHeader[] {
-  return [...headers.entries()].map(([name, value]) => ({ name, value }))
+  return boundedStorageRequestBody(request, maxBytes, () =>
+    transportError('OneDrive request body is too large')
+  )
 }
 
 function nativeResponse(response: OneDriveNativeTransferResponse): Response {
-  if (
-    !Number.isSafeInteger(response.status) ||
-    response.status < 200 ||
-    response.status > 599 ||
-    response.body.some((value) => !Number.isSafeInteger(value) || value < 0 || value > 255)
-  ) {
-    throw transportError('OneDrive returned an invalid native response')
-  }
-  const body = [204, 205, 304].includes(response.status) ? null : new Uint8Array(response.body)
-  return new Response(body, {
-    status: response.status,
-    headers: response.headers.map(({ name, value }): [string, string] => [name, value])
-  })
-}
-
-function parseContentRange(
-  value: string | null,
-  expectedStart: number,
-  bodyLength: number,
-  expectedTotal: number | null,
-  maxDownloadBytes: number
-): ParsedContentRange {
-  const match = value ? /^bytes (\d+)-(\d+)\/(\d+)$/.exec(value.trim()) : null
-  if (!match) throw transportError('OneDrive returned an invalid download Content-Range')
-  const start = Number(match[1])
-  const end = Number(match[2])
-  const total = Number(match[3])
-  if (
-    !Number.isSafeInteger(start) ||
-    !Number.isSafeInteger(end) ||
-    !Number.isSafeInteger(total) ||
-    start !== expectedStart ||
-    end < start ||
-    end >= total ||
-    total < 1 ||
-    total > maxDownloadBytes ||
-    end - start + 1 !== bodyLength ||
-    (expectedTotal !== null && total !== expectedTotal)
-  ) {
-    throw transportError('OneDrive returned inconsistent ranged download bytes')
-  }
-  return { start, end, total }
-}
-
-function strongEtag(value: string | null): string | null | undefined {
-  if (value === null) return null
-  if (value.length < 2 || value.length > 1_024 || value.startsWith('W/')) return undefined
-  if (value[0] !== '"' || value.at(-1) !== '"') return undefined
-  for (let index = 1; index < value.length - 1; index++) {
-    const code = value.charCodeAt(index)
-    if (code !== 0x21 && (code < 0x23 || code > 0x7e)) return undefined
-  }
-  return value
-}
-
-function linkedAbortController(signal: AbortSignal): {
-  controller: AbortController
-  cleanup: () => void
-} {
-  const controller = new AbortController()
-  const abort = () => controller.abort(signal.reason)
-  if (signal.aborted) abort()
-  else signal.addEventListener('abort', abort, { once: true })
-  return {
-    controller,
-    cleanup: () => signal.removeEventListener('abort', abort)
-  }
+  return storageNativeResponse(response, () =>
+    transportError('OneDrive returned an invalid native response')
+  )
 }
 
 type OneDriveMethod = OneDriveNativeTransferRequest['method']
 
-type LinkedAbortController = ReturnType<typeof linkedAbortController>
+type LinkedAbortController = ReturnType<typeof linkedStorageAbortController>
 
 type DownloadChunk = (
   start: number,
@@ -504,15 +313,15 @@ async function metadataResponse(
       kind === 'upload-session' ? MAX_TRANSFER_CHUNK_BYTES : MAX_METADATA_BODY_BYTES
     )
     const response = await transfer(
-      {
+      storageNativeTransferRequest(
         kind,
-        url: url.toString(),
+        url,
         method,
-        headers: nativeHeaders(request.headers),
-        ...(body ? { body } : {}),
-        maxResponseBytes: MAX_METADATA_RESPONSE_BYTES,
-        timeoutMs: TRANSFER_TIMEOUT_MS
-      },
+        request.headers,
+        body,
+        MAX_METADATA_RESPONSE_BYTES,
+        TRANSFER_TIMEOUT_MS
+      ),
       linked.controller.signal
     )
     if (kind === 'api') rememberGraphCapabilities(response, capabilities)
@@ -540,7 +349,7 @@ function downloadChunkInvoker(
         kind: 'download',
         url: url.toString(),
         method: 'GET',
-        headers: nativeHeaders(headers),
+        headers: storageNativeHeaders(headers),
         maxResponseBytes: chunkBytes,
         timeoutMs: TRANSFER_TIMEOUT_MS
       },
@@ -583,7 +392,7 @@ function initialDownloadMetadata(
   ) {
     throw transportError('OneDrive returned an invalid download Content-Length')
   }
-  const etag = strongEtag(headers.get('etag'))
+  const etag = parseStrongStorageEtag(headers.get('etag'))
   if (etag === undefined || (range.end + 1 < range.total && etag === null)) {
     throw transportError('OneDrive ranged download requires a strong ETag')
   }
@@ -600,61 +409,32 @@ function rangedDownloadResponse(
   chunkBytes: number,
   maxDownloadBytes: number
 ): Response {
-  let nextOffset = metadata.range.end + 1
-  let requestCount = 1
-  let finished = false
-  const finish = () => {
-    if (finished) return
-    finished = true
-    linked.cleanup()
-  }
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(new Uint8Array(first.body))
-      if (nextOffset === metadata.range.total) {
-        finish()
-        controller.close()
+  const stream = storageRangedDownloadStream(
+    first.body,
+    metadata.range.end + 1,
+    metadata.range.total,
+    linked,
+    Math.ceil(maxDownloadBytes / chunkBytes) + 1,
+    () => transportError('OneDrive ranged download exceeded the request limit'),
+    async (nextOffset) => {
+      const response = await fetchChunk(nextOffset, metadata.etag ?? undefined)
+      if (response.status !== 206) {
+        throw transportError('OneDrive ranged download did not continue with 206')
       }
-    },
-    async pull(controller) {
-      if (finished) return
-      try {
-        linked.controller.signal.throwIfAborted()
-        requestCount++
-        if (requestCount > Math.ceil(maxDownloadBytes / chunkBytes) + 1) {
-          throw transportError('OneDrive ranged download exceeded the request limit')
-        }
-        const response = await fetchChunk(nextOffset, metadata.etag ?? undefined)
-        if (response.status !== 206) {
-          throw transportError('OneDrive ranged download did not continue with 206')
-        }
-        const headers = new Headers(response.headers.map(({ name, value }) => [name, value]))
-        if (strongEtag(headers.get('etag')) !== metadata.etag) {
-          throw transportError('OneDrive file changed during ranged download')
-        }
-        const range = parseContentRange(
-          headers.get('content-range'),
-          nextOffset,
-          response.body.length,
-          metadata.range.total,
-          maxDownloadBytes
-        )
-        nextOffset = range.end + 1
-        controller.enqueue(new Uint8Array(response.body))
-        if (nextOffset === metadata.range.total) {
-          finish()
-          controller.close()
-        }
-      } catch (error) {
-        finish()
-        controller.error(error)
+      const headers = new Headers(response.headers.map(({ name, value }) => [name, value]))
+      if (parseStrongStorageEtag(headers.get('etag')) !== metadata.etag) {
+        throw transportError('OneDrive file changed during ranged download')
       }
-    },
-    cancel(reason) {
-      linked.controller.abort(reason)
-      finish()
+      const range = parseContentRange(
+        headers.get('content-range'),
+        nextOffset,
+        response.body.length,
+        metadata.range.total,
+        maxDownloadBytes
+      )
+      return { body: response.body, nextOffset: range.end + 1 }
     }
-  })
+  )
   return new Response(stream, { status: 200, headers: metadata.headers })
 }
 
@@ -715,7 +495,7 @@ export function createOneDriveTauriTransport(
 
   return async (input, init = {}) => {
     const { request, url, method, kind } = parsedTransportRequest(input, init, capabilities)
-    const linked = linkedAbortController(request.signal)
+    const linked = linkedStorageAbortController(request.signal)
     return kind === 'download'
       ? downloadResponse(request, url, transfer, linked, chunkBytes, maxDownloadBytes)
       : metadataResponse(request, url, method, kind, transfer, linked, capabilities)

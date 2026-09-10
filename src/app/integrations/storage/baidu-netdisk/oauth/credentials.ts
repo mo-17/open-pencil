@@ -1,3 +1,10 @@
+import {
+  hasExactOAuthKeys,
+  isOAuthRecord as isRecord,
+  oauthSerializedBytes as serializedBytes,
+  parseBoundedOAuthJSON
+} from '@/app/integrations/storage/oauth-shared/validation'
+
 import { parseBaiduNetdiskOAuthClient, type BaiduNetdiskSelfHostedOAuthClient } from './envelope'
 
 export const MAX_BAIDU_NETDISK_SELF_HOSTED_CREDENTIALS_BYTES = 16 * 1024
@@ -20,26 +27,8 @@ function invalidCredentials(): BaiduNetdiskCredentialsError {
   return new BaiduNetdiskCredentialsError('invalid-credentials')
 }
 
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function hasExactKeys(value: Record<string, unknown>): boolean {
-  const keys = Object.keys(value)
-  return keys.length === 2 && Object.hasOwn(value, 'appKey') && Object.hasOwn(value, 'secretKey')
-}
-
-function serializedBytes(value: unknown): number | null {
-  try {
-    const serialized = JSON.stringify(value)
-    return typeof serialized === 'string' ? utf8Bytes(serialized) : null
-  } catch {
-    return null
-  }
+  return hasExactOAuthKeys(value, ['appKey', 'secretKey'])
 }
 
 /**
@@ -72,15 +61,12 @@ export function parseBaiduNetdiskSelfHostedCredentials(
 export function parseBaiduNetdiskSelfHostedCredentialsJSON(
   value: string
 ): BaiduNetdiskSelfHostedOAuthClient {
-  if (typeof value !== 'string' || value.length === 0) throw invalidCredentials()
-  if (utf8Bytes(value) > MAX_BAIDU_NETDISK_SELF_HOSTED_CREDENTIALS_BYTES) {
-    throw new BaiduNetdiskCredentialsError('credentials-too-large')
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    throw invalidCredentials()
-  }
-  return parseBaiduNetdiskSelfHostedCredentials(parsed)
+  return parseBaiduNetdiskSelfHostedCredentials(
+    parseBoundedOAuthJSON(
+      value,
+      MAX_BAIDU_NETDISK_SELF_HOSTED_CREDENTIALS_BYTES,
+      invalidCredentials,
+      () => new BaiduNetdiskCredentialsError('credentials-too-large')
+    )
+  )
 }

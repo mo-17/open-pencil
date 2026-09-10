@@ -2,8 +2,6 @@
 
 import { invoke } from '@tauri-apps/api/core'
 
-import { randomHex } from '@open-pencil/core/random'
-
 import {
   BAIDU_NETDISK_API_ORIGIN,
   BAIDU_NETDISK_LOCATE_UPLOAD_APP_ID,
@@ -17,8 +15,21 @@ import type {
 } from '@/app/integrations/storage/baidu-netdisk/types'
 
 import { BaiduNetdiskNativeError, nativeBaiduNetdiskError } from './baidu-netdisk-oauth-error'
-import type { ParsedContentRange } from './content-range'
-import { withAbortSignal, type TauriHttpHeader } from './http'
+import type { TauriHttpHeader } from './http'
+import {
+  boundedStorageRequestBody,
+  createBoundedStorageInteger,
+  createStorageContentRangeParser,
+  invokeCancellableStorageOAuth,
+  invokeStorageNative,
+  linkedStorageAbortController,
+  storageNativeHeaders,
+  storageNativeResponse,
+  storageNativeResponseHeader,
+  storageNativeTransferRequest,
+  storageRangedDownloadStream,
+  type StorageNativeInvoke
+} from './storage-native-common'
 
 export {
   BaiduNetdiskNativeError,
@@ -78,7 +89,7 @@ export type BaiduNetdiskNativeTransferResponse = {
   body: number[]
 }
 
-export type BaiduNetdiskInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+export type BaiduNetdiskInvoke = StorageNativeInvoke
 
 export type BaiduNetdiskNativeTransferInvoker = (
   request: BaiduNetdiskNativeTransferRequest,
@@ -112,122 +123,29 @@ const MAX_METADATA_RESPONSE_BYTES = 2 * 1024 * 1024
 const TRANSFER_TIMEOUT_MS = 120_000
 const DEFAULT_INVOKE = invoke as BaiduNetdiskInvoke
 
-function abortReason(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException('The operation was aborted', 'AbortError')
-}
-
-async function cancelOAuthOperation(
-  invokeCommand: BaiduNetdiskInvoke,
-  operationId: string
-): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      if (await invokeCommand<boolean>('baidu_netdisk_oauth_cancel', { operationId })) return
-    } catch {
-      return
-    }
-    if (attempt < 2) {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 25)
-      })
-    }
-  }
-}
-
-async function invokeWithAbort<T>(
-  invokeCommand: BaiduNetdiskInvoke,
-  command: string,
-  args: Record<string, unknown>,
-  signal?: AbortSignal
-): Promise<T> {
-  signal?.throwIfAborted()
-  let pending: Promise<T>
-  try {
-    pending = invokeCommand<T>(command, args)
-  } catch (error) {
-    throw nativeBaiduNetdiskError(error)
-  }
-  if (!signal) {
-    try {
-      return await pending
-    } catch (error) {
-      throw nativeBaiduNetdiskError(error)
-    }
-  }
-  return withAbortSignal(pending, signal, nativeBaiduNetdiskError)
-}
-
-async function invokeCancellableOAuth<T>(
-  invokeCommand: BaiduNetdiskInvoke,
-  command: 'baidu_netdisk_oauth_authorize' | 'baidu_netdisk_oauth_refresh',
-  request: object,
-  signal?: AbortSignal
-): Promise<T> {
-  signal?.throwIfAborted()
-  const operationId = randomHex(16)
-  let pending: Promise<T>
-  try {
-    pending = invokeCommand<T>(command, { request: { ...request, operationId } })
-  } catch (error) {
-    throw nativeBaiduNetdiskError(error)
-  }
-  if (!signal) {
-    try {
-      return await pending
-    } catch (error) {
-      throw nativeBaiduNetdiskError(error)
-    }
-  }
-  return new Promise<T>((resolve, reject) => {
-    let aborting = false
-    const cleanup = () => signal.removeEventListener('abort', onAbort)
-    const onAbort = () => {
-      if (aborting) return
-      aborting = true
-      cleanup()
-      reject(abortReason(signal))
-      void cancelOAuthOperation(invokeCommand, operationId)
-      void pending.catch(() => undefined)
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-    void pending.then(
-      (value) => {
-        if (aborting) return undefined
-        cleanup()
-        resolve(value)
-        return undefined
-      },
-      (error) => {
-        if (aborting) return undefined
-        cleanup()
-        reject(nativeBaiduNetdiskError(error))
-        return undefined
-      }
-    )
-  })
-}
-
 export function createBaiduNetdiskNativeBridge(
   invokeCommand: BaiduNetdiskInvoke = DEFAULT_INVOKE
 ): BaiduNetdiskNativeBridge {
   return Object.freeze({
     authorize(request: BaiduNetdiskNativeAuthorizeRequest, signal?: AbortSignal) {
-      return invokeCancellableOAuth<BaiduNetdiskNativeAuthorizeResult>(
+      return invokeCancellableStorageOAuth<BaiduNetdiskNativeAuthorizeResult>({
         invokeCommand,
-        'baidu_netdisk_oauth_authorize',
+        command: 'baidu_netdisk_oauth_authorize',
+        cancelCommand: 'baidu_netdisk_oauth_cancel',
         request,
+        mapError: nativeBaiduNetdiskError,
         signal
-      )
+      })
     },
     refresh(request: BaiduNetdiskNativeRefreshRequest, signal?: AbortSignal) {
-      return invokeCancellableOAuth<BaiduNetdiskNativeRefreshResult>(
+      return invokeCancellableStorageOAuth<BaiduNetdiskNativeRefreshResult>({
         invokeCommand,
-        'baidu_netdisk_oauth_refresh',
+        command: 'baidu_netdisk_oauth_refresh',
+        cancelCommand: 'baidu_netdisk_oauth_cancel',
         request,
+        mapError: nativeBaiduNetdiskError,
         signal
-      )
+      })
     }
   })
 }
@@ -238,10 +156,11 @@ export function createBaiduNetdiskNativeTransfer(
   invokeCommand: BaiduNetdiskInvoke = DEFAULT_INVOKE
 ): BaiduNetdiskNativeTransferInvoker {
   return (request, signal) =>
-    invokeWithAbort<BaiduNetdiskNativeTransferResponse>(
+    invokeStorageNative<BaiduNetdiskNativeTransferResponse>(
       invokeCommand,
       'baidu_netdisk_transfer',
       { request },
+      nativeBaiduNetdiskError,
       signal
     )
 }
@@ -252,12 +171,14 @@ function transportError(message: string): BaiduNetdiskNativeError {
   return new BaiduNetdiskNativeError('invalid-request', { cause: new TypeError(message) })
 }
 
-function boundedPositiveInteger(value: number, minimum: number, maximum: number): number {
-  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
-    throw transportError('Baidu Netdisk native transfer limit is invalid')
-  }
-  return value
-}
+const boundedPositiveInteger = createBoundedStorageInteger(() =>
+  transportError('Baidu Netdisk native transfer limit is invalid')
+)
+
+const parseContentRange = createStorageContentRangeParser(
+  () => transportError('Baidu Netdisk returned an invalid Content-Range'),
+  () => transportError('Baidu Netdisk returned inconsistent ranged bytes')
+)
 
 function isPcsHost(hostname: string): boolean {
   const host = hostname.toLocaleLowerCase()
@@ -331,105 +252,21 @@ async function boundedRequestBody(
   request: Request,
   maxBytes: number
 ): Promise<number[] | undefined> {
-  if (!request.body) return undefined
-  const declared = request.headers.get('content-length')
-  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) {
-    throw transportError('Baidu Netdisk request body is too large')
-  }
-  const reader = request.body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  try {
-    let next = await reader.read()
-    while (!next.done) {
-      total += next.value.byteLength
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => undefined)
-        throw transportError('Baidu Netdisk request body is too large')
-      }
-      chunks.push(next.value)
-      next = await reader.read()
-    }
-  } finally {
-    reader.releaseLock()
-  }
-  const bytes = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return [...bytes]
-}
-
-function nativeHeaders(headers: Headers): BaiduNetdiskTransferHeader[] {
-  return [...headers.entries()].map(([name, value]) => ({ name, value }))
+  return boundedStorageRequestBody(request, maxBytes, () =>
+    transportError('Baidu Netdisk request body is too large')
+  )
 }
 
 function nativeResponse(response: BaiduNetdiskNativeTransferResponse): Response {
-  if (
-    !Number.isSafeInteger(response.status) ||
-    response.status < 200 ||
-    response.status > 599 ||
-    response.body.some((value) => !Number.isSafeInteger(value) || value < 0 || value > 255)
-  ) {
-    throw transportError('Baidu Netdisk returned an invalid native response')
-  }
-  const body = [204, 205, 304].includes(response.status) ? null : new Uint8Array(response.body)
-  return new Response(body, {
-    status: response.status,
-    headers: response.headers.map(({ name, value }): [string, string] => [name, value])
-  })
-}
-
-function linkedAbortController(signal: AbortSignal): {
-  controller: AbortController
-  cleanup: () => void
-} {
-  const controller = new AbortController()
-  const abort = () => controller.abort(signal.reason)
-  if (signal.aborted) abort()
-  else signal.addEventListener('abort', abort, { once: true })
-  return { controller, cleanup: () => signal.removeEventListener('abort', abort) }
-}
-
-function parseContentRange(
-  value: string | null,
-  expectedStart: number,
-  bodyLength: number,
-  expectedTotal: number | null,
-  maxDownloadBytes: number
-): ParsedContentRange {
-  const match = value ? /^bytes (\d+)-(\d+)\/(\d+)$/.exec(value.trim()) : null
-  if (!match) throw transportError('Baidu Netdisk returned an invalid Content-Range')
-  const start = Number(match[1])
-  const end = Number(match[2])
-  const total = Number(match[3])
-  if (
-    !Number.isSafeInteger(start) ||
-    !Number.isSafeInteger(end) ||
-    !Number.isSafeInteger(total) ||
-    start !== expectedStart ||
-    end < start ||
-    end >= total ||
-    total < 1 ||
-    total > maxDownloadBytes ||
-    end - start + 1 !== bodyLength ||
-    (expectedTotal !== null && total !== expectedTotal)
-  ) {
-    throw transportError('Baidu Netdisk returned inconsistent ranged bytes')
-  }
-  return { start, end, total }
-}
-
-function responseHeader(response: BaiduNetdiskNativeTransferResponse, name: string): string | null {
-  return response.headers.find((header) => header.name.toLowerCase() === name)?.value ?? null
+  return storageNativeResponse(response, () =>
+    transportError('Baidu Netdisk returned an invalid native response')
+  )
 }
 
 function downloadValidator(response: BaiduNetdiskNativeTransferResponse): string | null {
-  const etag = responseHeader(response, 'etag')
+  const etag = storageNativeResponseHeader(response, 'etag')
   if (etag && etag.length <= 1_024 && /^"[\x21\x23-\x7e]+"$/.test(etag)) return etag
-  const modified = responseHeader(response, 'last-modified')
+  const modified = storageNativeResponseHeader(response, 'last-modified')
   return modified && modified.length <= 128 && Number.isFinite(Date.parse(modified))
     ? modified
     : null
@@ -441,7 +278,7 @@ async function metadataResponse(
   method: BaiduNetdiskNativeTransferRequest['method'],
   kind: Exclude<BaiduNetdiskTransferKind, 'download'>,
   transfer: BaiduNetdiskNativeTransferInvoker,
-  linked: ReturnType<typeof linkedAbortController>
+  linked: ReturnType<typeof linkedStorageAbortController>
 ): Promise<Response> {
   try {
     const body = await boundedRequestBody(
@@ -450,15 +287,15 @@ async function metadataResponse(
     )
     return nativeResponse(
       await transfer(
-        {
+        storageNativeTransferRequest(
           kind,
-          url: url.toString(),
+          url,
           method,
-          headers: nativeHeaders(request.headers),
-          ...(body ? { body } : {}),
-          maxResponseBytes: MAX_METADATA_RESPONSE_BYTES,
-          timeoutMs: TRANSFER_TIMEOUT_MS
-        },
+          request.headers,
+          body,
+          MAX_METADATA_RESPONSE_BYTES,
+          TRANSFER_TIMEOUT_MS
+        ),
         linked.controller.signal
       )
     )
@@ -471,7 +308,7 @@ async function downloadResponse(
   request: Request,
   url: URL,
   transfer: BaiduNetdiskNativeTransferInvoker,
-  linked: ReturnType<typeof linkedAbortController>,
+  linked: ReturnType<typeof linkedStorageAbortController>,
   chunkBytes: number,
   maxDownloadBytes: number
 ): Promise<Response> {
@@ -492,7 +329,7 @@ async function downloadResponse(
           kind: 'download',
           url: url.toString(),
           method: 'GET',
-          headers: nativeHeaders(headers),
+          headers: storageNativeHeaders(headers),
           maxResponseBytes: chunkBytes,
           timeoutMs: TRANSFER_TIMEOUT_MS
         },
@@ -506,7 +343,7 @@ async function downloadResponse(
       return nativeResponse(first)
     }
     const range = parseContentRange(
-      responseHeader(first, 'content-range'),
+      storageNativeResponseHeader(first, 'content-range'),
       0,
       first.body.length,
       null,
@@ -519,56 +356,28 @@ async function downloadResponse(
     const headers = new Headers(first.headers.map(({ name, value }) => [name, value]))
     headers.set('content-length', String(range.total))
     headers.delete('content-range')
-    let nextOffset = range.end + 1
-    let requestCount = 1
-    let finished = false
-    const finish = () => {
-      if (finished) return
-      finished = true
-      linked.cleanup()
-    }
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new Uint8Array(first.body))
-        if (nextOffset === range.total) {
-          finish()
-          controller.close()
+    const stream = storageRangedDownloadStream(
+      first.body,
+      range.end + 1,
+      range.total,
+      linked,
+      Math.ceil(maxDownloadBytes / chunkBytes) + 1,
+      () => transportError('Baidu Netdisk ranged download exceeded the request limit'),
+      async (nextOffset) => {
+        const response = await fetchChunk(nextOffset, validator ?? undefined)
+        if (response.status !== 206 || downloadValidator(response) !== validator) {
+          throw transportError('Baidu Netdisk file changed during ranged download')
         }
-      },
-      async pull(controller) {
-        if (finished) return
-        try {
-          requestCount++
-          if (requestCount > Math.ceil(maxDownloadBytes / chunkBytes) + 1) {
-            throw transportError('Baidu Netdisk ranged download exceeded the request limit')
-          }
-          const response = await fetchChunk(nextOffset, validator ?? undefined)
-          if (response.status !== 206 || downloadValidator(response) !== validator) {
-            throw transportError('Baidu Netdisk file changed during ranged download')
-          }
-          const nextRange = parseContentRange(
-            responseHeader(response, 'content-range'),
-            nextOffset,
-            response.body.length,
-            range.total,
-            maxDownloadBytes
-          )
-          nextOffset = nextRange.end + 1
-          controller.enqueue(new Uint8Array(response.body))
-          if (nextOffset === range.total) {
-            finish()
-            controller.close()
-          }
-        } catch (error) {
-          finish()
-          controller.error(error)
-        }
-      },
-      cancel(reason) {
-        linked.controller.abort(reason)
-        finish()
+        const nextRange = parseContentRange(
+          storageNativeResponseHeader(response, 'content-range'),
+          nextOffset,
+          response.body.length,
+          range.total,
+          maxDownloadBytes
+        )
+        return { body: response.body, nextOffset: nextRange.end + 1 }
       }
-    })
+    )
     return new Response(stream, { status: 200, headers })
   } catch (error) {
     linked.cleanup()
@@ -606,7 +415,7 @@ export function createBaiduNetdiskTauriTransport(
     if (kind === 'download' && new Headers(request.headers).get('user-agent') !== 'pan.baidu.com') {
       throw transportError('Baidu Netdisk download User-Agent is invalid')
     }
-    const linked = linkedAbortController(request.signal)
+    const linked = linkedStorageAbortController(request.signal)
     return kind === 'download'
       ? downloadResponse(request, url, transfer, linked, chunkBytes, maxDownloadBytes)
       : metadataResponse(

@@ -1,3 +1,9 @@
+import {
+  storageNativeErrorDetails,
+  validStorageRetryAfterMs,
+  type StorageNativeErrorOptions
+} from './storage-native-common'
+
 export const BAIDU_NETDISK_NATIVE_ERROR_CODES = [
   'invalid-request',
   'unsupported',
@@ -48,25 +54,7 @@ const SAFE_MESSAGES: Readonly<Record<BaiduNetdiskNativeErrorCode, string>> = Obj
   'rate-limited': 'Baidu Netdisk temporarily rate limited the request'
 })
 
-type BaiduNetdiskNativeErrorOptions = ErrorOptions & {
-  retryAfterMs?: number
-}
-
-function validRetryAfterMs(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= 300_000
-}
-
-function ownValue(value: object, key: string): unknown {
-  return Object.getOwnPropertyDescriptor(value, key)?.value
-}
-
-function errorCode(value: unknown): BaiduNetdiskNativeErrorCode {
-  if (typeof value !== 'object' || value === null) return 'oauth-failed'
-  const code = ownValue(value, 'code')
-  return typeof code === 'string' && ERROR_CODES.has(code)
-    ? (code as BaiduNetdiskNativeErrorCode)
-    : 'oauth-failed'
-}
+type BaiduNetdiskNativeErrorOptions = StorageNativeErrorOptions
 
 export class BaiduNetdiskNativeError extends Error {
   readonly retryAfterMs: number | undefined
@@ -78,20 +66,21 @@ export class BaiduNetdiskNativeError extends Error {
     super(SAFE_MESSAGES[code], options)
     this.name = 'BaiduNetdiskNativeError'
     const retryAfterMs = options?.retryAfterMs
-    this.retryAfterMs = validRetryAfterMs(retryAfterMs) ? retryAfterMs : undefined
+    this.retryAfterMs = validStorageRetryAfterMs(retryAfterMs) ? retryAfterMs : undefined
   }
 }
 
 /** Provider text, query strings, tokens, and account details never cross this renderer boundary. */
 export function nativeBaiduNetdiskError(error: unknown): BaiduNetdiskNativeError {
   if (error instanceof BaiduNetdiskNativeError) return error
-  const code = errorCode(error)
-  const retryAfterMs =
-    code === 'rate-limited' && typeof error === 'object' && error !== null
-      ? ownValue(error, 'retryAfterMs')
-      : undefined
+  const [code, retryAfterMs] = storageNativeErrorDetails<BaiduNetdiskNativeErrorCode>(
+    error,
+    ERROR_CODES,
+    'oauth-failed',
+    'rate-limited'
+  )
   return new BaiduNetdiskNativeError(
     code,
-    validRetryAfterMs(retryAfterMs) ? { retryAfterMs } : undefined
+    retryAfterMs === undefined ? undefined : { retryAfterMs }
   )
 }

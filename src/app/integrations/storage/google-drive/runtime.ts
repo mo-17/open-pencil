@@ -3,6 +3,7 @@ import { IS_TAURI } from '@open-pencil/core/constants'
 import type { CredentialManager, CredentialResolver } from '@/app/settings/credentials/types'
 import { googleDriveTauriTransport } from '@/app/tauri/google-drive'
 
+import { createStorageRuntimeRegistry } from '../shared/runtime'
 import { requireStorageProfileID, type StorageProviderRuntime } from '../types'
 import { createGoogleDriveStorageAdapter, type GoogleDriveStorageAdapter } from './adapter'
 import { GoogleDriveClient } from './client'
@@ -35,8 +36,7 @@ type RuntimeEntry = GoogleDriveRuntimeServices & {
   transport?: GoogleDriveTransport
 }
 
-let entriesByManager = new WeakMap<CredentialManager, Map<string, RuntimeEntry>>()
-const liveEntries = new Set<RuntimeEntry>()
+const runtimeRegistry = createStorageRuntimeRegistry<CredentialManager, RuntimeEntry>()
 
 export function getGoogleDriveRuntimeServices(
   runtime: StorageProviderRuntime,
@@ -45,65 +45,47 @@ export function getGoogleDriveRuntimeServices(
   const profileId = requireStorageProfileID(runtime.profileId)
   const clientId = resolveGoogleDriveClientId(runtime.preferences)
   const transport = options.transport ?? (IS_TAURI ? googleDriveTauriTransport : undefined)
-  let entries = entriesByManager.get(runtime.credentialManager)
-  if (!entries) {
-    entries = new Map()
-    entriesByManager.set(runtime.credentialManager, entries)
-  }
-  const existing = entries.get(profileId)
-  if (
-    existing &&
-    existing.clientId === clientId &&
-    existing.credentialResolver === runtime.credentialResolver &&
-    existing.native === options.native &&
-    existing.transport === transport
-  ) {
-    return existing
-  }
-  existing?.oauth.dispose()
-  if (existing) liveEntries.delete(existing)
-
-  const oauth = createGoogleDriveOAuthSession({
-    clientId,
+  return runtimeRegistry.getOrCreate(
+    runtime.credentialManager,
     profileId,
-    manager: runtime.credentialManager,
-    resolver: runtime.credentialResolver,
-    ...(options.native ? { native: options.native } : {})
-  })
-  const client = new GoogleDriveClient({
-    tokenSource: oauth,
-    ...(transport ? { transport } : {})
-  })
-  const entry: RuntimeEntry = Object.freeze({
-    clientId,
-    profileId,
-    oauth,
-    client,
-    adapter: createGoogleDriveStorageAdapter(client),
-    credentialResolver: runtime.credentialResolver,
-    ...(options.native ? { native: options.native } : {}),
-    ...(transport ? { transport } : {})
-  })
-  entries.set(profileId, entry)
-  liveEntries.add(entry)
-  return entry
+    (entry) =>
+      entry.clientId === clientId &&
+      entry.credentialResolver === runtime.credentialResolver &&
+      entry.native === options.native &&
+      entry.transport === transport,
+    () => {
+      const oauth = createGoogleDriveOAuthSession({
+        clientId,
+        profileId,
+        manager: runtime.credentialManager,
+        resolver: runtime.credentialResolver,
+        ...(options.native ? { native: options.native } : {})
+      })
+      const client = new GoogleDriveClient({
+        tokenSource: oauth,
+        ...(transport ? { transport } : {})
+      })
+      return Object.freeze({
+        clientId,
+        profileId,
+        oauth,
+        client,
+        adapter: createGoogleDriveStorageAdapter(client),
+        credentialResolver: runtime.credentialResolver,
+        ...(options.native ? { native: options.native } : {}),
+        ...(transport ? { transport } : {})
+      })
+    }
+  )
 }
 
 export function disposeGoogleDriveRuntimeProfile(
   manager: CredentialManager,
   profileId: string
 ): void {
-  const id = requireStorageProfileID(profileId)
-  const entries = entriesByManager.get(manager)
-  const entry = entries?.get(id)
-  if (!entry) return
-  entry.oauth.dispose()
-  entries?.delete(id)
-  liveEntries.delete(entry)
+  runtimeRegistry.dispose(manager, requireStorageProfileID(profileId))
 }
 
 export function resetGoogleDriveRuntimeServicesForTests(): void {
-  for (const entry of liveEntries) entry.oauth.dispose()
-  liveEntries.clear()
-  entriesByManager = new WeakMap()
+  runtimeRegistry.reset()
 }

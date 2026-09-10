@@ -1,3 +1,8 @@
+import {
+  LocalOAuthMetadataStore,
+  MemoryOAuthMetadataStore,
+  type OAuthMetadataStoreConfig
+} from '@/app/integrations/storage/oauth-shared/metadata-store'
 import { browserCredentialStorage } from '@/app/settings/credentials/storage'
 
 import {
@@ -11,10 +16,6 @@ const MAX_BAIDU_NETDISK_OAUTH_METADATA_BYTES = 4 * 1024
 
 function invalidMetadata(): TypeError {
   return new TypeError('Stored Baidu Netdisk account metadata is invalid')
-}
-
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength
 }
 
 export interface BaiduNetdiskOAuthMetadataStore {
@@ -35,51 +36,28 @@ function metadataKey(profileId: string): string {
   return `${STORAGE_PREFIX}${metadata.profileId}`
 }
 
-export class LocalBaiduNetdiskOAuthMetadataStore implements BaiduNetdiskOAuthMetadataStore {
-  constructor(private readonly storage: Storage | null = browserCredentialStorage()) {}
+const metadataStoreConfig = {
+  key: metadataKey,
+  maxBytes: MAX_BAIDU_NETDISK_OAUTH_METADATA_BYTES,
+  parse: parseBaiduNetdiskOAuthPublicMetadata,
+  invalid: invalidMetadata,
+  unavailableMessage: 'Baidu Netdisk account metadata storage is unavailable'
+} satisfies OAuthMetadataStoreConfig<BaiduNetdiskOAuthPublicMetadata>
 
-  async read(profileId: string): Promise<BaiduNetdiskOAuthPublicMetadata | null> {
-    const raw = this.storage?.getItem(metadataKey(profileId))
-    if (!raw) return null
-    if (utf8Bytes(raw) > MAX_BAIDU_NETDISK_OAUTH_METADATA_BYTES) throw invalidMetadata()
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      throw invalidMetadata()
-    }
-    return parseBaiduNetdiskOAuthPublicMetadata(parsed)
-  }
-
-  async write(metadata: BaiduNetdiskOAuthPublicMetadata): Promise<void> {
-    if (!this.storage) throw new Error('Baidu Netdisk account metadata storage is unavailable')
-    const parsed = parseBaiduNetdiskOAuthPublicMetadata(metadata)
-    const serialized = JSON.stringify(parsed)
-    if (utf8Bytes(serialized) > MAX_BAIDU_NETDISK_OAUTH_METADATA_BYTES) {
-      throw invalidMetadata()
-    }
-    this.storage.setItem(metadataKey(parsed.profileId), serialized)
-  }
-
-  async remove(profileId: string): Promise<void> {
-    this.storage?.removeItem(metadataKey(profileId))
+export class LocalBaiduNetdiskOAuthMetadataStore
+  extends LocalOAuthMetadataStore<BaiduNetdiskOAuthPublicMetadata>
+  implements BaiduNetdiskOAuthMetadataStore
+{
+  constructor(storage: Storage | null = browserCredentialStorage()) {
+    super(storage, metadataStoreConfig)
   }
 }
 
-export class MemoryBaiduNetdiskOAuthMetadataStore implements BaiduNetdiskOAuthMetadataStore {
-  readonly #values = new Map<string, BaiduNetdiskOAuthPublicMetadata>()
-
-  async read(profileId: string): Promise<BaiduNetdiskOAuthPublicMetadata | null> {
-    const value = this.#values.get(metadataKey(profileId))
-    return value ? parseBaiduNetdiskOAuthPublicMetadata(value) : null
-  }
-
-  async write(metadata: BaiduNetdiskOAuthPublicMetadata): Promise<void> {
-    const parsed = parseBaiduNetdiskOAuthPublicMetadata(metadata)
-    this.#values.set(metadataKey(parsed.profileId), parsed)
-  }
-
-  async remove(profileId: string): Promise<void> {
-    this.#values.delete(metadataKey(profileId))
+export class MemoryBaiduNetdiskOAuthMetadataStore
+  extends MemoryOAuthMetadataStore<BaiduNetdiskOAuthPublicMetadata>
+  implements BaiduNetdiskOAuthMetadataStore
+{
+  constructor() {
+    super(metadataStoreConfig)
   }
 }
