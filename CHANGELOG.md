@@ -94,6 +94,7 @@
 
 ### Fixed
 
+- Enforce generated Supabase Edge workflow HTTP deadlines while reading response bodies, and release oversized streams without delaying the sanitized failure response.
 - Keep Supabase database Apply response cancellation and size failures responsive, redact stream diagnostics, and preserve unknown outcomes after dispatch without retrying.
 - Cancel Supabase catalog response reads promptly, clean up oversized responses without waiting indefinitely, and keep response-stream errors free of private diagnostics.
 - Preserve unknown Supabase staging outcomes across review changes, document switches, and property-panel remounts, keeping Apply blocked for unresolved outcomes.

@@ -347,6 +347,7 @@ async function readBoundedRequestText(request: Request): Promise<string> {
   if (declaredHeader !== null) {
     const declared = Number(declaredHeader)
     if (!Number.isSafeInteger(declared) || declared < 0 || declared > MAX_REQUEST_BYTES) {
+      void request.body?.cancel().catch(() => undefined)
       throw new Error('Invalid request')
     }
   }
@@ -360,7 +361,7 @@ async function readBoundedRequestText(request: Request): Promise<string> {
       if (done) break
       size += value.byteLength
       if (size > MAX_REQUEST_BYTES) {
-        await reader.cancel()
+        void reader.cancel().catch(() => undefined)
         throw new Error('Invalid request')
       }
       chunks.push(value)
@@ -421,22 +422,54 @@ function safeExternalUrl(raw: string): URL {
   return url
 }
 
-async function readBoundedResponse(response: Response): Promise<unknown> {
+async function readResponseChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let onAbort: () => void = () => undefined
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(new Error('Outbound request failed'))
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+  try {
+    if (signal.aborted) throw new Error('Outbound request failed')
+    const result = await Promise.race([reader.read(), aborted])
+    if (signal.aborted) throw new Error('Outbound request failed')
+    return result
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
+async function readBoundedResponse(response: Response, signal: AbortSignal): Promise<unknown> {
   const declared = Number(response.headers.get('content-length') ?? '0')
-  if (declared > MAX_RESPONSE_BYTES) throw new Error('Response too large')
+  if (declared > MAX_RESPONSE_BYTES) {
+    void response.body?.cancel().catch(() => undefined)
+    throw new Error('Response too large')
+  }
   const reader = response.body?.getReader()
-  if (!reader) return null
+  if (!reader) {
+    if (signal.aborted) throw new Error('Outbound request failed')
+    return null
+  }
   const chunks: Uint8Array[] = []
   let size = 0
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    size += value.byteLength
-    if (size > MAX_RESPONSE_BYTES) {
-      await reader.cancel()
-      throw new Error('Response too large')
+  try {
+    while (true) {
+      const { done, value } = await readResponseChunk(reader, signal)
+      if (signal.aborted) throw new Error('Outbound request failed')
+      if (done) break
+      size += value.byteLength
+      if (size > MAX_RESPONSE_BYTES) {
+        throw new Error('Response too large')
+      }
+      chunks.push(value)
     }
-    chunks.push(value)
+  } catch (error) {
+    void reader.cancel().catch(() => undefined)
+    throw error
+  } finally {
+    reader.releaseLock()
   }
   const bytes = new Uint8Array(size)
   let offset = 0
@@ -478,7 +511,8 @@ async function safeHttpRequest(input: {
       signal: controller.signal
     })
     if (response.status >= 300 && response.status < 400) throw new Error('Redirect refused')
-    const data = await readBoundedResponse(response)
+    const data = await readBoundedResponse(response, controller.signal)
+    if (controller.signal.aborted) throw new Error('Outbound request failed')
     if (!response.ok) throw new Error('Outbound request failed')
     return data
   } finally {

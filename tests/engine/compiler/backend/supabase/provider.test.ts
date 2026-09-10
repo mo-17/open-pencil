@@ -302,7 +302,6 @@ describe('built-in Supabase Backend Provider', () => {
     expect(source).toContain('Deno.serve(async (request) => {')
     expect(source).toContain('supabase.auth.getUser(userAccess)')
     expect(source).toContain('request.body?.getReader()')
-    expect(source).toContain('await reader.cancel()')
     expect(source).toContain('.select("id,title,owner_id").limit(100)')
     expect(source).toContain('.select().limit(100)')
     expect(source).toContain('assertBoundedJSONValue(')
