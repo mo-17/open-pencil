@@ -1023,12 +1023,12 @@ describe('Backend Host Release dispatch journal', () => {
       journal.recordEvidence({
         ...evidenceClaim(),
         phase: 'progress',
-        // The second key wins during JSON.parse, but the retained bytes still contain the secret.
+        // Duplicate keys must fail canonicalization before retained bytes can become evidence.
         payload: `{"token":"sb_secret_${'a'.repeat(32)}","token":"redacted"}`,
         payloadDigest: await digest('duplicate-key-evidence'),
         recordedAt: SETTLED_AT
       })
-    ).rejects.toThrow('secret-like material')
+    ).rejects.toThrow('canonical JSON')
 
     let deeplyNested: Record<string, unknown> = { stage: 'bounded' }
     for (let depth = 0; depth < 66; depth += 1) deeplyNested = { nested: deeplyNested }

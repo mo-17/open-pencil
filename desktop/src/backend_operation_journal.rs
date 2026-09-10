@@ -1087,6 +1087,7 @@ impl ReceiptZeroInitializerJournalDispatchV1 {
 #[must_use]
 pub(crate) struct ReceiptZeroInitializerJournalRecoveryV1 {
     capability: RecoveryCapabilityV1,
+    journal_process_lock: Weak<Mutex<()>>,
     issued_at_monotonic: Duration,
     identity: ValidatedReceiptZeroInitializerIdentityV1,
     material: ReceiptZeroInitializerClaimMaterialV1,
@@ -1109,6 +1110,7 @@ impl ReceiptZeroInitializerJournalRecoveryV1 {
 #[must_use]
 pub(crate) struct ReceiptZeroInitializerJournalReconciliationPermitV1 {
     permit: ReconciliationPermitV1,
+    journal_process_lock: Weak<Mutex<()>>,
     issued_at_monotonic: Duration,
     identity: ValidatedReceiptZeroInitializerIdentityV1,
     material: ReceiptZeroInitializerClaimMaterialV1,
@@ -1137,6 +1139,12 @@ pub(crate) struct ReceiptZeroInitializerInertLivePrecommitRunWindowV1 {
 #[cfg(test)]
 #[must_use]
 pub(crate) struct ReceiptZeroInitializerLiveExecutionCeilingV1 {
+    state: ReceiptZeroInitializerExecutionCeilingStateV1,
+}
+
+/// Shared clock arithmetic only. Live and read execution keep distinct, non-convertible tokens.
+#[cfg(test)]
+struct ReceiptZeroInitializerExecutionCeilingStateV1 {
     clock: Arc<dyn JournalClock>,
     last_sample: Mutex<JournalClockSampleV1>,
     issued_at_unix_ms: u64,
@@ -1153,23 +1161,9 @@ impl ReceiptZeroInitializerLiveExecutionCeilingV1 {
     pub(crate) fn activate_for_runner_for_test(
         self,
     ) -> Result<(ReceiptZeroInitializerActiveLiveExecutionCeilingV1, Duration), JournalError> {
-        let remaining = receipt_zero_initializer_live_ceiling_remaining(
-            self.clock.as_ref(),
-            &self.last_sample,
-            self.issued_at_unix_ms,
-            self.issued_at_monotonic,
-            self.expires_at_unix_ms,
-            self.expires_at_monotonic,
-        )?;
+        let remaining = self.state.remaining()?;
         Ok((
-            ReceiptZeroInitializerActiveLiveExecutionCeilingV1 {
-                clock: self.clock,
-                last_sample: self.last_sample,
-                issued_at_unix_ms: self.issued_at_unix_ms,
-                issued_at_monotonic: self.issued_at_monotonic,
-                expires_at_unix_ms: self.expires_at_unix_ms,
-                expires_at_monotonic: self.expires_at_monotonic,
-            },
+            ReceiptZeroInitializerActiveLiveExecutionCeilingV1 { state: self.state },
             remaining,
         ))
     }
@@ -1180,31 +1174,69 @@ impl ReceiptZeroInitializerLiveExecutionCeilingV1 {
 #[cfg(test)]
 #[must_use]
 pub(crate) struct ReceiptZeroInitializerActiveLiveExecutionCeilingV1 {
-    clock: Arc<dyn JournalClock>,
-    last_sample: Mutex<JournalClockSampleV1>,
-    issued_at_unix_ms: u64,
-    issued_at_monotonic: Duration,
-    expires_at_unix_ms: u64,
-    expires_at_monotonic: Duration,
+    state: ReceiptZeroInitializerExecutionCeilingStateV1,
 }
 
 #[cfg(test)]
 impl ReceiptZeroInitializerActiveLiveExecutionCeilingV1 {
     pub(crate) fn require_fresh_for_runner_for_test(&self) -> Result<(), JournalError> {
-        receipt_zero_initializer_live_ceiling_remaining(
+        self.state.remaining()?;
+        Ok(())
+    }
+}
+
+/// One-shot read-only execution ceiling. It cannot be exchanged for a live writer ceiling or
+/// yield a journal settlement authority; activation exposes one relative clock projection only.
+#[cfg(test)]
+#[must_use]
+pub(crate) struct ReceiptZeroInitializerReadExecutionCeilingV1 {
+    state: ReceiptZeroInitializerExecutionCeilingStateV1,
+}
+
+#[cfg(test)]
+impl ReceiptZeroInitializerReadExecutionCeilingV1 {
+    pub(crate) fn activate_for_runner_for_test(
+        self,
+    ) -> Result<(ReceiptZeroInitializerActiveReadExecutionCeilingV1, Duration), JournalError> {
+        let remaining = self.state.remaining()?;
+        Ok((
+            ReceiptZeroInitializerActiveReadExecutionCeilingV1 { state: self.state },
+            remaining,
+        ))
+    }
+}
+
+/// The active read ceiling only checks freshness. It never returns a replacement budget.
+#[cfg(test)]
+#[must_use]
+pub(crate) struct ReceiptZeroInitializerActiveReadExecutionCeilingV1 {
+    state: ReceiptZeroInitializerExecutionCeilingStateV1,
+}
+
+#[cfg(test)]
+impl ReceiptZeroInitializerActiveReadExecutionCeilingV1 {
+    pub(crate) fn require_fresh_for_runner_for_test(&self) -> Result<(), JournalError> {
+        self.state.remaining()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl ReceiptZeroInitializerExecutionCeilingStateV1 {
+    fn remaining(&self) -> Result<Duration, JournalError> {
+        receipt_zero_initializer_ceiling_remaining(
             self.clock.as_ref(),
             &self.last_sample,
             self.issued_at_unix_ms,
             self.issued_at_monotonic,
             self.expires_at_unix_ms,
             self.expires_at_monotonic,
-        )?;
-        Ok(())
+        )
     }
 }
 
 #[cfg(test)]
-fn receipt_zero_initializer_live_ceiling_remaining(
+fn receipt_zero_initializer_ceiling_remaining(
     clock: &dyn JournalClock,
     last_sample: &Mutex<JournalClockSampleV1>,
     issued_at_unix_ms: u64,
@@ -1245,6 +1277,12 @@ fn receipt_zero_initializer_live_ceiling_remaining(
 #[must_use]
 pub(crate) struct ReceiptZeroInitializerReconciliationReadRunWindowV1 {
     _authority: ReconciliationObservationAuthorityV1,
+    journal_process_lock: Weak<Mutex<()>>,
+    record_digest: String,
+    authority_digest: String,
+    lease_generation: u64,
+    lease_expires_at_unix_ms: u64,
+    lease_expires_at_monotonic: Duration,
     identity: ValidatedReceiptZeroInitializerIdentityV1,
     material: ReceiptZeroInitializerClaimMaterialV1,
     issued_at_unix_ms: u64,
@@ -1990,6 +2028,7 @@ impl BackendOperationJournalV1 {
                 id,
                 kind: RecoveryKindV1::OutcomeUnknownReconciliation,
             },
+            journal_process_lock: Arc::downgrade(&self.process_lock),
             issued_at_monotonic,
             identity,
             material,
@@ -2004,7 +2043,11 @@ impl BackendOperationJournalV1 {
         &self,
         recovery: ReceiptZeroInitializerJournalRecoveryV1,
     ) -> Result<ReceiptZeroInitializerJournalReconciliationPermitV1, JournalError> {
-        if derive_receipt_zero_initializer_identity(&recovery.material)? != recovery.identity {
+        if !Weak::ptr_eq(
+            &recovery.journal_process_lock,
+            &Arc::downgrade(&self.process_lock),
+        ) || derive_receipt_zero_initializer_identity(&recovery.material)? != recovery.identity
+        {
             return Err(JournalError::InvalidState);
         }
         let authority_id = recovery.capability.id;
@@ -2151,6 +2194,7 @@ impl BackendOperationJournalV1 {
             .insert(authority_id, next_binding);
         Ok(ReceiptZeroInitializerJournalReconciliationPermitV1 {
             permit: ReconciliationPermitV1 { id: authority_id },
+            journal_process_lock: Arc::downgrade(&self.process_lock),
             issued_at_monotonic: permit_window.issued_at_monotonic,
             identity: recovery.identity,
             material: recovery.material,
@@ -2165,7 +2209,11 @@ impl BackendOperationJournalV1 {
         &self,
         permit: ReceiptZeroInitializerJournalReconciliationPermitV1,
     ) -> Result<ReceiptZeroInitializerReconciliationReadRunWindowV1, JournalError> {
-        if derive_receipt_zero_initializer_identity(&permit.material)? != permit.identity {
+        if !Weak::ptr_eq(
+            &permit.journal_process_lock,
+            &Arc::downgrade(&self.process_lock),
+        ) || derive_receipt_zero_initializer_identity(&permit.material)? != permit.identity
+        {
             return Err(JournalError::InvalidState);
         }
         let authority_id = permit.permit.id;
@@ -2275,17 +2323,144 @@ impl BackendOperationJournalV1 {
         binding.binding.expires_at_monotonic = read_window.expires_at_monotonic;
         ensure_transfer_slot_available(&runtime, &authority_id)?;
         burn_runtime_id(&mut runtime, authority_id, read_window.expires_at_monotonic);
-        runtime
-            .reconciliation_observations
-            .insert(authority_id, binding);
-        Ok(ReceiptZeroInitializerReconciliationReadRunWindowV1 {
+        let window = ReceiptZeroInitializerReconciliationReadRunWindowV1 {
             _authority: ReconciliationObservationAuthorityV1 { id: authority_id },
+            journal_process_lock: Arc::downgrade(&self.process_lock),
+            record_digest: binding.binding.record_digest.clone(),
+            authority_digest: binding.authority_digest.clone(),
+            lease_generation: binding.lease_generation,
+            lease_expires_at_unix_ms: binding.lease_expires_at_unix_ms,
+            lease_expires_at_monotonic: binding.lease_expires_at_monotonic,
             identity: permit.identity,
             material: permit.material,
             issued_at_unix_ms: read_window.issued_at_unix_ms,
             issued_at_monotonic: read_window.issued_at_monotonic,
             expires_at_unix_ms: read_window.expires_at_unix_ms,
             expires_at_monotonic: read_window.expires_at_monotonic,
+        };
+        runtime
+            .reconciliation_observations
+            .insert(authority_id, binding);
+        Ok(window)
+    }
+
+    /// Final test-only read execution fence. Consumes the exact one-shot observation slot, then
+    /// re-reads the durable OutcomeUnknown record and consumed lease under the journal's store
+    /// lock. Failures burn this attempt without undoing the durable consumed fence. No file or
+    /// runtime guard escapes into a connector future, and no deadline is restarted here.
+    #[cfg(test)]
+    pub(crate) fn consume_receipt_zero_initializer_read_run_window_for_execution_for_test(
+        &self,
+        window: ReceiptZeroInitializerReconciliationReadRunWindowV1,
+    ) -> Result<ReceiptZeroInitializerReadExecutionCeilingV1, JournalError> {
+        if !Weak::ptr_eq(
+            &window.journal_process_lock,
+            &Arc::downgrade(&self.process_lock),
+        ) {
+            return Err(JournalError::InvalidState);
+        }
+        let authority_id = window._authority.id;
+        let binding = {
+            let mut runtime = self.runtime_lock()?;
+            let binding = runtime
+                .reconciliation_observations
+                .remove(&authority_id)
+                .ok_or(JournalError::CapabilityMissing)?;
+            burn_runtime_id(
+                &mut runtime,
+                authority_id,
+                binding.binding.expires_at_monotonic,
+            );
+            binding
+        };
+        if derive_receipt_zero_initializer_identity(&window.material)? != window.identity
+            || binding.binding.single_flight_key != window.identity.single_flight_key
+            || binding.binding.operation_kind
+                != OperationKindV1::SupabaseBackfillReceiptZeroInitializer
+            || binding.binding.record_digest != window.record_digest
+            || binding.binding.issued_at_unix_ms != window.issued_at_unix_ms
+            || binding.binding.expires_at_unix_ms != window.expires_at_unix_ms
+            || binding.binding.expires_at_monotonic != window.expires_at_monotonic
+            || binding.authority_digest != window.authority_digest
+            || binding.lease_generation != window.lease_generation
+            || binding.lease_expires_at_unix_ms != window.lease_expires_at_unix_ms
+            || binding.lease_expires_at_monotonic != window.lease_expires_at_monotonic
+            || window.expires_at_unix_ms
+                != add_duration_millis(
+                    window.issued_at_unix_ms,
+                    RECEIPT_ZERO_INITIALIZER_READ_RUNNER_WINDOW,
+                )?
+            || window
+                .issued_at_monotonic
+                .checked_add(RECEIPT_ZERO_INITIALIZER_READ_RUNNER_WINDOW)
+                != Some(window.expires_at_monotonic)
+            || window.expires_at_unix_ms > window.lease_expires_at_unix_ms
+            || window.expires_at_monotonic > window.lease_expires_at_monotonic
+        {
+            return Err(JournalError::InvalidState);
+        }
+        let sample = self.with_store(|root| {
+            let before_read = self.clock_sample_for_test()?;
+            self.require_specialized_capability_fresh_for_test(
+                &binding.binding,
+                window.issued_at_monotonic,
+                before_read,
+            )?;
+            let body = load_journal(root)?;
+            let record = exact_record(&body, &binding.binding)?;
+            if record.operation_kind != OperationKindV1::SupabaseBackfillReceiptZeroInitializer
+                || record.state != OperationStateV1::OutcomeUnknown
+                || record.code.as_deref() != Some(OUTCOME_UNKNOWN_CODE)
+                || record.final_evidence.is_some()
+            {
+                return Err(JournalError::InvalidState);
+            }
+            let (persisted_material, persisted_identity) =
+                receipt_zero_initializer_material_from_outcome_unknown(record)?;
+            if persisted_material != window.material || persisted_identity != window.identity {
+                return Err(JournalError::Conflict);
+            }
+            let expected_authority_digest =
+                receipt_zero_initializer_reconciliation_authority_digest(
+                    &authority_id,
+                    &record.single_flight_key,
+                    window.lease_generation,
+                )?;
+            let lease = record
+                .reconciliation_lease
+                .as_ref()
+                .ok_or(JournalError::InvalidState)?;
+            if !lease.consumed
+                || lease.generation != window.lease_generation
+                || lease.authority_digest != window.authority_digest
+                || lease.authority_digest != expected_authority_digest
+                || lease.expires_at_unix_ms != window.lease_expires_at_unix_ms
+                || window.issued_at_unix_ms < lease.issued_at_unix_ms
+            {
+                return Err(JournalError::InvalidState);
+            }
+            let sample = self.clock_sample_for_test()?;
+            if sample.wall_unix_ms < before_read.wall_unix_ms
+                || sample.monotonic < before_read.monotonic
+            {
+                return Err(JournalError::InvalidState);
+            }
+            self.require_specialized_capability_fresh_for_test(
+                &binding.binding,
+                window.issued_at_monotonic,
+                sample,
+            )?;
+            Ok(sample)
+        })?;
+        Ok(ReceiptZeroInitializerReadExecutionCeilingV1 {
+            state: ReceiptZeroInitializerExecutionCeilingStateV1 {
+                clock: Arc::clone(&self.clock),
+                last_sample: Mutex::new(sample),
+                issued_at_unix_ms: window.issued_at_unix_ms,
+                issued_at_monotonic: window.issued_at_monotonic,
+                expires_at_unix_ms: window.expires_at_unix_ms,
+                expires_at_monotonic: window.expires_at_monotonic,
+            },
         })
     }
 
@@ -2437,12 +2612,14 @@ impl BackendOperationJournalV1 {
             sample,
         )?;
         Ok(ReceiptZeroInitializerLiveExecutionCeilingV1 {
-            clock: Arc::clone(&self.clock),
-            last_sample: Mutex::new(sample),
-            issued_at_unix_ms: window.issued_at_unix_ms,
-            issued_at_monotonic: window.issued_at_monotonic,
-            expires_at_unix_ms: window.expires_at_unix_ms,
-            expires_at_monotonic: window.expires_at_monotonic,
+            state: ReceiptZeroInitializerExecutionCeilingStateV1 {
+                clock: Arc::clone(&self.clock),
+                last_sample: Mutex::new(sample),
+                issued_at_unix_ms: window.issued_at_unix_ms,
+                issued_at_monotonic: window.issued_at_monotonic,
+                expires_at_unix_ms: window.expires_at_unix_ms,
+                expires_at_monotonic: window.expires_at_monotonic,
+            },
         })
     }
 
@@ -8462,6 +8639,411 @@ mod tests {
         );
     }
 
+    fn initializer_read_window_for_test(
+        journal: &BackendOperationJournalV1,
+        clock: &ManualClock,
+    ) -> (String, ReceiptZeroInitializerReconciliationReadRunWindowV1) {
+        let (key, _, dispatch) =
+            initializer_outcome_unknown_for_test(journal, "b3c-execution", PROJECT_A);
+        drop(dispatch);
+        clock.advance(CLAIM_LEASE);
+        let recovery = journal
+            .reconstruct_receipt_zero_initializer_for_test(&key)
+            .unwrap();
+        let permit = journal
+            .begin_receipt_zero_initializer_reconciliation_for_test(recovery)
+            .unwrap();
+        let window = journal
+            .consume_receipt_zero_initializer_reconciliation_for_test(permit)
+            .unwrap();
+        (key, window)
+    }
+
+    // Only this child test module can forge a duplicate. Production/test callers have no Clone,
+    // deserializer, or field access with which to recreate the opaque one-shot window.
+    fn duplicate_initializer_read_window_for_test(
+        window: &ReceiptZeroInitializerReconciliationReadRunWindowV1,
+    ) -> ReceiptZeroInitializerReconciliationReadRunWindowV1 {
+        ReceiptZeroInitializerReconciliationReadRunWindowV1 {
+            _authority: ReconciliationObservationAuthorityV1 {
+                id: window._authority.id,
+            },
+            journal_process_lock: window.journal_process_lock.clone(),
+            record_digest: window.record_digest.clone(),
+            authority_digest: window.authority_digest.clone(),
+            lease_generation: window.lease_generation,
+            lease_expires_at_unix_ms: window.lease_expires_at_unix_ms,
+            lease_expires_at_monotonic: window.lease_expires_at_monotonic,
+            identity: derive_receipt_zero_initializer_identity(&window.material).unwrap(),
+            material: window.material.clone(),
+            issued_at_unix_ms: window.issued_at_unix_ms,
+            issued_at_monotonic: window.issued_at_monotonic,
+            expires_at_unix_ms: window.expires_at_unix_ms,
+            expires_at_monotonic: window.expires_at_monotonic,
+        }
+    }
+
+    #[test]
+    fn initializer_b3c_execution_consumes_exact_read_window_without_settlement_or_replay() {
+        let temp = TempDir::new().unwrap();
+        let clock = Arc::new(ManualClock::new());
+        let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+        let (key, window) = initializer_read_window_for_test(&journal, &clock);
+        let replay = duplicate_initializer_read_window_for_test(&window);
+        let before = serde_json::to_vec(&body(&journal)).unwrap();
+        clock.advance_wall(Duration::from_secs(7));
+        clock.advance_monotonic(Duration::from_secs(3));
+        let ceiling = journal
+            .consume_receipt_zero_initializer_read_run_window_for_execution_for_test(window)
+            .unwrap();
+        assert!(journal
+            .runtime_lock()
+            .unwrap()
+            .reconciliation_observations
+            .is_empty());
+        assert_eq!(serde_json::to_vec(&body(&journal)).unwrap(), before);
+        assert!(matches!(
+            journal.consume_receipt_zero_initializer_read_run_window_for_execution_for_test(replay),
+            Err(JournalError::CapabilityMissing)
+        ));
+        let (active, remaining) = ceiling.activate_for_runner_for_test().unwrap();
+        assert_eq!(remaining, Duration::from_secs(23));
+        active.require_fresh_for_runner_for_test().unwrap();
+        drop(active);
+        assert!(matches!(
+            journal.reconstruct_receipt_zero_initializer_for_test(&key),
+            Err(JournalError::LeaseActive)
+        ));
+        let record = body(&journal).records.remove(&key).unwrap();
+        assert_eq!(record.state, OperationStateV1::OutcomeUnknown);
+        assert!(record.final_evidence.is_none());
+        assert!(record.reconciliation_lease.unwrap().consumed);
+    }
+
+    #[test]
+    fn initializer_b3c_execution_rejects_other_journal_even_with_colliding_runtime_binding() {
+        let temp = TempDir::new().unwrap();
+        let clock = Arc::new(ManualClock::new());
+        let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+        let (_, window) = initializer_read_window_for_test(&journal, &clock);
+        let second = confirmed_journal(&temp, clock, Arc::new(CounterEntropy::new()));
+        let id = window._authority.id;
+        let binding = journal.runtime_lock().unwrap().reconciliation_observations[&id].clone();
+        second
+            .runtime_lock()
+            .unwrap()
+            .reconciliation_observations
+            .insert(id, binding);
+        assert!(matches!(
+            second.consume_receipt_zero_initializer_read_run_window_for_execution_for_test(window),
+            Err(JournalError::InvalidState)
+        ));
+        assert!(journal
+            .runtime_lock()
+            .unwrap()
+            .reconciliation_observations
+            .contains_key(&id));
+    }
+
+    #[test]
+    fn initializer_b3c_recovery_rejects_another_instance_with_independently_minted_same_id() {
+        let temp = TempDir::new().unwrap();
+        let clock = Arc::new(ManualClock::new());
+        let first = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+        let (key, _, dispatch) =
+            initializer_outcome_unknown_for_test(&first, "b3c-recovery-instance", PROJECT_A);
+        drop(dispatch);
+        clock.advance(CLAIM_LEASE);
+        let original_recovery = first
+            .reconstruct_receipt_zero_initializer_for_test(&key)
+            .unwrap();
+        let id = original_recovery.capability.id;
+        let second = confirmed_journal(&temp, clock, Arc::new(ConstantEntropy(id)));
+        // Both instances legitimately recover the same durable record before either claims its
+        // lease. Matching opaque bytes must not transfer ownership to a different journal.
+        let own_recovery = second
+            .reconstruct_receipt_zero_initializer_for_test(&key)
+            .unwrap();
+        assert!(own_recovery.capability.id == id);
+        let before = serde_json::to_vec(&body(&first)).unwrap();
+        assert!(matches!(
+            second.begin_receipt_zero_initializer_reconciliation_for_test(original_recovery),
+            Err(JournalError::InvalidState)
+        ));
+        assert_eq!(serde_json::to_vec(&body(&first)).unwrap(), before);
+        assert!(first.runtime_lock().unwrap().recoveries.contains_key(&id));
+        assert!(second.runtime_lock().unwrap().recoveries.contains_key(&id));
+        // A rejected foreign token must not consume the rightful instance's own capability.
+        drop(
+            second
+                .begin_receipt_zero_initializer_reconciliation_for_test(own_recovery)
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn initializer_b3c_permit_rejects_another_instance_with_identical_durable_lease() {
+        let first_temp = TempDir::new().unwrap();
+        let first_clock = Arc::new(ManualClock::new());
+        let first = confirmed_journal(
+            &first_temp,
+            first_clock.clone(),
+            Arc::new(CounterEntropy::new()),
+        );
+        let second_temp = TempDir::new().unwrap();
+        let second_clock = Arc::new(ManualClock::new());
+        let second = confirmed_journal(
+            &second_temp,
+            second_clock.clone(),
+            Arc::new(CounterEntropy::new()),
+        );
+        let issue = |journal: &BackendOperationJournalV1, clock: &ManualClock| {
+            let (key, _, dispatch) =
+                initializer_outcome_unknown_for_test(journal, "b3c-permit-instance", PROJECT_A);
+            drop(dispatch);
+            clock.advance(CLAIM_LEASE);
+            let recovery = journal
+                .reconstruct_receipt_zero_initializer_for_test(&key)
+                .unwrap();
+            journal
+                .begin_receipt_zero_initializer_reconciliation_for_test(recovery)
+                .unwrap()
+        };
+        let original_permit = issue(&first, &first_clock);
+        let own_permit = issue(&second, &second_clock);
+        let id = original_permit.permit.id;
+        assert!(own_permit.permit.id == id);
+        let before = serde_json::to_vec(&body(&second)).unwrap();
+        assert_eq!(serde_json::to_vec(&body(&first)).unwrap(), before);
+        assert!(matches!(
+            second.consume_receipt_zero_initializer_reconciliation_for_test(original_permit),
+            Err(JournalError::InvalidState)
+        ));
+        assert_eq!(serde_json::to_vec(&body(&second)).unwrap(), before);
+        assert!(first
+            .runtime_lock()
+            .unwrap()
+            .reconciliation_permits
+            .contains_key(&id));
+        assert!(second
+            .runtime_lock()
+            .unwrap()
+            .reconciliation_permits
+            .contains_key(&id));
+        drop(
+            second
+                .consume_receipt_zero_initializer_reconciliation_for_test(own_permit)
+                .unwrap(),
+        );
+    }
+
+    #[test]
+    fn initializer_b3c_execution_burns_window_on_material_identity_and_witness_drift() {
+        type Mutator = fn(&mut ReceiptZeroInitializerReconciliationReadRunWindowV1);
+        let cases: [(&str, Mutator); 11] = [
+            ("material", |window| {
+                window
+                    .material
+                    .transaction
+                    .parameters
+                    .execution_id
+                    .push('x');
+            }),
+            ("identity", |window| {
+                window.identity.single_flight_key = digest_bytes(b"wrong-identity");
+            }),
+            ("record", |window| {
+                window.record_digest = digest_bytes(b"wrong-record")
+            }),
+            ("authority", |window| {
+                window.authority_digest = digest_bytes(b"wrong-authority");
+            }),
+            ("generation", |window| window.lease_generation += 1),
+            ("lease-wall", |window| window.lease_expires_at_unix_ms += 1),
+            ("lease-monotonic", |window| {
+                window.lease_expires_at_monotonic += Duration::from_millis(1);
+            }),
+            ("issued-wall", |window| window.issued_at_unix_ms += 1),
+            ("issued-monotonic", |window| {
+                window.issued_at_monotonic += Duration::from_millis(1);
+            }),
+            ("expires-wall", |window| window.expires_at_unix_ms += 1),
+            ("expires-monotonic", |window| {
+                window.expires_at_monotonic += Duration::from_millis(1);
+            }),
+        ];
+        for (label, mutate) in cases {
+            let temp = TempDir::new().unwrap();
+            let clock = Arc::new(ManualClock::new());
+            let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+            let (key, mut window) = initializer_read_window_for_test(&journal, &clock);
+            let replay = duplicate_initializer_read_window_for_test(&window);
+            mutate(&mut window);
+            assert!(
+                journal
+                    .consume_receipt_zero_initializer_read_run_window_for_execution_for_test(window)
+                    .is_err(),
+                "accepted {label} drift"
+            );
+            assert!(matches!(
+                journal.consume_receipt_zero_initializer_read_run_window_for_execution_for_test(
+                    replay
+                ),
+                Err(JournalError::CapabilityMissing)
+            ));
+            let record = body(&journal).records.remove(&key).unwrap();
+            assert_eq!(record.state, OperationStateV1::OutcomeUnknown);
+            assert!(record.reconciliation_lease.unwrap().consumed);
+        }
+    }
+
+    #[test]
+    fn initializer_b3c_execution_rechecks_durable_record_and_independent_lease_authority() {
+        type Mutator = fn(&mut ReconciliationLeaseRecordV1);
+        let cases: [(&str, Mutator); 3] = [
+            ("unconsumed", |lease| lease.consumed = false),
+            ("generation", |lease| lease.generation += 1),
+            ("authority", |lease| {
+                lease.authority_digest = digest_bytes(b"forged-read-authority")
+            }),
+        ];
+        for (label, mutate) in cases {
+            let temp = TempDir::new().unwrap();
+            let clock = Arc::new(ManualClock::new());
+            let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+            let (key, mut window) = initializer_read_window_for_test(&journal, &clock);
+            let id = window._authority.id;
+            let path = temp
+                .path()
+                .join("app-data")
+                .join(STORE_DIRECTORY)
+                .join(JOURNAL_FILE);
+            let mut envelope: JournalEnvelopeV1 =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            let record = envelope.body.records.get_mut(&key).unwrap();
+            mutate(record.reconciliation_lease.as_mut().unwrap());
+            let digest = record_digest(record).unwrap();
+            // Re-sign the local checksums and align both record witnesses. For the authority
+            // case also align every carried digest, leaving only the independent derivation to
+            // detect forgery. The consumed flag/generation still require their own exact checks.
+            window.record_digest = digest.clone();
+            {
+                let mut runtime = journal.runtime_lock().unwrap();
+                let binding = runtime.reconciliation_observations.get_mut(&id).unwrap();
+                binding.binding.record_digest = digest;
+                if label == "authority" {
+                    let forged = record
+                        .reconciliation_lease
+                        .as_ref()
+                        .unwrap()
+                        .authority_digest
+                        .clone();
+                    window.authority_digest = forged.clone();
+                    binding.authority_digest = forged;
+                }
+            }
+            envelope.body_digest = digest_bytes(&serde_json::to_vec(&envelope.body).unwrap());
+            fs::write(&path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+            assert!(
+                journal
+                    .consume_receipt_zero_initializer_read_run_window_for_execution_for_test(window)
+                    .is_err(),
+                "accepted durable {label} drift"
+            );
+            assert!(journal
+                .runtime_lock()
+                .unwrap()
+                .reconciliation_observations
+                .is_empty());
+        }
+    }
+
+    #[test]
+    fn initializer_b3c_execution_rejects_each_clock_expiry_and_regression_without_new_window() {
+        for phase in ["consume", "activate", "active"] {
+            for axis in ["wall", "monotonic"] {
+                for regression in [false, true] {
+                    let temp = TempDir::new().unwrap();
+                    let clock = Arc::new(ManualClock::new());
+                    let journal =
+                        confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+                    let (_, window) = initializer_read_window_for_test(&journal, &clock);
+                    let issued_wall = window.issued_at_unix_ms;
+                    let issued_mono = window.issued_at_monotonic;
+                    let mutate = || match (axis, regression) {
+                        ("wall", true) => clock.set_wall(issued_wall - 1),
+                        ("wall", false) => clock.advance_wall(Duration::from_secs(30)),
+                        (_, true) => clock.set_monotonic(issued_mono - Duration::from_millis(1)),
+                        (_, false) => clock.advance_monotonic(Duration::from_secs(30)),
+                    };
+                    let expected = if regression {
+                        JournalError::InvalidState
+                    } else if phase == "consume" && axis == "monotonic" {
+                        // runtime_lock purges an expired slot before final consumption.
+                        JournalError::CapabilityMissing
+                    } else {
+                        JournalError::CapabilityExpired
+                    };
+                    if phase == "consume" {
+                        mutate();
+                        let result = journal
+                            .consume_receipt_zero_initializer_read_run_window_for_execution_for_test(
+                                window,
+                            );
+                        assert_eq!(result.err(), Some(expected));
+                    } else {
+                        let ceiling = journal
+                            .consume_receipt_zero_initializer_read_run_window_for_execution_for_test(
+                                window,
+                            )
+                            .unwrap();
+                        if phase == "activate" {
+                            mutate();
+                            assert_eq!(
+                                ceiling.activate_for_runner_for_test().err(),
+                                Some(expected)
+                            );
+                        } else {
+                            let (active, _) = ceiling.activate_for_runner_for_test().unwrap();
+                            mutate();
+                            assert_eq!(active.require_fresh_for_runner_for_test(), Err(expected));
+                        }
+                    }
+                    assert!(journal
+                        .runtime_lock()
+                        .unwrap()
+                        .reconciliation_observations
+                        .is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn initializer_b3c_dropped_window_keeps_durable_lease_and_cannot_be_reissued() {
+        let temp = TempDir::new().unwrap();
+        let clock = Arc::new(ManualClock::new());
+        let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+        let (key, window) = initializer_read_window_for_test(&journal, &clock);
+        drop(window);
+        assert!(matches!(
+            journal.reconstruct_receipt_zero_initializer_for_test(&key),
+            Err(JournalError::LeaseActive)
+        ));
+        clock.advance(Duration::from_secs(30));
+        assert!(matches!(
+            journal.reconstruct_receipt_zero_initializer_for_test(&key),
+            Err(JournalError::LeaseActive)
+        ));
+        assert!(
+            body(&journal).records[&key]
+                .reconciliation_lease
+                .as_ref()
+                .unwrap()
+                .consumed
+        );
+    }
+
     #[test]
     fn receipt_zero_initializer_b3b_rejects_all_sql_identifier_drift_before_claim() {
         assert!(
@@ -8496,7 +9078,7 @@ mod tests {
                 parameters.receipt_id = "bad@receipt".to_owned()
             }),
             ("idempotency", |parameters| {
-                parameters.idempotency_key = "bad/idempotency".to_owned()
+                parameters.idempotency_key = "bad/key".to_owned()
             }),
         ];
         for (label, mutate) in cases {
@@ -10463,6 +11045,8 @@ mod tests {
             "ReceiptZeroInitializerInertLivePrecommitRunWindowV1",
             "ReceiptZeroInitializerLiveExecutionCeilingV1",
             "ReceiptZeroInitializerActiveLiveExecutionCeilingV1",
+            "ReceiptZeroInitializerReadExecutionCeilingV1",
+            "ReceiptZeroInitializerActiveReadExecutionCeilingV1",
             "ReceiptZeroInitializerReconciliationReadRunWindowV1",
         ] {
             let declaration = format!("pub(crate) struct {name}");
@@ -10499,6 +11083,7 @@ mod tests {
             "\n    pub(crate) fn reconstruct_receipt_zero_initializer_for_test(",
             "\n    pub(crate) fn begin_receipt_zero_initializer_reconciliation_for_test(",
             "\n    pub(crate) fn consume_receipt_zero_initializer_reconciliation_for_test(",
+            "\n    pub(crate) fn consume_receipt_zero_initializer_read_run_window_for_execution_for_test(",
             "\n    pub(crate) fn issue_receipt_zero_initializer_live_run_window_for_test(",
             "\n    pub(crate) fn consume_receipt_zero_initializer_live_run_window_for_execution_for_test(",
             "\n    pub(crate) fn precommit_cas_ledger_install_for_test(",

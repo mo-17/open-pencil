@@ -620,6 +620,7 @@ fn int4(parameters: &[BoundParameterV1], position: usize) -> Result<i32, Precomm
 
 mod runner;
 use runner::*;
+mod reconciliation;
 
 #[cfg(test)]
 mod composition_harness;
@@ -726,6 +727,17 @@ async fn run_prepared_initializer_precommit_for_test(
 fn contract_from_initializer_material_for_test(
     material: &ReceiptZeroInitializerClaimMaterialV1,
 ) -> Result<ReceiptZeroPrecommitContractV1, PrecommitContractErrorV1> {
+    ReceiptZeroPrecommitContractV1::issue_for_test(parameters_from_initializer_material_for_test(
+        material,
+    )?)
+}
+
+/// Shared structural projection for the fixed writer and independent read contract. Neither
+/// projection creates a connector or converts journal-owned data into execution authority.
+#[cfg(test)]
+fn parameters_from_initializer_material_for_test(
+    material: &ReceiptZeroInitializerClaimMaterialV1,
+) -> Result<Vec<BoundParameterV1>, PrecommitContractErrorV1> {
     validate_receipt_zero_initializer_material_for_runner_for_test(material)
         .map_err(|_| PrecommitContractErrorV1::InvalidParameterContract)?;
     let transaction = &material.transaction;
@@ -788,7 +800,8 @@ fn contract_from_initializer_material_for_test(
     {
         return Err(PrecommitContractErrorV1::InvalidParameterContract);
     }
-    ReceiptZeroPrecommitContractV1::issue_for_test(parameters)
+    validate_parameters(&parameters)?;
+    Ok(parameters)
 }
 
 #[cfg(test)]
