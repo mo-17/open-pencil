@@ -6,6 +6,7 @@ dist/
 dist-ssr/
 coverage/
 *.tsbuildinfo
+/output/
 
 # Logs
 logs/
@@ -54,6 +55,7 @@ public/canvaskit-webgpu/
 # Documentation build/cache output
 packages/docs/.vitepress/cache/
 packages/docs/.vitepress/dist/
+/packages/docs/.vitepress/dist-*/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 

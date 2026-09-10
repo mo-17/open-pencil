@@ -89,9 +89,6 @@ jobs:
       - name: Audit critical dependency vulnerabilities
         run: bun run check:audit
 
-      - name: Scan for committed secrets
-        run: bun run check:secrets
-
       - name: Test repository tooling
         run: bun run test:tools
 

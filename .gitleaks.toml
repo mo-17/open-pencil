@@ -4,64 +4,87 @@ title = "OpenPencil Gitleaks configuration"
 useDefault = true
 
 [[allowlists]]
-description = "Local and generated artifacts"
-paths = [
-  '''(^|/)\.env$''',
-  '''(^|/)\.worktrees/''',
-  '''(^|/)dist/''',
-  '''(^|/)node_modules/''',
-  '''^desktop/target/''',
-  '''^packages/[^/]+/dist/''',
-  '''^output/''',
-  '''^test-results/''',
-  '''^scratch/'''
-]
+description = "Exact public Google Fonts browser API key"
+regexTarget = "secret"
+regexes = ['''^AIzaSyD1tYDR_dUEiV-Tw1vksEhZbUytgKW5p[c]8$''']
 
 [[allowlists]]
-description = "Public Google Fonts browser API key"
-regexTarget = "line"
-paths = ['''packages/core/src/constants\.ts''']
-regexes = ['''GOOGLE_FONTS_API_KEY''']
-
-[[allowlists]]
-description = "Keyboard shortcut metadata is not a secret"
-regexTarget = "line"
-paths = ['''packages/vue/src/editor/commands/registry\.ts''']
-regexes = ['''keybinding:\s*['\"][^'\"]+['\"]''']
-
-[[allowlists]]
-description = "Marketplace publisher-key type identifiers are not secrets"
-regexTarget = "line"
-paths = [
-  '''packages/core/src/plugins/marketplace/directory\.ts''',
-  '''packages/marketplace/src/publication\.ts'''
-]
-regexes = ['''MarketplacePublisherKeyV1''']
-
-[[allowlists]]
-description = "Documented dummy OpenRouter test key"
-regexTarget = "line"
-paths = ['''tests/e2e/chat/panel\.spec\.ts''']
-regexes = ['''sk-or-test-key-12345''']
-
-[[allowlists]]
-description = "Synthetic Supabase anon JWT used by lowcode tests"
-regexTarget = "line"
-paths = [
-  '''tests/engine/compiler/adapters/react/supabase-auth-emit\.test\.ts''',
-  '''tests/engine/compiler/cross-walker/supabase\.test\.ts''',
-  '''tests/engine/tools/lowcode/cross-walker\.test\.ts'''
-]
-regexes = ['''eyJhbGciOiJIUzI1NiJ9\.anon\.sig''']
-
-[[allowlists]]
-description = "Figma fixture identifiers are public test metadata"
-regexTarget = "line"
-paths = [
-  '''tests/engine/io/fig/heavy/component-metadata\.test\.ts''',
-  '''tests/fixtures/figma-oracles/.*\.json'''
-]
+description = "Exact keyboard shortcut metadata values"
+regexTarget = "secret"
 regexes = [
-  '''componentKey''',
-  '''"fileKey"'''
+  '''^\$mod\+KeyZ$''',
+  '''^\$mod\+Shift\+KeyZ$''',
+  '''^\$mod\+KeyY$''',
+  '''^\$mod\+KeyA$''',
+  '''^\$mod\+Shift\+KeyA$''',
+  '''^\$mod\+KeyD$''',
+  '''^\$mod\+KeyG$''',
+  '''^\$mod\+Alt\+KeyG$''',
+  '''^\$mod\+Shift\+KeyG$''',
+  '''^\$mod\+Alt\+KeyK$''',
+  '''^\$mod\+Shift\+KeyK$''',
+  '''^\$mod\+Alt\+KeyB$''',
+  '''^Shift\+KeyA$''',
+  '''^Control\+Meta\+KeyM$''',
+  '''^\$mod\+Alt\+KeyM$''',
+  '''^\$mod\+BracketRight$''',
+  '''^BracketRight$''',
+  '''^\$mod\+BracketLeft$''',
+  '''^BracketLeft$''',
+  '''^\$mod\+Shift\+KeyH$''',
+  '''^\$mod\+Shift\+KeyL$''',
+  '''^Shift\+KeyH$''',
+  '''^Shift\+KeyV$''',
+  '''^Alt\+Shift\+KeyU$''',
+  '''^Alt\+Shift\+KeyS$''',
+  '''^Alt\+Shift\+KeyI$''',
+  '''^Alt\+Shift\+KeyE$''',
+  '''^Alt\+Shift\+KeyF$''',
+  '''^\$mod\+Digit0$''',
+  '''^\$mod\+Digit1$''',
+  '''^Shift\+Digit1$''',
+  '''^\$mod\+Digit2$''',
+  '''^Shift\+Digit2$'''
 ]
+
+[[allowlists]]
+description = "Exact Marketplace publisher type identifiers"
+regexTarget = "secret"
+regexes = ['''^MarketplacePublisherKeyV[1]$''', '''^MarketplacePublisherV[1]$''']
+
+[[allowlists]]
+description = "Exact documented dummy OpenRouter test key"
+regexTarget = "secret"
+regexes = ['''^sk-or-test-key-1234[5]$''']
+
+[[allowlists]]
+description = "Exact synthetic Supabase anon JWT used by lowcode tests"
+regexTarget = "secret"
+regexes = ['''^eyJhbGciOiJIUzI1NiJ9\.anon\.[s]ig$''']
+
+[[allowlists]]
+description = "Exact synthetic Backend release and secret-rejection fixtures"
+regexTarget = "secret"
+regexes = [
+  '''^idempotency-[0-2]$''',
+  '''^Abcdef1234567890$''',
+  '''^sb_secret_canary_1234567890$''',
+  '''^623e4567-e89b-42d3-a456-426614174000$''',
+  '''^923e4567-e89b-42d3-a456-426614174000$''',
+  '''^wM9pddZ510MTdFCr2e_SHFat5gSm9s0pMURL8sZO5xU$''',
+  '''^MStDhxdaUoGsYZ9YKzsVOL5UakvHXC2xlpU6ZN-EfS8$''',
+  '''^4kEsYW3E-E8ek6MHvQCLEOCNE0Wtas09_-GWZAFWsTY$'''
+]
+
+[[allowlists]]
+description = "Exact private-key headers used only as secret-detector reject vectors"
+regexTarget = "secret"
+regexes = [
+  '''(?i)^-----begin (?:ec |openssh |rsa )?private key-----$''',
+  '''(?is)^-----begin private key-----",\s*"-----begin ec private key-----",\s*"-----begin openssh private key-----$'''
+]
+
+[[allowlists]]
+description = "Exact public Figma fixture identifiers"
+regexTarget = "secret"
+regexes = ['''^26164e029c485511adfa634522024c7c23e7bb8[1]$''', '''^jSxlQDCrjsvqEQq17IWEc[C]$''']

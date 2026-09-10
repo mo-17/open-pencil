@@ -1,0 +1,17 @@
+title = "OpenPencil local working-directory Gitleaks configuration"
+
+[extend]
+path = ".gitleaks.toml"
+
+[[allowlists]]
+description = "Uncommitted and generated local artifacts"
+paths = [
+  '''(^|/)\.worktrees/''',
+  '''(^|/)dist/''',
+  '''(^|/)node_modules/''',
+  '''^desktop/target/''',
+  '''^packages/[^/]+/dist/''',
+  '''^output/''',
+  '''^test-results/''',
+  '''^scratch/'''
+]
