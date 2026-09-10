@@ -2059,9 +2059,20 @@ Completed failures do not receive a late cancel. The final freshness check runs 
 `ROLLBACK`, and the returned observation carries no settlement or release authority. Success, error,
 expiry, and drop retain the original `OutcomeUnknown` fence.
 
-The current local regression snapshot is 105 passing native `receipt_zero` tests, including 14
-scalar-contract tests, nine fixed-runner tests, and nine fused-recovery tests. The separately run
-native journal module passes 86 tests, including eight B3c execution/instance-binding regressions;
+The final read-window admission also rejoins the historical CAS ledger installation in the same
+locked journal snapshot. It rebuilds the complete install plan from the recovered material and
+requires its exact `Applied` record or a validated full tombstone, including all plan identity fields
+and the complete final installation evidence. A missing, non-applied, or mismatched installation
+blocks before Connect and leaves the consumed read attempt and `OutcomeUnknown` fence in place.
+This is a local history consistency check; it neither authenticates the current database nor turns
+the historical Management read grant into a current database credential grant. It retains the
+original execution deadlines and issues no new authority.
+
+The current local regression snapshot is 106 passing native `receipt_zero` tests, including 14
+scalar-contract tests, nine fixed-runner tests, and ten fused-recovery tests. The separately run
+native journal module passes 92 tests, including eight B3c execution/instance-binding regressions
+and six installation-history regressions covering active records, restart tombstones, altered
+identity/evidence with recomputed checksums, one-shot rejection, and expiry during snapshot checks;
 these filters overlap and must not be added together. The three selected Host journal/staging
 release/verification files pass 32 tests. The non-test native library passes offline `cargo check`,
 the scoped secret scan is clean, and documentation integrity checks pass. `bun run check` completed

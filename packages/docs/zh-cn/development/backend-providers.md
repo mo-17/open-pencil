@@ -66,9 +66,16 @@ StatementTimeout（15,000 ms）、Prepare、Execute、FinishReadOnly（`ROLLBACK
 `ROLLBACK` 后再次检查 freshness，最终 observation
 不携带 settlement 或 release authority；成功、失败、到期与 drop 都保留原来的 `OutcomeUnknown` fence。
 
-本轮本地回归快照为 Native `receipt_zero` 测试 105 passed，其中包括 14 项 scalar contract、9 项 fixed runner
-和 9 项 fused recovery 测试；另行运行的 Native journal 模块为 86 passed，包含 8 项 B3c execution/instance-binding
-回归。这两个过滤范围有重叠，不能相加。指定的三个 Host journal/staging release/verification 文件为 32 passed。
+最终 read-window admission 还会在同一次加锁的 journal 快照中核对历史 CAS ledger 安装。它从恢复的 material
+重建完整 install plan，要求存在精确匹配的 `Applied` 记录或通过校验的完整 tombstone，并核对全部计划身份字段
+与完整最终安装证据。安装记录缺失、未 Applied 或不匹配时，在 Connect 前拒绝；已消费的读取尝试与
+`OutcomeUnknown` fence 都会保留。这是本地历史一致性检查，不能认证当前数据库，也不能把历史 Management
+read grant 当作当前数据库凭据 grant；检查沿用原始执行期限，不产生新的 authority。
+
+本轮本地回归快照为 Native `receipt_zero` 测试 106 passed，其中包括 14 项 scalar contract、9 项 fixed runner
+和 10 项 fused recovery 测试；另行运行的 Native journal 模块为 92 passed，包含 8 项 B3c execution/instance-binding
+回归与 6 项安装历史回归，覆盖当前记录、重启归档、改动身份或证据后重新计算校验和、拒绝后不可重用，以及
+快照检查期间到期。这两个过滤范围有重叠，不能相加。指定的三个 Host journal/staging release/verification 文件为 32 passed。
 非测试配置的 Native library 离线 `cargo check`、范围内 secret scan 和文档完整性检查均已通过。
 `bun run check` 已完成 packages build，但停在全仓既有 structural lint 的 32 errors / 116 warnings，不能称
 全量 check 通过。这些 deterministic fixture 验证的是本地 journal 持久化、注入 clock 与 fake connector，
