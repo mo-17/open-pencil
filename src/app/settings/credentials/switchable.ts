@@ -4,6 +4,8 @@ import {
   type CredentialStore
 } from '@/app/settings/credentials/types'
 
+import { withCredentialPersistenceExclusiveGateV1 } from './exclusive-gate'
+
 export type CredentialStoreSwitchOptions = {
   clearPrevious?: boolean
 }
@@ -43,6 +45,17 @@ export class SwitchableCredentialStore implements CredentialStore {
     next: CredentialStore,
     references: CredentialRef[],
     options: CredentialStoreSwitchOptions = {}
+  ): Promise<void> {
+    await withCredentialPersistenceExclusiveGateV1(async () => {
+      await this.#switchToUnlocked(next, references, options)
+      return Object.freeze({ started: undefined })
+    })
+  }
+
+  async #switchToUnlocked(
+    next: CredentialStore,
+    references: CredentialRef[],
+    options: CredentialStoreSwitchOptions
   ): Promise<void> {
     const previous = this.#delegate
     if (next.backend === previous.backend) return

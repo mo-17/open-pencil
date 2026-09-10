@@ -5,6 +5,20 @@ export const SUPABASE_MANAGEMENT_API_ORIGIN = 'https://api.supabase.com'
 export const SUPABASE_OPENAPI_REQUEST_TIMEOUT_MS = 15_000
 export const SUPABASE_OPENAPI_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
+/** Secret-free identity bound to one Supabase account-scoped Management API grant. */
+export interface SupabaseManagementAccountAuthorityV1 {
+  readonly projectRef: string
+  readonly accountId: string
+  readonly grantGeneration: string
+}
+
+/** Secret-free identity returned by Supabase's project Management API. */
+export interface SupabaseManagementProjectAuthorityV1 {
+  readonly projectRef: string
+  readonly organizationId: string
+  readonly grantGeneration: string
+}
+
 export type SupabaseManagementErrorCode =
   | 'invalid-project-url'
   | 'invalid-schema'

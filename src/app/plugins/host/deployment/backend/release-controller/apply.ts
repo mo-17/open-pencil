@@ -17,6 +17,7 @@ import type {
 import {
   BACKEND_RELEASE_DISPATCH_LEASE_MS,
   BackendHostReleaseUnresolvedScopeError,
+  parseBackendHostReleaseDispatchJournalRecord,
   type BackendHostReleaseDispatchClaimResult,
   type BackendHostReleaseDispatchJournal,
   type BackendHostReleaseDispatchJournalRecord
@@ -24,7 +25,7 @@ import {
 import {
   claimBackendReleaseDispatch,
   reconcileBackendReleaseDispatch,
-  settlementForApplyResult,
+  settlementForAppliedDispatch,
   settleBackendReleaseDispatch,
   unknownSettlement
 } from './journal'
@@ -81,7 +82,7 @@ function unresolvedScope(
 function settlementFailure(
   input: JournaledApplyInput,
   state: BackendReleaseStateV1,
-  result: BackendHostReleaseApplyResult
+  _result: BackendHostReleaseApplyResult
 ): BackendReleaseStateV1 {
   return input.transition(
     reduceBackendReleaseState(state, {
@@ -90,9 +91,53 @@ function settlementFailure(
       kind: 'transport',
       code: 'backend-release-journal-settle-failed',
       occurredAt: input.now(),
-      remoteOperationIds: result.remoteOperationIds ?? []
+      // A failed settlement means the executor result never crossed the journal's strict parser.
+      // Do not echo potentially secret-bearing or malformed remote data into state or a receipt.
+      remoteOperationIds: []
     })
   )
+}
+
+function precommitFailure(
+  input: JournaledApplyInput,
+  singleFlightKey: string
+): BackendReleaseStateV1 {
+  return input.transition(
+    reduceBackendReleaseState(input.state, {
+      type: 'apply-reconciled',
+      planDigest: input.plan.planDigest,
+      singleFlightKey,
+      outcome: 'outcome-unknown',
+      code: 'backend-release-dispatch-precommit-failed',
+      remoteOperationIds: [],
+      reconciledAt: input.now()
+    })
+  )
+}
+
+function safePostDispatchFailure(
+  claim: BackendHostReleaseDispatchJournalRecord,
+  result: Exclude<BackendHostReleaseApplyResult, { readonly ok: true }>,
+  occurredAt: string
+): Readonly<{ code: string; remoteOperationIds: readonly string[] }> {
+  try {
+    const parsed = parseBackendHostReleaseDispatchJournalRecord({
+      ...claim,
+      settledAt: occurredAt,
+      outcome: 'outcome-unknown',
+      code: result.code,
+      remoteOperationIds: result.remoteOperationIds ?? []
+    })
+    if (parsed.outcome !== 'outcome-unknown' || parsed.code === null) {
+      throw new TypeError('Post-dispatch failure normalization did not remain outcome-unknown.')
+    }
+    return Object.freeze({ code: parsed.code, remoteOperationIds: parsed.remoteOperationIds })
+  } catch {
+    return Object.freeze({
+      code: 'backend-release-apply-outcome-unknown',
+      remoteOperationIds: Object.freeze([])
+    })
+  }
 }
 
 async function dispatchNewClaim(
@@ -100,6 +145,17 @@ async function dispatchNewClaim(
   claim: BackendHostReleaseDispatchClaimResult
 ): Promise<BackendReleaseStateV1> {
   const singleFlightKey = claim.record.singleFlightKey
+  let precommitted: BackendHostReleaseDispatchJournalRecord
+  try {
+    precommitted = await settleBackendReleaseDispatch(
+      input.dispatchJournal,
+      unknownSettlement(claim.record, input.now(), 'backend-release-dispatch-outcome-unknown')
+    )
+  } catch {
+    // No dispatch method has been invoked. The write may nevertheless have committed before its
+    // storage boundary reported failure, so retain the claim as unresolved instead of retrying.
+    return precommitFailure(input, singleFlightKey)
+  }
   let state = input.transition(
     reduceBackendReleaseState(input.state, {
       type: 'apply-dispatched',
@@ -114,25 +170,29 @@ async function dispatchNewClaim(
   } catch (cause) {
     result = input.applyFailure(cause)
   }
-  try {
-    await settleBackendReleaseDispatch(
-      input.dispatchJournal,
-      settlementForApplyResult(claim.record, result, input.now())
-    )
-  } catch {
-    return settlementFailure(input, state, result)
-  }
-  if (!result.ok) {
+  if (result.ok !== true) {
+    const occurredAt = input.now()
+    const failure = safePostDispatchFailure(precommitted, result, occurredAt)
     return input.transition(
       reduceBackendReleaseState(state, {
         type: 'apply-error',
         planDigest: input.plan.planDigest,
-        kind: result.kind,
-        code: result.code,
-        occurredAt: input.now(),
-        ...(result.remoteOperationIds ? { remoteOperationIds: result.remoteOperationIds } : {})
+        // Once dispatch() has been entered, even a provider-rejected response is not a durable
+        // proof that no mutation occurred. Keep the precommitted scope outcome-unknown.
+        kind: 'transport',
+        code: failure.code,
+        occurredAt,
+        remoteOperationIds: failure.remoteOperationIds
       })
     )
+  }
+  try {
+    await settleBackendReleaseDispatch(
+      input.dispatchJournal,
+      settlementForAppliedDispatch(precommitted, result, input.now())
+    )
+  } catch {
+    return settlementFailure(input, state, result)
   }
   state = input.transition(
     reduceBackendReleaseState(state, {
@@ -220,12 +280,14 @@ function leaseExpiration(claimedAt: string): string {
   ).toISOString()
 }
 
-function pendingLeaseIsActive(
+function dispatchLeaseIsActive(
   record: BackendHostReleaseDispatchJournalRecord,
   observedAt: string
 ): boolean {
   return (
-    record.outcome === 'pending' &&
+    (record.outcome === 'pending' ||
+      (record.outcome === 'outcome-unknown' &&
+        record.code === 'backend-release-dispatch-outcome-unknown')) &&
     canonicalTimestampMilliseconds(observedAt) <
       canonicalTimestampMilliseconds(record.leaseExpiresAt)
   )
@@ -297,7 +359,7 @@ async function reconcileExistingClaim(
   claim: BackendHostReleaseDispatchClaimResult,
   observedAt: string
 ): Promise<BackendReleaseStateV1> {
-  if (pendingLeaseIsActive(claim.record, observedAt)) {
+  if (dispatchLeaseIsActive(claim.record, observedAt)) {
     return blockedByActiveLease(input, claim.record.singleFlightKey, claim.record, observedAt)
   }
   const resolution = await resolveExistingClaim(input, claim.record)
@@ -325,7 +387,7 @@ async function reconcileUnresolvedScope(
     return unresolvedScope(input, singleFlightKey)
   }
   try {
-    if (pendingLeaseIsActive(record, observedAt)) {
+    if (dispatchLeaseIsActive(record, observedAt)) {
       return blockedByActiveLease(input, singleFlightKey, record, observedAt)
     }
     const resolution = await resolveExistingClaim(input, record)
@@ -347,6 +409,9 @@ export async function advanceJournaledApply(
   let observedAt: string | null = null
   try {
     observedAt = input.now()
+    // Built-in durable journals complete and validate startup recovery inside this first claim.
+    // A recovery/archival failure therefore returns through journalClaimFailure before dispatch;
+    // it never grants this controller permission to retry or release the project mutation scope.
     claim = await claimBackendReleaseDispatch(input.dispatchJournal, {
       singleFlightKey,
       dispatchScopeKey,

@@ -19,6 +19,7 @@ import {
   type DeployHistoryUIKit
 } from '@/app/lowcode/preview-pane/deploy/history'
 import { deployScopeForStore } from '@/app/lowcode/preview-pane/deploy/scope'
+import { createSupabaseDatabaseReadCredentialSettingsController } from '@/app/lowcode/supabase/database-read-credential-settings'
 import {
   createDesktopDeploymentPluginHostAdapter,
   type DeploymentPluginParameters,
@@ -32,12 +33,15 @@ import {
   runDeploymentPluginSession
 } from '@/app/plugins/host/deployment/session'
 import { runInstalledPluginCommand } from '@/app/plugins/host'
+import { SUPABASE_BACKEND_PROVIDER_PLUGIN_ID } from '@/app/plugins/host/backend-provider'
 import type { InstalledAppPlugin, InstalledPluginCommand } from '@/app/plugins/types'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import type { CredentialStatus } from '@/app/settings/credentials/types'
 import { isTauri } from '@/app/tauri/env'
 import AppBadge from '@/components/ui/AppBadge.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+
+import SupabaseDatabaseReadCredentialControls from './SupabaseDatabaseReadCredentialControls.vue'
 
 const { plugin } = defineProps<{ plugin: InstalledAppPlugin }>()
 const { locale } = useI18n()
@@ -78,6 +82,12 @@ const unavailable = computed(
 )
 const configured = computed(() => credentialStatus.value === 'configured')
 const desktopAvailable = isTauri()
+const supabaseDatabaseReadCredentialController =
+  createSupabaseDatabaseReadCredentialSettingsController()
+const supabaseDatabaseReadCredentialVisible = computed(
+  () =>
+    desktopAvailable && plugin.package.manifest.plugin.id === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+)
 const deploymentSession = computed(() => {
   const pluginId = definition.value?.pluginId
   return pluginId ? deploymentPluginSessionSnapshot.value[pluginId] : undefined
@@ -396,6 +406,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <SupabaseDatabaseReadCredentialControls
+    v-if="supabaseDatabaseReadCredentialVisible"
+    :controller="supabaseDatabaseReadCredentialController"
+  />
   <section
     v-if="definition"
     class="mt-2 rounded border border-border/70 bg-panel p-2 text-[9px] text-muted"

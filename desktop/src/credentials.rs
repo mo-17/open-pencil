@@ -42,6 +42,8 @@ const MAX_SEGMENT_LENGTH: usize = 64;
 const MAX_CREDENTIAL_LENGTH: usize = 16 * 1024;
 const MAX_CREDENTIAL_RECORDS: usize = 512;
 const MAX_VAULT_BYTES: usize = 16 * 1024 * 1024;
+const MAX_ATOMIC_RECORD_MUTATIONS: usize = 8;
+const NATIVE_ONLY_CREDENTIAL_INTEGRATION_ID: &str = "supabase-database-read";
 const AAD_PREFIX: &[u8] = b"net.dannote.open-pencil:credential:v1:";
 const LOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(25);
@@ -88,6 +90,7 @@ pub enum CredentialStoreAvailability {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum BackendError {
     Unavailable,
+    Conflict,
     Failed,
 }
 
@@ -104,10 +107,87 @@ pub(crate) struct CredentialVault {
     process_lock: Arc<Mutex<()>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CredentialVaultSnapshotError {
+    Unavailable,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CredentialVaultCompareExchangeError {
+    Unavailable,
+    Conflict,
+    Failed,
+}
+
+/// Whether the vault replacement was also made durable at the directory-entry boundary.
+///
+/// `Unconfirmed` means the atomic rename completed and the new vault is currently observable, but
+/// the following directory sync failed. CAS callers must retain both the old and new generations
+/// and reconcile after restart instead of reporting a plain failure or silently retrying.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CredentialVaultCommitDurability {
+    Confirmed,
+    Unconfirmed,
+}
+
+/// One Host-owned vault mutation. It is intentionally non-debuggable because `value` may be a
+/// secret. The complete slice is persisted through one encrypted vault replacement.
+pub(crate) struct CredentialVaultRecordMutation<'a> {
+    account: &'a str,
+    value: Option<&'a str>,
+}
+
+impl<'a> CredentialVaultRecordMutation<'a> {
+    pub(crate) fn write(account: &'a str, value: &'a str) -> Self {
+        Self {
+            account,
+            value: Some(value),
+        }
+    }
+
+    pub(crate) fn remove(account: &'a str) -> Self {
+        Self {
+            account,
+            value: None,
+        }
+    }
+}
+
+impl From<BackendError> for CredentialVaultSnapshotError {
+    fn from(error: BackendError) -> Self {
+        match error {
+            BackendError::Unavailable => Self::Unavailable,
+            BackendError::Conflict => Self::Failed,
+            BackendError::Failed => Self::Failed,
+        }
+    }
+}
+
+impl From<BackendError> for CredentialVaultCompareExchangeError {
+    fn from(error: BackendError) -> Self {
+        match error {
+            BackendError::Unavailable => Self::Unavailable,
+            BackendError::Conflict => Self::Conflict,
+            BackendError::Failed => Self::Failed,
+        }
+    }
+}
+
 impl CredentialVault {
     pub(crate) fn new(app_data_dir: PathBuf) -> Self {
         Self {
             root: Some(app_data_dir.join(STORE_DIRECTORY)),
+            process_lock: Arc::new(Mutex::new(())),
+        }
+    }
+
+    #[cfg(any(test, feature = "native-test"))]
+    pub(crate) fn new_for_native_test(app_data_dir: PathBuf, profile: &str) -> Self {
+        let root = native_test_vault_root(&app_data_dir, profile)
+            .expect("native-test profile must be validated before vault construction");
+        Self {
+            root: Some(root),
             process_lock: Arc::new(Mutex::new(())),
         }
     }
@@ -117,6 +197,15 @@ impl CredentialVault {
             root: None,
             process_lock: Arc::new(Mutex::new(())),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn write_secret_for_test(
+        &self,
+        account: &str,
+        value: &str,
+    ) -> Result<(), CredentialVaultSnapshotError> {
+        CredentialBackend::write(self, account, value).map_err(Into::into)
     }
 
     fn with_store<T>(
@@ -130,16 +219,124 @@ impl CredentialVault {
         cleanup_stale_staging_files(root)?;
         operation(root)
     }
-}
 
-fn acquire_process_lock(lock: &Mutex<()>) -> Result<MutexGuard<'_, ()>, BackendError> {
-    let deadline = Instant::now() + LOCK_WAIT_TIMEOUT;
-    loop {
-        match lock.try_lock() {
-            Ok(guard) => return Ok(guard),
-            Err(TryLockError::Poisoned(_)) => return Err(BackendError::Failed),
-            Err(TryLockError::WouldBlock) if Instant::now() >= deadline => {
-                return Err(BackendError::Unavailable)
+    /// Reads a fixed set of encrypted records under one process/file lock.
+    /// Callers receive zeroizing values and cannot observe a mixed credential rotation.
+    pub(crate) fn read_secret_snapshot<const N: usize>(
+        &self,
+        accounts: [&str; N],
+    ) -> Result<[Option<Zeroizing<String>>; N], CredentialVaultSnapshotError> {
+        self.with_store(|root| {
+            let vault = load_vault(root)?;
+            let mut values = std::array::from_fn(|_| None);
+            if vault.records.is_empty() {
+                return Ok(values);
+            }
+            let key = load_or_create_master_key(root, true)?;
+            verify_vault_records(&key, &vault)?;
+            for (index, account) in accounts.into_iter().enumerate() {
+                let Some(record) = vault.records.get(account) else {
+                    continue;
+                };
+                values[index] = Some(Zeroizing::new(decrypt_record(&key, account, record)?));
+            }
+            Ok(values)
+        })
+        .map_err(Into::into)
+    }
+
+    /// Atomically replaces a bounded fixed record set only when one existing marker still equals
+    /// the caller's expected value. This is a Host-internal CAS; no secret or current marker is
+    /// returned on conflict.
+    pub(crate) fn compare_exchange_secret_records(
+        &self,
+        expected_account: &str,
+        expected_value: &str,
+        mutations: &[CredentialVaultRecordMutation<'_>],
+    ) -> Result<CredentialVaultCommitDurability, CredentialVaultCompareExchangeError> {
+        self.compare_exchange_secret_records_with_persist(
+            expected_account,
+            expected_value,
+            mutations,
+            persist_vault,
+        )
+    }
+
+    fn compare_exchange_secret_records_with_persist(
+        &self,
+        expected_account: &str,
+        expected_value: &str,
+        mutations: &[CredentialVaultRecordMutation<'_>],
+        persist: impl FnOnce(
+            &Path,
+            &CredentialVaultFile,
+        ) -> Result<CredentialVaultCommitDurability, BackendError>,
+    ) -> Result<CredentialVaultCommitDurability, CredentialVaultCompareExchangeError> {
+        if validate_account(expected_account).is_err()
+            || expected_value.is_empty()
+            || expected_value.len() > MAX_CREDENTIAL_LENGTH
+            || mutations.is_empty()
+            || mutations.len() > MAX_ATOMIC_RECORD_MUTATIONS
+            || mutations.iter().enumerate().any(|(index, mutation)| {
+                validate_account(mutation.account).is_err()
+                    || mutation.value.is_some_and(|value| {
+                        value.is_empty() || value.len() > MAX_CREDENTIAL_LENGTH
+                    })
+                    || mutations[..index]
+                        .iter()
+                        .any(|previous| previous.account == mutation.account)
+            })
+            || !mutations.iter().any(|mutation| {
+                mutation.account == expected_account
+                    && mutation
+                        .value
+                        .is_some_and(|next_value| next_value != expected_value)
+            })
+        {
+            return Err(CredentialVaultCompareExchangeError::Failed);
+        }
+
+        self.with_store(|root| {
+            let mut vault = load_vault(root)?;
+            let Some(expected_record) = vault.records.get(expected_account) else {
+                return Err(BackendError::Conflict);
+            };
+            let key = load_or_create_master_key(root, true)?;
+            verify_vault_records(&key, &vault)?;
+            let current_value =
+                Zeroizing::new(decrypt_record(&key, expected_account, expected_record)?);
+            if current_value.as_str() != expected_value {
+                return Err(BackendError::Conflict);
+            }
+
+            let mut resulting_record_count = vault.records.len();
+            for mutation in mutations {
+                match (vault.records.contains_key(mutation.account), mutation.value) {
+                    (false, Some(_)) => {
+                        resulting_record_count = resulting_record_count
+                            .checked_add(1)
+                            .ok_or(BackendError::Failed)?;
+                    }
+                    (true, None) => resulting_record_count -= 1,
+                    _ => {}
+                }
+            }
+            if resulting_record_count > MAX_CREDENTIAL_RECORDS {
+                return Err(BackendError::Failed);
+            }
+
+            for mutation in mutations {
+                if let Some(value) = mutation.value {
+                    let encrypted = encrypt_record(&key, mutation.account, value)?;
+                    vault.records.insert(mutation.account.to_owned(), encrypted);
+                } else {
+                    vault.records.remove(mutation.account);
+                }
+            }
+            persist(root, &vault)
+        })
+        .map_err(Into::into)
+    }
 }
 
 #[cfg(any(test, feature = "native-test"))]
@@ -187,6 +384,16 @@ where
 fn native_test_vault_root(app_data_dir: &Path, profile: &str) -> Result<PathBuf, &'static str> {
     validate_native_test_profile(profile)?;
     Ok(app_data_dir.join(format!("{NATIVE_TEST_PROFILE_DIRECTORY_PREFIX}{profile}")))
+}
+
+fn acquire_process_lock(lock: &Mutex<()>) -> Result<MutexGuard<'_, ()>, BackendError> {
+    let deadline = Instant::now() + LOCK_WAIT_TIMEOUT;
+    loop {
+        match lock.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(TryLockError::Poisoned(_)) => return Err(BackendError::Failed),
+            Err(TryLockError::WouldBlock) if Instant::now() >= deadline => {
+                return Err(BackendError::Unavailable)
             }
             Err(TryLockError::WouldBlock) => thread::sleep(LOCK_RETRY_INTERVAL),
         }
@@ -224,21 +431,11 @@ impl CredentialBackend for CredentialVault {
             verify_vault_records(&key, &vault)?;
             let record = encrypt_record(&key, account, value)?;
             vault.records.insert(account.to_owned(), record);
-            persist_vault(root, &vault)
+            require_confirmed_vault_commit(persist_vault(root, &vault)?)
         })
     }
 
     fn remove(&self, account: &str) -> Result<(), BackendError> {
-    #[cfg(any(test, feature = "native-test"))]
-    pub(crate) fn new_for_native_test(app_data_dir: PathBuf, profile: &str) -> Self {
-        let root = native_test_vault_root(&app_data_dir, profile)
-            .expect("native-test profile must be validated before vault construction");
-        Self {
-            root: Some(root),
-            process_lock: Arc::new(Mutex::new(())),
-        }
-    }
-
         self.with_store(|root| {
             let mut vault = load_vault(root)?;
             if !vault.records.contains_key(account) {
@@ -247,7 +444,7 @@ impl CredentialBackend for CredentialVault {
             let key = load_or_create_master_key(root, true)?;
             verify_vault_records(&key, &vault)?;
             vault.records.remove(account);
-            persist_vault(root, &vault)
+            require_confirmed_vault_commit(persist_vault(root, &vault)?)
         })
     }
 }
@@ -835,7 +1032,27 @@ fn move_new_file_atomically(_temporary: &Path, _target: &Path) -> io::Result<()>
     ))
 }
 
-fn persist_vault(root: &Path, vault: &CredentialVaultFile) -> Result<(), BackendError> {
+fn require_confirmed_vault_commit(
+    durability: CredentialVaultCommitDurability,
+) -> Result<(), BackendError> {
+    match durability {
+        CredentialVaultCommitDurability::Confirmed => Ok(()),
+        CredentialVaultCommitDurability::Unconfirmed => Err(BackendError::Failed),
+    }
+}
+
+fn persist_vault(
+    root: &Path,
+    vault: &CredentialVaultFile,
+) -> Result<CredentialVaultCommitDurability, BackendError> {
+    persist_vault_with_directory_sync(root, vault, sync_directory)
+}
+
+fn persist_vault_with_directory_sync(
+    root: &Path,
+    vault: &CredentialVaultFile,
+    directory_sync: impl FnOnce(&Path) -> Result<(), BackendError>,
+) -> Result<CredentialVaultCommitDurability, BackendError> {
     validate_vault(vault)?;
     let bytes = serde_json::to_vec(vault).map_err(|_| BackendError::Failed)?;
     if bytes.len() > MAX_VAULT_BYTES {
@@ -852,7 +1069,10 @@ fn persist_vault(root: &Path, vault: &CredentialVaultFile) -> Result<(), Backend
         let _ = fs::remove_file(&temporary);
         return Err(map_io_error(error));
     }
-    sync_directory(root)
+    Ok(match directory_sync(root) {
+        Ok(()) => CredentialVaultCommitDurability::Confirmed,
+        Err(_) => CredentialVaultCommitDurability::Unconfirmed,
+    })
 }
 
 #[cfg(not(windows))]
@@ -915,7 +1135,8 @@ fn validate_segment(value: &str) -> bool {
 }
 
 fn account_for(reference: &CredentialRef) -> Result<String, CredentialError> {
-    if !validate_segment(&reference.integration_id)
+    if reference.integration_id == NATIVE_ONLY_CREDENTIAL_INTEGRATION_ID
+        || !validate_segment(&reference.integration_id)
         || !validate_segment(&reference.profile_id)
         || !validate_segment(&reference.field)
     {
@@ -937,6 +1158,10 @@ fn public_error(error: BackendError) -> CredentialError {
             code: CredentialErrorCode::Unavailable,
             message: "The app-local credential store is unavailable",
         },
+        BackendError::Conflict => CredentialError {
+            code: CredentialErrorCode::Failed,
+            message: "The credential operation failed",
+        },
         BackendError::Failed => CredentialError {
             code: CredentialErrorCode::Failed,
             message: "The credential operation failed",
@@ -957,6 +1182,11 @@ fn write_with(
     reference: &CredentialRef,
     value: &str,
 ) -> Result<(), CredentialError> {
+    // Preserve the historical value-first error order for ordinary integrations, while ensuring
+    // the native-only namespace never exposes a value-validation oracle.
+    if reference.integration_id == NATIVE_ONLY_CREDENTIAL_INTEGRATION_ID {
+        let _ = account_for(reference)?;
+    }
     if value.is_empty() || value.len() > MAX_CREDENTIAL_LENGTH {
         return Err(CredentialError {
             code: CredentialErrorCode::InvalidValue,
@@ -1058,7 +1288,10 @@ mod tests {
     };
 
     #[derive(Default)]
-    struct MemoryBackend(Mutex<HashMap<String, String>>);
+    struct MemoryBackend {
+        values: Mutex<HashMap<String, String>>,
+        calls: Mutex<Vec<&'static str>>,
+    }
 
     impl CredentialBackend for MemoryBackend {
         fn availability(&self) -> Result<(), BackendError> {
@@ -1066,15 +1299,23 @@ mod tests {
         }
 
         fn read(&self, account: &str) -> Result<Option<String>, BackendError> {
+            self.calls
+                .lock()
+                .map_err(|_| BackendError::Failed)?
+                .push("read");
             Ok(self
-                .0
+                .values
                 .lock()
                 .ok()
                 .and_then(|values| values.get(account).cloned()))
         }
 
         fn write(&self, account: &str, value: &str) -> Result<(), BackendError> {
-            self.0
+            self.calls
+                .lock()
+                .map_err(|_| BackendError::Failed)?
+                .push("write");
+            self.values
                 .lock()
                 .map_err(|_| BackendError::Failed)?
                 .insert(account.to_owned(), value.to_owned());
@@ -1082,7 +1323,11 @@ mod tests {
         }
 
         fn remove(&self, account: &str) -> Result<(), BackendError> {
-            self.0
+            self.calls
+                .lock()
+                .map_err(|_| BackendError::Failed)?
+                .push("remove");
+            self.values
                 .lock()
                 .map_err(|_| BackendError::Failed)?
                 .remove(account);
@@ -1106,8 +1351,126 @@ mod tests {
         }
     }
 
+    fn reserved_native_reference() -> CredentialRef {
+        CredentialRef {
+            integration_id: NATIVE_ONLY_CREDENTIAL_INTEGRATION_ID.to_owned(),
+            profile_id: "default".to_owned(),
+            field: "password".to_owned(),
+        }
+    }
+
     fn test_vault(directory: &tempfile::TempDir) -> CredentialVault {
         CredentialVault::new(directory.path().to_path_buf())
+    }
+
+    #[test]
+    fn parses_valid_native_test_profiles() {
+        for expected in ["alice", "Bob_2", "peer-03", "A1_b-2"] {
+            let argument = format!("{NATIVE_TEST_PROFILE_ARGUMENT_PREFIX}{expected}");
+            assert_eq!(
+                parse_native_test_profile([argument]).expect("valid native-test profile"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_or_repeated_native_test_profiles() {
+        for candidate in [
+            "",
+            ".",
+            "..",
+            "../alice",
+            "alice/bob",
+            r"alice\bob",
+            "alice.bob",
+            "alice bob",
+            "\u{00e1}lice",
+        ] {
+            let argument = format!("{NATIVE_TEST_PROFILE_ARGUMENT_PREFIX}{candidate}");
+            assert!(
+                parse_native_test_profile([argument]).is_err(),
+                "accepted invalid native-test profile {candidate:?}"
+            );
+        }
+
+        let too_long = format!(
+            "{NATIVE_TEST_PROFILE_ARGUMENT_PREFIX}{}",
+            "a".repeat(MAX_NATIVE_TEST_PROFILE_LENGTH + 1)
+        );
+        assert!(parse_native_test_profile([too_long]).is_err());
+        assert!(parse_native_test_profile([NATIVE_TEST_PROFILE_ARGUMENT]).is_err());
+        assert!(parse_native_test_profile(["--e2e-profile=alice", "--e2e-profile=alice"]).is_err());
+    }
+
+    #[test]
+    fn defaults_to_a_non_production_native_test_vault() {
+        let profile = parse_native_test_profile(std::iter::empty::<&str>())
+            .expect("default native-test profile");
+        assert_eq!(profile, DEFAULT_NATIVE_TEST_PROFILE);
+
+        let app_data_dir = PathBuf::from("app-local-data");
+        let test_root = native_test_vault_root(&app_data_dir, &profile)
+            .expect("default native-test vault root");
+        assert_eq!(
+            test_root,
+            app_data_dir.join(format!(
+                "{NATIVE_TEST_PROFILE_DIRECTORY_PREFIX}{DEFAULT_NATIVE_TEST_PROFILE}"
+            ))
+        );
+        assert_ne!(test_root, app_data_dir.join(STORE_DIRECTORY));
+    }
+
+    #[test]
+    fn isolates_native_test_vault_files_by_profile() {
+        let app_data_dir = PathBuf::from("app-local-data");
+        let production_root = app_data_dir.join(STORE_DIRECTORY);
+        let alice_root = native_test_vault_root(&app_data_dir, "alice").expect("Alice vault root");
+        let bob_root = native_test_vault_root(&app_data_dir, "bob").expect("Bob vault root");
+
+        assert_ne!(alice_root, bob_root);
+        for file_name in [MASTER_KEY_FILE, VAULT_FILE, LOCK_FILE] {
+            assert_ne!(alice_root.join(file_name), bob_root.join(file_name));
+            assert_ne!(alice_root.join(file_name), production_root.join(file_name));
+            assert_ne!(bob_root.join(file_name), production_root.join(file_name));
+        }
+
+        let alice_vault = CredentialVault::new_for_native_test(app_data_dir, "alice");
+        assert_eq!(alice_vault.root.as_deref(), Some(alice_root.as_path()));
+    }
+
+    #[test]
+    fn creates_and_uses_isolated_native_test_vaults_without_touching_production() {
+        let directory = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = directory.path().to_path_buf();
+        let production_root = app_data_dir.join(STORE_DIRECTORY);
+        let alice_root = native_test_vault_root(&app_data_dir, "alice").expect("Alice vault root");
+        let bob_root = native_test_vault_root(&app_data_dir, "bob").expect("Bob vault root");
+        let alice = CredentialVault::new_for_native_test(app_data_dir.clone(), "alice");
+        let bob = CredentialVault::new_for_native_test(app_data_dir, "bob");
+        let account = account_for(&reference()).expect("valid credential account");
+
+        alice.availability().expect("Alice vault is available");
+        bob.availability().expect("Bob vault is available");
+        alice
+            .write(&account, "alice-secret")
+            .expect("write Alice credential");
+        bob.write(&account, "bob-secret")
+            .expect("write Bob credential");
+
+        assert_eq!(
+            alice.read(&account).expect("read Alice credential"),
+            Some("alice-secret".to_owned())
+        );
+        assert_eq!(
+            bob.read(&account).expect("read Bob credential"),
+            Some("bob-secret".to_owned())
+        );
+        assert!(alice_root.join(MASTER_KEY_FILE).is_file());
+        assert!(alice_root.join(VAULT_FILE).is_file());
+        assert!(bob_root.join(MASTER_KEY_FILE).is_file());
+        assert!(bob_root.join(VAULT_FILE).is_file());
+        assert!(!production_root.exists());
     }
 
     #[test]
@@ -1115,6 +1478,404 @@ mod tests {
         assert_eq!(
             account_for(&reference()).expect("valid reference"),
             "v1:openai-compatible:default:api-key"
+        );
+    }
+
+    #[test]
+    fn reads_a_zeroizing_multi_record_snapshot_under_one_vault_access() {
+        let directory = tempfile::tempdir().expect("temporary app data directory");
+        let vault = test_vault(&directory);
+        let first_account = "v1:supabase-management:default:personal-access-token";
+        let second_account = "v1:supabase-management:default:grant-generation";
+        vault
+            .write(first_account, "sbp_test_secret_value")
+            .expect("write test PAT");
+        vault
+            .write(second_account, "123e4567-e89b-42d3-a456-426614174000")
+            .expect("write test generation");
+
+        let [pat, generation, missing] = vault
+            .read_secret_snapshot([first_account, second_account, "v1:missing:default:value"])
+            .expect("read fixed snapshot");
+
+        assert_eq!(
+            pat.as_deref().map(String::as_str),
+            Some("sbp_test_secret_value")
+        );
+        assert_eq!(
+            generation.as_deref().map(String::as_str),
+            Some("123e4567-e89b-42d3-a456-426614174000")
+        );
+        assert!(missing.is_none());
+    }
+
+    #[test]
+    fn rejects_reserved_native_refs_before_calling_the_generic_backend() {
+        let backend = MemoryBackend::default();
+        let preserved_account = "v1:openai-compatible:default:api-key".to_owned();
+        let preserved_records = HashMap::from([(preserved_account, "keep-secret".to_owned())]);
+        *backend.values.lock().expect("seed memory backend") = preserved_records.clone();
+        let reference = reserved_native_reference();
+
+        for error in [
+            read_with(&backend, &reference).expect_err("reserved read must fail"),
+            write_with(&backend, &reference, "replacement").expect_err("reserved write must fail"),
+            remove_with(&backend, &reference).expect_err("reserved remove must fail"),
+        ] {
+            assert!(matches!(
+                error,
+                CredentialError {
+                    code: CredentialErrorCode::InvalidReference,
+                    message: "Credential reference is invalid"
+                }
+            ));
+        }
+
+        assert!(backend.calls.lock().expect("read backend calls").is_empty());
+        assert_eq!(
+            *backend.values.lock().expect("read memory backend"),
+            preserved_records
+        );
+
+        assert!(matches!(
+            write_with(&backend, &reference, ""),
+            Err(CredentialError {
+                code: CredentialErrorCode::InvalidReference,
+                ..
+            })
+        ));
+        assert!(backend.calls.lock().expect("read backend calls").is_empty());
+    }
+
+    #[test]
+    fn preserves_value_first_errors_for_ordinary_invalid_references() {
+        let backend = MemoryBackend::default();
+        let reference = CredentialRef {
+            integration_id: "../../invalid".to_owned(),
+            ..reference()
+        };
+        assert!(matches!(
+            write_with(&backend, &reference, ""),
+            Err(CredentialError {
+                code: CredentialErrorCode::InvalidValue,
+                ..
+            })
+        ));
+        assert!(backend.calls.lock().expect("read backend calls").is_empty());
+    }
+
+    #[test]
+    fn allows_similar_non_reserved_integration_ids() {
+        let backend = MemoryBackend::default();
+        let reference = CredentialRef {
+            integration_id: "supabase-database-read-v2".to_owned(),
+            ..reserved_native_reference()
+        };
+
+        write_with(&backend, &reference, "secret").expect("write similar integration id");
+        assert_eq!(
+            read_with(&backend, &reference).expect("read similar integration id"),
+            Some("secret".to_owned())
+        );
+        remove_with(&backend, &reference).expect("remove similar integration id");
+    }
+
+    #[test]
+    fn reads_reserved_native_accounts_through_the_fixed_snapshot_path() {
+        let directory = tempfile::tempdir().expect("temporary app data directory");
+        let vault = test_vault(&directory);
+        let accounts = [
+            "v1:supabase-database-read:default:password",
+            "v1:supabase-database-read:default:credential-incarnation",
+            "v1:supabase-database-read:default:connection-profile-digest",
+            "v1:supabase-management:default:grant-generation",
+        ];
+        let expected = [
+            "database-password",
+            "incarnation",
+            "profile-digest",
+            "generation",
+        ];
+        for (account, value) in accounts.iter().zip(expected) {
+            vault
+                .write(account, value)
+                .expect("write fixed native account");
+        }
+
+        let snapshot = vault
+            .read_secret_snapshot(accounts)
+            .expect("read fixed native snapshot");
+
+        assert_eq!(
+            snapshot.map(|value| value.as_deref().map(String::as_str).map(str::to_owned)),
+            expected.map(str::to_owned).map(Some)
+        );
+    }
+
+    #[test]
+    fn compare_exchanges_a_bounded_record_set_with_one_vault_replacement() {
+        let directory = tempfile::tempdir().expect("temporary app data directory");
+        let vault = test_vault(&directory);
+        let generation_account = "v1:supabase-management:default:grant-generation";
+        let password_account = "v1:supabase-database-read:default:password";
+        let incarnation_account = "v1:supabase-database-read:default:credential-incarnation";
+        let profile_account = "v1:supabase-database-read:default:connection-profile-digest";
+        vault
+            .write(generation_account, "generation-a")
+            .expect("seed generation");
+        vault
+            .write("v1:supabase-database-read:default:obsolete", "remove-me")
+            .expect("seed obsolete record");
+
+        let durability = vault
+            .compare_exchange_secret_records(
+                generation_account,
+                "generation-a",
+                &[
+                    CredentialVaultRecordMutation::write(password_account, " database pass "),
+                    CredentialVaultRecordMutation::write(incarnation_account, "incarnation-b"),
+                    CredentialVaultRecordMutation::write(profile_account, "profile-b"),
+                    CredentialVaultRecordMutation::remove(
+                        "v1:supabase-database-read:default:obsolete",
+                    ),
+                    CredentialVaultRecordMutation::write(generation_account, "generation-b"),
+                ],
+            )
+            .expect("atomic record replacement");
+        assert_eq!(durability, CredentialVaultCommitDurability::Confirmed);
+
+        let [password, incarnation, profile, generation, obsolete] = vault
+            .read_secret_snapshot([
+                password_account,
+                incarnation_account,
+                profile_account,
+                generation_account,
+                "v1:supabase-database-read:default:obsolete",
+            ])
+            .expect("read replaced records");
+        assert_eq!(
+            password.as_deref().map(String::as_str),
+            Some(" database pass ")
+        );
+        assert_eq!(
+            incarnation.as_deref().map(String::as_str),
+            Some("incarnation-b")
+        );
+        assert_eq!(profile.as_deref().map(String::as_str), Some("profile-b"));
+        assert_eq!(
+            generation.as_deref().map(String::as_str),
+            Some("generation-b")
+        );
+        assert!(obsolete.is_none());
+    }
+
+    #[test]
+    fn compare_exchange_conflict_preserves_every_record() {
+        let directory = tempfile::tempdir().expect("temporary app data directory");
+        let vault = test_vault(&directory);
+        let generation_account = "v1:supabase-management:default:grant-generation";
+        let password_account = "v1:supabase-database-read:default:password";
+        vault
+            .write(generation_account, "generation-current")
+            .expect("seed generation");
+        vault
+            .write(password_account, "original-password")
+            .expect("seed password");
+
+        assert_eq!(
+            vault.compare_exchange_secret_records(
+                generation_account,
+                "generation-stale",
+                &[
+                    CredentialVaultRecordMutation::write(password_account, "replacement"),
+                    CredentialVaultRecordMutation::write(generation_account, "generation-next"),
+                ],
+            ),
+            Err(CredentialVaultCompareExchangeError::Conflict)
+        );
+        let [password, generation] = vault
+            .read_secret_snapshot([password_account, generation_account])
+            .expect("read preserved records");
+        assert_eq!(
+            password.as_deref().map(String::as_str),
+            Some("original-password")
+        );
+        assert_eq!(
+            generation.as_deref().map(String::as_str),
+            Some("generation-current")
+        );
+    }
+
+    #[test]
+    fn compare_exchange_returns_the_new_generation_when_directory_durability_is_unconfirmed() {
+        let directory = tempfile::tempdir().expect("temporary app data directory");
+        let vault = test_vault(&directory);
+        let generation_account = "v1:supabase-management:default:grant-generation";
+        let password_account = "v1:supabase-database-read:default:password";
+        vault
+            .write(generation_account, "generation-current")
+            .expect("seed generation");
+        vault
+            .write(password_account, "password-current")
+            .expect("seed password");
+
+        let outcome = vault.compare_exchange_secret_records_with_persist(
+            generation_account,
+            "generation-current",
+            &[
+                CredentialVaultRecordMutation::write(password_account, "password-next"),
+                CredentialVaultRecordMutation::write(generation_account, "generation-next"),
+            ],
+            |root, candidate| {
+                persist_vault_with_directory_sync(root, candidate, |_| Err(BackendError::Failed))
+            },
+        );
+        assert_eq!(outcome, Ok(CredentialVaultCommitDurability::Unconfirmed));
+
+        let [password, generation] = vault
+            .read_secret_snapshot([password_account, generation_account])
+            .expect("read renamed vault after failed directory sync");
+        assert_eq!(
+            password.as_deref().map(String::as_str),
+            Some("password-next")
+        );
+        assert_eq!(
+            generation.as_deref().map(String::as_str),
+            Some("generation-next")
+        );
+        assert_eq!(
+            vault.compare_exchange_secret_records(
+                generation_account,
+                "generation-current",
+                &[
+                    CredentialVaultRecordMutation::write(password_account, "retry"),
+                    CredentialVaultRecordMutation::write(generation_account, "generation-retry"),
+                ],
+            ),
+            Err(CredentialVaultCompareExchangeError::Conflict)
+        );
+    }
+
+    #[test]
+    fn concurrent_compare_exchange_has_one_winner_and_one_conflict() {
+        let directory = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = directory.path().to_path_buf();
+        let generation_account = "v1:supabase-management:default:grant-generation";
+        let password_account = "v1:supabase-database-read:default:password";
+        let seed = CredentialVault::new(app_data_dir.clone());
+        seed.write(generation_account, "generation-current")
+            .expect("seed generation");
+        seed.write(password_account, "password-current")
+            .expect("seed password");
+
+        let barrier = Arc::new(Barrier::new(3));
+        let first_barrier = Arc::clone(&barrier);
+        let first = thread::spawn({
+            let app_data_dir = app_data_dir.clone();
+            move || {
+                let vault = CredentialVault::new(app_data_dir);
+                first_barrier.wait();
+                vault.compare_exchange_secret_records(
+                    generation_account,
+                    "generation-current",
+                    &[
+                        CredentialVaultRecordMutation::write(password_account, "password-a"),
+                        CredentialVaultRecordMutation::write(generation_account, "generation-a"),
+                    ],
+                )
+            }
+        });
+        let second_barrier = Arc::clone(&barrier);
+        let second = thread::spawn(move || {
+            let vault = CredentialVault::new(app_data_dir);
+            second_barrier.wait();
+            vault.compare_exchange_secret_records(
+                generation_account,
+                "generation-current",
+                &[
+                    CredentialVaultRecordMutation::write(password_account, "password-b"),
+                    CredentialVaultRecordMutation::write(generation_account, "generation-b"),
+                ],
+            )
+        });
+        barrier.wait();
+        let outcomes = [
+            first.join().expect("first compare-exchange thread"),
+            second.join().expect("second compare-exchange thread"),
+        ];
+        assert_eq!(outcomes.iter().filter(|outcome| outcome.is_ok()).count(), 1);
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|outcome| {
+                    **outcome == Err(CredentialVaultCompareExchangeError::Conflict)
+                })
+                .count(),
+            1
+        );
+
+        let [password, generation] = seed
+            .read_secret_snapshot([password_account, generation_account])
+            .expect("read winning record pair");
+        let pair = (
+            password.as_deref().map(String::as_str),
+            generation.as_deref().map(String::as_str),
+        );
+        assert!(matches!(
+            pair,
+            (Some("password-a"), Some("generation-a")) | (Some("password-b"), Some("generation-b"))
+        ));
+    }
+
+    #[test]
+    fn compare_exchange_rejects_invalid_batches_and_preserves_unavailable_errors() {
+        let directory = tempfile::tempdir().expect("temporary app data directory");
+        let vault = test_vault(&directory);
+        let generation_account = "v1:supabase-management:default:grant-generation";
+        let password_account = "v1:supabase-database-read:default:password";
+        vault
+            .write(generation_account, "generation-current")
+            .expect("seed generation");
+
+        for mutations in [
+            Vec::new(),
+            vec![CredentialVaultRecordMutation::write(
+                password_account,
+                "missing-marker-advance",
+            )],
+            vec![CredentialVaultRecordMutation::write(
+                generation_account,
+                "generation-current",
+            )],
+            vec![
+                CredentialVaultRecordMutation::write(password_account, "first"),
+                CredentialVaultRecordMutation::remove(password_account),
+            ],
+            vec![CredentialVaultRecordMutation::write(
+                "invalid-account",
+                "value",
+            )],
+            vec![CredentialVaultRecordMutation::write(password_account, "")],
+        ] {
+            assert_eq!(
+                vault.compare_exchange_secret_records(
+                    generation_account,
+                    "generation-current",
+                    &mutations,
+                ),
+                Err(CredentialVaultCompareExchangeError::Failed)
+            );
+        }
+        assert_eq!(
+            CredentialVault::unavailable().compare_exchange_secret_records(
+                generation_account,
+                "generation-current",
+                &[
+                    CredentialVaultRecordMutation::write(password_account, "value"),
+                    CredentialVaultRecordMutation::write(generation_account, "generation-next",),
+                ],
+            ),
+            Err(CredentialVaultCompareExchangeError::Unavailable)
         );
     }
 
@@ -1362,116 +2123,6 @@ mod tests {
             write_with(&second_vault, &second_reference(), "second-secret")
         });
         barrier.wait();
-
-    #[test]
-    fn parses_valid_native_test_profiles() {
-        for expected in ["alice", "Bob_2", "peer-03", "A1_b-2"] {
-            let argument = format!("{NATIVE_TEST_PROFILE_ARGUMENT_PREFIX}{expected}");
-            assert_eq!(
-                parse_native_test_profile([argument]).expect("valid native-test profile"),
-                expected
-            );
-        }
-    }
-
-    #[test]
-    fn rejects_invalid_or_repeated_native_test_profiles() {
-        for candidate in [
-            "",
-            ".",
-            "..",
-            "../alice",
-            "alice/bob",
-            r"alice\bob",
-            "alice.bob",
-            "alice bob",
-            "\u{00e1}lice",
-        ] {
-            let argument = format!("{NATIVE_TEST_PROFILE_ARGUMENT_PREFIX}{candidate}");
-            assert!(
-                parse_native_test_profile([argument]).is_err(),
-                "accepted invalid native-test profile {candidate:?}"
-            );
-        }
-
-        let too_long = format!(
-            "{NATIVE_TEST_PROFILE_ARGUMENT_PREFIX}{}",
-            "a".repeat(MAX_NATIVE_TEST_PROFILE_LENGTH + 1)
-        );
-        assert!(parse_native_test_profile([too_long]).is_err());
-        assert!(parse_native_test_profile([NATIVE_TEST_PROFILE_ARGUMENT]).is_err());
-        assert!(parse_native_test_profile(["--e2e-profile=alice", "--e2e-profile=alice"]).is_err());
-    }
-
-    #[test]
-    fn defaults_to_a_non_production_native_test_vault() {
-        let profile = parse_native_test_profile(std::iter::empty::<&str>())
-            .expect("default native-test profile");
-        assert_eq!(profile, DEFAULT_NATIVE_TEST_PROFILE);
-
-        let app_data_dir = PathBuf::from("app-local-data");
-        let test_root = native_test_vault_root(&app_data_dir, &profile)
-            .expect("default native-test vault root");
-        assert_eq!(
-            test_root,
-            app_data_dir.join(format!(
-                "{NATIVE_TEST_PROFILE_DIRECTORY_PREFIX}{DEFAULT_NATIVE_TEST_PROFILE}"
-            ))
-        );
-        assert_ne!(test_root, app_data_dir.join(STORE_DIRECTORY));
-    }
-
-    #[test]
-    fn isolates_native_test_vault_files_by_profile() {
-        let app_data_dir = PathBuf::from("app-local-data");
-        let production_root = app_data_dir.join(STORE_DIRECTORY);
-        let alice_root = native_test_vault_root(&app_data_dir, "alice").expect("Alice vault root");
-        let bob_root = native_test_vault_root(&app_data_dir, "bob").expect("Bob vault root");
-
-        assert_ne!(alice_root, bob_root);
-        for file_name in [MASTER_KEY_FILE, VAULT_FILE, LOCK_FILE] {
-            assert_ne!(alice_root.join(file_name), bob_root.join(file_name));
-            assert_ne!(alice_root.join(file_name), production_root.join(file_name));
-            assert_ne!(bob_root.join(file_name), production_root.join(file_name));
-        }
-
-        let alice_vault = CredentialVault::new_for_native_test(app_data_dir, "alice");
-        assert_eq!(alice_vault.root.as_deref(), Some(alice_root.as_path()));
-    }
-
-    #[test]
-    fn creates_and_uses_isolated_native_test_vaults_without_touching_production() {
-        let directory = tempfile::tempdir().expect("temporary app data directory");
-        let app_data_dir = directory.path().to_path_buf();
-        let production_root = app_data_dir.join(STORE_DIRECTORY);
-        let alice_root = native_test_vault_root(&app_data_dir, "alice").expect("Alice vault root");
-        let bob_root = native_test_vault_root(&app_data_dir, "bob").expect("Bob vault root");
-        let alice = CredentialVault::new_for_native_test(app_data_dir.clone(), "alice");
-        let bob = CredentialVault::new_for_native_test(app_data_dir, "bob");
-        let account = account_for(&reference()).expect("valid credential account");
-
-        alice.availability().expect("Alice vault is available");
-        bob.availability().expect("Bob vault is available");
-        alice
-            .write(&account, "alice-secret")
-            .expect("write Alice credential");
-        bob.write(&account, "bob-secret")
-            .expect("write Bob credential");
-
-        assert_eq!(
-            alice.read(&account).expect("read Alice credential"),
-            Some("alice-secret".to_owned())
-        );
-        assert_eq!(
-            bob.read(&account).expect("read Bob credential"),
-            Some("bob-secret".to_owned())
-        );
-        assert!(alice_root.join(MASTER_KEY_FILE).is_file());
-        assert!(alice_root.join(VAULT_FILE).is_file());
-        assert!(bob_root.join(MASTER_KEY_FILE).is_file());
-        assert!(bob_root.join(VAULT_FILE).is_file());
-        assert!(!production_root.exists());
-    }
 
         first.join().expect("first writer").expect("first write");
         second.join().expect("second writer").expect("second write");

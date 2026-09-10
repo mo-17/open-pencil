@@ -5,8 +5,8 @@ import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
-import { useSupabaseBackendStagingVerification } from '@/app/lowcode/supabase/backend-staging-verification'
-import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop-supabase-backend-review'
+import { useSupabaseBackendStagingVerification } from '@/app/lowcode/supabase/backend/staging-verification'
+import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
 import { isTauri } from '@/app/tauri/env'
 
 const { config, reviewed, projectRefConfirmation, confirmedIndependentStaging, disabled } =

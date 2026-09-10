@@ -24,6 +24,8 @@ import {
 import { BACKEND_LIMITS } from '@open-pencil/lowcode/backend'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
+import type { SupabaseManagementProjectAuthorityV1 } from '@/app/lowcode/supabase/management-client'
+
 export const SUPABASE_PG_CATALOG_QUERY_VERSION = 'openpencil-pg-catalog-v6' as const
 export const SUPABASE_PG_CATALOG_QUERY_IDS = [
   'provenance',
@@ -65,15 +67,15 @@ const QUERY_LIMITS = Object.freeze({
 }) satisfies Readonly<Record<SupabasePgCatalogQueryId, number>>
 
 const PROVENANCE_SQL = `SELECT
-  d.oid::text AS "databaseOid",
-  current_database()::text AS "databaseName",
-  n.oid::text AS "schemaOid",
-  n.nspname::text AS "schemaName",
-  r.oid::text AS "currentRoleOid",
-  current_user::text AS "currentRoleName",
-  current_setting('server_version_num')::text AS "serverVersionNum",
-  txid_current_snapshot()::text AS "snapshotMarker",
-  to_char(statement_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "observedAt",
+  d.oid::pg_catalog.text AS "databaseOid",
+  pg_catalog.current_database()::pg_catalog.text AS "databaseName",
+  n.oid::pg_catalog.text AS "schemaOid",
+  n.nspname::pg_catalog.text AS "schemaName",
+  r.oid::pg_catalog.text AS "currentRoleOid",
+  current_user::pg_catalog.text AS "currentRoleName",
+  pg_catalog.current_setting('server_version_num')::pg_catalog.text AS "serverVersionNum",
+  pg_catalog.txid_current_snapshot()::pg_catalog.text AS "snapshotMarker",
+  pg_catalog.to_char(pg_catalog.statement_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "observedAt",
   EXISTS (
     SELECT 1
     FROM pg_catalog.pg_attribute AS acl_attribute
@@ -87,35 +89,35 @@ const PROVENANCE_SQL = `SELECT
 FROM pg_catalog.pg_database AS d
 JOIN pg_catalog.pg_namespace AS n ON n.nspname = $1
 JOIN pg_catalog.pg_roles AS r ON r.rolname = current_user
-WHERE d.datname = current_database()
+WHERE d.datname = pg_catalog.current_database()
 ORDER BY d.oid
 LIMIT $2`
 
 const OBJECTS_SQL = `WITH catalog_objects AS (
   SELECT
-    'pg_class'::regclass::oid::text AS "classOid",
-    c.oid::text AS "objectOid",
-    0::integer AS "subId",
-    n.oid::text AS "schemaOid",
-    n.nspname::text AS "schemaName",
+    'pg_catalog.pg_class'::pg_catalog.regclass::pg_catalog.oid::pg_catalog.text AS "classOid",
+    c.oid::pg_catalog.text AS "objectOid",
+    0::pg_catalog.int4 AS "subId",
+    n.oid::pg_catalog.text AS "schemaOid",
+    n.nspname::pg_catalog.text AS "schemaName",
     CASE c.relkind
       WHEN 'r' THEN 'table'
       WHEN 'p' THEN 'table'
       WHEN 'S' THEN 'sequence'
       ELSE 'view'
-    END::text AS "kind",
-    c.relname::text AS "objectName",
+    END::pg_catalog.text AS "kind",
+    c.relname::pg_catalog.text AS "objectName",
     CASE WHEN c.relkind IN ('r', 'p') THEN c.relrowsecurity ELSE NULL END AS "rlsEnabled",
     CASE WHEN c.relkind IN ('r', 'p') THEN c.relforcerowsecurity ELSE NULL END AS "rlsForced",
     CASE WHEN c.relkind IN ('v', 'm')
       THEN COALESCE((
-        SELECT reloption.option_value::boolean
+        SELECT reloption.option_value::pg_catalog.bool
         FROM pg_catalog.pg_options_to_table(c.reloptions) AS reloption
         WHERE reloption.option_name = 'security_invoker'
       ), false)
       ELSE NULL END AS "securityInvoker",
-    NULL::boolean AS "securityDefiner",
-    NULL::jsonb AS "enumValues",
+    NULL::pg_catalog.bool AS "securityDefiner",
+    NULL::pg_catalog.jsonb AS "enumValues",
     CASE WHEN pg_catalog.obj_description(c.oid, 'pg_class') LIKE 'openpencil:%'
       THEN pg_catalog.obj_description(c.oid, 'pg_class') ELSE NULL END AS "marker"
   FROM pg_catalog.pg_class AS c
@@ -123,18 +125,18 @@ const OBJECTS_SQL = `WITH catalog_objects AS (
   WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'S', 'v', 'm')
   UNION ALL
   SELECT
-    'pg_proc'::regclass::oid::text,
-    p.oid::text,
+    'pg_catalog.pg_proc'::pg_catalog.regclass::pg_catalog.oid::pg_catalog.text,
+    p.oid::pg_catalog.text,
     0,
-    n.oid::text,
-    n.nspname::text,
+    n.oid::pg_catalog.text,
+    n.nspname::pg_catalog.text,
     'function',
-    p.proname::text,
+    p.proname::pg_catalog.text,
     NULL,
     NULL,
     NULL,
     p.prosecdef,
-    NULL::jsonb,
+    NULL::pg_catalog.jsonb,
     CASE WHEN pg_catalog.obj_description(p.oid, 'pg_proc') LIKE 'openpencil:%'
       THEN pg_catalog.obj_description(p.oid, 'pg_proc') ELSE NULL END
   FROM pg_catalog.pg_proc AS p
@@ -142,21 +144,21 @@ const OBJECTS_SQL = `WITH catalog_objects AS (
   WHERE n.nspname = $1
   UNION ALL
   SELECT
-    'pg_type'::regclass::oid::text,
-    t.oid::text,
+    'pg_catalog.pg_type'::pg_catalog.regclass::pg_catalog.oid::pg_catalog.text,
+    t.oid::pg_catalog.text,
     0,
-    n.oid::text,
-    n.nspname::text,
+    n.oid::pg_catalog.text,
+    n.nspname::pg_catalog.text,
     'enum',
-    t.typname::text,
+    t.typname::pg_catalog.text,
     NULL,
     NULL,
     NULL,
     NULL,
     COALESCE((
-      SELECT jsonb_agg(e.enumlabel ORDER BY e.enumsortorder)
+      SELECT pg_catalog.jsonb_agg(e.enumlabel ORDER BY e.enumsortorder)
       FROM pg_catalog.pg_enum AS e WHERE e.enumtypid = t.oid
-    ), '[]'::jsonb),
+    ), '[]'::pg_catalog.jsonb),
     CASE WHEN pg_catalog.obj_description(t.oid, 'pg_type') LIKE 'openpencil:%'
       THEN pg_catalog.obj_description(t.oid, 'pg_type') ELSE NULL END
   FROM pg_catalog.pg_type AS t
@@ -168,21 +170,21 @@ ORDER BY "kind", "schemaName", "objectName", "objectOid"
 LIMIT $2`
 
 const COLUMNS_SQL = `SELECT
-  'pg_class'::regclass::oid::text AS "classOid",
-  c.oid::text AS "objectOid",
-  a.attnum::integer AS "subId",
-  n.oid::text AS "schemaOid",
-  n.nspname::text AS "schemaName",
-  c.relname::text AS "tableName",
-  a.attname::text AS "columnName",
-  t.oid::text AS "typeOid",
-  tn.nspname::text AS "typeSchema",
-  t.typname::text AS "typeName",
-  t.typtype::text AS "typeKind",
+  'pg_catalog.pg_class'::pg_catalog.regclass::pg_catalog.oid::pg_catalog.text AS "classOid",
+  c.oid::pg_catalog.text AS "objectOid",
+  a.attnum::pg_catalog.int4 AS "subId",
+  n.oid::pg_catalog.text AS "schemaOid",
+  n.nspname::pg_catalog.text AS "schemaName",
+  c.relname::pg_catalog.text AS "tableName",
+  a.attname::pg_catalog.text AS "columnName",
+  t.oid::pg_catalog.text AS "typeOid",
+  tn.nspname::pg_catalog.text AS "typeSchema",
+  t.typname::pg_catalog.text AS "typeName",
+  t.typtype::pg_catalog.text AS "typeKind",
   NOT a.attnotnull AS "nullable",
-  pg_catalog.pg_get_expr(ad.adbin, ad.adrelid)::text AS "defaultExpression",
-  a.attidentity::text AS "identityKind",
-  a.attgenerated::text AS "generatedKind",
+  pg_catalog.pg_get_expr(ad.adbin, ad.adrelid)::pg_catalog.text AS "defaultExpression",
+  a.attidentity::pg_catalog.text AS "identityKind",
+  a.attgenerated::pg_catalog.text AS "generatedKind",
   a.attacl IS NOT NULL AS "columnPrivilegesPresent",
   CASE WHEN pg_catalog.col_description(c.oid, a.attnum) LIKE 'openpencil:%'
     THEN pg_catalog.col_description(c.oid, a.attnum) ELSE NULL END AS "marker"
@@ -200,27 +202,27 @@ ORDER BY n.nspname, c.relname, a.attnum
 LIMIT $2`
 
 const CONSTRAINTS_SQL = `SELECT
-  'pg_constraint'::regclass::oid::text AS "classOid",
-  con.oid::text AS "objectOid",
-  0::integer AS "subId",
-  n.oid::text AS "schemaOid",
-  n.nspname::text AS "schemaName",
-  rel.oid::text AS "tableOid",
-  rel.relname::text AS "tableName",
-  con.conname::text AS "constraintName",
-  con.contype::text AS "constraintType",
-  COALESCE((SELECT jsonb_agg(att.attname ORDER BY keys.ordinality)
-    FROM unnest(con.conkey) WITH ORDINALITY AS keys(attnum, ordinality)
+  'pg_catalog.pg_constraint'::pg_catalog.regclass::pg_catalog.oid::pg_catalog.text AS "classOid",
+  con.oid::pg_catalog.text AS "objectOid",
+  0::pg_catalog.int4 AS "subId",
+  n.oid::pg_catalog.text AS "schemaOid",
+  n.nspname::pg_catalog.text AS "schemaName",
+  rel.oid::pg_catalog.text AS "tableOid",
+  rel.relname::pg_catalog.text AS "tableName",
+  con.conname::pg_catalog.text AS "constraintName",
+  con.contype::pg_catalog.text AS "constraintType",
+  COALESCE((SELECT pg_catalog.jsonb_agg(att.attname ORDER BY keys.ordinality)
+    FROM pg_catalog.unnest(con.conkey) WITH ORDINALITY AS keys(attnum, ordinality)
     JOIN pg_catalog.pg_attribute AS att ON att.attrelid = con.conrelid AND att.attnum = keys.attnum
-  ), '[]'::jsonb) AS "fields",
-  target.oid::text AS "targetTableOid",
-  target.relname::text AS "targetTableName",
-  COALESCE((SELECT jsonb_agg(att.attname ORDER BY keys.ordinality)
-    FROM unnest(con.confkey) WITH ORDINALITY AS keys(attnum, ordinality)
+  ), '[]'::pg_catalog.jsonb) AS "fields",
+  target.oid::pg_catalog.text AS "targetTableOid",
+  target.relname::pg_catalog.text AS "targetTableName",
+  COALESCE((SELECT pg_catalog.jsonb_agg(att.attname ORDER BY keys.ordinality)
+    FROM pg_catalog.unnest(con.confkey) WITH ORDINALITY AS keys(attnum, ordinality)
     JOIN pg_catalog.pg_attribute AS att ON att.attrelid = con.confrelid AND att.attnum = keys.attnum
-  ), '[]'::jsonb) AS "targetFields",
-  con.confdeltype::text AS "onDeleteCode",
-  pg_catalog.pg_get_constraintdef(con.oid, true)::text AS "definition",
+  ), '[]'::pg_catalog.jsonb) AS "targetFields",
+  con.confdeltype::pg_catalog.text AS "onDeleteCode",
+  pg_catalog.pg_get_constraintdef(con.oid, true)::pg_catalog.text AS "definition",
   con.convalidated AS "validated",
   CASE WHEN pg_catalog.obj_description(con.oid, 'pg_constraint') LIKE 'openpencil:%'
     THEN pg_catalog.obj_description(con.oid, 'pg_constraint') ELSE NULL END AS "marker"
@@ -233,25 +235,25 @@ ORDER BY n.nspname, rel.relname, con.conname, con.oid
 LIMIT $2`
 
 const INDEXES_SQL = `SELECT
-  'pg_class'::regclass::oid::text AS "classOid",
-  idx.oid::text AS "objectOid",
-  0::integer AS "subId",
-  n.oid::text AS "schemaOid",
-  n.nspname::text AS "schemaName",
-  rel.oid::text AS "tableOid",
-  rel.relname::text AS "tableName",
-  idx.relname::text AS "indexName",
-  COALESCE((SELECT jsonb_agg(jsonb_build_object(
+  'pg_catalog.pg_class'::pg_catalog.regclass::pg_catalog.oid::pg_catalog.text AS "classOid",
+  idx.oid::pg_catalog.text AS "objectOid",
+  0::pg_catalog.int4 AS "subId",
+  n.oid::pg_catalog.text AS "schemaOid",
+  n.nspname::pg_catalog.text AS "schemaName",
+  rel.oid::pg_catalog.text AS "tableOid",
+  rel.relname::pg_catalog.text AS "tableName",
+  idx.relname::pg_catalog.text AS "indexName",
+  COALESCE((SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
       'name', att.attname,
       'order', CASE WHEN (ind.indoption[keys.ordinality - 1] & 1) = 1 THEN 'desc' ELSE 'asc' END
     ) ORDER BY keys.ordinality)
-    FROM unnest(ind.indkey) WITH ORDINALITY AS keys(attnum, ordinality)
+    FROM pg_catalog.unnest(ind.indkey) WITH ORDINALITY AS keys(attnum, ordinality)
     LEFT JOIN pg_catalog.pg_attribute AS att
       ON att.attrelid = ind.indrelid AND att.attnum = keys.attnum
-  ), '[]'::jsonb) AS "fields",
-  pg_catalog.pg_get_expr(ind.indpred, ind.indrelid)::text AS "predicate",
-  pg_catalog.pg_get_expr(ind.indexprs, ind.indrelid)::text AS "expressions",
-  pg_catalog.pg_get_indexdef(idx.oid)::text AS "definition",
+  ), '[]'::pg_catalog.jsonb) AS "fields",
+  pg_catalog.pg_get_expr(ind.indpred, ind.indrelid)::pg_catalog.text AS "predicate",
+  pg_catalog.pg_get_expr(ind.indexprs, ind.indrelid)::pg_catalog.text AS "expressions",
+  pg_catalog.pg_get_indexdef(idx.oid)::pg_catalog.text AS "definition",
   ind.indisvalid AS "valid",
   ind.indisready AS "ready",
   CASE WHEN pg_catalog.obj_description(idx.oid, 'pg_class') LIKE 'openpencil:%'
@@ -266,25 +268,25 @@ ORDER BY n.nspname, rel.relname, idx.relname, idx.oid
 LIMIT $2`
 
 const POLICIES_SQL = `SELECT
-  'pg_policy'::regclass::oid::text AS "classOid",
-  pol.oid::text AS "objectOid",
-  0::integer AS "subId",
-  n.oid::text AS "schemaOid",
-  n.nspname::text AS "schemaName",
-  rel.oid::text AS "tableOid",
-  rel.relname::text AS "tableName",
-  pol.polname::text AS "policyName",
+  'pg_catalog.pg_policy'::pg_catalog.regclass::pg_catalog.oid::pg_catalog.text AS "classOid",
+  pol.oid::pg_catalog.text AS "objectOid",
+  0::pg_catalog.int4 AS "subId",
+  n.oid::pg_catalog.text AS "schemaOid",
+  n.nspname::pg_catalog.text AS "schemaName",
+  rel.oid::pg_catalog.text AS "tableOid",
+  rel.relname::pg_catalog.text AS "tableName",
+  pol.polname::pg_catalog.text AS "policyName",
   pol.polpermissive AS "permissive",
   CASE pol.polcmd WHEN '*' THEN 'all' WHEN 'r' THEN 'select' WHEN 'a' THEN 'insert'
-    WHEN 'w' THEN 'update' WHEN 'd' THEN 'delete' END::text AS "command",
-  COALESCE((SELECT jsonb_agg(CASE WHEN policy_role.role_oid = 0 THEN 'PUBLIC'
+    WHEN 'w' THEN 'update' WHEN 'd' THEN 'delete' END::pg_catalog.text AS "command",
+  COALESCE((SELECT pg_catalog.jsonb_agg(CASE WHEN policy_role.role_oid = 0 THEN 'PUBLIC'
       ELSE role.rolname END
     ORDER BY CASE WHEN policy_role.role_oid = 0 THEN 'PUBLIC' ELSE role.rolname END)
-    FROM unnest(pol.polroles) AS policy_role(role_oid)
+    FROM pg_catalog.unnest(pol.polroles) AS policy_role(role_oid)
     LEFT JOIN pg_catalog.pg_roles AS role ON role.oid = policy_role.role_oid
-  ), '[]'::jsonb) AS "roles",
-  pg_catalog.pg_get_expr(pol.polqual, pol.polrelid)::text AS "usingExpression",
-  pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid)::text AS "withCheckExpression",
+  ), '[]'::pg_catalog.jsonb) AS "roles",
+  pg_catalog.pg_get_expr(pol.polqual, pol.polrelid)::pg_catalog.text AS "usingExpression",
+  pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid)::pg_catalog.text AS "withCheckExpression",
   CASE WHEN pg_catalog.obj_description(pol.oid, 'pg_policy') LIKE 'openpencil:%'
     THEN pg_catalog.obj_description(pol.oid, 'pg_policy') ELSE NULL END AS "marker"
 FROM pg_catalog.pg_policy AS pol
@@ -295,10 +297,10 @@ ORDER BY n.nspname, rel.relname, pol.polname, pol.oid
 LIMIT $2`
 
 const STORAGE_BUCKETS_SQL = `SELECT
-  bucket.id::text AS "bucketId",
-  bucket.name::text AS "bucketName",
+  bucket.id::pg_catalog.text AS "bucketId",
+  bucket.name::pg_catalog.text AS "bucketName",
   bucket.public AS "public",
-  bucket.file_size_limit::text AS "fileSizeLimit",
+  bucket.file_size_limit::pg_catalog.text AS "fileSizeLimit",
   pg_catalog.to_jsonb(bucket.allowed_mime_types) AS "allowedMimeTypes"
 FROM storage.buckets AS bucket
 WHERE $1 = 'public'
@@ -306,22 +308,22 @@ ORDER BY bucket.id
 LIMIT $2`
 
 const STORAGE_POLICIES_SQL = `SELECT
-  'pg_policy'::regclass::oid::text AS "classOid",
-  pol.oid::text AS "objectOid",
-  0::integer AS "subId",
-  rel.oid::text AS "tableOid",
-  pol.polname::text AS "policyName",
+  'pg_catalog.pg_policy'::pg_catalog.regclass::pg_catalog.oid::pg_catalog.text AS "classOid",
+  pol.oid::pg_catalog.text AS "objectOid",
+  0::pg_catalog.int4 AS "subId",
+  rel.oid::pg_catalog.text AS "tableOid",
+  pol.polname::pg_catalog.text AS "policyName",
   pol.polpermissive AS "permissive",
   CASE pol.polcmd WHEN '*' THEN 'all' WHEN 'r' THEN 'select' WHEN 'a' THEN 'insert'
-    WHEN 'w' THEN 'update' WHEN 'd' THEN 'delete' END::text AS "command",
-  COALESCE((SELECT jsonb_agg(CASE WHEN policy_role.role_oid = 0 THEN 'PUBLIC'
+    WHEN 'w' THEN 'update' WHEN 'd' THEN 'delete' END::pg_catalog.text AS "command",
+  COALESCE((SELECT pg_catalog.jsonb_agg(CASE WHEN policy_role.role_oid = 0 THEN 'PUBLIC'
       ELSE role.rolname END
     ORDER BY CASE WHEN policy_role.role_oid = 0 THEN 'PUBLIC' ELSE role.rolname END)
-    FROM unnest(pol.polroles) AS policy_role(role_oid)
+    FROM pg_catalog.unnest(pol.polroles) AS policy_role(role_oid)
     LEFT JOIN pg_catalog.pg_roles AS role ON role.oid = policy_role.role_oid
-  ), '[]'::jsonb) AS "roles",
-  pg_catalog.pg_get_expr(pol.polqual, pol.polrelid)::text AS "usingExpression",
-  pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid)::text AS "withCheckExpression",
+  ), '[]'::pg_catalog.jsonb) AS "roles",
+  pg_catalog.pg_get_expr(pol.polqual, pol.polrelid)::pg_catalog.text AS "usingExpression",
+  pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid)::pg_catalog.text AS "withCheckExpression",
   CASE WHEN pg_catalog.obj_description(pol.oid, 'pg_policy') LIKE 'openpencil:%'
     THEN pg_catalog.obj_description(pol.oid, 'pg_policy') ELSE NULL END AS "marker"
 FROM pg_catalog.pg_policy AS pol
@@ -334,8 +336,8 @@ ORDER BY pol.polname, pol.oid
 LIMIT $2`
 
 const ROLES_SQL = `SELECT
-  role.oid::text AS "roleOid",
-  role.rolname::text AS "roleName",
+  role.oid::pg_catalog.text AS "roleOid",
+  role.rolname::pg_catalog.text AS "roleName",
   role.rolsuper AS "superuser",
   role.rolbypassrls AS "bypassRls",
   role.rolinherit AS "inherit"
@@ -345,15 +347,15 @@ ORDER BY role.rolname, role.oid
 LIMIT $2`
 
 const ROLE_MEMBERSHIPS_SQL = `SELECT
-  membership.roleid::text AS "roleOid",
-  role.rolname::text AS "roleName",
-  membership.member::text AS "memberOid",
-  member.rolname::text AS "memberName",
-  membership.grantor::text AS "grantorOid",
-  grantor.rolname::text AS "grantorName",
+  membership.roleid::pg_catalog.text AS "roleOid",
+  role.rolname::pg_catalog.text AS "roleName",
+  membership.member::pg_catalog.text AS "memberOid",
+  member.rolname::pg_catalog.text AS "memberName",
+  membership.grantor::pg_catalog.text AS "grantorOid",
+  grantor.rolname::pg_catalog.text AS "grantorName",
   membership.admin_option AS "adminOption",
-  COALESCE((pg_catalog.to_jsonb(membership)->>'inherit_option')::boolean, true) AS "inheritOption",
-  COALESCE((pg_catalog.to_jsonb(membership)->>'set_option')::boolean, true) AS "setOption"
+  COALESCE((pg_catalog.to_jsonb(membership)->>'inherit_option')::pg_catalog.bool, true) AS "inheritOption",
+  COALESCE((pg_catalog.to_jsonb(membership)->>'set_option')::pg_catalog.bool, true) AS "setOption"
 FROM pg_catalog.pg_auth_members AS membership
 JOIN pg_catalog.pg_roles AS role ON role.oid = membership.roleid
 JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
@@ -363,44 +365,44 @@ ORDER BY role.rolname, member.rolname, grantor.rolname
 LIMIT $2`
 
 const PRIVILEGES_SQL = `WITH object_acls AS (
-  SELECT 'schema'::text AS "objectKind", n.oid AS object_oid, n.oid AS schema_oid,
-    n.nspname::text AS "objectName", n.nspowner AS owner_oid, n.nspacl AS acl
+  SELECT 'schema'::pg_catalog.text AS "objectKind", n.oid AS object_oid, n.oid AS schema_oid,
+    n.nspname::pg_catalog.text AS "objectName", n.nspowner AS owner_oid, n.nspacl AS acl
   FROM pg_catalog.pg_namespace AS n WHERE n.nspname = $1
   UNION ALL
   SELECT CASE c.relkind WHEN 'S' THEN 'sequence' WHEN 'v' THEN 'view' WHEN 'm' THEN 'view'
       ELSE 'table' END,
-    c.oid, n.oid, c.relname::text, c.relowner, c.relacl
+    c.oid, n.oid, c.relname::pg_catalog.text, c.relowner, c.relacl
   FROM pg_catalog.pg_class AS c
   JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
   WHERE n.nspname = $1 AND c.relkind IN ('r', 'p', 'S', 'v', 'm')
   UNION ALL
-  SELECT 'function', p.oid, n.oid, p.proname::text, p.proowner, p.proacl
+  SELECT 'function', p.oid, n.oid, p.proname::pg_catalog.text, p.proowner, p.proacl
   FROM pg_catalog.pg_proc AS p
   JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace WHERE n.nspname = $1
   UNION ALL
-  SELECT 'enum', t.oid, n.oid, t.typname::text, t.typowner, t.typacl
+  SELECT 'enum', t.oid, n.oid, t.typname::pg_catalog.text, t.typowner, t.typacl
   FROM pg_catalog.pg_type AS t
   JOIN pg_catalog.pg_namespace AS n ON n.oid = t.typnamespace
   WHERE n.nspname = $1 AND t.typtype = 'e'
 )
 SELECT
   object_acls."objectKind",
-  object_acls.object_oid::text AS "objectOid",
-  object_acls.schema_oid::text AS "schemaOid",
-  $1::text AS "schemaName",
+  object_acls.object_oid::pg_catalog.text AS "objectOid",
+  object_acls.schema_oid::pg_catalog.text AS "schemaOid",
+  $1::pg_catalog.text AS "schemaName",
   object_acls."objectName",
-  acl.grantor::text AS "grantorOid",
-  grantor.rolname::text AS "grantorName",
-  acl.grantee::text AS "granteeOid",
-  CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END::text AS "granteeName",
-  acl.privilege_type::text AS "privilege",
+  acl.grantor::pg_catalog.text AS "grantorOid",
+  grantor.rolname::pg_catalog.text AS "grantorName",
+  acl.grantee::pg_catalog.text AS "granteeOid",
+  CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END::pg_catalog.text AS "granteeName",
+  acl.privilege_type::pg_catalog.text AS "privilege",
   acl.is_grantable AS "isGrantable"
 FROM object_acls
 CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(object_acls.acl,
   pg_catalog.acldefault(CASE object_acls."objectKind"
-    WHEN 'schema' THEN 'n'::"char" WHEN 'sequence' THEN 'S'::"char"
-    WHEN 'function' THEN 'f'::"char" WHEN 'enum' THEN 'T'::"char"
-    ELSE 'r'::"char" END, object_acls.owner_oid))) AS acl
+    WHEN 'schema' THEN 'n'::pg_catalog."char" WHEN 'sequence' THEN 'S'::pg_catalog."char"
+    WHEN 'function' THEN 'f'::pg_catalog."char" WHEN 'enum' THEN 'T'::pg_catalog."char"
+    ELSE 'r'::pg_catalog."char" END, object_acls.owner_oid))) AS acl
 JOIN pg_catalog.pg_roles AS grantor ON grantor.oid = acl.grantor
 LEFT JOIN pg_catalog.pg_roles AS grantee ON grantee.oid = acl.grantee
 WHERE acl.grantee <> object_acls.owner_oid
@@ -408,16 +410,16 @@ ORDER BY object_acls."objectKind", object_acls."objectName", "granteeName", "pri
 LIMIT $2`
 
 const DEFAULT_PRIVILEGES_SQL = `SELECT
-  owner.rolname::text AS "ownerName",
-  namespace.oid::text AS "schemaOid",
-  COALESCE(namespace.nspname, $1)::text AS "schemaName",
+  owner.rolname::pg_catalog.text AS "ownerName",
+  namespace.oid::pg_catalog.text AS "schemaOid",
+  COALESCE(namespace.nspname, $1)::pg_catalog.text AS "schemaName",
   CASE defaults.defaclobjtype WHEN 'r' THEN 'table' WHEN 'S' THEN 'sequence'
-    WHEN 'f' THEN 'function' WHEN 'T' THEN 'type' WHEN 'n' THEN 'schema' END::text AS "objectKind",
-  acl.grantor::text AS "grantorOid",
-  grantor.rolname::text AS "grantorName",
-  acl.grantee::text AS "granteeOid",
-  CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END::text AS "granteeName",
-  acl.privilege_type::text AS "privilege",
+    WHEN 'f' THEN 'function' WHEN 'T' THEN 'type' WHEN 'n' THEN 'schema' END::pg_catalog.text AS "objectKind",
+  acl.grantor::pg_catalog.text AS "grantorOid",
+  grantor.rolname::pg_catalog.text AS "grantorName",
+  acl.grantee::pg_catalog.text AS "granteeOid",
+  CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END::pg_catalog.text AS "granteeName",
+  acl.privilege_type::pg_catalog.text AS "privilege",
   acl.is_grantable AS "isGrantable"
 FROM pg_catalog.pg_default_acl AS defaults
 JOIN pg_catalog.pg_roles AS owner ON owner.oid = defaults.defaclrole
@@ -462,11 +464,7 @@ export interface SupabasePgCatalogProjectAuthorityRequest {
   readonly grantGeneration: string
 }
 
-export interface SupabasePgCatalogProjectAuthority {
-  readonly projectRef: string
-  readonly organizationId: string
-  readonly grantGeneration: string
-}
+export type SupabasePgCatalogProjectAuthority = SupabaseManagementProjectAuthorityV1
 
 export interface SupabasePgCatalogQueryRequest {
   readonly queryId: SupabasePgCatalogQueryId

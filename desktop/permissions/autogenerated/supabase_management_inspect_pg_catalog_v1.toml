@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-supabase-management-inspect-pg-catalog-v1"
+description = "Enables the supabase_management_inspect_pg_catalog_v1 command without any pre-configured scope."
+commands.allow = ["supabase_management_inspect_pg_catalog_v1"]
+
+[[permission]]
+identifier = "deny-supabase-management-inspect-pg-catalog-v1"
+description = "Denies the supabase_management_inspect_pg_catalog_v1 command without any pre-configured scope."
+commands.deny = ["supabase_management_inspect_pg_catalog_v1"]

@@ -2,6 +2,17 @@ mod ai_window;
 mod aliyun_drive;
 #[cfg(test)]
 mod app_commands;
+mod backend_automation_idempotency_cas;
+mod backend_backfill_inspection_subject;
+mod backend_cas_ledger_install;
+#[cfg(test)]
+#[path = "../build_support/backend_compiler_sidecar_pin.rs"]
+mod backend_compiler_sidecar_pin_build_support;
+mod backend_locked_high_water_capture;
+mod backend_operation_journal;
+mod backend_receipt_zero_initializer;
+mod backend_source_ledger_admission;
+mod backend_source_ledger_receipt_verifier;
 mod baidu_netdisk;
 mod codepen;
 mod credentials;
@@ -15,6 +26,9 @@ mod motion_export;
 mod onedrive;
 mod preview_window;
 mod source_export;
+mod supabase_backfill_fixed_read;
+mod supabase_database_read_credentials;
+mod supabase_management;
 #[cfg(target_os = "macos")]
 mod window;
 
@@ -31,6 +45,8 @@ use baidu_netdisk::{
     baidu_netdisk_transfer, BaiduNetdiskOAuthOperations, BaiduNetdiskTransferAuthorizations,
 };
 use codepen::{cleanup_stale_codepen_files, fetch_codepen_sources, open_codepen_prefill};
+#[cfg(feature = "native-test")]
+use credentials::parse_native_test_profile;
 use credentials::{
     credential_read, credential_remove, credential_status, credential_store_availability,
     credential_write, CredentialVault,
@@ -45,8 +61,6 @@ use http::proxy_http_request;
 use menu::{install_app_menu, native_menu_checked, set_native_menu_checked};
 use menu_events::handle_menu_event;
 use motion_export::write_motion_export_noclobber;
-#[cfg(feature = "native-test")]
-use credentials::parse_native_test_profile;
 use onedrive::{
     onedrive_oauth_authorize, onedrive_oauth_cancel, onedrive_oauth_refresh, onedrive_transfer,
     OneDriveOAuthOperations, OneDriveTransferAuthorizations,
@@ -61,6 +75,11 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
+use supabase_database_read_credentials::{
+    supabase_database_read_credential_clear_v1, supabase_database_read_credential_replace_v1,
+    supabase_database_read_credential_status_v1,
+};
+use supabase_management::supabase_management_inspect_pg_catalog_v1;
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 #[cfg(target_os = "macos")]
@@ -241,6 +260,10 @@ pub fn run() {
             send_preview_window_intent,
             set_ai_window_always_on_top,
             set_preview_window_always_on_top,
+            supabase_database_read_credential_clear_v1,
+            supabase_database_read_credential_replace_v1,
+            supabase_database_read_credential_status_v1,
+            supabase_management_inspect_pg_catalog_v1,
             take_pending_open,
             update_ai_window,
             update_preview_window,
@@ -258,6 +281,20 @@ pub fn run() {
             handle_menu_event(app, event.id().0.as_str());
         })
         .setup(|app| {
+            #[cfg(feature = "native-test")]
+            let native_test_profile = parse_native_test_profile(std::env::args_os().skip(1))
+                .expect(
+                    "invalid or duplicate --e2e-profile; expected 1-64 ASCII letters, digits, '-' or '_'",
+                );
+            #[cfg(feature = "native-test")]
+            let credential_vault = app
+                .path()
+                .app_local_data_dir()
+                .map(|app_data_dir| {
+                    CredentialVault::new_for_native_test(app_data_dir, &native_test_profile)
+                })
+                .unwrap_or_else(|_| CredentialVault::unavailable());
+            #[cfg(not(feature = "native-test"))]
             let credential_vault = app
                 .path()
                 .app_local_data_dir()
@@ -281,20 +318,6 @@ pub fn run() {
                 queue_open_paths(_app, paths);
             }
             #[cfg(target_os = "macos")]
-            #[cfg(feature = "native-test")]
-            let native_test_profile = parse_native_test_profile(std::env::args_os().skip(1))
-                .expect(
-                    "invalid or duplicate --e2e-profile; expected 1-64 ASCII letters, digits, '-' or '_'",
-                );
-            #[cfg(feature = "native-test")]
-            let credential_vault = app
-                .path()
-                .app_local_data_dir()
-                .map(|app_data_dir| {
-                    CredentialVault::new_for_native_test(app_data_dir, &native_test_profile)
-                })
-                .unwrap_or_else(|_| CredentialVault::unavailable());
-            #[cfg(not(feature = "native-test"))]
             tauri::RunEvent::Reopen {
                 has_visible_windows,
                 ..

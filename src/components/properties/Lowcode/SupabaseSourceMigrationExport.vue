@@ -5,8 +5,8 @@ import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
 import type { AppBackendProviderDocumentGraph } from '@/app/plugins/host/backend-provider'
-import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop-supabase-backend-review'
-import type { DesktopSupabaseSourceMigrationExportResult } from '@/app/plugins/host/deployment/desktop-supabase-source-migration-export'
+import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
+import type { DesktopSupabaseSourceMigrationExportResult } from '@/app/plugins/host/deployment/desktop/supabase/source-migration/export'
 
 import {
   SUPABASE_SOURCE_MIGRATION_NAME_MAX_LENGTH,

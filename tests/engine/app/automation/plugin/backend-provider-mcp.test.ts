@@ -108,10 +108,28 @@ async function setup(application: BackendApplicationSpecV1 = backendApplication(
 }
 
 describe('Backend Provider MCP commands', () => {
-  test('does not report Vue production ready for omitted runtime capabilities', async () => {
-    const { store, target } = await setup(
-      backendApplication([{ capability: 'data.read', required: true }])
-    )
+  test('does not report a source-only target production ready for omitted runtime capabilities', async () => {
+    const application = backendApplication([
+      { capability: 'data.read', required: true },
+      { capability: 'policy.row-level', required: true }
+    ])
+    const { store, target } = await setup({
+      ...application,
+      secrets: [
+        {
+          kind: 'environment',
+          name: 'BACKEND_PUBLIC_URL',
+          exposure: 'client-public',
+          required: true
+        },
+        {
+          kind: 'environment',
+          name: 'BACKEND_PUBLIC_KEY',
+          exposure: 'client-public',
+          required: true
+        }
+      ]
+    })
     const dependencies: AutomationPluginMCPDependencies = {
       store,
       runCommand: (editor, plugin, contribution, args, signal) =>
@@ -131,7 +149,7 @@ describe('Backend Provider MCP commands', () => {
     await expect(
       handlers.handleCall(
         target,
-        strictCall(catalog, plan, { target: 'vue', mode: 'production' }),
+        strictCall(catalog, plan, { target: 'expo', mode: 'production' }),
         undefined,
         { requireExpectedAuthority: true }
       )

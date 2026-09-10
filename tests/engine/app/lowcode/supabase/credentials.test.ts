@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL,
   SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL,
   SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL,
   SUPABASE_MANAGEMENT_PAT_CREDENTIAL,
   clearSupabaseManagementDatabaseWritePat,
   clearSupabaseManagementPat,
+  resolveSupabaseManagementDatabaseWriteCredentialIncarnation,
   resolveSupabaseManagementDatabaseWritePat,
   resolveSupabaseManagementGrantGeneration,
   resolveSupabaseManagementPat,
@@ -29,6 +31,12 @@ describe('Supabase management credentials', () => {
       'v1:supabase-management:default:database-write-personal-access-token'
     )
     expect(appCredentialRefs()).toContainEqual(SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL)
+    expect(
+      credentialKey(SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL)
+    ).toBe('v1:supabase-management:default:database-write-credential-incarnation')
+    expect(appCredentialRefs()).toContainEqual(
+      SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL
+    )
     expect(credentialKey(SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL)).toBe(
       'v1:supabase-management:default:grant-generation'
     )
@@ -46,6 +54,9 @@ describe('Supabase management credentials', () => {
     await expect(resolveSupabaseManagementDatabaseWritePat(services)).resolves.toBe(
       'sbp_write_token'
     )
+    const writeIncarnation =
+      await resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)
+    expect(writeIncarnation).toMatch(/^[0-9a-f-]{36}$/)
     await expect(resolveSupabaseManagementPat(services)).resolves.toBe('sbp_read_token')
     await expect(resolveSupabaseManagementGrantGeneration(services)).resolves.not.toBe(
       readGeneration
@@ -54,6 +65,9 @@ describe('Supabase management credentials', () => {
     await clearSupabaseManagementDatabaseWritePat(services)
     await expect(resolveSupabaseManagementDatabaseWritePat(services)).resolves.toBeNull()
     await expect(resolveSupabaseManagementPat(services)).resolves.toBe('sbp_read_token')
+    await expect(
+      resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)
+    ).resolves.not.toBe(writeIncarnation)
   })
 
   test('manages status separately from runtime resolution', async () => {
@@ -101,6 +115,71 @@ describe('Supabase management credentials', () => {
     )
     await expect(resolveSupabaseManagementPat(base)).resolves.toBe('old-token')
     await expect(resolveSupabaseManagementGrantGeneration(base)).resolves.toBeNull()
+  })
+
+  test('keeps write incarnation stable across read-token rotation and rotates it for every write mutation', async () => {
+    const services = createCredentialServices(new MemoryCredentialStore())
+    await setSupabaseManagementDatabaseWritePat('write-token-00000001', services)
+    const initial = await resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)
+    expect(initial).toMatch(/^[0-9a-f-]{36}$/)
+
+    await setSupabaseManagementPat('read-token-00000001', services)
+    await expect(
+      resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)
+    ).resolves.toBe(initial)
+
+    await setSupabaseManagementDatabaseWritePat('write-token-00000002', services)
+    const replaced = await resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)
+    expect(replaced).not.toBe(initial)
+
+    await clearSupabaseManagementDatabaseWritePat(services)
+    await expect(
+      resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)
+    ).resolves.not.toBe(replaced)
+  })
+
+  test('leaves both shared and write incarnations invalid when write-token rotation fails', async () => {
+    const base = createCredentialServices(new MemoryCredentialStore())
+    await setSupabaseManagementDatabaseWritePat('old-write-token-0001', base)
+    const services = {
+      resolver: base.resolver,
+      manager: {
+        ...base.manager,
+        async set(
+          reference: typeof SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL,
+          value: string
+        ) {
+          if (reference === SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL) {
+            throw new Error('simulated write PAT failure')
+          }
+          await base.manager.set(reference, value)
+        }
+      }
+    }
+
+    await expect(
+      setSupabaseManagementDatabaseWritePat('new-write-token-0001', services)
+    ).rejects.toThrow('simulated write PAT failure')
+    await expect(resolveSupabaseManagementDatabaseWritePat(base)).resolves.toBe(
+      'old-write-token-0001'
+    )
+    await expect(resolveSupabaseManagementGrantGeneration(base)).resolves.toBeNull()
+    await expect(
+      resolveSupabaseManagementDatabaseWriteCredentialIncarnation(base)
+    ).resolves.toBeNull()
+  })
+
+  test('rejects pending or malformed persisted generations', async () => {
+    const services = createCredentialServices(new MemoryCredentialStore())
+    await services.manager.set(SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL, 'pending:test')
+    await services.manager.set(
+      SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL,
+      'pending:test'
+    )
+    await expect(resolveSupabaseManagementGrantGeneration(services)).resolves.toBeNull()
+    await expect(
+      resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)
+    ).resolves.toBeNull()
   })
 
   test('serializes read and write token rotation under one shared grant generation', async () => {

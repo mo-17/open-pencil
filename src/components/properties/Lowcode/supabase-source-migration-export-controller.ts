@@ -3,14 +3,14 @@ import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
 
 import type { AppBackendProviderDocumentGraph } from '@/app/plugins/host/backend-provider'
-import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop-supabase-backend-review'
+import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
 import {
   MAX_SUPABASE_SOURCE_LEDGER_IMPORT_BYTES,
   DesktopSupabaseSourceMigrationExportError,
   type DesktopSupabaseSourceMigrationExportErrorCode,
   type DesktopSupabaseSourceMigrationExportResult
-} from '@/app/plugins/host/deployment/desktop-supabase-source-migration-export'
-import { appDesktopSupabaseSourceMigrationExportService } from '@/app/plugins/host/deployment/desktop-supabase-source-migration-export-app'
+} from '@/app/plugins/host/deployment/desktop/supabase/source-migration/export'
+import { appDesktopSupabaseSourceMigrationExportService } from '@/app/plugins/host/deployment/desktop/supabase/source-migration/export-app'
 import { isTauri } from '@/app/tauri/env'
 
 export type SupabaseSourceMigrationExportLocalError =

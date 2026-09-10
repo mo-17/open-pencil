@@ -1,6 +1,6 @@
-import type { BackendReleaseApplyErrorKind } from '@open-pencil/lowcode/backend'
-
 import type {
+  BackendHostReleaseAppliedAttestationInput,
+  BackendHostReleaseAppliedProofV1,
   BackendHostReleaseApplyResult,
   BackendHostReleaseReconcileInput,
   BackendHostReleaseReconcileResult,
@@ -20,6 +20,15 @@ interface JournalBinding {
   readonly singleFlightKey: string
   readonly planDigest: string
 }
+
+interface AppliedProofBinding extends JournalBinding {
+  readonly releaseId: string
+  readonly remoteOperationIdsFingerprint: string
+  readonly invocation: object
+}
+
+const APPLIED_PROOF_FORMAT = 'openpencil.backend-release-applied-proof.v1' as const
+const appliedProofs = new WeakMap<object, AppliedProofBinding>()
 
 function plainRecord(value: unknown, path: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -127,47 +136,42 @@ export async function settleBackendReleaseDispatch(
   return record
 }
 
-function applyFailureOutcome(
-  kind: BackendReleaseApplyErrorKind
-): BackendHostReleaseDispatchSettlementInput['outcome'] {
-  return kind === 'timeout' || kind === 'abort' || kind === 'transport'
-    ? 'outcome-unknown'
-    : 'failed'
-}
-
-export function settlementForApplyResult(
+export function settlementForAppliedDispatch(
   claim: BackendHostReleaseDispatchJournalRecord,
-  result: BackendHostReleaseApplyResult,
+  result: Extract<BackendHostReleaseApplyResult, { readonly ok: true }>,
   settledAt: string
 ): BackendHostReleaseDispatchSettlementInput {
+  if (result.ok !== true) {
+    throw new TypeError('Backend Release dispatch result is not an exact positive result.')
+  }
   return {
     singleFlightKey: claim.singleFlightKey,
     releaseId: claim.releaseId,
     planDigest: claim.planDigest,
     settledAt,
-    outcome: result.ok ? 'applied' : applyFailureOutcome(result.kind),
-    code: result.ok ? null : result.code,
-    remoteOperationIds: result.ok ? result.remoteOperationIds : (result.remoteOperationIds ?? [])
+    outcome: 'applied',
+    code: null,
+    remoteOperationIds: result.remoteOperationIds
   }
 }
 
 function normalizedReconcileResult(
   value: unknown,
   claim: BackendHostReleaseDispatchJournalRecord,
-  settledAt: string
+  settledAt: string,
+  invocation: object
 ): BackendHostReleaseDispatchSettlementInput {
-  const result = exactRecord(value, 'Backend Release reconciliation result', [
-    'outcome',
-    'code',
-    'remoteOperationIds'
-  ])
-  if (
-    result.outcome !== 'applied' &&
-    result.outcome !== 'failed' &&
-    result.outcome !== 'outcome-unknown'
-  ) {
+  const raw = plainRecord(value, 'Backend Release reconciliation result')
+  if (raw.outcome !== 'applied' && raw.outcome !== 'outcome-unknown') {
     throw new TypeError('Backend Release reconciliation outcome is invalid.')
   }
+  const result = exactRecord(
+    value,
+    'Backend Release reconciliation result',
+    raw.outcome === 'applied'
+      ? ['outcome', 'code', 'remoteOperationIds', 'proof']
+      : ['outcome', 'code', 'remoteOperationIds']
+  )
   const candidate = parseBackendHostReleaseDispatchJournalRecord({
     ...claim,
     settledAt,
@@ -178,8 +182,28 @@ function normalizedReconcileResult(
   if ((candidate.outcome === 'applied') !== (candidate.code === null)) {
     throw new TypeError('Applied reconciliation alone requires a null code.')
   }
-  if (candidate.outcome === 'pending') {
+  if (candidate.outcome !== 'applied' && candidate.outcome !== 'outcome-unknown') {
     throw new TypeError('Backend Release reconciliation cannot remain pending.')
+  }
+  if (candidate.outcome === 'applied') {
+    const proofValue = result.proof
+    if (proofValue === null || typeof proofValue !== 'object') {
+      throw new TypeError('Backend Release applied proof is invalid.')
+    }
+    const proof = appliedProofs.get(proofValue)
+    // Burn the proof before checking caller-controlled result fields. A failed attempt can never
+    // replay the same positive observation against a later reconciliation.
+    appliedProofs.delete(proofValue)
+    if (
+      !proof ||
+      proof.singleFlightKey !== candidate.singleFlightKey ||
+      proof.releaseId !== candidate.releaseId ||
+      proof.planDigest !== candidate.planDigest ||
+      proof.invocation !== invocation ||
+      proof.remoteOperationIdsFingerprint !== JSON.stringify(candidate.remoteOperationIds)
+    ) {
+      throw new TypeError('Backend Release applied proof is invalid or not bound to this claim.')
+    }
   }
   return {
     singleFlightKey: candidate.singleFlightKey,
@@ -194,11 +218,57 @@ function normalizedReconcileResult(
 
 export async function reconcileBackendReleaseDispatch(
   reconciler: BackendHostReleaseReconciler,
-  input: BackendHostReleaseReconcileInput,
+  input: Omit<BackendHostReleaseReconcileInput, 'attestApplied'>,
   settledAt: string
 ): Promise<BackendHostReleaseDispatchSettlementInput> {
-  const result: BackendHostReleaseReconcileResult = await reconciler.reconcile(input)
-  return normalizedReconcileResult(result, input.claim, settledAt)
+  const invocation = Object.freeze({})
+  let issuedProof: BackendHostReleaseAppliedProofV1 | null = null
+  const issuedProofs: BackendHostReleaseAppliedProofV1[] = []
+  let closed = false
+  const attestApplied = (
+    value: BackendHostReleaseAppliedAttestationInput
+  ): BackendHostReleaseAppliedProofV1 => {
+    if (closed || issuedProof) {
+      throw new TypeError('Backend Release applied proof was already issued for this observation.')
+    }
+    const attestation = exactRecord(value, 'Backend Release applied attestation', [
+      'remoteOperationIds'
+    ])
+    const candidate = parseBackendHostReleaseDispatchJournalRecord({
+      ...input.claim,
+      settledAt: input.claim.claimedAt,
+      outcome: 'applied',
+      code: null,
+      remoteOperationIds: attestation.remoteOperationIds
+    })
+    const proof = Object.freeze({
+      format: APPLIED_PROOF_FORMAT,
+      version: 1 as const
+    }) satisfies BackendHostReleaseAppliedProofV1
+    appliedProofs.set(
+      proof,
+      Object.freeze({
+        singleFlightKey: candidate.singleFlightKey,
+        releaseId: candidate.releaseId,
+        planDigest: candidate.planDigest,
+        remoteOperationIdsFingerprint: JSON.stringify(candidate.remoteOperationIds),
+        invocation
+      })
+    )
+    issuedProof = proof
+    issuedProofs.push(proof)
+    return proof
+  }
+  try {
+    const result: BackendHostReleaseReconcileResult = await reconciler.reconcile({
+      ...input,
+      attestApplied
+    })
+    return normalizedReconcileResult(result, input.claim, settledAt, invocation)
+  } finally {
+    closed = true
+    for (const proof of issuedProofs) appliedProofs.delete(proof)
+  }
 }
 
 export function unknownSettlement(

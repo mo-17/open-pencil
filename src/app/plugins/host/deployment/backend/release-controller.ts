@@ -88,13 +88,37 @@ export interface BackendHostReleaseVerificationInput extends BackendHostReleaseR
 export interface BackendHostReleaseReconcileInput extends BackendHostReleaseReviewInput {
   readonly authority: BackendReleaseAuthorityV1
   readonly claim: BackendHostReleaseDispatchJournalRecord
+  /**
+   * Seals one exact positive remote observation for this claim. The returned identity is opaque,
+   * single-use, and accepted only by the controller invocation that issued it.
+   */
+  readonly attestApplied: (
+    input: BackendHostReleaseAppliedAttestationInput
+  ) => BackendHostReleaseAppliedProofV1
 }
 
-export interface BackendHostReleaseReconcileResult {
-  readonly outcome: 'applied' | 'failed' | 'outcome-unknown'
-  readonly code: string | null
+export interface BackendHostReleaseAppliedAttestationInput {
   readonly remoteOperationIds: readonly string[]
 }
+
+/** Runtime authority is identity-only; this public shape never makes a reconstructed object valid. */
+export interface BackendHostReleaseAppliedProofV1 {
+  readonly format: 'openpencil.backend-release-applied-proof.v1'
+  readonly version: 1
+}
+
+export type BackendHostReleaseReconcileResult =
+  | {
+      readonly outcome: 'applied'
+      readonly code: null
+      readonly remoteOperationIds: readonly string[]
+      readonly proof: BackendHostReleaseAppliedProofV1
+    }
+  | {
+      readonly outcome: 'outcome-unknown'
+      readonly code: string
+      readonly remoteOperationIds: readonly string[]
+    }
 
 export interface BackendHostReleaseReconciler {
   /** Read-only remote lookup. This capability must never begin or retry Apply. */

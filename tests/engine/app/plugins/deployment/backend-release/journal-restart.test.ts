@@ -1,16 +1,21 @@
+/* oxlint-disable eslint(max-lines) -- Restart recovery, tamper, journal-failure, and scope reconciliation scenarios share one lifecycle fixture. */
 import { describe, expect, test } from 'bun:test'
+
+import { indexedDB as fakeIndexedDB } from 'fake-indexeddb'
 
 import type { BackendReleaseAuthorityV1, MigrationPlan } from '@open-pencil/lowcode/backend'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import {
   createBackendHostReleaseController,
+  type BackendHostReleaseAppliedProofV1,
   type BackendHostReleaseApplyResult,
   type BackendHostReleaseControllerDependencies,
   type BackendHostReleaseReconcileInput,
   type BackendHostReleaseReconcileResult
 } from '@/app/plugins/host/deployment/backend/release-controller'
 import {
+  createIdbBackendHostReleaseDispatchJournal,
   createMemoryBackendHostReleaseDispatchJournal,
   type BackendHostReleaseDispatchJournal
 } from '@/app/plugins/host/deployment/backend/release-journal'
@@ -140,8 +145,20 @@ function runInput(receiptId: string, onTransition?: (dispatch: string) => void) 
   }
 }
 
+function appliedReconciliation(
+  input: BackendHostReleaseReconcileInput,
+  remoteOperationIds: readonly string[]
+): BackendHostReleaseReconcileResult {
+  return {
+    outcome: 'applied',
+    code: null,
+    remoteOperationIds,
+    proof: input.attestApplied({ remoteOperationIds })
+  }
+}
+
 describe('Backend Host Release durable dispatch reconciliation', () => {
-  test('keeps a live winner lease pending without loser reconciliation or settlement', async () => {
+  test('durably precommits outcome-unknown before dispatch and keeps the live winner lease', async () => {
     const journal = createMemoryBackendHostReleaseDispatchJournal()
     let dispatchCalls = 0
     let reconcileCalls = 0
@@ -172,9 +189,9 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
           dispatchCalls += 1
           return { ok: true, remoteOperationIds: ['unexpected-second-dispatch'] }
         },
-        async reconcile() {
+        async reconcile(input) {
           reconcileCalls += 1
-          return { outcome: 'applied', code: null, remoteOperationIds: [] }
+          return appliedReconciliation(input, [])
         }
       })
     ).run(runInput('active-loser-receipt'))
@@ -186,10 +203,11 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     })
     expect(dispatchCalls).toBe(1)
     expect(reconcileCalls).toBe(0)
-    expect(await journal.listPending()).toHaveLength(1)
-    expect((await journal.listPending())[0]).toMatchObject({
+    expect(await journal.listPending()).toHaveLength(0)
+    expect((await journal.listUnresolved())[0]).toMatchObject({
       ownerId: 'active-winner-receipt',
-      outcome: 'pending'
+      outcome: 'outcome-unknown',
+      code: 'backend-release-dispatch-outcome-unknown'
     })
 
     finishDispatch({ ok: true, remoteOperationIds: ['winner-operation'] })
@@ -231,9 +249,9 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
           dispatchCalls += 1
           return { ok: true, remoteOperationIds: ['unexpected-second-dispatch'] }
         },
-        async reconcile() {
+        async reconcile(input) {
           reconcileCalls += 1
-          return { outcome: 'applied', code: null, remoteOperationIds: [] }
+          return appliedReconciliation(input, [])
         }
       })
     ).run(runInput('active-scope-blocked-receipt'))
@@ -298,7 +316,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
 
     expect(restarted).toMatchObject({
       outcome: 'outcome-unknown',
-      failureCode: 'remote-operation-not-visible',
+      failureCode: 'backend-release-dispatch-outcome-unknown',
       reconcileRequired: true
     })
     expect(dispatchCalls).toBe(1)
@@ -306,7 +324,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     expect(await journal.listPending()).toEqual([])
     expect(await journal.read(restarted.singleFlightKey ?? '')).toMatchObject({
       outcome: 'outcome-unknown',
-      code: 'remote-operation-not-visible'
+      code: 'backend-release-dispatch-outcome-unknown'
     })
 
     finishDispatch({
@@ -320,9 +338,11 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
 
   test('restarts with a shared journal, re-inspects, reconciles, and never dispatches twice', async () => {
     const journal = createMemoryBackendHostReleaseDispatchJournal()
+    let currentTime = NOW
     let dispatchCalls = 0
     const firstDependencies = await dependencies({
       journal,
+      now: () => currentTime,
       async dispatch() {
         dispatchCalls += 1
         return {
@@ -336,6 +356,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     const first = await createBackendHostReleaseController(firstDependencies).run(
       runInput('restart-receipt-1')
     )
+    currentTime = '2026-08-30T10:06:00.000Z'
 
     let reconciledClaimDigest: string | undefined
     let reconciledPlanDigest: string | undefined
@@ -345,6 +366,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     const secondDispatchStates: string[] = []
     const secondDependencies = await dependencies({
       journal,
+      now: () => currentTime,
       async dispatch() {
         dispatchCalls += 1
         return { ok: true, remoteOperationIds: ['unexpected-second-dispatch'] }
@@ -355,7 +377,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
         reconciledSchemaDigest = input.authority.inspectedSchemaDigest
         reconciledPlanSchemaDigest = input.plan.authority.inspectedSchemaDigest
         reconciledSingleFlightKey = input.claim.singleFlightKey
-        return { outcome: 'applied', code: null, remoteOperationIds: ['remote-operation-1'] }
+        return appliedReconciliation(input, ['remote-operation-1'])
       }
     })
     const second = await createBackendHostReleaseController(secondDependencies).run(
@@ -402,7 +424,50 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     })
   })
 
-  test('turns a settlement write failure into outcome-unknown without redispatch', async () => {
+  test('never dispatches when the built-in journal cannot complete startup recovery', async () => {
+    const databaseName = `backend-release-controller-startup-${crypto.randomUUID()}`
+    const initializer = createIdbBackendHostReleaseDispatchJournal(databaseName, fakeIndexedDB)
+    await initializer.listUnresolved()
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = fakeIndexedDB.open(databaseName)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction('dispatchTombstones', 'readwrite')
+      transaction.objectStore('dispatchTombstones').put({
+        format: 'openpencil.backend-release-dispatch-tombstone',
+        version: 99,
+        singleFlightKey: 'backend-release-v3:restart-provider:restart-project:corrupt',
+        record: null,
+        evidence: null
+      })
+      transaction.oncomplete = () => resolve()
+      transaction.onabort = () => reject(transaction.error)
+      transaction.onerror = () => reject(transaction.error)
+    })
+    database.close()
+
+    let dispatchCalls = 0
+    const state = await createBackendHostReleaseController(
+      await dependencies({
+        journal: createIdbBackendHostReleaseDispatchJournal(databaseName, fakeIndexedDB),
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['unexpected-dispatch'] }
+        }
+      })
+    ).run(runInput('startup-recovery-failure-receipt'))
+
+    expect(dispatchCalls).toBe(0)
+    expect(state).toMatchObject({
+      outcome: 'failed',
+      dispatch: 'not-dispatched',
+      failureCode: 'backend-release-journal-claim-failed'
+    })
+  })
+
+  test('never dispatches when the durable outcome-unknown precommit cannot be confirmed', async () => {
     const stored = createMemoryBackendHostReleaseDispatchJournal()
     const journal: BackendHostReleaseDispatchJournal = {
       ...stored,
@@ -421,17 +486,17 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
       })
     ).run(runInput('settlement-failure-receipt'))
 
-    expect(dispatchCalls).toBe(1)
+    expect(dispatchCalls).toBe(0)
     expect(state).toMatchObject({
       outcome: 'outcome-unknown',
       dispatch: 'settled',
       reconcileRequired: true,
-      failureCode: 'backend-release-journal-settle-failed'
+      failureCode: 'backend-release-dispatch-precommit-failed'
     })
     expect(await stored.listPending()).toHaveLength(1)
   })
 
-  test('dispatches a corrected artifact after a known failure and still deduplicates identical bytes', async () => {
+  test('keeps the scope fenced when dispatch reports a non-positive provider result', async () => {
     const journal = createMemoryBackendHostReleaseDispatchJournal()
     const firstArtifact = await digest('restart-schema-artifact-v1')
     const correctedArtifact = await digest('restart-schema-artifact-v2')
@@ -451,7 +516,6 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
         }
       })
     ).run(runInput('artifact-v1-receipt'))
-    expect(first).toMatchObject({ outcome: 'failed', failureCode: 'previous-artifact-rejected' })
 
     const correctedDependencies = await dependencies({
       journal,
@@ -464,21 +528,53 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     const corrected = await createBackendHostReleaseController(correctedDependencies).run(
       runInput('artifact-v2-receipt')
     )
-    const duplicate = await createBackendHostReleaseController(correctedDependencies).run(
-      runInput('artifact-v2-duplicate-receipt')
-    )
-
-    expect(dispatchCalls).toBe(2)
+    expect(dispatchCalls).toBe(1)
     expect(first.singleFlightKey).not.toBe(corrected.singleFlightKey)
-    expect(duplicate.singleFlightKey).toBe(corrected.singleFlightKey)
-    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({ outcome: 'failed' })
-    expect(await journal.read(corrected.singleFlightKey ?? '')).toMatchObject({
-      outcome: 'applied'
+    expect(first).toMatchObject({
+      outcome: 'outcome-unknown',
+      failureCode: 'previous-artifact-rejected'
+    })
+    expect(corrected).toMatchObject({
+      outcome: 'outcome-unknown',
+      failureCode: 'backend-release-dispatch-in-flight'
+    })
+    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'outcome-unknown'
+    })
+    expect(await journal.read(corrected.singleFlightKey ?? '')).toBeNull()
+  })
+
+  test('does not treat a truthy malformed dispatch result as positive Applied evidence', async () => {
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    let verifyCalls = 0
+    const state = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        onVerify() {
+          verifyCalls += 1
+        },
+        async dispatch() {
+          return JSON.parse(
+            '{"ok":1,"remoteOperationIds":["malformed-positive-operation"]}'
+          ) as BackendHostReleaseApplyResult
+        }
+      })
+    ).run(runInput('malformed-positive-receipt'))
+
+    expect(state).toMatchObject({
+      outcome: 'outcome-unknown',
+      reconcileRequired: true,
+      failureCode: 'backend-release-apply-outcome-unknown'
+    })
+    expect(verifyCalls).toBe(0)
+    expect(await journal.read(state.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'outcome-unknown'
     })
   })
 
-  test('read-only reconciles a different artifact claim to failed before a later run dispatches', async () => {
+  test('does not let generic failed reconciliation release an outcome-unknown scope', async () => {
     const journal = createMemoryBackendHostReleaseDispatchJournal()
+    let currentTime = NOW
     const firstArtifact = await digest('scope-recovery-artifact-v1')
     const correctedArtifact = await digest('scope-recovery-artifact-v2')
     let dispatchCalls = 0
@@ -487,6 +583,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     const first = await createBackendHostReleaseController(
       await dependencies({
         journal,
+        now: () => currentTime,
         schemaArtifactDigest: firstArtifact,
         async dispatch() {
           dispatchCalls += 1
@@ -499,9 +596,11 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
       })
     ).run(runInput('scope-recovery-v1-receipt'))
     expect(first).toMatchObject({ outcome: 'outcome-unknown' })
+    currentTime = '2026-08-30T10:06:00.000Z'
 
     const recoveryDependencies = await dependencies({
       journal,
+      now: () => currentTime,
       schemaArtifactDigest: correctedArtifact,
       async dispatch() {
         dispatchCalls += 1
@@ -514,7 +613,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
           outcome: 'failed',
           code: 'previous-artifact-proven-not-applied',
           remoteOperationIds: []
-        }
+        } as never
       }
     })
     const recovered = await createBackendHostReleaseController(recoveryDependencies).run(
@@ -522,29 +621,178 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     )
 
     expect(recovered).toMatchObject({
-      outcome: 'failed',
-      failureCode: 'backend-release-prior-claim-failed-review-required',
+      outcome: 'outcome-unknown',
+      failureCode: 'backend-release-unresolved-scope',
       remoteOperationIds: []
     })
     expect(recovered.singleFlightKey).not.toBe(first.singleFlightKey)
     expect(dispatchCalls).toBe(1)
     expect(reconcileCalls).toBe(1)
-    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({ outcome: 'failed' })
+    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'outcome-unknown'
+    })
     expect(await journal.read(recovered.singleFlightKey ?? '')).toBeNull()
+  })
 
-    const dispatched = await createBackendHostReleaseController(recoveryDependencies).run(
-      runInput('scope-recovery-v2-receipt')
-    )
-    expect(dispatchCalls).toBe(2)
-    expect(reconcileCalls).toBe(1)
-    expect(dispatched.singleFlightKey).toBe(recovered.singleFlightKey)
-    expect(await journal.read(dispatched.singleFlightKey ?? '')).toMatchObject({
-      outcome: 'applied'
+  test('binds Applied proof to one reconciliation call, claim, and exact operation IDs', async () => {
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    let currentTime = NOW
+    let dispatchCalls = 0
+    const first = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        now: () => currentTime,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: false, kind: 'transport', code: 'positive-proof-required' }
+        }
+      })
+    ).run(runInput('proof-binding-first'))
+    currentTime = '2026-08-30T10:06:00.000Z'
+
+    let lateAttester: BackendHostReleaseReconcileInput['attestApplied'] | null = null
+    await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        now: () => currentTime,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['unexpected-dispatch'] }
+        },
+        async reconcile(input) {
+          lateAttester = input.attestApplied
+          return { outcome: 'outcome-unknown', code: 'still-unknown', remoteOperationIds: [] }
+        }
+      })
+    ).run(runInput('proof-binding-late-attester'))
+    expect(() => lateAttester?.({ remoteOperationIds: [] })).toThrow('already issued')
+
+    let burnedProof: BackendHostReleaseAppliedProofV1 | null = null
+    const mismatch = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        now: () => currentTime,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['unexpected-dispatch'] }
+        },
+        async reconcile(input) {
+          const proof = input.attestApplied({ remoteOperationIds: ['observed-operation'] })
+          burnedProof = proof
+          return {
+            outcome: 'applied',
+            code: null,
+            remoteOperationIds: ['substituted-operation'],
+            proof
+          }
+        }
+      })
+    ).run(runInput('proof-binding-mismatch'))
+    expect(mismatch).toMatchObject({ outcome: 'outcome-unknown', reconcileRequired: true })
+
+    const replay = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        now: () => currentTime,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['unexpected-dispatch'] }
+        },
+        async reconcile() {
+          return {
+            outcome: 'applied',
+            code: null,
+            remoteOperationIds: ['observed-operation'],
+            proof: burnedProof as BackendHostReleaseAppliedProofV1
+          }
+        }
+      })
+    ).run(runInput('proof-binding-replay'))
+
+    expect(first).toMatchObject({ outcome: 'outcome-unknown' })
+    expect(replay).toMatchObject({ outcome: 'outcome-unknown', reconcileRequired: true })
+    expect(dispatchCalls).toBe(1)
+    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'outcome-unknown'
+    })
+  })
+
+  test('rejects an Applied proof borrowed by a concurrent reconciliation invocation', async () => {
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    let currentTime = NOW
+    let dispatchCalls = 0
+    const first = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        now: () => currentTime,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: false, kind: 'transport', code: 'positive-proof-required' }
+        }
+      })
+    ).run(runInput('cross-invocation-first'))
+    currentTime = '2026-08-30T10:06:00.000Z'
+
+    let borrowedProof: BackendHostReleaseAppliedProofV1 | null = null
+    let proofReady!: () => void
+    const ready = new Promise<void>((resolve) => {
+      proofReady = resolve
+    })
+    let finishOwner!: () => void
+    const ownerGate = new Promise<void>((resolve) => {
+      finishOwner = resolve
+    })
+    const owner = createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        now: () => currentTime,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['unexpected-dispatch'] }
+        },
+        async reconcile(input) {
+          borrowedProof = input.attestApplied({ remoteOperationIds: ['observed-operation'] })
+          proofReady()
+          await ownerGate
+          return { outcome: 'outcome-unknown', code: 'owner-still-unknown', remoteOperationIds: [] }
+        }
+      })
+    ).run(runInput('cross-invocation-owner'))
+    await ready
+
+    const borrower = await createBackendHostReleaseController(
+      await dependencies({
+        journal,
+        now: () => currentTime,
+        async dispatch() {
+          dispatchCalls += 1
+          return { ok: true, remoteOperationIds: ['unexpected-dispatch'] }
+        },
+        async reconcile() {
+          return {
+            outcome: 'applied',
+            code: null,
+            remoteOperationIds: ['observed-operation'],
+            proof: borrowedProof as BackendHostReleaseAppliedProofV1
+          }
+        }
+      })
+    ).run(runInput('cross-invocation-borrower'))
+    finishOwner()
+    const ownerResult = await owner
+
+    expect(first).toMatchObject({ outcome: 'outcome-unknown' })
+    expect(borrower).toMatchObject({ outcome: 'outcome-unknown', reconcileRequired: true })
+    expect(ownerResult).toMatchObject({ outcome: 'outcome-unknown', reconcileRequired: true })
+    expect(dispatchCalls).toBe(1)
+    expect(await journal.read(first.singleFlightKey ?? '')).toMatchObject({
+      outcome: 'outcome-unknown'
     })
   })
 
   test('requires a new reviewed run after a different artifact claim reconciles as applied', async () => {
     const journal = createMemoryBackendHostReleaseDispatchJournal()
+    let currentTime = NOW
     const firstArtifact = await digest('scope-applied-artifact-v1')
     const nextArtifact = await digest('scope-applied-artifact-v2')
     let dispatchCalls = 0
@@ -554,6 +802,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     const first = await createBackendHostReleaseController(
       await dependencies({
         journal,
+        now: () => currentTime,
         schemaArtifactDigest: firstArtifact,
         async dispatch() {
           dispatchCalls += 1
@@ -566,22 +815,20 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
         }
       })
     ).run(runInput('scope-applied-v1-receipt'))
+    currentTime = '2026-08-30T10:06:00.000Z'
 
     const reconciled = await createBackendHostReleaseController(
       await dependencies({
         journal,
+        now: () => currentTime,
         schemaArtifactDigest: nextArtifact,
         async dispatch() {
           dispatchCalls += 1
           return { ok: true, remoteOperationIds: ['unexpected-second-dispatch'] }
         },
-        async reconcile() {
+        async reconcile(input) {
           reconcileCalls += 1
-          return {
-            outcome: 'applied',
-            code: null,
-            remoteOperationIds: ['original-operation']
-          }
+          return appliedReconciliation(input, ['original-operation'])
         },
         onVerify() {
           reconciledVerifyCalls += 1
@@ -636,6 +883,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
 
   test('keeps a different artifact blocked when read-only scope reconciliation stays unknown', async () => {
     const journal = createMemoryBackendHostReleaseDispatchJournal()
+    let currentTime = NOW
     const firstArtifact = await digest('scope-unknown-artifact-v1')
     const nextArtifact = await digest('scope-unknown-artifact-v2')
     let dispatchCalls = 0
@@ -644,6 +892,7 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
     const first = await createBackendHostReleaseController(
       await dependencies({
         journal,
+        now: () => currentTime,
         schemaArtifactDigest: firstArtifact,
         async dispatch() {
           dispatchCalls += 1
@@ -655,10 +904,12 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
         }
       })
     ).run(runInput('scope-unknown-v1-receipt'))
+    currentTime = '2026-08-30T10:06:00.000Z'
 
     const blocked = await createBackendHostReleaseController(
       await dependencies({
         journal,
+        now: () => currentTime,
         schemaArtifactDigest: nextArtifact,
         async dispatch() {
           dispatchCalls += 1
@@ -729,9 +980,9 @@ describe('Backend Host Release durable dispatch reconciliation', () => {
             dispatchCalls += 1
             return { ok: true, remoteOperationIds: ['unexpected-second-dispatch'] }
           },
-          async reconcile() {
+          async reconcile(input) {
             reconcileCalls += 1
-            return { outcome: 'applied', code: null, remoteOperationIds: [] }
+            return appliedReconciliation(input, [])
           }
         })
       ).run(runInput(`scope-lookup-${lookup}-v2-receipt`))

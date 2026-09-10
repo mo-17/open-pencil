@@ -1,4 +1,5 @@
 import { appCredentialServices } from '@/app/settings/credentials/app'
+import { withCredentialPersistenceExclusiveGateV1 } from '@/app/settings/credentials/exclusive-gate'
 import { credentialRef } from '@/app/settings/credentials/reference'
 import type { CredentialServices } from '@/app/settings/credentials/services'
 import type { CredentialRef, CredentialStatus } from '@/app/settings/credentials/types'
@@ -15,9 +16,16 @@ export const SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL: CredentialRef = cr
   'supabase-management',
   'grant-generation'
 )
+export const SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL: CredentialRef =
+  credentialRef('supabase-management', 'database-write-credential-incarnation')
 
 const GRANT_GENERATION = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
-let supabaseGrantRotationTail: Promise<void> = Promise.resolve()
+
+/** Operation-scoped staging user credential used by authenticated isolation probes. */
+export interface SupabaseStagingTestUserInput {
+  readonly userId: string
+  readonly accessToken: string
+}
 
 function nextGrantGeneration(): string {
   if (typeof crypto.randomUUID !== 'function') {
@@ -28,25 +36,37 @@ function nextGrantGeneration(): string {
 
 async function rotateSupabaseManagementGrant(
   operation: () => Promise<void>,
-  services: CredentialServices
+  services: CredentialServices,
+  rotateDatabaseWriteCredentialIncarnation = false
 ): Promise<void> {
-  const preceding = supabaseGrantRotationTail
-  let releaseRotation: () => void = () => undefined
-  supabaseGrantRotationTail = new Promise<void>((resolve) => {
-    releaseRotation = resolve
-  })
-  await preceding.catch(() => undefined)
-  try {
+  await withCredentialPersistenceExclusiveGateV1(async () => {
     const generation = nextGrantGeneration()
+    const writeCredentialIncarnation = rotateDatabaseWriteCredentialIncarnation
+      ? nextGrantGeneration()
+      : null
+    if (writeCredentialIncarnation === generation) {
+      throw new TypeError('Secure Supabase write credential incarnation is unavailable')
+    }
     await services.manager.set(
       SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL,
       `pending:${generation}`
     )
+    if (writeCredentialIncarnation !== null) {
+      await services.manager.set(
+        SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL,
+        `pending:${writeCredentialIncarnation}`
+      )
+    }
     await operation()
     await services.manager.set(SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL, generation)
-  } finally {
-    releaseRotation()
-  }
+    if (writeCredentialIncarnation !== null) {
+      await services.manager.set(
+        SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL,
+        writeCredentialIncarnation
+      )
+    }
+    return Object.freeze({ started: undefined })
+  })
 }
 
 export function supabaseManagementPatStatus(
@@ -102,7 +122,8 @@ export async function setSupabaseManagementDatabaseWritePat(
   }
   await rotateSupabaseManagementGrant(
     () => services.manager.set(SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL, token),
-    services
+    services,
+    true
   )
 }
 
@@ -111,7 +132,8 @@ export function clearSupabaseManagementDatabaseWritePat(
 ): Promise<void> {
   return rotateSupabaseManagementGrant(
     () => services.manager.clear(SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL),
-    services
+    services,
+    true
   )
 }
 
@@ -128,4 +150,13 @@ export async function resolveSupabaseManagementGrantGeneration(
     SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL
   )
   return generation && GRANT_GENERATION.test(generation) ? generation : null
+}
+
+export async function resolveSupabaseManagementDatabaseWriteCredentialIncarnation(
+  services: CredentialServices = appCredentialServices
+): Promise<string | null> {
+  const incarnation = await services.resolver.resolve(
+    SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL
+  )
+  return incarnation && GRANT_GENERATION.test(incarnation) ? incarnation : null
 }

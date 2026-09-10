@@ -5,8 +5,8 @@ import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
 import { useSupabaseSchemaInspector } from '@/app/lowcode/supabase/schema-inspector'
-import { useSupabaseBackendProviderReview } from '@/app/lowcode/supabase/backend-provider-review'
-import { useSupabaseBackendProviderStagingRelease } from '@/app/lowcode/supabase/backend-provider-staging-release'
+import { useSupabaseBackendProviderReview } from '@/app/lowcode/supabase/backend/provider-review'
+import { useSupabaseBackendProviderStagingRelease } from '@/app/lowcode/supabase/backend/provider-staging-release'
 import type {
   SupabaseSchemaRelation,
   SupabaseSchemaTable

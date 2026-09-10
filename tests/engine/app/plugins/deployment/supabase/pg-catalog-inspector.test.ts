@@ -177,7 +177,7 @@ describe('Supabase fixed read-only pg_catalog inspector', () => {
     ).toContain('pg_catalog.pg_options_to_table(c.reloptions)')
     expect(
       SUPABASE_PG_CATALOG_FIXED_QUERIES.find(({ queryId }) => queryId === 'objects')?.sql
-    ).toContain('reloption.option_value::boolean')
+    ).toContain('reloption.option_value::pg_catalog.bool')
     expect(
       SUPABASE_PG_CATALOG_FIXED_QUERIES.find(({ queryId }) => queryId === 'columns')?.sql
     ).toContain('a.attacl IS NOT NULL AS "columnPrivilegesPresent"')
@@ -198,6 +198,12 @@ describe('Supabase fixed read-only pg_catalog inspector', () => {
     expect(privilegeSql).toContain('acl.grantee <> object_acls.owner_oid')
     expect(defaultPrivilegeSql).toContain('owner.rolname = current_user')
     expect(defaultPrivilegeSql).toContain('acl.grantee <> defaults.defaclrole')
+    const fixedSql = SUPABASE_PG_CATALOG_FIXED_QUERIES.map(({ sql }) => sql).join('\n')
+    expect(fixedSql).not.toMatch(
+      /(?<!pg_catalog\.)(?:current_database|current_setting|jsonb_agg|jsonb_build_object|statement_timestamp|to_char|txid_current_snapshot|unnest)\(/u
+    )
+    expect(fixedSql).not.toMatch(/::(?:text|integer|boolean|jsonb|regclass|oid|"char")\b/u)
+    expect(fixedSql).toContain("'pg_catalog.pg_class'::pg_catalog.regclass")
     expect(captured?.queries.map(({ queryId }) => queryId)).toEqual(SUPABASE_PG_CATALOG_QUERY_IDS)
     expect(captured?.queries.every((query) => !Object.hasOwn(query, 'sql'))).toBe(true)
     expect(captured).toMatchObject({

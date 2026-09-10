@@ -3,6 +3,15 @@ import { describe, expect, test } from 'bun:test'
 
 import { openDB } from 'idb'
 
+import {
+  SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL,
+  SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL,
+  SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL,
+  resolveSupabaseManagementDatabaseWriteCredentialIncarnation,
+  resolveSupabaseManagementDatabaseWritePat,
+  resolveSupabaseManagementGrantGeneration,
+  setSupabaseManagementDatabaseWritePat
+} from '@/app/lowcode/supabase/credentials'
 import { REVIEWED_EXTERNAL_SERVICE_CONNECTORS } from '@/app/plugins/connectors/services'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import { BrowserCredentialStore } from '@/app/settings/credentials/browser'
@@ -25,6 +34,8 @@ const MEDIA_KEY = credentialRef('pexels', 'api-key')
 
 class TestCredentialStore implements CredentialStore {
   readonly #values = new Map<string, string>()
+  readonly reads: string[] = []
+  beforeWrite?: (reference: CredentialRef, value: string) => Promise<void> | void
   failWriteFor?: string
   failRemoveFor?: string
 
@@ -39,14 +50,15 @@ class TestCredentialStore implements CredentialStore {
   }
 
   read(reference: CredentialRef): Promise<string | null> {
+    this.reads.push(credentialKey(reference))
     return Promise.resolve(this.#values.get(credentialKey(reference)) ?? null)
   }
 
-  write(reference: CredentialRef, value: string): Promise<void> {
+  async write(reference: CredentialRef, value: string): Promise<void> {
+    await this.beforeWrite?.(reference, value)
     const key = credentialKey(reference)
-    if (key === this.failWriteFor) return Promise.reject(new Error('write failed'))
+    if (key === this.failWriteFor) throw new Error('write failed')
     this.#values.set(key, value)
-    return Promise.resolve()
   }
 
   remove(reference: CredentialRef): Promise<void> {
@@ -158,6 +170,128 @@ describe('credential service roles', () => {
     expect(await store.read(MEDIA_KEY)).toBe('media-secret')
     expect(await next.read(API_KEY)).toBeNull()
     expect(await next.read(MEDIA_KEY)).toBeNull()
+  })
+
+  test('finishes a captured persistence snapshot before rotating credentials on the new delegate', async () => {
+    const previous = new TestCredentialStore('memory')
+    const next = new TestCredentialStore('browser')
+    const store = new SwitchableCredentialStore(previous)
+    const services = createCredentialServices(store)
+    const references = [
+      SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL,
+      SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL,
+      SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL
+    ]
+    const oldPAT = 'old-write-token-000001'
+    const newPAT = 'new-write-token-000001'
+    await setSupabaseManagementDatabaseWritePat(oldPAT, services)
+    const oldSharedGeneration = await resolveSupabaseManagementGrantGeneration(services)
+    const oldWriteIncarnation =
+      await resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)
+    if (!oldSharedGeneration || !oldWriteIncarnation) throw new Error('fixture failed')
+    previous.reads.length = 0
+
+    let blockFirstCopy = true
+    let markSnapshotCaptured: () => void = () => undefined
+    let releaseCopy: () => void = () => undefined
+    const snapshotCaptured = new Promise<void>((resolve) => {
+      markSnapshotCaptured = resolve
+    })
+    const copyGate = new Promise<void>((resolve) => {
+      releaseCopy = resolve
+    })
+    next.beforeWrite = async () => {
+      if (!blockFirstCopy) return
+      blockFirstCopy = false
+      markSnapshotCaptured()
+      await copyGate
+    }
+
+    const switching = store.switchTo(next, references)
+    await snapshotCaptured
+    expect(previous.reads).toEqual(references.map(credentialKey))
+
+    let rotationSettled = false
+    const rotation = (async () => {
+      await setSupabaseManagementDatabaseWritePat(newPAT, services)
+      rotationSettled = true
+    })()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(rotationSettled).toBe(false)
+    expect(await previous.read(SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL)).toBe(oldPAT)
+    expect(await previous.read(SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL)).toBe(
+      oldSharedGeneration
+    )
+    expect(
+      await previous.read(SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL)
+    ).toBe(oldWriteIncarnation)
+
+    releaseCopy()
+    await Promise.all([switching, rotation])
+    expect(store.backend).toBe('browser')
+    expect(await resolveSupabaseManagementDatabaseWritePat(services)).toBe(newPAT)
+    expect(await resolveSupabaseManagementGrantGeneration(services)).not.toBe(oldSharedGeneration)
+    expect(await resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)).not.toBe(
+      oldWriteIncarnation
+    )
+  })
+
+  test('copies the new credential tuple when rotation owns the persistence gate first', async () => {
+    const previous = new TestCredentialStore('memory')
+    const next = new TestCredentialStore('browser')
+    const store = new SwitchableCredentialStore(previous)
+    const services = createCredentialServices(store)
+    const references = [
+      SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL,
+      SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL,
+      SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL
+    ]
+    await setSupabaseManagementDatabaseWritePat('old-write-token-000002', services)
+
+    let holdNewPAT = true
+    let markRotationBlocked: () => void = () => undefined
+    let releaseRotation: () => void = () => undefined
+    const rotationBlocked = new Promise<void>((resolve) => {
+      markRotationBlocked = resolve
+    })
+    const rotationGate = new Promise<void>((resolve) => {
+      releaseRotation = resolve
+    })
+    const newPAT = 'new-write-token-000002'
+    previous.beforeWrite = async (reference, value) => {
+      if (
+        !holdNewPAT ||
+        reference !== SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL ||
+        value !== newPAT
+      ) {
+        return
+      }
+      holdNewPAT = false
+      markRotationBlocked()
+      await rotationGate
+    }
+
+    const rotation = setSupabaseManagementDatabaseWritePat(newPAT, services)
+    await rotationBlocked
+    const switching = store.switchTo(next, references)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(next.reads).toEqual([])
+
+    releaseRotation()
+    await Promise.all([rotation, switching])
+    const expectedSharedGeneration = await resolveSupabaseManagementGrantGeneration(services)
+    const expectedWriteIncarnation =
+      await resolveSupabaseManagementDatabaseWriteCredentialIncarnation(services)
+    expect(store.backend).toBe('browser')
+    expect(await next.read(SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL)).toBe(newPAT)
+    expect(await next.read(SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL)).toBe(
+      expectedSharedGeneration
+    )
+    expect(
+      await next.read(SUPABASE_MANAGEMENT_DATABASE_WRITE_CREDENTIAL_INCARNATION_CREDENTIAL)
+    ).toBe(expectedWriteIncarnation)
   })
 })
 
