@@ -32,10 +32,14 @@ describe('visual Backend editor component boundary', () => {
         'BackendRelationsEditor.vue',
         'BackendSecurityEditor.vue',
         'BackendWorkflowEditor.vue',
+        'BackendWorkflowStepsEditor.vue',
         'BackendMigrationDiff.vue'
       ].map((name) => Bun.file(`src/app/lowcode/backend/components/${name}`).text())
     )
-    const combined = [source, ...componentSources].join('\n')
+    const stepController = await Bun.file(
+      'src/app/lowcode/backend/use-backend-workflow-steps.ts'
+    ).text()
+    const combined = [source, ...componentSources, stepController].join('\n')
 
     for (const testId of [
       'lowcode-backend-provider',
@@ -81,10 +85,11 @@ describe('visual Backend editor component boundary', () => {
     }
   })
 
-  test('edits bounded filters, preserves unsupported workflow shapes, and hides credentials', async () => {
-    const source = await Bun.file(
-      'src/app/lowcode/backend/components/BackendWorkflowEditor.vue'
-    ).text()
+  test('edits bounded filters and branches, preserves unsupported headers, and hides credentials', async () => {
+    const source = [
+      await Bun.file('src/app/lowcode/backend/components/BackendWorkflowStepsEditor.vue').text(),
+      await Bun.file('src/app/lowcode/backend/use-backend-workflow-steps.ts').text()
+    ].join('\n')
 
     for (const kind of ['data.read', 'data.mutate', 'http.request', 'branch', 'call', 'respond']) {
       expect(source).toContain(`'${kind}'`)
@@ -93,8 +98,9 @@ describe('visual Backend editor component boundary', () => {
     expect(source).toContain('addFilter(step)')
     expect(source).toContain('filterOperators')
     expect(source).toContain('step.headers?.length')
-    expect(source).toContain('step.consequent.map')
-    expect(source).toContain('step.alternate.map')
+    expect(source).toContain('<BackendWorkflowStepsEditor')
+    expect(source).toContain(':steps="step[branch]"')
+    expect(source).toContain(':depth="depth + 1"')
     expect(source).toContain("secret.kind === 'environment'")
     expect(source).toContain("secret.exposure === 'server'")
     expect(source).not.toContain('CredentialManager')

@@ -394,6 +394,13 @@ export const lowcodeDocumentPanelMessageDefaults = {
   lowcodeBackendPrincipalTenant: 'tenant member',
   lowcodeBackendPrincipalRole: 'role',
   lowcodeBackendOperations: 'Operations',
+  lowcodeBackendEnvironmentTitle: 'Server environment references',
+  lowcodeBackendEnvironmentDescription:
+    'Declare names only. Values are configured separately by the deployment host.',
+  lowcodeBackendEnvironmentName: 'Environment variable name',
+  lowcodeBackendEnvironmentAdd: '+ Environment reference',
+  lowcodeBackendEnvironmentRemove: 'Remove environment reference',
+  lowcodeBackendWorkflowDepthLimit: 'Further nesting is unavailable at the editor depth limit.',
   lowcodeBackendAddWorkflow: '+ Workflow',
   lowcodeBackendNoWorkflows: 'No Backend workflows.',
   lowcodeBackendWorkflowName: 'Workflow name',

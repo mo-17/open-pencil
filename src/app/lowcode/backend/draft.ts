@@ -1265,6 +1265,47 @@ export function addBackendWorkflow(
 
 export type BackendWorkflowStepKind = BackendWorkflowStepIR['kind']
 
+// A top-level step's deepest editable value is nine JSON levels below the application.
+// Each branch adds an array and a step object; reserve room for those value bindings.
+export const BACKEND_WORKFLOW_EDITOR_MAX_NESTING = Math.floor((BACKEND_LIMITS.maxDepth - 9) / 2)
+
+function stepListDepth(
+  current: readonly BackendWorkflowStepIR[],
+  target: readonly BackendWorkflowStepIR[],
+  depth = 0
+): number | undefined {
+  if (current === target) return depth
+  if (depth >= BACKEND_WORKFLOW_EDITOR_MAX_NESTING) return undefined
+  for (const step of current) {
+    if (step.kind !== 'branch') continue
+    const found =
+      stepListDepth(step.consequent, target, depth + 1) ??
+      stepListDepth(step.alternate, target, depth + 1)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+export function canAddBackendWorkflowStep(
+  application: BackendApplicationSpecV1,
+  workflow: BackendWorkflowDefinitionIR,
+  kind: BackendWorkflowStepKind,
+  destination: readonly BackendWorkflowStepIR[] = workflow.steps
+): boolean {
+  if (!application.workflows.workflows.includes(workflow)) return false
+  const depth = stepListDepth(workflow.steps, destination)
+  if (
+    depth === undefined ||
+    depth + (kind === 'branch' ? 1 : 0) > BACKEND_WORKFLOW_EDITOR_MAX_NESTING
+  ) {
+    return false
+  }
+  return (
+    countWorkflowSteps(application.workflows.workflows) + (kind === 'branch' ? 3 : 1) <=
+    BACKEND_LIMITS.maxWorkflowSteps
+  )
+}
+
 function countSteps(steps: readonly BackendWorkflowStepIR[]): number {
   return steps.reduce(
     (count, step) =>
@@ -1362,15 +1403,21 @@ export function removeBackendWorkflow(
 }
 
 /**
- * Adds only contract-valid, reviewable step skeletons. Complex filters, headers, and nested
- * behavior stay absent until a future bounded editor can author them without accepting raw JSON.
+ * Adds a bounded step to one list owned by this workflow. Nested lists use the same
+ * application-wide count and leave room for the deepest editable value in the Core depth limit.
  */
 export function addBackendWorkflowStep(
   application: BackendApplicationSpecV1,
   workflow: BackendWorkflowDefinitionIR,
   kind: BackendWorkflowStepKind,
-  createId: BackendDraftIdFactory = createBackendDraftId
+  createId: BackendDraftIdFactory = createBackendDraftId,
+  destination: BackendWorkflowStepIR[] = workflow.steps
 ): BackendWorkflowStepIR {
+  if (!canAddBackendWorkflowStep(application, workflow, kind, destination)) {
+    throw new BackendDraftOperationError(
+      'Workflow step destination or nesting/count limit is invalid.'
+    )
+  }
   requireCapacity(
     countWorkflowSteps(application.workflows.workflows),
     BACKEND_LIMITS.maxWorkflowSteps,
@@ -1388,7 +1435,7 @@ export function addBackendWorkflowStep(
       entityId: entity.id,
       resultName: uniqueBackendIdentifier(
         'rows',
-        workflow.steps.flatMap((entry) =>
+        collectWorkflowSteps(workflow.steps).flatMap((entry) =>
           'resultName' in entry && entry.resultName ? [entry.resultName] : []
         )
       )
@@ -1427,6 +1474,17 @@ export function addBackendWorkflowStep(
     }
     step = { id: createId('step'), kind, workflowId: target.id }
   }
-  workflow.steps.push(step)
+  // Keep the default final response last so newly authored steps are reachable.
+  const finalResponse =
+    destination.at(-1)?.kind === 'respond' ? destination.length - 1 : destination.length
+  destination.splice(finalResponse, 0, step)
   return step
+}
+
+function collectWorkflowSteps(steps: readonly BackendWorkflowStepIR[]): BackendWorkflowStepIR[] {
+  return steps.flatMap((step) =>
+    step.kind === 'branch'
+      ? [step, ...collectWorkflowSteps(step.consequent), ...collectWorkflowSteps(step.alternate)]
+      : [step]
+  )
 }
