@@ -241,6 +241,44 @@ describe('deploy CLI provider parsing', () => {
     expect(state.status).toBe('succeeded')
   })
 
+  test('audits the resolved build environment and retains production verification warnings', () => {
+    const graph = new SceneGraph()
+    graph.updateNode(graph.rootId, {
+      lowcodeSupabaseConfig: {
+        url: 'http://127.0.0.1:54321',
+        anonKey: 'sb_publishable_design',
+        schema: 'public'
+      }
+    })
+    graph.createNode('LIST', graph.getPages()[0].id, {
+      interactiveProps: {
+        dataSourceRef: { kind: 'supabaseQuery', query: { table: 'products' } }
+      }
+    })
+    const state = resolveDirectDeployBackendState(graph, {
+      environment: 'production',
+      serverFiles: [],
+      env: resolveBuildEnv(
+        {
+          supabaseUrl: 'https://production.supabase.co',
+          supabasePublishableKey: 'sb_publishable_production',
+          supabaseSchema: 'app'
+        },
+        {}
+      )
+    })
+
+    expect(state.audit.ready).toBe(true)
+    expect(state.audit.rlsRequirements[0]?.schema).toBe('app')
+    expect(state.audit.issues.map((issue) => issue.code)).toEqual([
+      'supabase-schema-unverified',
+      'rls-verification-required'
+    ])
+    expect(state.audit.backendDeploymentVerified).toBe(false)
+    expect(state.backendDeploymentRequired).toBe(true)
+    expect(state.status).toBe('frontend-deployed')
+  })
+
   test('validates Supabase URLs and schemas before building', () => {
     expect(() =>
       resolveBuildEnv({

@@ -63,6 +63,23 @@ export interface ApplicationRuntimeGraph {
   getAllNodes(): Iterable<SceneNode>
 }
 
+/** Resolve public overrides only for a valid runtime emitted from the document.
+ * Overrides cannot create a runtime that the compiler omitted or conceal an
+ * invalid design-time configuration from the readiness audit. */
+export function resolveApplicationRuntimeSupabaseConfig(
+  graph: ApplicationRuntimeGraph,
+  overrides: Partial<SupabaseConfig> = {}
+): SupabaseConfig | null {
+  const designConfig = graph.getNode(graph.rootId)?.lowcodeSupabaseConfig
+  if (!designConfig) return null
+  if (!validateSupabaseConfig(designConfig).ok) return designConfig
+  return {
+    url: overrides.url ?? designConfig.url,
+    anonKey: overrides.anonKey ?? designConfig.anonKey,
+    schema: overrides.schema ?? designConfig.schema
+  }
+}
+
 export interface ApplicationRuntimeAudit {
   environment: ApplicationRuntimeEnvironment
   /** Static/frontend deployment may proceed when ready is true; this flag still blocks claiming

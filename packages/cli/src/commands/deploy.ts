@@ -5,7 +5,11 @@ import process from 'node:process'
 
 import { defineCommand } from 'citty'
 
-import { buildPreviewProject, type BuildResult } from '@open-pencil/compiler/build'
+import {
+  buildPreviewProject,
+  type BuildOptions,
+  type BuildResult
+} from '@open-pencil/compiler/build'
 import { deployFiles, type DeployProgress, type DeployResult } from '@open-pencil/compiler/deploy'
 import {
   resolveDeployEnvironment,
@@ -13,6 +17,7 @@ import {
 } from '@open-pencil/core/lowcode-deployment'
 import {
   auditApplicationRuntime,
+  resolveApplicationRuntimeSupabaseConfig,
   type ApplicationRuntimeAudit,
   type ApplicationRuntimeGraph
 } from '@open-pencil/lowcode/application-runtime'
@@ -83,6 +88,7 @@ export function resolveDirectDeployBackendState(
   options: {
     readonly environment: DeployEnvironment
     readonly serverFiles: readonly string[]
+    readonly env?: BuildOptions['env']
   }
 ): DirectDeployBackendState {
   const root = graph.getNode(graph.rootId)
@@ -93,6 +99,11 @@ export function resolveDirectDeployBackendState(
   )
   const audit = auditApplicationRuntime(graph, {
     environment: options.environment,
+    effectiveSupabaseConfig: resolveApplicationRuntimeSupabaseConfig(graph, {
+      url: options.env?.VITE_SUPABASE_URL,
+      anonKey: options.env?.VITE_SUPABASE_PUBLISHABLE_KEY ?? options.env?.VITE_SUPABASE_ANON_KEY,
+      schema: options.env?.VITE_SUPABASE_SCHEMA
+    }),
     backendProviderDeclared
   })
   const backendDeploymentRequired =
@@ -155,7 +166,7 @@ export default defineCommand({
     environment: {
       type: 'string',
       description:
-        'Deployment environment label: preview (default), staging, or production. This labels the deploy result; provider targeting still comes from --site / provider settings.',
+        'Deployment environment: preview (default), staging, or production. Selects runtime preflight rules and labels the result; provider targeting still comes from --site / provider settings.',
       required: false
     },
     token: {
@@ -271,6 +282,22 @@ export default defineCommand({
         process.exit(1)
       }
 
+      const backendState = resolveDirectDeployBackendState(graph, {
+        environment,
+        serverFiles: [],
+        env
+      })
+      if (!backendState.audit.ready) {
+        printError(
+          backendState.audit.issues
+            .filter((issue) => issue.severity === 'error')
+            .map((issue) => `[${issue.code}] ${issue.message}`)
+            .join(' ')
+        )
+        process.exitCode = 1
+        return
+      }
+
       if (!args.json) console.log('  Building…')
       const built = await withCompilerBuildRoot((fsRoot) =>
         buildPreviewProject({
@@ -287,11 +314,8 @@ export default defineCommand({
       // providers receive browser assets only; this command never deploys the
       // function or configures its secrets as a side effect.
       const dist = readStaticDist(built)
-      const backendState = resolveDirectDeployBackendState(graph, {
-        environment,
-        serverFiles: built.serverFiles
-      })
-      const { backendDeploymentRequired } = backendState
+      const backendDeploymentRequired =
+        backendState.backendDeploymentRequired || built.serverFiles.length > 0
       const serverDeployment =
         built.serverFiles.length > 0 && file
           ? createDeployServerDeploymentNotice(file, resolve('openpencil-build'), built)
@@ -325,7 +349,7 @@ export default defineCommand({
               ...result,
               environment,
               target,
-              status: backendState.status,
+              status: backendDeploymentRequired ? 'frontend-deployed' : 'succeeded',
               backendDeploymentRequired,
               serverDeployment
             },

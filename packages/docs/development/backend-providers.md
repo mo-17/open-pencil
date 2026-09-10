@@ -290,6 +290,12 @@ plus application, plan, and artifact-manifest digests. A missing host lifecycle,
 provider, substituted digest, unreviewed adapter, invalid request, or changed review fails before the
 frontend network dispatch.
 
+Desktop and direct CLI deployment both reject runtime preflight errors before static upload.
+They share the Lowcode-owned public configuration resolver and audit the effective values used
+by the build. Overrides apply only when the document contains a valid emitted Supabase runtime;
+they cannot conceal an invalid design configuration or supply a runtime the compiler omitted.
+Passing this preflight grants no RLS, server deployment, or complete Backend verification claim.
+
 Frontend deployment still performs only trusted local Backend validation, planning, and emission.
 The current Desktop deployment session can upload the static frontend, then records
 `backendDeploymentRequired: true` and a `frontend-deployed` status while Backend verification is

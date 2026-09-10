@@ -490,27 +490,39 @@ openpencil deploy <file> --provider vercel --site my-project
 openpencil deploy <file> --provider cloudflare --account-id <account-id> --site my-pages-project
 ```
 
-| Option                       | Description                                                                |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| `--provider`                 | `netlify` (default), `vercel`, or `cloudflare`                             |
-| `--token`                    | Provider access token; falls back to provider-specific env vars            |
-| `--site`                     | Netlify site id/subdomain, Vercel project name, or Cloudflare project name |
-| `--account-id`               | Cloudflare account id; also supported through `CLOUDFLARE_ACCOUNT_ID`      |
-| `--page`                     | Restrict output to a single page by name                                   |
-| `--base`                     | Public base path for assets                                                |
-| `--supabase-url`             | Override the Supabase URL for this deploy                                  |
-| `--supabase-publishable-key` | Override the Supabase publishable key for this deploy                      |
-| `--supabase-anon-key`        | Deprecated alias for a legacy anon key                                     |
-| `--supabase-schema`          | Override the Supabase database schema for this deploy                      |
-| `--ui-kit`                   | Emit supported controls with a code UI kit (`shadcn`)                      |
-| `--i18n`                     | Enable the react-intl runtime and locale catalogs                          |
-| `--locale`                   | Target locale; repeatable, implies `--i18n`                                |
-| `--source-locale`            | Source locale for authored canvas strings; implies `--i18n`                |
-| `--json`                     | Output the deploy result as JSON                                           |
+| Option                       | Description                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `--provider`                 | `netlify` (default), `vercel`, or `cloudflare`                                   |
+| `--environment`              | Runtime checks and result label: `preview` (default), `staging`, or `production` |
+| `--target`                   | Generated framework: `react` (default) or `vue`                                  |
+| `--token`                    | Provider access token; falls back to provider-specific env vars                  |
+| `--site`                     | Netlify site id/subdomain, Vercel project name, or Cloudflare project name       |
+| `--account-id`               | Cloudflare account id; also supported through `CLOUDFLARE_ACCOUNT_ID`            |
+| `--page`                     | Restrict output to a single page by name                                         |
+| `--base`                     | Public base path for assets                                                      |
+| `--supabase-url`             | Override the Supabase URL for this deploy                                        |
+| `--supabase-publishable-key` | Override the Supabase publishable key for this deploy                            |
+| `--supabase-anon-key`        | Deprecated alias for a legacy anon key                                           |
+| `--supabase-schema`          | Override the Supabase database schema for this deploy                            |
+| `--ui-kit`                   | Emit supported controls with a code UI kit (`shadcn`)                            |
+| `--i18n`                     | Enable the react-intl runtime and locale catalogs                                |
+| `--locale`                   | Target locale; repeatable, implies `--i18n`                                      |
+| `--source-locale`            | Source locale for authored canvas strings; implies `--i18n`                      |
+| `--json`                     | Output the deploy result as JSON                                                 |
 
 Static deploy uploads browser files only. If server workflows are present, human and JSON output
 include a non-secret manual deployment recipe; the command does not deploy functions, link a
 Supabase project, or configure server environment values.
+
+Before upload, runtime preflight checks the same effective Supabase configuration used by the
+build, including public CLI or environment overrides. Errors block deployment: for example,
+`--environment production` requires an HTTPS Supabase URL. A valid HTTPS override can replace a
+valid HTTP design configuration, but overrides cannot create a runtime omitted from the document
+or hide an invalid design configuration. Warnings and `backendDeploymentRequired` remain separate
+from upload eligibility; a frontend URL is not proof of a verified Backend release.
+
+`--environment` selects these checks and labels the result. It does not change the hosting
+provider's destination, which still comes from `--site` and provider settings.
 
 Token env vars:
 

@@ -1,6 +1,7 @@
 import { validateSupabaseConfig } from '@open-pencil/lowcode'
 import {
   auditApplicationRuntime,
+  resolveApplicationRuntimeSupabaseConfig,
   type ApplicationRuntimeAudit,
   type ApplicationRuntimeGraph
 } from '@open-pencil/lowcode/application-runtime'
@@ -34,17 +35,11 @@ export function resolveEffectiveDeploySupabaseConfig(
   graph: ApplicationRuntimeGraph,
   runtimeConfig?: DeployRuntimeConfig
 ): SupabaseConfig | null | undefined {
-  const designConfig = graph.getNode(graph.rootId)?.lowcodeSupabaseConfig
-  if (!designConfig) return null
-  if (!validateSupabaseConfig(designConfig).ok) return designConfig
-  return {
-    url: runtimeConfig?.supabaseUrl ?? designConfig.url,
-    anonKey:
-      runtimeConfig?.supabasePublishableKey ??
-      runtimeConfig?.supabaseAnonKey ??
-      designConfig.anonKey,
-    schema: runtimeConfig?.supabaseSchema ?? designConfig.schema
-  }
+  return resolveApplicationRuntimeSupabaseConfig(graph, {
+    url: runtimeConfig?.supabaseUrl,
+    anonKey: runtimeConfig?.supabasePublishableKey ?? runtimeConfig?.supabaseAnonKey,
+    schema: runtimeConfig?.supabaseSchema
+  })
 }
 
 /** Read only a current normalized catalog. PATs and raw OpenAPI responses are

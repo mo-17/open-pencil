@@ -28,6 +28,45 @@ function graphWithSupabaseList(config = true): SceneGraph {
 }
 
 describe('deploy runtime preflight', () => {
+  test('preserves public key alias precedence and does not hide an explicitly empty override', () => {
+    const graph = graphWithSupabaseList()
+    for (const { runtimeConfig, expectedKey } of [
+      {
+        runtimeConfig: { supabaseAnonKey: 'sb_publishable_legacy' },
+        expectedKey: 'sb_publishable_legacy'
+      },
+      {
+        runtimeConfig: {
+          supabaseAnonKey: 'sb_publishable_legacy',
+          supabasePublishableKey: 'sb_publishable_preferred'
+        },
+        expectedKey: 'sb_publishable_preferred'
+      },
+      {
+        runtimeConfig: { supabaseAnonKey: 'sb_publishable_legacy', supabasePublishableKey: '' },
+        expectedKey: ''
+      }
+    ]) {
+      expect(resolveEffectiveDeploySupabaseConfig(graph, runtimeConfig)).toEqual({
+        url: 'https://design.supabase.co',
+        anonKey: expectedKey,
+        schema: 'public'
+      })
+    }
+
+    const report = auditDeployRuntime({
+      graph,
+      environment: 'production',
+      knownTables: ['products'],
+      runtimeConfig: {
+        supabaseAnonKey: 'sb_publishable_legacy',
+        supabasePublishableKey: ''
+      }
+    })
+    expect(report.ready).toBe(false)
+    expect(report.issues.map((issue) => issue.code)).toContain('supabase-config-invalid')
+  })
+
   test('merges a complete public environment override through the shared preflight', async () => {
     const graph = graphWithSupabaseList()
     expect(

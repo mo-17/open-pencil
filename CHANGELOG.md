@@ -95,6 +95,7 @@
 
 ### Fixed
 
+- Block CLI static deployment when the effective runtime configuration fails preflight, while honoring valid public build overrides.
 - Cancel unread Supabase backfill responses with malformed headers, unexpected HTTP status, or rejected redirects while preserving prompt error reporting.
 - Enforce generated Supabase Edge workflow HTTP deadlines while reading response bodies, and release oversized streams without delaying the sanitized failure response.
 - Keep Supabase database Apply response cancellation and size failures responsive, redact stream diagnostics, and preserve unknown outcomes after dispatch without retrying.

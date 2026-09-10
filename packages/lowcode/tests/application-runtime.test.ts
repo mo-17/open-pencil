@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import { auditApplicationRuntime } from '@open-pencil/lowcode/application-runtime'
+import {
+  auditApplicationRuntime,
+  resolveApplicationRuntimeSupabaseConfig
+} from '@open-pencil/lowcode/application-runtime'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 const TRIGGER = { kind: 'http', method: 'POST', auth: 'supabase-user' } as const
@@ -17,6 +20,102 @@ function configuredGraph(): SceneGraph {
   return graph
 }
 
+describe('resolveApplicationRuntimeSupabaseConfig', () => {
+  for (const scenario of [
+    { designProtocol: 'http', runtimeProtocol: 'https', ready: true },
+    { designProtocol: 'https', runtimeProtocol: 'http', ready: false }
+  ]) {
+    test(`audits a ${scenario.designProtocol} to ${scenario.runtimeProtocol} override without table usage`, () => {
+      const graph = configuredGraph()
+      graph.updateNode(graph.rootId, {
+        lowcodeSupabaseConfig: {
+          url: `${scenario.designProtocol}://example.supabase.co`,
+          anonKey: 'sb_publishable_example',
+          schema: 'app'
+        }
+      })
+      const effectiveSupabaseConfig = resolveApplicationRuntimeSupabaseConfig(graph, {
+        url: `${scenario.runtimeProtocol}://production.supabase.co`
+      })
+      expect(effectiveSupabaseConfig).toEqual({
+        url: `${scenario.runtimeProtocol}://production.supabase.co`,
+        anonKey: 'sb_publishable_example',
+        schema: 'app'
+      })
+
+      const report = auditApplicationRuntime(graph, {
+        environment: 'production',
+        effectiveSupabaseConfig
+      })
+      expect(report.ready).toBe(scenario.ready)
+      expect(report.usesSupabase).toBe(false)
+      expect(report.rlsRequirements).toEqual([])
+      expect(report.issues.map((issue) => issue.code)).toEqual(
+        scenario.ready ? [] : ['supabase-production-https-required']
+      )
+      expect(report.backendDeploymentVerified).toBe(false)
+      expect(report.backendDeploymentRequired).toBe(true)
+    })
+  }
+
+  for (const invalid of [
+    { name: 'non-HTTP URL', url: 'file:///supabase', anonKey: 'sb_publishable_example' },
+    { name: 'empty public key', url: 'https://example.supabase.co', anonKey: ' ' }
+  ]) {
+    test(`preserves the invalid design object for audit when overrides replace its ${invalid.name}`, () => {
+      const graph = configuredGraph()
+      const designConfig = { url: invalid.url, anonKey: invalid.anonKey, schema: 'app' }
+      graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: designConfig })
+      const storedConfig = graph.getNode(graph.rootId)?.lowcodeSupabaseConfig
+      if (!storedConfig) throw new Error('Expected Supabase configuration in the graph fixture')
+      const effectiveSupabaseConfig = resolveApplicationRuntimeSupabaseConfig(graph, {
+        url: 'https://production.supabase.co',
+        anonKey: 'sb_publishable_production',
+        schema: 'public'
+      })
+      expect(effectiveSupabaseConfig).toBe(storedConfig)
+      expect(effectiveSupabaseConfig).toEqual(designConfig)
+
+      const report = auditApplicationRuntime(graph, {
+        environment: 'production',
+        effectiveSupabaseConfig
+      })
+      expect(report.ready).toBe(false)
+      expect(report.issues.map((issue) => issue.code)).toEqual(['supabase-config-invalid'])
+      expect(report.backendDeploymentVerified).toBe(false)
+      expect(report.backendDeploymentRequired).toBe(true)
+    })
+  }
+
+  test('preserves omitted schema and public defaults without mutating frozen inputs', () => {
+    const graph = configuredGraph()
+    const designConfig = Object.freeze({
+      url: 'https://example.supabase.co',
+      anonKey: 'sb_publishable_example'
+    })
+    const overrides = Object.freeze({ url: 'https://production.supabase.co' })
+    graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: designConfig })
+
+    const effectiveSupabaseConfig = resolveApplicationRuntimeSupabaseConfig(graph, overrides)
+    expect(effectiveSupabaseConfig).toEqual({
+      url: 'https://production.supabase.co',
+      anonKey: 'sb_publishable_example',
+      schema: undefined
+    })
+    expect(effectiveSupabaseConfig).not.toBe(designConfig)
+    expect(resolveApplicationRuntimeSupabaseConfig(graph)).toEqual({
+      url: 'https://example.supabase.co',
+      anonKey: 'sb_publishable_example',
+      schema: undefined
+    })
+    expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig).toEqual({
+      url: 'https://example.supabase.co',
+      anonKey: 'sb_publishable_example'
+    })
+    expect(overrides).toEqual({ url: 'https://production.supabase.co' })
+  })
+})
+
 describe('auditApplicationRuntime', () => {
   test('blocks a Supabase-bound list when no effective public config exists', () => {
     const graph = new SceneGraph()
@@ -30,7 +129,12 @@ describe('auditApplicationRuntime', () => {
       }
     })
 
-    const report = auditApplicationRuntime(graph)
+    const effectiveSupabaseConfig = resolveApplicationRuntimeSupabaseConfig(graph, {
+      url: 'https://production.supabase.co',
+      anonKey: 'sb_publishable_production'
+    })
+    expect(effectiveSupabaseConfig).toBeNull()
+    const report = auditApplicationRuntime(graph, { effectiveSupabaseConfig })
     expect(report.ready).toBe(false)
     expect(report.usesSupabase).toBe(true)
     expect(report.backendDeploymentVerified).toBe(false)

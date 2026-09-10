@@ -54,7 +54,8 @@ export {
   type ApplicationRuntimeGraph,
   type ApplicationRuntimeIssue,
   type ApplicationRuntimeIssueSeverity,
-  auditApplicationRuntime
+  auditApplicationRuntime,
+  resolveApplicationRuntimeSupabaseConfig
 } from './application-runtime'
 export {
   type InvokeServerWorkflowValidationResult,

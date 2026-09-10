@@ -121,8 +121,8 @@ release/verification 文件为 39 passed。非测试配置的 Native library
 installation authority、经过认证的 server cancellation，以及 authenticated
 settlement path。raw observation 不能 settle journal、允许自动 retry、签发 Receipt V2 或授权 release。
 `absent` 不证明先前 mutation 已停止，`advanced-head` 也不等于完整 portable Receipt V2 chain 已认证。
-[PostgreSQL driver 边界](../../development/receipt-zero-postgres-driver-admission.md) 记录了已实现的 text-only contract
-以及仍需证明的 production 条件：在 type-discovery 请求前拒绝异常 metadata，在 scalar sink 前限制分配，核验
+当前已实现本地 text-only contract；production 接入仍需证明：在 type-discovery 请求前拒绝异常 metadata，
+在 scalar sink 前限制分配，核验
 TLS identity，并由明确 owner 管理 cancel/rollback cleanup。当前没有已准入的 PostgreSQL driver；这些
 production binding 与 live 检查仍是本地 B3c composition 之后需要分别完成的门禁。
 
