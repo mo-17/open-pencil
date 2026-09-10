@@ -423,14 +423,14 @@ async function boundedBytes(
     while (!result.done) {
       length += result.value.byteLength
       if (length > maximum) {
-        await reader.cancel().catch(() => undefined)
+        void reader.cancel().catch(() => undefined)
         return fail('response-too-large')
       }
       chunks.push(result.value)
       result = await waitForAbortable(reader.read(), deadline.signal)
     }
   } catch (cause) {
-    await reader.cancel().catch(() => undefined)
+    void reader.cancel().catch(() => undefined)
     if (cause instanceof SupabaseManagementBackfillLockedHighWaterCaptureTransportError) {
       throw cause
     }
