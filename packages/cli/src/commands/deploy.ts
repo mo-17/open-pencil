@@ -279,7 +279,8 @@ export default defineCommand({
         })
       } catch (e) {
         printError(e)
-        process.exit(1)
+        process.exitCode = 1
+        return
       }
 
       const backendState = resolveDirectDeployBackendState(graph, {
@@ -339,7 +340,8 @@ export default defineCommand({
       } catch (e) {
         // Surface the deploy/API failure rather than swallowing it (经验 C).
         printError(e)
-        process.exit(1)
+        process.exitCode = 1
+        return
       }
 
       if (args.json) {

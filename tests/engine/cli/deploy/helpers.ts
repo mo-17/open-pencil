@@ -1,7 +1,7 @@
 import { mock } from 'bun:test'
-import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
@@ -10,6 +10,8 @@ const SCENARIOS = [
   'http-to-https',
   'https-to-http',
   'missing-with-override',
+  'incomplete-override',
+  'provider-failure',
   'static'
 ] as const
 const TARGETS = ['react', 'vue'] as const
@@ -29,13 +31,19 @@ export async function runDeployRuntimeScenario(
   stdout: string
   stderr: string
   requests: string[]
+  temporaryEntries: string[]
 }> {
   const directory = mkdtempSync(join(tmpdir(), 'openpencil-cli-preflight-'))
   const requestsPath = join(directory, 'requests.jsonl')
+  const temporaryDirectory = join(directory, 'child-tmp')
+  mkdirSync(temporaryDirectory)
   const child = Bun.spawn([process.execPath, import.meta.path, scenario, target, requestsPath], {
     cwd: ROOT,
     env: {
       ...process.env,
+      TMPDIR: temporaryDirectory,
+      TEMP: temporaryDirectory,
+      TMP: temporaryDirectory,
       OPENPENCIL_DEPLOY_RUNTIME_MODE: 'explicit',
       OPENPENCIL_DEPLOY_SUPABASE_URL: '',
       OPENPENCIL_DEPLOY_SUPABASE_PUBLISHABLE_KEY: '',
@@ -58,7 +66,8 @@ export async function runDeployRuntimeScenario(
     } catch (cause) {
       if (!(cause instanceof Error) || !('code' in cause) || cause.code !== 'ENOENT') throw cause
     }
-    return { exitCode, stdout, stderr, requests }
+    const temporaryEntries = readdirSync(temporaryDirectory).sort()
+    return { exitCode, stdout, stderr, requests, temporaryEntries }
   } finally {
     clearTimeout(timeout)
     rmSync(directory, { recursive: true, force: true })
@@ -90,7 +99,7 @@ function scenarioGraph(scenario: DeployRuntimeScenario): SceneGraph {
   return graph
 }
 
-function providerDouble(requestsPath: string): typeof fetch {
+function providerDouble(requestsPath: string, scenario: DeployRuntimeScenario): typeof fetch {
   return Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = input instanceof Request ? input.url : String(input)
@@ -109,6 +118,9 @@ function providerDouble(requestsPath: string): typeof fetch {
         Object.keys(body.files).some((path) => path.includes('openpencil-server/'))
       ) {
         throw new Error('Static deployment payload must contain only browser files')
+      }
+      if (scenario === 'provider-failure') {
+        return new Response('fixture service unavailable', { status: 503 })
       }
       return Response.json({
         id: 'local-preflight-deploy',
@@ -129,13 +141,21 @@ async function runIsolatedCommand(): Promise<void> {
   const target = TARGETS.find((value) => value === process.argv[3])
   const requestsPath = process.argv[4]
   if (!scenario || !target || !requestsPath) throw new Error('Invalid CLI test scenario')
+  if (resolve(tmpdir()) !== resolve(dirname(requestsPath), 'child-tmp')) {
+    throw new Error('CLI fixture temporary directory is not isolated')
+  }
   const graph = scenarioGraph(scenario)
   mock.module('#cli/headless', () => ({ loadDocument: async () => graph }))
-  globalThis.fetch = providerDouble(requestsPath)
+  globalThis.fetch = providerDouble(requestsPath, scenario)
   const { default: command } = await import('#cli/commands/deploy')
   if (!command.run) throw new Error('CLI deploy command run is missing')
   let override: string | undefined
-  if (scenario === 'http-to-https' || scenario === 'missing-with-override') {
+  if (
+    scenario === 'http-to-https' ||
+    scenario === 'missing-with-override' ||
+    scenario === 'incomplete-override' ||
+    scenario === 'provider-failure'
+  ) {
     override = 'https://override.supabase.co'
   } else if (scenario === 'https-to-http') {
     override = 'http://127.0.0.1:54321'
@@ -153,7 +173,8 @@ async function runIsolatedCommand(): Promise<void> {
       ...(override
         ? {
             'supabase-url': override,
-            'supabase-publishable-key': 'sb_publishable_override_fixture',
+            'supabase-publishable-key':
+              scenario === 'incomplete-override' ? undefined : 'sb_publishable_override_fixture',
             'supabase-schema': 'app'
           }
         : {})
