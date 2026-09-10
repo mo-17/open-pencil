@@ -28,6 +28,7 @@ import type { SupabaseStagingVerificationResult } from '@/app/plugins/host/deplo
 import type { SupabaseStorageIsolationReceipt } from '@/app/plugins/host/deployment/supabase/storage-isolation-verifier'
 import type { CredentialStatus } from '@/app/settings/credentials/types'
 
+import { backendDocumentDigest, sameAuthority, sameBuild } from '../binding'
 import type { DesktopSupabaseBackendReviewResult } from '../review'
 
 type MaybePromise<T> = T | Promise<T>
@@ -287,25 +288,6 @@ function validSecret(value: unknown, maximum = MAX_CREDENTIAL_LENGTH): value is 
   )
 }
 
-function sameAuthority(
-  left: BackendReleaseProviderAuthorityV1,
-  right: BackendReleaseProviderAuthorityV1
-): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
-}
-
-function sameBuild(
-  left: PreparedAppBackendProviderBuild,
-  right: PreparedAppBackendProviderBuild
-): boolean {
-  return (
-    JSON.stringify(left.request) === JSON.stringify(right.request) &&
-    left.plan.applicationDigest === right.plan.applicationDigest &&
-    left.plan.planDigest === right.plan.planDigest &&
-    left.emission.manifestDigest === right.emission.manifestDigest
-  )
-}
-
 function normalizedConfig(
   value: SupabaseConfig | undefined
 ): Readonly<{ projectRef: string; schema: 'public'; publishableKey: string }> | null {
@@ -319,21 +301,6 @@ function normalizedConfig(
   } catch {
     return null
   }
-}
-
-async function backendDocumentDigest(
-  graph: AppBackendProviderDocumentGraph,
-  build: PreparedAppBackendProviderBuild,
-  projectRef: string,
-  schema: 'public'
-): Promise<string> {
-  return digestCanonicalManifest({
-    format: 'openpencil.desktop-supabase-backend-review-document.v1',
-    rootId: graph.rootId,
-    projectRef,
-    schema,
-    backendProviderRequest: build.request
-  })
 }
 
 function snapshotReview(

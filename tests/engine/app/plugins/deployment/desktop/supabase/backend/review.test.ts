@@ -26,6 +26,11 @@ import {
   type PreparedAppBackendProviderBuild
 } from '@/app/plugins/host/backend-provider'
 import {
+  normalizedConfig,
+  sameAuthority,
+  sameBuild
+} from '@/app/plugins/host/deployment/desktop/supabase/backend/binding'
+import {
   createDesktopSupabaseBackendReviewService,
   DesktopSupabaseBackendReviewError,
   type DesktopSupabaseBackendReviewDependencies,
@@ -227,6 +232,41 @@ async function errorCode(operation: Promise<unknown>): Promise<string | undefine
 }
 
 describe('Desktop Supabase Backend Provider review service', () => {
+  test('preserves exact authority and build binding comparisons', () => {
+    const { publisherId, ...authorityFields } = AUTHORITY
+    expect(sameAuthority(AUTHORITY, structuredClone(AUTHORITY))).toBe(true)
+    expect(sameAuthority(AUTHORITY, { ...AUTHORITY, packageDigest: 'changed' })).toBe(false)
+    expect(sameAuthority(AUTHORITY, { ...authorityFields, publisherId })).toBe(false)
+    expect(sameBuild(BUILD, structuredClone(BUILD))).toBe(true)
+    const changedBuilds: PreparedAppBackendProviderBuild[] = [
+      {
+        ...BUILD,
+        request: {
+          ...BUILD.request,
+          application: { ...BUILD.request.application, applicationId: 'changed' }
+        }
+      },
+      { ...BUILD, plan: { ...BUILD.plan, applicationDigest: 'changed' } },
+      { ...BUILD, plan: { ...BUILD.plan, planDigest: 'changed' } },
+      { ...BUILD, emission: { ...BUILD.emission, manifestDigest: 'changed' } }
+    ]
+    for (const changed of changedBuilds) expect(sameBuild(BUILD, changed)).toBe(false)
+  })
+
+  test('normalizes the public project without reading a publishable key', () => {
+    const config = {
+      url: PROJECT_URL,
+      get anonKey(): string {
+        throw new Error('Review and Apply must not read the publishable key')
+      }
+    }
+    const normalized = normalizedConfig(config)
+    expect(normalized).toEqual({ projectRef: PROJECT_REF, schema: 'public' })
+    expect(Object.isFrozen(normalized)).toBe(true)
+    expect(normalizedConfig({ url: PROJECT_URL, anonKey: '', schema: 'private' })).toBeNull()
+    expect(normalizedConfig(undefined)).toBeNull()
+  })
+
   test('validates, snapshots, and binds an explicit staged plan before credential use', async () => {
     const plan = await stagedPlan()
     let captured: StagedMigrationExecutionPlanV1 | undefined
@@ -327,6 +367,7 @@ describe('Desktop Supabase Backend Provider review service', () => {
       'authority'
     ])
     expect(grantReads).toBe(3)
+    expect(capturedDocumentDigest).toBe('pO6bgzyY_pbOxfX-ld9S3PDiLrfuP1NPigecapJwFKc')
     expect(capturedDocumentDigest).toBe(
       await digestCanonicalManifest({
         format: 'openpencil.desktop-supabase-backend-review-document.v1',
