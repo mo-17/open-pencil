@@ -13,7 +13,7 @@ import type {
 } from '@/app/lowcode/supabase/schema-catalog'
 import { useSupabaseStagingReleaseAuthority } from '@/app/lowcode/supabase/staging-release-authority'
 import { useSupabaseStagedMigrationPlan } from '@/app/lowcode/supabase/staged-migration-plan'
-import { useEditorStore } from '@/app/editor/active-store'
+import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
 import { isTauri } from '@/app/tauri/env'
 
 import SupabaseBackendStagingVerification from './SupabaseBackendStagingVerification.vue'
@@ -29,7 +29,18 @@ const stagingAuthority = useSupabaseStagingReleaseAuthority()
 const stagingRelease = useSupabaseBackendProviderStagingRelease(
   configRef,
   backendReview.result,
-  () => editor.graph
+  () => editor.graph,
+  {
+    readContext() {
+      const contextEditor = getActiveEditorStore()
+      return {
+        identity: contextEditor,
+        readGraph: () => contextEditor.graph,
+        readConfig: () =>
+          contextEditor.graph.getNode(contextEditor.graph.rootId)?.lowcodeSupabaseConfig
+      }
+    }
+  }
 )
 const stagedMigrationPlan = useSupabaseStagedMigrationPlan(() => {
   backendReview.reset()
@@ -102,6 +113,14 @@ const stagingCanApply = computed(() => {
     stagingRelease.state.value !== 'outcome-unknown'
   )
 })
+
+const stagingSectionVisible = computed(
+  () =>
+    !!backendReview.result.value ||
+    !!stagingRelease.result.value ||
+    stagingRelease.state.value === 'outcome-unknown' ||
+    (stagingRelease.state.value === 'loading' && stagingRelease.dispatched.value)
+)
 
 const stagingWriteCredentialStatusLabel = computed(() => {
   if (stagingAuthority.credentialStatus.value === 'loading') {
@@ -394,6 +413,16 @@ async function copyReviewSql(): Promise<void> {
     reviewSqlCopyState.value = 'error'
   }
 }
+
+watch(
+  () => getActiveEditorStore(),
+  () => {
+    backendReview.reset()
+    stagingProjectRefConfirmation.value = ''
+    stagingIndependentConfirmed.value = false
+  },
+  { flush: 'sync' }
+)
 
 watch(
   () => backendReview.state.value,
@@ -848,7 +877,7 @@ onScopeDispose(() => {
     </div>
 
     <div
-      v-if="backendReview.result.value"
+      v-if="stagingSectionVisible"
       data-test-id="lowcode-supabase-backend-staging-release"
       class="mt-1 flex flex-col gap-1.5 border-t border-border pt-2"
     >
@@ -880,134 +909,161 @@ onScopeDispose(() => {
         {{ panels.lowcodeSupabaseBackendStagingDesktopOnly }}
       </p>
 
-      <label for="supabase-management-write-pat" class="text-[10px] text-muted">
-        {{ panels.lowcodeSupabaseBackendStagingWriteCredential }}
-      </label>
-      <p class="text-[10px] text-amber-500">
-        {{ panels.lowcodeSupabaseBackendStagingWriteCredentialIndependent }}
-      </p>
-      <div class="flex gap-1">
-        <input
-          id="supabase-management-write-pat"
-          ref="stagingWritePatInput"
-          type="password"
-          autocomplete="new-password"
-          spellcheck="false"
-          data-test-id="lowcode-supabase-backend-staging-write-pat"
-          :placeholder="
-            stagingAuthority.credentialStatus.value === 'configured'
-              ? panels.lowcodeSupabaseBackendStagingWriteCredentialConfiguredPlaceholder
-              : panels.lowcodeSupabaseBackendStagingWriteCredentialPlaceholder
-          "
-          :disabled="stagingBusy"
-          class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent disabled:opacity-50"
-          @keyup.enter="saveStagingWritePat"
-        />
-        <button
-          type="button"
-          data-test-id="lowcode-supabase-backend-staging-write-pat-save"
-          :disabled="stagingBusy"
-          class="rounded border border-border px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
-          @click="saveStagingWritePat"
+      <template v-if="backendReview.result.value">
+        <label for="supabase-management-write-pat" class="text-[10px] text-muted">
+          {{ panels.lowcodeSupabaseBackendStagingWriteCredential }}
+        </label>
+        <p class="text-[10px] text-amber-500">
+          {{ panels.lowcodeSupabaseBackendStagingWriteCredentialIndependent }}
+        </p>
+        <div class="flex gap-1">
+          <input
+            id="supabase-management-write-pat"
+            ref="stagingWritePatInput"
+            type="password"
+            autocomplete="new-password"
+            spellcheck="false"
+            data-test-id="lowcode-supabase-backend-staging-write-pat"
+            :placeholder="
+              stagingAuthority.credentialStatus.value === 'configured'
+                ? panels.lowcodeSupabaseBackendStagingWriteCredentialConfiguredPlaceholder
+                : panels.lowcodeSupabaseBackendStagingWriteCredentialPlaceholder
+            "
+            :disabled="stagingBusy"
+            class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent disabled:opacity-50"
+            @keyup.enter="saveStagingWritePat"
+          />
+          <button
+            type="button"
+            data-test-id="lowcode-supabase-backend-staging-write-pat-save"
+            :disabled="stagingBusy"
+            class="rounded border border-border px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
+            @click="saveStagingWritePat"
+          >
+            {{ panels.lowcodeSupabaseBackendStagingSaveWriteCredential }}
+          </button>
+          <button
+            v-if="stagingAuthority.credentialStatus.value === 'configured'"
+            type="button"
+            data-test-id="lowcode-supabase-backend-staging-write-pat-clear"
+            :disabled="stagingBusy"
+            class="rounded px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
+            @click="clearStagingWritePat"
+          >
+            {{ panels.lowcodeSupabaseBackendStagingClearWriteCredential }}
+          </button>
+        </div>
+        <p
+          data-test-id="lowcode-supabase-backend-staging-write-credential-status"
+          :class="[
+            'text-[10px]',
+            stagingAuthority.credentialError.value ? 'text-red-500' : 'text-muted'
+          ]"
         >
-          {{ panels.lowcodeSupabaseBackendStagingSaveWriteCredential }}
-        </button>
-        <button
-          v-if="stagingAuthority.credentialStatus.value === 'configured'"
-          type="button"
-          data-test-id="lowcode-supabase-backend-staging-write-pat-clear"
-          :disabled="stagingBusy"
-          class="rounded px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
-          @click="clearStagingWritePat"
-        >
-          {{ panels.lowcodeSupabaseBackendStagingClearWriteCredential }}
-        </button>
-      </div>
-      <p
-        data-test-id="lowcode-supabase-backend-staging-write-credential-status"
-        :class="[
-          'text-[10px]',
-          stagingAuthority.credentialError.value ? 'text-red-500' : 'text-muted'
-        ]"
-      >
-        {{
-          stagingAuthority.credentialError.value
-            ? panels.lowcodeSupabaseBackendStagingWriteCredentialError
-            : stagingWriteCredentialStatusLabel
-        }}
-      </p>
+          {{
+            stagingAuthority.credentialError.value
+              ? panels.lowcodeSupabaseBackendStagingWriteCredentialError
+              : stagingWriteCredentialStatusLabel
+          }}
+        </p>
 
-      <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[9px] text-muted">
+        <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[9px] text-muted">
+          <dt>{{ panels.lowcodeSupabaseBackendStagingExpectedTarget }}</dt>
+          <dd class="min-w-0 break-all font-mono text-surface">
+            {{ backendReview.result.value.projectRef }} / {{ backendReview.result.value.accountId }}
+          </dd>
+        </dl>
+        <label for="supabase-staging-project-confirmation" class="text-[10px] text-muted">
+          {{ panels.lowcodeSupabaseBackendStagingProjectConfirmation }}
+        </label>
+        <input
+          id="supabase-staging-project-confirmation"
+          v-model="stagingProjectRefConfirmation"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          data-test-id="lowcode-supabase-backend-staging-project-confirmation"
+          :disabled="stagingBusy"
+          :placeholder="backendReview.result.value.projectRef"
+          class="w-full rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent disabled:opacity-50"
+        />
+        <label class="flex items-start gap-1.5 text-[10px] text-muted">
+          <input
+            v-model="stagingIndependentConfirmed"
+            type="checkbox"
+            data-test-id="lowcode-supabase-backend-staging-independent-confirmation"
+            :disabled="stagingBusy"
+            class="mt-0.5 size-3.5 shrink-0 accent-accent"
+          />
+          <span>{{ panels.lowcodeSupabaseBackendStagingIndependentConfirmation }}</span>
+        </label>
+        <div class="flex gap-1">
+          <button
+            type="button"
+            data-test-id="lowcode-supabase-backend-staging-bind-target"
+            :disabled="!stagingCanBind"
+            class="flex-1 rounded border border-border px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:cursor-not-allowed disabled:opacity-50"
+            @click="bindStagingTarget"
+          >
+            {{ panels.lowcodeSupabaseBackendStagingBindTarget }}
+          </button>
+          <button
+            v-if="stagingAuthority.target.value"
+            type="button"
+            data-test-id="lowcode-supabase-backend-staging-clear-target"
+            :disabled="stagingBusy"
+            class="rounded px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
+            @click="clearStagingTarget"
+          >
+            {{ panels.lowcodeSupabaseBackendStagingClearTarget }}
+          </button>
+        </div>
+        <p
+          data-test-id="lowcode-supabase-backend-staging-target-status"
+          :class="['text-[10px]', stagingTargetMatches ? 'text-green-500' : 'text-amber-500']"
+        >
+          {{ stagingTargetStatusLabel }}
+        </p>
+
+        <button
+          type="button"
+          data-test-id="lowcode-supabase-backend-staging-apply"
+          :disabled="!stagingCanApply"
+          class="rounded border border-amber-500/50 px-2 py-1 text-[11px] text-amber-500 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          @click="runStagingRelease"
+        >
+          {{
+            stagingRelease.state.value === 'loading'
+              ? panels.lowcodeSupabaseBackendStagingApplying
+              : panels.lowcodeSupabaseBackendStagingApply
+          }}
+        </button>
+      </template>
+
+      <dl
+        v-if="stagingRelease.target.value"
+        data-test-id="lowcode-supabase-backend-staging-operation-target"
+        class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[9px] text-muted"
+      >
         <dt>{{ panels.lowcodeSupabaseBackendStagingExpectedTarget }}</dt>
         <dd class="min-w-0 break-all font-mono text-surface">
-          {{ backendReview.result.value.projectRef }} / {{ backendReview.result.value.accountId }}
+          {{ stagingRelease.target.value.projectRef }} / {{ stagingRelease.target.value.accountId }}
         </dd>
       </dl>
-      <label for="supabase-staging-project-confirmation" class="text-[10px] text-muted">
-        {{ panels.lowcodeSupabaseBackendStagingProjectConfirmation }}
-      </label>
-      <input
-        id="supabase-staging-project-confirmation"
-        v-model="stagingProjectRefConfirmation"
-        type="text"
-        autocomplete="off"
-        spellcheck="false"
-        data-test-id="lowcode-supabase-backend-staging-project-confirmation"
-        :disabled="stagingBusy"
-        :placeholder="backendReview.result.value.projectRef"
-        class="w-full rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent disabled:opacity-50"
-      />
-      <label class="flex items-start gap-1.5 text-[10px] text-muted">
-        <input
-          v-model="stagingIndependentConfirmed"
-          type="checkbox"
-          data-test-id="lowcode-supabase-backend-staging-independent-confirmation"
-          :disabled="stagingBusy"
-          class="mt-0.5 size-3.5 shrink-0 accent-accent"
-        />
-        <span>{{ panels.lowcodeSupabaseBackendStagingIndependentConfirmation }}</span>
-      </label>
-      <div class="flex gap-1">
-        <button
-          type="button"
-          data-test-id="lowcode-supabase-backend-staging-bind-target"
-          :disabled="!stagingCanBind"
-          class="flex-1 rounded border border-border px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:cursor-not-allowed disabled:opacity-50"
-          @click="bindStagingTarget"
-        >
-          {{ panels.lowcodeSupabaseBackendStagingBindTarget }}
-        </button>
-        <button
-          v-if="stagingAuthority.target.value"
-          type="button"
-          data-test-id="lowcode-supabase-backend-staging-clear-target"
-          :disabled="stagingBusy"
-          class="rounded px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
-          @click="clearStagingTarget"
-        >
-          {{ panels.lowcodeSupabaseBackendStagingClearTarget }}
-        </button>
-      </div>
       <p
-        data-test-id="lowcode-supabase-backend-staging-target-status"
-        :class="['text-[10px]', stagingTargetMatches ? 'text-green-500' : 'text-amber-500']"
+        v-if="stagingRelease.state.value === 'loading'"
+        data-test-id="lowcode-supabase-backend-staging-settling"
+        class="text-[10px] text-amber-500"
       >
-        {{ stagingTargetStatusLabel }}
+        {{ panels.lowcodeSupabaseBackendStagingApplying }}
       </p>
-
-      <button
-        type="button"
-        data-test-id="lowcode-supabase-backend-staging-apply"
-        :disabled="!stagingCanApply"
-        class="rounded border border-amber-500/50 px-2 py-1 text-[11px] text-amber-500 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-        @click="runStagingRelease"
+      <p
+        v-if="stagingRelease.state.value === 'outcome-unknown'"
+        data-test-id="lowcode-supabase-backend-staging-no-retry"
+        class="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-500"
       >
-        {{
-          stagingRelease.state.value === 'loading'
-            ? panels.lowcodeSupabaseBackendStagingApplying
-            : panels.lowcodeSupabaseBackendStagingApply
-        }}
-      </button>
+        {{ panels.lowcodeSupabaseBackendStagingNoRetry }}
+      </p>
 
       <p
         v-if="stagingReleaseErrorMessage"
@@ -1031,13 +1087,6 @@ onScopeDispose(() => {
           ]"
         >
           {{ stagingOutcomeLabel }}
-        </p>
-        <p
-          v-if="stagingRelease.result.value.outcome === 'outcome-unknown'"
-          data-test-id="lowcode-supabase-backend-staging-no-retry"
-          class="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-500"
-        >
-          {{ panels.lowcodeSupabaseBackendStagingNoRetry }}
         </p>
         <p class="text-[10px] text-amber-500">
           {{ panels.lowcodeSupabaseBackendStagingProductionBlocked }}
@@ -1094,6 +1143,7 @@ onScopeDispose(() => {
       </article>
 
       <SupabaseBackendStagingVerification
+        v-if="backendReview.result.value"
         :config="config"
         :reviewed="backendReview.result.value"
         :project-ref-confirmation="stagingProjectRefConfirmation"

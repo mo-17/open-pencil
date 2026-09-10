@@ -5,36 +5,21 @@ import { effectScope, nextTick, ref } from 'vue'
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
 
 import { useSupabaseBackendProviderStagingRelease } from '@/app/lowcode/supabase/backend/provider-staging-release'
-import type { AppBackendProviderDocumentGraph } from '@/app/plugins/host/backend-provider'
-import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
 import {
   DesktopSupabaseBackendStagingReleaseError,
   type DesktopSupabaseBackendStagingReleaseResult,
   type DesktopSupabaseBackendStagingReleaseService
 } from '@/app/plugins/host/deployment/desktop/supabase/backend/staging/release'
 
-const PROJECT_REF = 'enekobitnhobuiuamvqj'
-const PROJECT_URL = `https://${PROJECT_REF}.supabase.co`
-const GRAPH: AppBackendProviderDocumentGraph = {
-  rootId: 'root-1',
-  getNode: () => undefined
-}
-const REVIEW = Object.freeze({
-  artifact: { manifestDigest: 'review-digest' },
-  projectRef: PROJECT_REF
-}) as DesktopSupabaseBackendReviewResult
-const SUCCEEDED = Object.freeze({
-  outcome: 'succeeded'
-}) as DesktopSupabaseBackendStagingReleaseResult
-const UNKNOWN = Object.freeze({
-  outcome: 'outcome-unknown'
-}) as DesktopSupabaseBackendStagingReleaseResult
-const FAILED = Object.freeze({
-  outcome: 'failed',
-  receipt: Object.freeze({
-    failure: Object.freeze({ code: 'supabase-staging-apply-not-eligible', outcomeUnknown: false })
-  })
-}) as DesktopSupabaseBackendStagingReleaseResult
+import {
+  PROJECT_REF,
+  PROJECT_URL,
+  GRAPH,
+  REVIEW,
+  SUCCEEDED,
+  UNKNOWN,
+  FAILED
+} from './staging-release/helpers'
 
 describe('Supabase Backend Provider staging release composable', () => {
   test('single-flights duplicate Apply clicks', async () => {
@@ -197,4 +182,54 @@ describe('Supabase Backend Provider staging release composable', () => {
     expect(release.error.value).toBe('outcome-unknown')
     scope.stop()
   })
+
+  for (const outcome of ['returned', 'thrown'] as const) {
+    test.each(['configuration', 'review', 'explicit reset'] as const)(
+      `retains a ${outcome} terminal unknown outcome after %s changes`,
+      async (change) => {
+        let calls = 0
+        const config = ref<SupabaseConfig>({ url: PROJECT_URL, anonKey: '' })
+        const reviewed = ref(REVIEW)
+        const service: DesktopSupabaseBackendStagingReleaseService = {
+          async release(input) {
+            calls += 1
+            input.onTransition?.({ dispatch: 'dispatched' } as Parameters<
+              NonNullable<typeof input.onTransition>
+            >[0])
+            if (outcome === 'thrown') {
+              throw new DesktopSupabaseBackendStagingReleaseError('outcome-unknown')
+            }
+            return UNKNOWN
+          }
+        }
+        const scope = effectScope()
+        const release = scope.run(() =>
+          useSupabaseBackendProviderStagingRelease(config, reviewed, () => GRAPH, { service })
+        )
+        if (!release) throw new Error('Missing release composable')
+
+        try {
+          await release.release(PROJECT_REF, true)
+          expect(release.state.value).toBe('outcome-unknown')
+          if (change === 'configuration') config.value = { ...config.value, schema: 'private' }
+          else if (change === 'review') {
+            reviewed.value = {
+              ...REVIEW,
+              artifact: { ...REVIEW.artifact, manifestDigest: 'changed-review-digest' }
+            }
+          } else expect(release.reset()).toBe(false)
+          await nextTick()
+
+          expect(release.state.value).toBe('outcome-unknown')
+          expect(release.dispatched.value).toBe(true)
+          expect(release.result.value).toBe(outcome === 'returned' ? UNKNOWN : null)
+          expect(release.error.value).toBe(outcome === 'thrown' ? 'outcome-unknown' : null)
+          await release.release(PROJECT_REF, true)
+          expect(calls).toBe(1)
+        } finally {
+          scope.stop()
+        }
+      }
+    )
+  }
 })
