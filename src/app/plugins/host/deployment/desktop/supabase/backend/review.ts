@@ -18,6 +18,7 @@ import type {
 import type { CredentialStatus } from '@/app/settings/credentials/types'
 
 import { backendDocumentDigest, normalizedConfig, sameAuthority, sameBuild } from './binding'
+import { isDesktopSupabaseBackendTarget, type DesktopSupabaseBackendTarget } from './target'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -35,6 +36,7 @@ export type DesktopSupabaseBackendReviewErrorCode =
   | 'grant-changed'
   | 'grant-unavailable'
   | 'invalid-config'
+  | 'invalid-target'
   | 'review-failed'
   | 'review-stale'
   | 'staged-plan-invalid'
@@ -51,6 +53,7 @@ const ERROR_MESSAGES = Object.freeze({
   'grant-changed': 'Supabase credential authority changed during review. Start the review again.',
   'grant-unavailable': 'Supabase credential authority is unavailable. Save the token again.',
   'invalid-config': 'A canonical Supabase project URL is required for Backend Provider review.',
+  'invalid-target': 'Supabase Backend Provider review supports only React and Vue targets.',
   'review-failed': 'Supabase Backend Provider review failed closed before Apply.',
   'review-stale': 'The document or Supabase configuration changed during review. Review again.',
   'staged-plan-invalid': 'The staged migration execution plan is invalid or unsafe.'
@@ -64,6 +67,8 @@ export class DesktopSupabaseBackendReviewError extends Error {
 }
 
 export interface DesktopSupabaseBackendReviewInput {
+  /** Omitted targets preserve the existing React review behavior. */
+  readonly target?: DesktopSupabaseBackendTarget
   readonly config: SupabaseConfig | undefined
   /** Live reread used to reject configuration changes that happen during network inspection. */
   readonly readConfig?: () => SupabaseConfig | undefined
@@ -92,7 +97,8 @@ export interface DesktopSupabaseStrictReviewInput {
 
 export interface DesktopSupabaseBackendReviewDependencies {
   prepareBuild(
-    graph: AppBackendProviderDocumentGraph
+    graph: AppBackendProviderDocumentGraph,
+    target: DesktopSupabaseBackendTarget
   ): MaybePromise<PreparedAppBackendProviderBuild | null>
   resolveBackendProviderAuthority(
     build: PreparedAppBackendProviderBuild
@@ -129,6 +135,23 @@ function fail(code: DesktopSupabaseBackendReviewErrorCode): never {
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) fail('aborted')
+}
+
+function reviewTarget(value: unknown): DesktopSupabaseBackendTarget {
+  const target = value === undefined ? 'react' : value
+  if (!isDesktopSupabaseBackendTarget(target)) fail('invalid-target')
+  return target
+}
+
+function hasReviewBuildTarget(
+  build: PreparedAppBackendProviderBuild,
+  target: DesktopSupabaseBackendTarget
+): boolean {
+  return (
+    build.descriptor.providerId === 'supabase' &&
+    build.plan.target === target &&
+    build.emission.manifest.target === target
+  )
 }
 
 function validCredential(value: string | null): value is string {
@@ -188,6 +211,7 @@ function matchesReviewAuthority(
 ): boolean {
   const manifest = artifact.manifest
   return (
+    manifest.target === expected.build.plan.target &&
     manifest.documentDigest === expected.documentDigest &&
     manifest.compiler.applicationDigest === expected.build.plan.applicationDigest &&
     manifest.compiler.planDigest === expected.build.plan.planDigest &&
@@ -259,6 +283,7 @@ export function createDesktopSupabaseBackendReviewService(
       active = true
       let personalAccessToken: string | null = null
       try {
+        const target = reviewTarget(input.target)
         throwIfAborted(input.signal)
         const stagedExecutionPlan = normalizedStagedExecutionPlan(input.stagedExecutionPlan)
         const stagedExecutionPlanDigest = stagedExecutionPlan
@@ -270,12 +295,12 @@ export function createDesktopSupabaseBackendReviewService(
 
         let build: PreparedAppBackendProviderBuild | null
         try {
-          build = await dependencies.prepareBuild(input.graph)
+          build = await dependencies.prepareBuild(input.graph, target)
         } catch {
           return fail('backend-provider-unavailable')
         }
         if (!build) fail('backend-provider-missing')
-        if (build.descriptor.providerId !== 'supabase') fail('backend-provider-unavailable')
+        if (!hasReviewBuildTarget(build, target)) fail('backend-provider-unavailable')
 
         let backendProvider: BackendReleaseProviderAuthorityV1 | null
         try {
@@ -307,7 +332,7 @@ export function createDesktopSupabaseBackendReviewService(
           const currentConfig = normalizedConfig(input.readConfig?.() ?? input.config)
           let currentBuild: PreparedAppBackendProviderBuild | null
           try {
-            currentBuild = await dependencies.prepareBuild(input.graph)
+            currentBuild = await dependencies.prepareBuild(input.graph, target)
           } catch {
             return fail('review-stale')
           }
@@ -315,6 +340,7 @@ export function createDesktopSupabaseBackendReviewService(
             !currentConfig ||
             currentConfig.projectRef !== projectRef ||
             !currentBuild ||
+            !hasReviewBuildTarget(currentBuild, target) ||
             !sameBuild(currentBuild, build) ||
             (await backendDocumentDigest(input.graph, currentBuild, projectRef, schema)) !==
               documentDigest

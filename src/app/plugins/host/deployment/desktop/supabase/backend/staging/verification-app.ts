@@ -23,12 +23,6 @@ import {
   type SupabaseStagingTargetStore
 } from '@/app/lowcode/supabase/staging-target'
 import { appPluginStore } from '@/app/plugins/app'
-import { appCredentialServices } from '@/app/settings/credentials/app'
-import type { CredentialServices } from '@/app/settings/credentials/services'
-import { isTauri } from '@/app/tauri/env'
-import { tauriFetch } from '@/app/tauri/http'
-import { SupabaseManagementNativeError } from '@/app/tauri/supabase-management'
-
 import {
   prepareAppBackendProviderDocumentBuild,
   resolveAppBackendProviderReleaseAuthority,
@@ -38,16 +32,6 @@ import {
   createIdbBackendHostReleaseDispatchJournal,
   type BackendHostReleaseDispatchJournal
 } from '@/app/plugins/host/deployment/backend/release-journal'
-import {
-  createDesktopSupabaseBackendStagingVerificationService,
-  DesktopSupabaseBackendStagingVerificationError,
-  type DesktopSupabaseBackendStagingCapabilityReceiptV1,
-  type DesktopSupabaseCapabilityDispatchProgressV1,
-  type DesktopSupabaseBackendStagingVerificationDependencies,
-  type DesktopSupabaseBackendStagingVerificationOutcome,
-  type DesktopSupabaseBackendStagingVerificationResult,
-  type DesktopSupabaseStrictStagingVerificationInput
-} from './verification'
 import { createSupabaseEdgeFunctionArtifactFromEmission } from '@/app/plugins/host/deployment/supabase/edge-function-artifact'
 import {
   createSupabaseEdgeFunctionRelease,
@@ -78,6 +62,22 @@ import {
   type SupabaseStorageIsolationReceipt,
   type SupabaseStorageIsolationTransport
 } from '@/app/plugins/host/deployment/supabase/storage-isolation-verifier'
+import { appCredentialServices } from '@/app/settings/credentials/app'
+import type { CredentialServices } from '@/app/settings/credentials/services'
+import { isTauri } from '@/app/tauri/env'
+import { tauriFetch } from '@/app/tauri/http'
+import { SupabaseManagementNativeError } from '@/app/tauri/supabase-management'
+
+import {
+  createDesktopSupabaseBackendStagingVerificationService,
+  DesktopSupabaseBackendStagingVerificationError,
+  type DesktopSupabaseBackendStagingCapabilityReceiptV1,
+  type DesktopSupabaseCapabilityDispatchProgressV1,
+  type DesktopSupabaseBackendStagingVerificationDependencies,
+  type DesktopSupabaseBackendStagingVerificationOutcome,
+  type DesktopSupabaseBackendStagingVerificationResult,
+  type DesktopSupabaseStrictStagingVerificationInput
+} from './verification'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -641,10 +641,10 @@ function createAppDesktopSupabaseBackendStagingVerificationServiceWithOptions(
     nextId: runtime.nextId,
     now: runtime.now,
     dispatchJournal: options.dispatchJournal ?? createIdbBackendHostReleaseDispatchJournal(),
-    async prepareBuild(graph) {
+    async prepareBuild(graph, target) {
       await Promise.resolve(waitForPluginStoreReady())
       return prepareAppBackendProviderDocumentBuild(pluginStore, graph, {
-        target: 'react',
+        target,
         mode: 'production'
       })
     },

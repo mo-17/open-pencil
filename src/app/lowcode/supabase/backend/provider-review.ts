@@ -10,15 +10,18 @@ import {
   type DesktopSupabaseBackendReviewService
 } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
 import { appDesktopSupabaseBackendReviewService } from '@/app/plugins/host/deployment/desktop/supabase/backend/review-app'
+import type { DesktopSupabaseBackendTarget } from '@/app/plugins/host/deployment/desktop/supabase/backend/target'
 
 export type SupabaseBackendProviderReviewState = 'idle' | 'loading' | 'ready' | 'error'
 
 export interface SupabaseBackendProviderReviewDependencies {
   readonly service: DesktopSupabaseBackendReviewService
+  readonly readTarget: () => DesktopSupabaseBackendTarget
 }
 
 const DEFAULT_DEPENDENCIES: SupabaseBackendProviderReviewDependencies = Object.freeze({
-  service: appDesktopSupabaseBackendReviewService
+  service: appDesktopSupabaseBackendReviewService,
+  readTarget: () => 'react'
 })
 
 export function useSupabaseBackendProviderReview(
@@ -69,6 +72,7 @@ export function useSupabaseBackendProviderReview(
         config: config.value,
         readConfig: () => config.value,
         graph,
+        target: dependencies.readTarget(),
         ...(stagedExecutionPlan === undefined ? {} : { stagedExecutionPlan }),
         signal: controller.signal
       })
@@ -86,8 +90,9 @@ export function useSupabaseBackendProviderReview(
   }
 
   watch(
-    () => [config.value?.url, config.value?.schema],
-    () => reset()
+    () => [config.value?.url, config.value?.schema, dependencies.readTarget()],
+    () => reset(),
+    { flush: 'sync' }
   )
 
   onScopeDispose(() => reset())

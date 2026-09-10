@@ -11,12 +11,6 @@ import {
   type SupabaseStagingTargetStore
 } from '@/app/lowcode/supabase/staging-target'
 import { appPluginStore } from '@/app/plugins/app'
-import { appCredentialServices } from '@/app/settings/credentials/app'
-import type { CredentialServices } from '@/app/settings/credentials/services'
-import { isTauri } from '@/app/tauri/env'
-import { tauriFetch } from '@/app/tauri/http'
-import { SupabaseManagementNativeError } from '@/app/tauri/supabase-management'
-
 import {
   prepareAppBackendProviderDocumentBuild,
   resolveAppBackendProviderReleaseAuthority,
@@ -25,13 +19,6 @@ import {
 import { BackendHostReleaseApplyError } from '@/app/plugins/host/deployment/backend/release-controller'
 import type { BackendHostReleaseDispatchJournal } from '@/app/plugins/host/deployment/backend/release-journal'
 import { createIdbBackendHostReleaseDispatchJournal } from '@/app/plugins/host/deployment/backend/release-journal'
-import {
-  createDesktopSupabaseBackendStagingReleaseService,
-  DesktopSupabaseBackendStagingReleaseError,
-  type DesktopSupabaseBackendStagingReleaseDependencies,
-  type DesktopSupabaseBackendStagingReleaseService,
-  type DesktopSupabaseStrictStagingReleaseInput
-} from './release'
 import {
   createSupabaseBackendRelease,
   type SupabaseBackendReleaseReviewArtifactV1
@@ -51,6 +38,19 @@ import {
 } from '@/app/plugins/host/deployment/supabase/native-pg-catalog-transport'
 import { inspectSupabasePgCatalog } from '@/app/plugins/host/deployment/supabase/pg-catalog-inspector'
 import { reconcileSupabaseStagingBaseline } from '@/app/plugins/host/deployment/supabase/staging-reconciliation'
+import { appCredentialServices } from '@/app/settings/credentials/app'
+import type { CredentialServices } from '@/app/settings/credentials/services'
+import { isTauri } from '@/app/tauri/env'
+import { tauriFetch } from '@/app/tauri/http'
+import { SupabaseManagementNativeError } from '@/app/tauri/supabase-management'
+
+import {
+  createDesktopSupabaseBackendStagingReleaseService,
+  DesktopSupabaseBackendStagingReleaseError,
+  type DesktopSupabaseBackendStagingReleaseDependencies,
+  type DesktopSupabaseBackendStagingReleaseService,
+  type DesktopSupabaseStrictStagingReleaseInput
+} from './release'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -124,6 +124,8 @@ function sameArtifactAuthority(
     artifact.inspectedReview.manifestDigest === expected.inspectedReview.manifestDigest &&
     artifact.inspectedReview.manifest.sqlDigest === expected.inspectedReview.manifest.sqlDigest &&
     artifact.manifest.documentDigest === input.documentDigest &&
+    artifact.manifest.target === input.build.plan.target &&
+    artifact.manifest.target === input.build.emission.manifest.target &&
     artifact.manifest.remoteAuthority.projectRef === input.projectRef &&
     artifact.manifest.remoteAuthority.accountId === input.accountId &&
     artifact.manifest.remoteAuthority.grantGeneration === input.grantGeneration &&
@@ -301,10 +303,10 @@ function createAppDesktopSupabaseBackendStagingReleaseServiceWithOptions(
     ? { resolveReadCredential: () => resolveSupabaseManagementPat(credentials) }
     : { resolveReadCredentialStatus: () => supabaseManagementPatStatus(credentials) }
   const dependencies: DesktopSupabaseBackendStagingReleaseDependencies = {
-    async prepareBuild(graph) {
+    async prepareBuild(graph, target) {
       await Promise.resolve(waitForPluginStoreReady())
       return prepareAppBackendProviderDocumentBuild(pluginStore, graph, {
-        target: 'react',
+        target,
         mode: 'production'
       })
     },

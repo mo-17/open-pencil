@@ -27,6 +27,7 @@ import {
   DesktopSupabaseBackendStagingReleaseError,
   type DesktopSupabaseBackendStagingReleaseDependencies
 } from '@/app/plugins/host/deployment/desktop/supabase/backend/staging/release'
+import type { DesktopSupabaseBackendTarget } from '@/app/plugins/host/deployment/desktop/supabase/backend/target'
 import type { SupabaseBackendReleaseReviewArtifactV1 } from '@/app/plugins/host/deployment/supabase/backend-release'
 
 const PROJECT_REF = 'enekobitnhobuiuamvqj'
@@ -82,7 +83,9 @@ function application(): BackendApplicationSpecV1 {
   }
 }
 
-async function preparedBuild(): Promise<PreparedAppBackendProviderBuild> {
+async function preparedBuild(
+  target: DesktopSupabaseBackendTarget = 'react'
+): Promise<PreparedAppBackendProviderBuild> {
   const store = createAppPluginStore({
     storage: createMemoryAppPluginStateStorage(),
     catalog: [bundledBackendProvider()],
@@ -100,7 +103,7 @@ async function preparedBuild(): Promise<PreparedAppBackendProviderBuild> {
       selection: descriptor,
       application: application()
     },
-    { target: 'react', mode: 'production' }
+    { target, mode: 'production' }
   )
 }
 
@@ -120,7 +123,7 @@ async function documentDigest(build = BUILD): Promise<string> {
   })
 }
 
-async function previousReview(): Promise<DesktopSupabaseBackendReviewResult> {
+async function previousReview(build = BUILD): Promise<DesktopSupabaseBackendReviewResult> {
   const inspectedSchemaDigest = 'inspected-schema-digest'
   const inspectedReview = {
     snapshot: {},
@@ -137,14 +140,14 @@ async function previousReview(): Promise<DesktopSupabaseBackendReviewResult> {
   const manifest = {
     format: 'openpencil.supabase-backend-host-review.v1',
     version: 1,
-    documentDigest: await documentDigest(),
+    documentDigest: await documentDigest(build),
     compilerVersion: '0.15.0',
-    target: 'react',
+    target: build.plan.target,
     environment: 'staging',
     compiler: {
-      applicationDigest: BUILD.plan.applicationDigest,
-      planDigest: BUILD.plan.planDigest,
-      emissionManifestDigest: BUILD.emission.manifestDigest
+      applicationDigest: build.plan.applicationDigest,
+      planDigest: build.plan.planDigest,
+      emissionManifestDigest: build.emission.manifestDigest
     },
     backendProvider: AUTHORITY,
     remoteAuthority: {
@@ -224,6 +227,148 @@ async function errorCode(operation: Promise<unknown>): Promise<string | undefine
 }
 
 describe('Desktop Supabase Backend staging release authority', () => {
+  test.each(['missing-artifact', 'null-artifact', 'missing-manifest', 'null-manifest'] as const)(
+    'rejects a %s review envelope before credentials or strict release',
+    async (shape) => {
+      const reviewed = structuredClone(await previousReview())
+      if (shape === 'missing-artifact') Reflect.deleteProperty(reviewed, 'artifact')
+      if (shape === 'null-artifact') Reflect.set(reviewed, 'artifact', null)
+      if (shape === 'missing-manifest') Reflect.deleteProperty(reviewed.artifact, 'manifest')
+      if (shape === 'null-manifest') Reflect.set(reviewed.artifact, 'manifest', null)
+      const sensitive: string[] = []
+      const service = createDesktopSupabaseBackendStagingReleaseService(
+        dependencies({
+          resolveReadCredential: async () => {
+            sensitive.push('read-credential')
+            return READ_PAT
+          },
+          resolveWriteCredential: async () => {
+            sensitive.push('write-credential')
+            return WRITE_PAT
+          },
+          prepareStrictStagingRelease: async () => {
+            sensitive.push('strict-release')
+            throw new Error('must not run')
+          }
+        })
+      )
+      expect(await errorCode(service.release(releaseInput(reviewed)))).toBe('review-stale')
+      expect(sensitive).toEqual([])
+    }
+  )
+
+  test.each(['vue', 'flutter', null])(
+    'rejects a recomputed review target of %s before credentials or strict release',
+    async (target) => {
+      const reviewed = await previousReview()
+      if (target === null) Reflect.deleteProperty(reviewed.artifact.manifest, 'target')
+      else Reflect.set(reviewed.artifact.manifest, 'target', target)
+      Reflect.set(
+        reviewed.artifact,
+        'manifestDigest',
+        await digestCanonicalManifest(reviewed.artifact.manifest)
+      )
+      const sensitive: string[] = []
+      const service = createDesktopSupabaseBackendStagingReleaseService(
+        dependencies({
+          resolveReadCredential: async () => {
+            sensitive.push('read-credential')
+            return READ_PAT
+          },
+          resolveWriteCredential: async () => {
+            sensitive.push('write-credential')
+            return WRITE_PAT
+          },
+          prepareStrictStagingRelease: async () => {
+            sensitive.push('strict-release')
+            throw new Error('must not run')
+          }
+        })
+      )
+      expect(await errorCode(service.release(releaseInput(reviewed)))).toBe('review-stale')
+      expect(sensitive).toEqual([])
+    }
+  )
+
+  test.each(['plan', 'emission'] as const)(
+    'rejects a mismatched %s target even when all previous digests are retained',
+    async (field) => {
+      const reviewed = await previousReview()
+      const build = {
+        ...BUILD,
+        plan: { ...BUILD.plan },
+        emission: { ...BUILD.emission, manifest: { ...BUILD.emission.manifest } }
+      }
+      Reflect.set(field === 'plan' ? build.plan : build.emission.manifest, 'target', 'vue')
+      let credentialReads = 0
+      const service = createDesktopSupabaseBackendStagingReleaseService(
+        dependencies({
+          prepareBuild: () => build,
+          resolveReadCredential: async () => {
+            credentialReads += 1
+            return READ_PAT
+          }
+        })
+      )
+      expect(await errorCode(service.release(releaseInput(reviewed)))).toBe('review-stale')
+      expect(credentialReads).toBe(0)
+    }
+  )
+
+  test('uses the captured Vue target for initial build and local revalidation', async () => {
+    const build = await preparedBuild('vue')
+    const reviewed = await previousReview(build)
+    const targets: unknown[] = []
+    let strictCalls = 0
+    const service = createDesktopSupabaseBackendStagingReleaseService(
+      dependencies({
+        prepareBuild(_graph, target) {
+          if (targets.length === 0) Reflect.set(reviewed.artifact.manifest, 'target', 'react')
+          targets.push(target)
+          return build
+        },
+        async prepareStrictStagingRelease(input) {
+          strictCalls += 1
+          expect(input.build.plan.target).toBe('vue')
+          expect(input.build.emission.manifest.target).toBe('vue')
+          await input.revalidateLocalAuthority({ stage: 'pre-apply' })
+          throw new DesktopSupabaseBackendStagingReleaseError('release-failed')
+        }
+      })
+    )
+    expect(await errorCode(service.release(releaseInput(reviewed)))).toBe('release-failed')
+    expect(strictCalls).toBe(1)
+    expect(targets).toEqual(['vue', 'vue'])
+  })
+
+  test.each(['plan', 'emission'] as const)(
+    'rejects %s target drift during local revalidation before dispatch',
+    async (field) => {
+      const reviewed = await previousReview()
+      const drifted = {
+        ...BUILD,
+        plan: { ...BUILD.plan },
+        emission: { ...BUILD.emission, manifest: { ...BUILD.emission.manifest } }
+      }
+      Reflect.set(field === 'plan' ? drifted.plan : drifted.emission.manifest, 'target', 'vue')
+      let buildCalls = 0
+      let dispatchReached = false
+      const service = createDesktopSupabaseBackendStagingReleaseService(
+        dependencies({
+          prepareBuild: () => (++buildCalls === 1 ? BUILD : drifted),
+          async prepareStrictStagingRelease(input) {
+            await input.revalidateLocalAuthority({ stage: 'pre-apply' })
+            dispatchReached = true
+            throw new Error('must not dispatch')
+          }
+        })
+      )
+      expect(await errorCode(service.release(releaseInput(reviewed)))).toBe('review-stale')
+      expect(buildCalls).toBe(2)
+      expect(dispatchReached).toBe(false)
+    }
+  )
+
   test('rejects a stale reviewed artifact before resolving either credential', async () => {
     const reviewed = await previousReview()
     let credentialReads = 0

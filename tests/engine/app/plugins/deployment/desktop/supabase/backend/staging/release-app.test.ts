@@ -31,6 +31,7 @@ import {
   type AppBackendProviderHostStore
 } from '@/app/plugins/host/backend-provider'
 import { createMemoryBackendHostReleaseDispatchJournal } from '@/app/plugins/host/deployment/backend/release-journal'
+import type { BackendHostReleaseDispatchJournal } from '@/app/plugins/host/deployment/backend/release-journal'
 import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
 import { createAppDesktopSupabaseBackendReviewServiceForTestingV1 } from '@/app/plugins/host/deployment/desktop/supabase/backend/review-app'
 import { DesktopSupabaseBackendStagingReleaseError } from '@/app/plugins/host/deployment/desktop/supabase/backend/staging/release'
@@ -38,6 +39,7 @@ import {
   createAppDesktopSupabaseBackendStagingReleaseService,
   createAppDesktopSupabaseBackendStagingReleaseServiceForTestingV1
 } from '@/app/plugins/host/deployment/desktop/supabase/backend/staging/release-app'
+import type { DesktopSupabaseBackendTarget } from '@/app/plugins/host/deployment/desktop/supabase/backend/target'
 import type { SupabaseManagementDatabaseApplyFetch } from '@/app/plugins/host/deployment/supabase/management/database-apply-transport'
 import type { SupabaseManagementDesktopFetch } from '@/app/plugins/host/deployment/supabase/management/pg-catalog-transport'
 import { appCredentialServices } from '@/app/settings/credentials/app'
@@ -259,7 +261,7 @@ function installStagingBinding(): void {
   })
 }
 
-async function setup(): Promise<{
+async function setup(target: DesktopSupabaseBackendTarget = 'react'): Promise<{
   store: AppBackendProviderHostStore
   graph: AppBackendProviderDocumentGraph
   baseline: SupabaseInspectedMigrationSnapshotV1
@@ -304,7 +306,8 @@ async function setup(): Promise<{
   })
   const reviewed = await reviewService.review({
     config: { url: PROJECT_URL, anonKey: '', schema: 'public' },
-    graph: documentGraph
+    graph: documentGraph,
+    target
   })
   return { store, graph: documentGraph, baseline, applied, reviewed, readFetcher }
 }
@@ -312,7 +315,8 @@ async function setup(): Promise<{
 function releaseService(
   prepared: Awaited<ReturnType<typeof setup>>,
   writeFetcher: SupabaseManagementDatabaseApplyFetch,
-  resolveGrantGeneration: () => Promise<string | null> = async () => GRANT_GENERATION
+  resolveGrantGeneration: () => Promise<string | null> = async () => GRANT_GENERATION,
+  dispatchJournal: BackendHostReleaseDispatchJournal = createMemoryBackendHostReleaseDispatchJournal()
 ) {
   let id = 0
   let inspectionCount = 0
@@ -322,7 +326,7 @@ function releaseService(
     pluginStoreReady: () => Promise.resolve(),
     readFetcher: prepared.readFetcher,
     writeFetcher,
-    dispatchJournal: createMemoryBackendHostReleaseDispatchJournal(),
+    dispatchJournal,
     inspectCatalog: async () => {
       inspectionCount += 1
       return inspectionCount < 3 ? prepared.baseline : prepared.applied
@@ -336,7 +340,7 @@ function releaseService(
       })
     },
     now: () => NOW,
-    nextId: () => `release-id-${++id}`,
+    nextId: () => `${prepared.reviewed.artifact.manifest.target}-release-id-${++id}`,
     dependencyOverrides: {
       resolveReadCredential: async () => READ_PAT,
       resolveWriteCredential: async () => WRITE_PAT,
@@ -399,32 +403,36 @@ describe('Desktop Supabase staging Apply app wiring', () => {
     })
   })
 
-  test('dispatches one reviewed migration then verifies the post-Apply catalog snapshot', async () => {
-    const prepared = await setup()
-    const requests: Array<{ method: string; body: string }> = []
-    const writeFetcher: SupabaseManagementDatabaseApplyFetch = async (input, init) => {
-      const method = init?.method ?? 'GET'
-      requests.push({ method, body: String(init?.body ?? '') })
-      return method === 'GET'
-        ? projectResponse(String(input))
-        : jsonResponse([], 201, String(input))
+  test.each(['react', 'vue'] as const)(
+    'dispatches one reviewed %s migration then verifies the post-Apply catalog snapshot',
+    async (target) => {
+      const prepared = await setup(target)
+      const requests: Array<{ method: string; body: string }> = []
+      const writeFetcher: SupabaseManagementDatabaseApplyFetch = async (input, init) => {
+        const method = init?.method ?? 'GET'
+        requests.push({ method, body: String(init?.body ?? '') })
+        return method === 'GET'
+          ? projectResponse(String(input))
+          : jsonResponse([], 201, String(input))
+      }
+      const service = releaseService(prepared, writeFetcher)
+
+      const result = await service.release(releaseInput(prepared))
+
+      expect(result.outcome).toBe('succeeded')
+      expect(result.receipt.outcome).toBe('succeeded')
+      expect(result.receipt.environment).toBe('staging')
+      expect(result.productionReleaseReady).toBe(false)
+      expect(prepared.reviewed.artifact.manifest.target).toBe(target)
+      expect(requests.map(({ method }) => method)).toEqual(['GET', 'GET', 'POST'])
+      const body = JSON.parse(requests[2]?.body ?? '{}')
+      expect(Object.keys(body)).toEqual(['query', 'read_only'])
+      expect(body.read_only).toBe(false)
+      expect(body.query).toBe(prepared.reviewed.artifact.inspectedReview.sql)
+      expect(JSON.stringify(result)).not.toContain(READ_PAT)
+      expect(JSON.stringify(result)).not.toContain(WRITE_PAT)
     }
-    const service = releaseService(prepared, writeFetcher)
-
-    const result = await service.release(releaseInput(prepared))
-
-    expect(result.outcome).toBe('succeeded')
-    expect(result.receipt.outcome).toBe('succeeded')
-    expect(result.receipt.environment).toBe('staging')
-    expect(result.productionReleaseReady).toBe(false)
-    expect(requests.map(({ method }) => method)).toEqual(['GET', 'GET', 'POST'])
-    const body = JSON.parse(requests[2]?.body ?? '{}')
-    expect(Object.keys(body)).toEqual(['query', 'read_only'])
-    expect(body.read_only).toBe(false)
-    expect(body.query).toBe(prepared.reviewed.artifact.inspectedReview.sql)
-    expect(JSON.stringify(result)).not.toContain(READ_PAT)
-    expect(JSON.stringify(result)).not.toContain(WRITE_PAT)
-  })
+  )
 
   test('records an uncertain POST failure as outcome-unknown without retry', async () => {
     const prepared = await setup()
@@ -443,6 +451,46 @@ describe('Desktop Supabase staging Apply app wiring', () => {
     expect(result.state.reconcileRequired).toBe(true)
     expect(result.receipt.failure).toMatchObject({ outcomeUnknown: true })
     expect(postCalls).toBe(1)
+  })
+
+  test('keeps a React unknown dispatch locked when the same project is reviewed for Vue', async () => {
+    const react = await setup()
+    const vue = await setup('vue')
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    let reactPosts = 0
+    const reactService = releaseService(
+      react,
+      async (input, init) => {
+        if ((init?.method ?? 'GET') === 'GET') return projectResponse(String(input))
+        reactPosts += 1
+        throw new TypeError('POST outcome unknown')
+      },
+      undefined,
+      journal
+    )
+    const initial = await reactService.release(releaseInput(react))
+    expect(initial.outcome).toBe('outcome-unknown')
+    expect(reactPosts).toBe(1)
+
+    const before = await journal.listUnresolved()
+    expect(before).toHaveLength(1)
+    const vueRequests: string[] = []
+    const vueService = releaseService(
+      vue,
+      async (input, init) => {
+        vueRequests.push(init?.method ?? 'GET')
+        return projectResponse(String(input))
+      },
+      undefined,
+      journal
+    )
+    const second = await vueService.release(releaseInput(vue))
+    expect(second.outcome).toBe('outcome-unknown')
+    expect(second.receipt.failure?.code).toBe('backend-release-dispatch-in-flight')
+    expect(vueRequests).toEqual(['GET'])
+    expect(second.state.automaticRetryAllowed).toBe(false)
+    expect(second.state.reconcileRequired).toBe(true)
+    expect(await journal.listUnresolved()).toEqual(before)
   })
 
   test('retains the durable fence when a pre-POST failure lacks authenticated non-dispatch proof', async () => {

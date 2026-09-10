@@ -1,8 +1,6 @@
 import { createSupabaseSourceMigrationBundle } from '@open-pencil/compiler/backend'
 
 import { appPluginStore } from '@/app/plugins/app'
-import { isTauri } from '@/app/tauri/env'
-
 import {
   prepareAppBackendProviderDocumentBuild,
   resolveAppBackendProviderReleaseAuthority,
@@ -10,6 +8,8 @@ import {
 } from '@/app/plugins/host/backend-provider'
 import { archiveProjectFiles } from '@/app/plugins/host/project-archive'
 import { choosePluginFileExportDestination } from '@/app/plugins/host/source-exporter-runtime'
+import { isTauri } from '@/app/tauri/env'
+
 import {
   createDesktopSupabaseSourceMigrationExportService,
   DesktopSupabaseSourceMigrationExportError,
@@ -50,10 +50,10 @@ export function createAppDesktopSupabaseSourceMigrationExportService(
     isDesktop: options.isDesktop ?? isTauri,
     now: options.now ?? (() => new Date().toISOString()),
     nextId: options.nextId ?? randomId,
-    async prepareBuild(graph) {
+    async prepareBuild(graph, target) {
       await Promise.resolve(waitForPluginStoreReady())
       return prepareAppBackendProviderDocumentBuild(pluginStore, graph, {
-        target: 'react',
+        target,
         mode: 'production'
       })
     },

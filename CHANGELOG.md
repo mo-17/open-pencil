@@ -12,6 +12,7 @@
 
 ### Added
 
+- Choose React or Vue for Desktop Backend review, staging Apply, capability verification, and migration export, with a fresh review required after switching frameworks.
 - Edit nested Backend Workflow branches and declare server environment reference names, with reference-preserving renames and deletion guards.
 - Add a searchable command palette for editor and application actions.
 - Render triangle and line arrow stroke caps on lines and open vector paths, and choose them from the stroke cap picker.

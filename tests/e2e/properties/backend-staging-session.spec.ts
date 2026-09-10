@@ -11,7 +11,7 @@ import { CanvasHelper } from '#tests/helpers/canvas'
 
 const PROJECT_REF = 'enekobitnhobuiuamvqj'
 
-test('Inspector preserves a thrown staging unknown outcome across configuration and editor lifecycles', async ({
+test('Inspector preserves a thrown staging unknown outcome across framework, configuration and editor lifecycles', async ({
   page
 }) => {
   test.setTimeout(60_000)
@@ -43,6 +43,8 @@ test('Inspector preserves a thrown staging unknown outcome across configuration 
   }, PROJECT_REF)
   const inspector = page.getByTestId('lowcode-supabase-schema-inspector')
   await expect(inspector).toBeVisible()
+  const framework = inspector.getByRole('combobox', { name: 'App framework', exact: true })
+  await expect(framework).toHaveText('React')
   await expect(page.getByTestId('lowcode-supabase-backend-review-artifact')).toHaveCount(0)
 
   const seeded = await seedUnknownSession(page)
@@ -53,6 +55,22 @@ test('Inspector preserves a thrown staging unknown outcome across configuration 
     result: null
   })
   await expectUnknownWithoutApply(page)
+
+  // Framework choice changes review authority, never the unresolved database session.
+  await framework.click()
+  await page.getByRole('option', { name: 'Vue', exact: true }).click()
+  await expect(framework).toHaveText('Vue')
+  await expectUnknownWithoutApply(page)
+  await expect(page.getByTestId('lowcode-supabase-backend-review-action')).toBeDisabled()
+  await framework.scrollIntoViewIfNeeded()
+  const frameworkBounds = await framework.boundingBox()
+  const inspectorBounds = await inspector.boundingBox()
+  if (!frameworkBounds || !inspectorBounds) throw new Error('Framework control is not visible')
+  expect(frameworkBounds.x).toBeGreaterThanOrEqual(inspectorBounds.x)
+  expect(frameworkBounds.x + frameworkBounds.width).toBeLessThanOrEqual(
+    inspectorBounds.x + inspectorBounds.width
+  )
+  await page.screenshot({ path: test.info().outputPath('backend-vue-selection.png') })
 
   // Change the actual document configuration through its property-panel control.
   const schema = page.getByTestId('lowcode-supabase-schema')

@@ -1168,6 +1168,8 @@
   "lowcodeSupabaseSchemaCopied": "Copied",
   "lowcodeSupabaseSchemaCopyFailed": "Could not copy the identifier.",
   "lowcodeSupabaseBackendReview": "Backend Provider review",
+  "lowcodeSupabaseBackendReviewTarget": "Framework de la aplicación",
+  "lowcodeSupabaseBackendReviewInvalidTarget": "Selecciona React o Vue para revisar el backend.",
   "lowcodeSupabaseBackendReviewDescription": "Inspect the live public schema and generate a provider-authority-bound migration review.",
   "lowcodeSupabaseBackendReviewOnly": "Review only. Live Apply and Verify are unavailable from this action.",
   "lowcodeSupabaseBackendReviewDesktopOnly": "Backend review is available only in the desktop app.",

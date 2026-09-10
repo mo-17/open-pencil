@@ -11,6 +11,7 @@ import {
   type DesktopSupabaseBackendReviewResult,
   type DesktopSupabaseBackendReviewService
 } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
+import type { DesktopSupabaseBackendTarget } from '@/app/plugins/host/deployment/desktop/supabase/backend/target'
 
 const PROJECT_URL = 'https://enekobitnhobuiuamvqj.supabase.co'
 const GRAPH: AppBackendProviderDocumentGraph = {
@@ -89,6 +90,7 @@ describe('Supabase Backend Provider review composable', () => {
       async review(input) {
         calls += 1
         expect(input.readConfig?.()).toBe(config.value)
+        expect(input.target).toBe('react')
         return RESULT
       }
     }
@@ -212,4 +214,96 @@ describe('Supabase Backend Provider review composable', () => {
     expect(review.state.value).toBe('ready')
     scope.stop()
   })
+
+  test('binds explicit reviews to the selected framework and clears the previous result', async () => {
+    const target = ref<DesktopSupabaseBackendTarget>('vue')
+    const targets: unknown[] = []
+    const scope = effectScope()
+    const review = scope.run(() =>
+      useSupabaseBackendProviderReview(
+        ref<SupabaseConfig>({ url: PROJECT_URL, anonKey: '' }),
+        () => GRAPH,
+        {
+          readTarget: () => target.value,
+          service: {
+            async review(input) {
+              targets.push(input.target)
+              return RESULT
+            }
+          }
+        }
+      )
+    )
+    if (!review) throw new Error('Missing composable')
+    try {
+      expect(targets).toEqual([])
+      await review.review()
+      expect(targets).toEqual(['vue'])
+      expect(review.result.value).toBe(RESULT)
+      target.value = 'react'
+      expect(review.state.value).toBe('idle')
+      expect(review.result.value).toBeNull()
+      expect(targets).toEqual(['vue'])
+      await review.review()
+      expect(targets).toEqual(['vue', 'react'])
+      expect(review.result.value).toBe(RESULT)
+    } finally {
+      scope.stop()
+    }
+  })
+
+  test.each(['resolve', 'reject'] as const)(
+    'does not restore a stale %s after changing frameworks and immediately switching back',
+    async (completion) => {
+      const target = ref<DesktopSupabaseBackendTarget>('react')
+      const pending = Promise.withResolvers<DesktopSupabaseBackendReviewResult>()
+      let firstSignal: AbortSignal | undefined
+      let calls = 0
+      const scope = effectScope()
+      const review = scope.run(() =>
+        useSupabaseBackendProviderReview(
+          ref<SupabaseConfig>({ url: PROJECT_URL, anonKey: '' }),
+          () => GRAPH,
+          {
+            readTarget: () => target.value,
+            service: {
+              review(input) {
+                calls += 1
+                if (calls === 1) {
+                  firstSignal = input.signal
+                  return pending.promise
+                }
+                return Promise.resolve(RESULT)
+              }
+            }
+          }
+        )
+      )
+      if (!review) throw new Error('Missing composable')
+      const first = review.review()
+      try {
+        target.value = 'vue'
+        target.value = 'react'
+        expect(firstSignal?.aborted).toBe(true)
+        expect(review.state.value).toBe('idle')
+        expect(calls).toBe(1)
+        await review.review()
+        expect(review.result.value).toBe(RESULT)
+        if (completion === 'resolve') {
+          pending.resolve({ ...RESULT, documentDigest: 'stale-document' })
+        } else {
+          pending.reject(new DesktopSupabaseBackendReviewError('review-stale'))
+        }
+        await first
+        expect(review.state.value).toBe('ready')
+        expect(review.error.value).toBeNull()
+        expect(review.result.value).toBe(RESULT)
+        expect(calls).toBe(2)
+      } finally {
+        pending.resolve(RESULT)
+        await first
+        scope.stop()
+      }
+    }
+  )
 })

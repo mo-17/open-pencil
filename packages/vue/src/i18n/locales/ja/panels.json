@@ -1168,6 +1168,8 @@
   "lowcodeSupabaseSchemaCopied": "Copied",
   "lowcodeSupabaseSchemaCopyFailed": "Could not copy the identifier.",
   "lowcodeSupabaseBackendReview": "Backend Provider review",
+  "lowcodeSupabaseBackendReviewTarget": "アプリのフレームワーク",
+  "lowcodeSupabaseBackendReviewInvalidTarget": "バックエンドのレビューに使用するアプリのフレームワークを選択してください。",
   "lowcodeSupabaseBackendReviewDescription": "Inspect the live public schema and generate a provider-authority-bound migration review.",
   "lowcodeSupabaseBackendReviewOnly": "Review only. Live Apply and Verify are unavailable from this action.",
   "lowcodeSupabaseBackendReviewDesktopOnly": "Backend review is available only in the desktop app.",

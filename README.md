@@ -45,7 +45,9 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   provider-neutral IR; resolve only data-only declarations backed by trusted static adapters; emit
   deterministic local artifacts; and keep Inspect/Review/Confirm/Apply/Verify plus strict production
   evidence in a separate host-owned release controller. Supabase is the first bundled Provider;
-  compilation and preview never modify a remote database or deploy a server runtime
+  Desktop review supports React and Vue, with the chosen framework retained through staging
+  Apply, capability verification, and migration export. Compilation and preview never modify a
+  remote database or deploy a server runtime
 - **Built-in plugin marketplace** — manage 68 reviewed plugins with 73 module, command, exporter,
   connector, storage-provider, and backend-provider contributions: 20 editable modules, 13 bounded commands, 13
   source/data exporters, 22 host-reviewed connectors, one bundled Supabase Backend Provider, and four default-enabled Google Drive,

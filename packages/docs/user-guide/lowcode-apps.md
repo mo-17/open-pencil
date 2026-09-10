@@ -443,6 +443,10 @@ The root **Supabase** panel separates public app configuration from management a
   store. The PAT is not written to the `.fig` document or reactive editor state. The local cache
   contains only a bounded normalized table/column/relation catalog, never the PAT or raw OpenAPI
   response.
+- In Desktop **Backend Provider review**, choose **React** or **Vue** under **App framework** before
+  generating a review. Staging Apply, capability verification, and source migration export use the
+  reviewed framework. Switching frameworks clears the review and confirmation; generate a new
+  review to continue. An unknown database operation still blocks that project across both frameworks.
 - The RLS advisor combines event actions, named client workflows, LIST queries, Storage uploads,
   and server workflow queries/mutations. Its SQL is a reviewable starting point, not proof that the
   target database has the policy. In particular, UPDATE and DELETE also need matching SELECT

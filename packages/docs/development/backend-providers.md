@@ -377,6 +377,15 @@ and Storage use separate operation-scoped Host authorities: neither reuses the m
 inherits authority from a frontend build. Browser and CLI expose no remote executor, and production
 database Apply remains unavailable.
 
+Desktop Backend review accepts React and Vue as explicit application targets, with React as the
+default for callers that omit a target. Apply, capability verification, and source migration export
+take the target from the reviewed manifest and use it for each fresh build and authority recheck.
+The manifest, plan, and emission targets must agree; a missing or unsupported reviewed target is
+rejected before privileged execution or opening an export destination. The Inspector locks framework
+selection during operations and clears the old review and confirmation when the selection changes. The
+durable unresolved project scope remains shared across frameworks, so changing React to Vue cannot
+authorize another write while the database outcome is unknown.
+
 ### Source migrations and environment promotion
 
 Every ready inspected review can be exported from the Desktop review panel as an exact ZIP containing

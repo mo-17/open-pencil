@@ -19,6 +19,7 @@ import type { CredentialStatus } from '@/app/settings/credentials/types'
 
 import { backendDocumentDigest, normalizedConfig, sameAuthority, sameBuild } from '../binding'
 import type { DesktopSupabaseBackendReviewResult } from '../review'
+import { isDesktopSupabaseBackendTarget, type DesktopSupabaseBackendTarget } from '../target'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -115,7 +116,8 @@ export interface DesktopSupabaseStrictStagingReleaseInput {
 
 export interface DesktopSupabaseBackendStagingReleaseDependencies {
   prepareBuild(
-    graph: AppBackendProviderDocumentGraph
+    graph: AppBackendProviderDocumentGraph,
+    target: DesktopSupabaseBackendTarget
   ): MaybePromise<PreparedAppBackendProviderBuild | null>
   resolveBackendProviderAuthority(
     build: PreparedAppBackendProviderBuild
@@ -183,7 +185,9 @@ function snapshotExpectedReview(
   value: DesktopSupabaseBackendReviewResult
 ): DesktopSupabaseBackendReviewResult {
   try {
-    return freezeSnapshot(structuredClone(value))
+    const reviewed = freezeSnapshot(structuredClone(value))
+    if (!isDesktopSupabaseBackendTarget(reviewed.artifact.manifest.target)) fail('review-stale')
+    return reviewed
   } catch {
     return fail('review-stale')
   }
@@ -209,6 +213,8 @@ async function assertExpectedReview(
     runtimeField(manifest, 'format') !== 'openpencil.supabase-backend-host-review.v1' ||
     runtimeField(manifest, 'version') !== 1 ||
     manifest.environment !== 'staging' ||
+    manifest.target !== expected.build.plan.target ||
+    manifest.target !== expected.build.emission.manifest.target ||
     manifest.documentDigest !== expected.documentDigest ||
     reviewed.documentDigest !== expected.documentDigest ||
     reviewed.projectRef !== expected.projectRef ||
@@ -294,6 +300,8 @@ export function createDesktopSupabaseBackendStagingReleaseService(
         const config = input.config ? Object.freeze({ ...input.config }) : undefined
         const readConfig = input.readConfig
         const reviewed = snapshotExpectedReview(input.reviewed)
+        const target = reviewed.artifact.manifest.target
+        if (!isDesktopSupabaseBackendTarget(target)) fail('review-stale')
         const projectRefConfirmation = input.projectRefConfirmation
         const confirmedIndependentStaging = runtimeField(input, 'confirmedIndependentStaging')
         const signal = input.signal
@@ -308,12 +316,15 @@ export function createDesktopSupabaseBackendStagingReleaseService(
 
         let build: PreparedAppBackendProviderBuild | null
         try {
-          build = await dependencies.prepareBuild(graph)
+          build = await dependencies.prepareBuild(graph, target)
         } catch {
           return fail('backend-provider-unavailable')
         }
         if (!build) fail('backend-provider-missing')
         if (build.descriptor.providerId !== 'supabase') fail('backend-provider-unavailable')
+        if (build.plan.target !== target || build.emission.manifest.target !== target) {
+          fail('review-stale')
+        }
 
         let backendProvider: BackendReleaseProviderAuthorityV1 | null
         try {
@@ -380,7 +391,7 @@ export function createDesktopSupabaseBackendStagingReleaseService(
           const currentConfig = normalizedConfig(readConfig?.() ?? config)
           let currentBuild: PreparedAppBackendProviderBuild | null
           try {
-            currentBuild = await dependencies.prepareBuild(graph)
+            currentBuild = await dependencies.prepareBuild(graph, target)
           } catch {
             return fail('review-stale')
           }
@@ -388,6 +399,8 @@ export function createDesktopSupabaseBackendStagingReleaseService(
             !currentConfig ||
             currentConfig.projectRef !== projectRef ||
             !currentBuild ||
+            currentBuild.plan.target !== target ||
+            currentBuild.emission.manifest.target !== target ||
             !sameBuild(currentBuild, build) ||
             (await backendDocumentDigest(graph, currentBuild, projectRef, schema)) !==
               documentDigest

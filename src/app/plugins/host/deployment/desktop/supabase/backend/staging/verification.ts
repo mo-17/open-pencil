@@ -30,6 +30,7 @@ import type { CredentialStatus } from '@/app/settings/credentials/types'
 
 import { backendDocumentDigest, sameAuthority, sameBuild } from '../binding'
 import type { DesktopSupabaseBackendReviewResult } from '../review'
+import { isDesktopSupabaseBackendTarget, type DesktopSupabaseBackendTarget } from '../target'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -222,7 +223,8 @@ export interface DesktopSupabaseBackendStagingVerificationDependencies {
   readonly now: () => string
   readonly dispatchJournal: BackendHostReleaseDispatchJournal
   readonly prepareBuild: (
-    graph: AppBackendProviderDocumentGraph
+    graph: AppBackendProviderDocumentGraph,
+    target: DesktopSupabaseBackendTarget
   ) => MaybePromise<PreparedAppBackendProviderBuild | null>
   readonly resolveBackendProviderAuthority: (
     build: PreparedAppBackendProviderBuild
@@ -333,6 +335,8 @@ async function assertExpectedReview(
     manifest.format !== 'openpencil.supabase-backend-host-review.v1' ||
     manifest.version !== 1 ||
     manifest.environment !== 'staging' ||
+    manifest.target !== expected.build.plan.target ||
+    manifest.target !== expected.build.emission.manifest.target ||
     reviewed.reviewReady !== true ||
     reviewed.blockerCount !== 0 ||
     reviewed.applyAvailable !== false ||
@@ -660,6 +664,8 @@ export function createDesktopSupabaseBackendStagingVerificationService(
         const config = input.config ? Object.freeze({ ...input.config }) : undefined
         const readConfig = input.readConfig
         const reviewed = snapshotReview(input.reviewed)
+        const target = reviewed?.artifact?.manifest?.target
+        if (!isDesktopSupabaseBackendTarget(target)) fail('review-stale')
         const projectRefConfirmation = input.projectRefConfirmation
         const confirmedIndependentStaging = input.confirmedIndependentStaging
         const signal = input.signal
@@ -678,11 +684,14 @@ export function createDesktopSupabaseBackendStagingVerificationService(
 
         let build: PreparedAppBackendProviderBuild | null
         try {
-          build = await dependencies.prepareBuild(graph)
+          build = await dependencies.prepareBuild(graph, target)
         } catch {
           return fail('backend-provider-unavailable')
         }
         if (!build) fail('backend-provider-missing')
+        if (build.plan.target !== target || build.emission.manifest.target !== target) {
+          fail('review-stale')
+        }
         if (build.descriptor.providerId !== 'supabase') fail('backend-provider-unavailable')
 
         let backendProvider: BackendReleaseProviderAuthorityV1 | null
@@ -949,7 +958,7 @@ export function createDesktopSupabaseBackendStagingVerificationService(
           const currentConfig = normalizedConfig(readConfig?.() ?? config)
           let currentBuild: PreparedAppBackendProviderBuild | null
           try {
-            currentBuild = await dependencies.prepareBuild(graph)
+            currentBuild = await dependencies.prepareBuild(graph, target)
           } catch {
             return fail('review-stale')
           }
@@ -958,6 +967,8 @@ export function createDesktopSupabaseBackendStagingVerificationService(
             currentConfig.projectRef !== projectRef ||
             currentConfig.publishableKey !== publishableKey ||
             !currentBuild ||
+            currentBuild.plan.target !== target ||
+            currentBuild.emission.manifest.target !== target ||
             !sameBuild(currentBuild, build) ||
             (await backendDocumentDigest(graph, currentBuild, projectRef, schema)) !==
               documentDigest

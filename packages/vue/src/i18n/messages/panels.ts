@@ -1213,6 +1213,8 @@ export const panelMessageDefaults = {
   lowcodeSupabaseSchemaCopied: 'Copied',
   lowcodeSupabaseSchemaCopyFailed: 'Could not copy the identifier.',
   lowcodeSupabaseBackendReview: 'Backend Provider review',
+  lowcodeSupabaseBackendReviewTarget: 'App framework',
+  lowcodeSupabaseBackendReviewInvalidTarget: 'Select React or Vue for backend review.',
   lowcodeSupabaseBackendReviewDescription:
     'Inspect the live public schema and generate a provider-authority-bound migration review.',
   lowcodeSupabaseBackendReviewOnly:

@@ -20,14 +20,18 @@ import {
   normalizeSupabaseSchemaName,
   projectRefFromSupabaseURL
 } from '@/app/lowcode/supabase/management-client'
-
 import type {
   AppBackendProviderDocumentGraph,
   PreparedAppBackendProviderBuild
 } from '@/app/plugins/host/backend-provider'
 import { validateProjectArchivePath } from '@/app/plugins/host/project-archive'
 import type { PluginFileExportDestination } from '@/app/plugins/host/source-exporter-runtime'
+
 import type { DesktopSupabaseBackendReviewResult } from '../backend/review'
+import {
+  isDesktopSupabaseBackendTarget,
+  type DesktopSupabaseBackendTarget
+} from '../backend/target'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -122,7 +126,8 @@ export interface DesktopSupabaseSourceMigrationExportDependencies {
   readonly now: () => string
   readonly nextId: () => string
   readonly prepareBuild: (
-    graph: AppBackendProviderDocumentGraph
+    graph: AppBackendProviderDocumentGraph,
+    target: DesktopSupabaseBackendTarget
   ) => MaybePromise<PreparedAppBackendProviderBuild | null>
   readonly resolveBackendProviderAuthority: (
     build: PreparedAppBackendProviderBuild
@@ -152,6 +157,7 @@ interface NormalizedConfig {
 }
 
 interface ExpectedLocalAuthority {
+  readonly target: DesktopSupabaseBackendTarget
   readonly build: PreparedAppBackendProviderBuild
   readonly backendProvider: BackendReleaseProviderAuthorityV1
   readonly documentDigest: string
@@ -307,6 +313,8 @@ async function assertExpectedReview(
     manifest.format !== 'openpencil.supabase-backend-host-review.v1' ||
     manifest.version !== 1 ||
     manifest.environment !== 'staging' ||
+    manifest.target !== expected.build.plan.target ||
+    manifest.target !== expected.build.emission.manifest.target ||
     reviewed.applyAvailable !== false ||
     reviewed.applyPerformed !== false ||
     reviewed.documentDigest !== expected.documentDigest ||
@@ -389,17 +397,21 @@ async function captureAuthority(
   dependencies: DesktopSupabaseSourceMigrationExportDependencies,
   input: DesktopSupabaseSourceMigrationExportInput,
   reviewed: DesktopSupabaseBackendReviewResult,
-  config: NormalizedConfig
+  config: NormalizedConfig,
+  target: DesktopSupabaseBackendTarget
 ): Promise<ExpectedLocalAuthority> {
   let prepared: PreparedAppBackendProviderBuild | null
   try {
-    prepared = await dependencies.prepareBuild(input.graph)
+    prepared = await dependencies.prepareBuild(input.graph, target)
   } catch (cause) {
     return fail('backend-provider-unavailable', cause)
   }
   if (!prepared) fail('backend-provider-missing')
   if (prepared.descriptor.providerId !== 'supabase') fail('backend-provider-unavailable')
   const build = snapshotBuild(prepared)
+  if (build.plan.target !== target || build.emission.manifest.target !== target) {
+    fail('review-stale')
+  }
 
   let resolved: BackendReleaseProviderAuthorityV1 | null
   try {
@@ -411,7 +423,7 @@ async function captureAuthority(
   const backendProvider = snapshot(resolved, 'backend-provider-unavailable')
   const documentDigest = await backendDocumentDigest(input.graph, build, config)
   await assertExpectedReview(reviewed, { build, backendProvider, documentDigest, config })
-  return Object.freeze({ build, backendProvider, documentDigest, config, reviewed })
+  return Object.freeze({ target, build, backendProvider, documentDigest, config, reviewed })
 }
 
 async function revalidateAuthority(
@@ -423,7 +435,7 @@ async function revalidateAuthority(
   const config = normalizedConfig(input.readConfig?.() ?? input.config)
   let build: PreparedAppBackendProviderBuild | null
   try {
-    build = await dependencies.prepareBuild(input.graph)
+    build = await dependencies.prepareBuild(input.graph, expected.target)
   } catch (cause) {
     return fail('review-stale', cause)
   }
@@ -432,6 +444,8 @@ async function revalidateAuthority(
     config.projectRef !== expected.config.projectRef ||
     config.schema !== expected.config.schema ||
     !build ||
+    build.plan.target !== expected.target ||
+    build.emission.manifest.target !== expected.target ||
     !sameBuild(build, expected.build) ||
     (await backendDocumentDigest(input.graph, build, config)) !== expected.documentDigest
   ) {
@@ -602,7 +616,15 @@ export function createDesktopSupabaseSourceMigrationExportService(
         const initialConfig = normalizedConfig(input.readConfig?.() ?? input.config)
         if (!initialConfig) fail('invalid-config')
         const reviewed = snapshot(input.reviewed, 'review-stale')
-        const expected = await captureAuthority(dependencies, input, reviewed, initialConfig)
+        const target = reviewed?.artifact?.manifest?.target
+        if (!isDesktopSupabaseBackendTarget(target)) fail('review-stale')
+        const expected = await captureAuthority(
+          dependencies,
+          input,
+          reviewed,
+          initialConfig,
+          target
+        )
 
         const registeredAt = dependencies.now()
         const migrationId = dependencies.nextId()

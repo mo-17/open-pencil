@@ -2,323 +2,227 @@ import { describe, expect, test } from 'bun:test'
 
 import { indexedDB as fakeIndexedDB } from 'fake-indexeddb'
 
-import type {
-  BackendApplicationSpecV1,
-  BackendReleaseProviderAuthorityV1
-} from '@open-pencil/lowcode/backend'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
-import {
-  createAppPluginStore,
-  createBundledPluginCatalog,
-  createMemoryAppPluginStateStorage,
-  type AppBundlePluginCatalogEntry
-} from '@/app/plugins'
-import {
-  APP_BACKEND_PROVIDER_REQUEST_FORMAT,
-  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
-  listAppBackendProviderDescriptors,
-  prepareAppBackendProviderBuild,
-  type AppBackendProviderDocumentGraph,
-  type PreparedAppBackendProviderBuild
-} from '@/app/plugins/host/backend-provider'
 import {
   createIdbBackendHostReleaseDispatchJournal,
   createMemoryBackendHostReleaseDispatchJournal,
   type BackendHostReleaseDispatchJournal
 } from '@/app/plugins/host/deployment/backend/release-journal'
-import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
 import {
   createDesktopSupabaseBackendStagingVerificationService,
-  DesktopSupabaseBackendStagingVerificationError,
-  type DesktopSupabaseBackendStagingCapabilityReceiptV1,
-  type DesktopSupabaseBackendStagingVerificationDependencies,
-  type DesktopSupabaseBackendStagingVerificationResult,
   type DesktopSupabaseStrictStagingVerificationInput
 } from '@/app/plugins/host/deployment/desktop/supabase/backend/staging/verification'
-import type { SupabaseBackendReleaseReviewArtifactV1 } from '@/app/plugins/host/deployment/supabase/backend-release'
 
-const PROJECT_REF = 'enekobitnhobuiuamvqj'
-const PROJECT_URL = `https://${PROJECT_REF}.supabase.co`
-const ACCOUNT_ID = 'organization-1'
-const GRANT_GENERATION = '123e4567-e89b-42d3-a456-426614174000'
-const READ_PAT = 'sbp_read_secret_canary_1234567890'
-const WRITE_PAT = 'sbp_write_secret_canary_1234567890'
-const PUBLISHABLE_KEY = ['sb', 'publishable', 'test', '1234567890'].join('_')
-const NOW = '2026-09-03T02:00:00.000Z'
-const AUTHORITY: BackendReleaseProviderAuthorityV1 = Object.freeze({
-  publisherId: 'open-pencil',
-  packageDigest: 'package-digest',
-  pluginId: 'open-pencil.supabase-backend',
-  contributionId: 'supabase.backend',
-  providerId: 'supabase',
-  adapterId: 'open-pencil.compiler.backend.supabase',
-  adapterVersion: '1.0.0',
-  contractVersion: 1,
-  supportedModelVersions: Object.freeze([1]),
-  capabilities: Object.freeze(['data.read']),
-  permissions: Object.freeze([]),
-  outputKinds: Object.freeze(['schema'])
-})
-
-function asFixture<T>(value: object): T {
-  return value as T
-}
-
-function bundledBackendProvider(): AppBundlePluginCatalogEntry {
-  const entry = createBundledPluginCatalog().find(
-    ({ manifest }) => manifest.plugin.id === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
-  )
-  if (entry?.trustSource !== 'app-bundle') throw new Error('Missing bundled Supabase provider')
-  return entry
-}
-
-function application(): BackendApplicationSpecV1 {
-  return {
-    format: 'openpencil.backend-application',
-    version: 1,
-    applicationId: 'staging-capability-test',
-    dataModel: { version: 1, entities: [], enums: [], relations: [] },
-    auth: {
-      version: 1,
-      identities: [],
-      roles: [],
-      ownership: [],
-      tenants: [],
-      rowAccess: []
-    },
-    workflows: { version: 1, workflows: [] },
-    capabilities: [],
-    secrets: []
-  }
-}
-
-async function preparedBuild(): Promise<PreparedAppBackendProviderBuild> {
-  const store = createAppPluginStore({
-    storage: createMemoryAppPluginStateStorage(),
-    catalog: [bundledBackendProvider()],
-    activationCompatibilityPolicy: () => ({ ok: true }),
-    engineVersion: '0.15.0'
-  })
-  const loaded = await store.load()
-  if (loaded.error) throw loaded.error
-  const descriptor = listAppBackendProviderDescriptors(store)[0]
-  if (!descriptor) throw new Error('Missing active Supabase provider')
-  return prepareAppBackendProviderBuild(
-    store,
-    {
-      format: APP_BACKEND_PROVIDER_REQUEST_FORMAT,
-      selection: descriptor,
-      application: application()
-    },
-    { target: 'react', mode: 'production' }
-  )
-}
-
-const BUILD = await preparedBuild()
-const GRAPH: AppBackendProviderDocumentGraph = Object.freeze({
-  rootId: 'root-1',
-  getNode: () => undefined
-})
-
-async function documentDigest(): Promise<string> {
-  return digestCanonicalManifest({
-    format: 'openpencil.desktop-supabase-backend-review-document.v1',
-    rootId: GRAPH.rootId,
-    projectRef: PROJECT_REF,
-    schema: 'public',
-    backendProviderRequest: BUILD.request
-  })
-}
-
-async function previousReview(): Promise<DesktopSupabaseBackendReviewResult> {
-  const inspectedSchemaDigest = 'inspected-schema-digest'
-  const inspectedReview = {
-    snapshot: {},
-    sql: '-- Review only.\n',
-    manifest: {
-      inspectedSchemaDigest,
-      reviewReady: true,
-      applyAllowed: false,
-      releaseReady: false,
-      blockers: []
-    },
-    manifestDigest: 'inspected-review-manifest-digest'
-  }
-  const manifest = {
-    format: 'openpencil.supabase-backend-host-review.v1',
-    version: 1,
-    documentDigest: await documentDigest(),
-    compilerVersion: '0.15.0',
-    target: 'react',
-    environment: 'staging',
-    compiler: {
-      applicationDigest: BUILD.plan.applicationDigest,
-      planDigest: BUILD.plan.planDigest,
-      emissionManifestDigest: BUILD.emission.manifestDigest
-    },
-    backendProvider: AUTHORITY,
-    remoteAuthority: {
-      projectRef: PROJECT_REF,
-      accountId: ACCOUNT_ID,
-      grantGeneration: GRANT_GENERATION,
-      inspectedSchemaDigest
-    },
-    inspectedReview: {
-      manifestDigest: inspectedReview.manifestDigest,
-      migrationPlanDigest: 'migration-plan-digest',
-      targetModelDigest: 'target-model-digest',
-      reviewReady: true,
-      applyAllowed: false,
-      releaseReady: false
-    }
-  }
-  const artifact = asFixture<SupabaseBackendReleaseReviewArtifactV1>({
-    format: 'openpencil.supabase-backend-review-artifact.v1',
-    version: 1,
-    manifest,
-    manifestDigest: await digestCanonicalManifest(manifest),
-    inspectedReview
-  })
-  return {
-    artifact,
-    documentDigest: manifest.documentDigest,
-    projectRef: PROJECT_REF,
-    accountId: ACCOUNT_ID,
-    grantGeneration: GRANT_GENERATION,
-    reviewReady: true,
-    blockerCount: 0,
-    applyAvailable: false,
-    applyPerformed: false
-  }
-}
-
-async function strictResult(
-  input: DesktopSupabaseStrictStagingVerificationInput
-): Promise<DesktopSupabaseBackendStagingVerificationResult> {
-  const receipt = Object.freeze({
-    format: 'openpencil.supabase-backend-staging-capability-receipt.v1' as const,
-    version: 1 as const,
-    verificationId: input.verificationId,
-    projectRef: input.projectRef,
-    accountId: input.accountId,
-    grantGeneration: input.grantGeneration,
-    reviewedArtifactDigest: input.expectedReview.artifact.manifestDigest,
-    outcome: 'succeeded' as const,
-    schemaApplied: true,
-    edgeFunctionReceipt: null,
-    storageIsolationReceipts: Object.freeze([]),
-    gates: Object.freeze([]),
-    startedAt: NOW,
-    completedAt: NOW
-  }) satisfies DesktopSupabaseBackendStagingCapabilityReceiptV1
-  return Object.freeze({
-    receipt,
-    receiptDigest: await digestCanonicalManifest(receipt),
-    productionReleaseReady: false
-  })
-}
-
-function mutationProgress(
-  input: DesktopSupabaseStrictStagingVerificationInput,
-  stage: 'edge-pre-dispatch' | 'edge-deployed' | 'storage-pre-dispatch' | 'storage-progress'
-) {
-  const edge = stage.startsWith('edge')
-    ? Object.freeze({
-        releaseId: 'edge-release-1',
-        functionSlug: 'openpencil-runtime',
-        artifactDigest: 'E'.repeat(43),
-        secretInspectionEvidenceDigest: 'S'.repeat(43),
-        functionId: stage === 'edge-deployed' ? 'function-1' : null,
-        versionId: stage === 'edge-deployed' ? '7' : null,
-        operationId: stage === 'edge-deployed' ? `edge-deploy-${'A1b2'.repeat(8)}` : null,
-        outcome: null
-      })
-    : null
-  const storage = stage.startsWith('storage')
-    ? Object.freeze([
-        Object.freeze({
-          verificationId: 'storage-verification-1',
-          bucketId: 'user-assets',
-          bucketName: 'user-assets',
-          ruleId: 'owner-files',
-          potentialResidualObjectPaths: Object.freeze(['users/user-a/probe-1.bin']),
-          residualObjectPaths: Object.freeze(['users/user-a/probe-1.bin']),
-          remoteOperationIds: Object.freeze(
-            stage === 'storage-progress' ? [`storage-probe-1-${'A1b2'.repeat(6)}`] : []
-          ),
-          outcome: null
-        })
-      ])
-    : Object.freeze([])
-  return Object.freeze({
-    format: 'openpencil.supabase-capability-dispatch-progress.v1' as const,
-    version: 1 as const,
-    verificationId: input.verificationId,
-    projectRef: input.projectRef,
-    accountId: input.accountId,
-    grantGeneration: input.grantGeneration,
-    documentDigest: input.documentDigest,
-    reviewedArtifactDigest: input.expectedReview.artifact.manifestDigest,
-    target: Object.freeze({
-      target: input.build.plan.target,
-      applicationDigest: input.build.plan.applicationDigest,
-      planDigest: input.build.plan.planDigest,
-      emissionManifestDigest: input.build.emission.manifestDigest
-    }),
-    stage,
-    edge,
-    storage
-  })
-}
-
-function dependencies(
-  overrides: Partial<DesktopSupabaseBackendStagingVerificationDependencies> = {}
-): DesktopSupabaseBackendStagingVerificationDependencies {
-  return {
-    isDesktop: () => true,
-    nextId: () => 'verification-1',
-    now: () => NOW,
-    dispatchJournal: createMemoryBackendHostReleaseDispatchJournal(),
-    prepareBuild: () => BUILD,
-    resolveBackendProviderAuthority: () => AUTHORITY,
-    resolveReadCredential: async () => READ_PAT,
-    resolveWriteCredential: async () => WRITE_PAT,
-    resolveGrantGeneration: async () => GRANT_GENERATION,
-    resolveStagingTargetBinding: () => ({
-      schemaVersion: 1,
-      projectRef: PROJECT_REF,
-      accountId: ACCOUNT_ID,
-      boundAt: NOW
-    }),
-    prepareStrictVerification: strictResult,
-    ...overrides
-  }
-}
-
-function verificationInput(reviewed: DesktopSupabaseBackendReviewResult) {
-  return {
-    config: { url: PROJECT_URL, anonKey: PUBLISHABLE_KEY },
-    graph: GRAPH,
-    reviewed,
-    projectRefConfirmation: PROJECT_REF,
-    confirmedIndependentStaging: true as const,
-    edgeUserAccessToken: 'edge_user_access_token_1234567890',
-    storageUserA: { userId: 'user-a', accessToken: 'user_a_access_token_1234567890' },
-    storageUserB: { userId: 'user-b', accessToken: 'user_b_access_token_1234567890' }
-  }
-}
-
-async function errorCode(operation: Promise<unknown>): Promise<string | undefined> {
-  try {
-    await operation
-  } catch (cause) {
-    return cause instanceof DesktopSupabaseBackendStagingVerificationError ? cause.code : undefined
-  }
-  return undefined
-}
+import {
+  ACCOUNT_ID,
+  BUILD,
+  GRANT_GENERATION,
+  NOW,
+  PROJECT_REF,
+  PROJECT_URL,
+  PUBLISHABLE_KEY,
+  READ_PAT,
+  VUE_BUILD,
+  WRITE_PAT,
+  dependencies,
+  errorCode,
+  mutationProgress,
+  previousReview,
+  strictResult,
+  verificationInput
+} from './verification/helpers'
 
 describe('Desktop Supabase staging capability verification authority', () => {
+  test.each([
+    { field: 'artifact', kind: 'missing' },
+    { field: 'artifact', kind: 'null' },
+    { field: 'manifest', kind: 'missing' },
+    { field: 'manifest', kind: 'null' }
+  ] as const)('rejects a $kind review $field before any capability is used', async (item) => {
+    const reviewed = structuredClone(await previousReview())
+    const container = item.field === 'artifact' ? reviewed : reviewed.artifact
+    if (item.kind === 'missing') Reflect.deleteProperty(container, item.field)
+    else Reflect.set(container, item.field, null)
+    const capabilities: string[] = []
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    const service = createDesktopSupabaseBackendStagingVerificationService(
+      dependencies({
+        prepareBuild() {
+          capabilities.push('build')
+          return BUILD
+        },
+        async resolveGrantGeneration() {
+          capabilities.push('grant')
+          return GRANT_GENERATION
+        },
+        async resolveReadCredential() {
+          capabilities.push('read-credential')
+          return READ_PAT
+        },
+        async resolveWriteCredential() {
+          capabilities.push('write-credential')
+          return WRITE_PAT
+        },
+        async prepareStrictVerification(input) {
+          capabilities.push('strict-verification')
+          return strictResult(input)
+        },
+        dispatchJournal: {
+          ...journal,
+          claim(input) {
+            capabilities.push('claim')
+            return journal.claim(input)
+          }
+        }
+      })
+    )
+
+    expect(await errorCode(service.verify(verificationInput(reviewed)))).toBe('review-stale')
+    expect(capabilities).toEqual([])
+    expect(await journal.listUnresolved()).toEqual([])
+  })
+
+  test.each(['react', 'vue'] as const)(
+    'binds %s verification and local revalidation to the snapshotted compiler target',
+    async (target) => {
+      const build = target === 'vue' ? VUE_BUILD : BUILD
+      const reviewed = await previousReview(build)
+      const targets: unknown[] = []
+      const service = createDesktopSupabaseBackendStagingVerificationService(
+        dependencies({
+          prepareBuild(_graph, requestedTarget) {
+            targets.push(requestedTarget)
+            Reflect.set(reviewed.artifact.manifest, 'target', 'flutter')
+            return build
+          },
+          async prepareStrictVerification(input) {
+            expect(input.expectedReview.artifact.manifest.target).toBe(target)
+            expect(input.build.plan.target).toBe(target)
+            expect(input.build.emission.manifest.target).toBe(target)
+            await input.revalidateLocalAuthority()
+            return strictResult(input)
+          }
+        })
+      )
+
+      await expect(service.verify(verificationInput(reviewed))).resolves.toBeDefined()
+      expect(targets).toEqual([target, target])
+    }
+  )
+
+  test.each([
+    { label: 'missing', target: null },
+    { label: 'unknown', target: 'flutter' },
+    { label: 'cross-target with recomputed digest', target: 'vue' }
+  ])('rejects a $label review target before credentials and strict verification', async (item) => {
+    const reviewed = await previousReview()
+    const manifest = { ...reviewed.artifact.manifest }
+    if (item.target === null) Reflect.deleteProperty(manifest, 'target')
+    else Reflect.set(manifest, 'target', item.target)
+    const changedReview = {
+      ...reviewed,
+      artifact: {
+        ...reviewed.artifact,
+        manifest,
+        manifestDigest: await digestCanonicalManifest(manifest)
+      }
+    }
+    const capabilities: string[] = []
+    const service = createDesktopSupabaseBackendStagingVerificationService(
+      dependencies({
+        prepareBuild: (_graph, target) => (target === 'vue' ? VUE_BUILD : BUILD),
+        async resolveReadCredential() {
+          capabilities.push('read-credential')
+          return READ_PAT
+        },
+        async resolveWriteCredential() {
+          capabilities.push('write-credential')
+          return WRITE_PAT
+        },
+        async prepareStrictVerification(input) {
+          capabilities.push('strict-verification')
+          return strictResult(input)
+        }
+      })
+    )
+
+    expect(await errorCode(service.verify(verificationInput(changedReview)))).toBe('review-stale')
+    expect(capabilities).toEqual([])
+  })
+
+  test.each(['plan', 'emission'] as const)(
+    'rejects a mismatched %s target even when its stored digests are unchanged',
+    async (part) => {
+      const reviewed = await previousReview(VUE_BUILD)
+      const build = {
+        ...VUE_BUILD,
+        ...(part === 'plan'
+          ? { plan: { ...VUE_BUILD.plan, target: 'react' as const } }
+          : {
+              emission: {
+                ...VUE_BUILD.emission,
+                manifest: { ...VUE_BUILD.emission.manifest, target: 'react' as const }
+              }
+            })
+      }
+      const capabilities: string[] = []
+      const service = createDesktopSupabaseBackendStagingVerificationService(
+        dependencies({
+          prepareBuild: () => build,
+          async resolveGrantGeneration() {
+            capabilities.push('grant')
+            return GRANT_GENERATION
+          },
+          async prepareStrictVerification(input) {
+            capabilities.push('strict-verification')
+            return strictResult(input)
+          }
+        })
+      )
+
+      expect(await errorCode(service.verify(verificationInput(reviewed)))).toBe('review-stale')
+      expect(capabilities).toEqual([])
+    }
+  )
+
+  test.each(['plan', 'emission'] as const)(
+    'rejects %s target drift during revalidation before a mutation claim',
+    async (part) => {
+      const reviewed = await previousReview(VUE_BUILD)
+      const targets: unknown[] = []
+      let afterRevalidation = false
+      const service = createDesktopSupabaseBackendStagingVerificationService(
+        dependencies({
+          prepareBuild(_graph, target) {
+            targets.push(target)
+            if (targets.length === 1) return VUE_BUILD
+            return {
+              ...VUE_BUILD,
+              ...(part === 'plan'
+                ? { plan: { ...VUE_BUILD.plan, target: 'react' as const } }
+                : {
+                    emission: {
+                      ...VUE_BUILD.emission,
+                      manifest: { ...VUE_BUILD.emission.manifest, target: 'react' as const }
+                    }
+                  })
+            }
+          },
+          async prepareStrictVerification(input) {
+            await input.revalidateLocalAuthority()
+            afterRevalidation = true
+            return strictResult(input)
+          }
+        })
+      )
+
+      expect(await errorCode(service.verify(verificationInput(reviewed)))).toBe('review-stale')
+      expect(targets).toEqual(['vue', 'vue'])
+      expect(afterRevalidation).toBe(false)
+    }
+  )
+
   test('passes only exact review, staging binding, credentials, and result receipt authority', async () => {
     const reviewed = await previousReview()
     let strictInput: DesktopSupabaseStrictStagingVerificationInput | undefined
@@ -613,5 +517,41 @@ describe('Desktop Supabase staging capability verification authority', () => {
     })
     expect(JSON.stringify(inspection?.[0]?.evidence)).toContain('users/user-a/probe-1.bin')
     expect(await restarted.inspectUnresolved?.(PROJECT_REF)).toHaveLength(1)
+  })
+
+  test('keeps an unknown Vue mutation locked against a React retry in the same project', async () => {
+    const journal = createMemoryBackendHostReleaseDispatchJournal()
+    let mutations = 0
+    const mutate = async (input: DesktopSupabaseStrictStagingVerificationInput) => {
+      await input.claimBeforeMutation(mutationProgress(input, 'edge-pre-dispatch'))
+      mutations += 1
+      throw new Error('Lost response after dispatch')
+    }
+    const vue = createDesktopSupabaseBackendStagingVerificationService(
+      dependencies({
+        dispatchJournal: journal,
+        prepareBuild: () => VUE_BUILD,
+        prepareStrictVerification: mutate
+      })
+    )
+    const react = createDesktopSupabaseBackendStagingVerificationService(
+      dependencies({
+        dispatchJournal: journal,
+        nextId: () => 'verification-react-retry',
+        prepareStrictVerification: mutate
+      })
+    )
+
+    expect(await errorCode(vue.verify(verificationInput(await previousReview(VUE_BUILD))))).toBe(
+      'reconciliation-required'
+    )
+    expect(await errorCode(react.verify(verificationInput(await previousReview())))).toBe(
+      'reconciliation-required'
+    )
+    expect(mutations).toBe(1)
+    const unresolved = await journal.listUnresolved()
+    expect(unresolved).toHaveLength(1)
+    const evidence = await journal.readEvidence(unresolved[0].singleFlightKey)
+    expect(JSON.parse(evidence?.payload ?? '{}')).toMatchObject({ target: { target: 'vue' } })
   })
 })

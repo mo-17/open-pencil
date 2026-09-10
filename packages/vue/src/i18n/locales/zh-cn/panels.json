@@ -1168,6 +1168,8 @@
   "lowcodeSupabaseSchemaCopied": "已复制",
   "lowcodeSupabaseSchemaCopyFailed": "无法复制标识符。",
   "lowcodeSupabaseBackendReview": "Backend Provider 审查",
+  "lowcodeSupabaseBackendReviewTarget": "应用框架",
+  "lowcodeSupabaseBackendReviewInvalidTarget": "请选择后端审查所用的应用框架。",
   "lowcodeSupabaseBackendReviewDescription": "检查实时 public Schema，并生成绑定 Provider 权限的迁移审查产物。",
   "lowcodeSupabaseBackendReviewOnly": "仅供审查。此操作不提供实时 Apply 或 Verify。",
   "lowcodeSupabaseBackendReviewDesktopOnly": "Backend 审查仅在桌面应用中可用。",

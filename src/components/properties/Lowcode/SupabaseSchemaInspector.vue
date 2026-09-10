@@ -15,6 +15,8 @@ import { useSupabaseStagingReleaseAuthority } from '@/app/lowcode/supabase/stagi
 import { useSupabaseStagedMigrationPlan } from '@/app/lowcode/supabase/staged-migration-plan'
 import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
 import { isTauri } from '@/app/tauri/env'
+import type { DesktopSupabaseBackendTarget } from '@/app/plugins/host/deployment/desktop/supabase/backend/target'
+import AppSelect from '@/components/ui/AppSelect.vue'
 
 import SupabaseBackendStagingVerification from './SupabaseBackendStagingVerification.vue'
 import SupabaseSourceMigrationExport from './SupabaseSourceMigrationExport.vue'
@@ -24,7 +26,14 @@ const { panels } = useI18n()
 const configRef = toRef(() => config)
 const inspector = useSupabaseSchemaInspector(configRef)
 const editor = useEditorStore()
-const backendReview = useSupabaseBackendProviderReview(configRef, () => editor.graph)
+const backendReviewTarget = ref<DesktopSupabaseBackendTarget>('react')
+const backendReview = useSupabaseBackendProviderReview(configRef, () => editor.graph, {
+  readTarget: () => backendReviewTarget.value
+})
+const backendTargetOptions: { value: DesktopSupabaseBackendTarget; label: string }[] = [
+  { value: 'react', label: 'React' },
+  { value: 'vue', label: 'Vue' }
+]
 const stagingAuthority = useSupabaseStagingReleaseAuthority()
 const stagingRelease = useSupabaseBackendProviderStagingRelease(
   configRef,
@@ -86,6 +95,12 @@ const sourceMigrationExternalBusy = computed(
 const stagingBusy = computed(
   () => sourceMigrationExternalBusy.value || sourceMigrationExportBusy.value
 )
+const backendTargetControl = computed({
+  get: () => backendReviewTarget.value,
+  set: (target: DesktopSupabaseBackendTarget) => {
+    if (!stagingBusy.value) backendReviewTarget.value = target
+  }
+})
 
 const stagingCanBind = computed(() => {
   const identity = stagingIdentity.value
@@ -255,6 +270,7 @@ const backendReviewErrorMessage = computed(() => {
   const code = backendReview.error.value
   if (code === 'desktop-required') return panels.value.lowcodeSupabaseBackendReviewDesktopOnly
   if (code === 'invalid-config') return panels.value.lowcodeSupabaseBackendReviewInvalidConfig
+  if (code === 'invalid-target') return panels.value.lowcodeSupabaseBackendReviewInvalidTarget
   if (code === 'credential-missing' || code === 'grant-unavailable' || code === 'grant-changed') {
     return panels.value.lowcodeSupabaseBackendReviewCredentialError
   }
@@ -418,6 +434,16 @@ watch(
   () => getActiveEditorStore(),
   () => {
     backendReview.reset()
+    stagingProjectRefConfirmation.value = ''
+    stagingIndependentConfirmed.value = false
+  },
+  { flush: 'sync' }
+)
+
+watch(
+  backendReviewTarget,
+  () => {
+    stagingRelease.reset()
     stagingProjectRefConfirmation.value = ''
     stagingIndependentConfirmed.value = false
   },
@@ -681,6 +707,19 @@ onScopeDispose(() => {
         </p>
       </div>
 
+      <div class="flex items-center justify-between gap-2">
+        <label class="text-[10px] text-muted">
+          {{ panels.lowcodeSupabaseBackendReviewTarget }}
+        </label>
+        <AppSelect
+          v-model="backendTargetControl"
+          :options="backendTargetOptions"
+          :label="panels.lowcodeSupabaseBackendReviewTarget"
+          :disabled="stagingBusy"
+          data-property="backend-review-target"
+        />
+      </div>
+
       <p
         v-if="!backendReviewAvailable"
         data-test-id="lowcode-supabase-backend-review-desktop-only"
@@ -807,6 +846,10 @@ onScopeDispose(() => {
           {{ panels.lowcodeSupabaseBackendReviewApplyUnavailable }}
         </p>
         <dl class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[9px] text-muted">
+          <dt>{{ panels.lowcodeSupabaseBackendReviewTarget }}</dt>
+          <dd class="text-surface capitalize">
+            {{ backendReview.result.value.artifact.manifest.target }}
+          </dd>
           <dt>{{ panels.lowcodeSupabaseBackendReviewProject }}</dt>
           <dd class="min-w-0 break-all font-mono text-surface">
             {{ backendReview.result.value.projectRef }} /

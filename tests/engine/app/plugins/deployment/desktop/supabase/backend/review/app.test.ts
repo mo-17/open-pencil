@@ -1,23 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
-
 import {
   SUPABASE_MANAGEMENT_GRANT_GENERATION_CREDENTIAL,
   SUPABASE_MANAGEMENT_PAT_CREDENTIAL
 } from '@/app/lowcode/supabase/credentials'
-import {
-  createAppPluginStore,
-  createBundledPluginCatalog,
-  createMemoryAppPluginStateStorage,
-  type AppBundlePluginCatalogEntry
-} from '@/app/plugins'
+import { createAppPluginStore, createMemoryAppPluginStateStorage } from '@/app/plugins'
 import { appPluginStore, appPluginStoreReady } from '@/app/plugins/app'
 import {
   APP_BACKEND_PROVIDER_DOCUMENT_KEY,
   APP_BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID,
   APP_BACKEND_PROVIDER_REQUEST_FORMAT,
-  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
   appBackendProviderDocumentValue,
   listAppBackendProviderDescriptors,
   type AppBackendProviderDocumentGraph
@@ -28,112 +20,23 @@ import {
   createAppDesktopSupabaseBackendReviewServiceForTestingV1
 } from '@/app/plugins/host/deployment/desktop/supabase/backend/review-app'
 import type { SupabaseManagementDesktopFetch } from '@/app/plugins/host/deployment/supabase/management/pg-catalog-transport'
-import { SUPABASE_PG_CATALOG_QUERY_IDS } from '@/app/plugins/host/deployment/supabase/pg-catalog-inspector'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
-const PROJECT_REF = 'enekobitnhobuiuamvqj'
-const PROJECT_URL = `https://${PROJECT_REF}.supabase.co`
-const ORGANIZATION_ID = 'org-123'
-const GRANT_GENERATION = '123e4567-e89b-42d3-a456-426614174000'
-const PAT = 'sbp_runtime_secret_canary_1234567890'
-const NOW = '2026-08-30T10:00:00.000Z'
-const SNAPSHOT_MARKER = '123:123:'
-
-function bundledBackendProvider(): AppBundlePluginCatalogEntry {
-  const entry = createBundledPluginCatalog().find(
-    ({ manifest }) => manifest.plugin.id === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
-  )
-  if (entry?.trustSource !== 'app-bundle') throw new Error('Missing bundled Supabase provider')
-  return entry
-}
-
-function application(): BackendApplicationSpecV1 {
-  return {
-    format: 'openpencil.backend-application',
-    version: 1,
-    applicationId: 'desktop-review-runtime-test',
-    dataModel: { version: 1, entities: [], enums: [], relations: [] },
-    auth: {
-      version: 1,
-      identities: [],
-      roles: [],
-      ownership: [],
-      tenants: [],
-      rowAccess: []
-    },
-    workflows: { version: 1, workflows: [] },
-    capabilities: [],
-    secrets: []
-  }
-}
-
-function graph(value: string): AppBackendProviderDocumentGraph {
-  return {
-    rootId: 'root-1',
-    getNode(id) {
-      if (id !== 'root-1') return undefined
-      return {
-        pluginData: [
-          {
-            pluginId: APP_BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID,
-            key: APP_BACKEND_PROVIDER_DOCUMENT_KEY,
-            value
-          }
-        ]
-      }
-    }
-  }
-}
-
-function catalogResponse(columnPrivilegesPresent = false): unknown {
-  const queryResults = Object.fromEntries(SUPABASE_PG_CATALOG_QUERY_IDS.map((id) => [id, []]))
-  queryResults.provenance = [
-    {
-      databaseOid: '5',
-      databaseName: 'postgres',
-      schemaOid: '2200',
-      schemaName: 'public',
-      currentRoleOid: '10',
-      currentRoleName: 'postgres',
-      serverVersionNum: '170000',
-      snapshotMarker: SNAPSHOT_MARKER,
-      observedAt: NOW,
-      columnPrivilegesPresent
-    }
-  ]
-  queryResults.roles = [
-    {
-      roleOid: '10',
-      roleName: 'postgres',
-      superuser: true,
-      bypassRls: true,
-      inherit: true
-    },
-    {
-      roleOid: '11',
-      roleName: 'anon',
-      superuser: false,
-      bypassRls: false,
-      inherit: true
-    },
-    {
-      roleOid: '12',
-      roleName: 'authenticated',
-      superuser: false,
-      bypassRls: false,
-      inherit: true
-    }
-  ]
-  return [{ snapshotMarker: SNAPSHOT_MARKER, observedAt: NOW, queryResults }]
-}
-
-function jsonResponse(value: unknown, status: number, url: string): Response {
-  const response = new Response(JSON.stringify(value), { status })
-  Object.defineProperty(response, 'url', { value: url })
-  return response
-}
+import {
+  PROJECT_REF,
+  PROJECT_URL,
+  ORGANIZATION_ID,
+  GRANT_GENERATION,
+  PAT,
+  NOW,
+  bundledBackendProvider,
+  application,
+  graph,
+  catalogResponse,
+  jsonResponse
+} from './helpers'
 
 async function restoreCredential(
   reference: typeof SUPABASE_MANAGEMENT_PAT_CREDENTIAL,

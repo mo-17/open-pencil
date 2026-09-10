@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- Destination, authority, archive, cancellation, and tamper cases share one Host export fixture. */
 import { describe, expect, test } from 'bun:test'
 
+import { unzipSync } from 'fflate'
+
 import {
   createSupabaseInspectedMigrationReview,
   createSupabaseInspectedMigrationSnapshot,
@@ -24,14 +26,19 @@ import {
   type AppBundlePluginCatalogEntry
 } from '@/app/plugins'
 import {
+  APP_BACKEND_PROVIDER_DOCUMENT_KEY,
+  APP_BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID,
   APP_BACKEND_PROVIDER_REQUEST_FORMAT,
   SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
   listAppBackendProviderDescriptors,
   prepareAppBackendProviderBuild,
+  appBackendProviderDocumentValue,
   type AppBackendProviderDocumentGraph,
   type PreparedAppBackendProviderBuild
 } from '@/app/plugins/host/backend-provider'
 import type { DesktopSupabaseBackendReviewResult } from '@/app/plugins/host/deployment/desktop/supabase/backend/review'
+import { createAppDesktopSupabaseBackendReviewServiceForTestingV1 } from '@/app/plugins/host/deployment/desktop/supabase/backend/review-app'
+import type { DesktopSupabaseBackendTarget } from '@/app/plugins/host/deployment/desktop/supabase/backend/target'
 import {
   MAX_SUPABASE_SOURCE_LEDGER_IMPORT_BYTES,
   SUPABASE_SOURCE_MIGRATION_EXPORT_MANIFEST_PATH,
@@ -39,6 +46,7 @@ import {
   DesktopSupabaseSourceMigrationExportError,
   type DesktopSupabaseSourceMigrationExportDependencies
 } from '@/app/plugins/host/deployment/desktop/supabase/source-migration/export'
+import { createAppDesktopSupabaseSourceMigrationExportService } from '@/app/plugins/host/deployment/desktop/supabase/source-migration/export-app'
 import type { SupabaseBackendReleaseReviewArtifactV1 } from '@/app/plugins/host/deployment/supabase/backend-release'
 
 const PROJECT_REF = 'enekobitnhobuiuamvqj'
@@ -106,7 +114,7 @@ function application(): BackendApplicationSpecV1 {
   }
 }
 
-async function preparedBuild(): Promise<PreparedAppBackendProviderBuild> {
+async function pluginStore() {
   const store = createAppPluginStore({
     storage: createMemoryAppPluginStateStorage(),
     catalog: [bundledBackendProvider()],
@@ -115,6 +123,13 @@ async function preparedBuild(): Promise<PreparedAppBackendProviderBuild> {
   })
   const loaded = await store.load()
   if (loaded.error) throw loaded.error
+  return store
+}
+
+async function preparedBuild(
+  target: DesktopSupabaseBackendTarget = 'react'
+): Promise<PreparedAppBackendProviderBuild> {
+  const store = await pluginStore()
   const descriptor = listAppBackendProviderDescriptors(store)[0]
   if (!descriptor) throw new Error('Missing active Supabase provider')
   return prepareAppBackendProviderBuild(
@@ -124,7 +139,7 @@ async function preparedBuild(): Promise<PreparedAppBackendProviderBuild> {
       selection: descriptor,
       application: application()
     },
-    { target: 'react', mode: 'production' }
+    { target, mode: 'production' }
   )
 }
 
@@ -167,20 +182,21 @@ async function previousReview(
 }
 
 async function desktopReview(
-  inspectedReview: SupabaseInspectedMigrationReviewV1
+  inspectedReview: SupabaseInspectedMigrationReviewV1,
+  build = BUILD
 ): Promise<DesktopSupabaseBackendReviewResult> {
   const inspectedSchemaDigest = inspectedReview.manifest.inspectedSchemaDigest
   const manifest = {
     format: 'openpencil.supabase-backend-host-review.v1',
     version: 1,
-    documentDigest: await documentDigest(),
+    documentDigest: await documentDigest(build),
     compilerVersion: '0.15.0',
-    target: 'react',
+    target: build.plan.target,
     environment: 'staging',
     compiler: {
-      applicationDigest: BUILD.plan.applicationDigest,
-      planDigest: BUILD.plan.planDigest,
-      emissionManifestDigest: BUILD.emission.manifestDigest
+      applicationDigest: build.plan.applicationDigest,
+      planDigest: build.plan.planDigest,
+      emissionManifestDigest: build.emission.manifestDigest
     },
     backendProvider: AUTHORITY,
     remoteAuthority: {
@@ -424,6 +440,189 @@ async function errorCode(operation: Promise<unknown>): Promise<string | undefine
 }
 
 describe('Desktop Supabase source migration export authority', () => {
+  test.each(['missing-artifact', 'null-artifact', 'missing-manifest', 'null-manifest'] as const)(
+    'rejects a %s review envelope before opening the destination',
+    async (shape) => {
+      const reviewed = structuredClone(await previousReview())
+      if (shape === 'missing-artifact') Reflect.deleteProperty(reviewed, 'artifact')
+      if (shape === 'null-artifact') Reflect.set(reviewed, 'artifact', null)
+      if (shape === 'missing-manifest') Reflect.deleteProperty(reviewed.artifact, 'manifest')
+      if (shape === 'null-manifest') Reflect.set(reviewed.artifact, 'manifest', null)
+      const capture = emptyCapture()
+      const service = createDesktopSupabaseSourceMigrationExportService(dependencies(capture))
+      expect(await errorCode(service.exportMigration(exportInput(reviewed)))).toBe('review-stale')
+      expect(capture.destinationCalls).toBe(0)
+      expect(capture.bundleInputs).toEqual([])
+      expect(capture.writes).toEqual([])
+    }
+  )
+
+  test.each(['vue', 'flutter', null])(
+    'rejects a recomputed %s review target before opening the destination',
+    async (target) => {
+      const reviewed = await previousReview()
+      if (target === null) Reflect.deleteProperty(reviewed.artifact.manifest, 'target')
+      else Reflect.set(reviewed.artifact.manifest, 'target', target)
+      Reflect.set(
+        reviewed.artifact,
+        'manifestDigest',
+        await digestCanonicalManifest(reviewed.artifact.manifest)
+      )
+      const capture = emptyCapture()
+      const service = createDesktopSupabaseSourceMigrationExportService(dependencies(capture))
+      expect(await errorCode(service.exportMigration(exportInput(reviewed)))).toBe('review-stale')
+      expect(capture.destinationCalls).toBe(0)
+      expect(capture.bundleInputs).toEqual([])
+      expect(capture.writes).toEqual([])
+    }
+  )
+
+  test.each(['plan', 'emission'] as const)(
+    'rejects a wrong %s target with retained digests before any save capability',
+    async (field) => {
+      const reviewed = await previousReview()
+      const build = {
+        ...BUILD,
+        plan: { ...BUILD.plan },
+        emission: { ...BUILD.emission, manifest: { ...BUILD.emission.manifest } }
+      }
+      Reflect.set(field === 'plan' ? build.plan : build.emission.manifest, 'target', 'vue')
+      const capture = emptyCapture()
+      const service = createDesktopSupabaseSourceMigrationExportService(
+        dependencies(capture, { prepareBuild: () => build })
+      )
+      expect(await errorCode(service.exportMigration(exportInput(reviewed)))).toBe('review-stale')
+      expect(capture.destinationCalls).toBe(0)
+      expect(capture.bundleInputs).toEqual([])
+      expect(capture.writes).toEqual([])
+    }
+  )
+
+  test('rebuilds the captured Vue target at each destination boundary', async () => {
+    const build = await preparedBuild('vue')
+    const reviewed = await desktopReview(await realInspectedReview(), build)
+    const capture = emptyCapture()
+    const targets: unknown[] = []
+    const service = createDesktopSupabaseSourceMigrationExportService(
+      dependencies(capture, {
+        prepareBuild(_graph, target) {
+          if (targets.length === 0) Reflect.set(reviewed.artifact.manifest, 'target', 'react')
+          targets.push(target)
+          return build
+        },
+        createBundle: createSupabaseSourceMigrationBundle
+      })
+    )
+    expect((await service.exportMigration(exportInput(reviewed))).outcome).toBe('succeeded')
+    expect(targets).toEqual(['vue', 'vue', 'vue', 'vue'])
+    expect(capture.writes).toHaveLength(1)
+  })
+
+  test.each(['plan', 'emission'] as const)(
+    'rejects fresh %s target drift after destination choice and before bundle or write',
+    async (field) => {
+      const reviewed = await previousReview()
+      const drifted = {
+        ...BUILD,
+        plan: { ...BUILD.plan },
+        emission: { ...BUILD.emission, manifest: { ...BUILD.emission.manifest } }
+      }
+      Reflect.set(field === 'plan' ? drifted.plan : drifted.emission.manifest, 'target', 'vue')
+      const capture = emptyCapture()
+      const service = createDesktopSupabaseSourceMigrationExportService(
+        dependencies(capture, {
+          prepareBuild: () => (++capture.buildCalls === 1 ? BUILD : drifted)
+        })
+      )
+      expect(await errorCode(service.exportMigration(exportInput(reviewed)))).toBe('review-stale')
+      expect(capture.buildCalls).toBe(2)
+      expect(capture.destinationCalls).toBe(1)
+      expect(capture.bundleInputs).toEqual([])
+      expect(capture.writes).toEqual([])
+    }
+  )
+
+  test.each(['react', 'vue'] as const)(
+    'wires an actual %s compiler review through the App exporter into a readable ZIP',
+    async (target) => {
+      const store = await pluginStore()
+      const build = await preparedBuild(target)
+      const graph: AppBackendProviderDocumentGraph = {
+        rootId: GRAPH.rootId,
+        getNode(id) {
+          return id === GRAPH.rootId
+            ? {
+                pluginData: [
+                  {
+                    pluginId: APP_BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID,
+                    key: APP_BACKEND_PROVIDER_DOCUMENT_KEY,
+                    value: appBackendProviderDocumentValue(build.request)
+                  }
+                ]
+              }
+            : undefined
+        }
+      }
+      const inspected = await realInspectedReview()
+      let reviewId = 0
+      const reviewService = createAppDesktopSupabaseBackendReviewServiceForTestingV1({
+        isDesktop: () => true,
+        pluginStore: store,
+        fetcher: async () =>
+          Response.json({
+            ref: PROJECT_REF,
+            organization_id: ACCOUNT_ID,
+            organization_slug: 'test'
+          }),
+        inspectCatalog: async () => inspected.snapshot,
+        now: () => NOW,
+        nextId: () => `source-review-${++reviewId}`,
+        dependencyOverrides: {
+          resolveCredential: async () => 'sbp_export_review_canary_1234567890',
+          resolveGrantGeneration: async () => GRANT_GENERATION
+        }
+      })
+      const reviewed = await reviewService.review({
+        graph,
+        config: { url: PROJECT_URL, anonKey: '' },
+        ...(target === 'vue' ? { target } : {})
+      })
+      expect(reviewed.artifact.manifest.target).toBe(target)
+      const writes: Uint8Array[] = []
+      const service = createAppDesktopSupabaseSourceMigrationExportService({
+        isDesktop: () => true,
+        pluginStore: store,
+        now: () => NOW,
+        nextId: () => MIGRATION_ID,
+        dependencyOverrides: {
+          chooseDestination: async () => ({
+            write: async (bytes) => {
+              writes.push(bytes)
+              return true
+            }
+          })
+        }
+      })
+      const result = await service.exportMigration({ ...exportInput(reviewed), graph })
+      expect(result).toMatchObject({ outcome: 'succeeded', saved: true, applyPerformed: false })
+      expect(writes).toHaveLength(1)
+      const files = unzipSync(required(writes[0], 'saved ZIP'))
+      expect(Object.keys(files)).toHaveLength(result.fileCount)
+      const manifest = JSON.parse(
+        new TextDecoder().decode(
+          required(files[SUPABASE_SOURCE_MIGRATION_EXPORT_MANIFEST_PATH], 'export manifest')
+        )
+      )
+      expect(manifest.bundleManifestDigest).toBe(result.bundleManifestDigest)
+      expect(await digestCanonicalManifest(manifest.bundleManifest)).toBe(
+        result.bundleManifestDigest
+      )
+      expect(
+        new TextDecoder().decode(required(files[result.migrationPath ?? ''], 'SQL'))
+      ).toContain(reviewed.artifact.inspectedReview.sql.trim())
+    }
+  )
+
   test('exports an ordinary review with compiler-normalized promotion authority', async () => {
     const capture = emptyCapture()
     const reviewed = await previousReview()

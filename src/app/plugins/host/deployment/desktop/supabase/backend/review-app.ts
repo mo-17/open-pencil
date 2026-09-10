@@ -6,24 +6,12 @@ import {
   supabaseManagementPatStatus
 } from '@/app/lowcode/supabase/credentials'
 import { appPluginStore } from '@/app/plugins/app'
-import { appCredentialServices } from '@/app/settings/credentials/app'
-import type { CredentialServices } from '@/app/settings/credentials/services'
-import { isTauri } from '@/app/tauri/env'
-import { SupabaseManagementNativeError } from '@/app/tauri/supabase-management'
-
 import {
   prepareAppBackendProviderDocumentBuild,
   resolveAppBackendProviderReleaseAuthority,
   type AppBackendProviderHostStore
 } from '@/app/plugins/host/backend-provider'
 import { createIdbBackendHostReleaseDispatchJournal } from '@/app/plugins/host/deployment/backend/release-journal'
-import {
-  createDesktopSupabaseBackendReviewService,
-  DesktopSupabaseBackendReviewError,
-  type DesktopSupabaseBackendReviewDependencies,
-  type DesktopSupabaseBackendReviewService,
-  type DesktopSupabaseStrictReviewInput
-} from './review'
 import {
   createSupabaseBackendRelease,
   type SupabaseBackendReleaseReviewArtifactV1
@@ -37,6 +25,18 @@ import {
   isProductionNativeSupabaseManagementPgCatalogTransportV1
 } from '@/app/plugins/host/deployment/supabase/native-pg-catalog-transport'
 import { inspectSupabasePgCatalog } from '@/app/plugins/host/deployment/supabase/pg-catalog-inspector'
+import { appCredentialServices } from '@/app/settings/credentials/app'
+import type { CredentialServices } from '@/app/settings/credentials/services'
+import { isTauri } from '@/app/tauri/env'
+import { SupabaseManagementNativeError } from '@/app/tauri/supabase-management'
+
+import {
+  createDesktopSupabaseBackendReviewService,
+  DesktopSupabaseBackendReviewError,
+  type DesktopSupabaseBackendReviewDependencies,
+  type DesktopSupabaseBackendReviewService,
+  type DesktopSupabaseStrictReviewInput
+} from './review'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -199,10 +199,10 @@ function createAppDesktopSupabaseBackendReviewServiceWithOptions(
     ? { resolveCredential: () => resolveSupabaseManagementPat(credentials) }
     : { resolveCredentialStatus: () => supabaseManagementPatStatus(credentials) }
   const dependencies: DesktopSupabaseBackendReviewDependencies = {
-    async prepareBuild(graph) {
+    async prepareBuild(graph, target) {
       await Promise.resolve(waitForPluginStoreReady())
       return prepareAppBackendProviderDocumentBuild(pluginStore, graph, {
-        target: 'react',
+        target,
         mode: 'production'
       })
     },

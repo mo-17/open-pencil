@@ -9,6 +9,7 @@ import {
   type SupabaseInspectedMigrationSnapshotV1
 } from '@open-pencil/compiler/backend'
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
+import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
 import {
   SUPABASE_MANAGEMENT_DATABASE_WRITE_PAT_CREDENTIAL,
@@ -41,6 +42,7 @@ import {
   createAppDesktopSupabaseBackendStagingVerificationService,
   createAppDesktopSupabaseBackendStagingVerificationServiceForTestingV1
 } from '@/app/plugins/host/deployment/desktop/supabase/backend/staging/verification-app'
+import type { DesktopSupabaseBackendTarget } from '@/app/plugins/host/deployment/desktop/supabase/backend/target'
 import type { SupabaseManagementEdgeFunctionFetch } from '@/app/plugins/host/deployment/supabase/management/edge-function-transport'
 import type { SupabaseManagementDesktopFetch } from '@/app/plugins/host/deployment/supabase/management/pg-catalog-transport'
 import type { SupabaseManagementStorageFetch } from '@/app/plugins/host/deployment/supabase/management/storage-isolation-transport'
@@ -286,7 +288,7 @@ function installStagingBinding(): void {
   })
 }
 
-async function setup(): Promise<{
+async function setup(target: DesktopSupabaseBackendTarget = 'react'): Promise<{
   store: AppBackendProviderHostStore
   graph: AppBackendProviderDocumentGraph
   snapshot: SupabaseInspectedMigrationSnapshotV1
@@ -329,10 +331,12 @@ async function setup(): Promise<{
   })
   const reviewed = await reviewService.review({
     config: { url: PROJECT_URL, anonKey: PUBLISHABLE_KEY, schema: 'public' },
-    graph: documentGraph
+    graph: documentGraph,
+    target
   })
   expect(reviewed.reviewReady).toBe(true)
   expect(reviewed.blockerCount).toBe(0)
+  expect(reviewed.artifact.manifest.target).toBe(target)
   expect(reviewed.artifact.inspectedReview.manifest.migrationPlan.operations).toEqual([])
   return { store, graph: documentGraph, snapshot, reviewed, readFetcher }
 }
@@ -492,6 +496,66 @@ function verificationInput(prepared: Awaited<ReturnType<typeof setup>>) {
 }
 
 describe('Desktop Supabase staging capability app wiring', () => {
+  test.each(['react', 'flutter', null])(
+    'rejects a changed Vue review target (%s) before credentials, network, or a claim',
+    async (target) => {
+      const prepared = await setup('vue')
+      const manifest = { ...prepared.reviewed.artifact.manifest }
+      if (target === null) Reflect.deleteProperty(manifest, 'target')
+      else Reflect.set(manifest, 'target', target)
+      const reviewed = {
+        ...prepared.reviewed,
+        artifact: {
+          ...prepared.reviewed.artifact,
+          manifest,
+          manifestDigest: await digestCanonicalManifest(manifest)
+        }
+      }
+      const capabilities: string[] = []
+      const journal = createMemoryBackendHostReleaseDispatchJournal()
+      const refuseNetwork: SupabaseManagementDesktopFetch = async () => {
+        capabilities.push('network')
+        throw new Error('Unexpected verification network request')
+      }
+      const service = createAppDesktopSupabaseBackendStagingVerificationServiceForTestingV1({
+        isDesktop: () => true,
+        pluginStore: prepared.store,
+        pluginStoreReady: () => Promise.resolve(),
+        readFetcher: refuseNetwork,
+        edgeFetcher: refuseNetwork,
+        storageFetcher: refuseNetwork,
+        inspectCatalog: async () => {
+          capabilities.push('catalog')
+          return prepared.snapshot
+        },
+        dispatchJournal: {
+          ...journal,
+          claim: (input) => {
+            capabilities.push('claim')
+            return journal.claim(input)
+          }
+        },
+        dependencyOverrides: {
+          resolveReadCredential: async () => {
+            capabilities.push('read-credential')
+            return READ_PAT
+          },
+          resolveWriteCredential: async () => {
+            capabilities.push('write-credential')
+            return WRITE_PAT
+          },
+          resolveGrantGeneration: async () => GRANT_GENERATION
+        }
+      })
+
+      await expect(
+        service.verify({ ...verificationInput(prepared), reviewed })
+      ).rejects.toMatchObject({ code: 'review-stale' })
+      expect(capabilities).toEqual([])
+      expect(await journal.listUnresolved()).toEqual([])
+    }
+  )
+
   test('maps native credential and authority failures before any capability mutation', async () => {
     const prepared = await setup()
     const loaded = await appPluginStoreReady
@@ -535,71 +599,74 @@ describe('Desktop Supabase staging capability app wiring', () => {
     })
   })
 
-  test('deploys the exact Edge artifact and proves real two-account Storage isolation', async () => {
-    const prepared = await setup()
-    const edge = edgeService()
-    const storage = storageService()
-    let id = 0
-    const service = createAppDesktopSupabaseBackendStagingVerificationServiceForTestingV1({
-      isDesktop: () => true,
-      pluginStore: prepared.store,
-      pluginStoreReady: () => Promise.resolve(),
-      readFetcher: prepared.readFetcher,
-      edgeFetcher: edge.fetcher,
-      storageFetcher: storage.fetcher,
-      inspectCatalog: async () => prepared.snapshot,
-      stagingTargetStore: {
-        read: () => ({
-          schemaVersion: 1,
-          projectRef: PROJECT_REF,
-          accountId: ORGANIZATION_ID,
-          boundAt: OBSERVED_AT
-        })
-      },
-      now: operationClock(),
-      nextId: () => `capability-${++id}`,
-      dispatchJournal: createMemoryBackendHostReleaseDispatchJournal(),
-      dependencyOverrides: {
-        resolveReadCredential: async () => READ_PAT,
-        resolveWriteCredential: async () => WRITE_PAT,
-        resolveGrantGeneration: async () => GRANT_GENERATION
+  test.each(['react', 'vue'] as const)(
+    'verifies the exact %s Edge and Storage artifacts through local fetch doubles',
+    async (target) => {
+      const prepared = await setup(target)
+      const edge = edgeService()
+      const storage = storageService()
+      let id = 0
+      const service = createAppDesktopSupabaseBackendStagingVerificationServiceForTestingV1({
+        isDesktop: () => true,
+        pluginStore: prepared.store,
+        pluginStoreReady: () => Promise.resolve(),
+        readFetcher: prepared.readFetcher,
+        edgeFetcher: edge.fetcher,
+        storageFetcher: storage.fetcher,
+        inspectCatalog: async () => prepared.snapshot,
+        stagingTargetStore: {
+          read: () => ({
+            schemaVersion: 1,
+            projectRef: PROJECT_REF,
+            accountId: ORGANIZATION_ID,
+            boundAt: OBSERVED_AT
+          })
+        },
+        now: operationClock(),
+        nextId: () => `capability-${++id}`,
+        dispatchJournal: createMemoryBackendHostReleaseDispatchJournal(),
+        dependencyOverrides: {
+          resolveReadCredential: async () => READ_PAT,
+          resolveWriteCredential: async () => WRITE_PAT,
+          resolveGrantGeneration: async () => GRANT_GENERATION
+        }
+      })
+
+      const result = await service.verify(verificationInput(prepared))
+
+      expect(result.receipt.outcome).toBe('blocked')
+      expect(result.receipt.schemaApplied).toBe(true)
+      expect(result.receipt.edgeFunctionReceipt).toMatchObject({
+        outcome: 'succeeded',
+        dispatch: 'dispatched',
+        remote: { functionId: 'function-1', versionId: '7' }
+      })
+      expect(result.receipt.storageIsolationReceipts).toHaveLength(1)
+      expect(result.receipt.storageIsolationReceipts[0]).toMatchObject({
+        bucketId: 'user-assets',
+        ruleId: 'owner-files',
+        outcome: 'succeeded',
+        residualObjectPaths: []
+      })
+      const gates = new Map(result.receipt.gates.map((gate) => [gate.gate, gate.status]))
+      expect(gates.get('auth-policy-verified')).toBe('unknown')
+      expect(gates.get('server-workflows-deployed')).toBe('passed')
+      expect(gates.get('required-secrets-present')).toBe('passed')
+      expect(gates.get('storage-policy-verified')).toBe('passed')
+      expect(gates.get('backend-health-check')).toBe('passed')
+      expect(gates.get('target-capabilities-supported')).toBe('passed')
+      expect(result.productionReleaseReady).toBe(false)
+      expect(edge.requests.some((entry) => entry.includes('/functions/deploy'))).toBe(true)
+      expect(storage.requests.filter((entry) => entry.includes('/auth/v1/user'))).toHaveLength(4)
+      expect(storage.requests.filter((entry) => entry.includes('/storage/v1/object/')).length).toBe(
+        14
+      )
+      const serialized = JSON.stringify(result)
+      for (const secret of [READ_PAT, WRITE_PAT, PUBLISHABLE_KEY, EDGE_TOKEN, TOKEN_A, TOKEN_B]) {
+        expect(serialized).not.toContain(secret)
       }
-    })
-
-    const result = await service.verify(verificationInput(prepared))
-
-    expect(result.receipt.outcome).toBe('blocked')
-    expect(result.receipt.schemaApplied).toBe(true)
-    expect(result.receipt.edgeFunctionReceipt).toMatchObject({
-      outcome: 'succeeded',
-      dispatch: 'dispatched',
-      remote: { functionId: 'function-1', versionId: '7' }
-    })
-    expect(result.receipt.storageIsolationReceipts).toHaveLength(1)
-    expect(result.receipt.storageIsolationReceipts[0]).toMatchObject({
-      bucketId: 'user-assets',
-      ruleId: 'owner-files',
-      outcome: 'succeeded',
-      residualObjectPaths: []
-    })
-    const gates = new Map(result.receipt.gates.map((gate) => [gate.gate, gate.status]))
-    expect(gates.get('auth-policy-verified')).toBe('unknown')
-    expect(gates.get('server-workflows-deployed')).toBe('passed')
-    expect(gates.get('required-secrets-present')).toBe('passed')
-    expect(gates.get('storage-policy-verified')).toBe('passed')
-    expect(gates.get('backend-health-check')).toBe('passed')
-    expect(gates.get('target-capabilities-supported')).toBe('passed')
-    expect(result.productionReleaseReady).toBe(false)
-    expect(edge.requests.some((entry) => entry.includes('/functions/deploy'))).toBe(true)
-    expect(storage.requests.filter((entry) => entry.includes('/auth/v1/user'))).toHaveLength(4)
-    expect(storage.requests.filter((entry) => entry.includes('/storage/v1/object/')).length).toBe(
-      14
-    )
-    const serialized = JSON.stringify(result)
-    for (const secret of [READ_PAT, WRITE_PAT, PUBLISHABLE_KEY, EDGE_TOKEN, TOKEN_A, TOKEN_B]) {
-      expect(serialized).not.toContain(secret)
     }
-  })
+  )
 
   test('blocks before deployment and Storage mutation when an Edge secret name is absent', async () => {
     const prepared = await setup()
