@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { digestCanonicalManifest } from '@open-pencil/scene-graph'
+
 import { parsePluginBackendProviderContribution } from '../src/backend/contract'
 import {
   PLUGIN_BACKEND_PROVIDER_CAPABILITIES_V2,
@@ -118,6 +120,28 @@ describe('backend provider declaration contract v2', () => {
     expect(() => parseVersionedPluginBackendProviderContribution(unknown)).toThrow(
       'contractVersion'
     )
+  })
+
+  test('preserves each version canonical digest while normalizing shared Unicode display text', async () => {
+    const v1 = { ...pluginBackendProviderContribution(), name: '  Cafe\u0301 Backend  ' }
+    const v2 = {
+      ...structuredClone(v1),
+      contractVersion: 2,
+      supportedModelVersions: [1, 2],
+      capabilities: [...PLUGIN_BACKEND_PROVIDER_CAPABILITIES_V2]
+    }
+    for (const [value, parser, expectedDigest] of [
+      [v1, parsePluginBackendProviderContribution, 'aRSj50Rw0EcbGHSYd3DwoGKWXuzE747r0DFlJx7rGlY'],
+      [v2, parsePluginBackendProviderContributionV2, 'P7IBP6N2-Bnqgd5hyNE8vVs2Jk8U2jHYkAQY4SbGFyU']
+    ] as const) {
+      const parsed = parser(value)
+      expect(parsed.name).toBe('Café Backend')
+      expect(await digestCanonicalManifest(parsed)).toBe(expectedDigest)
+      expect(
+        await digestCanonicalManifest(parseVersionedPluginBackendProviderContribution(value))
+      ).toBe(expectedDigest)
+      expect(value.name).toBe('  Cafe\u0301 Backend  ')
+    }
   })
 
   test('rejects unknown, duplicate, unsorted, or empty capability claims', () => {
