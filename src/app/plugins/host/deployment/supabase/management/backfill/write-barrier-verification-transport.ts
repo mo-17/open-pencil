@@ -14,7 +14,11 @@ import {
   type SupabaseBackfillWriteBarrierVerificationRequestV1
 } from '@/app/plugins/host/deployment/supabase/backfill/write-barrier/verifier'
 
-import type { SupabaseManagementRequestDeadline } from '../transport-runtime'
+import {
+  createBackfillReadDeadline,
+  readBackfillJSON,
+  waitForBackfillRead
+} from './read-response-runtime'
 
 const MANAGEMENT_ORIGIN = 'https://api.supabase.com'
 const PROJECT_REF = /^[a-z]{20}$/u
@@ -73,8 +77,6 @@ export type SupabaseManagementBackfillWriteBarrierVerificationTransport =
 interface UnknownRecord {
   [key: string]: unknown
 }
-
-type RequestDeadline = SupabaseManagementRequestDeadline
 
 const REQUEST_KEYS = Object.freeze([
   'queryId',
@@ -318,98 +320,7 @@ async function validatedQueryParameters(
   )
 }
 
-function requestDeadline(caller: AbortSignal | undefined, timeoutMs: number): RequestDeadline {
-  const controller = new AbortController()
-  let timedOut = false
-  const onCallerAbort = () => controller.abort(caller?.reason)
-  if (caller?.aborted) controller.abort(caller.reason)
-  else caller?.addEventListener('abort', onCallerAbort, { once: true })
-  const timeout = setTimeout(() => {
-    timedOut = true
-    controller.abort(
-      new DOMException('Backfill write-barrier verification timed out', 'TimeoutError')
-    )
-  }, timeoutMs)
-  return {
-    signal: controller.signal,
-    timedOut: () => timedOut,
-    dispose: () => {
-      clearTimeout(timeout)
-      caller?.removeEventListener('abort', onCallerAbort)
-    }
-  }
-}
-
-function abortReason(): Error {
-  return new DOMException('Supabase backfill write-barrier verification aborted', 'AbortError')
-}
-
-function waitForAbortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  let onAbort: () => void = () => undefined
-  const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(abortReason())
-    if (signal.aborted) onAbort()
-    else signal.addEventListener('abort', onAbort, { once: true })
-  })
-  return Promise.race([operation, aborted]).finally(() => {
-    signal.removeEventListener('abort', onAbort)
-  })
-}
-
-function validJSONMediaType(response: Response): boolean {
-  const value = response.headers.get('content-type')?.trim().toLowerCase()
-  return value !== undefined && /^application\/json(?:\s*;\s*charset=utf-8)?$/u.test(value)
-}
-
-async function boundedJSON(
-  response: Response,
-  maximum: number,
-  signal: AbortSignal
-): Promise<unknown> {
-  if (!validJSONMediaType(response)) return fail('invalid-response')
-  const contentLength = response.headers.get('content-length')
-  if (contentLength !== null) {
-    if (!/^\d+$/u.test(contentLength)) return fail('invalid-response')
-    const parsed = Number(contentLength)
-    if (!Number.isSafeInteger(parsed)) return fail('invalid-response')
-    if (parsed > maximum) {
-      void response.body?.cancel().catch(() => undefined)
-      return fail('response-too-large')
-    }
-  }
-  if (!response.body) return fail('invalid-response')
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let byteLength = 0
-  try {
-    let chunk = await waitForAbortable(reader.read(), signal)
-    while (!chunk.done) {
-      byteLength += chunk.value.byteLength
-      if (byteLength > maximum) {
-        await reader.cancel().catch(() => undefined)
-        return fail('response-too-large')
-      }
-      chunks.push(chunk.value)
-      chunk = await waitForAbortable(reader.read(), signal)
-    }
-  } catch (cause) {
-    await reader.cancel().catch(() => undefined)
-    throw cause
-  } finally {
-    reader.releaseLock()
-  }
-  const bytes = new Uint8Array(byteLength)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  try {
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
-  } catch {
-    return fail('invalid-response')
-  }
-}
+const READ_ABORT_MESSAGE = 'Supabase backfill write-barrier verification aborted'
 
 async function requestJSON(
   fetcher: SupabaseManagementBackfillWriteBarrierVerificationFetch,
@@ -421,17 +332,25 @@ async function requestJSON(
   callerSignal: AbortSignal | undefined
 ): Promise<unknown> {
   if (callerSignal?.aborted) return fail('aborted')
-  const deadline = requestDeadline(callerSignal, timeoutMs)
+  const deadline = createBackfillReadDeadline(
+    callerSignal,
+    timeoutMs,
+    'Backfill write-barrier verification timed out'
+  )
   try {
-    const response = await waitForAbortable(
+    const response = await waitForBackfillRead(
       fetcher(url, { ...init, redirect: 'error', signal: deadline.signal }, maximum, timeoutMs),
-      deadline.signal
+      deadline.signal,
+      READ_ABORT_MESSAGE
     )
     if (response.redirected || (response.url !== '' && response.url !== url)) {
       return fail('http-error')
     }
     if (response.status !== expectedStatus) return fail('http-error')
-    return await boundedJSON(response, maximum, deadline.signal)
+    return await readBackfillJSON(response, maximum, deadline.signal, {
+      abortMessage: READ_ABORT_MESSAGE,
+      fail
+    })
   } catch (cause) {
     if (cause instanceof SupabaseManagementBackfillWriteBarrierVerificationTransportError) {
       throw cause
