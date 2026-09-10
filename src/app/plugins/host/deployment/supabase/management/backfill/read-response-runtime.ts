@@ -1,3 +1,4 @@
+import { waitForManagementOperation } from '../abortable-operation'
 import type { SupabaseManagementRequestDeadline } from '../transport-runtime'
 
 interface BackfillReadResponsePolicy {
@@ -35,15 +36,11 @@ export function waitForBackfillRead<T>(
   signal: AbortSignal,
   abortMessage: string
 ): Promise<T> {
-  let onAbort: () => void = () => undefined
-  const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(new DOMException(abortMessage, 'AbortError'))
-    if (signal.aborted) onAbort()
-    else signal.addEventListener('abort', onAbort, { once: true })
-  })
-  return Promise.race([operation, aborted]).finally(() => {
-    signal.removeEventListener('abort', onAbort)
-  })
+  return waitForManagementOperation(
+    operation,
+    signal,
+    () => new DOMException(abortMessage, 'AbortError')
+  )
 }
 
 function validJSONMediaType(response: Response): boolean {

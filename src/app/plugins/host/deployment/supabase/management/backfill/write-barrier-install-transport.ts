@@ -6,6 +6,7 @@ import {
   type TrustedSupabaseBackfillWriteBarrierInstallDispatchV1
 } from '@/app/plugins/host/deployment/supabase/backfill/write-barrier/install'
 
+import { waitForManagementOperation } from '../abortable-operation'
 import type {
   SupabaseManagementBoundedResponse,
   SupabaseManagementRequestLifetime
@@ -297,15 +298,7 @@ function abortReason(signal: AbortSignal): Error {
 }
 
 function waitForAbortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  let onAbort: () => void = () => undefined
-  const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(abortReason(signal))
-    if (signal.aborted) onAbort()
-    else signal.addEventListener('abort', onAbort, { once: true })
-  })
-  return Promise.race([operation, aborted]).finally(() => {
-    signal.removeEventListener('abort', onAbort)
-  })
+  return waitForManagementOperation(operation, signal, () => abortReason(signal))
 }
 
 async function boundedBytes(

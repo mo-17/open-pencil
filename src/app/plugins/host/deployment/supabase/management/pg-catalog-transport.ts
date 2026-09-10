@@ -9,6 +9,7 @@ import {
   type SupabasePgCatalogReadResult
 } from '../pg-catalog-inspector'
 import SUPABASE_PG_CATALOG_AGGREGATE_SQL_SOURCE from '../pg-catalog-v6.sql?raw'
+import { waitForManagementOperation } from './abortable-operation'
 
 const MANAGEMENT_ORIGIN = 'https://api.supabase.com'
 const PROJECT_REF = /^[a-z]{20}$/u
@@ -164,16 +165,11 @@ export const SUPABASE_PG_CATALOG_AGGREGATE_PARAMETERS = Object.freeze(
 )
 
 function waitForBodyRead<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-  if (!signal) return operation
-  let onAbort: () => void = () => undefined
-  const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(new SupabaseManagementPgCatalogTransportError('aborted'))
-    if (signal.aborted) onAbort()
-    else signal.addEventListener('abort', onAbort, { once: true })
-  })
-  return Promise.race([operation, aborted]).finally(() => {
-    signal.removeEventListener('abort', onAbort)
-  })
+  return waitForManagementOperation(
+    operation,
+    signal,
+    () => new SupabaseManagementPgCatalogTransportError('aborted')
+  )
 }
 
 async function boundedJSON(
