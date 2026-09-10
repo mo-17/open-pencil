@@ -249,7 +249,14 @@ fn current_credential_changes_during_fixed_read_suppress_the_observation() {
                 )
                 .await;
                 assert!(matches!(result, Err(RunnerErrorV1::Credential(_))));
-                assert_eq!(*state.events.lock().unwrap(), STAGES.map(Event::Stage));
+                let events = state.events.lock().unwrap();
+                if stage == ReadStageV1::Execute {
+                    let mut expected = STAGES[..7].iter().copied().map(Event::Stage).collect::<Vec<_>>();
+                    expected.push(Event::Abort);
+                    assert_eq!(*events, expected);
+                } else {
+                    assert_eq!(*events, STAGES.map(Event::Stage));
+                }
                 harness.assert_unresolved();
                 assert_eq!(harness.record()["reconciliationLease"]["consumed"], true);
             }
@@ -487,5 +494,104 @@ fn interrupted_waker_registration_never_schedules_a_credential_read() {
             );
             assert!(!started.load(Ordering::SeqCst));
         }
+    });
+}
+
+
+struct RevocationWake {
+    target: Waker,
+    count: Arc<AtomicUsize>,
+}
+impl std::task::Wake for RevocationWake {
+    fn wake(self: Arc<Self>) { self.wake_by_ref(); }
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.count.fetch_add(1, Ordering::SeqCst);
+        self.target.wake_by_ref();
+    }
+}
+
+async fn reach_pending_with_observed_waker<F: Future>(
+    mut future: std::pin::Pin<&mut F>,
+    state: &Shared,
+    stage: ReadStageV1,
+    count: Arc<AtomicUsize>,
+) {
+    poll_fn(|context| {
+        let waker = Waker::from(Arc::new(RevocationWake {
+            target: context.waker().clone(), count: count.clone(),
+        }));
+        assert!(future.as_mut().poll(&mut Context::from_waker(&waker)).is_pending());
+        if state.events.lock().unwrap().contains(&Event::Stage(stage)) {
+            Poll::Ready(())
+        } else { Poll::Pending }
+    }).await;
+    count.store(0, Ordering::SeqCst);
+}
+
+#[test]
+fn same_value_shared_grant_write_wakes_and_revokes_every_pending_stage() {
+    runtime_test(|| async {
+        for stage in STAGES {
+            let mut state = shared(&contract());
+            state.pending_at = Some(stage);
+            let state = Arc::new(state);
+            let harness = Harness::new(state.clock.clone());
+            let (vault, grant) = configured_vault(&harness, "abcdefghijklmnopqrst", "account-golden");
+            let changed = vault.clone();
+            let (factory, _) = factory(state.clone(), grant.clone());
+            let interrupts = ActiveReadInterruptV1::new().unwrap();
+            let mut future = Box::pin(run_credential_bound_recovered_read_for_test(
+                &harness.journal, harness.recovery(), vault, factory, &interrupts,
+            ));
+            let wakes = Arc::new(AtomicUsize::new(0));
+            reach_pending_with_observed_waker(future.as_mut(), &state, stage, wakes.clone()).await;
+            // Generic Management-grant mutation, not a database lifecycle callback. Rewriting the
+            // exact same value must still revoke the old snapshot and wake a silent DB future.
+            tokio::task::spawn_blocking(move || changed.write_secret_for_test(GRANT_ACCOUNT, &grant))
+                .await.unwrap().unwrap();
+            assert!(wakes.load(Ordering::SeqCst) > 0);
+            assert!(matches!(future.await, Err(RunnerErrorV1::Credential(
+                DatabaseReadCredentialAdmissionErrorV1::Changed
+            ))));
+            let events = state.events.lock().unwrap();
+            if stage == ReadStageV1::Connect {
+                assert!(events.ends_with(&[Event::CancelConnect]));
+            } else {
+                assert!(events.ends_with(&[Event::Cancel, Event::Abort]));
+            }
+            harness.assert_unresolved();
+            assert_eq!(harness.record()["reconciliationLease"]["consumed"], true);
+        }
+    });
+}
+
+#[test]
+fn unrelated_vault_write_keeps_pending_read_alive_until_a_watched_write() {
+    runtime_test(|| async {
+        let mut state = shared(&contract());
+        state.pending_at = Some(ReadStageV1::Execute);
+        let state = Arc::new(state);
+        let harness = Harness::new(state.clock.clone());
+        let (vault, grant) = configured_vault(&harness, "abcdefghijklmnopqrst", "account-golden");
+        let changed = vault.clone();
+        let (factory, _) = factory(state.clone(), grant);
+        let interrupts = ActiveReadInterruptV1::new().unwrap();
+        let mut future = Box::pin(run_credential_bound_recovered_read_for_test(
+            &harness.journal, harness.recovery(), vault, factory, &interrupts,
+        ));
+        let wakes = Arc::new(AtomicUsize::new(0));
+        reach_pending_with_observed_waker(future.as_mut(), &state, ReadStageV1::Execute, wakes.clone()).await;
+        let changed = tokio::task::spawn_blocking(move || {
+            changed.write_secret_for_test("v1:github:default:token", "unrelated fixture").unwrap();
+            changed
+        }).await.unwrap();
+        assert_eq!(wakes.load(Ordering::SeqCst), 0);
+        assert!(poll(future.as_mut()).is_pending());
+        tokio::task::spawn_blocking(move || {
+            changed.write_secret_for_test(PASSWORD_ACCOUNT, "replacement fixture").unwrap();
+        }).await.unwrap();
+        assert!(matches!(future.await, Err(RunnerErrorV1::Credential(_))));
+        assert!(state.events.lock().unwrap().ends_with(&[Event::Cancel, Event::Abort]));
+        harness.assert_unresolved();
     });
 }

@@ -3,15 +3,20 @@
 //! Both checks are synchronous and must run on the Host's blocking executor, outside database
 //! future polling, with the original execution deadline checked before and after each await.
 //! The initial snapshot checks local profile consistency, not remote project/account authority.
-//! The final snapshot detects an observed rotation; there is no pending-session revocation,
-//! generation notification, timer, or protection against another process restoring all five
-//! original values between checks. Historical installation grants never enter this module.
+//! An atomically registered observer revokes this admission on matching writes through this vault
+//! instance or a clone, including same-value writes. The final disk snapshot also detects changes
+//! through an independent instance. Another process restoring all five original values between
+//! checks remains outside this observer boundary. Historical grants never enter this module.
 
 use super::{
+    map_vault_snapshot_error, parse_database_read_credential_snapshot,
     read_current_database_read_credential_snapshot_from, DatabaseReadCredentialSnapshotError,
+    DATABASE_READ_PASSWORD_ACCOUNT, DATABASE_READ_CREDENTIAL_INCARNATION_ACCOUNT,
+    DATABASE_READ_CONNECTION_PROFILE_ACCOUNT, DATABASE_READ_CONNECTION_PROFILE_DIGEST_ACCOUNT,
+    SHARED_GRANT_GENERATION_ACCOUNT,
     DatabaseReadCredentialSnapshotV1, SupabaseDatabaseReadConnectionProfileV1,
 };
-use crate::credentials::CredentialVault;
+use crate::credentials::{CredentialVault, CredentialVaultSnapshotObserverV1};
 
 /// Data-free failure values. No variant carries a password, profile, account, or grant value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +39,7 @@ impl From<DatabaseReadCredentialSnapshotError> for DatabaseReadCredentialAdmissi
 pub(crate) struct DatabaseReadCredentialAdmissionV1 {
     vault: CredentialVault,
     snapshot: DatabaseReadCredentialSnapshotV1,
+    observer: CredentialVaultSnapshotObserverV1,
 }
 
 impl DatabaseReadCredentialAdmissionV1 {
@@ -45,14 +51,29 @@ impl DatabaseReadCredentialAdmissionV1 {
         expected_project_ref: &str,
         expected_account_id: &str,
     ) -> Result<Self, DatabaseReadCredentialAdmissionErrorV1> {
-        let snapshot = read_current_database_read_credential_snapshot_from(&vault)?;
+        let (values, observer) = vault.read_secret_snapshot_observed([
+            DATABASE_READ_PASSWORD_ACCOUNT,
+            DATABASE_READ_CREDENTIAL_INCARNATION_ACCOUNT,
+            DATABASE_READ_CONNECTION_PROFILE_ACCOUNT,
+            DATABASE_READ_CONNECTION_PROFILE_DIGEST_ACCOUNT,
+            SHARED_GRANT_GENERATION_ACCOUNT,
+        ]).map_err(map_vault_snapshot_error)?;
+        let snapshot = parse_database_read_credential_snapshot(values, None)?;
         let profile = snapshot.connection_profile();
         if profile.project_ref() != expected_project_ref
             || profile.account_id() != expected_account_id
         {
             return Err(DatabaseReadCredentialAdmissionErrorV1::IdentityMismatch);
         }
-        Ok(Self { vault, snapshot })
+        if observer.is_revoked() {
+            return Err(DatabaseReadCredentialAdmissionErrorV1::Changed);
+        }
+        Ok(Self { vault, snapshot, observer })
+    }
+
+    /// A secret-free local revocation signal. It cannot read the vault or authorize a request.
+    pub(crate) fn observer_for_test(&self) -> CredentialVaultSnapshotObserverV1 {
+        self.observer.clone()
     }
 
     /// Borrowed only by the independently sealed Host connector. The view cannot outlive this
@@ -70,7 +91,8 @@ impl DatabaseReadCredentialAdmissionV1 {
     /// execution clock. Dropping an admission never performs I/O or creates a reusable permit.
     pub(crate) fn finish_for_test(self) -> Result<(), DatabaseReadCredentialAdmissionErrorV1> {
         let current = read_current_database_read_credential_snapshot_from(&self.vault)?;
-        if current.password() != self.snapshot.password()
+        if self.observer.is_revoked()
+            || current.password() != self.snapshot.password()
             || current.connection_profile() != self.snapshot.connection_profile()
             || current.grant_generation() != self.snapshot.grant_generation()
             || current.credential_incarnation() != self.snapshot.credential_incarnation()

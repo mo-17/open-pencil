@@ -176,21 +176,30 @@ fn read_database_read_credential_snapshot_with_expected(
     source: &impl DatabaseReadCredentialSource,
     expected_grant_generation: Option<&str>,
 ) -> Result<DatabaseReadCredentialSnapshotV1, DatabaseReadCredentialSnapshotError> {
-    let [password, credential_incarnation, connection_profile, connection_profile_digest, grant_generation] =
-        source
-            .read_secret_snapshot([
-                DATABASE_READ_PASSWORD_ACCOUNT,
-                DATABASE_READ_CREDENTIAL_INCARNATION_ACCOUNT,
-                DATABASE_READ_CONNECTION_PROFILE_ACCOUNT,
-                DATABASE_READ_CONNECTION_PROFILE_DIGEST_ACCOUNT,
-                SHARED_GRANT_GENERATION_ACCOUNT,
-            ])
-            .map_err(|error| match error {
-                CredentialVaultSnapshotError::Unavailable => {
-                    DatabaseReadCredentialSnapshotError::Unavailable
-                }
-                CredentialVaultSnapshotError::Failed => DatabaseReadCredentialSnapshotError::Failed,
-            })?;
+    let values = source
+        .read_secret_snapshot([
+            DATABASE_READ_PASSWORD_ACCOUNT,
+            DATABASE_READ_CREDENTIAL_INCARNATION_ACCOUNT,
+            DATABASE_READ_CONNECTION_PROFILE_ACCOUNT,
+            DATABASE_READ_CONNECTION_PROFILE_DIGEST_ACCOUNT,
+            SHARED_GRANT_GENERATION_ACCOUNT,
+        ])
+        .map_err(map_vault_snapshot_error)?;
+    parse_database_read_credential_snapshot(values, expected_grant_generation)
+}
+
+fn map_vault_snapshot_error(error: CredentialVaultSnapshotError) -> DatabaseReadCredentialSnapshotError {
+    match error {
+        CredentialVaultSnapshotError::Unavailable => DatabaseReadCredentialSnapshotError::Unavailable,
+        CredentialVaultSnapshotError::Failed => DatabaseReadCredentialSnapshotError::Failed,
+    }
+}
+
+fn parse_database_read_credential_snapshot(
+    values: RawCredentialSnapshot,
+    expected_grant_generation: Option<&str>,
+) -> Result<DatabaseReadCredentialSnapshotV1, DatabaseReadCredentialSnapshotError> {
+    let [password, credential_incarnation, connection_profile, connection_profile_digest, grant_generation] = values;
 
     let (
         Some(password),

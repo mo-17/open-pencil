@@ -50,6 +50,7 @@ fn control(source: &ActiveReadInterruptV1, deadline: Duration) -> ExecutionContr
         deadline,
         last_sample: Mutex::new(source.monotonic()),
         journal_ceiling: None,
+        credential_observer: None,
     }
 }
 

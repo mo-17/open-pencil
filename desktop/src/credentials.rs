@@ -20,6 +20,10 @@ use std::{
 };
 use zeroize::Zeroizing;
 
+mod observer;
+pub(crate) use observer::CredentialVaultSnapshotObserverV1;
+use observer::{CredentialVaultObserverRegistry, DeferredObserverNotifications};
+
 const STORE_DIRECTORY: &str = "credentials";
 #[cfg(any(test, feature = "native-test"))]
 const NATIVE_TEST_PROFILE_DIRECTORY_PREFIX: &str = "native-test-credentials-";
@@ -105,6 +109,7 @@ trait CredentialBackend {
 pub(crate) struct CredentialVault {
     root: Option<PathBuf>,
     process_lock: Arc<Mutex<()>>,
+    observers: Arc<CredentialVaultObserverRegistry>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -179,6 +184,7 @@ impl CredentialVault {
         Self {
             root: Some(app_data_dir.join(STORE_DIRECTORY)),
             process_lock: Arc::new(Mutex::new(())),
+            observers: Arc::new(CredentialVaultObserverRegistry::new()),
         }
     }
 
@@ -189,6 +195,7 @@ impl CredentialVault {
         Self {
             root: Some(root),
             process_lock: Arc::new(Mutex::new(())),
+            observers: Arc::new(CredentialVaultObserverRegistry::new()),
         }
     }
 
@@ -196,6 +203,7 @@ impl CredentialVault {
         Self {
             root: None,
             process_lock: Arc::new(Mutex::new(())),
+            observers: Arc::new(CredentialVaultObserverRegistry::new()),
         }
     }
 
@@ -226,23 +234,61 @@ impl CredentialVault {
         &self,
         accounts: [&str; N],
     ) -> Result<[Option<Zeroizing<String>>; N], CredentialVaultSnapshotError> {
-        self.with_store(|root| {
-            let vault = load_vault(root)?;
-            let mut values = std::array::from_fn(|_| None);
-            if vault.records.is_empty() {
-                return Ok(values);
+        self.with_store(|root| read_secret_snapshot_at_root(root, accounts))
+            .map_err(Into::into)
+    }
+
+    /// Atomically captures fixed Host account values and registers local revocation observation.
+    /// The same process/file locks span both steps. No current value enters the observer, and the
+    /// caller must still validate the snapshot and check the observer before using it.
+    #[allow(dead_code)] // The first observation consumer is a separately gated test-only runner.
+    pub(crate) fn read_secret_snapshot_observed<const N: usize>(
+        &self,
+        accounts: [&'static str; N],
+    ) -> Result<
+        (
+            [Option<Zeroizing<String>>; N],
+            CredentialVaultSnapshotObserverV1,
+        ),
+        CredentialVaultSnapshotError,
+    > {
+        CredentialVaultObserverRegistry::validate_accounts(&accounts)?;
+        let mut deferred = DeferredObserverNotifications::default();
+        let result = self.with_store(|root| {
+            let values = read_secret_snapshot_at_root(root, accounts)?;
+            let observer = self.observers.register(accounts, &mut deferred)?;
+            Ok((values, observer))
+        });
+        drop(deferred);
+        result.map_err(Into::into)
+    }
+
+    /// A well-formed mutation attempt revokes matching observations even when it is a same-value
+    /// write, absent-record removal, CAS conflict, failed persistence, or unconfirmed rename.
+    /// Malformed CAS batches rejected before this wrapper are not mutation attempts.
+    fn with_mutation_store<T>(
+        &self,
+        accounts: &[&str],
+        operation: impl FnOnce(&Path) -> Result<T, BackendError>,
+    ) -> Result<T, BackendError> {
+        let mut initial = DeferredObserverNotifications::default();
+        self.observers.revoke_accounts(accounts, &mut initial);
+        drop(initial); // Wake before waiting on process/file locks, including unavailable stores.
+        if self.observers.is_failed() {
+            return Err(BackendError::Failed);
+        }
+        let mut deferred = DeferredObserverNotifications::default();
+        let result = self.with_store(|root| {
+            // A snapshot may have been admitted after the first revocation but before this
+            // writer acquired the process lock. Revoke again under that same lock before I/O.
+            self.observers.revoke_accounts(accounts, &mut deferred);
+            if self.observers.is_failed() {
+                return Err(BackendError::Failed);
             }
-            let key = load_or_create_master_key(root, true)?;
-            verify_vault_records(&key, &vault)?;
-            for (index, account) in accounts.into_iter().enumerate() {
-                let Some(record) = vault.records.get(account) else {
-                    continue;
-                };
-                values[index] = Some(Zeroizing::new(decrypt_record(&key, account, record)?));
-            }
-            Ok(values)
-        })
-        .map_err(Into::into)
+            operation(root)
+        });
+        drop(deferred); // No process/file/registry/observer lock or upgraded-state destructor held.
+        result
     }
 
     /// Atomically replaces a bounded fixed record set only when one existing marker still equals
@@ -296,7 +342,8 @@ impl CredentialVault {
             return Err(CredentialVaultCompareExchangeError::Failed);
         }
 
-        self.with_store(|root| {
+        let affected_accounts: Vec<_> = mutations.iter().map(|mutation| mutation.account).collect();
+        self.with_mutation_store(&affected_accounts, |root| {
             let mut vault = load_vault(root)?;
             let Some(expected_record) = vault.records.get(expected_account) else {
                 return Err(BackendError::Conflict);
@@ -337,6 +384,26 @@ impl CredentialVault {
         })
         .map_err(Into::into)
     }
+}
+
+fn read_secret_snapshot_at_root<const N: usize>(
+    root: &Path,
+    accounts: [&str; N],
+) -> Result<[Option<Zeroizing<String>>; N], BackendError> {
+    let vault = load_vault(root)?;
+    let mut values = std::array::from_fn(|_| None);
+    if vault.records.is_empty() {
+        return Ok(values);
+    }
+    let key = load_or_create_master_key(root, true)?;
+    verify_vault_records(&key, &vault)?;
+    for (index, account) in accounts.into_iter().enumerate() {
+        let Some(record) = vault.records.get(account) else {
+            continue;
+        };
+        values[index] = Some(Zeroizing::new(decrypt_record(&key, account, record)?));
+    }
+    Ok(values)
 }
 
 #[cfg(any(test, feature = "native-test"))]
@@ -421,7 +488,7 @@ impl CredentialBackend for CredentialVault {
     }
 
     fn write(&self, account: &str, value: &str) -> Result<(), BackendError> {
-        self.with_store(|root| {
+        self.with_mutation_store(&[account], |root| {
             let mut vault = load_vault(root)?;
             if !vault.records.contains_key(account) && vault.records.len() >= MAX_CREDENTIAL_RECORDS
             {
@@ -436,7 +503,7 @@ impl CredentialBackend for CredentialVault {
     }
 
     fn remove(&self, account: &str) -> Result<(), BackendError> {
-        self.with_store(|root| {
+        self.with_mutation_store(&[account], |root| {
             let mut vault = load_vault(root)?;
             if !vault.records.contains_key(account) {
                 return Ok(());

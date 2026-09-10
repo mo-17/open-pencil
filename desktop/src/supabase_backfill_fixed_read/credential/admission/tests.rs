@@ -313,3 +313,19 @@ fn unavailable_or_disappeared_vault_fails_closed_and_drop_does_not_read() {
         ))
     );
 }
+
+
+#[test]
+fn same_instance_aba_and_same_value_writes_permanently_revoke_the_admission() {
+    let fixture = Fixture::new();
+    for restore in [false, true] {
+        let admission = fixture.admit();
+        let observer = admission.observer_for_test();
+        assert!(!observer.is_revoked());
+        if restore { fixture.write(DATABASE_READ_PASSWORD_ACCOUNT, "temporary fixture change"); }
+        fixture.write(DATABASE_READ_PASSWORD_ACCOUNT, PASSWORD);
+        assert!(observer.is_revoked());
+        assert_eq!(admission.finish_for_test(), Err(DatabaseReadCredentialAdmissionErrorV1::Changed));
+        fixture.admit().finish_for_test().unwrap();
+    }
+}

@@ -118,6 +118,8 @@ struct ExecutionControlV1<'a> {
     last_sample: Mutex<Duration>,
     #[cfg(test)]
     journal_ceiling: Option<ReceiptZeroInitializerActiveReadExecutionCeilingV1>,
+    #[cfg(test)]
+    credential_observer: Option<crate::credentials::CredentialVaultSnapshotObserverV1>,
 }
 
 impl<'a> ExecutionControlV1<'a> {
@@ -131,6 +133,7 @@ impl<'a> ExecutionControlV1<'a> {
                 .ok_or(RunnerErrorV1::ClockInvalid)?,
             last_sample: Mutex::new(now),
             journal_ceiling: None,
+            credential_observer: None,
         };
         result.require_ready()?;
         Ok(result)
@@ -155,9 +158,39 @@ impl<'a> ExecutionControlV1<'a> {
         Ok(self)
     }
 
+    #[cfg(test)]
+    fn bind_credential_observer_for_test(
+        mut self,
+        observer: crate::credentials::CredentialVaultSnapshotObserverV1,
+    ) -> Result<Self, RunnerErrorV1> {
+        self.require_ready()?;
+        self.credential_observer = Some(observer);
+        self.require_ready()?;
+        Ok(self)
+    }
+
+    fn register_waker(&self, waker: &Waker) -> Result<(), RunnerErrorV1> {
+        self.source.register_waker(waker, self.deadline)?;
+        #[cfg(test)]
+        if let Some(observer) = &self.credential_observer {
+            observer.register_waker(waker).map_err(|_| {
+                RunnerErrorV1::Credential(
+                    crate::supabase_backfill_fixed_read::DatabaseReadCredentialAdmissionErrorV1::Changed,
+                )
+            })?;
+        }
+        Ok(())
+    }
+
     fn require_ready(&self) -> Result<(), RunnerErrorV1> {
         if self.source.cancelled() {
             return Err(RunnerErrorV1::Cancelled);
+        }
+        #[cfg(test)]
+        if self.credential_observer.as_ref().is_some_and(|observer| observer.is_revoked()) {
+            return Err(RunnerErrorV1::Credential(
+                crate::supabase_backfill_fixed_read::DatabaseReadCredentialAdmissionErrorV1::Changed,
+            ));
         }
         #[cfg(test)]
         if let Some(ceiling) = &self.journal_ceiling {
@@ -201,7 +234,7 @@ impl<'a> ExecutionControlV1<'a> {
             if let Err(error) = self.require_ready() {
                 return Poll::Ready(Err(error));
             }
-            if let Err(error) = self.source.register_waker(context.waker(), self.deadline) {
+            if let Err(error) = self.register_waker(context.waker()) {
                 return Poll::Ready(Err(error));
             }
             // Registration must not introduce a cancellation/timeout race before the first I/O

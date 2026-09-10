@@ -63,9 +63,7 @@ pub(super) async fn wait_for_credential<T: Send + 'static>(
     let mut task = None;
     let result = poll_fn(|context| {
         execution.require_ready()?;
-        execution
-            .source
-            .register_waker(context.waker(), execution.deadline)?;
+        execution.register_waker(context.waker())?;
         execution.require_ready()?;
         // Even a cancellation raised while registering the first wakeup must prevent the
         // blocking snapshot from being scheduled. Later polls retain this same owned task.
@@ -112,6 +110,7 @@ pub(super) async fn run_credential_bound_recovered_read_for_test<
         DatabaseReadCredentialAdmissionV1::admit_for_test(vault, &project_ref, &account_id)
     })
     .await?;
+    let execution = execution.bind_credential_observer_for_test(admission.observer_for_test())?;
     let connector = factory.bind(admission.connection_inputs_for_test())?;
     execution.require_ready()?;
     let observation = contract.run(connector, &execution).await?;
