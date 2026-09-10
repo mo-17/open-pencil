@@ -14,6 +14,14 @@ use crate::credentials::{CredentialVault, CredentialVaultSnapshotError};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use zeroize::Zeroizing;
 
+#[cfg(test)]
+mod admission;
+#[cfg(test)]
+pub(crate) use admission::{
+    DatabaseReadCredentialAdmissionErrorV1, DatabaseReadCredentialAdmissionV1,
+    DatabaseReadCredentialConnectionInputsV1,
+};
+
 pub(super) const DATABASE_READ_PASSWORD_ACCOUNT: &str =
     "v1:supabase-database-read:default:password";
 pub(super) const DATABASE_READ_CREDENTIAL_INCARNATION_ACCOUNT: &str =
@@ -152,6 +160,22 @@ fn read_database_read_credential_snapshot_from(
     source: &impl DatabaseReadCredentialSource,
     expected_grant_generation: &str,
 ) -> Result<DatabaseReadCredentialSnapshotV1, DatabaseReadCredentialSnapshotError> {
+    read_database_read_credential_snapshot_with_expected(source, Some(expected_grant_generation))
+}
+
+/// The Host learns the current grant from the same five-record snapshot, never from a caller or
+/// historical installation grant. This private reader is only reachable by test-only admission.
+#[cfg(test)]
+fn read_current_database_read_credential_snapshot_from(
+    source: &impl DatabaseReadCredentialSource,
+) -> Result<DatabaseReadCredentialSnapshotV1, DatabaseReadCredentialSnapshotError> {
+    read_database_read_credential_snapshot_with_expected(source, None)
+}
+
+fn read_database_read_credential_snapshot_with_expected(
+    source: &impl DatabaseReadCredentialSource,
+    expected_grant_generation: Option<&str>,
+) -> Result<DatabaseReadCredentialSnapshotV1, DatabaseReadCredentialSnapshotError> {
     let [password, credential_incarnation, connection_profile, connection_profile_digest, grant_generation] =
         source
             .read_secret_snapshot([
@@ -198,7 +222,7 @@ fn read_database_read_credential_snapshot_from(
     if !valid_uuid_v4(&grant_generation) {
         return Err(DatabaseReadCredentialSnapshotError::InvalidGrantGeneration);
     }
-    if grant_generation.as_str() != expected_grant_generation {
+    if expected_grant_generation.is_some_and(|expected| grant_generation.as_str() != expected) {
         return Err(DatabaseReadCredentialSnapshotError::GrantGenerationMismatch);
     }
 
@@ -381,6 +405,21 @@ mod tests {
         DATABASE_READ_CONNECTION_PROFILE_DIGEST_ACCOUNT,
         SHARED_GRANT_GENERATION_ACCOUNT,
     ];
+
+    #[test]
+    fn current_reader_observes_exactly_one_atomic_snapshot_without_an_expected_grant() {
+        let mut values = raw_values(PASSWORD);
+        values[4] = Some(Zeroizing::new(OTHER_GRANT_GENERATION.to_owned()));
+        let source = FakeCredentialSource::values(values);
+        let snapshot = read_current_database_read_credential_snapshot_from(&source).unwrap();
+        assert_eq!(source.calls.get(), 1);
+        assert_eq!(
+            source.accounts.borrow().as_slice(),
+            &[DATABASE_READ_CREDENTIAL_ACCOUNTS.map(str::to_owned)]
+        );
+        assert_eq!(snapshot.grant_generation(), OTHER_GRANT_GENERATION);
+        assert_eq!(snapshot.password(), PASSWORD);
+    }
 
     #[test]
     fn rejects_each_missing_record() {

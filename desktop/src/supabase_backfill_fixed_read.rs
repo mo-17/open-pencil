@@ -17,6 +17,12 @@ mod credential_lifecycle;
 mod profile;
 mod wire;
 
+#[cfg(test)]
+pub(crate) use credential::{
+    DatabaseReadCredentialAdmissionErrorV1, DatabaseReadCredentialAdmissionV1,
+    DatabaseReadCredentialConnectionInputsV1,
+};
+
 pub(crate) use credential::{
     read_database_read_credential_snapshot, DatabaseReadCredentialSnapshotError,
     MAXIMUM_DATABASE_READ_PASSWORD_BYTES,

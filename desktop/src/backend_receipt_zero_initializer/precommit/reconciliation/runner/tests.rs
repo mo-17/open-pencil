@@ -59,8 +59,9 @@ impl InterruptSourceV1 for Clock {
     fn cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
     }
-    fn register_waker(&self, waker: &Waker, _deadline: Duration) {
+    fn register_waker(&self, waker: &Waker, _deadline: Duration) -> Result<(), RunnerErrorV1> {
         *self.waiter.lock().unwrap() = Some(waker.clone());
+        Ok(())
     }
 }
 
@@ -336,14 +337,15 @@ fn interruption_during_waker_registration_prevents_first_io_poll_without_cleanup
             self.clock.cancelled()
         }
 
-        fn register_waker(&self, waker: &Waker, deadline: Duration) {
+        fn register_waker(&self, waker: &Waker, deadline: Duration) -> Result<(), RunnerErrorV1> {
             self.registrations.fetch_add(1, Ordering::SeqCst);
-            self.clock.register_waker(waker, deadline);
+            self.clock.register_waker(waker, deadline)?;
             if self.timeout {
                 self.clock.set(u64::try_from(deadline.as_millis()).unwrap());
             } else {
                 self.clock.cancel();
             }
+            Ok(())
         }
     }
 

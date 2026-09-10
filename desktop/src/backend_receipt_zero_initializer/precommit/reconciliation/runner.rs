@@ -27,6 +27,9 @@ use crate::backend_operation_journal::{
 };
 
 #[cfg(test)]
+mod credential_composition;
+mod interrupt;
+#[cfg(test)]
 mod recovery_composition;
 
 mod sealed {
@@ -56,6 +59,7 @@ enum RunnerErrorV1 {
     Cancelled,
     TimedOut,
     ClockInvalid,
+    InterruptUnavailable,
     Database {
         stage: ReadStageV1,
         failure: DatabaseFailureV1,
@@ -63,6 +67,10 @@ enum RunnerErrorV1 {
     Contract(ReadErrorV1),
     #[cfg(test)]
     Journal(JournalError),
+    #[cfg(test)]
+    Credential(crate::supabase_backfill_fixed_read::DatabaseReadCredentialAdmissionErrorV1),
+    #[cfg(test)]
+    CredentialTaskUnavailable,
 }
 
 impl From<ReadErrorV1> for RunnerErrorV1 {
@@ -101,7 +109,7 @@ const READ_LIMITS: ReadLimitsV1 = ReadLimitsV1 {
 trait InterruptSourceV1: Send + Sync {
     fn monotonic(&self) -> Duration;
     fn cancelled(&self) -> bool;
-    fn register_waker(&self, waker: &Waker, deadline: Duration);
+    fn register_waker(&self, waker: &Waker, deadline: Duration) -> Result<(), RunnerErrorV1>;
 }
 
 struct ExecutionControlV1<'a> {
@@ -193,7 +201,9 @@ impl<'a> ExecutionControlV1<'a> {
             if let Err(error) = self.require_ready() {
                 return Poll::Ready(Err(error));
             }
-            self.source.register_waker(context.waker(), self.deadline);
+            if let Err(error) = self.source.register_waker(context.waker(), self.deadline) {
+                return Poll::Ready(Err(error));
+            }
             // Registration must not introduce a cancellation/timeout race before the first I/O
             // poll. A pending adapter future is polled only while this exact control stays fresh.
             if let Err(error) = self.require_ready() {

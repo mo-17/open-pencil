@@ -7,6 +7,8 @@ use crate::backend_operation_journal::{
 use std::{fs, path::Path};
 use tempfile::TempDir;
 
+mod credentials;
+
 const WALL_START: u64 = 1_800_000_000_000;
 
 struct JournalTime {
@@ -307,7 +309,7 @@ fn connector_clock_rollback_after_the_projection_sample_is_rejected() {
         fn cancelled(&self) -> bool {
             false
         }
-        fn register_waker(&self, _: &Waker, _: Duration) {
+        fn register_waker(&self, _: &Waker, _: Duration) -> Result<(), RunnerErrorV1> {
             panic!("clock regression must reject before I/O registration")
         }
     }
