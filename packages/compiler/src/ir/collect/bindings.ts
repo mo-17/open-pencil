@@ -7,7 +7,8 @@ import {
   PAYLOAD_ENTRY_KEY_RE,
   PREV_IDENT,
   substitutePrev,
-  validateInvokeServerWorkflowAction
+  validateInvokeServerWorkflowAction,
+  validateLowcodeNavigationTarget
 } from '@open-pencil/lowcode'
 import {
   type ActionDef,
@@ -1572,6 +1573,15 @@ function resolveNavigate(
     warnings.push({
       code: 'action-navigate-missing-to',
       message: `node ${node.id} ${eventName} navigate has no target path`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const targetValidation = validateLowcodeNavigationTarget(to)
+  if (!targetValidation.ok) {
+    warnings.push({
+      code: 'action-navigate-invalid-to',
+      message: `node ${node.id} ${eventName} navigate target is invalid: ${targetValidation.reason ?? 'unsupported target'}`,
       nodeId: node.id
     })
     return null

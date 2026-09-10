@@ -60,6 +60,21 @@ describe('resolveActions — discriminated kind dispatch', () => {
     expect(ir.warnings.some((w) => w.code === 'action-navigate-missing-to')).toBe(true)
   })
 
+  test('navigate rejects external, backslash, and control-character targets', () => {
+    for (const to of ['about', '//evil.example/path', '/\\evil.example/path', '/about\nnext']) {
+      const { graph, pageId } = makeButtonWith({
+        onClick: [{ id: 'a1', kind: 'navigate', to }]
+      })
+      const ir = collectTree(graph, pageId)
+      const button = ir.children[0]
+      if (button.kind !== 'element') throw new Error('expected element')
+      expect(button.events?.onClick).toBeUndefined()
+      expect(ir.warnings.some((warning) => warning.code === 'action-navigate-invalid-to')).toBe(
+        true
+      )
+    }
+  })
+
   test('setVariable targeting an unknown docState is dropped with a warning (Phase 2 §2)', () => {
     const { graph, pageId } = makeButtonWith({
       onClick: [{ id: 'a1', kind: 'setVariable', targetName: 'cookie', valueExpr: '1' }]

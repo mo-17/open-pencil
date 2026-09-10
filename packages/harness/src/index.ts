@@ -4,7 +4,12 @@ export type {
   HarnessBackend,
   HarnessResumeState
 } from './backends/types'
-export { PiHarnessBackend, type PiHarnessBackendOptions } from './backends/pi'
+export {
+  PiHarnessBackend,
+  type LegacyPiAuthOptions,
+  type PiHarnessAuthOptions,
+  type PiHarnessBackendOptions
+} from './backends/pi'
 export {
   MAX_PROMPT_LENGTH,
   MAX_PROTOCOL_LINE_BYTES,

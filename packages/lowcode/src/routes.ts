@@ -37,6 +37,14 @@ const SLUG_NON_ALPHANUM = /[^a-z0-9]+/g
 const SLUG_TRIM_DASH = /^-+|-+$/g
 const ROUTE_PARAM = /^:([A-Za-z_][A-Za-z0-9_]*)(\?)?$/
 
+function hasURLControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index)
+    if (code <= 0x1f || code === 0x7f) return true
+  }
+  return false
+}
+
 /** Keep this validation deliberately aligned with the compiler's historical
  * contract: a page pattern is accepted when it is non-empty and starts with
  * `/`. More detailed parameter diagnostics are exposed by
@@ -45,6 +53,26 @@ export function validateLowcodeRoutePattern(pattern: string): ValidationResult {
   if (pattern === '') return { ok: false, reason: 'route pattern is required' }
   if (!pattern.startsWith('/')) {
     return { ok: false, reason: 'route pattern must start with "/"' }
+  }
+  return { ok: true }
+}
+
+/** Navigation actions are app-internal routes, never URL launchers. Reject
+ * browser authority syntax and Windows-style separators before a target can
+ * reach a router implementation. */
+export function validateLowcodeNavigationTarget(target: string): ValidationResult {
+  if (target === '') return { ok: false, reason: 'navigate target is required' }
+  if (!target.startsWith('/')) {
+    return { ok: false, reason: 'navigate target must start with "/"' }
+  }
+  if (target.startsWith('//')) {
+    return { ok: false, reason: 'protocol-relative navigate targets are not allowed' }
+  }
+  if (target.includes('\\')) {
+    return { ok: false, reason: 'backslashes are not allowed in navigate targets' }
+  }
+  if (hasURLControlCharacter(target)) {
+    return { ok: false, reason: 'control characters are not allowed in navigate targets' }
   }
   return { ok: true }
 }

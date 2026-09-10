@@ -42,7 +42,7 @@ function fixture(): Map<string, string | Uint8Array> {
         private: true,
         type: 'module',
         scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview', inspect: 'keep' },
-        dependencies: { react: '^19.2.0', 'react-dom': '^19.2.0', 'react-router-dom': '^6.27.0' },
+        dependencies: { react: '^19.2.0', 'react-dom': '^19.2.0', 'react-router-dom': '^7.18.3' },
         devDependencies: {
           '@tailwindcss/vite': '^4.2.1',
           '@vitejs/plugin-react': '^4.3.4',

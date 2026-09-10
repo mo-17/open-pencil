@@ -48,7 +48,7 @@ interface ExternalPin {
 }
 
 const COMMON_EXTERNAL_PINS: Readonly<Record<string, ExternalPin>> = Object.freeze({
-  'react-router-dom': { version: '6.27.0', declaration: '^6.27.0' },
+  'react-router-dom': { version: '7.18.3', declaration: '^7.18.3' },
   '@supabase/supabase-js': { version: '2.100.0', declaration: '^2.100.0' },
   'react-intl': { version: '7.1.0', declaration: '^7.1.0' },
   zustand: { version: '5.0.0', declaration: '^5.0.0' },
@@ -278,6 +278,7 @@ async function buildBrowserBundle(
     define: {
       'import.meta.env.BASE_URL': JSON.stringify('/'),
       'import.meta.env.VITE_SUPABASE_URL': 'undefined',
+      'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': 'undefined',
       'import.meta.env.VITE_SUPABASE_ANON_KEY': 'undefined',
       'import.meta.env.VITE_SUPABASE_SCHEMA': 'undefined',
       'process.env.NODE_ENV': JSON.stringify('production')

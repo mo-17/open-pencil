@@ -14,6 +14,7 @@ import {
   lowcodeNavigationPathname,
   lowcodeRouteCollisionKey,
   lowcodeRouteMatches,
+  validateLowcodeNavigationTarget,
   type LowcodePageRouteInfo,
   type LowcodeRouteParameter
 } from './routes'
@@ -402,12 +403,13 @@ function collectNavigate(
     addEdgeIssue(state, edge, 'navigate-target-invalid', 'navigate action has no target route')
     return
   }
-  if (!to.startsWith('/')) {
+  const targetValidation = validateLowcodeNavigationTarget(to)
+  if (!targetValidation.ok) {
     addEdgeIssue(
       state,
       edge,
       'navigate-target-invalid',
-      `navigate target "${to}" must start with "/"`
+      targetValidation.reason ?? `navigate target "${to}" is invalid`
     )
     return
   }

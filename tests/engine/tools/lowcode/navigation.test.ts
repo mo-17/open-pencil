@@ -275,4 +275,24 @@ describe('audit_navigation', () => {
       invalidParams: ['id']
     })
   })
+
+  test('rejects protocol-relative, backslash, and control-character navigate targets', () => {
+    const { figma, graph } = setupToolTest()
+    const page = graph.getPages()[0]
+    const targets = ['//evil.example/path', '/\\evil.example/path', '/about\nnext']
+    for (const [index, to] of targets.entries()) {
+      graph.createNode('BUTTON', page.id, {
+        name: `Unsafe ${index}`,
+        events: { onClick: [{ id: `unsafe-${index}`, kind: 'navigate', to }] }
+      })
+    }
+
+    const result = getTool('audit_navigation').execute(figma, {}) as Result<NavigationAuditResult>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data.edges.map((edge) => edge.status)).toEqual(['invalid', 'invalid', 'invalid'])
+    expect(
+      result.data.issues.filter((issue) => issue.code === 'navigate-target-invalid')
+    ).toHaveLength(3)
+  })
 })

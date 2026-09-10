@@ -109,7 +109,7 @@ describe('compile — multi-page emission (Phase 1 §11)', () => {
     const pkg = JSON.parse(out.files.get('package.json') as string) as {
       dependencies: Record<string, string>
     }
-    expect(pkg.dependencies['react-router-dom']).toBe('^6.27.0')
+    expect(pkg.dependencies['react-router-dom']).toBe('^7.18.3')
   })
 
   test('devMode=true: router shell imports the preview bridge once; pages do not', () => {

@@ -1,7 +1,9 @@
 import { createPi } from '@ai-sdk/harness-pi'
-import type { PiAuthOptions } from '@ai-sdk/harness-pi'
+import type { PiAuthenticationMode } from '@ai-sdk/harness-pi'
 import { HarnessAgent } from '@ai-sdk/harness/agent'
 import type { HarnessAgentResumeSessionState, HarnessAgentSession } from '@ai-sdk/harness/agent'
+// eslint-disable-next-line open-pencil/no-mixed-case-acronym-identifiers -- Preserve the external SDK export name.
+import { getAiGatewayAuthFromEnv as getAIGatewayAuthFromEnv } from '@ai-sdk/harness/utils'
 import { createJustBashSandbox } from '@ai-sdk/sandbox-just-bash'
 import type { TextStreamPart, ToolSet } from 'ai'
 
@@ -37,8 +39,18 @@ import type { BackendEvent, BackendSession, HarnessBackend, HarnessResumeState }
 
 export type PiThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 
+export interface LegacyPiAuthOptions {
+  gateway?: {
+    apiKey?: string
+    baseUrl?: string
+  }
+  customEnv?: Record<string, string>
+}
+
+export type PiHarnessAuthOptions = PiAuthenticationMode | LegacyPiAuthOptions
+
 export interface PiHarnessBackendOptions {
-  auth?: PiAuthOptions
+  auth?: PiHarnessAuthOptions
   apiKey?: string
   model?: string
   thinkingLevel?: PiThinkingLevel
@@ -46,6 +58,93 @@ export interface PiHarnessBackendOptions {
   mcpServers?: Record<string, unknown>
   instructions?: string
   permissionMode?: 'allow-all' | 'allow-reads' | 'allow-edits'
+}
+
+interface NormalizedPiAuthOptions {
+  auth?: PiAuthenticationMode
+  environment: Record<string, string>
+}
+
+function isLegacyPiAuthOptions(value: unknown): value is LegacyPiAuthOptions {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (Object.hasOwn(value, 'gateway') || Object.hasOwn(value, 'customEnv'))
+  )
+}
+
+function stringRecord(value: unknown, field: string): Record<string, string> | undefined {
+  if (value === undefined) return undefined
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError(`${field} must be a string record`)
+  }
+  const result: Record<string, string> = {}
+  for (const [name, entry] of Object.entries(value)) {
+    if (typeof entry !== 'string') throw new TypeError(`${field}.${name} must be a string`)
+    result[name] = entry
+  }
+  return result
+}
+
+function optionalString(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') throw new TypeError(`${field} must be a string`)
+  return value
+}
+
+function gatewayOptions(value: unknown): LegacyPiAuthOptions['gateway'] {
+  if (value === undefined) return undefined
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('auth.gateway must be an object')
+  }
+  return {
+    ...optional('apiKey', optionalString(Reflect.get(value, 'apiKey'), 'auth.gateway.apiKey')),
+    ...optional('baseUrl', optionalString(Reflect.get(value, 'baseUrl'), 'auth.gateway.baseUrl'))
+  }
+}
+
+function defaultGatewayEnvironment(apiKey: string | undefined): Record<string, string> {
+  return apiKey === undefined ? {} : { AI_GATEWAY_API_KEY: apiKey }
+}
+
+function normalizeLegacyPiAuthOptions(
+  auth: LegacyPiAuthOptions,
+  apiKey: string | undefined,
+  ambientEnvironment: Record<string, string | undefined>
+): NormalizedPiAuthOptions {
+  const customEnvironment = stringRecord(auth.customEnv, 'auth.customEnv')
+  if (customEnvironment && Object.values(customEnvironment).some((value) => value.length > 0)) {
+    return { auth: customEnvironment, environment: {} }
+  }
+
+  const gateway = gatewayOptions(auth.gateway)
+  const gatewayAPIKey = gateway?.apiKey
+  const gatewayBaseURL = gateway?.baseUrl
+  if ((gatewayAPIKey?.length ?? 0) > 0 || (gatewayBaseURL?.length ?? 0) > 0) {
+    const ambientGateway = getAIGatewayAuthFromEnv({ env: ambientEnvironment })
+    const resolvedAPIKey = gatewayAPIKey ?? apiKey ?? ambientGateway.apiKey
+    return {
+      auth: {
+        ...(resolvedAPIKey === undefined ? {} : { AI_GATEWAY_API_KEY: resolvedAPIKey }),
+        AI_GATEWAY_BASE_URL: gatewayBaseURL ?? ambientGateway.baseUrl
+      },
+      environment: {}
+    }
+  }
+
+  return { environment: defaultGatewayEnvironment(apiKey) }
+}
+
+export function normalizePiAuthOptions(
+  auth: PiHarnessAuthOptions | undefined,
+  apiKey?: string,
+  ambientEnvironment: Record<string, string | undefined> = process.env
+): NormalizedPiAuthOptions {
+  if (auth === undefined || typeof auth === 'string') {
+    return { ...optional('auth', auth), environment: defaultGatewayEnvironment(apiKey) }
+  }
+  if (!isLegacyPiAuthOptions(auth)) return { auth, environment: {} }
+  return normalizeLegacyPiAuthOptions(auth, apiKey, ambientEnvironment)
 }
 
 function asJSONValue(value: unknown): JSONValue {
@@ -145,12 +244,10 @@ export class PiHarnessBackend implements HarnessBackend {
       typeof configuration.settings?.permissionMode === 'string'
         ? (configuration.settings.permissionMode as PiHarnessBackendOptions['permissionMode'])
         : undefined
-    const environment: Record<string, string> = this.defaults.apiKey
-      ? { AI_GATEWAY_API_KEY: this.defaults.apiKey }
-      : {}
-    return withEnvironment(environment, async () => {
+    const normalizedAuth = normalizePiAuthOptions(this.defaults.auth, this.defaults.apiKey)
+    return withEnvironment(normalizedAuth.environment, async () => {
       const harness = createPi({
-        ...optional('auth', this.defaults.auth),
+        ...optional('auth', normalizedAuth.auth),
         ...optional('model', configuration.model),
         ...optional('thinkingLevel', thinkingLevel ?? this.defaults.thinkingLevel),
         ...optional('agentDir', this.defaults.agentDir),

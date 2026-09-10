@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- The sidecar security matrix stays in one end-to-end runtime fixture. */
 import { describe, expect, test } from 'bun:test'
 import { Buffer } from 'node:buffer'
+import process from 'node:process'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { serializeCodePenSidecarRequest } from '@open-pencil/compiler/codepen/sidecar-wire'
@@ -241,16 +242,34 @@ describe('CodePen sidecar pure runtime', () => {
         `import { createClient } from '@supabase/supabase-js'
 const client = createClient(
   import.meta.env.VITE_SUPABASE_URL ?? 'https://example.supabase.co',
-  import.meta.env.VITE_SUPABASE_ANON_KEY ?? 'public-anon',
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+    import.meta.env.VITE_SUPABASE_ANON_KEY ??
+    'public-fallback',
   { db: { schema: import.meta.env.VITE_SUPABASE_SCHEMA ?? 'public' } }
 )
 document.body.dataset.client = typeof client
 `
       ]
     ])
-    const result = await createCodePenSidecarShowcase(parsedRequest(files, 'react'))
-    expect(result.data.js).not.toContain('import.meta.env')
-    expect(result.data.html).toContain('@supabase/supabase-js@2.100.0')
+    const previous = {
+      publishable: process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      legacy: process.env.VITE_SUPABASE_ANON_KEY
+    }
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_sidecar_ambient'
+    process.env.VITE_SUPABASE_ANON_KEY = 'legacy-sidecar-ambient'
+    try {
+      const result = await createCodePenSidecarShowcase(parsedRequest(files, 'react'))
+      expect(result.data.js).not.toContain('import.meta.env')
+      expect(result.data.js).toContain('public-fallback')
+      expect(result.data.js).not.toContain('sidecar_ambient')
+      expect(result.data.js).not.toContain('sidecar-ambient')
+      expect(result.data.html).toContain('@supabase/supabase-js@2.100.0')
+    } finally {
+      if (previous.publishable === undefined) delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+      else process.env.VITE_SUPABASE_PUBLISHABLE_KEY = previous.publishable
+      if (previous.legacy === undefined) delete process.env.VITE_SUPABASE_ANON_KEY
+      else process.env.VITE_SUPABASE_ANON_KEY = previous.legacy
+    }
   }, 30_000)
 
   test('replaces the exact MapLibre stylesheet with a pinned link', async () => {

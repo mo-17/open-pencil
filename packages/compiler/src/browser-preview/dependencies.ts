@@ -12,7 +12,7 @@ const PIN = (version: string, ...declarations: string[]): DependencyPin =>
   Object.freeze({ version, declarations: Object.freeze(declarations) })
 
 const SHARED_PINS: Readonly<Partial<Record<string, DependencyPin>>> = Object.freeze({
-  'react-router-dom': PIN('6.27.0', '^6.27.0'),
+  'react-router-dom': PIN('7.18.3', '^7.18.3'),
   'react-intl': PIN('7.1.0', '^7.1.0'),
   zustand: PIN('5.0.0', '^5.0.0'),
   clsx: PIN('2.1.1', '^2.1.1'),

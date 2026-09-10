@@ -535,7 +535,12 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
       pageIds: [pageId],
       options: withDefaults({ packageName: 'cw-payload-entries' })
     })
-    expect(out.warnings).toEqual([])
+    expect(out.warnings.map((warning) => warning.code)).toEqual([
+      'legacy-backend-auth-intent-required',
+      'supabase-external-rls-live-review-required',
+      'supabase-external-rls-live-review-required'
+    ])
+    expect(out.artifactOwnership?.backendReviewFiles.length).toBeGreaterThan(0)
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('.insert({ "name": formName, "age": formAge })')
     // Both targets are reads → useDocState import line must be present

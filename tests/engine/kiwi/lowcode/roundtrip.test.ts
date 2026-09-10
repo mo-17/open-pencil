@@ -10,6 +10,24 @@ import {
 } from '@open-pencil/core'
 import type { ActionDef, MotionSpec } from '@open-pencil/scene-graph'
 
+import {
+  createBackendProviderDocumentRequest,
+  createEmptyBackendApplication,
+  readBackendProviderDocumentRequest,
+  upsertBackendProviderPluginData
+} from '@/app/lowcode/backend/document'
+import {
+  createAppPluginStore,
+  createBundledPluginCatalog,
+  createMemoryAppPluginStateStorage,
+  type AppBundlePluginCatalogEntry
+} from '@/app/plugins'
+import {
+  SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
+  listAppBackendProviderDescriptors,
+  type AppBackendProviderDescriptor
+} from '@/app/plugins/host/backend-provider'
+
 setDefaultTimeout(30_000)
 
 const CHECKOUT_ENDPOINT = `/api/\${priceId}/checkout`
@@ -25,8 +43,26 @@ const CHECKOUT_ENDPOINT = `/api/\${priceId}/checkout`
  * instead, which is robust.
  */
 describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (Phase 1 §12)', () => {
+  let backendProviderDescriptor: AppBackendProviderDescriptor
+
   beforeAll(async () => {
     await initCodec()
+    const bundled = createBundledPluginCatalog().find(
+      ({ manifest }) => manifest.plugin.id === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+    )
+    if (bundled?.trustSource !== 'app-bundle') {
+      throw new Error('Missing bundled Supabase Backend Provider')
+    }
+    const store = createAppPluginStore({
+      storage: createMemoryAppPluginStateStorage(),
+      catalog: [bundled as AppBundlePluginCatalogEntry],
+      activationCompatibilityPolicy: () => ({ ok: true }),
+      engineVersion: '0.13.2'
+    })
+    await store.load()
+    const descriptors = listAppBackendProviderDescriptors(store)
+    if (descriptors.length !== 1) throw new Error('Expected one active Backend Provider')
+    backendProviderDescriptor = descriptors[0]
   })
 
   function findFirst(graph: SceneGraph, type: SceneNode['type']): SceneNode {
@@ -87,6 +123,31 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
 
     expect(reimported.getPages()[0].lowcodeRequiresAuth).toBe(true)
     expect(reimported.getNode(reimported.rootId)?.lowcodeAuthRedirect).toBe('/signin')
+  })
+
+  test('root Backend Provider declaration and unrelated generic pluginData round-trip through .fig', async () => {
+    const graph = new SceneGraph()
+    const request = createBackendProviderDocumentRequest(
+      backendProviderDescriptor,
+      createEmptyBackendApplication('fig-backend-roundtrip')
+    )
+    graph.updateNode(graph.rootId, {
+      pluginData: upsertBackendProviderPluginData(
+        [{ pluginId: 'example.plugin', key: 'future/root-data', value: 'preserved' }],
+        request
+      )
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const root = reimported.getNode(reimported.rootId)
+
+    expect(root?.pluginData).toContainEqual({
+      pluginId: 'example.plugin',
+      key: 'future/root-data',
+      value: 'preserved'
+    })
+    expect(readBackendProviderDocumentRequest(reimported)).toEqual(request)
   })
 
   test('Phase 5 §3: root and page SEO metadata round-trip through .fig', async () => {

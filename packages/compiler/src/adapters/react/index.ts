@@ -82,11 +82,11 @@ import { collectUsedKitComponents, resolveUIKit } from './ui-kit/registry'
 import type { UIKitAdapter } from './ui-kit/types'
 
 /**
- * Pinned alongside `react: ^19.2.0` / `react: ^18.3.1` — `react-router-dom@6`
- * supports both. Lock to 6.27 minimum (the line that added React 19 support)
- * to avoid older v6 versions crashing under `<StrictMode>` in React 19.
+ * Pinned alongside `react: ^19.2.0` / `react: ^18.3.1`. React Router v7 keeps
+ * the v6 declarative APIs emitted by this adapter and fixes unsafe external
+ * navigation handling in older releases.
  */
-const REACT_ROUTER_DOM_VERSION = '^6.27.0'
+const REACT_ROUTER_DOM_VERSION = '^7.18.3'
 const LUCIDE_REACT_VERSION = '^1.21.0'
 
 const LOWCODE_STATE_FILE = 'src/_lowcode_state.ts'
