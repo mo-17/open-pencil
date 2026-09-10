@@ -6,8 +6,8 @@ description: Concrete admission requirements for a future native Receipt-zero re
 # Receipt-zero PostgreSQL Driver Admission Draft
 
 This proposal defines what a native PostgreSQL driver must demonstrate before it can implement the
-private Receipt-zero reconciliation connector. It does not select a dependency version, authorize
-dependency installation or database access, or enable a production constructor. The current
+private Receipt-zero reconciliation connector. It proposes an unapproved pinned candidate below; it does not admit a driver, authorize dependency
+installation or database access, or enable a production constructor. The current
 **PostgreSQL text-protocol response contract remains required**.
 
 The inspected stock `tokio-postgres` APIs are not a direct fit: prepared queries request binary
@@ -22,15 +22,50 @@ driver admission decision, not an adapter implementation detail.
 | LocalCompleted | Fixed SQL and exact journal-derived parameters; one-row scalar validation and independent classification | Local validation only; the scalar transcript does not authenticate a database |
 | LocalCompleted | Test-only recovery composition, same-journal capability checks, durable lease consumption, original execution ceilings, and exact historical installation join | Preserves `OutcomeUnknown`; historical `Applied` evidence does not authenticate the current endpoint |
 | LocalCompleted | Fake-connector coverage of fixed stages, expiry, cancellation hooks, and drop ordering | Does not demonstrate socket cleanup, server cancellation, or remote transaction completion |
+| LocalCompleted | Owned real-Tokio timer with active deadline/cancellation wakeups and synchronous timer cleanup | Local executor behavior only; does not certify a PostgreSQL driver's server cancellation |
+| LocalCompleted | Test-only atomic five-record current-vault snapshot and observer registration, borrowed connection inputs, and final disk revalidation | Local credential consistency; current database grants are independent of historical Management grants |
+| LocalCompleted | Active revocation on matching write/remove/CAS attempts through the same vault instance or its clones, with pending-stage cleanup fixtures | No cross-instance/process notification or guarantee against complete value restoration outside this instance; final disk checks remain required |
 | Remaining | Approved, pinned driver and TLS dependency graph with the admission evidence below | No dependency or driver version is approved by this draft |
 | Remaining | Trusted Host action and production issuer binding current account, project, grant, credential incarnation, and profile digest to this recovered operation | A parsed profile or current vault snapshot alone is not execution authority |
 | Remaining | Authenticated association between the remote database, expected installation, and operation scope; credential replacement/revocation behavior throughout execution | Historical Management read grants must not be equated with current database credential grants |
 | Remaining | Production caller and authenticated settlement consumer | Raw observations cannot settle the journal, retry a mutation, issue Receipt V2, or authorize release |
 
-These labels describe the established local boundary, not a production completion claim. A local
-timer or current-vault admission implementation does not satisfy the remote driver and authentication
-requirements. Test counts and the current whole-repository check status belong in the
+These labels describe the established local boundary, not a production completion claim. Local
+timers, current-vault checks, and shared-instance revocation do not satisfy the remote driver and
+authentication requirements. Test counts and the current whole-repository check status belong in the
 [Backend Provider Architecture](./backend-providers.md#manual-and-live-gates) verification record.
+
+## Proposed next dependency decision
+
+The next bounded implementation should evaluate **`tokio-postgres = 0.7.17` as an unapproved
+candidate**, with its exact required dependencies. This is a reproducible source-review target,
+not a claim that this version is current or has passed admission. Prefer the native lockfile's
+existing `tokio = 1.53.1`, `rustls = 0.23.43`, and `tokio-rustls = 0.26.4`; do not silently upgrade
+existing packages to resolve an incompatibility.
+
+The requested authorization is limited to obtaining and pinning the candidate source and necessary
+new dependencies, implementing the private connector and reviewed driver changes, and running
+local protocol/TLS fixtures. Work should remain under `desktop/Cargo.toml`, `desktop/Cargo.lock`,
+the existing reconciliation runner, an explicitly documented vendored driver patch if required,
+and their tests and development documentation. Preserve source provenance and upstream licenses.
+
+Inspect the pinned source first. Expected driver changes concern parameterized text result format,
+rejection of unknown metadata before type discovery, and numeric message/queue budgets before
+allocation. Record the actual patch and its maintenance cost; mutable upstream links are not proof
+that any specific patch is required or sufficient. Do not replace the driver with a Host-written
+PostgreSQL protocol or weaken the existing text-only result contract.
+
+The reviewable deliverable is the exact dependency/feature and lockfile diff, a small documented
+patch set, the owned connection/cancellation lifecycle, bounded secret-copy handling, and passing
+local fake-peer tests for the admission requirements in this document. The implementation must
+supply the finite numeric budgets and source locations where they are enforced. Existing vault,
+Receipt-zero, native library, documentation, and secret-scan gates must remain valid; existing
+repository-wide lint failures must still be reported separately.
+
+This decision does **not** authorize real database access, a production capability issuer,
+authenticated settlement, mutation retry, deployment, or pushing commits. Those remain separate
+from driver admission. Until dependency authorization is provided, continue to preserve the
+current locked dependency graph and the `OutcomeUnknown` fence.
 
 ## Fixed request and result contract
 
@@ -183,7 +218,7 @@ Supavisor session semantics, endpoint/install association, and server-side cance
 outcomes. If only one connection mode is exercised, the other remains unverified. These checks must
 not mutate the earlier operation, clear its fence, or enable retry merely to obtain a passing read.
 
-This draft's upstream links are evidence for the compatibility questions, not a version selection.
+This draft's upstream links identify compatibility questions; they do not establish candidate admission.
 Except for the explicitly versioned transaction reference, the inspected documentation/source URLs
 are mutable `latest` views; their cached pages did not establish one consistent version. Re-check
 the actual pinned source and applicable changes before approving any dependency. No crate was

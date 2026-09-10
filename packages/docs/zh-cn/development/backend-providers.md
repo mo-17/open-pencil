@@ -77,30 +77,43 @@ private read interrupt source 现在持有真实 Tokio timer。构造时不注�
 runtime 或 time driver 不可用时 fail closed。这补齐了本地主动唤醒，但没有证明数据库 driver 的服务端取消行为。
 
 新增的 **test-only 当前 vault 凭据 admission 与 recovery composition** 会在一次原子快照中读取 password、
-profile、profile digest、credential incarnation 与当前 grant generation，并用 opaque recovered journal material
+profile、profile digest、credential incarnation 与当前 grant generation，并在同一组 process/file lock 内注册
+revocation observer，再用 opaque recovered journal material
 核对 project/account，仅将借用的已检查输入交给独立 sealed connector。当前数据库 grant 独立从 vault 捕获，
 不要求等于历史 Management read grant。固定读取和 `ROLLBACK` 完成后，还要再次原子读取并精确匹配，才能返回
 observation。两次 vault 读取都在 blocking executor 执行，并沿用原始 execution ceiling；迟到的 blocking 结果
-不能进入 connector 或作为 observation 返回。当前仅有 before/after 检查，尚未在数据库请求 pending 期间主动
-撤销，也不能防止另一进程在两次检查之间恢复全部原始值；它证明的是本地凭据一致性，不是经过认证的 project
-或 installation authority。
+不能进入 connector 或作为 observation 返回。
 
-本轮本地回归快照为 Native `receipt_zero` 124 passed、credential 81 passed、reconciliation runner 37 passed；
-这些过滤范围有重叠，不能相加。runner 覆盖包括 10 项真实 Tokio interrupt 测试与 8 项绑定凭据的 fused recovery
-测试；指定的三个 Host journal/staging release/verification 文件为 39 passed。非测试配置的 Native library
+同一个 `CredentialVault` 实例及其 clone 的匹配 write、remove、CAS 路径，现在会保守撤销 observer，并主动
+唤醒 pending runner。覆盖共享 Management grant、same-value write、改动后恢复原值（ABA）、删除不存在的记录、
+CAS conflict、持久化失败与 `Unconfirmed` durability；在 mutation wrapper 之前就被拒绝的畸形请求不算已接纳的
+修改尝试。无关凭据账户的修改不会撤销当前读取。fixture 覆盖全部八个 pending 阶段：Connect 只取消连接尝试，
+pending session 请求则先 cancel 再 abort transaction。撤销不会恢复 observation 或清除 `OutcomeUnknown`。
+
+observer 仅保存 static account 名称、revoked 状态和 waiter，不保存凭据值或 execution authority；registry 使用
+weak entry，最多保留 128 个活跃 observation，每个最多 8 个 account，不进行磁盘轮询。独立 vault 实例即使处于
+同一进程，也与其他进程一样不共享该通知边界；最终磁盘快照仍会发现完成时可见的差异，但无法保证检测到此
+实例边界之外在两次检查间恢复全部原值的 ABA。这些机制证明的是本地凭据一致性与撤销，不是经过认证的
+project 或 installation authority。
+
+本轮本地回归快照为 Native `receipt_zero` 126 passed、credential 97 passed、reconciliation runner 39 passed；
+这些过滤范围有重叠，不能相加。runner 覆盖包括 10 项真实 Tokio interrupt 测试与 10 项绑定凭据的 fused recovery
+测试；credential 覆盖新增 13 项 vault observer 测试与 1 项 admission ABA 回归。完整 Native library 在沙箱内
+569 passed，另 8 项在绑定本机 loopback fixture 时被拒绝；解除回环限制后逐项重跑，8 项均通过。因此全部
+577 项 Native 测试已有通过证据，但不是一次沙箱全量运行全绿。指定的三个 Host journal/staging
+release/verification 文件为 39 passed。非测试配置的 Native library
 离线 `cargo check`、范围内 secret scan 和 742 个 Markdown 文件的文档完整性检查均已通过。
 `bun run check` 已完成 packages build，但停在
 全仓既有 structural lint 的 32 errors / 116 warnings，不能称全量 check 通过。这些本地测试覆盖 journal 持久化、
 临时 credential vault、真实本地 timer、注入 clock 与 fake connector，并未证明真实数据库连接。
 
 当前仍没有 production capability issuer 或 PostgreSQL connector、经过认证的 project/account/grant 或
-installation authority、pending session 凭据主动撤销、经过认证的 server cancellation，以及 authenticated
+installation authority、经过认证的 server cancellation，以及 authenticated
 settlement path。raw observation 不能 settle journal、允许自动 retry、签发 Receipt V2 或授权 release。
 `absent` 不证明先前 mutation 已停止，`advanced-head` 也不等于完整 portable Receipt V2 chain 已认证。
 [PostgreSQL driver 准入草稿](../../development/receipt-zero-postgres-driver-admission.md) 已列出具体待决事项：
 保留 text-only contract，在 type-discovery 请求前拒绝异常 metadata，在 scalar sink 前限制分配，核验 TLS
-identity，并由明确 owner 管理 cancel/rollback cleanup。stock `tokio-postgres` 尚未通过准入，该提案也没有选择
-依赖版本；这些 production binding 与 live 检查仍是本地 B3c composition 之后需要分别完成的门禁。
+identity，并由明确 owner 管理 cancel/rollback cleanup。stock `tokio-postgres` 尚未通过准入，草稿仅为下一步依赖决策列出尚未获准的固定版本候选；这些 production binding 与 live 检查仍是本地 B3c composition 之后需要分别完成的门禁。
 
 - Desktop Review 已接入固定只读 `pg_catalog` Inspector、Management project authority 校验与 Credential grant generation；CLI 仍不接入这些 live 能力。
 - 只有 Desktop staging safety MVP 接入 database Executor 与 post-Apply catalog Verifier；Edge/Storage 使用彼此独立的 operation-scoped authority，但尚未由普通 build、Browser 或 CLI 自动执行；production database executor 仍不可用。

@@ -2075,21 +2075,41 @@ worker. An unavailable runtime or time driver fails closed. This supplies active
 does not certify a database driver's cancellation behavior.
 
 A **test-only current-vault admission and recovery composition** now reads the password, profile,
-profile digest, credential incarnation, and current grant generation in one atomic snapshot. It
-matches project/account against opaque recovered journal material and lends the admitted inputs
+profile digest, credential incarnation, and current grant generation, then registers a revocation
+observer under the same process/file locks as that atomic snapshot. It matches project/account
+against opaque recovered journal material and lends the admitted inputs
 only to an independently sealed connector. The current database grant is captured independently;
 it need not equal the historical Management read grant. After the fixed read and `ROLLBACK`, a
 second atomic snapshot must still match before the observation can return. Both vault reads use
 the blocking executor and retain the original execution ceiling; a late blocking result cannot
-reach the connector or escape as an observation. At this checkpoint these are before/after checks,
-not active revocation while a database request is pending, and they do not protect against another
-process restoring all original values between checks. They establish local credential consistency,
-not authenticated project or installation authority.
+reach the connector or escape as an observation.
 
-The current local regression snapshot is 124 passing native `receipt_zero` tests, 81 credential
-tests, and 37 reconciliation runner tests. These filters overlap and must not be added together.
-The runner coverage includes ten real-Tokio interrupt tests and eight credential-bound fused
-recovery tests. The three selected Host journal/staging release/verification files pass 39 tests.
+Within the same `CredentialVault` instance and its clones, matching write, remove, and CAS paths
+conservatively revoke the observer and actively wake a pending runner. This includes the shared
+Management grant, same-value writes, changes followed by restoration (ABA), absent-record removal,
+CAS conflicts, failed persistence, and `Unconfirmed` durability. Malformed requests rejected before
+the mutation wrapper are not admitted mutation attempts. Unrelated credential accounts do not
+revoke this read. Fixtures cover all eight pending stages: Connect cancels the connection attempt;
+pending session work requests cancellation before aborting the transaction. Revocation never
+revives an observation or clears `OutcomeUnknown`.
+
+The observer retains static account names, revocation state, and a waiter, with no credential values
+or execution authority. Its registry uses weak entries, accepts at most 128 live observations and
+eight accounts per observation, and performs no disk polling. Independent vault instances, even in
+the same process, and other processes do not share this notification boundary. The final disk
+snapshot still detects differences visible at completion; restoration of every original value
+between checks outside the shared instance remains unprotected. These mechanisms establish local
+credential consistency and revocation, not authenticated project or installation authority.
+
+The current local regression snapshot is 126 passing native `receipt_zero` tests, 97 credential
+tests, and 39 reconciliation runner tests. These filters overlap and must not be added together.
+The runner coverage includes ten real-Tokio interrupt tests and ten credential-bound fused
+recovery tests. Credential coverage now also includes 13 vault-observer tests and an admission ABA
+regression. The complete native library run passed 569 tests in the sandbox; the remaining eight
+failed while binding local loopback fixtures, then all eight passed in exact-test retries with
+loopback access. Thus all 577 native tests have passing evidence across these runs, rather than one
+fully passing sandbox invocation. The three selected Host journal/staging release/verification files
+pass 39 tests.
 The non-test native library passes offline `cargo check`, the scoped secret scan is clean, and
 documentation integrity checks pass for 742 Markdown files. `bun run check` completed
 the package builds but stopped at existing repository-wide structural lint findings: 32 errors and
@@ -2098,15 +2118,15 @@ persistence, temporary credential vaults, real local timers, injected clocks, an
 they do not certify a live database.
 
 There is still no production capability issuer or PostgreSQL connector, authenticated
-project/account/grant or installation authority, active pending-session credential revocation,
-certified server cancellation, or authenticated settlement path. Raw observations cannot settle
+project/account/grant or installation authority, certified server cancellation, or authenticated
+settlement path. Raw observations cannot settle
 the journal, allow automatic retry, issue Receipt V2, or authorize release. In particular, `absent`
 never proves the old mutation stopped, and `advanced-head` still lacks full portable Receipt V2 chain
 verification. The [PostgreSQL driver admission draft](./receipt-zero-postgres-driver-admission.md)
 records the concrete remaining driver decisions: preserve the text-only contract, reject unexpected
 metadata before type-discovery requests, bound allocation before the scalar sink, verify TLS
 identity, and own cancellation/rollback cleanup. Stock `tokio-postgres` has not been admitted, and
-the proposal selects no dependency version. These production bindings and live checks remain
+the draft names an unapproved pinned candidate for the next dependency decision. These production bindings and live checks remain
 separate gates after the local B3c composition.
 
 Unit tests and deterministic fixtures prove parsing, negotiation, emission, transport envelopes,
