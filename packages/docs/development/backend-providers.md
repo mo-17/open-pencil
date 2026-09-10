@@ -2068,26 +2068,46 @@ This is a local history consistency check; it neither authenticates the current 
 the historical Management read grant into a current database credential grant. It retains the
 original execution deadlines and issues no new authority.
 
-The current local regression snapshot is 106 passing native `receipt_zero` tests, including 14
-scalar-contract tests, nine fixed-runner tests, and ten fused-recovery tests. The separately run
-native journal module passes 92 tests, including eight B3c execution/instance-binding regressions
-and six installation-history regressions covering active records, restart tombstones, altered
-identity/evidence with recomputed checksums, one-shot rejection, and expiry during snapshot checks;
-these filters overlap and must not be added together. The three selected Host journal/staging
-release/verification files pass 32 tests. The non-test native library passes offline `cargo check`,
-the scoped secret scan is clean, and documentation integrity checks pass. `bun run check` completed
-the package builds but stopped at existing repository-wide structural lint findings: 32 errors and
-116 warnings. The full check is therefore not green. These deterministic fixtures exercise local
-journal persistence, injected clocks, and fake connectors; they do not certify a live database.
+The private read interrupt source now owns a real Tokio timer. Construction registers no timer;
+the first runner poll arms the original deadline, later registration can only shorten it, and
+cancellation wakes the retained waiter. Drop unregisters the timer without spawning or detaching a
+worker. An unavailable runtime or time driver fails closed. This supplies active local wakeups but
+does not certify a database driver's cancellation behavior.
 
-There is still no production constructor or connector, credential/endpoint source, authenticated
-project/account/grant or installation authority, production active timer, certified server
-cancellation, or authenticated settlement path. The local poll-time deadline and cleanup checks do
-not prove that a real pending server request wakes or stops on time. Raw observations cannot settle
+A **test-only current-vault admission and recovery composition** now reads the password, profile,
+profile digest, credential incarnation, and current grant generation in one atomic snapshot. It
+matches project/account against opaque recovered journal material and lends the admitted inputs
+only to an independently sealed connector. The current database grant is captured independently;
+it need not equal the historical Management read grant. After the fixed read and `ROLLBACK`, a
+second atomic snapshot must still match before the observation can return. Both vault reads use
+the blocking executor and retain the original execution ceiling; a late blocking result cannot
+reach the connector or escape as an observation. At this checkpoint these are before/after checks,
+not active revocation while a database request is pending, and they do not protect against another
+process restoring all original values between checks. They establish local credential consistency,
+not authenticated project or installation authority.
+
+The current local regression snapshot is 124 passing native `receipt_zero` tests, 81 credential
+tests, and 37 reconciliation runner tests. These filters overlap and must not be added together.
+The runner coverage includes ten real-Tokio interrupt tests and eight credential-bound fused
+recovery tests. The three selected Host journal/staging release/verification files pass 39 tests.
+The non-test native library passes offline `cargo check`, the scoped secret scan is clean, and
+documentation integrity checks pass for 742 Markdown files. `bun run check` completed
+the package builds but stopped at existing repository-wide structural lint findings: 32 errors and
+116 warnings. The full check is therefore not green. These local tests exercise journal
+persistence, temporary credential vaults, real local timers, injected clocks, and fake connectors;
+they do not certify a live database.
+
+There is still no production capability issuer or PostgreSQL connector, authenticated
+project/account/grant or installation authority, active pending-session credential revocation,
+certified server cancellation, or authenticated settlement path. Raw observations cannot settle
 the journal, allow automatic retry, issue Receipt V2, or authorize release. In particular, `absent`
 never proves the old mutation stopped, and `advanced-head` still lacks full portable Receipt V2 chain
-verification. These production bindings and live checks remain separate gates after this local B3c
-composition.
+verification. The [PostgreSQL driver admission draft](./receipt-zero-postgres-driver-admission.md)
+records the concrete remaining driver decisions: preserve the text-only contract, reject unexpected
+metadata before type-discovery requests, bound allocation before the scalar sink, verify TLS
+identity, and own cancellation/rollback cleanup. Stock `tokio-postgres` has not been admitted, and
+the proposal selects no dependency version. These production bindings and live checks remain
+separate gates after the local B3c composition.
 
 Unit tests and deterministic fixtures prove parsing, negotiation, emission, transport envelopes,
 and state-machine behavior. They do not prove a real database or production deployment. The first

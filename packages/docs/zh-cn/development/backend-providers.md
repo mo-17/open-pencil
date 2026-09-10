@@ -72,21 +72,35 @@ StatementTimeout（15,000 ms）、Prepare、Execute、FinishReadOnly（`ROLLBACK
 `OutcomeUnknown` fence 都会保留。这是本地历史一致性检查，不能认证当前数据库，也不能把历史 Management
 read grant 当作当前数据库凭据 grant；检查沿用原始执行期限，不产生新的 authority。
 
-本轮本地回归快照为 Native `receipt_zero` 测试 106 passed，其中包括 14 项 scalar contract、9 项 fixed runner
-和 10 项 fused recovery 测试；另行运行的 Native journal 模块为 92 passed，包含 8 项 B3c execution/instance-binding
-回归与 6 项安装历史回归，覆盖当前记录、重启归档、改动身份或证据后重新计算校验和、拒绝后不可重用，以及
-快照检查期间到期。这两个过滤范围有重叠，不能相加。指定的三个 Host journal/staging release/verification 文件为 32 passed。
-非测试配置的 Native library 离线 `cargo check`、范围内 secret scan 和文档完整性检查均已通过。
-`bun run check` 已完成 packages build，但停在全仓既有 structural lint 的 32 errors / 116 warnings，不能称
-全量 check 通过。这些 deterministic fixture 验证的是本地 journal 持久化、注入 clock 与 fake connector，
-并未证明真实数据库连接。
+private read interrupt source 现在持有真实 Tokio timer。构造时不注册 timer，首次 runner poll 才按原始 deadline
+启动；后续注册只能缩短期限，cancel 会主动唤醒保存的 waiter，drop 会注销 timer，不创建或遗留 worker。
+runtime 或 time driver 不可用时 fail closed。这补齐了本地主动唤醒，但没有证明数据库 driver 的服务端取消行为。
 
-当前仍没有 production constructor/connector、credential/endpoint 来源、经过认证的 project/account/grant 或
-installation authority、production active timer、经过认证的 server cancellation，以及 authenticated settlement
-path。本地 poll-time deadline 与 cleanup 检查不证明真实 pending server request 能按时唤醒或停止。raw
-observation 不能 settle journal、允许自动 retry、签发 Receipt V2 或授权 release。`absent` 不证明先前 mutation
-已停止，`advanced-head` 也不等于完整 portable Receipt V2 chain 已认证；这些 production binding 与 live 检查仍是
-本地 B3c composition 之后需要分别完成的门禁。
+新增的 **test-only 当前 vault 凭据 admission 与 recovery composition** 会在一次原子快照中读取 password、
+profile、profile digest、credential incarnation 与当前 grant generation，并用 opaque recovered journal material
+核对 project/account，仅将借用的已检查输入交给独立 sealed connector。当前数据库 grant 独立从 vault 捕获，
+不要求等于历史 Management read grant。固定读取和 `ROLLBACK` 完成后，还要再次原子读取并精确匹配，才能返回
+observation。两次 vault 读取都在 blocking executor 执行，并沿用原始 execution ceiling；迟到的 blocking 结果
+不能进入 connector 或作为 observation 返回。当前仅有 before/after 检查，尚未在数据库请求 pending 期间主动
+撤销，也不能防止另一进程在两次检查之间恢复全部原始值；它证明的是本地凭据一致性，不是经过认证的 project
+或 installation authority。
+
+本轮本地回归快照为 Native `receipt_zero` 124 passed、credential 81 passed、reconciliation runner 37 passed；
+这些过滤范围有重叠，不能相加。runner 覆盖包括 10 项真实 Tokio interrupt 测试与 8 项绑定凭据的 fused recovery
+测试；指定的三个 Host journal/staging release/verification 文件为 39 passed。非测试配置的 Native library
+离线 `cargo check`、范围内 secret scan 和 742 个 Markdown 文件的文档完整性检查均已通过。
+`bun run check` 已完成 packages build，但停在
+全仓既有 structural lint 的 32 errors / 116 warnings，不能称全量 check 通过。这些本地测试覆盖 journal 持久化、
+临时 credential vault、真实本地 timer、注入 clock 与 fake connector，并未证明真实数据库连接。
+
+当前仍没有 production capability issuer 或 PostgreSQL connector、经过认证的 project/account/grant 或
+installation authority、pending session 凭据主动撤销、经过认证的 server cancellation，以及 authenticated
+settlement path。raw observation 不能 settle journal、允许自动 retry、签发 Receipt V2 或授权 release。
+`absent` 不证明先前 mutation 已停止，`advanced-head` 也不等于完整 portable Receipt V2 chain 已认证。
+[PostgreSQL driver 准入草稿](../../development/receipt-zero-postgres-driver-admission.md) 已列出具体待决事项：
+保留 text-only contract，在 type-discovery 请求前拒绝异常 metadata，在 scalar sink 前限制分配，核验 TLS
+identity，并由明确 owner 管理 cancel/rollback cleanup。stock `tokio-postgres` 尚未通过准入，该提案也没有选择
+依赖版本；这些 production binding 与 live 检查仍是本地 B3c composition 之后需要分别完成的门禁。
 
 - Desktop Review 已接入固定只读 `pg_catalog` Inspector、Management project authority 校验与 Credential grant generation；CLI 仍不接入这些 live 能力。
 - 只有 Desktop staging safety MVP 接入 database Executor 与 post-Apply catalog Verifier；Edge/Storage 使用彼此独立的 operation-scoped authority，但尚未由普通 build、Browser 或 CLI 自动执行；production database executor 仍不可用。
