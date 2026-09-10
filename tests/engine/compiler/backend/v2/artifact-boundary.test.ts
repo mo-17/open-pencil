@@ -44,6 +44,50 @@ function artifactV2(path: string): BackendArtifactSourceV2 {
 }
 
 describe('Compiler Backend V2 artifact boundary', () => {
+  test('rejects a path that becomes non-string at reservation without inspecting it', () => {
+    let objectReads = 0
+    const nonStringPath = {
+      get length() {
+        objectReads += 1
+        throw new TypeError('Path object must not be inspected')
+      }
+    }
+    for (const changedPath of [null, nonStringPath]) {
+      let pathReads = 0
+      let contentReads = 0
+      const artifact = artifactV2('backend/schema.sql')
+      Object.defineProperty(artifact, 'path', {
+        enumerable: true,
+        get() {
+          pathReads += 1
+          return pathReads === 3 ? changedPath : 'backend/schema.sql'
+        }
+      })
+      Object.defineProperty(artifact, 'content', {
+        enumerable: true,
+        get() {
+          contentReads += 1
+          return '-- content must not be read\n'
+        }
+      })
+
+      expect(emitArtifactsV2([artifact])).toEqual({
+        ok: false,
+        diagnostics: [
+          {
+            code: 'backend-artifact-path-invalid',
+            severity: 'error',
+            path: '$.artifacts.migrations[0].path',
+            message: 'Backend artifact paths must be relative, NFC-normalized portable POSIX paths.'
+          }
+        ]
+      })
+      expect(pathReads).toBe(3)
+      expect(objectReads).toBe(0)
+      expect(contentReads).toBe(0)
+    }
+  })
+
   test('retains the V1 portable path boundary and reserves both manifest names', () => {
     for (const path of [
       '../escape.sql',

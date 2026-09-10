@@ -6,11 +6,17 @@ import {
   deriveBackendApplicationCapabilitiesV2,
   parseBackendApplicationSpecV2,
   type BackendCapabilityV2,
-  type BackendDiagnostic,
-  type BackendSecretRef
+  type BackendDiagnostic
 } from '@open-pencil/lowcode/backend'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
+import {
+  RuntimeReadonlyBackendFiles,
+  invalidBackendArtifactPath,
+  requiredBackendArtifactSecrets,
+  reserveBackendArtifactPath,
+  validateBackendArtifactMetadata
+} from '../artifacts'
 import { backendSha256, canonicalBackendValue } from '../canonical'
 import {
   backendDiagnostic,
@@ -70,153 +76,6 @@ interface ArtifactCollectionV2 {
   totalBytes: number
 }
 
-type BackendArtifactContentV2 = string | Uint8Array
-
-function copyArtifactContentV2(content: BackendArtifactContentV2): BackendArtifactContentV2 {
-  return typeof content === 'string' ? content : content.slice()
-}
-
-class RuntimeReadonlyBackendFilesV2 implements ReadonlyMap<string, BackendArtifactContentV2> {
-  readonly #files: Map<string, BackendArtifactContentV2>
-
-  constructor(entries: readonly (readonly [string, BackendArtifactContentV2])[]) {
-    this.#files = new Map(
-      entries.map(([path, content]) => [path, copyArtifactContentV2(content)] as const)
-    )
-    Object.freeze(this)
-  }
-
-  get size(): number {
-    return this.#files.size
-  }
-
-  get [Symbol.toStringTag](): string {
-    return 'ReadonlyMap'
-  }
-
-  has(path: string): boolean {
-    return this.#files.has(path)
-  }
-
-  get(path: string): BackendArtifactContentV2 | undefined {
-    const content = this.#files.get(path)
-    return content === undefined ? undefined : copyArtifactContentV2(content)
-  }
-
-  entries(): MapIterator<[string, BackendArtifactContentV2]> {
-    return new Map(
-      [...this.#files].map(([path, content]) => [path, copyArtifactContentV2(content)] as const)
-    ).entries()
-  }
-
-  keys(): MapIterator<string> {
-    return this.#files.keys()
-  }
-
-  values(): MapIterator<BackendArtifactContentV2> {
-    return new Map(
-      [...this.#files].map(([path, content]) => [path, copyArtifactContentV2(content)] as const)
-    ).values()
-  }
-
-  forEach(
-    callback: (
-      value: BackendArtifactContentV2,
-      key: string,
-      map: ReadonlyMap<string, BackendArtifactContentV2>
-    ) => void,
-    thisArg?: unknown
-  ): void {
-    for (const [path, content] of this.#files) {
-      callback.call(thisArg, copyArtifactContentV2(content), path, this)
-    }
-  }
-
-  [Symbol.iterator](): MapIterator<[string, BackendArtifactContentV2]> {
-    return this.entries()
-  }
-}
-
-Object.freeze(RuntimeReadonlyBackendFilesV2.prototype)
-
-const WINDOWS_RESERVED_PATH_V2 = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/iu
-const MEDIA_TYPE_V2 =
-  /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,127}(?:;[ -~]{1,128})?$/u
-
-function hasControlCharactersV2(value: string): boolean {
-  for (const character of value) {
-    const codePoint = character.codePointAt(0) ?? 0
-    if (codePoint <= 31 || codePoint === 127) return true
-  }
-  return false
-}
-
-function artifactPathDiagnosticV2(
-  path: unknown,
-  diagnosticPath: string
-): BackendDiagnostic | undefined {
-  if (
-    typeof path !== 'string' ||
-    path.length === 0 ||
-    path !== path.normalize('NFC') ||
-    path.startsWith('/') ||
-    path.includes('\\') ||
-    path.includes(':') ||
-    hasControlCharactersV2(path)
-  ) {
-    return backendDiagnostic(
-      'backend-artifact-path-invalid',
-      'error',
-      diagnosticPath,
-      'Backend artifact paths must be relative, NFC-normalized portable POSIX paths.'
-    )
-  }
-  const encoder = new TextEncoder()
-  if (encoder.encode(path).byteLength > BACKEND_ARTIFACT_LIMITS_V2.maxPathBytes) {
-    return backendDiagnostic(
-      'backend-artifact-path-limit',
-      'error',
-      diagnosticPath,
-      'Backend artifact path exceeds the byte limit.'
-    )
-  }
-  const segments = path.split('/')
-  for (const segment of segments) {
-    if (
-      segment.length === 0 ||
-      segment === '.' ||
-      segment === '..' ||
-      segment.endsWith('.') ||
-      segment.endsWith(' ') ||
-      WINDOWS_RESERVED_PATH_V2.test(segment) ||
-      encoder.encode(segment).byteLength > BACKEND_ARTIFACT_LIMITS_V2.maxPathSegmentBytes
-    ) {
-      return backendDiagnostic(
-        'backend-artifact-path-invalid',
-        'error',
-        diagnosticPath,
-        'Backend artifact path contains an unsafe or non-portable segment.'
-      )
-    }
-  }
-  return undefined
-}
-
-function secretKeyV2(secret: BackendSecretRef): string {
-  return secret.kind === 'credential'
-    ? `${secret.kind}:${secret.credentialRef}:${secret.name}`
-    : `${secret.kind}:${secret.name}`
-}
-
-function requiredSecretsV2(plan: BackendProviderPlanV2): readonly BackendSecretRef[] {
-  return Object.freeze(
-    plan.application.secrets
-      .filter((secret) => secret.required)
-      .map((secret) => Object.freeze({ ...secret }))
-      .sort((left, right) => secretKeyV2(left).localeCompare(secretKeyV2(right), 'en'))
-  )
-}
-
 function manifestJSONV2(manifest: BackendArtifactManifestV2): string {
   return `${JSON.stringify(canonicalBackendValue(manifest, '$.artifactManifestV2'), null, 2)}\n`
 }
@@ -236,26 +95,11 @@ function reserveArtifactPathV2(
   path: unknown,
   diagnosticPath: string
 ): boolean {
-  const invalid = artifactPathDiagnosticV2(path, diagnosticPath)
-  if (invalid) {
-    collection.diagnostics.push(invalid)
+  if (typeof path !== 'string') {
+    collection.diagnostics.push(invalidBackendArtifactPath(diagnosticPath))
     return false
   }
-  const acceptedPath = path as string
-  const folded = acceptedPath.toLowerCase()
-  if (collection.foldedPaths.has(folded)) {
-    collection.diagnostics.push(
-      backendDiagnostic(
-        'backend-artifact-path-conflict',
-        'error',
-        diagnosticPath,
-        'Backend artifact path conflicts with an existing target or Provider artifact.'
-      )
-    )
-    return false
-  }
-  collection.foldedPaths.add(folded)
-  return true
+  return reserveBackendArtifactPath(collection, path, diagnosticPath, BACKEND_ARTIFACT_LIMITS_V2)
 }
 
 type OccupiedPathSnapshotResultV2 =
@@ -355,68 +199,17 @@ function acceptArtifactV2(
   bundle: BackendProviderBundleV2,
   path: string
 ): void {
-  if (typeof artifact.path !== 'string') {
-    collection.diagnostics.push(
-      backendDiagnostic(
-        'backend-artifact-path-invalid',
-        'error',
-        `${path}.path`,
-        'Backend artifact paths must be relative, NFC-normalized portable POSIX paths.'
-      )
-    )
-    return
-  }
-  if (containsBackendSecretLikeMaterial(artifact.path)) {
-    collection.diagnostics.push(
-      backendDiagnostic(
-        'backend-artifact-metadata-secret-material-forbidden',
-        'error',
-        `${path}.path`,
-        'Backend Provider artifact metadata cannot contain credential or secret material.'
-      )
-    )
-    return
-  }
-  if (!reserveArtifactPathV2(collection, artifact.path, `${path}.path`)) return
   if (
-    !adapter.outputs.includes(artifact.kind) ||
-    !bundle.descriptor.outputs.includes(artifact.kind)
-  ) {
-    collection.diagnostics.push(
-      backendDiagnostic(
-        'backend-artifact-output-undeclared',
-        'error',
-        `${path}.kind`,
-        'Backend Provider emitted an artifact kind outside its exact declaration.'
-      )
+    !validateBackendArtifactMetadata(
+      collection,
+      artifact,
+      adapter,
+      bundle,
+      path,
+      reserveArtifactPathV2.bind(undefined, collection)
     )
+  )
     return
-  }
-  if (
-    typeof artifact.mediaType === 'string' &&
-    containsBackendSecretLikeMaterial(artifact.mediaType)
-  ) {
-    collection.diagnostics.push(
-      backendDiagnostic(
-        'backend-artifact-metadata-secret-material-forbidden',
-        'error',
-        `${path}.mediaType`,
-        'Backend Provider artifact metadata cannot contain credential or secret material.'
-      )
-    )
-    return
-  }
-  if (typeof artifact.mediaType !== 'string' || !MEDIA_TYPE_V2.test(artifact.mediaType)) {
-    collection.diagnostics.push(
-      backendDiagnostic(
-        'backend-artifact-media-type-invalid',
-        'error',
-        `${path}.mediaType`,
-        'Backend Provider artifact media type is invalid.'
-      )
-    )
-    return
-  }
   const content: unknown = artifact.content
   if (content instanceof Uint8Array) {
     collection.diagnostics.push(
@@ -794,11 +587,11 @@ export function emitBackendProviderPlanV2(
       mode: replanned.plan.mode,
       actualCapabilities: replanned.plan.actualCapabilities,
       capabilities: replanned.plan.capabilities,
-      requiredSecrets: requiredSecretsV2(replanned.plan),
+      requiredSecrets: requiredBackendArtifactSecrets(replanned.plan.application.secrets),
       artifacts: Object.freeze(artifacts.map(manifestEntryV2))
     }) satisfies BackendArtifactManifestV2
     const manifestContent = manifestJSONV2(manifest)
-    const files = new RuntimeReadonlyBackendFilesV2(
+    const files = new RuntimeReadonlyBackendFiles(
       [
         ...artifacts.map((artifact) => [artifact.path, artifact.content] as const),
         [BACKEND_ARTIFACT_MANIFEST_PATH_V2, manifestContent] as const
