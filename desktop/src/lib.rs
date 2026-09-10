@@ -45,6 +45,8 @@ use http::proxy_http_request;
 use menu::{install_app_menu, native_menu_checked, set_native_menu_checked};
 use menu_events::handle_menu_event;
 use motion_export::write_motion_export_noclobber;
+#[cfg(feature = "native-test")]
+use credentials::parse_native_test_profile;
 use onedrive::{
     onedrive_oauth_authorize, onedrive_oauth_cancel, onedrive_oauth_refresh, onedrive_transfer,
     OneDriveOAuthOperations, OneDriveTransferAuthorizations,
@@ -279,6 +281,20 @@ pub fn run() {
                 queue_open_paths(_app, paths);
             }
             #[cfg(target_os = "macos")]
+            #[cfg(feature = "native-test")]
+            let native_test_profile = parse_native_test_profile(std::env::args_os().skip(1))
+                .expect(
+                    "invalid or duplicate --e2e-profile; expected 1-64 ASCII letters, digits, '-' or '_'",
+                );
+            #[cfg(feature = "native-test")]
+            let credential_vault = app
+                .path()
+                .app_local_data_dir()
+                .map(|app_data_dir| {
+                    CredentialVault::new_for_native_test(app_data_dir, &native_test_profile)
+                })
+                .unwrap_or_else(|_| CredentialVault::unavailable());
+            #[cfg(not(feature = "native-test"))]
             tauri::RunEvent::Reopen {
                 has_visible_windows,
                 ..

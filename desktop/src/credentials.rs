@@ -7,6 +7,8 @@ use ring::{
     rand::{SecureRandom, SystemRandom},
 };
 use serde::{Deserialize, Serialize};
+#[cfg(any(test, feature = "native-test"))]
+use std::ffi::OsStr;
 use std::{
     collections::BTreeMap,
     fs::{self, File, OpenOptions},
@@ -19,6 +21,16 @@ use std::{
 use zeroize::Zeroizing;
 
 const STORE_DIRECTORY: &str = "credentials";
+#[cfg(any(test, feature = "native-test"))]
+const NATIVE_TEST_PROFILE_DIRECTORY_PREFIX: &str = "native-test-credentials-";
+#[cfg(any(test, feature = "native-test"))]
+const DEFAULT_NATIVE_TEST_PROFILE: &str = "default";
+#[cfg(any(test, feature = "native-test"))]
+const MAX_NATIVE_TEST_PROFILE_LENGTH: usize = 64;
+#[cfg(any(test, feature = "native-test"))]
+const NATIVE_TEST_PROFILE_ARGUMENT: &str = "--e2e-profile";
+#[cfg(any(test, feature = "native-test"))]
+const NATIVE_TEST_PROFILE_ARGUMENT_PREFIX: &str = "--e2e-profile=";
 const MASTER_KEY_FILE: &str = "master-key.v1";
 const VAULT_FILE: &str = "vault.v1.json";
 const LOCK_FILE: &str = "vault.v1.lock";
@@ -128,6 +140,53 @@ fn acquire_process_lock(lock: &Mutex<()>) -> Result<MutexGuard<'_, ()>, BackendE
             Err(TryLockError::Poisoned(_)) => return Err(BackendError::Failed),
             Err(TryLockError::WouldBlock) if Instant::now() >= deadline => {
                 return Err(BackendError::Unavailable)
+}
+
+#[cfg(any(test, feature = "native-test"))]
+fn validate_native_test_profile(profile: &str) -> Result<(), &'static str> {
+    if profile.is_empty() {
+        return Err("native-test profile must not be empty");
+    }
+    if profile.len() > MAX_NATIVE_TEST_PROFILE_LENGTH {
+        return Err("native-test profile is too long");
+    }
+    if !profile
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err("native-test profile contains invalid characters");
+    }
+    Ok(())
+}
+
+#[cfg(any(test, feature = "native-test"))]
+pub(crate) fn parse_native_test_profile<I, S>(arguments: I) -> Result<String, &'static str>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut profile = None;
+    for argument in arguments {
+        let argument = argument.as_ref().to_string_lossy();
+        if argument == NATIVE_TEST_PROFILE_ARGUMENT {
+            return Err("native-test profile argument requires an equals-delimited value");
+        }
+        let Some(candidate) = argument.strip_prefix(NATIVE_TEST_PROFILE_ARGUMENT_PREFIX) else {
+            continue;
+        };
+        if profile.is_some() {
+            return Err("native-test profile argument must not be repeated");
+        }
+        validate_native_test_profile(candidate)?;
+        profile = Some(candidate.to_owned());
+    }
+    Ok(profile.unwrap_or_else(|| DEFAULT_NATIVE_TEST_PROFILE.to_owned()))
+}
+
+#[cfg(any(test, feature = "native-test"))]
+fn native_test_vault_root(app_data_dir: &Path, profile: &str) -> Result<PathBuf, &'static str> {
+    validate_native_test_profile(profile)?;
+    Ok(app_data_dir.join(format!("{NATIVE_TEST_PROFILE_DIRECTORY_PREFIX}{profile}")))
             }
             Err(TryLockError::WouldBlock) => thread::sleep(LOCK_RETRY_INTERVAL),
         }
@@ -170,6 +229,16 @@ impl CredentialBackend for CredentialVault {
     }
 
     fn remove(&self, account: &str) -> Result<(), BackendError> {
+    #[cfg(any(test, feature = "native-test"))]
+    pub(crate) fn new_for_native_test(app_data_dir: PathBuf, profile: &str) -> Self {
+        let root = native_test_vault_root(&app_data_dir, profile)
+            .expect("native-test profile must be validated before vault construction");
+        Self {
+            root: Some(root),
+            process_lock: Arc::new(Mutex::new(())),
+        }
+    }
+
         self.with_store(|root| {
             let mut vault = load_vault(root)?;
             if !vault.records.contains_key(account) {
@@ -1293,6 +1362,116 @@ mod tests {
             write_with(&second_vault, &second_reference(), "second-secret")
         });
         barrier.wait();
+
+    #[test]
+    fn parses_valid_native_test_profiles() {
+        for expected in ["alice", "Bob_2", "peer-03", "A1_b-2"] {
+            let argument = format!("{NATIVE_TEST_PROFILE_ARGUMENT_PREFIX}{expected}");
+            assert_eq!(
+                parse_native_test_profile([argument]).expect("valid native-test profile"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_or_repeated_native_test_profiles() {
+        for candidate in [
+            "",
+            ".",
+            "..",
+            "../alice",
+            "alice/bob",
+            r"alice\bob",
+            "alice.bob",
+            "alice bob",
+            "\u{00e1}lice",
+        ] {
+            let argument = format!("{NATIVE_TEST_PROFILE_ARGUMENT_PREFIX}{candidate}");
+            assert!(
+                parse_native_test_profile([argument]).is_err(),
+                "accepted invalid native-test profile {candidate:?}"
+            );
+        }
+
+        let too_long = format!(
+            "{NATIVE_TEST_PROFILE_ARGUMENT_PREFIX}{}",
+            "a".repeat(MAX_NATIVE_TEST_PROFILE_LENGTH + 1)
+        );
+        assert!(parse_native_test_profile([too_long]).is_err());
+        assert!(parse_native_test_profile([NATIVE_TEST_PROFILE_ARGUMENT]).is_err());
+        assert!(parse_native_test_profile(["--e2e-profile=alice", "--e2e-profile=alice"]).is_err());
+    }
+
+    #[test]
+    fn defaults_to_a_non_production_native_test_vault() {
+        let profile = parse_native_test_profile(std::iter::empty::<&str>())
+            .expect("default native-test profile");
+        assert_eq!(profile, DEFAULT_NATIVE_TEST_PROFILE);
+
+        let app_data_dir = PathBuf::from("app-local-data");
+        let test_root = native_test_vault_root(&app_data_dir, &profile)
+            .expect("default native-test vault root");
+        assert_eq!(
+            test_root,
+            app_data_dir.join(format!(
+                "{NATIVE_TEST_PROFILE_DIRECTORY_PREFIX}{DEFAULT_NATIVE_TEST_PROFILE}"
+            ))
+        );
+        assert_ne!(test_root, app_data_dir.join(STORE_DIRECTORY));
+    }
+
+    #[test]
+    fn isolates_native_test_vault_files_by_profile() {
+        let app_data_dir = PathBuf::from("app-local-data");
+        let production_root = app_data_dir.join(STORE_DIRECTORY);
+        let alice_root = native_test_vault_root(&app_data_dir, "alice").expect("Alice vault root");
+        let bob_root = native_test_vault_root(&app_data_dir, "bob").expect("Bob vault root");
+
+        assert_ne!(alice_root, bob_root);
+        for file_name in [MASTER_KEY_FILE, VAULT_FILE, LOCK_FILE] {
+            assert_ne!(alice_root.join(file_name), bob_root.join(file_name));
+            assert_ne!(alice_root.join(file_name), production_root.join(file_name));
+            assert_ne!(bob_root.join(file_name), production_root.join(file_name));
+        }
+
+        let alice_vault = CredentialVault::new_for_native_test(app_data_dir, "alice");
+        assert_eq!(alice_vault.root.as_deref(), Some(alice_root.as_path()));
+    }
+
+    #[test]
+    fn creates_and_uses_isolated_native_test_vaults_without_touching_production() {
+        let directory = tempfile::tempdir().expect("temporary app data directory");
+        let app_data_dir = directory.path().to_path_buf();
+        let production_root = app_data_dir.join(STORE_DIRECTORY);
+        let alice_root = native_test_vault_root(&app_data_dir, "alice").expect("Alice vault root");
+        let bob_root = native_test_vault_root(&app_data_dir, "bob").expect("Bob vault root");
+        let alice = CredentialVault::new_for_native_test(app_data_dir.clone(), "alice");
+        let bob = CredentialVault::new_for_native_test(app_data_dir, "bob");
+        let account = account_for(&reference()).expect("valid credential account");
+
+        alice.availability().expect("Alice vault is available");
+        bob.availability().expect("Bob vault is available");
+        alice
+            .write(&account, "alice-secret")
+            .expect("write Alice credential");
+        bob.write(&account, "bob-secret")
+            .expect("write Bob credential");
+
+        assert_eq!(
+            alice.read(&account).expect("read Alice credential"),
+            Some("alice-secret".to_owned())
+        );
+        assert_eq!(
+            bob.read(&account).expect("read Bob credential"),
+            Some("bob-secret".to_owned())
+        );
+        assert!(alice_root.join(MASTER_KEY_FILE).is_file());
+        assert!(alice_root.join(VAULT_FILE).is_file());
+        assert!(bob_root.join(MASTER_KEY_FILE).is_file());
+        assert!(bob_root.join(VAULT_FILE).is_file());
+        assert!(!production_root.exists());
+    }
 
         first.join().expect("first writer").expect("first write");
         second.join().expect("second writer").expect("second write");

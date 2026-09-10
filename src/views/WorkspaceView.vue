@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from '@open-pencil/vue'
 
 import { exposeCollaborationActions } from '@/app/browser-bridge'
+import { usesTestCollabTransport } from '@/app/collab/transport/policy'
 import { appRuntimeConfig } from '@/app/runtime/config'
 import { startMCPRuntime, stopMCPRuntime } from '@/app/automation/mcp/runtime'
 import { COLLAB_KEY, useCollab } from '@/app/collab/use'
@@ -70,6 +71,7 @@ useEventListener(
 )
 
 const fileAssociationCleanup = ref<(() => void) | null>(null)
+const mcpRuntimeEnabled = import.meta.env.MODE !== 'native-test' && !usesTestCollabTransport()
 
 interface PendingOpenFile {
   path: string
@@ -91,7 +93,7 @@ async function bindAssociatedFileOpen(): Promise<void> {
 }
 
 onMounted(async () => {
-  await startMCPRuntime(getActiveStore)
+  if (mcpRuntimeEnabled) await startMCPRuntime(getActiveStore)
 
   try {
     await bindAssociatedFileOpen()
@@ -101,7 +103,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  void stopMCPRuntime()
+  if (mcpRuntimeEnabled) void stopMCPRuntime()
   fileAssociationCleanup.value?.()
 })
 </script>

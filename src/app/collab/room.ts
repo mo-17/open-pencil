@@ -11,9 +11,9 @@ import {
   type CollabRoomTransport,
   type JoinCollabRoom
 } from '@/app/collab/transport'
+import { usesTestCollabTransport } from '@/app/collab/transport/policy'
 import { adaptTrysteroRoom } from '@/app/collab/transport/trystero'
 import type { PreviewDocStatePayload } from '@/app/collab/types'
-import { IS_BROWSER } from '@/constants'
 
 const MAX_PREVIEW_DOC_STATE_BYTES = 1024 * 1024
 const previewDocStateEncoder = new TextEncoder()
@@ -122,14 +122,6 @@ function decodePreviewDocState(data: Uint8Array): PreviewDocStatePayload | null 
   }
 }
 
-function usesTestTransport(): boolean {
-  return (
-    IS_BROWSER &&
-    import.meta.env.DEV &&
-    new URLSearchParams(window.location.search).get('collabTransport') === 'test'
-  )
-}
-
 function joinConfiguredRoom(
   roomId: string,
   password: string | undefined,
@@ -191,7 +183,7 @@ export function connectCollabRoom({
   let room: CollabRoomTransport
   if (joinRoom) {
     room = joinRoom(roomId)
-  } else if (usesTestTransport()) {
+  } else if (usesTestCollabTransport()) {
     room = joinCollabRoom(roomId)
   } else {
     room = joinConfiguredRoom(roomId, password, onAuthError)

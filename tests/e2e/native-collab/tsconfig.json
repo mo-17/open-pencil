@@ -15,9 +15,9 @@
   },
   "include": [
     "./**/*.ts",
-    "../../helpers/tauri/native-global.d.ts",
-    "../../helpers/tauri/editor-ready.ts",
-    "../../helpers/tauri/editor-snapshot.ts",
-    "../../helpers/tauri/event-recorder.ts"
+    "../../../wdio.conf.ts",
+    "../../../wdio.native-collab.conf.ts",
+    "../../helpers/collab/test-relay.ts",
+    "../../helpers/tauri/native-global.d.ts"
   ]
 }

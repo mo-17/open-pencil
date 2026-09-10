@@ -16,6 +16,7 @@ type NativeTestStore = {
     selectedIds: Set<string>
     renderVersion: number
     sceneVersion: number
+    snappingPreferences: { objects: boolean }
   }
   graph: {
     createNode: (type: string, parentId: string, changes: Record<string, unknown>) => NativeTestNode
@@ -33,6 +34,11 @@ type NativeTestStore = {
 
 declare global {
   interface Window {
+    __TAURI__: {
+      core: {
+        invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+      }
+    }
     openPencil?: {
       getStore?: () => NativeTestStore
     }
