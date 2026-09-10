@@ -43,6 +43,12 @@ export function waitForBackfillRead<T>(
   )
 }
 
+export function discardUnreadBackfillResponse(response: Response): void {
+  const body = response.body
+  if (!body || response.bodyUsed || body.locked) return
+  void body.cancel().catch(() => undefined)
+}
+
 function validJSONMediaType(response: Response): boolean {
   const value = response.headers.get('content-type')?.trim().toLowerCase()
   return value !== undefined && /^application\/json(?:\s*;\s*charset=utf-8)?$/u.test(value)

@@ -19,6 +19,7 @@ import type {
 
 import {
   createBackfillReadDeadline,
+  discardUnreadBackfillResponse,
   readBackfillJSON,
   waitForBackfillRead
 } from './read-response-runtime'
@@ -393,10 +394,14 @@ async function requestJSON(
       deadline.signal,
       READ_ABORT_MESSAGE
     )
-    if (response.redirected || (response.url !== '' && response.url !== url)) {
+    if (
+      response.redirected ||
+      (response.url !== '' && response.url !== url) ||
+      response.status !== expectedStatus
+    ) {
+      discardUnreadBackfillResponse(response)
       return fail('http-error')
     }
-    if (response.status !== expectedStatus) return fail('http-error')
     return await readBackfillJSON(response, maximum, deadline.signal, {
       abortMessage: READ_ABORT_MESSAGE,
       fail

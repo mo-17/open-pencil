@@ -95,7 +95,7 @@
 
 ### Fixed
 
-- Cancel unread Supabase backfill responses with malformed headers while preserving prompt error reporting.
+- Cancel unread Supabase backfill responses with malformed headers, unexpected HTTP status, or rejected redirects while preserving prompt error reporting.
 - Enforce generated Supabase Edge workflow HTTP deadlines while reading response bodies, and release oversized streams without delaying the sanitized failure response.
 - Keep Supabase database Apply response cancellation and size failures responsive, redact stream diagnostics, and preserve unknown outcomes after dispatch without retrying.
 - Cancel Supabase catalog response reads promptly, clean up oversized responses without waiting indefinitely, and keep response-stream errors free of private diagnostics.
