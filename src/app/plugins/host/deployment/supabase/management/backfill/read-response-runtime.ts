@@ -77,14 +77,14 @@ export async function readBackfillJSON(
     while (!chunk.done) {
       byteLength += chunk.value.byteLength
       if (byteLength > maximum) {
-        await reader.cancel().catch(() => undefined)
+        void reader.cancel().catch(() => undefined)
         return fail('response-too-large')
       }
       chunks.push(chunk.value)
       chunk = await waitForBackfillRead(reader.read(), signal, abortMessage)
     }
   } catch (cause) {
-    await reader.cancel().catch(() => undefined)
+    void reader.cancel().catch(() => undefined)
     throw cause
   } finally {
     reader.releaseLock()
