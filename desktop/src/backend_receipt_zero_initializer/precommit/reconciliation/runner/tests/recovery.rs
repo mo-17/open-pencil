@@ -71,11 +71,16 @@ struct Harness {
     journal: BackendOperationJournalV1,
     clock: Arc<JournalTime>,
     sync: Arc<SyncDirectory>,
+    entropy: Arc<Entropy>,
     key: String,
 }
 
 impl Harness {
     fn new(connector_time: Arc<Clock>) -> Self {
+        Self::with_install_history(connector_time, true)
+    }
+
+    fn with_install_history(connector_time: Arc<Clock>, installed: bool) -> Self {
         let temp = TempDir::new().unwrap();
         let clock = Arc::new(JournalTime {
             wall: AtomicU64::new(WALL_START),
@@ -96,13 +101,18 @@ impl Harness {
                 sync.clone(),
             )
         };
-        let initial = create_journal();
+        let initial = Arc::new(create_journal());
         let mut fixture: serde_json::Value = serde_json::from_slice(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../tests/fixtures/backend/supabase/receipt-zero-initializer-canonical-v1.json"
         )))
         .unwrap();
         let material = serde_json::from_value(fixture["material"].take()).unwrap();
+        if installed {
+            initial
+                .seed_receipt_zero_initializer_install_history_for_test(&material)
+                .unwrap();
+        }
         let claim = initial
             .claim_receipt_zero_initializer_for_test(material)
             .unwrap();
@@ -120,6 +130,7 @@ impl Harness {
             journal,
             clock,
             sync,
+            entropy,
             key,
         }
     }
@@ -163,6 +174,8 @@ fn recovered_read_uses_exact_journal_bindings_and_preserves_unknown_outcome() {
         state.clock.as_ref(),
     ))
     .unwrap();
+    let envelope: serde_json::Value = serde_json::from_slice(&harness.bytes()).unwrap();
+    assert_eq!(envelope["body"]["tombstones"].as_object().unwrap().len(), 1);
     assert_eq!(*state.events.lock().unwrap(), STAGES.map(Event::Stage));
     assert_eq!(
         *state.deadlines.lock().unwrap(),
@@ -175,6 +188,31 @@ fn recovered_read_uses_exact_journal_bindings_and_preserves_unknown_outcome() {
     assert!(!observation.automatic_retry_allowed());
     assert!(!observation.receipt_v2_issued());
     assert!(!observation.release_authorized());
+    harness.assert_unresolved();
+    assert_eq!(harness.record()["reconciliationLease"]["consumed"], true);
+    assert!(matches!(
+        harness
+            .journal
+            .reconstruct_receipt_zero_initializer_for_test(&harness.key),
+        Err(JournalError::LeaseActive)
+    ));
+}
+
+#[test]
+fn missing_install_history_blocks_before_connect_and_keeps_the_consumed_fence() {
+    let state = Arc::new(shared(&contract()));
+    let harness = Harness::with_install_history(state.clock.clone(), false);
+    let result = completed(run_recovered_fixed_read_for_test(
+        &harness.journal,
+        harness.recovery(),
+        Connector(state.clone()),
+        state.clock.as_ref(),
+    ));
+    assert!(matches!(
+        result,
+        Err(RunnerErrorV1::Journal(JournalError::Conflict))
+    ));
+    assert!(state.events.lock().unwrap().is_empty());
     harness.assert_unresolved();
     assert_eq!(harness.record()["reconciliationLease"]["consumed"], true);
     assert!(matches!(
@@ -218,16 +256,17 @@ fn unpolled_or_precancelled_recovery_has_no_durable_or_connector_effects() {
 fn another_journal_instance_cannot_execute_the_recovery() {
     let state = Arc::new(shared(&contract()));
     let harness = Harness::new(state.clock.clone());
+    let colliding_id = harness.entropy.0.load(Ordering::SeqCst);
     let recovery = harness.recovery();
     let before = harness.bytes();
     let foreign = BackendOperationJournalV1::with_test_dependencies(
         harness.temp.path().join("app-data"),
-        Arc::new(Entropy(AtomicU64::new(2))),
+        Arc::new(Entropy(AtomicU64::new(colliding_id))),
         harness.clock.clone(),
         harness.sync.clone(),
     );
-    // The initial claim used ID 1; A's recovery and B's independently minted recovery both use
-    // ID 2. A matching runtime entry and identical durable bytes must not replace instance identity.
+    // Both journals independently mint the same recovery ID after the fixture's install and
+    // initializer claims. Matching runtime and durable data must not replace instance identity.
     let local_recovery = foreign
         .reconstruct_receipt_zero_initializer_for_test(&harness.key)
         .unwrap();

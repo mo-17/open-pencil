@@ -2420,6 +2420,10 @@ impl BackendOperationJournalV1 {
             if persisted_material != window.material || persisted_identity != window.identity {
                 return Err(JournalError::Conflict);
             }
+            // This is the same locked, validated snapshot as the original OutcomeUnknown
+            // record and consumed lease. It grants historical association only, never remote
+            // installation authentication, a new read duration or settlement authority.
+            require_receipt_zero_initializer_install_history(&body, &persisted_material)?;
             let expected_authority_digest =
                 receipt_zero_initializer_reconciliation_authority_digest(
                     &authority_id,
@@ -2784,6 +2788,52 @@ impl BackendOperationJournalV1 {
         })
     }
 
+    /// Seeds local fixture history through the existing opaque review/precommit/observation
+    /// settlement route. No raw Applied record or consumed installed proof is fabricated.
+    #[cfg(test)]
+    pub(crate) fn seed_receipt_zero_initializer_install_history_for_test(
+        self: &Arc<Self>,
+        material: &ReceiptZeroInitializerClaimMaterialV1,
+    ) -> Result<(), JournalError> {
+        use crate::backend_cas_ledger_install::{
+            BackendCasLedgerInstallV1, CasLedgerInstallObservationInputV1,
+            CasLedgerInstallObservedMarkerStateV1, CasLedgerInstallObservedStateV1,
+        };
+        derive_receipt_zero_initializer_identity(material)?;
+        let installed = &material.installed;
+        let installer = BackendCasLedgerInstallV1::new(Arc::clone(self));
+        let claim = installer
+            .claim(SealedCasLedgerInstallReviewProofV1::issue_for_test(
+                receipt_zero_initializer_install_plan(installed),
+            ))
+            .map_err(|_| JournalError::InvalidState)?;
+        let mut outcome = claim
+            .begin_outcome_unknown_for_test()
+            .map_err(|_| JournalError::InvalidState)?;
+        let proof = outcome
+            .issue_installed_observation_for_test(CasLedgerInstallObservationInputV1 {
+                state: CasLedgerInstallObservedStateV1::Installed,
+                verified_installed: true,
+                exact_installed_state: true,
+                all_verification_checks_passed: true,
+                marker_state: CasLedgerInstallObservedMarkerStateV1::ExactSingle,
+                constraint_comment: Some(installed.marker.clone()),
+                schema_marker_prefix_count: 1,
+                exact_single_marker_on_constraint: true,
+                installed_verification_digest: installed.installed_verification_digest.clone(),
+                observed_at: installed.observed_at.clone(),
+                snapshot_marker: installed.snapshot_marker.clone(),
+                server_version_num: installed.server_version_num.clone(),
+            })
+            .map_err(|_| JournalError::InvalidState)?;
+        drop(
+            outcome
+                .settle_installed_for_test(proof)
+                .map_err(|_| JournalError::InvalidState)?,
+        );
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(crate) fn settle_cas_ledger_install_applied_for_test(
         &self,
@@ -2799,35 +2849,8 @@ impl BackendOperationJournalV1 {
         validate_cas_ledger_text(&installed.observed_at, 64)?;
         validate_cas_ledger_text(&installed.snapshot_marker, 512)?;
         validate_cas_ledger_text(&installed.server_version_num, 16)?;
-        let final_evidence = serde_json::json!({
-            "format": "openpencil.native-cas-ledger-install-final.v1",
-            "version": 1,
-            "phase": "installed-proof-observed",
-            "providerId": installed.plan.provider_id,
-            "environment": installed.plan.environment,
-            "projectRef": installed.plan.project_ref,
-            "accountId": installed.plan.account_id,
-            "planDigest": outcome.identity.plan_digest,
-            "installReviewDigest": installed.plan.install_review_digest,
-            "sourceReviewDigest": installed.plan.source_review_digest,
-            "verificationDigest": installed.plan.verification_digest,
-            "installedVerificationDigest": installed.installed_verification_digest,
-            "ledgerShapeDigest": installed.plan.ledger_shape_digest,
-            "baseSqlDigest": installed.plan.base_sql_digest,
-            "marker": installed.plan.marker,
-            "markerBindingDigest": installed.plan.marker_binding_digest,
-            "installSqlDigest": installed.plan.install_sql_digest,
-            "verificationQueryDigest": installed.plan.verification_query_digest,
-            "observedAt": installed.observed_at,
-            "snapshotMarker": installed.snapshot_marker,
-            "serverVersionNum": installed.server_version_num,
-            "automaticRetryAllowed": false,
-            "databaseLedgerBound": true,
-            "mutationAuthorized": false,
-            "executionAuthorized": false,
-            "sourceLedgerBound": false,
-            "releaseAuthorized": false
-        });
+        let final_evidence =
+            cas_ledger_install_final_evidence(&installed, &outcome.identity.plan_digest);
         self.settle_dispatch_for_test(
             outcome.settlement,
             OperationStateV1::Applied,
@@ -4194,6 +4217,119 @@ struct CasLedgerInstallProjectScopeV1<'a> {
     provider_id: &'a str,
 }
 
+fn receipt_zero_initializer_install_plan(
+    installed: &ReceiptZeroInitializerInstallMaterialV1,
+) -> CasLedgerInstallPlanMaterialV1 {
+    CasLedgerInstallPlanMaterialV1 {
+        provider_id: installed.provider_id.clone(),
+        environment: installed.environment.clone(),
+        project_ref: installed.project_ref.clone(),
+        account_id: installed.account_id.clone(),
+        read_grant_generation: installed.read_grant_generation.clone(),
+        write_grant_generation: installed.write_grant_generation.clone(),
+        migration_name: installed.migration_name.clone(),
+        install_review_digest: installed.install_review_digest.clone(),
+        source_review_digest: installed.source_review_digest.clone(),
+        verification_digest: installed.verification_digest.clone(),
+        ledger_shape_digest: installed.ledger_shape_digest.clone(),
+        base_sql_digest: installed.base_sql_digest.clone(),
+        marker: installed.marker.clone(),
+        marker_binding_digest: installed.marker_binding_digest.clone(),
+        install_sql_digest: installed.install_sql_digest.clone(),
+        verification_query_digest: installed.verification_query_digest.clone(),
+    }
+}
+
+#[cfg(test)]
+fn cas_ledger_install_final_evidence(
+    installed: &CasLedgerInstallInstalledObservationMaterialV1,
+    plan_digest: &str,
+) -> Value {
+    serde_json::json!({
+        "format": "openpencil.native-cas-ledger-install-final.v1",
+        "version": 1,
+        "phase": "installed-proof-observed",
+        "providerId": installed.plan.provider_id,
+        "environment": installed.plan.environment,
+        "projectRef": installed.plan.project_ref,
+        "accountId": installed.plan.account_id,
+        "planDigest": plan_digest,
+        "installReviewDigest": installed.plan.install_review_digest,
+        "sourceReviewDigest": installed.plan.source_review_digest,
+        "verificationDigest": installed.plan.verification_digest,
+        "installedVerificationDigest": installed.installed_verification_digest,
+        "ledgerShapeDigest": installed.plan.ledger_shape_digest,
+        "baseSqlDigest": installed.plan.base_sql_digest,
+        "marker": installed.plan.marker,
+        "markerBindingDigest": installed.plan.marker_binding_digest,
+        "installSqlDigest": installed.plan.install_sql_digest,
+        "verificationQueryDigest": installed.plan.verification_query_digest,
+        "observedAt": installed.observed_at,
+        "snapshotMarker": installed.snapshot_marker,
+        "serverVersionNum": installed.server_version_num,
+        "automaticRetryAllowed": false,
+        "databaseLedgerBound": true,
+        "mutationAuthorized": false,
+        "executionAuthorized": false,
+        "sourceLedgerBound": false,
+        "releaseAuthorized": false
+    })
+}
+
+#[cfg(test)]
+fn require_receipt_zero_initializer_install_history(
+    body: &JournalBodyV1,
+    material: &ReceiptZeroInitializerClaimMaterialV1,
+) -> Result<(), JournalError> {
+    let installed = &material.installed;
+    let install_material = receipt_zero_initializer_install_plan(installed);
+    let (plan, identity) = cas_ledger_install_plan(&install_material)?;
+    if identity.plan_digest != material.capture.install_plan_digest {
+        return Err(JournalError::Conflict);
+    }
+    // load_journal already checked both maps, tombstone record digests and key uniqueness.
+    // History survives restart; no same-process witness is required for the original install.
+    let record = body
+        .records
+        .get(&plan.single_flight_key)
+        .or_else(|| {
+            body.tombstones
+                .get(&plan.single_flight_key)
+                .map(|entry| &entry.record)
+        })
+        .ok_or(JournalError::Conflict)?;
+    if record.state != OperationStateV1::Applied
+        || record.single_flight_key != plan.single_flight_key
+        || record.dispatch_scope_key != plan.dispatch_scope_key
+        || record.provider_id != plan.provider_id
+        || record.project_id != plan.project_id
+        || record.operation_kind != plan.operation_kind
+        || record.release_id != plan.release_id
+        || record.owner_id != plan.owner_id
+        || record.plan_digest != plan.plan_digest
+    {
+        return Err(JournalError::Conflict);
+    }
+    let expected = cas_ledger_install_final_evidence(
+        &CasLedgerInstallInstalledObservationMaterialV1 {
+            plan: install_material,
+            installed_verification_digest: installed.installed_verification_digest.clone(),
+            observed_at: installed.observed_at.clone(),
+            snapshot_marker: installed.snapshot_marker.clone(),
+            server_version_num: installed.server_version_num.clone(),
+        },
+        &identity.plan_digest,
+    );
+    let final_evidence = record
+        .final_evidence
+        .as_ref()
+        .ok_or(JournalError::Conflict)?;
+    if final_evidence.payload != validate_evidence_payload(&expected)? {
+        return Err(JournalError::Conflict);
+    }
+    Ok(())
+}
+
 fn cas_ledger_install_plan(
     material: &CasLedgerInstallPlanMaterialV1,
 ) -> Result<(TrustedOperationPlanV1, CasLedgerInstallJournalIdentityV1), JournalError> {
@@ -4524,24 +4660,7 @@ fn validate_receipt_zero_initializer_material(
         }
     }
 
-    let install_plan = CasLedgerInstallPlanMaterialV1 {
-        provider_id: installed.provider_id.clone(),
-        environment: installed.environment.clone(),
-        project_ref: installed.project_ref.clone(),
-        account_id: installed.account_id.clone(),
-        read_grant_generation: installed.read_grant_generation.clone(),
-        write_grant_generation: installed.write_grant_generation.clone(),
-        migration_name: installed.migration_name.clone(),
-        install_review_digest: installed.install_review_digest.clone(),
-        source_review_digest: installed.source_review_digest.clone(),
-        verification_digest: installed.verification_digest.clone(),
-        ledger_shape_digest: installed.ledger_shape_digest.clone(),
-        base_sql_digest: installed.base_sql_digest.clone(),
-        marker: installed.marker.clone(),
-        marker_binding_digest: installed.marker_binding_digest.clone(),
-        install_sql_digest: installed.install_sql_digest.clone(),
-        verification_query_digest: installed.verification_query_digest.clone(),
-    };
+    let install_plan = receipt_zero_initializer_install_plan(installed);
     let (_, install_identity) = cas_ledger_install_plan(&install_plan)?;
     if !initializer_valid_timestamp(&installed.observed_at)
         || !initializer_valid_snapshot_marker(&installed.snapshot_marker)
@@ -8640,9 +8759,15 @@ mod tests {
     }
 
     fn initializer_read_window_for_test(
-        journal: &BackendOperationJournalV1,
+        journal: &Arc<BackendOperationJournalV1>,
         clock: &ManualClock,
     ) -> (String, ReceiptZeroInitializerReconciliationReadRunWindowV1) {
+        journal
+            .seed_receipt_zero_initializer_install_history_for_test(&initializer_material(
+                "b3c-execution",
+                PROJECT_A,
+            ))
+            .unwrap();
         let (key, _, dispatch) =
             initializer_outcome_unknown_for_test(journal, "b3c-execution", PROJECT_A);
         drop(dispatch);
@@ -8683,11 +8808,394 @@ mod tests {
         }
     }
 
+    fn initializer_install_history_read_window_fixture_for_test(
+        temp: &TempDir,
+        clock: &Arc<ManualClock>,
+        archived: bool,
+    ) -> (
+        Arc<BackendOperationJournalV1>,
+        String,
+        String,
+        ReceiptZeroInitializerReconciliationReadRunWindowV1,
+    ) {
+        let mut journal = Arc::new(confirmed_journal(
+            temp,
+            clock.clone(),
+            Arc::new(CounterEntropy::new()),
+        ));
+        let material = initializer_material("b3c-install-history", PROJECT_A);
+        journal
+            .seed_receipt_zero_initializer_install_history_for_test(&material)
+            .unwrap();
+        let (_, install_identity) =
+            cas_ledger_install_plan(&receipt_zero_initializer_install_plan(&material.installed))
+                .unwrap();
+        let (key, _, dispatch) =
+            initializer_outcome_unknown_for_test(&journal, "b3c-install-history", PROJECT_A);
+        drop(dispatch);
+        if archived {
+            drop(journal);
+            journal = Arc::new(confirmed_journal(
+                temp,
+                clock.clone(),
+                Arc::new(CounterEntropy::new()),
+            ));
+        }
+        clock.advance(CLAIM_LEASE);
+        let recovery = journal
+            .reconstruct_receipt_zero_initializer_for_test(&key)
+            .unwrap();
+        let permit = journal
+            .begin_receipt_zero_initializer_reconciliation_for_test(recovery)
+            .unwrap();
+        let window = journal
+            .consume_receipt_zero_initializer_reconciliation_for_test(permit)
+            .unwrap();
+        (journal, key, install_identity.single_flight_key, window)
+    }
+
+    fn rewrite_install_history_for_test(temp: &TempDir, mutate: impl FnOnce(&mut JournalBodyV1)) {
+        let path = temp
+            .path()
+            .join("app-data")
+            .join(STORE_DIRECTORY)
+            .join(JOURNAL_FILE);
+        let mut envelope: JournalEnvelopeV1 =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        mutate(&mut envelope.body);
+        for entry in envelope.body.tombstones.values_mut() {
+            entry.record_digest = record_digest(&entry.record).unwrap();
+        }
+        // Deliberately recompute every unkeyed checksum. These cases must reach the exact
+        // history join, rather than failing because generic journal integrity detected drift.
+        validate_body(&envelope.body).unwrap();
+        envelope.body_digest = digest_bytes(&serde_json::to_vec(&envelope.body).unwrap());
+        fs::write(&path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+    }
+
+    fn install_history_record_mut_for_test<'a>(
+        body: &'a mut JournalBodyV1,
+        key: &str,
+    ) -> &'a mut BackendOperationRecordV1 {
+        if let Some(record) = body.records.get_mut(key) {
+            record
+        } else {
+            &mut body.tombstones.get_mut(key).unwrap().record
+        }
+    }
+
+    fn assert_install_history_attempt_rejected_and_burned_for_test(
+        journal: &BackendOperationJournalV1,
+        key: &str,
+        window: ReceiptZeroInitializerReconciliationReadRunWindowV1,
+    ) {
+        let replay = duplicate_initializer_read_window_for_test(&window);
+        let before = body(journal);
+        assert!(matches!(
+            journal.consume_receipt_zero_initializer_read_run_window_for_execution_for_test(window),
+            Err(JournalError::Conflict)
+        ));
+        assert_eq!(body(journal), before);
+        assert!(matches!(
+            journal.consume_receipt_zero_initializer_read_run_window_for_execution_for_test(replay),
+            Err(JournalError::CapabilityMissing)
+        ));
+        let record = &before.records[key];
+        assert_eq!(record.state, OperationStateV1::OutcomeUnknown);
+        assert!(record.final_evidence.is_none());
+        assert!(record.reconciliation_lease.as_ref().unwrap().consumed);
+    }
+
+    #[test]
+    fn initializer_b3c_install_history_accepts_applied_active_and_restart_tombstone() {
+        for archived in [false, true] {
+            let temp = TempDir::new().unwrap();
+            let clock = Arc::new(ManualClock::new());
+            let (journal, key, install_key, window) =
+                initializer_install_history_read_window_fixture_for_test(&temp, &clock, archived);
+            let before = body(&journal);
+            assert_eq!(before.tombstones.contains_key(&install_key), archived);
+            assert_eq!(before.records.contains_key(&install_key), !archived);
+            clock.advance_wall(Duration::from_secs(7));
+            clock.advance_monotonic(Duration::from_secs(3));
+            let ceiling = journal
+                .consume_receipt_zero_initializer_read_run_window_for_execution_for_test(window)
+                .unwrap();
+            let (active, remaining) = ceiling.activate_for_runner_for_test().unwrap();
+            assert_eq!(remaining, Duration::from_secs(23));
+            active.require_fresh_for_runner_for_test().unwrap();
+            assert_eq!(body(&journal), before);
+            assert_eq!(before.records[&key].state, OperationStateV1::OutcomeUnknown);
+        }
+    }
+
+    #[test]
+    fn initializer_b3c_install_history_rejects_missing_foreign_and_nonapplied_after_window_mint() {
+        for case in ["missing", "foreign-only", "failed", "archived-failed"] {
+            let temp = TempDir::new().unwrap();
+            let clock = Arc::new(ManualClock::new());
+            let (journal, key, install_key, window) =
+                initializer_install_history_read_window_fixture_for_test(
+                    &temp,
+                    &clock,
+                    case == "archived-failed",
+                );
+            // An independently valid matching installation in another store cannot supply
+            // missing history in this journal, even when every secret-free field is identical.
+            let foreign = TempDir::new().unwrap();
+            if case == "foreign-only" {
+                let other = Arc::new(confirmed_journal(
+                    &foreign,
+                    clock.clone(),
+                    Arc::new(CounterEntropy::new()),
+                ));
+                other
+                    .seed_receipt_zero_initializer_install_history_for_test(&window.material)
+                    .unwrap();
+            }
+            rewrite_install_history_for_test(&temp, |body| {
+                if matches!(case, "missing" | "foreign-only") {
+                    body.records.remove(&install_key).unwrap();
+                    return;
+                }
+                let record = install_history_record_mut_for_test(body, &install_key);
+                record.state = OperationStateV1::Failed;
+                record.code = Some("INSTALL_FAILED".to_owned());
+            });
+            assert_install_history_attempt_rejected_and_burned_for_test(&journal, &key, window);
+        }
+    }
+
+    #[test]
+    fn initializer_b3c_install_history_rejects_unresolved_install_state_without_assuming_valid_body(
+    ) {
+        let temp = TempDir::new().unwrap();
+        let clock = Arc::new(ManualClock::new());
+        let (journal, _, install_key, window) =
+            initializer_install_history_read_window_fixture_for_test(&temp, &clock, false);
+        let persisted = body(&journal);
+        for state in [OperationStateV1::Claimed, OperationStateV1::OutcomeUnknown] {
+            let mut snapshot = persisted.clone();
+            let record = snapshot.records.get_mut(&install_key).unwrap();
+            record.state = state;
+            record.final_evidence = None;
+            if state == OperationStateV1::Claimed {
+                record.revision = 1;
+                record.transitioned_at_unix_ms = None;
+                record.progress_evidence = None;
+            } else {
+                record.revision = 2;
+                record.code = Some(OUTCOME_UNKNOWN_CODE.to_owned());
+                record.transitioned_at_unix_ms = Some(
+                    record
+                        .progress_evidence
+                        .as_ref()
+                        .unwrap()
+                        .recorded_at_unix_ms,
+                );
+            }
+            validate_record(record).unwrap();
+            // Each record is valid alone, but the durable loader already rejects two unresolved
+            // operations in this project. Exercise the history predicate separately without
+            // pretending such a snapshot could pass load_journal or changing project identity.
+            assert_eq!(validate_body(&snapshot), Err(JournalError::Corrupt));
+            assert_eq!(
+                require_receipt_zero_initializer_install_history(&snapshot, &window.material),
+                Err(JournalError::Conflict)
+            );
+        }
+        assert_eq!(body(&journal), persisted);
+    }
+
+    #[test]
+    fn initializer_b3c_install_history_rejects_rechecksummed_plan_identity_drift() {
+        type Mutator = fn(&mut BackendOperationRecordV1);
+        let cases: [(&str, Mutator); 6] = [
+            ("key", |record| {
+                record.single_flight_key = digest_bytes(b"other-install-key")
+            }),
+            ("scope", |record| {
+                record.dispatch_scope_key = digest_bytes(b"other-install-scope")
+            }),
+            ("project", |record| {
+                record.project_id = "bcdefghijklmnopqrstu".to_owned()
+            }),
+            ("release", |record| record.release_id.push('x')),
+            ("owner", |record| record.owner_id.push('x')),
+            ("plan", |record| {
+                record.plan_digest = digest_bytes(b"other-install-plan")
+            }),
+        ];
+        for archived in [false, true] {
+            for (label, mutate) in cases {
+                let temp = TempDir::new().unwrap();
+                let clock = Arc::new(ManualClock::new());
+                let (journal, key, install_key, window) =
+                    initializer_install_history_read_window_fixture_for_test(
+                        &temp, &clock, archived,
+                    );
+                rewrite_install_history_for_test(&temp, |body| {
+                    mutate(install_history_record_mut_for_test(body, &install_key));
+                    if label == "key" {
+                        if archived {
+                            let entry = body.tombstones.remove(&install_key).unwrap();
+                            body.tombstones
+                                .insert(entry.record.single_flight_key.clone(), entry);
+                        } else {
+                            let record = body.records.remove(&install_key).unwrap();
+                            body.records
+                                .insert(record.single_flight_key.clone(), record);
+                        }
+                    }
+                });
+                assert_install_history_attempt_rejected_and_burned_for_test(&journal, &key, window);
+            }
+        }
+    }
+
+    #[test]
+    fn initializer_b3c_install_history_rejects_every_final_payload_field_and_key_set_drift() {
+        // Enumerate the actual settlement payload so a future field added by the shared builder
+        // automatically becomes part of both changed-value and missing-key negative coverage.
+        let material = initializer_material("b3c-install-history", PROJECT_A);
+        let plan = receipt_zero_initializer_install_plan(&material.installed);
+        let (_, identity) = cas_ledger_install_plan(&plan).unwrap();
+        let payload = cas_ledger_install_final_evidence(
+            &CasLedgerInstallInstalledObservationMaterialV1 {
+                plan,
+                installed_verification_digest: material.installed.installed_verification_digest,
+                observed_at: material.installed.observed_at,
+                snapshot_marker: material.installed.snapshot_marker,
+                server_version_num: material.installed.server_version_num,
+            },
+            &identity.plan_digest,
+        );
+        let fields: Vec<_> = payload.as_object().unwrap().keys().cloned().collect();
+        for archived in [false, true] {
+            for field in &fields {
+                for remove in [false, true] {
+                    let temp = TempDir::new().unwrap();
+                    let clock = Arc::new(ManualClock::new());
+                    let (journal, key, install_key, window) =
+                        initializer_install_history_read_window_fixture_for_test(
+                            &temp, &clock, archived,
+                        );
+                    rewrite_install_history_for_test(&temp, |body| {
+                        let evidence = install_history_record_mut_for_test(body, &install_key)
+                            .final_evidence
+                            .as_mut()
+                            .unwrap();
+                        let mut payload: Value = serde_json::from_str(&evidence.payload).unwrap();
+                        if remove {
+                            payload.as_object_mut().unwrap().remove(field).unwrap();
+                        } else {
+                            match &mut payload[field] {
+                                Value::String(value) => value.push('x'),
+                                Value::Bool(value) => *value = !*value,
+                                Value::Number(value) => {
+                                    *value = serde_json::Number::from(value.as_u64().unwrap() + 1)
+                                }
+                                _ => panic!("unexpected final payload field {field}"),
+                            }
+                        }
+                        evidence.payload = validate_evidence_payload(&payload).unwrap();
+                        evidence.payload_digest = digest_bytes(evidence.payload.as_bytes());
+                    });
+                    assert_install_history_attempt_rejected_and_burned_for_test(
+                        &journal, &key, window,
+                    );
+                }
+            }
+            let temp = TempDir::new().unwrap();
+            let clock = Arc::new(ManualClock::new());
+            let (journal, key, install_key, window) =
+                initializer_install_history_read_window_fixture_for_test(&temp, &clock, archived);
+            rewrite_install_history_for_test(&temp, |body| {
+                let evidence = install_history_record_mut_for_test(body, &install_key)
+                    .final_evidence
+                    .as_mut()
+                    .unwrap();
+                let mut payload: Value = serde_json::from_str(&evidence.payload).unwrap();
+                payload["unexpectedField"] = json!(true);
+                evidence.payload = validate_evidence_payload(&payload).unwrap();
+                evidence.payload_digest = digest_bytes(evidence.payload.as_bytes());
+            });
+            assert_install_history_attempt_rejected_and_burned_for_test(&journal, &key, window);
+        }
+    }
+
+    #[test]
+    fn initializer_b3c_install_history_rechecks_both_clocks_after_snapshot_validation() {
+        struct AdvanceOnSecondWallSample {
+            clock: Arc<ManualClock>,
+            remaining: AtomicUsize,
+            advance_wall: bool,
+        }
+        impl JournalClock for AdvanceOnSecondWallSample {
+            fn wall_unix_millis(&self) -> Result<u64, JournalError> {
+                if self.remaining.load(Ordering::SeqCst) > 0
+                    && self.remaining.fetch_sub(1, Ordering::SeqCst) == 1
+                {
+                    if self.advance_wall {
+                        self.clock.advance_wall(Duration::from_secs(30));
+                    } else {
+                        self.clock.advance_monotonic(Duration::from_secs(30));
+                    }
+                }
+                self.clock.wall_unix_millis()
+            }
+
+            fn monotonic(&self) -> Duration {
+                self.clock.monotonic()
+            }
+        }
+        for advance_wall in [false, true] {
+            let temp = TempDir::new().unwrap();
+            let clock = Arc::new(ManualClock::new());
+            let sampled = Arc::new(AdvanceOnSecondWallSample {
+                clock: clock.clone(),
+                remaining: AtomicUsize::new(0),
+                advance_wall,
+            });
+            let journal = Arc::new(BackendOperationJournalV1::with_test_dependencies(
+                temp.path().join("app-data"),
+                Arc::new(CounterEntropy::new()),
+                sampled.clone(),
+                Arc::new(SystemDirectorySync),
+            ));
+            let (key, window) = initializer_read_window_for_test(&journal, &clock);
+            let replay = duplicate_initializer_read_window_for_test(&window);
+            let before = body(&journal);
+            // The first sample is still fresh. The second, after load + exact history/lease
+            // validation, reaches one original deadline while the other clock stays unchanged.
+            sampled.remaining.store(2, Ordering::SeqCst);
+            assert!(matches!(
+                journal.consume_receipt_zero_initializer_read_run_window_for_execution_for_test(
+                    window
+                ),
+                Err(JournalError::CapabilityExpired)
+            ));
+            assert_eq!(sampled.remaining.load(Ordering::SeqCst), 0);
+            assert_eq!(body(&journal), before);
+            assert_eq!(before.records[&key].state, OperationStateV1::OutcomeUnknown);
+            assert!(matches!(
+                journal.consume_receipt_zero_initializer_read_run_window_for_execution_for_test(
+                    replay
+                ),
+                Err(JournalError::CapabilityMissing)
+            ));
+        }
+    }
+
     #[test]
     fn initializer_b3c_execution_consumes_exact_read_window_without_settlement_or_replay() {
         let temp = TempDir::new().unwrap();
         let clock = Arc::new(ManualClock::new());
-        let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+        let journal = Arc::new(confirmed_journal(
+            &temp,
+            clock.clone(),
+            Arc::new(CounterEntropy::new()),
+        ));
         let (key, window) = initializer_read_window_for_test(&journal, &clock);
         let replay = duplicate_initializer_read_window_for_test(&window);
         let before = serde_json::to_vec(&body(&journal)).unwrap();
@@ -8724,7 +9232,11 @@ mod tests {
     fn initializer_b3c_execution_rejects_other_journal_even_with_colliding_runtime_binding() {
         let temp = TempDir::new().unwrap();
         let clock = Arc::new(ManualClock::new());
-        let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+        let journal = Arc::new(confirmed_journal(
+            &temp,
+            clock.clone(),
+            Arc::new(CounterEntropy::new()),
+        ));
         let (_, window) = initializer_read_window_for_test(&journal, &clock);
         let second = confirmed_journal(&temp, clock, Arc::new(CounterEntropy::new()));
         let id = window._authority.id;
@@ -8875,7 +9387,11 @@ mod tests {
         for (label, mutate) in cases {
             let temp = TempDir::new().unwrap();
             let clock = Arc::new(ManualClock::new());
-            let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+            let journal = Arc::new(confirmed_journal(
+                &temp,
+                clock.clone(),
+                Arc::new(CounterEntropy::new()),
+            ));
             let (key, mut window) = initializer_read_window_for_test(&journal, &clock);
             let replay = duplicate_initializer_read_window_for_test(&window);
             mutate(&mut window);
@@ -8910,7 +9426,11 @@ mod tests {
         for (label, mutate) in cases {
             let temp = TempDir::new().unwrap();
             let clock = Arc::new(ManualClock::new());
-            let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+            let journal = Arc::new(confirmed_journal(
+                &temp,
+                clock.clone(),
+                Arc::new(CounterEntropy::new()),
+            ));
             let (key, mut window) = initializer_read_window_for_test(&journal, &clock);
             let id = window._authority.id;
             let path = temp
@@ -8965,8 +9485,11 @@ mod tests {
                 for regression in [false, true] {
                     let temp = TempDir::new().unwrap();
                     let clock = Arc::new(ManualClock::new());
-                    let journal =
-                        confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+                    let journal = Arc::new(confirmed_journal(
+                        &temp,
+                        clock.clone(),
+                        Arc::new(CounterEntropy::new()),
+                    ));
                     let (_, window) = initializer_read_window_for_test(&journal, &clock);
                     let issued_wall = window.issued_at_unix_ms;
                     let issued_mono = window.issued_at_monotonic;
@@ -9023,7 +9546,11 @@ mod tests {
     fn initializer_b3c_dropped_window_keeps_durable_lease_and_cannot_be_reissued() {
         let temp = TempDir::new().unwrap();
         let clock = Arc::new(ManualClock::new());
-        let journal = confirmed_journal(&temp, clock.clone(), Arc::new(CounterEntropy::new()));
+        let journal = Arc::new(confirmed_journal(
+            &temp,
+            clock.clone(),
+            Arc::new(CounterEntropy::new()),
+        ));
         let (key, window) = initializer_read_window_for_test(&journal, &clock);
         drop(window);
         assert!(matches!(
@@ -11088,6 +11615,7 @@ mod tests {
             "\n    pub(crate) fn consume_receipt_zero_initializer_live_run_window_for_execution_for_test(",
             "\n    pub(crate) fn precommit_cas_ledger_install_for_test(",
             "\n    pub(crate) fn settle_cas_ledger_install_applied_for_test(",
+            "\n    pub(crate) fn seed_receipt_zero_initializer_install_history_for_test(",
             "\n    fn precommit_for_test(",
             "\n    fn consume_dispatch_permit_for_test(",
             "\n    fn attest_known_not_dispatched_for_test(",
