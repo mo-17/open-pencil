@@ -94,6 +94,7 @@
 
 ### Fixed
 
+- Cancel Supabase catalog response reads promptly, clean up oversized responses without waiting indefinitely, and keep response-stream errors free of private diagnostics.
 - Preserve unknown Supabase staging outcomes across review changes, document switches, and property-panel remounts, keeping Apply blocked for unresolved outcomes.
 - Return Supabase locked backfill capture failures promptly when stream cleanup stalls, while keeping each dispatched capture single-use.
 - Return Supabase backfill read timeouts, cancellation, and response-size failures promptly even when response-stream cleanup does not finish.

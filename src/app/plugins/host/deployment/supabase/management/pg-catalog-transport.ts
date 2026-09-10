@@ -163,28 +163,53 @@ export const SUPABASE_PG_CATALOG_AGGREGATE_PARAMETERS = Object.freeze(
   SUPABASE_PG_CATALOG_FIXED_QUERIES.flatMap((query) => ['public', query.maximumRows + 1])
 )
 
-async function boundedJSON(response: Response, maximum: number): Promise<unknown> {
+function waitForBodyRead<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return operation
+  let onAbort: () => void = () => undefined
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(new SupabaseManagementPgCatalogTransportError('aborted'))
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
+  })
+  return Promise.race([operation, aborted]).finally(() => {
+    signal.removeEventListener('abort', onAbort)
+  })
+}
+
+async function boundedJSON(
+  response: Response,
+  maximum: number,
+  signal: AbortSignal | undefined
+): Promise<unknown> {
   const contentLength = response.headers.get('content-length')
   if (contentLength !== null) {
     const parsed = Number(contentLength)
     if (!Number.isSafeInteger(parsed) || parsed < 0) fail('invalid-response')
-    if (parsed > maximum) fail('response-too-large')
+    if (parsed > maximum) {
+      void response.body?.cancel().catch(() => undefined)
+      fail('response-too-large')
+    }
   }
   if (!response.body) fail('invalid-response')
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
   let byteLength = 0
   try {
-    let chunk = await reader.read()
+    let chunk = await waitForBodyRead(reader.read(), signal)
     while (!chunk.done) {
       byteLength += chunk.value.byteLength
       if (byteLength > maximum) {
-        await reader.cancel()
         fail('response-too-large')
       }
       chunks.push(chunk.value)
-      chunk = await reader.read()
+      chunk = await waitForBodyRead(reader.read(), signal)
     }
+    throwIfAborted(signal)
+  } catch (cause) {
+    void reader.cancel().catch(() => undefined)
+    if (cause instanceof SupabaseManagementPgCatalogTransportError) throw cause
+    throwIfAborted(signal)
+    return fail('network-failed')
   } finally {
     reader.releaseLock()
   }
@@ -227,7 +252,7 @@ async function requestJSON(
     fail('http-error')
   }
   if (response.status !== expectedStatus) fail('http-error')
-  return boundedJSON(response, maximum)
+  return boundedJSON(response, maximum, signal)
 }
 
 function validateReadRequest(
