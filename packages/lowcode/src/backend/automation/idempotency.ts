@@ -1,14 +1,8 @@
 /* eslint-disable max-lines -- strict parsing, lifecycle transitions, and CAS binding form one fail-closed contract */
 import { canonicalManifestBytes, digestCanonicalManifest } from '@open-pencil/scene-graph'
 
-import {
-  exactArray,
-  exactRecord,
-  nullableDigest,
-  releaseDigest,
-  releaseIdentifier,
-  stringValue
-} from '../release/validation'
+import { exactArray, exactRecord, nullableDigest, stringValue } from '../release/validation'
+import { digest, fixedFalse, identifier, integer, nullableInteger } from './scalars'
 
 export const BACKEND_AUTOMATION_IDEMPOTENCY_VERSION = 1 as const
 export const BACKEND_AUTOMATION_IDEMPOTENCY_RECORD_FORMAT =
@@ -147,40 +141,6 @@ const CAS_PROPOSAL_KEYS = Object.freeze([
 const STATES = new Set<string>(BACKEND_AUTOMATION_IDEMPOTENCY_STATES)
 const CANONICAL_MILLISECOND_TIMESTAMP =
   /^(?!0000-)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}Z$/u
-
-function integer(value: unknown, path: string, minimum: number, maximum: number): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    Object.is(value, -0) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
-    throw new TypeError(`${path} must be an integer from ${minimum} to ${maximum}`)
-  }
-  return value as number
-}
-
-function nullableInteger(
-  value: unknown,
-  path: string,
-  minimum: number,
-  maximum: number
-): number | null {
-  return value === null ? null : integer(value, path, minimum, maximum)
-}
-
-function fixedFalse(value: unknown, path: string): false {
-  if (value !== false) throw new TypeError(`${path} must be false`)
-  return false
-}
-
-function identifier(value: unknown, path: string): string {
-  return releaseIdentifier(stringValue(value, path), path)
-}
-
-function digest(value: unknown, path: string): string {
-  return releaseDigest(stringValue(value, path), path)
-}
 
 function timestamp(value: unknown, path: string): string {
   const parsed = stringValue(value, path, 24)

@@ -6,12 +6,11 @@ import {
   exactRecord,
   exactArray,
   nullableDigest,
-  releaseDigest,
-  releaseIdentifier,
   releaseTimestamp,
   stringValue
 } from '../release/validation'
 import { containsBackendSecretLikeMaterial } from '../secret-boundary'
+import { digest, fixedFalse, identifier, integer, nullableInteger } from './scalars'
 import {
   BACKEND_AUTOMATION_WORKER_VERSION,
   parseBackendAutomationQueueMessageEnvelope,
@@ -185,32 +184,6 @@ const NO_AUTHORITY = Object.freeze({
   releaseAuthorityGranted: false
 } as const)
 
-function integer(value: unknown, path: string, minimum: number, maximum: number): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    Object.is(value, -0) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
-    throw new TypeError(`${path} must be an integer from ${minimum} to ${maximum}`)
-  }
-  return value as number
-}
-
-function nullableInteger(
-  value: unknown,
-  path: string,
-  minimum: number,
-  maximum: number
-): number | null {
-  return value === null ? null : integer(value, path, minimum, maximum)
-}
-
-function fixedFalse(value: unknown, path: string): false {
-  if (value !== false) throw new TypeError(`${path} must be false`)
-  return false
-}
-
 function authorityFields(source: Readonly<Record<string, unknown>>) {
   return {
     hostEvidenceAuthenticated: fixedFalse(
@@ -228,14 +201,6 @@ function authorityFields(source: Readonly<Record<string, unknown>>) {
     ackAuthorityGranted: fixedFalse(source.ackAuthorityGranted, '$.ackAuthorityGranted'),
     releaseAuthorityGranted: fixedFalse(source.releaseAuthorityGranted, '$.releaseAuthorityGranted')
   } as const
-}
-
-function identifier(value: unknown, path: string): string {
-  return releaseIdentifier(stringValue(value, path), path)
-}
-
-function digest(value: unknown, path: string): string {
-  return releaseDigest(stringValue(value, path), path)
 }
 
 function timestamp(value: unknown, path: string): string {
