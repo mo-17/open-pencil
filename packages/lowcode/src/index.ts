@@ -129,6 +129,7 @@ export {
   lowcodeNavigationPathname,
   lowcodeRouteCollisionKey,
   lowcodeRouteMatches,
+  validateLowcodeNavigationTarget,
   validateLowcodeRoutePattern
 } from './routes'
 

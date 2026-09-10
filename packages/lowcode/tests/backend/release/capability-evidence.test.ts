@@ -3,12 +3,18 @@ import { describe, expect, test } from 'bun:test'
 import {
   deriveBackendApplicationCapabilitiesV2,
   lowerBackendApplicationSpecV1ToV2
-} from '#lowcode/backend/application-v2'
-import type { BackendApplicationSpecV2 } from '#lowcode/backend/application-v2-types'
+} from '#lowcode/backend/application'
+import type { BackendApplicationSpecV2 } from '#lowcode/backend/application/types'
 import {
   BACKEND_RELEASE_CAPABILITY_EVIDENCE_IDS,
   BACKEND_RELEASE_BACKFILL_CURSOR_VERIFIER_CHECK,
   BACKEND_RELEASE_EVIDENCE_CAPABILITIES,
+  BACKEND_RELEASE_IDEMPOTENCY_CAS_LEDGER_VERIFIER_CHECK,
+  BACKEND_RELEASE_OPERATIONAL_EVENT_SINK_CAS_VERIFIER_CHECK,
+  BACKEND_RELEASE_QUEUE_WORKER_LEASE_TERMINAL_CAS_VERIFIER_CHECK,
+  BACKEND_RELEASE_RETRY_DISPOSITION_DLQ_PUBLISH_BEFORE_ARCHIVE_VERIFIER_CHECK,
+  BACKEND_RELEASE_TRANSACTIONAL_OUTBOX_CAS_VERIFIER_CHECK,
+  BACKEND_RELEASE_WEBHOOK_ENDPOINT_AUTHORITY_VERIFIER_CHECK,
   BACKEND_RELEASE_WEBHOOK_HMAC_PURPOSE_VERIFIER_CHECK,
   backendReleaseEvidenceVerifierChecksForCapability,
   createBackendReleaseEvidenceReceiptCandidate,
@@ -127,8 +133,28 @@ describe('capability-driven Backend release evidence', () => {
           ...(capability === 'webhooks.receive' || capability === 'webhooks.deliver'
             ? [BACKEND_RELEASE_WEBHOOK_HMAC_PURPOSE_VERIFIER_CHECK]
             : []),
+          ...(capability === 'webhooks.deliver'
+            ? [BACKEND_RELEASE_WEBHOOK_ENDPOINT_AUTHORITY_VERIFIER_CHECK]
+            : []),
           ...(capability === 'migrations.backfill'
             ? [BACKEND_RELEASE_BACKFILL_CURSOR_VERIFIER_CHECK]
+            : []),
+          ...(capability === 'workflows.idempotency'
+            ? [BACKEND_RELEASE_IDEMPOTENCY_CAS_LEDGER_VERIFIER_CHECK]
+            : []),
+          ...(capability === 'queues.consume'
+            ? [BACKEND_RELEASE_QUEUE_WORKER_LEASE_TERMINAL_CAS_VERIFIER_CHECK]
+            : []),
+          ...(capability === 'queues.publish'
+            ? [BACKEND_RELEASE_TRANSACTIONAL_OUTBOX_CAS_VERIFIER_CHECK]
+            : []),
+          ...(capability === 'workflows.retry'
+            ? [BACKEND_RELEASE_RETRY_DISPOSITION_DLQ_PUBLISH_BEFORE_ARCHIVE_VERIFIER_CHECK]
+            : []),
+          ...(capability === 'observability.logs' ||
+          capability === 'observability.metrics' ||
+          capability === 'observability.traces'
+            ? [BACKEND_RELEASE_OPERATIONAL_EVENT_SINK_CAS_VERIFIER_CHECK]
             : [])
         ]
       })
@@ -201,13 +227,45 @@ describe('capability-driven Backend release evidence', () => {
     for (const capability of ['webhooks.receive', 'webhooks.deliver'] as const) {
       expect(backendReleaseEvidenceVerifierChecksForCapability(capability)).toEqual([
         BACKEND_RELEASE_CAPABILITY_EVIDENCE_IDS[capability],
-        BACKEND_RELEASE_WEBHOOK_HMAC_PURPOSE_VERIFIER_CHECK
+        BACKEND_RELEASE_WEBHOOK_HMAC_PURPOSE_VERIFIER_CHECK,
+        ...(capability === 'webhooks.deliver'
+          ? [BACKEND_RELEASE_WEBHOOK_ENDPOINT_AUTHORITY_VERIFIER_CHECK]
+          : [])
       ])
     }
     expect(backendReleaseEvidenceVerifierChecksForCapability('migrations.backfill')).toEqual([
       'data-backfill-verified',
       BACKEND_RELEASE_BACKFILL_CURSOR_VERIFIER_CHECK
     ])
+  })
+
+  test('requires durable automation verifier checks beyond generic capability evidence', () => {
+    const expectedChecks = new Map([
+      ['workflows.idempotency', BACKEND_RELEASE_IDEMPOTENCY_CAS_LEDGER_VERIFIER_CHECK],
+      ['queues.consume', BACKEND_RELEASE_QUEUE_WORKER_LEASE_TERMINAL_CAS_VERIFIER_CHECK],
+      ['queues.publish', BACKEND_RELEASE_TRANSACTIONAL_OUTBOX_CAS_VERIFIER_CHECK],
+      [
+        'workflows.retry',
+        BACKEND_RELEASE_RETRY_DISPOSITION_DLQ_PUBLISH_BEFORE_ARCHIVE_VERIFIER_CHECK
+      ]
+    ] as const)
+
+    for (const [capability, verifierCheck] of expectedChecks) {
+      expect(backendReleaseEvidenceVerifierChecksForCapability(capability)).toEqual([
+        BACKEND_RELEASE_CAPABILITY_EVIDENCE_IDS[capability],
+        verifierCheck
+      ])
+    }
+    for (const capability of [
+      'observability.logs',
+      'observability.metrics',
+      'observability.traces'
+    ] as const) {
+      expect(backendReleaseEvidenceVerifierChecksForCapability(capability)).toEqual([
+        BACKEND_RELEASE_CAPABILITY_EVIDENCE_IDS[capability],
+        BACKEND_RELEASE_OPERATIONAL_EVENT_SINK_CAS_VERIFIER_CHECK
+      ])
+    }
   })
 
   test('requires exact structured Host receipts before releaseReady', async () => {

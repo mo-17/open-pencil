@@ -22,6 +22,8 @@ export const BACKEND_OPERATIONAL_EVENT_ANCHOR_FORMAT =
   'openpencil.backend-operational-anchor' as const
 export const BACKEND_OPERATIONAL_APPEND_AUTHORITY_FORMAT =
   'openpencil.backend-operational-append-authority' as const
+export const BACKEND_OPERATIONAL_EVENT_CANONICAL_ENCODING =
+  'openpencil.canonical-manifest-json-utf8.v1' as const
 export const BACKEND_OPERATIONAL_EVENT_MAX_DURATION_MS = 31 * 24 * 60 * 60 * 1_000
 export const BACKEND_OPERATIONAL_EVENT_MAX_SINGLE_FLIGHT_KEY_LENGTH = 8_192
 export const BACKEND_OPERATIONAL_EVENT_MAX_SEGMENT_EVENTS = 256
@@ -186,7 +188,7 @@ const SINGLE_FLIGHT_PHASES = new Set<BackendOperationalEventPhase>([
 ])
 const EVIDENCE_PHASES = new Set<BackendOperationalEventPhase>(['verify', 'receipt'])
 
-const EVENT_KEYS = [
+export const BACKEND_OPERATIONAL_EVENT_FIELDS = Object.freeze([
   'format',
   'version',
   'eventId',
@@ -208,7 +210,8 @@ const EVENT_KEYS = [
   'evidenceDigest',
   'traceId',
   'previousEventDigest'
-] as const
+] as const)
+const EVENT_KEYS = BACKEND_OPERATIONAL_EVENT_FIELDS
 const ANCHOR_KEYS = [
   'format',
   'version',
@@ -674,7 +677,7 @@ async function verifyBackendOperationalEventChainWithAnchor(
   }
   const inspected = await inspectBackendOperationalEventChain(value, anchor.priorSegmentHeadDigest)
   if (!inspected.ok) return inspected
-  const firstEvent = inspected.events[0]
+  const firstEvent = inspected.events.at(0)
   if (
     firstEvent &&
     anchor.priorSegmentLastOccurredAt &&

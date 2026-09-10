@@ -232,7 +232,7 @@ export function record(
     diagnostic(context, 'backend-object-required', path, 'Value must be an object.')
     return undefined
   }
-  const source = value as object
+  const source = value
   const snapshot = Object.create(null) as BackendRecordSnapshot
   const allowedKeys = new Set(allowed)
   for (const key of Reflect.ownKeys(source)) {

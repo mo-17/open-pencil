@@ -5,12 +5,12 @@
 import {
   parsePluginBackendProviderContribution,
   type PluginBackendProviderContributionV1
-} from './backend-provider-contract'
+} from './backend/contract'
 import {
   assertBackendProviderInputDataProperties,
   assertInertBackendProviderText,
   backendProviderTextWords
-} from './backend-provider-lexical'
+} from './backend/lexical'
 import {
   parsePluginObjectParameterValue,
   type PluginParameterSchemaV2,

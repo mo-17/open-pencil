@@ -2,8 +2,8 @@
  * Portable, data-only plugin contracts and trust verification.
  * Host implementations, registries, execution, and persistence remain outside this package.
  */
-export * from './backend-provider-contract'
-export * from './backend-provider-contract-v2'
+export * from './backend/contract'
+export * from './backend/contract-v2'
 export * from './catalog'
 export * from './connector-contract'
 export * from './keyring'

@@ -5,7 +5,7 @@ import type {
 
 import { emitSupabasePrivateRealtimeArtifactsV2 } from './artifacts'
 import { createSupabaseBackfillPlanV2, validateSupabaseBackfillV2 } from './backfill'
-import { emitSupabaseBackfillArtifactsV2 } from './backfill-artifacts'
+import { emitSupabaseBackfillArtifactsV2 } from './backfill/artifacts'
 import {
   createSupabaseAuthPlanV2,
   createSupabaseMigrationPlanV2,
@@ -31,7 +31,7 @@ import {
   validateSupabaseAtomicDataBridgeV2,
   validateSupabaseAtomicTransactionV2
 } from './transaction'
-import { emitSupabaseAtomicTransactionArtifactsV2 } from './transaction-artifacts'
+import { emitSupabaseAtomicTransactionArtifactsV2 } from './transaction/artifacts'
 
 const SUPABASE_ATOMIC_DATA_ADAPTER_V2 = Object.freeze({
   capabilities: SUPABASE_ATOMIC_DATA_CAPABILITIES_V2,

@@ -5,8 +5,8 @@ import {
   deriveBackendApplicationCapabilitiesV2,
   digestBackendApplicationV2,
   normalizedBackendApplicationV2
-} from '../application-v2'
-import type { BackendApplicationSpecV2, BackendCapabilityV2 } from '../application-v2-types'
+} from '../application'
+import type { BackendApplicationSpecV2, BackendCapabilityV2 } from '../application/types'
 import type { BackendReleaseEnvironment } from './types'
 import {
   compareReleaseTimestamps,
@@ -108,12 +108,30 @@ export type BackendReleaseEvidenceId =
   | BackendReleaseCapabilityEvidenceId
 export const BACKEND_RELEASE_WEBHOOK_HMAC_PURPOSE_VERIFIER_CHECK =
   'dedicated-webhook-hmac-credential-purpose-verified' as const
+export const BACKEND_RELEASE_WEBHOOK_ENDPOINT_AUTHORITY_VERIFIER_CHECK =
+  'webhook-endpoint-authority-generation-verified' as const
 export const BACKEND_RELEASE_BACKFILL_CURSOR_VERIFIER_CHECK =
   'integer-identity-cursor-immutable-append-monotonic-verified' as const
+export const BACKEND_RELEASE_IDEMPOTENCY_CAS_LEDGER_VERIFIER_CHECK =
+  'automation-idempotency-exact-head-cas-ledger-verified' as const
+export const BACKEND_RELEASE_QUEUE_WORKER_LEASE_TERMINAL_CAS_VERIFIER_CHECK =
+  'queue-worker-live-lease-and-terminal-cas-verified' as const
+export const BACKEND_RELEASE_TRANSACTIONAL_OUTBOX_CAS_VERIFIER_CHECK =
+  'transactional-outbox-exact-head-cas-verified' as const
+export const BACKEND_RELEASE_RETRY_DISPOSITION_DLQ_PUBLISH_BEFORE_ARCHIVE_VERIFIER_CHECK =
+  'retry-disposition-and-dlq-published-before-source-archive-verified' as const
+export const BACKEND_RELEASE_OPERATIONAL_EVENT_SINK_CAS_VERIFIER_CHECK =
+  'operational-event-sink-exact-head-cas-verified' as const
 export type BackendReleaseEvidenceVerifierCheck =
   | BackendReleaseEvidenceId
   | typeof BACKEND_RELEASE_WEBHOOK_HMAC_PURPOSE_VERIFIER_CHECK
+  | typeof BACKEND_RELEASE_WEBHOOK_ENDPOINT_AUTHORITY_VERIFIER_CHECK
   | typeof BACKEND_RELEASE_BACKFILL_CURSOR_VERIFIER_CHECK
+  | typeof BACKEND_RELEASE_IDEMPOTENCY_CAS_LEDGER_VERIFIER_CHECK
+  | typeof BACKEND_RELEASE_QUEUE_WORKER_LEASE_TERMINAL_CAS_VERIFIER_CHECK
+  | typeof BACKEND_RELEASE_TRANSACTIONAL_OUTBOX_CAS_VERIFIER_CHECK
+  | typeof BACKEND_RELEASE_RETRY_DISPOSITION_DLQ_PUBLISH_BEFORE_ARCHIVE_VERIFIER_CHECK
+  | typeof BACKEND_RELEASE_OPERATIONAL_EVENT_SINK_CAS_VERIFIER_CHECK
 export type BackendReleaseEvidenceStatus = 'passed' | 'unknown' | 'failed'
 export type BackendReleaseTrustedEvidenceStatus = Exclude<BackendReleaseEvidenceStatus, 'unknown'>
 
@@ -567,8 +585,30 @@ export function backendReleaseEvidenceVerifierChecksForCapability(
   if (capability === 'webhooks.receive' || capability === 'webhooks.deliver') {
     checks.push(BACKEND_RELEASE_WEBHOOK_HMAC_PURPOSE_VERIFIER_CHECK)
   }
+  if (capability === 'webhooks.deliver') {
+    checks.push(BACKEND_RELEASE_WEBHOOK_ENDPOINT_AUTHORITY_VERIFIER_CHECK)
+  }
   if (capability === 'migrations.backfill') {
     checks.push(BACKEND_RELEASE_BACKFILL_CURSOR_VERIFIER_CHECK)
+  }
+  if (capability === 'workflows.idempotency') {
+    checks.push(BACKEND_RELEASE_IDEMPOTENCY_CAS_LEDGER_VERIFIER_CHECK)
+  }
+  if (capability === 'queues.consume') {
+    checks.push(BACKEND_RELEASE_QUEUE_WORKER_LEASE_TERMINAL_CAS_VERIFIER_CHECK)
+  }
+  if (capability === 'queues.publish') {
+    checks.push(BACKEND_RELEASE_TRANSACTIONAL_OUTBOX_CAS_VERIFIER_CHECK)
+  }
+  if (capability === 'workflows.retry') {
+    checks.push(BACKEND_RELEASE_RETRY_DISPOSITION_DLQ_PUBLISH_BEFORE_ARCHIVE_VERIFIER_CHECK)
+  }
+  if (
+    capability === 'observability.logs' ||
+    capability === 'observability.metrics' ||
+    capability === 'observability.traces'
+  ) {
+    checks.push(BACKEND_RELEASE_OPERATIONAL_EVENT_SINK_CAS_VERIFIER_CHECK)
   }
   return Object.freeze(checks)
 }

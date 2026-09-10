@@ -73,7 +73,8 @@ regexes = [
   '''^923e4567-e89b-42d3-a456-426614174000$''',
   '''^wM9pddZ510MTdFCr2e_SHFat5gSm9s0pMURL8sZO5xU$''',
   '''^MStDhxdaUoGsYZ9YKzsVOL5UakvHXC2xlpU6ZN-EfS8$''',
-  '''^4kEsYW3E-E8ek6MHvQCLEOCNE0Wtas09_-GWZAFWsTY$'''
+  '''^4kEsYW3E-E8ek6MHvQCLEOCNE0Wtas09_-GWZAFWsTY$''',
+  '''^CogSzXwyFkhgDzUVTKLpIfjwckMbawiz9GlYeTdCYfo$'''
 ]
 
 [[allowlists]]

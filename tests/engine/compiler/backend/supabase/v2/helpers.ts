@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Canonical Supabase V2 fixtures share one selection and trust-boundary helper. */
 import {
   SUPABASE_BACKEND_PROVIDER_DESCRIPTOR_V2,
   type BackendProviderBundleV2
@@ -328,6 +329,250 @@ export function supabaseBackfillApplicationV2(): BackendApplicationSpecV2 {
       { capability: 'migrations.schema', required: true }
     ],
     secrets: []
+  }
+}
+
+export function supabaseAutomationApplicationV2(): BackendApplicationSpecV2 {
+  const signature = {
+    kind: 'hmac-sha256' as const,
+    canonicalEnvelope: 'raw-body-v1' as const,
+    signedComponents: ['method', 'path', 'timestamp', 'idempotency-key', 'raw-body-sha256'] as [
+      'method',
+      'path',
+      'timestamp',
+      'idempotency-key',
+      'raw-body-sha256'
+    ],
+    signatureEncoding: 'lowercase-hex' as const,
+    timestampFormat: 'unix-seconds' as const,
+    signatureHeaderName: 'X-OpenPencil-Signature' as const,
+    timestampHeaderName: 'X-OpenPencil-Timestamp' as const,
+    idempotencyHeaderName: 'Idempotency-Key' as const
+  }
+  return {
+    format: 'openpencil.backend-application',
+    version: 2,
+    applicationId: 'test.supabase-automations',
+    dataModel: {
+      version: 1,
+      entities: [
+        {
+          id: 'events',
+          name: 'events',
+          management: 'managed',
+          fields: [
+            {
+              id: 'event-id',
+              name: 'id',
+              type: 'uuid',
+              nullable: false,
+              default: { kind: 'generated', generator: 'uuid' }
+            },
+            { id: 'event-kind', name: 'kind', type: 'string', nullable: false }
+          ],
+          primaryKey: { fields: ['event-id'] }
+        }
+      ],
+      enums: [],
+      relations: []
+    },
+    auth: { version: 1, identities: [], roles: [], ownership: [], tenants: [], rowAccess: [] },
+    workflows: { version: 1, workflows: [] },
+    realtime: { version: 1, subscriptions: [] },
+    transactions: { version: 1, transactions: [] },
+    dataMigrations: { version: 1, migrations: [] },
+    automations: {
+      version: 1,
+      queues: [
+        {
+          id: 'events',
+          name: 'Events',
+          visibility: 'private',
+          delivery: 'at-least-once',
+          maxPayloadBytes: 65_536,
+          visibilityTimeoutSeconds: 60,
+          retentionSeconds: 86_400
+        },
+        {
+          id: 'dead-letter',
+          name: 'Dead letter',
+          visibility: 'private',
+          delivery: 'at-least-once',
+          maxPayloadBytes: 65_536,
+          visibilityTimeoutSeconds: 60,
+          retentionSeconds: 604_800
+        }
+      ],
+      webhookDestinations: [
+        {
+          id: 'audit-endpoint',
+          name: 'Audit endpoint',
+          endpointCredentialRef: 'credential.00000000-0000-4000-8000-000000000002',
+          method: 'POST',
+          contentType: 'application/json',
+          maxPayloadBytes: 65_536,
+          signingCredentialRef: 'credential.00000000-0000-4000-8000-000000000003',
+          signature
+        }
+      ],
+      automations: [
+        {
+          id: 'scheduled-publish',
+          name: 'Scheduled publish',
+          subject: 'system',
+          trigger: { kind: 'schedule', cron: '0 * * * *', timezone: 'UTC' },
+          action: { kind: 'queue.publish', queueId: 'events', payloadExpression: 'input' },
+          retry: {
+            maxAttempts: 3,
+            initialDelayMs: 1_000,
+            maxDelayMs: 10_000,
+            backoff: 'exponential',
+            jitter: 'full',
+            deadLetterQueueId: 'dead-letter'
+          },
+          idempotency: { kind: 'event-id', retentionHours: 24 },
+          causation: { kind: 'required', idField: 'causationId', maxHop: 8 }
+        },
+        {
+          id: 'event-delivery',
+          name: 'Event delivery',
+          subject: 'system',
+          trigger: { kind: 'queue', queueId: 'events' },
+          action: {
+            kind: 'webhook.deliver',
+            destinationId: 'audit-endpoint',
+            payloadExpression: 'input'
+          },
+          retry: {
+            maxAttempts: 5,
+            initialDelayMs: 1_000,
+            maxDelayMs: 60_000,
+            backoff: 'exponential',
+            jitter: 'full',
+            deadLetterQueueId: 'dead-letter'
+          },
+          idempotency: { kind: 'event-id', retentionHours: 72 },
+          causation: { kind: 'required', idField: 'causationId', maxHop: 8 }
+        },
+        {
+          id: 'webhook-ingress',
+          name: 'Webhook ingress',
+          subject: 'system',
+          trigger: {
+            kind: 'webhook',
+            method: 'POST',
+            path: '/hooks/events',
+            signature: {
+              ...signature,
+              credentialRef: 'credential.00000000-0000-4000-8000-000000000001',
+              maxAgeSeconds: 300
+            }
+          },
+          action: { kind: 'queue.publish', queueId: 'events', payloadExpression: 'input' },
+          retry: {
+            maxAttempts: 3,
+            initialDelayMs: 1_000,
+            maxDelayMs: 10_000,
+            backoff: 'fixed',
+            jitter: 'none',
+            deadLetterQueueId: 'dead-letter'
+          },
+          idempotency: {
+            kind: 'request-header',
+            headerName: 'Idempotency-Key',
+            retentionHours: 24
+          },
+          causation: { kind: 'required', idField: 'causationId', maxHop: 8 }
+        }
+      ],
+      telemetry: { logs: false, metrics: false, traces: false, auditEvents: false },
+      driftDetection: { enabled: false }
+    },
+    capabilities: [
+      { capability: 'jobs.schedule', required: true },
+      { capability: 'migrations.schema', required: true },
+      { capability: 'queues.consume', required: true },
+      { capability: 'queues.publish', required: true },
+      { capability: 'server.functions', required: true },
+      { capability: 'webhooks.deliver', required: true },
+      { capability: 'webhooks.receive', required: true },
+      { capability: 'workflows.durable-execution', required: true },
+      { capability: 'workflows.idempotency', required: true },
+      { capability: 'workflows.retry', required: true }
+    ],
+    secrets: [
+      {
+        kind: 'credential',
+        credentialRef: 'credential.00000000-0000-4000-8000-000000000001',
+        name: 'WEBHOOK_INGRESS_HMAC',
+        exposure: 'server',
+        required: true
+      },
+      {
+        kind: 'credential',
+        credentialRef: 'credential.00000000-0000-4000-8000-000000000002',
+        name: 'WEBHOOK_EGRESS_ENDPOINT',
+        exposure: 'server',
+        required: true
+      },
+      {
+        kind: 'credential',
+        credentialRef: 'credential.00000000-0000-4000-8000-000000000003',
+        name: 'WEBHOOK_EGRESS_HMAC',
+        exposure: 'server',
+        required: true
+      }
+    ]
+  }
+}
+
+export function supabaseObservabilityApplicationV2(): BackendApplicationSpecV2 {
+  const application = supabaseAutomationApplicationV2()
+  return {
+    ...application,
+    applicationId: 'test.supabase-observability',
+    automations: {
+      ...application.automations,
+      automations: [
+        ...application.automations.automations,
+        {
+          id: 'schema-drift-check',
+          name: 'Schema drift check',
+          subject: 'system',
+          trigger: { kind: 'schedule', cron: '15 3 * * *', timezone: 'UTC' },
+          action: { kind: 'drift.detect', scope: 'declared-schema', mode: 'read-only' },
+          retry: {
+            maxAttempts: 3,
+            initialDelayMs: 1_000,
+            maxDelayMs: 10_000,
+            backoff: 'exponential',
+            jitter: 'full'
+          },
+          idempotency: { kind: 'event-id', retentionHours: 24 },
+          causation: { kind: 'required', idField: 'causationId', maxHop: 4 }
+        }
+      ],
+      telemetry: { logs: true, metrics: true, traces: true, auditEvents: true },
+      driftDetection: { enabled: true, scheduleAutomationId: 'schema-drift-check' }
+    },
+    capabilities: [
+      { capability: 'audit.events', required: true },
+      { capability: 'drift.detect', required: true },
+      { capability: 'jobs.schedule', required: true },
+      { capability: 'migrations.schema', required: true },
+      { capability: 'observability.logs', required: true },
+      { capability: 'observability.metrics', required: true },
+      { capability: 'observability.traces', required: true },
+      { capability: 'queues.consume', required: true },
+      { capability: 'queues.publish', required: true },
+      { capability: 'server.functions', required: true },
+      { capability: 'webhooks.deliver', required: true },
+      { capability: 'webhooks.receive', required: true },
+      { capability: 'workflows.durable-execution', required: true },
+      { capability: 'workflows.idempotency', required: true },
+      { capability: 'workflows.retry', required: true }
+    ],
+    secrets: application.secrets
   }
 }
 

@@ -470,6 +470,16 @@ export function verifySupabaseInspectedSourceMigrationLedgerIntegrity(
   }
 }
 
+/** Canonical source-control representation shared by the exporter and Host byte verifier. */
+export function canonicalSupabaseInspectedSourceMigrationLedgerJSON(value: unknown): string {
+  const ledger = parseSourceLedger(value)
+  return `${JSON.stringify(
+    canonicalBackendValue(ledger, '$.supabaseInspectedSourceLedger'),
+    null,
+    2
+  )}\n`
+}
+
 export function createSupabaseInspectedSourceMigrationLedger(input: {
   readonly ledgerId: string
   readonly createdAt: string
@@ -899,11 +909,7 @@ function sourceFile(
 function inspectedSourceLedgerFile(
   ledger: SupabaseInspectedSourceMigrationLedgerV1
 ): SupabaseSourceMigrationFileV1 {
-  const content = `${JSON.stringify(
-    canonicalBackendValue(ledger, '$.supabaseInspectedSourceLedger'),
-    null,
-    2
-  )}\n`
+  const content = canonicalSupabaseInspectedSourceMigrationLedgerJSON(ledger)
   return sourceFile(
     SOURCE_LEDGER_PATH,
     content,

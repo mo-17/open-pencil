@@ -1,0 +1,256 @@
+{
+  "fixtureFormat": "openpencil.test.backend.supabase.backfill-compiler-sidecar.v1",
+  "fixtureVersion": 1,
+  "request": {
+    "application": {
+      "applicationId": "test.supabase-receipt-backfill",
+      "auth": {
+        "identities": [],
+        "ownership": [],
+        "roles": [],
+        "rowAccess": [],
+        "tenants": [],
+        "version": 1
+      },
+      "automations": {
+        "automations": [],
+        "driftDetection": { "enabled": false },
+        "queues": [],
+        "telemetry": { "auditEvents": false, "logs": false, "metrics": false, "traces": false },
+        "version": 1,
+        "webhookDestinations": []
+      },
+      "capabilities": [
+        { "capability": "migrations.backfill", "required": true },
+        { "capability": "migrations.data", "required": true },
+        { "capability": "migrations.schema", "required": true }
+      ],
+      "dataMigrations": {
+        "migrations": [
+          {
+            "batchSize": 250,
+            "cursor": { "fieldId": "account-id", "kind": "monotonic-identity-primary-key" },
+            "dryRunRequired": true,
+            "entityId": "accounts",
+            "id": "backfill-account-status",
+            "name": "Backfill account status",
+            "postconditions": [
+              { "fieldId": "account-status", "kind": "field-not-null" },
+              { "kind": "matched-row-count", "minimum": 1 }
+            ],
+            "predicate": { "fieldId": "account-status", "kind": "field-is-null" },
+            "resumePolicy": "from-receipt",
+            "transforms": [
+              { "fieldId": "account-status", "kind": "set-literal", "value": "pending" }
+            ]
+          }
+        ],
+        "version": 1
+      },
+      "dataModel": {
+        "entities": [
+          {
+            "fields": [
+              {
+                "default": { "generator": "identity", "kind": "generated" },
+                "id": "account-id",
+                "name": "id",
+                "nullable": false,
+                "type": "integer"
+              },
+              {
+                "default": { "kind": "literal", "value": "pending" },
+                "id": "account-status",
+                "name": "status",
+                "nullable": false,
+                "type": "string"
+              }
+            ],
+            "id": "accounts",
+            "management": "managed",
+            "name": "accounts",
+            "primaryKey": { "fields": ["account-id"] }
+          }
+        ],
+        "enums": [],
+        "relations": [],
+        "version": 1
+      },
+      "format": "openpencil.backend-application",
+      "realtime": { "subscriptions": [], "version": 1 },
+      "secrets": [],
+      "transactions": { "transactions": [], "version": 1 },
+      "version": 2,
+      "workflows": { "version": 1, "workflows": [] }
+    },
+    "requestNonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "target": "react",
+    "version": 1
+  },
+  "requestDigest": "91DZa4z_47vpixRre3luixKLVdNNmpMgjIaTUo5-frQ",
+  "response": {
+    "ok": true,
+    "requestNonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "result": {
+      "compilerBuildAuthority": {
+        "appBundleAuthorityCreated": false,
+        "compilerTrustDomain": {
+          "descriptor": {
+            "providerDescriptor": {
+              "adapterId": "open-pencil.backend.supabase.v2",
+              "adapterVersion": "2.3.0",
+              "capabilities": [
+                "auth.identity",
+                "data.read",
+                "data.write",
+                "events.data-change",
+                "migrations.backfill",
+                "migrations.data",
+                "migrations.schema",
+                "policy.row-level",
+                "realtime.subscribe",
+                "transactions.atomic"
+              ],
+              "contractVersion": 2,
+              "contributionId": "supabase.backend.v2",
+              "outputs": [
+                "client-config",
+                "database-schema",
+                "deployment-manifest",
+                "migration-plan",
+                "security-policy",
+                "server-runtime"
+              ],
+              "pluginId": "open-pencil.supabase-backend",
+              "providerId": "supabase",
+              "supportedModelVersions": [2]
+            },
+            "trustProfile": {
+              "appBundleAuthorityCreated": false,
+              "application": { "format": "openpencil.backend-application", "version": 2 },
+              "compilationMode": "production",
+              "credentialAuthorityCreated": false,
+              "executionAuthorityCreated": false,
+              "format": "openpencil.supabase-backfill-compiler-trust-profile.v1",
+              "installAuthorityCreated": false,
+              "networkAuthorityCreated": false,
+              "output": {
+                "queryFamily": "openpencil.supabase-backfill-catalog-inspection.v1",
+                "subjectFormat": "openpencil.supabase-backfill-inspection-subject.v1"
+              },
+              "releaseAuthorityCreated": false,
+              "reviewOnly": true,
+              "sqlExecutionAuthorityCreated": false,
+              "targets": ["react", "vue"],
+              "version": 1
+            }
+          },
+          "digest": "oDpvqWPIvv_9Xs47gJBTH2NwOYb8hFvuCii2nrUe7fw",
+          "domain": "openpencil.compiler.supabase-backfill-inspection-trust.v1"
+        },
+        "credentialAuthorityCreated": false,
+        "executionAuthorityCreated": false,
+        "format": "openpencil.supabase-backfill-compiler-build-authority.v1",
+        "installAuthorityCreated": false,
+        "networkAuthorityCreated": false,
+        "protocol": { "id": "openpencil.supabase-backfill-inspection-wire.v1", "version": 1 },
+        "releaseAuthorityCreated": false,
+        "sqlExecutionAuthorityCreated": false,
+        "version": 1
+      },
+      "requestDigest": "91DZa4z_47vpixRre3luixKLVdNNmpMgjIaTUo5-frQ",
+      "requestNonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "subjectEnvelope": {
+        "subject": {
+          "application": {
+            "digest": "BWOLj52OMeB5xXaqCh7u157bjlEP1s9Hr_I3ysuCAUc",
+            "id": "test.supabase-receipt-backfill"
+          },
+          "applyAvailable": false,
+          "emission": {
+            "artifacts": {
+              "migrationPlan": {
+                "byteLength": 3091,
+                "digest": "70nl2kJhAW-zh96F-rQL843017y3doFHVpp28pcAL5c",
+                "path": "backend/supabase-v2/backfill/migration-plan.json"
+              },
+              "reviewManifest": {
+                "byteLength": 7154,
+                "digest": "JEGTbTr55eYAch7crX9J-lvEAuAH-oQRCzCIw4TMfWE",
+                "path": "backend/supabase-v2/backfill/review-manifest.json"
+              },
+              "reviewSqlTemplate": {
+                "byteLength": 14641,
+                "digest": "AyW6iJ6lC5bOQT7KgAQiMSzsWztGpDgf2z-2JHfDHTc",
+                "path": "backend/supabase-v2/backfill/review-query-template.sql"
+              }
+            },
+            "manifestDigest": "uANUDVX27ZQ6z2ZxIfq3xId7apm0W94E0SfOuXUB1XU"
+          },
+          "executionAuthorityCreated": false,
+          "format": "openpencil.supabase-backfill-inspection-subject.v1",
+          "inspection": {
+            "catalogOnly": true,
+            "generatedReviewSqlIsAuthority": false,
+            "mayCreateReceipt": false,
+            "observedHighWaterIsLockedCapture": false,
+            "queryFamily": "openpencil.supabase-backfill-catalog-inspection.v1"
+          },
+          "migration": {
+            "batchSize": 250,
+            "cursor": {
+              "field": "id",
+              "fieldId": "account-id",
+              "identityGeneration": "always",
+              "marker": "openpencil:v1:field:account-id",
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "postgresType": "pg_catalog.int8",
+              "primaryKeyMarker": "openpencil:v1:primary-key:accounts"
+            },
+            "digest": "8IIfLAjPeZMg1WylDhEzVmlUPcmB3Wu0JH7S6ORCR6Y",
+            "entity": {
+              "id": "accounts",
+              "marker": "openpencil:v1:entity:accounts",
+              "table": "accounts"
+            },
+            "id": "backfill-account-status",
+            "maximumBatchReceiptCount": 9999,
+            "maximumReceiptCount": 10000,
+            "requiredMatchedRowCount": 1,
+            "target": {
+              "desiredNullable": false,
+              "enum": null,
+              "expectedLiteral": "pending",
+              "field": "status",
+              "fieldId": "account-status",
+              "marker": "openpencil:v1:field:account-status",
+              "postgresType": "pg_catalog.text"
+            }
+          },
+          "plan": {
+            "adapterPlanDigest": "efi258LLM644K6MQ_c6cJ9URgWhzZIADCZhA1Go0G-g",
+            "digest": "Wl2LHDADTKxSPntG_kC24YbvdkHx23XzcwQiMt6L2b0",
+            "mode": "production",
+            "target": "react"
+          },
+          "providerAuthority": {
+            "adapterId": "open-pencil.backend.supabase.v2",
+            "adapterVersion": "2.3.0",
+            "contributionId": "supabase.backend.v2",
+            "digest": "yxHu60plP0KqrMD40EHcA7lKz45BN6NC9B26FBLltOo",
+            "packageDigest": "sha256:oDpvqWPIvv_9Xs47gJBTH2NwOYb8hFvuCii2nrUe7fw",
+            "pluginId": "open-pencil.supabase-backend"
+          },
+          "providerId": "supabase",
+          "releaseReady": false,
+          "reviewOnly": true,
+          "version": 1
+        },
+        "subjectDigest": "-8lwTIjIKmRHkOe-mkvtpfWOXr8xKQ-EU9mLESbQU7A"
+      },
+      "version": 1
+    },
+    "version": 1
+  }
+}

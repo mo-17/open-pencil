@@ -9,8 +9,8 @@ import {
   normalizedBackendApplicationV2,
   parseBackendApplicationSpecV2,
   validateBackendCapabilityDeclarationsV2
-} from '#lowcode/backend/application-v2'
-import type { BackendApplicationSpecV2 } from '#lowcode/backend/application-v2-types'
+} from '#lowcode/backend/application'
+import type { BackendApplicationSpecV2 } from '#lowcode/backend/application/types'
 import { parseBackendApplicationSpecV1 } from '#lowcode/backend/validate'
 
 import { backendApplicationFixture } from './fixture'
@@ -42,6 +42,13 @@ function loweredFixture(): BackendApplicationSpecV2 {
     {
       kind: 'credential',
       credentialRef: 'credential.00000000-0000-4000-8000-000000000002',
+      name: 'WEBHOOK_EGRESS_ENDPOINT',
+      exposure: 'server',
+      required: true
+    },
+    {
+      kind: 'credential',
+      credentialRef: 'credential.00000000-0000-4000-8000-000000000003',
       name: 'WEBHOOK_EGRESS_HMAC',
       exposure: 'server',
       required: true
@@ -167,11 +174,11 @@ function fullV2Fixture(): BackendApplicationSpecV2 {
   application.automations.webhookDestinations.push({
     id: 'audit-endpoint',
     name: 'Audit endpoint',
-    url: 'https://hooks.example.test/openpencil',
+    endpointCredentialRef: 'credential.00000000-0000-4000-8000-000000000002',
     method: 'POST',
     contentType: 'application/json',
     maxPayloadBytes: 65_536,
-    signingCredentialRef: 'credential.00000000-0000-4000-8000-000000000002',
+    signingCredentialRef: 'credential.00000000-0000-4000-8000-000000000003',
     signature: {
       kind: 'hmac-sha256',
       canonicalEnvelope: 'raw-body-v1',
@@ -389,7 +396,7 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
     const webhook = unsigned.automations.automations.find(
       (entry) => entry.trigger.kind === 'webhook'
     )
-    if (!webhook || webhook.trigger.kind !== 'webhook') throw new Error('fixture webhook missing')
+    if (webhook?.trigger.kind !== 'webhook') throw new Error('fixture webhook missing')
     Reflect.deleteProperty(webhook.trigger, 'signature')
     expect(parseBackendApplicationSpecV2(unsigned).ok).toBe(false)
 
@@ -510,7 +517,7 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
     const staleMutation = staleWrite.transactions.transactions[0].steps.find(
       (step) => step.kind === 'data.mutate'
     )
-    if (!staleMutation || staleMutation.kind !== 'data.mutate') throw new Error('mutation missing')
+    if (staleMutation?.kind !== 'data.mutate') throw new Error('mutation missing')
     staleMutation.increments = []
     staleMutation.values?.push({
       field: 'version',
@@ -521,7 +528,7 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
     const bypass = fullV2Fixture()
     const transaction = bypass.transactions.transactions[0]
     const original = transaction.steps.find((step) => step.kind === 'data.mutate')
-    if (!original || original.kind !== 'data.mutate') throw new Error('mutation missing')
+    if (original?.kind !== 'data.mutate') throw new Error('mutation missing')
     transaction.steps.push(
       { ...structuredClone(original), id: 'unversioned', resultName: 'unversioned_result' },
       {
@@ -554,7 +561,7 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
     const mutation = missingMutationBound.transactions.transactions[0].steps.find(
       (step) => step.kind === 'data.mutate'
     )
-    if (!mutation || mutation.kind !== 'data.mutate') throw new Error('mutation missing')
+    if (mutation?.kind !== 'data.mutate') throw new Error('mutation missing')
     Reflect.deleteProperty(mutation, 'maxAffectedRows')
     expect(failureCodes(missingMutationBound)).toContain('backend-required-field')
 
@@ -562,7 +569,7 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
     const typedMutation = typeMismatch.transactions.transactions[0].steps.find(
       (step) => step.kind === 'data.mutate'
     )
-    if (!typedMutation || typedMutation.kind !== 'data.mutate') throw new Error('mutation missing')
+    if (typedMutation?.kind !== 'data.mutate') throw new Error('mutation missing')
     if (!typedMutation.values?.[0]) throw new Error('mutation value missing')
     typedMutation.values[0].value = { kind: 'parameter', name: 'expected_version' }
     expect(failureCodes(typeMismatch)).toContain('backend-transaction-value-type-mismatch')
@@ -571,7 +578,7 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
     const overlappingMutation = overlappingWrites.transactions.transactions[0].steps.find(
       (step) => step.kind === 'data.mutate'
     )
-    if (!overlappingMutation || overlappingMutation.kind !== 'data.mutate') {
+    if (overlappingMutation?.kind !== 'data.mutate') {
       throw new Error('mutation missing')
     }
     overlappingMutation.values?.push({
@@ -649,23 +656,30 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
     expect(failureCodes(mismatched)).toContain('backend-data-migration-predicate-target-mismatch')
   })
 
-  test('pins webhook transport, HMAC envelope, credential scope, and credential isolation', () => {
+  test('keeps webhook endpoints opaque and pins HMAC credential isolation', () => {
     for (const url of [
       'https://127.0.0.1/hook',
       'https://localhost./hook',
-      'https://worker.local./hook',
-      'https://service.internal./hook'
+      'https://hooks.example.test/t/A1b2C3d4E5f6G7h8'
     ]) {
-      const privateTarget = fullV2Fixture()
-      privateTarget.automations.webhookDestinations[0].url = url
-      expect(failureCodes(privateTarget)).toContain('backend-webhook-destination-url-invalid')
+      const rawEndpoint = fullV2Fixture()
+      Reflect.set(rawEndpoint.automations.webhookDestinations[0], 'url', url)
+      expect(failureCodes(rawEndpoint)).toContain('backend-unknown-field')
     }
+
+    const nonOpaqueEndpoint = fullV2Fixture()
+    Reflect.set(
+      nonOpaqueEndpoint.automations.webhookDestinations[0],
+      'endpointCredentialRef',
+      'https://hooks.example.test/t/A1b2C3d4E5f6G7h8'
+    )
+    expect(failureCodes(nonOpaqueEndpoint)).toContain('backend-credential-reference-invalid')
 
     const arbitraryHeader = fullV2Fixture()
     const ingress = arbitraryHeader.automations.automations.find(
       (entry) => entry.trigger.kind === 'webhook'
     )
-    if (!ingress || ingress.trigger.kind !== 'webhook') throw new Error('webhook missing')
+    if (ingress?.trigger.kind !== 'webhook') throw new Error('webhook missing')
     Reflect.set(ingress.trigger.signature, 'signatureHeaderName', 'Authorization')
     expect(parseBackendApplicationSpecV2(arbitraryHeader).ok).toBe(false)
 
@@ -673,7 +687,7 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
     const ingressSecret = hostCredential.secrets.find(
       (entry) => entry.kind === 'credential' && entry.name === 'WEBHOOK_INGRESS_HMAC'
     )
-    if (!ingressSecret || ingressSecret.kind !== 'credential') throw new Error('secret missing')
+    if (ingressSecret?.kind !== 'credential') throw new Error('secret missing')
     ingressSecret.exposure = 'host'
     expect(failureCodes(hostCredential)).toContain('backend-automation-credential-undeclared')
 
@@ -681,6 +695,11 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
     reusedCredential.automations.webhookDestinations[0].signingCredentialRef =
       'credential.00000000-0000-4000-8000-000000000001'
     expect(failureCodes(reusedCredential)).toContain('backend-automation-credential-reused')
+
+    const reusedEndpointCredential = fullV2Fixture()
+    reusedEndpointCredential.automations.webhookDestinations[0].signingCredentialRef =
+      reusedEndpointCredential.automations.webhookDestinations[0].endpointCredentialRef
+    expect(failureCodes(reusedEndpointCredential)).toContain('backend-automation-credential-reused')
 
     const missingEnvelope = fullV2Fixture()
     Reflect.deleteProperty(missingEnvelope.automations.webhookDestinations[0], 'signature')
@@ -693,7 +712,7 @@ describe('BackendApplicationSpecV2 contract foundation', () => {
       const schedule = input.automations.automations.find(
         (entry) => entry.trigger.kind === 'schedule'
       )
-      if (!schedule || schedule.trigger.kind !== 'schedule') throw new Error('schedule missing')
+      if (schedule?.trigger.kind !== 'schedule') throw new Error('schedule missing')
       schedule.trigger.cron = cron
       expect(failureCodes(input)).toContain('backend-automation-cron-invalid')
     }

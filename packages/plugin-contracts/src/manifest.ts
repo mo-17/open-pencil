@@ -13,7 +13,7 @@ import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import {
   parsePluginBackendProviderContribution,
   type PluginBackendProviderContributionV1
-} from './backend-provider-contract'
+} from './backend/contract'
 import { parsePluginConnectorContract, type PluginConnectorContractV1 } from './connector-contract'
 import {
   parsePluginObjectParameterSchema,

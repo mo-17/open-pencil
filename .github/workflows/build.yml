@@ -181,6 +181,21 @@ jobs:
         if: matrix.nativeSmoke
         run: bun run smoke:codepen-sidecar --target=${{ matrix.target }}
 
+      - name: Build and verify Backend Compiler sidecar candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          sidecar_args=(--target=${{ matrix.target }})
+          if [[ "${{ matrix.nativeSidecar }}" == "true" ]]; then
+            sidecar_args+=(--native-runtime)
+          fi
+          bun run build:backend-compiler-sidecar "${sidecar_args[@]}"
+          bun run build:backend-compiler-sidecar --target=${{ matrix.target }} --verify-only
+
+      - name: Smoke Backend Compiler sidecar candidate protocol
+        if: matrix.nativeSmoke
+        run: bun run smoke:backend-compiler-sidecar --target=${{ matrix.target }}
+
       - name: Extract release notes
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         id: changelog

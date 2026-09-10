@@ -3,10 +3,10 @@ import { parseSha256Base64URL } from '@open-pencil/scene-graph'
 import type { BackendValidationContext } from './validation-helpers'
 
 const SECRET_PATTERNS: readonly RegExp[] = [
-  /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{3,}\b/u,
-  /\bgh[pousr]_[A-Za-z0-9_]{8,}\b/u,
-  /\bgithub_pat_[A-Za-z0-9_]{8,}\b/u,
-  /\bxox[baprs]-[A-Za-z0-9-]{8,}\b/u,
+  /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{3,}\b/iu,
+  /\bgh[pousr]_[A-Za-z0-9_]{8,}\b/iu,
+  /\bgithub_pat_[A-Za-z0-9_]{8,}\b/iu,
+  /\bxox[baprs]-[A-Za-z0-9-]{8,}\b/iu,
   /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/u,
   /\bsb_secret_[A-Za-z0-9_-]{3,}\b/iu,
   /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/u,

@@ -17,6 +17,7 @@ const REQUIRED_UNIT_TEST_ROOTS = [
   'packages/plugin-contracts/tests',
   'packages/lowcode/tests',
   'packages/motion-runtime/tests',
+  'packages/backend-compiler-sidecar/tests',
   'packages/codepen-sidecar/tests'
 ] as const
 
@@ -41,6 +42,7 @@ test('unit test groups cover all declared shards', () => {
   expect(pathsForUnitTestGroup('dom')).toContain('tests/engine/dom-css')
   expect(pathsForUnitTestGroup('all')).toContain('tests/engine/io')
   expect(pathsForUnitTestGroup('compiler-browser')).toEqual(['tests/engine/compiler/preview'])
+  expect(pathsForUnitTestGroup('compiler')).toContain('packages/backend-compiler-sidecar/tests')
   expect(pathsForUnitTestGroup('motion')).toContain('packages/motion/tests')
   expect(pathsForUnitTestGroup('motion')).toContain('packages/motion-runtime/tests')
   expect(pathsForUnitTestGroup('app')).toContain('packages/plugin-contracts/tests')
@@ -145,7 +147,7 @@ test('every heavy-tagged suite enters the heavy test gate', async () => {
     .sort()
   const heavyFiles = await listHeavyUnitTests()
 
-  expect(tagged).toHaveLength(10)
+  expect(tagged).toHaveLength(11)
   expect(tagged.filter((file) => !isHeavyUnitTest(file))).toEqual([])
   expect(tagged.filter((file) => !heavyFiles.includes(file))).toEqual([])
 })
@@ -159,10 +161,37 @@ test('root unit test scripts select heavy suites explicitly', async () => {
   expect(packageJSON.scripts?.['test:unit']).toContain('./packages/motion/tests')
   expect(packageJSON.scripts?.['test:unit']).toContain('./packages/plugin-contracts/tests')
   expect(packageJSON.scripts?.['test:unit']).toContain('./packages/motion-runtime/tests')
+  expect(packageJSON.scripts?.['test:unit']).toContain('./packages/backend-compiler-sidecar/tests')
   expect(packageJSON.scripts?.['test:unit:quick']).toContain('BUN_HEAVY_TESTS=false')
   expect(packageJSON.scripts?.['test:unit:quick']).toContain('tools/unit-tests/src/run.ts all')
   expect(packageJSON.scripts?.['test:unit:heavy']).toContain('BUN_HEAVY_TESTS=true')
   expect(packageJSON.scripts?.['test:unit:heavy']).toContain('--heavy-only')
+})
+
+test('root quality gates own the private Backend Compiler sidecar without building a binary', async () => {
+  const packageJSON = JSON.parse(await readFile(resolve(REPO_ROOT, 'package.json'), 'utf8')) as {
+    scripts?: Record<string, string>
+    workspaces?: string[]
+  }
+  const scripts = packageJSON.scripts ?? {}
+
+  expect(packageJSON.workspaces).toContain('packages/backend-compiler-sidecar')
+  expect(scripts['build:packages']).toContain('@open-pencil/backend-compiler-sidecar build')
+  expect(scripts.lint).toContain('@open-pencil/backend-compiler-sidecar lint')
+  for (const script of ['lint:structure', 'format']) {
+    expect(scripts[script]).toContain('packages/backend-compiler-sidecar/src')
+    expect(scripts[script]).toContain('packages/backend-compiler-sidecar/scripts')
+    expect(scripts[script]).toContain('packages/backend-compiler-sidecar/tests')
+  }
+  expect(scripts['test:coverage']).toContain('./packages/backend-compiler-sidecar/tests')
+  expect(scripts['build:backend-compiler-sidecar']).toBe(
+    'bun packages/backend-compiler-sidecar/scripts/build.ts'
+  )
+  expect(scripts['smoke:backend-compiler-sidecar']).toBe(
+    'bun packages/backend-compiler-sidecar/scripts/smoke.ts'
+  )
+  expect(scripts['test:unit:quick']).not.toContain('build:backend-compiler-sidecar')
+  expect(scripts['build:packages']).not.toContain('build:backend-compiler-sidecar')
 })
 
 test('scheduled heavy CI both selects and enables heavy suites', async () => {

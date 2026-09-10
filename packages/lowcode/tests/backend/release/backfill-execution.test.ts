@@ -3,8 +3,8 @@ import { describe, expect, test } from 'bun:test'
 import {
   deriveBackendApplicationCapabilitiesV2,
   lowerBackendApplicationSpecV1ToV2
-} from '#lowcode/backend/application-v2'
-import type { BackendApplicationSpecV2 } from '#lowcode/backend/application-v2-types'
+} from '#lowcode/backend/application'
+import type { BackendApplicationSpecV2 } from '#lowcode/backend/application/types'
 import {
   appendBackendBackfillExecutionReceipt,
   canonicalBackendBackfillExecutionReceiptBytes,

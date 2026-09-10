@@ -2,7 +2,7 @@ import { canonicalManifestBytes } from '@open-pencil/scene-graph'
 
 import { digestDataModel } from './canonical'
 import { BACKEND_LIMITS } from './limits'
-import { parseMigrationOperation } from './migration-operation-validation'
+import { parseMigrationOperation } from './migration/operation-validation'
 import { assertBackendSecretFreeData } from './secret-boundary'
 import {
   MIGRATION_PLAN_VERSION,

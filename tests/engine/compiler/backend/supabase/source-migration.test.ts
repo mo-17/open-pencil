@@ -20,6 +20,7 @@ import {
   digestSupabaseInspectedMigrationReviewManifest
 } from '#compiler/backend/supabase/migration-review'
 import {
+  canonicalSupabaseInspectedSourceMigrationLedgerJSON,
   createSupabaseInspectedSourceMigrationLedger,
   createSupabaseSourceMigrationBundle,
   verifySupabaseInspectedSourceMigrationLedgerIntegrity
@@ -352,6 +353,12 @@ describe('Supabase source migration bundle', () => {
     )
     expect(bundle.files.map((file) => file.path)).toContain(
       'supabase/openpencil-migration-ledger.json'
+    )
+    const inspectedLedgerFile = bundle.files.find(
+      (file) => file.path === 'supabase/openpencil-inspected-source-ledger.json'
+    )
+    expect(inspectedLedgerFile?.content).toBe(
+      canonicalSupabaseInspectedSourceMigrationLedgerJSON(bundle.sourceLedger)
     )
     expect(bundle.ledger.entries).toHaveLength(1)
     expect(bundle.sourceLedger.entries).toHaveLength(1)

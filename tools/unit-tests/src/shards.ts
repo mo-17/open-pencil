@@ -16,7 +16,11 @@ export const UNIT_TEST_GROUPS = {
     'packages/plugin-contracts/tests',
     'tests/engine/tauri'
   ],
-  compiler: ['tests/engine/compiler', 'packages/codepen-sidecar/tests'],
+  compiler: [
+    'tests/engine/compiler',
+    'packages/backend-compiler-sidecar/tests',
+    'packages/codepen-sidecar/tests'
+  ],
   'compiler-browser': ['tests/engine/compiler/preview'],
   dom: [
     'tests/engine/docs',
@@ -69,6 +73,7 @@ export type UnitTestGroup = keyof typeof UNIT_TEST_GROUPS | 'all'
 export const HEAVY_UNIT_TEST_PATTERNS = [
   'tests/engine/cli/compile-i18n.test.ts',
   'tests/engine/cli/eval.test.ts',
+  'tests/engine/cli/fonts.test.ts',
   'tests/engine/cli/library.test.ts',
   'tests/engine/cli/motion/export.test.ts',
   'tests/engine/cli/motion/figma-adapter.test.ts',

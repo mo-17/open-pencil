@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { parsePluginBackendProviderContribution } from '../src/backend-provider-contract'
+import { parsePluginBackendProviderContribution } from '../src/backend/contract'
 import {
   PLUGIN_BACKEND_PROVIDER_CAPABILITIES_V2,
   PLUGIN_BACKEND_PROVIDER_CONTRACT_VERSION_V2,
@@ -8,7 +8,7 @@ import {
   parsePluginBackendProviderContributionV2,
   parseVersionedPluginBackendProviderContribution,
   type PluginBackendProviderContributionV2
-} from '../src/backend-provider-contract-v2'
+} from '../src/backend/contract-v2'
 import { pluginBackendProviderContribution } from './helpers'
 
 function providerV2(): PluginBackendProviderContributionV2 {

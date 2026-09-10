@@ -1,11 +1,11 @@
 /* eslint-disable max-lines -- scope derivation, receipt parsing, hash-chain verification, and resumable transition invariants form one fail-closed boundary */
 import { canonicalManifestBytes, digestCanonicalManifest } from '@open-pencil/scene-graph'
 
-import { digestBackendApplicationV2, normalizedBackendApplicationV2 } from '../application-v2'
+import { digestBackendApplicationV2, normalizedBackendApplicationV2 } from '../application'
 import type {
   BackendApplicationSpecV2,
   BackendDataMigrationDefinitionIR
-} from '../application-v2-types'
+} from '../application/types'
 import type { BackendReleaseEnvironment } from './types'
 import {
   compareReleaseTimestamps,

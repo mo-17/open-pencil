@@ -1,7 +1,7 @@
 export { BACKEND_LIMITS } from './limits'
 export * from './types'
-export * from './application-v2-types'
-export * from './application-v2'
+export * from './application'
+export * from './application/types'
 export {
   BACKEND_CAPABILITIES,
   isBackendCredentialRef,
@@ -9,6 +9,11 @@ export {
   validateDataModelIR
 } from './validate'
 export { containsBackendSecretLikeMaterial } from './secret-boundary'
+export * from './automation/execution'
+export * from './automation/idempotency'
+export * from './automation/outbox'
+export * from './automation/worker'
+export * from './operational-event-sink'
 export {
   deriveBackendApplicationCapabilities,
   validateBackendCapabilityDeclarations
@@ -26,8 +31,9 @@ export {
   planBackendMigration,
   validateMigrationPlan
 } from './migration'
-export * from './migration-execution'
-export * from './migration-ledger'
+export * from './migration/execution'
+export * from './migration/ledger'
+export * from './webhook-security'
 export {
   type LegacyBackendGraph,
   type LegacySupabaseLoweringResult,

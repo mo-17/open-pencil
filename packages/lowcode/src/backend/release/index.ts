@@ -33,3 +33,6 @@ export {
 export * from './capability-evidence'
 export * from './operational-event'
 export * from './backfill-execution'
+export * from './backfill-execution-v2'
+export * from './source-ledger-binding'
+export * from './source-ledger-signed-receipt'

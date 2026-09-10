@@ -244,6 +244,13 @@ ${EDGE_HANDLER}`
   return `${runtimeSource.slice(0, firstLineEnd + 1)}const OPENPENCIL_EDGE_BUILD_IDENTITY = ${JSON.stringify(buildIdentity)}\n${runtimeSource.slice(firstLineEnd + 1)}`
 }
 
+// These names are inert output tokens, not Compiler-global references. Keeping the interpolation
+// explicit makes the host/runtime boundary visible while preserving the emitted source byte-for-byte.
+const EMITTED_EDGE_RUNTIME_IDENTIFIERS = Object.freeze({
+  environment: 'Deno',
+  request: 'fetch'
+})
+
 const EDGE_PREAMBLE = `import { createClient, type SupabaseClient, type User } from 'https://esm.sh/@supabase/supabase-js@2.100.0'
 
 interface WorkflowContext {
@@ -316,7 +323,7 @@ function projectArgs(workflowId: string, args: Record<string, unknown>): Record<
 }
 
 function requiredEnvironment(name: string): string {
-  const value = Deno.env.get(name)
+  const value = ${EMITTED_EDGE_RUNTIME_IDENTIFIERS.environment}.env.get(name)
   if (!value) throw new Error('Required environment is unavailable')
   return value
 }
@@ -462,7 +469,7 @@ async function safeHttpRequest(input: {
     if (input.body !== undefined && !Object.keys(headers).some((name) => name.toLowerCase() === 'content-type')) {
       headers['Content-Type'] = 'application/json'
     }
-    const response = await fetch(url, {
+    const response = await ${EMITTED_EDGE_RUNTIME_IDENTIFIERS.request}(url, {
       method: input.method,
       headers,
       ...(serializedBody === undefined ? {} : { body: serializedBody }),
@@ -479,7 +486,7 @@ async function safeHttpRequest(input: {
   }
 }`
 
-const EDGE_HANDLER = `Deno.serve(async (request) => {
+const EDGE_HANDLER = `${EMITTED_EDGE_RUNTIME_IDENTIFIERS.environment}.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS })
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
   try {

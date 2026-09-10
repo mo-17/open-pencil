@@ -1,0 +1,109 @@
+{
+  "fixtureFormat": "openpencil.test.backend.supabase.backfill-inspection-subject.v1",
+  "fixtureVersion": 1,
+  "envelope": {
+    "subject": {
+      "format": "openpencil.supabase-backfill-inspection-subject.v1",
+      "version": 1,
+      "providerId": "supabase",
+      "reviewOnly": true,
+      "applyAvailable": false,
+      "releaseReady": false,
+      "executionAuthorityCreated": false,
+      "providerAuthority": {
+        "digest": "rQR8Nt6qNrvxVew17DosUBbG9aE2uQ8nXUMYffC72a4",
+        "pluginId": "open-pencil.supabase-backend",
+        "packageDigest": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "contributionId": "supabase.backend.v2",
+        "adapterId": "open-pencil.backend.supabase.v2",
+        "adapterVersion": "2.3.0"
+      },
+      "application": {
+        "id": "test.supabase-receipt-backfill",
+        "digest": "BWOLj52OMeB5xXaqCh7u157bjlEP1s9Hr_I3ysuCAUc"
+      },
+      "plan": {
+        "digest": "jB1mwUFaIa0fgsa02whkt1xjhAV8f3KzG5Mn9AUTPog",
+        "adapterPlanDigest": "efi258LLM644K6MQ_c6cJ9URgWhzZIADCZhA1Go0G-g",
+        "target": "react",
+        "mode": "production"
+      },
+      "emission": {
+        "manifestDigest": "F8F_oi7yL7NaMwVECvqF8vborAdCSbpqy-iixrEB-Rk",
+        "artifacts": {
+          "migrationPlan": {
+            "path": "backend/supabase-v2/backfill/migration-plan.json",
+            "digest": "70nl2kJhAW-zh96F-rQL843017y3doFHVpp28pcAL5c",
+            "byteLength": 3091
+          },
+          "reviewManifest": {
+            "path": "backend/supabase-v2/backfill/review-manifest.json",
+            "digest": "JEGTbTr55eYAch7crX9J-lvEAuAH-oQRCzCIw4TMfWE",
+            "byteLength": 7154
+          },
+          "reviewSqlTemplate": {
+            "path": "backend/supabase-v2/backfill/review-query-template.sql",
+            "digest": "AyW6iJ6lC5bOQT7KgAQiMSzsWztGpDgf2z-2JHfDHTc",
+            "byteLength": 14641
+          }
+        }
+      },
+      "migration": {
+        "id": "backfill-account-status",
+        "digest": "8IIfLAjPeZMg1WylDhEzVmlUPcmB3Wu0JH7S6ORCR6Y",
+        "entity": {
+          "id": "accounts",
+          "table": "accounts",
+          "marker": "openpencil:v1:entity:accounts"
+        },
+        "cursor": {
+          "fieldId": "account-id",
+          "field": "id",
+          "marker": "openpencil:v1:field:account-id",
+          "primaryKeyMarker": "openpencil:v1:primary-key:accounts",
+          "postgresType": "pg_catalog.int8",
+          "identityGeneration": "always",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "target": {
+          "fieldId": "account-status",
+          "field": "status",
+          "marker": "openpencil:v1:field:account-status",
+          "postgresType": "pg_catalog.text",
+          "desiredNullable": false,
+          "expectedLiteral": "pending",
+          "enum": null
+        },
+        "batchSize": 250,
+        "maximumReceiptCount": 10000,
+        "maximumBatchReceiptCount": 9999,
+        "requiredMatchedRowCount": 1
+      },
+      "inspection": {
+        "queryFamily": "openpencil.supabase-backfill-catalog-inspection.v1",
+        "catalogOnly": true,
+        "generatedReviewSqlIsAuthority": false,
+        "observedHighWaterIsLockedCapture": false,
+        "mayCreateReceipt": false
+      }
+    },
+    "subjectDigest": "of6OQvbmeAAGrQ334AOIBgYYNfud1MwG6k-QyODzL_A"
+  },
+  "projection": {
+    "providerId": "supabase",
+    "providerAuthorityDigest": "rQR8Nt6qNrvxVew17DosUBbG9aE2uQ8nXUMYffC72a4",
+    "applicationId": "test.supabase-receipt-backfill",
+    "applicationDigest": "BWOLj52OMeB5xXaqCh7u157bjlEP1s9Hr_I3ysuCAUc",
+    "migrationId": "backfill-account-status",
+    "migrationDigest": "8IIfLAjPeZMg1WylDhEzVmlUPcmB3Wu0JH7S6ORCR6Y",
+    "migrationPlanDigest": "70nl2kJhAW-zh96F-rQL843017y3doFHVpp28pcAL5c",
+    "inspectionSubjectDigest": "of6OQvbmeAAGrQ334AOIBgYYNfud1MwG6k-QyODzL_A",
+    "tableName": "accounts",
+    "cursorField": "id",
+    "targetField": "status",
+    "maximumCursor": 9007199254740991,
+    "batchSize": 250,
+    "maximumBatchReceiptCount": 9999
+  }
+}

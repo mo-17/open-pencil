@@ -1,0 +1,96 @@
+{
+  "fixtureFormat": "openpencil.test.source-ledger-signed-receipt-cross-language",
+  "fixtureVersion": 1,
+  "evaluatedAt": "2026-09-08T10:00:02.000Z",
+  "publicKeyBase64url": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+  "payloadDigest": "k4fpcYrNLg9Fo5Do6qFL_0JaPOigLgtSJhpgFyliS5o",
+  "envelope": {
+    "format": "openpencil.backend-source-ledger-signed-receipt",
+    "version": 1,
+    "receipt": {
+      "format": "openpencil.backend-source-ledger-binding-receipt",
+      "version": 1,
+      "subject": {
+        "format": "openpencil.backend-source-ledger-binding-subject",
+        "version": 1,
+        "providerId": "supabase",
+        "environment": "staging",
+        "projectRef": "enekobitnhobuiuamvqj",
+        "accountId": "organization-1",
+        "providerAuthorityDigest": "aGki6hyaT75ob6CDsJ8EXIi88nKFDF92F7wc3Uy-mwM",
+        "applicationId": "backend-application",
+        "applicationDigest": "5QZPXYDbeboVAsRyYgxwpB9mW0b_TlV-uoK4KfQGL_I",
+        "migrationId": "pending-receipt-v2-backfill",
+        "migrationDigest": "Cauft-sAG_MQSPbjCcWdPjsh0o27eNSH2U8BhoTnuh8",
+        "migrationPlanDigest": "ScWCSpTdF_dnZN_p9rMIxLVl1d6WZrCn8aGQz-DM1_c",
+        "sourceLedgerDigest": "05_zvoxDQZEYL5fFIiOQKfdBb_Rvmz3_sci-dh4bTu8",
+        "promotionLedgerDigest": "05_zvoxDQZEYL5fFIiOQKfdBb_Rvmz3_sci-dh4bTu8",
+        "sourceArtifact": {
+          "migrationId": "p1-owner-rls",
+          "phase": "expand",
+          "path": "supabase/migrations/20260908090000_p1-owner-rls.sql",
+          "digest": "pet3p4p6rEUlUZgxLg-Ncyv6XWoogoW49_L-hmEwHY8",
+          "executionPlanDigest": "W0zHvlPCUWVRNVbb-P0OcjqBnLmXTJYFQADi7C5e9zo",
+          "migrationPlanDigest": "sTWzAnpKd02KzdvWWym1XETX-MwNlQAeOolNx1-Ubjo"
+        },
+        "inspectedLedger": {
+          "path": "supabase/openpencil-inspected-source-ledger.json",
+          "fileDigest": "HEVfr59B1UVlzKooccX34OXTAdMmDCvYLwnOkSb2l3I",
+          "headDigest": "ATnXgLLAXofjBgFfQNO4LBF_ALGpXlPrkD-QU0rr81I",
+          "selectedEntryDigest": "m1UonZf6tGWDePlh_dMqsU3uRIvwuzKLYElfjcAOC3Q"
+        },
+        "staging": {
+          "targetAuthority": {
+            "providerId": "supabase",
+            "providerAuthorityDigest": "aGki6hyaT75ob6CDsJ8EXIi88nKFDF92F7wc3Uy-mwM",
+            "projectRef": "enekobitnhobuiuamvqj",
+            "accountId": "organization-1",
+            "grantGeneration": "source-ledger-grant-1",
+            "environment": "staging"
+          },
+          "schemaDigest": "JCoKoD4ycdwFg5A1NXJklC99d0fvMDXo82cQnJsyTYI",
+          "appliedMigrationIds": ["p1-managed-schema", "p1-owner-rls"],
+          "appliedPrefixDigest": "MCAVdhUoAVbDOwPWsi-W1kYTD90W7P5TaYiHNkX6bd4",
+          "lastReceiptDigest": "8cZNki7cr-ABvi1x8urvlAa40E5iu4_SDmO8vrQbgfk",
+          "lastNoDriftReceiptDigest": "tM59uPmuH4L5i39432VBkyq3KJ3izy6hIKt1GxHkB9s",
+          "drift": "none"
+        }
+      },
+      "subjectDigest": "1qRcfvwMfm2qTs6YZkTuubcgtgkMMo7U8EkQ2ABhiPY",
+      "attestation": {
+        "format": "openpencil.backend-source-ledger-ci-attestation",
+        "version": 1,
+        "subjectDigest": "1qRcfvwMfm2qTs6YZkTuubcgtgkMMo7U8EkQ2ABhiPY",
+        "sourceLedgerDigest": "05_zvoxDQZEYL5fFIiOQKfdBb_Rvmz3_sci-dh4bTu8",
+        "stagingProjectRef": "enekobitnhobuiuamvqj",
+        "ciProvider": "github-actions",
+        "repository": "open-pencil/interop-\"slash\\-line\n-\u2028-\u2029-雪-😀",
+        "workflow": "supabase-staging-migrations",
+        "runId": "run-1001",
+        "runAttempt": 9007199254740991,
+        "protectedRef": "refs/heads/main",
+        "revision": "0123456789abcdef0123456789abcdef01234567",
+        "protectedRefVerified": true,
+        "dbPushCommandDigest": "YN54tAQvSmIwDbVEphw8fG6zSJ8foiL657Kf5_qmmxU",
+        "dbPushReceiptDigest": "qa-f6EYg3XLYGg38cCR2mmKj2MNaBeSXsv9IwktQGvQ",
+        "databaseHistoryDigest": "8pp3LXwQHAPZhvC0_kd9SZWJxvrsp579czW8xE8_TjA",
+        "succeeded": true,
+        "unresolvedMutation": false,
+        "attestedAt": "2026-09-08T10:00:00.000Z"
+      },
+      "attestationDigest": "DwekhGBUsyW-9GpBo_7_4iytb-I3RO98uJBEv_oKNg0",
+      "recordedAt": "2026-09-08T10:00:01.000Z"
+    },
+    "integrity": {
+      "algorithm": "SHA-256",
+      "digest": "k4fpcYrNLg9Fo5Do6qFL_0JaPOigLgtSJhpgFyliS5o",
+      "signature": {
+        "algorithm": "Ed25519",
+        "keyId": "openpencil.source-ledger.ci-test-2026-01",
+        "value": "4FHh1T2gwgW_VjBrOwgOGd38VdIZrkLPv85BRoYrfbtxfvA4KZXYOykvzDxlg_Esqe0j-_H1nkfMad56b_5KBA"
+      }
+    }
+  },
+  "canonicalEnvelopeSha256": "_1HvsRFnjLQV5XDySweW19-k-UjKvQpqO4bb7jaaaWA",
+  "signingBytesSha256": "EhNrYm_VPMN21mLxNfP4X5o3I9LNSk02Gn0cvJmNthw"
+}
