@@ -299,6 +299,26 @@ describe('Backend Release plan authority and strict gates', () => {
     )
   })
 
+  test('compares production gate evidence at nanosecond precision', async () => {
+    const passed = await passedGates()
+    const verifiedAt = '2026-08-30T00:00:00.123400000Z'
+    for (const [checkedAt, releaseReady] of [
+      ['2026-08-30T00:00:00.123400001Z', false],
+      ['2026-08-30T00:00:00.123400000Z', true],
+      ['2026-08-30T00:00:00.1234Z', true],
+      ['2026-08-30T00:00:00.123399999Z', true]
+    ] as const) {
+      const gates = passed.map((gate, index) => (index === 0 ? { ...gate, checkedAt } : gate))
+      const assessment = evaluateProductionReleaseGates(gates, verifiedAt)
+      expect(assessment.releaseReady).toBe(releaseReady)
+      expect(assessment.blockers).toHaveLength(releaseReady ? 0 : 1)
+      expect(assessment.gates[0]).toMatchObject({
+        status: releaseReady ? 'passed' : 'unknown',
+        checkedAt: releaseReady ? checkedAt : null
+      })
+    }
+  })
+
   test('requires one backup and provider-specific recovery confirmation per destructive operation', async () => {
     const plan = await destructivePlan()
     const operation = plan.migration.operations.find((entry) => entry.risk === 'destructive')

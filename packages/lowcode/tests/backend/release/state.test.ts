@@ -309,6 +309,54 @@ describe('Backend Release state authority and receipt semantics', () => {
     }
   })
 
+  test('blocks production outcomes for gate evidence one nanosecond after verification', async () => {
+    const { applied, plan } = await releaseLifecycle()
+    const passed = await passedGates()
+    const verifiedAt = '2026-08-30T00:00:00.123400000Z'
+    for (const [checkedAt, releaseReady] of [
+      ['2026-08-30T00:00:00.123400001Z', false],
+      ['2026-08-30T00:00:00.123400000Z', true],
+      ['2026-08-30T00:00:00.1234Z', true],
+      ['2026-08-30T00:00:00.123399999Z', true]
+    ] as const) {
+      const verified = reduceBackendReleaseState(applied, {
+        type: 'verification-completed',
+        planDigest: plan.planDigest,
+        gates: passed.map((gate, index) => (index === 0 ? { ...gate, checkedAt } : gate)),
+        verifiedAt
+      })
+      expect(verified).toMatchObject({
+        phase: 'receipt',
+        outcome: releaseReady ? 'succeeded' : 'blocked',
+        releaseReady,
+        backendDeploymentRequired: !releaseReady
+      })
+      const receipt = createBackendReleaseReceipt(verified, { receiptId: 'nanosecond-receipt' })
+      expect(validateBackendReleaseReceipt(receipt).ok).toBe(true)
+    }
+  })
+
+  test('rejects claimed successful receipts with future nanosecond gate evidence', async () => {
+    const { receipt } = await releaseLifecycle()
+    const verifiedAt = '2026-08-30T00:00:00.123400000Z'
+    for (const [checkedAt, accepted] of [
+      ['2026-08-30T00:00:00.123400001Z', false],
+      ['2026-08-30T00:00:00.123400000Z', true],
+      ['2026-08-30T00:00:00.1234Z', true],
+      ['2026-08-30T00:00:00.123399999Z', true]
+    ] as const) {
+      const result = validateBackendReleaseReceipt({
+        ...receipt,
+        verifiedAt,
+        gates: receipt.gates.map((gate, index) => (index === 0 ? { ...gate, checkedAt } : gate))
+      })
+      expect(result.ok).toBe(accepted)
+      if (!accepted) {
+        expect(result.diagnostics[0]?.code).toBe('backend-release-receipt-invalid')
+      }
+    }
+  })
+
   test('does not invoke receipt accessors or echo secret-like object keys', async () => {
     const { receipt } = await releaseLifecycle()
     let getterCalls = 0

@@ -9,6 +9,7 @@ import type {
 } from './types'
 import { BACKEND_PRODUCTION_GATE_IDS } from './types'
 import {
+  compareReleaseTimestamps,
   exactArray,
   exactRecord,
   nullableDigest,
@@ -36,7 +37,7 @@ function trustworthyGate(
   if (!verifiedAt || !result.checkedAt || !result.evidenceDigest) return unknownGate(result.gate)
   try {
     const checkedAt = releaseTimestamp(result.checkedAt, `gate.${result.gate}.checkedAt`)
-    if (Date.parse(checkedAt) > Date.parse(verifiedAt)) return unknownGate(result.gate)
+    if (compareReleaseTimestamps(checkedAt, verifiedAt) > 0) return unknownGate(result.gate)
     return {
       gate: result.gate,
       status: 'passed',

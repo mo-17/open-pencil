@@ -93,6 +93,7 @@
 
 ### Fixed
 
+- Preserve sub-millisecond evidence ordering when validating Backend production gates and release receipts.
 - Preserve source text offsets when resolving fallback languages after text-case transformations.
 - Track character coverage restored from downloaded font cache entries.
 - Preserve imported Figma divider-line geometry during auto-layout recomputation, preventing half-pixel shifts on save and reload.
