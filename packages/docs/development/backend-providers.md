@@ -174,6 +174,13 @@ provider may render those operations into a review artifact, but it cannot lower
 a backup. External entities are compatibility references and never become implicit schema-creation
 operations.
 
+`planBackendMigration()` rejects enum renames because the current semantic operation vocabulary
+cannot represent them. It also validates the complete generated plan against the contract's
+operation, size, and aggregate-node limits before returning it. These failures raise
+`BackendMigrationPlanningError`, a `TypeError` subclass with structured diagnostics, instead of
+returning an empty, partial, or over-limit plan. Valid input models can still exceed the output
+limits when expanded into migration operations.
+
 Secrets are references, never values. A Backend `CredentialRef` is a host-issued opaque handle with
 the exact `credential.<UUID>` form, for example
 `credential.123e4567-e89b-42d3-a456-426614174000`; a label, provider key, token, or other caller-made

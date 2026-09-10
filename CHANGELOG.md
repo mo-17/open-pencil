@@ -94,6 +94,7 @@
 
 ### Fixed
 
+- Reject unsupported enum renames and migration plans that exceed the Backend contract's aggregate limits before returning a plan.
 - Preserve document Backend Provider declarations across preview Host and Browser Worker compilation, and invalidate stale previews when the provider or declaration changes.
 - Report unsupported Supabase browser networking without mistaking generated client key-validation code for embedded secrets.
 - Preserve sub-millisecond evidence ordering when validating Backend production gates and release receipts.

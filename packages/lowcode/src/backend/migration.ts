@@ -6,6 +6,7 @@ import { parseMigrationOperation } from './migration/operation-validation'
 import { assertBackendSecretFreeData } from './secret-boundary'
 import {
   MIGRATION_PLAN_VERSION,
+  type BackendDiagnostic,
   type BackendValidationResult,
   type DataEntityIR,
   type DataFieldIR,
@@ -46,6 +47,18 @@ const HIGH_RISK_OPERATIONS = new Set<MigrationOperation['kind']>([
   'add-foreign-key',
   'add-unique'
 ])
+
+/** A model change or generated plan cannot be represented by the bounded migration contract. */
+export class BackendMigrationPlanningError extends TypeError {
+  readonly diagnostics: readonly BackendDiagnostic[]
+
+  constructor(diagnostics: readonly BackendDiagnostic[]) {
+    const codes = [...new Set(diagnostics.map((entry) => entry.code))]
+    super(`Cannot plan backend migration: ${codes.join(', ')}`)
+    this.name = 'BackendMigrationPlanningError'
+    this.diagnostics = Object.freeze(diagnostics.map((entry) => Object.freeze({ ...entry })))
+  }
+}
 
 export function classifyMigrationOperationRisk(operation: MigrationOperation): MigrationRiskLevel {
   if (LOW_RISK_OPERATIONS.has(operation.kind)) return 'low'
@@ -291,6 +304,22 @@ function highestRisk(operations: readonly MigrationPlanOperation[]): MigrationRi
   )
 }
 
+function assertRepresentableEnumChanges(current: DataModelIR, target: DataModelIR): void {
+  const currentEnums = new Map(current.enums.map((entry) => [entry.id, entry]))
+  const diagnostics: BackendDiagnostic[] = []
+  for (const [index, entry] of target.enums.entries()) {
+    const previous = currentEnums.get(entry.id)
+    if (!previous || previous.name === entry.name) continue
+    diagnostics.push({
+      code: 'backend-migration-enum-rename-unsupported',
+      severity: 'error',
+      path: `$.target.enums[${index}].name`,
+      message: 'Enum rename is not represented by the migration contract.'
+    })
+  }
+  if (diagnostics.length > 0) throw new BackendMigrationPlanningError(diagnostics)
+}
+
 export async function planBackendMigration(
   current: unknown,
   target: unknown
@@ -304,6 +333,7 @@ export async function planBackendMigration(
     ]
     throw new TypeError(`Cannot plan an invalid backend model: ${codes.join(', ')}`)
   }
+  assertRepresentableEnumChanges(parsedCurrent.value, parsedTarget.value)
   const fromModelDigest = await digestDataModel(parsedCurrent.value)
   const targetModelDigest = await digestDataModel(parsedTarget.value)
   const operations = planOperations(parsedCurrent.value, parsedTarget.value).map((operation) => ({
@@ -312,7 +342,7 @@ export async function planBackendMigration(
     reason: operationReason(operation)
   }))
   const risk = highestRisk(operations)
-  return {
+  const plan: MigrationPlan = {
     version: MIGRATION_PLAN_VERSION,
     planId: `migration:${fromModelDigest.slice(0, 16)}:${targetModelDigest.slice(0, 16)}`,
     fromModelDigest,
@@ -321,6 +351,9 @@ export async function planBackendMigration(
     highestRisk: risk,
     requiresBackup: risk === 'high' || risk === 'destructive'
   }
+  const validated = validateMigrationPlan(plan)
+  if (!validated.ok) throw new BackendMigrationPlanningError(validated.diagnostics)
+  return validated.value
 }
 
 function migrationDigest(

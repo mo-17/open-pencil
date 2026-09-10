@@ -27,6 +27,7 @@ export {
   normalizedDataModel
 } from './canonical'
 export {
+  BackendMigrationPlanningError,
   classifyMigrationOperationRisk,
   planBackendMigration,
   validateMigrationPlan
