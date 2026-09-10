@@ -1,6 +1,10 @@
 /* oxlint-disable eslint/max-lines -- One strict protocol validator keeps the complete clone and response trust boundary auditable. */
 
-import type { CompilerOptions } from '@open-pencil/compiler'
+import type { CompilerBackendProviderRequest, CompilerOptions } from '@open-pencil/compiler'
+import {
+  createBackendProviderPlan,
+  createBuiltinBackendProviderRegistry
+} from '@open-pencil/compiler/backend'
 import type { PortableSceneGraphData } from '@open-pencil/core/io/formats/fig'
 import type {
   DocumentColorSpace,
@@ -73,8 +77,11 @@ const OPTION_KEYS = new Set([
   'devMode',
   'i18n',
   'locales',
-  'uiKit'
+  'uiKit',
+  'backendProvider'
 ])
+const BACKEND_REQUEST_KEYS = new Set(['selection', 'application'])
+const BACKEND_REGISTRY = createBuiltinBackendProviderRegistry()
 const DIAGNOSTIC_KEYS = new Set(['code', 'severity', 'message', 'nodeId', 'path', 'line', 'column'])
 const METRIC_KEYS = new Set([
   'compileMs',
@@ -364,6 +371,28 @@ function browserI18n(value: unknown): boolean {
   if (typeof value !== 'boolean') invalidBrowserOptions()
   return value
 }
+function validateBackendProvider(value: unknown, target: 'react' | 'vue'): void {
+  if (value === undefined) return
+  const request = exactRecord(
+    value,
+    BACKEND_REQUEST_KEYS,
+    [...BACKEND_REQUEST_KEYS],
+    'Browser preview Backend Provider request'
+  )
+  // Reuse the Compiler's exact selection, normalized application and built-in
+  // adapter checks. This is data validation; only the main Host owns lifecycle.
+  const result = createBackendProviderPlan(BACKEND_REGISTRY, {
+    selection: request.selection as CompilerBackendProviderRequest['selection'],
+    application: request.application,
+    target,
+    mode: 'preview'
+  })
+  if (!result.ok) {
+    throw new TypeError(
+      `Browser preview Backend Provider request is invalid: ${result.diagnostics.map((entry) => entry.code).join(', ')}`
+    )
+  }
+}
 function validateOptions(value: unknown): CompilerOptions {
   const options = exactRecord(
     value,
@@ -379,6 +408,7 @@ function validateOptions(value: unknown): CompilerOptions {
   const router = browserRouter(target, options.router)
   const i18n = browserI18n(options.i18n)
   const uiKit = browserUIKit(options.uiKit)
+  validateBackendProvider(options.backendProvider, target)
   if (target === 'vue' && (i18n || locales !== undefined || uiKit !== undefined)) {
     invalidBrowserOptions()
   }

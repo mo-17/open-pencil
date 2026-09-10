@@ -119,10 +119,7 @@ function lookupFile(files: ReadonlyMap<string, string | Uint8Array>, stem: strin
   return null
 }
 
-function assertBrowserRuntimeCapabilities(
-  files: ReadonlyMap<string, string | Uint8Array>,
-  policy: BrowserPreviewDependencyPolicy
-): void {
+function assertBrowserNetworkRuntime(files: ReadonlyMap<string, string | Uint8Array>): void {
   const remoteRuntime = REMOTE_RUNTIME_PATHS.find((path) => files.has(path))
   if (remoteRuntime) {
     failBrowserPreview(
@@ -131,6 +128,12 @@ function assertBrowserRuntimeCapabilities(
       remoteRuntime
     )
   }
+}
+
+function assertBrowserRuntimeCapabilities(
+  files: ReadonlyMap<string, string | Uint8Array>,
+  policy: BrowserPreviewDependencyPolicy
+): void {
   if (policy.declared['lottie-web']) {
     const usesRemoteLottie = [...files.values()].some(
       (value) => typeof value === 'string' && /\bsource\s*:\s*["']url["']/.test(value)
@@ -404,6 +407,7 @@ export async function buildBrowserPreview(
     }
     const prepared = prepareBrowserPreviewReactFiles(validated.files, input.channel)
     assertNoDynamicSourceImports(prepared.files)
+    assertBrowserNetworkRuntime(prepared.files)
     const dependencyPolicy = readBrowserPreviewDependencyPolicy(prepared.files)
     dependencyCount = Object.keys(dependencyPolicy.declared).length
     assertBrowserRuntimeCapabilities(prepared.files, dependencyPolicy)

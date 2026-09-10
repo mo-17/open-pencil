@@ -46,6 +46,12 @@ These stages are intentionally different:
 | Desktop Supabase Backend review                | Implemented as an explicit, Tauri-only, review-only action                                                          | Exact `public` schema only; the review artifact itself never grants Apply or production readiness                                          |
 | CLI Backend commands                           | Implemented as local-only validation, plan, emit, and audit                                                         | No Inspect, credential resolution, Apply, or accepted remote receipt                                                                       |
 
+The visual Workflow editor supports editing nested branches within its step and nesting
+limits. Server environment references can be added, renamed, and removed by name; new references
+are required and server-only, with no field for credential values. Renaming updates every workflow
+use, including nested branches, and references still in use cannot be deleted. Existing complex
+step settings are retained when saving.
+
 The strict inspected-review MVP requires project/account/query provenance, a non-truncated complete
 coverage declaration, and explicit object, column, constraint, index, RLS policy, object ACL, and
 default-ACL inventories scoped to the inspected database role. Every inspected table column carries
@@ -142,6 +148,15 @@ its Host authority is unavailable, compilation stops instead of falling back to 
 explicit request combined with legacy Supabase Backend intent, duplicate document declarations, or
 a second pre-populated explicit request is ambiguous and fails closed. Legacy lowering remains
 available only when no explicit request exists.
+
+Preview compilation also uses the document's Backend declaration after Host validation, including
+the Browser Worker boundary. The Compiler preserves private Storage object paths and disables
+uploads targeting undeclared buckets. Tauri can render that generated client runtime; Browser
+preview retains its existing restriction on Supabase networking and reports it as unsupported,
+so it cannot run Storage uploads. Pure local React output can still preview with an explicit
+Backend declaration. Browser Vue preview remains unavailable, and required server workflows
+block preview. Changes to the Backend declaration or plugin state invalidate the previous preview,
+including under the Manual refresh policy.
 
 ## Backend Core
 

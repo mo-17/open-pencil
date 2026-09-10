@@ -14,7 +14,9 @@ import { withDefaults, type CompilerOptions, type CompileWarning } from '@open-p
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { importedFontRevision } from '@/app/editor/fonts'
+import { appPluginStoreSnapshot } from '@/app/plugins/app'
 
+import { watchPreviewBackendProvider } from './backend-provider-watch'
 import {
   createPreviewCompileScheduler,
   createPreviewCompileSchedulerState,
@@ -437,6 +439,14 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
   const stopPolicyWatch = settings?.refreshPolicy
     ? watch(settings.refreshPolicy, (policy) => scheduler.setPolicy(policy))
     : NOOP
+  const stopBackendProviderWatch = watchPreviewBackendProvider({
+    graph: () => store.graph,
+    sceneVersion: () => store.state.sceneVersion,
+    providerSnapshot: () => appPluginStoreSnapshot.value,
+    invalidate: () => {
+      if (!cancelled) void launchPreviewHost(settings?.target?.value ?? 'react')
+    }
+  })
   const stopTargetWatch = settings?.target
     ? watch(settings.target, (target) => {
         void launchPreviewHost(target)
@@ -448,6 +458,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     hostGeneration += 1
     stopSceneWatch()
     stopPolicyWatch()
+    stopBackendProviderWatch()
     stopTargetWatch()
     scheduler.dispose()
     clearRuntimeReadyTimer()

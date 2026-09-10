@@ -7,6 +7,12 @@ import type {
   CreateBrowserPreviewWorkerRequestInput
 } from '../browser-worker/protocol'
 import {
+  preparePreviewBackendProvider,
+  previewHasBackendProvider,
+  resolveLivePreviewBackendProviderStore,
+  type ResolvePreviewBackendProviderStore
+} from './backend-provider'
+import {
   EMPTY_PREVIEW_HOST_METRICS,
   type PreviewDiagnostic,
   type PreviewFrameDescriptor,
@@ -32,6 +38,7 @@ export interface CreateBrowserPreviewHostOptions {
   revokeObjectURL?: (url: string) => void
   createChannelId?: () => string
   getFontProviders?: () => readonly BrowserPreviewFontProvider[]
+  resolveBackendProviderStore?: ResolvePreviewBackendProviderStore
 }
 
 function browserUnsupportedResult(generation: number): PreviewHostBuildResult {
@@ -74,6 +81,10 @@ function isAbortError(value: unknown): boolean {
   return value instanceof Error && value.name === 'AbortError'
 }
 
+function throwIfBuildAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw new DOMException('Preview build aborted', 'AbortError')
+}
+
 export function createBrowserPreviewHost(
   target: PreviewTarget,
   options: CreateBrowserPreviewHostOptions = {}
@@ -84,6 +95,8 @@ export function createBrowserPreviewHost(
   const createChannelId = options.createChannelId ?? (() => crypto.randomUUID())
   const getFontProviders =
     options.getFontProviders ?? (() => fontManager.enabledOnlineFontProviders())
+  const resolveBackendProviderStore =
+    options.resolveBackendProviderStore ?? resolveLivePreviewBackendProviderStore
   const activeControllers = new Set<AbortController>()
   let activeArtifactURL: string | null = null
   let activeSerial = 0
@@ -149,18 +162,28 @@ export function createBrowserPreviewHost(
     const channelId = createChannelId()
     let workerResult: BrowserPreviewWorkerBuildResult
     try {
+      const backendStore = previewHasBackendProvider(request.graph)
+        ? await resolveBackendProviderStore()
+        : null
+      if (requestIsStale(request, serial)) return staleResult(request.generation)
+      throwIfBuildAborted(controller.signal)
+      const backend = preparePreviewBackendProvider(request.graph, request.options, backendStore)
       workerResult = await client.build(
         {
           generation: request.generation,
           graph: request.graph,
           pageIds: request.pageIds,
-          options: request.options,
+          options: backend.options,
           fontProviders: [...getFontProviders()],
           refreshFonts: request.refreshFonts
         },
         channelId,
         controller.signal
       )
+      if (requestIsStale(request, serial))
+        return staleResult(request.generation, workerResult.metrics)
+      throwIfBuildAborted(controller.signal)
+      backend.assertCurrent()
     } catch (cause) {
       if (requestIsStale(request, serial)) {
         return staleResult(request.generation)
@@ -181,9 +204,6 @@ export function createBrowserPreviewHost(
       activeControllers.delete(controller)
     }
 
-    if (requestIsStale(request, serial)) {
-      return staleResult(request.generation, workerResult.metrics)
-    }
     if (workerResult.status === 'unsupported') {
       return {
         status: 'unsupported',

@@ -34,6 +34,10 @@ SceneGraph / 旧 Lowcode
 - Desktop 静态部署：可以完成前端上传，但会返回 `backendDeploymentRequired: true`。前端确认不会被当作 Backend Apply 确认。
 - CLI：提供 `backend validate/plan/emit/audit/release`，但全部是 local-only；`release` 会在 Apply 前阻断。
 
+可视化 Workflow 编辑器支持在其步骤数量与嵌套深度限制内编辑多层分支。可以按名称新增、重命名或
+删除服务端环境引用；新增引用固定为 required、server-only，不提供凭据值输入框。重命名会同步更新所有
+workflow 引用，包括嵌套分支；仍被使用的引用不能删除。保存会保留已有步骤中的复杂配置。
+
 普通 `compile()` / build 可以通过 `CompilerOptions.backendProvider` 接收 Host 已解析的纯数据
 `CompilerBackendProviderRequest`。App 必须在编译前调用
 `prepareAppBackendProviderCompilerOptions()`，用当前安装、启用/阻断、package digest、Digest Pin、
@@ -43,6 +47,12 @@ Credential、网络或可执行插件代码；`compileAppBackendProviderDocument
 显式 request 无效或 Host authority 不可用时会直接阻断，不会回退到旧 Supabase。显式 request 与旧
 Supabase Backend intent 同时存在、文档重复声明，或 options 已预填第二份显式 request，都会按双重
 authority fail closed。只有完全没有显式 request 时才保留 legacy lowering。
+
+预览编译会使用经过 Host 校验的文档 Backend 声明，Browser Worker 边界也会保留这份声明。Compiler 为
+private bucket 保留对象路径，并禁用指向未声明 bucket 的上传动作。Tauri 可以呈现生成的客户端 runtime；
+Browser 预览仍保留禁止 Supabase 联网的既有边界，会明确报告不支持，因此不能运行 Storage 上传。
+带显式 Backend 声明的纯本地 React 输出仍可预览。Browser Vue 预览仍不支持，需要服务端 Workflow 的声明
+也会阻断预览。Backend 声明或插件状态变化后，旧预览会失效，Manual 刷新模式也不例外。
 
 ## 当前明确限制
 

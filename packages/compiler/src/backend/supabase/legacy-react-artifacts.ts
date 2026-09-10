@@ -60,8 +60,7 @@ function assertSupabasePublicKey(value: string): string {
   const key = value.trim()
   if (
     !key ||
-    /^sb_secret_/i.test(key) ||
-    /^sbp_/i.test(key) ||
+    /^sb(?:_secret_|p_)/i.test(key) ||
     legacySupabaseRole(key) === 'service_role'
   ) {
     throw new Error('Supabase client configuration contains an invalid or elevated key')

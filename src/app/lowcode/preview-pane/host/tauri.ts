@@ -10,6 +10,12 @@ import { fontManager } from '@open-pencil/core/text'
 import { createPluginExportAbortError } from '@/app/plugins/host/exporter-abort'
 import { tauriFetch } from '@/app/tauri/http'
 
+import {
+  preparePreviewBackendProvider,
+  previewHasBackendProvider,
+  resolveLivePreviewBackendProviderStore,
+  type ResolvePreviewBackendProviderStore
+} from './backend-provider'
 import { startTauriPreviewSidecar, type TauriPreviewSidecar } from './tauri-sidecar'
 import {
   EMPTY_PREVIEW_HOST_METRICS,
@@ -27,6 +33,7 @@ export interface CreateTauriPreviewHostOptions {
   compileProject?: (input: CompilerInput) => CompilerOutput
   createChannelId?: () => string
   now?: () => number
+  resolveBackendProviderStore?: ResolvePreviewBackendProviderStore
 }
 
 function outputByteLength(files: ReadonlyMap<string, string | Uint8Array>): number {
@@ -95,6 +102,8 @@ export async function createTauriPreviewHost(
   const compileProject = options.compileProject ?? compile
   const createChannelId = options.createChannelId ?? (() => crypto.randomUUID())
   const now = options.now ?? (() => performance.now())
+  const resolveBackendProviderStore =
+    options.resolveBackendProviderStore ?? resolveLivePreviewBackendProviderStore
   const sidecar = await startSidecar(target)
   const channelId = createChannelId()
   const origin = new URL(sidecar.url).origin
@@ -140,16 +149,20 @@ export async function createTauriPreviewHost(
     let compileMs = 0
     try {
       const fontManifest = await resolveFonts(request)
+      const backendStore = previewHasBackendProvider(request.graph)
+        ? await resolveBackendProviderStore()
+        : null
       const afterFonts = checkpoint(request, serial, {
         ...EMPTY_PREVIEW_HOST_METRICS,
         totalMs: Math.max(0, now() - startedAt)
       })
       if (afterFonts) return afterFonts
       const compileStartedAt = now()
+      const backend = preparePreviewBackendProvider(request.graph, request.options, backendStore)
       const output = compileProject({
         graph: request.graph,
         pageIds: request.pageIds,
-        options: request.options,
+        options: backend.options,
         fontManifest
       })
       compileMs = Math.max(0, now() - compileStartedAt)
@@ -159,6 +172,7 @@ export async function createTauriPreviewHost(
         totalMs: Math.max(0, now() - startedAt)
       })
       if (afterCompile) return afterCompile
+      backend.assertCurrent()
       await sidecar.update(output.files)
       const metrics: PreviewHostBuildMetrics = {
         compileMs,
@@ -171,6 +185,7 @@ export async function createTauriPreviewHost(
       }
       const afterUpdate = checkpoint(request, serial, metrics)
       if (afterUpdate) return afterUpdate
+      backend.assertCurrent()
       if (!sidecar.isAlive()) throw new Error('Preview sidecar stopped before update completed')
       return {
         status: 'ready',

@@ -13,6 +13,7 @@ test('Backend branch and environment edits survive save, undo, redo, and server 
   await page.route('http://127.0.0.1:7600/health', (route) =>
     route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
   )
+  await page.addInitScript(() => performance.setResourceTimingBufferSize(10_000))
   await page.goto('/')
   const editor = { page, canvas: new CanvasHelper(page) }
   await editor.canvas.waitForInit()
@@ -95,8 +96,12 @@ test('Backend branch and environment edits survive save, undo, redo, and server 
   const compiled = await editor.page.evaluate(async () => {
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
-    const hostURL = '/src/app/plugins/host/backend-provider.ts'
-    const appURL = '/src/app/plugins/app.ts'
+    const resources = performance.getEntriesByType('resource').map((entry) => entry.name)
+    const hostURL = resources.find(
+      (url) => new URL(url).pathname === '/src/app/plugins/host/backend-provider.ts'
+    )
+    const appURL = resources.find((url) => new URL(url).pathname === '/src/app/plugins/app.ts')
+    if (!hostURL || !appURL) throw new Error('Active Backend Host modules were not loaded')
     const host: typeof BackendProviderHost = await import(hostURL)
     const app: typeof PluginApp = await import(appURL)
     await app.appPluginStoreReady

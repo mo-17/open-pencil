@@ -112,7 +112,7 @@ describe('buildLowcodeSupabaseRuntime (Phase 3 §2)', () => {
     )
     // createClient now takes the resolved consts, not inline literals.
     expect(out).toContain('createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {')
-    expect(out).toContain('/^sbp_/i.test(key)')
+    expect(out).toContain('/^sb(?:_secret_|p_)/i.test(key)')
     expect(out).toContain("legacySupabaseRole(key) === 'service_role'")
     expect(out).toContain('publishable !== legacy')
   })
