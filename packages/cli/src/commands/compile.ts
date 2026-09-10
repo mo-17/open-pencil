@@ -85,7 +85,7 @@ export default defineCommand({
       process.exit(1)
     }
 
-    const { compiled, packageName } = await loadAndCompile({
+    const compilation = await loadAndCompile({
       file,
       page,
       packageName: (args as CompileArgs)['package-name'],
@@ -98,6 +98,12 @@ export default defineCommand({
       target,
       packaging
     })
+
+    if (!compilation) {
+      process.exitCode = 1
+      return
+    }
+    const { compiled, packageName } = compilation
 
     const written = await writeFiles(outDir, compiled.files)
 

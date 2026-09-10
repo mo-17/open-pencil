@@ -201,11 +201,11 @@ export interface CompiledDocument {
 }
 
 /**
- * Front-half of both codegen commands: load the document, resolve pages,
+ * Shared front-half of compile, build, and deploy: load the document, resolve pages,
  * derive the package name, and compile (devMode:false — a clean distributable
- * with no canvas↔preview bridge). Prints and `process.exit(1)`s on any failure
- * (no file path, no pages, bad `--page`, throw, or empty output), so callers
- * either get a non-empty CompilerOutput or never return.
+ * with no canvas↔preview bridge). Reports controlled validation/compilation
+ * failures and returns null so commands can stop with a failure exit code
+ * while unwinding their owned resources. Document I/O failures still reject.
  */
 export async function loadAndCompile(opts: {
   file?: string
@@ -227,23 +227,23 @@ export async function loadAndCompile(opts: {
   target?: CodegenWebTarget
   /** Explicitly opt into the lifecycle/manifest packaging contract. */
   packaging?: CompilerMicrofrontendPackaging
-}): Promise<CompiledDocument> {
+}): Promise<CompiledDocument | null> {
   if (!opts.file) {
     printError('A document file path is required.')
-    process.exit(1)
+    return null
   }
 
   const graph = await loadDocument(opts.file)
   const pages = graph.getPages()
   if (pages.length === 0) {
     printError('Document has no pages.')
-    process.exit(1)
+    return null
   }
 
   const resolved = resolvePageIds(pages, opts.page)
   if (!resolved.ok) {
     printError(resolved.message)
-    process.exit(1)
+    return null
   }
 
   const packageName = sanitizePackageName(
@@ -254,7 +254,7 @@ export async function loadAndCompile(opts: {
     validateCodegenTargetFeatures({ target, i18n: opts.i18n === true, uiKit: opts.uiKit })
   } catch (e) {
     printError(e)
-    process.exit(1)
+    return null
   }
 
   let compiled: CompilerOutput
@@ -302,7 +302,7 @@ export async function loadAndCompile(opts: {
     }
   } catch (e) {
     printError(e)
-    process.exit(1)
+    return null
   }
 
   if (compiled.files.size === 0) {
@@ -326,7 +326,7 @@ export async function loadAndCompile(opts: {
         )
       )
     }
-    process.exit(1)
+    return null
   }
 
   return { compiled, graph, packageName, target }

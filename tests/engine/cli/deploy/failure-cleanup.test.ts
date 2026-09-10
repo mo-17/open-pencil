@@ -3,8 +3,8 @@ import { describe, expect, test } from 'bun:test'
 import { runDeployRuntimeScenario } from './helpers'
 
 describe('direct CLI deployment failure cleanup', () => {
-  // These failures occur after successful compilation. loadAndCompile's own
-  // hard exits remain outside this cleanup contract.
+  // These failures occur after successful compilation. Compilation failures
+  // are covered by the shared codegen contract tests.
   for (const target of ['react', 'vue'] as const) {
     for (const failure of [
       {

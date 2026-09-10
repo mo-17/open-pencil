@@ -257,7 +257,7 @@ export default defineCommand({
 
     const buildDir = mkdtempSync(join(tmpdir(), 'op-deploy-'))
     try {
-      const { compiled, graph } = await loadAndCompile({
+      const compilation = await loadAndCompile({
         file,
         page,
         outDir: buildDir,
@@ -268,6 +268,12 @@ export default defineCommand({
         sourceLocale,
         target
       })
+
+      if (!compilation) {
+        process.exitCode = 1
+        return
+      }
+      const { compiled, graph } = compilation
 
       let env: ReturnType<typeof resolveBuildEnv>
       try {
