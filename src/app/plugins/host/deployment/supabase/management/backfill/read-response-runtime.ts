@@ -54,16 +54,18 @@ export async function readBackfillJSON(
   signal: AbortSignal,
   { abortMessage, fail }: BackfillReadResponsePolicy
 ): Promise<unknown> {
-  if (!validJSONMediaType(response)) return fail('invalid-response')
-  const contentLength = response.headers.get('content-length')
-  if (contentLength !== null) {
-    if (!/^\d+$/u.test(contentLength)) return fail('invalid-response')
-    const parsed = Number(contentLength)
-    if (!Number.isSafeInteger(parsed)) return fail('invalid-response')
-    if (parsed > maximum) {
-      void response.body?.cancel().catch(() => undefined)
-      return fail('response-too-large')
+  try {
+    if (!validJSONMediaType(response)) return fail('invalid-response')
+    const contentLength = response.headers.get('content-length')
+    if (contentLength !== null) {
+      if (!/^\d+$/u.test(contentLength)) return fail('invalid-response')
+      const parsed = Number(contentLength)
+      if (!Number.isSafeInteger(parsed)) return fail('invalid-response')
+      if (parsed > maximum) return fail('response-too-large')
     }
+  } catch (cause) {
+    void response.body?.cancel().catch(() => undefined)
+    throw cause
   }
   if (!response.body) return fail('invalid-response')
   const reader = response.body.getReader()
