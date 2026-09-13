@@ -2,11 +2,12 @@
 
 ## Overview
 
-| Type                  | Framework  | Command              | Location                             |
-| --------------------- | ---------- | -------------------- | ------------------------------------ |
-| E2E visual regression | Playwright | `bun run test`       | `tests/e2e/`                         |
-| Figma CDP reference   | Playwright | `bun run test:figma` | `tests/figma/`                       |
-| Unit tests            | bun:test   | `bun run test:unit`  | `tests/engine/`, `packages/*/tests/` |
+| Type                  | Framework  | Command                   | Location                             |
+| --------------------- | ---------- | ------------------------- | ------------------------------------ |
+| E2E visual regression | Playwright | `bun run test`            | `tests/e2e/`                         |
+| Figma CDP reference   | Playwright | `bun run test:figma`      | `tests/figma/`                       |
+| Daily unit tests      | bun:test   | `bun run test:unit:quick` | `tests/engine/`, `packages/*/tests/` |
+| Heavy unit tests      | bun:test   | `bun run test:unit:heavy` | Selected fixture and CLI test files  |
 
 ## Documentation Build Memory
 
@@ -106,11 +107,60 @@ usable CDP endpoint even when launched with `--remote-debugging-port=9222`.
 
 ## Unit Tests
 
-Engine and package unit tests use bun:test and target < 50ms execution:
+Engine and package unit tests use bun:test. Use the quick suite during everyday development;
+it excludes the maintained heavy-file list and disables suites marked as heavy:
 
 ```sh
-bun run test:unit
+bun run test:unit:quick
 ```
+
+For full unit coverage, also run the heavy suite. You can select one group while diagnosing a
+failure, or list the selected files without running them:
+
+```sh
+bun run test:unit:heavy
+bun run test:unit:heavy fig
+bun tools/unit-tests/src/list.ts all --heavy-only
+```
+
+The existing `bun run test:unit` command remains available as the combined entry point. It
+includes heavy tests, but does not use the per-file heavy runner.
+
+### Heavy Test Setup and Limits
+
+Heavy tests parse real `.fig` fixtures, export documents, render with CanvasKit and invoke the
+CLI. Fetch Git LFS assets and build workspace packages first:
+
+```sh
+git lfs pull
+bun run build:packages
+```
+
+Install FFmpeg, including `ffprobe`, for motion-export tests. GIF inspection requires `ffprobe`
+even when GIF encoding uses the built-in encoder. WebM and MP4 checks run only when FFmpeg
+reports the corresponding codecs. Fonts used by this suite are bundled with the repository;
+no separate browser or system-font installation is required.
+
+```sh
+ffmpeg -version
+ffprobe -version
+```
+
+The heavy runner processes files sequentially in separate Bun processes and does not enable
+test concurrency. It prints each file's elapsed time and exit code, and stops at the first
+failure while preserving that exit code. A group without heavy files reports that fact and
+does not launch tests.
+
+Each child receives a default test timeout of 180 seconds. Explicit test, hook or suite timeouts
+still apply, including existing 30- and 60-second limits. Separately, each file has a
+600-second wall-clock deadline that also bounds synchronous work Bun's test timer cannot
+interrupt. A file deadline reports exit code 124.
+
+The **Heavy tests** GitHub Actions workflow runs every Monday at **03:17 UTC**, or **11:17 Beijing
+time on Monday**. Its manual **Run workflow** form allows a test group to be selected; scheduled
+runs use `all`. Both check out `lowcode-rebaseline`. CI fetches LFS assets, installs FFmpeg and
+builds workspace packages. The entire job has a separate **30-minute** limit, including setup
+and builds, so it can end before every file has used its individual budget.
 
 Tests cover:
 
@@ -150,8 +200,8 @@ describe('SceneGraph', () => {
 
 ## Performance Targets
 
-| Metric                | Target                        |
-| --------------------- | ----------------------------- |
-| E2E suite total       | < 3s                          |
-| Unit test suite total | < 50ms                        |
-| Screenshot comparison | toMatchSnapshot (pixel-level) |
+| Metric                | Target                                                                   |
+| --------------------- | ------------------------------------------------------------------------ |
+| E2E suite total       | < 3s                                                                     |
+| Unit tests            | Track quick and heavy durations separately; no fixed whole-suite target. |
+| Screenshot comparison | toMatchSnapshot (pixel-level)                                            |

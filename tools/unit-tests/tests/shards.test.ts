@@ -87,6 +87,7 @@ test('unit test groups own every repository unit test exactly once', async () =>
 
 test('PR CI delegates every declared quick shard to the cross-platform runner', async () => {
   const workflow = await readFile(resolve(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8')
+  expect(workflow).toContain('pull_request:\n    branches: [master, lowcode-rebaseline]')
   const unitJobStart = workflow.indexOf('\n  unit-tests:')
   const unitJobEnd = workflow.indexOf('\n  p2-motion-e2e:')
   if (unitJobStart === -1 || unitJobEnd === -1)
@@ -140,12 +141,12 @@ test('every heavy-tagged suite enters the heavy test gate', async () => {
       }))
     )
   )
-    .filter(({ source }) => /\bheavy\s*\(/.test(source))
+    .filter(({ source }) => /\bheavy(?:\.serial)?\s*\(/.test(source))
     .map(({ file }) => file)
     .sort()
   const heavyFiles = await listHeavyUnitTests()
 
-  expect(tagged).toHaveLength(10)
+  expect(tagged).toHaveLength(11)
   expect(tagged.filter((file) => !isHeavyUnitTest(file))).toEqual([])
   expect(tagged.filter((file) => !heavyFiles.includes(file))).toEqual([])
 })
@@ -161,13 +162,23 @@ test('root unit test scripts select heavy suites explicitly', async () => {
   expect(packageJSON.scripts?.['test:unit']).toContain('./packages/motion-runtime/tests')
   expect(packageJSON.scripts?.['test:unit:quick']).toContain('BUN_HEAVY_TESTS=false')
   expect(packageJSON.scripts?.['test:unit:quick']).toContain('tools/unit-tests/src/run.ts all')
-  expect(packageJSON.scripts?.['test:unit:heavy']).toContain('BUN_HEAVY_TESTS=true')
-  expect(packageJSON.scripts?.['test:unit:heavy']).toContain('--heavy-only')
+  expect(packageJSON.scripts?.['test:unit:heavy']).toBe('bun tools/unit-tests/src/heavy.ts')
 })
 
-test('scheduled heavy CI both selects and enables heavy suites', async () => {
+test('weekly heavy CI tests lowcode-rebaseline and allows manual group selection', async () => {
   const workflow = await readFile(resolve(REPO_ROOT, '.github/workflows/heavy-tests.yml'), 'utf8')
 
-  expect(workflow).toContain('list.ts all --heavy-only')
-  expect(workflow).toContain("BUN_HEAVY_TESTS: 'true'")
+  expect(workflow).toContain("cron: '17 3 * * 1'")
+  expect(workflow).toContain('workflow_dispatch:')
+  expect(workflow).toContain('group: heavy-tests-lowcode-rebaseline')
+  expect(workflow).toContain(
+    'uses: actions/checkout@v7\n        with:\n          ref: lowcode-rebaseline'
+  )
+  expect(workflow).toContain('bun run test:unit:heavy "$TEST_GROUP"')
+  expect(workflow).toContain(`TEST_GROUP: \${{ inputs.group || 'all' }}`)
+  expect(workflow).toContain('timeout-minutes: 30')
+  expect(workflow).toContain("lfs: 'true'")
+  expect(workflow).toContain('command -v ffmpeg')
+  expect(workflow).toContain('command -v ffprobe')
+  for (const group of unitTestGroupNames()) expect(workflow).toContain(`- ${group}\n`)
 })
