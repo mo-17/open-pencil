@@ -129,7 +129,11 @@ heavy('motion export CLI', () => {
       output: { output },
       manifest: { fps: 20, frameCount: 2 }
     })
-    expect(await readdir(output)).toEqual(['frame-0000.png', 'frame-0001.png', 'manifest.json'])
+    expect((await readdir(output)).sort()).toEqual([
+      'frame-0000.png',
+      'frame-0001.png',
+      'manifest.json'
+    ])
     expect([
       ...new Uint8Array(await readFile(join(output, 'frame-0000.png'))).subarray(0, 8)
     ]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])

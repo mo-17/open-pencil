@@ -1,14 +1,15 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 
 import { computeAllLayouts, SceneGraph, setTextMeasurer } from '@open-pencil/core'
-
-import { createEditorStore } from '@/app/editor/session'
+import { createEditor } from '@open-pencil/core/editor'
 
 import { getNodeOrThrow } from '#tests/helpers/assert'
 import { autoFrame, loadFixtureGraph, pageId, rect } from '#tests/helpers/layout'
 import { HEAVY_TEST_TIMEOUT_MS } from '#tests/helpers/test-utils'
 
 describe('text measurement', () => {
+  afterEach(() => setTextMeasurer(null))
+
   test('derived text layout preserves imported auto-layout text bounds during measurement', () => {
     const graph = new SceneGraph()
     const page = pageId(graph)
@@ -128,44 +129,51 @@ describe('text measurement', () => {
   })
 
   test(
-    'opening imported fig keeps stored text bounds before CanvasKit measurement',
+    'headless page switching keeps imported text bounds before CanvasKit measurement',
     { timeout: HEAVY_TEST_TIMEOUT_MS },
     async () => {
       const graph = await loadFixtureGraph('gold-preview.fig')
-      const store = createEditorStore(graph)
-      const title = [...store.graph.getAllNodes()].find(
-        (node) => node.type === 'TEXT' && node.text === "World's largest"
-      )
-      const subtitle = [...store.graph.getAllNodes()].find(
-        (node) =>
-          node.type === 'TEXT' &&
-          node.text === 'Preline UI Figma - crafted with Tailwind CSS styles'
-      )
-      const description = [...store.graph.getAllNodes()].find(
-        (node) =>
-          node.type === 'TEXT' &&
-          node.text.startsWith('Preline UI Figma is the largest free design system for Figma')
-      )
+      // The app store also waits for a canvas presentation ACK; this test has no canvas.
+      const editor = createEditor({ graph, loadFont: async () => null })
+      try {
+        const title = [...editor.graph.getAllNodes()].find(
+          (node) => node.type === 'TEXT' && node.text === "World's largest"
+        )
+        const subtitle = [...editor.graph.getAllNodes()].find(
+          (node) =>
+            node.type === 'TEXT' &&
+            node.text === 'Preline UI Figma - crafted with Tailwind CSS styles'
+        )
+        const description = [...editor.graph.getAllNodes()].find(
+          (node) =>
+            node.type === 'TEXT' &&
+            node.text.startsWith('Preline UI Figma is the largest free design system for Figma')
+        )
 
-      if (!title || !subtitle || !description) {
-        throw new Error('Expected imported text nodes in gold-preview.fig')
+        if (!title || !subtitle || !description) {
+          throw new Error('Expected imported text nodes in gold-preview.fig')
+        }
+
+        expect(title.width).toBe(444)
+        expect(title.height).toBe(73)
+        expect(subtitle.width).toBe(439)
+        expect(subtitle.height).toBe(22)
+        expect(description.width).toBe(878)
+        expect(description.height).toBe(60)
+
+        await editor.switchPage(editor.graph.getPages()[0].id)
+
+        expect(editor.graph.getNode(title.id)?.width).toBe(444)
+        expect(editor.graph.getNode(title.id)?.height).toBe(73)
+        expect(editor.graph.getNode(subtitle.id)?.width).toBe(439)
+        expect(editor.graph.getNode(subtitle.id)?.height).toBe(22)
+        expect(editor.graph.getNode(description.id)?.width).toBe(878)
+        expect(editor.graph.getNode(description.id)?.height).toBe(60)
+      } finally {
+        editor.clearPageViewports()
+        editor.releaseGraphResources()
+        editor.dispose()
       }
-
-      expect(title.width).toBe(444)
-      expect(title.height).toBe(73)
-      expect(subtitle.width).toBe(439)
-      expect(subtitle.height).toBe(22)
-      expect(description.width).toBe(878)
-      expect(description.height).toBe(60)
-
-      await store.switchPage(store.graph.getPages()[0].id)
-
-      expect(store.graph.getNode(title.id)?.width).toBe(444)
-      expect(store.graph.getNode(title.id)?.height).toBe(73)
-      expect(store.graph.getNode(subtitle.id)?.width).toBe(439)
-      expect(store.graph.getNode(subtitle.id)?.height).toBe(22)
-      expect(store.graph.getNode(description.id)?.width).toBe(878)
-      expect(store.graph.getNode(description.id)?.height).toBe(60)
     }
   )
 

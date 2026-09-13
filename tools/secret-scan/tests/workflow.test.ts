@@ -11,9 +11,9 @@ const MAIN_CI_WORKFLOW = readFileSync(resolve(REPOSITORY_ROOT, '.github/workflow
 const SCAN_COMMAND =
   'run: bun --config=/dev/null --no-env-file --no-install tools/secret-scan/src/index.ts'
 
-test('runs the secret gate for every master pull request and default-branch push', () => {
-  expect(SECRET_WORKFLOW).toContain('pull_request:\n    branches: [master]')
-  expect(SECRET_WORKFLOW).toContain('push:\n    branches: [master]')
+test('runs the secret gate for upstream and lowcode mainline pull requests and pushes', () => {
+  expect(SECRET_WORKFLOW).toContain('pull_request:\n    branches: [master, lowcode-rebaseline]')
+  expect(SECRET_WORKFLOW).toContain('push:\n    branches: [master, lowcode-rebaseline]')
   expect(SECRET_WORKFLOW).not.toContain('paths-ignore:')
   expect(SECRET_WORKFLOW.split(SCAN_COMMAND)).toHaveLength(2)
   expect(SECRET_WORKFLOW).not.toContain('run: bun tools/secret-scan/src/index.ts')

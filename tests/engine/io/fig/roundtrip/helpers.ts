@@ -41,7 +41,7 @@ export interface VerifierContext {
   errors: Mismatch[]
   fixture: FixtureSpec
   label: string
-  /** Roundtrip generation: 0 for G0→G1 (allows semantic equivalence), 1 for G1→G2 (requires exact match). */
+  /** Generation 1 requires canonical equality; regenerated node IDs retain their structural targets. */
   generation: number
 }
 
@@ -49,7 +49,7 @@ export interface CompareOptions extends Omit<VerifierContext, 'a' | 'b' | 'key' 
   verifiers: Map<string, Verifier>
 }
 
-/** G1→G2 must be exactly equal (idempotent export). G0→G1 allows semantic equivalence. */
+/** G1→G2 must be idempotent after node-reference normalization. G0→G1 allows semantic equivalence. */
 const isIdempotent = (ctx: VerifierContext): boolean => ctx.generation === 1
 
 export type Verifier = (ctx: VerifierContext) => boolean
@@ -84,23 +84,18 @@ export function buildComponentPropertyDefinitionIndex(
 function sameNodeReference(ctx: VerifierContext, a: string, b: string): boolean {
   const aPath = ctx.aNodePaths.get(a)
   const bPath = ctx.bNodePaths.get(b)
+  // Preserve unresolved external references, but do not hide a lost local target.
+  if (aPath === undefined && bPath === undefined) return a === b
   return aPath !== undefined && aPath === bPath
 }
 
-function sameNodeReferences(
-  ctx: VerifierContext,
-  a: string[] | undefined,
-  b: string[] | undefined
-): boolean {
+function samePreferredComponentKeys(a: string[] | undefined, b: string[] | undefined): boolean {
   if (a === undefined || b === undefined) return a === b
-  return (
-    a.length === b.length &&
-    a.every((value, index) => {
-      const other = b[index]
-      return other !== undefined && sameNodeReference(ctx, value, other)
-    })
-  )
+  // The importer reads instanceSwapValues[].key, not a node GUID. Component
+  // keys remain stable across exports and must not use the node-path remapping.
+  return a.length === b.length && a.every((value, index) => value === b[index])
 }
+
 function isComponentPropertyDefinitions(value: unknown): value is ComponentPropertyDefinition[] {
   if (!Array.isArray(value)) return false
   return value.every(isComponentPropertyDefinition)
@@ -131,29 +126,31 @@ function verifyComponentPropertyDefinitions(ctx: VerifierContext): boolean {
   return aDefinitions.every((value, index) => {
     const definition = value
     const other = bDefinitions[index]
-    if (!other || definition.type !== other.type || definition.name !== other.name) {
+    if (!other || definition.name !== other.name) {
       return false
     }
-
-    const { defaultValue, preferredValues, ...rest } = definition
+    const { defaultValue, preferredValues, type: definitionType, ...rest } = definition
     const {
       defaultValue: otherDefaultValue,
       preferredValues: otherPreferredValues,
+      type: otherType,
       ...otherRest
     } = other
+    // Preserve the existing importer normalization allowance for variant properties.
+    if (definitionType !== otherType && !(definitionType === 'VARIANT' && otherType === 'TEXT')) {
+      return false
+    }
     if (JSON.stringify(rest) !== JSON.stringify(otherRest)) return false
+    if (!samePreferredComponentKeys(preferredValues, otherPreferredValues)) return false
 
-    if (definition.type !== 'INSTANCE_SWAP') return defaultValue === otherDefaultValue
-    return (
-      typeof defaultValue === 'string' &&
-      typeof otherDefaultValue === 'string' &&
-      sameNodeReference(ctx, defaultValue, otherDefaultValue) &&
-      sameNodeReferences(ctx, preferredValues, otherPreferredValues)
-    )
+    if (definitionType !== 'INSTANCE_SWAP') return defaultValue === otherDefaultValue
+    return sameNodeReference(ctx, defaultValue, otherDefaultValue)
   })
 }
 
-function isComponentPropertyAssignments(value: unknown): value is ComponentPropertyAssignments {
+function isComponentPropertyAssignments(
+  value: unknown
+): value is SceneNode['componentPropertyAssignments'] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   return Object.values(value).every((entry) => typeof entry === 'string')
 }
@@ -169,10 +166,13 @@ function verifyComponentPropertyAssignments(ctx: VerifierContext): boolean {
   for (const propertyId of propertyIds) {
     const a = aAssignments[propertyId]
     const b = bAssignments[propertyId]
-    if (a === b) continue
     if (typeof a !== 'string' || typeof b !== 'string') return false
     const aDefinition = ctx.aComponentPropertyDefinitions.get(propertyId)
     const bDefinition = ctx.bComponentPropertyDefinitions.get(propertyId)
+    if (aDefinition?.type !== 'INSTANCE_SWAP' && bDefinition?.type !== 'INSTANCE_SWAP') {
+      if (a !== b) return false
+      continue
+    }
     if (aDefinition?.type !== 'INSTANCE_SWAP' || bDefinition?.type !== 'INSTANCE_SWAP') {
       return false
     }

@@ -13,6 +13,8 @@ import {
 } from '@open-pencil/core'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
+import { releaseFigPopulationWorker } from '#core/kiwi/fig/population/client'
+
 import {
   type Mismatch,
   type FixtureSpec,
@@ -449,17 +451,34 @@ function verifyFixture(spec: FixtureSpec): void {
       const chunks = parseFigKiwiChunks(g0Zip['canvas.fig'])
       if (!chunks) throw new Error('canvas.fig chunks not found')
       g0Chunks = chunks
-      g0Graph = await parseFigFile(g0Bytes)
+      g0Graph = await parseFigFile(g0Bytes, { populate: 'all' })
       g0 = buildPathMap(g0Graph)
     })()
+
+    let preservedExportReady: Promise<Uint8Array> | null = null
+    function ensurePreservedExport(): Promise<Uint8Array> {
+      preservedExportReady ??= g0Ready.then(() => exportFigFile(g0Graph))
+      return preservedExportReady
+    }
+
+    function exportReencodedFig(graph: SceneGraph): Promise<Uint8Array> {
+      // These headless graphs are fully populated. Release only the source archive
+      // registration so this suite exercises the roundtrip encoder, not byte reuse.
+      // This does not alter nodes, lazy import context, source metadata, or schema.
+      releaseFigPopulationWorker(graph)
+      return exportFigFile(graph)
+    }
 
     let g1Ready: Promise<void> | null = null
     function ensureG1(): Promise<void> {
       if (!g1Ready) {
         g1Ready = (async () => {
           await g0Ready
-          g1Export = await exportFigFile(g0Graph)
-          g1Graph = await parseFigFile(g1Export.buffer as ArrayBuffer)
+          // Capture the default behavior before releasing the archive registration,
+          // including when a test-name filter starts directly at a G1/G2 assertion.
+          await ensurePreservedExport()
+          g1Export = await exportReencodedFig(g0Graph)
+          g1Graph = await parseFigFile(g1Export.buffer as ArrayBuffer, { populate: 'all' })
           g1 = buildPathMap(g1Graph)
         })()
       }
@@ -471,8 +490,8 @@ function verifyFixture(spec: FixtureSpec): void {
       if (!g2Ready) {
         g2Ready = (async () => {
           await ensureG1()
-          g2Export = await exportFigFile(g1Graph)
-          g2Graph = await parseFigFile(g2Export.buffer as ArrayBuffer)
+          g2Export = await exportReencodedFig(g1Graph)
+          g2Graph = await parseFigFile(g2Export.buffer as ArrayBuffer, { populate: 'all' })
           g2 = buildPathMap(g2Graph)
         })()
       }
@@ -482,6 +501,10 @@ function verifyFixture(spec: FixtureSpec): void {
     test('original file size', async () => {
       await g0Ready
       expect(g0Bytes.byteLength).toBe(spec.fileSize)
+    })
+
+    test('unedited roundtrip export preserves the complete original archive bytes', async () => {
+      expect(await ensurePreservedExport()).toEqual(new Uint8Array(g0Bytes))
     })
 
     test('original ZIP structure', async () => {

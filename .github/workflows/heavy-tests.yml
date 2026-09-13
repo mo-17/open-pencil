@@ -2,11 +2,28 @@ name: Heavy tests
 
 on:
   workflow_dispatch:
+    inputs:
+      group:
+        description: Unit-test group to check (all for release verification)
+        type: choice
+        default: all
+        options:
+          - all
+          - app
+          - compiler
+          - compiler-browser
+          - dom
+          - editor
+          - fig
+          - motion
+          - render
+          - scene
+          - vue
   schedule:
-    - cron: '17 3 * * *'
+    - cron: '17 3 * * 1'
 
 concurrency:
-  group: heavy-tests-${{ github.ref }}
+  group: heavy-tests-lowcode-rebaseline
   cancel-in-progress: true
 
 jobs:
@@ -15,22 +32,25 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: lowcode-rebaseline
 
       - uses: ./.github/actions/setup-bun
         with:
           lfs: 'true'
+
+      - name: Install motion export test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          command -v ffmpeg
+          command -v ffprobe
 
       - name: Build packages
         run: bun run build:packages
 
       - name: Heavy fixture unit tests
         shell: bash
-        run: |
-          mapfile -t test_files < <(bun tools/unit-tests/src/list.ts all --heavy-only)
-          if [ "${#test_files[@]}" -eq 0 ]; then
-            echo "No heavy unit tests found"
-            exit 0
-          fi
-          bun test --timeout 180000 "${test_files[@]}"
+        run: bun run test:unit:heavy "$TEST_GROUP"
         env:
-          BUN_HEAVY_TESTS: 'true'
+          TEST_GROUP: ${{ inputs.group || 'all' }}
