@@ -58,6 +58,7 @@ function createRenderer(name: string, events: string[]): FakeRenderer {
   const renderer: Partial<FakeRenderer> & { hasLastGoodFrame: boolean } = {
     hasLastGoodFrame: false,
     performanceMode: 'balanced',
+    sceneBackingBuild: null,
     sceneBackingNeedsCrispRender: false,
     sceneBackingPreviewUntil: 0,
     setPerformanceMode: mock((mode: CanvasPerformanceMode) => {
@@ -227,5 +228,45 @@ test('performance mode changes update the live renderer without recreating its s
   expect(makeSurface).toHaveBeenCalledTimes(1)
   expect(makeRenderer).toHaveBeenCalledTimes(1)
 
+  manager.destroy()
+})
+
+test('page presentation waits for retained content and accepts the live-render fallback', () => {
+  installWindow()
+  const events: string[] = []
+  const canvas = createCanvas()
+  const editor = createEditor(events)
+  editor.state.renderVersion = 8
+  editor.state.sceneVersion = 5
+  const renderer = createRenderer('presentation', events)
+  const onPresented = mock()
+  const manager = createCanvasSurfaceManager({
+    editor,
+    canvasRef: { value: canvas },
+    options: { layer: 'scene', onPresented },
+    getCanvasKit: () => ({}) as CanvasKit,
+    isDestroyed: () => false,
+    shouldShowRulers: () => false,
+    dependencies: {
+      makeSurface: mock(() => ({ surface: createSurface(), glContext: null })),
+      makeRenderer: mock(() => renderer)
+    }
+  })
+  expect(manager.createSurface(canvas)).toBe(true)
+  renderer.sceneBackingBuild = { index: 1 } as SkiaRenderer['sceneBackingBuild']
+  renderer.sceneBackingNeedsCrispRender = true
+  expect(manager.renderNow()).toBe(true)
+  expect(onPresented).not.toHaveBeenCalled()
+
+  renderer.sceneBackingBuild = null
+  renderer.sceneBackingNeedsCrispRender = false
+  expect(manager.renderNow()).toBe(true)
+  expect(onPresented).toHaveBeenLastCalledWith({ renderVersion: 8, sceneVersion: 5 })
+
+  onPresented.mockClear()
+  renderer.sceneBackingAllocationFailed = true
+  renderer.sceneBackingNeedsCrispRender = true
+  expect(manager.renderNow()).toBe(true)
+  expect(onPresented).toHaveBeenCalledTimes(1)
   manager.destroy()
 })

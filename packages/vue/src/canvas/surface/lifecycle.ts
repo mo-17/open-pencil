@@ -243,6 +243,18 @@ export function createCanvasSurfaceManager({
     }, delay)
   }
 
+  function acknowledgePresentation(renderer: SkiaRenderer, renderState: Editor['state']): void {
+    // A retained build may have flushed only the page-color placeholder. Keep preparing the
+    // page until the complete backing is installed; the pending-build timer keeps working.
+    // A null build also allows the live-render fallback when backing allocation is unavailable.
+    if (options?.layer !== 'scene' || renderer.sceneBackingBuild === null) {
+      options?.onPresented?.({
+        renderVersion: renderState.renderVersion,
+        sceneVersion: renderState.sceneVersion
+      })
+    }
+  }
+
   function renderNow(): boolean {
     const renderState = options?.getRenderState?.() ?? editor.state
     if (renderState.loading) {
@@ -269,10 +281,7 @@ export function createCanvasSurfaceManager({
         options?.layer ?? 'full'
       )
       renderLoop.markRendered()
-      options?.onPresented?.({
-        renderVersion: renderState.renderVersion,
-        sceneVersion: renderState.sceneVersion
-      })
+      acknowledgePresentation(renderer, renderState)
       clearSceneBackingRenderTimer()
       clearSurfaceRecoveryTimer()
       surfaceRecoveryAttempts = 0

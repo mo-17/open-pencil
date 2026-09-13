@@ -84,11 +84,12 @@ export function createShapeActions(ctx: EditorContext) {
     Object.assign(overrides, initialOverrides)
     const node = ctx.graph.createNode(type, pid, overrides)
     const id = node.id
-    const snapshot = { ...node }
+    // Later child creation mutates childIds in place; history must retain the creation-time edges.
+    const snapshot = { ...node, childIds: [...node.childIds] }
     ctx.undo.push({
       label: `Create ${type.toLowerCase()}`,
       forward: () => {
-        ctx.graph.createNode(snapshot.type, pid, snapshot)
+        ctx.graph.createNode(snapshot.type, pid, { ...snapshot, childIds: [...snapshot.childIds] })
       },
       inverse: () => {
         ctx.graph.deleteNode(id)

@@ -40,19 +40,25 @@ export function createEditorStore(initialGraph?: SceneGraph) {
   const state = shallowReactive<AppEditorState>(createInitialAppEditorState(graph.getPages()[0].id))
 
   const viewportSize = { width: 0, height: 0 }
+  const panes = createCanvasPaneRegistry(state)
   const editor = createEditor({
     graph,
     state,
     loadFont,
     resolveFigmaClipboardImages: IS_TAURI ? resolveFigmaClipboardImages : undefined,
     skipInitialGraphSetup: !!initialGraph,
-    getViewportSize: () =>
-      viewportSize.width > 0 && viewportSize.height > 0
+    getViewportSize: () => {
+      const pane = panes.getActivePane()
+      if (pane.viewportWidth > 0 && pane.viewportHeight > 0) {
+        return { width: pane.viewportWidth, height: pane.viewportHeight }
+      }
+      return viewportSize.width > 0 && viewportSize.height > 0
         ? viewportSize
         : {
             width: IS_BROWSER ? window.innerWidth : 1920,
             height: IS_BROWSER ? window.innerHeight : 1080
           }
+    }
   })
   const io = new IORegistry(BUILTIN_IO_FORMATS)
   bindClipboardNotifications(editor)
@@ -113,8 +119,6 @@ export function createEditorStore(initialGraph?: SceneGraph) {
 
   // ─── Public API ───────────────────────────────────────────────
   // Spread all core Editor methods, then override getters and add app-specific.
-
-  const panes = createCanvasPaneRegistry(state)
 
   function progressUnit(phase: string): 'fonts' | 'pages' | undefined {
     if (phase === 'resolving-fonts') return 'fonts'

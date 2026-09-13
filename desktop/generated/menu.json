@@ -54,7 +54,7 @@
       },
       {
         "id": "export-selection",
-        "label": "Export",
+        "label": "Export Selection",
         "accelerator": "CmdOrCtrl+Shift+E",
         "sub": [
           {
