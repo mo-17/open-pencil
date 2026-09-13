@@ -1,4 +1,5 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/core'
+import type { ComponentPropertyDefinition } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { verifyComponentPropDefs, verifyDerivedTextData } from './raw-verifiers/helpers'
@@ -33,10 +34,14 @@ export interface VerifierContext {
   bNodes: Map<string, SceneNode>
   aGraph: SceneGraph
   bGraph: SceneGraph
+  aNodePaths: ReadonlyMap<string, string>
+  bNodePaths: ReadonlyMap<string, string>
+  aComponentPropertyDefinitions: ReadonlyMap<string, ComponentPropertyDefinition>
+  bComponentPropertyDefinitions: ReadonlyMap<string, ComponentPropertyDefinition>
   errors: Mismatch[]
   fixture: FixtureSpec
   label: string
-  /** Roundtrip generation: 0 for G0→G1 (allows semantic equivalence), 1 for G1→G2 (requires exact match). */
+  /** Generation 1 requires canonical equality; regenerated node IDs retain their structural targets. */
   generation: number
 }
 
@@ -44,7 +49,7 @@ export interface CompareOptions extends Omit<VerifierContext, 'a' | 'b' | 'key' 
   verifiers: Map<string, Verifier>
 }
 
-/** G1→G2 must be exactly equal (idempotent export). G0→G1 allows semantic equivalence. */
+/** G1→G2 must be idempotent after node-reference normalization. G0→G1 allows semantic equivalence. */
 const isIdempotent = (ctx: VerifierContext): boolean => ctx.generation === 1
 
 export type Verifier = (ctx: VerifierContext) => boolean
@@ -58,6 +63,122 @@ export function isColorObj(v: unknown): v is Record<string, number> {
     typeof c.b === 'number' &&
     typeof c.a === 'number'
   )
+}
+
+export function buildNodePathIndex(nodes: ReadonlyMap<string, SceneNode>): Map<string, string> {
+  return new Map([...nodes].map(([path, node]) => [node.id, path]))
+}
+
+export function buildComponentPropertyDefinitionIndex(
+  graph: SceneGraph
+): Map<string, ComponentPropertyDefinition> {
+  const definitions = new Map<string, ComponentPropertyDefinition>()
+  for (const node of graph.getAllNodes()) {
+    for (const definition of node.componentPropertyDefinitions) {
+      if (!definitions.has(definition.id)) definitions.set(definition.id, definition)
+    }
+  }
+  return definitions
+}
+
+function sameNodeReference(ctx: VerifierContext, a: string, b: string): boolean {
+  const aPath = ctx.aNodePaths.get(a)
+  const bPath = ctx.bNodePaths.get(b)
+  // Preserve unresolved external references, but do not hide a lost local target.
+  if (aPath === undefined && bPath === undefined) return a === b
+  return aPath !== undefined && aPath === bPath
+}
+
+function samePreferredComponentKeys(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b
+  // The importer reads instanceSwapValues[].key, not a node GUID. Component
+  // keys remain stable across exports and must not use the node-path remapping.
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+function isComponentPropertyDefinitions(value: unknown): value is ComponentPropertyDefinition[] {
+  if (!Array.isArray(value)) return false
+  return value.every(isComponentPropertyDefinition)
+}
+
+function isComponentPropertyDefinition(value: unknown): value is ComponentPropertyDefinition {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<ComponentPropertyDefinition>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    (candidate.type === 'VARIANT' ||
+      candidate.type === 'TEXT' ||
+      candidate.type === 'BOOLEAN' ||
+      candidate.type === 'INSTANCE_SWAP') &&
+    typeof candidate.defaultValue === 'string'
+  )
+}
+
+function verifyComponentPropertyDefinitions(ctx: VerifierContext): boolean {
+  if (!isComponentPropertyDefinitions(ctx.a) || !isComponentPropertyDefinitions(ctx.b)) {
+    return false
+  }
+  const aDefinitions = ctx.a
+  const bDefinitions = ctx.b
+  if (aDefinitions.length !== bDefinitions.length) return false
+
+  return aDefinitions.every((value, index) => {
+    const definition = value
+    const other = bDefinitions[index]
+    if (!other || definition.name !== other.name) {
+      return false
+    }
+    const { defaultValue, preferredValues, type: definitionType, ...rest } = definition
+    const {
+      defaultValue: otherDefaultValue,
+      preferredValues: otherPreferredValues,
+      type: otherType,
+      ...otherRest
+    } = other
+    // Preserve the existing importer normalization allowance for variant properties.
+    if (definitionType !== otherType && !(definitionType === 'VARIANT' && otherType === 'TEXT')) {
+      return false
+    }
+    if (JSON.stringify(rest) !== JSON.stringify(otherRest)) return false
+    if (!samePreferredComponentKeys(preferredValues, otherPreferredValues)) return false
+
+    if (definitionType !== 'INSTANCE_SWAP') return defaultValue === otherDefaultValue
+    return sameNodeReference(ctx, defaultValue, otherDefaultValue)
+  })
+}
+
+function isComponentPropertyAssignments(
+  value: unknown
+): value is SceneNode['componentPropertyAssignments'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  return Object.values(value).every((entry) => typeof entry === 'string')
+}
+
+function verifyComponentPropertyAssignments(ctx: VerifierContext): boolean {
+  if (!isComponentPropertyAssignments(ctx.a) || !isComponentPropertyAssignments(ctx.b)) {
+    return false
+  }
+
+  const aAssignments = ctx.a
+  const bAssignments = ctx.b
+  const propertyIds = new Set([...Object.keys(aAssignments), ...Object.keys(bAssignments)])
+  for (const propertyId of propertyIds) {
+    const a = aAssignments[propertyId]
+    const b = bAssignments[propertyId]
+    if (typeof a !== 'string' || typeof b !== 'string') return false
+    const aDefinition = ctx.aComponentPropertyDefinitions.get(propertyId)
+    const bDefinition = ctx.bComponentPropertyDefinitions.get(propertyId)
+    if (aDefinition?.type !== 'INSTANCE_SWAP' && bDefinition?.type !== 'INSTANCE_SWAP') {
+      if (a !== b) return false
+      continue
+    }
+    if (aDefinition?.type !== 'INSTANCE_SWAP' || bDefinition?.type !== 'INSTANCE_SWAP') {
+      return false
+    }
+    if (!sameNodeReference(ctx, a, b)) return false
+  }
+  return true
 }
 
 export const SCENE_VERIFIERS = new Map<string, Verifier>([
@@ -93,7 +214,9 @@ export const SCENE_VERIFIERS = new Map<string, Verifier>([
       if (!ctx.key.includes('componentPropertyDefinitions')) return false
       return ctx.a === 'VARIANT' && ctx.b === 'TEXT'
     }
-  ]
+  ],
+  ['componentPropertyDefinitions', verifyComponentPropertyDefinitions],
+  ['componentPropertyAssignments', verifyComponentPropertyAssignments]
 ])
 
 function verifyAEntries(
