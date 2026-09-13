@@ -62,6 +62,13 @@ import type {
 } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
+import {
+  LOWCODE_GRID_LAYOUT_KEY,
+  parseGridLayout,
+  serializeGridLayout,
+  type GridLayoutOverride
+} from './grid-layout-plugin-data'
+
 export const LOWCODE_STATE_KEY = 'lowcode/state'
 export const LOWCODE_BINDINGS_KEY = 'lowcode/bindings'
 export const LOWCODE_EVENTS_KEY = 'lowcode/events'
@@ -232,6 +239,7 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_DOCUMENT_STATE_KEY,
   LOWCODE_NODE_TYPE_KEY,
   LOWCODE_FREE_LAYOUT_KEY,
+  LOWCODE_GRID_LAYOUT_KEY,
   LOWCODE_SUPABASE_CONFIG_KEY,
   LOWCODE_SEO_METADATA_KEY,
   LOWCODE_ANALYTICS_CONFIG_KEY,
@@ -292,6 +300,7 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   if (node.layoutMode === 'FREE') {
     entries.push(makeEntry(LOWCODE_FREE_LAYOUT_KEY, true))
   }
+  entries.push(...serializeGridLayout(node))
   entries.push(...serializeDocumentConfigFields(node))
   // Round-trip fix: persist FILL axis sizing the vendored StackSize enum can't
   // hold. Only the FILL axes are written; if neither is FILL no entry is
@@ -998,6 +1007,7 @@ export interface ExtractedLowcodeAndPluginData {
    *  HORIZONTAL/VERTICAL/undefined in `stackMode`, so we store FREE
    *  out-of-band via the `lowcode/freeLayout` flag and restore here. */
   freeLayoutOverride?: true
+  gridLayoutOverride?: GridLayoutOverride
   /** Phase 3 §2: Supabase connection config restored from
    *  `lowcode/supabaseConfig`. Present only when the saved value passed
    *  the type guard (object with non-empty `url` and `anonKey`). */
@@ -1097,6 +1107,12 @@ export function extractLowcodeAndPluginData(
     const isOurs = entry.pluginID === OPEN_PENCIL_PLUGIN_ID && LOWCODE_PLUGIN_KEYS.has(entry.key)
     if (!isOurs) {
       pluginData.push(preservedEntry)
+      continue
+    }
+    if (entry.key === LOWCODE_GRID_LAYOUT_KEY) {
+      const layout = parseGridLayout(entry.value)
+      if (layout) result.gridLayoutOverride = layout
+      else pluginData.push(preservedEntry)
       continue
     }
     let parsed: unknown
@@ -1224,6 +1240,7 @@ export function extractImportedLowcodeProps(nc: Pick<NodeChange, 'pluginData'>):
   const {
     nodeTypeOverride,
     freeLayoutOverride,
+    gridLayoutOverride,
     primaryAxisSizingOverride,
     counterAxisSizingOverride,
     counterAxisAlignContentOverride,
@@ -1235,6 +1252,7 @@ export function extractImportedLowcodeProps(nc: Pick<NodeChange, 'pluginData'>):
     props: {
       ...props,
       ...(freeLayoutOverride ? { layoutMode: 'FREE' as const } : {}),
+      ...gridLayoutOverride,
       ...(primaryAxisSizingOverride ? { primaryAxisSizing: primaryAxisSizingOverride } : {}),
       ...(counterAxisSizingOverride ? { counterAxisSizing: counterAxisSizingOverride } : {}),
       ...(counterAxisAlignContentOverride
