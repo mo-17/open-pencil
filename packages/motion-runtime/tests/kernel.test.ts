@@ -64,6 +64,7 @@ describe('Motion runtime kernel', () => {
     expect(source).toContain(
       'const createMotionFrameLoop = embeddedMotionKernel.createMotionFrameLoop'
     )
+    expect(source).toContain('let handle: unknown = noFrame')
     expect(source).not.toContain("from '@open-pencil/motion-runtime")
     expect(source).not.toContain('document.')
     expect(source).not.toContain('window.')

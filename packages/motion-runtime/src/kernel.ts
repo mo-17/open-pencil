@@ -516,11 +516,12 @@ export function buildMotionRuntimeKernelSource(): string {
       '(track: MotionTrack, elapsedMs: number) => EmbeddedMotionTrackProgress',
       motionRuntimeTrackProgress
     ),
+    // Function.toString erases local annotations; retain the clock's opaque handle type.
     typedFunctionSource(
       frameLoopName,
       '(options: EmbeddedMotionFrameLoopOptions) => EmbeddedMotionFrameLoop',
       createMotionFrameLoop
-    ),
+    ).replace(/\blet handle = noFrame\b/u, 'let handle: unknown = noFrame'),
     `return {
   motionSamplingIdentity: ${identityName},
   sampleMotionRuntimeEasing: ${easingName},
