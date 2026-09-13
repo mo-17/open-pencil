@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { tv } from 'tailwind-variants'
 import {
+  ToolbarButton,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuPortal,
   DropdownMenuRoot,
   DropdownMenuTrigger
 } from 'reka-ui'
-
+import { tv } from 'tailwind-variants'
+import { computed } from 'vue'
+import type { Component } from 'vue'
 import IconChartColumn from '~icons/lucide/chart-column'
 import IconCode2 from '~icons/lucide/code-2'
 import IconFileAudio from '~icons/lucide/file-audio'
@@ -23,22 +24,6 @@ import IconRows3 from '~icons/lucide/rows-3'
 import IconType from '~icons/lucide/type'
 import IconUpload from '~icons/lucide/upload'
 
-import {
-  addInstalledPluginModuleToCanvas,
-  appPluginStore,
-  appPluginStoreSnapshot,
-  inspectInstalledPluginModuleCompatibility,
-  withAppPluginPublisherPrivilege
-} from '@/app/plugins'
-import {
-  localizedAppPluginContributionText,
-  localizedAppPluginText
-} from '@/app/plugins/localization'
-import { useEditorStore } from '@/app/editor/active-store'
-import { useActionToast } from '@/app/shell/toast/action'
-import Tip from '@/components/ui/Tip.vue'
-import { menu, useMenuUI } from '@/components/ui/menu'
-import toolbarTheme from '@/theme/toolbar'
 import {
   ACCORDION_MODULE_TYPE,
   AUDIO_PLAYER_MODULE_TYPE,
@@ -56,9 +41,24 @@ import {
 } from '@open-pencil/core/plugins'
 import { useI18n } from '@open-pencil/vue'
 
-import type { Component } from 'vue'
+import { useEditorStore } from '@/app/editor/active-store'
+import {
+  addInstalledPluginModuleToCanvas,
+  appPluginStore,
+  appPluginStoreSnapshot,
+  inspectInstalledPluginModuleCompatibility,
+  withAppPluginPublisherPrivilege
+} from '@/app/plugins'
 import type { InstalledPluginModule } from '@/app/plugins'
+import {
+  localizedAppPluginContributionText,
+  localizedAppPluginText
+} from '@/app/plugins/localization'
+import { useActionToast } from '@/app/shell/toast/action'
 import type { ToolbarUI } from '@/components/Toolbar/types'
+import { menu, useMenuUI } from '@/components/ui/menu/menu'
+import Tip from '@/components/ui/overlay/Tip.vue'
+import toolbarTheme from '@/theme/toolbar'
 
 const { ui, mobile = false } = defineProps<{
   ui?: ToolbarUI
@@ -158,14 +158,14 @@ async function addModule(module: InstalledPluginModule): Promise<void> {
   <Tip v-if="modules.length > 0" :label="dialogs.settingsPlugins">
     <DropdownMenuRoot>
       <DropdownMenuTrigger as-child>
-        <button
+        <ToolbarButton
           :data-test-id="`toolbar-plugin-modules${mobile ? '-mobile' : ''}`"
           :data-mobile="mobile || undefined"
           :aria-label="dialogs.settingsPlugins"
           :class="styles.button({ class: ui?.button })"
         >
           <IconPuzzle :class="styles.icon({ class: ui?.icon })" />
-        </button>
+        </ToolbarButton>
       </DropdownMenuTrigger>
 
       <DropdownMenuPortal>

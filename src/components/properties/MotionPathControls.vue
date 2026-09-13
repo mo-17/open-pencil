@@ -11,7 +11,7 @@ import {
 import { useI18n } from '@open-pencil/vue'
 
 import NumberField from '@/components/inputs/NumberField.vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
 
 const { track, keyframe, motionVersion, editorActive } = defineProps<{
   track: MotionTrack

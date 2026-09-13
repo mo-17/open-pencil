@@ -211,3 +211,12 @@ test('weekly heavy CI tests lowcode-rebaseline and allows manual group selection
   expect(workflow).toContain('command -v ffprobe')
   for (const group of unitTestGroupNames()) expect(workflow).toContain(`- ${group}\n`)
 })
+
+test('quick and explicit heavy tests partition the full repository suite', async () => {
+  const quick = await listUnitTests('all')
+  const heavy = await listHeavyUnitTests()
+  const all = await listUnitTests('all', { includeHeavy: true })
+
+  expect(quick.filter((file) => heavy.includes(file))).toEqual([])
+  expect([...quick, ...heavy].sort()).toEqual(all)
+})

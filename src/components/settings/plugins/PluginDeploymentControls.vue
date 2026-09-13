@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogDescription,
   AlertDialogTitle
 } from 'reka-ui'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
-import { useI18n } from '@open-pencil/vue'
 import type { BackendReleaseStateV1 } from '@open-pencil/lowcode/backend'
+import { useI18n } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import {
@@ -20,26 +20,26 @@ import {
 } from '@/app/lowcode/preview-pane/deploy/history'
 import { deployScopeForStore } from '@/app/lowcode/preview-pane/deploy/scope'
 import { createSupabaseDatabaseReadCredentialSettingsController } from '@/app/lowcode/supabase/database-read-credential-settings'
+import { appPluginStore } from '@/app/plugins/app'
+import { runInstalledPluginCommand } from '@/app/plugins/host'
+import { SUPABASE_BACKEND_PROVIDER_PLUGIN_ID } from '@/app/plugins/host/backend-provider'
+import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import {
   createDesktopDeploymentPluginHostAdapter,
   type DeploymentPluginParameters,
   type DeploymentPluginPlan,
   type DeploymentPluginReview
 } from '@/app/plugins/host/deployment/provider'
-import { appPluginStore } from '@/app/plugins/app'
-import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import {
   deploymentPluginSessionSnapshot,
   runDeploymentPluginSession
 } from '@/app/plugins/host/deployment/session'
-import { runInstalledPluginCommand } from '@/app/plugins/host'
-import { SUPABASE_BACKEND_PROVIDER_PLUGIN_ID } from '@/app/plugins/host/backend-provider'
 import type { InstalledAppPlugin, InstalledPluginCommand } from '@/app/plugins/types'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import type { CredentialStatus } from '@/app/settings/credentials/types'
 import { isTauri } from '@/app/tauri/env'
-import AppBadge from '@/components/ui/AppBadge.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
 
 import SupabaseDatabaseReadCredentialControls from './SupabaseDatabaseReadCredentialControls.vue'
 

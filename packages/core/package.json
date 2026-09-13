@@ -9,6 +9,7 @@
   },
   "files": [
     "dist",
+    "src",
     "assets"
   ],
   "type": "module",
@@ -17,7 +18,33 @@
   "types": "./dist/index.d.ts",
   "imports": {
     "#core-assets/*": "./assets/*",
-    "#core/*": "./src/*"
+    "#core/*": "./src/*.ts",
+    "#core/bytes": "./src/bytes/index.ts",
+    "#core/canvas": "./src/canvas/index.ts",
+    "#core/canvas/overlays": "./src/canvas/overlays/index.ts",
+    "#core/canvas/renderer/chunks": "./src/canvas/renderer/chunks/index.ts",
+    "#core/canvas/text": "./src/canvas/text/index.ts",
+    "#core/color": "./src/color/index.ts",
+    "#core/design-jsx": "./src/design-jsx/index.ts",
+    "#core/design-jsx/render.js": "./src/design-jsx/render.ts",
+    "#core/editor": "./src/editor/index.ts",
+    "#core/figma-api": "./src/figma-api/index.ts",
+    "#core/icons": "./src/icons/index.ts",
+    "#core/io/formats/jsx": "./src/io/formats/jsx/index.ts",
+    "#core/io/formats/pdf": "./src/io/formats/pdf/index.ts",
+    "#core/io/formats/raster": "./src/io/formats/raster/index.ts",
+    "#core/io/formats/svg": "./src/io/formats/svg/index.ts",
+    "#core/io/motion-export": "./src/io/motion-export/index.ts",
+    "#core/library": "./src/library/index.ts",
+    "#core/plugins": "./src/plugins/index.ts",
+    "#core/plugins/data-grid": "./src/plugins/data-grid/index.ts",
+    "#core/profiler": "./src/profiler/index.ts",
+    "#core/text/path": "./src/text/path/index.ts",
+    "#core/text/resolver": "./src/text/resolver/index.ts",
+    "#core/tools/analyze/overlaps": "./src/tools/analyze/overlaps/index.ts",
+    "#core/tools/prompts/jsx-reference.md?raw": "./src/tools/prompts/jsx-reference.md",
+    "#core/vector": "./src/vector/index.ts",
+    "#core/vector/vectorize": "./src/vector/vectorize/index.ts"
   },
   "exports": {
     "./package.json": "./package.json",

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
 import { useI18n } from '@open-pencil/vue'
 
 import { appPluginMarketplaceConfigured, appPluginMarketplaceSnapshot } from '@/app/plugins'
 import { pluginMarketplaceSnapshotView } from '@/app/plugins/settings-view-model'
-import AppBadge from '@/components/ui/AppBadge.vue'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
 
 const { dialogs } = useI18n()
 

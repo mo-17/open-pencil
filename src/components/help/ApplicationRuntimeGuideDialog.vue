@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Markdown, type NodeRenderers } from 'vue-stream-markdown'
+import { Markdown, type MarkdownComponents } from 'vue-stream-markdown'
+
 import { useI18n } from '@open-pencil/vue'
+
 import 'vue-stream-markdown/index.css'
 
-import APPLICATION_RUNTIME_GUIDE_SOURCE from '@/app/help/application-runtime-guide.md?raw'
-import APPLICATION_RUNTIME_GUIDE_ZH_CN_SOURCE from '@/app/help/application-runtime-guide.zh-cn.md?raw'
 import {
   applicationRuntimeGuideHeadings,
   applicationRuntimeGuideLanguagePreference,
@@ -15,9 +15,11 @@ import {
   setApplicationRuntimeGuideLanguagePreference,
   type ApplicationRuntimeGuideLanguagePreference
 } from '@/app/help/application-runtime-guide'
+import APPLICATION_RUNTIME_GUIDE_SOURCE from '@/app/help/application-runtime-guide.md?raw'
+import APPLICATION_RUNTIME_GUIDE_ZH_CN_SOURCE from '@/app/help/application-runtime-guide.zh-cn.md?raw'
 import ApplicationRuntimeGuideLink from '@/components/help/ApplicationRuntimeGuideLink.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
 import { AppDialogHeader, AppDialogRoot } from '@/components/ui/dialog'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 const { dialogs, menu, locale, localeLabels } = useI18n()
 const guideScroller = ref<HTMLElement | null>(null)
@@ -45,7 +47,7 @@ const guideMarkdown = computed(() =>
   prepareApplicationRuntimeGuideMarkdown(guideSource.value, guideLanguage.value)
 )
 const guideHeadings = computed(() => applicationRuntimeGuideHeadings(guideMarkdown.value))
-const guideNodeRenderers: NodeRenderers = { link: ApplicationRuntimeGuideLink }
+const guideComponents: MarkdownComponents = { a: ApplicationRuntimeGuideLink }
 const offlineDescription = () =>
   dialogs.value.applicationRuntimeGuideDescription({ version: __OPENPENCIL_APP_VERSION__ })
 
@@ -119,15 +121,15 @@ function scrollToHeading(index: number): void {
             :key="guideLanguage"
             mode="static"
             :content="guideMarkdown"
-            :node-renderers="guideNodeRenderers"
+            :components="guideComponents"
             :controls="false"
             :previewers="false"
             :enable-animate="false"
-            :cdn-options="{
-              shiki: false,
+            :extensions="{
+              code: false,
               mermaid: false,
               beautifulMermaid: false,
-              katex: false
+              math: false
             }"
             class="stream-markdown"
           />

@@ -3,12 +3,12 @@ import { computed, onMounted, ref } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
+import type { SupabaseDatabaseReadConnectionMode } from '@/app/lowcode/supabase/database-read-connection-profile'
 import type {
   SupabaseDatabaseReadCredentialSettingsControllerV1,
   SupabaseDatabaseReadCredentialSettingsSnapshotV1
 } from '@/app/lowcode/supabase/database-read-credential-settings'
-import type { SupabaseDatabaseReadConnectionMode } from '@/app/lowcode/supabase/database-read-connection-profile'
-import AppBadge from '@/components/ui/AppBadge.vue'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
 
 const { controller } = defineProps<{
   controller: SupabaseDatabaseReadCredentialSettingsControllerV1

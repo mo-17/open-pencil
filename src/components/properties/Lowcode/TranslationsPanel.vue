@@ -3,10 +3,10 @@ import { computed, ref } from 'vue'
 
 import type { LowcodeTranslations, SceneNode } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
-import Tip from '@/components/ui/Tip.vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import Tip from '@/components/ui/overlay/Tip.vue'
+import { useSectionUI } from '@/components/ui/section'
 
 // Phase 3 §9 — fill in `lowcodeTranslations` (root-level, document-wide). The
 // deploy/export panel's "Multi-language" toggle declares the target locales and

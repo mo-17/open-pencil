@@ -1,5 +1,7 @@
 import { strict as assert } from 'node:assert'
 
+import { invokeNative } from '#tests/helpers/tauri/invoke'
+
 function settingsOpen(): Promise<boolean> {
   return browser.execute(() =>
     Boolean(document.querySelector('[data-test-id="app-settings-dialog"]'))
@@ -54,14 +56,10 @@ describe('native preferences', () => {
     )
     await browser.waitUntil(
       async () =>
-        (await browser.execute(async () =>
-          window.__TAURI__.core.invoke<boolean>('native_menu_checked', { id: 'snap-objects' })
-        )) === !initial,
+        (await invokeNative<boolean>('native_menu_checked', { id: 'snap-objects' })) === !initial,
       { timeoutMsg: 'Native snapping checkmark did not update' }
     )
-    const updated = await browser.execute(async () =>
-      window.__TAURI__.core.invoke<boolean>('native_menu_checked', { id: 'snap-objects' })
-    )
+    const updated = await invokeNative<boolean>('native_menu_checked', { id: 'snap-objects' })
     assert.equal(updated, !initial)
   })
 })

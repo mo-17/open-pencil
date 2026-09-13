@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import NumberField from '@/components/inputs/NumberField.vue'
-import IconButton from '@/components/ui/IconButton.vue'
-import Tip from '@/components/ui/Tip.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 import { useMotionSceneTimelineView } from './use-motion-scene-timeline-view'
 

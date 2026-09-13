@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import NumberField from '@/components/inputs/NumberField.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
-import AppSwitch from '@/components/ui/AppSwitch.vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
+import AppSwitch from '@/components/ui/toggle/AppSwitch.vue'
 
 import {
   MOTION_SCENE_MIXED_NUMBER,

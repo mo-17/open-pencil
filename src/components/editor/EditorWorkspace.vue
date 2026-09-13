@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
-import { tv } from 'tailwind-variants'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
+import { tv } from 'tailwind-variants'
+import { computed, nextTick, ref } from 'vue'
 
 import { formatShortcut, useI18n, useViewportKind } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
-import PreviewPane from '@/app/lowcode/preview-pane/PreviewPane.vue'
 import { compilerPreviewPopoutOpen } from '@/app/lowcode/preview-pane/popout/session'
+import PreviewPane from '@/app/lowcode/preview-pane/PreviewPane.vue'
 import { appRuntimeConfig } from '@/app/runtime/config'
 import {
   editorPanelDefaultSizes,
@@ -24,8 +24,8 @@ import LayersPanel from '@/components/LayersPanel.vue'
 import MobileDrawer from '@/components/MobileDrawer.vue'
 import MobileHud from '@/components/MobileHud/MobileHud.vue'
 import PropertiesPanel from '@/components/PropertiesPanel.vue'
-import Tip from '@/components/ui/Tip.vue'
 import Toolbar from '@/components/Toolbar/Toolbar.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
 import splitterTheme from '@/theme/splitter'
 
 const showChrome = appRuntimeConfig.showChrome
@@ -113,19 +113,15 @@ function expandPreviewForAction(expand: () => void, complete: () => void): void 
             v-if="isCollapsed"
             class="flex min-w-0 flex-1 flex-col items-center border-l border-border bg-panel pt-2"
           >
-            <Tip label="Open compiler preview">
-              <button
-                type="button"
-                data-test-id="lowcode-preview-open"
-                aria-label="Open compiler preview"
-                aria-controls="lowcode-preview-pane"
-                :aria-expanded="false"
-                class="flex size-7 cursor-pointer items-center justify-center rounded text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent"
-                @click="expand"
-              >
-                <icon-lucide-panel-right-open class="size-4" />
-              </button>
-            </Tip>
+            <IconButton
+              label="Open compiler preview"
+              data-test-id="lowcode-preview-open"
+              aria-controls="lowcode-preview-pane"
+              :aria-expanded="false"
+              @click="expand"
+            >
+              <icon-lucide-panel-right-open class="size-4" />
+            </IconButton>
           </div>
           <PreviewPane
             v-if="!isCollapsed || compilerPreviewPopoutOpen"
@@ -166,17 +162,14 @@ function expandPreviewForAction(expand: () => void, complete: () => void): void 
         <span data-test-id="editor-document-name" class="text-xs text-surface">{{
           store.state.documentName
         }}</span>
-        <Tip
+        <IconButton
           :label="editor.showUI({ shortcut: formatShortcut(appMenuShortcut('toggle-ui')) ?? '' })"
+          data-test-id="editor-show-ui"
+          class="ml-1"
+          @click="store.state.showUI = true"
         >
-          <button
-            data-test-id="editor-show-ui"
-            class="ml-1 flex size-6 cursor-pointer items-center justify-center rounded text-muted transition-colors hover:bg-hover hover:text-surface"
-            @click="store.state.showUI = true"
-          >
-            <icon-lucide-sidebar class="size-3.5" />
-          </button>
-        </Tip>
+          <icon-lucide-sidebar class="size-3.5" />
+        </IconButton>
       </div>
     </div>
   </div>

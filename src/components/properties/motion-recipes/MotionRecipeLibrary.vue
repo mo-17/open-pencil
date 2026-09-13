@@ -7,8 +7,8 @@ import {
 } from '@open-pencil/scene-graph'
 
 import { isTauri } from '@/app/tauri/env'
-import AppSelect from '@/components/ui/AppSelect.vue'
-import Tip from '@/components/ui/Tip.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 import type { MotionRecipeLibraryLabels } from './types'
 import { useMotionRecipeLibrary } from './use-motion-recipe-library'

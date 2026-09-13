@@ -2,15 +2,19 @@
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { onMounted, ref } from 'vue'
 
-import { isTauri } from '@/app/tauri/env'
-import { isOnlineFontProviderAvailable } from '@/app/editor/fonts'
-import { useFontSettings } from '@/components/FontSettings/use'
-import { WEB_FONT_PROVIDER_IDS, WEB_FONT_PROVIDER_LABELS } from '@open-pencil/core/text'
-import type { WebFontProviderId } from '@open-pencil/core/text'
+import {
+  WEB_FONT_PROVIDER_IDS,
+  WEB_FONT_PROVIDER_LABELS,
+  type WebFontProviderId
+} from '@open-pencil/core/text'
 import { useI18n } from '@open-pencil/vue'
-import Tip from '@/components/ui/Tip.vue'
-import AppButton from '@/components/ui/AppButton.vue'
-import { usePopoverUI } from '@/components/ui/popover'
+
+import { isOnlineFontProviderAvailable } from '@/app/editor/fonts'
+import { isTauri } from '@/app/tauri/env'
+import { useFontSettings } from '@/components/FontSettings/use'
+import AppButton from '@/components/ui/button/AppButton.vue'
+import { usePopoverUI } from '@/components/ui/overlay/popover'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const { dialogs, fonts, common } = useI18n()
 const emit = defineEmits<{ fontImported: [] }>()

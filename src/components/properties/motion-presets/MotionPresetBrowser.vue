@@ -10,8 +10,8 @@ import type {
   MotionPresetLibraryKey
 } from '@/app/motion-presets/types'
 import MotionPresetCard from '@/components/properties/motion-presets/MotionPresetCard.vue'
-import AppInput from '@/components/ui/AppInput.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
+import AppInput from '@/components/ui/input/AppInput.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 interface MotionPresetGroup {
   id: string

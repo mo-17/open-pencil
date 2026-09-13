@@ -30,6 +30,10 @@ Bun workspace with focused packages:
 
 The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, lowcode preview, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/scene-graph`, `@open-pencil/motion`, `@open-pencil/lowcode`, `@open-pencil/plugin-contracts`, `@open-pencil/core`, `@open-pencil/compiler`, and `@open-pencil/vue` through public workspace exports.
 
+### Settings UI ownership
+
+Settings components own layout, translated copy, confirmation visibility, and emits. Reactive settings workflows live under the owning app domain's `settings/` folder (for example `src/app/ai/models/settings/profile-editor/{use,selection,connection}.ts`), not a global composables bucket. Use `use.ts` for orchestration and focused sibling modules for substantial sub-workflows. Keep persistence and external operations in domain services, and pure option projections as ordinary functions. Return operation outcomes rather than importing dialogs, routers, or toast UI into workflow composables. Keep newly entered secrets short-lived, never expose saved secrets, and guard async results against changed targets. Small presentation-only computed bindings can remain in components.
+
 ### Public engine exports
 
 `@open-pencil/scene-graph` owns graph data, geometry, and authored Motion schemas. `@open-pencil/motion` owns deterministic Motion planning and sampling. `@open-pencil/plugin-contracts` owns portable plugin data and trust validation. `@open-pencil/core` builds editor, renderer, IO, automation, and host-owned plugin behavior on top and exposes targeted subpaths.
@@ -272,6 +276,8 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 
 Use `bun run dev:portless` for browser development, especially in worktrees; Portless assigns the main checkout `https://open-pencil.localhost` and each worktree a branch-prefixed URL. The Vite-owned development MCP server is registered as the matching `mcp.open-pencil` sibling service (for example, `https://fix-ui.mcp.open-pencil.localhost`) and uses isolated runtime socket/discovery paths. Keep `bun run dev` for Playwright, Tauri, and Dev Container flows that require `http://localhost:1420` and the fixed local automation port.
 
+Browser tests use the canonical `playwright.config.ts`; do not create task-specific config copies or server runners. Managed runs must start the intended checkout, with server reuse explicitly opted into only for local development, never baseline comparisons or CI. Isolate the app URL and MCP endpoint, CORS origin, socket, and discovery path together. Playwright owns Vite; the existing Vite automation plugin owns MCP startup and cleanup; browser fixtures own interactions, not server processes. See `packages/docs/development/testing.md` for configuration and commands.
+
 ## Releases & CI
 
 ### How to release
@@ -288,6 +294,8 @@ Use `bun run dev:portless` for browser development, especially in worktrees; Por
 7. The production web app/docs deploy workflows (`app.yml`, `docs.yml`) also trigger on `v*` tags. They do **not** deploy on ordinary `master` pushes.
 8. `@open-pencil/compiler` is private and built for app/CLI consumption, but it is not currently published as a standalone npm package.
 9. For an official desktop release, verify the draft’s title and changelog-derived body, then publish it. Publishing the GitHub Release triggers `homebrew.yml`, which updates the Homebrew cask from the signed macOS updater archives.
+
+Bun source-first workspace exports require complete source files in package contents. Node exports use `dist`. Fork release preparation preserves its scope mapping and publishes only reviewed tarballs; shared package-artifact and Node/Bun consumer checks validate the resulting entrypoints.
 
 ### CI workflows
 
@@ -578,6 +586,7 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - Do not place code or tests ad hoc. Before adding or moving files, inspect the existing folder structure and nearby patterns, then put changes in the established domain-specific location. If no proper location exists, create one deliberately and update docs/conventions as needed.
 - Architecture boundaries are enforced by Steiger (`bun run check:arch`). App code must use public workspace package exports, workspace packages must not import app `src/` code, package-local aliases (`#core`, `#vue`, `#cli`, `#compiler`, `#mcp`) are only for their owning package, core must stay framework-agnostic, compiler IR must not import adapters, compiler adapters must not import scene-graph internals, app service/domain code (`src/app/**`) must not import app component/view layers, components must not import views, shared UI (`src/components/ui/**`) must not import app services/stores, property-panel internals must stay inside the property panel, canvas/editor overlay code must not import property-panel internals, Vue components must not use `<style>` blocks, code outside core editor internals must not assign `editor.state.selectedIds` or `editor.state.activeTool` directly, committed code must not import scratch/generated/vendor internals, and durable docs belong under `packages/docs/**` unless the root Markdown allowlist is deliberately updated.
 - Test placement is strict and enforced by Steiger: app E2E tests live under `tests/e2e/**` and use `*.spec.ts`; Figma automation tests live under `tests/figma/**` and use `*.spec.ts`; engine/unit tests live under `tests/engine/**` and use `*.test.ts` (with `helpers.ts`, `*.bench.ts`, and `visual-*` support scripts allowed); shared test utilities live under `tests/helpers/**`. Engine tests should live under a domain folder that mirrors the source module under test (for example `tests/engine/io/fig/**`, not `tests/engine/fig/**`). Do not commit temporary/profile specs (`*.tmp.*`, `*.profile.*`). Do not put store-only/internal-state assertions in E2E. If a test drives the UI like a user and verifies visible behavior, it can be E2E; if it creates nodes through internals and asserts graph state, it belongs in engine/unit coverage.
+- Use Valibot for first-party runtime validation. Keep Zod at upstream SDK integration boundaries that require it, such as MCP tool registration; do not maintain parallel first-party schemas in both libraries.
 
 ### File and folder naming
 
@@ -624,6 +633,13 @@ Use `scripts/` only for tiny compatibility entrypoint shims that import `../tool
 - Core code must guard browser APIs: `typeof window !== 'undefined'`, `typeof document === 'undefined'`
 - Constants in `src/constants.ts` — no magic numbers in components or composables
 
+- Use `@/` for app cross-directory imports. Never escape an alias root with `../` (for example `#tests/../vite`); fix module ownership instead. Package aliases are `#vue/*`, `#cli/*`, `#dom-css/*`, `#mcp/*`, and `#core/*`; prefer clear relative imports nearby.
+- Window API augmentations belong in the owning compilation boundary: app declarations in `src/global.d.ts`, package DOM gaps in the owning package's `global.d.ts`, and native-test declarations in `tests/helpers/tauri/native-global.d.ts`. Never put `declare global` in specs or implementation modules. Include canonical declarations through tsconfig instead of duplicating them.
+- Keep app API contracts named and owned by their implementation domain; declaration files import those types. Derive vendor API types from top-level type imports rather than hand-copying signatures. Optional runtime globals remain optional and require a runtime guard.
+- Native tests centralize invocation in a guarded test helper using vendor-derived types; do not import packages inside serialized WebView callbacks or repeat direct Tauri-global access in specs. Never expand production Window declarations just to accommodate test fixtures.
+- Prefer test-runner-owned fixtures and request/route counters over browser globals. For in-page performance instrumentation, return a scoped `JSHandle` from `evaluateHandle()`; restore patched methods/listeners and dispose the handle in `finally`. Handles do not survive navigation. Assert transient DOM state with locators before the interaction ends when possible. Do not create a catch-all test Window interface or add ad-hoc counter properties to window.
+- In Bun tests, prefer injected dependencies or scoped spies with explicit cleanup. `mock.restore()` restores spies but does not undo `mock.module()` overrides; do not assume module mocks are isolated by cleanup hooks. Read the installed runner's current lifecycle/mocking docs before introducing global or module-level instrumentation.
+
 ## Code quality
 
 Before submitting a PR, run the full quality gate and do a self-review:
@@ -657,6 +673,8 @@ Self-review checklist:
 ### Native WebView tests
 
 Native desktop interaction checks live under `tests/e2e/native/**` and run through WebdriverIO against an explicit test-only Tauri binary. Use `bun run test:native` to build and run them, or `bun run build:native-test` when only the binary is needed. The embedded WebDriver plugin is compiled only with the `native-test` Cargo feature and must never be enabled in normal development or production binaries.
+
+Native-test builds use a separate application identifier, an ephemeral WebView data store, and process-memory credentials. Never run UI smoke tests against production Keychain entries or clear user recovery data to unblock tests. Tests requiring persistence across application restarts need a dedicated test-owned persistent profile rather than the default ephemeral profile.
 
 Keep responsibilities distinct: engine tests cover state contracts, Playwright browser E2E covers application integration, and native tests answer only whether the real platform WebView and Tauri shell deliver an interaction correctly. Platform-limited checks must skip rather than claim coverage. Synthetic composition tests do not prove real IME behavior, and native clipboard behavior remains a separate acceptance gap unless the test receives trusted OS clipboard events.
 
@@ -702,36 +720,35 @@ Keep responsibilities distinct: engine tests cover state contracts, Playwright b
 
 ### Component structure
 
-- `src/components/ui/**` is the app design-system layer: reusable visual primitives, wrappers around Reka UI primitives, low-level styled controls, and UI class helpers. These files must not import app services/stores or feature panels.
-- `src/components/Shell/**` is for app shell chrome and global app services rendered as components (menu bar, toast viewport, update/status chrome). Shell components may use app shell/editor stores.
-- `src/components/properties/**`, `src/components/chat/**`, `src/components/LayerTree/**`, `src/components/Toolbar/**`, and similar folders are feature/domain component namespaces. Keep feature-specific controls there unless they are genuinely reusable UI primitives.
-- Treat existing root-level picker/input/control components as migration candidates when touched; do not expand that pattern.
-- Property-panel composition uses `PanelGrid`, `PanelFieldGroup`, `PanelItemRow`, and `PropertyItemRow`; do not reintroduce generic row wrappers such as the removed `PanelRow`. Variable-capable fields compose `BindableValue` providers, and fill UIs compose `FillRoot` / `FillSwatch` with a consumer-owned popover rather than rebuilding a combined picker wrapper.
-- Test locators follow Playwright's user-facing priority: role/name, label, and text first. Multi-part components expose scoped `data-slot` anatomy; app concepts use semantic attributes such as `data-property`, `data-command`, and `data-node-id` when accessible identity is insufficient. Reserve `data-test-id` for rare integration boundaries such as the canvas/editor host, never add `testId`/`testHook` props, and do not manufacture globally unique compound IDs inside shared components.
+- Generic UI is grouped by component family under `src/components/ui/{button,input,select,toggle,dialog,panel,binding,feedback,overlay,menu,paint}/`; do not create a folder named after a single component. Theme families mirror these under `src/theme/`; feature themes remain separate. Use explicit imports without old-path forwarding shims.
+- Colocate `ComponentName.stories.ts` with `ComponentName.vue`. Multipart composition stories may use a descriptive family name. Preserve explicit Storybook titles and exported story names during file moves; keep default playgrounds static and give interaction flows named stories. Use deterministic fixtures and colocated Vue demos for substantial markup.
+- `src/components/ui/**` is store-free app design-system code; feature controls stay in their domain.
+- SDK property primitives remain controlled/editor-agnostic. Compose property rows from `PanelGrid`, `PanelFieldGroup`, `PanelItemRow`, and `PropertyItemRow`; use `BindableValue`, `FillRoot`, and `FillSwatch` rather than rebuilding binding/picker infrastructure.
+- Prefer accessible role/name, label, then text in tests. Use scoped `data-slot` anatomy or semantic attributes (`data-property`, `data-command`, `data-node-id`) when needed; reserve `data-test-id` for integration boundaries and never add test-hook props.
+- Use Reka UI primitives and typed Tailwind Variants themes under `src/theme/**`; merge per-instance `ui` slot overrides, expose `class` for single-root components, and do not add one-off class props. Use `UI` casing in type names.
+- Bind visual state through semantic `data-*` attributes; Steiger rejects template-time `use*UI()`, visual-state utility branches, and raw SVG app icons.
+- Storybook is the internal state workshop; VitePress is canonical public SDK documentation. Reuse colocated demos, derive API tables from source/JSDoc, and keep examples valid against public exports.
+- Prefer models/events/props over imperative slot actions except for explicitly renderless action primitives. Use VueUse for DOM refs/focus.
+- App wrappers around SDK primitives use shared UI helpers rather than scattered raw classes.
+- Commands use `packages/vue/src/editor/commands/registry.ts` for shortcuts, bindings, and menu IDs. Store portable tokens (`MOD+D`) and format them at render time; labels/translations never contain shortcuts.
+- i18n uses narrow product-domain catalogs under `packages/vue/src/i18n/messages/` with matching locale files. Inspect existing domains instead of adding generic UI/component namespaces; prefer narrow `use*Messages()` composables over aggregate `useI18n()`.
+- `check:i18n` enforces structure, placeholder parity, and reviewed translation baselines. Remove stale baseline identities when fixing existing debt.
+- Canvas menu structure lives in `packages/vue/src/editor/menu-model/canvas.ts`; `CanvasMenu.vue` renders it.
+- Browser/native menus share `src/app/shell/menu/schema.ts`; handle IDs in `use.ts` or editor commands, and regenerate `desktop/generated/menu.json` with `generate:tauri-menu`.
+- Use Tailwind 4 and `tw-animate-css`; no static inline styling or component `<style>` blocks. Dynamic `:style` bindings are allowed for runtime geometry/CSS variables.
+- Use `Tip`, not native `title`; Lucide/Iconify components, not raw SVG/Unicode icons; and `e.code`, not `e.key`, for modified shortcuts.
+- Binding-aware fields detach/mutate only on the first value change; opening/focusing is non-destructive.
+- Preserve nearby interaction gotchas when refactoring: splitter handles, NumberField pointer ownership, section dragging, panel containment, and number-spinner styling.
 
-- Use reka-ui for UI components (Splitter, ContextMenu, DropdownMenu, etc.)
-- Vue UI styling APIs follow the Nuxt UI architecture: static Tailwind Variants themes live under `src/theme/**` with `slots`, `variants`, `compoundVariants`, and `defaultVariants`; components resolve the theme with `tv()` and merge per-instance `ui` overrides at each rendered slot. Single-root components expose `class` rather than a one-slot `ui` object. Do not add one-off `fooClass`, `barClass`, `emptyActionClass`, etc. props. Use `UI` casing in type names (`SelectUI`, not `SelectUi`).
-- Steiger parses Vue templates and rejects visual-state Tailwind utility branches, template-time `use*UI()` calls, and raw SVG app icons. Bind semantic state through `data-*` attributes and resolve typed theme variants in script instead of bypassing the rule.
-- Storybook is the internal component-state workshop (`bun run storybook`, `bun run build-storybook`), while VitePress is the canonical public SDK documentation. Colocate `*.stories.ts` with app UI components and use toolbar themes for light/dark states instead of adding test-only routes or showcase pages to the app.
-- Reuse colocated Vue demo components between Storybook and VitePress rather than maintaining separate examples. Style shared demos with Tailwind; the docs theme scans Vue SDK primitive demos through its dedicated Tailwind source.
-- Public component API tables are generated from Vue source and JSDoc with `vue-component-meta`; do not manually duplicate props, events, slots, or exposed APIs in Markdown. SDK examples are processed by VitePress Twoslash and must resolve against the public `@open-pencil/vue` API.
-- Do not pass imperative setters/actions through slots as `:set-*`, `:update-*`, `:request-*`, `:toggle-*`, etc. unless the component is explicitly a renderless primitive whose whole contract is slot actions. Prefer `v-model`, emitted events, normal component props, or owned default UI. For DOM refs/focus, use VueUse (`templateRef`, `unrefElement`, `useFocus`, etc.) instead of ref callback plumbing through slots.
-- App wrappers around SDK primitives should compose a single `ui` object from shared UI helpers (`useSelectUI`, `usePopoverUI`, etc.) rather than bypassing the design system with raw Tailwind strings spread across multiple props.
-- Editor commands share `packages/vue/src/editor/commands/registry.ts` as the canonical source for shortcut display tokens, keyboard bindings, and context-menu test IDs. Store portable shortcuts such as `MOD+D`, `MOD+SHIFT+H`, and `MOD+ALT+K`; format them with `formatShortcut()` at render time so macOS shows `⌘`/`⌥` and Windows/Linux show `Ctrl`/`Alt`.
-- Labels and translations must not contain shortcut text. Keep labels semantic (`Add auto layout`, `Show/Hide`) and render shortcuts from command metadata. Steiger enforces this for the domain catalogs under `packages/vue/src/i18n/messages/` and matching locale JSON files. Inspect existing product domains before adding keys, and prefer narrow `use*Messages()` composables over aggregate i18n access.
-- Canvas context-menu structure lives in `packages/vue/src/editor/menu-model/canvas.ts`. Do not hand-build command grouping in `src/components/CanvasMenu.vue`; the component should render menu entries and provide app-specific actions only when unavoidable.
-- Browser and Tauri menus share `src/app/shell/menu/schema.ts` as the canonical menu model. Do not add menu items directly in `src/components/AppMenu.vue` or `desktop/src/menu.rs`.
-- Regenerate the native menu with `bun run generate:tauri-menu` after editing the shared menu schema; `desktop/generated/menu.json` is consumed by the Tauri menu builder. Tauri also runs this generator from `desktop/tauri.conf.json` via `beforeDevCommand` and `beforeBuildCommand`.
-- Every shared menu item with an `id` must be handled by `src/app/shell/menu/use.ts`, an editor command, or explicitly marked browser/native-only in the schema.
-- Tailwind 4 for styling — no inline CSS, no component-level `<style>` blocks
-- Mac keyboards: use `e.code` not `e.key` for shortcuts with modifiers (Option transforms characters)
-- Splitter resize handles need inner div with `pointer-events-none` for sizing (zero-width handle collapses without it)
-- Number input spinner hiding is global CSS in `app.css`, not per-component
-- ScrubInput (drag-to-change number) — cursor and pointerdown on outer container, not inner spans
-- Icons: use unplugin-icons with Iconify/Lucide (`<icon-lucide-*>`) — don't use raw SVG or Unicode symbols
-- App menu (`src/components/Shell/AppMenu.vue`) — browser-only menu bar using reka-ui Menubar components; Tauri uses native menus, so menu is hidden when `IS_TAURI` is true
-- Binding-aware fields must not mutate or detach on focus. Start detach/edit-variable transactions only on the first actual value mutation; opening the variable picker is also non-destructive.
-- Preserve established UI gotchas in nearby components before refactoring: splitter handle sizing, NumberField pointer ownership, section drag targets, side-panel containment, and global number-spinner styling.
+### Animations
+
+Motion policy lives in `src/app/shell/motion/`: resolve persisted System/Off preference and OS reduction once. The root `data-motion` attribute and the app's Tailwind `motion-safe`/`motion-reduce` variants represent this effective policy, including portalled content. Store-free presets/treatments live in `src/theme/motion/`; compose them into owning themes. Use the policy-aware Motion adapters for shared or feature-specific transitions rather than repeating preference conditionals in components. Keep what moves, geometry, and genuinely feature-specific spring values local.
+
+- Use Tailwind transitions and `tw-animate-css` for simple visual state changes and enter/exit animations. Use the existing `motion-v` dependency for gesture-driven motion, coordinated layout changes, and springs; do not add another animation library.
+- Use Reka state attributes and measured CSS variables for collapsibles. The utilities are `animate-collapsible-down` and `animate-collapsible-up`; keep padding and borders inside the animated height wrapper so they do not snap during collapse.
+- Respect `prefers-reduced-motion` in both CSS and Motion. Disable or simplify nonessential motion while preserving state changes and interaction feedback.
+- Keep reusable animation styling in the owning theme and share repeated duration/easing values rather than scattering timing constants across components.
+- Verify opening and closing, interrupted transitions, reduced motion, and scroll behavior. Expanding historical chat content must not force the transcript to the bottom.
 
 ## File format
 

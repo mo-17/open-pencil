@@ -12,7 +12,24 @@ test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage()
-  await page.goto('/')
+  if (!USE_REAL_LLM) {
+    // The custom-model action must remain reachable beyond the picker's 100-result limit.
+    await page.route('https://models.dev/api.json', (route) =>
+      route.fulfill({
+        json: {
+          openrouter: {
+            models: Object.fromEntries(
+              Array.from({ length: 125 }, (_, index) => [
+                `test/catalog-${index}`,
+                { name: `Catalog model ${index}`, tool_call: true, attachment: true }
+              ])
+            )
+          }
+        }
+      })
+    )
+  }
+  await page.goto('/?test', { waitUntil: 'domcontentloaded' })
   await page.evaluate(async () => {
     const themeModulePath = '/src/app/shell/theme.ts'
     const themeModule = await import(themeModulePath)
@@ -179,13 +196,11 @@ test('saving API key in unified settings shows chat interface', async () => {
   const key = USE_REAL_LLM ? OPENROUTER_KEY : 'sk-or-test-key-12345'
   await page.getByTestId('provider-setup-open-settings').click()
   await expect(page.getByTestId('app-settings-dialog')).toBeVisible()
-  await expect(page.getByTestId('settings-remember-credentials')).toHaveAttribute(
-    'data-state',
-    'checked'
-  )
-  await expect(page.getByTestId('settings-credential-backend')).toContainText(
-    'encrypted app storage'
-  )
+  await page.getByTestId('settings-section-general').click()
+  await expect(
+    page.getByRole('switch', { name: 'Remember API keys on this device' })
+  ).toHaveAttribute('aria-checked', 'true')
+  await page.getByTestId('settings-section-ai').click()
   await page.locator('[data-model-id]').first().click()
   await page.getByTestId('settings-model-provider').click()
   await page.getByRole('option', { name: 'OpenRouter' }).click()
@@ -229,7 +244,9 @@ test('attaches the current canvas selection as a visual reference', async () => 
 
   await expect(page.getByTestId('chat-draft-attachments')).toBeHidden()
   await expect(
-    page.getByText('Recreate this visual reference as an editable design.', { exact: true })
+    page
+      .getByTestId('chat-message-user')
+      .getByText('Recreate this visual reference as an editable design.', { exact: true })
   ).toBeVisible()
   const messageAttachments = page.getByTestId('chat-message-attachments').last()
   await expect(messageAttachments).toBeVisible()
@@ -318,7 +335,9 @@ test('Enter submits message and clears input', async () => {
   await chatInput().fill('Hello there')
   await chatInput().press('Enter')
 
-  await expect(page.getByText('Hello there', { exact: true })).toBeVisible({ timeout: 5000 })
+  await expect(
+    page.getByTestId('chat-message-user').getByText('Hello there', { exact: true })
+  ).toBeVisible({ timeout: 5000 })
   await expect(chatInput()).toHaveValue('')
 })
 
@@ -371,14 +390,14 @@ test('model selector is visible and clickable', async () => {
   await expect(trigger).toBeVisible()
   await trigger.click()
 
-  await expect(page.getByRole('option', { name: /Claude Sonnet 4\.6/ })).toBeVisible()
+  await expect(page.getByRole('option', { name: /Claude Sonnet 5/ })).toBeVisible()
   await expect(page.getByText('Best for design')).toBeVisible()
   await expect(
     page.locator('[role="option"]:visible').filter({ hasText: 'Free' }).first()
   ).toBeVisible()
 
-  await page.getByRole('option', { name: /Claude Sonnet 4\.6/ }).click()
-  await expect(page.getByRole('option', { name: /Claude Sonnet 4\.6/ })).toBeHidden()
+  await page.getByRole('option', { name: /Claude Sonnet 5/ }).click()
+  await expect(page.getByRole('option', { name: /Claude Sonnet 5/ })).toBeHidden()
 })
 
 test('successful ACP tool envelopes render as done', async () => {
@@ -398,7 +417,7 @@ test('successful ACP tool envelopes render as done', async () => {
 })
 
 test('switching tabs preserves chat', async () => {
-  const selectedModel = page.getByRole('option', { name: /Claude Sonnet 4\.6/ })
+  const selectedModel = page.getByRole('option', { name: /Claude Sonnet 5/ })
   if (await selectedModel.isVisible().catch(() => false)) {
     await selectedModel.click()
   }
@@ -406,7 +425,9 @@ test('switching tabs preserves chat', async () => {
   await expect(designTab()).toHaveAttribute('data-state', 'active')
 
   await chatTab().click()
-  await expect(page.getByText('Hello there', { exact: true })).toBeVisible({ timeout: 10000 })
+  await expect(
+    page.getByTestId('chat-message-user').getByText('Hello there', { exact: true })
+  ).toBeVisible({ timeout: 10000 })
 })
 
 test('OpenRouter accepts a custom model ID from provider settings', async () => {
@@ -415,7 +436,7 @@ test('OpenRouter accepts a custom model ID from provider settings', async () => 
   await page.keyboard.press('Escape')
   await page.getByTestId('provider-settings-trigger').click()
   await page.locator('[data-model-id]').first().click()
-  await page.getByLabel('Model ID').click()
+  await page.getByTestId('settings-model-editor').getByRole('button', { name: 'Model ID' }).click()
   await page.getByRole('option', { name: 'Custom model…' }).click()
   const customModelInput = page.getByTestId('provider-settings-custom-model')
   await expect(customModelInput).toBeVisible()
@@ -430,8 +451,8 @@ test('OpenRouter accepts a custom model ID from provider settings', async () => 
   await page.locator('[data-model-id]').first().click()
   const savedCustomModelInput = page.getByTestId('provider-settings-custom-model')
   await savedCustomModelInput.fill('')
-  await page.getByRole('combobox', { name: 'Model ID' }).click()
-  await page.getByRole('option', { name: /Claude Sonnet 4\.6/ }).click()
+  await page.getByTestId('settings-model-editor').getByRole('button', { name: 'Model ID' }).click()
+  await page.getByRole('option', { name: /Claude Sonnet 5/ }).click()
   await page.getByRole('button', { name: 'Save model' }).click()
   await page.getByTestId('app-settings-done').click()
 
@@ -453,13 +474,6 @@ test('"Get API key" link opens external URL via window.open', async () => {
   await page.getByTestId('provider-settings-trigger').click()
   await page.locator('[data-model-id]').first().click()
   await page.getByTestId('provider-settings-clear-key').click()
-  await page.getByRole('button', { name: 'Back' }).click()
-  await page.getByTestId('app-settings-done').click()
-  await expect(page.getByTestId('provider-setup-open-settings')).toBeVisible()
-  await page.getByTestId('provider-setup-open-settings').click()
-  await page.locator('[data-model-id]').first().click()
-  await page.getByTestId('settings-model-provider').click()
-  await page.getByRole('option', { name: 'OpenRouter' }).click()
 
   const link = page.getByRole('button', { name: 'Get API key →' })
   await expect(link).toBeVisible()

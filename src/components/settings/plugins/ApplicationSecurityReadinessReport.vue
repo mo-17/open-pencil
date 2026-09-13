@@ -11,7 +11,7 @@ import {
   type ApplicationSecurityReadinessResult,
   type ApplicationSecurityReadinessSummary
 } from '@/app/plugins/host/application-security-readiness'
-import AppBadge from '@/components/ui/AppBadge.vue'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
 
 const { data } = defineProps<{ data?: JSONValue }>()
 const { locale } = useI18n()

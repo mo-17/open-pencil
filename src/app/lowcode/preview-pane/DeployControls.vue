@@ -10,7 +10,7 @@ import {
   useEditorStore
 } from '@/app/editor/active-store'
 import { openExternalLink } from '@/app/shell/ui'
-import Tip from '@/components/ui/Tip.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const { iconOnly = false, showIcon = false } = defineProps<{
   iconOnly?: boolean

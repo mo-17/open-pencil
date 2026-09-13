@@ -9,7 +9,7 @@ import {
 } from '@/app/ai/acp/config-options'
 import { useAIChat } from '@/app/ai/chat/use'
 import { toast } from '@/app/shell/ui'
-import AppGroupedSelect from '@/components/ui/AppGroupedSelect.vue'
+import AppGroupedSelect from '@/components/ui/select/AppGroupedSelect.vue'
 
 const { category, disabled = false } = defineProps<{
   category: ACPConfigCategory

@@ -1,51 +1,41 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdir } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-interface RootPackageJSON {
-  workspaces?: string[]
-}
+import {
+  discoverPublicPackages,
+  readPackageManifest,
+  type WorkspacePackage
+} from '@open-pencil/package-artifacts'
 
-interface PackageJSON {
-  private?: boolean
-}
-
-export const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
+export const repositoryRoot = resolve(fileURLToPath(new URL('../../..', import.meta.url)))
 const configuredPackageRoot = process.env.OPENPENCIL_PACKAGE_ROOT?.trim()
 export const usingPreparedPublishDirectories = Boolean(configuredPackageRoot)
+export const packageRoot = configuredPackageRoot
+  ? resolve(repositoryRoot, configuredPackageRoot)
+  : repositoryRoot
 
-function resolvePackageRoot(configuredRoot: string | undefined): string {
-  if (!configuredRoot) return repositoryRoot
-  return isAbsolute(configuredRoot) ? configuredRoot : resolve(repositoryRoot, configuredRoot)
+export async function publicPackages(root: string): Promise<WorkspacePackage[]> {
+  if (!usingPreparedPublishDirectories || resolve(root) !== resolve(repositoryRoot)) {
+    return discoverPublicPackages(root)
+  }
+  const packages: WorkspacePackage[] = []
+  for (const entry of await readdir(packageRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const directory = join(packageRoot, entry.name)
+    const manifest = await readPackageManifest(join(directory, 'package.json'))
+    if (manifest.private === true) {
+      throw new Error(`Prepared publish directory must not be private: ${entry.name}`)
+    }
+    packages.push({ directory, manifest })
+  }
+  return packages.sort((left, right) => left.directory.localeCompare(right.directory))
 }
 
-export const packageRoot = resolvePackageRoot(configuredPackageRoot)
-
-function readJSON(path: string): unknown {
-  return JSON.parse(readFileSync(path, 'utf8')) as unknown
+export async function publicPackageDirs(root: string): Promise<string[]> {
+  return (await publicPackages(root)).map(({ directory }) => directory)
 }
-
-const rootPackage = readJSON(join(repositoryRoot, 'package.json')) as RootPackageJSON
-
-export const publicPackageDirs = usingPreparedPublishDirectories
-  ? readdirSync(packageRoot, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .map((packageDir) => {
-        const packageJSON = readJSON(join(packageRoot, packageDir, 'package.json')) as PackageJSON
-        if (packageJSON.private === true) {
-          throw new Error(`Prepared publish directory must not be private: ${packageDir}`)
-        }
-        return packageDir
-      })
-      .sort()
-  : (rootPackage.workspaces ?? []).filter((workspaceDir) => {
-      const workspacePackage = readJSON(
-        join(repositoryRoot, workspaceDir, 'package.json')
-      ) as PackageJSON
-      return workspacePackage.private !== true
-    })
 
 export function publicPackagePath(packageDir: string): string {
-  return join(packageRoot, packageDir)
+  return isAbsolute(packageDir) ? packageDir : join(packageRoot, packageDir)
 }

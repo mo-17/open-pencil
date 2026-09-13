@@ -10,6 +10,8 @@
   installation, imports, peer dependencies, and compatibility subpaths. The external Yoga fork
   remains `npm:@open-pencil/yoga-layout` and is not remapped.
 
+- Update custom Vue SDK binding providers to implement `getBindingId()` and handle `unresolved`. Replace `setValue()` with `prepareEdit()`, returning a stable edit key, captured value, setter, and restoration callback.
+
 ### Added
 
 - Browse Backend providers and built-in Personal notes or Single-item checkout templates in a searchable library, choose local Keycloak or custom public OIDC settings, and create each application in one undo step while protecting existing backends, login flows and unsaved drafts. Provider selection remains a draft change requiring an explicit save; plugin management uses the existing settings.
@@ -25,7 +27,9 @@
 - Simplify NestJS preview setup with a status-led side panel, separate SQL review, and reusable Keycloak and OIDC configuration presets.
 - Choose React or Vue for Desktop Backend review, staging Apply, capability verification, and migration export, with a fresh review required after switching frameworks.
 - Edit nested Backend Workflow branches and declare server environment reference names, with reference-preserving renames and deletion guards.
+- Save AI conversations and attachment previews locally, switch between chats, rename or delete them, and browse saved transcripts across documents. Choose whether reasoning stays collapsed, expands while thinking, or stays expanded, with animated disclosure controls that respect reduced motion.
 - Add a searchable command palette for editor and application actions.
+- Search current AI provider catalogs from model pickers, with curated recommendations, recent compatible models, and offline fallbacks.
 - Render triangle and line arrow stroke caps on lines and open vector paths, and choose them from the stroke cap picker.
 - Expose component properties and instance-swap targets through the Figma API and automation.
 - Normalize imported stroke dash patterns for more reliable `.fig` compatibility.
@@ -94,10 +98,23 @@
 - Run React lowcode previews in ordinary browsers through a bounded SceneGraph Worker, a
   browser-safe bundler, and a script-only sandbox while preserving the desktop sidecar path.
 
+- Add reusable remote MCP connections for ACP agents, with Streamable HTTP endpoints and credential-backed bearer tokens.
+- Author and manage multidimensional component variants and published component libraries, including revision previews, linked-instance updates, stable library identities, offline catalogs, storage-backed catalogs, and read-only library definitions. (#239)
+- Recover unsaved and pathless documents locally, with settings to disable recovery and remove retained snapshots. (#487, #574)
+- Inspect selected designs with a configured Vision model and attach images to AI chat with bounded analysis and previews. (#232, #471)
+- Pin selected layers as explicit AI chat context, show collapsible reasoning, copy individual responses, and grow the composer with multiline prompts. (#13)
+- Render streaming AI responses with the upstream Comark-based Markdown pipeline and optional Shiki code highlighting without the former project fork.
+
 ### Changed
 
 - Improve the single-SKU shop template with title search, ascending prices, sold-out indicators, stock-aware quantity checks, price estimates, checkout and cancellation confirmations, and recent orders showing saved product titles, creation times and localized status. Existing documents require a new template or an explicit migration; the server still confirms stock and final prices.
 - Extend the shop's manager page with searchable, paginated products, validated creation, title and price editing, availability controls, and a separate stock-addition command with saved-request recovery. Product edits preserve inventory; deletion and absolute stock replacement remain unavailable, and existing templates require explicit migration.
+- Choose whether interface animations follow the system motion preference or stay off, with live updates and a persistent override.
+- Put unbound fill and stroke style pickers in section headers, preserve applied and missing style rows, and remove the redundant Dimensions heading for text layers.
+- Open variable pickers below their trigger when space permits, flipping above near the viewport edge.
+- Keep AI chat preferences with the model overview and edit models in a fixed-size Settings pane with explicit Save and Cancel actions.
+- Match page-list density to the layer tree and add subtle, reduced-motion-aware dialog transitions.
+- Fade in streaming Markdown list items and code lines without animating completed responses.
 - Vertically center shaped section titles and allow renaming a section by double-clicking its canvas label.
 - Load supported online fonts before revealing imported pages, preserve substituted text during editing, and shape canvas labels with bundled Inter typography.
 - Upgrade CanvasKit to 0.41 and migrate renderer geometry to immutable paths built through `PathBuilder`.
@@ -108,6 +125,10 @@
 
 ### Fixed
 
+- Mount the editor before awaiting cloud-document presentation, and preserve the previous tab when opening is cancelled or fails without interrupting later tab selections.
+- Protect cloud documents from deletion while their editor tabs are still downloading, including after navigation back to the file list.
+- Preserve instance override maps across binary Yjs synchronization, including descendant and explicitly cleared overrides.
+- Update MapLibre GL JS to 6.4.1 in the editor, CLI, and generated projects to address its attribution sanitizer vulnerability.
 - Carry the Desktop-reviewed Backend Provider request into CLI compilation and recheck it before static upload; reject unresolved document declarations instead of silently compiling legacy Supabase configuration.
 - Remove temporary CLI deploy files after controlled compilation, public runtime override validation, or provider upload failures.
 - Block CLI static deployment when the effective runtime configuration fails preflight, while honoring valid public build overrides.
@@ -122,10 +143,26 @@
 - Preserve document Backend Provider declarations across preview Host and Browser Worker compilation, and invalidate stale previews when the provider or declaration changes.
 - Report unsupported Supabase browser networking without mistaking generated client key-validation code for embedded secrets.
 - Preserve sub-millisecond evidence ordering when validating Backend production gates and release receipts.
+
+- Preserve edited instance text, including cleared labels, when saving and reopening `.fig` files.
+- Honor `.pen` frame layout defaults and sizing and padding shorthands so imported auto-layout frames keep their computed dimensions and child positions. (#564)
+
+- Route browser Command/Ctrl plus and minus shortcuts to canvas zoom instead of page zoom.
+- Resolve `$name` references in imported `.pen` fills, stroke fills, font families, dimensions, and spacing without requiring a `--` prefix. (#563)
+- Resolve bound fields in each layer’s mode, keep variable edits scoped and undoable, and make broken bindings visible and recoverable.
+- Display letter spacing in pixels and support explicit automatic line height.
+- Prevent the stock photo tool from replacing text, lines, structural layers, or containers with content while supporting closed shape geometry.
+- Preserve explicit text alignment metadata on imported Figma vectors across save and reload.
+
+- Preserve explicit normal blend modes on imported Figma text and vector nodes across save and reload.
+
+- Preserve implicit fixed-size text inside imported Figma auto-layout frames across save and reload.
+- Stop showing a misleading desktop-only warning when web font loading or catalog lookup fails.
 - Preserve source text offsets when resolving fallback languages after text-case transformations.
 - Track character coverage restored from downloaded font cache entries.
 - Preserve imported Figma divider-line geometry during auto-layout recomputation, preventing half-pixel shifts on save and reload.
-- Make published package export conditions resolve to files included in npm tarballs.
+
+- Resolve package imports under Node and Bun from ordinary tarballs while preserving Bun source-first workspace execution. (#663)
 - Use the user's home directory as the default MCP file root on Windows, avoiding the caller's unreliable working directory.
 - Open legacy raw `.fig` files that store the Kiwi document and thumbnail without a ZIP wrapper. (#582)
 - Preserve a frame's auto-layout HUG sizing mode when converting it into a component with `create_component`.

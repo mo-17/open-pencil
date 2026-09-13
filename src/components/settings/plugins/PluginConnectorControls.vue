@@ -23,7 +23,7 @@ import {
 import type { InstalledAppPlugin } from '@/app/plugins/types'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import type { CredentialStatus } from '@/app/settings/credentials/types'
-import AppBadge from '@/components/ui/AppBadge.vue'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
 
 import PluginConnectorOperationRunner from './PluginConnectorOperationRunner.vue'
 

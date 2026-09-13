@@ -3,7 +3,7 @@ import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui
 import { computed, ref, watch } from 'vue'
 
 import { readLocalStorageText, writeLocalStorageText } from '@/app/cache'
-import Tip from '@/components/ui/Tip.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const {
   id,

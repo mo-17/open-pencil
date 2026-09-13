@@ -134,7 +134,11 @@ describe('text measurement', () => {
     async () => {
       const graph = await loadFixtureGraph('gold-preview.fig')
       // The app store also waits for a canvas presentation ACK; this test has no canvas.
-      const editor = createEditor({ graph, loadFont: async () => null })
+      const editor = createEditor({
+        graph,
+        loadFont: async () => null,
+        skipInitialGraphSetup: true
+      })
       try {
         const title = [...editor.graph.getAllNodes()].find(
           (node) => node.type === 'TEXT' && node.text === "World's largest"

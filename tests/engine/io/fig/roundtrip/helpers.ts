@@ -400,6 +400,7 @@ export const RAW_VERIFIERS = new Map<string, Verifier>([
       return true
     }
   ],
+  ['textAlignHorizontal', defaultEqual('LEFT')],
   ['borderRightWeight', defaultEqual(0)],
   ['borderLeftWeight', defaultEqual(0)],
   ['borderTopWeight', defaultEqual(0)],

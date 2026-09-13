@@ -8,8 +8,8 @@ import type {
   DesignPanelContext,
   DesignPanelWorkspace
 } from '@/app/settings/design-panel-workspace'
-import AppSwitch from '@/components/ui/AppSwitch.vue'
-import { usePopoverUI } from '@/components/ui/popover'
+import { usePopoverUI } from '@/components/ui/overlay/popover'
+import AppSwitch from '@/components/ui/toggle/AppSwitch.vue'
 
 export interface InspectorWorkspaceSection {
   id: string

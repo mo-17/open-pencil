@@ -3,7 +3,7 @@ import type { RuleDefinition } from '#lint/support/types.ts'
 import { sourceLineCount } from '#lint/support/vue.ts'
 
 const PROPERTY_SECTION_LINE_ALLOWLIST = new Set([
-  '/src/components/properties/LayoutSection/SizeControls.vue',
+  '/src/components/properties/layout/size/SizeControls.vue',
   // Legacy Supabase integration surface. Its schema/review/staging/source-migration views are
   // already split into focused components and composables; this file only coordinates their
   // shared credential, authority, and stale-review lifecycle.

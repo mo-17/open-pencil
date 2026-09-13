@@ -48,12 +48,14 @@ export interface PluginMarketplaceSourceInput {
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'reka-ui'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+
 import { useI18n } from '@open-pencil/vue'
 
-import AppBadge from '@/components/ui/AppBadge.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
+
 import PluginMarketplaceSourceReviewDialog from './PluginMarketplaceSourceReviewDialog.vue'
 
 const { state, review, busy, error, successMessage, installedPublisherCount } = defineProps<{

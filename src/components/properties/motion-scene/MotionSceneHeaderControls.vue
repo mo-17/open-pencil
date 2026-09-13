@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import AppSelect from '@/components/ui/AppSelect.vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 import { useMotionSceneTimelineView } from './use-motion-scene-timeline-view'
 

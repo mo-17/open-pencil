@@ -4,19 +4,19 @@ import { computed, onScopeDispose, ref, toRef, watch } from 'vue'
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
-import { useSupabaseSchemaInspector } from '@/app/lowcode/supabase/schema-inspector'
+import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
 import { useSupabaseBackendProviderReview } from '@/app/lowcode/supabase/backend/provider-review'
 import { useSupabaseBackendProviderStagingRelease } from '@/app/lowcode/supabase/backend/provider-staging-release'
 import type {
   SupabaseSchemaRelation,
   SupabaseSchemaTable
 } from '@/app/lowcode/supabase/schema-catalog'
-import { useSupabaseStagingReleaseAuthority } from '@/app/lowcode/supabase/staging-release-authority'
+import { useSupabaseSchemaInspector } from '@/app/lowcode/supabase/schema-inspector'
 import { useSupabaseStagedMigrationPlan } from '@/app/lowcode/supabase/staged-migration-plan'
-import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
-import { isTauri } from '@/app/tauri/env'
+import { useSupabaseStagingReleaseAuthority } from '@/app/lowcode/supabase/staging-release-authority'
 import type { DesktopSupabaseBackendTarget } from '@/app/plugins/host/deployment/desktop/supabase/backend/target'
-import AppSelect from '@/components/ui/AppSelect.vue'
+import { isTauri } from '@/app/tauri/env'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 import SupabaseBackendStagingVerification from './SupabaseBackendStagingVerification.vue'
 import SupabaseSourceMigrationExport from './SupabaseSourceMigrationExport.vue'
@@ -906,8 +906,7 @@ onScopeDispose(() => {
           <pre
             data-test-id="lowcode-supabase-backend-review-sql"
             class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-panel p-1.5 font-mono text-[9px] text-surface"
-            >{{ backendReview.result.value.artifact.inspectedReview.sql }}</pre
-          >
+            >{{ backendReview.result.value.artifact.inspectedReview.sql }}</pre>
         </details>
         <SupabaseSourceMigrationExport
           :config="config"

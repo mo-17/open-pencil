@@ -1,161 +1,69 @@
-import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
-  publicPackageDirs,
-  publicPackagePath,
-  repositoryRoot,
-  usingPreparedPublishDirectories
-} from '../packages'
+  readPackageManifest,
+  validateManifest,
+  type PackageDiagnostic
+} from '@open-pencil/package-artifacts'
 
-interface PackageJSON {
-  name: string
-  version: string
-  main?: string
-  types?: string
-  files?: string[]
-  bin?: Record<string, string> | string
-  exports?: unknown
-  imports?: unknown
-  private?: boolean
-  scripts?: unknown
-  devDependencies?: Record<string, string>
-  publishConfig?: Record<string, unknown>
-}
+import { publicPackages, repositoryRoot, usingPreparedPublishDirectories } from '../packages'
 
-const errors: string[] = []
-
-function isDeclarationPath(value: string): boolean {
-  return /\.d\.[cm]?ts$/.test(value)
-}
-
-function readPackageJSON(packageDir: string): PackageJSON {
-  return JSON.parse(readFileSync(join(publicPackagePath(packageDir), 'package.json'), 'utf8'))
-}
-
-const rootPackage = JSON.parse(
-  readFileSync(join(repositoryRoot, 'package.json'), 'utf8')
-) as PackageJSON
-const expectedVersion = rootPackage.version
-
-function checkRuntimePath(packageName: string, field: string, value: string): void {
-  if (value.endsWith('.ts') && !value.endsWith('.d.ts')) {
-    errors.push(`${packageName}: ${field} must not point to runtime TypeScript (${value})`)
-  }
-  if (value.startsWith('./src/')) {
-    errors.push(`${packageName}: ${field} must not point to source files (${value})`)
-  }
-}
-
-function checkIncludedRuntimePath(
-  packageName: string,
-  field: string,
-  value: string,
-  files: string[]
-): void {
-  checkRuntimePath(packageName, field, value)
-  const normalized = value.replace(/^\.\//, '')
-  if (normalized === 'package.json') return
-  const topLevelDir = normalized.split('/')[0]
-  if (topLevelDir && !files.includes(topLevelDir)) {
-    errors.push(
-      `${packageName}: ${field} points to ${value}, but files does not include ${topLevelDir}`
-    )
-  }
-}
-
-function checkIncludedTypePath(
-  packageName: string,
-  field: string,
-  value: string,
-  files: string[]
-): void {
-  if (!isDeclarationPath(value)) {
-    errors.push(`${packageName}: ${field} must point to a declaration file (${value})`)
-  }
-  if (value.startsWith('./src/')) {
-    errors.push(`${packageName}: ${field} must not point to source files (${value})`)
-  }
-  const normalized = value.replace(/^\.\//, '')
-  const topLevelDir = normalized.split('/')[0]
-  if (topLevelDir && !files.includes(topLevelDir)) {
-    errors.push(
-      `${packageName}: ${field} points to ${value}, but files does not include ${topLevelDir}`
-    )
-  }
-}
-
-function walkExports(
-  packageName: string,
-  value: unknown,
-  files: string[],
-  path: string[] = []
-): void {
-  if (typeof value === 'string') {
-    const key = path.at(-1)
-    if (key === 'bun' && !usingPreparedPublishDirectories) return
-    if (key === 'types') {
-      checkIncludedTypePath(packageName, `exports.${path.join('.')}`, value, files)
-    } else {
-      checkIncludedRuntimePath(packageName, `exports.${path.join('.')}`, value, files)
-    }
-    return
-  }
-  if (!value || typeof value !== 'object') return
-  for (const [key, child] of Object.entries(value)) {
-    walkExports(packageName, child, files, [...path, key])
-  }
-}
-
-for (const packageDir of publicPackageDirs) {
-  const pkg = readPackageJSON(packageDir)
-
-  if (pkg.version !== expectedVersion) {
-    errors.push(`${pkg.name}: version ${pkg.version} must match root version ${expectedVersion}`)
+export async function validatePackageMetadata(root: string): Promise<PackageDiagnostic[]> {
+  const packages = await publicPackages(root)
+  if (packages.length === 0) {
+    return [
+      { field: 'workspaces', message: 'no public packages discovered', packageName: '<root>' }
+    ]
   }
 
-  if (!pkg.files?.includes('dist')) {
-    errors.push(`${pkg.name}: files must include dist`)
-  }
-
-  if (pkg.main) checkRuntimePath(pkg.name, 'main', pkg.main)
-  if (pkg.types) checkIncludedTypePath(pkg.name, 'types', pkg.types, pkg.files ?? [])
-
-  if (typeof pkg.bin === 'string') {
-    checkIncludedRuntimePath(pkg.name, 'bin', pkg.bin, pkg.files ?? [])
-  } else if (pkg.bin) {
-    for (const [name, target] of Object.entries(pkg.bin)) {
-      checkIncludedRuntimePath(pkg.name, `bin.${name}`, target, pkg.files ?? [])
+  const { version: expectedVersion } = await readPackageManifest(join(root, 'package.json'))
+  const diagnostics = packages.flatMap(({ manifest }) => validateManifest(manifest))
+  for (const { manifest } of packages) {
+    if (manifest.version !== expectedVersion) {
+      diagnostics.push({
+        packageName: manifest.name,
+        field: 'version',
+        message: `${manifest.version} must match ${expectedVersion}`
+      })
     }
   }
-
-  walkExports(pkg.name, pkg.exports, pkg.files ?? [])
-
-  if (usingPreparedPublishDirectories) {
-    if (pkg.imports !== undefined)
-      errors.push(`${pkg.name}: published imports aliases must be removed`)
-    if (pkg.private !== undefined)
-      errors.push(`${pkg.name}: published private field must be removed`)
-    if (pkg.publishConfig !== undefined) {
-      errors.push(`${pkg.name}: published publishConfig must be removed`)
-    }
-    if (pkg.scripts !== undefined) errors.push(`${pkg.name}: published scripts must be removed`)
-    if (pkg.devDependencies !== undefined) {
-      errors.push(`${pkg.name}: published devDependencies must be removed`)
+  if (usingPreparedPublishDirectories && root === repositoryRoot) {
+    for (const { manifest } of packages) {
+      for (const field of ['imports', 'private', 'publishConfig', 'scripts', 'devDependencies']) {
+        if (manifest[field] !== undefined) {
+          diagnostics.push({
+            packageName: manifest.name,
+            field,
+            message: 'must be removed from prepared output'
+          })
+        }
+      }
     }
   }
+  return diagnostics
+}
 
-  if (
-    pkg.publishConfig &&
-    ('exports' in pkg.publishConfig || 'main' in pkg.publishConfig || 'types' in pkg.publishConfig)
-  ) {
-    errors.push(`${pkg.name}: publishConfig must not rewrite runtime entrypoints`)
+export function formatPackageDiagnostics(diagnostics: PackageDiagnostic[]): string {
+  if (usingPreparedPublishDirectories && root === repositoryRoot) {
+    for (const { manifest } of packages) {
+      for (const field of ['imports', 'private', 'publishConfig', 'scripts', 'devDependencies']) {
+        if (manifest[field] !== undefined) {
+          diagnostics.push({
+            packageName: manifest.name,
+            field,
+            message: 'must be removed from prepared output'
+          })
+        }
+      }
+    }
   }
+  return diagnostics
+    .map(({ packageName, field, message }) => `${packageName}: ${field} ${message}`)
+    .join('\n')
 }
 
-if (errors.length > 0) {
-  console.error(errors.join('\n'))
-  process.exit(1)
+if (import.meta.main) {
+  const diagnostics = await validatePackageMetadata(repositoryRoot)
+  if (diagnostics.length > 0) throw new Error(formatPackageDiagnostics(diagnostics))
+  console.log('Package metadata checks passed.')
 }
-
-console.log('Package metadata is publish-safe.')

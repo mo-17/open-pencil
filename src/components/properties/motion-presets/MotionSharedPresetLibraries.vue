@@ -7,7 +7,7 @@ import {
 } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
-import Tip from '@/components/ui/Tip.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const {
   libraries,

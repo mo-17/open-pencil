@@ -48,8 +48,8 @@ use codepen::{cleanup_stale_codepen_files, fetch_codepen_sources, open_codepen_p
 #[cfg(feature = "native-test")]
 use credentials::parse_native_test_profile;
 use credentials::{
-    credential_read, credential_remove, credential_status, credential_store_availability,
-    credential_write, CredentialVault,
+    credential_access_paused, credential_read, credential_remove, credential_retry_access,
+    credential_status, credential_store_availability, credential_write, CredentialVault,
 };
 use fig_container::build_fig_file;
 use fonts::{list_system_fonts, load_system_font};
@@ -226,6 +226,8 @@ pub fn run() {
             baidu_netdisk_transfer,
             build_fig_file,
             close_ai_window,
+            credential_access_paused,
+            credential_retry_access,
             credential_read,
             credential_remove,
             credential_status,

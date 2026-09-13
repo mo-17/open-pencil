@@ -4,7 +4,7 @@ import { useI18n } from '@open-pencil/vue'
 
 import type { MotionColorComponent } from '@/app/properties/motion/v2'
 import NumberField from '@/components/inputs/NumberField.vue'
-import Tip from '@/components/ui/Tip.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const { label, color, propertyPrefix, disabled, disabledReason } = defineProps<{
   label: string

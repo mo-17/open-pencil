@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
 import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogDescription,
   AlertDialogTitle
 } from 'reka-ui'
+import { computed, ref, watch } from 'vue'
+
 import { useI18n } from '@open-pencil/vue'
 
 import {
@@ -24,9 +25,9 @@ import {
   type RemoteMCPServerId
 } from '@/app/ai/mcp'
 import { removeRemoteMCPServerFromModelProfiles } from '@/app/ai/models'
-import AppInput from '@/components/ui/AppInput.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+import AppInput from '@/components/ui/input/AppInput.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 const { dialogs } = useI18n()
 const editingId = ref<RemoteMCPServerId | null>(null)

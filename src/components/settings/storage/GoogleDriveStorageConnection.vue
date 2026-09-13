@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useI18n } from '@open-pencil/vue'
+
 import { IS_TAURI } from '@open-pencil/core/constants'
+import { useI18n } from '@open-pencil/vue'
 
 import {
   activeStorageProfileID,
@@ -20,13 +21,13 @@ import {
   MAX_GOOGLE_DRIVE_DESKTOP_CREDENTIALS_BYTES,
   parseGoogleDriveDesktopCredentialsJSON
 } from '@/app/integrations/storage/google-drive/oauth/desktop-credentials'
+import { LocalGoogleDriveOAuthMetadataStore } from '@/app/integrations/storage/google-drive/oauth/metadata'
 import {
   GoogleDriveOAuthError,
   googleDriveRefreshTokenCredentialRef,
   type GoogleDriveOAuthConnectClient,
   type GoogleDriveOAuthStatus
 } from '@/app/integrations/storage/google-drive/oauth/session'
-import { LocalGoogleDriveOAuthMetadataStore } from '@/app/integrations/storage/google-drive/oauth/metadata'
 import {
   disposeGoogleDriveRuntimeProfile,
   getGoogleDriveRuntimeServices
@@ -50,7 +51,7 @@ import {
   type StorageAuthorizationWorkInspection
 } from '@/app/storage/sync'
 import { getTabsSnapshot } from '@/app/tabs'
-import AppInput from '@/components/ui/AppInput.vue'
+import AppInput from '@/components/ui/input/AppInput.vue'
 
 type ConnectionState = GoogleDriveOAuthStatus | { state: 'setup'; profileId: string }
 type Operation =

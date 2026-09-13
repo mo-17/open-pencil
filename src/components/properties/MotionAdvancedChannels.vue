@@ -18,7 +18,7 @@ import {
 } from '@/app/properties/motion/v2-capabilities'
 import NumberField from '@/components/inputs/NumberField.vue'
 import MotionColorChannelControls from '@/components/properties/MotionColorChannelControls.vue'
-import Tip from '@/components/ui/Tip.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const { node, keyframe } = defineProps<{
   node: SceneNode

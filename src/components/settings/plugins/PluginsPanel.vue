@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'reka-ui'
 /* eslint-disable max-lines -- Plugin settings coordinates lifecycle, runtime, host actions, and dependency review. */
 import { computed, nextTick, ref } from 'vue'
-import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'reka-ui'
+
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 
@@ -50,13 +51,7 @@ import {
   type PluginRuntimeReview,
   type ResolvedPluginPackage
 } from '@/app/plugins'
-import {
-  localizedAppPluginContributionText,
-  localizedAppPluginText
-} from '@/app/plugins/localization'
-import { sameReviewedPublisherPackage } from '@/app/plugins/review-authority'
 import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
-import { AI_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_PLUGIN_ID } from '@/app/plugins/host/ids'
 import {
   clearDeploymentPluginSession,
   isDeploymentPluginSessionActive
@@ -66,6 +61,12 @@ import {
   cancelAppPluginExport,
   type AppPluginExportStage
 } from '@/app/plugins/host/export-session'
+import { AI_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_PLUGIN_ID } from '@/app/plugins/host/ids'
+import {
+  localizedAppPluginContributionText,
+  localizedAppPluginText
+} from '@/app/plugins/localization'
+import { sameReviewedPublisherPackage } from '@/app/plugins/review-authority'
 import {
   filterPluginDiscoverCatalog,
   pluginMarketplaceListingViews,
@@ -73,23 +74,24 @@ import {
   type PluginMarketplaceKeyStatus
 } from '@/app/plugins/settings-view-model'
 import { settingsDialogOpen } from '@/app/settings/dialog'
-import AppBadge from '@/components/ui/AppBadge.vue'
-import AppSwitch from '@/components/ui/AppSwitch.vue'
-import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
+import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
+import AppSwitch from '@/components/ui/toggle/AppSwitch.vue'
+
 import AccessibilityAuditReport from './AccessibilityAuditReport.vue'
 import AIPopoutControls from './AIPopoutControls.vue'
 import ApplicationSecurityReadinessReport from './ApplicationSecurityReadinessReport.vue'
 import CompilerPreviewPopoutControls from './CompilerPreviewPopoutControls.vue'
 import PluginAIAccessControls from './PluginAIAccessControls.vue'
 import PluginConnectorControls from './PluginConnectorControls.vue'
+import PluginConnectorOutcomeUnknownNotices from './PluginConnectorOutcomeUnknownNotices.vue'
 import PluginDeploymentControls from './PluginDeploymentControls.vue'
 import PluginExporterResult from './PluginExporterResult.vue'
-import PluginConnectorOutcomeUnknownNotices from './PluginConnectorOutcomeUnknownNotices.vue'
-import PluginMarketplaceSummary from './PluginMarketplaceSummary.vue'
 import PluginMarketplaceSourceControls, {
   type PluginMarketplaceSourceInput
 } from './PluginMarketplaceSourceControls.vue'
+import PluginMarketplaceSummary from './PluginMarketplaceSummary.vue'
 import PluginPackageReviewDialog from './PluginPackageReviewDialog.vue'
 import PluginV2ContractSummary from './PluginV2ContractSummary.vue'
 

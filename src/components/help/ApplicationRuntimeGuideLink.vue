@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NodeList, type LinkNodeRendererProps } from 'vue-stream-markdown'
+import type { MarkdownComponentProps } from 'vue-stream-markdown'
 
 import { applicationRuntimeGuideExternalURL } from '@/app/help/application-runtime-guide'
 import { openExternalLink } from '@/app/shell/ui'
 
-const { markdownParser, nodeRenderers, node, nodeKey, blockIndex, prevNode, nextNode, deep } =
-  defineProps<LinkNodeRendererProps>()
-const externalURL = computed(() => applicationRuntimeGuideExternalURL(node.url))
+defineOptions({ inheritAttrs: false })
+
+const { node } = defineProps<MarkdownComponentProps>()
+const externalURL = computed(() => {
+  const href = node[1].href
+  return typeof href === 'string' ? applicationRuntimeGuideExternalURL(href) : null
+})
 
 function openLink(): void {
   if (externalURL.value) void openExternalLink(externalURL.value)
@@ -21,17 +25,7 @@ function openLink(): void {
     :disabled="!externalURL"
     @click="openLink"
   >
-    <NodeList
-      :markdown-parser="markdownParser"
-      :node-renderers="nodeRenderers"
-      :nodes="node.children"
-      :node-key="nodeKey"
-      :block-index="blockIndex"
-      :parent-node="node"
-      :prev-node="prevNode"
-      :next-node="nextNode"
-      :deep="deep + 1"
-    />
+    <slot />
     <icon-lucide-external-link class="ml-0.5 inline size-3 align-text-bottom" aria-hidden="true" />
   </button>
 </template>

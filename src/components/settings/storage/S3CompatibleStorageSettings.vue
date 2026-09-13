@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
 import { useI18n } from '@open-pencil/vue'
 
 import {
@@ -40,7 +41,7 @@ import {
   type S3LegacyMigrationInspection
 } from '@/app/storage/sync'
 import { getTabsSnapshot } from '@/app/tabs'
-import AppInput from '@/components/ui/AppInput.vue'
+import AppInput from '@/components/ui/input/AppInput.vue'
 
 const PROVIDER_ID = S3_COMPATIBLE_STORAGE_PROVIDER_ID
 type PreferenceField = 'endpoint' | 'bucket' | 'region'

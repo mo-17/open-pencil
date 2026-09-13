@@ -8,7 +8,7 @@ import type {
   MotionPresetStaggerRhythm
 } from '@/app/motion-presets/types'
 import NumberField from '@/components/inputs/NumberField.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 const {
   selectionCount,

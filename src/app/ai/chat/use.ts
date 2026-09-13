@@ -2,6 +2,7 @@ import { ref } from 'vue'
 
 import { IS_BROWSER } from '@open-pencil/core/constants'
 
+import { createConversationHistory } from '@/app/ai/chat/history/controller'
 import {
   apiKeyStatus,
   browserCredentialsRemembered,
@@ -14,23 +15,25 @@ import {
   isConfigured,
   maxOutputTokens,
   modelID,
-  pexelsKeyStatus,
   providerDef,
   providerID,
   registerAIChatEffects,
   resolveAPIKey,
-  setAPIKey,
-  setPexelsKey,
-  setRememberCredentials,
-  setUnsplashKey,
-  unsplashKeyStatus
+  setAPIKey
 } from '@/app/ai/chat/storage'
 import { createChatSessionManager } from '@/app/ai/chat/transports'
 import { remoteMCPSettingsSnapshot } from '@/app/ai/mcp'
-import { resolveAIModelRole } from '@/app/ai/models'
+import { designModelProfile, resolveAIModelRole } from '@/app/ai/models'
 import { getAISessionStore } from '@/app/ai/sessions'
 import { exposeChatTransportOverride } from '@/app/browser-bridge'
 import { getActiveEditorStore } from '@/app/editor/active-store'
+import {
+  pexelsKeyStatus,
+  unsplashKeyStatus,
+  setPexelsKey,
+  setUnsplashKey,
+  setRememberCredentials
+} from '@/app/settings/credentials/media'
 
 const activeTab = ref<'design' | 'code' | 'ai'>('design')
 
@@ -59,6 +62,29 @@ const chatSession = createChatSessionManager({
   resolveACPConfigurationContext
 })
 
+const history = createConversationHistory({
+  profileId: () => designModelProfile.value?.id ?? null,
+  getEditor: getActiveEditorStore,
+  ensureChat: chatSession.ensureChat,
+  resetChat: () => chatSession.resetChat({ preserveACPSession: true }),
+  backend: () => (isHarnessProvider.value ? 'harness' : 'direct')
+})
+let historySuspended = false
+async function ensureChat() {
+  if (isACPProvider.value) {
+    if (!historySuspended) {
+      historySuspended = true
+      await history.suspend()
+    }
+    return chatSession.ensureChat()
+  }
+  historySuspended = false
+  return history.ensureChat()
+}
+async function resetChat() {
+  if (isACPProvider.value) return chatSession.resetChat()
+  await history.newChat()
+}
 registerAIChatEffects(chatSession.markTransportDirty)
 
 if (IS_BROWSER) {
@@ -95,10 +121,11 @@ export function useAIChat() {
     setUnsplashKey,
     activeTab,
     isConfigured,
-    ensureChat: chatSession.ensureChat,
+    history,
+    ensureChat,
     respondToToolApproval: chatSession.respondToToolApproval,
     sessionRevision: chatSession.sessionRevision,
-    resetChat: chatSession.resetChat,
+    resetChat,
     forceStopChat: chatSession.forceStopChat,
     chatFailure: chatSession.failure,
     clearChatFailure: chatSession.clearFailure

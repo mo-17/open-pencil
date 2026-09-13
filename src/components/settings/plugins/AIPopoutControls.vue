@@ -5,7 +5,7 @@ import { useI18n } from '@open-pencil/vue'
 
 import type { AIPopoutControls } from '@/app/ai/popout/controls'
 import { aiPopoutControls, resetAIPopoutControls } from '@/app/settings/ai-popout-controls'
-import AppSwitch from '@/components/ui/AppSwitch.vue'
+import AppSwitch from '@/components/ui/toggle/AppSwitch.vue'
 
 const { disabled = false } = defineProps<{ disabled?: boolean }>()
 const { dialogs } = useI18n()

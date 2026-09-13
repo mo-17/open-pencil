@@ -5,7 +5,7 @@ import { USER_MOTION_PRESET_LIMITS, type MotionPresetMergePolicy } from '@open-p
 import { useI18n } from '@open-pencil/vue'
 
 import { isTauri } from '@/app/tauri/env'
-import AppSelect from '@/components/ui/AppSelect.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 const { disabled = false, exportJson: exportJSON = '' } = defineProps<{
   disabled?: boolean

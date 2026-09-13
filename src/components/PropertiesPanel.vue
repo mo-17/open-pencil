@@ -3,13 +3,14 @@ import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
+
+import { useAIChat } from '@/app/ai/chat/use'
 import {
   aiPopoutBusy,
   aiPopoutOpen,
   focusActiveAIPopout,
   setAIPopoutDisabled
 } from '@/app/ai/popout/session'
-import { useAIChat } from '@/app/ai/chat/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import { appPluginStore, appPluginStoreSnapshot } from '@/app/plugins/app'
 import { runInstalledPluginCommand } from '@/app/plugins/host'
@@ -21,7 +22,7 @@ import ChatPanel from './ChatPanel.vue'
 import CodePanel from './CodePanel.vue'
 import DesignPanel from './DesignPanel.vue'
 import ZoomDropdown from './editor/ZoomDropdown.vue'
-import Tip from './ui/Tip.vue'
+import Tip from './ui/overlay/Tip.vue'
 
 const { activeTab } = useAIChat()
 const store = useEditorStore()

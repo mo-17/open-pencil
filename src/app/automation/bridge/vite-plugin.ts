@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import type { IncomingMessage } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -15,6 +15,7 @@ import {
   parseDevMCPConfiguration,
   type DevMCPConfiguration
 } from '../mcp/dev-control'
+import { waitForChildReady } from './child-ready'
 
 interface AutomationEnvironmentOptions {
   authToken: string | null
@@ -50,6 +51,8 @@ export function createAutomationEnvironment(
 
 const MAX_CONFIGURATION_BYTES = 70_000
 const CHILD_EXIT_TIMEOUT_MS = 2_000
+const CHILD_HEALTH_ATTEMPTS = 200
+const CHILD_HEALTH_DELAY_MS = 50
 
 type DevMCPConfigurationErrorStatus = 400 | 413
 
@@ -98,6 +101,32 @@ export async function readDevMCPConfiguration(request: IncomingMessage): Promise
   }
 }
 
+export async function waitForAutomationHealth(
+  browserURL: string,
+  fetcher: typeof fetch = fetch,
+  options: { assertRunning?: () => void } = {}
+): Promise<void> {
+  const healthURL = `${browserURL.replace(/^ws/, 'http')}/health`
+  for (let attempt = 0; attempt < CHILD_HEALTH_ATTEMPTS; attempt++) {
+    options.assertRunning?.()
+    let healthy = false
+    try {
+      const response = await fetcher(healthURL, { signal: AbortSignal.timeout(2000) })
+      healthy = response.ok
+    } catch (error) {
+      if (attempt === CHILD_HEALTH_ATTEMPTS - 1) {
+        console.warn(`[MCP] Health check failed at ${healthURL}`, error)
+      }
+    }
+    options.assertRunning?.()
+    if (healthy) return
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, CHILD_HEALTH_DELAY_MS)
+    })
+  }
+  throw new Error(`MCP server did not become healthy at ${healthURL}`)
+}
+
 interface AutomationPluginOptions {
   browserURL: string
   corsOrigin: string
@@ -108,6 +137,18 @@ interface AutomationPluginOptions {
 
 function safeRuntimeId(value: string): string {
   return createHash('sha256').update(value).digest('hex').slice(0, 16)
+}
+
+export function configurationsMatch(
+  current: DevMCPConfiguration,
+  next: DevMCPConfiguration
+): boolean {
+  return (
+    current.authenticationEnabled === next.authenticationEnabled &&
+    current.rootDirectory === next.rootDirectory &&
+    current.disabledTools.length === next.disabledTools.length &&
+    current.disabledTools.every((tool, index) => tool === next.disabledTools[index])
+  )
 }
 
 // TODO: production — bundle MCP server as Tauri sidecar or spawn via shell plugin
@@ -159,18 +200,23 @@ export function automationPlugin(
     const spawnArgs = options.portlessServiceName
       ? ['run', '--name', options.portlessServiceName, ...command]
       : command.slice(1)
+    const readyMarker = `open-pencil-ready:${randomUUID()}`
     const spawned = spawn(spawnCommand, spawnArgs, {
       stdio: ['ignore', 'inherit', 'pipe'],
-      env: createAutomationEnvironment({
-        authToken,
-        baseEnv: process.env,
-        configuration,
-        corsOrigin: options.corsOrigin,
-        discoveryPath,
-        httpPort: options.httpPort,
-        socketPath
-      })
+      env: {
+        ...createAutomationEnvironment({
+          authToken,
+          baseEnv: process.env,
+          configuration,
+          corsOrigin: options.corsOrigin,
+          discoveryPath,
+          httpPort: options.httpPort,
+          socketPath
+        }),
+        OPENPENCIL_MCP_READY_MARKER: readyMarker
+      }
     })
+    const ready = waitForChildReady(spawned, readyMarker)
     child = spawned
 
     spawned.on('error', (err) => {
@@ -195,9 +241,24 @@ export function automationPlugin(
       if (code && code !== 0) console.error(`[MCP] Server exited with code ${code}`)
       if (child === spawned) child = null
     })
+
+    try {
+      await ready
+    } catch (error) {
+      spawned.kill()
+      throw error
+    }
+    await waitForAutomationHealth(options.browserURL, fetch, {
+      assertRunning() {
+        if (child !== spawned || spawned.exitCode !== null || spawned.signalCode !== null) {
+          throw new Error('MCP child exited before becoming ready')
+        }
+      }
+    })
   }
 
   async function restartChild(nextConfiguration: DevMCPConfiguration): Promise<void> {
+    if (child && configurationsMatch(configuration, nextConfiguration)) return
     configuration = nextConfiguration
     await stopChild()
     await startChild()

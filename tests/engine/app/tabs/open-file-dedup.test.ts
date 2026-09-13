@@ -17,11 +17,15 @@ import {
   createDocumentInCurrentTab,
   createHomeTab,
   createTab,
+  closeTab,
   getActiveStore,
+  getOpeningStorageBinding,
   getTabsSnapshot,
+  isStorageDocumentOpen,
   openFileInNewTab,
   openStorageDocumentInNewTab,
   showNewTab,
+  switchTab,
   tabCount
 } from '@/app/tabs'
 import { fileIdentitiesMatch, findTabByFileIdentity } from '@/app/tabs/open/identity'
@@ -469,6 +473,8 @@ describe('tab opening deduplication', () => {
     expect(getDocument).toHaveBeenCalledTimes(2)
     expect(tabCount()).toBe(initialCount + 1)
     expect(grantTwoStore).not.toBe(grantOneStore)
+    expect(getOpeningStorageBinding(grantOneStore)).toEqual({ ...binding, authority: grantOne })
+    expect(getOpeningStorageBinding(grantTwoStore)).toEqual({ ...binding, authority: grantTwo })
     const downloaded = (name: string): storageModule.StorageGetDocumentResult => ({
       bytes: new Uint8Array([1, 2, 3]),
       metadata: { name, updatedAt: document.updatedAt },
@@ -479,6 +485,8 @@ describe('tab opening deduplication', () => {
     await Promise.all([settleFileOpen(first), settleFileOpen(second)])
     expect(grantOneStore.getStorageBinding()?.authority).toEqual(grantOne)
     expect(grantTwoStore.getStorageBinding()?.authority).toEqual(grantTwo)
+    expect(getOpeningStorageBinding(grantOneStore)).toBeNull()
+    expect(getOpeningStorageBinding(grantTwoStore)).toBeNull()
   })
 
   for (const providerId of ['google-drive', 's3-compatible'] as const) {
@@ -733,6 +741,390 @@ describe('tab opening deduplication', () => {
       )
     ).rejects.toHaveProperty('name', 'AbortError')
     expect(createAdapter).not.toHaveBeenCalled()
+  })
+
+  test('cloud deletion guards distinguish profiles, accounts, and S3 configuration generations', () => {
+    const s3: storageModule.StorageDocumentBinding = {
+      providerId: 's3-compatible',
+      profileId: 'work',
+      documentId: 'same-document',
+      authority: { accountId: 'profile-incarnation', authorizationVersion: 'bucket-one' }
+    }
+    createTab().store.setStorageDocumentSource(s3, 'Untitled')
+    expect(isStorageDocumentOpen(s3)).toBe(true)
+    expect(isStorageDocumentOpen({ ...s3, profileId: 'personal' })).toBe(false)
+    expect(isStorageDocumentOpen({ ...s3, documentId: 'another-document' })).toBe(false)
+    expect(
+      isStorageDocumentOpen({
+        ...s3,
+        authority: { accountId: 'another-incarnation', authorizationVersion: 'bucket-one' }
+      })
+    ).toBe(false)
+    expect(
+      isStorageDocumentOpen({
+        ...s3,
+        authority: { accountId: 'profile-incarnation', authorizationVersion: 'bucket-two' }
+      })
+    ).toBe(false)
+    const drive = { ...s3, providerId: 'google-drive' }
+    expect(isStorageDocumentOpen(drive)).toBe(false)
+    createTab().store.setStorageDocumentSource(drive, 'Untitled')
+    expect(
+      isStorageDocumentOpen({
+        ...drive,
+        authority: { accountId: 'profile-incarnation', authorizationVersion: 'renewed-grant' }
+      })
+    ).toBe(true)
+    expect(
+      isStorageDocumentOpen({
+        ...drive,
+        authority: { accountId: 'another-account', authorizationVersion: 'renewed-grant' }
+      })
+    ).toBe(false)
+  })
+
+  for (const existingState of ['bound', 'closing'] as const) {
+    test(`does not reuse a ${existingState} Untitled cloud tab`, async () => {
+      const previous = createTab()
+      const binding = {
+        providerId: 's3-compatible',
+        profileId: 'default',
+        documentId: 'prior-cloud-document'
+      }
+      const persistence = Promise.withResolvers<undefined>()
+      let closing: Promise<void> | undefined
+      if (existingState === 'bound') {
+        previous.store.setStorageDocumentSource(binding, 'Untitled')
+      } else {
+        vi.spyOn(previous.store, 'persistRecoveryNow').mockReturnValue(persistence.promise)
+        closing = closeTab(previous.id)
+      }
+      vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+        getDocument: vi.fn(async () => ({
+          bytes: new Uint8Array([1, 2, 3]),
+          metadata: { name: 'Next cloud', updatedAt: '2026-08-10T00:00:00.000Z' },
+          remoteRevision: null
+        }))
+      } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+      try {
+        await settleFileOpen(
+          openStorageDocumentInNewTab({
+            id: 'next-cloud',
+            name: 'Next cloud',
+            updatedAt: '2026-08-10T00:00:00.000Z'
+          })
+        )
+        expect(getActiveStore()).not.toBe(previous.store)
+        expect(getActiveStore().getStorageBinding()?.documentId).toBe('next-cloud')
+        if (existingState === 'bound') {
+          expect(previous.store.getStorageBinding()).toEqual(binding)
+          expect(isStorageDocumentOpen(binding)).toBe(true)
+        }
+      } finally {
+        persistence.resolve(undefined)
+        await closing
+      }
+    })
+  }
+
+  test('does not reuse an Untitled tab while another cloud document is still loading', async () => {
+    createTab().store.state.documentName = 'Existing document'
+    const downloaded = Promise.withResolvers<storageModule.StorageGetDocumentResult>()
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument: vi.fn(() => downloaded.promise)
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    const firstActivated = Promise.withResolvers<undefined>()
+    const secondActivated = Promise.withResolvers<undefined>()
+    const first = openStorageDocumentInNewTab(
+      { id: 'untitled-first', name: 'Untitled', updatedAt: '2026-08-10T00:00:00.000Z' },
+      undefined,
+      { onTabActivated: () => firstActivated.resolve(undefined) }
+    )
+    await firstActivated.promise
+    const firstStore = getActiveStore()
+    const second = openStorageDocumentInNewTab(
+      { id: 'untitled-second', name: 'Untitled', updatedAt: '2026-08-10T00:00:00.000Z' },
+      undefined,
+      { onTabActivated: () => secondActivated.resolve(undefined) }
+    )
+    await secondActivated.promise
+    const secondStore = getActiveStore()
+    expect(secondStore).not.toBe(firstStore)
+    expect(firstStore.state.preparation?.kind).toBe('storage-open')
+    const firstBinding = getOpeningStorageBinding(firstStore)
+    const secondBinding = getOpeningStorageBinding(secondStore)
+    if (!firstBinding || !secondBinding)
+      throw new Error('Expected both cloud loads to own bindings')
+    expect(firstBinding.documentId).toBe('untitled-first')
+    expect(secondBinding.documentId).toBe('untitled-second')
+    expect(isStorageDocumentOpen(firstBinding)).toBe(true)
+    expect(isStorageDocumentOpen(secondBinding)).toBe(true)
+    downloaded.resolve({
+      bytes: new Uint8Array([1, 2, 3]),
+      metadata: { name: 'Untitled', updatedAt: '2026-08-10T00:00:00.000Z' },
+      remoteRevision: null
+    })
+    await Promise.all([settleFileOpen(first), settleFileOpen(second)])
+    expect(firstStore.getStorageBinding()?.documentId).toBe('untitled-first')
+    expect(secondStore.getStorageBinding()?.documentId).toBe('untitled-second')
+    expect(getOpeningStorageBinding(firstStore)).toBeNull()
+    expect(getOpeningStorageBinding(secondStore)).toBeNull()
+  })
+
+  test('does not reuse a cancelled Untitled cloud tab before its download settles', async () => {
+    createTab().store.state.documentName = 'Existing document'
+    const firstRequested = Promise.withResolvers<undefined>()
+    const firstDownload = Promise.withResolvers<storageModule.StorageGetDocumentResult>()
+    const getDocument = vi.fn(async () => ({
+      bytes: new Uint8Array([1, 2, 3]),
+      metadata: { name: 'Untitled', updatedAt: '2026-08-10T00:00:00.000Z' },
+      remoteRevision: null
+    }))
+    getDocument.mockImplementationOnce(() => {
+      firstRequested.resolve(undefined)
+      return firstDownload.promise
+    })
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    const controller = new AbortController()
+    const first = openStorageDocumentInNewTab(
+      { id: 'cancelled-untitled', name: 'Untitled', updatedAt: '2026-08-10T00:00:00.000Z' },
+      undefined,
+      { signal: controller.signal }
+    )
+    const rejected = first.catch((reason: unknown) => reason)
+    await firstRequested.promise
+    const firstStore = getActiveStore()
+    controller.abort()
+    try {
+      expect(firstStore.state.preparation).toBeNull()
+      expect(getOpeningStorageBinding(firstStore)?.documentId).toBe('cancelled-untitled')
+      await settleFileOpen(
+        openStorageDocumentInNewTab({
+          id: 'surviving-untitled',
+          name: 'Untitled',
+          updatedAt: '2026-08-10T00:00:00.000Z'
+        })
+      )
+      expect(getActiveStore()).not.toBe(firstStore)
+      expect(getActiveStore().getStorageBinding()?.documentId).toBe('surviving-untitled')
+    } finally {
+      firstDownload.reject(new DOMException('Delayed download cancellation', 'AbortError'))
+      expect(await rejected).toHaveProperty('name', 'AbortError')
+    }
+    expect(getOpeningStorageBinding(firstStore)).toBeNull()
+    expect(getActiveStore().getStorageBinding()?.documentId).toBe('surviving-untitled')
+  })
+
+  test('activates the cloud editor before download and still waits for presentation', async () => {
+    const getDocument = vi.fn(async () => ({
+      bytes: new Uint8Array([1, 2, 3]),
+      metadata: { name: 'Presented cloud', updatedAt: '2026-08-10T00:00:00.000Z' },
+      remoteRevision: null
+    }))
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    const activated = Promise.withResolvers<undefined>()
+    const mounted = Promise.withResolvers<undefined>()
+    const ready = Promise.withResolvers<undefined>()
+    let completed = false
+    const opening = openStorageDocumentInNewTab(
+      {
+        id: 'presentation-handoff',
+        name: 'Presented cloud',
+        updatedAt: '2026-08-10T00:00:00.000Z'
+      },
+      undefined,
+      {
+        reuseCurrentTab: false,
+        onTabActivated: () => {
+          activated.resolve(undefined)
+          return mounted.promise
+        }
+      }
+    ).then(() => {
+      completed = true
+      return undefined
+    })
+    await activated.promise
+    const store = getActiveStore()
+    expect(store.state.preparation?.kind).toBe('storage-open')
+    expect(getOpeningStorageBinding(store)?.documentId).toBe('presentation-handoff')
+    expect(getDocument).not.toHaveBeenCalled()
+    const unbind = store.onPreparationEvent('preparation:updated', (preparation) => {
+      if (preparation.phase === 'preparing-render') ready.resolve(undefined)
+    })
+    try {
+      mounted.resolve(undefined)
+      await ready.promise
+      expect(completed).toBe(false)
+      expect(store.state.preparation?.phase).toBe('preparing-render')
+      store.preparationController.acknowledgePresentation(store.state.sceneVersion)
+      await opening
+      expect(store.state.preparation).toBeNull()
+      expect(getOpeningStorageBinding(store)).toBeNull()
+    } finally {
+      unbind()
+    }
+  })
+
+  test('cancelled editor navigation restores the prior tab without downloading or replacing its graph', async () => {
+    const previous = createTab()
+    previous.store.state.documentName = 'Previous document'
+    const graph = previous.store.graph
+    createTab().store.state.documentName = 'Another document'
+    switchTab(previous.id)
+    const count = tabCount()
+    const getDocument = vi.fn()
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    const controller = new AbortController()
+
+    await expect(
+      openStorageDocumentInNewTab(
+        {
+          id: 'navigation-cancelled',
+          name: 'Cancelled cloud',
+          updatedAt: '2026-08-10T00:00:00.000Z'
+        },
+        undefined,
+        {
+          signal: controller.signal,
+          reuseCurrentTab: false,
+          onTabActivated: () => {
+            controller.abort()
+            throw new DOMException('Navigation cancelled', 'AbortError')
+          }
+        }
+      )
+    ).rejects.toHaveProperty('name', 'AbortError')
+    expect(getDocument).not.toHaveBeenCalled()
+    expect(tabCount()).toBe(count)
+    expect(getActiveStore()).toBe(previous.store)
+    expect(previous.store.graph).toBe(graph)
+    expect(previous.store.state.documentName).toBe('Previous document')
+  })
+
+  test('failed navigation to an existing cloud tab restores focus without closing the shared tab', async () => {
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument: vi.fn(async () => ({
+        bytes: new Uint8Array([1, 2, 3]),
+        metadata: { name: 'Existing cloud', updatedAt: '2026-08-10T00:00:00.000Z' },
+        remoteRevision: null
+      }))
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    const document = {
+      id: 'existing-navigation-failed',
+      name: 'Existing cloud',
+      updatedAt: '2026-08-10T00:00:00.000Z'
+    }
+    await settleFileOpen(openStorageDocumentInNewTab(document))
+    const shared = getActiveStore()
+    const previous = createTab()
+    const count = tabCount()
+    await expect(
+      openStorageDocumentInNewTab(document, undefined, {
+        onTabActivated: () => {
+          throw new Error('Navigation failed')
+        }
+      })
+    ).rejects.toThrow('Navigation failed')
+    expect(getActiveStore()).toBe(previous.store)
+    expect(tabCount()).toBe(count)
+    expect(getTabsSnapshot().some((tab) => tab.store === shared)).toBe(true)
+  })
+
+  test('failed navigation to a pending cloud tab does not cancel its original open', async () => {
+    const requested = Promise.withResolvers<undefined>()
+    const downloaded = Promise.withResolvers<storageModule.StorageGetDocumentResult>()
+    const getDocument = vi.fn(() => {
+      requested.resolve(undefined)
+      return downloaded.promise
+    })
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    const document = {
+      id: 'pending-navigation-failed',
+      name: 'Pending cloud',
+      updatedAt: '2026-08-10T00:00:00.000Z'
+    }
+    const original = openStorageDocumentInNewTab(document, undefined, { reuseCurrentTab: false })
+    await requested.promise
+    const shared = getActiveStore()
+    const previous = createTab()
+    await expect(
+      openStorageDocumentInNewTab(document, undefined, {
+        onTabActivated: () => {
+          throw new Error('Navigation failed')
+        }
+      })
+    ).rejects.toThrow('Navigation failed')
+    expect(getActiveStore()).toBe(previous.store)
+    expect(shared.state.preparation?.kind).toBe('storage-open')
+    expect(getDocument).toHaveBeenCalledTimes(1)
+    downloaded.resolve({
+      bytes: new Uint8Array([1, 2, 3]),
+      metadata: { name: document.name, updatedAt: document.updatedAt },
+      remoteRevision: null
+    })
+    await settleFileOpen(original)
+    expect(shared.getStorageBinding()?.documentId).toBe(document.id)
+  })
+
+  test('closing a cloud tab does not steal focus selected while recovery persistence is pending', async () => {
+    const requested = Promise.withResolvers<undefined>()
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument: vi.fn((_id: string, options?: storageModule.StorageTransferOptions) => {
+        const signal = options?.signal
+        if (!signal) throw new Error('Expected an abortable storage request')
+        requested.resolve(undefined)
+        return new Promise<storageModule.StorageGetDocumentResult>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), {
+            once: true
+          })
+        })
+      })
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    const previous = createTab()
+    const selected = createTab()
+    switchTab(previous.id)
+    const opening = openStorageDocumentInNewTab(
+      { id: 'cancel-focus', name: 'Cancel focus', updatedAt: '2026-08-10T00:00:00.000Z' },
+      undefined,
+      { reuseCurrentTab: false }
+    )
+    const rejected = opening.catch((reason: unknown) => reason)
+    await requested.promise
+    const cloud = getTabsSnapshot().find((tab) => tab.store === getActiveStore())
+    if (!cloud) throw new Error('Expected cloud tab')
+    expect(getOpeningStorageBinding(cloud.store)?.documentId).toBe('cancel-focus')
+    const persistence = Promise.withResolvers<undefined>()
+    vi.spyOn(cloud.store, 'persistRecoveryNow').mockReturnValue(persistence.promise)
+    const closing = closeTab(cloud.id)
+    expect(getOpeningStorageBinding(cloud.store)).toBeNull()
+    switchTab(selected.id)
+    persistence.resolve(undefined)
+    await closing
+    expect(await rejected).toHaveProperty('name', 'AbortError')
+    expect(getOpeningStorageBinding(cloud.store)).toBeNull()
+    expect(getActiveStore()).toBe(selected.store)
+  })
+
+  test('closing an inactive tab restores a surviving tab if selected during persistence', async () => {
+    const closingTab = createTab()
+    const survivor = createTab()
+    const persistence = Promise.withResolvers<undefined>()
+    vi.spyOn(closingTab.store, 'persistRecoveryNow').mockReturnValue(persistence.promise)
+    const closing = closeTab(closingTab.id)
+    switchTab(closingTab.id)
+    persistence.resolve(undefined)
+    await closing
+    expect(getTabsSnapshot().some((tab) => tab.id === closingTab.id)).toBe(false)
+    expect(getActiveStore()).toBe(survivor.store)
   })
 
   test('releases a parsed storage graph when cancellation wins before preparation', async () => {

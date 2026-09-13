@@ -4,7 +4,7 @@ import { onBeforeUnmount, ref } from 'vue'
 import { useI18n } from '@open-pencil/vue'
 
 import type { MotionPresetLibraryItem } from '@/app/motion-presets/types'
-import Tip from '@/components/ui/Tip.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const {
   item,

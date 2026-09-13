@@ -181,7 +181,7 @@ describe('compiler browser preview bundler', () => {
     const mapPackageJSON = JSON.parse(String(mapFiles.get('package.json'))) as {
       dependencies: Record<string, string>
     }
-    mapPackageJSON.dependencies['maplibre-gl'] = '6.0.0'
+    mapPackageJSON.dependencies['maplibre-gl'] = '6.4.1'
     mapFiles.set('package.json', `${JSON.stringify(mapPackageJSON)}\n`)
     mapFiles.set('src/map.ts', "import maplibre from 'maplibre-gl'\nexport default maplibre\n")
     const main = String(mapFiles.get('src/main.tsx'))

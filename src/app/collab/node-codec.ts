@@ -1,5 +1,9 @@
 import { isEqual } from 'es-toolkit/predicate'
 
+import {
+  deserializeInstanceOverrideState,
+  serializeInstanceOverrideState
+} from '@open-pencil/scene-graph'
 import type {
   Fill,
   FillType,
@@ -44,7 +48,10 @@ export function encodeNodeForYjs(node: SceneNode): Record<string, unknown> {
   const encoded: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(node)) {
     if (DERIVED_NODE_FIELDS.has(key as keyof SceneNode)) continue
-    encoded[key] = structuredClone(value)
+    // Yjs's binary value encoding does not preserve native Map instances.
+    encoded[key] = structuredClone(
+      key === 'instanceOverrides' ? serializeInstanceOverrideState(node.instanceOverrides) : value
+    )
   }
   return encoded
 }
@@ -73,6 +80,7 @@ export function decodeNodeFromYjs(ynode: YjsNodeLike): DecodedYjsNodeProps {
     props[key] = structuredClone(value)
   }
 
+  props.instanceOverrides = deserializeInstanceOverrideState(props.instanceOverrides)
   props.source = normalizeSourceMetadata(props.source)
   if ('fillGeometry' in props) props.fillGeometry = normalizeGeometryPaths(props.fillGeometry)
   if ('strokeGeometry' in props) props.strokeGeometry = normalizeGeometryPaths(props.strokeGeometry)

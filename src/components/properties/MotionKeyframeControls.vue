@@ -18,14 +18,14 @@ import type {
   MotionV2NumericChannel
 } from '@/app/properties/motion/v2'
 import NumberField from '@/components/inputs/NumberField.vue'
-import MotionAdvancedChannels from '@/components/properties/MotionAdvancedChannels.vue'
-import MotionEasingControls from '@/components/properties/MotionEasingControls.vue'
-import MotionPathControls from '@/components/properties/MotionPathControls.vue'
 import {
   MotionStructuredChannelsRoot,
   type MotionStructuredChannelLabels
 } from '@/components/properties/motion-structured'
-import IconButton from '@/components/ui/IconButton.vue'
+import MotionAdvancedChannels from '@/components/properties/MotionAdvancedChannels.vue'
+import MotionEasingControls from '@/components/properties/MotionEasingControls.vue'
+import MotionPathControls from '@/components/properties/MotionPathControls.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
 
 const { keyframe, keyframeIndex, canEditOffset, canDuplicate } = defineProps<{
   node: SceneNode

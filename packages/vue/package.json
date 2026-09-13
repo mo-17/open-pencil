@@ -2,7 +2,19 @@
   "name": "@open-pencil/vue",
   "version": "0.15.0",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-pencil/open-pencil.git",
+    "directory": "packages/vue"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -10,35 +22,13 @@
       "default": "./dist/index.js"
     }
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "sideEffects": false,
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "scripts": {
-    "build": "bunx tsdown --config tsdown.config.ts",
-    "prepack": "bun run build"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/open-pencil/open-pencil.git",
-    "directory": "packages/vue"
-  },
   "publishConfig": {
     "access": "public",
     "provenance": true
   },
-  "peerDependencies": {
-    "@open-pencil/core": "workspace:*",
-    "canvaskit-wasm": ">=0.41.1",
-    "vue": "^3.5.41"
-  },
-  "peerDependenciesMeta": {
-    "canvaskit-wasm": {
-      "optional": true
-    }
+  "scripts": {
+    "build": "bunx tsdown --config tsdown.config.ts",
+    "prepack": "bun run build"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
@@ -56,5 +46,15 @@
     "tsdown": "^0.22.14",
     "unplugin-raw": "^0.7.0",
     "unplugin-vue": "^7.2.0"
+  },
+  "peerDependencies": {
+    "@open-pencil/core": "workspace:*",
+    "canvaskit-wasm": ">=0.41.1",
+    "vue": "^3.5.41"
+  },
+  "peerDependenciesMeta": {
+    "canvaskit-wasm": {
+      "optional": true
+    }
   }
 }

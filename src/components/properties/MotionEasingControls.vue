@@ -21,9 +21,9 @@ import {
 } from '@/app/properties/motion/easing'
 import NumberField from '@/components/inputs/NumberField.vue'
 import MotionCubicBezierEditor from '@/components/properties/MotionCubicBezierEditor.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
 import PanelFieldGroup from '@/components/ui/panel/PanelFieldGroup.vue'
 import PanelGrid from '@/components/ui/panel/PanelGrid.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 type SelectValue = MotionEasingKind | 'inherit'
 

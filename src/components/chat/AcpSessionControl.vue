@@ -3,15 +3,16 @@ import { refAutoReset, useClipboard } from '@vueuse/core'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed, ref } from 'vue'
 
+import { useI18n } from '@open-pencil/vue'
+
 import type {
   ACPSessionHistoryItem,
   ACPSessionHistoryState,
   ACPSessionStatus
 } from '@/app/ai/chat/transports'
-import Tip from '@/components/ui/Tip.vue'
-import { useButtonUI } from '@/components/ui/button'
-import { usePopoverUI } from '@/components/ui/popover'
-import { useI18n } from '@open-pencil/vue'
+import { useButtonUI } from '@/components/ui/button/button'
+import { usePopoverUI } from '@/components/ui/overlay/popover'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const {
   status,

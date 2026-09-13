@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
 import { useI18n } from '@open-pencil/vue'
 
-import AppSelect from '@/components/ui/AppSelect.vue'
 import { useMotionAnimationExport } from '@/app/document/export/motion/use-motion-animation-export'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 const motionExport = useMotionAnimationExport()
 const { panels } = useI18n()

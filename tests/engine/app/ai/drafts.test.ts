@@ -3,7 +3,12 @@ import { describe, expect, test } from 'bun:test'
 import { shallowRef } from 'vue'
 
 import type { VisualChatAttachment } from '@/app/ai/chat/attachments'
-import { useChatAttachments, useChatDraft, useChatSubmissionPending } from '@/app/ai/chat/drafts'
+import {
+  useChatAttachments,
+  useChatDraft,
+  useChatNodeIds,
+  useChatSubmissionPending
+} from '@/app/ai/chat/drafts'
 
 const attachment = { id: 'visual-1' } as VisualChatAttachment
 
@@ -76,4 +81,19 @@ describe('chat drafts', () => {
     activeStore.value = storeA
     expect(activeAttachments.value).toEqual([attachment])
   })
+})
+
+test('keeps pinned node context isolated by editor and bounds its size', () => {
+  const first = {}
+  const second = {}
+  const active = shallowRef(first)
+  const context = useChatNodeIds(() => active.value)
+  context.value = ['first-node']
+  active.value = second
+  expect(context.value).toEqual([])
+  context.value = ['second-node']
+  active.value = first
+  expect(context.value).toEqual(['first-node'])
+  context.value = Array.from({ length: 25 }, (_, index) => `node-${index}`)
+  expect(context.value).toHaveLength(20)
 })

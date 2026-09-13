@@ -14,9 +14,13 @@
   },
   "files": [
     "dist",
+    "src",
     "README.md"
   ],
   "type": "module",
+  "imports": {
+    "#harness/*": "./src/*.ts"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",

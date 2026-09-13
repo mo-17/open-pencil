@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { useEventListener, useIntervalFn } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useEventListener, useIntervalFn } from '@vueuse/core'
+
 import { useDocumentWorkspace, useI18n } from '@open-pencil/vue'
 
 import {
@@ -24,25 +25,25 @@ import {
   type StorageDocumentAuthority,
   type StorageDocumentBinding
 } from '@/app/integrations/storage'
-import {
-  clearGoogleDriveChangeCursor,
-  readGoogleDriveChangeCursor,
-  writeGoogleDriveChangeCursor
-} from '@/app/integrations/storage/google-drive/change-cursor'
-import type { GoogleDriveStorageAdapter } from '@/app/integrations/storage/google-drive/adapter'
-import { isOpenPencilFile } from '@/app/integrations/storage/google-drive/client'
-import { GoogleDriveError } from '@/app/integrations/storage/google-drive/errors'
-import { GoogleDriveOAuthError } from '@/app/integrations/storage/google-drive/oauth/session'
 import { ALIYUN_DRIVE_STORAGE_PROVIDER_ID } from '@/app/integrations/storage/aliyun-drive/config'
 import { AliyunDriveError } from '@/app/integrations/storage/aliyun-drive/errors'
 import { AliyunDriveOAuthError } from '@/app/integrations/storage/aliyun-drive/oauth/errors'
 import { BAIDU_NETDISK_STORAGE_PROVIDER_ID } from '@/app/integrations/storage/baidu-netdisk/config'
 import { BaiduNetdiskError } from '@/app/integrations/storage/baidu-netdisk/errors'
 import { BaiduNetdiskOAuthError } from '@/app/integrations/storage/baidu-netdisk/oauth/session'
+import type { GoogleDriveStorageAdapter } from '@/app/integrations/storage/google-drive/adapter'
+import {
+  clearGoogleDriveChangeCursor,
+  readGoogleDriveChangeCursor,
+  writeGoogleDriveChangeCursor
+} from '@/app/integrations/storage/google-drive/change-cursor'
+import { isOpenPencilFile } from '@/app/integrations/storage/google-drive/client'
+import { GoogleDriveError } from '@/app/integrations/storage/google-drive/errors'
+import { GoogleDriveOAuthError } from '@/app/integrations/storage/google-drive/oauth/session'
 import { OneDriveError } from '@/app/integrations/storage/onedrive/errors'
 import { OneDriveOAuthError } from '@/app/integrations/storage/onedrive/oauth/session'
-import { openSettingsDialog, settingsDialogOpen } from '@/app/settings/dialog'
 import type { CredentialStatus } from '@/app/settings/credentials/types'
+import { openSettingsDialog, settingsDialogOpen } from '@/app/settings/dialog'
 import {
   assertCloudStorageDurability,
   StorageDurabilityUnavailableError
@@ -67,13 +68,13 @@ import {
   activeTab,
   allTabs,
   createTab,
-  getTabsSnapshot,
+  isStorageDocumentOpen,
   openStorageDocumentInNewTab
 } from '@/app/tabs'
 import { isTauri } from '@/app/tauri/env'
 import StorageDeleteDocumentDialog from '@/components/storage/StorageDeleteDocumentDialog.vue'
 import StorageWorkspaceDocumentCard from '@/components/storage/StorageWorkspaceDocumentCard.vue'
-import AppPlaceholder from '@/components/ui/AppPlaceholder.vue'
+import AppPlaceholder from '@/components/ui/feedback/AppPlaceholder.vue'
 
 const GOOGLE_DRIVE_PROVIDER_ID = 'google-drive'
 const CHANGE_POLL_INTERVAL_MS = 60_000
@@ -116,6 +117,7 @@ const activeAuthority = ref<StorageDocumentAuthority | null>(null)
 let refreshController: AbortController | null = null
 let changeController: AbortController | null = null
 let openController: AbortController | null = null
+let editorOpenController: AbortController | null = null
 let createController: AbortController | null = null
 let uploadController: AbortController | null = null
 let lastWholeDocumentRefreshAt = 0
@@ -148,7 +150,7 @@ const conflictCount = computed(
 const deleteBlockedByOpenTab = computed(() => {
   void allTabs.value.length
   const candidate = deleteCandidate.value
-  return candidate ? storageBindingIsOpen(candidate.binding) : false
+  return candidate ? isStorageDocumentOpen(candidate.binding) : false
 })
 
 const syncSummary = computed(() => {
@@ -273,30 +275,6 @@ function documentProgress(document: StorageDocument): number | null {
   return uploadProgressByCanvas.value.get(storageDocumentKey(activeBinding(document.id))) ?? null
 }
 
-function storageBindingsShareRemoteDocument(
-  first: StorageDocumentBinding,
-  second: StorageDocumentBinding
-): boolean {
-  if (
-    first.providerId !== second.providerId ||
-    first.profileId !== second.profileId ||
-    first.documentId !== second.documentId
-  ) {
-    return false
-  }
-  if (!first.authority || !second.authority) {
-    return first.authority === undefined && second.authority === undefined
-  }
-  return first.authority.accountId === second.authority.accountId
-}
-
-function storageBindingIsOpen(binding: StorageDocumentBinding): boolean {
-  return getTabsSnapshot().some((tab) => {
-    const current = tab.store.getStorageBinding()
-    return current ? storageBindingsShareRemoteDocument(current, binding) : false
-  })
-}
-
 function requestDeleteDocument(document: StorageDocument): void {
   if (deletingDocumentId.value || durabilityAvailable.value !== true) return
   const identity = currentWorkspaceIdentity()
@@ -316,13 +294,13 @@ function closeDeleteDialog(open: boolean): void {
 
 async function confirmDeleteDocument(): Promise<void> {
   const candidate = deleteCandidate.value
-  if (!candidate || deletingDocumentId.value || storageBindingIsOpen(candidate.binding)) return
+  if (!candidate || deletingDocumentId.value || isStorageDocumentOpen(candidate.binding)) return
   deletingDocumentId.value = candidate.document.id
   operationNotice.value = null
   error.value = null
   try {
     await requireCloudStorageDurability()
-    if (!identityIsCurrent(candidate.identity) || storageBindingIsOpen(candidate.binding)) return
+    if (!identityIsCurrent(candidate.identity) || isStorageDocumentOpen(candidate.binding)) return
     const result = await queueStorageDocumentDeletion(candidate.binding)
     if (!identityIsCurrent(candidate.identity)) return
     await paintLocalDocuments(candidate.identity, () => identityIsCurrent(candidate.identity))
@@ -799,12 +777,32 @@ async function openDocument(document: StorageDocument): Promise<void> {
   error.value = null
   try {
     await requireCloudStorageDurability()
-    await openStorageDocumentInNewTab(document, binding, { signal: controller.signal })
-    requireCurrent(
-      () =>
-        openController === controller && !controller.signal.aborted && identityIsCurrent(identity)
-    )
-    await router.push('/')
+    await openStorageDocumentInNewTab(document, binding, {
+      signal: controller.signal,
+      reuseCurrentTab: false,
+      onTabActivated: async () => {
+        requireCurrent(
+          () =>
+            openController === controller &&
+            !controller.signal.aborted &&
+            identityIsCurrent(identity)
+        )
+        // The active tab now owns loading and cancellation. Mount its canvas before
+        // waiting for presentation; this navigation must not abort the open on unmount.
+        editorOpenController = controller
+        try {
+          const failure = await router.push('/')
+          if (failure || router.currentRoute.value.path !== '/') {
+            throw new DOMException('Storage document navigation was cancelled', 'AbortError')
+          }
+          controller.signal.throwIfAborted()
+        } catch (reason) {
+          editorOpenController = null
+          controller.abort()
+          throw reason
+        }
+      }
+    })
   } catch (reason) {
     if (!aborted(reason, controller.signal) && identityIsCurrent(identity)) {
       error.value = friendlyError(reason)
@@ -814,6 +812,7 @@ async function openDocument(document: StorageDocument): Promise<void> {
       openController = null
       openingDocumentId.value = null
     }
+    if (editorOpenController === controller) editorOpenController = null
   }
 }
 
@@ -1074,7 +1073,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   refreshController?.abort()
   changeController?.abort()
-  openController?.abort()
+  if (openController !== editorOpenController) openController?.abort()
   createController?.abort()
   uploadController?.abort()
 })

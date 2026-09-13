@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
+
 import type { DocumentStateDef, SceneNode, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
-import Tip from '@/components/ui/Tip.vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { requestLowcodeActionFocus } from '@/app/lowcode/action/focus'
@@ -18,8 +17,9 @@ import {
   type WorkflowGraphIssue,
   type WorkflowGraphNode
 } from '@/app/lowcode/workflow-graph'
+import Tip from '@/components/ui/overlay/Tip.vue'
+import { useSectionUI } from '@/components/ui/section'
 
-import WorkflowRow from './WorkflowRow.vue'
 import {
   graphMapEdgeBranchLabel,
   graphMapEdgeBranchKind,
@@ -32,6 +32,7 @@ import {
   nextGraphMapSearchMatchId,
   scrollGraphMapActiveMatchIntoView
 } from './workflow-graph-map-search'
+import WorkflowRow from './WorkflowRow.vue'
 
 /**
  * Phase 3 §10 v11 — document-level named-workflow manager. Workflows live on the

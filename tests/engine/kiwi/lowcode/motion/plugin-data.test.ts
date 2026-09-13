@@ -329,15 +329,19 @@ describe('MotionSpec pluginData persistence', () => {
       expect(archivedSharedValues(reopenedNode.pluginData)).toContain(rawShared.value)
 
       const resavedBytes = await exportFigFile(reopened)
+      expect(resavedBytes).toEqual(clearedBytes)
       const resavedRaw = parseFigBuffer(exactBuffer(resavedBytes))
       const resaved = resavedRaw.nodeChanges.find((candidate) => candidate.name === source.name)
-      expect(
-        (resaved?.pluginData ?? []).some(
-          (entry) =>
-            entry.pluginID === FIGMA_MOTION_SHARED_NAMESPACE &&
-            entry.key === `${FIGMA_MOTION_SHARED_NAMESPACE}/${FIGMA_MOTION_SHARED_KEY}`
-        )
-      ).toBe(false)
+      const resavedShared = (resaved?.pluginData ?? []).filter(
+        (entry) =>
+          entry.pluginID === FIGMA_MOTION_SHARED_NAMESPACE &&
+          entry.key === `${FIGMA_MOTION_SHARED_NAMESPACE}/${FIGMA_MOTION_SHARED_KEY}`
+      )
+      // An unchanged imported archive retains its inert clear marker byte-for-byte.
+      expect(resavedShared).toHaveLength(1)
+      expect(decodeFigmaMotionSharedPayload(resavedShared[0].value)).toEqual(
+        decodeFigmaMotionSharedPayload(activeShared[0].value)
+      )
       const reopenedAgain = await parseFigFile(exactBuffer(resavedBytes))
       expect(findNode(reopenedAgain, source.name).motion).toBeUndefined()
     } finally {

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { useI18n } from '@open-pencil/vue'
 import { computed, watch } from 'vue'
-import type { ManagedPreviewPlan } from '@open-pencil/compiler/managed-preview'
 
-import AppButton from '@/components/ui/AppButton.vue'
+import type { ManagedPreviewPlan } from '@open-pencil/compiler/managed-preview'
+import { useI18n } from '@open-pencil/vue'
+
+import AppButton from '@/components/ui/button/AppButton.vue'
 import { AppDialog } from '@/components/ui/dialog'
 
 import { backendPreviewCopy } from './copy'
@@ -46,8 +47,7 @@ function confirm() {
       v-if="plan.sql"
       class="mt-2 max-h-[45vh] select-text overflow-auto rounded-lg border border-border bg-input p-4 text-xs leading-relaxed text-surface"
       data-test-id="managed-backend-sql"
-      >{{ plan.sql }}</pre
-    >
+      >{{ plan.sql }}</pre>
     <p v-else class="mt-2 text-xs text-muted">{{ text.noSQL }}</p>
     <ul v-if="plan.diagnostics.length" class="mt-3 space-y-1 text-xs text-amber-500">
       <li v-for="item in plan.diagnostics" :key="`${item.code}:${item.path}`">

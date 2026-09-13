@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+
 import { useI18n } from '@open-pencil/vue'
 
 import {
@@ -30,11 +31,11 @@ import {
   StorageDurabilityUnavailableError,
   withDurableStorageProfileMutationDrain
 } from '@/app/storage/durability'
+import { storageProfileHasOpenTabs } from '@/app/storage/mutation-drain'
 import {
   StorageProfileRemovalBlockedError,
   storageProfileRemovalBlocked
 } from '@/app/storage/profile-removal'
-import { storageProfileHasOpenTabs } from '@/app/storage/mutation-drain'
 import { prepareS3LegacyMigration } from '@/app/storage/sync'
 import { getTabsSnapshot } from '@/app/tabs'
 import AliyunDriveStorageConnection from '@/components/settings/storage/AliyunDriveStorageConnection.vue'
@@ -42,7 +43,7 @@ import BaiduNetdiskStorageConnection from '@/components/settings/storage/BaiduNe
 import GoogleDriveStorageConnection from '@/components/settings/storage/GoogleDriveStorageConnection.vue'
 import OneDriveStorageConnection from '@/components/settings/storage/OneDriveStorageConnection.vue'
 import S3CompatibleStorageSettings from '@/components/settings/storage/S3CompatibleStorageSettings.vue'
-import AppInput from '@/components/ui/AppInput.vue'
+import AppInput from '@/components/ui/input/AppInput.vue'
 
 type ProfileEditorMode = 'idle' | 'add' | 'rename' | 'delete'
 type ProfileSettingsHandle = { removeProfile(profileId: string): Promise<void> }

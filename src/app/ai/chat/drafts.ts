@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import type { Ref } from 'vue'
 
 import type { VisualChatAttachment } from '@/app/ai/chat/attachments'
@@ -81,6 +81,17 @@ export function useChatSubmissionPending(owner: ChatOwnerSource): Ref<boolean> {
     get: () => getChatSubmissionPending(owner()).value,
     set: (value) => {
       getChatSubmissionPending(owner()).value = value
+    }
+  })
+}
+
+const nodeContexts = reactive(new WeakMap<object, string[]>())
+const fallbackNodeContext = {}
+export function useChatNodeIds(owner: () => ChatOwner): Ref<string[]> {
+  return computed({
+    get: () => nodeContexts.get(owner() ?? fallbackNodeContext) ?? [],
+    set: (ids) => {
+      nodeContexts.set(owner() ?? fallbackNodeContext, ids.slice(0, 20))
     }
   })
 }

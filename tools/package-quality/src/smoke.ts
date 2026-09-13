@@ -10,6 +10,8 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 
+import { inspectTarball } from '@open-pencil/package-artifacts/tarball'
+
 import {
   publicPackageDirs,
   publicPackagePath,
@@ -486,7 +488,7 @@ try {
 
   const packPackage = (packageDir: string): string => {
     const output = run(
-      ['bun', 'pm', 'pack', '--destination', tempDir, '--quiet'],
+      ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', tempDir, '--quiet'],
       publicPackagePath(packageDir)
     )
     const filename = output
@@ -508,7 +510,7 @@ try {
     )
   }
 
-  const packages = publicPackageDirs.map((packageDir) => ({
+  const packages = (await publicPackageDirs(rootDir)).map((packageDir) => ({
     packageDir,
     packageJSON: readPackageJSON(packageDir)
   }))
@@ -532,11 +534,19 @@ try {
   for (const [index, { packageDir, packageJSON }] of packages.entries()) {
     const tarball = preparedTarballs?.[index] ?? packPackage(packageDir)
     tarballs.push(tarball)
+    const inspection = await inspectTarball(tarball)
+    if (inspection.diagnostics.length > 0) {
+      throw new Error(
+        inspection.diagnostics
+          .map(({ packageName, field, message }) => `${packageName}: ${field} ${message}`)
+          .join('\n')
+      )
+    }
     const contents = run(['tar', '-tf', tarball])
     const runtimeTs = contents
       .split('\n')
       .filter((entry) => /package\/src\/.*\.ts$/.test(entry) && !entry.endsWith('.d.ts'))
-    if (runtimeTs.length > 0) {
+    if (usingPreparedPublishDirectories && runtimeTs.length > 0) {
       throw new Error(`${basename(tarball)} includes runtime TypeScript:\n${runtimeTs.join('\n')}`)
     }
 
@@ -626,9 +636,7 @@ globalThis.__OPENPENCIL_MOTION_RUNTIME__?.dispose()
   for (const specifier of [...publicImportSpecifiers].sort()) {
     if (evalSkipSpecifiers.has(specifier)) continue
     nodeEval(`await import(${JSON.stringify(specifier)})`, tempDir)
-    if (usingPreparedPublishDirectories) {
-      bunEval(`await import(${JSON.stringify(specifier)})`, tempDir)
-    }
+    bunEval(`await import(${JSON.stringify(specifier)})`, tempDir)
   }
 
   checkTypeConsumer(tempDir)

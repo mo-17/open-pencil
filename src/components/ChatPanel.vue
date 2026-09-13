@@ -1,28 +1,32 @@
 <script setup lang="ts">
 import { refAutoReset, useClipboard } from '@vueuse/core'
-import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
-import type { UIMessage } from 'ai'
 
 import { clearACPDebugLog, getACPDebugText, hasACPDebugEntries } from '@/app/ai/acp/transport'
+import { chatDocumentId } from '@/app/ai/chat/history/document'
 import { useAIChat } from '@/app/ai/chat/use'
 import { copyChatLog } from '@/app/ai/debug'
 import { chatPanelController } from '@/app/ai/popout/chat-host-controller'
+import { getActiveEditorStore } from '@/app/editor/active-store'
+import { openSettingsDialog } from '@/app/settings/dialog'
 import { toast } from '@/app/shell/ui'
 import ACPPermissionDialog from '@/components/chat/ACPPermissionDialog.vue'
 import ACPSessionControl from '@/components/chat/AcpSessionControl.vue'
+import ChatHistory from '@/components/chat/ChatHistory.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
-import ChatMessage from '@/components/chat/ChatMessage.vue'
+import ChatTranscript from '@/components/chat/ChatTranscript.vue'
 import CodePenAIReview from '@/components/chat/CodePenAIReview.vue'
 import ProviderSetup from '@/components/chat/ProviderSetup.vue'
-import AppPlaceholder from '@/components/ui/AppPlaceholder.vue'
-import AppButton from '@/components/ui/AppButton.vue'
+import AppButton from '@/components/ui/button/AppButton.vue'
 
 const IS_DEV = import.meta.env.DEV
 const {
   isConfigured,
+  history,
+  handleHistoryAction,
+  historyReadOnly,
   messages,
   actionableApprovalMessageId,
   pendingApprovalIds,
@@ -37,7 +41,6 @@ const {
   canAttachSelection,
   acceptedImageTypes,
   attachmentTargetLabel,
-  isThinking,
   showContinue,
   submissionPending,
   attachments,
@@ -55,42 +58,40 @@ const {
 const { chatFailure, clearChatFailure } = useAIChat()
 const { copy } = useClipboard()
 const { ai, common, dialogs } = useI18n()
-const messagesEnd = ref<HTMLDivElement>()
 const debugCopied = refAutoReset(false, 1500)
 const acpLogCopied = refAutoReset(false, 1500)
-let scrollTimer: ReturnType<typeof setTimeout> | undefined
 
+const historyOptions = computed(() => {
+  const current = history.current.value
+  const rows = [...history.conversations.value]
+  if (current && !rows.some((row) => row.id === current.id)) rows.unshift(current)
+  return rows.map((conversation) => ({
+    ...conversation,
+    available: conversation.documentId === chatDocumentId(getActiveEditorStore())
+  }))
+})
 const failureMessage = computed(() => {
   switch (chatFailure.value?.reason) {
     case 'insufficient-credit':
       return ai.value.chatInsufficientCredit
     case 'output-limit':
       return ai.value.chatOutputLimit
+    case 'authentication':
+      return ai.value.chatAuthenticationFailed
+    case 'forbidden':
+      return ai.value.chatForbidden
+    case 'model-not-found':
+      return ai.value.chatModelNotFound
+    case 'network':
+      return ai.value.chatNetworkFailed
+    case 'rate-limit':
+      return ai.value.chatRateLimited
     case 'request-failed':
       return ai.value.chatRequestFailed
     default:
       return null
   }
 })
-function isStreamingMessage(message: UIMessage, index: number): boolean {
-  return (
-    message.role === 'assistant' &&
-    index === messages.value.length - 1 &&
-    (status.value === 'submitted' || status.value === 'streaming')
-  )
-}
-
-function scheduleScrollToBottom(): void {
-  if (scrollTimer) return
-  scrollTimer = setTimeout(() => {
-    scrollTimer = undefined
-    void nextTick(() => {
-      messagesEnd.value?.scrollIntoView({ behavior: 'auto', block: 'end' })
-    })
-  }, 80)
-}
-
-watch([messages, status], scheduleScrollToBottom, { deep: true })
 watch(acpSessionRestoreNotice, (notice) => {
   if (notice) toast.warning(dialogs.value.aiSessionRestoreFailed)
 })
@@ -106,10 +107,14 @@ watch(
   () => chatFailure.value?.reason,
   (reason) => {
     if (!reason) return
-    toast.error(failureMessage.value ?? ai.value.chatRequestFailed)
+    toast.error(
+      failureMessage.value ?? ai.value.chatRequestFailed,
+      ['authentication', 'forbidden', 'model-not-found'].includes(reason)
+        ? { label: ai.value.openProviderSettingsAction, run: () => openSettingsDialog('ai') }
+        : undefined
+    )
   }
 )
-onBeforeUnmount(() => clearTimeout(scrollTimer))
 
 async function handleSubmit(text: string, restoreInput: () => void = () => undefined) {
   clearChatFailure()
@@ -138,72 +143,39 @@ async function handleClearChat(): Promise<void> {
 
 <template>
   <div data-test-id="chat-panel" class="flex min-w-0 flex-1 flex-col overflow-hidden select-text">
-    <ProviderSetup v-if="!isConfigured" />
+    <ChatHistory
+      v-if="!isACPProvider"
+      :conversations="historyOptions"
+      :selected-id="history.current.value?.id"
+      :saved="messages.length > 0 || history.current.value?.titleSource === 'manual'"
+      :disabled="history.busy.value || acpSessionInteractionBusy"
+      :debug="IS_DEV"
+      :acp-debug="IS_DEV && hasACPDebugEntries()"
+      @select="(id) => handleHistoryAction(() => history.open(id))"
+      @create="handleHistoryAction(() => history.newChat())"
+      @rename="(id, title) => handleHistoryAction(() => history.rename(id, title))"
+      @delete="(id) => handleHistoryAction(() => history.remove(id))"
+      @copy-debug="handleCopyDebug"
+      @copy-a-c-p-debug="handleCopyACPLog"
+    />
+    <p v-if="history.storageError.value" role="status" class="px-3 py-2 text-xs text-danger">
+      {{ ai.chatStorageFailed }}
+    </p>
+    <p v-if="historyReadOnly" role="status" class="px-3 py-2 text-xs text-muted">
+      {{ ai.chatReadOnly }}
+    </p>
+    <ProviderSetup v-if="!isConfigured && !messages.length" />
 
     <template v-else>
-      <ScrollAreaRoot class="min-h-0 flex-1">
-        <ScrollAreaViewport class="h-full px-3 py-3 [&>div]:h-full">
-          <AppPlaceholder
-            v-if="messages.length === 0"
-            data-test-id="chat-empty-state"
-            :label="ai.describeCreateOrChange"
-            :ui="{ root: 'h-full' }"
-          >
-            <template #icon>
-              <icon-lucide-message-circle class="size-5" />
-            </template>
-          </AppPlaceholder>
-
-          <div v-else data-test-id="chat-messages" class="flex flex-col gap-3">
-            <ChatMessage
-              v-for="(message, index) in messages"
-              :key="message.id"
-              :message="message"
-              :streaming="isStreamingMessage(message, index)"
-              :pending-approval-ids="pendingApprovalIds"
-              :approval-enabled="message.id === actionableApprovalMessageId"
-              @tool-approval="handleToolApproval"
-            />
-
-            <div v-if="isThinking" data-test-id="chat-typing-indicator" class="flex gap-2">
-              <div
-                class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted/20 text-[10px] font-bold text-muted"
-              >
-                AI
-              </div>
-              <div class="flex items-center gap-1 py-2">
-                <span
-                  class="size-1.5 animate-bounce rounded-full bg-muted"
-                  style="animation-delay: 0ms"
-                />
-                <span
-                  class="size-1.5 animate-bounce rounded-full bg-muted"
-                  style="animation-delay: 150ms"
-                />
-                <span
-                  class="size-1.5 animate-bounce rounded-full bg-muted"
-                  style="animation-delay: 300ms"
-                />
-              </div>
-            </div>
-
-            <div v-if="showContinue" class="flex justify-center py-2">
-              <button
-                class="flex items-center gap-1.5 rounded-full bg-accent/10 px-4 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
-                @click="handleSubmit('Continue where you left off')"
-              >
-                <icon-lucide-play class="size-3" />
-                Continue
-              </button>
-            </div>
-
-            <div ref="messagesEnd" />
-          </div>
-        </ScrollAreaViewport>
-        <ScrollAreaScrollbar orientation="vertical" class="flex w-1.5 touch-none p-px select-none">
-          <ScrollAreaThumb class="relative flex-1 rounded-full bg-muted/30" />
-        </ScrollAreaScrollbar>
-      </ScrollAreaRoot>
+      <ChatTranscript
+        :messages="messages"
+        :status="status"
+        :show-continue="showContinue"
+        :pending-approval-ids="pendingApprovalIds"
+        :actionable-approval-message-id="actionableApprovalMessageId"
+        @tool-approval="handleToolApproval"
+        @continue="handleSubmit('Continue where you left off')"
+      />
 
       <div
         v-if="messages.length > 0"
@@ -263,6 +235,7 @@ async function handleClearChat(): Promise<void> {
       </div>
 
       <ChatInput
+        v-if="!historyReadOnly && isConfigured"
         :status="status"
         :initializing="submissionPending"
         :stopping="stopRequested"

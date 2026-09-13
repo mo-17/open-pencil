@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed, nextTick } from 'vue'
 import { templateRef, unrefElement } from '@vueuse/core'
 import {
   ComboboxAnchor,
@@ -14,15 +13,15 @@ import {
   ComboboxViewport,
   type AcceptableValue
 } from 'reka-ui'
+import { computed, nextTick } from 'vue'
 
+import type { FontPickerUI } from '#vue/primitives/FontPicker/types'
 import {
   fontFamilyOptionLicenseStatus,
   useFontPicker,
   type FontAccessController,
   type FontFamilyOption
 } from '#vue/primitives/FontPicker/useFontPicker'
-
-import type { FontPickerUI } from '#vue/primitives/FontPicker/types'
 
 const {
   listFamilies,

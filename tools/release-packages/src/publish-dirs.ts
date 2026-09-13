@@ -1,6 +1,9 @@
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
 
+import { discoverPublicPackages } from '@open-pencil/package-artifacts'
+
+import { NPM_RELEASE_POLICY } from './policy'
 import { validatePackageResourceReferences } from './resource-references'
 
 export interface PackagePublishConfig {
@@ -9,7 +12,7 @@ export interface PackagePublishConfig {
   include: string[]
 }
 
-interface PreparePublishDirectoriesOptions {
+export interface PreparePublishDirectoriesOptions {
   coreVersion: string
   packages: PackagePublishConfig[]
   root: string
@@ -202,7 +205,32 @@ function stripBunExportConditions(value: unknown): unknown {
   )
 }
 
+function assertPublishConfig(source: PackageJSON): void {
+  for (const [field, expected] of Object.entries(NPM_RELEASE_POLICY)) {
+    if (
+      source.publishConfig &&
+      field in source.publishConfig &&
+      source.publishConfig[field] !== expected
+    ) {
+      throw new Error(
+        `${source.name}: publishConfig.${field} conflicts with the public npm release policy`
+      )
+    }
+  }
+  for (const field of ['exports', 'imports', 'main', 'types', 'bin'] as const) {
+    if (
+      source.publishConfig &&
+      field in source.publishConfig &&
+      source[field] !== undefined &&
+      JSON.stringify(source.publishConfig[field]) !== JSON.stringify(source[field])
+    ) {
+      throw new Error(`${source.name}: publishConfig must not rewrite ${field}`)
+    }
+  }
+}
+
 export function publishPackageJSON(source: PackageJSON, coreVersion: string): PackageJSON {
+  assertPublishConfig(source)
   const json = structuredClone(source)
   const sourceName = json.name
   const publishedName =
@@ -419,6 +447,22 @@ async function assertNoWorkspaceSpecifiers(
       `Published output contains unreplaced workspace package specifiers:\n${failures.join('\n')}`
     )
   }
+}
+
+/** Keep publication inventory explicit while discovering newly added unmapped workspaces. */
+export async function discoverPublishPackages(root: string): Promise<PackagePublishConfig[]> {
+  const discovered = await discoverPublicPackages(root)
+  for (const { directory, manifest } of discovered) {
+    if (
+      !DEFAULT_PACKAGES.some((pkg) => pkg.dir === directory) ||
+      !(manifest.name in PUBLIC_PACKAGE_NAME_MAP)
+    ) {
+      throw new Error(
+        `Public workspace has no publish-name mapping: ${manifest.name} (${directory})`
+      )
+    }
+  }
+  return DEFAULT_PACKAGES.filter((pkg) => discovered.some(({ directory }) => directory === pkg.dir))
 }
 
 export async function preparePublishDirectories(

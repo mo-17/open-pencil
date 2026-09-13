@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTextareaAutosize } from '@vueuse/core'
 import { TooltipProvider } from 'reka-ui'
 import { computed, ref } from 'vue'
 
@@ -6,17 +7,19 @@ import { ACP_AGENTS } from '@open-pencil/core/constants'
 import { useI18n } from '@open-pencil/vue'
 
 import type { VisualChatAttachment } from '@/app/ai/chat/attachments'
-import { useChatDraft } from '@/app/ai/chat/drafts'
+import { resolveReferencedNodes, MAX_REFERENCED_NODES } from '@/app/ai/chat/context'
+import { useChatDraft, useChatNodeIds } from '@/app/ai/chat/drafts'
 import { useAIChat } from '@/app/ai/chat/use'
 import { designModelProfile, designModelProfiles } from '@/app/ai/models'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { activeTab } from '@/app/tabs'
 import AcpConfigSelect from '@/components/chat/AcpConfigSelect.vue'
 import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.vue'
+import ChatNodePreview from '@/components/chat/ChatNodePreview.vue'
 import ChatProfileSelect from '@/components/chat/ChatProfileSelect.vue'
 import ProviderModelSelect from '@/components/chat/ProviderModelSelect.vue'
-import Tip from '@/components/ui/Tip.vue'
-import { useButtonUI } from '@/components/ui/button'
+import { useButtonUI } from '@/components/ui/button/button'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const { providerID, providerDef, modelID, customModelID } = useAIChat()
 const { ai, dialogs } = useI18n()
@@ -56,7 +59,26 @@ const emit = defineEmits<{
 }>()
 
 const input = useChatDraft(() => activeTab.value?.store)
+const nodeIds = useChatNodeIds(() => activeTab.value?.store)
+const editor = computed(() => activeTab.value?.store)
+const contextNodes = computed(() =>
+  editor.value ? resolveReferencedNodes(editor.value.graph, nodeIds.value) : []
+)
+const selectionActive = computed(() => {
+  const selected = editor.value?.state.selectedIds
+  return Boolean(selected?.size) && [...(selected ?? [])].every((id) => nodeIds.value.includes(id))
+})
+function toggleContextSelection() {
+  const store = editor.value
+  if (!store || attachmentActionsDisabled.value) return
+  const selected = store.state.selectedIds
+  nodeIds.value = selectionActive.value
+    ? nodeIds.value.filter((id) => !selected.has(id))
+    : resolveReferencedNodes(store.graph, [...nodeIds.value, ...selected]).map((node) => node.id)
+}
 const fileInput = ref<HTMLInputElement>()
+const textarea = ref<HTMLTextAreaElement>()
+useTextareaAutosize({ element: textarea, input, maxHeight: 160 })
 
 const isStreaming = computed(() => status === 'streaming' || status === 'submitted')
 const isBusy = computed(() => initializing || isStreaming.value)
@@ -145,7 +167,7 @@ function handleSubmit(event: Event) {
   if (attachmentActionsDisabled.value) return
   const requestedInput = useChatDraft(activeTab.value?.store)
   const text = requestedInput.value.trim()
-  if (!text && attachments.length === 0) return
+  if (!text && attachments.length === 0 && contextNodes.value.length === 0) return
   const submissionText = text || dialogs.value.recreateVisualReference
   requestedInput.value = ''
   emit('submit', submissionText, () => {
@@ -217,16 +239,32 @@ function handleSubmit(event: Event) {
             data-test-id="chat-attachment-file-input"
             @change="handleFilesSelected"
           />
-          <Tip :label="dialogs.chooseImageReference" side="top">
+          <Tip :label="ai.attachImages" side="top">
             <button
               type="button"
               data-test-id="chat-attachment-file-button"
-              :aria-label="dialogs.chooseImageReference"
+              :aria-label="ai.attachImages"
               class="flex size-6 shrink-0 items-center justify-center rounded text-muted hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
               :disabled="attachmentActionsDisabled"
               @click="chooseFiles"
             >
               <icon-lucide-paperclip class="size-3.5" aria-hidden="true" />
+            </button>
+          </Tip>
+          <Tip :label="ai.addSelectionContext">
+            <button
+              type="button"
+              :aria-label="ai.addSelectionContext"
+              :data-state="selectionActive ? 'on' : 'off'"
+              class="flex size-6 shrink-0 items-center justify-center rounded text-muted hover:bg-hover hover:text-surface"
+              :disabled="
+                attachmentActionsDisabled ||
+                !editor?.state.selectedIds.size ||
+                (!selectionActive && contextNodes.length >= MAX_REFERENCED_NODES)
+              "
+              @click="toggleContextSelection"
+            >
+              <icon-lucide-pin class="size-3.5" />
             </button>
           </Tip>
           <Tip
@@ -260,6 +298,26 @@ function handleSubmit(event: Event) {
           </Tip>
         </div>
 
+        <div v-if="contextNodes.length && editor" class="flex flex-wrap gap-1.5">
+          <div
+            v-for="node in contextNodes"
+            :key="node.id"
+            data-slot="chat-context-chip"
+            class="flex items-center gap-1 rounded border border-border px-1 py-1"
+          >
+            <ChatNodePreview :editor="editor" :node="node" /><span class="text-[10px]">{{
+              node.name
+            }}</span>
+            <button
+              type="button"
+              :aria-label="ai.removeImageAttachment({ name: node.name })"
+              :disabled="attachmentActionsDisabled"
+              @click="nodeIds = nodeIds.filter((id) => id !== node.id)"
+            >
+              <icon-lucide-x class="size-3" />
+            </button>
+          </div>
+        </div>
         <div
           v-if="attachments.length"
           data-test-id="chat-draft-attachments"
@@ -277,6 +335,7 @@ function handleSubmit(event: Event) {
             :width="attachment.width"
             :height="attachment.height"
             :removable="!attachmentActionsDisabled"
+            :remove-label="ai.removeImageAttachment({ name: attachment.name })"
             @remove="emit('remove-attachment', attachment.id)"
           />
         </div>
@@ -284,6 +343,8 @@ function handleSubmit(event: Event) {
 
       <form class="flex gap-1.5" @submit="handleSubmit">
         <textarea
+          ref="textarea"
+          :aria-label="ai.describeChange"
           v-model="input"
           data-test-id="chat-input"
           :placeholder="ai.describeChange"
@@ -297,13 +358,12 @@ function handleSubmit(event: Event) {
         />
         <Tip
           v-if="isStreaming"
-          :label="
-            stopRetryAvailable ? 'Force stop' : stopping ? 'Stopping…' : ai.stopGenerating
-          "
+          :label="stopRetryAvailable ? 'Force stop' : stopping ? 'Stopping…' : ai.stopGenerating"
         >
           <button
             type="button"
             data-test-id="chat-stop-button"
+            :aria-label="ai.stopGenerating"
             :class="stopButton.base"
             :disabled="stopping"
             :aria-busy="stopping || undefined"
@@ -318,8 +378,12 @@ function handleSubmit(event: Event) {
           <button
             type="submit"
             data-test-id="chat-send-button"
+            :aria-label="ai.sendMessage"
             :class="sendButton.base"
-            :disabled="attachmentActionsDisabled || (!input.trim() && attachments.length === 0)"
+            :disabled="
+              attachmentActionsDisabled ||
+              (!input.trim() && attachments.length === 0 && contextNodes.length === 0)
+            "
           >
             <icon-lucide-send class="size-3" />
           </button>

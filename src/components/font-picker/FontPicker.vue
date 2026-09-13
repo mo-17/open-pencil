@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
+
+import { fontManager, WEB_FONT_PROVIDER_IDS } from '@open-pencil/core/text'
 import {
   FontPickerRoot,
   useI18n,
@@ -10,10 +12,6 @@ import {
   type FontLicenseFilter
 } from '@open-pencil/vue'
 
-import AppBadge from '@/components/ui/AppBadge.vue'
-import { useSelectUI } from '@/components/ui/select'
-import { usePopoverUI } from '@/components/ui/popover'
-import Tip from '@/components/ui/Tip.vue'
 import {
   listFamilies,
   importedFontRevision,
@@ -22,8 +20,10 @@ import {
   localFontAccessState,
   requestLocalFontAccess
 } from '@/app/editor/fonts'
-
-import { fontManager, WEB_FONT_PROVIDER_IDS } from '@open-pencil/core/text'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
+import { usePopoverUI } from '@/components/ui/overlay/popover'
+import Tip from '@/components/ui/overlay/Tip.vue'
+import { useSelectUI } from '@/components/ui/select/select'
 
 const { panels } = useI18n()
 const { label: labelProp } = defineProps<{ label?: string }>()

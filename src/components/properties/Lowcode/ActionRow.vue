@@ -10,13 +10,8 @@ import type {
   SupabasePayloadEntry,
   WorkflowDef
 } from '@open-pencil/scene-graph'
-import { commerceCopy } from '@/app/lowcode/backend/commerce/copy'
-import BackendCommandActionEditor from './BackendCommandActionEditor.vue'
 import { useI18n } from '@open-pencil/vue'
 
-import { ANALYTICS_TRACK_EVENT_CONFIG_HINT } from '@/app/lowcode/analytics-help'
-import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
-import Tip from '@/components/ui/Tip.vue'
 import {
   authNeedsEmail,
   authNeedsPassword,
@@ -25,12 +20,18 @@ import {
 } from '@/app/lowcode/action/errors'
 import { ACTION_KINDS, makeAction } from '@/app/lowcode/action/factory'
 import type { ServerWorkflowOption } from '@/app/lowcode/action/server-workflow-options'
+import { ANALYTICS_TRACK_EVENT_CONFIG_HINT } from '@/app/lowcode/analytics-help'
+import { commerceCopy } from '@/app/lowcode/backend/commerce/copy'
+import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
+import Tip from '@/components/ui/overlay/Tip.vue'
+
 // ActionRow ↔ ActionList are mutually recursive components (a row renders nested
 // branch lists, a list renders rows) — the import cycle is intentional and
 // resolved lazily at render time, the canonical Vue recursive-component pattern.
 // eslint-disable-next-line import/no-cycle
 import ActionList from './ActionList.vue'
 import BackendActionEditor from './BackendActionEditor.vue'
+import BackendCommandActionEditor from './BackendCommandActionEditor.vue'
 
 /**
  * Phase 3 §10 v10 — one row of the recursive workflow editor. Renders a single
@@ -595,10 +596,7 @@ function changeServerWorkflow(id: string): void {
           @change="
             patch({
               operation: ($event.target as HTMLSelectElement).value as
-                | 'insert'
-                | 'update'
-                | 'delete'
-                | 'upsert'
+                'insert' | 'update' | 'delete' | 'upsert'
             })
           "
         >
@@ -628,11 +626,7 @@ function changeServerWorkflow(id: string): void {
           @change="
             patch({
               operation: ($event.target as HTMLSelectElement).value as
-                | 'signIn'
-                | 'signOut'
-                | 'signUp'
-                | 'resetPassword'
-                | 'updatePassword'
+                'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword'
             })
           "
         >

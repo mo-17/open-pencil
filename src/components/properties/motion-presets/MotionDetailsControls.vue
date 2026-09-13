@@ -4,9 +4,9 @@ import { MOTION_LIMITS } from '@open-pencil/scene-graph'
 import NumberField from '@/components/inputs/NumberField.vue'
 import FigmaMotionAdapterCard from '@/components/properties/FigmaMotionAdapterCard.vue'
 import MotionTimelineEditor from '@/components/properties/MotionTimelineEditor.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
 import PanelFieldGroup from '@/components/ui/panel/PanelFieldGroup.vue'
 import PanelGrid from '@/components/ui/panel/PanelGrid.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 import {
   useMotionDetailsControls,

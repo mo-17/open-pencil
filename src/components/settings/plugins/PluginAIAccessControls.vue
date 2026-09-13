@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
 import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogDescription,
   AlertDialogTitle
 } from 'reka-ui'
+import { computed, ref } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
@@ -16,8 +16,8 @@ import {
   type ThirdPartyPluginAIContributionReview
 } from '@/app/plugins'
 import { localizedAppPluginContributionText } from '@/app/plugins/localization'
-import AppBadge from '@/components/ui/AppBadge.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
 
 type PendingReview = Readonly<{
   action: 'grant' | 'revoke'

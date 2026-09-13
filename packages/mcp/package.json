@@ -12,7 +12,8 @@
     "openpencil-mcp-http": "./dist/index.mjs"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "type": "module",
   "main": "./dist/server.mjs",

@@ -9,6 +9,8 @@ import {
   type CredentialStoreAvailability
 } from '@/app/settings/credentials/types'
 
+import { invalidateNativeCredentialAccess } from './access-state'
+
 type InvokeCredentialCommand = <T>(command: string, args?: Record<string, unknown>) => Promise<T>
 
 const ERROR_MESSAGES: Readonly<Record<CredentialErrorCode, string>> = {
@@ -61,6 +63,10 @@ export class NativeCredentialStore implements CredentialStore {
     } catch (error) {
       const code = nativeCredentialErrorCode(error)
       throw new CredentialStoreError(code, ERROR_MESSAGES[code])
+    } finally {
+      if (['credential_read', 'credential_write', 'credential_remove'].includes(command)) {
+        invalidateNativeCredentialAccess()
+      }
     }
   }
 }

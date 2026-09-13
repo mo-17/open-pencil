@@ -1,3 +1,5 @@
+import type * as TauriAPI from '@tauri-apps/api'
+
 export {}
 
 type NativeTestNode = {
@@ -34,11 +36,7 @@ type NativeTestStore = {
 
 declare global {
   interface Window {
-    __TAURI__: {
-      core: {
-        invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
-      }
-    }
+    __TAURI__?: Pick<typeof TauriAPI, 'core'>
     openPencil?: {
       getStore?: () => NativeTestStore
     }

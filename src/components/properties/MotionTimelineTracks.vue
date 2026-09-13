@@ -7,8 +7,8 @@ import { useI18n } from '@open-pencil/vue'
 
 import type { RemotePeer } from '@/app/collab/types'
 import { motionKeyframeTimes } from '@/app/properties/motion/timeline'
-import IconButton from '@/components/ui/IconButton.vue'
-import Tip from '@/components/ui/Tip.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 const {
   motion,

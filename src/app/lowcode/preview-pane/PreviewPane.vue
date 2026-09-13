@@ -12,8 +12,8 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { derivePagePaths, type PagePathInfo } from '@open-pencil/compiler'
-import { IS_TAURI } from '@open-pencil/core/constants'
 import type { IRTree } from '@open-pencil/compiler/ir/types'
+import { IS_TAURI } from '@open-pencil/core/constants'
 
 import { useCollabInjected } from '@/app/collab/use'
 import type { PreviewDocStatePayload } from '@/app/collab/use'
@@ -29,14 +29,14 @@ import { compilerPreviewPopoutControls } from '@/app/settings/compiler-preview-p
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { previewToolbarLayout } from '@/app/settings/preview-toolbar-layout'
 import { openExternalLink, toast } from '@/app/shell/ui'
-import Tip from '@/components/ui/Tip.vue'
-import { menuItem, useMenuUI } from '@/components/ui/menu'
+import { menuItem, useMenuUI } from '@/components/ui/menu/menu'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
+import CodePenShowcaseControls from './CodePenShowcaseControls.vue'
 import {
   summarizeStructuredCompileDiagnostics,
   type CompileDiagnostic
 } from './compile-diagnostics'
-import CodePenShowcaseControls from './CodePenShowcaseControls.vue'
 import {
   DEFAULT_PREVIEW_REFRESH_POLICY,
   normalizePreviewRefreshPolicy,
@@ -52,8 +52,9 @@ import {
   type PreviewInboundMessage
 } from './iframe/messages'
 import { consumePreviewWebdriverAutomationRequest } from './iframe/webdriver-storage'
-import MicrofrontendExportControls from './MicrofrontendExportControls.vue'
 import LocalBackendPreviewControls from './LocalBackendPreviewControls.vue'
+import MicrofrontendExportControls from './MicrofrontendExportControls.vue'
+import type { CompilerPreviewPopoutIntent } from './popout/intent'
 import {
   compilerPreviewPopoutBusy,
   compilerPreviewPopoutOpen,
@@ -61,7 +62,6 @@ import {
   setCompilerPreviewPopoutDisabled,
   syncActiveCompilerPreviewPopout
 } from './popout/session'
-import type { CompilerPreviewPopoutIntent } from './popout/intent'
 import PreviewSettingsPopover from './PreviewSettingsPopover.vue'
 import { resolvePreviewToolbarBand } from './toolbar-layout'
 import { useCompileOnChange, type PreviewTarget, type PreviewUIKit } from './use-compile-on-change'

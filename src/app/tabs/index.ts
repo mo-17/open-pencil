@@ -28,6 +28,8 @@ import {
   readActiveStorageProfileID,
   resolveStorageDocumentBinding,
   storageDocumentAuthorityMatches,
+  storageDocumentKey,
+  type StorageDocumentBinding,
   type StorageDocumentBindingInput,
   type StorageDocument,
   type StorageTransferOptions
@@ -62,6 +64,12 @@ const io = new IORegistry(BUILTIN_IO_FORMATS)
 const fileOpenCoordinator = createFileOpenCoordinator()
 const RECENT_FILE_THUMBNAIL_SIZE = 512
 const coverThumbnailListeners = new WeakMap<EditorStore, () => void>()
+const openingPreviousTabIds = new WeakMap<EditorStore, string>()
+const openingStorageBindings = new WeakMap<
+  EditorStore,
+  Readonly<{ binding: Readonly<StorageDocumentBinding>; load: DocumentLoadSession }>
+>()
+const closingStores = new WeakSet<EditorStore>()
 
 let nextTabId = 1
 
@@ -169,22 +177,31 @@ export async function closeTab(tabId: string): Promise<void> {
 
   const closingTab = tabsRef.value[idx]
   if (closingTab.kind === 'home' && tabsRef.value.length === 1) return
-  const wasActive = activeTabId.value === tabId
-  coverThumbnailListeners.get(closingTab.store)?.()
-  coverThumbnailListeners.delete(closingTab.store)
-  closingTab.store.preparationController.dispose()
-  await closingTab.store.persistRecoveryNow()
-  closingTab.store.dispose()
-  tabsRef.value = tabsRef.value.filter((t) => t.id !== tabId)
+  if (closingStores.has(closingTab.store)) return
+  closingStores.add(closingTab.store)
+  const previousTabId = openingPreviousTabIds.get(closingTab.store)
+  openingPreviousTabIds.delete(closingTab.store)
+  openingStorageBindings.delete(closingTab.store)
+  try {
+    coverThumbnailListeners.get(closingTab.store)?.()
+    coverThumbnailListeners.delete(closingTab.store)
+    closingTab.store.preparationController.dispose()
+    await closingTab.store.persistRecoveryNow()
+    closingTab.store.dispose()
+    tabsRef.value = tabsRef.value.filter((t) => t.id !== tabId)
 
-  if (tabsRef.value.length === 0) {
-    createHomeTab()
-    return
-  }
+    if (tabsRef.value.length === 0) {
+      createHomeTab()
+      return
+    }
 
-  if (wasActive) {
-    const newIdx = Math.min(idx, tabsRef.value.length - 1)
-    activateTab(tabsRef.value[newIdx])
+    if (activeTabId.value === tabId) {
+      const previous = previousTabId ? getTabById(previousTabId) : undefined
+      const newIdx = Math.min(idx, tabsRef.value.length - 1)
+      activateTab(previous ?? tabsRef.value[newIdx])
+    }
+  } finally {
+    closingStores.delete(closingTab.store)
   }
 }
 
@@ -224,6 +241,15 @@ async function openDOMSource(
 
 function reusableTabStore(): { store: EditorStore; created: boolean } {
   const current = activeTab.value
+  if (
+    current &&
+    (closingStores.has(current.store) ||
+      openingStorageBindings.has(current.store) ||
+      current.store.state.preparation !== null ||
+      current.store.getStorageBinding() !== null)
+  ) {
+    return { store: createTab().store, created: true }
+  }
   if (current?.kind === 'home') {
     leaveHome(current.id)
     return { store: current.store, created: false }
@@ -391,18 +417,26 @@ async function decideDocumentOpen(
   identity: DocumentSourceIdentity,
   documentName: string,
   findExisting: ExistingTabLookup,
-  preparationKind: EditorPreparationKind
+  preparationKind: EditorPreparationKind,
+  reuseCurrentTab = true
 ) {
   return fileOpenCoordinator.decide(async () => {
     const pending = await fileOpenCoordinator.findPending(identity)
     if (pending) {
+      const previousTabId = activeTab.value?.id
       const tab = getTabForStore(pending.store)
       if (tab) switchTab(tab.id)
-      return { kind: 'pending' as const, completion: pending.completion }
+      return {
+        kind: 'pending' as const,
+        completion: pending.completion,
+        previousTabId,
+        targetTabId: tab?.id
+      }
     }
 
     const existing = await findExisting()
     if (existing) {
+      const previousTabId = activeTab.value?.id
       switchTab(existing.id)
       if (identity.path?.toLowerCase().endsWith('.fig')) {
         watchOpenedFigCover(identity.path, existing.store)
@@ -410,10 +444,14 @@ async function decideDocumentOpen(
           console.warn('[Recent files] Failed to cache the Cover thumbnail', error)
         })
       }
-      return { kind: 'existing' as const }
+      return { kind: 'existing' as const, previousTabId, targetTabId: existing.id }
     }
 
-    const { store, created } = reusableTabStore()
+    const previousTabId = activeTab.value?.id
+    const { store, created } = reuseCurrentTab
+      ? reusableTabStore()
+      : { store: createTab().store, created: true }
+    if (created && previousTabId) openingPreviousTabIds.set(store, previousTabId)
     store.state.documentName = documentName
     const load = store.preparationController.begin({
       kind: preparationKind,
@@ -428,6 +466,15 @@ async function decideDocumentOpen(
 }
 
 type DocumentOpenDecision = Awaited<ReturnType<typeof decideDocumentOpen>>
+
+function clearOpeningStorageBinding(decision: DocumentOpenDecision): void {
+  if (
+    decision.kind === 'owner' &&
+    openingStorageBindings.get(decision.store)?.load === decision.load
+  ) {
+    openingStorageBindings.delete(decision.store)
+  }
+}
 
 async function completeDocumentOpen(
   decision: DocumentOpenDecision,
@@ -455,15 +502,39 @@ async function completeDocumentOpen(
     }
     throw error
   } finally {
+    openingPreviousTabIds.delete(store)
     if (succeeded) load.complete()
     fileOpenCoordinator.remove(pendingOpen)
   }
 }
 
+export interface StorageDocumentOpenOptions extends Pick<StorageTransferOptions, 'signal'> {
+  /** Let route-based workspaces mount the active editor before presentation is awaited. */
+  onTabActivated?: () => void | Promise<void>
+  reuseCurrentTab?: boolean
+}
+
+/** Identify a cloud tab while loading, before its document source can be committed. */
+export function getOpeningStorageBinding(
+  store: EditorStore
+): Readonly<StorageDocumentBinding> | null {
+  return openingStorageBindings.get(store)?.binding ?? null
+}
+
+/** Protect both committed and loading cloud documents using the provider's remote identity. */
+export function isStorageDocumentOpen(binding: StorageDocumentBinding): boolean {
+  const key = storageDocumentKey(binding)
+  return tabsRef.value.some(({ store }) =>
+    [store.getStorageBinding(), getOpeningStorageBinding(store)].some(
+      (current) => current !== null && storageDocumentKey(current) === key
+    )
+  )
+}
+
 export async function openStorageDocumentInNewTab(
   document: StorageDocument,
   bindingInput?: StorageDocumentBindingInput,
-  options: Pick<StorageTransferOptions, 'signal'> = {}
+  options: StorageDocumentOpenOptions = {}
 ): Promise<void> {
   options.signal?.throwIfAborted()
   await assertCloudStorageDurability()
@@ -487,10 +558,19 @@ export async function openStorageDocumentInNewTab(
       identity,
       document.name,
       () => findStorageTab(binding),
-      'storage-open'
+      'storage-open',
+      options.reuseCurrentTab
     )
+    if (decision.kind === 'owner') {
+      openingStorageBindings.set(decision.store, { binding, load: decision.load })
+    }
 
     try {
+      if (decision.kind !== 'owner') {
+        options.signal?.throwIfAborted()
+        await options.onTabActivated?.()
+        options.signal?.throwIfAborted()
+      }
       await completeDocumentOpen(
         decision,
         async (store, load) => {
@@ -498,6 +578,8 @@ export async function openStorageDocumentInNewTab(
           if (options.signal?.aborted) cancelFromExternal()
           else options.signal?.addEventListener('abort', cancelFromExternal, { once: true })
           try {
+            load.signal.throwIfAborted()
+            await options.onTabActivated?.()
             load.signal.throwIfAborted()
             load.update({ phase: 'reading', detail: document.name })
             const local = getLocalCanvasStore()
@@ -582,6 +664,14 @@ export async function openStorageDocumentInNewTab(
         'read-failed'
       )
     } catch (error) {
+      if (
+        decision.kind !== 'owner' &&
+        activeTab.value?.id === decision.targetTabId &&
+        decision.previousTabId &&
+        getTabById(decision.previousTabId)
+      ) {
+        switchTab(decision.previousTabId)
+      }
       if (decision.kind === 'owner' && !decision.load.signal.aborted) {
         const diagnostic = describeDiagnosticError(error)
         recordStorageFailure({ operation: 'download', ...diagnostic })
@@ -593,6 +683,8 @@ export async function openStorageDocumentInNewTab(
         )
       }
       throw error
+    } finally {
+      clearOpeningStorageBinding(decision)
     }
     rememberRecentStorageDocument(providerId, document.id, document.name)
   })

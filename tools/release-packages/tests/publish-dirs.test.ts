@@ -5,6 +5,7 @@ import { basename, dirname, join } from 'node:path'
 
 import {
   DEFAULT_PACKAGES,
+  discoverPublishPackages,
   PREPARED_PUBLISH_PLAN,
   PUBLIC_PACKAGE_NAME_MAP,
   PUBLISH_REPOSITORY_URL,
@@ -361,4 +362,34 @@ describe('preparePublishDirectories', () => {
       'dist/runtime/load.js:1:24: resource target is missing: dist/runtime/runtime.wasm'
     )
   })
+})
+
+test('rejects conflicting publication settings before preparing a fork release', () => {
+  for (const publishConfig of [
+    { access: 'restricted' },
+    { provenance: false },
+    { registry: 'https://other.invalid/' }
+  ]) {
+    expect(() =>
+      publishPackageJSON({ name: '@open-pencil/core', version: VERSION, publishConfig }, VERSION)
+    ).toThrow('conflicts with the public npm release policy')
+  }
+})
+
+test('rejects conflicting existing runtime exports in publishConfig', () => {
+  expect(() =>
+    publishPackageJSON(
+      {
+        name: '@open-pencil/core',
+        version: VERSION,
+        exports: { '.': './dist/index.js' },
+        publishConfig: { exports: { '.': './missing.js' } }
+      },
+      VERSION
+    )
+  ).toThrow('publishConfig must not rewrite exports')
+})
+
+test('discovers every mapped public fork package and excludes private workspaces', async () => {
+  expect(await discoverPublishPackages(await fixtureRoot())).toEqual(DEFAULT_PACKAGES)
 })

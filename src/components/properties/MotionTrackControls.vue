@@ -16,10 +16,10 @@ import { useI18n } from '@open-pencil/vue'
 import type { MotionTrackTimingPatch } from '@/app/properties/motion/timeline'
 import NumberField from '@/components/inputs/NumberField.vue'
 import MotionEasingControls from '@/components/properties/MotionEasingControls.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
 import PanelFieldGroup from '@/components/ui/panel/PanelFieldGroup.vue'
 import PanelGrid from '@/components/ui/panel/PanelGrid.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 const { track, iterationsValue, canDuplicate, canMoveUp, canMoveDown, renameError } = defineProps<{
   track: MotionTrack

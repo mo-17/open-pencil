@@ -8,7 +8,7 @@ import {
   AppDialogHeader,
   AppDialogRoot
 } from '@/components/ui/dialog'
-import Tip from '@/components/ui/Tip.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
 
 import {
   defaultMicrofrontendAppId,

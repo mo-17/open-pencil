@@ -1,32 +1,32 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { unrefElement } from '@vueuse/core'
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
+
 import type { BackendHttpAPIOIDCAuthenticationIRV1 } from '@open-pencil/lowcode/backend'
-
 import { useI18n } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
-import AppButton from '@/components/ui/AppButton.vue'
-import AppBadge from '@/components/ui/AppBadge.vue'
-import { openSettingsDialog } from '@/app/settings/dialog'
-import BackendLibraryDialog from '@/app/lowcode/backend/library/BackendLibraryDialog.vue'
-import { createBackendLibraryCatalog } from '@/app/lowcode/backend/library/catalog'
-import { backendLibraryViewCopy } from '@/app/lowcode/backend/library/view-copy'
 
-import BackendCommandsEditor from '@/app/lowcode/backend/components/BackendCommandsEditor.vue'
 import { commerceCopy } from '@/app/lowcode/backend/commerce/copy'
-import BackendHttpAPIEditor from '@/app/lowcode/backend/components/BackendHttpAPIEditor.vue'
+import BackendCommandsEditor from '@/app/lowcode/backend/components/BackendCommandsEditor.vue'
 import BackendDataModelEditor from '@/app/lowcode/backend/components/BackendDataModelEditor.vue'
+import BackendHttpAPIEditor from '@/app/lowcode/backend/components/BackendHttpAPIEditor.vue'
 import BackendMigrationDiff from '@/app/lowcode/backend/components/BackendMigrationDiff.vue'
 import BackendRelationsEditor from '@/app/lowcode/backend/components/BackendRelationsEditor.vue'
 import BackendSecurityEditor from '@/app/lowcode/backend/components/BackendSecurityEditor.vue'
 import BackendStorageEditor from '@/app/lowcode/backend/components/BackendStorageEditor.vue'
 import BackendWorkflowEditor from '@/app/lowcode/backend/components/BackendWorkflowEditor.vue'
 import { nestJSUICopy } from '@/app/lowcode/backend/components/nestjs-ui-copy'
+import BackendLibraryDialog from '@/app/lowcode/backend/library/BackendLibraryDialog.vue'
+import { createBackendLibraryCatalog } from '@/app/lowcode/backend/library/catalog'
+import { backendLibraryViewCopy } from '@/app/lowcode/backend/library/view-copy'
 import {
   backendProviderDescriptorKey,
   backendProviderDescriptorLabel,
   useBackendEditor
 } from '@/app/lowcode/backend/use-backend-editor'
+import { openSettingsDialog } from '@/app/settings/dialog'
+import AppButton from '@/components/ui/button/AppButton.vue'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
+import { useSectionUI } from '@/components/ui/section'
 
 type BackendTab =
   | 'commands'

@@ -9,6 +9,9 @@ import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { currentPermission, permissionQueue } from '@/app/ai/acp/permission'
 import { clearACPDebugLog } from '@/app/ai/acp/transport'
+import { snapshotNode } from '@/app/ai/attachment/node/snapshot'
+import { setMessageAttachments } from '@/app/ai/attachment/presentation/store'
+import { visualAttachmentPresentation } from '@/app/ai/attachment/presentation/visual'
 import {
   finalizePendingToolApprovals,
   hasPendingToolApproval,
@@ -24,8 +27,19 @@ import {
   toFileUIPart,
   type VisualChatAttachment
 } from '@/app/ai/chat/attachments'
-import { useChatAttachments, useChatDraft, useChatSubmissionPending } from '@/app/ai/chat/drafts'
+import {
+  appendReferencedNodeContext,
+  resolveReferencedNodes,
+  type ReferencedNode
+} from '@/app/ai/chat/context'
+import {
+  useChatAttachments,
+  useChatDraft,
+  useChatNodeIds,
+  useChatSubmissionPending
+} from '@/app/ai/chat/drafts'
 import { finalizeInterruptedToolParts } from '@/app/ai/chat/interruption'
+import { setVisibleMessageText } from '@/app/ai/chat/presentation'
 import { captureSelectionVisualAttachment } from '@/app/ai/chat/selection-attachment'
 import { toolState, type ToolPresentationState } from '@/app/ai/chat/tool-presentation'
 import { useAIChat } from '@/app/ai/chat/use'
@@ -46,6 +60,7 @@ import {
   type AIPopoutToolState
 } from '@/app/ai/popout/protocol'
 import { clearToolLogEntries, didHitStepLimit } from '@/app/ai/tools'
+import type { EditorStore } from '@/app/editor/active-store'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { toast } from '@/app/shell/ui'
 import { activeTab } from '@/app/tabs'
@@ -55,9 +70,12 @@ const CONTINUE_PROMPT = 'Continue where you left off'
 
 const {
   isConfigured,
+  chatFailure,
+  clearChatFailure,
   providerID,
   providerDef,
   ensureChat,
+  history,
   respondToToolApproval,
   sessionRevision,
   acpSessionStatus,
@@ -164,12 +182,22 @@ async function refreshChat(): Promise<void> {
   }
 }
 
-const messages = computed(() => chat.value?.messages ?? [])
+const messages = computed(
+  () => chat.value?.messages ?? (isACPProvider.value ? [] : history.messages.value)
+)
 const actionableApprovalMessageId = computed(() => {
   const last = messages.value.at(-1)
   return last?.role === 'assistant' ? last.id : null
 })
 const status = computed(() => chat.value?.status ?? 'ready')
+const historyReadOnly = computed(
+  () =>
+    !isACPProvider.value &&
+    (history.readOnly.value ||
+      (!chat.value &&
+        history.messages.value.length > 0 &&
+        (history.current.value?.backend !== 'direct' || providerID.value === 'harness:pi')))
+)
 const isACPProvider = computed(() => providerID.value.startsWith('acp:'))
 const activeDocumentName = computed(
   () => activeTab.value?.store.state.documentName?.trim() || undefined
@@ -225,7 +253,7 @@ watch(status, (nextStatus) => {
 watch(
   () => chat.value?.error,
   (error) => {
-    if (error) toast.error(error.message)
+    if (error && !chatFailure.value) toast.error(error.message)
   }
 )
 watch([() => activeTab.value?.id, providerID], () => void refreshChat(), { immediate: true })
@@ -275,31 +303,48 @@ async function sendPreparedSubmission(
   text: string,
   submittedAttachments: readonly VisualChatAttachment[],
   attachmentDraft: ReturnType<typeof useChatAttachments>,
-  restoreSubmission: () => void
+  restoreSubmission: () => void,
+  store: EditorStore,
+  nodes: ReferencedNode[]
 ): Promise<boolean> {
   targetChat.messages = finalizePendingToolApprovals(targetChat.messages)
   const previousMessages = [...targetChat.messages]
   attachmentDraft.value = []
+  const modelText = appendReferencedNodeContext(text, nodes)
+  const messageId = crypto.randomUUID()
   try {
+    const presentations = [
+      ...nodes.map((node) => snapshotNode(store, messageId, node)).filter((node) => node !== null),
+      ...submittedAttachments.map((attachment) =>
+        visualAttachmentPresentation(messageId, attachment)
+      )
+    ]
+    setVisibleMessageText(messageId, text)
+    setMessageAttachments(messageId, presentations)
+    targetChat.messages = [
+      ...targetChat.messages,
+      { id: messageId, role: 'user', parts: [{ type: 'text', text: modelText }] }
+    ]
     await targetChat.sendMessage(
       submittedAttachments.length > 0
         ? {
-            text,
+            messageId,
+            text: modelText,
             files: submittedAttachments.map(toFileUIPart),
             metadata: createVisualChatMessageMetadata(submittedAttachments)
           }
-        : { text }
+        : { messageId, text: modelText }
     )
     if (targetChat.status !== 'error') return true
 
     const message = targetChat.error?.message || 'The visual reference could not be sent.'
     rollbackFailedSubmission(targetChat, previousMessages, restoreSubmission)
-    toast.error(message)
+    if (!chatFailure.value) toast.error(message)
     return false
   } catch (error) {
     rollbackFailedSubmission(targetChat, previousMessages, restoreSubmission)
     console.error('Chat error:', error)
-    toast.error(error instanceof Error ? error.message : String(error))
+    if (!chatFailure.value) toast.error(error instanceof Error ? error.message : String(error))
     return false
   }
 }
@@ -309,16 +354,21 @@ async function handleSubmit(
   restoreInput: () => void = () => undefined
 ): Promise<boolean> {
   resetStopState()
+  clearChatFailure()
   const requestedTab = activeTab.value
   const requestedAttachmentDraft = useChatAttachments(requestedTab?.store)
   const submittedAttachments = [...requestedAttachmentDraft.value]
+  const requestedNodeDraft = useChatNodeIds(() => requestedTab?.store)
+  const submittedNodeIds = [...requestedNodeDraft.value]
   const restoreSubmission = () => {
     restoreInput()
     restoreAttachments(requestedTab?.store, submittedAttachments)
+    requestedNodeDraft.value = [...new Set([...submittedNodeIds, ...requestedNodeDraft.value])]
   }
   const requestedSubmissionPending = useChatSubmissionPending(requestedTab?.store)
   if (
     !requestedTab ||
+    historyReadOnly.value ||
     attachmentBusy.value ||
     requestedSubmissionPending.value ||
     status.value === 'streaming' ||
@@ -368,12 +418,15 @@ async function handleSubmit(
       tabId: requestedTabId,
       providerID: requestedProviderID
     }
+    requestedNodeDraft.value = []
     return await sendPreparedSubmission(
       currentChat,
       text,
       submittedAttachments,
       requestedAttachmentDraft,
-      restoreSubmission
+      restoreSubmission,
+      requestedTab.store,
+      resolveReferencedNodes(requestedTab.store.graph, submittedNodeIds)
     )
   } finally {
     requestedSubmissionPending.value = false
@@ -507,6 +560,19 @@ async function handleClearChat(): Promise<boolean> {
     return true
   } catch {
     return false
+  } finally {
+    await refreshChat()
+  }
+}
+
+async function handleHistoryAction(action: () => Promise<unknown>): Promise<void> {
+  if (isACPProvider.value || submissionPending.value) return
+  unpublishChat()
+  resetStopState()
+  try {
+    await action()
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to update conversation history')
   } finally {
     await refreshChat()
   }
@@ -727,7 +793,12 @@ function projectionError(): string | null {
 
 function projectionCapabilities(hasActiveTab: boolean, busy: boolean) {
   return {
-    canSubmit: hasActiveTab && isConfigured.value && !busy && !attachmentBusy.value,
+    canSubmit:
+      hasActiveTab &&
+      isConfigured.value &&
+      !historyReadOnly.value &&
+      !busy &&
+      !attachmentBusy.value,
     canStop: hasActiveTab && (busy || stopRetryAvailable.value),
     canContinue: hasActiveTab && showContinue.value,
     canRetry: hasActiveTab && chat.value?.status === 'error' && !submissionPending.value,
@@ -814,6 +885,9 @@ const popoutHost: AIPopoutHost = {
 registerAIPopoutHost(popoutHost)
 
 export const chatPanelController = {
+  history,
+  handleHistoryAction,
+  historyReadOnly,
   isConfigured,
   messages,
   actionableApprovalMessageId,

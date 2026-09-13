@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 
-import { usePopoverUI } from '@/components/ui/popover'
+import { usePopoverUI } from '@/components/ui/overlay/popover'
 
 import type { PreviewRefreshPolicy } from './compile-scheduler'
 import type { PreviewTarget, PreviewUIKit } from './use-compile-on-change'

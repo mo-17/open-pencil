@@ -39,6 +39,7 @@ import {
   classifyAIChatFinish,
   type AIChatFailure
 } from '@/app/ai/chat/failure'
+import { resumableTransport } from '@/app/ai/chat/history/continuation'
 import {
   finalizeInterruptedToolParts,
   finalizeUnfinishedToolParts
@@ -126,7 +127,7 @@ type ChatSessionOptions = {
   maxOutputTokens?: Ref<number>
 }
 
-type ToolLoopTransportOptions = {
+export type ToolLoopTransportOptions = {
   store: EditorStore
   providerID: AIProviderID
   model: LanguageModel
@@ -135,6 +136,7 @@ type ToolLoopTransportOptions = {
   providerTools?: ToolSet
   providerOptions?: ToolLoopAgentSettings['providerOptions']
   reasoningEffort: string
+  onError?: (error: unknown) => void
 }
 
 export interface ACPSessionStatus {
@@ -368,7 +370,8 @@ export function createToolLoopTransport({
   maxOutputTokens,
   providerTools,
   providerOptions: runtimeProviderOptions,
-  reasoningEffort
+  reasoningEffort,
+  onError
 }: ToolLoopTransportOptions) {
   const tools = mergeAIToolSets(createAITools(store), providerTools)
   const cacheProviderOptions = supportsAnthropicCaching(providerID, effectiveModelID)
@@ -408,7 +411,15 @@ export function createToolLoopTransport({
     }
   })
 
-  return new DirectChatTransport({ agent }) as ChatTransport<UIMessage>
+  return resumableTransport(
+    new DirectChatTransport({
+      agent,
+      onError: (error) => {
+        onError?.(error)
+        return 'The provider rejected the request.'
+      }
+    }) as ChatTransport<UIMessage>
+  )
 }
 
 export function createChatSessionManager({
@@ -426,6 +437,8 @@ export function createChatSessionManager({
   resolveACPConfigurationContext
 }: ChatSessionOptions) {
   const failure = ref<AIChatFailure | null>(null)
+  let activeProviderError: unknown = null
+  let currentConversationId: string | undefined
   let transportDirty = false
   let currentChatStore: EditorStore | null = null
   let currentChatMessages = new WeakMap<EditorStore, UIMessage[]>()
@@ -502,6 +515,7 @@ export function createChatSessionManager({
   }
 
   function clearFailure(): void {
+    activeProviderError = null
     failure.value = null
   }
 
@@ -781,7 +795,7 @@ export function createChatSessionManager({
     }
   }
 
-  async function createTransport(store: EditorStore) {
+  async function createTransport(store: EditorStore, sessionId?: string) {
     resetACPDiagnostics()
     acpConfigOptions.value = []
     if (overrideTransport) return { transport: overrideTransport(), dispose: undefined }
@@ -802,7 +816,7 @@ export function createChatSessionManager({
       if (!apiKey) throw new Error('Credential is unavailable for the Pi agent')
       const model = runtime.role.profile.customModelID || runtime.role.profile.modelID
       const harnessTransport = new HarnessChatTransport(
-        `tab-${getActiveTabId()}-${runtime.role.profile.id}`,
+        sessionId ?? `tab-${getActiveTabId()}-${runtime.role.profile.id}`,
         {
           adapter: 'pi',
           sandbox: 'just-bash',
@@ -824,7 +838,7 @@ export function createChatSessionManager({
           designSupportsVision: false,
           analyze: createVisionRoleAnalyzer()
         }) as ChatTransport<UIMessage>,
-        dispose: () => harnessTransport.destroy()
+        dispose: () => harnessTransport.stop()
       }
     }
     if (runtime?.kind !== 'direct') {
@@ -843,7 +857,10 @@ export function createChatSessionManager({
         maxOutputTokens: runtime.role.profile.maxOutputTokens,
         providerTools: runtime.providerTools,
         providerOptions: runtime.providerOptions,
-        reasoningEffort: runtime.role.profile.reasoningEffort ?? ''
+        reasoningEffort: runtime.role.profile.reasoningEffort ?? '',
+        onError: (error) => {
+          if (store === currentChatStore && !transportDirty) activeProviderError ??= error
+        }
       })
       return {
         transport: new VisualReferenceChatTransport({
@@ -875,8 +892,12 @@ export function createChatSessionManager({
         getActiveEditorStore() === store &&
         lastAssistantMessageIsCompleteWithApprovalResponses(options),
       onError: (error) => {
-        failure.value = classifyAIChatError(error)
-        recordChatFailed({ errorName: error instanceof Error ? error.name : 'unknown' })
+        const reportedError = activeProviderError ?? error
+        activeProviderError = null
+        failure.value = classifyAIChatError(reportedError)
+        recordChatFailed({
+          errorName: reportedError instanceof Error ? reportedError.name : 'unknown'
+        })
         // Preserve the original detail in the bounded/redacted debug failure,
         // but never expose provider text through Chat.error consumers.
         try {
@@ -905,7 +926,9 @@ export function createChatSessionManager({
 
   async function initializeChat(
     store: EditorStore,
-    generation: number
+    generation: number,
+    initialMessages?: UIMessage[],
+    sessionId?: string
   ): Promise<Chat<UIMessage> | null> {
     await chatStopPromise
     await credentialsReady
@@ -914,7 +937,7 @@ export function createChatSessionManager({
     }
     if (!isConfigured.value) return null
 
-    const messages = currentChatMessages.get(store)
+    const messages = initialMessages ?? currentChatMessages.get(store)
     resetACPDiagnostics()
 
     let transport: ChatTransport<UIMessage>
@@ -925,7 +948,7 @@ export function createChatSessionManager({
     } else {
       await detachACPTransport()
       await detachModelRuntime()
-      pendingModelRuntime = await createTransport(store)
+      pendingModelRuntime = await createTransport(store, sessionId)
       transport = pendingModelRuntime.transport
     }
 
@@ -947,14 +970,24 @@ export function createChatSessionManager({
     const createdChat = createManagedChat(transport, store, generation, messages)
     chat = createdChat
     currentChatStore = store
+    currentConversationId = sessionId
     transportDirty = false
     return chat
   }
 
-  function ensureChat(): Promise<Chat<UIMessage> | null> {
+  function ensureChat(
+    initialMessages?: UIMessage[],
+    sessionId?: string
+  ): Promise<Chat<UIMessage> | null> {
     const store = getActiveEditorStore()
     observeDocumentSource(store)
-    if (currentChatStore === store && chat && !transportDirty) return Promise.resolve(chat)
+    if (
+      currentChatStore === store &&
+      chat &&
+      !transportDirty &&
+      (!sessionId || currentConversationId === sessionId)
+    )
+      return Promise.resolve(chat)
 
     const pending = pendingChatInitialization
     if (pending && pending.generation === chatInitializationGeneration && pending.store === store) {
@@ -970,7 +1003,7 @@ export function createChatSessionManager({
     currentChatStore = null
 
     const generation = ++chatInitializationGeneration
-    const promise = initializeChat(store, generation)
+    const promise = initializeChat(store, generation, initialMessages, sessionId)
       .catch((error: unknown) => {
         if (generation !== chatInitializationGeneration) return ensureChat()
         throw error
@@ -1002,7 +1035,7 @@ export function createChatSessionManager({
     return true
   }
 
-  async function resetChat(): Promise<void> {
+  async function resetChat(options: { preserveACPSession?: boolean } = {}): Promise<void> {
     failure.value = null
     const resetStore = getActiveEditorStore()
     const expectedProviderID = providerID.value
@@ -1038,7 +1071,9 @@ export function createChatSessionManager({
       detachACPTransport(),
       detachModelRuntime()
     ] as const)
-    await (acpSessionPersistence?.forget(discardedACPSessionBinding) ?? Promise.resolve())
+    if (!options.preserveACPSession) {
+      await (acpSessionPersistence?.forget(discardedACPSessionBinding) ?? Promise.resolve())
+    }
     sessionRevision.value++
   }
 

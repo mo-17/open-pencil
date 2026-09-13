@@ -8,7 +8,7 @@ import {
   compilerPreviewPopoutControls,
   resetCompilerPreviewPopoutControls
 } from '@/app/settings/compiler-preview-popout-controls'
-import AppSwitch from '@/components/ui/AppSwitch.vue'
+import AppSwitch from '@/components/ui/toggle/AppSwitch.vue'
 
 const { disabled = false } = defineProps<{ disabled?: boolean }>()
 const { dialogs } = useI18n()

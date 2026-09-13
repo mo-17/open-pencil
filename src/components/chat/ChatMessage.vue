@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { getToolName, isFileUIPart, isTextUIPart, isToolUIPart } from 'ai'
-import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
-import { Markdown } from 'vue-stream-markdown'
-import { useI18n, vTestId } from '@open-pencil/vue'
-import 'vue-stream-markdown/index.css'
-
+import { refAutoReset, useClipboard } from '@vueuse/core'
+import { getToolName, isReasoningUIPart, isFileUIPart, isTextUIPart, isToolUIPart } from 'ai'
 import type { FileUIPart, UIDataTypes, UIMessage, UIMessagePart, UITools } from 'ai'
+import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
+import { computed } from 'vue'
 
+import { useI18n, vTestId } from '@open-pencil/vue'
+
+import { attachmentsForMessage } from '@/app/ai/attachment/presentation/store'
+import type { AttachmentPresentation } from '@/app/ai/attachment/presentation/types'
+import { reasoningDisplay } from '@/app/ai/chat/preferences'
+import { visibleUserMessageText } from '@/app/ai/chat/presentation'
 import {
   collectAssistantFiles,
   collectChatSources,
@@ -15,36 +18,63 @@ import {
 } from '@/app/ai/chat/sources'
 import { hasErrorOutput, toolErrorText, toolState } from '@/app/ai/chat/tool-presentation'
 import { remoteMCPToolServerDisplayInfo } from '@/app/ai/mcp'
-import { resolvedAppTheme } from '@/app/shell/theme'
 import { openExternalLink } from '@/app/shell/ui'
+import AttachmentList from '@/components/chat/attachment/AttachmentList.vue'
 import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.vue'
+import ChatMarkdown from '@/components/chat/ChatMarkdown.vue'
+import ReasoningBlock from '@/components/chat/ReasoningBlock.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
 
 const {
   message,
   pendingApprovalIds = [],
-  approvalEnabled,
+  approvalEnabled = false,
+  presentation,
   streaming = false
 } = defineProps<{
   message: UIMessage
   pendingApprovalIds?: readonly string[]
-  approvalEnabled: boolean
+  approvalEnabled?: boolean
+  presentation?: { text?: string; attachments?: AttachmentPresentation[] }
   streaming?: boolean
 }>()
 const emit = defineEmits<{
   toolApproval: [messageId: string, id: string, approved: boolean]
 }>()
 const { ai, dialogs } = useI18n()
-const isDark = computed(() => resolvedAppTheme.value === 'dark')
 const markdownMode = computed(() => (streaming ? 'streaming' : 'static'))
 
 type ToolPart = Extract<UIMessagePart<UIDataTypes, UITools>, { toolCallId: string }>
 
-const userText = computed(() =>
+const userText = computed(
+  () =>
+    presentation?.text ??
+    visibleUserMessageText(
+      message.id,
+      message.parts
+        .filter(isTextUIPart)
+        .map((part) => part.text)
+        .join('')
+    )
+)
+const storedAttachments = attachmentsForMessage(message.id)
+const attachments = computed(() => presentation?.attachments ?? storedAttachments.value)
+const assistantText = computed(() =>
   message.parts
     .filter(isTextUIPart)
     .map((part) => part.text)
     .join('')
 )
+const firstAssistantTextPartIndex = computed(() =>
+  message.parts.findIndex((part) => isTextUIPart(part) && part.text.length > 0)
+)
+const copied = refAutoReset(false, 1500)
+const { copy, isSupported: clipboardSupported } = useClipboard()
+async function copyResponse(): Promise<void> {
+  if (!assistantText.value || !clipboardSupported.value) return
+  await copy(assistantText.value)
+  copied.value = true
+}
 const userFiles = computed(() => message.parts.filter(isFileUIPart))
 const assistantPresentationLabels = computed(() => ({
   document: dialogs.value.chatDocument,
@@ -135,6 +165,14 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
     >
       <template v-if="message.role === 'assistant'">
         <template v-for="(part, i) in message.parts" :key="partKey(part, i)">
+          <ReasoningBlock
+            v-if="isReasoningUIPart(part) && part.text"
+            :text="part.text"
+            :display="reasoningDisplay"
+            :streaming="part.state === 'streaming'"
+            :thinking-label="ai.thinking"
+            :reasoning-label="ai.reasoning"
+          />
           <!-- Tool call -->
           <div
             v-if="isToolUIPart(part)"
@@ -248,15 +286,17 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
             data-test-id="chat-text-bubble"
             class="rounded-xl rounded-tl-md bg-hover px-3 py-2 text-xs leading-relaxed text-surface"
           >
-            <Markdown
-              :key="markdownMode"
-              :content="part.text"
-              :is-dark="isDark"
-              :mermaid="false"
-              :mode="markdownMode"
-              :data-chat-markdown-mode="markdownMode"
-              class="chat-markdown [&_[data-stream-markdown=code]]:!bg-input"
-            />
+            <ChatMarkdown :content="part.text" :mode="markdownMode" />
+            <IconButton
+              v-if="i === firstAssistantTextPartIndex && assistantText && clipboardSupported"
+              :label="copied ? ai.responseCopied : ai.copyResponse"
+              size="xs"
+              data-slot="chat-copy-response"
+              @click="copyResponse"
+            >
+              <icon-lucide-check v-if="copied" class="size-3" />
+              <icon-lucide-copy v-else class="size-3" />
+            </IconButton>
           </div>
         </template>
 
@@ -386,8 +426,9 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
 
       <!-- User message -->
       <template v-else-if="message.role === 'user'">
+        <AttachmentList v-if="attachments.length" :attachments="attachments" />
         <div
-          v-if="userFiles.length"
+          v-if="userFiles.length && attachments.length === 0"
           data-test-id="chat-message-attachments"
           class="flex max-w-full flex-wrap justify-end gap-1.5"
           :aria-label="dialogs.imageReferences"

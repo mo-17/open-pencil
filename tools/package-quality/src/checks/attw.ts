@@ -1,35 +1,14 @@
-import { publicPackageDirs, publicPackagePath } from '../packages'
+import { publicPackageDirs, repositoryRoot } from '../packages'
+import { runPackageChecks } from './run'
 
-let failed = false
-
-for (const packageDir of publicPackageDirs) {
-  const proc = Bun.spawnSync(
-    [
-      'bun',
-      'attw',
-      '--pack',
-      publicPackagePath(packageDir),
-      '--profile',
-      'esm-only',
-      '--format',
-      'ascii'
-    ],
-    {
-      stdout: 'pipe',
-      stderr: 'pipe'
-    }
+export async function checkTypes(root: string): Promise<void> {
+  await runPackageChecks(
+    (await publicPackageDirs(root)).map((packageDir) => ({
+      command: 'bun',
+      args: ['attw', '--pack', packageDir, '--profile', 'esm-only', '--format', 'ascii'],
+      cwd: root
+    }))
   )
-
-  const stdout = proc.stdout.toString()
-  const stderr = proc.stderr.toString()
-  if (!proc.success) {
-    console.error(`ATTW failed for ${packageDir}`)
-    if (stdout) console.error(stdout)
-    if (stderr) console.error(stderr)
-    failed = true
-  }
 }
 
-if (failed) process.exit(1)
-
-console.log('ATTW package type-resolution checks passed.')
+if (import.meta.main) await checkTypes(repositoryRoot)

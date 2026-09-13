@@ -2,7 +2,20 @@
   "name": "@open-pencil/pen",
   "version": "0.15.0",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-pencil/open-pencil.git",
+    "directory": "packages/pen"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -11,31 +24,16 @@
       "default": "./dist/index.js"
     }
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "sideEffects": false,
-  "files": [
-    "dist",
-    "README.md"
-  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "bunx tsdown --config tsdown.config.ts",
     "check": "bun run typecheck && bun run build && bun run smoke:dist",
     "prepack": "bun run build",
     "smoke:dist": "bun scripts/smoke-dist.ts",
     "typecheck": "bunx tsc --noEmit -p tsconfig.json"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/open-pencil/open-pencil.git",
-    "directory": "packages/pen"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
-  "peerDependencies": {
-    "@open-pencil/scene-graph": "workspace:*"
   },
   "dependencies": {
     "culori": "^4.0.2"
@@ -45,5 +43,8 @@
     "@types/culori": "^4.0.1",
     "tsdown": "^0.22.14",
     "typescript": "~5.8.3"
+  },
+  "peerDependencies": {
+    "@open-pencil/scene-graph": "workspace:*"
   }
 }

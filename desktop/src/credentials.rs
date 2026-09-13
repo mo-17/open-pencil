@@ -1272,6 +1272,29 @@ fn remove_with(
     backend.remove(&account).map_err(public_error)
 }
 
+async fn check_vault_access(vault: CredentialVault) -> Result<(), CredentialError> {
+    tauri::async_runtime::spawn_blocking(move || vault.availability().map_err(public_error))
+        .await
+        .map_err(|_| public_error(BackendError::Failed))?
+}
+
+#[tauri::command]
+pub async fn credential_access_paused(
+    vault: tauri::State<'_, CredentialVault>,
+) -> Result<bool, CredentialError> {
+    // The app-local vault never opens an OS consent prompt or enters Keychain pause state.
+    // Keep actual storage failures observable to the shared Settings access check.
+    check_vault_access(vault.inner().clone()).await?;
+    Ok(false)
+}
+
+#[tauri::command]
+pub async fn credential_retry_access(
+    vault: tauri::State<'_, CredentialVault>,
+) -> Result<(), CredentialError> {
+    check_vault_access(vault.inner().clone()).await
+}
+
 #[tauri::command]
 pub async fn credential_store_availability(
     vault: tauri::State<'_, CredentialVault>,

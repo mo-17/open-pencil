@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test'
+import { describe, test, expect, spyOn } from 'bun:test'
 
 import { create as createPRNG } from 'lib0/prng'
 import * as Y from 'yjs'
@@ -235,6 +235,8 @@ function createSyncedStores(options: SyncedStoreOptions = {}) {
       return peerSuppressGraphSync
     },
     cleanup: () => {
+      hostStore.preparationController.dispose()
+      peerStore.preparationController.dispose()
       disconnectYDocs?.()
       hostDoc.destroy()
       peerDoc.destroy()
@@ -242,10 +244,13 @@ function createSyncedStores(options: SyncedStoreOptions = {}) {
   }
 }
 
-function withSyncedStores(run: (stores: SyncedStores) => void, options: SyncedStoreOptions = {}) {
+async function withSyncedStores(
+  run: (stores: SyncedStores) => void | Promise<void>,
+  options: SyncedStoreOptions = {}
+) {
   const stores = createSyncedStores(options)
   try {
-    run(stores)
+    await run(stores)
   } finally {
     stores.cleanup()
   }
@@ -428,22 +433,52 @@ describe('collab yjs-sync', () => {
     expect(getNodeOrThrow(peer, rect.id).type).toBe('RECTANGLE')
   })
 
-  test('syncAllNodesToYjs populates peer graph and current page', () => {
-    withSyncedStores(({ hostStore, peerStore, hostSync }) => {
+  test('deduplicates a pending page switch and handles its rejection', async () => {
+    await withSyncedStores(async ({ hostStore, peerStore, hostSync }) => {
+      const page = firstPage(hostStore.graph)
+      const node = hostStore.graph.createNode('RECTANGLE', page.id)
+      const { promise: pending, reject: rejectSwitch } = Promise.withResolvers<undefined>()
+      const switchPage = spyOn(peerStore, 'switchPage').mockReturnValue(pending)
+      const log = spyOn(console, 'error').mockImplementation(() => undefined)
+      try {
+        hostSync.syncAllNodesToYjs()
+        hostSync.syncNodeToYjs(node.id)
+        expect(switchPage).toHaveBeenCalledTimes(1)
+        const error = new Error('Page preparation failed')
+        rejectSwitch(error)
+        await pending.catch(() => undefined)
+        await Promise.resolve()
+        expect(log).toHaveBeenCalledWith('[Collab] Failed to switch to a synced page:', error)
+      } finally {
+        switchPage.mockRestore()
+        log.mockRestore()
+      }
+    })
+  })
+
+  test('syncAllNodesToYjs populates peer graph and current page', async () => {
+    await withSyncedStores(async ({ hostStore, peerStore, hostSync }) => {
       const hostPage = firstPage(hostStore.graph)
       const rect = hostStore.graph.createNode('RECTANGLE', hostPage.id, { width: 80, height: 60 })
 
+      const pageChanged = new Promise<void>((resolve) => {
+        const off = peerStore.onEditorEvent('page:changed', () => {
+          off()
+          resolve()
+        })
+      })
       hostSync.syncAllNodesToYjs()
 
       expect(peerStore.graph.rootId).toBe(hostStore.graph.rootId)
+      await pageChanged
       expect(peerStore.state.currentPageId).toBe(hostPage.id)
       expect(peerStore.graph.getPages().map((page) => page.id)).toContain(hostPage.id)
       expect(getNodeOrThrow(peerStore.graph, rect.id).type).toBe('RECTANGLE')
     })
   })
 
-  test('live-created and edited nodes sync in both directions', () => {
-    withSyncedStores(({ hostStore, peerStore, hostSync, peerSync }) => {
+  test('live-created and edited nodes sync in both directions', async () => {
+    await withSyncedStores(({ hostStore, peerStore, hostSync, peerSync }) => {
       const hostPage = firstPage(hostStore.graph)
       hostSync.syncAllNodesToYjs()
 
@@ -462,8 +497,8 @@ describe('collab yjs-sync', () => {
     })
   })
 
-  test('unchanged node synchronization emits no Yjs update', () => {
-    withSyncedStores(({ hostStore, hostSync, hostDoc }) => {
+  test('unchanged node synchronization emits no Yjs update', async () => {
+    await withSyncedStores(({ hostStore, hostSync, hostDoc }) => {
       const hostPage = firstPage(hostStore.graph)
       const rect = hostStore.graph.createNode('RECTANGLE', hostPage.id, { width: 80, height: 60 })
       hostSync.syncNodeToYjs(rect.id)
@@ -483,8 +518,8 @@ describe('collab yjs-sync', () => {
     })
   })
 
-  test('repeated drag-like updates stay field-sized and do not echo', () => {
-    withSyncedStores(({ hostStore, peerStore, hostSync, hostDoc, peerDoc }) => {
+  test('repeated drag-like updates stay field-sized and do not echo', async () => {
+    await withSyncedStores(({ hostStore, peerStore, hostSync, hostDoc, peerDoc }) => {
       const hostPage = firstPage(hostStore.graph)
       const rect = hostStore.graph.createNode('RECTANGLE', hostPage.id, { width: 80, height: 60 })
       hostSync.syncAllNodesToYjs()
@@ -517,13 +552,13 @@ describe('collab yjs-sync', () => {
     })
   })
 
-  test('queued concurrent edits converge through the official Yjs test connector', () => {
+  test('queued concurrent edits converge through the official Yjs test connector', async () => {
     const connector = new TestConnector(createPRNG(526))
     const hostDoc: TestYInstance = connector.createY(1)
     const peerDoc: TestYInstance = connector.createY(2)
     connector.syncAll()
 
-    withSyncedStores(
+    await withSyncedStores(
       ({ hostStore, peerStore, hostSync, peerSync }) => {
         const hostPage = firstPage(hostStore.graph)
         const rect = hostStore.graph.createNode('RECTANGLE', hostPage.id, {
@@ -553,8 +588,8 @@ describe('collab yjs-sync', () => {
     )
   })
 
-  test('optional motion fields are deleted from Yjs and both peer graphs', () => {
-    withSyncedStores(({ hostStore, peerStore, hostSync, peerSync }) => {
+  test('optional motion fields are deleted from Yjs and both peer graphs', async () => {
+    await withSyncedStores(({ hostStore, peerStore, hostSync, peerSync }) => {
       const hostPage = firstPage(hostStore.graph)
       hostSync.syncAllNodesToYjs()
 
@@ -585,8 +620,8 @@ describe('collab yjs-sync', () => {
     })
   })
 
-  test('personal Motion snapshots and root instance overrides sync in both directions', () => {
-    withSyncedStores(({ hostStore, peerStore, hostSync, peerSync }) => {
+  test('personal Motion snapshots and root instance overrides sync in both directions', async () => {
+    await withSyncedStores(({ hostStore, peerStore, hostSync, peerSync }) => {
       const hostPage = firstPage(hostStore.graph)
       hostSync.syncAllNodesToYjs()
       const component = hostStore.graph.createNode('COMPONENT', hostPage.id, {
@@ -662,8 +697,8 @@ describe('collab yjs-sync', () => {
     })
   })
 
-  test('MotionSpec v3 migrates stable keyframe ids and syncs outside the opaque node map', () => {
-    withSyncedStores(({ hostStore, peerStore, hostSync, hostNodes, hostMotions }) => {
+  test('MotionSpec v3 migrates stable keyframe ids and syncs outside the opaque node map', async () => {
+    await withSyncedStores(({ hostStore, peerStore, hostSync, hostNodes, hostMotions }) => {
       const hostPage = firstPage(hostStore.graph)
       hostSync.syncAllNodesToYjs()
       const rect = hostStore.graph.createNode('RECTANGLE', hostPage.id, {
@@ -695,8 +730,8 @@ describe('collab yjs-sync', () => {
     })
   })
 
-  test('inherited P2 instance fields never become a stale collaborative second source', () => {
-    withSyncedStores(
+  test('inherited P2 instance fields never become a stale collaborative second source', async () => {
+    await withSyncedStores(
       ({ hostStore, peerStore, hostSync, peerSync, hostNodes, hostMotions, peerMotions }) => {
         const page = firstPage(hostStore.graph)
         hostSync.syncAllNodesToYjs()
@@ -774,66 +809,68 @@ describe('collab yjs-sync', () => {
     )
   })
 
-  test('explicit instance Motion and generated-effect overrides remain independent concurrently', () => {
-    withSyncedStores(({ hostStore, peerStore, hostSync, peerSync, hostNodes, hostMotions }) => {
-      const page = firstPage(hostStore.graph)
-      hostSync.syncAllNodesToYjs()
-      const component = hostStore.graph.createNode('COMPONENT', page.id, {
-        name: 'Explicit P2 master',
-        motion: v3Motion('master', 16),
-        generatedEffect: generatedEffect('noise')
-      })
-      const instance = expectDefined(
-        hostStore.graph.createInstance(component.id, page.id),
-        'explicit instance'
-      )
-      const customMotion = v3Motion('custom', 48)
-      const customEffect = generatedEffect('shimmer')
-      hostStore.graph.updateNode(instance.id, {
-        motion: cloneMotionSpec(customMotion),
-        generatedEffect: structuredClone(customEffect),
-        overrides: {
-          ...instance.overrides,
+  test('explicit instance Motion and generated-effect overrides remain independent concurrently', async () => {
+    await withSyncedStores(
+      ({ hostStore, peerStore, hostSync, peerSync, hostNodes, hostMotions }) => {
+        const page = firstPage(hostStore.graph)
+        hostSync.syncAllNodesToYjs()
+        const component = hostStore.graph.createNode('COMPONENT', page.id, {
+          name: 'Explicit P2 master',
+          motion: v3Motion('master', 16),
+          generatedEffect: generatedEffect('noise')
+        })
+        const instance = expectDefined(
+          hostStore.graph.createInstance(component.id, page.id),
+          'explicit instance'
+        )
+        const customMotion = v3Motion('custom', 48)
+        const customEffect = generatedEffect('shimmer')
+        hostStore.graph.updateNode(instance.id, {
           motion: cloneMotionSpec(customMotion),
-          generatedEffect: structuredClone(customEffect)
-        }
-      })
-      hostSync.syncNodeToYjs(component.id)
-      hostSync.syncNodeToYjs(instance.id)
+          generatedEffect: structuredClone(customEffect),
+          overrides: {
+            ...instance.overrides,
+            motion: cloneMotionSpec(customMotion),
+            generatedEffect: structuredClone(customEffect)
+          }
+        })
+        hostSync.syncNodeToYjs(component.id)
+        hostSync.syncNodeToYjs(instance.id)
 
-      hostStore.graph.updateNode(component.id, { motion: v3Motion('master-updated', 120) })
-      hostStore.graph.clearNodeFields(component.id, ['generatedEffect'])
-      hostStore.graph.syncInstances(component.id)
-      hostSync.syncNodeToYjs(component.id)
+        hostStore.graph.updateNode(component.id, { motion: v3Motion('master-updated', 120) })
+        hostStore.graph.clearNodeFields(component.id, ['generatedEffect'])
+        hostStore.graph.syncInstances(component.id)
+        hostSync.syncNodeToYjs(component.id)
 
-      const peerInstance = getNodeOrThrow(peerStore.graph, instance.id)
-      const peerMotion = v3Motion('custom-peer', 72)
-      const peerEffect = generatedEffect('particles')
-      peerStore.graph.updateNode(instance.id, {
-        name: 'Concurrent explicit edit',
-        motion: cloneMotionSpec(peerMotion),
-        generatedEffect: structuredClone(peerEffect),
-        overrides: {
-          ...peerInstance.overrides,
+        const peerInstance = getNodeOrThrow(peerStore.graph, instance.id)
+        const peerMotion = v3Motion('custom-peer', 72)
+        const peerEffect = generatedEffect('particles')
+        peerStore.graph.updateNode(instance.id, {
+          name: 'Concurrent explicit edit',
           motion: cloneMotionSpec(peerMotion),
-          generatedEffect: structuredClone(peerEffect)
-        }
-      })
-      peerSync.syncNodeToYjs(instance.id)
+          generatedEffect: structuredClone(peerEffect),
+          overrides: {
+            ...peerInstance.overrides,
+            motion: cloneMotionSpec(peerMotion),
+            generatedEffect: structuredClone(peerEffect)
+          }
+        })
+        peerSync.syncNodeToYjs(instance.id)
 
-      const hostInstance = getNodeOrThrow(hostStore.graph, instance.id)
-      expect(hostInstance.motion).toEqual(peerMotion)
-      expect(hostInstance.generatedEffect).toEqual(peerEffect)
-      expect(hostInstance.overrides.motion).toEqual(peerMotion)
-      expect(hostInstance.overrides.generatedEffect).toEqual(peerEffect)
-      expect(hostMotions.has(instance.id)).toBe(true)
-      expect(hostNodes.get(instance.id)?.has('motion')).toBe(false)
-      expect(hostNodes.get(instance.id)?.has('generatedEffect')).toBe(true)
-    })
+        const hostInstance = getNodeOrThrow(hostStore.graph, instance.id)
+        expect(hostInstance.motion).toEqual(peerMotion)
+        expect(hostInstance.generatedEffect).toEqual(peerEffect)
+        expect(hostInstance.overrides.motion).toEqual(peerMotion)
+        expect(hostInstance.overrides.generatedEffect).toEqual(peerEffect)
+        expect(hostMotions.has(instance.id)).toBe(true)
+        expect(hostNodes.get(instance.id)?.has('motion')).toBe(false)
+        expect(hostNodes.get(instance.id)?.has('generatedEffect')).toBe(true)
+      }
+    )
   })
 
-  test('remote Motion updates checkpoint live caps and unsafe payloads without observer re-entry', () => {
-    withSyncedStores((stores) => {
+  test('remote Motion updates checkpoint live caps and unsafe payloads without observer re-entry', async () => {
+    await withSyncedStores((stores) => {
       const {
         hostStore,
         peerStore,
@@ -1086,8 +1123,8 @@ describe('collab yjs-sync', () => {
     doc.destroy()
   })
 
-  test('remote top-level timeline flood converges to the physical document cap', () => {
-    withSyncedStores((stores) => {
+  test('remote top-level timeline flood converges to the physical document cap', async () => {
+    await withSyncedStores((stores) => {
       const {
         hostStore,
         hostDoc,
@@ -1145,8 +1182,8 @@ describe('collab yjs-sync', () => {
     })
   })
 
-  test('image fills sync image bytes', () => {
-    withSyncedStores(({ hostStore, peerStore, hostSync }) => {
+  test('image fills sync image bytes', async () => {
+    await withSyncedStores(({ hostStore, peerStore, hostSync }) => {
       const hostPage = firstPage(hostStore.graph)
       const imageHash = 'image-hash'
       const imageFill: Fill = {

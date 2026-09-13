@@ -1,14 +1,9 @@
 <script setup lang="ts">
 import { tv } from 'tailwind-variants'
 
-import AppSelect from '@/components/ui/AppSelect.vue'
-import BindingTrigger from '@/components/ui/binding/BindingTrigger.vue'
-import Tip from '@/components/ui/Tip.vue'
-import ColorPickerPanel from '@/components/color-picker-panel/ColorPickerPanel.vue'
-import NumberField from '@/components/inputs/NumberField.vue'
-import VariableBindingPicker from '@/components/variable-binding/VariableBindingPicker.vue'
-import fillPickerTheme from '@/theme/fill-picker'
 import { colorToCSS, colorToHexRaw } from '@open-pencil/core/color'
+import type { Fill, GradientStop } from '@open-pencil/scene-graph'
+import type { Color } from '@open-pencil/scene-graph/primitives'
 import {
   BindableValueRoot,
   GradientEditorRoot,
@@ -17,12 +12,19 @@ import {
   inputValue,
   useColorBindingProvider,
   useI18n,
-  vTestId
+  vTestId,
+  type BindableValueActions,
+  type BindingTarget
 } from '@open-pencil/vue'
 
-import type { Fill, GradientStop } from '@open-pencil/scene-graph'
-import type { Color } from '@open-pencil/scene-graph/primitives'
-import type { BindableValueActions, BindingTarget } from '@open-pencil/vue'
+import ColorPickerPanel from '@/components/color-picker-panel/ColorPickerPanel.vue'
+import NumberField from '@/components/inputs/NumberField.vue'
+import BindingTrigger from '@/components/ui/binding/BindingTrigger.vue'
+import IconButton from '@/components/ui/button/IconButton.vue'
+import Tip from '@/components/ui/overlay/Tip.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
+import VariableBindingPicker from '@/components/variable-binding/VariableBindingPicker.vue'
+import fillPickerTheme from '@/theme/fill-picker'
 
 const {
   fill,
@@ -115,15 +117,13 @@ function listStopClass(active: boolean) {
       <div class="mb-2">
         <div class="mb-1 flex items-center justify-between">
           <span class="text-[11px] text-muted">{{ panels.stops }}</span>
-          <Tip :label="panels.addStop">
-            <button
-              class="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent p-0 text-muted hover:text-surface"
-              data-test-id="fill-picker-add-stop"
-              @click="root.actions.addStop"
-            >
-              <icon-lucide-plus class="size-3" />
-            </button>
-          </Tip>
+          <IconButton
+            :label="panels.addStop"
+            data-test-id="fill-picker-add-stop"
+            @click="root.actions.addStop"
+          >
+            <icon-lucide-plus class="size-3" />
+          </IconButton>
         </div>
         <BindableValueRoot
           v-for="(stop, idx) in root.stops"
@@ -213,14 +213,13 @@ function listStopClass(active: boolean) {
                 @click.stop="binding.actions.unbind"
               />
             </Tip>
-            <button
+            <IconButton
               v-if="root.stops.length > 2"
-              class="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent p-0 text-muted hover:text-surface"
-              :aria-label="editor.removeGradientStop"
+              :label="editor.removeGradientStop"
               @click.stop="s.actions.remove"
             >
               <icon-lucide-minus class="size-3" />
-            </button>
+            </IconButton>
           </GradientEditorStop>
         </BindableValueRoot>
       </div>

@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, useTemplateRef, watch } from 'vue'
 import { tv } from 'tailwind-variants'
-import { useI18n } from '@open-pencil/vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
+
 import {
   isBackendOIDCIssuer,
   type BackendHttpAPIOIDCAuthenticationIRV1
 } from '@open-pencil/lowcode/backend'
+import { useI18n } from '@open-pencil/vue'
 
-import AppBadge from '@/components/ui/AppBadge.vue'
-import AppButton from '@/components/ui/AppButton.vue'
-import AppInput from '@/components/ui/AppInput.vue'
-import SegmentedControl from '@/components/ui/SegmentedControl.vue'
+import AppButton from '@/components/ui/button/AppButton.vue'
 import { AppDialogRoot, AppDialogHeader, AppDialogFooter } from '@/components/ui/dialog'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
+import AppInput from '@/components/ui/input/AppInput.vue'
+import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 import theme from '@/theme/backend-library'
 
 import { filterBackendLibraryCatalog, type BackendLibraryItem } from './catalog'
@@ -125,8 +126,7 @@ function apply(): void {
 }
 function focusSearch(event: Event): void {
   event.preventDefault()
-  const input: unknown = searchInput.value?.$el
-  if (input instanceof HTMLInputElement) input.focus()
+  searchInput.value?.focus()
 }
 function preventDuringOperation(event: Event): void {
   if (busy) event.preventDefault()

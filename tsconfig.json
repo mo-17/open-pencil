@@ -61,7 +61,12 @@
       "@open-pencil/pen/*": ["./packages/pen/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "packages/core/src/global.d.ts",
+    "packages/vue/src/global.d.ts"
+  ],
   "references": [
     {
       "path": "./tsconfig.node.json"

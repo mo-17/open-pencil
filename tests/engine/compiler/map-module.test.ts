@@ -207,7 +207,7 @@ describe('compiler built-in map module', () => {
     expect(app).toContain('</OpenPencilMap>')
     expect(app.indexOf('<OpenPencilMap config={{')).toBeLessThan(app.indexOf('Venue overlay'))
     expect(app.indexOf('Venue overlay')).toBeLessThan(app.indexOf('</OpenPencilMap>'))
-    expect(pkg.dependencies['maplibre-gl']).toBe('6.0.0')
+    expect(pkg.dependencies['maplibre-gl']).toBe('6.4.1')
     expect(runtime).toContain("from 'maplibre-gl'")
     expect(runtime).toContain("import 'maplibre-gl/dist/maplibre-gl.css'")
     expect(runtime).not.toMatch(/import\s+maplibregl\s+from/)
@@ -318,7 +318,7 @@ describe('compiler built-in map module', () => {
 
     expect(component).toContain("import OpenPencilMap from '../__openpencil_map'")
     expect(component).toContain('<OpenPencilMap config={{')
-    expect(pkg.dependencies['maplibre-gl']).toBe('6.0.0')
+    expect(pkg.dependencies['maplibre-gl']).toBe('6.4.1')
     expect(out.files.has('src/__openpencil_map.tsx')).toBe(true)
   })
 

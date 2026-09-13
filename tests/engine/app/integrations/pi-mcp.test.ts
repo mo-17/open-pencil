@@ -1,11 +1,12 @@
-import { afterAll, describe, expect, test } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { replaceMCPConnectionSettings, setMCPConnectionCredential } from '@/app/integrations/mcp'
 import { buildPiMCPServers } from '@/app/integrations/mcp/pi'
 
 import { clearTauriMocks, installTauriMockWindow } from '#tests/helpers/tauri/mocks'
 
-installTauriMockWindow()
+beforeEach(installTauriMockWindow)
+afterEach(clearTauriMocks)
 
 afterAll(async () => {
   await clearTauriMocks()

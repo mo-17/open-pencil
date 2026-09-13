@@ -12,11 +12,12 @@
   },
   "files": [
     "bin",
-    "dist"
+    "dist",
+    "src"
   ],
   "type": "module",
   "imports": {
-    "#cli/*": "./src/*"
+    "#cli/*": "./src/*.ts"
   },
   "exports": {
     "./library": {
@@ -68,7 +69,7 @@
     "jsbarcode": "3.12.3",
     "lottie-web": "5.13.0",
     "lucide-react": "^1.21.0",
-    "maplibre-gl": "6.0.0",
+    "maplibre-gl": "6.4.1",
     "qrcode": "1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

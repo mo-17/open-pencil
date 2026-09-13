@@ -33,7 +33,7 @@ const SHARED_PINS: Readonly<Partial<Record<string, DependencyPin>>> = Object.fre
   'react-markdown': PIN('10.1.0', '10.1.0'),
   'remark-gfm': PIN('4.0.1', '4.0.1'),
   'lottie-web': PIN('5.13.0', '5.13.0'),
-  'maplibre-gl': PIN('6.0.0', '6.0.0'),
+  'maplibre-gl': PIN('6.4.1', '6.4.1'),
   jsbarcode: PIN('3.12.3', '3.12.3'),
   qrcode: PIN('1.5.4', '1.5.4')
 })

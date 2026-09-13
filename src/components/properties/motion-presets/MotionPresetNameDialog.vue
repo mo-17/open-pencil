@@ -5,14 +5,14 @@ import { USER_MOTION_PRESET_LIMITS, type UserMotionPresetCategory } from '@open-
 import { useI18n } from '@open-pencil/vue'
 
 import type { MotionPresetEditorValue } from '@/app/motion-presets/types'
-import AppInput from '@/components/ui/AppInput.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
 import {
   AppDialogBody,
   AppDialogFooter,
   AppDialogHeader,
   AppDialogRoot
 } from '@/components/ui/dialog'
+import AppInput from '@/components/ui/input/AppInput.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 const {
   open,

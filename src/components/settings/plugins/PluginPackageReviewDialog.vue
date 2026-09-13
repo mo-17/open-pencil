@@ -5,8 +5,9 @@ import { useI18n } from '@open-pencil/vue'
 
 import type { ResolvedPluginPackage } from '@/app/plugins'
 import type { PluginV2ContractSummary as PluginV2ContractSummaryModel } from '@/app/plugins/settings-view-model'
-import AppBadge from '@/components/ui/AppBadge.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+import AppBadge from '@/components/ui/feedback/AppBadge.vue'
+
 import PluginV2ContractSummary from './PluginV2ContractSummary.vue'
 
 interface PluginPackageReviewCurrentAuthority {

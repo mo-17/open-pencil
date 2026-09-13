@@ -9,7 +9,7 @@ import {
   canvasPerformancePreference,
   type CanvasPerformancePreference
 } from '@/app/settings/canvas-performance'
-import SegmentedControl from '@/components/ui/SegmentedControl.vue'
+import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 
 const { dialogs } = useI18n()
 

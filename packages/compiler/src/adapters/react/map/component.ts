@@ -1,7 +1,7 @@
 import { MAP_MODULE_ATTRIBUTION } from '@open-pencil/core/plugins'
 
 /** The exact MapLibre GL JS version emitted projects install. */
-export const MAPLIBRE_GL_VERSION = '6.0.0'
+export const MAPLIBRE_GL_VERSION = '6.4.1'
 
 const OPENSTREETMAP_COPYRIGHT_URL = 'https://www.openstreetmap.org/copyright'
 const OPENSTREETMAP_ATTRIBUTION_HTML = `<a href="${OPENSTREETMAP_COPYRIGHT_URL}" target="_blank" rel="noopener noreferrer">${MAP_MODULE_ATTRIBUTION}</a>`

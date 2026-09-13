@@ -5,10 +5,10 @@ import { colorToHexRaw, parseColor } from '@open-pencil/core/color'
 import type { Fill, SceneNode } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 
-import AppSelect from '@/components/ui/AppSelect.vue'
-import { useSectionUI } from '@/components/ui/section'
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
+import { useSectionUI } from '@/components/ui/section'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 const TEXT_PROP_FALLBACK = 'Text'
 const FILL_PROP_FALLBACK = 'Fill'

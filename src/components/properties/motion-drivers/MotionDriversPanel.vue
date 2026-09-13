@@ -5,8 +5,8 @@ import { MOTION_DRIVER_LIMITS, type MotionDriverSource } from '@open-pencil/scen
 import { useI18n } from '@open-pencil/vue'
 
 import NumberField from '@/components/inputs/NumberField.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
 import PanelSection from '@/components/ui/panel/PanelSection.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 
 import { MOTION_DRIVER_SOURCE_KINDS, useMotionDrivers } from './use-motion-drivers'
 
