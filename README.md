@@ -313,6 +313,72 @@ instant Light/Dark theme synchronization. That bridge is generated only for edit
 absent from source/static delivery. Vue still has no Motion runtime; Motion Debug reports unavailable
 immediately instead of waiting indefinitely.
 
+Desktop NestJS applications offer two Compiler Preview modes. **External backend** connects to an
+already-running local service; model changes disconnect it until you synchronize the backend and
+reconnect. **Managed backend** on macOS/Linux prepares an isolated NestJS service and PostgreSQL
+database, with explicit first-time setup and reviewed SQL migrations. Once started, runtime-only
+backend changes rebuild and restart automatically; unsupported migrations remain blocked. Stop
+retains the managed database's data and leaves external services alone. Managed preview requires
+Bun, Node 22.12+ with npm, and Docker in the desktop development environment.
+
+The **NestJS** toolbar entry opens a side panel with the current status and next action. Connection
+settings and logs collapse after setup; database changes open a separate SQL review. Local
+Keycloak, HTTPS Keycloak, and custom OIDC presets fill missing settings without replacing entered
+values. Keycloak presets also provide a public PKCE client configuration to copy into your identity
+service; local certificates can be selected from a file picker.
+
+Both modes open the live frontend in the system browser for OIDC login and real CRUD; component
+edits update through HMR. Register the exact preview callback for `http://127.0.0.1:5181` with your
+identity service. Managed preview uses separate API/database ports `3012`/`55443`. Tokens and
+backend response state stay outside the editor's document-state bridge. These are local development
+tools, not a production deployment or release approval.
+See [NestJS desktop preview](packages/docs/development/backend-nestjs.md#desktop-live-preview).
+
+Open **Services & Workflows → Backend → Browse backend library** to browse providers and
+application templates. Choose **Personal notes** or **Single-item checkout**, review the included
+pages and setup requirements, choose **Local Keycloak** or enter **Custom OIDC** public settings,
+then click **Use template**. This creates the model and editable pages in one undo step, preserving
+existing pages. Existing Backend declarations, login flows, invalid declarations and customized
+unsaved drafts block template creation. The local profile expects an existing Keycloak service;
+creating a template does not start services or deploy the application.
+
+Provider cards use **Select provider** to change the draft only; configure it and choose **Save
+Backend model** explicitly. Selecting a provider does not migrate a database. **Manage plugins**
+opens the existing Plugins settings for installation and enabled state. The backend library uses
+installed provider declarations and built-in templates; it adds no remote marketplace protocol.
+
+NestJS source generation also supports explicit public reads, verified JWT roles, enums and dates,
+constrained foreign keys, unique constraints and indexes. The visual Backend editor exposes these
+declarations and bounded filtering, search and sorting; LIST and request actions share query
+bindings, paging resets and stale-response protection. A new-document single-SKU checkout example
+adds product, order, login and catalog-management pages. Search product titles, browse from lowest
+price, and see which products are sold out. Selecting an available product shows its unit price,
+displayed stock and estimated total in integer minor currency units. The form checks whole-number
+quantities from 1–99 against displayed stock, then asks for confirmation before placing or cancelling
+an order. Your orders appear newest first with the product title saved at checkout, creation time,
+localized status and cancellation feedback.
+
+The catalog page lets authorized managers search and page through all products, create products,
+edit titles and prices, and make products available or unavailable. Creation checks titles and
+nonnegative whole-number prices and initial stock. Adding stock is a separate operation with
+safe retries; editing product details never replaces the stock count. Product edits overwrite
+the submitted fields without comparing versions across managers. Product deletion and setting
+an absolute stock count are not included.
+
+Authenticated server commands confirm current stock and final prices, deduct or restore inventory,
+and store idempotent results in one PostgreSQL transaction; displayed estimates cannot reserve stock.
+The built-in AI can create the same editable starter using `create_single_sku_shop_app`.
+
+Existing documents do not update automatically: create a new template document or explicitly migrate
+the current model, pages and database before adopting the updated starter.
+
+React/Vue actions can save account-bound attempt keys and parameters in the browser, with explicit
+inspection, saved-parameter retry and acknowledgment after reload and same-account login. The
+example enables this for checkout, cancellation and restocking; cross-tab locks and failed-storage checks
+prevent dispatch before a safe claim. Tokens and server results remain in memory. Multi-item carts,
+payments, fulfillment and refunds remain separate work.
+See [atomic Backend commands](packages/docs/development/backend-commands.md).
+
 Build a static SPA bundle for any static host:
 
 ```sh

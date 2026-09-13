@@ -21,6 +21,11 @@ import { createServer, type Plugin, type PluginOption, type Update, type ViteDev
 import { reactModuleOptimizeDepsForFiles } from './adapters/react/modules/registry'
 import { createSupabaseBuildDefines } from './build'
 import {
+  parsePreviewLocalBackendConnection,
+  type PreviewLocalBackendConnection
+} from './local-backend-preview/connection'
+import { createLocalBackendPreviewGuard } from './local-backend-preview/server'
+import {
   createPreviewFileDecodeCache,
   deserializePreviewFiles,
   type PreviewFileDecodeCache,
@@ -114,6 +119,8 @@ export interface PreviewServerOptions {
   fsRoot?: string
   /** Framework plugin used for the immutable lifetime of this Vite server. */
   target?: WebVfsTarget
+  /** Explicit desktop connection. Never derived from generated frontend configuration. */
+  localBackend?: PreviewLocalBackendConnection
 }
 
 export interface PreviewServer {
@@ -122,7 +129,7 @@ export interface PreviewServer {
   /** Resolved port (after free-port selection). */
   port: number
   /** Replace the entire VFS contents and trigger HMR on changed entries. */
-  updateFiles(files: PreviewFiles): void
+  updateFiles(files: PreviewFiles): void | Promise<void>
   close(): Promise<void>
 }
 
@@ -285,7 +292,19 @@ function pickFreePort(): Promise<number> {
 }
 
 export async function createPreviewServer(opts: PreviewServerOptions = {}): Promise<PreviewServer> {
-  const state = { files: opts.initialFiles ?? new Map() }
+  const localBackend = opts.localBackend
+    ? parsePreviewLocalBackendConnection(opts.localBackend)
+    : undefined
+  if (
+    localBackend &&
+    opts.port !== undefined &&
+    opts.port !== 0 &&
+    opts.port !== localBackend.previewPort
+  )
+    throw new Error('NestJS preview port must match the explicitly configured callback origin.')
+  const backendGuard = localBackend ? createLocalBackendPreviewGuard(localBackend) : undefined
+  await backendGuard?.check()
+  const state = { files: opts.initialFiles ?? new Map(), spaFallback: localBackend !== undefined }
   const workspaceRoot = opts.fsRoot ?? process.cwd()
   const target = opts.target ?? 'react'
   // Use a quiet sub-directory as Vite's root so its default `**/*.html`
@@ -302,7 +321,8 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
     target === 'vue' ? [vue() as PluginOption] : (react() as PluginOption[])
   // Pre-pick a free port instead of letting Vite scan 5173 → 5174 → … when
   // its defaults clash with zombie preview servers from prior sessions.
-  const chosenPort = opts.port && opts.port > 0 ? opts.port : await pickFreePort()
+  const chosenPort =
+    localBackend?.previewPort ?? (opts.port && opts.port > 0 ? opts.port : await pickFreePort())
   trace(`createServer: workspaceRoot=${workspaceRoot} scanRoot=${scanRoot} port=${chosenPort}`)
 
   const server = await createServer({
@@ -316,7 +336,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
     server: {
       port: chosenPort,
       host: '127.0.0.1',
-      strictPort: false,
+      strictPort: localBackend !== undefined,
       fs: { strict: true, allow: fileSystemAllowlist }
     },
     optimizeDeps: {
@@ -330,6 +350,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
     // workspace dependencies to the same React instance as react-dom.
     ...(target === 'react' ? reactViteOptions() : {}),
     plugins: [
+      ...(backendGuard ? [backendGuard.plugin] : []),
       previewFileBoundaryPlugin(fileSystemAllowlist),
       vfs,
       ...frameworkPlugins,
@@ -338,57 +359,66 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
   })
 
   trace('listen…')
-  await server.listen()
+  try {
+    await server.listen()
+  } catch (error) {
+    await server.close()
+    throw error
+  }
   const port = server.config.server.port
   // Keep the advertised origin identical to the loopback interface Vite binds.
   // The desktop preview window validates this exact host before navigating.
   const url = `http://127.0.0.1:${port}/`
   trace(`listening on ${url}`)
 
+  const updateFiles = (files: PreviewFiles): void => {
+    const prev = state.files
+    state.files = files
+
+    // Invalidate everything that changed (added / removed / different content)
+    const { changed, topologyChanged } = diffPreviewFiles(prev, files)
+    if (changed.length === 0) return
+
+    const invalidatedPaths: string[] = []
+    for (const rel of changed) {
+      const mod = server.moduleGraph.getModuleById(vfsPrefix + rel)
+      if (mod) {
+        server.moduleGraph.invalidateModule(mod)
+        invalidatedPaths.push(rel)
+      }
+    }
+
+    const mode = classifyUpdate(changed, invalidatedPaths.length, topologyChanged)
+    if (mode === 'noop') return
+    if (mode === 'full-reload') {
+      server.ws.send({ type: 'full-reload' })
+      return
+    }
+    // HMR: send Vite's native `update` event. Every emitted file — .tsx and
+    // .css alike — is served as a JS module in Vite dev: CSS goes through
+    // an `import './index.css'` statement that's transformed into a module
+    // calling `__vite__updateStyle(id, css)` to inject a `<style>` tag, and
+    // the module self-accepts via `import.meta.hot.accept()`. The native
+    // `css-update` event scans `document.querySelectorAll('link')` for the
+    // matching stylesheet — but we have no `<link>` tags, so css-update
+    // would be silently dropped. `js-update` routes through `queueUpdate`
+    // → `fetchUpdate`, which re-imports the module and re-runs its
+    // top-level `__vite__updateStyle` call, replacing the existing style.
+    // plugin-react's transform injects accept boundaries for React
+    // component modules, so `js-update` preserves `useState` for them too.
+    const timestamp = Date.now()
+    const updates: Update[] = invalidatedPaths.map((rel) => {
+      const url = '/' + rel
+      return { type: 'js-update', path: url, acceptedPath: url, timestamp }
+    })
+    server.ws.send({ type: 'update', updates })
+  }
   return {
     url,
     port,
-    updateFiles(files: PreviewFiles): void {
-      const prev = state.files
-      state.files = files
-
-      // Invalidate everything that changed (added / removed / different content)
-      const { changed, topologyChanged } = diffPreviewFiles(prev, files)
-      if (changed.length === 0) return
-
-      const invalidatedPaths: string[] = []
-      for (const rel of changed) {
-        const mod = server.moduleGraph.getModuleById(vfsPrefix + rel)
-        if (mod) {
-          server.moduleGraph.invalidateModule(mod)
-          invalidatedPaths.push(rel)
-        }
-      }
-
-      const mode = classifyUpdate(changed, invalidatedPaths.length, topologyChanged)
-      if (mode === 'noop') return
-      if (mode === 'full-reload') {
-        server.ws.send({ type: 'full-reload' })
-        return
-      }
-      // HMR: send Vite's native `update` event. Every emitted file — .tsx and
-      // .css alike — is served as a JS module in Vite dev: CSS goes through
-      // an `import './index.css'` statement that's transformed into a module
-      // calling `__vite__updateStyle(id, css)` to inject a `<style>` tag, and
-      // the module self-accepts via `import.meta.hot.accept()`. The native
-      // `css-update` event scans `document.querySelectorAll('link')` for the
-      // matching stylesheet — but we have no `<link>` tags, so css-update
-      // would be silently dropped. `js-update` routes through `queueUpdate`
-      // → `fetchUpdate`, which re-imports the module and re-runs its
-      // top-level `__vite__updateStyle` call, replacing the existing style.
-      // plugin-react's transform injects accept boundaries for React
-      // component modules, so `js-update` preserves `useState` for them too.
-      const timestamp = Date.now()
-      const updates: Update[] = invalidatedPaths.map((rel) => {
-        const url = '/' + rel
-        return { type: 'js-update', path: url, acceptedPath: url, timestamp }
-      })
-      server.ws.send({ type: 'update', updates })
+    updateFiles(files: PreviewFiles): void | Promise<void> {
+      if (backendGuard) return backendGuard.check().then(() => updateFiles(files))
+      updateFiles(files)
     },
     async close() {
       const closed = server.close()
@@ -423,9 +453,18 @@ async function runCLI(): Promise<void> {
   let portArg = 0
   let rootArg: string | undefined
   let targetArg: WebVfsTarget = 'react'
+  let localBackend: PreviewLocalBackendConnection | undefined
   const argv = process.argv.slice(2)
-  for (let i = 0; i < argv.length - 1; i++) {
-    if (argv[i] === '--port') {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--local-backend') {
+      if (localBackend) throw new Error('Duplicate local backend preview configuration.')
+      try {
+        localBackend = parsePreviewLocalBackendConnection(JSON.parse(argv[i + 1] ?? ''))
+      } catch {
+        throw new Error('Invalid local backend preview configuration.')
+      }
+      i++
+    } else if (argv[i] === '--port') {
       portArg = Number.parseInt(argv[i + 1], 10) || 0
       i++
     } else if (argv[i] === '--root') {
@@ -447,7 +486,12 @@ async function runCLI(): Promise<void> {
 
   let server: PreviewServer
   try {
-    server = await createPreviewServer({ port: portArg, fsRoot: rootArg, target: targetArg })
+    server = await createPreviewServer({
+      port: portArg,
+      fsRoot: rootArg,
+      target: targetArg,
+      localBackend
+    })
   } catch (e) {
     const message = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e)
     trace(`createPreviewServer failed: ${message}`)
@@ -509,7 +553,7 @@ async function handleCommand(
 ): Promise<void> {
   if (cmd.type === 'update' && Array.isArray(cmd.files)) {
     const files = deserializePreviewFiles(cmd.files, decodeCache)
-    server.updateFiles(files)
+    await server.updateFiles(files)
     emit({ type: 'updated' })
     return
   }
@@ -523,7 +567,10 @@ async function handleCommand(
 // Bun sets `import.meta.main = true` for the entry module. The type
 // augmentation lives in bun-types; cast to access without redeclaring.
 if ((import.meta as { main?: boolean }).main) {
-  void runCLI()
+  void runCLI().catch(() => {
+    emit({ type: 'error', message: 'Invalid preview server configuration.' })
+    process.exit(1)
+  })
 }
 
 // Used by ViteDevServer reference — keeping the import explicit avoids `vite`

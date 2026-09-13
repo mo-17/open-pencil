@@ -1,3 +1,4 @@
+import { emitBackendClientEvent } from '#compiler/adapters/backend-client/events'
 import type {
   IRAPICallHandler,
   IRConfirmHandler,
@@ -38,6 +39,10 @@ const SIMPLE_STATEMENT_KINDS = new Set<IREventHandler['kind']>([
  *  (handled by `handlersAreAsync`'s recursion, not this set); `confirm`
  *  unconditionally awaits `__opConfirm`, so it sits in this set directly. */
 const ASYNC_KINDS = new Set<IREventHandler['kind']>([
+  'backendAuth',
+  'backendRequest',
+  'backendCommand',
+  'backendCommandRecovery',
   'apiCall',
   'invokeServerWorkflow',
   'stripeCheckout',
@@ -102,6 +107,9 @@ function handlersContainMotion(handlers: readonly IREventHandler[]): boolean {
       )
     }
     if (
+      handler.kind === 'backendCommand' ||
+      handler.kind === 'backendCommandRecovery' ||
+      handler.kind === 'backendRequest' ||
       handler.kind === 'apiCall' ||
       handler.kind === 'invokeServerWorkflow' ||
       handler.kind === 'supabaseQuery' ||
@@ -410,7 +418,7 @@ function emitNavigate(h: IRNavigateHandler): string {
       : `generatePath(${to}, { ${h.params
           .map((p) => `${p.name}: ${emitExpression(p.ast)}`)
           .join(', ')} })`
-  return `await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate(${destination})`
+  return `await (window as Window & { __OPENPENCIL_MOTION_RUNTIME__?: { pageExit?: () => Promise<void> } }).__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate(${destination})`
 }
 
 type IRImmediateHandler = Extract<
@@ -472,6 +480,16 @@ function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
       return emitStripeCheckout(h)
     case 'stripeCustomerPortal':
       return emitStripeCustomerPortal(h)
+    case 'backendAuth':
+    case 'backendCommand':
+    case 'backendCommandRecovery':
+    case 'backendRequest':
+      return emitBackendClientEvent(h, {
+        expression: emitExpression,
+        statements: (handlers) => emitStatementList(handlers, motionScope),
+        request: '__opBackend.backendRequest',
+        auth: '__opBackend'
+      })
     case 'supabaseQuery':
       return emitSupabaseQuery(h, motionScope)
     case 'supabaseMutation':

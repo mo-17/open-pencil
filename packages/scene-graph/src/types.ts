@@ -1,5 +1,12 @@
 /* eslint-disable max-lines -- scene node contracts are kept together as the public graph type surface */
 
+import type {
+  ActionPayloadEntry,
+  BackendAuthAction,
+  BackendCommandAction,
+  BackendCommandRecoveryAction,
+  BackendRequestAction
+} from './backend-client'
 import type { CanvasGuide } from './guides'
 import type { InstanceOverrideState } from './instance-overrides'
 import type {
@@ -1155,10 +1162,7 @@ export interface SupabaseQueryAction {
  *  `SetStateAction.valueExpr` (page state, doc state, `$prev`, literals),
  *  so a mutation can write the value of an INPUT or any other reactive
  *  source into a row. `key` must be a JS identifier (column name). */
-export interface SupabasePayloadEntry {
-  key: string
-  valueExpr: string
-}
+export type SupabasePayloadEntry = ActionPayloadEntry
 
 /** Phase 3 §2: typed write against a Supabase table. Payload comes from
  *  one of two channels:
@@ -1448,6 +1452,10 @@ export type ActionDef =
   | SetVariableAction
   | APICallAction
   | SupabaseQueryAction
+  | BackendAuthAction
+  | BackendRequestAction
+  | BackendCommandAction
+  | BackendCommandRecoveryAction
   | SupabaseMutationAction
   | SupabaseAuthAction
   | ConditionalAction

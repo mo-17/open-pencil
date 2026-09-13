@@ -1,5 +1,10 @@
 import type { IRNode, IRTree } from '#compiler/ir/types'
 
+import {
+  reactBackendQueryLines,
+  backendClientImport,
+  reactBackendGuard
+} from '../backend-client/lists'
 import { buildComponentImports, buildLucideIconImport } from './emit/component'
 import { emitElement } from './emit/element'
 import { emitListQueryHook } from './emit/list-query'
@@ -29,6 +34,7 @@ import {
 import { buildReactModuleImports } from './modules/registry'
 import { motionDriverToken } from './motion/drivers'
 import { motionToken } from './motion/key'
+import { buildReactPageImport } from './page-imports'
 import { pageUsesRequestDebounce, pageUsesRequestGate } from './request-timing'
 import type { PagePathInfo } from './route-paths'
 import { collectKitImports, kitImportLine } from './ui-kit/registry'
@@ -300,28 +306,6 @@ function buildRouterHookLines(u: RouterUsage): string[] {
   return lines
 }
 
-/** §17: the single `react` named import a page needs — `useState` for page
- *  state and/or a Supabase-query LIST's rows, `useEffect` for the LIST fetch
- *  hook, and `useRef` for remote validation cancellation. Extracted to keep
- *  `buildPageFile` under the complexity limit. */
-function buildReactImport(ir: IRTree): string {
-  const hasListQueries = (ir.listQueries?.length ?? 0) > 0
-  // Phase 4 §19: a validated page needs `useState` for its field-errors store.
-  const hasValidation = (ir.validatedFields?.length ?? 0) > 0
-  const hasRemoteValidation = validationUsesRemote(ir.validatedFields ?? [])
-  const hasComputedState = ir.states.some((s) => s.computed)
-  const hasWritableState = ir.states.some((s) => !s.computed && s.computedInvalid !== true)
-  const hasRequestGate = pageUsesRequestGate(ir)
-  const hasRequestDebounce = pageUsesRequestDebounce(ir)
-  const hooks: string[] = []
-  if (hasWritableState || hasListQueries || hasValidation || hasRequestGate) hooks.push('useState')
-  if (hasRemoteValidation || hasRequestGate) hooks.push('useRef')
-  if (hasComputedState) hooks.push('useMemo')
-  if (hasListQueries || buildMotionDriverStateHooks(ir) !== '' || hasRequestDebounce)
-    hooks.push('useEffect')
-  return hooks.length > 0 ? `import { ${hooks.join(', ')} } from 'react'\n` : ''
-}
-
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const {
     devMode,
@@ -342,7 +326,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const prototypeImport = importPrototypeRuntime ? `import './__prototype-runtime'\n` : ''
-  const reactImport = buildReactImport(ir)
+  const reactImport = buildReactPageImport(ir, buildMotionDriverStateHooks(ir) !== '')
   // Phase 4 §16.1/§16.3/§16.4: the route-bound built-ins (`$params`, `$query`)
   // and the auth guard only resolve inside the multi-page router; single-page
   // App.tsx has no router context (guard is warned + dropped in emitSinglePage).
@@ -382,6 +366,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     intl: usesIntlAttr
   })
   const importBlock =
+    backendClientImport(ir, lowcodeSupabaseImportPath) +
     bridgeImport +
     prototypeImport +
     reactImport +
@@ -404,7 +389,12 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   // §17: per-LIST Supabase fetch hooks. Emitted after the state / docState /
   // router hooks above so their effect deps (page-state, doc-state, `$params`)
   // reference locals already declared.
-  const listQueryLines = (ir.listQueries ?? []).map(emitListQueryHook).join('\n')
+  const listQueryLines = [
+    ...(ir.listQueries ?? []).map(emitListQueryHook),
+    reactBackendQueryLines(ir)
+  ]
+    .filter(Boolean)
+    .join('\n')
   // §9 v3: a `const intl = useIntl()` hook for any translated attribute.
   const intlHookLine = usesIntlAttr ? '  const intl = useIntl()' : ''
   // Phase 4 §19: the field-errors store + `__validators` map + validate
@@ -416,9 +406,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   // Phase 4 §16.3: redirect-if-unauthenticated guard. Comes after the hooks (it
   // reads the `$currentUser` doc-state declared above) and short-circuits the
   // render before the page body when the session isn't signed in.
-  const guardLine = usage.guarded
-    ? `  if (!$currentUser.signedIn) return <Navigate to="${ir.authRedirect ?? '/login'}" replace />`
-    : ''
+  const guardLine = reactBackendGuard(ir, routerAvailable, usage.guarded)
 
   const hookLines = [
     docStateReadLines,

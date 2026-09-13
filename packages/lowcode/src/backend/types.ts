@@ -3,6 +3,7 @@ export const DATA_MODEL_IR_VERSION = 1 as const
 export const AUTH_POLICY_IR_VERSION = 1 as const
 export const BACKEND_WORKFLOW_IR_VERSION = 1 as const
 export const BACKEND_STORAGE_IR_VERSION = 1 as const
+export const BACKEND_HTTP_API_IR_VERSION = 1 as const
 export const MIGRATION_PLAN_VERSION = 1 as const
 
 export type BackendCapability =
@@ -265,6 +266,65 @@ export interface BackendStorageIR {
   buckets: BackendStorageBucketIR[]
 }
 
+export type BackendHttpAPIOperation = 'list' | 'read' | 'create' | 'update' | 'delete'
+export type BackendHttpAPIJWTAlgorithm = 'RS256' | 'ES256'
+
+/** References required server environment values; declaring these does not verify a JWT. */
+export interface BackendHttpAPIAuthenticationIRV1 {
+  kind: 'jwt'
+  identityId: string
+  issuerEnvironment: string
+  audienceEnvironment: string
+  jwksUrlEnvironment: string
+  algorithms: BackendHttpAPIJWTAlgorithm[]
+}
+
+/** Field IDs inherit their types and nullability from the referenced DataModel entity. */
+export interface BackendHttpAPIQueryIRV1 {
+  filterFields: string[]
+  searchFields: string[]
+  sortFields: string[]
+}
+
+export interface BackendHttpAPIResourceIRV1 {
+  id: string
+  path: string
+  entityId: string
+  operations: BackendHttpAPIOperation[]
+  readFields: string[]
+  createFields?: string[]
+  updateFields?: string[]
+  maxPageSize?: number
+  /** Explicit list-only field allowlists; never row authorization predicates. */
+  query?: BackendHttpAPIQueryIRV1
+}
+
+/** Explicit authenticated CRUD exposure intent, independent of a server framework or ORM. */
+export interface BackendHttpAPIIRV1 {
+  version: typeof BACKEND_HTTP_API_IR_VERSION
+  authentication: BackendHttpAPIAuthenticationIRV1
+  resources: BackendHttpAPIResourceIRV1[]
+  /** Optional public browser login and same-origin API mounting configuration. */
+  browserClient?: BackendHttpAPIBrowserClientIRV1
+}
+
+export const BACKEND_OIDC_CALLBACK_PATH = '/_openpencil/auth/callback' as const
+
+export interface BackendHttpAPIOIDCAuthenticationIRV1 {
+  kind: 'oidc-pkce'
+  issuer: string
+  clientId: string
+  scopes: string[]
+  callbackPath: string
+  resource?: string
+}
+
+export interface BackendHttpAPIBrowserClientIRV1 {
+  version: 1
+  apiBasePath: string
+  authentication: BackendHttpAPIOIDCAuthenticationIRV1
+}
+
 export type BackendCredentialRef = `credential.${string}-${string}-${string}-${string}-${string}`
 
 export type BackendSecretRef =
@@ -291,6 +351,10 @@ export interface BackendApplicationSpecV1 {
   workflows: BackendWorkflowIR
   /** Optional for backwards-compatible Backend application v1 documents. */
   storage?: BackendStorageIR
+  /** Omitted in existing documents so their canonical bytes remain unchanged. */
+  httpApi?: BackendHttpAPIIRV1
+  /** Omitted in existing documents; explicit bounded server commands are a separate authority. */
+  commands?: BackendCommandIRV1
   capabilities: BackendCapabilityRequirement[]
   secrets: BackendSecretRef[]
 }
@@ -345,3 +409,4 @@ export interface MigrationPlan {
 export type BackendValidationResult<T> =
   | { ok: true; value: T; diagnostics: BackendDiagnostic[] }
   | { ok: false; diagnostics: BackendDiagnostic[] }
+import type { BackendCommandIRV1 } from './commands/types'

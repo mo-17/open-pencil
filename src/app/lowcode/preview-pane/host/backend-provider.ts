@@ -1,9 +1,12 @@
 import type { CompilerOptions } from '@open-pencil/compiler'
+import { validateNestJSConnectedPreview } from '@open-pencil/compiler/backend'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import {
   prepareAppBackendProviderCompilerOptions,
   readAppBackendProviderDocumentRequest,
+  resolveAppBackendProviderDescriptor,
+  compilerBackendProviderSelection,
   type AppBackendProviderHostStore
 } from '@/app/plugins/host/backend-provider'
 
@@ -21,6 +24,38 @@ export function previewHasBackendProvider(graph: SceneGraph): boolean {
   return readAppBackendProviderDocumentRequest(graph) !== null
 }
 
+function prepareConnectedPreview(
+  graph: SceneGraph,
+  options: CompilerOptions,
+  store: AppBackendProviderHostStore | null
+): CompilerOptions {
+  const connection = options.backendPreview
+  if (!connection)
+    return store ? prepareAppBackendProviderCompilerOptions(store, graph, options) : options
+  const request = readAppBackendProviderDocumentRequest(graph)
+  if (!request || !store || options.packaging?.kind === 'microfrontend') {
+    throw new Error('Connected NestJS preview requires a current standalone Backend document.')
+  }
+  const descriptor = resolveAppBackendProviderDescriptor(store, request.selection)
+  if (!descriptor) throw new Error('The connected Backend Provider is no longer available.')
+  const selection = compilerBackendProviderSelection(descriptor)
+  const validated = validateNestJSConnectedPreview({
+    selection,
+    application: request.application,
+    target: options.target,
+    applicationDigest: connection.applicationDigest
+  })
+  if (!validated.ok) {
+    throw new Error(
+      `Connected NestJS preview failed closed: ${validated.diagnostics.map((entry) => entry.code).join(', ')}.`
+    )
+  }
+  return Object.freeze({
+    ...options,
+    backendProvider: Object.freeze({ selection, application: validated.application })
+  })
+}
+
 /** Called synchronously at the Host compile/snapshot boundary, after async preparation. */
 export function preparePreviewBackendProvider(
   graph: SceneGraph,
@@ -35,7 +70,7 @@ export function preparePreviewBackendProvider(
   }
   const document = readAppBackendProviderDocumentRequest(graph)
   if (document && !store) throw new Error('Preview Backend Provider Host is unavailable.')
-  const prepared = store ? prepareAppBackendProviderCompilerOptions(store, graph, options) : options
+  const prepared = prepareConnectedPreview(graph, options, store)
   const identity = JSON.stringify(document)
   const normalized = JSON.stringify(prepared.backendProvider)
   return {
@@ -46,9 +81,7 @@ export function preparePreviewBackendProvider(
       }
       // Resolve against the live store again; the Worker receives only normalized
       // data, never this callback, the store, or a runtime authority capability.
-      const current = store
-        ? prepareAppBackendProviderCompilerOptions(store, graph, options)
-        : options
+      const current = prepareConnectedPreview(graph, options, store)
       if (JSON.stringify(current.backendProvider) !== normalized) {
         throw new Error('Preview Backend Provider selection changed during the build.')
       }

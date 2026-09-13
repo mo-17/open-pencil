@@ -29,7 +29,7 @@ describe('emit workflow handlers (Phase 3 §10)', () => {
     }
     const out = emitEventHandler([handler])
     expect(out).toBe(
-      'async () => { if (isOpen) { await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/open"); } else { await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/closed"); } }'
+      'async () => { if (isOpen) { await (window as Window & { __OPENPENCIL_MOTION_RUNTIME__?: { pageExit?: () => Promise<void> } }).__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/open"); } else { await (window as Window & { __OPENPENCIL_MOTION_RUNTIME__?: { pageExit?: () => Promise<void> } }).__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/closed"); } }'
     )
   })
 
@@ -236,7 +236,7 @@ describe('emit confirm + clipboard handlers (Phase 3 §10 v3)', () => {
       }
     ])
     expect(out).toBe(
-      'async () => { if (await __opConfirm("Delete?")) { await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/gone"); } else { __opToast("Kept"); } }'
+      'async () => { if (await __opConfirm("Delete?")) { await (window as Window & { __OPENPENCIL_MOTION_RUNTIME__?: { pageExit?: () => Promise<void> } }).__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/gone"); } else { __opToast("Kept"); } }'
     )
   })
 

@@ -29,6 +29,10 @@ export const ACTION_KINDS: ActionKind[] = [
   'navigate',
   'setVariable',
   'apiCall',
+  'backendRequest',
+  'backendCommand',
+  'backendCommandRecovery',
+  'backendAuth',
   'supabaseQuery',
   'supabaseMutation',
   'supabaseAuth',
@@ -79,6 +83,16 @@ const FACTORIES: Record<ActionKind, (id: string, ctx: ActionFactoryCtx) => Actio
       valueExpr: docTarget ? '$prev + 1' : ''
     }
   },
+  backendRequest: (id) => ({ id, kind: 'backendRequest', resourceId: '', operation: 'list' }),
+  backendCommand: (id) => ({ id, kind: 'backendCommand', commandId: '', idempotencyKeyTarget: '' }),
+  backendCommandRecovery: (id) => ({
+    id,
+    kind: 'backendCommandRecovery',
+    commandId: '',
+    idempotencyKeyTarget: '',
+    operation: 'inspect'
+  }),
+  backendAuth: (id) => ({ id, kind: 'backendAuth', operation: 'signIn' }),
   apiCall: (id, ctx) => ({
     id,
     kind: 'apiCall',

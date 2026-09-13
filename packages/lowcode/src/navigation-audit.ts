@@ -367,6 +367,9 @@ function actionBranches(action: ActionDef): Array<{ name: string; actions: Actio
   }
   if (
     action.kind === 'apiCall' ||
+    action.kind === 'backendCommand' ||
+    action.kind === 'backendCommandRecovery' ||
+    action.kind === 'backendRequest' ||
     action.kind === 'supabaseQuery' ||
     action.kind === 'supabaseMutation' ||
     action.kind === 'invokeServerWorkflow'

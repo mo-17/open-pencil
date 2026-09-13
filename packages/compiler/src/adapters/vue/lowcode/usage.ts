@@ -105,6 +105,9 @@ function collectHandlerUsage(handler: IREventHandler): VueLowcodeUsage {
       usage = mergeUsage(usage, collectHandlerUsage(item))
     }
   } else if (
+    handler.kind === 'backendCommand' ||
+    handler.kind === 'backendCommandRecovery' ||
+    handler.kind === 'backendRequest' ||
     handler.kind === 'apiCall' ||
     handler.kind === 'supabaseQuery' ||
     handler.kind === 'supabaseMutation' ||

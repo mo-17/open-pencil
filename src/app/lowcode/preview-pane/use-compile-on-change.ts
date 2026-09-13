@@ -16,7 +16,7 @@ import { useEditorStore } from '@/app/editor/active-store'
 import { importedFontRevision } from '@/app/editor/fonts'
 import { appPluginStoreSnapshot } from '@/app/plugins/app'
 
-import { watchPreviewBackendProvider } from './backend-provider-watch'
+import { watchPreviewBackendProvider, watchPreviewLoginRoute } from './backend-provider-watch'
 import {
   createPreviewCompileScheduler,
   createPreviewCompileSchedulerState,
@@ -35,6 +35,14 @@ import type {
   PreviewHostBuildMetrics,
   PreviewTarget as HostPreviewTarget
 } from './host/types'
+import {
+  createLocalBackendPreviewConnection,
+  LOCAL_BACKEND_CHANGED_MESSAGE,
+  prepareLocalBackendPreview
+} from './local-backend-connection'
+import { captureManagedBackendSnapshot } from './managed-backend/capture'
+import { createManagedBackendPreviewController } from './managed-backend/controller'
+import { createManagedBackendPreviewHost } from './managed-backend/host'
 
 export { parsePreviewSidecarReady, type PreviewSidecarReady } from './sidecar-ready'
 
@@ -97,6 +105,10 @@ export type PreviewStatus =
   | { kind: 'unsupported'; reason: string }
 
 interface UseCompileOnChangeResult {
+  localBackend: ReturnType<typeof createLocalBackendPreviewConnection>
+  managedBackend: ReturnType<typeof createManagedBackendPreviewController>
+  backendMode: Ref<'external' | 'managed'>
+  selectBackendMode(mode: 'external' | 'managed'): Promise<void>
   status: Ref<PreviewStatus>
   hostKind: Ref<PreviewHost['kind'] | null>
   compileState: Ref<PreviewCompileSchedulerState>
@@ -167,6 +179,39 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
   let hostGeneration = 0
   let buildGeneration = 0
   let runtimeReadyTimer: ReturnType<typeof setTimeout> | null = null
+  let hostTransition = Promise.resolve()
+  const localBackend = createLocalBackendPreviewConnection({
+    prepare: (apiPort) =>
+      prepareLocalBackendPreview(store.graph, settings?.target?.value ?? 'react', apiPort),
+    start: () => {
+      scheduler.setPolicy('auto')
+      return launchPreviewHost(settings?.target?.value ?? 'react')
+    },
+    stop: stopPreviewHost
+  })
+  const backendMode = ref<'external' | 'managed'>('external')
+  const managedBackend = createManagedBackendPreviewController({
+    createHost: createManagedBackendPreviewHost,
+    capture: (isCurrent) => {
+      const graph = store.graph
+      const target = settings?.target?.value ?? 'react'
+      return captureManagedBackendSnapshot(
+        graph,
+        target,
+        () =>
+          isCurrent() && graph === store.graph && target === (settings?.target?.value ?? 'react')
+      )
+    },
+    stopFrontend: () => localBackend.disconnect(),
+    connectFrontend: (prepared) => localBackend.adoptPrepared(prepared)
+  })
+  let managedGraph = store.graph
+  async function selectBackendMode(mode: 'external' | 'managed') {
+    if (backendMode.value === mode) return
+    backendMode.value = mode
+    await localBackend.disconnect()
+    if (mode === 'external') await managedBackend.deactivate()
+  }
 
   function publishDiagnostics(
     diagnostics: readonly PreviewDiagnostic[],
@@ -293,16 +338,19 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
           port: result.frame.port,
           frame: result.frame
         }
+        localBackend.markReady()
       }
       return 'pushed'
     }
     if (result.status === 'unsupported') {
       publishDiagnostics(result.diagnostics)
       status.value = { kind: 'unsupported', reason: result.reason }
+      if (localBackend.connection.value) void localBackend.fail(result.reason)
       return 'failed'
     }
     publishDiagnostics(result.diagnostics, result.reason)
     status.value = { kind: 'error', message: result.reason }
+    if (localBackend.connection.value) void localBackend.fail(result.reason)
     return 'failed'
   }
 
@@ -337,7 +385,15 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
         pageIds,
         options: withDefaults({
           packageName: 'openpencil-preview',
-          ...previewCompilerOverrides(settings, pageIds.length)
+          ...previewCompilerOverrides(settings, pageIds.length),
+          ...(localBackend.connection.value
+            ? {
+                backendPreview: {
+                  kind: 'nestjs-local' as const,
+                  applicationDigest: localBackend.connection.value.applicationDigest
+                }
+              }
+            : {})
         }),
         refreshFonts: request.refreshFonts,
         signal: controller.signal
@@ -354,6 +410,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
       const message = cause instanceof Error ? cause.message : String(cause)
       publishDiagnostics([], message)
       status.value = { kind: 'error', message }
+      if (localBackend.connection.value) void localBackend.fail(message)
       console.warn('[preview] compile failed:', cause)
       return 'failed'
     } finally {
@@ -385,21 +442,44 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     scheduler.flush(refreshFonts)
   }
 
-  async function launchPreviewHost(target: PreviewTarget): Promise<void> {
-    const generation = ++hostGeneration
+  function stopPreviewHost(): Promise<void> {
+    hostGeneration += 1
+    clearRuntimeReadyTimer()
+    cancelActiveBuild()
+    const previous = host
+    host = null
+    hostKind.value = null
+    status.value = { kind: 'idle' }
+    // Begin revocation immediately, then join any in-flight launch. A replacement
+    // must not bind the fixed preview port until the old owned sidecar has stopped.
+    const disposal = previous ? previous.dispose() : Promise.resolve()
+    hostTransition = Promise.all([hostTransition, disposal]).then(() => undefined)
+    return hostTransition
+  }
+
+  function launchPreviewHost(target: PreviewTarget): Promise<void> {
+    const stopped = stopPreviewHost()
+    const generation = hostGeneration
+    const connection = localBackend.connection.value
+    hostTransition = stopped.then(() => startPreviewHost(target, generation, connection))
+    return hostTransition
+  }
+
+  async function startPreviewHost(
+    target: PreviewTarget,
+    generation: number,
+    connection: typeof localBackend.connection.value
+  ): Promise<void> {
     const launchIsStale = (): boolean => cancelled || generation !== hostGeneration
+    if (launchIsStale()) return
     status.value = { kind: 'starting', host: null }
     hostKind.value = null
     clearBuildOutput()
     clearRuntimeReadyTimer()
     cancelActiveBuild()
-    const previous = host
-    host = null
-    if (previous) await previous.dispose()
-    if (launchIsStale()) return
 
     try {
-      const created = await createPreviewHost(target)
+      const created = await createPreviewHost(target, { localBackend: connection ?? undefined })
       if (launchIsStale()) {
         await created.dispose()
         return
@@ -415,6 +495,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
           cancelActiveBuild()
           publishDiagnostics([], terminal.message)
           status.value = { kind: 'error', message: terminal.message }
+          if (localBackend.connection.value) void localBackend.fail(terminal.message)
           return undefined
         })
       }
@@ -424,6 +505,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
       const message = cause instanceof Error ? cause.message : String(cause)
       publishDiagnostics([], message)
       status.value = { kind: 'error', message }
+      if (localBackend.connection.value) void localBackend.fail(message)
     }
   }
 
@@ -437,39 +519,67 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     }
   )
   const stopPolicyWatch = settings?.refreshPolicy
-    ? watch(settings.refreshPolicy, (policy) => scheduler.setPolicy(policy))
+    ? watch(settings.refreshPolicy, (policy) =>
+        scheduler.setPolicy(localBackend.connection.value ? 'auto' : policy)
+      )
     : NOOP
   const stopBackendProviderWatch = watchPreviewBackendProvider({
     graph: () => store.graph,
     sceneVersion: () => store.state.sceneVersion,
     providerSnapshot: () => appPluginStoreSnapshot.value,
     invalidate: () => {
-      if (!cancelled) void launchPreviewHost(settings?.target?.value ?? 'react')
+      if (cancelled) return
+      if (backendMode.value === 'managed') {
+        if (managedGraph !== store.graph) {
+          managedGraph = store.graph
+          void managedBackend.invalidate('Document changed. Prepare this managed backend again.')
+        } else managedBackend.documentChanged()
+      } else if (localBackend.active.value)
+        void localBackend.disconnect(LOCAL_BACKEND_CHANGED_MESSAGE)
+      else void launchPreviewHost(settings?.target?.value ?? 'react')
     }
   })
   const stopTargetWatch = settings?.target
     ? watch(settings.target, (target) => {
-        void launchPreviewHost(target)
+        if (backendMode.value === 'managed') {
+          void managedBackend.invalidate(
+            'Preview framework changed. Prepare the managed backend again.'
+          )
+        } else if (localBackend.active.value) {
+          void localBackend.disconnect('Preview framework changed. Reconnect the local Backend.')
+        } else void launchPreviewHost(target)
       })
     : NOOP
+  const stopLoginRouteWatch = watchPreviewLoginRoute({
+    graph: () => store.graph,
+    sceneVersion: () => store.state.sceneVersion,
+    invalidate: () => {
+      if (cancelled) return
+      if (backendMode.value === 'managed') managedBackend.documentChanged()
+      else if (localBackend.active.value)
+        void localBackend.disconnect('Login route changed. Reconnect the local Backend preview.')
+    }
+  })
 
   onBeforeUnmount(() => {
     cancelled = true
-    hostGeneration += 1
+    void localBackend.disconnect()
+    void managedBackend.dispose()
     stopSceneWatch()
     stopPolicyWatch()
     stopBackendProviderWatch()
     stopTargetWatch()
+    stopLoginRouteWatch()
     scheduler.dispose()
     clearRuntimeReadyTimer()
     cancelActiveBuild()
-    const activeHost = host
-    host = null
-    hostKind.value = null
-    if (activeHost) void activeHost.dispose()
   })
 
   return {
+    localBackend,
+    managedBackend,
+    backendMode,
+    selectBackendMode,
     status,
     hostKind,
     compileState,

@@ -1,4 +1,6 @@
 import { parseAuthPolicyIR, parseBackendWorkflowIR } from './auth-workflow-validation'
+import { parseBackendCommandIRV1 } from './commands'
+import { parseBackendHttpAPIIRV1 } from './http-api-validation'
 import { BACKEND_LIMITS } from './limits'
 import { parseDataModelIR } from './model-validation'
 import { assertBackendSecretFreeData } from './secret-boundary'
@@ -194,6 +196,8 @@ export function parseBackendApplicationSpecV1(
       'auth',
       'workflows',
       'storage',
+      'httpApi',
+      'commands',
       'capabilities',
       'secrets'
     ],
@@ -265,6 +269,19 @@ export function parseBackendApplicationSpecV1(
     'secret reference'
   )
   validateApplicationWorkflowEnvironmentReferences(workflows, secrets, context)
+  const api =
+    dataModel && auth && source.httpApi !== undefined
+      ? parseBackendHttpAPIIRV1(source.httpApi, '$.httpApi', dataModel, auth, secrets, context)
+      : undefined
+  const commands =
+    dataModel && auth && source.commands !== undefined
+      ? parseBackendCommandIRV1(
+          source.commands,
+          '$.commands',
+          { model: dataModel, auth, api },
+          context
+        )
+      : undefined
   const hasErrors = context.diagnostics.some((entry) => entry.severity === 'error')
   if (
     source.format !== 'openpencil.backend-application' ||
@@ -291,6 +308,8 @@ export function parseBackendApplicationSpecV1(
       auth,
       workflows,
       ...(storage ? { storage } : {}),
+      ...(api ? { httpApi: api } : {}),
+      ...(commands ? { commands } : {}),
       capabilities: sorted(capabilities, (entry) => entry.capability),
       secrets: sorted(secrets, (entry) =>
         entry.kind === 'credential'

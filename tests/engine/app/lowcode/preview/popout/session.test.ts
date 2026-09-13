@@ -483,12 +483,24 @@ describe('compiler preview popout session', () => {
 
   test('PreviewPane queues request synchronization while native open is busy', async () => {
     const source = await Bun.file('src/app/lowcode/preview-pane/PreviewPane.vue').text()
-
-    expect(source).toContain(
-      'if (compilerPreviewPopoutOpen.value || compilerPreviewPopoutBusy.value)'
+    const synchronizationWatch = source.match(
+      /watch\(\s*\[(\s*status\s*,[^\]]+)\],\s*\(\)\s*=>\s*\{([\s\S]*?)\n\s*\},\s*\{\s*flush:\s*'post'\s*\}\s*\)/
     )
-    expect(source).toMatch(
-      /\[status, \(\) => store\.state\.currentPageId, compilerPreviewPopoutControls\][\s\S]*?compilerPreviewPopoutBusy\.value[\s\S]*?syncActiveCompilerPreviewPopout\(\)/
+
+    expect(synchronizationWatch).not.toBeNull()
+    expect(
+      synchronizationWatch?.[1]
+        .split(',')
+        .map((dependency) => dependency.replace(/\s+/g, ' ').trim())
+    ).toEqual([
+      'status',
+      'localBackendActive',
+      '() => store.state.currentPageId',
+      'compilerPreviewPopoutControls'
+    ])
+    // A backend-mode switch must also synchronize the null popout request while opening is busy.
+    expect(synchronizationWatch?.[2]).toMatch(
+      /if\s*\(compilerPreviewPopoutOpen\.value\s*\|\|\s*compilerPreviewPopoutBusy\.value\)\s*\{\s*void syncActiveCompilerPreviewPopout\(\)/
     )
   })
 

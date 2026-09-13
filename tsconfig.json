@@ -23,6 +23,7 @@
       "#core/*": ["./packages/core/src/*"],
       "#cli/*": ["./packages/cli/src/*"],
       "#compiler/*": ["./packages/compiler/src/*"],
+      "#lowcode/*": ["./packages/lowcode/src/*"],
       "#codepen-sidecar/*": ["./packages/codepen-sidecar/*"],
       "#mcp/*": ["./packages/mcp/src/*"],
       "#dom-css/*": ["./packages/dom-css/src/*"],
@@ -35,6 +36,12 @@
       "@open-pencil/core": ["./packages/core/src/index.ts"],
       "@open-pencil/core/*": ["./packages/core/src/*"],
       "@open-pencil/compiler": ["./packages/compiler/src/index.ts"],
+      "@open-pencil/compiler/preview-local-backend": [
+        "./packages/compiler/src/local-backend-preview/connection.ts"
+      ],
+      "@open-pencil/compiler/managed-preview": [
+        "./packages/compiler/src/managed-preview/protocol.ts"
+      ],
       "@open-pencil/compiler/*": ["./packages/compiler/src/*"],
       "@open-pencil/dom-css": ["./packages/dom-css/src/index.ts"],
       "@open-pencil/lowcode": ["./packages/lowcode/src/index.ts"],

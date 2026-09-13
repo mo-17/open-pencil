@@ -2,6 +2,7 @@ import type { IRElement, IREventHandler, IREventName, IRUpload } from '#compiler
 
 import { inspectLowcodeRouteParameters, lowcodeNavigationPathname } from '@open-pencil/lowcode'
 
+import { emitBackendClientEvent } from '../backend-client/events'
 import { emitVueBackendHandler } from './lowcode/backend-actions'
 import {
   eventUsesRequestDebounce,
@@ -31,6 +32,10 @@ const EVENT_DIRECTIVES: Record<IREventName, string> = {
 }
 
 const SUPPORTED_EVENT_KINDS = new Set<IREventHandler['kind']>([
+  'backendAuth',
+  'backendRequest',
+  'backendCommand',
+  'backendCommandRecovery',
   'setState',
   'setVariable',
   'navigate',
@@ -264,6 +269,7 @@ function registerEventFunction(
   ]
   let body = [...eventLocals, ...prelude, ...statements]
   const executableRequest = handlersHaveVueExecutableRequest(handlers, {
+    backend: context.backendAvailable,
     supabase: context.supabaseAvailable,
     serverWorkflow: context.serverWorkflowAvailable
   })
@@ -367,6 +373,20 @@ function emitHandler(
         `try { const __opResponse = await fetch(${url}${init}); const __opData = await __opResponse.json(); if (!__opResponse.ok) throw __opData; __setDocState(${scriptJSON(handler.docStateName)}, __opData); ${success} } catch (__opError) { ${errorWrite}${failure || 'console.error(__opError)'} }`
       ]
     }
+    case 'backendAuth':
+    case 'backendCommand':
+    case 'backendCommandRecovery':
+    case 'backendRequest':
+      if (!context.backendAvailable) throw new Error('Backend client runtime is unavailable.')
+      return [
+        emitBackendClientEvent(handler, {
+          expression: (ast) => scriptExpression(ast, context.refNames, aliases),
+          statements: (nested, extra) =>
+            emitHandlerList(nested, context, new Map([...aliases, ...(extra ?? [])])).join('; '),
+          request: '__opBackend.backendRequest',
+          auth: '__opBackend'
+        })
+      ]
     case 'supabaseQuery':
     case 'supabaseMutation':
     case 'supabaseAuth':

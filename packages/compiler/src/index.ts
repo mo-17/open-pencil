@@ -12,6 +12,7 @@ import type {
   SupabaseConfig
 } from '@open-pencil/scene-graph'
 
+import { integrateBackendClientProject } from './adapters/backend-client/project'
 import { derivePagePaths } from './adapters/react/route-paths'
 import { SUPABASE_ARTIFACT_PATHS } from './backend'
 import {
@@ -240,6 +241,13 @@ export function compile(input: CompilerInput): CompilerOutput {
     files,
     executableServerWorkflowFiles,
     backendApplication !== undefined
+  )
+  integrateBackendClientProject(
+    files,
+    backendApplication,
+    options,
+    input.graph.getNode(input.graph.rootId)?.lowcodeAuthRedirect,
+    irs
   )
   const navigationWarnings = auditLowcodeNavigation(input.graph, {
     pageIds: input.pageIds

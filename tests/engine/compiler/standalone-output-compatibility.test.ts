@@ -18,7 +18,8 @@ const VUE_BASELINE = Object.freeze({
   '.gitignore': '41e1b782bdf457b98fe9fbb8cba15214d5550481f11cb9c0bdb6f4b3c4af91ba',
   'index.html': '77fadbeb842fabd1c3a226985b6cb1bf1810cdec8fbaf0f2b1351f0c6b403f6c',
   'package.json': '6140aa739e1ac5ae51aec023567a90a6091a44801fe23927616ee6fa3b7de4ce',
-  'README.md': 'c15fdc7f3dd1e362bee3d356491f50af996cce65c68cf47f828c60f6cbcedd0b',
+  // The Vue Backend runtime expansion intentionally updated its generated README.
+  'README.md': '56db889c2a520cad611612b1dcd03f9a54cac614ccf6bd54139dc570564a51ad',
   'src/App.vue': '96680651bd6cab5c40b7db9bec4ff4e1c19642cbb46fded14cc281c6c5bac4dd',
   'src/env.d.ts': '65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5',
   'src/index.css': '42070e0b45bb201b2b838a52aaaa6e965f964e0b542d97f1fe517fe59c4b75a8',

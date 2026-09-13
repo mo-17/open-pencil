@@ -143,6 +143,11 @@ export interface CompilerOptions {
    * also contains legacy Backend intent is rejected as ambiguous.
    */
   backendProvider?: CompilerBackendProviderRequest
+  /** Explicit host connection for frontend-only desktop NestJS preview. Never persisted in a document. */
+  backendPreview?: {
+    readonly kind: 'nestjs-local'
+    readonly applicationDigest: string
+  }
   /**
    * Phase 3 §9 — emit an i18n runtime (react-intl). When true, every visible
    * design string (TEXT content, BUTTON text, SELECT/RADIO/CHECKBOX option

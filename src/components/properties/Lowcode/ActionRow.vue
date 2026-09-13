@@ -10,6 +10,8 @@ import type {
   SupabasePayloadEntry,
   WorkflowDef
 } from '@open-pencil/scene-graph'
+import { commerceCopy } from '@/app/lowcode/backend/commerce/copy'
+import BackendCommandActionEditor from './BackendCommandActionEditor.vue'
 import { useI18n } from '@open-pencil/vue'
 
 import { ANALYTICS_TRACK_EVENT_CONFIG_HINT } from '@/app/lowcode/analytics-help'
@@ -28,6 +30,7 @@ import type { ServerWorkflowOption } from '@/app/lowcode/action/server-workflow-
 // resolved lazily at render time, the canonical Vue recursive-component pattern.
 // eslint-disable-next-line import/no-cycle
 import ActionList from './ActionList.vue'
+import BackendActionEditor from './BackendActionEditor.vue'
 
 /**
  * Phase 3 §10 v10 — one row of the recursive workflow editor. Renders a single
@@ -66,7 +69,7 @@ const emit = defineEmits<{
   remove: []
 }>()
 
-const { panels } = useI18n()
+const { panels, locale } = useI18n()
 
 const API_METHODS = ['GET', 'POST'] as const
 const TOAST_VARIANTS = ['info', 'success', 'error'] as const
@@ -109,6 +112,14 @@ const errors = computed<ActionErrors>(() =>
 // (avoids messages.ts + 7-locale churn, per panel convention).
 function actionKindLabel(kind: ActionKind): string {
   if (kind === 'setVariable') return panels.value.lowcodeActionSetDocument
+  if (kind === 'backendRequest') return panels.value.lowcodeBackendRequest
+  const commandLabels: Partial<Record<ActionKind, string>> = {
+    backendCommand: commerceCopy(locale.value).command,
+    backendCommandRecovery: commerceCopy(locale.value).recoveryAction
+  }
+  const commandLabel = commandLabels[kind]
+  if (commandLabel) return commandLabel
+  if (kind === 'backendAuth') return panels.value.lowcodeBackendAuth
   if (kind === 'apiCall') return panels.value.lowcodeActionCallApi
   if (kind === 'supabaseQuery') return panels.value.lowcodeActionSupabaseQuery
   if (kind === 'supabaseMutation') return panels.value.lowcodeActionSupabaseMutation
@@ -392,7 +403,12 @@ function changeServerWorkflow(id: string): void {
     tabindex="-1"
     class="flex flex-col gap-0.5 rounded outline-none transition-colors focus-visible:ring-1 focus-visible:ring-accent"
   >
-    <div class="flex items-center gap-1">
+    <div
+      class="flex items-center gap-1"
+      :class="{
+        'flex-wrap': action.kind === 'backendCommand' || action.kind === 'backendCommandRecovery'
+      }"
+    >
       <select
         :value="action.kind"
         aria-label="Action kind"
@@ -482,6 +498,19 @@ function changeServerWorkflow(id: string): void {
         />
       </template>
 
+      <BackendCommandActionEditor
+        v-else-if="action.kind === 'backendCommand' || action.kind === 'backendCommandRecovery'"
+        class="order-3 basis-full"
+        :action="action"
+        :doc-states="docStates"
+        @update:action="emit('update:action', $event)"
+      />
+      <BackendActionEditor
+        v-else-if="action.kind === 'backendRequest' || action.kind === 'backendAuth'"
+        :action="action"
+        :doc-states="docStates"
+        @update:action="emit('update:action', $event)"
+      />
       <template v-else-if="action.kind === 'apiCall'">
         <select
           :value="action.method"
@@ -1331,6 +1360,9 @@ function changeServerWorkflow(id: string): void {
     <div
       v-if="
         action.kind === 'apiCall' ||
+        action.kind === 'backendRequest' ||
+        action.kind === 'backendCommand' ||
+        action.kind === 'backendCommandRecovery' ||
         action.kind === 'supabaseQuery' ||
         action.kind === 'supabaseMutation' ||
         action.kind === 'invokeServerWorkflow'

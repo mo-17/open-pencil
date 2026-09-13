@@ -19,6 +19,9 @@ export const BACKEND_LIMITS = Object.freeze({
   maxStoragePrefixSegments: 16,
   maxStorageMimeTypes: 64,
   maxStorageObjectBytes: 5_368_709_120,
+  maxHttpApiResources: 64,
+  maxHttpApiPathLength: 128,
+  maxHttpApiPageSize: 100,
   maxCapabilities: 64,
   maxSecretRefs: 128,
   maxMigrationOperations: 2_048

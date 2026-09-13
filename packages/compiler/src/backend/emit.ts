@@ -29,6 +29,7 @@ import {
   sortBackendDiagnostics,
   unsupportedBackendCompilationModeDiagnostic
 } from './diagnostics'
+import { isReviewedNestJSPresetLockArtifact } from './nestjs/preset-lock'
 import {
   activeBackendProviderAdapterSlots,
   backendProviderPlanDigest,
@@ -91,15 +92,20 @@ function reserveArtifactPath(
 
 function acceptArtifact(
   collection: ArtifactCollection,
-  artifact: BackendArtifactSource,
+  emittedArtifact: BackendArtifactSource,
   adapter: BackendProviderAdapter,
   bundle: BackendProviderBundle,
   path: string
 ): void {
+  const metadata = {
+    path: emittedArtifact.path,
+    kind: emittedArtifact.kind,
+    mediaType: emittedArtifact.mediaType
+  }
   if (
     !validateBackendArtifactMetadata(
       collection,
-      artifact,
+      metadata,
       adapter,
       bundle,
       path,
@@ -107,10 +113,15 @@ function acceptArtifact(
     )
   )
     return
+  // Admission and storage share the same snapshot, including for reviewed static source bytes.
+  const artifact = { ...metadata, content: emittedArtifact.content }
   let content: string | Uint8Array
   let bytes: Uint8Array
   if (typeof artifact.content === 'string') {
-    if (containsBackendSecretLikeMaterial(artifact.content)) {
+    if (
+      containsBackendSecretLikeMaterial(artifact.content) &&
+      !isReviewedNestJSPresetLockArtifact(artifact, bundle.descriptor)
+    ) {
       collection.diagnostics.push(
         backendDiagnostic(
           'backend-artifact-secret-material-forbidden',

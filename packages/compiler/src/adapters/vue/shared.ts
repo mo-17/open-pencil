@@ -19,6 +19,7 @@ export const CURRENT_USER_FALLBACK =
 export interface VueEmitContext {
   devMode: boolean
   routerAvailable: boolean
+  backendAvailable?: boolean
   supabaseAvailable: boolean
   serverWorkflowAvailable: boolean
   refNames: Set<string>
@@ -56,11 +57,12 @@ export function createContext(
   listAliases: ReadonlyMap<string, string> = new Map(),
   docStateTypes: ReadonlyMap<string, IRTree['docStates'][number]['type']> = new Map(),
   componentAliases: ReadonlyMap<string, string> = new Map(),
-  runtime: { supabase?: boolean; serverWorkflow?: boolean } = {}
+  runtime: { supabase?: boolean; serverWorkflow?: boolean; backend?: boolean } = {}
 ): VueEmitContext {
   return {
     devMode,
     routerAvailable,
+    backendAvailable: runtime.backend === true,
     supabaseAvailable: runtime.supabase === true,
     serverWorkflowAvailable: runtime.serverWorkflow === true,
     refNames,
@@ -293,4 +295,49 @@ export function docStateTypeScript(type: IRTree['docStates'][number]['type'] | u
   if (type === 'array') return 'unknown[]'
   if (type === 'object') return 'Record<string, unknown>'
   return 'unknown'
+}
+
+/** Resolve page document bindings before expressions and Backend list effects are emitted. */
+export function prepareVueDocumentAliases(
+  ir: IRTree,
+  identAliases: Map<string, string>,
+  listAliases: Map<string, string>,
+  authenticated: boolean
+) {
+  const currentUserFallback = ir.docStateReads.includes('$currentUser') && !authenticated
+  const docStateReads = ir.docStateReads.filter((name) => name !== '$currentUser' || authenticated)
+  if (ir.requiresAuth && authenticated && !docStateReads.includes('$currentUser')) {
+    docStateReads.push('$currentUser')
+  }
+  for (const name of docStateReads) {
+    if (!identAliases.has(name)) identAliases.set(name, generatedAlias('Doc', name))
+  }
+  for (const query of [...(ir.listQueries ?? []), ...(ir.backendQueries ?? [])]) {
+    const alias = generatedAlias('Rows', query.rowsName)
+    listAliases.set(query.rowsName, alias)
+    if (!identAliases.has(query.rowsName)) identAliases.set(query.rowsName, alias)
+  }
+  return { currentUserFallback, docStateReads }
+}
+
+export function vuePageNeedsWatch(ir: IRTree, routerAvailable: boolean): boolean {
+  return (
+    (ir.listQueries?.length ?? 0) > 0 ||
+    (ir.backendQueries?.length ?? 0) > 0 ||
+    (ir.requiresAuth === true && routerAvailable)
+  )
+}
+
+export function serializeVueStateDefault(
+  value: unknown,
+  type: IRTree['states'][number]['type']
+): string {
+  if (type === 'string') return scriptJSON(typeof value === 'string' ? value : '')
+  if (type === 'number')
+    return typeof value === 'number' && Number.isFinite(value) ? String(value) : '0'
+  if (type === 'boolean') return value === true ? 'true' : 'false'
+  if (type === 'array') return scriptJSON(Array.isArray(value) ? value : [])
+  return scriptJSON(
+    value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  )
 }

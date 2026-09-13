@@ -79,8 +79,10 @@ async function setup(application: BackendApplicationSpecV1 = backendApplication(
   })
   const snapshot = await store.load()
   if (snapshot.error) throw snapshot.error
-  const selection = listAppBackendProviderDescriptors(store)[0]
-  if (!selection) throw new Error('Expected active Backend Provider')
+  const selection = listAppBackendProviderDescriptors(store).find(
+    ({ pluginId }) => pluginId === SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
+  )
+  if (!selection) throw new Error('Expected active Supabase Backend Provider')
   const editor = createEditorStore()
   editor.graph.updateNode(editor.graph.rootId, {
     pluginData: [

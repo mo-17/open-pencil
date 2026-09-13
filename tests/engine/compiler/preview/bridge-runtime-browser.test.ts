@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { chromium, expect as playwrightExpect, type Browser, type Page } from '@playwright/test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { buildPreviewBridge } from '@open-pencil/compiler/adapters/react/preview-bridge'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
@@ -44,7 +45,7 @@ interface LoadedBridge {
   previewOrigin: string
 }
 
-function buildBridgeFixture(target: WebTarget): BridgeFixture {
+function buildBridgeFixture(target: WebTarget, documentState = true): BridgeFixture {
   const graph = new SceneGraph()
   const home = graph.getPages()[0]
   graph.updateNode(home.id, { name: 'Home' })
@@ -86,10 +87,16 @@ function buildBridgeFixture(target: WebTarget): BridgeFixture {
       devMode: true
     })
   }).files
+  if (!documentState)
+    files.set('src/__preview-bridge.ts', buildPreviewBridge({ documentState: false }))
   return { files, inputId: input.id }
 }
 
-async function loadBridge(page: Page, target: WebTarget): Promise<LoadedBridge> {
+async function loadBridge(
+  page: Page,
+  target: WebTarget,
+  documentState = true
+): Promise<LoadedBridge> {
   const browserErrors: string[] = []
   page.on('console', (message) => {
     if (message.type() === 'error') browserErrors.push(message.text())
@@ -98,7 +105,7 @@ async function loadBridge(page: Page, target: WebTarget): Promise<LoadedBridge> 
   page.on('requestfailed', (request) => {
     browserErrors.push(`${request.url()}: ${request.failure()?.errorText ?? 'request failed'}`)
   })
-  const fixture = buildBridgeFixture(target)
+  const fixture = buildBridgeFixture(target, documentState)
   const server = await createPreviewServer({ target, initialFiles: fixture.files })
   const previewOrigin = new URL(server.url).origin
   const hostURL = new URL('/__open-pencil-preview-bridge-host__', server.url)
@@ -752,6 +759,29 @@ describe('generated web preview bridge in a real parent/iframe channel', () => {
   }, 30_000)
 
   WEB_TARGETS.forEach((target) => {
+    test(`${target} keeps connected Backend data outside the document bridge`, async () => {
+      if (!browser) throw new Error('Browser did not start')
+      const page = await browser.newPage()
+      let loaded: LoadedBridge | null = null
+      try {
+        loaded = await loadBridge(page, target, false)
+        const input = page.frameLocator('#preview').getByPlaceholder('Shared preview value')
+        await clearMessages(page)
+        await postToPreview(loaded, { type: 'docState', name: 'sharedValue', value: 'injected' })
+        await playwrightExpect(input).toHaveValue('initial')
+        await input.fill('private backend note')
+        await playwrightExpect(input).toHaveValue('private backend note')
+        // A round trip through the unaffected selection channel drains prior messages too.
+        await input.click({ modifiers: ['Alt'] })
+        await playwrightExpect
+          .poll(async () => (await messages(page)).some((message) => message.type === 'select'))
+          .toBe(true)
+        expect((await messages(page)).filter((message) => message.type === 'docState')).toEqual([])
+      } finally {
+        await page.close()
+        await loaded?.server.close()
+      }
+    }, 30_000)
     test(`${target} closes select, navigate, docState, and Theme message loops`, async () => {
       if (!browser) throw new Error('Browser did not start')
       const page = await browser.newPage()

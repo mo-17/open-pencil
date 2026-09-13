@@ -38,3 +38,27 @@ export function watchPreviewBackendProvider(input: {
     { flush: 'sync' }
   )
 }
+
+/** A login entry route participates in the external-browser connection identity. */
+export function watchPreviewLoginRoute(input: {
+  graph(): SceneGraph
+  sceneVersion(): number
+  invalidate(): void
+}): () => void {
+  return watch(
+    () => {
+      void input.sceneVersion()
+      const graph = input.graph()
+      const redirect = graph.getNode(graph.rootId)?.lowcodeAuthRedirect
+      return JSON.stringify([
+        redirect,
+        graph
+          .getPages()
+          .filter((page) => page.lowcodeRoutePattern === redirect)
+          .map((page) => [page.id, page.lowcodeRequiresAuth, page.internalOnly])
+      ])
+    },
+    () => input.invalidate(),
+    { flush: 'sync' }
+  )
+}

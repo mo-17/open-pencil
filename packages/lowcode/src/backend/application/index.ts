@@ -119,6 +119,8 @@ function legacyCommonInput(source: Readonly<Record<string, unknown>>): unknown {
     auth: source.auth,
     workflows: source.workflows,
     ...(source.storage === undefined ? {} : { storage: source.storage }),
+    ...(source.httpApi === undefined ? {} : { httpApi: source.httpApi }),
+    ...(source.commands === undefined ? {} : { commands: source.commands }),
     capabilities: [],
     secrets: source.secrets
   }
@@ -133,6 +135,8 @@ function commonV1(application: BackendApplicationSpecV2): BackendApplicationSpec
     auth: application.auth,
     workflows: application.workflows,
     ...(application.storage ? { storage: application.storage } : {}),
+    ...(application.httpApi ? { httpApi: application.httpApi } : {}),
+    ...(application.commands ? { commands: application.commands } : {}),
     capabilities: application.capabilities.filter(
       (entry): entry is BackendCapabilityRequirementV2 & { capability: BackendCapability } =>
         BACKEND_CAPABILITIES.includes(entry.capability as BackendCapability)
@@ -163,6 +167,8 @@ export function parseBackendApplicationSpecV2(
       'auth',
       'workflows',
       'storage',
+      'httpApi',
+      'commands',
       'realtime',
       'transactions',
       'dataMigrations',
@@ -282,6 +288,8 @@ export function parseBackendApplicationSpecV2(
     auth: common.value.auth,
     workflows: common.value.workflows,
     ...(common.value.storage ? { storage: common.value.storage } : {}),
+    ...(common.value.httpApi ? { httpApi: common.value.httpApi } : {}),
+    ...(common.value.commands ? { commands: common.value.commands } : {}),
     realtime,
     transactions,
     dataMigrations,

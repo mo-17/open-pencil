@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import {
   BACKEND_LIMITS,
@@ -28,10 +28,21 @@ import {
   setBackendFieldUnique
 } from '../draft'
 
-const { application } = defineProps<{ application: BackendApplicationSpecV1 }>()
+import {
+  addNestJSEntity,
+  addNestJSField,
+  isNestJSServerField,
+  removeNestJSFieldReferences,
+  removeNestJSEntity
+} from '../nestjs-draft'
+
+const { application, nestjs = false } = defineProps<{
+  application: BackendApplicationSpecV1
+  nestjs?: boolean
+}>()
 const { panels } = useI18n()
 const operationError = ref('')
-const fieldTypes = Object.freeze([
+const allFieldTypes = Object.freeze([
   'string',
   'integer',
   'number',
@@ -43,6 +54,24 @@ const fieldTypes = Object.freeze([
   'bytes',
   'enum'
 ] as const satisfies readonly DataFieldIR['type'][])
+const fieldTypes = computed(() =>
+  nestjs
+    ? allFieldTypes.filter((type) =>
+        ['string', 'uuid', 'integer', 'number', 'boolean', 'date', 'datetime', 'enum'].includes(
+          type
+        )
+      )
+    : allFieldTypes
+)
+function addEntity(): void {
+  run(() => (nestjs ? addNestJSEntity(application, 'table') : addBackendEntity(application)))
+}
+function addField(entity: DataEntityIR): void {
+  run(() => (nestjs ? addNestJSField(application, entity) : addBackendField(entity)))
+}
+function protectedField(entity: DataEntityIR, field: DataFieldIR): boolean {
+  return nestjs && isNestJSServerField(application, entity, field.id)
+}
 type FieldDefaultChoice =
   | 'none'
   | 'literal'
@@ -61,7 +90,9 @@ function run(operation: () => void): void {
 }
 
 function removeEntity(entityId: string): void {
-  run(() => removeBackendEntity(application, entityId))
+  run(() =>
+    nestjs ? removeNestJSEntity(application, entityId) : removeBackendEntity(application, entityId)
+  )
 }
 
 function removeEnum(enumId: string): void {
@@ -91,7 +122,14 @@ function changeManagement(entity: DataEntityIR, management: DataEntityIR['manage
 }
 
 function removeField(entity: DataEntityIR, fieldId: string): void {
-  run(() => removeBackendField(application, entity.id, fieldId))
+  run(() => {
+    if (nestjs && isNestJSServerField(application, entity, fieldId))
+      throw new BackendDraftOperationError(
+        'Primary key and ownership fields are managed by NestJS.'
+      )
+    removeBackendField(application, entity.id, fieldId)
+    if (nestjs) removeNestJSFieldReferences(application, entity.id, fieldId)
+  })
 }
 
 function isPrimary(entity: DataEntityIR, fieldId: string): boolean {
@@ -255,7 +293,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
         data-test-id="lowcode-backend-add-entity"
         :disabled="application.dataModel.entities.length >= BACKEND_LIMITS.maxEntities"
         class="rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-        @click="run(() => addBackendEntity(application))"
+        @click="addEntity"
       >
         {{ panels.lowcodeBackendAddEntity }}
       </button>
@@ -278,6 +316,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
           class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
         />
         <select
+          v-if="!nestjs"
           :value="entity.management"
           :aria-label="panels.lowcodeBackendManagement"
           class="rounded border border-border bg-input px-1 py-1 text-[10px] text-surface"
@@ -317,6 +356,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
               class="min-w-0 flex-1 rounded border border-border bg-input px-1.5 py-1 font-mono text-[10px] text-surface"
             />
             <select
+              :disabled="protectedField(entity, field)"
               :value="field.type"
               :aria-label="panels.lowcodeBackendFieldType"
               class="w-20 rounded border border-border bg-input px-1 py-1 text-[10px] text-surface"
@@ -339,6 +379,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
             </select>
             <button
               type="button"
+              :disabled="protectedField(entity, field)"
               :aria-label="panels.lowcodeBackendRemoveField"
               class="rounded px-1 text-muted hover:bg-hover hover:text-red-500"
               @click="removeField(entity, field.id)"
@@ -360,6 +401,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
             <label class="flex items-center gap-1"
               ><input
                 type="checkbox"
+                :disabled="protectedField(entity, field)"
                 :checked="field.nullable"
                 @change="changeNullable(entity, field, ($event.target as HTMLInputElement).checked)"
               />{{ panels.lowcodeBackendNullable }}</label
@@ -367,6 +409,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
             <label class="flex items-center gap-1"
               ><input
                 type="checkbox"
+                :disabled="nestjs"
                 :checked="isPrimary(entity, field.id)"
                 @change="setPrimary(entity, field.id, ($event.target as HTMLInputElement).checked)"
               />{{ panels.lowcodeBackendPrimaryKey }}</label
@@ -374,6 +417,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
             <label class="flex items-center gap-1"
               ><input
                 type="checkbox"
+                :disabled="nestjs"
                 :checked="isUnique(entity, field.id)"
                 @change="setUnique(entity, field.id, ($event.target as HTMLInputElement).checked)"
               />{{ panels.lowcodeBackendUnique }}</label
@@ -381,6 +425,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
           </div>
           <div class="mt-1 flex items-center gap-1">
             <select
+              :disabled="protectedField(entity, field)"
               :value="defaultChoice(field)"
               :aria-label="panels.lowcodeBackendFieldDefault"
               class="min-w-0 flex-1 rounded border border-border bg-input px-1 py-1 text-[10px] text-surface"
@@ -390,16 +435,19 @@ function updateLiteral(field: DataFieldIR, value: string): void {
             >
               <option value="none">{{ panels.lowcodeBackendDefaultNone }}</option>
               <option value="literal">{{ panels.lowcodeBackendDefaultLiteral }}</option>
-              <option v-if="field.type === 'uuid'" value="uuid">
+              <option
+                v-if="field.type === 'uuid' && (!nestjs || isPrimary(entity, field.id))"
+                value="uuid"
+              >
                 {{ panels.lowcodeBackendDefaultUuid }}
               </option>
-              <option v-if="field.type === 'integer'" value="identity">
+              <option v-if="!nestjs && field.type === 'integer'" value="identity">
                 {{ panels.lowcodeBackendDefaultIdentity }}
               </option>
               <option v-if="field.type === 'datetime'" value="created-at">
                 {{ panels.lowcodeBackendDefaultCreatedAt }}
               </option>
-              <option v-if="field.type === 'datetime'" value="updated-at">
+              <option v-if="!nestjs && field.type === 'datetime'" value="updated-at">
                 {{ panels.lowcodeBackendDefaultUpdatedAt }}
               </option>
             </select>
@@ -443,7 +491,7 @@ function updateLiteral(field: DataFieldIR, value: string): void {
           data-test-id="lowcode-backend-add-field"
           :disabled="entity.fields.length >= BACKEND_LIMITS.maxFieldsPerEntity"
           class="self-start rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-          @click="run(() => addBackendField(entity))"
+          @click="addField(entity)"
         >
           {{ panels.lowcodeBackendAddField }}
         </button>

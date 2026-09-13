@@ -1,4 +1,8 @@
-import { createImportRule, createTextRule } from './support.ts'
+import {
+  backendProviderRuntimeEffectLocations,
+  createBackendImportRule
+} from './backend-provider-syntax.ts'
+import { createTextRule } from './support.ts'
 
 const BACKEND_APPLY_AUTHORITY_ROOT = 'src/app/plugins/host/deployment'
 const HOST_CREDENTIALS_ROOT = 'src/app/settings/credentials'
@@ -20,12 +24,6 @@ const BACKEND_APPLY_UNTRUSTED_ROOTS = [
 
 const DIRECT_DATABASE_CLIENTS = ['@supabase/supabase-js', 'pg', 'postgres'] as const
 
-// This compatibility builder emits browser application source as inert text. The
-// generated application may use supabase-js; the compiler process itself does not.
-const DATABASE_CLIENT_SOURCE_EMITTER_ALLOWLIST = new Set([
-  'packages/compiler/src/backend/supabase/legacy-react-artifacts.ts'
-])
-
 function sourceIsWithin(sourceRel: string, roots: readonly string[]): boolean {
   return roots.some((root) => sourceRel.startsWith(root))
 }
@@ -40,8 +38,9 @@ function isDirectDatabaseClient(specifier: string): boolean {
   )
 }
 
-export const noBackendApplyAuthorityInUntrustedRuntimes = createImportRule(
+export const noBackendApplyAuthorityInUntrustedRuntimes = createBackendImportRule(
   'open-pencil/no-backend-apply-authority-in-untrusted-runtimes',
+  (sourceRel) => sourceIsWithin(sourceRel, BACKEND_APPLY_UNTRUSTED_ROOTS),
   (sourceRel, _specifier, resolved) => {
     if (!sourceIsWithin(sourceRel, BACKEND_APPLY_UNTRUSTED_ROOTS)) return null
     if (!resolvedIsWithin(resolved, BACKEND_APPLY_AUTHORITY_ROOT)) return null
@@ -49,17 +48,15 @@ export const noBackendApplyAuthorityInUntrustedRuntimes = createImportRule(
   }
 )
 
-export const noHostCredentialsOrDatabaseClientsInBackendSandboxes = createImportRule(
+export const noHostCredentialsOrDatabaseClientsInBackendSandboxes = createBackendImportRule(
   'open-pencil/no-host-credentials-or-database-clients-in-backend-sandboxes',
+  (sourceRel) => sourceIsWithin(sourceRel, BACKEND_PROVIDER_SANDBOX_ROOTS),
   (sourceRel, specifier, resolved) => {
     if (!sourceIsWithin(sourceRel, BACKEND_PROVIDER_SANDBOX_ROOTS)) return null
     if (resolvedIsWithin(resolved, HOST_CREDENTIALS_ROOT)) {
       return 'Browser/compiler sandboxes, MCP, and Plugin WASM runtimes cannot read host credential services. Pass only explicit secret-free data contracts.'
     }
-    if (
-      isDirectDatabaseClient(specifier) &&
-      !DATABASE_CLIENT_SOURCE_EMITTER_ALLOWLIST.has(sourceRel)
-    ) {
+    if (isDirectDatabaseClient(specifier)) {
       return 'Browser/compiler sandboxes, MCP, and Plugin WASM runtimes cannot import database clients. Database inspection and Backend Apply stay in the trusted host.'
     }
     return null
@@ -93,8 +90,9 @@ const NODE_RUNTIME_SPECIFIERS = new Set([
   'zlib'
 ])
 
-export const noBackendProviderRuntimeAuthorityInCompiler = createImportRule(
+export const noBackendProviderRuntimeAuthorityInCompiler = createBackendImportRule(
   'open-pencil/no-backend-provider-runtime-authority-in-compiler',
+  (sourceRel) => sourceRel.startsWith('packages/compiler/src/backend/'),
   (sourceRel, specifier) => {
     if (!sourceRel.startsWith('packages/compiler/src/backend/')) return null
     if (
@@ -122,28 +120,14 @@ export const noBackendProviderRuntimeAuthorityInCompiler = createImportRule(
   }
 )
 
-const BACKEND_PROVIDER_FORBIDDEN_GLOBALS = [
-  /\bprocess\s*\.\s*env\b/gu,
-  /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/gu,
-  /\b(?:Bun|Deno)\s*\./gu,
-  /\b(?:window|document|navigator|localStorage|sessionStorage)\s*\./gu
-]
-
 export const noBackendProviderRuntimeEffectsInCompiler = createTextRule(
   'open-pencil/no-backend-provider-runtime-effects-in-compiler',
   (sourceRel, content) => {
     if (!sourceRel.startsWith('packages/compiler/src/backend/')) return []
-    return BACKEND_PROVIDER_FORBIDDEN_GLOBALS.flatMap((pattern) =>
-      [...content.matchAll(pattern)].map((match) => {
-        const before = content.slice(0, match.index)
-        const lines = before.split('\n')
-        return {
-          message:
-            'Compiler Backend Providers cannot read environment or host/browser network and storage globals.',
-          line: lines.length,
-          column: lines.at(-1)?.length ?? 0
-        }
-      })
-    )
+    return backendProviderRuntimeEffectLocations(sourceRel, content).map((position) => ({
+      message:
+        'Compiler Backend Providers cannot read environment or host/browser network and storage globals.',
+      ...position
+    }))
   }
 )

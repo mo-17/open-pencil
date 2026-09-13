@@ -9,11 +9,13 @@ import type { PreviewTarget, PreviewUIKit } from './use-compile-on-change'
 const {
   summary,
   iconOnly = false,
-  showTarget = false
+  showTarget = false,
+  automaticRefresh = false
 } = defineProps<{
   summary: string
   iconOnly?: boolean
   showTarget?: boolean
+  automaticRefresh?: boolean
 }>()
 
 const target = defineModel<PreviewTarget>('target', { required: true })
@@ -103,6 +105,7 @@ const popoverUI = usePopoverUI({
           <select
             id="lowcode-preview-refresh-policy"
             v-model="refreshPolicy"
+            :disabled="automaticRefresh"
             data-test-id="lowcode-preview-refresh-policy"
             class="h-7 rounded border border-border bg-input px-2 text-xs text-surface outline-none focus-visible:ring-1 focus-visible:ring-accent"
           >
@@ -110,6 +113,9 @@ const popoverUI = usePopoverUI({
             <option value="auto">Auto</option>
             <option value="manual">Manual</option>
           </select>
+          <p v-if="automaticRefresh" class="col-span-2 text-[11px] text-muted">
+            Connected NestJS previews always refresh automatically.
+          </p>
 
           <span class="text-[11px] text-muted">i18n</span>
           <label

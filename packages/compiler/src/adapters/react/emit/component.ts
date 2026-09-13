@@ -75,6 +75,7 @@ export function buildComponentModule(
   const lowcodeStateImport = buildComponentLowcodeStateImport(def)
   const validationImport = buildComponentValidationImport(def)
   const imports = [
+    def.backendClient ? "import * as __opBackend from '../lowcode-backend'\n" : '',
     reactImport,
     routerImport,
     lowcodeStateImport,

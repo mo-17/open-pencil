@@ -20,7 +20,7 @@ SceneGraph / 旧 Lowcode
 
 - `@open-pencil/lowcode/backend`：严格、可摘要、Provider-neutral 的 DataModel、Auth、Workflow、Storage、分阶段 Migration、源码 Ledger 与 Release Core。
 - `@open-pencil/plugin-contracts`：Manifest v2 的 `backendProviders` 只声明身份、版本、能力、配置 Schema 与输出类型，不能携带代码、SQL、URL、Secret 或 Executor。
-- `@open-pencil/compiler/backend`：静态可信 Registry、能力协商、纯 `plan/emit`、Fake Provider 与内置 Supabase Bundle。
+- `@open-pencil/compiler/backend`：静态可信 Registry、能力协商、纯 `plan/emit`、Fake Provider 与内置 Supabase、NestJS Bundle。
 - App Host：精确绑定安装状态、publisher/package digest、Provider/Adapter 版本和能力；MCP/AI 只能执行无副作用的 bounded plan/audit。
 - Host Release Controller：本地实现了最终重新 Inspect、drift 检查、durable atomic dispatch claim、重启 reconcile、`outcome-unknown`、Verify 状态与无 Secret Receipt；IndexedDB journal 会跨 Desktop 重启保留 pending/applied/failed/unknown 结果。
 - 可视化 Backend 编辑器：Design 面板可以编辑 DataModel、relation、owner/tenant、RLS、workflow、Storage 与可信 Provider，并显示 migration diff、风险和 destructive 警告；保存只修改文档声明。
@@ -33,6 +33,62 @@ SceneGraph / 旧 Lowcode
 - Desktop Supabase staging Apply：Packaged Tauri 中已有独立显式的 safety MVP，只接受空 managed baseline 上已审查的 `create-enum` / `create-entity` SQL；repeat migration、Browser、CLI 与 production Apply 仍不可用。
 - Desktop 静态部署：可以完成前端上传，但会返回 `backendDeploymentRequired: true`。前端确认不会被当作 Backend Apply 确认。
 - CLI：提供 `backend validate/plan/emit/audit/release`，但全部是 local-only；`release` 会在 Apply 前阻断。
+
+## NestJS 用户操作流程
+
+NestJS 已开放数据关系、Security 和 HTTP 查询配置。支持 enum、date/datetime、唯一约束、索引，
+以及真实外键对应的关系；私有外键必须带相同用户归属，公开目标只允许引用已公开的键，删除规则
+目前限 restrict/no-action。日期时间响应保留 UTC 微秒精度，金额建议用最小货币单位的整数表示。
+
+Security 可配置 owner、role 和匿名 select。角色来自已验证 JWT 的顶层 `openpencil_roles`
+字符串数组，值对应角色 ID；浏览器状态和个人资料不能授予角色。匿名 select 会公开该资源
+所有行的 readFields，不支持用前端筛选隐藏未发布商品；私有草稿应放在独立资源/实体中。
+匿名写入仍被拒绝，携带错误令牌的请求也不会退回匿名身份。
+
+HTTP 资源的查询配置可声明精确筛选、文本搜索和排序字段。查询字段必须属于 readFields，
+排序目前支持非空数值、布尔、UUID、日期时间和枚举。排序分页使用包含 UUID 次序的游标，
+更换筛选、搜索或排序后应从第一页开始。保存这些设置只修改文档；已有数据库不受自动修改。
+本地托管预览对尚不支持的枚举/约束增量修改会明确阻止，需在独立数据库审核新的初始 SQL。
+
+在 **Services & Workflows → Backend** 中选择 **nestjs · open-pencil.nestjs-backend**，
+点击 **Create personal notes model**。它会一起建立 UUID 主键、服务端用户归属、标题/正文、
+owner 权限和 HTTP 资源。字段 ID 保持稳定，修改字段名称不会改写 JSON 绑定。
+
+进入 **HTTP API & login**，填写身份服务公开的 issuer URL 和 client ID。身份服务应注册
+`<前端地址>/_openpencil/auth/callback` 为精确回调地址，支持 public client 的 Authorization Code
+
+- S256 PKCE，并允许浏览器访问 discovery、token 和 JWKS。当前预设要求 API access token 是 JWT、
+  用户 `sub` 是 UUID，audience 与 NestJS 服务环境一致；不支持 opaque token 或非 UUID subject。
+  需要时填写 scopes/resource，不能填写 client secret。
+
+点击 **Create notes and login pages** 后，会新增登录页、受保护笔记页、列表、编辑表单及
+创建/更新/删除/分页动作，整次操作可撤销。原有页面保留，路由冲突时自动添加后缀；已有登录流程
+不会被模板覆盖。也可以通过 LIST 的 Backend resource 和按钮/表单的 Backend request、
+Backend authentication 动作手动绑定已声明的资源。
+
+选择新增页面进行完整 React 或 Vue 源码导出。ZIP 包含前端和 `backend/nestjs/` 服务端工程。
+服务端执行 `npm ci --ignore-scripts`、`npm run build`，在新的测试数据库上审查并手动应用
+生成的初始 SQL，再从启动环境提供 `DATABASE_URL`、`JWT_ISSUER`、`JWT_AUDIENCE`、
+`JWT_JWKS_URL` 后执行 `npm start`。服务端不会自动读取 `.env`。
+
+前端独立安装依赖并运行生成工程的 build/dev 命令，然后打开新增的 `/login` 路由。
+Vite 默认把浏览器 `/api/*` 转发到 `127.0.0.1:3000` 并去掉 `/api` 前缀；所以模型里的
+资源路径为 `/notes` 时，浏览器请求 `/api/notes`。生产托管需要配置相同的反向代理，
+并让页面路由和固定 OIDC 回调走 SPA history fallback。静态前端上传不能替代后端部署。
+
+令牌仅保存在运行时内存中，`sessionStorage` 只保留一次性登录事务。退出或会话过期会清空
+Backend 列表和请求目标，旧会话晚到的响应不会覆盖新用户的数据。当前提供应用内退出，
+刷新页面或令牌过期需要重新登录；尚未实现 refresh token、静默续期和身份服务自身的 SSO 退出。
+
+桌面端打开 **Compiler Preview → NestJS → 本地托管**，侧栏会显示当前状态和下一步操作。
+首次在「连接与登录设置」选择本地 Keycloak、自建 HTTPS Keycloak 或通用 OIDC 预设，点击补全配置；
+已填写的值会保留。Keycloak 预设可复制公开客户端 JSON，本地 CA 可以通过文件选择器指定。
+预设不会安装身份服务或修改文档；已有同名客户端应合并预览回调，保留原有应用的回调地址。
+检查完成后，在独立审核窗口查看 SQL 并确认初始化，再启动并打开预览。日常配置和日志默认收起，
+关闭侧栏会保留运行状态和同文档草稿；「停止」或关闭 Compiler Preview 才会停止预览。
+
+详细能力和运行要求见 [NestJS Provider](../../development/backend-nestjs.md)。本地协议与数据库
+测试使用隔离身份服务；真实身份账号、远程数据库 TLS、生产网关和部署仍需独立验收。
 
 可视化 Workflow 编辑器支持在其步骤数量与嵌套深度限制内编辑多层分支。可以按名称新增、重命名或
 删除服务端环境引用；新增引用固定为 required、server-only，不提供凭据值输入框。重命名会同步更新所有

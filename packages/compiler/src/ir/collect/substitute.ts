@@ -47,9 +47,13 @@ export function substituteHandler(
     case 'navigate':
       // Phase 4 §16.2: `to` is a literal path; only the param value exprs are
       // substituted (a workflow param can feed a navigate's route param).
-      return handler.params
-        ? { ...handler, params: handler.params.map((p) => substituteFilter(p, bindings)) }
-        : handler
+      return substituteNavigate(handler, bindings)
+    case 'backendCommand':
+      return substituteBackendCommand(handler, bindings)
+    case 'backendCommandRecovery':
+      return substituteCommandRecovery(handler, bindings)
+    case 'backendRequest':
+      return substituteBackendRequest(handler, bindings)
     case 'apiCall':
       return {
         ...handler,
@@ -78,15 +82,8 @@ export function substituteHandler(
         filters: handler.filters.map((f) => substituteFilter(f, bindings)),
         ...substituteResultBranches(handler, bindings)
       }
-    case 'supabaseAuth': {
-      const emailAst =
-        handler.emailAst === undefined ? undefined : substituteIdents(handler.emailAst, bindings)
-      const passwordAst =
-        handler.passwordAst === undefined
-          ? undefined
-          : substituteIdents(handler.passwordAst, bindings)
-      return { ...handler, emailAst, passwordAst, references: refsOf(emailAst, passwordAst) }
-    }
+    case 'supabaseAuth':
+      return substituteSupabaseAuth(handler, bindings)
     case 'condition': {
       const condAst = substituteIdents(handler.condAst, bindings)
       return {
@@ -114,6 +111,29 @@ export function substituteHandler(
   }
 }
 
+function substituteNavigate(
+  handler: Extract<IREventHandler, { kind: 'navigate' }>,
+  bindings: ReadonlyMap<string, ExprAst>
+): IREventHandler {
+  return handler.params
+    ? { ...handler, params: handler.params.map((param) => substituteFilter(param, bindings)) }
+    : handler
+}
+
+function substituteCommandRecovery(
+  handler: Extract<IREventHandler, { kind: 'backendCommandRecovery' }>,
+  bindings: ReadonlyMap<string, ExprAst>
+): IREventHandler {
+  return {
+    ...handler,
+    attemptKeyAst:
+      handler.attemptKeyAst === undefined
+        ? undefined
+        : substituteIdents(handler.attemptKeyAst, bindings),
+    ...substituteResultBranches(handler, bindings)
+  }
+}
+
 function substituteResultBranches(
   handler: { onSuccess?: IREventHandler[]; onError?: IREventHandler[] },
   bindings: ReadonlyMap<string, ExprAst>
@@ -131,12 +151,20 @@ function substituteResultBranches(
 type ImmutableHandler = Extract<
   IREventHandler,
   {
-    kind: 'delay' | 'stop' | 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion'
+    kind:
+      | 'backendAuth'
+      | 'delay'
+      | 'stop'
+      | 'playMotion'
+      | 'stopMotion'
+      | 'toggleMotion'
+      | 'awaitMotion'
   }
 >
 
 function isImmutableHandler(handler: IREventHandler): handler is ImmutableHandler {
   return (
+    handler.kind === 'backendAuth' ||
     handler.kind === 'delay' ||
     handler.kind === 'stop' ||
     handler.kind === 'playMotion' ||
@@ -205,4 +233,41 @@ function substituteFilter<T extends { ast: ExprAst; references: string[] }>(
 ): T {
   const ast = substituteIdents(filter.ast, bindings)
   return { ...filter, ast, references: refsOf(ast) }
+}
+
+function substituteBackendRequest(
+  handler: Extract<IREventHandler, { kind: 'backendRequest' }>,
+  bindings: ReadonlyMap<string, ExprAst>
+): IREventHandler {
+  return {
+    ...handler,
+    idAst: handler.idAst && substituteIdents(handler.idAst, bindings),
+    afterAst: handler.afterAst && substituteIdents(handler.afterAst, bindings),
+    searchAst: handler.searchAst && substituteIdents(handler.searchAst, bindings),
+    filterEntries: handler.filterEntries?.map((entry) => substituteFilter(entry, bindings)),
+    payloadEntries: handler.payloadEntries?.map((entry) => substituteFilter(entry, bindings)),
+    ...substituteResultBranches(handler, bindings)
+  }
+}
+
+function substituteSupabaseAuth(
+  handler: Extract<IREventHandler, { kind: 'supabaseAuth' }>,
+  bindings: ReadonlyMap<string, ExprAst>
+): IREventHandler {
+  const emailAst =
+    handler.emailAst === undefined ? undefined : substituteIdents(handler.emailAst, bindings)
+  const passwordAst =
+    handler.passwordAst === undefined ? undefined : substituteIdents(handler.passwordAst, bindings)
+  return { ...handler, emailAst, passwordAst, references: refsOf(emailAst, passwordAst) }
+}
+
+function substituteBackendCommand(
+  handler: Extract<IREventHandler, { kind: 'backendCommand' }>,
+  bindings: ReadonlyMap<string, ExprAst>
+): IREventHandler {
+  return {
+    ...handler,
+    payloadEntries: handler.payloadEntries?.map((entry) => substituteFilter(entry, bindings)),
+    ...substituteResultBranches(handler, bindings)
+  }
 }

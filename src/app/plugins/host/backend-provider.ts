@@ -52,6 +52,13 @@ import {
   type InstalledPluginBackendProvider
 } from '../types'
 import { sameJSONAuthority } from './contribution-authority'
+import {
+  NESTJS_BACKEND_PROVIDER_ADAPTER_ID,
+  NESTJS_BACKEND_PROVIDER_ADAPTER_VERSION,
+  NESTJS_BACKEND_PROVIDER_CONTRIBUTION,
+  NESTJS_BACKEND_PROVIDER_PACKAGE_DIGEST,
+  NESTJS_BACKEND_PROVIDER_PLUGIN_ID
+} from './nestjs/backend-provider'
 
 export const SUPABASE_BACKEND_PROVIDER_PLUGIN_ID = 'open-pencil.supabase-backend'
 export const SUPABASE_BACKEND_PROVIDER_CONTRIBUTION_ID = 'supabase.backend'
@@ -429,6 +436,19 @@ const REVIEWED_BACKEND_PROVIDER_ADAPTERS = new Map<string, ReviewedBackendProvid
       adapterVersion: SUPABASE_BACKEND_PROVIDER_ADAPTER_VERSION,
       packageDigest: SUPABASE_BACKEND_PROVIDER_PACKAGE_DIGEST,
       contribution: SUPABASE_BACKEND_PROVIDER_CONTRIBUTION
+    })
+  ],
+  [
+    NESTJS_BACKEND_PROVIDER_ADAPTER_ID,
+    Object.freeze({
+      trustSource: 'app-bundle',
+      publisherId: 'open-pencil',
+      publisherKeyId: 'app-bundle-v1',
+      pluginId: NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
+      pluginVersion: '1.0.0',
+      adapterVersion: NESTJS_BACKEND_PROVIDER_ADAPTER_VERSION,
+      packageDigest: NESTJS_BACKEND_PROVIDER_PACKAGE_DIGEST,
+      contribution: NESTJS_BACKEND_PROVIDER_CONTRIBUTION
     })
   ]
 ])
@@ -1112,7 +1132,7 @@ export function resolveAppBackendProviderDescriptor(
   )
 }
 
-function compilerBackendProviderSelection(
+export function compilerBackendProviderSelection(
   descriptor: AppBackendProviderDescriptor
 ): BackendProviderSelection {
   return Object.freeze({

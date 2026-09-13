@@ -1,3 +1,19 @@
+import type {
+  IRBackendAuthHandler,
+  IRBackendCommandHandler,
+  IRBackendCommandRecoveryHandler,
+  IRBackendRequestHandler,
+  IRBackendClientConfig,
+  IRBackendResourceQuery
+} from './backend-types'
+export type {
+  IRBackendAuthHandler,
+  IRBackendCommandHandler,
+  IRBackendCommandRecoveryHandler,
+  IRBackendRequestHandler,
+  IRBackendClientConfig,
+  IRBackendResourceQuery
+} from './backend-types'
 /**
  * Framework-neutral IR. Modules under `ir/` MUST NOT import from
  * `adapters/**`; the data flow is one-way (SceneGraph → IR → adapter).
@@ -124,6 +140,7 @@ export interface ComponentProp {
  * `<div className={className}>` whose class string is supplied per usage.
  */
 export interface ComponentDef {
+  backendClient?: IRBackendClientConfig
   /** Master COMPONENT node id (the registry key). */
   componentId: string
   /** PascalCase React component name. */
@@ -662,6 +679,10 @@ export type IREventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onB
  *  Phase 2 §2 lights up the previously-stubbed `setVariable` slot.
  *  Phase 3 §2 adds Supabase {Query,Mutation} for typed DB access. */
 export type IREventHandler =
+  | IRBackendAuthHandler
+  | IRBackendRequestHandler
+  | IRBackendCommandHandler
+  | IRBackendCommandRecoveryHandler
   | IRSetStateHandler
   | IRNavigateHandler
   | IRSetVariableHandler
@@ -1050,6 +1071,8 @@ export interface IRStateDecl {
 export type IRDocStateDecl = IRStateDecl
 
 export interface IRTree {
+  backendClient?: IRBackendClientConfig
+  backendQueries?: IRBackendResourceQuery[]
   /** SceneNode id of the page (CANVAS) this tree was derived from. */
   pageId: string
   /** Page name from the scene graph. Currently unused by the adapter, but

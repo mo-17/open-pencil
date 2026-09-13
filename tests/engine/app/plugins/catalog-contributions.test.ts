@@ -149,7 +149,7 @@ function bundledManifest(pluginId: string) {
 }
 
 describe('bundled plugin catalog contributions', () => {
-  test('publishes the sixty-eight reviewed built-in plugin identities', () => {
+  test('publishes the sixty-nine reviewed built-in plugin identities', () => {
     const catalog = createBundledPluginCatalog()
     const ids = catalog.map((entry) => entry.manifest.plugin.id)
 
@@ -203,6 +203,7 @@ describe('bundled plugin catalog contributions', () => {
       ),
       ...REVIEWED_DEPLOYMENT_PLUGINS.map((definition) => definition.pluginId),
       SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
+      'open-pencil.nestjs-backend',
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
       ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
@@ -222,7 +223,7 @@ describe('bundled plugin catalog contributions', () => {
             : 0),
         0
       )
-    ).toBe(73)
+    ).toBe(74)
     for (const descriptor of REVIEWED_EXTERNAL_SERVICE_CATALOG) {
       const entry = catalog.find(
         (candidate) => candidate.manifest.plugin.id === descriptor.connector.contract.pluginId

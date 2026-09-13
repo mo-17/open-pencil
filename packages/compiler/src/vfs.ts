@@ -155,7 +155,12 @@ function binaryBuildAssets(files: PreviewFiles): BinaryBuildAsset[] {
 }
 
 export function inMemoryVFS(
-  state: { files: PreviewFiles; inlineBinaryAssets?: boolean; inlineBinaryCSSAssets?: boolean },
+  state: {
+    files: PreviewFiles
+    inlineBinaryAssets?: boolean
+    inlineBinaryCSSAssets?: boolean
+    spaFallback?: boolean
+  },
   vfsPrefix: string
 ): Plugin {
   return {
@@ -285,7 +290,17 @@ export function inMemoryVFS(
           res.end(Buffer.from(asset.bytes))
           return
         }
-        if (url !== '/' && url !== '/index.html') return next()
+        const navigation =
+          state.spaFallback &&
+          ['GET', 'HEAD'].includes(req.method ?? '') &&
+          req.headers.accept?.includes('text/html') &&
+          url.startsWith('/') &&
+          !/^\/(?:@|src(?:\/|$)|assets(?:\/|$)|node_modules(?:\/|$))/.test(url) &&
+          !/\.[A-Za-z0-9]+$/.test(url) &&
+          !Array.from(url).some(
+            (char) => char.charCodeAt(0) <= 32 || char.charCodeAt(0) === 127 || char === '\\'
+          )
+        if (url !== '/' && url !== '/index.html' && !navigation) return next()
         const html = state.files.get('index.html')
         if (typeof html !== 'string') return next()
         void (async () => {

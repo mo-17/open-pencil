@@ -21,8 +21,12 @@ export const CONFIRM_RUNTIME_CLASSES: readonly string[] = [
   'items-center',
   'justify-center',
   'bg-foreground/40',
-  'mx-4',
+  'p-4',
+  'min-w-0',
+  'w-full',
+  'max-h-[calc(100dvh-2rem)]',
   'max-w-sm',
+  'flex-col',
   'rounded-lg',
   'border',
   'border-border',
@@ -30,9 +34,14 @@ export const CONFIRM_RUNTIME_CLASSES: readonly string[] = [
   'p-6',
   'shadow-xl',
   'mb-4',
+  'min-h-0',
+  'overflow-y-auto',
+  '[overflow-wrap:anywhere]',
   'text-sm',
   'text-foreground',
   'justify-end',
+  'shrink-0',
+  'flex-wrap',
   'gap-2',
   'rounded',
   'px-4',
@@ -110,10 +119,10 @@ export function ConfirmHost() {
   const active = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
   if (!active) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40">
-      <div className="mx-4 max-w-sm rounded-lg border border-border bg-background p-6 shadow-xl">
-        <p className="mb-4 text-sm text-foreground">{active.message}</p>
-        <div className="flex justify-end gap-2">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4">
+      <div className="flex max-h-[calc(100dvh-2rem)] min-w-0 w-full max-w-sm flex-col rounded-lg border border-border bg-background p-6 shadow-xl">
+        <p className="mb-4 min-h-0 overflow-y-auto text-sm text-foreground [overflow-wrap:anywhere]">{active.message}</p>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
           <button
             type="button"
             className="rounded px-4 py-2 text-sm text-muted-foreground hover:bg-secondary"

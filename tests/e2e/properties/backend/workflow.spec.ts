@@ -3,12 +3,13 @@ import { expect, test, type Page } from '@playwright/test'
 import type * as PluginApp from '@/app/plugins/app'
 import type * as BackendProviderHost from '@/app/plugins/host/backend-provider'
 
+import { openAdvancedProviderSettings } from '#tests/helpers/backend-library'
 import { CanvasHelper } from '#tests/helpers/canvas'
 
 test('Backend branch and environment edits survive save, undo, redo, and server compilation', async ({
   page
 }) => {
-  test.setTimeout(60_000)
+  test.setTimeout(30_000)
   // The optional MCP companion is unrelated to document editing or compilation.
   await page.route('http://127.0.0.1:7600/health', (route) =>
     route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
@@ -32,9 +33,12 @@ test('Backend branch and environment edits survive save, undo, redo, and server 
     })
   })
   const panel = editor.page.getByTestId('lowcode-backend-editor')
-  const provider = panel.getByTestId('lowcode-backend-provider')
+  const provider = await openAdvancedProviderSettings(page)
   await expect(provider).toBeEnabled()
-  await expect(provider.locator('option')).toHaveCount(1)
+  await expect(
+    provider.getByRole('option', { name: 'supabase · open-pencil.supabase-backend', exact: true })
+  ).toHaveCount(1)
+  await provider.selectOption({ label: 'supabase · open-pencil.supabase-backend' })
   await panel.getByRole('button', { name: 'Workflows', exact: true }).click()
 
   const references = panel.getByTestId('lowcode-backend-environment-references')

@@ -3,6 +3,10 @@ import {
   resetPreviewFileEncodeCache,
   serializePreviewFiles
 } from '@open-pencil/compiler'
+import {
+  parsePreviewLocalBackendConnection,
+  type PreviewLocalBackendConnection
+} from '@open-pencil/compiler/preview-local-backend'
 
 import { decodeTauriStderr } from '@/app/shell/ui'
 
@@ -49,8 +53,15 @@ const SIDECAR_ENTRY = 'packages/compiler/src/dev-server.ts'
 const READY_TIMEOUT_MS = 15_000
 const NOOP = (): void => undefined
 
-export function previewSidecarCommandArgs(projectRoot: string, target: PreviewTarget): string[] {
-  return [SIDECAR_ENTRY, '--root', projectRoot, '--target', target]
+export function previewSidecarCommandArgs(
+  projectRoot: string,
+  target: PreviewTarget,
+  localBackend?: PreviewLocalBackendConnection
+): string[] {
+  const args = [SIDECAR_ENTRY, '--root', projectRoot, '--target', target]
+  if (localBackend)
+    args.push('--local-backend', JSON.stringify(parsePreviewLocalBackendConnection(localBackend)))
+  return args
 }
 
 function parsePreviewSidecarEvent(line: string): SidecarEvent {
@@ -67,13 +78,19 @@ function parsePreviewSidecarEvent(line: string): SidecarEvent {
 }
 
 export async function startTauriPreviewSidecar(
-  target: PreviewTarget
+  target: PreviewTarget,
+  input?: PreviewLocalBackendConnection
 ): Promise<TauriPreviewSidecar> {
+  const localBackend = input ? parsePreviewLocalBackendConnection(input) : undefined
   const { Command } = await import('@tauri-apps/plugin-shell')
   const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
-  const command = Command.create(SIDECAR_NAME, previewSidecarCommandArgs(projectRoot, target), {
-    cwd: projectRoot
-  })
+  const command = Command.create(
+    SIDECAR_NAME,
+    previewSidecarCommandArgs(projectRoot, target, localBackend),
+    {
+      cwd: projectRoot
+    }
+  )
 
   let stdoutBuffer = ''
   const stderrTail: string[] = []
@@ -173,6 +190,8 @@ export async function startTauriPreviewSidecar(
         if (event.type === 'ready') {
           try {
             const parsed = parsePreviewSidecarReady(event)
+            if (localBackend && parsed.port !== localBackend.previewPort)
+              throw new Error('NestJS preview did not bind the registered callback port.')
             clearTimeout(timer)
             listeners.delete(handle)
             resolve(parsed)
@@ -207,6 +226,7 @@ export async function startTauriPreviewSidecar(
   const encodeCache = createPreviewFileEncodeCache()
   let updateQueue: Promise<void> = Promise.resolve()
   let disposed = false
+  const sidecarIsDisposed = (): boolean => disposed
   return {
     url: ready.url,
     port: ready.port,
@@ -235,7 +255,7 @@ export async function startTauriPreviewSidecar(
             cause instanceof Error ? cause.message : 'Preview sidecar update failed',
             processState.exitCode
           )
-          if (!processIsClosed()) {
+          if (!sidecarIsDisposed() && !processIsClosed()) {
             try {
               await child.kill()
             } catch (killError) {
@@ -254,6 +274,17 @@ export async function startTauriPreviewSidecar(
     async dispose() {
       if (disposed) return
       disposed = true
+      if (localBackend) {
+        // Revoke the writable proxy before waiting for an in-flight update ACK.
+        dispatch({ type: 'closing' })
+        try {
+          await child.kill()
+        } catch (cause) {
+          console.warn('[preview] disconnect kill failed:', cause)
+        }
+        await updateQueue
+        return
+      }
       await updateQueue
       try {
         await child.write(`${JSON.stringify({ type: 'close' })}\n`)

@@ -150,9 +150,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .openpencil-confirm-backdrop{position:fixed;inset:0;z-index:2147483001;display:flex;align-items:center;justify-content:center;padding:1rem;background:#00000085}
-.openpencil-confirm-dialog{width:min(28rem,100%);border:1px solid var(--color-border,#d4d4d8);border-radius:.75rem;padding:1.5rem;background:var(--color-background,#fff);color:var(--color-foreground,#18181b);box-shadow:0 24px 55px #00000047}
-.openpencil-confirm-message{margin:0 0 1.5rem;white-space:pre-wrap;overflow-wrap:anywhere}
-.openpencil-confirm-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.75rem}
+.openpencil-confirm-dialog{display:flex;flex-direction:column;max-height:calc(100dvh - 2rem);min-width:0;width:min(28rem,100%);border:1px solid var(--color-border,#d4d4d8);border-radius:.75rem;padding:1.5rem;background:var(--color-background,#fff);color:var(--color-foreground,#18181b);box-shadow:0 24px 55px #00000047}
+.openpencil-confirm-message{min-height:0;overflow-y:auto;margin:0 0 1.5rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.openpencil-confirm-actions{display:flex;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;gap:.75rem}
 .openpencil-confirm-button{min-height:2.75rem;border:1px solid var(--color-border,#d4d4d8);border-radius:.5rem;padding:.625rem 1rem;background:var(--color-background,#fff);color:inherit;font:inherit;cursor:pointer}
 .openpencil-confirm-primary{border-color:var(--color-primary,#2563eb);background:var(--color-primary,#2563eb);color:var(--color-primary-foreground,#fff)}
 .openpencil-confirm-button:hover{filter:brightness(.96)}

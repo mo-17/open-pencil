@@ -14,6 +14,7 @@ export function createOpenPencilAliases(rootDir: string) {
     },
     { find: '#core', replacement: resolve(rootDir, 'packages/core/src') },
     { find: '#compiler', replacement: resolve(rootDir, 'packages/compiler/src') },
+    { find: '#lowcode', replacement: resolve(rootDir, 'packages/lowcode/src') },
     { find: '#dom-css', replacement: resolve(rootDir, 'packages/dom-css/src') },
     {
       find: /^@open-pencil\/dom-css\/browser$/,
@@ -78,6 +79,14 @@ export function createOpenPencilAliases(rootDir: string) {
     {
       find: /^@open-pencil\/compiler$/,
       replacement: resolve(rootDir, 'packages/compiler/src/index.ts')
+    },
+    {
+      find: /^@open-pencil\/compiler\/preview-local-backend$/,
+      replacement: resolve(rootDir, 'packages/compiler/src/local-backend-preview/connection.ts')
+    },
+    {
+      find: /^@open-pencil\/compiler\/managed-preview$/,
+      replacement: resolve(rootDir, 'packages/compiler/src/managed-preview/protocol.ts')
     },
     { find: '@open-pencil/compiler', replacement: resolve(rootDir, 'packages/compiler/src') },
     {

@@ -1,3 +1,10 @@
+import { registerDocStateReads, unknownIdentifiers } from './expression-scope'
+export {
+  ROUTE_PARAMS_IDENT,
+  QUERY_PARAMS_IDENT,
+  registerDocStateReads,
+  unknownIdentifiers
+} from './expression-scope'
 import {
   type ExprAst,
   hasPrevReference,
@@ -10,6 +17,7 @@ import {
   validateInvokeServerWorkflowAction,
   validateLowcodeNavigationTarget
 } from '@open-pencil/lowcode'
+import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 import {
   type ActionDef,
   type CallWorkflowAction,
@@ -20,6 +28,11 @@ import {
   validateMotionSpec
 } from '@open-pencil/scene-graph'
 
+import type {
+  IRBackendCommandHandler,
+  IRBackendCommandRecoveryHandler,
+  IRBackendRequestHandler
+} from '../backend-types'
 import type {
   IRAPICallHandler,
   IRAwaitMotionHandler,
@@ -52,6 +65,7 @@ import type {
   IRWarning,
   ValueUpdateMode
 } from '../types'
+import { collectBackendClientAction } from './backend-client'
 import { substituteHandler } from './substitute'
 
 /** Phase 2 §2: the formal parameter the adapter binds inside a functional
@@ -313,74 +327,6 @@ const EMPTY_DOCSTATES: ReadonlyMap<string, IRDocStateDecl> = new Map()
 const EMPTY_WORKFLOWS: ReadonlyMap<string, WorkflowDef> = new Map()
 const EMPTY_SERVER_WORKFLOWS: ReadonlyMap<string, IRServerWorkflow> = new Map()
 
-/** Phase 4 §16.1: the route-params built-in. An expression may read
- *  `$params.<name>` anywhere a docState read is allowed; the member name is not
- *  validated (mirrors `$currentUser.email`), since `useParams()` returns
- *  `string | undefined` per key at runtime. `$` is a reserved name prefix
- *  (`validateStateName` rejects it) so it can't collide with a user state /
- *  docState. */
-export const ROUTE_PARAMS_IDENT = '$params'
-
-/** Phase 4 §16.4: the query-string built-in (`$query.foo`). `$`-prefixed
- *  (`validateStateName` rejects it) so it can't collide with a user state /
- *  docState. Resolved at emit to `Object.fromEntries(useSearchParams()[0])`. */
-export const QUERY_PARAMS_IDENT = '$query'
-
-/** Identifiers accepted by `unknownIdentifiers` without being a state / docState
- *  / in-scope name — the route-params (§16.1) + query-string (§16.4) built-ins,
- *  both read-only and resolved to react-router hooks at emit. */
-const BUILTIN_READ_IDENTS: ReadonlySet<string> = new Set([ROUTE_PARAMS_IDENT, QUERY_PARAMS_IDENT])
-
-/** Identifiers referenced by an expression that match neither a declared
- *  page state, an in-scope identifier, nor a Document State. Used by
- *  `resolveTextBinding` (kind=expr), the renderCondition resolver in
- *  `tree.ts`, and the apiCall URL-template resolver.
- *
- *  Phase 2 §4: `docStates` widens the allow-set so a read-context expression
- *  may reference a Document State name (decision §4.2 #3). Callers that
- *  accept the reference must also call `registerDocStateReads` so the page
- *  emits the matching `useDocState` local. */
-export function unknownIdentifiers(
-  references: ReadonlySet<string>,
-  states: Map<string, IRStateDecl>,
-  inScope: ReadonlySet<string>,
-  docStates: ReadonlyMap<string, IRDocStateDecl> = EMPTY_DOCSTATES
-): string[] {
-  const stateNames = new Set<string>()
-  for (const s of states.values()) stateNames.add(s.name)
-  const out: string[] = []
-  for (const ref of references) {
-    if (stateNames.has(ref)) continue
-    if (inScope.has(ref)) continue
-    if (docStates.has(ref)) continue
-    // Phase 4 §16.1: route-params (`$params`) built-in — allowed everywhere a
-    // read-context expression is, resolved at emit to `useParams()`.
-    if (BUILTIN_READ_IDENTS.has(ref)) continue
-    out.push(ref)
-  }
-  return out
-}
-
-/** Phase 2 §4: record every reference that resolves to a Document State into
- *  `docStateReads`, so the page component emits a `const x = useDocState('x')`
- *  local for it. A no-op when `docStateReads` is undefined.
- *
- *  Phase 4 §16.1 / §16.4: this is also the single chokepoint where every
- *  accepted expression's references flow through, so the read-only built-ins
- *  (`$params`, `$query`) ride the same set. `collectTree` extracts them out into
- *  the `usesRouteParams` / `usesQueryParams` flags afterwards, keeping
- *  `docStateReads` itself pure doc-states for the emit consumers. */
-export function registerDocStateReads(
-  references: Iterable<string>,
-  docStates: ReadonlyMap<string, IRDocStateDecl>,
-  docStateReads: Set<string> | undefined
-): void {
-  if (!docStateReads) return
-  for (const ref of references) {
-    if (docStates.has(ref) || BUILTIN_READ_IDENTS.has(ref)) docStateReads.add(ref)
-  }
-}
-
 const EVENT_NAMES_TO_RESOLVE: EventName[] = ['onClick', 'onChange', 'onSubmit', 'onFocus', 'onBlur']
 
 const EVENT_LOCAL_IDENTS = ['$event', '$value'] as const
@@ -398,7 +344,8 @@ export function resolveEvents(
   docStateReads?: Set<string>,
   workflows: ReadonlyMap<string, WorkflowDef> = EMPTY_WORKFLOWS,
   serverWorkflows: ReadonlyMap<string, IRServerWorkflow> = EMPTY_SERVER_WORKFLOWS,
-  graph?: Pick<SceneGraph, 'getNode'>
+  graph?: Pick<SceneGraph, 'getNode'>,
+  backendApplication?: BackendApplicationSpecV1
 ): Partial<Record<IREventName, IREventHandler[]>> | undefined {
   if (!node.events) return undefined
   const out: Partial<Record<IREventName, IREventHandler[]>> = {}
@@ -417,7 +364,8 @@ export function resolveEvents(
       docStateReads,
       workflows,
       serverWorkflows,
-      graph
+      graph,
+      backendApplication
     )
     if (handlers.length > 0) out[name] = handlers
   }
@@ -436,7 +384,8 @@ function resolveActions(
   docStateReads: Set<string> | undefined,
   workflows: ReadonlyMap<string, WorkflowDef>,
   serverWorkflows: ReadonlyMap<string, IRServerWorkflow>,
-  graph?: Pick<SceneGraph, 'getNode'>
+  graph?: Pick<SceneGraph, 'getNode'>,
+  backendApplication?: BackendApplicationSpecV1
 ): IREventHandler[] {
   const eventScope = hasEventLocals(eventName)
     ? new Set([...inScope, ...EVENT_LOCAL_IDENTS])
@@ -453,6 +402,7 @@ function resolveActions(
     workflows,
     serverWorkflows,
     graph,
+    backendApplication,
     // Phase 3 §10 v4: the call stack of currently-expanding workflow ids, for
     // cycle detection. Fresh per top-level event chain.
     workflowStack: []
@@ -498,6 +448,9 @@ function resolveBranch(actions: ActionDef[], ctx: ResolveCtx): IREventHandler[] 
 function withResultBranches<
   H extends
     | IRAPICallHandler
+    | IRBackendRequestHandler
+    | IRBackendCommandHandler
+    | IRBackendCommandRecoveryHandler
     | IRSupabaseQueryHandler
     | IRSupabaseMutationHandler
     | IRInvokeServerWorkflowHandler
@@ -661,6 +614,7 @@ function bindWorkflowArgs(
 }
 
 interface ResolveCtx {
+  backendApplication?: BackendApplicationSpecV1
   node: SceneNode
   eventName: EventName
   states: Map<string, IRStateDecl>
@@ -696,10 +650,22 @@ function isMotionAction(action: ActionDef): action is MotionActionDef {
 
 type ResultBranchAction = Extract<
   ActionDef,
-  { kind: 'apiCall' | 'invokeServerWorkflow' | 'supabaseQuery' | 'supabaseMutation' }
+  {
+    kind:
+      | 'apiCall'
+      | 'invokeServerWorkflow'
+      | 'supabaseQuery'
+      | 'supabaseMutation'
+      | 'backendRequest'
+      | 'backendCommand'
+      | 'backendCommandRecovery'
+  }
 >
 
 const RESULT_BRANCH_ACTION_KINDS = new Set<ActionDef['kind']>([
+  'backendRequest',
+  'backendCommand',
+  'backendCommandRecovery',
   'apiCall',
   'invokeServerWorkflow',
   'supabaseQuery',
@@ -715,6 +681,18 @@ function dispatchResultBranchAction(
   ctx: ResolveCtx
 ): IREventHandler | null {
   switch (action.kind) {
+    case 'backendCommand':
+    case 'backendCommandRecovery':
+    case 'backendRequest': {
+      const handler = collectBackendClientAction(action, ctx)
+      if (
+        handler.kind !== 'backendRequest' &&
+        handler.kind !== 'backendCommand' &&
+        handler.kind !== 'backendCommandRecovery'
+      )
+        throw new Error('Unexpected Backend action.')
+      return withResultBranches(handler, action, ctx, ['data'], ['error', 'err'])
+    }
     case 'apiCall':
       return withResultBranches(
         resolveAPICall(
@@ -787,6 +765,8 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
   if (isMotionAction(action)) return resolveMotionAction(action, ctx)
   if (isResultBranchAction(action)) return dispatchResultBranchAction(action, ctx)
   switch (action.kind) {
+    case 'backendAuth':
+      return collectBackendClientAction(action, ctx)
     case 'setState':
       return resolveSetState(
         ctx.node,
@@ -1145,10 +1125,16 @@ function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | und
       docStateWrites.add(handler.resultTarget)
       if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
       return
+    case 'backendCommand':
+    case 'backendCommandRecovery':
+    case 'backendRequest':
+      recordBackendWrites(handler, docStateWrites)
+      return
     case 'supabaseMutation':
       if (handler.resultTarget) docStateWrites.add(handler.resultTarget)
       if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
       return
+    case 'backendAuth':
     case 'supabaseAuth':
       if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
       return
@@ -2569,4 +2555,13 @@ function resolveOptionalTarget(
 ): string | undefined | null {
   if (name === undefined) return undefined
   return resolveDocStateTarget(node, eventName, code, name, docStates, warnings, false)
+}
+
+function recordBackendWrites(
+  handler: IRBackendCommandHandler | IRBackendCommandRecoveryHandler | IRBackendRequestHandler,
+  writes: Set<string>
+): void {
+  const extra =
+    handler.kind === 'backendRequest' ? handler.cursorTarget : handler.idempotencyKeyTarget
+  for (const name of [extra, handler.resultTarget, handler.errorTarget]) if (name) writes.add(name)
 }

@@ -12,6 +12,17 @@
 
 ### Added
 
+- Browse Backend providers and built-in Personal notes or Single-item checkout templates in a searchable library, choose local Keycloak or custom public OIDC settings, and create each application in one undo step while protecting existing backends, login flows and unsaved drafts. Provider selection remains a draft change requiring an explicit save; plugin management uses the existing settings.
+- Recover explicitly opted-in Backend command attempts after reload using an account-bound browser journal, saved-parameter retries, cross-tab exclusion, and visual inspect/acknowledge actions in React/Vue exports and the single-SKU shop example.
+- Add bounded atomic NestJS commands with verified caller access, row locking, checked integer arithmetic and persistent idempotency; include a single-SKU checkout/cancellation example, visual command review, and React/Vue command actions with retained attempt keys and a request deadline.
+- Extend NestJS generation with explicit public reads, verified JWT roles, enum and date types, constrained relations and indexes, and bounded filtering, search and sorted pagination exposed through the visual Backend editor.
+
+- Add validated HTTP API contracts for explicit resource exposure, field projections, and server-side JWT configuration, with unsupported provider generation blocked.
+- Add a NestJS Backend Provider that exports PostgreSQL owner-protected CRUD services, validated DTOs, JWT authentication, OpenAPI, a typed client and pinned dependencies alongside React/Vue source projects.
+- Connect the NestJS visual workflow with public OIDC + PKCE configuration, undoable login/notes pages, authenticated LIST and form actions, and React/Vue browser clients that clear account data on logout and ignore stale requests.
+- Connect desktop React and Vue live previews to an existing local NestJS service, with browser login, frontend hot updates, and automatic disconnection when the backend contract changes.
+- Manage an isolated local NestJS preview on macOS/Linux desktop, with explicit dependency/database setup, automatic runtime rebuilds, reviewed SQL for supported model changes, and database preservation on stop.
+- Simplify NestJS preview setup with a status-led side panel, separate SQL review, and reusable Keycloak and OIDC configuration presets.
 - Choose React or Vue for Desktop Backend review, staging Apply, capability verification, and migration export, with a fresh review required after switching frameworks.
 - Edit nested Backend Workflow branches and declare server environment reference names, with reference-preserving renames and deletion guards.
 - Add a searchable command palette for editor and application actions.
@@ -85,6 +96,8 @@
 
 ### Changed
 
+- Improve the single-SKU shop template with title search, ascending prices, sold-out indicators, stock-aware quantity checks, price estimates, checkout and cancellation confirmations, and recent orders showing saved product titles, creation times and localized status. Existing documents require a new template or an explicit migration; the server still confirms stock and final prices.
+- Extend the shop's manager page with searchable, paginated products, validated creation, title and price editing, availability controls, and a separate stock-addition command with saved-request recovery. Product edits preserve inventory; deletion and absolute stock replacement remain unavailable, and existing templates require explicit migration.
 - Vertically center shaped section titles and allow renaming a section by double-clicking its canvas label.
 - Load supported online fonts before revealing imported pages, preserve substituted text during editing, and shape canvas labels with bundled Inter typography.
 - Upgrade CanvasKit to 0.41 and migrate renderer geometry to immutable paths built through `PathBuilder`.

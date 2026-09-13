@@ -2,12 +2,19 @@
 import { computed } from 'vue'
 
 import { validateStateName } from '@open-pencil/lowcode'
-import type { DocumentStateDef, StateDef } from '@open-pencil/scene-graph'
+import type {
+  BackendResourceDataSource,
+  DocumentStateDef,
+  StateDef
+} from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import BackendListSourceEditor from './BackendListSourceEditor.vue'
+import { useBackendBindingApplication } from '@/app/lowcode/backend/bindings/context'
+
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 
 const editor = useEditorStore()
@@ -22,6 +29,7 @@ const presence = usePresenceTarget('list', () => selectedNode.value?.id)
 type DataSourceRef =
   | { kind: 'stateRef'; stateId: string }
   | { kind: 'docStateRef'; docStateName: string }
+  | BackendResourceDataSource
 
 interface ListInteractiveProps {
   dataSourceRef?: DataSourceRef | null
@@ -31,6 +39,14 @@ interface ListInteractiveProps {
 
 // The <select> value namespaces the two ref kinds so a page-state id and a
 // docState name can't collide: `state:<id>` vs `doc:<name>`.
+const backendApplication = useBackendBindingApplication()
+const backendResources = computed(
+  () =>
+    backendApplication.value?.httpApi?.resources.filter((resource) =>
+      resource.operations.includes('list')
+    ) ?? []
+)
+const BACKEND_PREFIX = 'backend:'
 const STATE_PREFIX = 'state:'
 const DOC_PREFIX = 'doc:'
 
@@ -50,13 +66,17 @@ const ip = useSceneComputed<ListInteractiveProps>(
 
 const selectedValue = computed(() => {
   const ref = ip.value.dataSourceRef
+  if (ref?.kind === 'backendResource') return BACKEND_PREFIX + ref.resourceId
   if (ref?.kind === 'stateRef') return STATE_PREFIX + ref.stateId
   if (ref?.kind === 'docStateRef') return DOC_PREFIX + ref.docStateName
   return ''
 })
 
 const hasAnyArraySource = computed(
-  () => arrayStates.value.length > 0 || arrayDocStates.value.length > 0
+  () =>
+    arrayStates.value.length > 0 ||
+    arrayDocStates.value.length > 0 ||
+    backendResources.value.length > 0
 )
 const itemName = computed(() => ip.value.itemName ?? 'item')
 const indexName = computed(() => ip.value.indexName ?? 'index')
@@ -87,6 +107,10 @@ function onSourceChange(event: Event): void {
   const value = (event.target as HTMLSelectElement).value
   if (value === '') {
     commit({ dataSourceRef: null })
+  } else if (value.startsWith(BACKEND_PREFIX)) {
+    commit({
+      dataSourceRef: { kind: 'backendResource', resourceId: value.slice(BACKEND_PREFIX.length) }
+    })
   } else if (value.startsWith(STATE_PREFIX)) {
     commit({ dataSourceRef: { kind: 'stateRef', stateId: value.slice(STATE_PREFIX.length) } })
   } else if (value.startsWith(DOC_PREFIX)) {
@@ -125,6 +149,15 @@ function onIndexNameChange(event: Event): void {
           @change="onSourceChange"
         >
           <option value="">{{ panels.lowcodeListDataSourcePlaceholder }}</option>
+          <optgroup v-if="backendResources.length > 0" :label="panels.lowcodeBackendResource">
+            <option
+              v-for="resource in backendResources"
+              :key="resource.id"
+              :value="BACKEND_PREFIX + resource.id"
+            >
+              {{ resource.id }} · {{ resource.path }}
+            </option>
+          </optgroup>
           <optgroup v-if="arrayStates.length > 0" :label="panels.lowcodeState">
             <option v-for="s in arrayStates" :key="s.id" :value="STATE_PREFIX + s.id">
               {{ s.name }}
@@ -145,6 +178,11 @@ function onIndexNameChange(event: Event): void {
         </p>
       </div>
 
+      <BackendListSourceEditor
+        v-if="ip.dataSourceRef?.kind === 'backendResource'"
+        :source="ip.dataSourceRef"
+        @update:source="commit({ dataSourceRef: $event })"
+      />
       <div class="flex gap-1.5">
         <div class="flex min-w-0 flex-1 flex-col gap-0.5">
           <label class="text-[10px] text-muted">{{ panels.lowcodeListItemName }}</label>

@@ -3,6 +3,7 @@ import type {
   BackendApplicationSpecV1,
   BackendCapability,
   BackendDiagnostic,
+  BackendHttpAPIIRV1,
   BackendWorkflowStepIR,
   DataModelIR
 } from './types'
@@ -36,6 +37,19 @@ function collectAuthCapabilities(auth: AuthPolicyIR, capabilities: Set<BackendCa
   if (auth.rowAccess.length > 0) capabilities.add('policy.row-level')
 }
 
+function collectHttpAPICapabilities(
+  api: BackendHttpAPIIRV1,
+  capabilities: Set<BackendCapability>
+): void {
+  capabilities.add('server.http')
+  capabilities.add('auth.identity')
+  for (const resource of api.resources) {
+    for (const operation of resource.operations) {
+      capabilities.add(operation === 'list' || operation === 'read' ? 'data.read' : 'data.write')
+    }
+  }
+}
+
 /** Backend IR v1 represents object-storage usage through its normalized external storage entity. */
 function modelUsesObjectStorage(model: DataModelIR): boolean {
   return model.entities.some(
@@ -53,6 +67,17 @@ export function deriveBackendApplicationCapabilities(
 ): BackendCapability[] {
   const capabilities = new Set<BackendCapability>()
   collectAuthCapabilities(application.auth, capabilities)
+  if (application.httpApi) collectHttpAPICapabilities(application.httpApi, capabilities)
+  if (application.commands?.commands.length) {
+    capabilities.add('server.functions')
+    capabilities.add('transactions.atomic')
+    capabilities.add('server.http')
+    capabilities.add('auth.identity')
+    capabilities.add('data.read')
+    capabilities.add('data.write')
+    if (application.commands.commands.some((command) => command.access.kind === 'role'))
+      capabilities.add('auth.roles')
+  }
   if (application.workflows.workflows.length > 0) {
     capabilities.add('auth.identity')
     capabilities.add('server.functions')

@@ -59,6 +59,32 @@ function browserUnsupportedResult(generation: number): PreviewHostBuildResult {
   }
 }
 
+function unsupportedRequest(
+  request: PreviewHostBuildRequest,
+  target: PreviewTarget
+): PreviewHostBuildResult | undefined {
+  let reason: string
+  let code: string
+  if (request.options.backendPreview !== undefined) {
+    reason = 'Connected NestJS preview requires the desktop host.'
+    code = 'browser-preview-backend-unsupported'
+  } else if (target === 'vue') {
+    return browserUnsupportedResult(request.generation)
+  } else if (request.options.target !== target) {
+    reason = `Browser preview host target ${target} does not match compiler target ${request.options.target}`
+    code = 'browser-preview-target-mismatch'
+  } else {
+    return undefined
+  }
+  return {
+    status: 'error',
+    generation: request.generation,
+    reason,
+    diagnostics: [{ code, severity: 'error', message: reason }],
+    metrics: { ...EMPTY_PREVIEW_HOST_METRICS }
+  }
+}
+
 function errorMessage(value: unknown): string {
   return (value instanceof Error ? value.message : 'Browser preview Worker failed').slice(0, 2_048)
 }
@@ -140,19 +166,8 @@ export function createBrowserPreviewHost(
     abortActiveBuilds()
     releaseArtifact()
 
-    if (target === 'vue') return browserUnsupportedResult(request.generation)
-    if (request.options.target !== target) {
-      const reason = `Browser preview host target ${target} does not match compiler target ${request.options.target}`
-      return {
-        status: 'error',
-        generation: request.generation,
-        reason,
-        diagnostics: [
-          { code: 'browser-preview-target-mismatch', severity: 'error', message: reason }
-        ],
-        metrics: { ...EMPTY_PREVIEW_HOST_METRICS }
-      }
-    }
+    const unsupported = unsupportedRequest(request, target)
+    if (unsupported) return unsupported
 
     const controller = new AbortController()
     const abort = (): void => controller.abort()

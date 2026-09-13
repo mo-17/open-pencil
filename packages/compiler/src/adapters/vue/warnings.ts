@@ -77,8 +77,8 @@ export function collectVueWarnings(
       !supabaseAvailable &&
       (usage.supabase ||
         (ir.listQueries?.length ?? 0) > 0 ||
-        ir.requiresAuth === true ||
-        ir.docStateReads.includes('$currentUser'))
+        (!ir.backendClient &&
+          (ir.requiresAuth === true || ir.docStateReads.includes('$currentUser'))))
     ) {
       warn(
         'vue-supabase-config-required',
@@ -123,7 +123,8 @@ export function collectVueWarnings(
     }
     if (
       !supabaseAvailable &&
-      (usage.supabase || (definition.docStateReads ?? []).includes('$currentUser'))
+      (usage.supabase ||
+        (!definition.backendClient && (definition.docStateReads ?? []).includes('$currentUser')))
     ) {
       warn(
         'vue-supabase-config-required',
@@ -263,6 +264,9 @@ function scanHandler(
     return
   }
   if (
+    handler.kind === 'backendCommand' ||
+    handler.kind === 'backendCommandRecovery' ||
+    handler.kind === 'backendRequest' ||
     handler.kind === 'apiCall' ||
     handler.kind === 'supabaseQuery' ||
     handler.kind === 'supabaseMutation' ||
@@ -294,6 +298,10 @@ function scanHandler(
 }
 
 const SUPPORTED_HANDLER_KINDS = new Set<IREventHandler['kind']>([
+  'backendAuth',
+  'backendRequest',
+  'backendCommand',
+  'backendCommandRecovery',
   'setState',
   'setVariable',
   'navigate',

@@ -31,9 +31,14 @@ import {
   setBackendTenantMembershipEntity,
   setBackendTenantMembershipField
 } from '../draft'
+import { nestJSUICopy } from './nestjs-ui-copy'
 
-const { application } = defineProps<{ application: BackendApplicationSpecV1 }>()
-const { panels } = useI18n()
+const { application, nestjs = false } = defineProps<{
+  application: BackendApplicationSpecV1
+  nestjs?: boolean
+}>()
+const { panels, locale } = useI18n()
+const nestJSText = computed(() => nestJSUICopy(locale.value))
 const operationError = ref('')
 const operations = Object.freeze([
   'select',
@@ -147,7 +152,10 @@ function removeTenant(rule: AuthTenantIR): void {
 
 function addRowAccess(): void {
   const entity = entityOptions.value[0]
-  if (entity) addBackendRowAccess(application, entity.id)
+  if (entity) {
+    const intent = addBackendRowAccess(application, entity.id)
+    if (nestjs) setPrincipalKind(intent, 'owner')
+  }
 }
 
 function removeById<T extends { id: string }>(entries: T[], id: string): void {
@@ -156,6 +164,10 @@ function removeById<T extends { id: string }>(entries: T[], id: string): void {
 }
 
 function setPrincipalKind(intent: AuthRowAccessIntentIR, kind: AuthPrincipalIntent['kind']): void {
+  if (nestjs && kind === 'anonymous') {
+    intent.effect = 'allow'
+    intent.operations = ['select']
+  }
   if (kind === 'owner') {
     const rule = application.auth.ownership.find((entry) => entry.entityId === intent.entityId)
     intent.principal = rule ? { kind, ownershipId: rule.id } : { kind: 'authenticated' }
@@ -216,6 +228,7 @@ function setOperation(
 }
 
 function operationLocked(intent: AuthRowAccessIntentIR, operation: AuthAccessOperation): boolean {
+  if (nestjs && intent.principal.kind === 'anonymous') return true
   if (!intent.operations.includes(operation)) return false
   if (intent.operations.length === 1) return true
   return operation === 'select' && intent.operations.includes('update')
@@ -228,7 +241,11 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
 
 <template>
   <div class="mt-2 flex flex-col gap-2" data-test-id="lowcode-backend-security">
+    <p v-if="nestjs" class="text-[10px] leading-relaxed text-muted">{{ nestJSText.accessHint }}</p>
     <div data-test-id="lowcode-backend-roles">
+      <p v-if="nestjs" class="mb-2 text-[10px] leading-relaxed text-muted">
+        {{ nestJSText.roleHint }}
+      </p>
       <div class="flex items-center justify-between">
         <span class="text-[10px] text-muted">{{ panels.lowcodeBackendRoles }}</span>
         <button
@@ -248,7 +265,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         v-for="role in application.auth.roles"
         :key="role.id"
         data-test-id="lowcode-backend-role"
-        class="mt-1 flex items-center gap-1"
+        class="mt-1 flex flex-wrap items-center gap-1"
       >
         <input
           v-model="role.name"
@@ -265,9 +282,12 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         >
           ×
         </button>
+        <p v-if="nestjs" class="w-full select-text break-all font-mono text-[9px] text-muted">
+          {{ nestJSText.roleId }}: {{ role.id }}
+        </p>
       </div>
     </div>
-    <div class="border-t border-border pt-2">
+    <div v-if="!nestjs" class="border-t border-border pt-2">
       <div class="flex items-center justify-between">
         <span class="text-[10px] text-muted">{{ panels.lowcodeBackendOwnership }}</span
         ><button
@@ -317,7 +337,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         </button>
       </div>
     </div>
-    <div class="border-t border-border pt-2">
+    <div v-if="!nestjs" class="border-t border-border pt-2">
       <div class="flex items-center justify-between">
         <span class="text-[10px] text-muted">{{ panels.lowcodeBackendTenant }}</span
         ><button
@@ -479,7 +499,9 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
             class="min-w-0 rounded border border-border bg-input px-1 py-1 text-[10px] text-surface"
           >
             <option value="allow">{{ panels.lowcodeBackendAllow }}</option>
-            <option value="deny">{{ panels.lowcodeBackendDeny }}</option></select
+            <option v-if="!nestjs || intent.effect === 'deny'" value="deny" :disabled="nestjs">
+              {{ panels.lowcodeBackendDeny }}
+            </option></select
           ><select
             :value="intent.principal.kind"
             :aria-label="panels.lowcodeBackendPrincipal"
@@ -492,7 +514,13 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
             "
           >
             <option value="anonymous">{{ panels.lowcodeBackendPrincipalAnonymous }}</option>
-            <option value="authenticated">{{ panels.lowcodeBackendPrincipalAuthenticated }}</option>
+            <option
+              v-if="!nestjs || intent.principal.kind === 'authenticated'"
+              value="authenticated"
+              :disabled="nestjs"
+            >
+              {{ panels.lowcodeBackendPrincipalAuthenticated }}
+            </option>
             <option
               v-if="application.auth.ownership.some((rule) => rule.entityId === intent.entityId)"
               value="owner"
@@ -500,7 +528,10 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
               {{ panels.lowcodeBackendPrincipalOwner }}
             </option>
             <option
-              v-if="application.auth.tenants.some((rule) => rule.entityId === intent.entityId)"
+              v-if="
+                !nestjs &&
+                application.auth.tenants.some((rule) => rule.entityId === intent.entityId)
+              "
               value="tenant-member"
             >
               {{ panels.lowcodeBackendPrincipalTenant }}
@@ -543,5 +574,8 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         </div>
       </div>
     </div>
+    <p v-if="nestjs && operationError" role="alert" class="text-[10px] text-red-500">
+      {{ operationError }}
+    </p>
   </div>
 </template>

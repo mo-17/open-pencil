@@ -73,7 +73,7 @@ function createStore() {
 describe('app plugin MCP catalog', () => {
   test('exposes all bundled contributions after all bundled plugins are enabled', async () => {
     const catalog = createBundledPluginCatalog()
-    expect(catalog).toHaveLength(68)
+    expect(catalog).toHaveLength(69)
 
     const store = createStore()
     await store.load()

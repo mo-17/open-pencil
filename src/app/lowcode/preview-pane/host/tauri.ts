@@ -5,6 +5,10 @@ import {
   type CompilerInput,
   type CompilerOutput
 } from '@open-pencil/compiler'
+import {
+  parsePreviewLocalBackendConnection,
+  type PreviewLocalBackendConnection
+} from '@open-pencil/compiler/preview-local-backend'
 import { fontManager } from '@open-pencil/core/text'
 
 import { createPluginExportAbortError } from '@/app/plugins/host/exporter-abort'
@@ -16,6 +20,7 @@ import {
   resolveLivePreviewBackendProviderStore,
   type ResolvePreviewBackendProviderStore
 } from './backend-provider'
+import { assertLocalBackendPreviewRequest } from './tauri-local-backend'
 import { startTauriPreviewSidecar, type TauriPreviewSidecar } from './tauri-sidecar'
 import {
   EMPTY_PREVIEW_HOST_METRICS,
@@ -28,7 +33,11 @@ import {
 } from './types'
 
 export interface CreateTauriPreviewHostOptions {
-  startSidecar?: (target: PreviewTarget) => Promise<TauriPreviewSidecar>
+  localBackend?: PreviewLocalBackendConnection
+  startSidecar?: (
+    target: PreviewTarget,
+    localBackend?: PreviewLocalBackendConnection
+  ) => Promise<TauriPreviewSidecar>
   resolveFonts?: (request: PreviewHostBuildRequest) => Promise<CompilerFontManifest>
   compileProject?: (input: CompilerInput) => CompilerOutput
   createChannelId?: () => string
@@ -97,6 +106,9 @@ export async function createTauriPreviewHost(
   target: PreviewTarget,
   options: CreateTauriPreviewHostOptions = {}
 ): Promise<PreviewHost> {
+  const localBackend = options.localBackend
+    ? parsePreviewLocalBackendConnection(options.localBackend)
+    : undefined
   const startSidecar = options.startSidecar ?? startTauriPreviewSidecar
   const resolveFonts = options.resolveFonts ?? defaultResolveFonts
   const compileProject = options.compileProject ?? compile
@@ -104,7 +116,7 @@ export async function createTauriPreviewHost(
   const now = options.now ?? (() => performance.now())
   const resolveBackendProviderStore =
     options.resolveBackendProviderStore ?? resolveLivePreviewBackendProviderStore
-  const sidecar = await startSidecar(target)
+  const sidecar = await startSidecar(target, localBackend)
   const channelId = createChannelId()
   const origin = new URL(sidecar.url).origin
   let latestGeneration = -1
@@ -126,6 +138,13 @@ export async function createTauriPreviewHost(
     return staleResult(request.generation, metrics)
   }
 
+  async function dispose(): Promise<void> {
+    if (hostIsDisposed()) return
+    disposed = true
+    activeSerial += 1
+    await sidecar.dispose()
+  }
+
   async function build(request: PreviewHostBuildRequest): Promise<PreviewHostBuildResult> {
     if (hostIsDisposed() || !sidecar.isAlive()) {
       return errorResult(request.generation, 'Preview sidecar is not running', {
@@ -138,6 +157,7 @@ export async function createTauriPreviewHost(
     latestGeneration = request.generation
     const serial = ++activeSerial
     if (request.options.target !== target) {
+      if (localBackend) await dispose()
       return errorResult(
         request.generation,
         `Preview sidecar target ${target} does not match compiler target ${request.options.target}`,
@@ -148,6 +168,7 @@ export async function createTauriPreviewHost(
     const startedAt = now()
     let compileMs = 0
     try {
+      assertLocalBackendPreviewRequest(localBackend, request)
       const fontManifest = await resolveFonts(request)
       const backendStore = previewHasBackendProvider(request.graph)
         ? await resolveBackendProviderStore()
@@ -173,6 +194,7 @@ export async function createTauriPreviewHost(
       })
       if (afterCompile) return afterCompile
       backend.assertCurrent()
+      assertLocalBackendPreviewRequest(localBackend, request)
       await sidecar.update(output.files)
       const metrics: PreviewHostBuildMetrics = {
         compileMs,
@@ -186,6 +208,7 @@ export async function createTauriPreviewHost(
       const afterUpdate = checkpoint(request, serial, metrics)
       if (afterUpdate) return afterUpdate
       backend.assertCurrent()
+      assertLocalBackendPreviewRequest(localBackend, request)
       if (!sidecar.isAlive()) throw new Error('Preview sidecar stopped before update completed')
       return {
         status: 'ready',
@@ -211,6 +234,7 @@ export async function createTauriPreviewHost(
       })
       if (stale) return stale
       const reason = cause instanceof Error ? cause.message : 'Tauri preview build failed'
+      if (localBackend) await dispose()
       return errorResult(request.generation, reason, {
         ...EMPTY_PREVIEW_HOST_METRICS,
         compileMs,
@@ -226,11 +250,6 @@ export async function createTauriPreviewHost(
     build,
     releaseFrame: () => undefined,
     isAlive: () => !hostIsDisposed() && sidecar.isAlive(),
-    async dispose() {
-      if (hostIsDisposed()) return
-      disposed = true
-      activeSerial += 1
-      await sidecar.dispose()
-    }
+    dispose
   })
 }

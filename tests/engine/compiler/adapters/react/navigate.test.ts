@@ -64,7 +64,7 @@ describe('navigate action — React adapter emit', () => {
     expect(indexTsx).toContain("import { useNavigate } from 'react-router-dom'")
     expect(indexTsx).toContain('const navigate = useNavigate()')
     expect(indexTsx).toContain(
-      'onClick={async () => { await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/about"); }}'
+      'onClick={async () => { await (window as Window & { __OPENPENCIL_MOTION_RUNTIME__?: { pageExit?: () => Promise<void> } }).__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/about"); }}'
     )
     expect(out.files.get('src/__motion-runtime.ts')).toContain(
       'const PAGE_EXIT_MAX_WAIT_MS = 4_000'

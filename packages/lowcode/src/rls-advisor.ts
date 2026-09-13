@@ -101,6 +101,9 @@ function flattenActions(
       out.push(action)
       if (
         action.kind === 'apiCall' ||
+        action.kind === 'backendRequest' ||
+        action.kind === 'backendCommand' ||
+        action.kind === 'backendCommandRecovery' ||
         action.kind === 'supabaseQuery' ||
         action.kind === 'supabaseMutation' ||
         action.kind === 'invokeServerWorkflow'

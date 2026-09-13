@@ -4,6 +4,10 @@ import type { IREventHandler, IREventName, IRNode, IRTree } from '#compiler/ir/t
  * event. A fixed time debounce is unsafe for mutations: it can delay the first
  * intentional request or replay a trailing INSERT/DELETE. */
 const REQUEST_GATE_KINDS: ReadonlySet<IREventHandler['kind']> = new Set([
+  'backendAuth',
+  'backendRequest',
+  'backendCommand',
+  'backendCommandRecovery',
   'apiCall',
   'invokeServerWorkflow',
   'stripeCheckout',
@@ -57,7 +61,10 @@ function handlersUseSafeChangeDebounce(handlers: readonly IREventHandler[]): boo
 
 function isSafeChangeRead(handler: IREventHandler): boolean {
   return (
-    handler.kind === 'supabaseQuery' || (handler.kind === 'apiCall' && handler.method === 'GET')
+    (handler.kind === 'backendRequest' &&
+      (handler.operation === 'list' || handler.operation === 'read')) ||
+    handler.kind === 'supabaseQuery' ||
+    (handler.kind === 'apiCall' && handler.method === 'GET')
   )
 }
 
@@ -88,11 +95,14 @@ function valueReferencesIdentifier(value: unknown, identifier: string): boolean 
   return false
 }
 
-function handlerBranches(handler: IREventHandler): IREventHandler[] | null {
+export function requestHandlerBranches(handler: IREventHandler): readonly IREventHandler[] {
   if (handler.kind === 'condition' || handler.kind === 'confirm') {
     return [...handler.consequent, ...(handler.alternate ?? [])]
   }
   if (
+    handler.kind === 'backendCommand' ||
+    handler.kind === 'backendCommandRecovery' ||
+    handler.kind === 'backendRequest' ||
     handler.kind === 'apiCall' ||
     handler.kind === 'supabaseQuery' ||
     handler.kind === 'supabaseMutation' ||
@@ -100,7 +110,7 @@ function handlerBranches(handler: IREventHandler): IREventHandler[] | null {
   ) {
     return [...(handler.onSuccess ?? []), ...(handler.onError ?? [])]
   }
-  return null
+  return []
 }
 
 function handlerTreeMatches(
@@ -108,8 +118,7 @@ function handlerTreeMatches(
   predicate: (handler: IREventHandler) => boolean
 ): boolean {
   if (predicate(handler)) return true
-  const branches = handlerBranches(handler)
-  return branches ? branches.some((branch) => handlerTreeMatches(branch, predicate)) : false
+  return requestHandlerBranches(handler).some((branch) => handlerTreeMatches(branch, predicate))
 }
 
 function treeMatchesEvent(

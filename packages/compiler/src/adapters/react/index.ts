@@ -293,7 +293,7 @@ function emitSinglePage(
   // Phase 4 §16.3: an auth guard needs the router's <Navigate> to redirect, which
   // only exists in the multi-page shell. Warn + drop for a single-page compile
   // (the scaffold's `routerAvailable` gate already skips the guard emit).
-  if (cleaned.requiresAuth) {
+  if (cleaned.requiresAuth && !cleaned.backendClient) {
     warnings.push({
       code: 'auth-guard-no-router',
       message: `page ${cleaned.pageName} requiresAuth dropped — a single-page compile has no router to redirect unauthenticated users`
@@ -894,7 +894,10 @@ function setSharedProjectFiles(
   )
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {
-    files.set('src/__preview-bridge.ts', buildPreviewBridge())
+    files.set(
+      'src/__preview-bridge.ts',
+      buildPreviewBridge({ documentState: !options.backendPreview })
+    )
   }
   if (options.packaging?.kind === 'microfrontend') {
     files.set(MICROFRONTEND_ABI_FILE, buildOpenPencilMicrofrontendTypes())

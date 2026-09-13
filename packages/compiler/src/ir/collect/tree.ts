@@ -35,9 +35,11 @@ import {
   type SceneNode,
   type Stroke,
   type SupabaseConfig,
-  type WorkflowDef
+  type WorkflowDef,
+  type BackendResourceDataSource
 } from '@open-pencil/scene-graph'
 
+import type { IRBackendResourceQuery } from '../backend-types'
 import { collectGeneratedEffect } from '../generated-effect'
 import { tailwindClassName, type CompilerStyleOptions } from '../style'
 import type {
@@ -76,6 +78,12 @@ import type {
   IRTree,
   IRWarning
 } from '../types'
+import {
+  collectBackendResourceQuery,
+  backendClientConfig,
+  backendTreeFields,
+  attachBackendClient
+} from './backend-client'
 import {
   registerDocStateReads,
   resolveEvents,
@@ -174,7 +182,12 @@ export function collectTree(
   }
   const { serverWorkflows, serverWorkflowsById, supabaseConfig, analyticsConfig, translations } =
     collectRootRuntime(graph, warnings, prevalidatedServerWorkflows)
-  const docStates = collectDocStates(graph, warnings, supabaseConfig !== undefined, states)
+  const docStates = collectDocStates(
+    graph,
+    warnings,
+    Boolean(supabaseConfig ?? backendClientConfig(backendApplication)),
+    states
+  )
   const docStatesByName = indexDocStatesByName(docStates)
   const docStateReads = new Set<string>()
   const docStateWrites = new Set<string>()
@@ -209,6 +222,7 @@ export function collectTree(
   const routePattern = liftRoutePattern(page, pageId, warnings)
 
   const listQueries: IRListQuery[] = []
+  const backendQueries: IRBackendResourceQuery[] = []
   const validatedFields: IRFieldValidation[] = []
   const assets = new Map<string, IRAsset>()
   const prototypeContext: PrototypeCollectContext = {
@@ -232,9 +246,11 @@ export function collectTree(
     workflows,
     serverWorkflows: serverWorkflowsById,
     storageBucketAccess: backendStorageBucketAccess(backendApplication),
+    backendApplication,
     i18n,
     styleOptions,
     listQueries,
+    backendQueries,
     validatedFields,
     assets,
     motionCache,
@@ -284,6 +300,7 @@ export function collectTree(
   return {
     pageId,
     pageName: page.name || 'Page',
+    ...backendTreeFields(backendApplication, backendQueries),
     ...pageMotionFields,
     motionScene,
     ...pagePrototype,
@@ -515,7 +532,14 @@ export function collectComponents(
     (serverWorkflows ?? []).map((workflow) => [workflow.id, workflow])
   )
   const globalDocStates = indexDocStatesByName(
-    collectDocStates(graph, [], hasValidSupabaseConfig(root?.lowcodeSupabaseConfig))
+    collectDocStates(
+      graph,
+      [],
+      Boolean(
+        hasValidSupabaseConfig(root?.lowcodeSupabaseConfig) ||
+        backendClientConfig(backendApplication)
+      )
+    )
   )
   const workflows = liftWorkflows(graph)
   const prototypeIndex = buildPrototypeCollectIndex(graph)
@@ -551,6 +575,7 @@ export function collectComponents(
       workflows,
       serverWorkflows: serverWorkflowsById,
       storageBucketAccess: backendStorageBucketAccess(backendApplication),
+      backendApplication,
       i18n,
       styleOptions,
       assets,
@@ -609,6 +634,7 @@ export function collectComponents(
       ...componentLowcodeUsage(docStateReads, docStateWrites, validatedFields)
     })
   }
+  attachBackendClient(defs, backendApplication)
   return { defs, warnings }
 }
 
@@ -815,7 +841,8 @@ function refOf(
     ctx.docStateReads,
     ctx.workflows,
     ctx.serverWorkflows,
-    ctx.graph
+    ctx.graph,
+    ctx.backendApplication
   )
   const prototype = collectPrototypeDecoration(
     node,
@@ -927,6 +954,8 @@ function resolveInstanceProps(
 }
 
 interface WalkCtx {
+  backendApplication?: BackendApplicationSpecV1
+  backendQueries?: IRBackendResourceQuery[]
   graph: SceneGraph
   states: Map<string, IRStateDecl>
   /** Phase 2 §2: document-level state decls keyed by name (the same map for
@@ -1062,6 +1091,7 @@ function collectDocStates(
       name: d.name,
       type: d.type,
       defaultValue: d.defaultValue,
+      ...(typeof d.computedExpr === 'string' ? { computedExpr: d.computedExpr } : {}),
       ...(d.persist === true ? { persist: true } : {}),
       ...(typeof d.storageKey === 'string' ? { storageKey: d.storageKey } : {}),
       ...(typeof d.storageVersion === 'string' ? { storageVersion: d.storageVersion } : {})
@@ -1588,7 +1618,8 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx.docStateReads,
     ctx.workflows,
     ctx.serverWorkflows,
-    ctx.graph
+    ctx.graph,
+    ctx.backendApplication
   )
   const prototype = collectPrototypeDecoration(
     node,
@@ -3081,7 +3112,8 @@ function buildImageElement(
     ctx.docStateReads,
     ctx.workflows,
     ctx.serverWorkflows,
-    ctx.graph
+    ctx.graph,
+    ctx.backendApplication
   )
   const motion = collectNodeMotion(node, ctx.warnings, undefined, ctx.motionCache)
   const motionDrivers = collectNodeMotionDrivers(ctx.graph, node, ctx.warnings)
@@ -3719,10 +3751,7 @@ function collectListDirective(node: SceneNode, ctx: WalkCtx): IRList | null {
   }
   // Phase 4 §17: a Supabase query datasource emits its own fetch hook and the
   // `.map()` iterates the hook's rows; everything else resolves a named array.
-  const arrayName =
-    ip.dataSourceRef?.kind === 'supabaseQuery'
-      ? resolveListSupabaseQuery(node, ip.dataSourceRef.query, ctx)
-      : resolveListArrayName(node, ip.dataSourceRef, ctx)
+  const arrayName = collectListSource(node, ip.dataSourceRef, ctx)
   if (arrayName === null) return null
 
   const { itemName, indexName } = iterationIdentifiers(node, ip.itemName, ip.indexName, 'list', ctx)
@@ -4567,4 +4596,15 @@ function applyInteractiveProps(
       applyRadioOptions(node, ip, children, ctx)
       break
   }
+}
+
+function collectListSource(
+  node: SceneNode,
+  source: ListDataSourceRef | null | undefined,
+  ctx: WalkCtx
+): string | null {
+  if (source?.kind === 'backendResource')
+    return collectBackendResourceQuery(source as BackendResourceDataSource, ctx, ctx.backendQueries)
+  if (source?.kind === 'supabaseQuery') return resolveListSupabaseQuery(node, source.query, ctx)
+  return resolveListArrayName(node, source, ctx)
 }

@@ -11,10 +11,12 @@ import {
   APP_BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID,
   AppBackendProviderBuildError,
   listAppBackendProviderDescriptors,
-  type AppBackendProviderBuildRequest,
-  type AppBackendProviderDescriptor
+  type AppBackendProviderBuildRequest
 } from '@/app/plugins/host/backend-provider'
 
+import { createCommerceApplication } from './commerce/application'
+import { commerceCopy } from './commerce/copy'
+import { canInstallCommerceExample, createCommercePages } from './commerce/template'
 import {
   BackendDocumentValidationError,
   clearBackendProviderDocumentRequest,
@@ -25,24 +27,23 @@ import {
   validateBackendApplicationDraft
 } from './document'
 import { createBackendDraftId } from './draft'
+import {
+  createBackendLibraryInstaller,
+  hasBackendAuthenticationFlow,
+  isEmptyBackendLibraryDraft
+} from './library/install'
+import { backendProviderDescriptorKey } from './library/provider-identity'
+import { createNestJSNotesApplication, isNestJSProvider } from './nestjs-draft'
+import { createPersonalNotesPages } from './notes-template'
 
-export function backendProviderDescriptorKey(descriptor: AppBackendProviderDescriptor): string {
-  return [
-    descriptor.pluginId,
-    descriptor.contributionId,
-    descriptor.providerId,
-    descriptor.adapterId,
-    descriptor.packageAuthority.packageDigest
-  ].join('\u0000')
-}
-
-export function backendProviderDescriptorLabel(descriptor: AppBackendProviderDescriptor): string {
-  return `${descriptor.providerId} · ${descriptor.pluginId}`
-}
+export {
+  backendProviderDescriptorKey,
+  backendProviderDescriptorLabel
+} from './library/provider-identity'
 
 export function useBackendEditor() {
   const editor = useEditorStore()
-  const { panels } = useI18n()
+  const { panels, locale } = useI18n()
   const createDefaultApplication = (): BackendApplicationSpecV1 => {
     const rootId = editor.graph.rootId || createBackendDraftId('document')
     return createEmptyBackendApplication(`app:${rootId}`.slice(0, 64))
@@ -56,6 +57,7 @@ export function useBackendEditor() {
   const outcome = ref('')
   const busy = ref(false)
   const clearArmed = ref(false)
+  const draftRevision = ref(0)
 
   const providerDescriptors = computed(() => {
     const snapshot = appPluginStoreSnapshot.value
@@ -134,9 +136,11 @@ export function useBackendEditor() {
     { immediate: true }
   )
 
-  const draftValidation = computed(() =>
-    validateBackendApplicationDraft(toRaw(draft.value), selectedDescriptor.value)
-  )
+  const draftValidation = computed(() => {
+    // Validation consumes detached plain data; explicitly track nested draft edits.
+    void draftRevision.value
+    return validateBackendApplicationDraft(toRaw(draft.value), selectedDescriptor.value)
+  })
   const requestFingerprint = computed(() => {
     if (!selectedDescriptor.value || !draftValidation.value.ok) return ''
     try {
@@ -153,9 +157,10 @@ export function useBackendEditor() {
   watch(
     draft,
     () => {
+      draftRevision.value += 1
       clearArmed.value = false
     },
-    { deep: true }
+    { deep: true, flush: 'sync' }
   )
   watch(selectedProviderKey, () => {
     clearArmed.value = false
@@ -244,7 +249,121 @@ export function useBackendEditor() {
     }
   }
 
+  const canInitializeNestJS = computed(() => {
+    void draftRevision.value
+    return (
+      isNestJSProvider(selectedDescriptor.value?.providerId) &&
+      !hasBackendDeclaration.value &&
+      !readError.value &&
+      isEmptyBackendLibraryDraft(toRaw(draft.value))
+    )
+  })
+  function initializeNestJS(): void {
+    if (!canInitializeNestJS.value || busy.value) return
+    draft.value = createNestJSNotesApplication(draft.value.applicationId)
+    outcome.value = ''
+  }
+  const hasAuthenticationFlow = useSceneComputed(() => hasBackendAuthenticationFlow(editor.graph))
+  const canCreateNotesPages = computed(
+    () =>
+      !busy.value &&
+      !readError.value &&
+      isNestJSProvider(selectedDescriptor.value?.providerId) &&
+      draftValidation.value.ok &&
+      Boolean(draft.value.httpApi?.browserClient) &&
+      !hasAuthenticationFlow.value
+  )
+  function createNotesPages(): void {
+    const descriptor = selectedDescriptor.value
+    if (!descriptor || !canCreateNotesPages.value) return
+    busy.value = true
+    operationError.value = ''
+    try {
+      const result = createPersonalNotesPages(
+        editor,
+        descriptor,
+        structuredClone(toRaw(draft.value))
+      )
+      outcome.value = `${panels.value.lowcodeBackendNotesCreated} ${result.loginPath} → ${result.notesPath}`
+    } catch (cause) {
+      operationError.value =
+        cause instanceof Error ? cause.message : panels.value.lowcodeBackendOperationError
+    } finally {
+      busy.value = false
+    }
+  }
+
+  const libraryInstaller = createBackendLibraryInstaller({
+    editor,
+    store: appPluginStore,
+    draft,
+    busy,
+    readError,
+    locale: () => locale.value,
+    started: () => {
+      operationError.value = ''
+      outcome.value = ''
+      clearArmed.value = false
+    },
+    created: (result) => {
+      loadDocumentRequest()
+      outcome.value = `${result.templateId === 'personal-notes' ? panels.value.lowcodeBackendNotesCreated : commerceCopy(locale.value).created} ${result.path}`
+    },
+    failed: (cause) => {
+      operationError.value = safeOperationMessage(cause)
+    }
+  })
+  const libraryBlockReason = useSceneComputed(() => {
+    void draftRevision.value
+    return libraryInstaller.blockReason()
+  })
+
+  const canCreateCommerce = computed(
+    () =>
+      !busy.value &&
+      !readError.value &&
+      isNestJSProvider(selectedDescriptor.value?.providerId) &&
+      canInitializeNestJS.value &&
+      canInstallCommerceExample(editor)
+  )
+  async function createCommerce(): Promise<void> {
+    const descriptor = selectedDescriptor.value
+    if (!descriptor || !canCreateCommerce.value) return
+    busy.value = true
+    operationError.value = ''
+    try {
+      const application = createCommerceApplication(draft.value.applicationId, {
+        kind: 'oidc-pkce',
+        issuer: 'http://127.0.0.1:18080/realms/openpencil',
+        clientId: 'notes-public-client',
+        scopes: ['openid', 'profile'],
+        callbackPath: '/_openpencil/auth/callback'
+      })
+      const result = createCommercePages(editor, descriptor, application, locale.value)
+      const productPage = editor.graph
+        .getPages()
+        .find((page) => page.lowcodeRoutePattern === result.paths.shop)
+      if (productPage) {
+        await editor.switchPage(productPage.id)
+        editor.zoomToFit()
+      }
+      outcome.value = `${commerceCopy(locale.value).created} ${result.paths.shop}`
+    } catch (cause) {
+      operationError.value = safeOperationMessage(cause)
+    } finally {
+      busy.value = false
+    }
+  }
+
   return {
+    libraryBlockReason,
+    createLibraryTemplate: libraryInstaller.create,
+    canCreateCommerce,
+    createCommerce,
+    canInitializeNestJS,
+    initializeNestJS,
+    canCreateNotesPages,
+    createNotesPages,
     busy,
     canSave,
     clearArmed,

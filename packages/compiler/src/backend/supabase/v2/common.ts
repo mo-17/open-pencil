@@ -49,6 +49,7 @@ export function lowerSupabaseBackendApplicationV2ToV1(
     dataModel: application.dataModel,
     auth: application.auth,
     workflows: application.workflows,
+    ...(application.httpApi === undefined ? {} : { httpApi: application.httpApi }),
     ...(application.storage ? { storage: application.storage } : {}),
     capabilities: application.capabilities
       .filter((entry): entry is typeof entry & { capability: BackendCapability } =>

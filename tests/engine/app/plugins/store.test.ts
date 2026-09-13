@@ -37,6 +37,7 @@ import {
 } from '@/app/plugins'
 import { SUPABASE_BACKEND_PROVIDER_PLUGIN_ID } from '@/app/plugins/host/backend-provider'
 import { AI_POPOUT_PLUGIN_ID, COMPILER_PREVIEW_POPOUT_PLUGIN_ID } from '@/app/plugins/host/ids'
+import { NESTJS_BACKEND_PROVIDER_PLUGIN_ID } from '@/app/plugins/host/nestjs/backend-provider'
 
 import { pluginPayload } from '#tests/engine/plugins/helpers'
 
@@ -186,7 +187,12 @@ describe('app plugin store', () => {
 
     const loaded = await store.load()
     expect(loaded.error).toBeNull()
-    expect(loaded.installed).toHaveLength(8)
+    expect(loaded.installed).toHaveLength(9)
+    expect(
+      loaded.installed.find(
+        ({ package: value }) => value.manifest.plugin.id === NESTJS_BACKEND_PROVIDER_PLUGIN_ID
+      )
+    ).toMatchObject({ enabled: true })
     expect(
       loaded.installed.find(({ package: value }) => value.manifest.plugin.id === MAP_PLUGIN_ID)
     ).toMatchObject({
@@ -242,6 +248,7 @@ describe('app plugin store', () => {
       BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
       MAP_PLUGIN_ID,
       SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
@@ -257,6 +264,7 @@ describe('app plugin store', () => {
       BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
       MAP_PLUGIN_ID,
       SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
@@ -513,6 +521,7 @@ describe('app plugin store', () => {
       BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
       SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
     ])
@@ -623,6 +632,7 @@ describe('app plugin store', () => {
       BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
       SUPABASE_BACKEND_PROVIDER_PLUGIN_ID
     ])

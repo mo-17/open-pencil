@@ -25,6 +25,7 @@ import {
   sortBackendDiagnostics,
   unsupportedBackendCompilationModeDiagnostic
 } from '../diagnostics'
+import { unsupportedBackendHttpAPIDiagnostics } from '../http-api-support'
 import { negotiateBackendCapabilitiesV2 } from './capability-matrix'
 import { backendCapabilityAdapterSlotV2 } from './capability-routing'
 import {
@@ -271,6 +272,7 @@ export function createBackendProviderPlanV2(
   }
   const diagnostics: BackendDiagnostic[] = [
     ...applicationResult.diagnostics,
+    ...unsupportedBackendHttpAPIDiagnostics(applicationResult.value),
     ...validateBackendCapabilityDeclarationsV2(applicationResult.value)
   ]
   if (hasBackendErrors(diagnostics)) {

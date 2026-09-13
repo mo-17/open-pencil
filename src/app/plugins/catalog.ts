@@ -148,6 +148,10 @@ import {
   WECHAT_MINIPROGRAM_EXPORTER,
   WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID
 } from './host/ids'
+import {
+  NESTJS_BACKEND_PROVIDER_CONTRIBUTION,
+  NESTJS_BACKEND_PROVIDER_PLUGIN_ID
+} from './host/nestjs/backend-provider'
 import type { AppPluginCatalogEntry } from './types'
 
 const APP_BUNDLE_PUBLISHER = Object.freeze({
@@ -788,6 +792,17 @@ function supabaseBackendProviderManifest(): PluginManifestPayloadV2 {
   )
 }
 
+function nestjsBackendProviderManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
+      name: 'NestJS Backend Provider',
+      version: '1.0.0'
+    },
+    { backendProviders: [NESTJS_BACKEND_PROVIDER_CONTRIBUTION] }
+  )
+}
+
 function deploymentPlanManifest(
   definition: (typeof REVIEWED_DEPLOYMENT_PLUGINS)[number]
 ): PluginManifestPayloadV2 {
@@ -1152,6 +1167,12 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     {
       trustSource: 'app-bundle',
       manifest: supabaseBackendProviderManifest(),
+      installedByDefault: true,
+      enabledByDefault: true
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: nestjsBackendProviderManifest(),
       installedByDefault: true,
       enabledByDefault: true
     },

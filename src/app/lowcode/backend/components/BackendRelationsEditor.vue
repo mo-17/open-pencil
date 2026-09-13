@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import {
   BACKEND_LIMITS,
@@ -18,9 +18,14 @@ import {
   replaceBackendRelation,
   setBackendRelationOnDelete
 } from '../draft'
+import { nestJSUICopy } from './nestjs-ui-copy'
 
-const { application } = defineProps<{ application: BackendApplicationSpecV1 }>()
-const { panels } = useI18n()
+const { application, nestjs = false } = defineProps<{
+  application: BackendApplicationSpecV1
+  nestjs?: boolean
+}>()
+const { panels, locale } = useI18n()
+const nestJSText = computed(() => nestJSUICopy(locale.value))
 const operationError = ref('')
 const kind = ref<DataRelationIR['kind']>('one-to-many')
 const sourceEntityId = ref('')
@@ -200,6 +205,9 @@ function changeOnDelete(relation: DataRelationIR, onDelete: DataForeignKeyIR['on
 
 <template>
   <div class="mt-2 flex flex-col gap-2" data-test-id="lowcode-backend-relations">
+    <p v-if="nestjs" class="text-[10px] leading-relaxed text-muted">
+      {{ nestJSText.relationHint }}
+    </p>
     <div class="rounded border border-border bg-input/40 p-2">
       <div class="mb-1 flex items-center justify-between gap-2">
         <p class="text-[10px] text-muted">
@@ -225,7 +233,7 @@ function changeOnDelete(relation: DataRelationIR, onDelete: DataForeignKeyIR['on
       >
         <option value="one-to-one">one-to-one</option>
         <option value="one-to-many">one-to-many</option>
-        <option value="many-to-many">many-to-many</option>
+        <option value="many-to-many" :disabled="nestjs">many-to-many</option>
       </select>
       <div class="grid grid-cols-2 gap-1">
         <select
@@ -333,8 +341,20 @@ function changeOnDelete(relation: DataRelationIR, onDelete: DataForeignKeyIR['on
         "
       >
         <option value="restrict">restrict</option>
-        <option value="cascade">cascade</option>
-        <option value="set-null">set-null</option>
+        <option
+          v-if="!nestjs || relationForeignKey(relation)?.onDelete === 'cascade'"
+          value="cascade"
+          :disabled="nestjs"
+        >
+          cascade
+        </option>
+        <option
+          v-if="!nestjs || relationForeignKey(relation)?.onDelete === 'set-null'"
+          value="set-null"
+          :disabled="nestjs"
+        >
+          set-null
+        </option>
         <option value="no-action">no-action</option>
       </select>
       <button

@@ -294,6 +294,39 @@ export const lowcodeDocumentPanelMessageDefaults = {
   lowcodeWorkflowGraphNodeDetail: params(
     '{name}: {entries} / {incoming} in / {outgoing} out / {actions}'
   ),
+  lowcodeBackendTabHttp: 'HTTP API & Login',
+  lowcodeBackendNestJSHint:
+    'NestJS supports private owner CRUD. Each new entity includes a protected UUID key, owner field, and explicit owner permissions.',
+  lowcodeBackendInitializeNotes: 'Create personal notes model',
+  lowcodeBackendCreatePages: 'Create notes and login pages',
+  lowcodeBackendNotesCreated: 'New pages created:',
+  lowcodeBackendHttpHint:
+    'Choose exposed operations and fields. Database access is always limited to the signed-in owner.',
+  lowcodeBackendBrowserLogin: 'Browser login (OIDC + PKCE)',
+  lowcodeBackendIssuer: 'Identity issuer URL',
+  lowcodeBackendClientId: 'Public client ID',
+  lowcodeBackendScopes: 'Scopes (space separated)',
+  lowcodeBackendResourceAudience: 'API resource URI (optional)',
+  lowcodeBackendApiBasePath: 'Same-origin API prefix',
+  lowcodeBackendCallback: 'Registered callback path',
+  lowcodeBackendPublicLoginHint:
+    'Enter public application settings only. Register the callback under your frontend origin. Configure JWT_ISSUER, JWT_AUDIENCE, JWT_JWKS_URL and DATABASE_URL when starting the generated server.',
+  lowcodeBackendJWTAlgorithms: 'Accepted JWT signature algorithms',
+  lowcodeBackendResourcePath: 'Resource route',
+  lowcodeBackendPageSize: 'Maximum page size',
+  lowcodeBackendResource: 'Backend resource',
+  lowcodeBackendRequest: 'Backend request',
+  lowcodeBackendAuth: 'Backend sign in / out',
+  lowcodeBackendOperation: 'Operation',
+  lowcodeBackendIdExpression: 'Record ID expression',
+  lowcodeBackendFieldExpression: 'Field value expression',
+  lowcodeBackendResultState: 'Result document state',
+  lowcodeBackendErrorState: 'Error document state',
+  lowcodeBackendCursorState: 'Next cursor document state',
+  lowcodeBackendAfterExpression: 'Page cursor expression (optional)',
+  lowcodeBackendReturnPath: 'Return path after sign in',
+  lowcodeBackendNoResource:
+    'Save a Backend application with browser login before binding a resource.',
   lowcodeBackendTitle: 'Backend model',
   lowcodeBackendDescription:
     'Author the provider-neutral data, authorization, workflow, and migration contract stored with this document.',

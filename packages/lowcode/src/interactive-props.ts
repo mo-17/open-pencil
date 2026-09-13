@@ -1,5 +1,6 @@
 import type { NodeType } from '@open-pencil/scene-graph'
 
+import { parseBackendResourceDataSource } from './backend/client-bindings/shape'
 import { validateDatePickerProps } from './datepicker-props'
 import { validateExpression } from './validate'
 
@@ -51,12 +52,7 @@ export function normalizeLowcodeTextColor(value: unknown, fallback: string): str
   return isLowcodeTextColor(value) ? value.toUpperCase() : fallback
 }
 
-type KnownInteractivePropKind =
-  | 'string'
-  | 'boolean'
-  | 'string-array'
-  | 'color'
-  | 'text-input-type'
+type KnownInteractivePropKind = 'string' | 'boolean' | 'string-array' | 'color' | 'text-input-type'
 
 const KNOWN_INTERACTIVE_PROP_TYPES: Partial<
   Record<NodeType, Readonly<Record<string, KnownInteractivePropKind>>>
@@ -425,6 +421,26 @@ export function validateInteractiveProps(
   if (json) return [json]
 
   const issues: InteractivePropsIssue[] = []
+  if (
+    isInteractivePropsObject(value.dataSourceRef) &&
+    value.dataSourceRef.kind === 'backendResource'
+  ) {
+    if (nodeType !== 'LIST')
+      issues.push(
+        error(
+          'backend-client-binding-invalid',
+          'interactiveProps.dataSourceRef',
+          'Backend resource data sources belong to LIST controls.'
+        )
+      )
+    const source = parseBackendResourceDataSource(value.dataSourceRef)
+    if (!source.ok)
+      issues.push(
+        ...source.diagnostics.map((entry) =>
+          error(entry.code, 'interactiveProps.dataSourceRef' + entry.path.slice(1), entry.message)
+        )
+      )
+  }
   issues.push(...knownPropTypeIssues(nodeType, value))
   if ('validation' in value) {
     const issue = fieldValidationIssue(value.validation)

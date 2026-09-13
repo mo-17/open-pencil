@@ -96,6 +96,7 @@ function emitVueProject(
     : []
   for (const definition of components) {
     const emitted = buildVueComponentModule(definition, options, router, docStateTypes, {
+      backend: irs.some((ir) => ir.backendClient !== undefined),
       supabase: supabaseConfig !== undefined,
       serverWorkflow: supabaseConfig !== undefined && serverWorkflows.length > 0
     })
@@ -104,6 +105,7 @@ function emitVueProject(
   }
   for (const info of infos) {
     const emitted = buildVuePageModule(info.ir, options, router, {
+      backend: irs.some((ir) => ir.backendClient !== undefined),
       supabase: supabaseConfig !== undefined,
       serverWorkflow: supabaseConfig !== undefined && serverWorkflows.length > 0
     })
@@ -138,7 +140,11 @@ function emitVueProject(
     'src/lowcode-state.ts',
     buildVueDocStateRuntime(irs[0]?.docStates ?? [], options.devMode)
   )
-  if (options.devMode) files.set('src/__preview-bridge.ts', buildPreviewBridge())
+  if (options.devMode)
+    files.set(
+      'src/__preview-bridge.ts',
+      buildPreviewBridge({ documentState: !options.backendPreview })
+    )
   if (router) {
     files.set('src/router.ts', buildVueRouter(infos, options.packaging?.kind === 'microfrontend'))
   }

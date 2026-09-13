@@ -1,6 +1,7 @@
 import type { ComponentDef, IRElement, IRNode, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions } from '#compiler/types'
 
+import { emitVueBackendPageRuntime } from '../backend-client/lists'
 import {
   emitVueElementAttributes,
   emitVueStyleExpression,
@@ -30,6 +31,8 @@ import {
   createContext,
   createLocalBinding,
   CURRENT_USER_FALLBACK,
+  prepareVueDocumentAliases,
+  vuePageNeedsWatch,
   currentUserBindingWarning,
   docStateTypeScript,
   escapeAttr,
@@ -40,6 +43,7 @@ import {
   scopedIdentifier,
   scriptExpression,
   scriptJSON,
+  serializeVueStateDefault,
   templateExpression,
   withLocalAliases,
   type VueEmitContext,
@@ -68,8 +72,9 @@ export function buildVuePageModule(
   ir: IRTree,
   options: CompilerOptions,
   routerAvailable: boolean,
-  runtime: { supabase?: boolean; serverWorkflow?: boolean } = {}
+  runtime: { supabase?: boolean; serverWorkflow?: boolean; backend?: boolean } = {}
 ): VueSourceEmission {
+  const backendAvailable = ir.backendClient !== undefined
   const lowcode = collectVueTreeLowcodeUsage(ir)
   const supabaseAvailable =
     runtime.supabase === true || (runtime.supabase === undefined && ir.supabaseConfig !== undefined)
@@ -78,6 +83,7 @@ export function buildVuePageModule(
     (runtime.serverWorkflow === true ||
       (runtime.serverWorkflow === undefined && (ir.serverWorkflows?.length ?? 0) > 0))
   const requestRuntime = {
+    backend: backendAvailable,
     supabase: supabaseAvailable,
     serverWorkflow: serverWorkflowAvailable
   }
@@ -93,21 +99,12 @@ export function buildVuePageModule(
   const componentAliases = new Map(
     componentNames.map((name) => [name, componentRuntimeAlias(name)])
   )
-  const currentUserFallback = ir.docStateReads.includes('$currentUser') && !supabaseAvailable
-  const docStateReads = ir.docStateReads.filter(
-    (name) => name !== '$currentUser' || supabaseAvailable
+  const { currentUserFallback, docStateReads } = prepareVueDocumentAliases(
+    ir,
+    identAliases,
+    listAliases,
+    supabaseAvailable || backendAvailable
   )
-  if (ir.requiresAuth && supabaseAvailable && !docStateReads.includes('$currentUser')) {
-    docStateReads.push('$currentUser')
-  }
-  for (const name of docStateReads) {
-    if (!identAliases.has(name)) identAliases.set(name, generatedAlias('Doc', name))
-  }
-  for (const query of ir.listQueries ?? []) {
-    const alias = generatedAlias('Rows', query.rowsName)
-    listAliases.set(query.rowsName, alias)
-    if (!identAliases.has(query.rowsName)) identAliases.set(query.rowsName, alias)
-  }
   const refNames = new Set([...identAliases.values(), ...listAliases.values()])
   const context = createContext(
     options.devMode,
@@ -135,7 +132,7 @@ export function buildVuePageModule(
   const currentUser = identAliases.get('$currentUser')
   const template = wrapVueAuthGuard(body, ir.requiresAuth === true, currentUser)
   const vueNames = ['computed as __vueComputed', 'ref as __vueRef']
-  if ((ir.listQueries?.length ?? 0) > 0 || (ir.requiresAuth && routerAvailable)) {
+  if (vuePageNeedsWatch(ir, routerAvailable)) {
     vueNames.push('watch as __vueWatch')
   }
   if (requestDebounceActive) vueNames.push('onBeforeUnmount as __vueOnBeforeUnmount')
@@ -153,6 +150,7 @@ export function buildVuePageModule(
     ? `import { getDocState as __getDocState, setDocState as __setDocState, useDocState as __useDocState } from '../lowcode-state'`
     : ''
   const scriptLines: string[] = [vueImports + routerImports]
+  if (backendAvailable) scriptLines.push("import * as __opBackend from '../lowcode-backend'")
   if (componentImports) scriptLines.push(componentImports)
   if (moduleImports) scriptLines.push(moduleImports)
   if (lowcode.toast) scriptLines.push(`import { __opToast } from '../lowcode-toast'`)
@@ -199,6 +197,7 @@ export function buildVuePageModule(
   if (ir.requiresAuth && routerAvailable && currentUser && supabaseAvailable) {
     scriptLines.push(...buildVueAuthGuardRuntime(currentUser, ir.authRedirect ?? '/login'))
   }
+  scriptLines.push(...emitVueBackendPageRuntime(ir, context, routerAvailable, currentUser))
   appendVueContextRuntime(scriptLines, validatedFields, context)
   return {
     source: `<script setup lang="ts">
@@ -220,19 +219,21 @@ export function buildVueComponentModule(
   options: CompilerOptions,
   routerAvailable: boolean,
   docStateTypes: ReadonlyMap<string, IRTree['docStates'][number]['type']> = new Map(),
-  runtime: { supabase?: boolean; serverWorkflow?: boolean } = {}
+  runtime: { supabase?: boolean; serverWorkflow?: boolean; backend?: boolean } = {}
 ): VueSourceEmission {
+  const backendAvailable = definition.backendClient !== undefined
   const lowcode = collectVueComponentLowcodeUsage(definition)
   const validatedFields = definition.validatedFields ?? []
   const rawDocStateReads = definition.docStateReads ?? []
   const supabaseAvailable = runtime.supabase === true
   const serverWorkflowAvailable = runtime.serverWorkflow === true && supabaseAvailable
-  const currentUserUnsupported = rawDocStateReads.includes('$currentUser') && !supabaseAvailable
+  const currentUserUnsupported =
+    rawDocStateReads.includes('$currentUser') && !supabaseAvailable && !backendAvailable
   const usesRouteParams = rawDocStateReads.includes(ROUTE_PARAMS_IDENT)
   const usesQueryParams = rawDocStateReads.includes(QUERY_PARAMS_IDENT)
   const docStateReads = rawDocStateReads.filter(
     (name) =>
-      (name !== '$currentUser' || supabaseAvailable) &&
+      (name !== '$currentUser' || supabaseAvailable || backendAvailable) &&
       name !== ROUTE_PARAMS_IDENT &&
       name !== QUERY_PARAMS_IDENT
   )
@@ -250,6 +251,7 @@ export function buildVueComponentModule(
     ? definition.variants.flatMap((variant) => variant.children)
     : definition.children
   const requestRuntime = {
+    backend: backendAvailable,
     supabase: supabaseAvailable,
     serverWorkflow: serverWorkflowAvailable
   }
@@ -286,6 +288,7 @@ export function buildVueComponentModule(
   if (requestDebounceActive) vueNames.push('onBeforeUnmount as __vueOnBeforeUnmount')
   const vueImports = `import { ${vueNames.join(', ')} } from 'vue'`
   const scriptLines = [vueImports]
+  if (backendAvailable) scriptLines.push("import * as __opBackend from '../lowcode-backend'")
   if (routerAvailable) {
     const imports = [
       ...(usesRouteParams || usesQueryParams ? ['useRoute as __useRoute'] : []),
@@ -401,7 +404,7 @@ ${template}  </div>
 
 function emitState(state: IRTree['states'][number], context: VueEmitContext): string {
   const name = context.identAliases.get(state.name) ?? state.name
-  const value = serializeDefault(state.defaultValue, state.type)
+  const value = serializeVueStateDefault(state.defaultValue, state.type)
   const type = docStateTypeScript(state.type)
   if (state.computed) {
     return `const ${name} = __vueComputed<${type}>(() => ${scriptExpression(state.computed.ast, context.refNames, context.identAliases)})`
@@ -586,15 +589,4 @@ function referencedComponents(nodes: readonly IRNode[]): string[] {
   }
   nodes.forEach(visit)
   return [...names].sort((a, b) => a.localeCompare(b))
-}
-
-function serializeDefault(value: unknown, type: IRTree['states'][number]['type']): string {
-  if (type === 'string') return scriptJSON(typeof value === 'string' ? value : '')
-  if (type === 'number')
-    return typeof value === 'number' && Number.isFinite(value) ? String(value) : '0'
-  if (type === 'boolean') return value === true ? 'true' : 'false'
-  if (type === 'array') return scriptJSON(Array.isArray(value) ? value : [])
-  return scriptJSON(
-    value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {}
-  )
 }

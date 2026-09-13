@@ -1,7 +1,8 @@
 import {
   eventUsesRequestDebounce,
   eventUsesRequestGate,
-  handlersUseRequestGate
+  handlersUseRequestGate,
+  requestHandlerBranches
 } from '#compiler/adapters/react/request-timing'
 import type { IRElement, IREventHandler, IREventName, IRNode } from '#compiler/ir/types'
 
@@ -18,29 +19,22 @@ export const VUE_REQUEST_THROTTLE_MS = 300
 export const VUE_REQUEST_DEBOUNCE_MS = 250
 
 interface VueRequestRuntimeAvailability {
+  backend?: boolean
   supabase?: boolean
   serverWorkflow?: boolean
-}
-
-function handlerBranches(handler: IREventHandler): readonly IREventHandler[] {
-  if (handler.kind === 'condition' || handler.kind === 'confirm') {
-    return [...handler.consequent, ...(handler.alternate ?? [])]
-  }
-  if (
-    handler.kind === 'apiCall' ||
-    handler.kind === 'supabaseQuery' ||
-    handler.kind === 'supabaseMutation' ||
-    handler.kind === 'invokeServerWorkflow'
-  ) {
-    return [...(handler.onSuccess ?? []), ...(handler.onError ?? [])]
-  }
-  return []
 }
 
 function handlerHasExecutableRequest(
   handler: IREventHandler,
   runtime: VueRequestRuntimeAvailability
 ): boolean {
+  if (
+    handler.kind === 'backendAuth' ||
+    handler.kind === 'backendRequest' ||
+    handler.kind === 'backendCommand' ||
+    handler.kind === 'backendCommandRecovery'
+  )
+    return runtime.backend === true
   if (handler.kind === 'apiCall') return true
   if (
     handler.kind === 'supabaseQuery' ||
@@ -50,7 +44,7 @@ function handlerHasExecutableRequest(
     return runtime.supabase === true
   }
   if (handler.kind === 'invokeServerWorkflow') return runtime.serverWorkflow === true
-  return handlerBranches(handler).some((item) => handlerHasExecutableRequest(item, runtime))
+  return requestHandlerBranches(handler).some((item) => handlerHasExecutableRequest(item, runtime))
 }
 
 export function handlersHaveVueExecutableRequest(
@@ -131,6 +125,7 @@ function requestKeys(node: IRElement, context: VueEmitContext): string[] {
       timed &&
       handlers.some((handler) =>
         handlerHasExecutableRequest(handler, {
+          backend: context.backendAvailable,
           supabase: context.supabaseAvailable,
           serverWorkflow: context.serverWorkflowAvailable
         })

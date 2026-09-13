@@ -1,3 +1,4 @@
+import { auditApplicationRuntime } from '@open-pencil/lowcode/application-runtime'
 import {
   lowerLegacySupabaseApplication,
   parseBackendApplicationSpecV1,
@@ -10,12 +11,15 @@ import {
   createBackendProviderPlan,
   createBuiltinBackendProviderRegistry,
   emitBackendProviderPlan,
+  NESTJS_BACKEND_PROVIDER_DESCRIPTOR,
+  sameBackendProviderDescriptor,
   SUPABASE_BACKEND_PROVIDER_COMPILER_BUNDLE_DIGEST,
   SUPABASE_BACKEND_PROVIDER_DESCRIPTOR,
   type BackendCompilationMode,
   type BackendProviderSelection
 } from '../backend'
 import type { CompilerBackendProviderRequest, CompilerOptions, CompileWarning } from '../types'
+import { resolveCompilerBackendPreview } from './backend-preview'
 
 const BUILTIN_BACKEND_REGISTRY = createBuiltinBackendProviderRegistry()
 const COMPILER_BUNDLED_SUPABASE_SELECTION = Object.freeze({
@@ -120,6 +124,8 @@ export function resolveCompilerBackendApplication(
 ): BackendApplicationSpecV1 | undefined {
   const explicit = explicitBackendProviderRequest(options)
   if (!explicit.ok) throw new BackendProviderCompilationError(explicit.diagnostics)
+  const preview = resolveCompilerBackendPreview(options, explicit.request)
+  if (preview) return preview
   if (!explicit.request) return undefined
   const parsed = parseBackendApplicationSpecV1(explicit.request.application)
   if (!parsed.ok) throw new BackendProviderCompilationError(parsed.diagnostics)
@@ -156,6 +162,29 @@ function uniqueDiagnostics(
   return Object.freeze([...unique.values()])
 }
 
+function hasSupabaseRuntimeBinding(
+  graph: LegacyBackendGraph,
+  browserAuthentication = false
+): boolean {
+  if (graph.getNode(graph.rootId)?.lowcodeSupabaseConfig !== undefined) return true
+  if (auditApplicationRuntime(graph).usesSupabase) return true
+  for (const node of graph.getAllNodes()) {
+    if (node.lowcodeRequiresAuth === true && !browserAuthentication) return true
+    const source = node.interactiveProps?.dataSourceRef
+    if (
+      node.type === 'LIST' &&
+      source !== null &&
+      typeof source === 'object' &&
+      'kind' in source &&
+      source.kind === 'supabaseQuery'
+    ) {
+      return true
+    }
+    if (node.type === 'INPUT' && node.interactiveProps?.upload !== undefined) return true
+  }
+  return false
+}
+
 function compileWarnings(diagnostics: readonly BackendDiagnostic[]): readonly CompileWarning[] {
   return Object.freeze(
     diagnostics.map((entry) => ({
@@ -178,7 +207,7 @@ function blockedCompilation(
  * Backend bridge for the real Compiler entrypoint. An explicit Host-resolved
  * request is the sole Backend authority; legacy Supabase lowering is used only when that
  * request is absent. Existing Supabase config and client Auth/CRUD/server/Storage actions remain
- * frontend runtime usage and do not constitute a second Provider authority. The trusted Provider
+ * Supabase frontend runtime usage and cannot be combined with a NestJS selection. The trusted Provider
  * receives only normalized Backend IR.
  * Planning or emission failures stop the compile with structured diagnostics;
  * a production build can never silently ship only the frontend half.
@@ -192,6 +221,31 @@ export function compileBackendArtifacts(
   const legacyIntent = hasLegacyBackendIntent(graph, lowered)
   const explicit = explicitBackendProviderRequest(options)
   if (!explicit.ok) return blockedCompilation(lowered.diagnostics, explicit.diagnostics)
+  const preview = resolveCompilerBackendPreview(options, explicit.request)
+  if (preview) {
+    if (hasSupabaseRuntimeBinding(graph, true)) {
+      return blockedCompilation(
+        [],
+        [
+          compilationDiagnostic(
+            'backend-provider-client-runtime-conflict',
+            '$.options.backendProvider',
+            'Connected NestJS preview cannot use Supabase runtime bindings.'
+          )
+        ]
+      )
+    }
+    return Object.freeze({
+      files: new Map(),
+      warnings: [
+        {
+          code: 'backend-preview-external-service',
+          message:
+            'NestJS preview uses the explicitly connected local service. No backend sources or migrations were emitted.'
+        }
+      ]
+    })
+  }
   if (!explicit.request && !legacyIntent) return null
 
   const selection = explicit.request?.selection ?? COMPILER_BUNDLED_SUPABASE_SELECTION
@@ -205,6 +259,21 @@ export function compileBackendArtifacts(
     mode: compilationMode(options)
   })
   if (!planned.ok) return blockedCompilation(normalizationDiagnostics, planned.diagnostics)
+  if (
+    sameBackendProviderDescriptor(planned.plan.authority, NESTJS_BACKEND_PROVIDER_DESCRIPTOR) &&
+    hasSupabaseRuntimeBinding(graph, planned.plan.application.httpApi?.browserClient !== undefined)
+  ) {
+    return blockedCompilation(
+      [],
+      [
+        compilationDiagnostic(
+          'backend-provider-client-runtime-conflict',
+          '$.options.backendProvider',
+          'NestJS generation cannot use Supabase configuration, actions, widgets, or page authentication guards.'
+        )
+      ]
+    )
+  }
 
   const emitted = emitBackendProviderPlan(BUILTIN_BACKEND_REGISTRY, {
     selection,

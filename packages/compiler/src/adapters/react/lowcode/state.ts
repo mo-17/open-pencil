@@ -156,7 +156,7 @@ if (typeof window !== 'undefined') {
   const sync = () => syncDocumentMotionDrivers(store.getState())
   window.addEventListener('op-motion-drivers-ready', sync)
   sync()
-  import.meta.hot?.dispose(() => {
+  ;(import.meta as ImportMeta & { hot?: { dispose(callback: () => void): void } }).hot?.dispose(() => {
     window.removeEventListener('op-motion-drivers-ready', sync)
     unsubscribeDocumentMotionDrivers()
   })

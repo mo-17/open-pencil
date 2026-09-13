@@ -1,0 +1,9 @@
+# Working personal notes applications
+
+For a request such as “个人笔记，导出后直接使用”, create the functional application with `create_personal_notes_app` before visual styling. This reviewed document starter takes the place of the generic skeleton-and-replace workflow for this request: it creates real login, form, list, edit, delete, owner access rules, and a NestJS Backend model. Static mock notes and decorative buttons alone do not satisfy a working application request.
+
+Use `authentication: "local-keycloak"` only if the user chose the local OpenPencil Keycloak setup. For another service use `authentication: "oidc"` and the user's public `issuer` and `client_id`. Ask for missing public configuration; never invent an issuer, request a password/client secret, or fetch credentials. If NestJS is unavailable, ask the user to enable its Backend Provider in Settings → Plugins. Never bypass provider authority using eval or hand-written plugin data.
+
+After creation, call `switch_page` with the returned `notesPageId` to show the created app, inspect both returned page IDs, and style the existing nodes. Preserve real control types, state IDs, bindings, events, data sources, routes, authentication protection, and the document Backend declaration. Do not delete/re-render functional pages or replace them with static mockups. The returned `exportPageIds` identify the login and notes pages that must be exported together using React or Vue source export. A configured existing Backend/authentication flow is preserved; use its existing UI or a new document instead of retrying the starter with an overwrite.
+
+Report the generated login/notes routes and the source-export step. Creating a document does not launch Keycloak, PostgreSQL, NestJS, or the frontend. Starting the exported project requires following its README with the user's configured identity service; do not claim that login or persistence is verified merely because the authoring tool succeeded.

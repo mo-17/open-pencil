@@ -1222,9 +1222,10 @@ function releaseManualComposition(animation: Animation, reset: boolean): void {
 function playableTrack(track: MotionTrack, policy: MotionSpec['reducedMotion']): MotionTrack | null {
   if (!prefersReducedMotion() || policy === 'allow') return track
   if (policy === 'disable') return null
-  if (track.composition) {
-    const opacityVariable = track.composition.variables.opacity
-    const hasOpacity = track.composition.sampling.keyframes.some(
+  const composition = track.composition
+  if (composition) {
+    const opacityVariable = composition.variables.opacity
+    const hasOpacity = composition.sampling.keyframes.some(
       (frame) => frame.values.opacity !== undefined
     )
     if (!opacityVariable || !hasOpacity) return null
@@ -1233,15 +1234,15 @@ function playableTrack(track: MotionTrack, policy: MotionSpec['reducedMotion']):
       advanced: undefined,
       keyframes: track.keyframes.map((frame) => ({
         offset: frame.offset,
-        [track.composition.clock]: frame.offset,
+        [composition.clock]: frame.offset,
         ...(frame.easing === undefined ? {} : { easing: frame.easing })
       })),
       composition: {
-        ...track.composition,
+        ...composition,
         variables: { opacity: opacityVariable },
         sampling: {
-          ...track.composition.sampling,
-          keyframes: track.composition.sampling.keyframes.map((frame) => ({
+          ...composition.sampling,
+          keyframes: composition.sampling.keyframes.map((frame) => ({
             offset: frame.offset,
             values:
               frame.values.opacity === undefined ? {} : { opacity: frame.values.opacity },
@@ -1252,8 +1253,8 @@ function playableTrack(track: MotionTrack, policy: MotionSpec['reducedMotion']):
       timing: { ...track.timing, duration: Math.min(track.timing.duration, 120), delay: 0 }
     }
   }
-  const opacityProperty = track.composition?.variables.opacity ?? 'opacity'
-  const keyframes = track.keyframes.map((frame) => ({
+  const opacityProperty = 'opacity'
+  const keyframes: MotionFrame[] = track.keyframes.map((frame) => ({
     offset: frame.offset,
     ...(frame[opacityProperty] === undefined
       ? {}

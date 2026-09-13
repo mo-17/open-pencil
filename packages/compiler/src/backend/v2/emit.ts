@@ -28,6 +28,7 @@ import {
   BACKEND_ARTIFACT_LIMITS,
   BACKEND_ARTIFACT_MANIFEST_PATH as BACKEND_ARTIFACT_MANIFEST_PATH_V1_INTERNAL
 } from '../emit'
+import { unsupportedBackendHttpAPIDiagnostics } from '../http-api-support'
 import {
   BACKEND_ARTIFACT_MANIFEST_VERSION_V2,
   BACKEND_PROVIDER_PLAN_VERSION_V2,
@@ -413,6 +414,10 @@ export function emitBackendProviderPlanV2(
   const applicationResult = parseBackendApplicationSpecV2(plan.application)
   if (!applicationResult.ok) {
     return { ok: false, diagnostics: sortBackendDiagnostics(applicationResult.diagnostics) }
+  }
+  const httpAPIDiagnostics = unsupportedBackendHttpAPIDiagnostics(applicationResult.value)
+  if (hasBackendErrors(httpAPIDiagnostics)) {
+    return { ok: false, diagnostics: sortBackendDiagnostics(httpAPIDiagnostics) }
   }
   const actualCapabilities = Object.freeze([
     ...deriveBackendApplicationCapabilitiesV2(applicationResult.value)

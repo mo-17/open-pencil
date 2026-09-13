@@ -35,6 +35,7 @@ import {
   sortBackendDiagnostics,
   unsupportedBackendCompilationModeDiagnostic
 } from './diagnostics'
+import { unsupportedBackendHttpAPIDiagnostics } from './http-api-support'
 import type { BackendProviderRegistry } from './registry'
 
 export interface CreateBackendProviderPlanInput {
@@ -208,6 +209,7 @@ export function createBackendProviderPlan(
   }
   const diagnostics: BackendDiagnostic[] = [
     ...applicationResult.diagnostics,
+    ...unsupportedBackendHttpAPIDiagnostics(applicationResult.value, resolved.value.bundle),
     ...validateBackendCapabilityDeclarations(applicationResult.value)
   ]
   if (hasBackendErrors(diagnostics)) {

@@ -70,7 +70,9 @@ describe('Desktop Supabase Backend Provider review app wiring', () => {
   test('maps bounded native review failures through the production-only transport', async () => {
     const loaded = await appPluginStoreReady
     if (loaded.error) throw loaded.error
-    const descriptor = listAppBackendProviderDescriptors(appPluginStore)[0]
+    const descriptor = listAppBackendProviderDescriptors(appPluginStore).find(
+      (provider) => provider.providerId === 'supabase'
+    )
     if (!descriptor) throw new Error('Missing production Supabase provider')
     const documentValue = appBackendProviderDocumentValue({
       format: APP_BACKEND_PROVIDER_REQUEST_FORMAT,

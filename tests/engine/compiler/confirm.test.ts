@@ -66,6 +66,8 @@ describe('compile — confirm runtime wiring (Phase 3 §10 v3)', () => {
     expect(css).toContain('bg-foreground/40')
     expect(css).toContain('bg-background')
     expect(css).toContain('text-primary-foreground')
+    expect(css).toContain('max-h-[calc(100dvh-2rem)]')
+    expect(css).toContain('[overflow-wrap:anywhere]')
     expect(css).toContain('@theme inline')
     expect(css).toContain('--color-foreground')
     expect(css).not.toContain('bg-blue-600')

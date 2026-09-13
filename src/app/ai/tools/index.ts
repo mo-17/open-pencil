@@ -23,11 +23,25 @@ import { useLibraryService } from '@/app/libraries'
 import { canCreatePluginModule } from '@/app/plugins'
 
 import { createPluginAITools } from './builtin'
+import {
+  createPersonalNotesAITools,
+  PERSONAL_NOTES_AI_TOOL_NAME,
+  type PersonalNotesAIToolOptions
+} from './personal-notes'
+import {
+  createSingleSkuShopAITools,
+  SINGLE_SKU_SHOP_AI_TOOL_NAME,
+  type SingleSkuShopAIToolOptions
+} from './single-sku-shop'
 import { createVisualInspectionTool } from './vision'
 
 export const MAX_AGENT_STEPS = 50
 const MAX_TOOL_LOG_ENTRIES = 200
-const DOCUMENT_SCOPE_TOOLS = new Set(['eval'])
+const DOCUMENT_SCOPE_TOOLS = new Set([
+  'eval',
+  PERSONAL_NOTES_AI_TOOL_NAME,
+  SINGLE_SKU_SHOP_AI_TOOL_NAME
+])
 const NON_GRAPH_MUTATION_TOOLS = new Set(['viewport_zoom_to_fit'])
 const MODULE_CREATION_POLICY_TOOLS = new Set(['list_modules', 'create_module'])
 const POSTPROCESS_FREE_TOOLS = new Set([
@@ -277,7 +291,12 @@ async function finalizeSuccessfulMutation(
   return recordSuccessfulMutation(store, toolName, transaction, signal)
 }
 
-export function createAITools(store: EditorStore) {
+export interface CreateAIToolsOptions {
+  readonly personalNotes?: PersonalNotesAIToolOptions
+  readonly singleSkuShop?: SingleSkuShopAIToolOptions
+}
+
+export function createAITools(store: EditorStore, options: CreateAIToolsOptions = {}) {
   let activeMutation: MutationTransaction | undefined
   let lastSuccessfulSnapshot: SuccessfulSnapshot | undefined
   const runState = getRunState(store)
@@ -290,6 +309,8 @@ export function createAITools(store: EditorStore) {
   const toolDefinitions = [
     ...CORE_TOOLS,
     ...EXTENDED_TOOLS.filter((definition) => EXTENDED_AI_TOOL_NAMES.has(definition.name)),
+    ...createPersonalNotesAITools(store, options.personalNotes),
+    ...createSingleSkuShopAITools(store, options.singleSkuShop),
     ...(codePenToolsEnabled ? createCodePenAITools(store) : [])
   ]
 

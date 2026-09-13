@@ -20,6 +20,7 @@ import type { PreviewDocStatePayload } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import { appPluginStore, appPluginStoreSnapshot } from '@/app/plugins/app'
 import { runInstalledPluginCommand } from '@/app/plugins/host'
+import { readAppBackendProviderDocumentRequest } from '@/app/plugins/host/backend-provider'
 import {
   COMPILER_PREVIEW_POPOUT_COMMAND,
   COMPILER_PREVIEW_POPOUT_PLUGIN_ID
@@ -27,7 +28,7 @@ import {
 import { compilerPreviewPopoutControls } from '@/app/settings/compiler-preview-popout-controls'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { previewToolbarLayout } from '@/app/settings/preview-toolbar-layout'
-import { toast } from '@/app/shell/ui'
+import { openExternalLink, toast } from '@/app/shell/ui'
 import Tip from '@/components/ui/Tip.vue'
 import { menuItem, useMenuUI } from '@/components/ui/menu'
 
@@ -52,6 +53,7 @@ import {
 } from './iframe/messages'
 import { consumePreviewWebdriverAutomationRequest } from './iframe/webdriver-storage'
 import MicrofrontendExportControls from './MicrofrontendExportControls.vue'
+import LocalBackendPreviewControls from './LocalBackendPreviewControls.vue'
 import {
   compilerPreviewPopoutBusy,
   compilerPreviewPopoutOpen,
@@ -131,6 +133,10 @@ watch(
   { immediate: true }
 )
 const {
+  localBackend,
+  managedBackend,
+  backendMode,
+  selectBackendMode,
   status,
   hostKind,
   compileState,
@@ -148,6 +154,36 @@ const {
   localesInput: previewLocalesInput,
   refreshPolicy: previewRefreshPolicy
 })
+const localBackendState = localBackend.state
+const localBackendActive = localBackend.active
+const localBackendBrowserURL = localBackend.browserURL
+const managedBackendMessage = managedBackend.message
+const managedApplication = computed(() => {
+  void store.state.sceneVersion
+  try {
+    return readAppBackendProviderDocumentRequest(store.graph)?.application ?? null
+  } catch {
+    return null
+  }
+})
+const managedAuthentication = computed(
+  () => managedApplication.value?.httpApi?.browserClient?.authentication ?? null
+)
+const displayedRefreshPolicy = computed<PreviewRefreshPolicy>({
+  get: () => (localBackendActive.value ? 'auto' : previewRefreshPolicy.value),
+  set: (policy) => {
+    previewRefreshPolicy.value = policy
+  }
+})
+async function openLocalBackendPreview(): Promise<void> {
+  const destination = localBackendBrowserURL.value
+  if (!destination) return
+  try {
+    await openExternalLink(destination)
+  } catch {
+    toast.warning('Could not open the system browser. Use the preview address shown here.')
+  }
+}
 const store = useEditorStore()
 const collab = useCollabInjected()
 const compilerPreviewPopoutCommand = computed(() => {
@@ -162,6 +198,7 @@ const compilerPreviewPopoutCommand = computed(() => {
 const compilerPreviewPopoutReady = computed(
   () =>
     compilerPreviewPopoutCommand.value !== null &&
+    !localBackendActive.value &&
     status.value.kind === 'ready' &&
     status.value.port !== null &&
     !compilerPreviewPopoutBusy.value
@@ -193,6 +230,15 @@ const diagnosticSummaryLabel = computed(() => {
   if (errorCount > 0) parts.push(`${errorCount} error${errorCount === 1 ? '' : 's'}`)
   if (warningCount > 0) parts.push(`${warningCount} warning${warningCount === 1 ? '' : 's'}`)
   return parts.join(' · ')
+})
+const requiresDesktopBackend = computed(() => {
+  void store.state.sceneVersion
+  if (IS_TAURI) return false
+  try {
+    return readAppBackendProviderDocumentRequest(store.graph)?.selection.providerId === 'nestjs'
+  } catch {
+    return false
+  }
 })
 const compileActivityLabel = computed(() => {
   if (compileState.value.inFlight) return 'Compiling…'
@@ -234,7 +280,8 @@ const previewSettingsSummary = computed(() => {
   const uiKit = previewUIKit.value === 'shadcn' ? 'shadcn/ui' : 'Tailwind'
   const theme = previewTheme.value === 'dark' ? 'Dark' : 'Light'
   let refresh = 'Auto'
-  if (previewRefreshPolicy.value === 'realtime') refresh = 'Real-time'
+  if (localBackendActive.value) refresh = 'Auto (local backend)'
+  else if (previewRefreshPolicy.value === 'realtime') refresh = 'Real-time'
   else if (previewRefreshPolicy.value === 'manual') refresh = 'Manual'
   return [uiKit, theme, refresh, previewI18nEnabled.value ? 'i18n' : null]
     .filter(Boolean)
@@ -421,6 +468,7 @@ function findPageIdForRoute(route: string): string | null {
 }
 
 async function openCompilerPreviewPopout(): Promise<void> {
+  if (localBackendActive.value) return
   const installed = compilerPreviewPopoutCommand.value
   if (!installed) {
     openSettingsDialog('plugins')
@@ -503,6 +551,7 @@ function currentSelectionId(): string | null {
 }
 
 function postIframe(payload: PreviewEditorPayload): void {
+  if (localBackendActive.value) return
   if (status.value.kind !== 'ready') return
   const message = createPreviewEditorMessage(status.value.frame.channelId, payload)
   if (!message) return
@@ -725,6 +774,7 @@ function handlePreviewNavigateMessage(
 function handlePreviewDocStateMessage(
   data: Extract<PreviewInboundMessage, { type: 'docState' }>
 ): void {
+  if (localBackendActive.value) return
   collab?.sendPreviewDocState({
     name: data.name,
     value: data.value as PreviewDocStatePayload['value']
@@ -734,6 +784,7 @@ function handlePreviewDocStateMessage(
 function handlePreviewContentMessage(
   data: Exclude<PreviewInboundMessage, { type: 'ready' } | { type: 'runtimeError' }>
 ): void {
+  if (localBackendActive.value) return
   if (data.type === 'select') handlePreviewSelectMessage(data)
   else if (data.type === 'navigate') handlePreviewNavigateMessage(data)
   else if (data.type === 'docState') handlePreviewDocStateMessage(data)
@@ -885,7 +936,7 @@ watch(previewTheme, () => {
 })
 
 watch(
-  [status, () => store.state.currentPageId, compilerPreviewPopoutControls],
+  [status, localBackendActive, () => store.state.currentPageId, compilerPreviewPopoutControls],
   () => {
     if (compilerPreviewPopoutOpen.value || compilerPreviewPopoutBusy.value) {
       void syncActiveCompilerPreviewPopout()
@@ -907,7 +958,8 @@ watch(
 onMounted(() => {
   unregisterPopoutSession = registerCompilerPreviewPopoutSession({
     getRequest() {
-      if (status.value.kind !== 'ready' || status.value.port === null) return null
+      if (localBackendActive.value || status.value.kind !== 'ready' || status.value.port === null)
+        return null
       const path = findRouteForPageId(store.state.currentPageId)
       return path
         ? {
@@ -955,6 +1007,20 @@ onBeforeUnmount(() => {
       :data-band="groupedToolbar ? toolbarBand : undefined"
       data-test-id="lowcode-preview-toolbar"
     >
+      <LocalBackendPreviewControls
+        v-if="IS_TAURI"
+        :document-identity="store.graph"
+        :application-id="managedApplication?.applicationId"
+        :state="localBackendState"
+        :browser-u-r-l="localBackendBrowserURL"
+        :managed="managedBackend"
+        :mode="backendMode"
+        :authentication="managedAuthentication"
+        @mode="selectBackendMode"
+        @connect="localBackend.connect"
+        @disconnect="localBackend.disconnect()"
+        @open="openLocalBackendPreview"
+      />
       <template v-if="groupedToolbar">
         <Tip v-if="toolbarBand !== 'tiny'" :label="statusLabel">
           <div class="flex min-w-0 items-center gap-1 text-xs text-muted">
@@ -1004,10 +1070,11 @@ onBeforeUnmount(() => {
             v-model:theme="previewTheme"
             v-model:i18n-enabled="previewI18nEnabled"
             v-model:locales-input="previewLocalesInput"
-            v-model:refresh-policy="previewRefreshPolicy"
+            v-model:refresh-policy="displayedRefreshPolicy"
             :summary="previewSettingsSummary"
             :icon-only="!showToolbarSummary"
             :show-target="!showInlineTarget"
+            :automatic-refresh="localBackendActive"
           />
 
           <Tip
@@ -1284,7 +1351,8 @@ onBeforeUnmount(() => {
             <label class="flex items-center gap-1 text-xs text-muted">
               <span>Refresh</span>
               <select
-                v-model="previewRefreshPolicy"
+                v-model="displayedRefreshPolicy"
+                :disabled="localBackendActive"
                 data-test-id="lowcode-preview-refresh-policy"
                 class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
               >
@@ -1410,9 +1478,17 @@ onBeforeUnmount(() => {
       </template>
     </div>
     <div class="flex min-h-0 flex-1 flex-col bg-white">
+      <p
+        v-if="requiresDesktopBackend"
+        data-test-id="lowcode-preview-desktop-required"
+        class="border-b border-border bg-panel px-3 py-2 text-xs text-muted"
+      >
+        Open this document in the desktop editor to connect an already running local NestJS backend.
+        You can also export the application and run it locally.
+      </p>
       <div class="relative min-h-0 flex-1">
         <iframe
-          v-if="url && embeddedVisible"
+          v-if="url && embeddedVisible && !localBackendActive"
           :key="iframeKey"
           ref="iframeEl"
           :name="frameName"
@@ -1425,7 +1501,40 @@ onBeforeUnmount(() => {
           @load="onIframeLoad"
         />
         <div
-          v-if="!url || status.kind === 'starting'"
+          v-if="localBackendActive"
+          data-test-id="lowcode-preview-local-status"
+          class="flex h-full flex-col items-center justify-center gap-3 bg-panel px-6 text-center text-xs text-surface"
+        >
+          <icon-lucide-server class="size-6 text-muted" />
+          <p role="status">
+            {{ backendMode === 'managed' ? managedBackendMessage : localBackendState.message }}
+          </p>
+          <p class="max-w-sm text-muted">
+            Login and data operations run in your system browser. Frontend edits refresh there
+            automatically.
+            <template v-if="backendMode === 'managed'"
+              >Backend updates rebuild automatically; database changes require reviewing and
+              applying the SQL in the NestJS controls.</template
+            >
+            <template v-else
+              >Backend model changes require synchronization and reconnection.</template
+            >
+          </p>
+          <button
+            v-if="localBackendBrowserURL"
+            type="button"
+            data-test-id="lowcode-preview-local-browser"
+            class="rounded bg-accent px-3 py-2 text-white"
+            @click="openLocalBackendPreview"
+          >
+            Open in browser
+          </button>
+          <code v-if="localBackendBrowserURL" class="select-text break-all text-muted">
+            {{ localBackendBrowserURL }}
+          </code>
+        </div>
+        <div
+          v-else-if="!url || status.kind === 'starting'"
           class="flex h-full items-center justify-center px-4 text-center text-xs text-muted"
         >
           {{ statusLabel }}

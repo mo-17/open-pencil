@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- SceneGraph exposes a stable facade over domain modules */
 export * from './mutation-impact'
+export * from './backend-client'
 export * from './instance-overrides'
 export * from './images'
 export * from './image-inspection'

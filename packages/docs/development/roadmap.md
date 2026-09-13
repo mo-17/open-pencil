@@ -71,6 +71,25 @@ v0.14.0 established several foundations that earlier versions of this roadmap tr
 - Let documents move between device-only, OpenPencil Cloud, self-hosted, and user-owned storage without losing identity or history.
 - Add explicit conflict, offline, sync-health, migration, backup, quota, and recovery UX for every remote deployment mode.
 
+### Generated application backends
+
+- Add NestJS as an additional Backend Provider for generating editable TypeScript server projects from the shared Backend IR, alongside the existing Supabase provider.
+- Start with PostgreSQL-backed REST CRUD, validated DTOs, OpenAPI documentation, and explicit authentication and ownership/tenant policy enforcement for the supported model subset. Unsupported semantics must produce diagnostics rather than silently weaken generated behavior.
+- Keep backend selection independent of React/Vue frontend exports, and provide matching client request contracts for generated NestJS services.
+- Verify emitted projects through compilation, API and database integration tests. Keep migration execution, deployment, and production readiness as separate release gates.
+
+The shared [HTTP API contract](./backend-http-api.md) and initial
+[NestJS provider](./backend-nestjs.md) are implemented. The first preset generates owner-protected
+CRUD services with PostgreSQL, DTOs, OpenAPI and a typed client through React/Vue source exports.
+The visual authoring flow includes a personal-notes model and undoable login/form/LIST pages,
+with generic OIDC + PKCE and authenticated React/Vue requests. An external identity provider still
+needs to meet the preset's JWT access-token and UUID subject requirements.
+Explicit public reads, verified JWT roles, constrained relations, enums/dates and bounded list
+queries are supported. Atomic commands provide a single-SKU checkout/cancellation example with
+server idempotency and opt-in account-bound browser attempt recovery. Broader tenant policies,
+model types, workflow execution and deployment automation remain planned; carts, payments and
+fulfillment still require additional work.
+
 ### Agent workflows
 
 - Polish the official `SKILL.md` guidance for OpenPencil so agents use the full inspect → act → render/measure → compare → iterate loop instead of relying on one-shot prompting.

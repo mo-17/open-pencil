@@ -384,6 +384,19 @@ export function buildSourceProjectExportFiles(
   targetName: string
 ): Map<string, string | Uint8Array> {
   const files = new Map(compiledFiles)
+  if (files.has('BACKEND-CLIENT.md')) {
+    const readme = files.get('README.md')
+    if (readme !== undefined && typeof readme !== 'string')
+      throw new Error('The source README must be text.')
+    files.set(
+      'README.md',
+      (files.has('backend/nestjs/LOCAL-RUN.md')
+        ? '# Run your application\n\nStart with [Local setup and startup](./backend/nestjs/LOCAL-RUN.md). It starts the database, authenticated API, and frontend together. Starting only the frontend does not start the complete application.\n\n'
+        : '') +
+        (readme ?? '# Generated application\n') +
+        '\nSee [Backend login and startup](./BACKEND-CLIENT.md) before running this authenticated application.\n'
+    )
+  }
   if (warnings.length > 0) {
     files.set(
       'EXPORT_WARNINGS.md',

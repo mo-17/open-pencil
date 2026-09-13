@@ -142,7 +142,13 @@ function actionUsesSupabase(
     activeWorkflows.delete(workflow.id)
     return result
   }
-  if (action.kind !== 'apiCall') return false
+  if (
+    action.kind !== 'apiCall' &&
+    action.kind !== 'backendRequest' &&
+    action.kind !== 'backendCommand' &&
+    action.kind !== 'backendCommandRecovery'
+  )
+    return false
   return scanClientActions(
     [...(action.onSuccess ?? []), ...(action.onError ?? [])],
     workflows,

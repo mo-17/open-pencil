@@ -316,12 +316,7 @@ function handlerBranches(h: IREventHandler): IREventHandler[] | null {
   if (h.kind === 'condition' || h.kind === 'confirm') {
     return [...h.consequent, ...(h.alternate ?? [])]
   }
-  if (
-    h.kind === 'apiCall' ||
-    h.kind === 'supabaseQuery' ||
-    h.kind === 'supabaseMutation' ||
-    h.kind === 'invokeServerWorkflow'
-  ) {
+  if (isResultBranchHandler(h)) {
     return [...(h.onSuccess ?? []), ...(h.onError ?? [])]
   }
   return null
@@ -438,12 +433,7 @@ function stripNavigateHandler(
     if (consequent === handler.consequent && alternate === handler.alternate) return handler
     return { ...handler, consequent, alternate }
   }
-  if (
-    handler.kind === 'apiCall' ||
-    handler.kind === 'supabaseQuery' ||
-    handler.kind === 'supabaseMutation' ||
-    handler.kind === 'invokeServerWorkflow'
-  ) {
+  if (isResultBranchHandler(handler)) {
     const onSuccess = handler.onSuccess
       ? stripNavigateHandlerList(handler.onSuccess, nodeId, eventName, warnings)
       : undefined
@@ -470,4 +460,28 @@ function stripNavigateHandlerList(
     next.every((handler, index) => handler === handlers[index])
     ? handlers
     : next
+}
+
+function isResultBranchHandler(handler: IREventHandler): handler is Extract<
+  IREventHandler,
+  {
+    kind:
+      | 'backendRequest'
+      | 'backendCommand'
+      | 'backendCommandRecovery'
+      | 'apiCall'
+      | 'supabaseQuery'
+      | 'supabaseMutation'
+      | 'invokeServerWorkflow'
+  }
+> {
+  return (
+    handler.kind === 'backendRequest' ||
+    handler.kind === 'backendCommand' ||
+    handler.kind === 'backendCommandRecovery' ||
+    handler.kind === 'apiCall' ||
+    handler.kind === 'supabaseQuery' ||
+    handler.kind === 'supabaseMutation' ||
+    handler.kind === 'invokeServerWorkflow'
+  )
 }

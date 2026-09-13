@@ -1,3 +1,4 @@
+import { NESTJS_BACKEND_PROVIDER_BUNDLE } from '@open-pencil/compiler/backend'
 import {
   deriveBackendApplicationCapabilities,
   parseBackendApplicationSpecV1,
@@ -128,6 +129,22 @@ export function validateBackendApplicationDraft(
         message: `The selected Backend Provider does not support ${requirement.capability}.`
       })
     }
+  }
+
+  if (descriptor?.providerId === 'nestjs') {
+    diagnostics.push(
+      ...NESTJS_BACKEND_PROVIDER_BUNDLE.validate({
+        application: parsed.value,
+        selection: {
+          descriptor: { ...descriptor, outputs: descriptor.outputKinds },
+          packageDigest: descriptor.packageAuthority.packageDigest,
+          enabled: true
+        },
+        target: 'react',
+        mode: 'production',
+        capabilities: []
+      })
+    )
   }
 
   return diagnostics.some((entry) => entry.severity === 'error')
