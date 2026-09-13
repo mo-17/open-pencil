@@ -547,6 +547,29 @@ review, or live App Store authority with which to resolve a document's `backendP
 declaration. It therefore does not consume a raw declaration as trusted adapter authority; use the
 Desktop Host export or an explicit local Backend spec instead.
 
+Ordinary `compile`, `build`, and `deploy` commands reject documents containing the App declaration
+before resolving web fonts or producing output. Desktop deployment uses an explicit
+`deploy --backend-provider-stdin --json` process protocol. The bounded JSON request binds the saved
+declaration's exact UTF-8 bytes, its normalized application and Provider identity, framework target,
+and the reviewed plan and artifact manifest. The CLI checks that binding against the same loaded
+graph that it compiles and recomputes plan/emit through its fixed Registry. A malformed, duplicate,
+missing, changed, disabled, or incompatible selection cannot fall back to legacy configuration.
+
+After local runtime preflight and static build, the CLI sends a bounded ready frame containing a
+fresh challenge and digests binding the request, static bytes, and public deployment settings.
+The Desktop Host rechecks the original review and current installed Provider before replying with
+a matching authorization. The CLI uploads the already-read static bytes only after accepting that
+reply. Missing, mismatched, premature, expired, or truncated input stops before upload. A failure
+after the Host starts writing authorization remains an unknown deployment outcome and requires
+reconciliation before retrying.
+
+This process input is a content binding, not proof of App lifecycle or a Backend Release receipt.
+The App owns installed-package review; direct callers of the process protocol own their explicit
+input. Frontend compilation still uses the saved document, not an asserted byte-for-byte copy of
+the current in-memory canvas. A successful upload leaves Backend state unverified. Export Backend
+artifacts through the Desktop Host; the raw CLI build recipe used for legacy documents cannot
+resolve App-owned declarations.
+
 `emit` requires a new output directory and never overwrites an existing path. `audit` parses strict
 gate evidence and an optional secret-free receipt, but it cannot accept that receipt as proof of an
 Apply because the CLI has no reducer-owned remote execution state. `backend release` composes the

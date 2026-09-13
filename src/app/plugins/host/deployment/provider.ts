@@ -5,6 +5,8 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
+import { prepareBackendProviderDeployHandoff } from '@/app/lowcode/preview-pane/deploy/backend-handoff'
+import { BackendProviderDeployPreDispatchError } from '@/app/lowcode/preview-pane/deploy/backend-handoff-runner'
 import {
   deployDocumentScope,
   deployRuntimeConfigSnapshot,
@@ -675,9 +677,25 @@ export function createDeploymentPluginHostAdapter(
         enabled: parameters.locales.length > 0,
         locales: [...parameters.locales]
       }
+      const handoff = prepareBackendProviderDeployHandoff(
+        editor.graph,
+        dispatch.backendProviderBuild,
+        () => {
+          abortBeforeDispatch(options.signal)
+          const current = reviewedExecution(
+            editor,
+            definition,
+            parameters,
+            dispatch.review,
+            backendProviderStore
+          )
+          return { graph: editor.graph, build: current.backendProviderBuild }
+        },
+        options.signal
+      )
       let result: Awaited<ReturnType<DeploymentPluginRunner>>
       try {
-        result = await runner(
+        const runnerArgs = [
           dispatch.path,
           token,
           definition.provider,
@@ -686,8 +704,17 @@ export function createDeploymentPluginHostAdapter(
           parameters.uiKit,
           i18n,
           parameters.runtimeConfig
-        )
+        ] as const
+        result = handoff ? await runner(...runnerArgs, handoff) : await runner(...runnerArgs)
       } catch (cause) {
+        if (cause instanceof BackendProviderDeployPreDispatchError) {
+          if (cause.cause instanceof DeploymentPluginError) throw cause.cause
+          throw new DeploymentPluginError(
+            options.signal?.aborted ? 'aborted' : 'backend-provider-build-failed',
+            cause.message,
+            { cause }
+          )
+        }
         throw new DeploymentPluginError(
           'outcome-unknown',
           'Frontend deployment failed after dispatch began; reconcile the provider dashboard before any retry.',

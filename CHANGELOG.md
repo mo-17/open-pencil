@@ -95,6 +95,7 @@
 
 ### Fixed
 
+- Carry the Desktop-reviewed Backend Provider request into CLI compilation and recheck it before static upload; reject unresolved document declarations instead of silently compiling legacy Supabase configuration.
 - Remove temporary CLI deploy files after controlled compilation, public runtime override validation, or provider upload failures.
 - Block CLI static deployment when the effective runtime configuration fails preflight, while honoring valid public build overrides.
 - Cancel unread Supabase backfill responses with malformed headers, unexpected HTTP status, or rejected redirects while preserving prompt error reporting.

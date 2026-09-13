@@ -339,6 +339,13 @@ static files. Runtime errors, including an HTTP Supabase URL in `--environment p
 upload. Valid build overrides are included in that check; they cannot replace a missing or invalid
 design-time runtime. Uploading static files does not verify a declared Backend.
 
+Documents with an App Backend Provider declaration require Desktop Host export or deployment;
+direct CLI `compile`, `build`, and `deploy` reject the declaration rather than silently choosing the
+legacy Supabase configuration. Desktop deployment passes the reviewed request through bounded
+stdin, binds it to the saved declaration and compiled Provider plan, and rechecks the installed
+Provider after building, before authorizing static upload. Backend artifacts for these documents
+must be exported through the Host; a frontend upload does not apply or verify them.
+
 For Supabase-backed apps, override production public runtime values at build/deploy time with `--supabase-url`, `--supabase-publishable-key`, and `--supabase-schema`, or the matching `VITE_SUPABASE_*` environment variables. The deprecated `--supabase-anon-key` / `VITE_SUPABASE_ANON_KEY` aliases remain accepted for legacy anon JWTs. The editor can inspect a normalized schema catalog with a management PAT held only in the credential store; the PAT and raw catalog never enter the design. Server workflows compile to `openpencil-server/` beside the static bundle. Static deploys intentionally exclude that directory and leave function deployment plus server environment values to the operator. Stripe checkout actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `checkoutUrl`; Stripe customer portal actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `portalUrl`. Stripe secret keys, webhook handling, subscriptions, and customer lookup stay on your server, never in the document or generated SPA. Lowcode analytics supports GA4, Plausible, and PostHog configuration stored in the document plus `trackEvent` actions, optional page views, Do Not Track, and a generated consent banner with local preference persistence, configurable copy, a configurable Analytics default state, and an EEA-style opt-in starter preset. Custom head/CSS support is limited to structured `<meta>`, `<link>`, `<style>`, and `index.css` output; arbitrary JavaScript is intentionally out of scope. See the repository's [Lowcode Apps guide](packages/docs/user-guide/lowcode-apps.md) for authoring. For the fork-specific Supabase, RLS, server-workflow, and deployment path, open **Help → Application Runtime Guide** in the app; that complete guide is bundled for offline use.
 
 Open **Settings → Plugins** to manage the bundled offline catalog or a self-hosted marketplace rooted

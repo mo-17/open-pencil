@@ -66,4 +66,4 @@ const main = defineCommand({
   }
 })
 
-void runMain(main)
+await runMain(main)

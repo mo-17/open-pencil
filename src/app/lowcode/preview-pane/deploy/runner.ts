@@ -1,5 +1,10 @@
 import { decodeTauriStderr } from '@/app/shell/ui'
 
+import type { BackendProviderDeployHandoffOptions } from './backend-handoff'
+import {
+  BackendProviderDeployPreDispatchError,
+  runBackendProviderDeployCommand
+} from './backend-handoff-runner'
 import { buildDeployProcessEnv, parseDeployCLIResult, type DeployCLIResult } from './command'
 import type { DeployEnvironment, DeployRuntimeConfig } from './history'
 
@@ -22,9 +27,9 @@ export async function runDeployCLI(
   site?: string,
   uiKit: DeployUIKit = 'none',
   i18n?: DeployI18n,
-  runtimeConfig?: DeployRuntimeConfig
+  runtimeConfig?: DeployRuntimeConfig,
+  handoff?: BackendProviderDeployHandoffOptions
 ): Promise<DeployCLIResult> {
-  const { Command } = await import('@tauri-apps/plugin-shell')
   const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
   const args = [
     CLI_ENTRY,
@@ -42,11 +47,27 @@ export async function runDeployCLI(
     args.push('--i18n')
     for (const locale of i18n.locales) args.push('--locale', locale)
   }
+  if (handoff) args.push('--backend-provider-stdin')
 
-  const command = Command.create(DEPLOY_COMMAND, args, {
-    cwd: projectRoot,
-    env: buildDeployProcessEnv(provider, token, runtimeConfig)
-  })
+  let command
+  try {
+    const { Command } = await import('@tauri-apps/plugin-shell')
+    command = Command.create(DEPLOY_COMMAND, args, {
+      cwd: projectRoot,
+      env: buildDeployProcessEnv(provider, token, runtimeConfig)
+    })
+  } catch (cause) {
+    if (handoff) {
+      throw new BackendProviderDeployPreDispatchError(
+        'Could not start Backend Provider deployment.',
+        {
+          cause
+        }
+      )
+    }
+    throw cause
+  }
+  if (handoff) return runBackendProviderDeployCommand(command, handoff)
   let stdout = ''
   const stderrTail: string[] = []
   command.stdout.on('data', (raw: Uint8Array | number[] | string) => {

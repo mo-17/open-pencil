@@ -22,6 +22,8 @@ import {
   type ApplicationRuntimeGraph
 } from '@open-pencil/lowcode/application-runtime'
 
+import { hasCLIBackendProviderDeclaration } from '#cli/backend-provider-document'
+import { BackendProviderInput, backendProviderDispatchDigest } from '#cli/backend-provider-input'
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
 import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
 import { withCompilerBuildRoot } from '#cli/compiler-build-root'
@@ -52,6 +54,7 @@ interface DeployArgs {
   'source-locale'?: string
   json?: boolean
   target?: string
+  'backend-provider-stdin'?: boolean
 }
 
 const PROVIDERS = ['netlify', 'vercel', 'cloudflare'] as const
@@ -66,9 +69,6 @@ const TOKEN_HELP: Record<DeployProvider, string> = {
   vercel: 'https://vercel.com/account/tokens',
   cloudflare: 'https://dash.cloudflare.com/profile/api-tokens'
 }
-
-const BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID = 'open-pencil'
-const BACKEND_PROVIDER_DOCUMENT_KEY = 'lowcode/backendProvider.v1'
 
 export interface DirectDeployBackendState {
   readonly audit: ApplicationRuntimeAudit
@@ -91,12 +91,7 @@ export function resolveDirectDeployBackendState(
     readonly env?: BuildOptions['env']
   }
 ): DirectDeployBackendState {
-  const root = graph.getNode(graph.rootId)
-  const backendProviderDeclared = (root?.pluginData ?? []).some(
-    (entry) =>
-      entry.pluginId === BACKEND_PROVIDER_DOCUMENT_PLUGIN_ID &&
-      entry.key === BACKEND_PROVIDER_DOCUMENT_KEY
-  )
+  const backendProviderDeclared = hasCLIBackendProviderDeclaration(graph)
   const audit = auditApplicationRuntime(graph, {
     environment: options.environment,
     effectiveSupabaseConfig: resolveApplicationRuntimeSupabaseConfig(graph, {
@@ -147,6 +142,58 @@ function logProgress(p: DeployProgress, provider: string): void {
   else if (p.stage === 'done') console.log('  Finalizing…')
 }
 
+function deployProgress(json: boolean | undefined, provider: string) {
+  return json ? undefined : (progress: DeployProgress) => logProgress(progress, provider)
+}
+
+function deployServerNotice(built: BuildResult, file: string | undefined, hostReviewed: boolean) {
+  // App declarations need Host-reviewed export; a raw CLI build recipe would fail closed.
+  if (hostReviewed || !file || built.serverFiles.length === 0) return undefined
+  return createDeployServerDeploymentNotice(file, resolve('openpencil-build'), built)
+}
+
+interface DeployReport {
+  readonly result: DeployResult
+  readonly environment: DeployEnvironment
+  readonly target: string
+  readonly backendDeploymentRequired: boolean
+  readonly serverDeployment: ReturnType<typeof deployServerNotice>
+  readonly json: boolean | undefined
+}
+
+function reportDeployResult(report: DeployReport): void {
+  const { result, environment, target, backendDeploymentRequired, serverDeployment } = report
+  if (report.json) {
+    console.log(
+      JSON.stringify(
+        {
+          ...result,
+          environment,
+          target,
+          status: backendDeploymentRequired ? 'frontend-deployed' : 'succeeded',
+          backendDeploymentRequired,
+          serverDeployment
+        },
+        null,
+        2
+      )
+    )
+    return
+  }
+  console.log('')
+  console.log(bold(`  Deployed ${result.fileCount} files to ${result.provider} (${environment})`))
+  console.log('')
+  console.log(ok(`${backendDeploymentRequired ? 'Frontend live' : 'Live'} at ${result.url}`))
+  if (serverDeployment) printManualServerDeploymentNotice(serverDeployment)
+  else if (backendDeploymentRequired) {
+    console.log(
+      dim(
+        '  Backend deployment remains required; static hosting did not verify or apply Backend state.'
+      )
+    )
+  }
+}
+
 export default defineCommand({
   meta: {
     description:
@@ -193,6 +240,11 @@ export default defineCommand({
       required: false
     },
     ...codegenTargetArgs,
+    'backend-provider-stdin': {
+      type: 'boolean',
+      description:
+        'Receive an explicit bounded Backend Provider request and fresh upload authorization over stdin. Requires --json and a saved matching document declaration.'
+    },
     base: {
       type: 'string',
       description: 'Public base path for assets (default: /).',
@@ -239,6 +291,11 @@ export default defineCommand({
       process.exit(1)
     }
     const deployArgs = args as DeployArgs
+    if (deployArgs['backend-provider-stdin'] && !args.json) {
+      printError('Backend Provider stdin handoff requires --json.')
+      process.exitCode = 1
+      return
+    }
     let environment: DeployEnvironment
     try {
       environment = resolveDeployEnvironment(deployArgs.environment)
@@ -256,7 +313,18 @@ export default defineCommand({
     }
 
     const buildDir = mkdtempSync(join(tmpdir(), 'op-deploy-'))
+    const backendInput = deployArgs['backend-provider-stdin']
+      ? new BackendProviderInput()
+      : undefined
     try {
+      let backendProviderHandoff
+      try {
+        backendProviderHandoff = await backendInput?.readRequest()
+      } catch (error) {
+        printError(error)
+        process.exitCode = 1
+        return
+      }
       const compilation = await loadAndCompile({
         file,
         page,
@@ -266,7 +334,8 @@ export default defineCommand({
         i18n,
         locales,
         sourceLocale,
-        target
+        target,
+        backendProviderHandoff
       })
 
       if (!compilation) {
@@ -323,10 +392,32 @@ export default defineCommand({
       const dist = readStaticDist(built)
       const backendDeploymentRequired =
         backendState.backendDeploymentRequired || built.serverFiles.length > 0
-      const serverDeployment =
-        built.serverFiles.length > 0 && file
-          ? createDeployServerDeploymentNotice(file, resolve('openpencil-build'), built)
-          : undefined
+      const serverDeployment = deployServerNotice(built, file, Boolean(backendProviderHandoff))
+
+      const accountId =
+        provider === 'cloudflare' ? resolveCloudflareAccountId(deployArgs['account-id']) : undefined
+      if (backendInput) {
+        try {
+          await backendInput.authorizeUpload(
+            backendProviderDispatchDigest(
+              dist,
+              JSON.stringify({
+                provider,
+                environment,
+                target,
+                site: deployArgs.site,
+                accountId,
+                base,
+                env
+              })
+            )
+          )
+        } catch (error) {
+          printError(error)
+          process.exitCode = 1
+          return
+        }
+      }
 
       let result: DeployResult
       try {
@@ -336,12 +427,9 @@ export default defineCommand({
             provider,
             token,
             site: deployArgs.site,
-            accountId:
-              provider === 'cloudflare'
-                ? resolveCloudflareAccountId(deployArgs['account-id'])
-                : undefined
+            accountId
           },
-          { onProgress: args.json ? undefined : (p) => logProgress(p, provider) }
+          { onProgress: deployProgress(args.json, provider) }
         )
       } catch (e) {
         // Surface the deploy/API failure rather than swallowing it (经验 C).
@@ -350,39 +438,16 @@ export default defineCommand({
         return
       }
 
-      if (args.json) {
-        console.log(
-          JSON.stringify(
-            {
-              ...result,
-              environment,
-              target,
-              status: backendDeploymentRequired ? 'frontend-deployed' : 'succeeded',
-              backendDeploymentRequired,
-              serverDeployment
-            },
-            null,
-            2
-          )
-        )
-        return
-      }
-
-      console.log('')
-      console.log(
-        bold(`  Deployed ${result.fileCount} files to ${result.provider} (${environment})`)
-      )
-      console.log('')
-      console.log(ok(`${backendDeploymentRequired ? 'Frontend live' : 'Live'} at ${result.url}`))
-      if (serverDeployment) printManualServerDeploymentNotice(serverDeployment)
-      else if (backendDeploymentRequired) {
-        console.log(
-          dim(
-            '  Backend deployment remains required; static hosting did not verify or apply Backend state.'
-          )
-        )
-      }
+      reportDeployResult({
+        result,
+        environment,
+        target,
+        backendDeploymentRequired,
+        serverDeployment,
+        json: args.json
+      })
     } finally {
+      backendInput?.dispose()
       rmSync(buildDir, { recursive: true, force: true })
     }
   }

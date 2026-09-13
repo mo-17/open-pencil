@@ -23,6 +23,7 @@ import {
 } from '@/app/plugins/host/backend-provider'
 import { isTauri } from '@/app/tauri/env'
 
+import { prepareBackendProviderDeployHandoff } from './backend-handoff'
 import type { DeployCLIResult } from './command'
 import {
   recordDeployHistory,
@@ -201,7 +202,26 @@ export function useDeploy(): UseDeployResult {
           'Backend Provider selection or application changed after preflight. Review the deployment again.'
         )
       }
-      const result = await runDeployCLI(
+      const handoff = prepareBackendProviderDeployHandoff(
+        requestStore.graph,
+        dispatchBackendBuild,
+        () => {
+          if (
+            !deployScopeIsCurrent(requestStore, requestScope) ||
+            requestStore.getDocumentPath() !== path
+          ) {
+            throw new Error('The deployment document changed. Review the deployment again.')
+          }
+          return {
+            graph: requestStore.graph,
+            build: prepareAppBackendProviderDocumentBuild(appPluginStore, requestStore.graph, {
+              target: 'react',
+              mode: 'production'
+            })
+          }
+        }
+      )
+      const runnerArgs = [
         path,
         trimmed,
         provider,
@@ -210,7 +230,11 @@ export function useDeploy(): UseDeployResult {
         uiKit,
         i18n,
         runtimeConfig
-      )
+      ] as const
+      const finalArgs: Parameters<typeof runDeployCLI> = handoff
+        ? [...runnerArgs, handoff]
+        : [...runnerArgs]
+      const result = await runDeployCLI(...finalArgs)
       const recorded = recordDeployHistory(
         {
           ...result,

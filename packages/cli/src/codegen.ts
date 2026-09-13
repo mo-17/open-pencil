@@ -15,10 +15,12 @@ import type {
   CompilerOutput,
   UIKitName
 } from '@open-pencil/compiler'
+import type { BackendProviderCompileHandoff } from '@open-pencil/compiler/backend'
 import type { BuildOptions } from '@open-pencil/compiler/build'
 import { detectSupabaseSecretKey } from '@open-pencil/lowcode'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
+import { resolveCLIBackendProviderRequest } from '#cli/backend-provider-document'
 import {
   routerForCodegenTarget,
   validateCodegenTargetFeatures,
@@ -227,6 +229,8 @@ export async function loadAndCompile(opts: {
   target?: CodegenWebTarget
   /** Explicitly opt into the lifecycle/manifest packaging contract. */
   packaging?: CompilerMicrofrontendPackaging
+  /** Explicit process input prepared by the caller, never inferred from document data. */
+  backendProviderHandoff?: BackendProviderCompileHandoff
 }): Promise<CompiledDocument | null> {
   if (!opts.file) {
     printError('A document file path is required.')
@@ -259,6 +263,11 @@ export async function loadAndCompile(opts: {
 
   let compiled: CompilerOutput
   try {
+    const backendProvider = resolveCLIBackendProviderRequest(
+      graph,
+      opts.backendProviderHandoff,
+      target
+    )
     // Vue source export follows the same fail-closed redistribution policy as
     // the editor exporter: do not start an online resolver only to publish
     // font bytes without complete family-specific license/NOTICE material.
@@ -284,7 +293,8 @@ export async function loadAndCompile(opts: {
         ...(opts.sourceLocale ? { sourceLocale: opts.sourceLocale } : {}),
         // Phase 3 §15: opt-in UI kit (else byte-identical to before).
         ...(opts.uiKit ? { uiKit: opts.uiKit } : {}),
-        ...(opts.packaging ? { packaging: opts.packaging } : {})
+        ...(opts.packaging ? { packaging: opts.packaging } : {}),
+        backendProvider
       })
     })
     if (target === 'vue') {
