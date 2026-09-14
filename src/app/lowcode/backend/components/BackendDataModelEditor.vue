@@ -27,7 +27,6 @@ import {
   setBackendFieldType,
   setBackendFieldUnique
 } from '../draft'
-
 import {
   addNestJSEntity,
   addNestJSField,
@@ -40,8 +39,12 @@ const { application, nestjs = false } = defineProps<{
   application: BackendApplicationSpecV1
   nestjs?: boolean
 }>()
-const { panels } = useI18n()
+const { panels, locale } = useI18n()
 const operationError = ref('')
+const newEntityModuleId = ref('')
+const moduleLabel = computed(() =>
+  locale.value.startsWith('zh') ? '新建数据表所属模块' : 'Module for the new table'
+)
 const allFieldTypes = Object.freeze([
   'string',
   'integer',
@@ -64,7 +67,11 @@ const fieldTypes = computed(() =>
     : allFieldTypes
 )
 function addEntity(): void {
-  run(() => (nestjs ? addNestJSEntity(application, 'table') : addBackendEntity(application)))
+  run(() =>
+    nestjs
+      ? addNestJSEntity(application, 'table', newEntityModuleId.value)
+      : addBackendEntity(application)
+  )
 }
 function addField(entity: DataEntityIR): void {
   run(() => (nestjs ? addNestJSField(application, entity) : addBackendField(entity)))
@@ -291,13 +298,33 @@ function updateLiteral(field: DataFieldIR, value: string): void {
       <button
         type="button"
         data-test-id="lowcode-backend-add-entity"
-        :disabled="application.dataModel.entities.length >= BACKEND_LIMITS.maxEntities"
+        :disabled="
+          application.dataModel.entities.length >= BACKEND_LIMITS.maxEntities ||
+          Boolean(
+            application.modules &&
+            !application.modules.modules.some((module) => module.id === newEntityModuleId)
+          )
+        "
         class="rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
         @click="addEntity"
       >
         {{ panels.lowcodeBackendAddEntity }}
       </button>
     </div>
+    <label v-if="application.modules" class="flex flex-col gap-1 text-[10px] text-muted">
+      {{ moduleLabel }}
+      <select
+        v-model="newEntityModuleId"
+        :aria-label="moduleLabel"
+        data-test-id="lowcode-backend-new-entity-module"
+        class="rounded border border-border bg-input px-2 py-1 text-xs text-surface"
+      >
+        <option value="" disabled>{{ moduleLabel }}</option>
+        <option v-for="module in application.modules.modules" :key="module.id" :value="module.id">
+          {{ module.name }}
+        </option>
+      </select>
+    </label>
     <p v-if="application.dataModel.entities.length === 0" class="text-[10px] text-muted">
       {{ panels.lowcodeBackendNoEntities }}
     </p>

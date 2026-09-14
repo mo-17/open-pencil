@@ -247,7 +247,7 @@ describe('bounded Backend server command authority', () => {
     [
       'oversized step list',
       (app: ReturnType<typeof commandApplication>) => {
-        command(app).steps = Array.from({ length: 17 }, () =>
+        command(app).steps = Array.from({ length: 33 }, () =>
           structuredClone(command(app).steps[0])
         )
       }
@@ -271,7 +271,7 @@ describe('bounded Backend server command authority', () => {
     { name: 'count', type: 'integer', required: true, min: 1 },
     { name: 'count', type: 'uuid', required: false },
     { name: 'count', type: 'uuid', required: true, maxLength: 10 },
-    { name: 'text', type: 'string', required: true, maxLength: 513 },
+    { name: 'text', type: 'string', required: true, maxLength: 8193 },
     { name: '__proto__', type: 'string', required: true, maxLength: 20 }
   ])('rejects invalid parameter bounds or shape %#', (value) => {
     const application = commandApplication()

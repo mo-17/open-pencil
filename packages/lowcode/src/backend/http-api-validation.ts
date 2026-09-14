@@ -1,6 +1,8 @@
 import { parseBackendBrowserClient } from './browser-client'
 import { parseBackendHttpQuery } from './http-query-validation'
 import { BACKEND_LIMITS } from './limits'
+import { relatedMemberProtectedFields } from './row-access/related-member'
+import { allowTenantCreateSelectors } from './tenancy/http-create'
 import {
   BACKEND_HTTP_API_IR_VERSION,
   type AuthPolicyIR,
@@ -196,6 +198,9 @@ function identityFields(entityId: string, auth: AuthPolicyIR): Set<string> {
     if (tenant.membershipIdentityFieldId) fields.add(tenant.membershipIdentityFieldId)
     if (tenant.membershipTenantFieldId) fields.add(tenant.membershipTenantFieldId)
   }
+  for (const field of relatedMemberProtectedFields(auth.rowAccess, entityId)) fields.add(field)
+  for (const policy of auth.rowAccess.filter((entry) => entry.entityId === entityId))
+    for (const condition of policy.conditions ?? []) fields.add(condition.fieldId)
   return fields
 }
 
@@ -223,6 +228,9 @@ function writableFields(
   }
   const fields = fieldSet(source[key], fieldPath, entity, context)
   const protectedFields = identityFields(entity.id, auth)
+  if (operation === 'create') {
+    allowTenantCreateSelectors(entity, auth, protectedFields)
+  }
   if (operation === 'update') {
     for (const field of entity.primaryKey?.fields ?? []) protectedFields.add(field)
   }
@@ -306,6 +314,7 @@ function resource(
       'entityId',
       'operations',
       'readFields',
+      'readPolicyIds',
       'createFields',
       'updateFields',
       'maxPageSize',
@@ -330,6 +339,33 @@ function resource(
   const operations = stringSet(source.operations, `${path}.operations`, context, OPERATIONS)
   const readFields = fieldSet(source.readFields, `${path}.readFields`, entity, context)
   if (!operations) return undefined
+  validateMembershipDelete(operations, references.auth, entity.id, path, context)
+  const readPolicyIds =
+    source.readPolicyIds === undefined
+      ? undefined
+      : nonEmptyItems(source.readPolicyIds, path + '.readPolicyIds', context, 128, id)
+  if (readPolicyIds) {
+    uniqueBy(readPolicyIds, path + '.readPolicyIds', context, 'read policy')
+    if (
+      !operations.some((operation) => operation === 'list' || operation === 'read') ||
+      readPolicyIds.some(
+        (policyId) =>
+          !references.auth.rowAccess.some(
+            (policy) =>
+              policy.id === policyId &&
+              policy.entityId === entity.id &&
+              policy.effect === 'allow' &&
+              policy.operations.includes('select')
+          )
+      )
+    )
+      diagnostic(
+        context,
+        'backend-http-api-read-policy-invalid',
+        path + '.readPolicyIds',
+        'Read policy selections must reference existing allow/select policies of this resource entity and require a read operation.'
+      )
+  }
   const createFields = writableFields(
     source,
     'create',
@@ -368,6 +404,7 @@ function resource(
         entityId,
         operations,
         readFields,
+        ...(readPolicyIds ? { readPolicyIds: sorted(readPolicyIds, (entry) => entry) } : {}),
         ...(createFields ? { createFields } : {}),
         ...(updateFields ? { updateFields } : {}),
         ...(maxPageSize === undefined ? {} : { maxPageSize }),
@@ -487,4 +524,27 @@ export function parseBackendHttpAPIIRV1(
     resources: sorted(resources, (entry) => entry.id),
     ...(browserClient ? { browserClient } : {})
   }
+}
+
+function validateMembershipDelete(
+  operations: readonly BackendHttpAPIOperation[],
+  auth: AuthPolicyIR,
+  entityId: string,
+  path: string,
+  context: BackendValidationContext
+): void {
+  if (
+    operations.includes('delete') &&
+    auth.rowAccess.some(
+      (policy) =>
+        policy.principal.kind === 'related-member' &&
+        policy.principal.membershipEntityId === entityId
+    )
+  )
+    diagnostic(
+      context,
+      'backend-http-api-membership-delete',
+      path + '.operations',
+      'Membership authority must be revoked through an explicit command locking its authority parent, not direct HTTP deletion.'
+    )
 }

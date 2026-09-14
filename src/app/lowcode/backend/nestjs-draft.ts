@@ -1,3 +1,5 @@
+import { toRaw } from 'vue'
+
 import { BACKEND_LIMITS } from '@open-pencil/lowcode/backend'
 import type {
   BackendApplicationSpecV1,
@@ -52,8 +54,12 @@ export function addNestJSField(
 
 export function addNestJSEntity(
   application: BackendApplicationSpecV1,
-  preferred = 'notes'
+  preferred = 'notes',
+  moduleId?: string
 ): DataEntityIR {
+  const module = application.modules?.modules.find((entry) => entry.id === moduleId)
+  if (application.modules && !module)
+    throw new BackendDraftOperationError('Select a business module before adding an entity.')
   if (!application.httpApi || application.auth.identities.length !== 1) {
     throw new BackendDraftOperationError('Initialize the NestJS model before adding an entity.')
   }
@@ -108,6 +114,10 @@ export function addNestJSEntity(
     maxPageSize: 50
   }
   application.httpApi.resources.push(resource)
+  if (module) {
+    module.entityIds.push(entity.id)
+    module.resourceIds.push(resource.id)
+  }
   addNestJSField(application, entity, 'title')
   addNestJSField(application, entity, 'content')
   return entity
@@ -187,7 +197,19 @@ export function enableNestJSBrowserClient(application: BackendApplicationSpecV1)
 }
 
 export function removeNestJSEntity(application: BackendApplicationSpecV1, entityId: string): void {
-  const candidate = structuredClone(application)
+  const candidate = structuredClone(toRaw(application))
+  const module = candidate.modules?.modules.find((entry) => entry.entityIds.includes(entityId))
+  if (module) {
+    if (module.entityIds.length <= 1)
+      throw new BackendDraftOperationError('Keep at least one entity in each business module.')
+    module.entityIds = module.entityIds.filter((id) => id !== entityId)
+    const removedResources = new Set(
+      candidate.httpApi?.resources
+        .filter((resource) => resource.entityId === entityId)
+        .map((resource) => resource.id)
+    )
+    module.resourceIds = module.resourceIds.filter((id) => !removedResources.has(id))
+  }
   candidate.auth.rowAccess = candidate.auth.rowAccess.filter((rule) => rule.entityId !== entityId)
   candidate.auth.ownership = candidate.auth.ownership.filter((rule) => rule.entityId !== entityId)
   if (candidate.httpApi)
@@ -198,4 +220,5 @@ export function removeNestJSEntity(application: BackendApplicationSpecV1, entity
   application.dataModel = candidate.dataModel
   application.auth = candidate.auth
   application.httpApi = candidate.httpApi
+  if (candidate.modules) application.modules = candidate.modules
 }

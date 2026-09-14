@@ -189,4 +189,5 @@ export function createCommerceCatalogPage(
     actions: catalog.recovery,
     acknowledgeLabel: copy.newRestock
   })
+  return admin
 }

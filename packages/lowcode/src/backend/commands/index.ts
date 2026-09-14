@@ -1,3 +1,4 @@
+import { validateCommerceCommand } from '../commerce/command-validation'
 import {
   parseArrayItems,
   record,
@@ -23,7 +24,8 @@ export function parseBackendCommandIRV1(
   value: unknown,
   path: string,
   references: CommandReferences,
-  context: BackendValidationContext
+  context: BackendValidationContext,
+  maximumCommands = 16
 ): BackendCommandIRV1 | undefined {
   const source = record(value, path, context, ['version', 'commands'])
   if (!source) return undefined
@@ -41,7 +43,7 @@ export function parseBackendCommandIRV1(
     source.commands,
     path + '.commands',
     context,
-    16,
+    maximumCommands,
     commandDefinition
   )
   if (!commands) return undefined
@@ -63,6 +65,12 @@ export function parseBackendCommandIRV1(
     context,
     'command route'
   )
+  uniqueBy(
+    commands.flatMap((command) => (command.commerceOperation ? [command.commerceOperation] : [])),
+    path + '.commands',
+    context,
+    'commerce operation'
+  )
   for (const command of commands) {
     if (references.api?.resources.some((resource) => routeOverlap(command.path, resource.path)))
       commandError(
@@ -70,7 +78,8 @@ export function parseBackendCommandIRV1(
         path + '.commands.' + command.id + '.path',
         'Command routes cannot collide with resource collection or item routes.'
       )
-    validateCommandReferences(command, references, context)
+    if (command.commerceOperation) validateCommerceCommand(command, references.commerce, context)
+    else validateCommandReferences(command, references, context)
   }
   return {
     version: BACKEND_COMMAND_IR_VERSION,

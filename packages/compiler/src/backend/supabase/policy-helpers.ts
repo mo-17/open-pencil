@@ -61,6 +61,7 @@ export function supabaseAllowPolicyPredicate(
     return `coalesce((select auth.jwt()) -> 'app_metadata' -> 'roles', '[]'::jsonb) ? ${quoteSupabaseLiteral(role.name)}`
   }
   if (principal.kind === 'tenant-member') {
+    if (principal.roleId !== undefined) return undefined
     const tenant = application.auth.tenants.find((entry) => entry.id === principal.tenantId)
     if (
       !tenant ||

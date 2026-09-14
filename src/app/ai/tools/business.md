@@ -1,0 +1,11 @@
+## Business application templates
+
+For a working CRM, customer follow-up system, service desk, ticket approval, content/knowledge base, booking/registration app, or project/task app, call `create_business_app` before styling. Choose the matching `kind`: `customer-crm`, `service-desk`, `content-knowledge-base`, `booking-registration`, or `project-tasks`. Use `locale: zh-CN` for Chinese page copy.
+
+For a new application, use `mode: create` (the default) and provide the selected public authentication configuration. For an explicit request to extend an existing compatible application, use `mode: add-module` and omit `authentication`, `issuer` and `client_id`: the tool reviews the current model, adds only the selected module, shares login and account setup, and appends navigation in one undoable change. An installed module or a conflict blocks the operation; explain the result instead of overwriting the application.
+
+Do not replace the working flow with decorative cards. Inspect all returned pages, retain account setup, OIDC routes, server resource bindings, relation pickers, confirmations and saved-request recovery, then restyle those controls. Export every `exportPageId` together as one React or Vue application, including existing pages when adding a module.
+
+Do not create a second backend in an existing application, silently install modules or upgrade older templates, grant roles through client state, insert arbitrary client JavaScript, or model authorization as hidden buttons. Preserve existing pages and user customizations. CRM assignees, independent reviewers, booking capacity and project memberships are enforced by the reviewed server commands. Explain the required identity-service roles and initial profile registration. Module installation edits the document; database migration remains a separate reviewed step.
+
+These templates do not automatically start services, migrate databases, export/deploy, verify real login, send notifications or connect attachments/payments/third-party APIs. Content is plain text, ticket approval has one independent review stage, and bookings use explicit ISO 8601 times with a time zone. Keep those limits visible when discussing the generated application.

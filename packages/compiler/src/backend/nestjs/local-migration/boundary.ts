@@ -6,13 +6,8 @@ import type {
   DataEntityIR
 } from '@open-pencil/lowcode/backend'
 
-export function localMigrationDiagnostic(
-  code: string,
-  path: string,
-  message: string
-): BackendDiagnostic {
-  return { code: 'backend-local-migration-' + code, severity: 'error', path, message }
-}
+import { localMigrationDiagnostic } from './diagnostic'
+import { validateModuleSchemaAddition } from './module-boundary'
 
 function relationNames(entity: DataEntityIR): string[] {
   return [entity.name, entity.name + '_pkey', entity.name + '_owner_page_idx']
@@ -78,6 +73,14 @@ export function validateLocalMigrationBoundary(
       )
     )
   }
+  if (Boolean(from.commerce) !== Boolean(to.commerce))
+    diagnostics.push(
+      localMigrationDiagnostic(
+        'commerce-ledger-change-blocked',
+        '$.toApplication.commerce',
+        'Adding or removing commerce financial ledgers requires a separately reviewed migration or a fresh isolated database.'
+      )
+    )
   const advanced = [from, to].some(
     ({ dataModel, commands }) =>
       (commands?.commands.length ?? 0) > 0 ||
@@ -90,11 +93,11 @@ export function validateLocalMigrationBoundary(
           (entity.indexes?.length ?? 0) > 0
       )
   )
-  if (
-    advanced &&
+  const schemaChanged =
     digestCanonicalBackendValue(from.dataModel, '$.from.model') !==
-      digestCanonicalBackendValue(to.dataModel, '$.to.model')
-  ) {
+    digestCanonicalBackendValue(to.dataModel, '$.to.model')
+  if (schemaChanged && to.modules) diagnostics.push(...validateModuleSchemaAddition(from, to))
+  if (advanced && schemaChanged && !to.modules) {
     diagnostics.push(
       localMigrationDiagnostic(
         'relational-schema-change-blocked',
@@ -130,5 +133,16 @@ export function validateLocalMigrationBoundary(
       )
     }
   }
+  if (
+    digestCanonicalBackendValue(from.auth.tenants, '$.from.tenants') !==
+    digestCanonicalBackendValue(to.auth.tenants, '$.to.tenants')
+  )
+    diagnostics.push(
+      localMigrationDiagnostic(
+        'tenant-change-blocked',
+        '$.toApplication.auth.tenants',
+        'Changing tenant or store membership bindings requires a separately reviewed data migration.'
+      )
+    )
   return diagnostics
 }

@@ -1,8 +1,14 @@
 import { parseAuthPolicyIR, parseBackendWorkflowIR } from './auth-workflow-validation'
 import { parseBackendCommandIRV1 } from './commands'
+import { validateCommerceWriteBoundaries } from './commerce/access-validation'
+import { validateCommerceAuth } from './commerce/auth-validation'
+import { validateCommerceModel } from './commerce/model-validation'
+import { parseBackendCommerceIRV1 } from './commerce/shape'
 import { parseBackendHttpAPIIRV1 } from './http-api-validation'
 import { BACKEND_LIMITS } from './limits'
 import { parseDataModelIR } from './model-validation'
+import { parseBackendModuleIRV1 } from './modules/shape'
+import { validateBackendModules } from './modules/validation'
 import { assertBackendSecretFreeData } from './secret-boundary'
 import { parseBackendStorageIR } from './storage-validation'
 import {
@@ -198,6 +204,8 @@ export function parseBackendApplicationSpecV1(
       'storage',
       'httpApi',
       'commands',
+      'commerce',
+      'modules',
       'capabilities',
       'secrets'
     ],
@@ -273,15 +281,34 @@ export function parseBackendApplicationSpecV1(
     dataModel && auth && source.httpApi !== undefined
       ? parseBackendHttpAPIIRV1(source.httpApi, '$.httpApi', dataModel, auth, secrets, context)
       : undefined
+  const commerce =
+    source.commerce === undefined
+      ? undefined
+      : parseBackendCommerceIRV1(source.commerce, '$.commerce', context)
+  if (commerce && dataModel && auth) validateCommerceModel(commerce, dataModel, auth, context)
+  if (commerce && auth) validateCommerceAuth(commerce, auth, api, context)
+  const modules =
+    source.modules === undefined
+      ? undefined
+      : parseBackendModuleIRV1(source.modules, '$.modules', context)
   const commands =
     dataModel && auth && source.commands !== undefined
       ? parseBackendCommandIRV1(
           source.commands,
           '$.commands',
-          { model: dataModel, auth, api },
-          context
+          { model: dataModel, auth, api, commerce },
+          context,
+          modules ? 128 : 16
         )
       : undefined
+  if (commerce && workflows)
+    validateCommerceWriteBoundaries(commerce, api, commands, workflows, context)
+  if (modules && dataModel && auth && workflows)
+    validateBackendModules(
+      modules,
+      { dataModel, auth, workflows, storage, httpApi: api, commands, commerce },
+      context
+    )
   const hasErrors = context.diagnostics.some((entry) => entry.severity === 'error')
   if (
     source.format !== 'openpencil.backend-application' ||
@@ -310,6 +337,8 @@ export function parseBackendApplicationSpecV1(
       ...(storage ? { storage } : {}),
       ...(api ? { httpApi: api } : {}),
       ...(commands ? { commands } : {}),
+      ...(commerce ? { commerce } : {}),
+      ...(modules ? { modules } : {}),
       capabilities: sorted(capabilities, (entry) => entry.capability),
       secrets: sorted(secrets, (entry) =>
         entry.kind === 'credential'

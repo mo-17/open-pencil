@@ -1,3 +1,4 @@
+import type { BackendCommerceIRV1 } from '../commerce/types'
 import type {
   AuthPolicyIR,
   BackendHttpAPIIRV1,
@@ -6,7 +7,9 @@ import type {
   DataModelIR
 } from '../types'
 import type { BackendValidationContext } from '../validation-helpers'
+import { commandInheritedOwner, validateCommandRowPolicy } from './row-policy'
 import { commandError } from './shape-values'
+import { validateCommandTenantAccess, validateCommandTenantStep } from './tenant'
 import type { BackendCommandDefinitionIR, BackendCommandStepIR } from './types'
 import {
   validateCommandAssignment,
@@ -19,6 +22,7 @@ export interface CommandReferences {
   model: DataModelIR
   auth: AuthPolicyIR
   api?: BackendHttpAPIIRV1
+  commerce?: BackendCommerceIRV1
 }
 
 function entityInfo(
@@ -76,7 +80,8 @@ function mutation(
   step: Extract<BackendCommandStepIR, { kind: 'data.mutate' }>,
   info: { entity: DataEntityIR; primary: DataFieldIR; owner: DataFieldIR },
   path: string,
-  ctx: CommandValueContext
+  ctx: CommandValueContext,
+  references: CommandReferences
 ): void {
   if (step.operation === 'update') {
     const previous = ctx.results.get(step.record)
@@ -111,12 +116,13 @@ function mutation(
     if (
       step.operation === 'insert' &&
       target.id === info.owner.id &&
-      entry.value.kind !== 'caller-sub'
+      entry.value.kind !== 'caller-sub' &&
+      !commandInheritedOwner(step, info.owner.id, references, ctx)
     )
       commandError(
         ctx.context,
         valuePath,
-        'Inserted owners must come directly from the verified caller subject.'
+        'Inserted owners require the verified caller or an authorized locked parent bound by the complete private foreign key.'
       )
     validateCommandAssignment(entry.value, target, valuePath + '.value', ctx)
   }
@@ -142,12 +148,15 @@ export function validateCommandReferences(
 ): void {
   const path = '$.commands.commands.' + command.id
   if (
-    command.access.kind === 'role' &&
+    command.access.kind !== 'authenticated' &&
+    command.access.roleId !== undefined &&
     !references.auth.roles.some(
-      (role) => command.access.kind === 'role' && role.id === command.access.roleId
+      (role) => command.access.kind !== 'authenticated' && role.id === command.access.roleId
     )
   )
     commandError(context, path + '.access', 'Command role grants must reference a declared role.')
+  validateCommandTenantAccess(command, references, path + '.access', context)
+  validateCommandRowPolicy(command, references, path + '.access', context)
   const results = new Map<string, CommandResult>()
   const ctx = { command, model: references.model, results, context }
   for (const [index, step] of command.steps.entries()) {
@@ -158,12 +167,13 @@ export function validateCommandReferences(
     }
     const info = entityInfo(step.entityId, stepPath + '.entityId', references, context)
     if (!info) continue
+    validateCommandTenantStep(step, references, stepPath, ctx)
     projection(info.entity, step.fields, stepPath + '.fields', context)
     if (step.kind === 'data.read') {
       if (!step.fields.includes(info.primary.id))
         commandError(context, stepPath + '.fields', 'Locked reads must project the primary key.')
       validateCommandAssignment(step.key, info.primary, stepPath + '.key', ctx)
-    } else mutation(step, info, stepPath, ctx)
+    } else mutation(step, info, stepPath, ctx, references)
     results.set(step.resultName, {
       entity: info.entity,
       fields: step.fields,

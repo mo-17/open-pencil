@@ -140,12 +140,30 @@ export interface AuthTenantIR {
 
 export type AuthAccessOperation = 'select' | 'insert' | 'update' | 'delete'
 
+/** A fixed equality predicate, ANDed with its principal; never a caller-controlled filter. */
+export interface AuthRowConditionIR {
+  fieldId: string
+  value: string | number | boolean | null
+}
+
+/** Bounded membership lookup. Identity always comes from the verified subject. */
+export interface AuthRelatedMemberPrincipalIR {
+  kind: 'related-member'
+  entityFieldId: string
+  membershipEntityId: string
+  membershipFieldId: string
+  identityFieldId: string
+  conditions?: AuthRowConditionIR[]
+  roleId?: string
+}
+
 export type AuthPrincipalIntent =
   | { kind: 'anonymous' }
   | { kind: 'authenticated' }
   | { kind: 'role'; roleId: string }
   | { kind: 'owner'; ownershipId: string }
-  | { kind: 'tenant-member'; tenantId: string }
+  | { kind: 'tenant-member'; tenantId: string; roleId?: string }
+  | AuthRelatedMemberPrincipalIR
 
 export interface AuthRowAccessIntentIR {
   id: string
@@ -153,6 +171,7 @@ export interface AuthRowAccessIntentIR {
   effect: 'allow' | 'deny'
   operations: AuthAccessOperation[]
   principal: AuthPrincipalIntent
+  conditions?: AuthRowConditionIR[]
 }
 
 export interface AuthPolicyIR {
@@ -292,6 +311,8 @@ export interface BackendHttpAPIResourceIRV1 {
   entityId: string
   operations: BackendHttpAPIOperation[]
   readFields: string[]
+  /** Optional nonempty subset of existing same-entity allow/select policies; never grants authority. */
+  readPolicyIds?: string[]
   createFields?: string[]
   updateFields?: string[]
   maxPageSize?: number
@@ -355,6 +376,10 @@ export interface BackendApplicationSpecV1 {
   httpApi?: BackendHttpAPIIRV1
   /** Omitted in existing documents; explicit bounded server commands are a separate authority. */
   commands?: BackendCommandIRV1
+  /** Closed commerce semantics. Omitted from existing documents and their canonical bytes. */
+  commerce?: BackendCommerceIRV1
+  /** Optional reviewed partition for a modular single-process backend; grants no authority. */
+  modules?: BackendModuleIRV1
   capabilities: BackendCapabilityRequirement[]
   secrets: BackendSecretRef[]
 }
@@ -410,3 +435,5 @@ export type BackendValidationResult<T> =
   | { ok: true; value: T; diagnostics: BackendDiagnostic[] }
   | { ok: false; diagnostics: BackendDiagnostic[] }
 import type { BackendCommandIRV1 } from './commands/types'
+import type { BackendCommerceIRV1 } from './commerce/types'
+import type { BackendModuleIRV1 } from './modules/types'

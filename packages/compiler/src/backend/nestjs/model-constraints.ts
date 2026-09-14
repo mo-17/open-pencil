@@ -12,7 +12,16 @@ function publicRead(
     (resource) =>
       resource.entityId === entityId &&
       resource.operations.some((operation) => ['list', 'read'].includes(operation)) &&
-      targetFields.every((field) => resource.readFields.includes(field))
+      targetFields.every((field) => resource.readFields.includes(field)) &&
+      application.auth.rowAccess.some(
+        (policy) =>
+          policy.entityId === entityId &&
+          policy.effect === 'allow' &&
+          policy.principal.kind === 'anonymous' &&
+          policy.conditions === undefined &&
+          policy.operations.includes('select') &&
+          (!resource.readPolicyIds || resource.readPolicyIds.includes(policy.id))
+      )
   )
   return (
     Boolean(projected) &&
@@ -21,6 +30,7 @@ function publicRead(
         policy.entityId === entityId &&
         policy.effect === 'allow' &&
         policy.principal.kind === 'anonymous' &&
+        policy.conditions === undefined &&
         policy.operations.includes('select')
     )
   )

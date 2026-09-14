@@ -15,7 +15,14 @@ import {
   type AppBackendProviderHostStore
 } from '@/app/plugins/host/backend-provider'
 
+import { businessTemplateDefinition } from '../business/definitions'
+import { createBusinessApplication } from '../business/model'
+import { createBusinessPages } from '../business/template'
 import { createCommerceApplication } from '../commerce/application'
+import { createMerchantCommerceApplication } from '../commerce/merchant/application'
+import { createMerchantCommercePages } from '../commerce/merchant/template'
+import { createCommerceOperationsApplication } from '../commerce/operations/application'
+import { createCommerceOperationsPages } from '../commerce/operations/template'
 import { createCommercePages } from '../commerce/template'
 import {
   BackendDocumentValidationError,
@@ -24,7 +31,12 @@ import {
 } from '../document'
 import { createNestJSNotesApplication } from '../nestjs-draft'
 import { createPersonalNotesPages, type NotesTemplateEditor } from '../notes-template'
-import type { BackendLibraryTemplateId } from './catalog'
+import {
+  isBackendLibraryTemplateId,
+  isBusinessTemplate,
+  isCommerceOperationsTemplate,
+  type BackendLibraryTemplateId
+} from './catalog'
 import { backendProviderDescriptorKey } from './provider-identity'
 export type BackendLibraryBlockReason = '' | 'busy' | 'document' | 'draft' | 'read-error'
 type LibraryEditor = NotesTemplateEditor & Pick<Editor, 'switchPage' | 'zoomToFit'>
@@ -124,9 +136,26 @@ function install(
   context: BackendLibraryInstallContext,
   templateId: BackendLibraryTemplateId,
   authentication: BackendHttpAPIOIDCAuthenticationIRV1,
-  descriptor: AppBackendProviderDescriptor
+  descriptor: AppBackendProviderDescriptor,
+  commissionBasisPoints: number
 ): BackendLibraryInstallResult {
   const applicationId = context.draft.value.applicationId
+  if (isBusinessTemplate(templateId)) {
+    const application = createBusinessApplication(applicationId, authentication, templateId)
+    const result = createBusinessPages(
+      context.editor,
+      descriptor,
+      application,
+      templateId,
+      context.locale()
+    )
+    const path = result.paths[businessTemplateDefinition(templateId).entryPage]
+    const pageId = result.pageIds.find(
+      (id) => context.editor.graph.getNode(id)?.lowcodeRoutePattern === path
+    )
+    if (!pageId) throw unavailable('The created business page is unavailable.')
+    return { templateId, descriptor, pageId, path }
+  }
   if (templateId === 'personal-notes') {
     const application = createNestJSNotesApplication(applicationId)
     if (!application.httpApi?.browserClient)
@@ -135,8 +164,40 @@ function install(
     const result = createPersonalNotesPages(context.editor, descriptor, application)
     return { templateId, descriptor, pageId: result.notesPageId, path: result.notesPath }
   }
-  const application = createCommerceApplication(applicationId, authentication)
-  const result = createCommercePages(context.editor, descriptor, application, context.locale())
+  const mode =
+    templateId === 'multi-merchant-marketplace' || templateId === 'multi-merchant-commerce'
+      ? 'multi-merchant'
+      : 'single-merchant'
+  const createPages = () => {
+    if (isCommerceOperationsTemplate(templateId))
+      return createCommerceOperationsPages(
+        context.editor,
+        descriptor,
+        createCommerceOperationsApplication(
+          applicationId,
+          authentication,
+          mode,
+          commissionBasisPoints
+        ),
+        mode,
+        context.locale()
+      )
+    if (templateId === 'single-sku-shop')
+      return createCommercePages(
+        context.editor,
+        descriptor,
+        createCommerceApplication(applicationId, authentication),
+        context.locale()
+      )
+    return createMerchantCommercePages(
+      context.editor,
+      descriptor,
+      createMerchantCommerceApplication(applicationId, authentication, mode),
+      mode,
+      context.locale()
+    )
+  }
+  const result = createPages()
   const pageId = result.pageIds.find(
     (id) => context.editor.graph.getNode(id)?.lowcodeRoutePattern === result.paths.shop
   )
@@ -144,12 +205,13 @@ function install(
   return { templateId, descriptor, pageId, path: result.paths.shop }
 }
 
-/** Both templates share the same live authority and document admission immediately before mutation. */
+/** Templates share the same live authority and document admission immediately before mutation. */
 export function createBackendLibraryInstaller(context: BackendLibraryInstallContext) {
   async function create(
     templateId: string,
     authentication: BackendHttpAPIOIDCAuthenticationIRV1,
-    expectedProviderKey: string
+    expectedProviderKey: string,
+    commissionBasisPoints = 0
   ): Promise<boolean> {
     if (context.busy.value) return false
     if (blockReason(context)) {
@@ -166,8 +228,17 @@ export function createBackendLibraryInstaller(context: BackendLibraryInstallCont
     context.started()
     let created = false
     try {
-      if (templateId !== 'personal-notes' && templateId !== 'single-sku-shop')
+      if (!isBackendLibraryTemplateId(templateId))
         throw unavailable('Select a supported application template.')
+      if (
+        !Number.isInteger(commissionBasisPoints) ||
+        commissionBasisPoints < 0 ||
+        commissionBasisPoints > 10000 ||
+        (!isCommerceOperationsTemplate(templateId) && commissionBasisPoints !== 0)
+      )
+        throw unavailable(
+          'Commission requires an operations template and an integer from 0 to 10000 basis points.'
+        )
       const auth = authenticationSnapshot(authentication)
       provider(context, expectedProviderKey)
       await Promise.resolve()
@@ -179,7 +250,13 @@ export function createBackendLibraryInstaller(context: BackendLibraryInstallCont
         throw unavailable(
           'The document or Backend draft changed before template creation. Review it and try again.'
         )
-      const result = install(context, templateId, auth, provider(context, expectedProviderKey))
+      const result = install(
+        context,
+        templateId,
+        auth,
+        provider(context, expectedProviderKey),
+        commissionBasisPoints
+      )
       created = true
       context.created(result)
       await context.editor.switchPage(result.pageId)

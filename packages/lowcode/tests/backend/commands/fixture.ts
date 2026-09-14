@@ -249,11 +249,15 @@ export function required<T>(value: T | undefined): T {
   if (value === undefined) throw new Error('Missing command fixture entry')
   return value
 }
-export function updateStep(step: BackendCommandStepIR) {
+export function updateStep(
+  step: BackendCommandStepIR
+): Extract<BackendCommandStepIR, { kind: 'data.mutate'; operation: 'update' }> {
   if (step.kind !== 'data.mutate' || step.operation !== 'update') throw new Error('Expected update')
   return step
 }
-export function insertStep(step: BackendCommandStepIR) {
+export function insertStep(
+  step: BackendCommandStepIR
+): Extract<BackendCommandStepIR, { kind: 'data.mutate'; operation: 'insert' }> {
   if (step.kind !== 'data.mutate' || step.operation !== 'insert') throw new Error('Expected insert')
   return step
 }

@@ -1,6 +1,15 @@
 export { BACKEND_LIMITS } from './limits'
 export * from './types'
 export * from './commands/types'
+export * from './modules/types'
+export {
+  backendModuleReferencedEntities,
+  type BackendModuleReferences
+} from './modules/dependencies'
+export * from './commerce/types'
+export * from './commerce/schema'
+export { commerceEntityForeignKeys } from './commerce/relationships'
+export * from './commerce/operations'
 export { isBackendOIDCIssuer, isBackendClientPath, isBackendAuthReturnPath } from './browser-client'
 export * from './client-bindings'
 export * from './application'

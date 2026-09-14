@@ -27,6 +27,7 @@ function validText(value: string, maximum: number): boolean {
 }
 
 function parameterValue(parameter: CommandParameter, value: unknown): Scalar {
+  if (parameter.type === 'datetime') return commandDatetime(value)
   if (parameter.type === 'uuid' && typeof value === 'string' && UUID.test(value)) return value.toLowerCase()
   if (parameter.type === 'boolean' && typeof value === 'boolean') return value
   if (parameter.type === 'string' && typeof value === 'string' && validText(value, parameter.maxLength)) return value
@@ -54,9 +55,26 @@ export function commandScalar(value: unknown): Scalar {
   throw new ConflictException('Request conflict.')
 }
 
-function leaf(value: CommandLeaf, input: CommandRow, results: ReadonlyMap<string, CommandRow>, subject: string): Scalar {
+export function commandDatetime(value: unknown): string {
+  if (typeof value !== 'string' || !/^(?!0000)(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00))$/.test(value))
+    throw new BadRequestException('Invalid request.')
+  const date = value.slice(0, 10)
+  const parsedDate = new Date(date + 'T00:00:00.000Z')
+  const parsed = new Date(value)
+  if (!Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date ||
+      !Number.isFinite(parsed.getTime()) || parsed.getUTCFullYear() < 1 || parsed.getUTCFullYear() > 9999)
+    throw new BadRequestException('Invalid request.')
+  const fraction = /\.(\d{1,6})(?:Z|[+-])/.exec(value)?.[1] ?? ''
+  return parsed.toISOString().slice(0, -1) + fraction.padEnd(6, '0').slice(3) + 'Z'
+}
+
+function leaf(value: CommandLeaf, input: CommandRow, results: ReadonlyMap<string, CommandRow>, subject: string, now?: string): Scalar {
   if (value.kind === 'literal') return value.value
   if (value.kind === 'caller-sub') return subject
+  if (value.kind === 'server-now') {
+    if (!now) throw new ConflictException('Request conflict.')
+    return now
+  }
   if (value.kind === 'parameter') return commandScalar(input[value.name])
   return commandScalar(results.get(value.name)?.[value.field])
 }
@@ -67,10 +85,10 @@ function integer(value: Scalar): number {
   return value
 }
 
-export function commandValue(value: CommandValue, input: CommandRow, results: ReadonlyMap<string, CommandRow>, subject: string): Scalar {
-  if (value.kind !== 'integer-arithmetic') return leaf(value, input, results, subject)
-  const left = integer(leaf(value.left, input, results, subject))
-  const right = integer(leaf(value.right, input, results, subject))
+export function commandValue(value: CommandValue, input: CommandRow, results: ReadonlyMap<string, CommandRow>, subject: string, now?: string): Scalar {
+  if (value.kind !== 'integer-arithmetic') return leaf(value, input, results, subject, now)
+  const left = integer(leaf(value.left, input, results, subject, now))
+  const right = integer(leaf(value.right, input, results, subject, now))
   const result = value.operator === 'add' ? left + right : value.operator === 'subtract' ? left - right : left * right
   return integer(result)
 }

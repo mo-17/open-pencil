@@ -41,7 +41,7 @@ test('unit test groups cover all declared shards', () => {
   expect(unitTestGroupNames()).toContain('motion')
   expect(pathsForUnitTestGroup('dom')).toContain('tests/engine/dom-css')
   expect(pathsForUnitTestGroup('all')).toContain('tests/engine/io')
-  expect(pathsForUnitTestGroup('compiler-browser')).toEqual(['tests/engine/compiler/preview'])
+  expect(pathsForUnitTestGroup('compiler-browser')).toContain('tests/engine/compiler/preview')
   expect(pathsForUnitTestGroup('compiler')).toContain('packages/backend-compiler-sidecar/tests')
   expect(pathsForUnitTestGroup('motion')).toContain('packages/motion/tests')
   expect(pathsForUnitTestGroup('motion')).toContain('packages/motion-runtime/tests')
@@ -54,7 +54,11 @@ test('compiler browser tests are isolated from the non-browser compiler shard', 
   const browserFiles = await listUnitTests('compiler-browser', { includeHeavy: true })
 
   expect(browserFiles.length).toBeGreaterThan(0)
-  expect(browserFiles.every((file) => file.startsWith('tests/engine/compiler/preview/'))).toBeTrue()
+  expect(
+    browserFiles.every((file) =>
+      /(?:compiler\/preview|backend\/(?:business|commerce\/operations)\/browser)\//u.test(file)
+    )
+  ).toBeTrue()
   expect(
     compilerFiles.some((file) => file.startsWith('tests/engine/compiler/preview/'))
   ).toBeFalse()
@@ -219,4 +223,16 @@ test('quick and explicit heavy tests partition the full repository suite', async
 
   expect(quick.filter((file) => heavy.includes(file))).toEqual([])
   expect([...quick, ...heavy].sort()).toEqual(all)
+})
+
+test('business template browser suites run only in the Chromium-equipped isolated shard', async () => {
+  const app = await listUnitTests('app', { includeHeavy: true })
+  const browser = await listUnitTests('compiler-browser', { includeHeavy: true })
+  const crm = 'tests/engine/app/lowcode/backend/business/browser/crm.test.ts'
+  const commerce =
+    'tests/engine/app/lowcode/backend/commerce/operations/browser/runtime-browser.test.ts'
+  expect(browser).toContain(crm)
+  expect(browser).toContain(commerce)
+  expect(app).not.toContain(crm)
+  expect(app).not.toContain(commerce)
 })

@@ -335,12 +335,26 @@ tools, not a production deployment or release approval.
 See [NestJS desktop preview](packages/docs/development/backend-nestjs.md#desktop-live-preview).
 
 Open **Services & Workflows → Backend → Browse backend library** to browse providers and
-application templates. Choose **Personal notes** or **Single-item checkout**, review the included
+application templates. Choose a notes, commerce or business starter, review the included
 pages and setup requirements, choose **Local Keycloak** or enter **Custom OIDC** public settings,
 then click **Use template**. This creates the model and editable pages in one undo step, preserving
 existing pages. Existing Backend declarations, login flows, invalid declarations and customized
 unsaved drafts block template creation. The local profile expects an existing Keycloak service;
 creating a template does not start services or deploy the application.
+
+Business starters include **Customer CRM**, **Service desk**, **Content and knowledge base**,
+**Booking and registration**, and **Projects and tasks**. Each creates editable workspaces with
+registered-account pickers, transactional commands, access rules and React/Vue exports. The built-in
+AI can create them with `create_business_app` before restyling. Content uses plain text, ticket
+approval has one independent stage, and external payments, notifications and calendar integrations
+remain export-time extensions. See [business templates](packages/docs/development/backend-business-templates.md)
+for setup, roles and the included workflows.
+
+Existing NestJS applications can choose **Add module** in that library to combine the five business
+templates or extend a commerce application. A compatibility review protects existing pages, models,
+login and permissions; installation is one undo step. Export all routes as one React/Vue frontend
+and a modular NestJS backend with shared authentication and PostgreSQL. The AI tool also supports
+`create_business_app` with `mode: add-module`. Database updates remain a separate SQL review.
 
 Provider cards use **Select provider** to change the draft only; configure it and choose **Save
 Backend model** explicitly. Selecting a provider does not migrate a database. **Manage plugins**

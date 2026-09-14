@@ -8,7 +8,9 @@ import type {
 } from '@open-pencil/lowcode/backend'
 
 import { sqlIdentifier } from '../artifact'
+import { nestJSAuthorization } from '../authorization'
 import { nestJSReadColumn } from '../schema-fields'
+import { nestJSTenant, nestJSSameTenantLocator } from '../tenant/model'
 import { nestJSCommandAssertion } from './plan-values'
 
 function fieldColumn(entity: DataEntityIR, id: string): string {
@@ -37,13 +39,32 @@ function commandStep(
     .join(', ')
   const common = { resultName: step.resultName, table, projection }
   if (step.kind === 'data.read') {
+    const access = command.access
+    const granted =
+      access.kind === 'tenant-member'
+        ? application.auth.tenants.find((entry) => entry.id === access.tenantId)
+        : undefined
+    const tenant =
+      step.scope === 'tenant' && granted
+        ? application.auth.tenants.find(
+            (entry) => entry.entityId === step.entityId && nestJSSameTenantLocator(entry, granted)
+          )
+        : undefined
+    if (step.scope === 'tenant' && (!tenant || access.kind !== 'tenant-member'))
+      throw new Error('Missing validated command tenant scope.')
     return {
       ...common,
       kind: 'read' as const,
       keyColumn: fieldColumn(entity, keyField),
       ownerColumn: fieldColumn(entity, owner.identityFieldId),
       scope: step.scope,
-      key: step.key
+      key: step.key,
+      ...(tenant && access.kind === 'tenant-member'
+        ? {
+            tenantColumn: fieldColumn(entity, tenant.tenantFieldId),
+            tenantParameter: access.parameter
+          }
+        : {})
     }
   }
   const values = step.values.map((entry) => ({
@@ -67,7 +88,16 @@ export function nestJSCommandDefinitionDigest(
   command: BackendCommandDefinitionIR
 ): string {
   return digestCanonicalBackendValue(
-    { command, dataModel: application.dataModel, ownership: application.auth.ownership },
+    {
+      command,
+      dataModel: application.dataModel,
+      ownership: application.auth.ownership,
+      ...(application.auth.tenants.length ? { tenants: application.auth.tenants } : {}),
+      ...(command.access.kind === 'row-policy'
+        ? { rowAccess: application.auth.rowAccess, roles: application.auth.roles }
+        : {}),
+      ...(application.commerce ? { commerce: application.commerce } : {})
+    },
     '$.commandDefinition'
   )
 }
@@ -76,11 +106,42 @@ export function nestJSCommandPlan(
   application: BackendApplicationSpecV1,
   command: BackendCommandDefinitionIR
 ) {
+  const tenant =
+    command.access.kind === 'tenant-member'
+      ? application.auth.tenants.find(
+          (entry) => command.access.kind === 'tenant-member' && entry.id === command.access.tenantId
+        )
+      : undefined
+  if (command.access.kind === 'tenant-member' && !tenant)
+    throw new Error('Missing validated command membership.')
+  const access = command.access
+  const authority =
+    access.kind === 'row-policy'
+      ? application.dataModel.entities.find((entity) => entity.id === access.entityId)
+      : undefined
+  const ownership = authority
+    ? application.auth.ownership.find((owner) => owner.entityId === authority.id)
+    : undefined
+  if (access.kind === 'row-policy' && (!authority?.primaryKey || !ownership))
+    throw new Error('Missing validated command row authority.')
+  const existingAccess = tenant
+    ? { ...command.access, tenant: nestJSTenant(application, tenant) }
+    : command.access
   return {
     applicationId: application.applicationId,
     id: command.id,
     digest: nestJSCommandDefinitionDigest(application, command),
-    access: command.access,
+    access:
+      access.kind === 'row-policy' && authority?.primaryKey && ownership
+        ? {
+            ...access,
+            table: sqlIdentifier('public') + '.' + sqlIdentifier(authority.name),
+            keyColumn: fieldColumn(authority, authority.primaryKey.fields[0]),
+            ownerColumn: fieldColumn(authority, ownership.identityFieldId),
+            policy: nestJSAuthorization(application, ownership, access.policyIds).select
+          }
+        : existingAccess,
+    ...(command.commerceOperation ? { commerceOperation: command.commerceOperation } : {}),
     parameters: command.parameters,
     steps: command.steps.map((step) => commandStep(application, command, step)),
     return: command.return

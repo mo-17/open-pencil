@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
 import type {
   BackendApplicationSpecV1,
   BackendHttpAPIOperation,
@@ -7,13 +8,13 @@ import type {
 } from '@open-pencil/lowcode/backend'
 import { useI18n } from '@open-pencil/vue'
 
-import { enableNestJSBrowserClient } from '../nestjs-draft'
 import {
   allowsHTTPAPIQueryField,
   HTTP_API_QUERY_GROUPS,
   pruneHTTPAPIQuery,
   setHTTPAPIQueryField
 } from '../http-api-query'
+import { enableNestJSBrowserClient } from '../nestjs-draft'
 import { nestJSUICopy } from './nestjs-ui-copy'
 
 const { application } = defineProps<{ application: BackendApplicationSpecV1 }>()
@@ -74,7 +75,7 @@ function setScopes(value: string): void {
 
 <template>
   <div v-if="application.httpApi" class="mt-2 flex flex-col gap-2" data-property="backend-http-api">
-    <p class="text-[10px] text-muted">{{ panels.lowcodeBackendHttpHint }}</p>
+    <p class="text-[10px] text-muted">{{ nestJSText.httpHint }}</p>
     <button
       v-if="!application.httpApi.browserClient"
       type="button"
@@ -166,6 +167,14 @@ function setScopes(value: string): void {
       class="m-0 flex min-w-0 flex-col gap-2 rounded border border-border p-2"
     >
       <legend class="text-xs text-surface">{{ resource.id }}</legend>
+      <div class="text-[10px] text-muted" role="note" :aria-label="nestJSText.readPolicies">
+        <span class="font-medium">{{ nestJSText.readPolicies }}:</span>
+        <p v-if="resource.readPolicyIds" class="mt-1 break-all font-mono">
+          {{ resource.readPolicyIds.join(', ') }}
+        </p>
+        <p v-else class="mt-1">{{ nestJSText.allReadPolicies }}</p>
+        <p v-if="resource.readPolicyIds" class="mt-1">{{ nestJSText.readPolicyHint }}</p>
+      </div>
       <label class="flex flex-col gap-1 text-[10px] text-muted"
         >{{ panels.lowcodeBackendResourcePath }}
         <input

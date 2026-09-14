@@ -45,6 +45,11 @@ function policyStatus(
   entity: DataEntityIR,
   intent: AuthRowAccessIntentIR
 ): { status: 'emitted' | 'blocked-review'; predicate?: string; reason?: string } {
+  if (intent.conditions !== undefined || intent.principal.kind === 'related-member')
+    return {
+      status: 'blocked-review',
+      reason: 'Conditional and related-member authority has no reviewed Supabase translation.'
+    }
   if (entity.management === 'external') {
     return {
       status: 'blocked-review',
@@ -237,6 +242,8 @@ function principalMatches(
   row: Readonly<Record<string, unknown>>
 ): boolean {
   switch (principal.kind) {
+    case 'related-member':
+      return false
     case 'anonymous':
       return !actor.authenticated
     case 'authenticated':
@@ -257,6 +264,7 @@ function principalMatches(
       )
     }
     case 'tenant-member': {
+      if (principal.roleId !== undefined) return false
       const tenant = application.auth.tenants.find(
         (entry) => entry.id === principal.tenantId && entry.entityId === entityId
       )
@@ -287,6 +295,12 @@ export function evaluateSupabaseRowAccess(
   const applicable = application.auth.rowAccess.filter(
     (entry) => entry.entityId === input.entityId && entry.operations.includes(input.operation)
   )
+  if (
+    applicable.some(
+      (entry) => entry.conditions !== undefined || entry.principal.kind === 'related-member'
+    )
+  )
+    return false
   if (
     applicable.some(
       (entry) =>

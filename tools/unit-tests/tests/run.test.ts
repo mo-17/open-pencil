@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { resolve } from 'node:path'
 
 import {
   buildUnitTestRunPlan,
@@ -6,6 +7,8 @@ import {
   runUnitTestPlan,
   type UnitTestRun
 } from '../src/run'
+
+const REPO_ROOT = resolve(import.meta.dir, '../../..')
 
 describe('unit test runner arguments', () => {
   test('defaults to all and accepts a declared group', () => {
@@ -40,7 +43,11 @@ describe('unit test runner plan', () => {
     expect(plan.every((run) => run.group === 'compiler-browser')).toBeTrue()
     expect(plan.every((run) => run.files.length === 1)).toBeTrue()
     expect(
-      plan.every((run) => run.files[0].startsWith('tests/engine/compiler/preview/'))
+      plan.every((run) =>
+        /(?:compiler\/preview|backend\/(?:business|commerce\/operations)\/browser)\//u.test(
+          run.files[0]
+        )
+      )
     ).toBeTrue()
   })
 
@@ -78,9 +85,14 @@ describe('unit test runner execution', () => {
 
     expect(exitCode).toBe(0)
     expect(commands).toEqual([
-      ['/test/bun', 'test', 'compiler-a.test.ts', 'compiler-b.test.ts'],
-      ['/test/bun', 'test', 'browser.test.ts'],
-      ['/test/bun', 'test', 'motion.test.ts']
+      [
+        '/test/bun',
+        'test',
+        resolve(REPO_ROOT, 'compiler-a.test.ts'),
+        resolve(REPO_ROOT, 'compiler-b.test.ts')
+      ],
+      ['/test/bun', 'test', resolve(REPO_ROOT, 'browser.test.ts')],
+      ['/test/bun', 'test', resolve(REPO_ROOT, 'motion.test.ts')]
     ])
   })
 

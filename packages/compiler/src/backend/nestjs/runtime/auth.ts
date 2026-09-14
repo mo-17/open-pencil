@@ -2,6 +2,9 @@ import type { BackendArtifactSource } from '#compiler/backend/contracts'
 
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
+import { withRowPolicyIdentity } from '../row-policy/identity-source'
+import { usesNestJSRowPolicies } from '../row-policy/model'
+import { withTenantIdentity } from '../tenant/identity-source'
 import { runtimeArtifact } from './artifact'
 
 const IDENTITY_SOURCE = String.raw`import { ForbiddenException, SetMetadata, UnauthorizedException } from '@nestjs/common'
@@ -206,8 +209,14 @@ export function loadAuthenticationConfiguration(): AuthenticationConfiguration {
 export function emitAuthenticationArtifacts(
   application: BackendApplicationSpecV1
 ): BackendArtifactSource[] {
+  const identity = application.auth.tenants.length
+    ? withTenantIdentity(IDENTITY_SOURCE)
+    : IDENTITY_SOURCE
   return [
-    runtimeArtifact('identity.ts', IDENTITY_SOURCE),
+    runtimeArtifact(
+      'identity.ts',
+      usesNestJSRowPolicies(application) ? withRowPolicyIdentity(identity) : identity
+    ),
     runtimeArtifact('auth.config.ts', configurationSource(application)),
     runtimeArtifact('auth.service.ts', SERVICE_SOURCE),
     runtimeArtifact('auth.guard.ts', GUARD_SOURCE),

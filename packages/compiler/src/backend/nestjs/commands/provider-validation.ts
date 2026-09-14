@@ -6,11 +6,12 @@ import type {
   DataFieldIR
 } from '@open-pencil/lowcode/backend'
 
+import { NESTJS_COMMERCE_RESERVED_NAMES } from '../commerce/ledger'
 import { nestJSDiagnostic } from '../model'
 import { nestJSValidTemporalLiteral } from '../schema-fields'
 import { nestJSRelationNames } from '../schema-names'
 import { NESTJS_COMMAND_LEDGER_TABLE } from './ledger'
-import { nestJSCommandResultField } from './plan-values'
+import { nestJSCommandResultField, nestJSCommandValueType } from './plan-values'
 
 function temporalLiteralDiagnostics(
   source: BackendCommandValueSourceIR,
@@ -37,20 +38,20 @@ function commandTemporalDiagnostics(
   application: BackendApplicationSpecV1,
   command: BackendCommandDefinitionIR
 ): BackendDiagnostic[] {
+  const valueField = (source: BackendCommandValueSourceIR): DataFieldIR | undefined => {
+    const result = nestJSCommandResultField(application, command, source)
+    if (result) return result
+    const type = nestJSCommandValueType(application, command, source)
+    return type === 'datetime'
+      ? { id: 'timestamp', name: 'timestamp', type, nullable: false }
+      : undefined
+  }
   return command.steps.flatMap((step, index) => {
     const path = '$.application.commands.commands.' + command.id + '.steps[' + index + ']'
     if (step.kind === 'assert')
       return [
-        ...temporalLiteralDiagnostics(
-          step.left,
-          nestJSCommandResultField(application, command, step.right),
-          path + '.left'
-        ),
-        ...temporalLiteralDiagnostics(
-          step.right,
-          nestJSCommandResultField(application, command, step.left),
-          path + '.right'
-        )
+        ...temporalLiteralDiagnostics(step.left, valueField(step.right), path + '.left'),
+        ...temporalLiteralDiagnostics(step.right, valueField(step.left), path + '.right')
       ]
     if (step.kind !== 'data.mutate') return []
     const entity = application.dataModel.entities.find((entry) => entry.id === step.entityId)
@@ -69,7 +70,11 @@ export function validateNestJSCommands(application: BackendApplicationSpecV1): B
   const commands = application.commands?.commands
   if (!commands?.length) return []
   const diagnostics: BackendDiagnostic[] = []
-  const reserved = new Set([NESTJS_COMMAND_LEDGER_TABLE, NESTJS_COMMAND_LEDGER_TABLE + '_pkey'])
+  const reserved = new Set([
+    NESTJS_COMMAND_LEDGER_TABLE,
+    NESTJS_COMMAND_LEDGER_TABLE + '_pkey',
+    ...(application.commerce ? NESTJS_COMMERCE_RESERVED_NAMES : [])
+  ])
   const names = [
     ...application.dataModel.entities.flatMap(nestJSRelationNames),
     ...application.dataModel.enums.map((entry) => entry.name)

@@ -5,8 +5,9 @@ import type {
   BackendCommandAction
 } from '@open-pencil/scene-graph'
 
+import { templateCommandRecoveryActions } from '@/app/lowcode/backend/template-command-recovery'
+
 import type { commerceCopy } from '../copy'
-import { commerceRecoveryActions } from '../recovery/actions'
 import {
   commerceState as state,
   setCommerceState as set,
@@ -16,7 +17,8 @@ import {
 
 export function createCommerceCatalogState(
   doc: CommerceDocumentStateFactory,
-  copy: ReturnType<typeof commerceCopy>
+  copy: ReturnType<typeof commerceCopy>,
+  storeId?: string
 ) {
   const fields = {
     mode: state('catalogMode', 'string', ''),
@@ -49,7 +51,7 @@ export function createCommerceCatalogState(
   const current = `${fields.generation.name} === ${generation}`
   const currentOperation = `${fields.operationGeneration.name} === ${generation}`
   const busy = `(${fields.busy.name} && ${currentOperation})`
-  const locked = `(${busy} || ${targets.key} !== "" || !!${targets.recovery}.key)`
+  const locked = `(${busy} || ${targets.key} !== "" || !!${targets.recovery}.key${storeId ? ' || !' + storeId : ''})`
   const editing = `(${current} && ${fields.mode.name} === "edit")`
   const creating = `(${current} && ${fields.mode.name} === "create")`
   const draft = `(${editing} || ${creating})`
@@ -79,7 +81,8 @@ export function createCommerceCatalogState(
       { key: 'title', valueExpr: fields.title.name },
       { key: 'price', valueExpr: fields.price.name },
       { key: 'active', valueExpr: fields.active.name },
-      ...(operation === 'create' ? [{ key: 'stock', valueExpr: fields.stock.name }] : [])
+      ...(operation === 'create' ? [{ key: 'stock', valueExpr: fields.stock.name }] : []),
+      ...(operation === 'create' && storeId ? [{ key: 'store_id', valueExpr: storeId }] : [])
     ],
     resultTarget: targets.result,
     errorTarget: targets.error,
@@ -109,7 +112,7 @@ export function createCommerceCatalogState(
       }
     ]
   }
-  const recovery = commerceRecoveryActions({
+  const recovery = templateCommandRecoveryActions({
     commandId: 'restock-product',
     keyTarget: targets.key,
     infoTarget: targets.recovery,
@@ -129,7 +132,8 @@ export function createCommerceCatalogState(
     recovery: 'browser',
     payloadEntries: [
       { key: 'skuId', valueExpr: fields.selected.name },
-      { key: 'quantity', valueExpr: fields.quantity.name }
+      { key: 'quantity', valueExpr: fields.quantity.name },
+      ...(storeId ? [{ key: 'storeId', valueExpr: storeId }] : [])
     ],
     idempotencyKeyTarget: targets.key,
     resultTarget: targets.restock,
@@ -185,7 +189,14 @@ export function createCommerceCatalogState(
     sortDirection: 'asc',
     afterExpr: fields.after.name,
     nextCursorTarget: targets.cursor,
-    errorTarget: targets.error
+    errorTarget: targets.error,
+    ...(storeId
+      ? {
+          filterEntries: [
+            { key: 'store_id', valueExpr: `${storeId} || "00000000-0000-4000-8000-000000000000"` }
+          ]
+        }
+      : {})
   }
   return {
     fields,

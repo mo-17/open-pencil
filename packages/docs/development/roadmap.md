@@ -86,9 +86,12 @@ with generic OIDC + PKCE and authenticated React/Vue requests. An external ident
 needs to meet the preset's JWT access-token and UUID subject requirements.
 Explicit public reads, verified JWT roles, constrained relations, enums/dates and bounded list
 queries are supported. Atomic commands provide a single-SKU checkout/cancellation example with
-server idempotency and opt-in account-bound browser attempt recovery. Broader tenant policies,
-model types, workflow execution and deployment automation remain planned; carts, payments and
-fulfillment still require additional work.
+server idempotency and opt-in account-bound browser attempt recovery. Commerce operations now
+include carts, store-split checkout, payment simulation, shipment tracking and settlement records;
+live payment, carrier and payout integrations remain export-time work. The five business starters
+can be combined or added to commerce as a reviewed modular NestJS monolith, with shared sign-in,
+explicit module ownership and preserved permissions. Distributed service generation, broader
+tenant policies, model types, workflow execution and deployment automation remain planned.
 
 ### Agent workflows
 

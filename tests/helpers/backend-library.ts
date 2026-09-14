@@ -17,7 +17,18 @@ export async function openAdvancedProviderSettings(page: Page): Promise<Locator>
 
 export async function useBackendTemplate(
   page: Page,
-  title: 'Personal notes' | 'Single-item checkout',
+  title:
+    | 'Personal notes'
+    | 'Single-item checkout'
+    | 'Single-merchant shop'
+    | 'Multi-merchant marketplace'
+    | 'Single-merchant commerce'
+    | 'Multi-merchant commerce'
+    | 'Customer CRM'
+    | 'Service desk'
+    | 'Content and knowledge base'
+    | 'Bookings and registration'
+    | 'Projects and tasks',
   authentication: { issuer: string; clientId: string } | 'local-keycloak' = 'local-keycloak'
 ): Promise<void> {
   const library = await openBackendLibrary(page)

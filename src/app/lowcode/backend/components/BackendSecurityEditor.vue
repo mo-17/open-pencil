@@ -22,6 +22,7 @@ import {
   addBackendTenant,
   removeBackendOwnership,
   removeBackendRole,
+  removeBackendRowAccess,
   removeBackendTenant,
   setBackendOwnershipEntity,
   setBackendOwnershipField,
@@ -31,6 +32,7 @@ import {
   setBackendTenantMembershipEntity,
   setBackendTenantMembershipField
 } from '../draft'
+import { backendPolicyNeedsAdvancedEditor } from '../draft/references'
 import { nestJSUICopy } from './nestjs-ui-copy'
 
 const { application, nestjs = false } = defineProps<{
@@ -158,12 +160,32 @@ function addRowAccess(): void {
   }
 }
 
-function removeById<T extends { id: string }>(entries: T[], id: string): void {
-  const index = entries.findIndex((entry) => entry.id === id)
-  if (index !== -1) entries.splice(index, 1)
+function compoundPolicy(intent: AuthRowAccessIntentIR): boolean {
+  return backendPolicyNeedsAdvancedEditor(application, intent)
+}
+
+function policyDetails(intent: AuthRowAccessIntentIR): string[] {
+  const details = (intent.conditions ?? []).map(
+    (condition) => `${condition.fieldId} = ${JSON.stringify(condition.value)}`
+  )
+  const principal = intent.principal
+  if (principal.kind === 'related-member') {
+    details.unshift(
+      `${entityName(intent.entityId)}.${principal.entityFieldId} → ${entityName(principal.membershipEntityId)}.${principal.membershipFieldId}`,
+      `${principal.identityFieldId} = ${nestJSText.value.verifiedIdentity}`
+    )
+    for (const condition of principal.conditions ?? []) {
+      details.push(
+        `${entityName(principal.membershipEntityId)}.${condition.fieldId} = ${JSON.stringify(condition.value)}`
+      )
+    }
+    if (principal.roleId) details.push(`${nestJSText.value.roleId}: ${principal.roleId}`)
+  }
+  return details
 }
 
 function setPrincipalKind(intent: AuthRowAccessIntentIR, kind: AuthPrincipalIntent['kind']): void {
+  if (compoundPolicy(intent) || kind === 'related-member') return
   if (nestjs && kind === 'anonymous') {
     intent.effect = 'allow'
     intent.operations = ['select']
@@ -173,7 +195,13 @@ function setPrincipalKind(intent: AuthRowAccessIntentIR, kind: AuthPrincipalInte
     intent.principal = rule ? { kind, ownershipId: rule.id } : { kind: 'authenticated' }
   } else if (kind === 'tenant-member') {
     const rule = application.auth.tenants.find((entry) => entry.entityId === intent.entityId)
-    intent.principal = rule ? { kind, tenantId: rule.id } : { kind: 'authenticated' }
+    const roleId =
+      intent.principal.kind === 'role' || intent.principal.kind === 'tenant-member'
+        ? intent.principal.roleId
+        : undefined
+    intent.principal = rule
+      ? { kind, tenantId: rule.id, ...(roleId ? { roleId } : {}) }
+      : { kind: 'authenticated' }
   } else if (kind === 'role') {
     const role = application.auth.roles[0]
     intent.principal = role ? { kind, roleId: role.id } : { kind: 'authenticated' }
@@ -188,11 +216,18 @@ function principalReference(intent: AuthRowAccessIntentIR): string {
 }
 
 function setPrincipalReference(intent: AuthRowAccessIntentIR, value: string): void {
+  if (compoundPolicy(intent)) return
   if (intent.principal.kind === 'owner') intent.principal = { kind: 'owner', ownershipId: value }
   if (intent.principal.kind === 'tenant-member') {
-    intent.principal = { kind: 'tenant-member', tenantId: value }
+    intent.principal = { ...intent.principal, tenantId: value }
   }
   if (intent.principal.kind === 'role') intent.principal = { kind: 'role', roleId: value }
+}
+
+function setTenantRole(intent: AuthRowAccessIntentIR, roleId: string): void {
+  if (compoundPolicy(intent) || intent.principal.kind !== 'tenant-member') return
+  const { tenantId } = intent.principal
+  intent.principal = { kind: 'tenant-member', tenantId, ...(roleId ? { roleId } : {}) }
 }
 
 function principalReferences(
@@ -219,6 +254,7 @@ function setOperation(
   operation: AuthAccessOperation,
   enabled: boolean
 ): void {
+  if (compoundPolicy(intent)) return
   const selected = new Set(intent.operations)
   if (enabled) {
     selected.add(operation)
@@ -228,7 +264,7 @@ function setOperation(
 }
 
 function operationLocked(intent: AuthRowAccessIntentIR, operation: AuthAccessOperation): boolean {
-  if (nestjs && intent.principal.kind === 'anonymous') return true
+  if (compoundPolicy(intent) || (nestjs && intent.principal.kind === 'anonymous')) return true
   if (!intent.operations.includes(operation)) return false
   if (intent.operations.length === 1) return true
   return operation === 'select' && intent.operations.includes('update')
@@ -337,7 +373,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         </button>
       </div>
     </div>
-    <div v-if="!nestjs" class="border-t border-border pt-2">
+    <div class="border-t border-border pt-2">
       <div class="flex items-center justify-between">
         <span class="text-[10px] text-muted">{{ panels.lowcodeBackendTenant }}</span
         ><button
@@ -351,6 +387,9 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
           {{ panels.lowcodeBackendAddTenant }}
         </button>
       </div>
+      <p v-if="nestjs" class="mt-1 text-[9px] leading-relaxed text-muted">
+        {{ nestJSText.tenantHint }}
+      </p>
       <p v-if="application.auth.tenants.length === 0" class="mt-1 text-[9px] text-muted">
         {{ panels.lowcodeBackendNoTenant }}
       </p>
@@ -483,8 +522,15 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         data-test-id="lowcode-backend-rls-intent"
         class="mt-1.5 rounded border border-border p-1.5"
       >
+        <p v-if="compoundPolicy(intent)" class="mb-1 text-[10px] leading-relaxed text-muted">
+          {{ nestJSText.compoundPolicyHint }}
+        </p>
+        <ul v-if="policyDetails(intent).length" class="mb-1 break-words text-[10px] text-muted">
+          <li v-for="detail in policyDetails(intent)" :key="detail">{{ detail }}</li>
+        </ul>
         <div class="grid grid-cols-3 gap-1">
           <select
+            :disabled="compoundPolicy(intent)"
             :value="intent.entityId"
             :aria-label="panels.lowcodeBackendEntity"
             class="min-w-0 rounded border border-border bg-input px-1 py-1 text-[10px] text-surface"
@@ -495,6 +541,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
             </option></select
           ><select
             v-model="intent.effect"
+            :disabled="compoundPolicy(intent)"
             :aria-label="panels.lowcodeBackendEffect"
             class="min-w-0 rounded border border-border bg-input px-1 py-1 text-[10px] text-surface"
           >
@@ -504,6 +551,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
             </option></select
           ><select
             :value="intent.principal.kind"
+            :disabled="compoundPolicy(intent)"
             :aria-label="panels.lowcodeBackendPrincipal"
             class="min-w-0 rounded border border-border bg-input px-1 py-1 text-[10px] text-surface"
             @change="
@@ -513,6 +561,9 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
               )
             "
           >
+            <option v-if="intent.principal.kind === 'related-member'" value="related-member">
+              {{ nestJSText.relatedMember }}
+            </option>
             <option value="anonymous">{{ panels.lowcodeBackendPrincipalAnonymous }}</option>
             <option
               v-if="!nestjs || intent.principal.kind === 'authenticated'"
@@ -528,10 +579,7 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
               {{ panels.lowcodeBackendPrincipalOwner }}
             </option>
             <option
-              v-if="
-                !nestjs &&
-                application.auth.tenants.some((rule) => rule.entityId === intent.entityId)
-              "
+              v-if="application.auth.tenants.some((rule) => rule.entityId === intent.entityId)"
               value="tenant-member"
             >
               {{ panels.lowcodeBackendPrincipalTenant }}
@@ -544,6 +592,8 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
         <select
           v-if="principalReferences(intent).length"
           :value="principalReference(intent)"
+          :disabled="compoundPolicy(intent)"
+          :aria-label="nestJSText.accessReference"
           class="mt-1 w-full rounded border border-border bg-input px-1 py-1 text-[10px] text-surface"
           @change="setPrincipalReference(intent, ($event.target as HTMLSelectElement).value)"
         >
@@ -555,6 +605,24 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
             {{ reference.label }}
           </option>
         </select>
+        <label
+          v-if="intent.principal.kind === 'tenant-member'"
+          class="mt-1 block text-[9px] text-muted"
+        >
+          {{ nestJSText.tenantRole }}
+          <select
+            :value="intent.principal.roleId ?? ''"
+            :disabled="compoundPolicy(intent)"
+            :aria-label="nestJSText.tenantRole"
+            class="mt-0.5 w-full rounded border border-border bg-input px-1 py-1 text-[10px] text-surface"
+            @change="setTenantRole(intent, ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">{{ nestJSText.membershipOnly }}</option>
+            <option v-for="role in application.auth.roles" :key="role.id" :value="role.id">
+              {{ role.id }}
+            </option>
+          </select>
+        </label>
         <div class="mt-1 flex flex-wrap items-center gap-2 text-[9px] text-muted">
           <label v-for="operation in operations" :key="operation" class="flex items-center gap-1"
             ><input
@@ -567,14 +635,14 @@ function changeRowAccessEntity(intent: AuthRowAccessIntentIR, entityId: string):
             type="button"
             :aria-label="panels.lowcodeBackendRemoveRule"
             class="ml-auto text-muted hover:text-red-500"
-            @click="removeById(application.auth.rowAccess, intent.id)"
+            @click="run(() => removeBackendRowAccess(application, intent.id))"
           >
             ×
           </button>
         </div>
       </div>
     </div>
-    <p v-if="nestjs && operationError" role="alert" class="text-[10px] text-red-500">
+    <p v-if="operationError" role="alert" class="text-[10px] text-red-500">
       {{ operationError }}
     </p>
   </div>

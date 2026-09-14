@@ -102,7 +102,11 @@ describe('provider-neutral Backend Core validation', () => {
       [{ kind: 'authenticated' }, { tenantId: 'workspace' }],
       [{ kind: 'role', roleId: 'reader' }, { ownershipId: 'note-owner' }],
       [{ kind: 'owner', ownershipId: 'note-owner' }, { tenantId: 'workspace' }],
-      [{ kind: 'tenant-member', tenantId: 'workspace' }, { roleId: 'reader' }]
+      [{ kind: 'tenant-member', tenantId: 'workspace' }, { ownershipId: 'note-owner' }],
+      [
+        { kind: 'tenant-member', tenantId: 'workspace', roleId: 'reader' },
+        { ownershipId: 'note-owner' }
+      ]
     ] as const
 
     for (const [principal, crossVariantField] of cases) {

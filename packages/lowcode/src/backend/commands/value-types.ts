@@ -37,6 +37,7 @@ export function commandLeafType(
 ): ValueType | undefined {
   if (source.kind === 'literal') return literalType(source)
   if (source.kind === 'caller-sub') return { type: 'uuid', nullable: false }
+  if (source.kind === 'server-now') return { type: 'datetime', nullable: false }
   if (source.kind === 'parameter') {
     const parameter = ctx.command.parameters.find((entry) => entry.name === source.name)
     if (parameter) return { type: parameter.type, nullable: false }
@@ -128,7 +129,7 @@ export function validateCommandAssignment(
 
 export function validateCommandComparison(
   left: BackendCommandValueSourceIR,
-  operator: 'eq' | 'gte' | 'lte',
+  operator: 'eq' | 'neq' | 'gte' | 'lte',
   right: BackendCommandValueSourceIR,
   path: string,
   ctx: CommandValueContext
@@ -152,10 +153,19 @@ export function validateCommandComparison(
     )
   if (
     operator !== 'eq' &&
-    (leftType?.type !== 'integer' ||
-      rightType?.type !== 'integer' ||
+    operator !== 'neq' &&
+    (!leftType ||
+      !rightType ||
+      !['integer', 'datetime'].includes(left.kind === 'literal' ? rightType.type : leftType.type) ||
+      !['integer', 'datetime'].includes(
+        right.kind === 'literal' ? leftType.type : rightType.type
+      ) ||
       leftType.nullable ||
       rightType.nullable)
   )
-    commandError(ctx.context, path, 'Ordered command assertions require non-null integers.')
+    commandError(
+      ctx.context,
+      path,
+      'Ordered command assertions require matching non-null integers or datetimes.'
+    )
 }

@@ -63,29 +63,32 @@ export function createCommerceLayout(
     name: string,
     y: number,
     source: BackendResourceDataSource,
-    cardHeight = 180
+    cardHeight = 180,
+    props: Partial<SceneNode> = {}
   ) => {
-    const list = shape(
-      'LIST',
-      name,
-      parent,
-      48,
-      y,
-      900,
-      290,
-      backendTemplateListProps(source, cardHeight)
-    )
+    const list = shape('LIST', name, parent, 48, y, 900, 290, {
+      ...backendTemplateListProps(source, cardHeight),
+      ...props
+    })
     return shape('FRAME', name + ' card', list, 0, 0, 870, cardHeight)
   }
-  const pagination = (parent: string, after: StateDef, cursor: string, y: number) => {
+  const pagination = (
+    parent: string,
+    after: StateDef,
+    cursor: string,
+    y: number,
+    condition?: string
+  ) => {
     const set = (valueExpr: string): ActionDef => ({
       id: crypto.randomUUID(),
       kind: 'setState',
       targetStateId: after.id,
       valueExpr
     })
-    button(parent, copy.first, 48, y, [set('""')])
-    button(parent, copy.next, 252, y, [set(cursor)], { renderCondition: `${cursor} !== ""` })
+    button(parent, copy.first, 48, y, [set('""')], condition ? { renderCondition: condition } : {})
+    button(parent, copy.next, 252, y, [set(cursor)], {
+      renderCondition: `${condition ? '(' + condition + ') && ' : ''}${cursor} !== ""`
+    })
   }
   return { shape, text, button, navigate, page, error, listing, pagination, pageIds }
 }

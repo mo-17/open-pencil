@@ -26,11 +26,23 @@ function ids(items: readonly BackendLibraryItem[]): string[] {
 }
 
 describe('inert backend library catalog', () => {
-  test('lists exactly two real templates and unavailable provider guides without selector authority', () => {
+  test('preserves legacy templates alongside distinct merchant modes and unavailable provider guides', () => {
     const catalog = createBackendLibraryCatalog([], 'en')
     const providers = catalog.filter((item) => item.kind === 'provider')
     const templates = catalog.filter((item) => item.kind === 'template')
-    expect(ids(templates)).toEqual(['personal-notes', 'single-sku-shop'])
+    expect(ids(templates)).toEqual([
+      'personal-notes',
+      'single-sku-shop',
+      'single-merchant-shop',
+      'multi-merchant-marketplace',
+      'single-merchant-commerce',
+      'multi-merchant-commerce',
+      'customer-crm',
+      'service-desk',
+      'content-knowledge-base',
+      'booking-registration',
+      'project-tasks'
+    ])
     expect(providers.map((item) => item.providerId)).toEqual(['supabase', 'nestjs'])
     for (const item of providers) {
       expect(Object.hasOwn(item, 'descriptorKey')).toBe(false)
@@ -38,7 +50,7 @@ describe('inert backend library catalog', () => {
       expect(item.features).toEqual([])
       expect(item.requirements[0]).toBe(backendLibraryCopy('en').unavailableRequirement)
     }
-    expect(templates).toMatchObject([
+    expect(templates.slice(0, 4)).toMatchObject([
       {
         id: 'personal-notes',
         providerId: 'nestjs',
@@ -50,11 +62,67 @@ describe('inert backend library catalog', () => {
         providerId: 'nestjs',
         entities: ['products', 'orders'],
         pages: ['Products', 'My orders', 'Shop sign in', 'Catalog manager']
+      },
+      {
+        id: 'single-merchant-shop',
+        providerId: 'nestjs',
+        entities: ['products', 'orders'],
+        pages: [
+          'Single-merchant shop',
+          'My orders',
+          'Shop sign in',
+          'Catalog manager',
+          'Merchant orders'
+        ]
+      },
+      {
+        id: 'multi-merchant-marketplace',
+        providerId: 'nestjs',
+        entities: ['stores', 'products', 'orders'],
+        pages: [
+          'Marketplace',
+          'My orders',
+          'Shop sign in',
+          'Catalog manager',
+          'Merchant orders',
+          'Store directory',
+          'My store'
+        ]
       }
     ])
     expect(templates[1].requirements).toContain(
       'This example does not collect payments or provide a multi-item cart.'
     )
+    const single = templates[2]
+    const multi = templates[3]
+    expect(single.mode).not.toBe(multi.mode)
+    expect(single.roles.join(' ')).toContain('catalog-manager:')
+    expect(single.requirements.join(' ')).toContain('does not isolate stores')
+    expect(multi.roles.join(' ')).toContain('merchant: open one store')
+    expect(multi.requirements.join(' ')).toContain('stores.owner_id and stores.id')
+    expect(multi.requirements.join(' ')).toContain(
+      'installation does not create accounts, grant roles or create stores'
+    )
+    for (const item of [single, multi]) {
+      expect(item.requirements.join(' ')).toContain('No payments, multi-item cart, shipping')
+      expect(item.requirements.join(' ')).toContain('openpencil_roles')
+    }
+  })
+
+  test('offers explicit operations editions with honest payment and settlement boundaries', () => {
+    const catalog = createBackendLibraryCatalog([], 'en')
+    for (const id of ['single-merchant-commerce', 'multi-merchant-commerce']) {
+      const item = catalog.find((entry) => entry.id === id)
+      if (item?.kind !== 'template') throw new Error('Missing operations edition')
+      expect(item.pages).toHaveLength(12)
+      expect(item.entities).toHaveLength(10)
+      expect(item.requirements.join(' ')).toContain('no money is collected')
+      expect(item.requirements.join(' ')).toContain('not a bank transfer')
+      expect(item.roles.join(' ')).toContain('commerce-operator')
+    }
+    expect(
+      ids(filterBackendLibraryCatalog(catalog, { category: 'templates', query: 'Cart Settlement' }))
+    ).toEqual(['single-merchant-commerce', 'multi-merchant-commerce'])
   })
 
   test('preserves complete opaque keys and lists distinct descriptors sharing a provider ID', () => {
@@ -96,18 +164,16 @@ describe('inert backend library catalog', () => {
   })
 
   test('distinguishes duplicate provider cards with real source metadata and preserves full identities', () => {
-    const inputs = ['first', 'second'].map(
-      (suffix): BackendLibraryProviderInput => ({
-        descriptorKey: 'opaque-selector-' + suffix,
-        descriptor: {
-          ...provider().descriptor,
-          contributionId: 'nestjs.backend',
-          adapterId: 'reviewed.adapter',
-          adapterVersion: '2.0.0',
-          packageAuthority: { packageDigest: 'app-bundle-sha256:AAAAAAAAAA-' + suffix }
-        }
-      })
-    )
+    const inputs = ['first', 'second'].map((suffix): BackendLibraryProviderInput => ({
+      descriptorKey: 'opaque-selector-' + suffix,
+      descriptor: {
+        ...provider().descriptor,
+        contributionId: 'nestjs.backend',
+        adapterId: 'reviewed.adapter',
+        adapterVersion: '2.0.0',
+        packageAuthority: { packageDigest: 'app-bundle-sha256:AAAAAAAAAA-' + suffix }
+      }
+    }))
     const catalog = createBackendLibraryCatalog(inputs, 'en')
     const entries = catalog.filter(
       (item) => item.kind === 'provider' && item.providerId === 'nestjs'
@@ -161,6 +227,7 @@ describe('inert backend library catalog', () => {
       if (item.kind === 'template') {
         expect(Object.isFrozen(item.pages)).toBe(true)
         expect(Object.isFrozen(item.entities)).toBe(true)
+        expect(Object.isFrozen(item.roles)).toBe(true)
       }
     }
     expect(catalog[0].features).not.toBe(input.descriptor.capabilities)
@@ -177,6 +244,8 @@ describe('inert backend library catalog', () => {
       pages: ['登录页', '笔记页']
     })
     expect(zh.find((item) => item.id === 'single-sku-shop')?.name).toBe('单商品下单')
+    expect(zh.find((item) => item.id === 'single-merchant-shop')?.name).toBe('单商户商城')
+    expect(zh.find((item) => item.id === 'multi-merchant-marketplace')?.name).toBe('多商户平台')
     expect(Object.keys(backendLibraryCopy('zh').capabilities)).toEqual(
       Object.keys(backendLibraryCopy('en').capabilities)
     )
@@ -242,5 +311,32 @@ describe('backend library search and categories', () => {
     expect(
       filterBackendLibraryCatalog(catalog, { category: 'all', query: 'private-selector-digest' })
     ).toEqual([])
+  })
+
+  test('finds merchant modes by business model and role without hiding the legacy starter', () => {
+    const en = createBackendLibraryCatalog([], 'en')
+    expect(
+      ids(
+        filterBackendLibraryCatalog(en, {
+          category: 'templates',
+          query: 'independent stores merchant'
+        })
+      )
+    ).toEqual(['multi-merchant-marketplace'])
+    expect(
+      ids(
+        filterBackendLibraryCatalog(en, {
+          category: 'templates',
+          query: 'shared catalog catalog-manager'
+        })
+      )
+    ).toEqual(['single-merchant-shop'])
+    expect(
+      ids(filterBackendLibraryCatalog(en, { category: 'templates', query: 'single-item' }))
+    ).toEqual(['single-sku-shop'])
+    const zh = createBackendLibraryCatalog([], 'zh')
+    expect(
+      ids(filterBackendLibraryCatalog(zh, { category: 'templates', query: '多商户 店铺' }))
+    ).toEqual(['multi-merchant-marketplace', 'multi-merchant-commerce'])
   })
 })

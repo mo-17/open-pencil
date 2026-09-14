@@ -13,8 +13,8 @@ import { NESTJS_BACKEND_PROVIDER_PLUGIN_ID } from '@/app/plugins/host/nestjs/bac
 import {
   BACKEND_STARTER_AUTHENTICATION_PARAMS,
   backendStarterAuthentication
-} from './backend-starter-authentication'
-import type { BackendStarterAIToolOptions } from './backend-starter-types'
+} from './backend/starter/authentication'
+import type { BackendStarterAIToolOptions } from './backend/starter/types'
 
 export const PERSONAL_NOTES_AI_TOOL_NAME = 'create_personal_notes_app'
 

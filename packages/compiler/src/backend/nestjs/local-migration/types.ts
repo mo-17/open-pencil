@@ -5,15 +5,27 @@ export interface NestJSLocalPreviewMigrationInput {
   readonly toApplication: unknown
 }
 
-export interface NestJSLocalPreviewMigrationOperation {
+interface NestJSLocalPreviewMigrationOperationBase {
   readonly id: string
-  readonly kind: 'create-entity' | 'rename-entity' | 'add-field' | 'rename-field'
-  readonly entityId: string
-  readonly fieldId?: string
   readonly summary: string
   readonly risk: 'low' | 'medium'
   readonly sql: string
 }
+
+export type NestJSLocalPreviewMigrationOperation = NestJSLocalPreviewMigrationOperationBase &
+  (
+    | {
+        readonly kind: 'create-entity' | 'rename-entity' | 'add-field' | 'rename-field'
+        readonly entityId: string
+        readonly fieldId?: string
+      }
+    | {
+        readonly kind: 'add-module-schema'
+        readonly entityIds: readonly string[]
+        readonly enumIds: readonly string[]
+        readonly moduleIds: readonly string[]
+      }
+  )
 
 /** A compatibility plan for an owned local database, never a production release receipt. */
 export interface NestJSLocalPreviewMigrationPlan {
@@ -28,6 +40,8 @@ export interface NestJSLocalPreviewMigrationPlan {
   readonly toModelDigest: string
   readonly operations: readonly NestJSLocalPreviewMigrationOperation[]
   readonly summary: readonly string[]
+  /** Added only for schema-module upgrades, so legacy plan bytes remain unchanged. */
+  readonly warnings?: readonly string[]
   readonly highestRisk: 'low' | 'medium'
   readonly schemaChanged: boolean
   readonly requiresReview: boolean

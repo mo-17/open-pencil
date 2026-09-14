@@ -1,4 +1,5 @@
 import { managedCommandLedgerSchema } from '#compiler/backend/nestjs/commands/ledger'
+import { managedCommerceLedgerSchemas } from '#compiler/backend/nestjs/commerce/ledger'
 import { nestJSEnum } from '#compiler/backend/nestjs/schema-fields'
 import { nestJSConstraintName } from '#compiler/backend/nestjs/schema-names'
 
@@ -51,5 +52,6 @@ export function managedSchema(application: BackendApplicationSpecV1) {
     ...(extended ? { catalog: managedModelCatalog(application, entity, index === 0) } : {})
   }))
   if (application.commands?.commands.length) tables.push(managedCommandLedgerSchema())
+  if (application.commerce) tables.push(...managedCommerceLedgerSchemas())
   return tables
 }

@@ -1,3 +1,4 @@
+import { COMMERCE_OPERATIONS } from '../commerce/types'
 import { discriminatedRecord } from '../discriminated-record'
 import {
   boundedText,
@@ -11,6 +12,7 @@ import {
   type BackendValidationContext,
   type BackendUnknownRecord
 } from '../validation-helpers'
+import { parseCommandRowPolicyAccess } from './row-policy'
 import {
   commandError,
   commandFieldSet,
@@ -59,7 +61,7 @@ function assertionStep(
 ): BackendCommandStepIR | undefined {
   const left = commandValue(source.left, path + '.left', context)
   const right = commandValue(source.right, path + '.right', context)
-  const operator = oneOf(source.operator, path + '.operator', context, ['eq', 'gte', 'lte'])
+  const operator = oneOf(source.operator, path + '.operator', context, ['eq', 'neq', 'gte', 'lte'])
   const error = oneOf(source.error, path + '.error', context, ['not-found', 'conflict'])
   return left && right && operator && error
     ? { id: stepId, kind: 'assert', left, right, operator, error }
@@ -85,7 +87,7 @@ function step(
   if (!entityId || !resultName || !fields) return undefined
   if (kind === 'data.read') {
     const key = commandLeaf(source.key, path + '.key', context)
-    const scope = oneOf(source.scope, path + '.scope', context, ['owner', 'command'])
+    const scope = oneOf(source.scope, path + '.scope', context, ['owner', 'command', 'tenant'])
     const lock = oneOf(source.lock, path + '.lock', context, ['update'])
     return key && scope && lock
       ? { id: stepId, kind, entityId, resultName, fields, key, scope, lock }
@@ -126,12 +128,55 @@ function access(
 ): BackendCommandDefinitionIR['access'] | undefined {
   const parsed = discriminatedRecord(value, path, context, {
     authenticated: { allowed: ['kind'], required: ['kind'] },
-    role: { allowed: ['kind', 'roleId'], required: ['kind', 'roleId'] }
+    role: { allowed: ['kind', 'roleId'], required: ['kind', 'roleId'] },
+    'row-policy': {
+      allowed: ['kind', 'entityId', 'parameter', 'policyIds', 'roleId'],
+      required: ['kind', 'entityId', 'parameter', 'policyIds']
+    },
+    'tenant-member': {
+      allowed: ['kind', 'tenantId', 'parameter', 'roleId'],
+      required: ['kind', 'tenantId', 'parameter']
+    }
   })
   if (!parsed) return undefined
   if (parsed.kind === 'authenticated') return { kind: parsed.kind }
+  if (parsed.kind === 'row-policy') return parseCommandRowPolicyAccess(parsed.source, path, context)
+  if (parsed.kind === 'tenant-member') {
+    const tenantId = id(parsed.source.tenantId, path + '.tenantId', context)
+    const parameter = identifier(parsed.source.parameter, path + '.parameter', context)
+    const roleId =
+      parsed.source.roleId === undefined
+        ? undefined
+        : id(parsed.source.roleId, path + '.roleId', context)
+    return tenantId && parameter && (parsed.source.roleId === undefined || roleId)
+      ? { kind: parsed.kind, tenantId, parameter, ...(roleId ? { roleId } : {}) }
+      : undefined
+  }
   const roleId = id(parsed.source.roleId, path + '.roleId', context)
   return roleId ? { kind: 'role', roleId } : undefined
+}
+
+function commandRoute(
+  value: unknown,
+  path: string,
+  context: BackendValidationContext
+): string | undefined {
+  if (typeof value === 'string' && value.length <= 128 && /^(?:\/[A-Za-z0-9_-]+)+$/u.test(value))
+    return value
+  commandError(context, path, 'Commands require a bounded static absolute POST path.')
+  return undefined
+}
+
+function validateStepBody(
+  steps: BackendCommandStepIR[],
+  commerce: boolean,
+  path: string,
+  context: BackendValidationContext
+): void {
+  if (commerce && steps.length)
+    commandError(context, path, 'Commerce commands require an empty executable steps array.')
+  if (!commerce && !steps.some((entry) => entry.kind === 'data.mutate'))
+    commandError(context, path, 'Commands require at least one bounded mutation.')
 }
 
 export function commandDefinition(
@@ -139,27 +184,27 @@ export function commandDefinition(
   path: string,
   context: BackendValidationContext
 ): BackendCommandDefinitionIR | undefined {
-  const source = record(value, path, context, [
-    'id',
-    'name',
-    'path',
-    'access',
-    'idempotency',
-    'parameters',
-    'steps',
-    'return'
-  ])
+  const source = record(
+    value,
+    path,
+    context,
+    [
+      'id',
+      'name',
+      'path',
+      'access',
+      'idempotency',
+      'parameters',
+      'commerceOperation',
+      'steps',
+      'return'
+    ],
+    ['id', 'name', 'path', 'access', 'idempotency', 'parameters', 'steps', 'return']
+  )
   if (!source) return undefined
   const commandId = id(source.id, path + '.id', context)
   const name = boundedText(source.name, path + '.name', context, 128)
-  const route =
-    typeof source.path === 'string' &&
-    source.path.length <= 128 &&
-    /^(?:\/[A-Za-z0-9_-]+)+$/u.test(source.path)
-      ? source.path
-      : undefined
-  if (!route)
-    commandError(context, path + '.path', 'Commands require a bounded static absolute POST path.')
+  const route = commandRoute(source.path, path + '.path', context)
   const grant = access(source.access, path + '.access', context)
   const idempotency = record(source.idempotency, path + '.idempotency', context, ['kind', 'header'])
   if (idempotency?.kind !== 'required' || idempotency.header !== 'Idempotency-Key')
@@ -168,14 +213,19 @@ export function commandDefinition(
       path + '.idempotency',
       'Commands require the fixed Idempotency-Key replay contract.'
     )
+  const commerceOperation =
+    source.commerceOperation === undefined
+      ? undefined
+      : oneOf(source.commerceOperation, path + '.commerceOperation', context, COMMERCE_OPERATIONS)
   const parameters = parseArrayItems(
     source.parameters,
     path + '.parameters',
     context,
     16,
-    commandParameter
+    (entry, entryPath, entryContext) =>
+      commandParameter(entry, entryPath, entryContext, commerceOperation ? 1000 : 8192)
   )
-  const steps = parseArrayItems(source.steps, path + '.steps', context, 16, step)
+  const steps = parseArrayItems(source.steps, path + '.steps', context, 32, step)
   const returns = record(source.return, path + '.return', context, ['resultName', 'fields'])
   const resultName = returns && identifier(returns.resultName, path + '.return.resultName', context)
   const fields = returns && commandFieldSet(returns.fields, path + '.return.fields', context)
@@ -208,8 +258,7 @@ export function commandDefinition(
     context,
     'command result'
   )
-  if (!steps.some((entry) => entry.kind === 'data.mutate'))
-    commandError(context, path + '.steps', 'Commands require at least one bounded mutation.')
+  validateStepBody(steps, Boolean(commerceOperation), path + '.steps', context)
   return {
     id: commandId,
     name,
@@ -217,6 +266,7 @@ export function commandDefinition(
     access: grant,
     idempotency: { kind: 'required', header: 'Idempotency-Key' },
     parameters: sorted(parameters, (entry) => entry.name),
+    ...(commerceOperation ? { commerceOperation } : {}),
     steps,
     return: { resultName, fields }
   }

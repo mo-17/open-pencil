@@ -14,7 +14,9 @@ import {
   NESTJS_BACKEND_PROVIDER_DESCRIPTOR
 } from '../descriptor'
 import { nestJSPreviewApplicationDigest } from '../preview-digest'
-import { localMigrationDiagnostic, validateLocalMigrationBoundary } from './boundary'
+import { validateLocalMigrationBoundary } from './boundary'
+import { localMigrationDiagnostic } from './diagnostic'
+import { emitModuleSchemaAddition } from './module-sql'
 import { emitLocalMigrationOperation } from './sql'
 import type {
   NestJSLocalPreviewMigrationInput,
@@ -98,6 +100,11 @@ function buildPlan(
     : ''
   if (new TextEncoder().encode(sql).byteLength > MAX_MIGRATION_SQL_BYTES)
     throw new RangeError('Local migration SQL exceeds its bound.')
+  const warnings = operations.some((entry) => entry.kind === 'add-module-schema')
+    ? [
+        'Complete outstanding commands before upgrading. Existing idempotency ledger records are preserved; previously used keys can be rejected after the model digest changes and will not be re-executed.'
+      ]
+    : []
   const payload = {
     format: 'openpencil.nestjs-local-preview-migration' as const,
     version: 1 as const,
@@ -114,8 +121,9 @@ function buildPlan(
     toModelDigest,
     operations,
     summary: schemaChanged
-      ? operations.map((entry) => entry.summary)
+      ? [...operations.map((entry) => entry.summary), ...warnings]
       : ['Database schema unchanged. Rebuild the local Backend runtime only.'],
+    ...(warnings.length ? { warnings } : {}),
     highestRisk: operations.some((entry) => entry.risk === 'medium')
       ? ('medium' as const)
       : ('low' as const),
@@ -178,20 +186,23 @@ async function planMigration(
   if (diagnostics.length > 0) return { ok: false, diagnostics }
   const shared = await planBackendMigration(from.application.dataModel, to.application.dataModel)
   const operations: NestJSLocalPreviewMigrationOperation[] = []
-  for (const entry of shared.operations) {
-    const emitted = emitLocalMigrationOperation(entry.operation, from.application, to.application)
-    if (emitted) operations.push(emitted)
-    else
-      diagnostics.push(
-        localMigrationDiagnostic(
-          'operation-blocked',
-          '$.operations.' + entry.operation.id,
-          'Local preview does not automatically execute ' +
-            entry.operation.kind +
-            '. Existing data is preserved; use a separately reviewed migration.'
+  if (to.application.modules && shared.operations.length > 0) {
+    operations.push(emitModuleSchemaAddition(from.application, to.application))
+  } else
+    for (const entry of shared.operations) {
+      const emitted = emitLocalMigrationOperation(entry.operation, from.application, to.application)
+      if (emitted) operations.push(emitted)
+      else
+        diagnostics.push(
+          localMigrationDiagnostic(
+            'operation-blocked',
+            '$.operations.' + entry.operation.id,
+            'Local preview does not automatically execute ' +
+              entry.operation.kind +
+              '. Existing data is preserved; use a separately reviewed migration.'
+          )
         )
-      )
-  }
+    }
   if (diagnostics.length > 0) return { ok: false, diagnostics }
   if (!shared.fromModelDigest)
     throw new Error('Local migration requires an exact source model digest.')

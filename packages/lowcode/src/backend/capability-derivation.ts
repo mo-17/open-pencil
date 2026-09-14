@@ -68,14 +68,19 @@ export function deriveBackendApplicationCapabilities(
   const capabilities = new Set<BackendCapability>()
   collectAuthCapabilities(application.auth, capabilities)
   if (application.httpApi) collectHttpAPICapabilities(application.httpApi, capabilities)
-  if (application.commands?.commands.length) {
+  if (application.commands?.commands.length || application.commerce) {
     capabilities.add('server.functions')
     capabilities.add('transactions.atomic')
     capabilities.add('server.http')
     capabilities.add('auth.identity')
     capabilities.add('data.read')
     capabilities.add('data.write')
-    if (application.commands.commands.some((command) => command.access.kind === 'role'))
+    if (
+      application.commerce ||
+      application.commands?.commands.some(
+        (command) => command.access.kind !== 'authenticated' && command.access.roleId !== undefined
+      )
+    )
       capabilities.add('auth.roles')
   }
   if (application.workflows.workflows.length > 0) {

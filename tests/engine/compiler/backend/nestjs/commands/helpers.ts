@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 
 import { emitNestJSCommands } from '#compiler/backend/nestjs/commands'
 import { nestJSCommandPlan } from '#compiler/backend/nestjs/commands/plan'
+import { emitAuthenticationArtifacts } from '#compiler/backend/nestjs/runtime/auth'
 
 import type {
   BackendApplicationSpecV1,
@@ -107,7 +108,7 @@ interface CommandServiceRuntime {
 }
 
 /** Only Nest decorators/exceptions and the DI shell are substituted, not generated command logic. */
-export async function commandRuntime() {
+export async function commandRuntime(application = commandApplication()) {
   const directory = await mkdtemp(join(tmpdir(), 'openpencil-command-runtime-'))
   const stub = `export class BadRequestException extends Error {}
 export class ConflictException extends Error {}
@@ -116,11 +117,14 @@ export class NotFoundException extends Error {}
 export class UnauthorizedException extends Error {}
 export class ServiceUnavailableException extends Error {}
 export const Injectable = () => (target) => target
+export const SetMetadata = () => () => undefined
 `
   await writeFile(join(directory, 'nest.ts'), stub)
   await writeFile(join(directory, 'database.service.ts'), 'export class DatabaseService {}\n')
-  const application = commandApplication()
-  for (const artifact of emitNestJSCommands(application)) {
+  for (const artifact of [
+    ...emitNestJSCommands(application),
+    ...emitAuthenticationArtifacts(application)
+  ]) {
     const filename = artifact.path.split('/').at(-1)
     if (
       !filename ||
@@ -128,7 +132,8 @@ export const Injectable = () => (target) => target
         'command-types.ts',
         'command-input.ts',
         'command-execution.ts',
-        'command.service.ts'
+        'command.service.ts',
+        'identity.ts'
       ].includes(filename)
     )
       continue

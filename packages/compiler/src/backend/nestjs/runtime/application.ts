@@ -2,6 +2,7 @@ import type { BackendArtifactSource } from '#compiler/backend/contracts'
 
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
+import { nestJSBusinessModuleImports } from '../modules/model'
 import { runtimeArtifact } from './artifact'
 import { emitNestJSPreviewContract } from './preview-contract'
 
@@ -120,7 +121,11 @@ function moduleSource(application: BackendApplicationSpecV1): string {
       `import { Resource${index}Module } from './resources/${resource.id}.module.js'`
   )
   const modules = resources.map((_, index) => `Resource${index}Module`)
-  if (application.commands?.commands.length) {
+  if (application.modules) {
+    const business = nestJSBusinessModuleImports(application)
+    imports.splice(0, imports.length, ...business.imports)
+    modules.splice(0, modules.length, ...business.modules)
+  } else if (application.commands?.commands.length) {
     imports.push("import { CommandModule } from './command.module.js'")
     modules.push('CommandModule')
   }

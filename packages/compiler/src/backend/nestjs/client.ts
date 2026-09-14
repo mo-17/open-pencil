@@ -48,13 +48,7 @@ export function emitNestJSClient(application: BackendApplicationSpecV1) {
     )
     const entries: string[] = []
     const path = JSON.stringify(model.resource.path)
-    const publicRead = application.auth.rowAccess.some(
-      (policy) =>
-        policy.entityId === model.entity.id &&
-        policy.effect === 'allow' &&
-        policy.principal.kind === 'anonymous' &&
-        policy.operations.includes('select')
-    )
+    const publicRead = model.authorization.select.public
     const publicArgument = publicRead ? ', undefined, true' : ''
     const query = model.resource.query
     const filter = query?.filterFields.length

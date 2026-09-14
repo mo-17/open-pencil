@@ -1,6 +1,6 @@
 export const COMMAND_EXECUTION_SOURCE = String.raw`import { ConflictException, NotFoundException } from '@nestjs/common'
 import type { DatabaseTransaction } from './database.service.js'
-import { commandScalar, commandValue } from './command-input.js'
+import { commandDatetime, commandScalar, commandValue } from './command-input.js'
 import type { CommandPlan, CommandRow, CommandStep } from './command-types.js'
 
 function exactlyOne(rows: Record<string, unknown>[], missing: 'not-found' | 'conflict'): CommandRow {
@@ -15,13 +15,18 @@ function exactlyOne(rows: Record<string, unknown>[], missing: 'not-found' | 'con
 
 async function executeStep(client: DatabaseTransaction, step: CommandStep, input: CommandRow,
     results: Map<string, CommandRow>, subject: string): Promise<void> {
-  const value = (source: Parameters<typeof commandValue>[0]) => commandValue(source, input, results, subject)
+  const sources = step.kind === 'assert' ? [step.left, step.right] : step.kind === 'read' ? [step.key] : step.values.map(assignment => assignment.source)
+  const needsClock = sources.some(source => source.kind === 'server-now' || source.kind === 'integer-arithmetic' && [source.left, source.right].some(leaf => leaf.kind === 'server-now'))
+  // clock_timestamp is sampled after preceding row locks, never at transaction start or from caller input.
+  const now = needsClock ? commandDatetime((await client.query('SELECT to_char(clock_timestamp() AT TIME ZONE \'UTC\', \'YYYY-MM-DD"T"HH24:MI:SS.US"Z"\') AS now', [])).rows[0]?.now) : undefined
+  const value = (source: Parameters<typeof commandValue>[0]) => commandValue(source, input, results, subject, now)
   if (step.kind === 'assert') {
     const left = value(step.left)
     const right = value(step.right)
-    const matches = step.operator === 'eq' ? left === right :
-      typeof left === 'number' && typeof right === 'number' &&
-      (step.operator === 'gte' ? left >= right : left <= right)
+    const matches = step.operator === 'eq' ? left === right : step.operator === 'neq' ? left !== right :
+      step.comparison === 'datetime' && typeof left === 'string' && typeof right === 'string' ?
+        (step.operator === 'gte' ? commandDatetime(left) >= commandDatetime(right) : commandDatetime(left) <= commandDatetime(right)) :
+        typeof left === 'number' && typeof right === 'number' && (step.operator === 'gte' ? left >= right : left <= right)
     if (!matches) {
       if (step.error === 'not-found') throw new NotFoundException('Resource not found.')
       throw new ConflictException('Request conflict.')

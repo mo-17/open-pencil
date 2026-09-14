@@ -15,6 +15,7 @@ import {
   assertBoundedBackendData,
   boolean,
   boundedText,
+  diagnostic,
   id,
   oneOf,
   record,
@@ -169,6 +170,8 @@ export function parseBackendApplicationSpecV2(
       'storage',
       'httpApi',
       'commands',
+      'commerce',
+      'modules',
       'realtime',
       'transactions',
       'dataMigrations',
@@ -192,6 +195,24 @@ export function parseBackendApplicationSpecV2(
     ]
   )
   if (!source) return { ok: false, diagnostics: context.diagnostics }
+  if (source.modules !== undefined) {
+    diagnostic(
+      context,
+      'backend-modules-v2-unsupported',
+      '$.modules',
+      'Module ownership cannot be lowered or discarded by Backend V2.'
+    )
+    return { ok: false, diagnostics: context.diagnostics }
+  }
+  if (source.commerce !== undefined) {
+    diagnostic(
+      context,
+      'backend-commerce-v2-unsupported',
+      '$.commerce',
+      'Commerce is supported only by the explicit Backend V1 commerce contract; V2 cannot lower or discard it.'
+    )
+    return { ok: false, diagnostics: context.diagnostics }
+  }
   if (source.format !== 'openpencil.backend-application') {
     context.diagnostics.push({
       code: 'backend-format-unsupported',
@@ -215,6 +236,17 @@ export function parseBackendApplicationSpecV2(
     return { ok: false, diagnostics: context.diagnostics }
   }
   context.diagnostics.push(...common.diagnostics)
+  if (
+    common.value.auth.rowAccess.some(
+      (policy) => policy.conditions !== undefined || policy.principal.kind === 'related-member'
+    )
+  )
+    context.diagnostics.push({
+      code: 'backend-row-authority-v2-unsupported',
+      severity: 'error',
+      path: '$.auth.rowAccess',
+      message: 'Conditional and related-member authority cannot be lowered to Backend V2.'
+    })
   const rawCapabilities = array(
     source.capabilities,
     '$.capabilities',
@@ -313,6 +345,30 @@ export function lowerBackendApplicationSpecV1ToV2(
 ): BackendValidationResult<BackendApplicationSpecV2> {
   const parsed = parseBackendApplicationSpecV1(value)
   if (!parsed.ok) return parsed
+  if (parsed.value.modules)
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          code: 'backend-modules-v2-unsupported',
+          severity: 'error',
+          path: '$.modules',
+          message: 'Module ownership cannot be lowered to Backend V2.'
+        }
+      ]
+    }
+  if (parsed.value.commerce)
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          code: 'backend-commerce-v2-unsupported',
+          severity: 'error',
+          path: '$.commerce',
+          message: 'Commerce cannot be lowered to Backend V2.'
+        }
+      ]
+    }
   const declarations = new Map(
     parsed.value.capabilities.map((entry) => [entry.capability, { ...entry }])
   )

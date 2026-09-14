@@ -4,6 +4,11 @@ import { fileURLToPath } from 'node:url'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 
+const APPLICATION_BROWSER_TEST_ROOTS = [
+  'tests/engine/app/lowcode/backend/business/browser',
+  'tests/engine/app/lowcode/backend/commerce/operations/browser'
+] as const
+
 export const UNIT_TEST_GROUPS = {
   app: [
     'tests/engine/acp',
@@ -21,7 +26,7 @@ export const UNIT_TEST_GROUPS = {
     'packages/backend-compiler-sidecar/tests',
     'packages/codepen-sidecar/tests'
   ],
-  'compiler-browser': ['tests/engine/compiler/preview'],
+  'compiler-browser': ['tests/engine/compiler/preview', ...APPLICATION_BROWSER_TEST_ROOTS],
   dom: [
     'tests/engine/docs',
     'tests/engine/dom-css',
@@ -65,7 +70,8 @@ export const UNIT_TEST_GROUPS = {
 
 const UNIT_TEST_GROUP_EXCLUDES: Partial<Record<keyof typeof UNIT_TEST_GROUPS, readonly string[]>> =
   {
-    compiler: ['tests/engine/compiler/preview']
+    compiler: ['tests/engine/compiler/preview'],
+    app: APPLICATION_BROWSER_TEST_ROOTS
   }
 
 export type UnitTestGroup = keyof typeof UNIT_TEST_GROUPS | 'all'

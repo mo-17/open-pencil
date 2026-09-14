@@ -1,6 +1,6 @@
 import type { ActionDef, BackendCommandRecoveryAction, StateDef } from '@open-pencil/scene-graph'
 
-export function commerceRecoveryActions(options: {
+export function templateCommandRecoveryActions(options: {
   commandId: string
   keyTarget: string
   infoTarget: string

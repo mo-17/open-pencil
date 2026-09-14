@@ -5,6 +5,7 @@ import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import type { BackendHttpAPIOIDCAuthenticationIRV1 } from '@open-pencil/lowcode/backend'
 import { useI18n } from '@open-pencil/vue'
 
+import type { BusinessTemplateId } from '@/app/lowcode/backend/business/model/types'
 import { commerceCopy } from '@/app/lowcode/backend/commerce/copy'
 import BackendCommandsEditor from '@/app/lowcode/backend/components/BackendCommandsEditor.vue'
 import BackendDataModelEditor from '@/app/lowcode/backend/components/BackendDataModelEditor.vue'
@@ -16,7 +17,10 @@ import BackendStorageEditor from '@/app/lowcode/backend/components/BackendStorag
 import BackendWorkflowEditor from '@/app/lowcode/backend/components/BackendWorkflowEditor.vue'
 import { nestJSUICopy } from '@/app/lowcode/backend/components/nestjs-ui-copy'
 import BackendLibraryDialog from '@/app/lowcode/backend/library/BackendLibraryDialog.vue'
-import { createBackendLibraryCatalog } from '@/app/lowcode/backend/library/catalog'
+import {
+  createBackendLibraryCatalog,
+  type BackendLibraryTemplateId
+} from '@/app/lowcode/backend/library/catalog'
 import { backendLibraryViewCopy } from '@/app/lowcode/backend/library/view-copy'
 import {
   backendProviderDescriptorKey,
@@ -56,6 +60,8 @@ const tabs = Object.freeze([
 ] as const satisfies readonly BackendTab[])
 const {
   libraryBlockReason,
+  moduleReviews,
+  addLibraryModule,
   createLibraryTemplate,
   canInitializeNestJS,
   initializeNestJS,
@@ -118,11 +124,18 @@ function selectLibraryProvider(key: string): void {
   libraryOpen.value = false
 }
 async function useLibraryTemplate(
-  id: 'personal-notes' | 'single-sku-shop',
+  id: BackendLibraryTemplateId,
   authentication: BackendHttpAPIOIDCAuthenticationIRV1,
-  providerKey: string
+  providerKey: string,
+  commissionBasisPoints = 0
 ): Promise<void> {
-  if (await createLibraryTemplate(id, authentication, providerKey)) {
+  if (await createLibraryTemplate(id, authentication, providerKey, commissionBasisPoints)) {
+    libraryOpen.value = false
+    activeTab.value = 'http'
+  }
+}
+async function addBusinessModule(kind: BusinessTemplateId, reviewKey: string): Promise<void> {
+  if (await addLibraryModule(kind, reviewKey)) {
     libraryOpen.value = false
     activeTab.value = 'http'
   }
@@ -206,11 +219,13 @@ function tabLabel(tab: BackendTab): string {
       :current-provider-key="selectedProviderKey"
       :template-provider-key="templateProviderKey"
       :block-reason="libraryBlockReason"
+      :module-reviews="libraryOpen && hasBackendDeclaration ? moduleReviews : undefined"
       :busy="busy"
       :loading="providersLoading"
       :error="operationError || readError"
       @select-provider="selectLibraryProvider"
       @use-template="useLibraryTemplate"
+      @add-module="addBusinessModule"
       @manage-plugins="managePlugins"
     />
 
@@ -312,7 +327,7 @@ function tabLabel(tab: BackendTab): string {
       </div>
 
       <div v-if="isNestJS" class="mt-2 flex flex-col gap-2">
-        <p class="text-[10px] text-muted">{{ panels.lowcodeBackendNestJSHint }}</p>
+        <p class="text-[10px] text-muted">{{ nestJSText.modelHint }}</p>
         <button
           v-if="canCreateNotesPages"
           type="button"

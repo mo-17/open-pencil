@@ -22,12 +22,13 @@ export function nestJSCommandResultField(
     ?.fields.find((field) => field.id === source.field)
 }
 
-function sourceType(
+export function nestJSCommandValueType(
   application: BackendApplicationSpecV1,
   command: BackendCommandDefinitionIR,
   source: BackendCommandValueSourceIR
 ): DataFieldIR['type'] | undefined {
   if (source.kind === 'caller-sub') return 'uuid'
+  if (source.kind === 'server-now') return 'datetime'
   if (source.kind === 'integer-arithmetic') return 'integer'
   if (source.kind === 'parameter')
     return command.parameters.find((parameter) => parameter.name === source.name)?.type
@@ -56,12 +57,19 @@ export function nestJSCommandAssertion(
   application: BackendApplicationSpecV1,
   command: BackendCommandDefinitionIR,
   step: Extract<BackendCommandStepIR, { kind: 'assert' }>
-): Omit<Extract<BackendCommandStepIR, { kind: 'assert' }>, 'id'> {
+): Omit<Extract<BackendCommandStepIR, { kind: 'assert' }>, 'id'> & { comparison?: 'datetime' } {
   return {
     kind: step.kind,
-    left: canonicalLiteral(step.left, sourceType(application, command, step.right)),
-    right: canonicalLiteral(step.right, sourceType(application, command, step.left)),
+    left: canonicalLiteral(step.left, nestJSCommandValueType(application, command, step.right)),
+    right: canonicalLiteral(step.right, nestJSCommandValueType(application, command, step.left)),
     operator: step.operator,
+    ...(['gte', 'lte'].includes(step.operator) &&
+    [
+      nestJSCommandValueType(application, command, step.left),
+      nestJSCommandValueType(application, command, step.right)
+    ].includes('datetime')
+      ? { comparison: 'datetime' as const }
+      : {}),
     error: step.error
   }
 }

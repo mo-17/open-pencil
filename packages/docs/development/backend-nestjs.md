@@ -302,10 +302,24 @@ foreign keys or relation metadata in either the current or proposed version, sup
 - Adding a nullable field or a field with a compatible literal default.
 - Renaming a table or column while preserving its stable entity/field ID and existing values.
 
-Models containing any of those advanced declarations support fresh initialization and backend
-rebuilds with an unchanged data model. Any data-model change is blocked in managed preview,
-including otherwise simple additions or renames. Existing data remains intact; use a separately
-managed export and reviewed migration, or a new isolated database, for those schema changes.
+Models containing advanced declarations support fresh initialization and backend rebuilds with
+an unchanged data model. A modular application also supports a strict **append new modules**
+migration: only separately owned new tables and enum types, plus their indexes and foreign keys,
+may be added. Existing tables, fields, enums, relationships, commands, resources, identity settings,
+tenant bindings and commerce configuration must remain unchanged. New account-directory resources
+must use explicit read policies without widening an existing endpoint. New module commands cannot
+write an existing table through this migration path. Adding a table to an existing module remains
+a separate migration task.
+
+All new tables are created before foreign keys are attached. The normal exact-plan review, live
+schema checks and transactional SQL/receipt commit still apply. An old application without the
+command ledger cannot introduce it through this path. Other advanced-model changes remain blocked;
+use a separately managed export and reviewed migration, or a new isolated database.
+
+Appending entities changes command-definition digests. Existing idempotency records are preserved,
+but replaying an old key can return `409` instead of replaying or re-executing that command. The
+review includes this warning. Resolve outstanding operations before upgrading and do not replace
+an unresolved attempt's key to force another execution.
 
 Drops, field type or primary-key changes, owner-binding changes, name swaps, and changes to an
 existing field's nullability/default require a separately reviewed migration. They remain blocked

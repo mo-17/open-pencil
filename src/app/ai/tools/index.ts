@@ -24,6 +24,16 @@ import { canCreatePluginModule } from '@/app/plugins'
 
 import { createPluginAITools } from './builtin'
 import {
+  createBusinessAITools,
+  BUSINESS_AI_TOOL_NAME,
+  type BusinessAIToolOptions
+} from './business'
+import {
+  createCommerceAITools,
+  COMMERCE_AI_TOOL_NAME,
+  type CommerceAIToolOptions
+} from './commerce'
+import {
   createPersonalNotesAITools,
   PERSONAL_NOTES_AI_TOOL_NAME,
   type PersonalNotesAIToolOptions
@@ -39,6 +49,8 @@ export const MAX_AGENT_STEPS = 50
 const MAX_TOOL_LOG_ENTRIES = 200
 const DOCUMENT_SCOPE_TOOLS = new Set([
   'eval',
+  BUSINESS_AI_TOOL_NAME,
+  COMMERCE_AI_TOOL_NAME,
   PERSONAL_NOTES_AI_TOOL_NAME,
   SINGLE_SKU_SHOP_AI_TOOL_NAME
 ])
@@ -292,6 +304,8 @@ async function finalizeSuccessfulMutation(
 }
 
 export interface CreateAIToolsOptions {
+  readonly commerce?: CommerceAIToolOptions
+  readonly business?: BusinessAIToolOptions
   readonly personalNotes?: PersonalNotesAIToolOptions
   readonly singleSkuShop?: SingleSkuShopAIToolOptions
 }
@@ -311,6 +325,8 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
     ...EXTENDED_TOOLS.filter((definition) => EXTENDED_AI_TOOL_NAMES.has(definition.name)),
     ...createPersonalNotesAITools(store, options.personalNotes),
     ...createSingleSkuShopAITools(store, options.singleSkuShop),
+    ...createCommerceAITools(store, options.commerce),
+    ...createBusinessAITools(store, options.business),
     ...(codePenToolsEnabled ? createCodePenAITools(store) : [])
   ]
 

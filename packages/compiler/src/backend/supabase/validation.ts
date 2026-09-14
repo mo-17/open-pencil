@@ -13,6 +13,7 @@ import type { BackendProviderAdapterContext } from '../contracts'
 import { backendDiagnostic } from '../diagnostics'
 import { isSupabaseAllowPolicyEmittable, requiredSupabasePolicyOperations } from './policy'
 import { visitSupabaseWorkflowSteps } from './policy-helpers'
+import { unsupportedSupabaseTenantSemantics } from './tenant-semantics'
 
 function hasRequirement(context: BackendProviderAdapterContext, capability: BackendCapability) {
   return context.application.capabilities.some((entry) => entry.capability === capability)
@@ -658,6 +659,16 @@ export function validateSupabaseBackendProvider(
   context: BackendProviderAdapterContext
 ): readonly BackendDiagnostic[] {
   const diagnostics: BackendDiagnostic[] = []
+  diagnostics.push(...unsupportedSupabaseTenantSemantics(context.application))
+  if (context.application.commerce)
+    diagnostics.push(
+      backendDiagnostic(
+        'supabase-commerce-runtime-unsupported',
+        'error',
+        '$.application.commerce',
+        'Commerce transactions and payment lifecycles require the trusted NestJS commerce runtime; this Supabase provider does not implement them.'
+      )
+    )
   validateCapabilities(context, diagnostics)
   validateAuthFieldTypes(context, diagnostics)
   validateTenantMembershipReadAuthority(context, diagnostics)

@@ -18,6 +18,14 @@ import {
   type DataRelationIR
 } from '@open-pencil/lowcode/backend'
 
+import {
+  backendContractReferencesEntity,
+  backendContractReferencesField,
+  backendContractReferencesPolicy,
+  backendContractReferencesRole,
+  backendPolicyNeedsAdvancedEditor
+} from './draft/references'
+
 export type BackendDraftIdFactory = (prefix: string) => string
 
 export class BackendDraftOperationError extends Error {
@@ -149,6 +157,10 @@ export function addBackendEntity(
   application: BackendApplicationSpecV1,
   createId: BackendDraftIdFactory = createBackendDraftId
 ): DataEntityIR {
+  if (application.modules)
+    throw new BackendDraftOperationError(
+      'Use the NestJS module selector to add an entity to a modular application.'
+    )
   requireCapacity(
     application.dataModel.entities.length,
     BACKEND_LIMITS.maxEntities,
@@ -643,6 +655,7 @@ function entityHasReferences(
   entityId: string,
   excludedRelationId?: string
 ): boolean {
+  if (backendContractReferencesEntity(application, entityId)) return true
   if (
     application.dataModel.relations.some(
       (relation) =>
@@ -807,7 +820,12 @@ export function removeBackendField(
   const usedByWorkflow = application.workflows.workflows.some((workflow) =>
     workflowReferencesField(workflow.steps, entityId, fieldId)
   )
-  if (constrained || secured || usedByWorkflow) {
+  if (
+    constrained ||
+    secured ||
+    usedByWorkflow ||
+    backendContractReferencesField(application, entityId, fieldId)
+  ) {
     throw new BackendDraftOperationError(
       'Remove constraints, policies, and workflow references before removing this field.'
     )
@@ -867,13 +885,17 @@ export function setBackendTenantEntity(
 ): void {
   if (
     tenant.entityId !== entityId &&
-    application.auth.rowAccess.some(
+    (application.auth.rowAccess.some(
       (intent) =>
         intent.principal.kind === 'tenant-member' && intent.principal.tenantId === tenant.id
-    )
+    ) ||
+      application.commands?.commands.some(
+        (command) =>
+          command.access.kind === 'tenant-member' && command.access.tenantId === tenant.id
+      ))
   ) {
     throw new BackendDraftOperationError(
-      'Change row-access principals before moving this tenant rule.'
+      'Change row-access and command references before moving this tenant rule.'
     )
   }
   const entity = entityById(application, entityId)
@@ -1043,16 +1065,27 @@ export function setBackendRowAccessEntity(
   entityId: string
 ): void {
   entityById(application, entityId)
+  if (intent.entityId === entityId) return
+  if (
+    backendPolicyNeedsAdvancedEditor(application, intent) ||
+    backendContractReferencesPolicy(application, intent.id)
+  )
+    throw new BackendDraftOperationError(
+      'Update the compound policy and its resource or command references together before moving this rule.'
+    )
+  if (intent.principal.kind === 'tenant-member') {
+    const tenant = application.auth.tenants.find((entry) => entry.entityId === entityId)
+    if (!tenant)
+      throw new BackendDraftOperationError(
+        'Select an entity with a tenant rule before moving tenant access.'
+      )
+    intent.principal = { ...intent.principal, tenantId: tenant.id }
+  }
   intent.entityId = entityId
   if (intent.principal.kind === 'owner') {
     const ownership = application.auth.ownership.find((entry) => entry.entityId === entityId)
     intent.principal = ownership
       ? { kind: 'owner', ownershipId: ownership.id }
-      : { kind: 'authenticated' }
-  } else if (intent.principal.kind === 'tenant-member') {
-    const tenant = application.auth.tenants.find((entry) => entry.entityId === entityId)
-    intent.principal = tenant
-      ? { kind: 'tenant-member', tenantId: tenant.id }
       : { kind: 'authenticated' }
   }
 }
@@ -1060,14 +1093,26 @@ export function setBackendRowAccessEntity(
 export function removeBackendRole(application: BackendApplicationSpecV1, roleId: string): boolean {
   const index = application.auth.roles.findIndex((role) => role.id === roleId)
   if (index === -1) return false
-  if (
-    application.auth.rowAccess.some(
-      (intent) => intent.principal.kind === 'role' && intent.principal.roleId === roleId
+  if (backendContractReferencesRole(application, roleId)) {
+    throw new BackendDraftOperationError(
+      'Remove row-access and command references before removing this role.'
     )
-  ) {
-    throw new BackendDraftOperationError('Remove row-access references before removing this role.')
   }
   application.auth.roles.splice(index, 1)
+  return true
+}
+
+export function removeBackendRowAccess(
+  application: BackendApplicationSpecV1,
+  policyId: string
+): boolean {
+  const index = application.auth.rowAccess.findIndex((policy) => policy.id === policyId)
+  if (index === -1) return false
+  if (backendContractReferencesPolicy(application, policyId))
+    throw new BackendDraftOperationError(
+      'Remove resource and command references before removing this access rule.'
+    )
+  application.auth.rowAccess.splice(index, 1)
   return true
 }
 
@@ -1104,9 +1149,12 @@ export function removeBackendTenant(
       (rule) => rule.principal.kind === 'tenant-member' && rule.principal.tenantId === tenantId
     )
   )
-  if (usedByRows || usedByStorage) {
+  const usedByCommands = application.commands?.commands.some(
+    (command) => command.access.kind === 'tenant-member' && command.access.tenantId === tenantId
+  )
+  if (usedByRows || usedByStorage || usedByCommands) {
     throw new BackendDraftOperationError(
-      'Remove row-access and Storage references before removing this tenant rule.'
+      'Remove row-access, command and Storage references before removing this tenant rule.'
     )
   }
   application.auth.tenants.splice(index, 1)

@@ -7,10 +7,13 @@ import type {
 } from '@open-pencil/lowcode/backend'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 
+import { nestJSCommandResultEntity } from '../commerce/model'
+
 type FieldSchema = (field: DataFieldIR, model: DataModelIR) => JSONValue
 
 function parameterSchema(parameter: BackendCommandParameterIR): JSONValue {
   if (parameter.type === 'uuid') return { type: 'string', format: 'uuid' }
+  if (parameter.type === 'datetime') return { type: 'string', format: 'date-time', maxLength: 32 }
   if (parameter.type === 'integer')
     return { type: 'integer', format: 'int32', minimum: parameter.min, maximum: parameter.max }
   if (parameter.type === 'string') return { type: 'string', maxLength: parameter.maxLength }
@@ -22,14 +25,7 @@ function responseSchema(
   command: BackendCommandDefinitionIR,
   fieldSchema: FieldSchema
 ): JSONValue {
-  const result = command.steps.find(
-    (step) => step.kind !== 'assert' && step.resultName === command.return.resultName
-  )
-  const entity =
-    result && result.kind !== 'assert'
-      ? application.dataModel.entities.find((entry) => entry.id === result.entityId)
-      : undefined
-  if (!entity) throw new Error('Missing validated command response entity.')
+  const entity = nestJSCommandResultEntity(application, command)
   const properties = Object.fromEntries(
     command.return.fields.map((id) => {
       const field = entity.fields.find((entry) => entry.id === id)

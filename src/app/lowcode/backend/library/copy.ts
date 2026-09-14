@@ -1,5 +1,9 @@
 import type { PluginBackendProviderCapabilityV1 } from '@open-pencil/plugin-contracts'
 
+import { businessTemplateCopies } from './business-copy'
+import type { BackendLibraryTemplateId } from './catalog'
+import { operationsTemplateCopy } from './operations-copy'
+
 interface EntryCopy {
   readonly name: string
   readonly description: string
@@ -7,6 +11,8 @@ interface EntryCopy {
   readonly requirements: readonly string[]
 }
 interface TemplateCopy extends EntryCopy {
+  readonly mode: string
+  readonly roles: readonly string[]
   readonly features: readonly string[]
   readonly pages: readonly string[]
 }
@@ -16,7 +22,7 @@ export interface BackendLibraryCopy {
   readonly genericProviderRequirement: string
   readonly capabilities: Readonly<Record<PluginBackendProviderCapabilityV1, string>>
   readonly providers: Readonly<Record<'supabase' | 'nestjs', EntryCopy>>
-  readonly templates: Readonly<Record<'personal-notes' | 'single-sku-shop', TemplateCopy>>
+  readonly templates: Readonly<Record<BackendLibraryTemplateId, TemplateCopy>>
 }
 
 const english: BackendLibraryCopy = {
@@ -59,8 +65,13 @@ const english: BackendLibraryCopy = {
     }
   },
   templates: {
+    ...businessTemplateCopies('en'),
+    'single-merchant-commerce': operationsTemplateCopy('en', false),
+    'multi-merchant-commerce': operationsTemplateCopy('en', true),
     'personal-notes': {
       name: 'Personal notes',
+      mode: 'Private workspace',
+      roles: ['Signed-in user: manage your own notes'],
       description: 'A signed-in notes application with private records and editable pages.',
       tags: ['Notes', 'CRUD', 'OIDC', 'NestJS'],
       features: [
@@ -77,6 +88,11 @@ const english: BackendLibraryCopy = {
     },
     'single-sku-shop': {
       name: 'Single-item checkout',
+      mode: 'Single-product order starter',
+      roles: [
+        'Buyer: place and cancel your own orders',
+        'catalog-manager: manage products and stock'
+      ],
       description: 'Browse products, place an order for one product and manage your orders.',
       tags: ['Shop', 'Orders', 'Inventory', 'NestJS'],
       features: [
@@ -98,6 +114,74 @@ const english: BackendLibraryCopy = {
         'This example does not collect payments or provide a multi-item cart.'
       ],
       pages: ['Products', 'My orders', 'Shop sign in', 'Catalog manager']
+    },
+    'single-merchant-shop': {
+      name: 'Single-merchant shop',
+      mode: 'One merchant operates the shared catalog',
+      description: 'A storefront with buyer orders, product management and a merchant order view.',
+      tags: ['Shop', 'Single merchant', 'Orders', 'Inventory', 'NestJS'],
+      roles: [
+        'Buyer: browse products and manage your own orders',
+        'catalog-manager: manage the shared catalog, add stock and view shop orders'
+      ],
+      features: [
+        'Product search, quantity checks and one-product orders',
+        'Buyer order history and pending-order cancellation with inventory restoration',
+        'Product management, stock additions and merchant order completion',
+        'Server-enforced buyer ownership and merchant role checks'
+      ],
+      requirements: [
+        'The NestJS provider, PostgreSQL and OIDC',
+        'Use a new document without a backend declaration or sign-in flow.',
+        'Grant catalog-manager in the verified JWT openpencil_roles array to the shop operator.',
+        'All catalog-manager accounts operate the same catalog; this mode does not isolate stores.',
+        'Configure the identity service and database separately; installation does not create accounts or grant roles.',
+        'Amounts use integer minor units; the server confirms stock and final prices.',
+        'No payments, multi-item cart, shipping or split settlement are included.'
+      ],
+      pages: [
+        'Single-merchant shop',
+        'My orders',
+        'Shop sign in',
+        'Catalog manager',
+        'Merchant orders'
+      ]
+    },
+    'multi-merchant-marketplace': {
+      name: 'Multi-merchant marketplace',
+      mode: 'Independent stores with one store per merchant account',
+      description: 'Let approved merchants open a store and manage its products and orders.',
+      tags: ['Marketplace', 'Multi merchant', 'Stores', 'Tenant isolation', 'NestJS'],
+      roles: [
+        'Buyer: browse stores and products and manage your own orders',
+        'merchant: open one store, manage its products and view its orders',
+        'Identity service operator: grant merchant access outside the generated application'
+      ],
+      features: [
+        'Store directory, store opening and a shared storefront',
+        'One-product orders, buyer order history and pending-order cancellation',
+        'Store-scoped product management, stock additions and order completion',
+        'Server-verified store ownership isolates merchant writes and order access'
+      ],
+      requirements: [
+        'The NestJS provider, PostgreSQL and OIDC',
+        'Use a new document without a backend declaration or sign-in flow.',
+        'Grant merchant in the verified JWT openpencil_roles array before the user opens a store.',
+        'One account owns one store. Membership uses stores.owner_id and stores.id; team memberships and multiple stores per account are not included.',
+        'Configure the identity service and database separately; installation does not create accounts, grant roles or create stores.',
+        'The store directory and product catalog are public; buyer orders remain private.',
+        'Amounts use integer minor units; the server confirms stock and final prices.',
+        'No payments, multi-item cart, shipping, split settlement or platform administration page are included.'
+      ],
+      pages: [
+        'Marketplace',
+        'My orders',
+        'Shop sign in',
+        'Catalog manager',
+        'Merchant orders',
+        'Store directory',
+        'My store'
+      ]
     }
   }
 }
@@ -135,8 +219,13 @@ const chinese: BackendLibraryCopy = {
     }
   },
   templates: {
+    ...businessTemplateCopies('zh-CN'),
+    'single-merchant-commerce': operationsTemplateCopy('zh-CN', false),
+    'multi-merchant-commerce': operationsTemplateCopy('zh-CN', true),
     'personal-notes': {
       name: '个人笔记',
+      mode: '个人私有空间',
+      roles: ['登录用户：管理自己的笔记'],
       description: '包含登录、私有笔记和可编辑页面的笔记应用。',
       tags: ['笔记', 'CRUD', 'OIDC', 'NestJS'],
       features: ['登录与退出登录', '新增、编辑、删除笔记和分页浏览', '只能访问自己的笔记'],
@@ -149,6 +238,8 @@ const chinese: BackendLibraryCopy = {
     },
     'single-sku-shop': {
       name: '单商品下单',
+      mode: '单商品订单入门模板',
+      roles: ['买家：下单和取消自己的订单', 'catalog-manager：管理商品与库存'],
       description: '浏览商品、提交单商品订单，并查看和取消自己的订单。',
       tags: ['商城', '订单', '库存', 'NestJS'],
       features: [
@@ -170,6 +261,60 @@ const chinese: BackendLibraryCopy = {
         '此示例不收款，也不提供多商品购物车。'
       ],
       pages: ['商品', '我的订单', '商城登录', '商品管理']
+    },
+    'single-merchant-shop': {
+      name: '单商户商城',
+      mode: '一个商家经营统一商品目录',
+      description: '包含买家下单、商品管理和商家订单查看的完整页面模板。',
+      tags: ['商城', '单商户', '订单', '库存', 'NestJS'],
+      roles: [
+        '买家：浏览商品、管理自己的订单',
+        'catalog-manager：管理统一商品目录、补库存和查看商城订单'
+      ],
+      features: [
+        '商品搜索、数量校验与单商品下单',
+        '买家订单记录与取消待处理订单后恢复库存',
+        '商品管理、补库存与商家标记订单完成',
+        '服务端校验买家所有权与商家角色'
+      ],
+      requirements: [
+        '启用 NestJS，配置 PostgreSQL 与 OIDC',
+        '使用没有后端声明和登录流程的新文档。',
+        '在已验证 JWT 的 openpencil_roles 数组中向商城经营者授予 catalog-manager。',
+        '所有 catalog-manager 角色账号共同管理同一商品目录；此模式不隔离店铺。',
+        '身份服务和数据库需另行配置；安装不会创建账号或授予角色。',
+        '金额使用最小货币单位的整数，库存和最终计价由服务器确认。',
+        '不含支付、多商品购物车、物流或分账。'
+      ],
+      pages: ['单商户商城', '我的订单', '商城登录', '商品管理', '商家订单']
+    },
+    'multi-merchant-marketplace': {
+      name: '多商户平台',
+      mode: '独立店铺，每个商家账号只能拥有一家店',
+      description: '获准入驻的商家可以开店，并管理自己店铺的商品和订单。',
+      tags: ['商城', '多商户', '店铺', '租户隔离', 'NestJS'],
+      roles: [
+        '买家：浏览店铺和商品、管理自己的订单',
+        'merchant：开设一家店铺、管理本店商品和查看本店订单',
+        '身份服务管理员：在生成的应用之外授予商家权限'
+      ],
+      features: [
+        '店铺目录、开店与统一商品浏览页面',
+        '单商品下单、买家订单记录与取消待处理订单',
+        '按店铺管理商品、补库存和标记订单完成',
+        '服务端验证店铺所有权，隔离商家写入与订单访问'
+      ],
+      requirements: [
+        '启用 NestJS，配置 PostgreSQL 与 OIDC',
+        '使用没有后端声明和登录流程的新文档。',
+        '用户开店前，先在已验证 JWT 的 openpencil_roles 数组中授予 merchant。',
+        '一账号一店；成员定位使用 stores.owner_id 和 stores.id，不含团队成员或一账号多店。',
+        '身份服务和数据库需另行配置；安装不会创建账号、授予角色或创建店铺。',
+        '店铺目录与商品目录公开，买家订单保持私有。',
+        '金额使用最小货币单位的整数，库存和最终计价由服务器确认。',
+        '不含支付、多商品购物车、物流、分账或平台管理页面。'
+      ],
+      pages: ['多商户商城', '我的订单', '商城登录', '商品管理', '商家订单', '店铺目录', '我的店铺']
     }
   }
 }

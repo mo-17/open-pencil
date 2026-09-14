@@ -1,5 +1,7 @@
 import { discriminatedRecord } from './discriminated-record'
 import { BACKEND_LIMITS } from './limits'
+import { parseAuthConditions } from './row-access/conditions'
+import { parseRelatedMember, validateRelatedMemberPolicy } from './row-access/related-member'
 import {
   AUTH_POLICY_IR_VERSION,
   type AuthAccessOperation,
@@ -29,7 +31,25 @@ const PRINCIPAL_SHAPES = {
   authenticated: { allowed: ['kind'], required: ['kind'] },
   role: { allowed: ['kind', 'roleId'], required: ['kind', 'roleId'] },
   owner: { allowed: ['kind', 'ownershipId'], required: ['kind', 'ownershipId'] },
-  'tenant-member': { allowed: ['kind', 'tenantId'], required: ['kind', 'tenantId'] }
+  'related-member': {
+    allowed: [
+      'kind',
+      'entityFieldId',
+      'membershipEntityId',
+      'membershipFieldId',
+      'identityFieldId',
+      'conditions',
+      'roleId'
+    ],
+    required: [
+      'kind',
+      'entityFieldId',
+      'membershipEntityId',
+      'membershipFieldId',
+      'identityFieldId'
+    ]
+  },
+  'tenant-member': { allowed: ['kind', 'tenantId', 'roleId'], required: ['kind', 'tenantId'] }
 } as const
 
 function identity(
@@ -139,6 +159,7 @@ function principal(
   const parsed = discriminatedRecord(value, path, context, PRINCIPAL_SHAPES)
   if (!parsed) return undefined
   const { kind, source } = parsed
+  if (kind === 'related-member') return parseRelatedMember(source, path, context)
   if (kind === 'anonymous' || kind === 'authenticated') {
     return { kind }
   }
@@ -151,7 +172,11 @@ function principal(
     return ownershipId ? { kind, ownershipId } : undefined
   }
   const tenantId = id(source.tenantId, `${path}.tenantId`, context)
-  return tenantId ? { kind, tenantId } : undefined
+  const roleId =
+    source.roleId === undefined ? undefined : id(source.roleId, `${path}.roleId`, context)
+  return tenantId && (source.roleId === undefined || roleId)
+    ? { kind, tenantId, ...(roleId ? { roleId } : {}) }
+    : undefined
 }
 
 function rowAccess(
@@ -159,13 +184,13 @@ function rowAccess(
   path: string,
   context: BackendValidationContext
 ): AuthRowAccessIntentIR | undefined {
-  const source = record(value, path, context, [
-    'id',
-    'entityId',
-    'effect',
-    'operations',
-    'principal'
-  ])
+  const source = record(
+    value,
+    path,
+    context,
+    ['id', 'entityId', 'effect', 'operations', 'principal', 'conditions'],
+    ['id', 'entityId', 'effect', 'operations', 'principal']
+  )
   if (!source) return undefined
   const accessId = id(source.id, `${path}.id`, context)
   const entityId = id(source.entityId, `${path}.entityId`, context)
@@ -191,6 +216,10 @@ function rowAccess(
   }
   uniqueBy(operations, `${path}.operations`, context, 'access operation')
   const parsedPrincipal = principal(source.principal, `${path}.principal`, context)
+  const conditions =
+    source.conditions === undefined
+      ? undefined
+      : parseAuthConditions(source.conditions, `${path}.conditions`, context)
   const order: readonly AuthAccessOperation[] = ['select', 'insert', 'update', 'delete']
   return accessId && entityId && effect && rawOperations && operations.length > 0 && parsedPrincipal
     ? {
@@ -198,7 +227,8 @@ function rowAccess(
         entityId,
         effect,
         operations: order.filter((entry) => operations.includes(entry)),
-        principal: parsedPrincipal
+        principal: parsedPrincipal,
+        ...(conditions ? { conditions } : {})
       }
     : undefined
 }
@@ -211,7 +241,13 @@ function validatePrincipalReference(
   context: BackendValidationContext
 ): void {
   const path = `$.auth.rowAccess.${entry.id}.principal`
-  if (entry.principal.kind === 'role' && !roles.has(entry.principal.roleId)) {
+  if (
+    (entry.principal.kind === 'role' ||
+      entry.principal.kind === 'tenant-member' ||
+      entry.principal.kind === 'related-member') &&
+    entry.principal.roleId !== undefined &&
+    !roles.has(entry.principal.roleId)
+  ) {
     context.diagnostics.push({
       code: 'backend-auth-role-missing',
       severity: 'error',
@@ -305,6 +341,7 @@ function validateAuthReferences(
     }
   }
   for (const entry of auth.rowAccess) {
+    validateRelatedMemberPolicy(entry, model, context)
     if (!entities.has(entry.entityId)) {
       context.diagnostics.push({
         code: 'backend-auth-entity-missing',

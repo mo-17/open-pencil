@@ -7,6 +7,7 @@ import type {
 
 import { nestJSArtifact, nestJSJSONArtifact, sqlIdentifier } from './artifact'
 import { nestJSCommandLedgerSQL } from './commands/ledger'
+import { nestJSCommerceLedgerSQL } from './commerce/ledger'
 import { nestJSEnum } from './schema-fields'
 import { nestJSConstraintName } from './schema-names'
 
@@ -133,10 +134,24 @@ function foreignKeyStatements(model: DataModelIR, entity: DataEntityIR): string[
   })
 }
 
-export function emitNestJSSchema(application: BackendApplicationSpecV1) {
+/** Builds only the selected model objects; caller must validate additive migration authority. */
+export function nestJSModelSchemaStatements(
+  application: BackendApplicationSpecV1,
+  entityIds: readonly string[],
+  enumIds: readonly string[]
+): string[] {
   const model = application.dataModel
-  const statements = [
-    ...model.enums.map(
+  const entities = model.entities.filter((entity) => entityIds.includes(entity.id))
+  const enums = model.enums.filter((entry) => enumIds.includes(entry.id))
+  if (
+    new Set(entityIds).size !== entityIds.length ||
+    new Set(enumIds).size !== enumIds.length ||
+    entities.length !== entityIds.length ||
+    enums.length !== enumIds.length
+  )
+    throw new Error('Schema selection must name unique validated model objects.')
+  return [
+    ...enums.map(
       (entry) =>
         'CREATE TYPE ' +
         sqlIdentifier('public') +
@@ -146,10 +161,22 @@ export function emitNestJSSchema(application: BackendApplicationSpecV1) {
         entry.values.map(sqlLiteral).join(', ') +
         ');'
     ),
-    ...model.entities.flatMap((entity) => nestJSEntitySchemaStatements(application, entity)),
-    ...model.entities.flatMap(uniqueAndIndexStatements),
-    ...model.entities.flatMap((entity) => foreignKeyStatements(model, entity)),
-    ...(application.commands?.commands.length ? [nestJSCommandLedgerSQL()] : [])
+    ...entities.flatMap((entity) => nestJSEntitySchemaStatements(application, entity)),
+    ...entities.flatMap(uniqueAndIndexStatements),
+    ...entities.flatMap((entity) => foreignKeyStatements(model, entity))
+  ]
+}
+
+export function emitNestJSSchema(application: BackendApplicationSpecV1) {
+  const model = application.dataModel
+  const statements = [
+    ...nestJSModelSchemaStatements(
+      application,
+      model.entities.map((entity) => entity.id),
+      model.enums.map((entry) => entry.id)
+    ),
+    ...(application.commands?.commands.length ? [nestJSCommandLedgerSQL()] : []),
+    ...(application.commerce ? nestJSCommerceLedgerSQL() : [])
   ]
   const sql =
     '-- Review-only initial schema for fresh tables. Never executed by the generator or application.\n' +
@@ -167,14 +194,33 @@ export function emitNestJSSchema(application: BackendApplicationSpecV1) {
         databaseRLS: false,
         identity: 'verified-jwt-sub-uuid',
         roleClaim: 'verified-jwt-top-level-openpencil_roles',
-        policyCombination: 'OR-of-explicit-owner-role-and-select-only-anonymous-grants',
+        policyCombination: application.auth.tenants.length
+          ? 'OR-of-explicit-owner-role-tenant-and-select-only-anonymous-grants-with-AND-tenant-role'
+          : 'OR-of-explicit-owner-role-and-select-only-anonymous-grants',
         policies: application.auth.rowAccess,
         ownership: application.auth.ownership,
+        ...(application.auth.tenants.length ? { tenants: application.auth.tenants } : {}),
+        ...(application.httpApi?.resources.some((resource) => resource.readPolicyIds)
+          ? {
+              resourceReadPolicies: application.httpApi.resources
+                .filter((resource) => resource.readPolicyIds)
+                .map((resource) => ({ resourceId: resource.id, policyIds: resource.readPolicyIds }))
+            }
+          : {}),
         ...(application.commands?.commands.length
           ? {
               commands: application.commands,
-              commandEnforcement: 'explicit-command-steps-with-owner-scope-and-verified-caller',
+              commandEnforcement: application.auth.tenants.length
+                ? 'verified-caller-and-locked-membership-before-ledger-with-bound-tenant-reads'
+                : 'explicit-command-steps-with-owner-scope-and-verified-caller',
               commandIdempotency: 'same-transaction-ledger-bound-to-application-command-subject-key'
+            }
+          : {}),
+        ...(application.commerce
+          ? {
+              commerce: application.commerce,
+              commercePayments: 'development-simulator-only-no-real-gateway',
+              commerceLedger: 'append-only-business-effects'
             }
           : {}),
         invariants: [

@@ -1,5 +1,6 @@
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
+import { nestJSCommandResultEntity } from '../commerce/model'
 import { nestJSFieldType } from '../dto'
 
 function parameterType(type: string): string {
@@ -11,12 +12,7 @@ export function nestJSClientCommands(application: BackendApplicationSpecV1) {
   const types: string[] = []
   const commands = (application.commands?.commands ?? []).map((command, index) => {
     const name = 'Command' + index
-    const result = command.steps.find(
-      (step) => step.kind !== 'assert' && step.resultName === command.return.resultName
-    )
-    if (!result || result.kind === 'assert') throw new Error('Missing command return source.')
-    const entity = application.dataModel.entities.find((entry) => entry.id === result.entityId)
-    if (!entity) throw new Error('Missing command return entity.')
+    const entity = nestJSCommandResultEntity(application, command)
     types.push(
       `export type ${name}Parameters = { ${command.parameters.map((parameter) => `${JSON.stringify(parameter.name)}: ${parameterType(parameter.type)}`).join('; ')} }`,
       `export type ${name}Result = { ${command.return.fields
@@ -64,6 +60,14 @@ export function normalizeCommandParameters(value: unknown, parameters: readonly 
     if (parameter.type === 'uuid') {
       if (typeof item !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item)) throw new BackendCommandError(400)
       result[parameter.name] = item.toLowerCase()
+    } else if (parameter.type === 'datetime') {
+      if (typeof item !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00))$/.test(item)) throw new BackendCommandError(400)
+      const day = new Date(item.slice(0, 10) + 'T00:00:00.000Z')
+      const parsed = new Date(item)
+      if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== item.slice(0, 10) ||
+        !Number.isFinite(parsed.getTime()) || parsed.getUTCFullYear() < 1 || parsed.getUTCFullYear() > 9999) throw new BackendCommandError(400)
+      const fraction = /\.(\d{1,6})(?:Z|[+-])/.exec(item)?.[1] ?? ''
+      result[parameter.name] = parsed.toISOString().slice(0, -1) + fraction.padEnd(6, '0').slice(3) + 'Z'
     } else if (parameter.type === 'integer') {
       if (typeof item !== 'number' || !Number.isInteger(item) || item < (parameter.min ?? -2147483648) || item > (parameter.max ?? 2147483647)) throw new BackendCommandError(400)
       result[parameter.name] = item === 0 ? 0 : item

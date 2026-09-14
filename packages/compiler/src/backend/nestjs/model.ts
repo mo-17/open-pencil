@@ -30,7 +30,7 @@ export function nestJSResources(application: BackendApplicationSpecV1): NestJSRe
       entity,
       ownership,
       dataModel: application.dataModel,
-      authorization: nestJSAuthorization(application, ownership)
+      authorization: nestJSAuthorization(application, ownership, resource.readPolicyIds)
     }
   })
 }

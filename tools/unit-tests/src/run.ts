@@ -59,7 +59,12 @@ export function runUnitTestPlan(
   { executable = process.execPath, spawnSync = spawnUnitTest }: UnitTestRunnerDeps = {}
 ): number {
   for (const run of plan) {
-    const result = spawnSync([executable, 'test', ...run.files])
+    // Absolute paths select exact files; bare paths are Bun discovery filters.
+    const result = spawnSync([
+      executable,
+      'test',
+      ...run.files.map((file) => resolve(REPO_ROOT, file))
+    ])
     if (!result.success) return result.exitCode || 1
   }
   return 0

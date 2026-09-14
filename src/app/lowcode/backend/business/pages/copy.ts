@@ -1,0 +1,83 @@
+const english = {
+  signIn: 'Sign in',
+  signOut: 'Sign out',
+  login: 'Business sign in',
+  setup: 'Account setup',
+  setupHint:
+    'Sign in, register your profile, then return to your workspace. Roles are granted by your identity service; these pages never grant access.',
+  roles: 'Identity service roles',
+  select: 'Select record',
+  selected: 'Selected record',
+  none: 'Select a record to view its details or perform an action.',
+  first: 'First page',
+  next: 'Next page',
+  search: 'Search records',
+  all: 'All statuses',
+  apply: 'Apply filters',
+  clear: 'Clear selection',
+  actions: 'Actions',
+  chooseAction:
+    'Choose an action to open its form. Permissions and valid transitions are checked by the server.',
+  chooseRelation: 'Choose',
+  relationSelected: 'Selected',
+  submit: 'Submit',
+  confirm: 'Submit this request?',
+  keepEditing: 'Keep editing',
+  busy: 'Request in progress…',
+  result: 'Server result',
+  saved: 'Saved request',
+  inspect: 'Inspect saved request',
+  retry: 'Retry saved request',
+  acknowledge: 'Finish reviewed request',
+  acknowledgeHint:
+    'I have checked the server result. Finish this request and allow another action?',
+  recovery:
+    'A saved request is kept until you review its result. Retry uses the original parameters.',
+  empty: 'No saved request',
+  incompatible: 'Saved request is incompatible',
+  notInspected: 'Inspect after signing in to recover an earlier request.',
+  details: 'Record details',
+  required: 'Complete the required fields before submitting.'
+}
+
+const chinese: { [Key in keyof typeof english]: string } = {
+  signIn: '登录',
+  signOut: '退出登录',
+  login: '业务系统登录',
+  setup: '账号设置',
+  setupHint: '登录后先登记个人资料，再返回工作台。角色需由身份服务授予，页面操作不会授予权限。',
+  roles: '身份服务角色',
+  select: '选择记录',
+  selected: '当前记录',
+  none: '选择一条记录查看详情或进行操作。',
+  first: '首页',
+  next: '下一页',
+  search: '搜索记录',
+  all: '全部状态',
+  apply: '应用筛选',
+  clear: '清除选择',
+  actions: '操作',
+  chooseAction: '选择操作后填写表单；服务器会校验权限和状态流转。',
+  chooseRelation: '选择',
+  relationSelected: '已选',
+  submit: '提交',
+  confirm: '提交此次请求？',
+  keepEditing: '继续编辑',
+  busy: '正在处理请求…',
+  result: '服务器结果',
+  saved: '已保存请求',
+  inspect: '检查已保存请求',
+  retry: '重试已保存请求',
+  acknowledge: '结束已核对请求',
+  acknowledgeHint: '已核对服务器结果，结束此次请求并允许下一次操作？',
+  recovery: '核对服务器结果前保留已保存请求；重试使用原始参数。',
+  empty: '没有已保存请求',
+  incompatible: '已保存请求与当前版本不兼容',
+  notInspected: '登录后可检查并恢复之前的请求。',
+  details: '记录详情',
+  required: '提交前请完整填写必填项。'
+}
+
+export function businessPageCopy(locale: string) {
+  return locale.toLowerCase().startsWith('zh') ? chinese : english
+}

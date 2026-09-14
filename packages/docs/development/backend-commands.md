@@ -12,6 +12,9 @@ explicit server authority. Review steps and return projections alongside resourc
 
 ## Create the example
 
+For multi-product carts, development payment simulation, shipment records and merchant settlement
+bookkeeping, use the separate [commerce application templates](./backend-commerce.md).
+
 Open **Services & Workflows → Backend → Browse backend library** and choose **Single-item checkout**.
 Review its pages and requirements, choose **Local Keycloak** or enter **Custom OIDC** public settings,
 then click **Use template**. The enabled NestJS provider is checked again at creation. The template
@@ -27,11 +30,55 @@ create pages or migrate a database. **Manage plugins** opens the existing Plugin
 library contains installed provider declarations and built-in templates, with no new remote
 marketplace protocol.
 
-The built-in AI's Direct mode also exposes `create_single_sku_shop_app`. It creates the same
-editable pages and command bindings before visual styling, with English or Chinese copy. For
-the existing local identity setup, ask: “使用本地 Keycloak，创建一个中文单商品电商应用，保留下单、
-取消订单和库存逻辑，导出 React 项目。” The tool changes the document only; export all four
-returned pages together and configure the generated service as described below.
+The built-in AI's Direct mode exposes `create_commerce_app` with a required merchant mode and
+English or Chinese page copy:
+
+| Mode              | Pages and access                                                                                                                                                                                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `single-merchant` | Storefront, buyer orders, login, product management and merchant orders. The verified `catalog-manager` role controls management.                                                                                                                                          |
+| `multi-merchant`  | The same five flows plus a store directory and shop opening. The platform grants `merchant` in the identity service before that account opens its own shop; each account can own at most one shop. Server membership checks isolate merchant products and orders by store. |
+
+For the existing local identity setup, ask: “使用本地 Keycloak，创建中文多商户电商应用，一账号一店，
+保留下单、取消订单、库存和商家订单流程，导出 React 项目。” The AI chooses the explicit merchant
+mode from the request; a single SKU per order does not determine the merchant model. For another
+OIDC service, supply only its public issuer and client ID. Neither template grants identity roles.
+
+The legacy `create_single_sku_shop_app` remains available with its original four-page starter and
+does not add merchant-order or shop-opening pages. Existing documents are not silently upgraded.
+Both tools create the working controls and bindings before styling, change only the document,
+and return every page that must be exported together. Creating a template does not start services,
+insert database products or shops, deploy, or verify real login and persistence.
+
+Keep the generated server authorization when styling merchant pages. A route, browser role label,
+client filter or supplied store ID grants no access. These starters retain one SKU per order and
+do not implement payments, multi-SKU carts, shipping tracking, refunds or settlement splitting.
+The original example's command and retry behavior is described below.
+
+### Merchant order and store boundaries
+
+The two merchant templates are separate library choices. After login, a single-merchant manager
+can maintain the shared catalog and open **Merchant orders**. A multi-merchant account first opens
+**Store directory → My store**, creates or selects its own store, and then opens product management
+or merchant orders. The identity administrator grants the verified `openpencil_roles` value
+`catalog-manager` or `merchant` before these writes; the template has no role-granting UI.
+
+**My orders** selects only the buyer ownership policy. **Merchant orders** selects only the manager
+or store-membership policy, even when the same person is both a buyer and a merchant. Public store
+listings expose only store IDs and titles. Store ownership is unique per account and cannot be
+changed through the generated resources; product store bindings are also immutable.
+
+Multi-merchant checkout adds a required `storeId` selector. The server locks the store and product,
+verifies their relationship, and saves the product's actual store ID and the locked store title in
+the order. Store membership and the verified merchant role are both required for restocking and
+fulfillment. Those commands lock membership inside the transaction and check it before returning
+an idempotent replay. A supplied store ID or a remembered browser selection cannot grant access.
+
+**Complete order** changes only a pending order to `fulfilled`; it does not collect payment or
+record shipment. Buyers can cancel a pending order to release stock, but cannot cancel a fulfilled
+order. Completion supports the same retained request key and explicit recovery flow as checkout.
+New tenant bindings and read-policy selectors are part of the backend contract. Existing generated
+databases are not silently converted into merchant applications; use a fresh template/database or
+review a separate migration. Supabase export rejects these unsupported combined tenant semantics.
 
 **Local Keycloak** uses the existing local service's public configuration; start that service
 separately. **Custom OIDC** uses the public issuer and client ID you supply. Both remain editable in

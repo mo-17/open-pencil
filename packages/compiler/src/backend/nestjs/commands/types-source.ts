@@ -1,7 +1,7 @@
 export const COMMAND_TYPES_SOURCE = String.raw`export type Scalar = string | number | boolean | null
 export type CommandRow = Record<string, Scalar>
 export type CommandParameter =
-  | { readonly name: string; readonly type: 'uuid' | 'boolean'; readonly required: true }
+  | { readonly name: string; readonly type: 'uuid' | 'boolean' | 'datetime'; readonly required: true }
   | { readonly name: string; readonly type: 'integer'; readonly required: true; readonly min: number; readonly max: number }
   | { readonly name: string; readonly type: 'string'; readonly required: true; readonly maxLength: number }
 export type CommandLeaf =
@@ -9,6 +9,7 @@ export type CommandLeaf =
   | { readonly kind: 'result'; readonly name: string; readonly field: string }
   | { readonly kind: 'literal'; readonly value: Scalar }
   | { readonly kind: 'caller-sub' }
+  | { readonly kind: 'server-now' }
 export type CommandValue = CommandLeaf | {
   readonly kind: 'integer-arithmetic'
   readonly operator: 'add' | 'subtract' | 'multiply'
@@ -26,7 +27,7 @@ export type CommandStep =
       readonly record: string; readonly keyColumn: string; readonly keyField: string;
       readonly values: readonly CommandAssignment[]; readonly projection: string }
   | { readonly kind: 'assert'; readonly left: CommandValue; readonly right: CommandValue;
-      readonly operator: 'eq' | 'gte' | 'lte'; readonly error: 'not-found' | 'conflict' }
+      readonly operator: 'eq' | 'neq' | 'gte' | 'lte'; readonly comparison?: 'datetime'; readonly error: 'not-found' | 'conflict' }
 export interface CommandPlan {
   readonly applicationId: string
   readonly id: string

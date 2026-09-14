@@ -37,6 +37,7 @@ function readMethods(model: NestJSResource): string {
 
 function mutationMethods(model: NestJSResource, index: number): string {
   const methods: string[] = []
+  const tenantCreate = Boolean(model.authorization.insert.tenants?.length)
   if (model.resource.operations.includes('create')) {
     methods.push(`  async create(principal: VerifiedPrincipal | null, body: Resource${index}CreateDTO) {
     const subject = createSubject(principal, ACCESS.insert)
@@ -44,9 +45,10 @@ function mutationMethods(model: NestJSResource, index: number): string {
     const columns = [OWNER, ...fields.map((field) => field.column)]
     const values: unknown[] = [subject, ...fields.map((field) => Reflect.get(body, field.id))]
     const placeholders = values.map((_value, index) => '$' + (index + 1))
+${tenantCreate ? '    const where = tenantCreateScope(principal, ACCESS.insert, body, values)\n' : ''}\
     const result = await this.database.query(
-      'INSERT INTO ' + TABLE + ' (' + columns.join(', ') + ') VALUES (' +
-      placeholders.join(', ') + ') RETURNING ' + PROJECTION, values)
+      'INSERT INTO ' + TABLE + ' (' + columns.join(', ') + ') ${tenantCreate ? "SELECT ' + placeholders.join(', ') + ' WHERE ' + where + ' RETURNING ' + PROJECTION, values)" : "VALUES (' +\n      placeholders.join(', ') + ') RETURNING ' + PROJECTION, values)"}
+${tenantCreate ? "    if (!result.rows[0]) throw new ForbiddenException('Operation is not permitted.')\n" : ''}\
     return result.rows[0]
   }`)
   }
@@ -99,9 +101,10 @@ export function emitNestJSService(model: NestJSResource, index: number) {
     ...(model.resource.operations.includes('create') ? ['Resource' + index + 'CreateDTO'] : []),
     ...(model.resource.operations.includes('update') ? ['Resource' + index + 'UpdateDTO'] : [])
   ]
-  const source = `import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common'
+  const tenantCreate = Boolean(model.authorization.insert.tenants?.length)
+  const source = `import { Injectable, BadRequestException, NotFoundException${tenantCreate ? ', ForbiddenException' : ''} } from '@nestjs/common'
 import { DatabaseService } from '../database.service.js'
-import { createSubject, rowScope, type VerifiedPrincipal } from '../identity.js'
+import { createSubject, rowScope, ${tenantCreate ? 'tenantCreateScope, ' : ''}type VerifiedPrincipal } from '../identity.js'
 import { listStatement, listPage } from '../list-query.js'
 import type { ListQuery } from '../request-validation.js'
 ${dtoNames.length ? 'import type { ' + dtoNames.join(', ') + ' } from ' + JSON.stringify('./' + model.resource.id + '.dto.js') : ''}

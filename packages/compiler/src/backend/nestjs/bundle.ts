@@ -10,6 +10,7 @@ import { emitNestJSController } from './controller'
 import { NESTJS_BACKEND_PROVIDER_DESCRIPTOR } from './descriptor'
 import { emitNestJSDTO } from './dto'
 import { nestJSResources } from './model'
+import { emitNestJSModules } from './modules'
 import { emitNestJSOpenAPI } from './openapi'
 import { emitNestJSProject } from './project'
 import { emitNestJSListQuery } from './query'
@@ -68,6 +69,7 @@ const server: BackendProviderAdapter = {
     emitNestJSListQuery(),
     ...emitNestJSRuntimeArtifacts(application),
     ...emitNestJSCommands(application),
+    ...emitNestJSModules(application),
     ...nestJSResources(application).flatMap((model, index) => [
       ...emitNestJSController(model, index),
       ...emitNestJSDTO(model, index),

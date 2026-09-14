@@ -125,7 +125,11 @@ export function parseAuthPrincipalIntentV2(
 export function principalKey(principal: AuthPrincipalIntent): string {
   if (principal.kind === 'role') return `${principal.kind}:${principal.roleId}`
   if (principal.kind === 'owner') return `${principal.kind}:${principal.ownershipId}`
-  if (principal.kind === 'tenant-member') return `${principal.kind}:${principal.tenantId}`
+  if (principal.kind === 'tenant-member')
+    return (
+      `${principal.kind}:${principal.tenantId}` +
+      (principal.roleId === undefined ? '' : `:role:${principal.roleId}`)
+    )
   return principal.kind
 }
 

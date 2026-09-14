@@ -1,9 +1,38 @@
 import type { AppBackendProviderDescriptor } from '@/app/plugins/host/backend-provider'
 
+import { BUSINESS_TEMPLATE_IDS, type BusinessTemplateId } from '../business/model/types'
 import { backendLibraryCopy } from './copy'
 
 export type BackendLibraryCategory = 'all' | 'providers' | 'templates'
-export type BackendLibraryTemplateId = 'personal-notes' | 'single-sku-shop'
+export type BackendLibraryTemplateId =
+  | 'personal-notes'
+  | 'single-sku-shop'
+  | 'single-merchant-shop'
+  | 'multi-merchant-marketplace'
+  | 'single-merchant-commerce'
+  | 'multi-merchant-commerce'
+  | BusinessTemplateId
+
+export function isBusinessTemplate(id: string): id is BusinessTemplateId {
+  return BUSINESS_TEMPLATE_IDS.some((entry) => entry === id)
+}
+
+export function isBackendLibraryTemplateId(id: string): id is BackendLibraryTemplateId {
+  return (
+    [
+      'personal-notes',
+      'single-sku-shop',
+      'single-merchant-shop',
+      'multi-merchant-marketplace',
+      'single-merchant-commerce',
+      'multi-merchant-commerce'
+    ].includes(id) || isBusinessTemplate(id)
+  )
+}
+
+export function isCommerceOperationsTemplate(id: string): boolean {
+  return id === 'single-merchant-commerce' || id === 'multi-merchant-commerce'
+}
 
 export interface BackendLibraryProviderInput {
   readonly descriptorKey: string
@@ -40,6 +69,8 @@ export interface BackendLibraryTemplate extends BackendLibraryEntry {
   readonly kind: 'template'
   readonly id: BackendLibraryTemplateId
   readonly providerId: 'nestjs'
+  readonly mode: string
+  readonly roles: readonly string[]
   readonly pages: readonly string[]
   readonly entities: readonly string[]
 }
@@ -56,6 +87,7 @@ function immutableItem<T extends BackendLibraryItem>(item: T): T {
   if (item.kind === 'template') {
     Object.freeze(item.pages)
     Object.freeze(item.entities)
+    Object.freeze(item.roles)
   }
   return Object.freeze(item)
 }
@@ -154,7 +186,42 @@ export function createBackendLibraryCatalog(
       })
     )
   }
-  const templates = (['personal-notes', 'single-sku-shop'] as const).map((id) => {
+  const templateEntities = {
+    'personal-notes': ['notes'],
+    'single-sku-shop': ['products', 'orders'],
+    'single-merchant-shop': ['products', 'orders'],
+    'multi-merchant-marketplace': ['stores', 'products', 'orders'],
+    'single-merchant-commerce': [
+      'stores',
+      'products',
+      'carts',
+      'cart_items',
+      'purchases',
+      'orders',
+      'order_items',
+      'refunds',
+      'shipments',
+      'settlements'
+    ],
+    'multi-merchant-commerce': [
+      'stores',
+      'products',
+      'carts',
+      'cart_items',
+      'purchases',
+      'orders',
+      'order_items',
+      'refunds',
+      'shipments',
+      'settlements'
+    ],
+    'customer-crm': ['users', 'customers', 'customer_history'],
+    'service-desk': ['users', 'tickets', 'ticket_history'],
+    'content-knowledge-base': ['users', 'articles', 'article_history'],
+    'booking-registration': ['users', 'services', 'slots', 'bookings', 'booking_history'],
+    'project-tasks': ['users', 'projects', 'project_members', 'tasks', 'task_history']
+  } as const satisfies Record<BackendLibraryTemplateId, readonly string[]>
+  const templates = (Object.keys(templateEntities) as BackendLibraryTemplateId[]).map((id) => {
     const profile = copy.templates[id]
     return immutableItem<BackendLibraryTemplate>({
       kind: 'template',
@@ -162,11 +229,13 @@ export function createBackendLibraryCatalog(
       name: profile.name,
       description: profile.description,
       providerId: 'nestjs',
+      mode: profile.mode,
+      roles: [...profile.roles],
       tags: [...profile.tags],
       features: [...profile.features],
       requirements: [...profile.requirements],
       pages: [...profile.pages],
-      entities: id === 'personal-notes' ? ['notes'] : ['products', 'orders']
+      entities: [...templateEntities[id]]
     })
   })
   return Object.freeze([
@@ -196,6 +265,7 @@ export function filterBackendLibraryCatalog(
           item.description,
           item.providerId,
           ...(item.kind === 'provider' && item.identity ? [item.identity] : []),
+          ...(item.kind === 'template' ? [item.mode, ...item.roles] : []),
           ...item.tags
         ].join(' ')
       )

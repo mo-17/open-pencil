@@ -7,10 +7,14 @@ import { createEditor } from '@open-pencil/core/editor'
 import type { BackendHttpAPIOIDCAuthenticationIRV1 } from '@open-pencil/lowcode/backend'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { businessTemplateDefinition } from '@/app/lowcode/backend/business/definitions'
 import {
   createEmptyBackendApplication,
   readBackendProviderDocumentRequest
 } from '@/app/lowcode/backend/document'
+import type { BackendLibraryTemplateId } from '@/app/lowcode/backend/library/catalog'
+import { isBusinessTemplate } from '@/app/lowcode/backend/library/catalog'
+import { backendLibraryCopy } from '@/app/lowcode/backend/library/copy'
 import {
   createBackendLibraryInstaller,
   hasBackendAuthenticationFlow,
@@ -98,8 +102,30 @@ async function fixture() {
   }
 }
 
+const templatePageCounts = {
+  'personal-notes': 2,
+  'single-sku-shop': 4,
+  'single-merchant-shop': 5,
+  'multi-merchant-marketplace': 7,
+  'single-merchant-commerce': 12,
+  'multi-merchant-commerce': 12,
+  'customer-crm': 3,
+  'service-desk': 4,
+  'content-knowledge-base': 6,
+  'booking-registration': 5,
+  'project-tasks': 4
+} as const satisfies Record<BackendLibraryTemplateId, number>
+
+function templateEntryPath(template: BackendLibraryTemplateId): string {
+  if (!isBusinessTemplate(template)) return template === 'personal-notes' ? '/notes' : '/shop'
+  const definition = businessTemplateDefinition(template)
+  const page = definition.pages.find((entry) => entry.id === definition.entryPage)
+  if (!page) throw new Error('Missing template entry page')
+  return page.path
+}
+
 describe('backend library installation controller', () => {
-  test.each(['personal-notes', 'single-sku-shop'] as const)(
+  test.each(Object.keys(templatePageCounts) as BackendLibraryTemplateId[])(
     'creates %s with the selected public OIDC and one undo',
     async (template) => {
       const value = await fixture()
@@ -112,7 +138,9 @@ describe('backend library installation controller', () => {
       })
       const snapshot = value.editor.snapshotDocument()
       expect(value.installer.blockReason()).toBe('')
-      expect(await value.installer.create(template, authentication(), value.providerKey)).toBe(true)
+      const installed = await value.installer.create(template, authentication(), value.providerKey)
+      expect(value.failures).toEqual([])
+      expect(installed).toBe(true)
       expect(value.failures).toEqual([])
       expect(value.created).toHaveLength(1)
       expect(value.selectedKey.value).toBe(value.providerKey)
@@ -121,8 +149,21 @@ describe('backend library installation controller', () => {
       expect(request?.application.httpApi?.browserClient?.authentication).toEqual(authentication())
       expect(value.editor.state.currentPageId).toBe(value.created[0].pageId)
       expect(value.editor.graph.getNode(value.created[0].pageId)?.lowcodeRoutePattern).toBe(
-        template === 'personal-notes' ? '/notes' : '/shop'
+        templateEntryPath(template)
       )
+      if (
+        template === 'single-merchant-shop' ||
+        template === 'multi-merchant-marketplace' ||
+        isBusinessTemplate(template)
+      ) {
+        expect(
+          value.editor.graph
+            .getPages()
+            .filter((page) => !originalPages.includes(page.id))
+            .map((page) => page.name)
+            .sort()
+        ).toEqual([...backendLibraryCopy('en').templates[template].pages].sort())
+      }
       expect(value.installer.blockReason()).toBe('document')
       expect(await value.installer.create(template, authentication(), value.providerKey)).toBe(
         false
@@ -132,10 +173,52 @@ describe('backend library installation controller', () => {
       expect(value.editor.documentSnapshotChanged(snapshot)).toBe(false)
       value.editor.undo.redo()
       expect(value.editor.graph.getPages()).toHaveLength(
-        originalPages.length + (template === 'personal-notes' ? 2 : 4)
+        originalPages.length + templatePageCounts[template]
       )
     }
   )
+
+  test('reviews operations commission explicitly without applying it to legacy templates', async () => {
+    const value = await fixture()
+    const before = value.editor.snapshotDocument()
+    for (const commission of [-1, 0.5, 10001, Number.NaN]) {
+      expect(
+        await value.installer.create(
+          'single-merchant-commerce',
+          authentication(),
+          value.providerKey,
+          commission
+        )
+      ).toBe(false)
+      expect(value.editor.documentSnapshotChanged(before)).toBe(false)
+    }
+    expect(
+      await value.installer.create('single-merchant-shop', authentication(), value.providerKey, 100)
+    ).toBe(false)
+    expect(value.editor.documentSnapshotChanged(before)).toBe(false)
+    expect(
+      await value.installer.create(
+        'multi-merchant-commerce',
+        authentication(),
+        value.providerKey,
+        175
+      )
+    ).toBe(true)
+    expect(
+      readBackendProviderDocumentRequest(value.editor.graph)?.application.commerce
+    ).toMatchObject({ commissionBasisPoints: 175, mode: 'multi-merchant' })
+  })
+
+  test('rejects unknown template IDs without falling back to a commerce model', async () => {
+    const value = await fixture()
+    const snapshot = value.editor.snapshotDocument()
+    expect(await value.installer.create('merchant-shop', authentication(), value.providerKey)).toBe(
+      false
+    )
+    expect(value.created).toEqual([])
+    expect(value.failures).toHaveLength(1)
+    expect(value.editor.documentSnapshotChanged(snapshot)).toBe(false)
+  })
 
   test.each([
     ['commands', { version: 1, commands: [] }],
@@ -292,15 +375,35 @@ describe('backend library installation controller', () => {
     ['personal-notes', 'react'],
     ['personal-notes', 'vue'],
     ['single-sku-shop', 'react'],
-    ['single-sku-shop', 'vue']
+    ['single-sku-shop', 'vue'],
+    ['single-merchant-shop', 'react'],
+    ['single-merchant-shop', 'vue'],
+    ['multi-merchant-marketplace', 'react'],
+    ['multi-merchant-marketplace', 'vue'],
+    ['single-merchant-commerce', 'react'],
+    ['single-merchant-commerce', 'vue'],
+    ['multi-merchant-commerce', 'react'],
+    ['multi-merchant-commerce', 'vue'],
+    ['customer-crm', 'react'],
+    ['customer-crm', 'vue'],
+    ['service-desk', 'react'],
+    ['service-desk', 'vue'],
+    ['content-knowledge-base', 'react'],
+    ['content-knowledge-base', 'vue'],
+    ['booking-registration', 'react'],
+    ['booking-registration', 'vue'],
+    ['project-tasks', 'react'],
+    ['project-tasks', 'vue']
   ] as const)(
     'exports %s from the library entry as %s without warnings',
     async (template, target) => {
       const value = await fixture()
       const beforePages = new Set(value.editor.graph.getPages().map((page) => page.id))
-      expect(await value.installer.create(template, authentication(), value.providerKey)).toBe(true)
+      const installed = await value.installer.create(template, authentication(), value.providerKey)
+      expect(value.failures).toEqual([])
+      expect(installed).toBe(true)
       const pages = value.editor.graph.getPages().filter((page) => !beforePages.has(page.id))
-      expect(pages).toHaveLength(template === 'personal-notes' ? 2 : 4)
+      expect(pages).toHaveLength(templatePageCounts[template])
       if (template === 'personal-notes')
         expect(pages.map((page) => page.name).sort()).toEqual(['Notes login', 'Personal notes'])
       const output = compileAppBackendProviderDocument(value.store, {

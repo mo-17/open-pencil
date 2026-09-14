@@ -1,4 +1,5 @@
 import { nestJSCommandDefinitionDigest } from '#compiler/backend/nestjs/commands/plan'
+import { commerceAffectedEntities } from '#compiler/backend/nestjs/commerce/model'
 
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
@@ -22,9 +23,10 @@ export function buildBackendCommandRuntime(application: BackendApplicationSpecV1
   }
   const affected = Object.fromEntries(
     commands.map((command) => {
-      const entities = new Set(
-        command.steps.flatMap((step) => (step.kind === 'data.mutate' ? [step.entityId] : []))
-      )
+      const entities = new Set([
+        ...command.steps.flatMap((step) => (step.kind === 'data.mutate' ? [step.entityId] : [])),
+        ...commerceAffectedEntities(application, command)
+      ])
       return [
         command.id,
         application.httpApi?.resources

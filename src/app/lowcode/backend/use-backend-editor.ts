@@ -1,7 +1,7 @@
-import { computed, nextTick, ref, toRaw, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, toRaw, watch } from 'vue'
 
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
-import type { PluginDataEntry } from '@open-pencil/scene-graph'
+import { canonicalManifestJSON, type PluginDataEntry } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -27,12 +27,17 @@ import {
   validateBackendApplicationDraft
 } from './document'
 import { createBackendDraftId } from './draft'
+import { registerBackendDraftGuard } from './draft/pending'
+import { backendLibraryCopy } from './library/copy'
 import {
   createBackendLibraryInstaller,
   hasBackendAuthenticationFlow,
-  isEmptyBackendLibraryDraft
+  isEmptyBackendLibraryDraft,
+  type BackendLibraryInstallContext
 } from './library/install'
+import { createBackendModuleInstaller } from './library/modules'
 import { backendProviderDescriptorKey } from './library/provider-identity'
+import { backendLibraryViewCopy } from './library/view-copy'
 import { createNestJSNotesApplication, isNestJSProvider } from './nestjs-draft'
 import { createPersonalNotesPages } from './notes-template'
 
@@ -126,6 +131,23 @@ export function useBackendEditor() {
   }
 
   watch(backendEntryFingerprint, loadDocumentRequest, { immediate: true })
+  onScopeDispose(
+    registerBackendDraftGuard({
+      graph: () => editor.graph,
+      reason: () => {
+        if (readError.value) return 'Resolve the saved Backend declaration before adding a module.'
+        const request = committedRequest.value
+        if (
+          !request ||
+          canonicalManifestJSON(toRaw(draft.value)) !==
+            canonicalManifestJSON(request.application) ||
+          selectedProviderKey.value !== backendProviderDescriptorKey(request.selection)
+        )
+          return 'Save or discard the current Backend draft and Provider selection before adding a module.'
+        return ''
+      }
+    })
+  )
   watch(
     providerDescriptors,
     (descriptors) => {
@@ -293,7 +315,7 @@ export function useBackendEditor() {
     }
   }
 
-  const libraryInstaller = createBackendLibraryInstaller({
+  const libraryContext: BackendLibraryInstallContext = {
     editor,
     store: appPluginStore,
     draft,
@@ -307,15 +329,25 @@ export function useBackendEditor() {
     },
     created: (result) => {
       loadDocumentRequest()
-      outcome.value = `${result.templateId === 'personal-notes' ? panels.value.lowcodeBackendNotesCreated : commerceCopy(locale.value).created} ${result.path}`
+      outcome.value = `${backendLibraryViewCopy(locale.value).created} ${backendLibraryCopy(locale.value).templates[result.templateId].name} ${result.path}`
     },
     failed: (cause) => {
       operationError.value = safeOperationMessage(cause)
     }
-  })
+  }
+  const libraryInstaller = createBackendLibraryInstaller(libraryContext)
+  const moduleInstaller = createBackendModuleInstaller(
+    libraryContext,
+    () => selectedProviderKey.value
+  )
   const libraryBlockReason = useSceneComputed(() => {
     void draftRevision.value
     return libraryInstaller.blockReason()
+  })
+  const moduleReviews = useSceneComputed(() => {
+    void draftRevision.value
+    void providerDescriptors.value
+    return moduleInstaller.reviews()
   })
 
   const canCreateCommerce = computed(
@@ -356,6 +388,8 @@ export function useBackendEditor() {
   }
 
   return {
+    moduleReviews,
+    addLibraryModule: moduleInstaller.add,
     libraryBlockReason,
     createLibraryTemplate: libraryInstaller.create,
     canCreateCommerce,

@@ -36,7 +36,8 @@ export function buildBackendClientRuntime(
           policy.entityId === resource.entityId &&
           policy.effect === 'allow' &&
           policy.principal.kind === 'anonymous' &&
-          policy.operations.includes('select')
+          policy.operations.includes('select') &&
+          (!resource.readPolicyIds || resource.readPolicyIds.includes(policy.id))
       )
     )
     .map((resource) => resource.id)

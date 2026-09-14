@@ -110,8 +110,10 @@ export class Reflector {}
 `
 
 /** Executes generated authorization/service bodies; only Nest DI, crypto and SQL transport are controlled. */
-export async function authorizationRuntime(mode: 'owner' | 'catalog' | 'mixed' = 'mixed') {
-  const app = authorizationApplication(mode)
+export async function authorizationRuntime(
+  mode: 'owner' | 'catalog' | 'mixed' = 'mixed',
+  app = authorizationApplication(mode)
+) {
   const directory = mkdtempSync(join(tmpdir(), 'openpencil-authorization-'))
   const write = (path: string, source: string) =>
     writeFileSync(

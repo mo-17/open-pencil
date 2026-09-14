@@ -14,11 +14,14 @@ import {
 } from '../document'
 import { BackendDraftOperationError } from '../draft'
 import type { NotesTemplateEditor } from '../notes-template'
+import { templateCommandRecoveryActions } from '../template-command-recovery'
 import { createCommerceCatalogPage } from './catalog/page'
 import { createCommerceCatalogState } from './catalog/state'
-import { commerceCopy } from './copy'
+import { createCommercePageContext } from './context'
 import { createCommerceLayout } from './layout'
-import { commerceRecoveryActions } from './recovery/actions'
+import { createCommerceMerchantPages } from './merchant/pages'
+import type { CommerceMerchantMode } from './merchant/types'
+import { createCommerceProducts } from './products'
 import { createCommerceRecoverySection } from './recovery/section'
 import { commerceState as state, setCommerceState as set } from './state'
 
@@ -41,7 +44,8 @@ export function createCommercePages(
   editor: NotesTemplateEditor,
   descriptor: AppBackendProviderDescriptor,
   application: BackendApplicationSpecV1,
-  locale = 'en'
+  locale = 'en',
+  merchantMode?: CommerceMerchantMode
 ) {
   if (!canInstallCommerceExample(editor))
     throw new BackendDraftOperationError(
@@ -50,55 +54,12 @@ export function createCommercePages(
   createBackendProviderDocumentRequest(descriptor, application)
   const root = editor.graph.getNode(editor.graph.rootId)
   if (!root) throw new BackendDraftOperationError('The document root is unavailable.')
-  const copy = commerceCopy(locale)
-  const route = (base: string) => {
-    for (let index = 1; index < 100; index++) {
-      const value = index === 1 ? base : `${base}-${index}`
-      if (
-        !editor.graph
-          .getPages()
-          .some(
-            (page) =>
-              page.lowcodeRoutePattern === value ||
-              `/${page.name.toLowerCase().replace(/\s+/gu, '-')}` === value
-          )
-      )
-        return value
-    }
-    throw new BackendDraftOperationError('No available route remains.')
-  }
-  const paths = {
-    shop: route('/shop'),
-    orders: route('/orders'),
-    login: route('/shop-login'),
-    admin: route('/catalog-admin')
-  }
-  const docStates = structuredClone(root.lowcodeDocumentState ?? [])
-  const doc = (base: string, type: 'string' | 'object' | 'number' = 'string') => {
-    let name = base
-    for (let index = 2; docStates.some((state) => state.name === name); index++)
-      name = `${base}${index}`
-    docStates.push({
-      id: crypto.randomUUID(),
-      name,
-      type,
-      defaultValue: { object: {}, number: 1, string: '' }[type]
-    })
-    return name
-  }
-  const names = {
-    checkoutKey: doc('checkoutAttempt'),
-    cancelKey: doc('cancelAttempt'),
-    error: doc('shopError'),
-    order: doc('checkoutResult', 'object'),
-    cancel: doc('cancelResult', 'object'),
-    checkoutRecovery: doc('checkoutRecovery', 'object'),
-    cancelRecovery: doc('cancelRecovery', 'object'),
-    checkoutRecoveryDisplay: doc('checkoutRecoveryDisplay'),
-    cancelRecoveryDisplay: doc('cancelRecoveryDisplay'),
-    productsCursor: doc('productsCursor'),
-    ordersCursor: doc('ordersCursor')
-  }
+  const { copy, paths, docStates, doc, names, merchant } = createCommercePageContext(
+    editor,
+    root,
+    locale,
+    merchantMode
+  )
   const selected = { name: doc('selectedSku') },
     selectedTitle = { name: doc('selectedProduct') },
     selectedPrice = { name: doc('selectedPrice', 'number') },
@@ -119,7 +80,10 @@ export function createCommercePages(
   const validQuantity = `(${quantity.name} >= 1 && ${quantity.name} <= 99 && ${quantity.name} % 1 === 0 && ${quantity.name} <= ${selectedStock.name})`
   const canCheckout = `(!!$currentUser.signedIn && ${selected.name} !== "" && ${validQuantity} && !${checkoutLocked})`
   const orderSummary = `${JSON.stringify(copy.quantityLabel + ': ')} + ${quantity.name} + ${JSON.stringify(' · ' + copy.estimatedTotal + ': ')} + (${selectedPrice.name} * ${quantity.name}) + ${JSON.stringify(' · ' + copy.priceNotice + ' · ')} + ${selectedTitle.name}`
-  const orderStatus = `item.status === "pending" ? ${JSON.stringify(copy.pendingStatus)} : item.status === "cancelled" ? ${JSON.stringify(copy.cancelledStatus)} : ${JSON.stringify(copy.unknownStatus)}`
+  const completedStatus = merchant
+    ? `item.status === "fulfilled" ? ${JSON.stringify(merchant.copy.completed)} : `
+    : ''
+  const orderStatus = `item.status === "pending" ? ${JSON.stringify(copy.pendingStatus)} : item.status === "cancelled" ? ${JSON.stringify(copy.cancelledStatus)} : ${completedStatus}${JSON.stringify(copy.unknownStatus)}`
   const selectedSummary = `${JSON.stringify(copy.quantityLabel + ': ')} + item.quantity + ${JSON.stringify(' · ' + copy.total + ': ')} + item.total + ${JSON.stringify(' · ')} + item.product_title`
   const setDoc = (target: { name: string }, valueExpr: string): ActionDef => ({
     id: crypto.randomUUID(),
@@ -133,7 +97,7 @@ export function createCommercePages(
     targetName,
     valueExpr: '""'
   })
-  const checkoutRecovery = commerceRecoveryActions({
+  const checkoutRecovery = templateCommandRecoveryActions({
     commandId: 'checkout',
     keyTarget: names.checkoutKey,
     infoTarget: names.checkoutRecovery,
@@ -153,7 +117,7 @@ export function createCommercePages(
       setDoc({ name: names.order }, 'data')
     ]
   })
-  const cancelRecovery = commerceRecoveryActions({
+  const cancelRecovery = templateCommandRecoveryActions({
     commandId: 'cancel-order',
     keyTarget: names.cancelKey,
     infoTarget: names.cancelRecovery,
@@ -177,7 +141,8 @@ export function createCommercePages(
     recovery: 'browser',
     payloadEntries: [
       { key: 'skuId', valueExpr: selected.name },
-      { key: 'quantity', valueExpr: quantity.name }
+      { key: 'quantity', valueExpr: quantity.name },
+      ...(merchant?.productStore ? [{ key: 'storeId', valueExpr: merchant.productStore }] : [])
     ],
     idempotencyKeyTarget: names.checkoutKey,
     resultTarget: names.order,
@@ -209,6 +174,20 @@ export function createCommercePages(
     nextCursorTarget: names.productsCursor,
     errorTarget: names.error
   }
+  const storeProductSource = merchant?.browseStore
+    ? {
+        ...productSource,
+        filterEntries: [
+          ...productSource.filterEntries,
+          {
+            key: 'store_id',
+            valueExpr: `${merchant.browseStore} || "00000000-0000-4000-8000-000000000000"`
+          }
+        ],
+        afterExpr: merchant.storeProductsAfter.name,
+        nextCursorTarget: merchant.targets.storeProductsCursor
+      }
+    : undefined
   const orderSource = {
     kind: 'backendResource' as const,
     resourceId: 'orders',
@@ -219,7 +198,7 @@ export function createCommercePages(
     nextCursorTarget: names.ordersCursor,
     errorTarget: names.error
   }
-  const catalog = createCommerceCatalogState(doc, copy)
+  const catalog = createCommerceCatalogState(doc, copy, merchant?.storeId)
   const diagnostics = [
     ...catalog.actions,
     checkout,
@@ -229,18 +208,34 @@ export function createCommercePages(
     checkoutRecovery.acknowledge,
     cancelRecovery.inspect(),
     cancelRecovery.retry,
-    cancelRecovery.acknowledge
+    cancelRecovery.acknowledge,
+    ...(merchant?.actions ?? [])
   ].flatMap((action) => validateBackendClientAction(application, action, docStates))
   diagnostics.push(
-    ...[productSource, orderSource, catalog.source].flatMap((source) =>
-      validateBackendResourceDataSource(application, source, docStates)
-    )
+    ...[
+      productSource,
+      ...(storeProductSource ? [storeProductSource] : []),
+      orderSource,
+      catalog.source,
+      ...(merchant?.sources ?? [])
+    ].flatMap((source) => validateBackendResourceDataSource(application, source, docStates))
   )
   if (diagnostics.length)
     throw new BackendDraftOperationError(diagnostics.map((entry) => entry.message).join(' '))
   const layout = createCommerceLayout(editor, copy, names.error)
   const { shape, text, button, navigate, page, error, listing, pagination, pageIds } = layout
-  editor.undo.runBatch('Create single-item checkout application', () => {
+  const undoLabel = merchantMode
+    ? 'Create merchant commerce application'
+    : 'Create single-item checkout application'
+  const loginHintPlacement =
+    merchantMode === 'multi-merchant'
+      ? { x: 296, y: 784, width: 600 }
+      : { x: 674, y: 130, width: 270 }
+  const orderTitleExpr =
+    merchantMode === 'multi-merchant'
+      ? 'item.store_title + " · " + item.product_title'
+      : 'item.product_title'
+  editor.undo.runBatch(undoLabel, () => {
     commitBackendProviderDocumentRequest(editor, descriptor, application)
     editor.updateNodeWithUndo(
       root.id,
@@ -263,7 +258,13 @@ export function createCommercePages(
     const shop = page(
       copy.shop,
       paths.shop,
-      [checkoutBusy, productsAfter, searchInput, searchTerm],
+      [
+        checkoutBusy,
+        productsAfter,
+        searchInput,
+        searchTerm,
+        ...(merchant?.browseStore ? [merchant.storeProductsAfter] : [])
+      ],
       false,
       1500
     )
@@ -274,49 +275,79 @@ export function createCommercePages(
     })
     button(shop, copy.orders, 252, 130, [navigate(paths.orders)])
     button(shop, copy.admin, 456, 130, [navigate(paths.admin)])
+    if (merchant?.paths.stores)
+      button(shop, merchant.copy.stores, 660, 130, [navigate(merchant.paths.stores)])
     const search = shape('FORM', copy.search, shop, 48, 194, 900, 48, {
       layoutMode: 'NONE',
-      events: { onSubmit: [set(searchTerm, searchInput.name), set(productsAfter, '""')] }
+      events: {
+        onSubmit: [
+          set(searchTerm, searchInput.name),
+          set(productsAfter, '""'),
+          ...(merchant?.browseStore ? [set(merchant.storeProductsAfter, '""')] : [])
+        ]
+      }
     })
     shape('INPUT', copy.searchPlaceholder, search, 0, 0, 650, 42, {
       bindings: { value: { kind: 'ref', stateId: searchInput.id } },
       interactiveProps: { placeholder: copy.searchPlaceholder, validation: { maxLength: 120 } }
     })
     button(search, copy.search, 670, 0, [])
-    text(shop, copy.searchHint, 48, 250, 870, { fontSize: 13 })
-    const product = listing(shop, copy.shop, 290, productSource)
-    text(product, 'Product', 16, 12, 800, {
-      bindings: { text: { kind: 'expr', expr: 'item.title' } },
-      fontSize: 20
+    text(shop, copy.searchHint, 48, 250, 870, {
+      fontSize: 13,
+      ...(merchant?.browseTitle
+        ? {
+            bindings: {
+              text: {
+                kind: 'expr' as const,
+                expr: `${merchant.browseTitle} ? ${merchant.browseTitle} + " · " + ${JSON.stringify(copy.searchHint)} : ${JSON.stringify(copy.searchHint)}`
+              }
+            }
+          }
+        : {})
     })
-    text(product, 'Price', 16, 50, 800, {
-      bindings: {
-        text: {
-          kind: 'expr',
-          expr: `${JSON.stringify(copy.unitPrice + ': ')} + item.price + ${JSON.stringify(' · ' + copy.stock + ': ')} + item.stock + ${JSON.stringify(' · ' + copy.amountUnit)}`
-        }
-      },
-      fontSize: 14
-    })
-    button(
-      product,
-      copy.choose,
-      16,
-      104,
-      [
-        setDoc(selected, 'item.id'),
-        setDoc(selectedTitle, 'item.title'),
-        setDoc(selectedPrice, 'item.price'),
-        setDoc(selectedStock, 'item.stock'),
-        setDoc(quantity, '1'),
-        clear(names.error)
-      ],
-      { renderCondition: `item.stock > 0 && item.active && !${checkoutLocked}` }
+    const selectProduct = [
+      setDoc(selected, 'item.id'),
+      setDoc(selectedTitle, 'item.title'),
+      setDoc(selectedPrice, 'item.price'),
+      setDoc(selectedStock, 'item.stock'),
+      ...(merchant?.productStore ? [setDoc({ name: merchant.productStore }, 'item.store_id')] : []),
+      setDoc(quantity, '1'),
+      clear(names.error)
+    ]
+    createCommerceProducts(
+      layout,
+      copy,
+      shop,
+      productSource,
+      selectProduct,
+      checkoutLocked,
+      merchant?.browseStore ? `!${merchant.browseStore}` : undefined
     )
-    text(product, copy.soldOut, 228, 112, 540, {
-      renderCondition: 'item.stock <= 0 || !item.active'
-    })
-    pagination(shop, productsAfter, names.productsCursor, 600)
+    pagination(
+      shop,
+      productsAfter,
+      names.productsCursor,
+      600,
+      merchant?.browseStore ? `!${merchant.browseStore}` : undefined
+    )
+    if (storeProductSource && merchant?.browseStore) {
+      createCommerceProducts(
+        layout,
+        copy,
+        shop,
+        storeProductSource,
+        selectProduct.map((action) => ({ ...structuredClone(action), id: crypto.randomUUID() })),
+        checkoutLocked,
+        `!!${merchant.browseStore}`
+      )
+      pagination(
+        shop,
+        merchant.storeProductsAfter,
+        merchant.targets.storeProductsCursor,
+        600,
+        `!!${merchant.browseStore}`
+      )
+    }
     text(shop, copy.review, 48, 662, 850, { fontSize: 24 })
     text(shop, copy.chooseFirst, 48, 706, 860, {
       bindings: {
@@ -386,11 +417,18 @@ export function createCommercePages(
       renderCondition: `${selected.name} !== "" && !${validQuantity} && !${checkoutLocked}`,
       height: 48
     })
-    text(shop, copy.loginHint, 674, 130, 270, {
-      renderCondition: '!$currentUser.signedIn',
-      fontSize: 14,
-      height: 48
-    })
+    text(
+      shop,
+      copy.loginHint,
+      loginHintPlacement.x,
+      loginHintPlacement.y,
+      loginHintPlacement.width,
+      {
+        renderCondition: '!$currentUser.signedIn',
+        fontSize: 14,
+        height: 48
+      }
+    )
     text(shop, '', 48, 950, 870, {
       bindings: {
         text: {
@@ -430,7 +468,12 @@ export function createCommercePages(
     ])
     const order = listing(orderPage, copy.orders, 164, orderSource, 260)
     text(order, 'Order product', 16, 12, 800, {
-      bindings: { text: { kind: 'expr', expr: 'item.product_title' } },
+      bindings: {
+        text: {
+          kind: 'expr',
+          expr: orderTitleExpr
+        }
+      },
       fontSize: 20
     })
     text(order, 'Order', 16, 48, 810, {
@@ -519,7 +562,8 @@ export function createCommercePages(
       actions: cancelRecovery,
       cancellation: true
     })
-    createCommerceCatalogPage(layout, copy, catalog, paths)
+    const admin = createCommerceCatalogPage(layout, copy, catalog, paths)
+    if (merchant) createCommerceMerchantPages(layout, merchant, admin)
   })
   return { pageIds, paths }
 }

@@ -52,7 +52,8 @@ export function commandFieldSet(
 export function commandParameter(
   value: unknown,
   path: string,
-  context: BackendValidationContext
+  context: BackendValidationContext,
+  stringLimit = 8192
 ): BackendCommandParameterIR | undefined {
   const source = record(
     value,
@@ -69,7 +70,13 @@ export function commandParameter(
       path + '.name',
       'Command parameter names cannot shadow object prototype keys.'
     )
-  const type = oneOf(source.type, path + '.type', context, ['uuid', 'boolean', 'integer', 'string'])
+  const type = oneOf(source.type, path + '.type', context, [
+    'uuid',
+    'boolean',
+    'integer',
+    'string',
+    'datetime'
+  ])
   if (source.required !== true)
     commandError(context, path + '.required', 'Command parameters must be required.')
   const allowed = [
@@ -89,7 +96,7 @@ export function commandParameter(
     return { name, type, required: true, min, max }
   }
   if (type === 'string') {
-    const maxLength = commandInteger(source.maxLength, path + '.maxLength', context, 1, 512)
+    const maxLength = commandInteger(source.maxLength, path + '.maxLength', context, 1, stringLimit)
     return maxLength === undefined ? undefined : { name, type, required: true, maxLength }
   }
   return { name, type, required: true }
@@ -99,7 +106,8 @@ const LEAVES = {
   parameter: { allowed: ['kind', 'name'], required: ['kind', 'name'] },
   result: { allowed: ['kind', 'name', 'field'], required: ['kind', 'name', 'field'] },
   literal: { allowed: ['kind', 'value'], required: ['kind', 'value'] },
-  'caller-sub': { allowed: ['kind'], required: ['kind'] }
+  'caller-sub': { allowed: ['kind'], required: ['kind'] },
+  'server-now': { allowed: ['kind'], required: ['kind'] }
 } as const
 
 export function commandLeaf(
@@ -110,7 +118,7 @@ export function commandLeaf(
   const parsed = discriminatedRecord(value, path, context, LEAVES)
   if (!parsed) return undefined
   const { source, kind } = parsed
-  if (kind === 'caller-sub') return { kind }
+  if (kind === 'caller-sub' || kind === 'server-now') return { kind }
   if (kind === 'literal') {
     const literal = source.value
     if (

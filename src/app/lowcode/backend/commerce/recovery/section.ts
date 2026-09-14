@@ -1,6 +1,7 @@
+import type { templateCommandRecoveryActions } from '@/app/lowcode/backend/template-command-recovery'
+
 import type { commerceCopy } from '../copy'
 import type { CommerceLayout } from '../layout'
-import type { commerceRecoveryActions } from './actions'
 
 export function createCommerceRecoverySection(
   layout: CommerceLayout,
@@ -11,7 +12,7 @@ export function createCommerceRecoverySection(
     info: string
     busy: string
     display: string
-    actions: ReturnType<typeof commerceRecoveryActions>
+    actions: ReturnType<typeof templateCommandRecoveryActions>
     cancellation?: boolean
     acknowledgeLabel?: string
   }

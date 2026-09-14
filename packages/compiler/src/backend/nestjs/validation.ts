@@ -5,6 +5,7 @@ import { validateNestJSAuthorization } from './authorization'
 import { validateNestJSCommands } from './commands/provider-validation'
 import { nestJSDiagnostic } from './model'
 import { validateNestJSModel } from './model-validation'
+import { validateNestJSTenants } from './tenant/validation'
 
 function validateEnvironment(application: BackendApplicationSpecV1): BackendDiagnostic[] {
   const authentication = application.httpApi?.authentication
@@ -75,6 +76,7 @@ export function validateNestJSApplication(
   }
   diagnostics.push(
     ...validateNestJSModel(application),
+    ...validateNestJSTenants(application),
     ...validateNestJSAuthorization(application),
     ...validateEnvironment(application),
     ...validateNestJSCommands(application)
