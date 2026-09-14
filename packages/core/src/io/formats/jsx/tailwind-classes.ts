@@ -724,6 +724,7 @@ interface LayoutPrimitiveConfig {
   overflow?: unknown
   overflowX?: unknown
   overflowY?: unknown
+  whiteSpace?: unknown
   zIndex?: unknown
 }
 
@@ -731,8 +732,8 @@ const LAYOUT_POSITIONS = new Set(['sticky', 'fixed'])
 const OVERFLOW_VALUES = new Set(['auto', 'scroll', 'hidden', 'visible'])
 
 /** Phase 4 §26 — user-authored layout primitives that do not map cleanly to
- *  Figma's layout fields: sticky/fixed positioning, offsets, overflow, and
- *  z-index. They ride `interactiveProps.layout` (or direct legacy keys) so this
+ *  Figma's layout fields: sticky/fixed positioning, offsets, overflow, white
+ *  space, and z-index. They ride `interactiveProps.layout` (or direct legacy keys) so this
  *  stays pure emit with zero scene-graph / codec changes. */
 export function collectLayoutPrimitiveClasses(node: SceneNode): string[] {
   const ip = node.interactiveProps as
@@ -748,6 +749,9 @@ export function collectLayoutPrimitiveClasses(node: SceneNode): string[] {
   pushOverflow(classes, 'overflow', cfg.overflow)
   pushOverflow(classes, 'overflow-x', cfg.overflowX)
   pushOverflow(classes, 'overflow-y', cfg.overflowY)
+  if (cfg.whiteSpace === 'normal' || cfg.whiteSpace === 'pre-wrap') {
+    classes.push(cfg.whiteSpace === 'normal' ? 'whitespace-normal' : 'whitespace-pre-wrap')
+  }
   const z = zIndexClass(cfg.zIndex)
   if (z) classes.push(z)
   return classes

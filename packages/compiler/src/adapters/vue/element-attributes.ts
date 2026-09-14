@@ -103,6 +103,13 @@ export function emitVueElementAttributes(
     }
   }
   const controlled = emitControlledAttribute(node, context, locals)
+  if (
+    node.tag === 'input' &&
+    node.controlled?.write.targetType === 'number' &&
+    !('type' in node.attrs) &&
+    !node.upload
+  )
+    attrs.push('type="number"')
   if (controlled) attrs.push(...controlled.attrs)
   attrs.push(...emitValidationEventAttributes(node, context, locals))
   const skippedEvents = new Set<string>()

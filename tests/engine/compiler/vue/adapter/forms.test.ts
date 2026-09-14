@@ -54,6 +54,37 @@ function expectValidSfc(source: string): void {
 }
 
 describe('Vue compiler form fail-closed behavior', () => {
+  test('retains native numeric inputs and numeric state coercion without replacing explicit types', () => {
+    const controls = [
+      element({ sourceId: 'quantity', tag: 'input' }),
+      element({ sourceId: 'explicit-text', tag: 'input', attrs: { type: 'text' } }),
+      element({ sourceId: 'selection', tag: 'select' })
+    ].map((node) => ({
+      ...node,
+      controlled: {
+        read: 'count',
+        write: { kind: 'state' as const, name: 'count', targetType: 'number' as const }
+      }
+    }))
+    const output = vueAdapter.emit(
+      [
+        minimalIr({
+          states: [{ id: 'count', name: 'count', type: 'number', defaultValue: 1 }],
+          children: controls
+        })
+      ],
+      vueOptions()
+    )
+    const page = textFile(output.files, 'src/pages/index.vue')
+    expect(page.match(/type="number"/g)).toHaveLength(1)
+    expect(page).toMatch(/<input type="number"[^>]+@input=/)
+    expect(page).toMatch(/<input type="text"[^>]+@input=/)
+    expect(page).toMatch(/<select :value=[^>]+@change=/)
+    expect(page.match(/Number\(\(__opEvent.target as HTMLInputElement\).value\)/g)).toHaveLength(3)
+    expect(output.warnings).toEqual([])
+    expectValidSfc(page)
+  })
+
   test('prevents native form submission when every authored submit action is unsupported', () => {
     const output = vueAdapter.emit(
       [
