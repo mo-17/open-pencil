@@ -42,7 +42,10 @@ describe('preview dev-server filesystem boundary', () => {
     const workspaceRoot = process.cwd()
     server = await createPreviewServer({ fsRoot: workspaceRoot })
     const workspacePackage = join(workspaceRoot, 'package.json')
-    const optimizedReact = join(workspaceRoot, 'packages/compiler/node_modules/.vite/deps/react.js')
+    const optimizedReact = join(
+      workspaceRoot,
+      'packages/compiler/.preview-root/react/.vite/deps/react.js'
+    )
     const serverURL = server.url
     const viteFileURL = (path: string): string =>
       new URL(`/@fs${pathToFileURL(path).pathname}`, serverURL).href

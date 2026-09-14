@@ -327,6 +327,9 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
 
   const server = await createServer({
     root: scanRoot,
+    // Vite otherwise chooses the shared compiler package's node_modules/.vite.
+    // A Vue optimization must not replace files still served by a React preview.
+    cacheDir: join(scanRoot, '.vite'),
     configFile: false,
     envFile: false,
     appType: 'spa',
@@ -344,6 +347,11 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       // app needs so the depscan has nothing to do. Optional module runtimes
       // are included only when their generated VFS file is present.
       entries: [],
+      // Vite 8 cancels its crawl when closing. Holding cold optimization
+      // results until that crawl ends can strand pending transforms forever
+      // if a preview closes immediately after loading its entry module.
+      // Publish the predeclared dependencies eagerly so close can drain them.
+      holdUntilCrawlEnd: false,
       include: previewOptimizeDeps(state.files, target)
     },
     // Keep React's in-memory TSX on Vite 8's OXC path and collapse linked
