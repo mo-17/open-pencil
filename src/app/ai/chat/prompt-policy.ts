@@ -1,4 +1,4 @@
-import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
+import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt'
 import BUILTIN_PLUGIN_AI_INSTRUCTIONS from '@/app/ai/tools/builtin/instructions.md?raw'
 import BUSINESS_AI_INSTRUCTIONS from '@/app/ai/tools/business.md?raw'
 import COMMERCE_AI_INSTRUCTIONS from '@/app/ai/tools/commerce.md?raw'

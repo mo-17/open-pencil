@@ -10,10 +10,18 @@ test('settings tabs associate panels and support vertical keyboard navigation', 
   await page.getByTestId('app-settings-trigger').click()
   const dialog = page.getByTestId('app-settings-dialog')
   const general = dialog.getByRole('tab', { name: 'General', exact: true })
+  for (const tab of await dialog.getByRole('tab').all()) {
+    await expect(tab).toHaveCSS('cursor', 'pointer')
+  }
   await expect(general).toHaveAttribute('aria-selected', 'true')
   await expect(dialog).toHaveScreenshot('settings-tabs-general.png')
   await general.focus()
-  await general.press('ArrowDown')
+  for (const section of ['appearance', 'performance', 'plugins', 'ai']) {
+    await page.keyboard.press('ArrowDown')
+    const tab = page.getByTestId(`settings-section-${section}`)
+    await expect(tab).toBeFocused()
+    await expect(tab).toHaveAttribute('aria-selected', 'true')
+  }
   const ai = page.getByTestId('settings-section-ai')
   await expect(ai).toBeFocused()
   await expect(ai).toHaveAttribute('aria-selected', 'true')

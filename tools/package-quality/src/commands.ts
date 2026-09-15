@@ -7,6 +7,7 @@ import { formatPackageDiagnostics, validatePackageMetadata } from './checks/meta
 import { checkPublint } from './checks/publint'
 import { repositoryRoot } from './packages'
 import { verifyPackedPackages } from './smoke/verify'
+import { measurePhase } from './timing'
 
 async function smoke(root: string): Promise<void> {
   if (root !== repositoryRoot) return verifyPackedPackages(root)
@@ -22,10 +23,10 @@ async function smoke(root: string): Promise<void> {
 const rootArg = { type: 'string', description: 'Explicit workspace root' } as const
 
 async function check(root: string): Promise<void> {
-  const diagnostics = await validatePackageMetadata(root)
+  const diagnostics = await measurePhase('metadata', () => validatePackageMetadata(root))
   if (diagnostics.length > 0) throw new Error(formatPackageDiagnostics(diagnostics))
-  await checkPublint(root)
-  await checkTypes(root)
+  await measurePhase('Publint', () => checkPublint(root))
+  await measurePhase('ATTW', () => checkTypes(root))
   console.log('Package metadata, Publint and ATTW checks passed.')
 }
 

@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
 import {
@@ -321,7 +320,7 @@ describe('remote MCP runtime', () => {
     const protocolMethods: string[] = []
     const serverErrors: unknown[] = []
     let toolCalls = 0
-    const serverTransport = new StreamableHTTPServerTransport({
+    const serverTransport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
       enableJsonResponse: true
     })
@@ -348,7 +347,19 @@ describe('remote MCP runtime', () => {
         const body = Buffer.concat(chunks).toString('utf8')
         const parsedBody = body ? (JSON.parse(body) as { method?: unknown }) : undefined
         if (typeof parsedBody?.method === 'string') protocolMethods.push(parsedBody.method)
-        await serverTransport.handleRequest(request, response, parsedBody)
+        const result = await serverTransport.handleRequest(
+          new Request('http://127.0.0.1/mcp', {
+            method: request.method,
+            headers: Object.fromEntries(
+              Object.entries(request.headers).flatMap(([key, value]) =>
+                value === undefined ? [] : [[key, Array.isArray(value) ? value.join(', ') : value]]
+              )
+            ),
+            ...(body ? { body } : {})
+          })
+        )
+        response.writeHead(result.status, Object.fromEntries(result.headers.entries()))
+        response.end(Buffer.from(await result.arrayBuffer()))
       })().catch((error: unknown) => {
         serverErrors.push(error)
         if (!response.headersSent) response.writeHead(500)

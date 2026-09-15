@@ -32,7 +32,9 @@ The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, doc
 
 ### Settings UI ownership
 
-Settings components own layout, translated copy, confirmation visibility, and emits. Reactive settings workflows live under the owning app domain's `settings/` folder (for example `src/app/ai/models/settings/profile-editor/{use,selection,connection}.ts`), not a global composables bucket. Use `use.ts` for orchestration and focused sibling modules for substantial sub-workflows. Keep persistence and external operations in domain services, and pure option projections as ordinary functions. Return operation outcomes rather than importing dialogs, routers, or toast UI into workflow composables. Keep newly entered secrets short-lived, never expose saved secrets, and guard async results against changed targets. Small presentation-only computed bindings can remain in components.
+Compose Settings sections with `SettingsSection` and its `title`, `description`, `actions`, and default content slots. It owns heading association and internal spacing; `SettingsGroup` owns bordered row grouping. Do not repeat section/header/spacing markup in each feature.
+
+Settings components own layout, translated copy, confirmation visibility, and emits. Reactive settings workflows live under the owning app domain's `settings/` folder (for example `src/app/ai/models/settings/profile-editor/{use,selection,connection}.ts`), not a global composables bucket. Use `use.ts` for orchestration and focused sibling modules for substantial sub-workflows. Keep persistence and external operations in domain services, and pure option projections as ordinary functions. Return operation outcomes rather than importing dialogs, routers, or toast UI into workflow composables. Keep newly entered secrets short-lived, never expose saved secrets, and guard async results against changed targets. Small presentation-only computed bindings can remain in components. New explicit settings forms use headless VeeValidate v5 with native Valibot schemas and existing controlled UI components; keep form state in the owning settings domain. Saved secrets and replacement-secret drafts stay outside form snapshots and devtools, and persistence/concurrency remain in domain workflows rather than form callbacks.
 
 ### Public engine exports
 
@@ -328,6 +330,8 @@ bun run test:packages  # package metadata + packed tarball smoke tests
 bun run test           # Playwright E2E
 ```
 
+PR CI always classifies changed paths through `tools/ci/`. Docs-only changes run documentation integrity/reference checks and the docs build, not engine, browser, Storybook, or native suites. Runtime prompt Markdown, executable examples, configuration, and unknown paths require code validation. The aggregate `CI result` gate requires successful classification and every applicable job; failures, cancellations, and unexpected skips cannot pass. Do not restore workflow-level path filtering on required CI.
+
 ## Documentation
 
 - `CHANGELOG.md` — all user-facing changes, grouped by version. "Unreleased" section at top for in-progress work.
@@ -341,24 +345,13 @@ When adding features, update `CHANGELOG.md` (Unreleased section) and `README.md`
 
 ## Commit messages
 
-Use Conventional Commits for regular development commits: `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `build`, `ci`, `chore`.
+`commitlint.config.ts` enforces message structure through the **Commit messages** CI job on all PRs, including docs-only changes. Run `bun run check:commits --last` or pass `--from`/`--to` for a branch range. Preserve the release exception and product casing when changing rules; CI gate policy lives in `tools/ci/src/policy.ts`.
 
-- Keep the first line short, imperative, and scoped when helpful
-- Put rationale and implementation details in the commit body
-- Keep the commit type lowercase (`fix:`, `feat:`, `docs:`), but start each body line/bullet with an uppercase word
-- Prefer scopes that match the project structure: `app`, `tauri`, `core`, `cli`, `mcp`, `vue`, `docs`, or focused domains like `editor`, `scene-graph`, `canvas`, `tools`, `kiwi`, `io`, `text`, `vector`, `color`, `acp`, `ai`, `collab`, `automation`, `i18n`
-- Use the narrowest honest scope, or omit it if the change spans multiple unrelated areas
+Use Conventional Commits (`feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `build`, `ci`, `chore`) for regular work. Keep subjects short, imperative, and narrowly scoped; explain rationale in the body. Preserve product casing such as DOM/CSS, HTML, JSX, Tailwind, Kiwi, `.fig`, MCP, CLI, AI, ACP, and i18n. Release commits use `Release vX.Y.Z`.
 
-Example:
+Keep body lines and bullets capitalized.
 
-```text
-fix(editor): preserve text edit undo state
-
-- Snapshot both text and styleRuns when editing starts
-- Restore both on undo instead of comparing against the live node
-```
-
-Release commits are the exception: keep using `Release v0.x.y`.
+PR titles use Conventional Commits because GitHub uses them as merge subjects. The separate **PR title** workflow validates titles, including title edits, without rerunning the full CI suite. Preserve the conventional subject when merging via CLI/API; if setting it explicitly with `gh pr merge --subject`, use the validated PR title. Give branch-update merges explicit subjects such as `chore: merge master into <branch>`. Commitlint's default merge exceptions are not a naming convention. Do not rewrite published history solely to normalize messages.
 
 ## CLI
 
@@ -371,35 +364,16 @@ Release commits are the exception: keep using `Release v0.x.y`.
 
 ## Tools (AI / MCP / CLI)
 
-- Tool operations live in `packages/core/src/tools/` as framework-agnostic `ToolDef` objects, split by domain folders and barrels:
-  - `schema.ts` — `ToolDef` type, `defineTool()`, shared helpers (`nodeSummary`, `nodeToResult`, `requireNode`)
-  - `read/` + `read.ts` — selection, node lookup, JSX, pages, fonts, components, XPath query, lowcode reads
-  - `create/` + `create.ts` — basic shapes, JSX render, components, icons, SVG import, vectors
-  - `modify/` + `modify.ts` — node updates, paint, text, layout, effects, state, lowcode mutations
-  - `structure/` + `structure.ts` — delete, clone, reparent, group, arrange, replace, tree/batch ops
-  - `variables/` + `variables.ts` — variable/collection CRUD, binding, unbinding
-  - `vector/` + `vector.ts` — boolean ops, path edit, viewport, SVG/PDF/image export
-  - `analyze/` + `analyze.ts` — colors, typography, spacing, clusters, diff, eval wrappers
-  - `describe/` — design summaries, issue detection, role/tree descriptions
-  - `codegen/` — token and component-map extraction
-  - `stock-photo/` + `stock-photo.ts` — stock image provider requests and fill application
-  - `calc.ts` — utility calculation tool
-  - `registry-core.ts` — `CORE_TOOLS`, the default app AI set (curated 50+ common tools, lower schema/token cost)
-  - `registry-extended.ts` — advanced variables, vector, export, analysis, codegen, and structure tools
-  - `registry.ts` — exports `ALL_TOOLS = [...CORE_TOOLS, ...EXTENDED_TOOLS]`
-- Each tool has: name, description, typed params, and an `execute(figma: FigmaAPI, args)` function
-- `defineTool()` gives type-safe params in the execute body; the array `ALL_TOOLS` erases the generics for adapters
-- AI adapter (`packages/core/src/tools/ai-adapter.ts`): `toolsToAI()` converts ToolDefs → valibot schemas + Vercel AI `tool()` wrappers
-- `src/app/ai/tools/index.ts` intentionally uses `CORE_TOOLS` to keep chat schemas small. Only add a tool to `CORE_TOOLS` when it is common enough for default AI chat; otherwise put it in `EXTENDED_TOOLS`.
-- CLI commands (`packages/cli/src/commands/`) are **not** generated from ToolDefs — they have custom agentfmt formatting, tree walking, pagination. The `eval` command is the CLI's access to all ToolDef operations via FigmaAPI.
-- MCP adapter (`packages/mcp/src/server.ts` + `tool/registration.ts`): `startServer()` creates the HTTP/WebSocket server and registers `ALL_TOOLS` as MCP tools (zod schemas). Listener lifecycle and session ownership live under `packages/mcp/src/server/`; the stdio client bridge lives under `packages/mcp/src/stdio/`.
-- Local MCP transport discovery lives under `packages/mcp/src/transport/`: macOS/Linux prefer an owner-only Unix socket, Windows uses localhost TCP, and `mcp.json` advertises the active transport and token. Keep transport tests grouped under `tests/engine/mcp/{server,stdio,transport}/`, shared MCP fixtures under `tests/helpers/mcp/`, and test discovery paths isolated from the user's runtime file.
-- MCP-only tools (`open_file`, `new_document`, `save_file`, `get_codegen_prompt`) are registered directly in `packages/mcp/src/tool/registration.ts`, not as ToolDefs — they need Node.js fs access or don't operate on the scene graph
-- `open_file` and `new_document` are only registered when `OPENPENCIL_MCP_ROOT` is set (path scoping for security)
-- Export tools (`export_image`, `export_svg`, `get_jsx`) accept an optional `path` param — when provided and `OPENPENCIL_MCP_ROOT` is set, the MCP server writes output to disk and returns `{ written, byteLength }` instead of the raw data. Path checks must resolve symlinks before filesystem access.
-- Core prompts (`CODEGEN_PROMPT`, `JSX_REFERENCE`) live as markdown files in `packages/core/src/tools/prompts/`, loaded via raw-md bundler plugin; app chat/ACP prompts live under `src/app/ai/**` markdown files.
-- To add a new tool: add a `defineTool()` in the appropriate domain file, export it from the domain barrel, add it to `CORE_TOOLS` or `EXTENDED_TOOLS` intentionally. MCP and CLI eval see `ALL_TOOLS`; app AI chat sees only `CORE_TOOLS`.
-- `FigmaAPI` (`packages/core/src/figma-api/`) is the execution target for all tools — Figma Plugin API compatible, uses Symbols for hidden internals
+- Core operations are `ToolDef`s under `packages/core/src/tools/**`; `schema.ts` defines their contract and registries expose them. Each definition owns its native Valibot `input`, execution/mutation metadata, and optional per-interface exposure exclusions (`mcp`, `ai`, `webmcp`). Exposure defaults to inclusion; adapters use `isToolExposed()`, then apply execution support and user permissions independently. Infer arguments from the schema; derive effects and default capabilities from execution metadata instead of maintaining parameter DSLs or tool-name lists. Add work to the nearest existing domain and the appropriate registry.
+- `ai-adapter.ts` converts ToolDefs for Vercel AI; `src/app/ai/tools/index.ts` binds them to the active editor's `FigmaAPI`.
+- CLI commands own CLI UX independently; `eval` exposes operations through `FigmaAPI`.
+- MCP-only filesystem/server tools live in `packages/mcp/src/tool/registration.ts`; listener/session lifecycle lives under `server/`, stdio under `stdio/`, and transport discovery under `transport/`. File access must resolve symlinks inside the effective MCP root; CLI defaults are cwd on macOS/Linux and home on Windows.
+- Browser-native WebMCP registration lives under `src/app/automation/webmcp/`, consumes per-tool exposure metadata, and is feature-detected through `document.modelContext`. Core owns synchronous property/variable transactions in `editor/history/atomic-tool.ts`; Scene Graph owns checkpoint recovery, including hierarchy and indexes. AI, MCP, and WebMCP share this execution path; async and structural tools cannot declare atomic property execution. App completion under `src/app/automation/execution/` loads fonts after commit. Keep browser lifecycle out of Core and the MCP server package.
+- Keep MCP transport tests under `tests/engine/mcp/{server,stdio,transport}` and shared fixtures under `tests/helpers/mcp`; isolate tests from user runtime discovery.
+- Shared scene-authoring guidance and tested examples live under `packages/core/src/design-jsx/reference/`; `reference.ts` combines them with renderer metadata. Core codegen prompts under `packages/core/src/tools/prompts/` and the app chat/ACP prompt compose that public reference rather than copying it. Run `bun run generate:authoring-reference` after changes; committed skill/docs copies are checked by `check:authoring-reference` (also part of `check:docs`). Do not edit generated reference files directly.
+- The installable agent skill is maintained in `skills/open-pencil/`. Changes to agent-facing APIs, CLI/MCP behavior, or design authoring must update affected skill examples, prompts, and public documentation in the same change. Keep examples valid in their actual execution environment; do not advertise library exports as scripting globals unless exposed there. Prefer runtime discovery and canonical references over duplicated API/tool inventories.
+- The fork retains a bounded compatibility path for existing `params` definitions, normalized to the same Valibot input contract. New tools use native `input` schemas. Preserve the optional host `ToolCtx` for cancellation, reviewed module access, deferred layout and Motion export; do not infer browser exposure or atomic mutation support for legacy tools.
+- Keep app chat schemas curated through `CORE_TOOLS`; `ALL_TOOLS` includes explicit extended tools for discovery through supported adapters.
 
 ## Plugins and modules
 
@@ -593,7 +567,7 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - Do not place code or tests ad hoc. Before adding or moving files, inspect the existing folder structure and nearby patterns, then put changes in the established domain-specific location. If no proper location exists, create one deliberately and update docs/conventions as needed.
 - Architecture boundaries are enforced by Steiger (`bun run check:arch`). App code must use public workspace package exports, workspace packages must not import app `src/` code, package-local aliases (`#core`, `#vue`, `#cli`, `#compiler`, `#mcp`) are only for their owning package, core must stay framework-agnostic, compiler IR must not import adapters, compiler adapters must not import scene-graph internals, app service/domain code (`src/app/**`) must not import app component/view layers, components must not import views, shared UI (`src/components/ui/**`) must not import app services/stores, property-panel internals must stay inside the property panel, canvas/editor overlay code must not import property-panel internals, Vue components must not use `<style>` blocks, code outside core editor internals must not assign `editor.state.selectedIds` or `editor.state.activeTool` directly, committed code must not import scratch/generated/vendor internals, and durable docs belong under `packages/docs/**` unless the root Markdown allowlist is deliberately updated.
 - Test placement is strict and enforced by Steiger: app E2E tests live under `tests/e2e/**` and use `*.spec.ts`; Figma automation tests live under `tests/figma/**` and use `*.spec.ts`; engine/unit tests live under `tests/engine/**` and use `*.test.ts` (with `helpers.ts`, `*.bench.ts`, and `visual-*` support scripts allowed); shared test utilities live under `tests/helpers/**`. Engine tests should live under a domain folder that mirrors the source module under test (for example `tests/engine/io/fig/**`, not `tests/engine/fig/**`). Do not commit temporary/profile specs (`*.tmp.*`, `*.profile.*`). Do not put store-only/internal-state assertions in E2E. If a test drives the UI like a user and verifies visible behavior, it can be E2E; if it creates nodes through internals and asserts graph state, it belongs in engine/unit coverage.
-- Use Valibot for first-party runtime validation. Keep Zod at upstream SDK integration boundaries that require it, such as MCP tool registration; do not maintain parallel first-party schemas in both libraries.
+- Use Valibot for first-party runtime validation. MCP v2 registration uses Standard Schema with Valibot JSON Schema conversion; AI and WebMCP adapters share the Core tool input contract. Keep Zod only where upstream dependencies require it; do not maintain parallel first-party schemas in both libraries.
 
 ### File and folder naming
 
@@ -641,11 +615,28 @@ Use `scripts/` only for tiny compatibility entrypoint shims that import `../tool
 - Constants in `src/constants.ts` — no magic numbers in components or composables
 
 - Use `@/` for app cross-directory imports. Never escape an alias root with `../` (for example `#tests/../vite`); fix module ownership instead. Package aliases are `#vue/*`, `#cli/*`, `#dom-css/*`, `#mcp/*`, and `#core/*`; prefer clear relative imports nearby.
+- No `any`, non-null assertions, or `Math.random()`; use precise types, guards, and `crypto.getRandomValues()`.
+- Use the existing `dedent` package for multiline prompt composition and embedded examples instead of escaped newline strings. Keep substantial prompt prose in the owning Markdown source; compose it rather than duplicating it. Apply this convention across app, packages, and tools.
+- Tooling must resolve the workspace with `resolveWorkspaceRoot` from `@open-pencil/package-artifacts`, not parent-directory traversal. Use domain aliases for cross-directory tooling imports, including tests; keep nearby sibling imports relative.
+- Reuse named types and primitives from `@open-pencil/scene-graph`; do not respell `Color`, `Vector`, `SceneNode`, `Effect`, `Fill`, or `Stroke` shapes.
 - Window API augmentations belong in the owning compilation boundary: app declarations in `src/global.d.ts`, package DOM gaps in the owning package's `global.d.ts`, and native-test declarations in `tests/helpers/tauri/native-global.d.ts`. Never put `declare global` in specs or implementation modules. Include canonical declarations through tsconfig instead of duplicating them.
 - Keep app API contracts named and owned by their implementation domain; declaration files import those types. Derive vendor API types from top-level type imports rather than hand-copying signatures. Optional runtime globals remain optional and require a runtime guard.
 - Native tests centralize invocation in a guarded test helper using vendor-derived types; do not import packages inside serialized WebView callbacks or repeat direct Tauri-global access in specs. Never expand production Window declarations just to accommodate test fixtures.
 - Prefer test-runner-owned fixtures and request/route counters over browser globals. For in-page performance instrumentation, return a scoped `JSHandle` from `evaluateHandle()`; restore patched methods/listeners and dispose the handle in `finally`. Handles do not survive navigation. Assert transient DOM state with locators before the interaction ends when possible. Do not create a catch-all test Window interface or add ad-hoc counter properties to window.
 - In Bun tests, prefer injected dependencies or scoped spies with explicit cleanup. `mock.restore()` restores spies but does not undo `mock.module()` overrides; do not assume module mocks are isolated by cleanup hooks. Read the installed runner's current lifecycle/mocking docs before introducing global or module-level instrumentation.
+
+## Issue and PR writing
+
+Use concise, concrete technical prose for issues, PR descriptions, and public comments. Lead with the problem and outcome; add a short example when needed to make the behavior clear. Avoid filler, promotional claims, decorative emojis, unnecessary tables, and file-by-file change inventories. Preserve the PR template's headings: Summary explains why and the outcome; What changed adds one to three non-repeated details; Validation reports actual commands/results and relevant omissions; AI assistance discloses known model names. Link lengthy logs or design notes rather than expanding the description into a work diary. Follow `CONTRIBUTING.md`; brevity must not omit reproduction steps, material risks, or validation limitations.
+
+## Code review
+
+- Review codebase fit, not just the diff. Before judging or implementing a change, inspect the owning folder, nearby analogous implementations, shared helpers/types, public exports, callers, and tests. Check new files against the established file tree, package boundaries, naming, and local conventions. Prefer an existing abstraction when it fits; do not invent a parallel pattern or demand unrelated cleanup.
+- Verify findings against the current PR head and pinned dependency APIs. Give the concrete failing scenario and consequence; distinguish demonstrated bugs from defensive hardening and preferences. If runtime validation or dependency source is unavailable, state that limitation rather than treating an assumption as a fact.
+- On re-review, check later commits and the discussion before repeating a finding. Mark addressed, obsolete, or intentionally declined suggestions accurately. Green checks and resolved threads are not substitutes for reviewing the current code.
+- Request evidence appropriate to the change: engine tests for state contracts, Storybook for isolated component states, browser integration tests for workflows, canvas snapshots for rendering, and native tests for platform delivery. Do not claim one proves another.
+- Preserve intentional behavior unless a concrete regression is demonstrated. For example, preferences and native credentials cannot transact together; documented partial-save outcomes and retryable drafts are not inherently bugs.
+- Keep review comments concise and actionable. Cite the relevant location and repository rule or existing analogue for codebase-fit findings. Independently assess automated suggestions; do not bulk-apply or bulk-resolve them merely to make a bot green.
 
 ## Code quality
 
@@ -731,6 +722,7 @@ Keep responsibilities distinct: engine tests cover state contracts, Playwright b
 - Colocate `ComponentName.stories.ts` with `ComponentName.vue`. Multipart composition stories may use a descriptive family name. Preserve explicit Storybook titles and exported story names during file moves; keep default playgrounds static and give interaction flows named stories. Use deterministic fixtures and colocated Vue demos for substantial markup.
 - `src/components/ui/**` is store-free app design-system code; feature controls stay in their domain.
 - SDK property primitives remain controlled/editor-agnostic. Compose property rows from `PanelGrid`, `PanelFieldGroup`, `PanelItemRow`, and `PropertyItemRow`; use `BindableValue`, `FillRoot`, and `FillSwatch` rather than rebuilding binding/picker infrastructure.
+- Do not add automated tests or snapshot baselines for simple CSS-only UI changes, including spacing, sizing, colors, and responsive breakpoints. Verify these visually instead. Keep automated coverage focused on behavior and contracts; the separate canvas-renderer visual coverage requirement still applies.
 - Prefer accessible role/name, label, then text in tests. Use scoped `data-slot` anatomy or semantic attributes (`data-property`, `data-command`, `data-node-id`) when needed; reserve `data-test-id` for integration boundaries and never add test-hook props.
 - Use Reka UI primitives and typed Tailwind Variants themes under `src/theme/**`; merge per-instance `ui` slot overrides, expose `class` for single-root components, and do not add one-off class props. Use `UI` casing in type names.
 - Bind visual state through semantic `data-*` attributes; Steiger rejects template-time `use*UI()`, visual-state utility branches, and raw SVG app icons.
@@ -746,6 +738,16 @@ Keep responsibilities distinct: engine tests cover state contracts, Playwright b
 - Use `Tip`, not native `title`; Lucide/Iconify components, not raw SVG/Unicode icons; and `e.code`, not `e.key`, for modified shortcuts.
 - Binding-aware fields detach/mutate only on the first value change; opening/focusing is non-destructive.
 - Preserve nearby interaction gotchas when refactoring: splitter handles, NumberField pointer ownership, section dragging, panel containment, and number-spinner styling.
+
+### Feedback and form submission
+
+- Use `AppAlert` (`src/components/ui/feedback/AppAlert.vue`) for persistent contextual errors, warnings, recovery guidance, and informative results. Its typed theme lives in `src/theme/feedback/alert.ts`; use translated `heading`/`description` and the `actions` slot for recovery controls. Do not hand-roll feature-level alert markup or colored error paragraphs.
+- Use the existing toast service for transient confirmations such as copying or completing an action after its view closes. Do not show both a toast and an alert for the same event. Partial saves and actionable failures must not disappear in a toast.
+- Field validation stays inline in the shared field component, with `aria-invalid`, associated error text before hints, and first-invalid-field focus. VeeValidate owns validation and form submission state; domain workflows retain their own pending/lifecycle guards for external operations. A credential-store failure does not make the entered key invalid.
+- Settings save feedback uses `SettingsSaveFeedback`, which maps domain outcomes to `AppAlert`. Keep persistence outcomes (`saved`, `failed`, `partial`) in the domain: a form library cannot make preferences and a native credential store transactional. Preserve retryable drafts, reuse already-persisted identities on retries, and show the partial-save warning. Never render raw credential backend errors or secrets.
+- Use `SettingsLink` for external Settings links, including provider key pages and setup guides. It owns link styling, the external-link icon, and native opening behavior. Keep arrow glyphs out of translated labels.
+- Ordinary labels such as Running/Stopped remain status text or badges, not alerts. Destructive confirmation belongs in the shared confirmation dialog. Alerts announce changes without taking keyboard focus.
+- Isolated feedback-component visual states belong in colocated Storybook stories, not Playwright application screenshots. Settings E2E tests cover integration behavior: when feedback appears, validation/focus, retained drafts, and successful retries.
 
 ### Animations
 
@@ -764,13 +766,14 @@ Motion policy lives in `src/app/shell/motion/`: resolve persisted System/Off pre
 - `@open-pencil/fig` owns SceneGraph ⇄ NodeChange conversion in `packages/fig/src/node-change/**`, component/instance interpretation in `packages/fig/src/instance-overrides/**`, and effective raw metadata policy in `packages/fig/src/source-metadata.ts`.
 - Core owns `.fig` IO orchestration in `packages/core/src/io/formats/fig/**`, runtime font/glyph integration, workers, and CanvasKit thumbnails. Keep Fig behavior covered by package-local tests and dist smoke.
 - `.pen` is the OpenPencil document format accepted by compiler/CLI workflows.
-- Vector data uses reverse-engineered `vectorNetworkBlob` binary format — encoder/decoder in `packages/core/src/vector/` and scene-graph vector-network types in `@open-pencil/scene-graph`.
-- `showOpenFilePicker` / `showSaveFilePicker` are File System Access API (Chrome/Edge), not Tauri-only; code must keep browser fallbacks.
-- Safari save: no File System Access API → use an `<a>` download fallback with deferred `revokeObjectURL`. SafariBanner warns users about limitations.
-- Tauri detection: use `IS_TAURI` from `@open-pencil/core/constants` / `src/constants.ts`; don't inline `__TAURI_INTERNALS__` checks.
-- `.fig` export compression uses fflate in browser paths and Tauri Rust commands where available.
-- Test `.fig` round-trip by exporting and reimporting in Figma when changing file-format behavior.
-- Test fixtures (`tests/fixtures/*.fig`) are Git LFS. If no `.fig` fixtures changed, `git push --no-verify` can skip the slow LFS pre-push hook; use regular `git push` when fixtures changed.
+- Figma clipboard envelope encoding, decoding, bounds, and SceneGraph import conversion belong to `@open-pencil/fig/clipboard`. Core prepares runtime fonts/text and owns editor placement/history; browser/Tauri adapters own system clipboard I/O. Do not add platform clipboard APIs to Fig.
+- Kiwi schema/runtime/codec/container helpers live in `@open-pencil/kiwi`; complete archive parsing and SceneGraph conversion live in `@open-pencil/fig`; Core owns format-neutral orchestration, runtime fonts/workers, and thumbnails.
+- Vector networks use the reverse-engineered `vectorNetworkBlob`; codecs live under `packages/core/src/vector/` and types in Scene Graph.
+- File System Access APIs are browser APIs, not Tauri-only. Keep Safari download fallback and defer `revokeObjectURL`.
+- Detect desktop with `IS_TAURI`, never ad-hoc `__TAURI_INTERNALS__` checks.
+- Browser FIG export uses fflate/`@open-pencil/fig`; Tauri uses `build_fig_file`.
+- Changes to `.fig` behavior require round-trip validation in Figma. Fixtures under `tests/fixtures/*.fig` use Git LFS; use normal `git push` when they change.
+- Preserve lowcode and Motion metadata through the Core clipboard adapter; Fig extension hooks stay data-only and cannot import Core.
 
 ## Tauri
 

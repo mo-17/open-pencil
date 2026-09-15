@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
-import { valibotSchema } from '@ai-sdk/valibot'
 import { tool } from 'ai'
 import * as v from 'valibot'
 
 import { ALL_TOOLS, FigmaAPI, SceneGraph, toolsToAI } from '@open-pencil/core'
+
+import { defineTool } from '#core/tools/schema'
 
 import { expectDefined } from '#tests/helpers/assert'
 
@@ -35,13 +36,58 @@ function setup() {
       getFigma: () => figma,
       onAfterExecute: () => undefined
     },
-    { v, valibotSchema, tool }
+    { tool }
   )
 
   return { graph, figma, tools }
 }
 
 describe('AI adapter', () => {
+  test('reports an already committed atomic edit when cancellation arrives during presentation work', async () => {
+    const { figma } = setup()
+    const node = figma.createRectangle()
+    const controller = new AbortController()
+    const def = defineTool({
+      name: 'committed-property-edit',
+      description: 'Committed property edit',
+      input: v.object({}),
+      execution: { kind: 'sync', mutation: 'properties' },
+      execute: () => {
+        node.opacity = 0.5
+        return { id: node.id }
+      }
+    })
+    const tools = toolsToAI(
+      [def],
+      {
+        getFigma: () => figma,
+        onAfterExecute: () => {
+          controller.abort()
+        }
+      },
+      { tool }
+    )
+    expect(
+      await adapterTool(tools, def.name).execute({}, { abortSignal: controller.signal })
+    ).toEqual({ id: node.id })
+    expect(node.opacity).toBe(0.5)
+  })
+
+  test('honors AI exclusions independently of MCP and WebMCP exposure', () => {
+    const base = ALL_TOOLS[0]
+    const { figma } = setup()
+    const tools = toolsToAI(
+      [
+        { ...base, name: 'default', exposure: {} },
+        { ...base, name: 'hidden', exposure: { ai: false } },
+        { ...base, name: 'other-interface', exposure: { webmcp: false, mcp: false } }
+      ],
+      { getFigma: () => figma },
+      { tool }
+    )
+    expect(Object.keys(tools)).toEqual(['default', 'other-interface'])
+  })
+
   test('generates tool for every definition', () => {
     const { tools } = setup()
     for (const def of ALL_TOOLS) {
@@ -65,7 +111,7 @@ describe('AI adapter', () => {
     let received: AbortSignal | undefined
     const tools = toolsToAI(
       [
-        {
+        defineTool({
           name: 'observe_abort_signal',
           description: 'test',
           params: {},
@@ -73,10 +119,10 @@ describe('AI adapter', () => {
             received = ctx?.signal
             return { ok: true }
           }
-        }
+        })
       ],
       { getFigma: () => figma },
-      { v, valibotSchema, tool }
+      { tool }
     )
     const controller = new AbortController()
     await adapterTool(tools, 'observe_abort_signal').execute({}, { abortSignal: controller.signal })
@@ -91,7 +137,7 @@ describe('AI adapter', () => {
     let afterContext: { status?: string; signal?: AbortSignal } | undefined
     const tools = toolsToAI(
       [
-        {
+        defineTool({
           name: 'ignore_abort_signal',
           description: 'test',
           params: {},
@@ -100,7 +146,7 @@ describe('AI adapter', () => {
             controller.abort()
             return { id: 'created-after-stop' }
           }
-        }
+        })
       ],
       {
         getFigma: () => figma,
@@ -109,7 +155,7 @@ describe('AI adapter', () => {
           afterContext = context
         }
       },
-      { v, valibotSchema, tool }
+      { tool }
     )
 
     const outcome = adapterTool(tools, 'ignore_abort_signal')
@@ -130,20 +176,20 @@ describe('AI adapter', () => {
     const flashes: string[][] = []
     const tools = toolsToAI(
       [
-        {
+        defineTool({
           name: 'abort_during_after',
           description: 'test',
           params: {},
           mutates: true,
           execute: () => ({ id: 'created-before-stop' })
-        }
+        })
       ],
       {
         getFigma: () => figma,
         onAfterExecute: () => controller.abort(),
         onFlashNodes: (ids) => flashes.push(ids)
       },
-      { v, valibotSchema, tool }
+      { tool }
     )
 
     const error = await adapterTool(tools, 'abort_during_after')
@@ -163,10 +209,10 @@ describe('AI adapter', () => {
     const order: string[] = []
     const tools = toolsToAI(
       [
-        {
+        defineTool({
           name: 'serialized_mutation',
           description: 'test',
-          params: { id: { type: 'string', required: true } },
+          params: { id: { type: 'string', description: 'ID', required: true } },
           mutates: true,
           execute: async (_figma, args) => {
             active++
@@ -178,18 +224,18 @@ describe('AI adapter', () => {
             active--
             return { id: args.id }
           }
-        }
+        })
       ],
       {
         getFigma: () => figma,
         onAfterExecute: async (_def, context) => {
-          order.push(`after:${String((context.result as { id?: string })?.id)}`)
+          order.push(`after:${String((context.result as { id?: string } | undefined)?.id)}`)
           await new Promise((resolve) => {
             setTimeout(resolve, 5)
           })
         }
       },
-      { v, valibotSchema, tool }
+      { tool }
     )
 
     const mutation = adapterTool(tools, 'serialized_mutation')
@@ -205,7 +251,7 @@ describe('AI adapter', () => {
     const mutationKey = {}
     let active = 0
     let maxActive = 0
-    const def = {
+    const def = defineTool({
       name: 'shared_serialized_mutation',
       description: 'test',
       params: {},
@@ -219,9 +265,8 @@ describe('AI adapter', () => {
         active--
         return { ok: true }
       }
-    }
-    const makeTools = () =>
-      toolsToAI([def], { getFigma: () => figma, mutationKey }, { v, valibotSchema, tool })
+    })
+    const makeTools = () => toolsToAI([def], { getFigma: () => figma, mutationKey }, { tool })
 
     await Promise.all([
       adapterTool(makeTools(), def.name).execute({}),
@@ -238,13 +283,13 @@ describe('AI adapter', () => {
     let status: string | undefined
     const tools = toolsToAI(
       [
-        {
+        defineTool({
           name: 'rejected_mutation',
           description: 'test',
           params: {},
           mutates: true,
           execute: () => ({ ok: false, error: 'invalid input', id: 'not-created' })
-        }
+        })
       ],
       {
         getFigma: () => figma,
@@ -253,7 +298,7 @@ describe('AI adapter', () => {
         },
         onFlashNodes: (ids) => flashes.push(ids)
       },
-      { v, valibotSchema, tool }
+      { tool }
     )
 
     const result = await adapterTool(tools, 'rejected_mutation').execute({})
@@ -268,13 +313,13 @@ describe('AI adapter', () => {
     let status: string | undefined
     const tools = toolsToAI(
       [
-        {
+        defineTool({
           name: 'legacy_rejected_mutation',
           description: 'test',
           params: {},
           mutates: true,
           execute: () => ({ error: 'missing node' })
-        }
+        })
       ],
       {
         getFigma: () => figma,
@@ -282,7 +327,7 @@ describe('AI adapter', () => {
           status = context.status
         }
       },
-      { v, valibotSchema, tool }
+      { tool }
     )
 
     const result = await adapterTool(tools, 'legacy_rejected_mutation').execute({})
@@ -296,12 +341,12 @@ describe('AI adapter', () => {
     let afterContext: { status?: string; result?: unknown } | undefined
     const tools = toolsToAI(
       [
-        {
+        defineTool({
           name: 'return_result',
           description: 'test',
           params: {},
           execute: () => ({ ok: true, value: 42 })
-        }
+        })
       ],
       {
         getFigma: () => figma,
@@ -309,7 +354,7 @@ describe('AI adapter', () => {
           afterContext = context
         }
       },
-      { v, valibotSchema, tool }
+      { tool }
     )
 
     await adapterTool(tools, 'return_result').execute({})
@@ -381,7 +426,7 @@ describe('AI adapter', () => {
           return def.execute(target, args)
         }
       },
-      { v, valibotSchema, tool }
+      { tool }
     )
 
     await adapterTool(tools, 'create_shape').execute({ type: 'RECTANGLE' })
@@ -405,7 +450,7 @@ describe('AI adapter', () => {
           calls.push('after')
         }
       },
-      { v, valibotSchema, tool }
+      { tool }
     )
 
     const listPages = adapterTool(tools, 'list_pages')
@@ -427,7 +472,7 @@ describe('AI adapter', () => {
           afterCalled = true
         }
       },
-      { v, valibotSchema, tool }
+      { tool }
     )
 
     const evalTool = adapterTool(tools, 'eval')

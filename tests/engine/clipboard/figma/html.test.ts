@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 
 import {
   buildFigmaClipboardHTML,
@@ -7,8 +7,12 @@ import {
   parseFigmaClipboard,
   SceneGraph
 } from '@open-pencil/core'
+import { fontManager } from '@open-pencil/core/text'
 
 import { expectDefined } from '#tests/helpers/assert'
+
+const CLIPBOARD_FONT = 'Clipboard Outline Fixture'
+let restoreFontData: (() => void) | undefined
 
 function expectFigmaEditableTextDefaults(
   textNode: NonNullable<Awaited<ReturnType<typeof parseFigmaClipboard>>>['nodes'][number]
@@ -28,7 +32,17 @@ function expectFigmaEditableTextDefaults(
 describe('buildFigmaClipboardHTML', () => {
   beforeAll(async () => {
     await initCodec()
+    const bytes = await Bun.file(
+      new URL('../../../../public/Inter-Regular.ttf', import.meta.url)
+    ).arrayBuffer()
+    const loadedData = fontManager.loadedData.bind(fontManager)
+    const fixture = spyOn(fontManager, 'loadedData').mockImplementation((family, style) =>
+      family === CLIPBOARD_FONT && style === 'Regular' ? bytes : loadedData(family, style)
+    )
+    restoreFontData = () => fixture.mockRestore()
   })
+
+  afterAll(() => restoreFontData?.())
 
   it('encodes a simple frame without throwing', async () => {
     const graph = new SceneGraph()
@@ -57,7 +71,7 @@ describe('buildFigmaClipboardHTML', () => {
       width: 200,
       height: 24,
       text: 'Hello World',
-      fontFamily: 'Inter',
+      fontFamily: CLIPBOARD_FONT,
       fontWeight: 400,
       fontSize: 16,
       styleRuns: [

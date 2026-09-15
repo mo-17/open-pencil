@@ -25,6 +25,8 @@ const TRIGGERS = new Set<MotionTrigger | 'all'>([
 
 export const exportMotionAnimation = defineTool({
   name: 'export_motion_animation',
+  execution: { kind: 'async', mutation: 'none' },
+  capabilities: ['document:read', 'filesystem:write'],
   description:
     'Export a deterministic MotionSpec or Motion scene animation. PNG sequence and GIF are built in; WebM/MP4 fail closed unless a real platform encoder is registered. Built-in AI opens the app save surface, while MCP restricts output to OPENPENCIL_MCP_ROOT.',
   params: {

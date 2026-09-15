@@ -73,11 +73,7 @@ describe('audit_application_runtime tool', () => {
     )
   })
 
-  test('rejects an unknown target environment when called without schema coercion', () => {
-    const result = tool().execute(new FigmaAPI(new SceneGraph()), { environment: 'qa' })
-    expect(result).toEqual({
-      ok: false,
-      error: 'Unknown application runtime environment "qa"'
-    })
+  test('rejects an unknown target environment through the shared input contract', () => {
+    expect(() => tool().execute(new FigmaAPI(new SceneGraph()), { environment: 'qa' })).toThrow()
   })
 })

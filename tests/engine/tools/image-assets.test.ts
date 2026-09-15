@@ -225,13 +225,12 @@ describe('audit_image_assets', () => {
     ])
   })
 
-  test('clamps direct-call limits to their declared safe ranges', () => {
-    const result = audit({
-      max_asset_bytes: 0,
-      max_pixels: Number.POSITIVE_INFINITY,
-      max_references_per_asset: -20
-    })
-    expect(result.summary.assets).toBe(0)
+  test.each([
+    { max_asset_bytes: 0 },
+    { max_pixels: Number.POSITIVE_INFINITY },
+    { max_references_per_asset: -20 }
+  ])('rejects out-of-contract direct-call limits before auditing %#', (args) => {
+    expect(() => audit(args)).toThrow()
   })
 
   test('bounds document output globally and prioritizes problems over healthy assets', () => {

@@ -60,6 +60,7 @@ export function createEditorStore(initialGraph?: SceneGraph) {
           }
     }
   })
+  const canvasReadiness = Promise.withResolvers<undefined>()
   const io = new IORegistry(BUILTIN_IO_FORMATS)
   bindClipboardNotifications(editor)
 
@@ -194,6 +195,8 @@ export function createEditorStore(initialGraph?: SceneGraph) {
     ...editor,
     state,
     preparationController,
+    canvasReady: canvasReadiness.promise,
+    markCanvasReady: () => canvasReadiness.resolve(undefined),
     onPreparationEvent<Event extends EditorPreparationEventName>(
       event: Event,
       handler: EditorPreparationEvents[Event]

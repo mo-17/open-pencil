@@ -564,9 +564,9 @@ test('bound NumberField detach edit is one undo step', async () => {
   expect(await readState()).toEqual({ radius: 0, binding: 'Radius/default' })
 
   await field.getByLabel('Apply variable').click()
-  const search = editor.page.getByPlaceholder('Search…', { exact: true })
-  await expect(search).toBeVisible()
-  await search.press('Escape')
+  const variableSearch = editor.page.getByRole('combobox', { name: 'Search…', exact: true })
+  await expect(variableSearch).toBeVisible()
+  await variableSearch.press('Escape')
   expect(await readState()).toEqual({ radius: 0, binding: 'Radius/default' })
 
   await field.click({ position: { x: 40, y: 13 } })

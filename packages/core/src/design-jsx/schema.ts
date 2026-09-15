@@ -134,6 +134,8 @@ const DESIGN_JSX_BASE_PROPERTY_NAMES = [
   'bind',
   'component',
   'componentId',
+  'properties',
+  'propertyRefs',
   'of'
 ] as const
 

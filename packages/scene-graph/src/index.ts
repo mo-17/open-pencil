@@ -153,6 +153,18 @@ export interface SceneGraphOptions {
   /** Fail before creating a node below this parent-chain depth. */
   maxDepth?: number
 }
+function stripUndefinedProps<T extends object>(obj: T): T {
+  const result = {} as T
+  for (const key of Object.keys(obj) as (keyof T)[]) {
+    const val = obj[key]
+    if (val !== undefined) {
+      result[key] = val
+    }
+  }
+  return result
+}
+
+export { captureGraphCheckpoint } from './checkpoint'
 
 export class SceneGraph {
   nodes = new Map<string, SceneNode>()
@@ -566,6 +578,7 @@ export class SceneGraph {
       )
     }
   }
+
   updateNode(id: string, changes: Partial<SceneNode>): void {
     if (this.previewMutationDepth > 0) {
       this.updateNodePreview(id, changes)
@@ -574,15 +587,31 @@ export class SceneGraph {
 
     const node = this.nodes.get(id)
     if (!node) return
-    let entries = Object.entries(changes) as Array<[string, unknown]>
-    changes = Object.fromEntries(
-      entries.filter(([, value]) => value !== undefined)
-    ) as Partial<SceneNode>
-    changes = styleDetachmentChanges(node, changes)
-    entries = Object.entries(changes) as Array<[string, unknown]>
-    changes = Object.fromEntries(
-      entries.filter(([, value]) => value !== undefined)
-    ) as Partial<SceneNode>
+    changes = stripUndefinedProps(styleDetachmentChanges(node, stripUndefinedProps(changes)))
+    this.applyNodeChanges(node, changes)
+  }
+
+  /** Replay captured properties without dropping explicit undefined values or absent keys. */
+  restoreNodeProperties(
+    id: string,
+    changes: Partial<SceneNode>,
+    absent: readonly (keyof SceneNode)[]
+  ): void {
+    const node = this.nodes.get(id)
+    if (node) this.applyNodeChanges(node, changes, absent)
+  }
+
+  private applyNodeChanges(
+    node: SceneNode,
+    changes: Partial<SceneNode>,
+    absent: readonly (keyof SceneNode)[] = []
+  ): void {
+    const { id } = node
+    // Include removed keys in cache invalidation and update notifications.
+    if (absent.length) {
+      changes = { ...changes }
+      for (const key of absent) Reflect.set(changes, key, undefined)
+    }
 
     // Only clear absPosCache when layout-affecting properties change.
     // Fills, strokes, effects, plugin data changes do NOT affect absolute position.
@@ -615,6 +644,7 @@ export class SceneGraph {
     Object.assign(node, changes)
     if (changes.fills) removeStaleBindings(node, 'fills', changes)
     if (changes.strokes) removeStaleBindings(node, 'strokes', changes)
+    for (const key of absent) Reflect.deleteProperty(node, key)
     this.emitNodeUpdated(id, changes)
   }
 

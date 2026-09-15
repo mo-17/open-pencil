@@ -1,18 +1,18 @@
-import { valibotSchema } from '@ai-sdk/valibot'
 import { tool } from 'ai'
 import type { ToolExecutionOptions } from 'ai'
-import * as v from 'valibot'
 
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
 import {
   CORE_TOOLS,
   EXTENDED_TOOLS,
   registerComponentCatalog,
+  isAtomicTool,
   toolsToAI
 } from '@open-pencil/core/tools'
 import type { StepBudget, ToolLogEntry } from '@open-pencil/core/tools'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
+import { executeAtomicEditorTool } from '@/app/automation/execution/editor'
 import { createCodePenAITools, getCodePenAIManager } from '@/app/codepen/ai/tools'
 import { saveMotionAnimationResult } from '@/app/document/export/motion/use-motion-animation-export'
 import { getActiveEditorStore } from '@/app/editor/active-store'
@@ -334,6 +334,14 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
     toolDefinitions,
     {
       mutationKey: store,
+      executeTool: (def, figma, args, context) =>
+        isAtomicTool(def)
+          ? executeAtomicEditorTool(store, figma, def, args, {
+              label: 'AI',
+              signal: context?.signal,
+              context
+            })
+          : Promise.resolve(def.execute(figma, args, context)),
       getFigma: () => makeFigmaFromStore(store),
       getToolContext: (def) => {
         if (def.name === 'render') return { deferLayout: true }
@@ -356,7 +364,12 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
             'Live-document mutation tools are disabled while a CodePen shadow reconstruction is active. Seal, review, or discard the shadow draft first.'
           )
         }
-        if (def.mutates && !NON_GRAPH_MUTATION_TOOLS.has(def.name) && !signal?.aborted) {
+        if (
+          def.mutates &&
+          !isAtomicTool(def) &&
+          !NON_GRAPH_MUTATION_TOOLS.has(def.name) &&
+          !signal?.aborted
+        ) {
           const { pageId, scope } = resolveEditorMutationScope(store, args, {
             forceDocument: DOCUMENT_SCOPE_TOOLS.has(def.name)
           })
@@ -394,7 +407,7 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
         }
       },
       onAfterExecute: async (def, context) => {
-        if (!def.mutates) return
+        if (!def.mutates || isAtomicTool(def)) return
         const transaction = activeMutation
         activeMutation = undefined
         if (!transaction) return
@@ -441,7 +454,7 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
         max: MAX_AGENT_STEPS
       })
     },
-    { v, valibotSchema, tool }
+    { tool }
   )
   const { create_module: hiddenCreateModuleTool, ...publicApplicationTools } = applicationTools
   const createModuleExecutor = executableAITool(hiddenCreateModuleTool)

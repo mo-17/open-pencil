@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: './src/index.ts',
     'instance-overrides': './src/instance-overrides/index.ts',
+    clipboard: './src/clipboard/index.ts',
     'node-change': './src/node-change/index.ts'
   },
   platform: 'neutral',
@@ -20,6 +21,8 @@ export default defineConfig({
     onlyBundle: false
   },
   outputOptions: {
+    // Keep shared declaration chunks away from the public index.d.ts entry.
+    chunkFileNames: 'chunks/[name].js',
     minifyInternalExports: false
   }
 })

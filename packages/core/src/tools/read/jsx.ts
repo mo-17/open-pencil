@@ -1,6 +1,7 @@
 import { createTwoFilesPatch } from 'diff'
 
 import { sceneNodeToJSX } from '#core/io/formats/jsx'
+import { nodeComparisonInput } from '#core/tools/input'
 import { defineTool } from '#core/tools/schema'
 
 const MAX_JSX_LENGTH = 12_000
@@ -9,6 +10,7 @@ export const getJSX = defineTool({
   name: 'get_jsx',
   description:
     'Get a structural JSX projection of a node and its children using the render tool syntax. It preserves visible hierarchy, layout, appearance, real lowcode control tags, and interactiveProps, but intentionally omits lowcode behavior fields such as bindings, events, stateOverrides, and renderCondition. Use read_lowcode_node to inspect those fields and update_lowcode_node to write them; use .fig for full semantic persistence.',
+  execution: { kind: 'sync', mutation: 'none' },
   params: {
     id: { type: 'string', description: 'Node ID', required: true },
     path: {
@@ -37,10 +39,9 @@ export const diffJSX = defineTool({
   name: 'diff_jsx',
   description:
     'Structural diff between two nodes in JSX format. Shows added/removed children, changed props.',
-  params: {
-    from: { type: 'string', description: 'Source node ID', required: true },
-    to: { type: 'string', description: 'Target node ID', required: true }
-  },
+  execution: { kind: 'sync', mutation: 'none' },
+  exposure: { webmcp: false },
+  input: nodeComparisonInput,
   execute: (figma, { from, to }) => {
     const fromNode = figma.getNodeById(from)
     if (!fromNode) return { error: `Node "${from}" not found` }

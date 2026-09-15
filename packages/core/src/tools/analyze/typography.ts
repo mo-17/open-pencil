@@ -7,6 +7,7 @@ export const analyzeTypography = defineTool({
   name: 'analyze_typography',
   description:
     'Analyze typography usage across the current page, including visible BUTTON, INPUT, and TEXTAREA text. Shows font families, sizes, weights, and their frequencies.',
+  execution: { kind: 'sync', mutation: 'none' },
   params: {
     limit: { type: 'number', description: 'Max styles to return (default: 30)' },
     group_by: {
@@ -16,7 +17,7 @@ export const analyzeTypography = defineTool({
     }
   },
   execute: (figma, args) => {
-    const limit = args.limit ?? 30
+    const limit = args.limit
     const page = figma.currentPage
     const styleMap = new Map<
       string,

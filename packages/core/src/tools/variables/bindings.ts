@@ -2,9 +2,10 @@ import { defineTool } from '#core/tools/schema'
 
 export const bindVariable = defineTool({
   name: 'bind_variable',
-  mutates: true,
+
   description:
     'Bind a variable to a node property. For fills/strokes color bindings use indexed format like "fills/0/color"; for gradient stop colors use "fills/0/gradientStops/0/color".',
+  execution: { kind: 'sync', mutation: 'properties' },
   params: {
     node_id: { type: 'string', description: 'Node ID', required: true },
     field: {

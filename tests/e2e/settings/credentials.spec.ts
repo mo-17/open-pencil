@@ -6,7 +6,6 @@ test('storage settings keep secrets behind the credential manager', async ({ pag
   await page.goto('/?test')
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
-
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-storage').click()
   const storagePanel = page.getByTestId('settings-storage-panel')
@@ -20,6 +19,12 @@ test('storage settings keep secrets behind the credential manager', async ({ pag
   await secretField.getByRole('button', { name: 'Save' }).click()
   await expect(secretField.locator('input')).toHaveValue('')
   await expect(secretField.locator('input')).toHaveAttribute('placeholder', /Key saved/)
+  expect(
+    await page.evaluate(() => {
+      // oxlint-disable-next-line open-pencil/no-direct-storage-access -- Inspect persisted bytes to detect plaintext credential leaks.
+      return Object.values(localStorage).some((value) => value.includes('storage-secret'))
+    })
+  ).toBe(false)
 
   await page.getByTestId('app-settings-done').click()
   await page.getByTestId('app-settings-trigger').click()
@@ -45,12 +50,12 @@ test('MCP connections keep bearer tokens out of ordinary settings', async ({ pag
 
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-mcp').click()
-  const section = page.locator('[data-mcp-connections]')
+  const section = page.getByTestId('app-settings-dialog')
   await section.getByRole('button', { name: 'Add connection' }).click()
   await section.getByLabel('Connection name').fill('GitHub')
   await section.getByLabel('MCP server URL').fill('http://example.com/mcp')
   await section.getByRole('button', { name: 'Save' }).click()
-  await expect(section.getByRole('alert')).toContainText('must use HTTPS')
+  await expect(section.getByLabel('MCP server URL')).toHaveAttribute('aria-invalid', 'true')
 
   await section.getByLabel('MCP server URL').fill('https://example.com/mcp')
   await section.getByRole('switch', { name: 'Enable for ACP agents' }).click()
@@ -71,6 +76,14 @@ test('MCP connections keep bearer tokens out of ordinary settings', async ({ pag
   await expect(section).toContainText('Enabled')
   await section.getByRole('button', { name: /GitHub/ }).click()
   await expect(section.getByPlaceholder(/Key saved/)).toBeVisible()
+  await section.getByRole('button', { name: 'Clear', exact: true }).click()
+  await section.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await section.getByRole('button', { name: /GitHub/ }).click()
+  await expect(section.getByPlaceholder(/Key saved/)).toBeVisible()
+  await section.getByRole('button', { name: 'Clear', exact: true }).click()
+  await section.getByRole('button', { name: 'Save', exact: true }).click()
+  await section.getByRole('button', { name: /GitHub/ }).click()
+  await expect(section.getByPlaceholder(/Key saved/)).toHaveCount(0)
   await section.getByRole('button', { name: 'Delete connection' }).click()
   const confirmation = page.getByRole('alertdialog')
   await expect(confirmation).toContainText('remove its saved bearer token')
@@ -121,6 +134,7 @@ test('MCP automation settings filter and persist tool availability', async ({ pa
   await expect(authentication).toHaveAttribute('data-state', 'unchecked')
   await authentication.click()
 
+  await page.getByRole('button', { name: 'Available tools', exact: true }).click()
   const search = page.getByTestId('settings-mcp-tool-search')
   await search.fill('create_shape')
   await expect(search).toHaveValue('create_shape')
@@ -132,6 +146,7 @@ test('MCP automation settings filter and persist tool availability', async ({ pa
   await canvas.waitForInit()
   await page.getByTestId('app-settings-trigger').click()
   await page.getByTestId('settings-section-mcp').click()
+  await page.getByRole('button', { name: 'Available tools', exact: true }).click()
   await expect(page.getByTestId('settings-mcp-tool-create_shape')).toHaveAttribute(
     'data-state',
     'unchecked'

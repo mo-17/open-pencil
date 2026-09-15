@@ -8,6 +8,7 @@ import {
   getOpenPencilPluginValue,
   guidToString,
   importCanvasGuides,
+  linkImportedInstanceChildren,
   nodeChangeToProps,
   preserveFigmaPayloadBlobs,
   resolveVariableConsumptionEntry,
@@ -670,6 +671,9 @@ export function importNodeChanges(
         graph.remapClonedNodeReferences(guidToNodeId)
       })
     }
+
+    // Link the final populated tree without discarding lowcode import processing.
+    linkImportedInstanceChildren(graph)
 
     if (activeRootIds)
       rememberLazyFigImportContext(graph, changeMap, guidToNodeId, blobs, activeRootIds)

@@ -75,14 +75,6 @@ function workflowTarget(node: SceneNode): string | undefined {
   return action?.kind === 'stopMotion' ? action.targetNodeId : undefined
 }
 
-function fakeClipboardData(values: Map<string, string>): DataTransfer {
-  return {
-    setData(type: string, value: string) {
-      values.set(type, value)
-    }
-  } as DataTransfer
-}
-
 describe('clipboard motion references', () => {
   test('duplicate remaps nested events and workflows across selected roots', () => {
     const editor = createEditor()
@@ -120,9 +112,8 @@ describe('clipboard motion references', () => {
     const { target, trigger } = createMotionRoots(source)
     source.select([trigger.id, target.id])
 
-    const values = new Map<string, string>()
-    await source.writeCopyData(fakeClipboardData(values))
-    const html = values.get('text/html') ?? ''
+    const { html, snapshot } = await source.prepareCopy()
+    expect(snapshot).toBeDefined()
     expect(parseOpenPencilClipboard(html)).not.toBeNull()
     expect(await parseFigmaClipboard(html)).not.toBeNull()
 

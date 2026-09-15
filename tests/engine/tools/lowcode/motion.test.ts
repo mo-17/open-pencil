@@ -529,11 +529,12 @@ describe('MotionSpec tools', () => {
     const original = createMotionPreset('fade-in')
     graph.updateNode(first.id, { motion: original })
 
-    const invalidPreset = getTool('apply_motion_preset').execute(figma, {
-      nodeIds: [first.id, second.id],
-      preset: 'does-not-exist'
-    }) as Result<unknown>
-    expect(invalidPreset.ok).toBe(false)
+    expect(() =>
+      getTool('apply_motion_preset').execute(figma, {
+        nodeIds: [first.id, second.id],
+        preset: 'does-not-exist'
+      })
+    ).toThrow()
     expect(graph.getNode(first.id)?.motion).toEqual(original)
     expect(graph.getNode(second.id)?.motion).toBeUndefined()
 

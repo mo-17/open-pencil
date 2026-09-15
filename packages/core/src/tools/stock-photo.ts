@@ -17,11 +17,13 @@ export {
 
 export const stockPhoto = defineTool({
   name: 'stock_photo',
-  mutates: true,
+
   description:
     'Search stock photos and apply to leaf image placeholders or closed area geometry. ' +
     'Pass a JSON array; each item is {id, query, index?, orientation?}. ' +
     'Containers with content, text, lines, and structural nodes are rejected.',
+  execution: { kind: 'async', mutation: 'document' },
+  capabilities: ['document:write', 'network:access'],
   params: {
     requests: {
       type: 'string',

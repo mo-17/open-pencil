@@ -1,5 +1,4 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { dynamicTool, jsonSchema } from 'ai'
 import type { ToolSet } from 'ai'
 
@@ -203,11 +202,14 @@ export function createSdkRemoteMCPClient(
         timeout: REMOTE_MCP_LIST_TOOLS_TIMEOUT_MS
       }),
     callTool: (name, args, signal) =>
-      client.callTool({ name, arguments: args }, undefined, {
-        signal,
-        timeout: REMOTE_MCP_TOOL_CALL_TIMEOUT_MS,
-        maxTotalTimeout: REMOTE_MCP_TOOL_CALL_TIMEOUT_MS
-      }),
+      client.callTool(
+        { name, arguments: args },
+        {
+          signal,
+          timeout: REMOTE_MCP_TOOL_CALL_TIMEOUT_MS,
+          maxTotalTimeout: REMOTE_MCP_TOOL_CALL_TIMEOUT_MS
+        }
+      ),
     close: () => client.close()
   }
 }

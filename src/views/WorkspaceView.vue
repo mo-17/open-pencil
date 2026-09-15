@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from '@open-pencil/vue'
 
 import { startMCPRuntime, stopMCPRuntime } from '@/app/automation/mcp/runtime'
+import { startWebMCP } from '@/app/automation/webmcp/runtime'
 import { exposeCollaborationActions } from '@/app/browser-bridge'
 import { usesTestCollabTransport } from '@/app/collab/transport/policy'
 import { COLLAB_KEY, useCollab } from '@/app/collab/use'
@@ -92,7 +93,10 @@ async function bindAssociatedFileOpen(): Promise<void> {
   await openPendingAssociatedFiles()
 }
 
+let stopWebMCP: (() => void) | undefined
+
 onMounted(async () => {
+  stopWebMCP = startWebMCP(getActiveStore)
   if (mcpRuntimeEnabled) await startMCPRuntime(getActiveStore)
 
   try {
@@ -103,6 +107,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  stopWebMCP?.()
   if (mcpRuntimeEnabled) void stopMCPRuntime()
   fileAssociationCleanup.value?.()
 })

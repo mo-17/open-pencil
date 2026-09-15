@@ -58,7 +58,9 @@
       "@open-pencil/scene-graph/*": ["./packages/scene-graph/src/*"],
       "#pen/*": ["./packages/pen/src/*"],
       "@open-pencil/pen": ["./packages/pen/src/index.ts"],
-      "@open-pencil/pen/*": ["./packages/pen/src/*"]
+      "@open-pencil/pen/*": ["./packages/pen/src/*"],
+      "#authoring-reference/*": ["./tools/authoring-reference/src/*"],
+      "#ci/*": ["./tools/ci/src/*"]
     }
   },
   "include": [

@@ -1,10 +1,11 @@
 /**
  * Tool definition schema.
  *
- * Each tool is defined once with typed params and an execute function
- * that operates on FigmaAPI. Adapters for AI chat (valibot), CLI (citty),
- * and MCP (JSON Schema) are generated from these definitions.
+ * Native Valibot inputs and execution capabilities are owned by each tool.
+ * Adapters consume these contracts rather than maintaining transport-specific schemas.
  */
+
+import * as v from 'valibot'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
@@ -12,6 +13,8 @@ import type { Editor } from '#core/editor'
 import type { FigmaAPI, FigmaNodeProxy } from '#core/figma-api'
 import type { MotionAnimationExportResult, MotionExportProgress } from '#core/io/motion-export'
 import type { ModuleDefinition } from '#core/plugins'
+
+import { legacyToolInput } from './legacy-schema'
 
 export type ParamType = 'string' | 'number' | 'boolean' | 'color' | 'string[]' | 'object' | 'array'
 
@@ -61,16 +64,6 @@ export interface ToolCtx {
   ) => Promise<boolean>
 }
 
-export interface ToolDef {
-  name: string
-  description: string
-  /** Whether execution changes persisted document content. Defaults to `mutates`. */
-  changesDocument?: boolean
-  mutates?: boolean
-  params: Record<string, ParamDef>
-  execute: (figma: FigmaAPI, args: Record<string, unknown>, ctx?: ToolCtx) => unknown
-}
-
 type ResolvedType<T extends ParamDef> = T['type'] extends 'string'
   ? string
   : T['type'] extends 'number'
@@ -98,20 +91,108 @@ type ResolvedParams<P extends Record<string, ParamDef>> = {
   [K in keyof P as P[K]['required'] extends true ? never : K]?: ResolvedType<P[K]>
 }
 
-export function defineTool<P extends Record<string, ParamDef>>(def: {
+export type ToolCapability =
+  | 'document:read'
+  | 'document:write'
+  | 'filesystem:read'
+  | 'filesystem:write'
+  | 'network:access'
+  | 'code:execute'
+
+export type ToolExecution =
+  | { kind: 'sync'; mutation: 'none' | 'view' | 'properties' | 'document' }
+  | { kind: 'async'; mutation: 'none' | 'view' | 'document' }
+
+export type ToolInterface = 'mcp' | 'ai' | 'webmcp'
+export type ToolExposure = Partial<Record<ToolInterface, boolean>>
+
+interface ToolMetadata {
   name: string
   description: string
-  /** Whether execution changes persisted document content. Defaults to `mutates`. */
-  changesDocument?: boolean
-  mutates?: boolean
-  params: P
-  execute: (figma: FigmaAPI, args: ResolvedParams<P>, ctx?: ToolCtx) => unknown
-}): ToolDef {
-  return def as ToolDef
+  execution: ToolExecution
+  /** Interface inclusion defaults to true; execution support and user permissions remain separate. */
+  exposure: ToolExposure
+  capabilities: readonly ToolCapability[]
+  availability: 'default' | 'eval'
 }
 
-export function toolChangesDocument(def: ToolDef): boolean {
-  return def.changesDocument ?? def.mutates === true
+export interface ToolDef extends ToolMetadata {
+  input: v.ObjectSchema<v.ObjectEntries, undefined>
+  /** Legacy declaration compatibility; adapters consume input exclusively. */
+  params: Record<string, ParamDef>
+  readonly changesDocument: boolean
+  /** Derived from execution metadata, never declared independently by a tool. */
+  readonly mutates: boolean
+  execute: (figma: FigmaAPI, args: Record<string, unknown>, ctx?: ToolCtx) => unknown
+}
+
+type ToolDefinitionMetadata = Omit<ToolMetadata, 'exposure' | 'capabilities' | 'availability'> &
+  Partial<Pick<ToolMetadata, 'exposure' | 'capabilities' | 'availability'>>
+
+type NativeToolDefinition<P extends v.ObjectEntries, R> = ToolDefinitionMetadata & {
+  input: v.ObjectSchema<P, undefined>
+  execution: ToolExecution & (R extends PromiseLike<unknown> ? { kind: 'async' } : unknown)
+  execute: (figma: FigmaAPI, args: v.InferOutput<v.ObjectSchema<P, undefined>>, ctx?: ToolCtx) => R
+}
+type LegacyToolDefinition<P extends Record<string, ParamDef>> = {
+  name: string
+  description: string
+  params: P
+  mutates?: boolean
+  changesDocument?: boolean
+  execution?: ToolExecution
+  exposure?: ToolExposure
+  capabilities?: readonly ToolCapability[]
+  availability?: ToolMetadata['availability']
+  execute: (figma: FigmaAPI, args: ResolvedParams<P>, ctx?: ToolCtx) => unknown
+}
+
+export function defineTool<P extends v.ObjectEntries, R>(def: NativeToolDefinition<P, R>): ToolDef
+export function defineTool<P extends Record<string, ParamDef>>(
+  def: LegacyToolDefinition<P>
+): ToolDef
+export function defineTool(
+  def:
+    | NativeToolDefinition<v.ObjectEntries, unknown>
+    | LegacyToolDefinition<Record<string, ParamDef>>
+): ToolDef {
+  const legacy = 'params' in def
+  const input = legacy ? legacyToolInput(def.params) : def.input
+  let mutation: ToolExecution['mutation'] = 'none'
+  if (legacy) {
+    if (def.mutates) mutation = 'view'
+    if (def.changesDocument ?? def.mutates === true) mutation = 'document'
+  }
+  const execution: ToolExecution = def.execution ?? { kind: 'async', mutation }
+  const changesDocument = toolChangesDocument({ execution })
+  return {
+    ...def,
+    input,
+    params: legacy ? def.params : {},
+    execution,
+    // Legacy extensions have not been reviewed for the browser-native interface.
+    exposure: legacy ? { ...def.exposure, webmcp: false } : (def.exposure ?? {}),
+    capabilities: def.capabilities ?? [changesDocument ? 'document:write' : 'document:read'],
+    availability: def.availability ?? 'default',
+    changesDocument,
+    get mutates() {
+      return execution.mutation !== 'none'
+    },
+    execute: (figma, args, ctx) =>
+      (def.execute as ToolDef['execute'])(figma, v.parse(input, args), ctx)
+  }
+}
+
+export function toolChangesDocument(def: Pick<ToolDef, 'execution'>): boolean {
+  return def.execution.mutation === 'properties' || def.execution.mutation === 'document'
+}
+
+export function isToolExposed(def: Pick<ToolDef, 'exposure'>, target: ToolInterface): boolean {
+  return def.exposure[target] !== false
+}
+
+export function isAtomicTool(def: ToolDef): boolean {
+  return def.execution.kind === 'sync' && def.execution.mutation === 'properties'
 }
 
 export class NodeNotFoundError extends Error {

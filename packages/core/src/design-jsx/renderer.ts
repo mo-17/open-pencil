@@ -17,15 +17,21 @@ import { computeAllLayoutsAsync } from '#core/layout'
 import { randomHex } from '#core/random'
 
 import {
+  assignComponentProperties,
+  componentMetadata,
+  componentPropertyScope
+} from './component-properties'
+import {
   isLowcodeNodeType,
   LOWCODE_TYPE_MAP,
   prepareLowcodeProps,
   type PreparedLowcodeProps
 } from './lowcode'
 import { applySizeOverrides, propsToOverrides } from './props-overrides'
+import { prepareScalarBindings } from './scalar-bindings'
 import { isTreeNode } from './tree'
 import type { TreeNode } from './tree'
-import { isVariable, type DesignVariable } from './vars'
+import { isVariable, resolveVariableId, type DesignVariable } from './vars'
 
 const TYPE_MAP: Partial<Record<string, NodeType>> = {
   frame: 'FRAME',
@@ -235,17 +241,8 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function resolveVariableId(graph: SceneGraph, variable: DesignVariable): string | undefined {
-  if (variable.id && graph.variables.has(variable.id)) return variable.id
-  if (variable.id && !variable.name) return variable.id
-  for (const candidate of graph.variables.values()) {
-    if (candidate.name === variable.name || candidate.id === variable.name) return candidate.id
-  }
-  return variable.id
-}
-
 function variableFallback(graph: SceneGraph, variable: DesignVariable): string | Color | undefined {
-  if (variable.value !== undefined) return variable.value
+  if (variable.value !== undefined && typeof variable.value !== 'number') return variable.value
   const variableId = resolveVariableId(graph, variable)
   return variableId ? graph.resolveColorVariable(variableId) : undefined
 }
@@ -283,7 +280,8 @@ function bindStyleVariableProp(
 function preparePropsForRender(
   graph: SceneGraph,
   source: Record<string, unknown>,
-  isText: boolean
+  isText: boolean,
+  parentId: string
 ): PreparedProps {
   const props = { ...source }
   const bindings: Record<string, string> = {}
@@ -314,6 +312,8 @@ function preparePropsForRender(
     bindStyleVariableProp(graph, style, bindings, 'borderColor', 'strokes/0/color')
     props.style = style
   }
+
+  prepareScalarBindings(graph, props, bindings, isText, parentId)
 
   if (isObjectRecord(props.bind)) {
     for (const [field, value] of Object.entries(props.bind)) {
@@ -464,7 +464,7 @@ function parseVariantValues(name: string): Record<string, string> {
 function inferComponentSetProperties(graph: SceneGraph, componentSetId: string): void {
   const componentSet = graph.getNode(componentSetId)
   if (componentSet?.type !== 'COMPONENT_SET') return
-  if (componentSet.componentPropertyDefinitions.length > 0) return
+  const existingDefinitions = componentSet.componentPropertyDefinitions
 
   const variants = graph.getChildren(componentSetId).filter((node) => node.type === 'COMPONENT')
   const options = new Map<string, Set<string>>()
@@ -483,8 +483,14 @@ function inferComponentSetProperties(graph: SceneGraph, componentSetId: string):
     }
   }
 
-  const definitions: ComponentPropertyDefinition[] = [...options.entries()].map(
-    ([name, values]) => {
+  const definitions: ComponentPropertyDefinition[] = [...options.entries()]
+    .filter(
+      ([name]) =>
+        !existingDefinitions.some(
+          (definition) => definition.type === 'VARIANT' && definition.name === name
+        )
+    )
+    .map(([name, values]) => {
       const variantOptions = [...values]
       return {
         id: `prop:${randomHex(8)}`,
@@ -493,14 +499,14 @@ function inferComponentSetProperties(graph: SceneGraph, componentSetId: string):
         defaultValue: variantOptions[0] ?? '',
         variantOptions
       }
-    }
-  )
-  if (definitions.length === 0) return
+    })
 
   for (const [id, values] of valuesById) {
     graph.updateNode(id, { componentPropertyValues: values })
   }
-  graph.updateNode(componentSetId, { componentPropertyDefinitions: definitions })
+  graph.updateNode(componentSetId, {
+    componentPropertyDefinitions: [...existingDefinitions, ...definitions]
+  })
 }
 
 function findComponentByName(graph: SceneGraph, name: string): SceneNode | undefined {
@@ -517,7 +523,11 @@ function findVariantInSet(
 ) {
   const requested = Object.fromEntries(
     Object.entries(props)
-      .filter(([key]) => !['component', 'componentId', 'of', 'name', 'children'].includes(key))
+      .filter(([key]) =>
+        componentSet.componentPropertyDefinitions.some(
+          (definition) => definition.type === 'VARIANT' && definition.name === key
+        )
+      )
       .map(([key, value]) => [key, String(value)])
   )
   const variants = graph.getChildren(componentSet.id).filter((node) => node.type === 'COMPONENT')
@@ -558,19 +568,49 @@ async function renderInstanceNode(
 ): Promise<SceneNode> {
   const parent = graph.getNode(parentId)
   const parentLayout = parent?.layoutMode ?? 'NONE'
-  const { props, bindings } = preparePropsForRender(graph, tree.props, false)
+  const { props, bindings } = preparePropsForRender(graph, tree.props, false, parentId)
   const component = resolveComponent(graph, props)
   if (!component) {
     const ref = props.component ?? props.componentId ?? props.of
     const label = typeof ref === 'string' || typeof ref === 'number' ? String(ref) : ''
     throw new Error(`<Instance> component not found: ${label}`)
   }
-  const overrides = propsToOverrides(props, false, parentLayout)
+  const overrides: Partial<SceneNode> = {
+    ...propsToOverrides(props, false, parentLayout),
+    ...componentMetadata(props, 'INSTANCE', componentPropertyScope(graph, parentId))
+  }
+  // Instances inherit their container layout, but explicitly authored dimensions
+  // must also replace the inherited sizing mode on that axis.
+  const layout = overrides.layoutMode ?? component.layoutMode
+  if (layout !== 'NONE') {
+    const axes =
+      layout === 'HORIZONTAL'
+        ? (['primaryAxisSizing', 'counterAxisSizing'] as const)
+        : (['counterAxisSizing', 'primaryAxisSizing'] as const)
+    for (const [dimension, field] of [
+      ['w', axes[0]],
+      ['h', axes[1]]
+    ] as const) {
+      const value = props[dimension]
+      if (typeof value === 'number') overrides[field] = 'FIXED'
+      else if (value === 'hug' || value === 'fill') overrides[field] = 'HUG'
+    }
+  }
   const instance =
     graph.createInstance(component.id, parentId, overrides) ?? graph.createNode('FRAME', parentId)
-  applyBindings(graph, instance.id, bindings)
-  applyInstanceOverrides(graph, instance, tree.props.overrides)
-  return instance
+  try {
+    for (const [field, value] of Object.entries(overrides)) {
+      setInstanceOverride(instance.instanceOverrides, instance.id, instance.id, field, value)
+    }
+    graph.updateNode(instance.id, { instanceOverrides: instance.instanceOverrides })
+    applyBindings(graph, instance.id, bindings)
+    applyInstanceOverrides(graph, instance, tree.props.overrides)
+    assignComponentProperties(graph, instance, props.properties)
+    return instance
+  } catch (error) {
+    graph.deleteNode(instance.id)
+    throw error
+  }
 }
 
 function applyPreparedLowcodeProps(
@@ -626,6 +666,24 @@ function applyInstanceOverrides(
   }
 }
 
+async function renderArtworkNode(
+  graph: SceneGraph,
+  tree: TreeNode,
+  parentId: string,
+  execution: RenderExecution
+): Promise<SceneNode> {
+  const elementType = tree.type.toLowerCase()
+  const metadata = componentMetadata(tree.props, 'VECTOR', componentPropertyScope(graph, parentId))
+  const node =
+    elementType === 'icon'
+      ? await renderIconNode(graph, tree, parentId, execution.signal)
+      : await renderSVGNode(graph, tree, parentId)
+  trackCreatedRoot(execution, parentId, node.id)
+  if (Object.keys(metadata).length > 0) graph.updateNode(node.id, metadata)
+  await checkpointRender(execution, true)
+  return node
+}
+
 async function renderNode(
   graph: SceneGraph,
   tree: TreeNode,
@@ -635,18 +693,8 @@ async function renderNode(
 ): Promise<SceneNode> {
   await checkpointRender(execution)
   const elementType = tree.type.toLowerCase()
-  if (elementType === 'icon') {
-    const node = await renderIconNode(graph, tree, parentId, execution.signal)
-    trackCreatedRoot(execution, parentId, node.id)
-    await checkpointRender(execution, true)
-    return node
-  }
-  if (elementType === 'svg') {
-    const node = await renderSVGNode(graph, tree, parentId)
-    trackCreatedRoot(execution, parentId, node.id)
-    await checkpointRender(execution)
-    return node
-  }
+  if (elementType === 'icon' || elementType === 'svg')
+    return renderArtworkNode(graph, tree, parentId, execution)
   if (elementType === 'instance') {
     const node = await renderInstanceNode(graph, tree, parentId)
     trackCreatedRoot(execution, parentId, node.id)
@@ -661,8 +709,11 @@ async function renderNode(
   const parentLayout = parent?.layoutMode ?? 'NONE'
 
   const isText = nodeType === 'TEXT'
-  const { props, bindings } = preparePropsForRender(graph, tree.props, isText)
-  const overrides = propsToOverrides(props, isText, parentLayout)
+  const { props, bindings } = preparePropsForRender(graph, tree.props, isText, parentId)
+  const overrides = {
+    ...propsToOverrides(props, isText, parentLayout),
+    ...componentMetadata(props, nodeType, componentPropertyScope(graph, parentId))
+  }
   const preparedLowcode = lowcodeProps.get(tree)
 
   if (isText) {

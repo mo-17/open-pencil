@@ -1,15 +1,23 @@
 import { Buffer } from 'node:buffer'
 import { resolve } from 'node:path'
 
-import type { McpServer, ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { ServerNotification, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
+import type {
+  McpServer,
+  StandardSchemaWithJSON,
+  ServerContext,
+  ServerNotification,
+  ToolAnnotations
+} from '@modelcontextprotocol/server'
+// eslint-disable-next-line open-pencil/no-mixed-case-acronym-identifiers -- Upstream export spelling.
+import { toStandardJsonSchema as toStandardJSONSchema } from '@valibot/to-json-schema'
+import * as v from 'valibot'
 import { z } from 'zod'
 
 import type {
   MotionAnimationEncoder,
   MotionExportProgress
 } from '@open-pencil/core/io/motion-export'
-import { ALL_TOOLS, CODEGEN_PROMPT } from '@open-pencil/core/tools'
+import { ALL_TOOLS, CODEGEN_PROMPT, isToolExposed } from '@open-pencil/core/tools'
 
 import type { RPCJSONObject } from '#mcp/json'
 import {
@@ -23,7 +31,6 @@ import { createToolDescriptors } from '#mcp/tool/manifest'
 import type { ToolDescriptor, ToolEffect, ToolPolicy } from '#mcp/tool/metadata'
 import { resolveSafePath, writeToolOutput } from '#mcp/tool/output'
 import { isToolEnabled } from '#mcp/tool/policy'
-import { paramToZod } from '#mcp/tool/schema'
 
 export type RPCSender = RootScopedRPCSender
 
@@ -31,6 +38,18 @@ export interface ToolRequestExtra {
   signal?: AbortSignal
   _meta?: { progressToken?: string | number }
   sendNotification?: (notification: ServerNotification) => Promise<void>
+}
+
+/** SDK v2 request context is nested; retain the host's bounded request facade. */
+export function toolRequestExtra(
+  context?: ServerContext | ToolRequestExtra
+): ToolRequestExtra | undefined {
+  if (!context || !('mcpReq' in context)) return context
+  return {
+    signal: context.mcpReq.signal,
+    _meta: context.mcpReq._meta,
+    sendNotification: (notification) => context.mcpReq.notify(notification)
+  }
 }
 
 function failUnlessAborted(error: unknown, meta?: Record<string, unknown>) {
@@ -258,39 +277,42 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
   const { policy, sendRPC } = options
   const resolvedRoot = options.mcpRoot ? resolve(options.mcpRoot) : null
   const descriptors = descriptorByName(createToolDescriptors(resolvedRoot !== null))
-  const register = <InputArgs extends z.ZodObject>(
+  const register = <Args>(
     name: string,
     toolOptions: {
       description: string
-      inputSchema: InputArgs
-      outputSchema?: typeof toolOutputSchema
+      inputSchema: StandardSchemaWithJSON<unknown, Args>
+      outputSchema: typeof toolOutputSchema
     },
-    handler: ToolCallback<InputArgs>
+    handler: (args: Args, extra?: ToolRequestExtra) => MCPResult | Promise<MCPResult>
   ) => {
     const descriptor = descriptors.get(name)
     if (!descriptor) throw new Error(`Missing MCP tool descriptor for "${name}"`)
     if (!isToolEnabled(descriptor, policy)) return
-    mcpServer.registerTool(
+    mcpServer.registerTool<typeof toolOutputSchema, StandardSchemaWithJSON<unknown, Args>>(
       name,
       {
         ...toolOptions,
         annotations: toolAnnotations(descriptor.effect),
         _meta: { 'openpencil/capabilities': descriptor.capabilities }
       },
-      handler
+      (args, context) => handler(args, toolRequestExtra(context))
     )
   }
 
   for (const def of ALL_TOOLS) {
-    const shape: Record<string, z.ZodType> = {}
-    for (const [key, param] of Object.entries(def.params)) {
-      shape[key] = paramToZod(param)
-    }
+    if (!isToolExposed(def, 'mcp')) continue
     register(
       def.name,
       {
         description: def.description,
-        inputSchema: z.object({ ...shape, ...automationTargetSchema }),
+        inputSchema: toStandardJSONSchema(
+          v.object({
+            ...def.input.entries,
+            document_id: v.optional(v.string()),
+            page_id: v.optional(v.string())
+          })
+        ),
         outputSchema: toolOutputSchema
       },
       async (args: Record<string, unknown>, extra?: ToolRequestExtra) => {

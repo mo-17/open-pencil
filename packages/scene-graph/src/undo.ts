@@ -7,6 +7,8 @@ export interface UndoEntry {
 
 export interface UndoManagerOptions {
   limit?: number
+  /** Called after recording, undoing, redoing, or clearing committed history. */
+  onChange?: () => void
 }
 
 interface UndoBatch {
@@ -23,9 +25,11 @@ export class UndoManager {
   private batches: UndoBatch[] = []
   private historyRevision = 0
   private readonly limit: number
+  private readonly onChange: (() => void) | undefined
 
   constructor(options: UndoManagerOptions = {}) {
     this.limit = options.limit ?? DEFAULT_HISTORY_LIMIT
+    this.onChange = options.onChange
   }
 
   apply(entry: UndoEntry): void {
@@ -57,6 +61,7 @@ export class UndoManager {
     entry.inverse()
     this.redoStack.push(entry)
     this.historyRevision++
+    this.onChange?.()
     return entry.label
   }
 
@@ -66,6 +71,7 @@ export class UndoManager {
     entry.forward()
     this.undoStack.push(entry)
     this.historyRevision++
+    this.onChange?.()
     return entry.label
   }
 
@@ -106,6 +112,7 @@ export class UndoManager {
     this.redoStack = []
     this.batches = []
     this.historyRevision++
+    this.onChange?.()
   }
 
   /** Monotonic history mutation marker for guarding long asynchronous transactions. */
@@ -158,6 +165,7 @@ export class UndoManager {
     }
     this.redoStack = []
     this.trimUndoStack()
+    this.onChange?.()
   }
 
   private trimUndoStack(): void {

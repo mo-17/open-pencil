@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client'
+import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
 import { createBundledPluginCatalog } from '@/app/plugins/catalog'
@@ -797,7 +795,7 @@ describe('dynamic plugin MCP registration', () => {
     const client = new Client({ name: 'plugin-test-client', version: '0.0.0' })
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
     let listChanged = 0
-    client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+    client.setNotificationHandler('notifications/tools/list_changed', () => {
       listChanged += 1
     })
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
@@ -952,11 +950,14 @@ describe('dynamic plugin MCP registration', () => {
 
     catalog.clear()
     expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['static_tool'])
-    const removedCall = await client.callTool({
-      name: AIRTABLE_TOOL_NAME,
-      arguments: { baseId: 'appBase123', tableId: 'tblTable123', pageSize: '25' }
-    })
-    expect(removedCall.isError).toBe(true)
+    const callsBeforeRemoval = rpcCalls.length
+    await expect(
+      client.callTool({
+        name: AIRTABLE_TOOL_NAME,
+        arguments: { baseId: 'appBase123', tableId: 'tblTable123', pageSize: '25' }
+      })
+    ).rejects.toMatchObject({ code: -32602 })
+    expect(rpcCalls).toHaveLength(callsBeforeRemoval)
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 0)
     })

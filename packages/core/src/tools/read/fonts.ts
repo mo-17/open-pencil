@@ -1,4 +1,5 @@
 import { uniq } from 'es-toolkit/array'
+import * as v from 'valibot'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
@@ -288,7 +289,9 @@ export const getFontStatus = defineTool({
   description:
     'Report whether fonts used on the current page are faithfully available. Returns requested ' +
     'faces, their loaded source, active substitutions, and affected nodes.',
-  params: {},
+  execution: { kind: 'sync', mutation: 'none' },
+  exposure: { webmcp: false },
+  input: v.object({}),
   execute: (figma) => figma.getFontStatus()
 })
 
@@ -296,6 +299,8 @@ export const listFonts = defineTool({
   name: 'list_fonts',
   description:
     'List fonts used by TEXT and visible lowcode BUTTON/INPUT/TEXTAREA content in the current page.',
+  execution: { kind: 'sync', mutation: 'none' },
+  exposure: { webmcp: false },
   params: {
     family: { type: 'string', description: 'Filter by family name (substring)' }
   },
@@ -332,6 +337,8 @@ export const listAvailableFonts = defineTool({
     'Use this to discover what fonts are available to set on a text node — distinct from list_fonts ' +
     'which only reports families currently used in the page. Use check_font after assignment to ' +
     'verify actual CanvasKit loading and glyph readiness.',
+  execution: { kind: 'async', mutation: 'none' },
+  exposure: { webmcp: false },
   params: {
     family: { type: 'string', description: 'Filter by family name (substring, case-insensitive)' }
   },

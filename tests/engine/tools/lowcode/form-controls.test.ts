@@ -273,10 +273,17 @@ describe('audit_form_controls / ensure_form_value_bindings', () => {
       scope_id: form.id,
       limit: 7
     }) as typeof defaultResult
-    const clampedResult = getTool('audit_form_controls').execute(figma, {
+    const maximumResult = getTool('audit_form_controls').execute(figma, {
       scope_id: form.id,
-      limit: 999
+      limit: 200
     }) as typeof defaultResult
+
+    expect(() =>
+      getTool('audit_form_controls').execute(figma, {
+        scope_id: form.id,
+        limit: 999
+      })
+    ).toThrow()
 
     expect(defaultResult).toMatchObject({
       ok: true,
@@ -291,13 +298,13 @@ describe('audit_form_controls / ensure_form_value_bindings', () => {
       ok: true,
       data: { total: 205, returned: 7, truncated: true }
     })
-    expect(clampedResult).toMatchObject({
+    expect(maximumResult).toMatchObject({
       ok: true,
       data: { total: 205, returned: 200, truncated: true }
     })
     if (defaultResult.ok) expect(defaultResult.data.controls).toHaveLength(50)
     if (smallResult.ok) expect(smallResult.data.controls).toHaveLength(7)
-    if (clampedResult.ok) expect(clampedResult.data.controls).toHaveLength(200)
+    if (maximumResult.ok) expect(maximumResult.data.controls).toHaveLength(200)
   })
 
   test('fails a repair before building or mutating more than 199 missing bindings', () => {

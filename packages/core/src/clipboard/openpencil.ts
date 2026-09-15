@@ -6,6 +6,7 @@ import {
   serializeInstanceOverrideState,
   setInstanceOverride,
   type InstanceOverrideState,
+  type GeometryPath,
   type SceneGraph,
   type SceneNode,
   type SerializedInstanceOverrideState
@@ -13,7 +14,9 @@ import {
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { decodeBase64, encodeBase64 } from '#core/bytes'
-import { resolveVRTourModule, VR_TOUR_SAMPLE_ASSETS } from '#core/plugins/vr-tour'
+import type { ClipboardSnapshot } from '#core/editor/clipboard/copy'
+
+import { collectClipboardNodeImageHashes } from './image-references'
 
 interface SerializedClipboardNode extends JSONObject {
   overrides?: Record<string, unknown>
@@ -24,10 +27,7 @@ interface SerializedClipboardNode extends JSONObject {
 
 type ClipboardNode = SceneNode & { children?: ClipboardNode[] }
 
-export interface OpenPencilClipboardData {
-  nodes: Array<SceneNode & { children?: SceneNode[] }>
-  images: Map<string, Uint8Array>
-}
+export type OpenPencilClipboardData = Pick<ClipboardSnapshot, 'nodes' | 'images'>
 
 export function parseOpenPencilClipboard(html: string): OpenPencilClipboardData | null {
   const match = html.match(/<!--\(openpencil\)(.*?)\(\/openpencil\)-->/s)
@@ -76,6 +76,19 @@ function legacyInstanceOverrides(
   return state
 }
 
+function restoreGeometry(paths: unknown): GeometryPath[] {
+  if (!Array.isArray(paths)) return []
+  return paths.map(
+    (path: GeometryPath & { commandsBlob: Uint8Array | Record<string, number> }) => ({
+      ...path,
+      commandsBlob:
+        path.commandsBlob instanceof Uint8Array
+          ? path.commandsBlob
+          : Uint8Array.from(Object.values(path.commandsBlob))
+    })
+  )
+}
+
 function restoreNodeData(nodes: SerializedClipboardNode[]): ClipboardNode[] {
   return nodes.map((node) => {
     const { children, instanceOverrides, overrides, textPicture, ...rest } = node
@@ -89,6 +102,8 @@ function restoreNodeData(nodes: SerializedClipboardNode[]): ClipboardNode[] {
       // overrides may coexist with them, so only use the legacy data as a migration source when
       // the structured payload is absent; never discard it from the restored node.
       overrides: structuredClone(overrides ?? {}),
+      fillGeometry: restoreGeometry(rest.fillGeometry),
+      strokeGeometry: restoreGeometry(rest.strokeGeometry),
       instanceOverrides: overrideState,
       textPicture: typeof textPicture === 'string' ? decodeBase64(textPicture) : textPicture,
       ...(children ? { children: restoreNodeData(children) } : {})
@@ -98,24 +113,11 @@ function restoreNodeData(nodes: SerializedClipboardNode[]): ClipboardNode[] {
 
 export type TextPictureBuilder = (node: SceneNode) => Uint8Array | null
 
-function collectVRTourImageHashes(node: SceneNode, hashes: Set<string>): void {
-  if (node.type !== 'FRAME') return
-  const resolved = resolveVRTourModule(node.interactiveProps?.module)
-  if (!resolved?.ok) return
-  const references = new Set(resolved.config.scenes.map((scene) => scene.panoramaUrl))
-  for (const sample of VR_TOUR_SAMPLE_ASSETS) {
-    if (references.has(sample.panoramaUrl)) hashes.add(sample.graphImageHash)
-  }
-}
-
 function collectImageHashes(nodes: SceneNode[], graph: SceneGraph): Set<string> {
   const hashes = new Set<string>()
   function walk(nodeList: SceneNode[]) {
     for (const node of nodeList) {
-      for (const fill of node.fills) {
-        if (fill.imageHash) hashes.add(fill.imageHash)
-      }
-      collectVRTourImageHashes(node, hashes)
+      collectClipboardNodeImageHashes(node, hashes)
       walk(graph.getChildren(node.id))
     }
   }

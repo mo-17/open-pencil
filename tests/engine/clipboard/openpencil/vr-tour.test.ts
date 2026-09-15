@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { buildOpenPencilClipboardHTML, parseOpenPencilClipboard } from '@open-pencil/core/clipboard'
+import { createEditor } from '@open-pencil/core/editor'
 import {
   createVRTourModuleFrameOverrides,
   createVRTourSampleScenes,
@@ -8,6 +9,8 @@ import {
 } from '@open-pencil/core/plugins'
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
+
+import { captureClipboardSnapshot } from '#core/editor/clipboard/snapshot'
 
 import { expectDefined } from '#tests/helpers/assert'
 
@@ -37,6 +40,65 @@ function copy(graph: SceneGraph, node: SceneNode) {
 }
 
 describe('VR sample image clipboard carrier', () => {
+  test('actual copy retains VR bytes in both session snapshots and cross-process HTML', async () => {
+    const { graph, node } = sampleGraph()
+    const source = createEditor({ graph })
+    source.select([node.id])
+    const payload = await source.prepareCopy()
+    const snapshot = expectDefined(payload.snapshot, 'snapshot')
+    for (const transport of ['snapshot', 'html'] as const) {
+      const target = createEditor()
+      if (transport === 'snapshot') await target.pasteSnapshot(snapshot)
+      else await target.pasteFromHTML(payload.html)
+      const pasted = expectDefined(
+        target.graph.getNode([...target.state.selectedIds][0]),
+        'pasted tour'
+      )
+      expect(pasted.interactiveProps?.module).toEqual(node.interactiveProps?.module)
+      for (const sample of VR_TOUR_SAMPLE_ASSETS) {
+        expect(target.graph.images.get(sample.graphImageHash)).toEqual(
+          graph.images.get(sample.graphImageHash)
+        )
+      }
+      expect(target.graph.images.has('unrelated-image')).toBe(false)
+      target.undo.undo()
+      expect(target.graph.getNode(pasted.id)).toBeUndefined()
+      target.undo.redo()
+      expect(target.graph.getNode(pasted.id)?.interactiveProps?.module).toEqual(
+        node.interactiveProps?.module
+      )
+    }
+  })
+
+  test('snapshot captures samples in an instance component dependency', () => {
+    const { graph, page, node } = sampleGraph()
+    const component = graph.createNode('COMPONENT', page.id)
+    graph.reparentNode(node.id, component.id)
+    const instance = graph.createNode('INSTANCE', page.id, { componentId: component.id })
+    const snapshot = captureClipboardSnapshot(graph, [instance])
+    expect(snapshot.componentDependencies).toHaveLength(1)
+    expect([...snapshot.images.keys()]).toEqual(
+      VR_TOUR_SAMPLE_ASSETS.map((sample) => sample.graphImageHash)
+    )
+  })
+
+  test('new clipboard snapshots include copied VR sample images and isolate their bytes', () => {
+    const { graph, node } = sampleGraph()
+    const snapshot = captureClipboardSnapshot(graph, [node])
+    expect([...snapshot.images.keys()]).toEqual(
+      VR_TOUR_SAMPLE_ASSETS.map((sample) => sample.graphImageHash)
+    )
+    for (const sample of VR_TOUR_SAMPLE_ASSETS) {
+      expect(snapshot.images.get(sample.graphImageHash)).toEqual(
+        graph.images.get(sample.graphImageHash)
+      )
+      expect(snapshot.images.get(sample.graphImageHash)).not.toBe(
+        graph.images.get(sample.graphImageHash)
+      )
+    }
+    expect(snapshot.images.has('unrelated-image')).toBe(false)
+  })
+
   test('copies referenced sample bytes alongside static VR scene configuration', () => {
     const { graph, node } = sampleGraph()
     const clipboard = copy(graph, node)

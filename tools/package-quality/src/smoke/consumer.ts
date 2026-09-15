@@ -4,6 +4,7 @@ import { join } from 'node:path'
 
 import { inspectTarball } from '@open-pencil/package-artifacts/tarball'
 
+import { measurePhase } from '../timing'
 import { installPackedPackages } from './install'
 import { verifyPackageBinaries, verifyPublicImports, verifyRuntimeScenarios } from './runtime'
 import { runtimeScenarios } from './scenarios'
@@ -32,14 +33,16 @@ export async function verifyArtifactConsumers(root: string, tarballs: string[]):
     : runtimeScenarios
   const consumer = await mkdtemp(join(tmpdir(), 'open-pencil-artifact-consumer-'))
   try {
-    await installPackedPackages(consumer, tarballs)
-    await verifyPublicImports(
-      inspections.map(({ manifest }) => manifest),
-      consumer
+    await measurePhase('consumer install', () => installPackedPackages(consumer, tarballs))
+    await measurePhase('public imports', () =>
+      verifyPublicImports(
+        inspections.map(({ manifest }) => manifest),
+        consumer
+      )
     )
-    await verifyRuntimeScenarios(scenarios, consumer)
-    await verifyTypeConsumer(root, consumer, publishedScope)
-    await verifyPackageBinaries(consumer)
+    await measurePhase('runtime scenarios', () => verifyRuntimeScenarios(scenarios, consumer))
+    await measurePhase('consumer types', () => verifyTypeConsumer(root, consumer, publishedScope))
+    await measurePhase('package binaries', () => verifyPackageBinaries(consumer))
   } finally {
     await rm(consumer, { recursive: true, force: true })
   }

@@ -2,9 +2,9 @@ import { defineTool } from '#core/tools/schema'
 
 export const unbindVariable = defineTool({
   name: 'unbind_variable',
-  mutates: true,
   description:
     'Remove a variable binding from a node property, including indexed fills/strokes and gradient stop color paths.',
+  execution: { kind: 'sync', mutation: 'properties' },
   params: {
     node_id: { type: 'string', description: 'Node ID', required: true },
     field: {

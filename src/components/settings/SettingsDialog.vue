@@ -1,30 +1,37 @@
 <script setup lang="ts">
-import { DialogClose } from 'reka-ui'
-import { ref } from 'vue'
+import { tryOnScopeDispose } from '@vueuse/core'
+import { AlertDialogCancel, DialogClose } from 'reka-ui'
+import { computed } from 'vue'
 
 import { useDialogMessages, useI18n, useViewportKind } from '@open-pencil/vue'
 
-import { settingsDialogOpen, settingsDialogSection } from '@/app/settings/dialog'
+import {
+  settingsDialogOpen,
+  registerSettingsNavigation,
+  settingsDialogSection,
+  type SettingsSection
+} from '@/app/settings/dialog'
+import { provideSettingsNavigation } from '@/app/settings/navigation/use'
 import AppearanceSettingsPanel from '@/components/settings/appearance/AppearanceSettingsPanel.vue'
 import ChatSettingsSection from '@/components/settings/chat/ChatSettingsSection.vue'
 import DiagnosticsSettingsPanel from '@/components/settings/diagnostics/DiagnosticsSettingsPanel.vue'
 import GeneralSettingsPanel from '@/components/settings/general/GeneralSettingsPanel.vue'
-import MCPConnectionsSection from '@/components/settings/mcp/MCPConnectionsSection.vue'
-import MCPSettingsPanel from '@/components/settings/mcp/MCPSettingsPanel.vue'
+import SettingsPage from '@/components/settings/layout/SettingsPage.vue'
+import MCPWorkspacePanel from '@/components/settings/mcp/MCPWorkspacePanel.vue'
+import MediaSettingsPanel from '@/components/settings/media/MediaSettingsPanel.vue'
 import ModelsPanel from '@/components/settings/models/ModelsPanel.vue'
 import CanvasPerformancePanel from '@/components/settings/performance/CanvasPerformancePanel.vue'
 import PluginsPanel from '@/components/settings/plugins/PluginsPanel.vue'
-import StockPhotoKeysSection from '@/components/settings/provider/StockPhotoKeysSection.vue'
 import StorageSettingsPanel from '@/components/settings/storage/StorageSettingsPanel.vue'
 import UsageSettingsPanel from '@/components/settings/usage/UsageSettingsPanel.vue'
-import VectorizeSettingsSection from '@/components/settings/vectorize/VectorizeSettingsSection.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import {
-  AppDialogBody,
+  AppAlertDialogRoot,
   AppDialogFooter,
   AppDialogHeader,
   AppDialogRoot
 } from '@/components/ui/dialog'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 import AppTabsContent from '@/components/ui/tabs/AppTabsContent.vue'
 import AppTabsList from '@/components/ui/tabs/AppTabsList.vue'
 import AppTabsRoot from '@/components/ui/tabs/AppTabsRoot.vue'
@@ -33,22 +40,46 @@ import AppTabsTrigger from '@/components/ui/tabs/AppTabsTrigger.vue'
 const { isMobile } = useViewportKind()
 const { settings, common } = useI18n()
 const dialogs = useDialogMessages()
-const editingModel = ref(false)
+const navigation = provideSettingsNavigation()
+tryOnScopeDispose(registerSettingsNavigation(navigation.request))
+const { editing, confirming } = navigation
+const sections = computed(
+  () =>
+    [
+      { value: 'general', label: settings.value.general },
+      { value: 'appearance', label: dialogs.value.settingsAppearance },
+      { value: 'performance', label: dialogs.value.settingsCanvasPerformance },
+      { value: 'plugins', label: dialogs.value.settingsPlugins },
+      { value: 'ai', label: settings.value.aiAndAgents },
+      { value: 'usage', label: settings.value.usage },
+      { value: 'diagnostics', label: settings.value.diagnostics },
+      { value: 'mcp', label: settings.value.automation },
+      { value: 'media', label: settings.value.media },
+      { value: 'storage', label: settings.value.storage }
+    ] satisfies { value: SettingsSection; label: string }[]
+)
 function onSectionChange(section: string | number): void {
-  if (editingModel.value) return
-  settingsDialogSection.value = section as typeof settingsDialogSection.value
+  const match = sections.value.find((item) => item.value === section)
+  if (!match || match.value === settingsDialogSection.value) return
+  navigation.request(() => {
+    settingsDialogSection.value = match.value
+  })
 }
 function onOpenChange(open: boolean): void {
-  if (!open && editingModel.value) return
-  settingsDialogOpen.value = open
+  if (open) settingsDialogOpen.value = true
+  else
+    navigation.request(() => {
+      settingsDialogOpen.value = false
+    })
 }
 </script>
 
 <template>
   <AppDialogRoot
     :open="settingsDialogOpen"
-    size="lg"
-    height="tall"
+    size="xl"
+    :ui="{ content: 'w-[min(52.5rem,96vw)]' }"
+    height="full"
     data-test-id="app-settings-dialog"
     @update:open="onOpenChange"
   >
@@ -56,7 +87,6 @@ function onOpenChange(open: boolean): void {
       :heading="settings.title"
       :description="settings.description"
       :close-label="common.close"
-      :show-close="!editingModel"
     />
 
     <AppTabsRoot
@@ -64,7 +94,16 @@ function onOpenChange(open: boolean): void {
       @update:model-value="onSectionChange"
       :orientation="isMobile ? 'horizontal' : 'vertical'"
     >
-      <AppTabsList :label="settings.title" :inert="editingModel || undefined">
+      <div v-if="isMobile" class="shrink-0 border-b border-border p-3">
+        <AppSelect
+          :model-value="settingsDialogSection"
+          :options="sections"
+          :label="settings.title"
+          :ui="{ trigger: 'w-full' }"
+          @update:model-value="onSectionChange"
+        />
+      </div>
+      <AppTabsList v-show="!isMobile" :label="settings.title">
         <AppTabsTrigger value="general" data-test-id="settings-section-general">
           <template #leading><icon-lucide-settings class="size-3.5" /></template>
           {{ settings.general }}
@@ -108,55 +147,42 @@ function onOpenChange(open: boolean): void {
       </AppTabsList>
 
       <AppTabsContent value="general" as-child>
-        <AppDialogBody><GeneralSettingsPanel /></AppDialogBody>
+        <SettingsPage><GeneralSettingsPanel /></SettingsPage>
       </AppTabsContent>
       <AppTabsContent value="appearance" as-child>
-        <AppDialogBody><AppearanceSettingsPanel /></AppDialogBody>
+        <SettingsPage><AppearanceSettingsPanel /></SettingsPage>
       </AppTabsContent>
       <AppTabsContent value="performance" as-child>
-        <AppDialogBody><CanvasPerformancePanel /></AppDialogBody>
+        <SettingsPage><CanvasPerformancePanel /></SettingsPage>
       </AppTabsContent>
       <AppTabsContent value="plugins" as-child>
-        <AppDialogBody><PluginsPanel /></AppDialogBody>
+        <SettingsPage><PluginsPanel /></SettingsPage>
       </AppTabsContent>
       <AppTabsContent value="ai" as-child>
-        <AppDialogBody>
-          <section class="flex h-full flex-col" data-test-id="settings-ai-panel">
-            <ModelsPanel v-model:editing="editingModel">
-              <ChatSettingsSection />
-            </ModelsPanel>
-          </section>
-        </AppDialogBody>
+        <section class="flex min-h-0 min-w-0 flex-1 flex-col" data-test-id="settings-ai-panel">
+          <ModelsPanel>
+            <ChatSettingsSection />
+          </ModelsPanel>
+        </section>
       </AppTabsContent>
       <AppTabsContent value="usage" as-child>
-        <AppDialogBody><UsageSettingsPanel /></AppDialogBody>
+        <SettingsPage><UsageSettingsPanel /></SettingsPage>
       </AppTabsContent>
       <AppTabsContent value="diagnostics" as-child>
-        <AppDialogBody><DiagnosticsSettingsPanel /></AppDialogBody>
+        <SettingsPage><DiagnosticsSettingsPanel /></SettingsPage>
       </AppTabsContent>
       <AppTabsContent value="mcp" as-child>
-        <AppDialogBody>
-          <section class="flex flex-col" data-test-id="settings-mcp-panel">
-            <MCPSettingsPanel />
-            <MCPConnectionsSection />
-          </section>
-        </AppDialogBody>
+        <MCPWorkspacePanel />
       </AppTabsContent>
       <AppTabsContent value="media" as-child>
-        <AppDialogBody>
-          <section class="flex flex-col gap-2.5" data-test-id="settings-media-panel">
-            <h3 class="text-xs font-semibold text-surface">{{ settings.media }}</h3>
-            <StockPhotoKeysSection />
-            <VectorizeSettingsSection />
-          </section>
-        </AppDialogBody>
+        <MediaSettingsPanel />
       </AppTabsContent>
       <AppTabsContent value="storage" as-child>
-        <AppDialogBody><StorageSettingsPanel /></AppDialogBody>
+        <SettingsPage><StorageSettingsPanel /></SettingsPage>
       </AppTabsContent>
     </AppTabsRoot>
 
-    <AppDialogFooter v-if="!editingModel || settingsDialogSection !== 'ai'">
+    <AppDialogFooter v-if="!editing">
       <DialogClose as-child>
         <AppButton color="primary" variant="solid" data-test-id="app-settings-done">
           {{ common.done }}
@@ -164,4 +190,19 @@ function onOpenChange(open: boolean): void {
       </DialogClose>
     </AppDialogFooter>
   </AppDialogRoot>
+  <AppAlertDialogRoot :open="confirming" @update:open="!$event && navigation.keepEditing()">
+    <AppDialogHeader
+      :heading="settings.discardChanges"
+      :description="settings.discardChangesDescription"
+      :show-close="false"
+    />
+    <AppDialogFooter>
+      <AlertDialogCancel as-child
+        ><AppButton>{{ settings.keepEditing }}</AppButton></AlertDialogCancel
+      >
+      <AppButton color="error" variant="solid" @click="navigation.discard">{{
+        settings.discard
+      }}</AppButton>
+    </AppDialogFooter>
+  </AppAlertDialogRoot>
 </template>

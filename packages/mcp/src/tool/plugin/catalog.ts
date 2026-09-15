@@ -1,9 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import type {
-  McpServer as MCPServer,
-  RegisteredTool
-} from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer as MCPServer, RegisteredTool } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
 import { fail, getDomainFailure, ok } from '#mcp/result'
@@ -628,7 +625,7 @@ export function registerPluginMCPTools(
             expectedDescriptor,
             descriptor.outputSchema !== undefined,
             record(args, `pluginTool.${descriptor.name}.args`),
-            { signal: extra.signal }
+            { signal: extra.mcpReq.signal }
           )
       )
       registered.set(descriptor.name, { fingerprint, tool })

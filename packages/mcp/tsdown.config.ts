@@ -21,7 +21,7 @@ export default defineConfig({
   deps: {
     neverBundle: [
       '@hono/node-server',
-      '@modelcontextprotocol/sdk',
+      '@modelcontextprotocol/server',
       '@open-pencil/core',
       /^@open-pencil\/core\//,
       'hono',

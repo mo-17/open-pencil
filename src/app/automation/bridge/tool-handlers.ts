@@ -8,11 +8,18 @@ import {
 import type { Editor } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
-import { ALL_TOOLS, registerComponentCatalog, serializeToolMutation } from '@open-pencil/core/tools'
+import {
+  ALL_TOOLS,
+  registerComponentCatalog,
+  serializeToolMutation,
+  isAtomicTool,
+  isToolExposed
+} from '@open-pencil/core/tools'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { AutomationRequestContext } from '@/app/automation/bridge/request-context'
 import type { AutomationTarget } from '@/app/automation/bridge/target'
+import { executeAtomicEditorTool } from '@/app/automation/execution/editor'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 import { pageIdForNode, resolveEditorMutationScope } from '@/app/editor/mutation-scope'
 import { useLibraryService } from '@/app/libraries'
@@ -189,7 +196,7 @@ export function createAutomationToolHandler(
       return serializeToolMutation(target.store, () => handleToolRender(target, toolArgs, context))
     }
 
-    const def = ALL_TOOLS.find((t) => t.name === toolName)
+    const def = ALL_TOOLS.find((t) => t.name === toolName && isToolExposed(t, 'mcp'))
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
     const store = target.store
     if (COMPONENT_CATALOG_TOOLS.has(def.name)) {
@@ -206,6 +213,24 @@ export function createAutomationToolHandler(
         forceDocument: DOCUMENT_SCOPE_TOOLS.has(def.name) || def.name === 'batch_update'
       })
       const sceneVersionBefore = store.state.sceneVersion
+      if (isAtomicTool(def)) {
+        const result = await executeAtomicEditorTool(store, figma, def, toolArgs, {
+          signal: context?.signal,
+          label: 'MCP',
+          context: { signal: context?.signal, onProgress: context?.onProgress }
+        })
+        return {
+          ok: true,
+          result,
+          meta: {
+            sceneVersionBefore,
+            sceneVersionAfter: store.state.sceneVersion,
+            mutationScope: 'document',
+            targetPageId: target.pageId,
+            mutatedIds: extractNodeIds(result)
+          }
+        }
+      }
       const tracksGraph = def.mutates && !NON_GRAPH_MUTATION_TOOLS.has(def.name)
       const before = tracksGraph ? snapshotMutationScope(store, pageId, scope) : undefined
       try {
@@ -215,9 +240,7 @@ export function createAutomationToolHandler(
           async () => {
             const result = await def.execute(figma, toolArgs, {
               ...(EDITOR_UNDO_TOOLS.has(def.name) ? { editor: store } : {}),
-              ...(MODULE_CREATION_POLICY_TOOLS.has(def.name)
-                ? { canCreateModule }
-                : {}),
+              ...(MODULE_CREATION_POLICY_TOOLS.has(def.name) ? { canCreateModule } : {}),
               signal: context?.signal,
               onProgress: context?.onProgress,
               deferLayout: def.name === 'render'

@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
+import { tmpdir } from 'node:os'
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client'
+import { McpServer } from '@modelcontextprotocol/server'
 
 import type { MCPResult } from '#mcp/result'
 import { registerTools } from '#mcp/tool/registration'
@@ -30,6 +32,64 @@ function captureRegistration(sendRPC: () => Promise<unknown>): {
 }
 
 describe('MCP tool result registration', () => {
+  test('validates native tool inputs and carries SDK v2 progress and cancellation over the protocol', async () => {
+    const server = new McpServer({ name: 'request-context-test', version: '1' })
+    const client = new Client({ name: 'request-context-client', version: '1' })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    const started = Promise.withResolvers<undefined>()
+    const cancelled = Promise.withResolvers<undefined>()
+    let calls = 0
+    registerTools(server, {
+      policy: { allowEval: false, disabledTools: [] },
+      mcpRoot: tmpdir(),
+      async sendRPC(_request, context) {
+        calls++
+        context?.onProgress?.({ phase: 'rendering', completed: 1, total: 2 })
+        started.resolve(undefined)
+        return new Promise((_resolve, reject) => {
+          context?.signal?.addEventListener(
+            'abort',
+            () => {
+              cancelled.resolve(undefined)
+              reject(new DOMException('Request cancelled', 'AbortError'))
+            },
+            { once: true }
+          )
+        })
+      }
+    })
+    try {
+      await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+      const invalid = await client.callTool({ name: 'get_node', arguments: {} })
+      expect(invalid.isError).toBe(true)
+      expect(calls).toBe(0)
+      const controller = new AbortController()
+      const progress: number[] = []
+      const request = client.callTool(
+        {
+          name: 'export_motion_animation',
+          arguments: { format: 'png-sequence', path: 'cancelled-before-write' }
+        },
+        {
+          signal: controller.signal,
+          onprogress: (value) => {
+            progress.push(value.progress)
+          }
+        }
+      )
+      const outcome = request.catch((error: unknown) => error)
+      await started.promise
+      controller.abort(new Error('Stop protocol test'))
+      await outcome
+      await cancelled.promise
+      expect(calls).toBe(1)
+      expect(progress).toEqual([1])
+    } finally {
+      await client.close()
+      await server.close()
+    }
+  })
+
   test('advertises structured output and maps { error } domain results to MCP errors', async () => {
     const { definitions, handlers } = captureRegistration(async () => ({
       ok: true,

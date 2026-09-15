@@ -210,6 +210,7 @@ export interface EditorEvents extends SceneGraphEvents {
   'repaint:requested': (versions: { renderVersion: number; sceneVersion: number }) => void
   'overlay:requested': (versions: { renderVersion: number; sceneVersion: number }) => void
   'graph:replaced': (graph: SceneGraph) => void
+  'history:changed': () => void
   'selection:changed': (selectedIds: string[], previousIds: string[]) => void
   'tool:changed': (tool: Tool, previousTool: Tool) => void
   'page:changed': (pageId: string, previousPageId: string) => void
