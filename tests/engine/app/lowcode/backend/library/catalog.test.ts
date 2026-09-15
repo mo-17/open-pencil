@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { businessTemplateDefinition } from '@/app/lowcode/backend/business/definitions'
+import { createBusinessApplication } from '@/app/lowcode/backend/business/model'
 import {
   createBackendLibraryCatalog,
   filterBackendLibraryCatalog,
@@ -26,6 +28,38 @@ function ids(items: readonly BackendLibraryItem[]): string[] {
 }
 
 describe('inert backend library catalog', () => {
+  test.each(['asset-management', 'quote-contracts', 'recruitment-hr'] as const)(
+    'describes %s using its exact exported entities, pages and identity-service roles',
+    (kind) => {
+      const application = createBusinessApplication(
+        'enterprise-catalog',
+        {
+          kind: 'oidc-pkce',
+          issuer: 'https://identity.example.com',
+          clientId: 'enterprise-public-client',
+          scopes: ['openid', 'profile'],
+          callbackPath: '/_openpencil/auth/callback'
+        },
+        kind
+      )
+      const definition = businessTemplateDefinition(kind)
+      for (const locale of ['en', 'zh-CN']) {
+        const item = createBackendLibraryCatalog([], locale).find((entry) => entry.id === kind)
+        if (item?.kind !== 'template') throw new Error('Missing enterprise template')
+        expect(item.entities).toEqual(application.dataModel.entities.map((entity) => entity.name))
+        expect(item.roles).toEqual(application.auth.roles.map((role) => role.id))
+        expect(item.pages).toHaveLength(definition.pages.length + 1)
+        expect(item.name).toBe(locale === 'en' ? definition.title.en : definition.title.zh)
+        expect(item.requirements.join(' ')).toContain(
+          locale === 'en' ? 'does not grant roles' : '不会授予角色'
+        )
+        expect(
+          ids(filterBackendLibraryCatalog([item], { category: 'templates', query: item.name }))
+        ).toEqual([kind])
+      }
+    }
+  )
+
   test('preserves legacy templates alongside distinct merchant modes and unavailable provider guides', () => {
     const catalog = createBackendLibraryCatalog([], 'en')
     const providers = catalog.filter((item) => item.kind === 'provider')
@@ -41,9 +75,27 @@ describe('inert backend library catalog', () => {
       'service-desk',
       'content-knowledge-base',
       'booking-registration',
-      'project-tasks'
+      'project-tasks',
+      'rental-viewing',
+      'food-ordering',
+      'hospital-registration',
+      'personal-blog',
+      'automotive-news',
+      'procurement-inventory',
+      'enterprise-approvals',
+      'survey-forms',
+      'online-courses',
+      'community-forum',
+      'asset-management',
+      'quote-contracts',
+      'recruitment-hr',
+      'video-live'
     ])
-    expect(providers.map((item) => item.providerId)).toEqual(['supabase', 'nestjs'])
+    expect(providers.map((item) => item.providerId)).toEqual([
+      'supabase',
+      'nestjs',
+      'nestjs-prisma-crm'
+    ])
     for (const item of providers) {
       expect(Object.hasOwn(item, 'descriptorKey')).toBe(false)
       expect(Object.hasOwn(item, 'descriptor')).toBe(false)

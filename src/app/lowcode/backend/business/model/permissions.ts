@@ -39,6 +39,24 @@ export function businessOwnerGrant(
   )
 }
 
+/** Reviewed anonymous read access; callers explicitly supply every row condition. */
+export function businessPublicGrant(
+  application: BackendApplicationSpecV1,
+  entity: DataEntityIR,
+  id: string,
+  conditions: NonNullable<AuthRowAccessIntentIR['conditions']>
+): string {
+  application.auth.rowAccess.push({
+    id,
+    entityId: entity.id,
+    effect: 'allow',
+    operations: ['select'],
+    principal: { kind: 'anonymous' },
+    conditions: structuredClone(conditions)
+  })
+  return id
+}
+
 export function businessReadResource(
   application: BackendApplicationSpecV1,
   entity: DataEntityIR,

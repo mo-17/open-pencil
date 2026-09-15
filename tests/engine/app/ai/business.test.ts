@@ -12,7 +12,7 @@ import { businessBrowserFixture } from '../lowcode/backend/business/browser/help
 import { moduleInstallationFixture } from '../lowcode/backend/business/installation/helpers'
 
 describe('business template AI entry', () => {
-  test('instructs only the Direct facade to use the five reviewed workflow kinds', () => {
+  test('instructs only the Direct facade to use the reviewed workflow kinds', () => {
     expect(ALL_TOOLS.some((tool) => tool.name === BUSINESS_AI_TOOL_NAME)).toBe(false)
     expect(designSystemPromptFor('direct')).toContain(BUSINESS_AI_TOOL_NAME)
     expect(designSystemPromptFor('delegated')).not.toContain(BUSINESS_AI_TOOL_NAME)

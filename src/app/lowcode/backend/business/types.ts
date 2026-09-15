@@ -19,7 +19,7 @@ export interface BusinessColumn {
 }
 
 export interface BusinessChoice {
-  readonly value: string
+  readonly value: string | boolean
   readonly label: BusinessText
 }
 
@@ -51,6 +51,16 @@ export type BusinessParameterSource =
   | { readonly kind: 'selection'; readonly field: string }
   | { readonly kind: 'literal'; readonly value: string | number | boolean }
 
+export interface BusinessActionCondition {
+  readonly field: string
+  readonly values: readonly (string | boolean)[]
+}
+
+/** One selected-field match, or up to four simultaneous matches; never authored code. */
+export type BusinessActionWhen =
+  | BusinessActionCondition
+  | { readonly all: readonly BusinessActionCondition[] }
+
 export interface BusinessActionDefinition {
   readonly id: string
   readonly label: BusinessText
@@ -58,7 +68,7 @@ export interface BusinessActionDefinition {
   readonly commandId: string
   readonly inputs: readonly BusinessInput[]
   readonly parameters: Readonly<Record<string, BusinessParameterSource>>
-  readonly when?: { readonly field: string; readonly values: readonly string[] }
+  readonly when?: BusinessActionWhen
 }
 
 export interface BusinessListing {
@@ -71,6 +81,13 @@ export interface BusinessListing {
 export interface BusinessRelatedListing extends BusinessListing {
   readonly title: BusinessText
   readonly foreignKey: string
+  /** Field on the selected parent record to match; defaults to its id. */
+  readonly selectionField?: string
+}
+
+export interface BusinessVideoPlayer {
+  readonly srcField: string
+  readonly posterField: string
 }
 
 export interface BusinessPageDefinition {
@@ -81,6 +98,10 @@ export interface BusinessPageDefinition {
   readonly public?: boolean
   readonly listing?: BusinessListing
   readonly details?: readonly BusinessColumn[]
+  /** Selected record's safe panorama URL, passed through the reviewed VR module binding. */
+  readonly vrTourField?: string
+  /** Selected record supplies public playback URLs, never stream credentials or player code. */
+  readonly videoPlayer?: BusinessVideoPlayer
   readonly related?: readonly BusinessRelatedListing[]
   readonly actions: readonly BusinessActionDefinition[]
 }

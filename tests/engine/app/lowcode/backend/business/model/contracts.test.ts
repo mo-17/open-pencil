@@ -6,6 +6,7 @@ import type {
   BackendCommandDefinitionIR
 } from '@open-pencil/lowcode/backend'
 
+import { businessTemplateDefinition } from '@/app/lowcode/backend/business/definitions'
 import { createBusinessApplication } from '@/app/lowcode/backend/business/model'
 import {
   BUSINESS_TEMPLATE_IDS,
@@ -49,11 +50,20 @@ describe('business application template contracts', () => {
     '%s is a normalized ordinary-command application with readable UI projections',
     (kind) => {
       const app = application(kind)
+      const definition = businessTemplateDefinition(kind)
+      expect(definition.id).toBe(kind)
+      expect(
+        new Set(definition.pages.flatMap((page) => page.actions.map((action) => action.commandId)))
+      ).toEqual(new Set(app.commands?.commands.map((entry) => entry.id)))
       expect(parseBackendApplicationSpecV1(app).diagnostics).toEqual([])
       expect(app.commerce).toBeUndefined()
       expect(
         app.commands?.commands.every(
-          (entry) => !entry.commerceOperation && entry.steps.length > 0 && entry.steps.length <= 32
+          (entry) =>
+            !entry.commerceOperation &&
+            (entry.foodOrderingOperation
+              ? entry.steps.length === 0
+              : entry.steps.length > 0 && entry.steps.length <= 32)
         )
       ).toBe(true)
       for (const entry of app.httpApi?.resources ?? []) {

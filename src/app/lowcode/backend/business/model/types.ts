@@ -3,7 +3,21 @@ export const BUSINESS_TEMPLATE_IDS = [
   'service-desk',
   'content-knowledge-base',
   'booking-registration',
-  'project-tasks'
+  'project-tasks',
+  'rental-viewing',
+  'video-live',
+  'food-ordering',
+  'hospital-registration',
+  'personal-blog',
+  'automotive-news',
+  'procurement-inventory',
+  'enterprise-approvals',
+  'survey-forms',
+  'online-courses',
+  'community-forum',
+  'asset-management',
+  'quote-contracts',
+  'recruitment-hr'
 ] as const
 
 export type BusinessTemplateId = (typeof BUSINESS_TEMPLATE_IDS)[number]

@@ -1,5 +1,6 @@
 import type { BusinessActionDefinition } from '../types'
 import { createBusinessCommand, renderBusinessCommandFeedback } from './commands'
+import { businessActionConditionExpression } from './conditions'
 import { prepareBusinessInputs, renderBusinessInputs } from './forms'
 import { BUSINESS_CONTENT_WIDTH, BUSINESS_CONTENT_X } from './layout'
 import type { BusinessScreen } from './screen'
@@ -16,26 +17,22 @@ function prepareAction(screen: BusinessScreen, definition: BusinessActionDefinit
   })
   const conditions = inputs.entries
     .filter((entry) => (entry.input.required ?? true) && entry.input.kind !== 'number')
-    .map((entry) => `!!(${entry.valueExpr})`)
-  if (Object.values(definition.parameters).some((source) => source.kind === 'selection'))
+    // SELECT state holds the chosen label; a valid mapped false value is not missing.
+    .map((entry) => `!!(${entry.input.kind === 'select' ? entry.state.name : entry.valueExpr})`)
+  const available = definition.when
+    ? `(${screen.selection}) && ${businessActionConditionExpression(definition.when, screen.selected)}`
+    : undefined
+  const reviewOnly = available ? screen.field('ReviewOnly', 'boolean', false) : undefined
+  if (available) conditions.push(available)
+  else if (Object.values(definition.parameters).some((source) => source.kind === 'selection'))
     conditions.push(screen.selection)
-  if (definition.when)
-    conditions.push(
-      '(' +
-        definition.when.values
-          .map(
-            (value) => `${screen.selected}.${definition.when?.field} === ${JSON.stringify(value)}`
-          )
-          .join(' || ') +
-        ')'
-    )
   const command = createBusinessCommand(
     screen,
     definition,
     payload,
     conditions.join(' && ') || '!0'
   )
-  return { definition, inputs, command, height: inputs.height + 560 }
+  return { definition, inputs, command, available, reviewOnly, height: inputs.height + 560 }
 }
 
 export function prepareBusinessActions(screen: BusinessScreen) {
@@ -61,18 +58,20 @@ export function renderBusinessActions(
     { x: BUSINESS_CONTENT_X, y: y + 42, width: BUSINESS_CONTENT_WIDTH, height: 42 },
     { fontSize: 14 }
   )
-  for (const [index, entry] of actions.entries())
+  for (const [index, entry] of actions.entries()) {
+    const rect = {
+      x: BUSINESS_CONTENT_X + (index % 3) * 294,
+      y: y + 92 + Math.floor(index / 3) * 56,
+      width: 276,
+      height: 44
+    }
     ctx.layout.button(
       screen.page,
       ctx.label(entry.definition.label),
-      {
-        x: BUSINESS_CONTENT_X + (index % 3) * 294,
-        y: y + 92 + Math.floor(index / 3) * 56,
-        width: 276,
-        height: 44
-      },
+      rect,
       [
         ...screen.beginAction(entry.definition.id),
+        ...(entry.reviewOnly ? [businessSet(entry.reviewOnly, '!1')] : []),
         {
           id: crypto.randomUUID(),
           kind: 'condition',
@@ -80,13 +79,37 @@ export function renderBusinessActions(
           consequent: entry.inputs.entries
             .filter((input) => input.input.fromSelection)
             .map((input) =>
-              businessSet(input.state, `${screen.selected}.${input.input.fromSelection}`)
+              businessSet(
+                input.state,
+                input.input.kind === 'select'
+                  ? (input.input.choices ?? [])
+                      .map(
+                        (choice) =>
+                          `${screen.selected}.${input.input.fromSelection} === ${businessLiteral(choice.value)} ? ${JSON.stringify(ctx.label(choice.label))} : `
+                      )
+                      .join('') + '""'
+                  : `${screen.selected}.${input.input.fromSelection}`
+              )
             )
         }
-      ]
+      ],
+      entry.available ? { renderCondition: entry.available } : {}
     )
+    if (entry.available && entry.reviewOnly)
+      ctx.layout.button(
+        screen.page,
+        ctx.copy.inspect + ' · ' + ctx.label(entry.definition.label),
+        rect,
+        [
+          ...screen.beginAction(entry.definition.id),
+          businessSet(entry.reviewOnly, '!0'),
+          ...entry.command.recovery.startInspect
+        ],
+        { renderCondition: `!(${entry.available})` }
+      )
+  }
   const panelY = screen.reserve(Math.max(...actions.map((entry) => entry.height)))
-  for (const { definition, inputs, command, height } of actions) {
+  for (const { definition, inputs, command, available, reviewOnly, height } of actions) {
     const panel = ctx.layout.shape(
       'FRAME',
       ctx.label(definition.label) + ' panel',
@@ -115,7 +138,8 @@ export function renderBusinessActions(
       inputs.height + 68,
       {
         layoutMode: 'NONE',
-        events: { onSubmit: [command.submit] }
+        events: { onSubmit: [command.submit] },
+        ...(reviewOnly ? { renderCondition: `!${reviewOnly.name}` } : {})
       }
     )
     renderBusinessInputs(screen, form, inputs)
@@ -126,6 +150,16 @@ export function renderBusinessActions(
       [],
       { renderCondition: command.allowed }
     )
+    if (available)
+      ctx.layout.text(
+        panel,
+        ctx.label({
+          en: 'Select a record that supports this action to continue. You can still review any saved request below.',
+          zh: '请重新选择适用于此操作的记录。下方仍可核对已保存的请求。'
+        }),
+        { x: 0, y: inputs.height + 84, width: 820, height: 60 },
+        { renderCondition: `!(${available})`, fontSize: 14 }
+      )
     renderBusinessCommandFeedback(screen, panel, inputs.height + 172, definition, command)
   }
 }

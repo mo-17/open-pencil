@@ -18,7 +18,7 @@ export function prepareBusinessInputs(screen: BusinessScreen, inputs: readonly B
         ? (input.choices ?? [])
             .map(
               (choice) =>
-                `${state.name} === ${JSON.stringify(screen.ctx.label(choice.label))} ? ${JSON.stringify(choice.value)} : `
+                `${state.name} === ${JSON.stringify(screen.ctx.label(choice.label))} ? ${businessLiteral(choice.value)} : `
             )
             .join('') + '""'
         : state.name
@@ -99,7 +99,7 @@ function renderBusinessRelation(
       bindings: {
         text: {
           kind: 'expr',
-          expr: `${JSON.stringify(ctx.copy.relationSelected + ': ')} + ${entry.label.name}`
+          expr: `${JSON.stringify(ctx.copy.relationSelected + ': ')} + (${entry.label.name} || ${entry.state.name})`
         }
       }
     }

@@ -9,9 +9,10 @@ import {
 
 import { composeBusinessModules } from '@/app/lowcode/backend/business/composition'
 import { createBusinessApplication } from '@/app/lowcode/backend/business/model'
-import { BUSINESS_TEMPLATE_IDS } from '@/app/lowcode/backend/business/model/types'
 import { createCommerceOperationsApplication } from '@/app/lowcode/backend/commerce/operations/application'
 import { createNestJSNotesApplication } from '@/app/lowcode/backend/nestjs-draft'
+
+import { ESTABLISHED_BUSINESS_KINDS } from '#tests/engine/app/lowcode/backend/business/composition/helpers'
 
 const authentication = {
   kind: 'oidc-pkce' as const,
@@ -22,7 +23,7 @@ const authentication = {
 }
 function fixture() {
   const from = createBusinessApplication('module-migration-test', authentication, 'customer-crm')
-  const to = composeBusinessModules(from, BUSINESS_TEMPLATE_IDS, {
+  const to = composeBusinessModules(from, ESTABLISHED_BUSINESS_KINDS, {
     adoptExisting: ['customer-crm']
   }).application
   return { from, to }
@@ -58,9 +59,9 @@ describe('strictly additive managed module migrations', () => {
     const operation = plan.operations[0]
     if (!operation || operation.kind !== 'add-module-schema')
       throw new Error('Missing module schema operation')
-    expect(operation.entityIds).toHaveLength(12)
+    expect(operation.entityIds).toHaveLength(28)
     expect(operation.enumIds.length).toBeGreaterThan(0)
-    expect(operation.moduleIds).toHaveLength(4)
+    expect(operation.moduleIds).toHaveLength(7)
     expect('entityId' in operation).toBe(false)
     const firstTable = plan.sql.indexOf('CREATE TABLE')
     const lastTable = plan.sql.lastIndexOf('CREATE TABLE')
@@ -124,6 +125,53 @@ describe('strictly additive managed module migrations', () => {
     expect(operation.entityIds).toEqual(['business-ticket-history', 'business-tickets'])
     expect(operation.enumIds).toEqual(['ticket-status'])
     expect(operation.moduleIds).toEqual(['service-desk'])
+  })
+
+  test('adds isolated food tables to commerce while retaining existing financial and command ledgers', async () => {
+    const from = createCommerceOperationsApplication(
+      'food-commerce-migration',
+      authentication,
+      'single-merchant'
+    )
+    const to = composeBusinessModules(from, ['food-ordering']).application
+    const plan = await migration(from, to)
+    expect(plan.operations[0]?.kind).toBe('add-module-schema')
+    expect(plan.sql).toContain('CREATE TABLE "public"."food_orders"')
+    expect(plan.sql).not.toContain('CREATE TABLE "public"."orders"')
+    expect(plan.sql).not.toMatch(/ledger/iu)
+  })
+
+  test.each([false, true])(
+    'rejects changes to an existing food contract with additional module = %s',
+    async (appendModule) => {
+      const from = createBusinessApplication(
+        'food-contract-migration',
+        authentication,
+        'food-ordering'
+      )
+      const to = appendModule
+        ? composeBusinessModules(from, ['customer-crm'], { adoptExisting: ['food-ordering'] })
+            .application
+        : structuredClone(from)
+      if (!to.foodOrdering) throw new Error('Missing food profile')
+      to.foodOrdering.maxItems = 10
+      await blocked(from, to, 'backend-local-migration-food-ordering-contract-change-blocked')
+    }
+  )
+
+  test('rejects attaching food execution to pre-existing tables without a reviewed migration', async () => {
+    const to = createBusinessApplication(
+      'food-contract-attachment',
+      authentication,
+      'food-ordering'
+    )
+    const from = structuredClone(to)
+    delete from.foodOrdering
+    if (!from.commands || !to.commands) throw new Error('Missing commands')
+    from.commands.commands = from.commands.commands.filter(
+      (command) => !command.foodOrderingOperation
+    )
+    await blocked(from, to, 'backend-local-migration-food-ordering-contract-change-blocked')
   })
 
   test.each([

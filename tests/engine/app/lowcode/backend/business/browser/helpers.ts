@@ -36,14 +36,20 @@ export async function businessBrowserFixture(
   modules: readonly BusinessTemplateId[] = []
 ) {
   const store = createAppPluginStore({
-    catalog: createBundledPluginCatalog().filter(
-      (entry) => entry.manifest.plugin.id === 'open-pencil.nestjs-backend'
+    catalog: createBundledPluginCatalog().filter((entry) =>
+      ['open-pencil.nestjs-backend', 'open-pencil.vr-tour', 'open-pencil.video'].includes(
+        entry.manifest.plugin.id
+      )
     ),
     storage: createMemoryAppPluginStateStorage(),
     activationCompatibilityPolicy: () => ({ ok: true }),
     engineVersion: '0.15.0'
   })
   await store.load()
+  await store.install('open-pencil.vr-tour')
+  await store.setEnabled('open-pencil.vr-tour', true)
+  await store.install('open-pencil.video')
+  await store.setEnabled('open-pencil.video', true)
   const descriptor = listAppBackendProviderDescriptors(store)[0]
   if (!descriptor) throw new Error('The test NestJS provider is unavailable')
   let application = createBusinessApplication(

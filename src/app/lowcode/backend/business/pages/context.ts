@@ -22,8 +22,12 @@ export function createBusinessPageContext(
 ) {
   const documentStates: DocumentStateDef[] = structuredClone(root.lowcodeDocumentState ?? [])
   const doc = (base: string, type: 'string' | 'object' = 'string') => {
-    let name = 'business' + base.replace(/[^a-z0-9]/giu, '')
-    while (documentStates.some((state) => state.name === name)) name += 'Next'
+    const stem = ('business' + base.replace(/[^a-z0-9]/giu, '')).slice(0, 64)
+    let name = stem
+    for (let index = 2; documentStates.some((state) => state.name === name); index++) {
+      const suffix = 'Next' + index
+      name = stem.slice(0, 64 - suffix.length) + suffix
+    }
     documentStates.push({
       id: crypto.randomUUID(),
       name,

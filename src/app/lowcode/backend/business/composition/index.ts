@@ -7,6 +7,7 @@ import type {
   BackendModuleDefinitionIR
 } from '@open-pencil/lowcode/backend'
 
+import { createBusinessApplication } from '../model'
 import { BUSINESS_TEMPLATE_IDS, type BusinessTemplateId } from '../model/types'
 import {
   BUSINESS_ACCOUNTS_MODULE_ID,
@@ -43,7 +44,14 @@ export function detectStandaloneBusinessKinds(
 ): BusinessTemplateId[] {
   const checked = normalized(base)
   if (checked.modules) return []
+  const authentication = checked.httpApi?.browserClient?.authentication
+  if (!authentication) return []
+  const entityIds = new Set(checked.dataModel.entities.map((entity) => entity.id))
   return BUSINESS_TEMPLATE_IDS.filter((kind) => {
+    // A cheap negative filter avoids normalizing every unrelated template for every
+    // card. A matching ID set still needs the complete schema/authority check below.
+    const candidate = createBusinessApplication(checked.applicationId, authentication, kind)
+    if (candidate.dataModel.entities.some((entity) => !entityIds.has(entity.id))) return false
     try {
       verifyBusinessRecords(checked, businessModuleSource(checked, kind, 'users'))
       return true

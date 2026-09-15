@@ -1,4 +1,4 @@
-import { expect } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { Page } from '@playwright/test'
 
@@ -42,10 +42,11 @@ export async function installBusinessTransport(page: Page, application: BackendA
         if (!command || !step) throw new Error('Unexpected command: ' + path)
         const payload: unknown = request.postDataJSON()
         const key = request.headers()['idempotency-key']
-        expect(command.id).toBe(step.commandId)
-        expect(payload).toEqual(step.payload)
-        expect(key).toMatch(/^[A-Za-z0-9._:-]{16,128}$/u)
-        expect(request.headers().authorization).toBe('Bearer business-test-session')
+        assert.equal(command.id, step.commandId)
+        assert.deepEqual(payload, step.payload)
+        assert.ok(key)
+        assert.match(key, /^[A-Za-z0-9._:-]{16,128}$/u)
+        assert.equal(request.headers().authorization, 'Bearer business-test-session')
         calls.push({ commandId: command.id, payload, key })
         if (!step.status || step.status < 400) Object.assign(resources, step.resources)
         return route.fulfill({ status: step.status ?? 200, json: step.result })

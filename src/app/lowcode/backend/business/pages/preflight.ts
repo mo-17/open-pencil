@@ -12,6 +12,7 @@ import type {
   BusinessParameterSource,
   BusinessTemplateDefinition
 } from '../types'
+import { businessActionConditions } from './conditions'
 
 function requireMetadata(condition: unknown, message: string): asserts condition {
   if (!condition) throw new BackendDraftOperationError('Business template: ' + message)
@@ -80,10 +81,13 @@ function checkAction(
     'command parameters must match exactly: ' + command.id
   )
   for (const source of Object.values(action.parameters)) checkSource(source, action, selected)
-  if (action.when) {
-    requireMetadata(selected?.readFields.includes(action.when.field), 'unknown transition field')
-    requireMetadata(action.when.values.length > 0, 'empty transition condition')
-  }
+  if (action.when !== undefined)
+    requireMetadata(
+      businessActionConditions(action.when).every((condition) =>
+        selected?.readFields.includes(condition.field)
+      ),
+      'unknown transition field'
+    )
   for (const input of action.inputs) {
     if (input.fromSelection)
       requireMetadata(
@@ -115,6 +119,18 @@ function checkAction(
 
 function checkPage(application: BackendApplicationSpecV1, page: BusinessPageDefinition): void {
   const selected = page.listing ? checkListing(application, page.listing) : undefined
+  const mediaFields = [
+    ...(page.vrTourField ? [page.vrTourField] : []),
+    ...(page.videoPlayer ? [page.videoPlayer.srcField, page.videoPlayer.posterField] : [])
+  ]
+  for (const mediaField of mediaFields) {
+    requireMetadata(selected?.readFields.includes(mediaField), 'unknown media field')
+    const entity = application.dataModel.entities.find((entry) => entry.id === selected?.entityId)
+    requireMetadata(
+      entity?.fields.some((field) => field.id === mediaField && field.type === 'string'),
+      'media field must contain text'
+    )
+  }
   for (const column of page.details ?? [])
     requireMetadata(selected?.readFields.includes(column.field), 'unknown detail field')
   if (selected)
@@ -130,7 +146,8 @@ function checkPage(application: BackendApplicationSpecV1, page: BusinessPageDefi
   for (const related of page.related ?? []) {
     const found = checkListing(application, related)
     requireMetadata(
-      selected && found.query?.filterFields.includes(related.foreignKey),
+      selected?.readFields.includes(related.selectionField ?? 'id') &&
+        found.query?.filterFields.includes(related.foreignKey),
       'unknown related-record filter'
     )
   }

@@ -17,6 +17,7 @@ import {
 
 import { businessTemplateDefinition } from '../business/definitions'
 import { createBusinessApplication } from '../business/model'
+import { requireBusinessTemplatePlugins } from '../business/plugins'
 import { createBusinessPages } from '../business/template'
 import { createCommerceApplication } from '../commerce/application'
 import { createMerchantCommerceApplication } from '../commerce/merchant/application'
@@ -141,6 +142,7 @@ function install(
 ): BackendLibraryInstallResult {
   const applicationId = context.draft.value.applicationId
   if (isBusinessTemplate(templateId)) {
+    requireBusinessTemplatePlugins(context.store, templateId)
     const application = createBusinessApplication(applicationId, authentication, templateId)
     const result = createBusinessPages(
       context.editor,

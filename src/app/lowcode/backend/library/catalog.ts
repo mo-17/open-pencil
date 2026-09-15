@@ -149,7 +149,9 @@ export function createBackendLibraryCatalog(
     keys.add(descriptorKey)
     descriptors.set(descriptorKey, descriptor)
     const profile =
-      descriptor.providerId === 'supabase' || descriptor.providerId === 'nestjs'
+      descriptor.providerId === 'supabase' ||
+      descriptor.providerId === 'nestjs' ||
+      descriptor.providerId === 'nestjs-prisma-crm'
         ? copy.providers[descriptor.providerId]
         : undefined
     available.push(
@@ -170,7 +172,7 @@ export function createBackendLibraryCatalog(
     )
   }
   const unavailable: BackendLibraryProvider[] = []
-  for (const providerId of ['supabase', 'nestjs'] as const) {
+  for (const providerId of ['supabase', 'nestjs', 'nestjs-prisma-crm'] as const) {
     if (available.some((item) => item.providerId === providerId)) continue
     const profile = copy.providers[providerId]
     unavailable.push(
@@ -219,7 +221,102 @@ export function createBackendLibraryCatalog(
     'service-desk': ['users', 'tickets', 'ticket_history'],
     'content-knowledge-base': ['users', 'articles', 'article_history'],
     'booking-registration': ['users', 'services', 'slots', 'bookings', 'booking_history'],
-    'project-tasks': ['users', 'projects', 'project_members', 'tasks', 'task_history']
+    'project-tasks': ['users', 'projects', 'project_members', 'tasks', 'task_history'],
+    'rental-viewing': [
+      'users',
+      'rental_properties',
+      'rental_slots',
+      'rental_viewings',
+      'rental_viewing_history',
+      'rental_property_history'
+    ],
+    'food-ordering': [
+      'users',
+      'food_menu_items',
+      'food_carts',
+      'food_cart_items',
+      'food_orders',
+      'food_order_items',
+      'food_order_history'
+    ],
+    'hospital-registration': [
+      'users',
+      'hospital_departments',
+      'hospital_doctors',
+      'hospital_slots',
+      'hospital_patients',
+      'hospital_appointments',
+      'hospital_appointment_history'
+    ],
+    'personal-blog': [
+      'users',
+      'blog_categories',
+      'blog_articles',
+      'blog_article_history',
+      'blog_bookmarks'
+    ],
+    'automotive-news': [
+      'users',
+      'auto_categories',
+      'auto_brands',
+      'auto_models',
+      'auto_articles',
+      'auto_article_history',
+      'auto_bookmarks'
+    ],
+    'procurement-inventory': [
+      'users',
+      'inventory_skus',
+      'inventory_warehouses',
+      'inventory_suppliers',
+      'inventory_balances',
+      'inventory_purchases',
+      'inventory_dispatches',
+      'inventory_movements'
+    ],
+    'enterprise-approvals': ['users', 'oa_requests', 'oa_request_history'],
+    'survey-forms': ['users', 'survey_drafts', 'survey_versions', 'survey_responses'],
+    'online-courses': [
+      'users',
+      'courses',
+      'course_lessons',
+      'course_enrollments',
+      'course_progress'
+    ],
+    'community-forum': [
+      'users',
+      'community_posts',
+      'community_replies',
+      'community_follows',
+      'community_reports'
+    ],
+    'asset-management': ['users', 'assets', 'asset_requests', 'asset_history'],
+    'quote-contracts': [
+      'users',
+      'contract_parties',
+      'quote_drafts',
+      'quote_versions',
+      'contracts',
+      'contract_deliveries',
+      'contract_history'
+    ],
+    'recruitment-hr': [
+      'users',
+      'hr_positions',
+      'hr_candidates',
+      'hr_interviews',
+      'hr_employees',
+      'hr_checklist_items',
+      'hr_history'
+    ],
+    'video-live': [
+      'users',
+      'media_videos',
+      'media_channels',
+      'media_favorites',
+      'media_video_history',
+      'media_channel_history'
+    ]
   } as const satisfies Record<BackendLibraryTemplateId, readonly string[]>
   const templates = (Object.keys(templateEntities) as BackendLibraryTemplateId[]).map((id) => {
     const profile = copy.templates[id]

@@ -2,8 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { expect as browserExpect } from '@playwright/test'
 
-import { BUSINESS_TEMPLATE_IDS } from '@/app/lowcode/backend/business/model/types'
-
+import { ESTABLISHED_BUSINESS_KINDS } from '../composition/helpers'
 import { BUSINESS_BROWSER_USER_ID } from './helpers'
 import { finishBusinessRequest, submitBusinessAction, withBusinessBrowser } from './session/helpers'
 
@@ -27,7 +26,7 @@ describe('generated modular business application', () => {
           expect(routes.filter((path) => path === '/business-login')).toHaveLength(1)
           expect(routes.filter((path) => path === '/account-setup')).toHaveLength(1)
           expect(fixture.application.modules?.modules.map((entry) => entry.id)).toEqual(
-            expect.arrayContaining([...BUSINESS_TEMPLATE_IDS])
+            expect.arrayContaining([...ESTABLISHED_BUSINESS_KINDS])
           )
           const profile = {
             id: profileId,
@@ -243,7 +242,7 @@ describe('generated modular business application', () => {
           expect(api.resources.customers).toEqual([customer])
           expect(api.resources.tickets).toEqual([assigned])
         },
-        { modules: BUSINESS_TEMPLATE_IDS.filter((kind) => kind !== 'customer-crm') }
+        { modules: ESTABLISHED_BUSINESS_KINDS.filter((kind) => kind !== 'customer-crm') }
       )
     },
     120_000

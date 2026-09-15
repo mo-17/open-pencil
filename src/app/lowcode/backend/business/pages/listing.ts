@@ -1,11 +1,48 @@
-import type { ActionDef, BackendResourceDataSource } from '@open-pencil/scene-graph'
+import type { ActionDef, BackendResourceDataSource, SceneNode } from '@open-pencil/scene-graph'
 
 import { backendTemplateListProps } from '@/app/lowcode/backend/notes-template-style'
 
-import type { BusinessListing } from '../types'
+import type { BusinessColumn, BusinessListing } from '../types'
 import { BUSINESS_CONTENT_WIDTH, BUSINESS_CONTENT_X } from './layout'
 import type { BusinessScreen } from './screen'
-import { businessSet } from './state'
+import { businessLiteral, businessSet } from './state'
+
+function columnTextProps(
+  column: BusinessColumn,
+  label: string,
+  record: string
+): Pick<SceneNode, 'interactiveProps' | 'bindings'> {
+  return {
+    ...(column.multiline
+      ? { interactiveProps: { layout: { overflowY: 'auto', whiteSpace: 'pre-wrap' } } }
+      : {}),
+    bindings: {
+      text: {
+        kind: 'expr',
+        expr: `${JSON.stringify(label + ': ')} + ${record}.${column.field}`
+      }
+    }
+  }
+}
+
+function renderBusinessRowFields(
+  screen: BusinessScreen,
+  card: string,
+  columns: readonly BusinessColumn[],
+  width: number
+): void {
+  const { ctx } = screen
+  let columnOffset = 12
+  for (const column of columns) {
+    ctx.layout.text(
+      card,
+      '',
+      { x: 16, y: columnOffset, width: width - 64, height: column.multiline ? 160 : 30 },
+      columnTextProps(column, ctx.label(column.label), 'item')
+    )
+    columnOffset += column.multiline ? 184 : 34
+  }
+}
 
 export function renderBusinessList(
   screen: BusinessScreen,
@@ -20,6 +57,7 @@ export function renderBusinessList(
     condition?: string
     choose?: ActionDef[]
     chooseLabel?: string
+    refreshable?: boolean
   } = {}
 ): number {
   const { ctx } = screen
@@ -28,15 +66,22 @@ export function renderBusinessList(
   )
   if (!resource) throw new Error('Missing business resource: ' + definition.resourceId)
   const after = screen.field(definition.resourceId + 'After')
+  const refresh = options.refreshable
+    ? screen.field(definition.resourceId + 'Refresh', 'boolean', false)
+    : undefined
   const cursor = ctx.doc(screen.definition.id + definition.resourceId + 'Cursor')
   const x = options.x ?? BUSINESS_CONTENT_X
   const width = options.width ?? BUSINESS_CONTENT_WIDTH
-  const cardHeight = definition.columns.length * 34 + (options.choose ? 68 : 24)
+  const cardHeight =
+    definition.columns.reduce((height, column) => height + (column.multiline ? 184 : 34), 0) +
+    (options.choose ? 68 : 24)
   const source: BackendResourceDataSource = {
     kind: 'backendResource',
     resourceId: definition.resourceId,
     limit: Math.min(20, resource.maxPageSize ?? 20),
-    afterExpr: after.name,
+    // Both branches keep the wire cursor unchanged. The local flag only restarts
+    // the React/Vue query subscription, including when refreshing the first page.
+    afterExpr: refresh ? `${refresh.name} ? ${after.name} : ${after.name}` : after.name,
     nextCursorTarget: cursor,
     errorTarget: screen.error,
     ...(options.filters ? { filterEntries: options.filters } : {}),
@@ -55,20 +100,7 @@ export function renderBusinessList(
     width - 24,
     cardHeight
   )
-  for (const [index, column] of definition.columns.entries())
-    ctx.layout.text(
-      card,
-      '',
-      { x: 16, y: 12 + index * 34, width: width - 64, height: 30 },
-      {
-        bindings: {
-          text: {
-            kind: 'expr',
-            expr: `${JSON.stringify(ctx.label(column.label) + ': ')} + item.${column.field}`
-          }
-        }
-      }
-    )
+  renderBusinessRowFields(screen, card, definition.columns, width)
   if (options.choose)
     ctx.layout.button(
       card,
@@ -92,6 +124,19 @@ export function renderBusinessList(
       renderCondition: `${options.condition ? '(' + options.condition + ') && ' : ''}${cursor} !== ""`
     }
   )
+  if (refresh)
+    ctx.layout.button(
+      parent,
+      ctx.copy.refresh,
+      { x: x + 408, y: y + 326, width: 190, height: 42 },
+      [
+        screen.clearSelection,
+        businessSet(screen.selectionReady, '!1'),
+        businessSet(after, '""'),
+        businessSet(refresh, `!${refresh.name}`)
+      ],
+      options.condition ? { renderCondition: options.condition } : {}
+    )
   return 380
 }
 
@@ -144,14 +189,14 @@ export function renderBusinessPrimaryList(screen: BusinessScreen): void {
     )
   }
   const y = screen.reserve(380)
-  const common = { searchExpr: listing.search ? query.name : undefined, choose }
+  const common = { searchExpr: listing.search ? query.name : undefined, choose, refreshable: true }
   if (!listing.filter) renderBusinessList(screen, screen.page, listing, y, common)
   else {
     const choice =
       listing.filter.choices
         .map(
           (entry) =>
-            `${filter.name} === ${JSON.stringify(ctx.label(entry.label))} ? ${JSON.stringify(entry.value)} : `
+            `${filter.name} === ${JSON.stringify(ctx.label(entry.label))} ? ${businessLiteral(entry.value)} : `
         )
         .join('') + '""'
     renderBusinessList(screen, screen.page, listing, y, {
@@ -187,15 +232,7 @@ export function renderBusinessPrimaryList(screen: BusinessScreen): void {
       },
       {
         renderCondition: screen.selection,
-        ...(column.multiline
-          ? { interactiveProps: { layout: { overflowY: 'auto', whiteSpace: 'pre-wrap' } } }
-          : {}),
-        bindings: {
-          text: {
-            kind: 'expr',
-            expr: `${JSON.stringify(ctx.label(column.label) + ': ')} + ${screen.selected}.${column.field}`
-          }
-        }
+        ...columnTextProps(column, ctx.label(column.label), screen.selected)
       }
     )
     detailOffset += column.multiline ? 344 : 38
@@ -219,7 +256,7 @@ export function renderBusinessPrimaryList(screen: BusinessScreen): void {
       filters: [
         {
           key: related.foreignKey,
-          valueExpr: `(${screen.selected}.id || "00000000-0000-4000-8000-000000000000")`
+          valueExpr: `(${screen.selected}.${related.selectionField ?? 'id'} || "00000000-0000-4000-8000-000000000000")`
         }
       ]
     })

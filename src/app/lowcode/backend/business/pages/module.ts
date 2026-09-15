@@ -23,6 +23,8 @@ import {
 } from './navigation'
 import { preflightBusinessPages } from './preflight'
 import { createBusinessScreen } from './screen'
+import { renderBusinessVideo } from './video'
+import { renderBusinessVRTour } from './vr-tour'
 
 interface PreparedModule {
   readonly editor: BusinessTemplateEditor
@@ -174,6 +176,8 @@ export function renderBusinessModulePages(
     const screen = createBusinessScreen(ctx, page)
     const actions = prepareBusinessActions(screen)
     renderBusinessPrimaryList(screen)
+    renderBusinessVRTour(screen)
+    renderBusinessVideo(screen)
     renderBusinessActions(screen, actions)
     screen.finish()
   }

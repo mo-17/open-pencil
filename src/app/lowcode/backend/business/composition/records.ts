@@ -1,13 +1,15 @@
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
 import { BUSINESS_ACCOUNT_ENTITY_ID, BUSINESS_REGISTRATION_COMMAND_ID } from './catalog'
-import { appendEntries, conflict, requireEntries } from './compare'
+import { appendEntries, conflict, requireEntries, requireEquivalent } from './compare'
 
 /** Adoption is explicit and checks every template-owned authority record, not its display name. */
 export function verifyBusinessRecords(
   base: BackendApplicationSpecV1,
   source: BackendApplicationSpecV1
 ): void {
+  if (source.foodOrdering)
+    requireEquivalent(base.foodOrdering, source.foodOrdering, '$.foodOrdering')
   requireEntries(base.dataModel.entities, source.dataModel.entities, '$.dataModel.entities')
   requireEntries(base.dataModel.enums, source.dataModel.enums, '$.dataModel.enums')
   requireEntries(base.dataModel.relations, source.dataModel.relations, '$.dataModel.relations')
@@ -34,6 +36,12 @@ export function appendBusinessRecords(
   sharedAccount: boolean
 ): void {
   const entityShared = sharedAccount ? [BUSINESS_ACCOUNT_ENTITY_ID] : []
+  if (source.foodOrdering) {
+    if (actual.foodOrdering)
+      conflict('$.foodOrdering', 'This application already owns a restaurant ordering profile.')
+    actual.foodOrdering = structuredClone(source.foodOrdering)
+    checked.foodOrdering = structuredClone(source.foodOrdering)
+  }
   const ownerShared = sharedAccount ? ['own-users'] : []
   appendEntries(
     actual.dataModel.entities,

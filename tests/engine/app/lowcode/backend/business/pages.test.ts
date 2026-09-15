@@ -54,6 +54,105 @@ function replaceFirstAction(
 }
 
 describe('business template generated pages', () => {
+  test.each(['personal-blog', 'automotive-news'] as const)(
+    '%s reads bookmark content through the current public article and rejects unavailable selection fields',
+    async (kind) => {
+      const fixture = await businessBrowserFixture(kind, 'react')
+      const definition = businessTemplateDefinition(kind)
+      const bookmarks = definition.pages.find((page) => page.id.endsWith('-bookmarks'))
+      const related = bookmarks?.related?.[0]
+      if (!bookmarks || !related) throw new Error('Missing bookmarked article reader')
+      expect(related.selectionField).toBe('article_id')
+      // Search the generated source by its declared resource; this exercises the actual
+      // list binding and multiline text emitted by the page builder.
+      const lists = [...fixture.graph.getAllNodes()].filter(
+        (node) => node.type === 'LIST' && node.name === related.resourceId
+      )
+      expect(
+        lists.some((node) => {
+          const source = node.interactiveProps?.dataSourceRef
+          return (
+            source?.kind === 'backendResource' &&
+            source.filterEntries?.some(
+              (entry) => entry.key === 'id' && entry.valueExpr.includes('.article_id')
+            )
+          )
+        })
+      ).toBe(true)
+      expect(
+        [...fixture.graph.getAllNodes()].some(
+          (node) =>
+            node.bindings?.text?.kind === 'expr' &&
+            node.bindings.text.expr.includes('item.body') &&
+            node.interactiveProps?.layout?.overflowY === 'auto'
+        )
+      ).toBe(true)
+      const invalid = {
+        ...definition,
+        pages: definition.pages.map((entry) =>
+          entry === bookmarks
+            ? {
+                ...entry,
+                related: [{ ...related, selectionField: 'private_body' }]
+              }
+            : entry
+        )
+      }
+      expect(() => preflightBusinessPages(fixture.application, invalid)).toThrow(
+        'related-record filter'
+      )
+    }
+  )
+
+  test('video players follow selected records without exposing playback URLs through favorites', async () => {
+    for (const target of ['react', 'vue'] as const) {
+      const value = await businessBrowserFixture('video-live', target)
+      const players = [...value.graph.getAllNodes()].filter(
+        (node) => node.interactiveProps?.module?.moduleType === 'video'
+      )
+      expect(players).toHaveLength(4)
+      for (const player of players) {
+        expect(player.bindings?.src).toEqual({
+          kind: 'expr',
+          expr: expect.stringMatching(/SelectedRecord\.playback_url$/u)
+        })
+        expect(player.bindings?.poster).toEqual({
+          kind: 'expr',
+          expr: expect.stringMatching(/SelectedRecord\.poster_url$/u)
+        })
+        expect(player.interactiveProps?.module?.config.autoplay).toBe(false)
+        expect(player.renderCondition).toContain('SelectionReady')
+        expect(player.renderCondition).toContain('$currentUser.generation')
+      }
+      const favorites = value.application.httpApi?.resources.find(
+        (entry) => entry.id === 'media-favorites'
+      )
+      expect(favorites?.readFields).not.toContain('playback_url')
+      expect(favorites?.readFields).not.toContain('poster_url')
+      const sources = [...value.output.files.values()]
+        .filter((entry) => typeof entry === 'string')
+        .join('\n')
+      expect(sources).toContain('<OpenPencilVideo')
+      expect(sources).toContain('.playback_url')
+      expect(sources).toContain('.poster_url')
+      expect(sources).toMatch(/\.active === ![01]/u)
+    }
+  })
+
+  test('video metadata rejects unreadable or non-text media fields before creating pages', async () => {
+    const value = await businessBrowserFixture('video-live', 'react')
+    for (const srcField of ['owner_id', 'version', 'missing_field']) {
+      const definition = structuredClone(businessTemplateDefinition('video-live'))
+      const changed = {
+        ...definition,
+        pages: definition.pages.map((page) =>
+          page.videoPlayer ? { ...page, videoPlayer: { ...page.videoPlayer, srcField } } : page
+        )
+      }
+      expect(() => preflightBusinessPages(value.application, changed)).toThrow('media field')
+    }
+  })
+
   for (const kind of BUSINESS_TEMPLATE_IDS)
     for (const locale of ['en', 'zh-CN'])
       test(`${kind} ${locale} keeps footer errors and controls within the real page geometry`, async () => {
@@ -66,6 +165,9 @@ describe('business template generated pages', () => {
           kind,
           locale
         )
+        const documentStates = value.graph.getNode(value.graph.rootId)?.lowcodeDocumentState ?? []
+        expect(documentStates.every((state) => state.name.length <= 64)).toBe(true)
+        expect(new Set(documentStates.map((state) => state.name)).size).toBe(documentStates.length)
         for (const pageId of result.pageIds) {
           const page = value.graph.getNode(pageId)
           if (!page) throw new Error('Missing generated page')
@@ -98,6 +200,29 @@ describe('business template generated pages', () => {
           sources.every((node) => node.interactiveProps?.dataSourceRef?.kind === 'backendResource')
         ).toBe(true)
       })
+
+  test('rental panoramas use the explicitly selected record and its session-bound visibility', async () => {
+    for (const target of ['react', 'vue'] as const) {
+      const value = await businessBrowserFixture('rental-viewing', target)
+      const tours = [...value.graph.getAllNodes()].filter(
+        (node) => node.interactiveProps?.module?.moduleType === 'vr-tour'
+      )
+      expect(tours).toHaveLength(2)
+      for (const tour of tours) {
+        expect(tour.bindings?.panoramaUrl).toEqual({
+          kind: 'expr',
+          expr: expect.stringMatching(/SelectedRecord\.panorama_url$/u)
+        })
+        expect(tour.renderCondition).toContain('$currentUser.generation')
+        expect(tour.renderCondition).toContain('SelectionReady')
+      }
+      expect(
+        [...value.output.files.values()].some(
+          (source) => source.includes('<OpenPencilVRTour') && source.includes('.panorama_url')
+        )
+      ).toBe(true)
+    }
+  })
 
   test('reads complete article bodies in a scrollable detail and coerces numeric fields in both targets', async () => {
     for (const target of ['react', 'vue'] as const) {

@@ -7,6 +7,7 @@ import {
   assertBusinessTemplateId,
   BUSINESS_TEMPLATE_IDS
 } from '@/app/lowcode/backend/business/model/types'
+import { requireBusinessTemplatePlugins } from '@/app/lowcode/backend/business/plugins'
 import { createBusinessPages } from '@/app/lowcode/backend/business/template'
 import type { BusinessTemplateEditor } from '@/app/lowcode/backend/business/types'
 import { appPluginStore } from '@/app/plugins'
@@ -31,7 +32,7 @@ export function createBusinessAITools(
       name: BUSINESS_AI_TOOL_NAME,
       mutates: true,
       description:
-        'Create a working, exportable business application or explicitly add a module to an existing compatible application: customer CRM (客户跟进), independent single-stage ticket approval (工单审批), plain-text content/knowledge base (内容知识库), capacity-checked bookings (预约报名), or project memberships/tasks (项目任务). mode=create requires an empty Backend/auth flow and public OIDC configuration. mode=add-module reviews compatibility, shares the existing login and account setup, appends navigation and preserves existing pages, permissions and customizations in one undoable change; omit authentication parameters. Requires an enabled NestJS provider. Does not grant roles, access credentials, start services, migrate databases, export, deploy or contact third-party services.',
+        'Create a working, exportable business application or explicitly add a module to an existing compatible application: customer CRM (客户跟进), independent single-stage ticket approval (工单审批), plain-text content/knowledge base (内容知识库), capacity-checked bookings (预约报名), project memberships/tasks (项目任务), rental listings and viewing appointments with a linked VR panorama (租房看房), video catalog/live channels with playback, creator management and favorites (视频网站与直播), single-restaurant dine-in/pickup food ordering with cart, menu management and kitchen transitions (点餐), personal blogging with categories, draft editing, publishing and private bookmarks (个人博客), automotive news with brands/models, editor/publisher roles and private bookmarks (汽车资讯), or single-hospital registration with departments, doctors, capacity-checked schedules, private patients, appointments and staff handling (医院挂号). Also supports procurement/inventory with partial receipts, returns and stocktakes (进销存), fixed two-stage leave/expense/purchase approvals (企业审批), immutable fixed-question surveys (问卷), text courses with enrollment and instructor grading (在线课程), and moderated discussions, replies, private follows and reports (社区论坛). Also supports individually tracked asset custody and maintenance (资产管理, asset-management), private single-line quote versions and recorded contract delivery/acceptance (报价与合同, quote-contracts), and private HR recruitment with onboarding/offboarding checklists (招聘与入离职, recruitment-hr). Contract confirmations are internal records, not electronic signatures; HR checklists never change identity-service access. Rental requires VR Tour; video-live requires Video. mode=create requires an empty Backend/auth flow and public OIDC configuration. mode=add-module reviews compatibility, shares the existing login and account setup, appends navigation and preserves existing pages, permissions and customizations in one undoable change; omit authentication parameters. Requires an enabled NestJS provider. Does not grant roles, access credentials, start services, migrate databases, export, deploy, start real streaming or contact third-party services.',
       params: {
         ...BACKEND_STARTER_AUTHENTICATION_PARAMS,
         authentication: {
@@ -111,6 +112,7 @@ export function createBusinessAITools(
           authentication: args.authentication
         })
         const descriptor = await resolveBackendStarterProvider(options, context?.signal)
+        requireBusinessTemplatePlugins(options.pluginStore ?? appPluginStore, args.kind)
         const authentication = {
           kind: 'oidc-pkce' as const,
           ...publicConfig,

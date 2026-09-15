@@ -4,7 +4,7 @@ import { canonicalManifestJSON } from '@open-pencil/scene-graph'
 
 import { listAppBackendProviderDescriptors } from '@/app/plugins/host/backend-provider'
 
-import { prepareBusinessModuleInstallation } from '../business/installation'
+import { prepareBusinessModuleInstallations } from '../business/installation'
 import {
   businessModuleDocumentFingerprint,
   moduleInstallationError
@@ -14,6 +14,7 @@ import type {
   BusinessModuleReview
 } from '../business/installation/types'
 import { BUSINESS_TEMPLATE_IDS, type BusinessTemplateId } from '../business/model/types'
+import { hasBusinessTemplatePlugins } from '../business/plugins'
 import { readBackendProviderDocumentRequest } from '../document'
 import type { BackendLibraryInstallContext } from './install'
 import { backendProviderDescriptorKey } from './provider-identity'
@@ -36,6 +37,7 @@ export function createBackendModuleInstaller(
   selectedProviderKey: () => string
 ) {
   const pending = new Map<BusinessTemplateId, BusinessModuleInstallation>()
+  const pluginAvailability = new Map<BusinessTemplateId, boolean>()
   let fingerprint = ''
   let reviewedGraph = context.editor.graph
   const unavailable = () => {
@@ -73,20 +75,30 @@ export function createBackendModuleInstaller(
       context.locale() +
       '\n' +
       canonicalManifestJSON(listAppBackendProviderDescriptors(context.store))
-    if (reviewedGraph === context.editor.graph && current === fingerprint) return ''
-    pending.clear()
-    reviewedGraph = context.editor.graph
-    fingerprint = current
-    for (const kind of BUSINESS_TEMPLATE_IDS)
-      pending.set(
-        kind,
-        prepareBusinessModuleInstallation({
-          editor: context.editor,
-          store: context.store,
-          kind,
-          locale: context.locale()
-        })
-      )
+    if (reviewedGraph !== context.editor.graph || current !== fingerprint) {
+      pending.clear()
+      pluginAvailability.clear()
+      reviewedGraph = context.editor.graph
+      fingerprint = current
+    }
+    // Toggling a canvas dependency only invalidates the templates that require it.
+    // Document, locale or Provider changes still invalidate every review above.
+    const changed: BusinessTemplateId[] = []
+    for (const kind of BUSINESS_TEMPLATE_IDS) {
+      const available = hasBusinessTemplatePlugins(context.store, kind)
+      if (pending.has(kind) && pluginAvailability.get(kind) === available) continue
+      changed.push(kind)
+      pluginAvailability.set(kind, available)
+    }
+    for (const [kind, installation] of prepareBusinessModuleInstallations(
+      {
+        editor: context.editor,
+        store: context.store,
+        locale: context.locale()
+      },
+      changed
+    ))
+      pending.set(kind, installation)
     return ''
   }
   const reviews = (): readonly BusinessModuleReview[] => {

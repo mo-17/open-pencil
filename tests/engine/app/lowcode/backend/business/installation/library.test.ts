@@ -58,6 +58,39 @@ async function libraryFixture() {
 }
 
 describe('module library review and unsaved draft preservation', () => {
+  test.each([
+    ['rental-viewing', 'open-pencil.vr-tour'],
+    ['video-live', 'open-pencil.video']
+  ] as const)(
+    'refreshes %s when its required module changes in the same panel',
+    async (kind, pluginId) => {
+      const fixture = await libraryFixture()
+      const moduleReview = () => fixture.installer.reviews().find((review) => review.kind === kind)
+      await fixture.store.setEnabled(pluginId, false)
+      expect(moduleReview()?.status).toBe('blocked')
+      const hospitalReview = fixture.installer
+        .reviews()
+        .find((review) => review.kind === 'hospital-registration')
+      expect(hospitalReview?.status).toBe('ready')
+      await fixture.store.setEnabled(pluginId, true)
+      const ready = moduleReview()
+      expect(ready?.status).toBe('ready')
+      expect(
+        fixture.installer.reviews().find((review) => review.kind === 'hospital-registration')
+      ).toBe(hospitalReview)
+      if (!ready) throw new Error('Missing module review')
+      await fixture.store.setEnabled(pluginId, false)
+      expect(moduleReview()?.status).toBe('blocked')
+      expect(await fixture.installer.add(kind, ready.reviewKey)).toBe(false)
+      await fixture.store.setEnabled(pluginId, true)
+      const renewed = moduleReview()
+      if (!renewed) throw new Error('Missing refreshed module review')
+      expect(await fixture.installer.add(kind, renewed.reviewKey)).toBe(true)
+    },
+    // Several complete catalog passes plus a real page installation across the full catalog.
+    15000
+  )
+
   test('keeps a review stable until change and installs through the library', async () => {
     const fixture = await libraryFixture()
     const first = fixture.installer.reviews().find((review) => review.kind === 'service-desk')

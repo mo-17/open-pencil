@@ -28,6 +28,7 @@ import {
   createMemoryAppPluginStateStorage
 } from '@/app/plugins'
 import {
+  AppBackendProviderBuildError,
   compileAppBackendProviderDocument,
   listAppBackendProviderDescriptors
 } from '@/app/plugins/host/backend-provider'
@@ -45,15 +46,22 @@ function authentication(): BackendHttpAPIOIDCAuthenticationIRV1 {
 async function fixture() {
   const store = createAppPluginStore({
     catalog: createBundledPluginCatalog().filter((entry) =>
-      ['open-pencil.nestjs-backend', 'open-pencil.supabase-backend'].includes(
-        entry.manifest.plugin.id
-      )
+      [
+        'open-pencil.nestjs-backend',
+        'open-pencil.supabase-backend',
+        'open-pencil.vr-tour',
+        'open-pencil.video'
+      ].includes(entry.manifest.plugin.id)
     ),
     storage: createMemoryAppPluginStateStorage(),
     activationCompatibilityPolicy: () => ({ ok: true }),
     engineVersion: '0.13.2'
   })
   await store.load()
+  await store.install('open-pencil.vr-tour')
+  await store.setEnabled('open-pencil.vr-tour', true)
+  await store.install('open-pencil.video')
+  await store.setEnabled('open-pencil.video', true)
   const descriptor = listAppBackendProviderDescriptors(store).find(
     (entry) => entry.providerId === 'nestjs'
   )
@@ -68,7 +76,10 @@ async function fixture() {
   let active = true
   const installer = createBackendLibraryInstaller({
     editor,
-    store: { installedBackendProviders: () => (active ? store.installedBackendProviders() : []) },
+    store: {
+      installedBackendProviders: () => (active ? store.installedBackendProviders() : []),
+      installedModules: () => store.installedModules()
+    },
     draft,
     busy,
     readError,
@@ -113,7 +124,21 @@ const templatePageCounts = {
   'service-desk': 4,
   'content-knowledge-base': 6,
   'booking-registration': 5,
-  'project-tasks': 4
+  'project-tasks': 4,
+  'rental-viewing': 6,
+  'video-live': 7,
+  'food-ordering': 8,
+  'hospital-registration': 11,
+  'personal-blog': 7,
+  'automotive-news': 12,
+  'procurement-inventory': 9,
+  'enterprise-approvals': 8,
+  'survey-forms': 7,
+  'online-courses': 9,
+  'community-forum': 11,
+  'asset-management': 7,
+  'quote-contracts': 7,
+  'recruitment-hr': 7
 } as const satisfies Record<BackendLibraryTemplateId, number>
 
 function templateEntryPath(template: BackendLibraryTemplateId): string {
@@ -125,6 +150,33 @@ function templateEntryPath(template: BackendLibraryTemplateId): string {
 }
 
 describe('backend library installation controller', () => {
+  test('requires an enabled Video plugin before creating video pages or backend state', async () => {
+    const value = await fixture()
+    await value.store.setEnabled('open-pencil.video', false)
+    const before = value.editor.snapshotDocument()
+    expect(await value.installer.create('video-live', authentication(), value.providerKey)).toBe(
+      false
+    )
+    expect(value.editor.documentSnapshotChanged(before)).toBe(false)
+    expect(value.editor.undo.canUndo).toBe(false)
+    expect(value.failures).toHaveLength(1)
+    expect(String(value.failures[0])).toContain('Install and enable Video')
+  })
+
+  test('requires the enabled VR plugin before mutating a rental document', async () => {
+    const value = await fixture()
+    await value.store.setEnabled('open-pencil.vr-tour', false)
+    const before = value.editor.snapshotDocument()
+    expect(
+      await value.installer.create('rental-viewing', authentication(), value.providerKey)
+    ).toBe(false)
+    expect(value.editor.documentSnapshotChanged(before)).toBe(false)
+    expect(value.editor.undo.canUndo).toBe(false)
+    expect(value.failures).toHaveLength(1)
+    expect(value.failures[0]).toBeInstanceOf(AppBackendProviderBuildError)
+    expect(String(value.failures[0])).toContain('Install and enable OpenPencil VR Tour')
+  })
+
   test.each(Object.keys(templatePageCounts) as BackendLibraryTemplateId[])(
     'creates %s with the selected public OIDC and one undo',
     async (template) => {
@@ -393,7 +445,35 @@ describe('backend library installation controller', () => {
     ['booking-registration', 'react'],
     ['booking-registration', 'vue'],
     ['project-tasks', 'react'],
-    ['project-tasks', 'vue']
+    ['project-tasks', 'vue'],
+    ['rental-viewing', 'react'],
+    ['rental-viewing', 'vue'],
+    ['video-live', 'react'],
+    ['video-live', 'vue'],
+    ['food-ordering', 'react'],
+    ['food-ordering', 'vue'],
+    ['hospital-registration', 'react'],
+    ['hospital-registration', 'vue'],
+    ['personal-blog', 'react'],
+    ['personal-blog', 'vue'],
+    ['automotive-news', 'react'],
+    ['automotive-news', 'vue'],
+    ['procurement-inventory', 'react'],
+    ['procurement-inventory', 'vue'],
+    ['enterprise-approvals', 'react'],
+    ['enterprise-approvals', 'vue'],
+    ['survey-forms', 'react'],
+    ['survey-forms', 'vue'],
+    ['online-courses', 'react'],
+    ['online-courses', 'vue'],
+    ['community-forum', 'react'],
+    ['community-forum', 'vue'],
+    ['asset-management', 'react'],
+    ['asset-management', 'vue'],
+    ['quote-contracts', 'react'],
+    ['quote-contracts', 'vue'],
+    ['recruitment-hr', 'react'],
+    ['recruitment-hr', 'vue']
   ] as const)(
     'exports %s from the library entry as %s without warnings',
     async (template, target) => {

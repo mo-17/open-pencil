@@ -8,7 +8,8 @@ import { validateBackendTemplatePages } from '@/app/lowcode/backend/template-val
 
 import { composeBusinessModules, detectStandaloneBusinessKinds } from '../composition'
 import { businessTemplateDefinition } from '../definitions'
-import { assertBusinessTemplateId } from '../model/types'
+import { assertBusinessTemplateId, type BusinessTemplateId } from '../model/types'
+import { requireBusinessTemplatePlugins } from '../plugins'
 import { prepareBusinessModulePages, renderBusinessModulePages } from '../template'
 import { businessLabel, businessText } from '../types'
 import {
@@ -58,7 +59,7 @@ export function prepareBusinessModuleInstallation(
 ): BusinessModuleInstallation {
   assertBusinessTemplateId(options.kind)
   try {
-    return prepareInstallation(options)
+    return prepareInstallation(options, reviewContext(options))
   } catch (cause) {
     return unavailableReview(
       options,
@@ -67,14 +68,63 @@ export function prepareBusinessModuleInstallation(
   }
 }
 
+function reviewContext(options: BusinessModuleInstallationOptions) {
+  const source = resolveBusinessModuleSource(options)
+  return {
+    source,
+    adopted: detectStandaloneBusinessKinds(source.application),
+    fingerprint: businessModuleDocumentFingerprint(options.editor.graph),
+    sourceIdentity: canonicalManifestJSON(source)
+  }
+}
+
+/** One synchronous catalog pass shares source verification, never apply authority. */
+export function prepareBusinessModuleInstallations(
+  options: Omit<BusinessModuleInstallationOptions, 'kind'>,
+  kinds: readonly BusinessTemplateId[]
+): ReadonlyMap<BusinessTemplateId, BusinessModuleInstallation> {
+  const result = new Map<BusinessTemplateId, BusinessModuleInstallation>()
+  const first = kinds.at(0)
+  if (!first) return result
+  for (const kind of kinds) assertBusinessTemplateId(kind)
+  try {
+    const context = reviewContext({ ...options, kind: first })
+    for (const kind of kinds) {
+      const request = { ...options, kind }
+      try {
+        result.set(kind, prepareInstallation(request, context))
+      } catch (cause) {
+        result.set(
+          kind,
+          unavailableReview(
+            request,
+            cause instanceof Error ? cause.message : 'The business module could not be prepared.'
+          )
+        )
+      }
+    }
+  } catch (cause) {
+    for (const kind of kinds)
+      result.set(
+        kind,
+        unavailableReview(
+          { ...options, kind },
+          cause instanceof Error ? cause.message : 'The business application could not be reviewed.'
+        )
+      )
+  }
+  return result
+}
+
 function prepareInstallation(
-  options: BusinessModuleInstallationOptions
+  options: BusinessModuleInstallationOptions,
+  context: ReturnType<typeof reviewContext>
 ): BusinessModuleInstallation {
   const { editor, kind } = options
+  requireBusinessTemplatePlugins(options.store, kind)
   const locale = options.locale ?? 'en'
   const graph = editor.graph
-  const source = resolveBusinessModuleSource(options)
-  const adopted = detectStandaloneBusinessKinds(source.application)
+  const { source, adopted, fingerprint, sourceIdentity } = context
   const installed =
     source.application.modules?.modules.some((module) => module.id === kind) ||
     adopted.includes(kind)
@@ -104,8 +154,6 @@ function prepareInstallation(
     existingPageIds: pages.map((page) => page.id),
     resourceBindings: composition.bindings[kind]
   })
-  const fingerprint = businessModuleDocumentFingerprint(graph)
-  const sourceIdentity = canonicalManifestJSON(source)
   const label = businessLabel(businessTemplateDefinition(kind).title, locale)
   const review: BusinessModuleReview = Object.freeze({
     kind,
@@ -126,6 +174,7 @@ function prepareInstallation(
     review,
     apply() {
       if (applied) throw moduleInstallationError('This module review has already been applied.')
+      requireBusinessTemplatePlugins(options.store, kind)
       if (
         editor.graph !== graph ||
         businessModuleDocumentFingerprint(graph) !== fingerprint ||
