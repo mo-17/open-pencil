@@ -28,6 +28,8 @@ import {
 } from './document'
 import { createBackendDraftId } from './draft'
 import { registerBackendDraftGuard } from './draft/pending'
+import { createBackendGettingStartedGuide } from './getting-started'
+import { backendGettingStartedViewCopy } from './getting-started/view-copy'
 import { backendLibraryCopy } from './library/copy'
 import {
   createBackendLibraryInstaller,
@@ -102,6 +104,43 @@ export function useBackendEditor() {
     fingerprintBackendEntries(editor.graph.getNode(editor.graph.rootId)?.pluginData ?? [])
   const backendEntryFingerprint = computed(() => fingerprintBackendEntries(rootPluginData.value))
   const hasBackendDeclaration = computed(() => backendEntryFingerprint.value !== '[]')
+  const gettingStartedGuide = computed(() => {
+    const saved = committedRequest.value
+    return saved?.selection.providerId === 'nestjs'
+      ? createBackendGettingStartedGuide(toRaw(saved.application), locale.value)
+      : null
+  })
+  const gettingStartedPages = useSceneComputed(() =>
+    editor.graph
+      .getPages()
+      .filter((page) => !page.internalOnly && page.lowcodeRoutePattern)
+      .map(({ id, name, lowcodeRoutePattern }) => ({ id, name, lowcodeRoutePattern }))
+  )
+  const hasUnsavedBackendDraft = computed(() => {
+    void draftRevision.value
+    const saved = committedRequest.value
+    return Boolean(
+      saved &&
+      (canonicalManifestJSON(toRaw(draft.value)) !== canonicalManifestJSON(saved.application) ||
+        selectedProviderKey.value !== backendProviderDescriptorKey(saved.selection))
+    )
+  })
+
+  const openGettingStartedPage = async (id: string): Promise<void> => {
+    if (busy.value || !gettingStartedGuide.value) return
+    const graph = editor.graph
+    const page = graph.getNode(id)
+    if (page?.type !== 'CANVAS' || page.internalOnly || !page.lowcodeRoutePattern) {
+      operationError.value = backendGettingStartedViewCopy(locale.value).pageUnavailable
+      return
+    }
+    try {
+      await editor.switchPage(id)
+      if (editor.graph === graph) editor.zoomToFit()
+    } catch {
+      operationError.value = backendGettingStartedViewCopy(locale.value).pageUnavailable
+    }
+  }
 
   const safeOperationMessage = (cause: unknown): string => {
     if (
@@ -388,6 +427,10 @@ export function useBackendEditor() {
   }
 
   return {
+    gettingStartedGuide,
+    gettingStartedPages,
+    hasUnsavedBackendDraft,
+    openGettingStartedPage,
     moduleReviews,
     addLibraryModule: moduleInstaller.add,
     libraryBlockReason,

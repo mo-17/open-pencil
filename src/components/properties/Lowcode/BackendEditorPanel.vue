@@ -16,6 +16,7 @@ import BackendSecurityEditor from '@/app/lowcode/backend/components/BackendSecur
 import BackendStorageEditor from '@/app/lowcode/backend/components/BackendStorageEditor.vue'
 import BackendWorkflowEditor from '@/app/lowcode/backend/components/BackendWorkflowEditor.vue'
 import { nestJSUICopy } from '@/app/lowcode/backend/components/nestjs-ui-copy'
+import BackendGettingStarted from '@/app/lowcode/backend/getting-started/BackendGettingStarted.vue'
 import BackendLibraryDialog from '@/app/lowcode/backend/library/BackendLibraryDialog.vue'
 import {
   createBackendLibraryCatalog,
@@ -59,6 +60,10 @@ const tabs = Object.freeze([
   'migration'
 ] as const satisfies readonly BackendTab[])
 const {
+  gettingStartedGuide,
+  gettingStartedPages,
+  hasUnsavedBackendDraft,
+  openGettingStartedPage,
   libraryBlockReason,
   moduleReviews,
   addLibraryModule,
@@ -88,6 +93,8 @@ const {
 } = useBackendEditor()
 
 const isNestJS = computed(() => selectedDescriptor.value?.providerId === 'nestjs')
+const isPrismaCRM = computed(() => selectedDescriptor.value?.providerId === 'nestjs-prisma-crm')
+const usesNestJSModel = computed(() => isNestJS.value || isPrismaCRM.value)
 const libraryItems = computed(() =>
   createBackendLibraryCatalog(
     providerDescriptors.value.map((descriptor) => ({
@@ -105,7 +112,7 @@ const templateProviderKey = computed(() => {
   return descriptor ? backendProviderDescriptorKey(descriptor) : ''
 })
 const visibleTabs = computed(() =>
-  isNestJS.value
+  usesNestJSModel.value
     ? (['model', 'http', 'commands', 'relations', 'security', 'migration'] as const)
     : tabs
 )
@@ -213,6 +220,16 @@ function tabLabel(tab: BackendTab): string {
         {{ libraryText.browse }}
       </AppButton>
     </div>
+    <BackendGettingStarted
+      v-if="gettingStartedGuide"
+      :guide="gettingStartedGuide"
+      :pages="gettingStartedPages"
+      :unsaved="hasUnsavedBackendDraft"
+      :busy="busy"
+      @configure="activeTab = 'http'"
+      @modules="libraryOpen = true"
+      @open-page="openGettingStartedPage"
+    />
     <BackendLibraryDialog
       v-model:open="libraryOpen"
       :items="libraryItems"
@@ -261,7 +278,7 @@ function tabLabel(tab: BackendTab): string {
               :key="backendProviderDescriptorKey(descriptor)"
               :value="backendProviderDescriptorKey(descriptor)"
             >
-              {{ backendProviderDescriptorLabel(descriptor) }}
+              {{ backendProviderDescriptorLabel(descriptor, locale) }}
             </option>
           </select>
           <p v-if="providersLoading" class="text-[10px] text-muted">
@@ -326,6 +343,13 @@ function tabLabel(tab: BackendTab): string {
         </button>
       </div>
 
+      <p
+        v-if="isPrismaCRM"
+        data-test-id="lowcode-backend-prisma-crm-hint"
+        class="mt-2 text-[10px] leading-relaxed text-muted"
+      >
+        {{ nestJSText.prismaCRMHint }}
+      </p>
       <div v-if="isNestJS" class="mt-2 flex flex-col gap-2">
         <p class="text-[10px] text-muted">{{ nestJSText.modelHint }}</p>
         <button
@@ -343,17 +367,17 @@ function tabLabel(tab: BackendTab): string {
       <BackendDataModelEditor
         v-else-if="activeTab === 'model'"
         :application="draft"
-        :nestjs="isNestJS"
+        :nestjs="usesNestJSModel"
       />
       <BackendRelationsEditor
         v-else-if="activeTab === 'relations'"
         :application="draft"
-        :nestjs="isNestJS"
+        :nestjs="usesNestJSModel"
       />
       <BackendSecurityEditor
         v-else-if="activeTab === 'security'"
         :application="draft"
-        :nestjs="isNestJS"
+        :nestjs="usesNestJSModel"
       />
       <BackendWorkflowEditor v-else-if="activeTab === 'workflows'" :application="draft" />
       <BackendStorageEditor v-else-if="activeTab === 'storage'" :application="draft" />
