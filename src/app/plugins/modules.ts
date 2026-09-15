@@ -40,6 +40,9 @@ import {
   UPLOAD_BUTTON_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
   VIDEO_PLUGIN_ID,
+  VR_TOUR_MODULE_TYPE,
+  VR_TOUR_PLUGIN_ID,
+  createLocalizedVRTourConfig,
   type ModuleDefinition
 } from '@open-pencil/core/plugins'
 import { type DeclarativeModuleContributionV1 } from '@open-pencil/plugin-contracts'
@@ -49,6 +52,7 @@ import type { EditorStore } from '@/app/editor/active-store'
 import type { InstalledPluginModule } from './types'
 
 const TRUSTED_MODULE_ADAPTERS = new Map([
+  ['open-pencil.vr-tour', { pluginId: VR_TOUR_PLUGIN_ID, moduleType: VR_TOUR_MODULE_TYPE }],
   ['open-pencil.map', { pluginId: MAP_PLUGIN_ID, moduleType: MAP_MODULE_TYPE }],
   ['open-pencil.chart', { pluginId: CHART_PLUGIN_ID, moduleType: CHART_MODULE_TYPE }],
   ['open-pencil.rich-text', { pluginId: RICH_TEXT_PLUGIN_ID, moduleType: RICH_TEXT_MODULE_TYPE }],
@@ -229,7 +233,8 @@ function trustedDefinition(module: InstalledPluginModule): ModuleDefinition {
 
 export function addInstalledPluginModuleToCanvas(
   editor: EditorStore,
-  module: InstalledPluginModule
+  module: InstalledPluginModule,
+  locale = 'en'
 ): string {
   const definition = trustedDefinition(module)
   const canvasCenter = editor.viewportCanvasCenter()
@@ -239,7 +244,13 @@ export function addInstalledPluginModuleToCanvas(
     parentId === editor.state.currentPageId
       ? { x: 0, y: 0 }
       : editor.graph.getAbsolutePosition(parentId)
-  const overrides = definition.createFrameOverrides(module.contribution.defaultConfig)
+  const isBundledTour =
+    module.plugin.package.trustSource === 'app-bundle' &&
+    definition.pluginId === VR_TOUR_PLUGIN_ID &&
+    definition.moduleType === VR_TOUR_MODULE_TYPE
+  const overrides = definition.createFrameOverrides(
+    isBundledTour ? createLocalizedVRTourConfig(locale) : module.contribution.defaultConfig
+  )
   const initialOverrides = { ...overrides }
   delete initialOverrides.x
   delete initialOverrides.y
@@ -255,7 +266,7 @@ export function addInstalledPluginModuleToCanvas(
     width,
     height,
     parentId,
-    module.contribution.name,
+    isBundledTour && locale.startsWith('zh') ? 'VR 看房' : module.contribution.name,
     initialOverrides
   )
   editor.select([id])

@@ -1,4 +1,6 @@
 const english = {
+  prismaCRMHint:
+    'Experimental CRM source export: Prisma 8 RC reads customers; pg handles business commands. Create the Customer CRM template with NestJS first, then switch here and save. Other templates, combined modules and editor preview are unsupported. Run the exported project separately; SQL migrations remain the schema owner.',
   modelHint:
     'NestJS generates API access from the declared public, owner, role and supported tenant policies. New entities start with a protected UUID key, owner field and owner permissions.',
   httpHint:
@@ -45,6 +47,8 @@ const english = {
 }
 
 const chinese: typeof english = {
+  prismaCRMHint:
+    'CRM 源码导出实验：Prisma 8 RC 读取客户，pg 执行业务命令。请先用 NestJS 创建客户 CRM 模板，再切换至此并保存。暂不支持其他模板、组合业务模块和编辑器预览；导出后独立运行，数据库结构仍由 SQL 迁移管理。',
   modelHint:
     'NestJS 根据公开访问、所有者、角色和受支持的租户策略生成 API 权限。新建实体默认包含受保护的 UUID 主键、所有者字段和所有者权限。',
   httpHint:

@@ -122,7 +122,8 @@ export function createMiniProgramSourceCompiler(
         try {
           const response = parseMiniProgramSourceCompilerWorkerResponse(
             event.data,
-            request.requestId
+            request.requestId,
+            request.options.target
           )
           if (!response) {
             if (hasCorrelatedWorkerRequestId(event.data, request.requestId)) {

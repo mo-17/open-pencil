@@ -1,6 +1,7 @@
 import { shallowRef } from 'vue'
 
 import { IS_BROWSER } from '@open-pencil/core/constants'
+import { VR_TOUR_PLUGIN_ID } from '@open-pencil/core/plugins'
 
 import { getActiveEditorStoreOrNull, type EditorStore } from '@/app/editor/active-store'
 
@@ -48,10 +49,13 @@ import type {
   AppPluginActivationCompatibilityPolicy,
   AppPluginMarketplaceTrustBundle
 } from './types'
+import { ensureVRTourSampleAssets, removeVRTourSampleAssets } from './vr-tour/assets'
+import { createVRTourSamplePluginLifecycle } from './vr-tour/assets/lifecycle'
 
 const usesBrowserIndexedDB = IS_BROWSER && typeof indexedDB !== 'undefined'
-const storage =
-  usesBrowserIndexedDB ? createIdbAppPluginStateStorage() : createMemoryAppPluginStateStorage()
+const storage = usesBrowserIndexedDB
+  ? createIdbAppPluginStateStorage()
+  : createMemoryAppPluginStateStorage()
 
 const remoteTrustConfigJSON = import.meta.env.VITE_OPENPENCIL_PLUGIN_TRUST_CONFIG?.trim() ?? ''
 const managedMarketplaceTrustConfigJSON = import.meta.env.VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG
@@ -60,12 +64,12 @@ export const appPluginRemoteCatalogConfigured =
   remoteTrustConfigJSON.length > 0 || appPluginMarketplaceConfigured
 export const appPluginRemoteCatalogSnapshot = shallowRef<RemotePluginCatalogLoadResult | null>(null)
 export const appPluginMarketplaceSnapshot = shallowRef<MarketplaceSnapshotLoadResult | null>(null)
-const remoteCache =
-  usesBrowserIndexedDB ? createIdbRemotePluginCacheStorage() : createMemoryRemotePluginCacheStorage()
-const marketplaceSourceStorage =
-  usesBrowserIndexedDB
-    ? createBrowserMarketplaceSourceStorage()
-    : createMemoryMarketplaceSourceStorage()
+const remoteCache = usesBrowserIndexedDB
+  ? createIdbRemotePluginCacheStorage()
+  : createMemoryRemotePluginCacheStorage()
+const marketplaceSourceStorage = usesBrowserIndexedDB
+  ? createBrowserMarketplaceSourceStorage()
+  : createMemoryMarketplaceSourceStorage()
 const pluginEngineVersion =
   typeof __OPENPENCIL_APP_VERSION__ === 'string' ? __OPENPENCIL_APP_VERSION__ : '0.0.0'
 let appPluginTrustLastSeen = Date.now()
@@ -315,10 +319,9 @@ appConnectorAuthorization.subscribe(() => {
 const appPluginMarketplaceSourceReady = appPluginMarketplaceSourceManager.load()
 export const appPluginStoreReady = appPluginMarketplaceSourceReady.then(() => appPluginStore.load())
 
-const runtimePolicyStorage =
-  usesBrowserIndexedDB
-    ? createIdbPluginRuntimePolicyStorage()
-    : createMemoryPluginRuntimePolicyStorage()
+const runtimePolicyStorage = usesBrowserIndexedDB
+  ? createIdbPluginRuntimePolicyStorage()
+  : createMemoryPluginRuntimePolicyStorage()
 
 export const appPluginRuntimeManager = createPluginRuntimeManager({
   storage: runtimePolicyStorage,
@@ -407,7 +410,37 @@ export function refreshAppPluginCatalog() {
   return appPluginStore.refreshCatalog()
 }
 
+/** Bundled VR installation includes its verified optional sample resource pack. */
+const vrTourPluginLifecycle = createVRTourSamplePluginLifecycle({
+  ensure: ensureVRTourSampleAssets,
+  remove: removeVRTourSampleAssets
+})
+
+export async function installAppPlugin(pluginId: string) {
+  if (pluginId !== VR_TOUR_PLUGIN_ID) return appPluginStore.install(pluginId)
+  await appPluginStoreReady
+  const reviewed = appPluginStore
+    .snapshot()
+    .catalog.find((item) => item.package.manifest.plugin.id === pluginId)?.package
+  if (reviewed?.trustSource !== 'app-bundle')
+    throw new Error('VR tour samples require the reviewed bundled plugin')
+  return vrTourPluginLifecycle.install(() => {
+    const current = appPluginStore
+      .snapshot()
+      .catalog.find((item) => item.package.manifest.plugin.id === pluginId)?.package
+    if (current?.trustSource !== 'app-bundle' || current.digest !== reviewed.digest)
+      throw new Error('VR tour plugin changed while its samples were being prepared')
+    return appPluginStore.install(pluginId)
+  })
+}
+
 export async function uninstallAppPlugin(pluginId: string): Promise<void> {
+  if (pluginId === VR_TOUR_PLUGIN_ID)
+    return vrTourPluginLifecycle.uninstall(() => uninstallAppPluginRuntime(pluginId))
+  return uninstallAppPluginRuntime(pluginId)
+}
+
+async function uninstallAppPluginRuntime(pluginId: string): Promise<void> {
   await appPluginRuntimeReady
   const installed = appPluginStore
     .snapshot()

@@ -380,9 +380,12 @@ export function assertMiniProgramCompilerOutputWithinLimits(output: CompilerOutp
   )
 }
 
-export function assertMiniProgramCompilerOutputForTransfer(output: CompilerOutput): void {
+export function assertMiniProgramCompilerOutputForTransfer(
+  output: CompilerOutput,
+  expectedTarget?: CompilerOptions['target']
+): void {
   assertMiniProgramCompilerOutputWithinLimits(output)
-  assertMiniProgramCompilerOutputSafe(output)
+  assertMiniProgramCompilerOutputSafe(output, expectedTarget)
 }
 
 function parseWorkerErrorResponse(
@@ -444,7 +447,8 @@ function parseWorkerProgressResponse(
 
 function parseWorkerResultResponse(
   response: MiniProgramWorkerRecord,
-  requestIdValue: string
+  requestIdValue: string,
+  expectedTarget?: CompilerOptions['target']
 ): MiniProgramSourceCompilerWorkerResponse | null {
   if (
     !hasExactKeys(
@@ -457,7 +461,7 @@ function parseWorkerResultResponse(
   }
   const output = Object.getOwnPropertyDescriptor(response, 'output')?.value
   if (!output) return null
-  assertMiniProgramCompilerOutputForTransfer(output as CompilerOutput)
+  assertMiniProgramCompilerOutputForTransfer(output as CompilerOutput, expectedTarget)
   return {
     version: MINIPROGRAM_SOURCE_COMPILER_WORKER_PROTOCOL_VERSION,
     type: 'result',
@@ -468,7 +472,8 @@ function parseWorkerResultResponse(
 
 export function parseMiniProgramSourceCompilerWorkerResponse(
   value: unknown,
-  expectedRequestId: string
+  expectedRequestId: string,
+  expectedTarget?: CompilerOptions['target']
 ): MiniProgramSourceCompilerWorkerResponse | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
   const version = Object.getOwnPropertyDescriptor(value, 'version')?.value
@@ -483,6 +488,7 @@ export function parseMiniProgramSourceCompilerWorkerResponse(
   const responseType = Object.getOwnPropertyDescriptor(response, 'type')?.value
   if (responseType === 'error') return parseWorkerErrorResponse(response, expectedRequestId)
   if (responseType === 'progress') return parseWorkerProgressResponse(response, expectedRequestId)
-  if (responseType === 'result') return parseWorkerResultResponse(response, expectedRequestId)
+  if (responseType === 'result')
+    return parseWorkerResultResponse(response, expectedRequestId, expectedTarget)
   return null
 }

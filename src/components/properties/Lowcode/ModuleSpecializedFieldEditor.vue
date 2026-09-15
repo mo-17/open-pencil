@@ -10,7 +10,8 @@ import {
   type RichTextDocumentV1,
   type SlideMenuItemV1,
   type TableDataV1,
-  type TabsItemV1
+  type TabsItemV1,
+  type VRTourSceneV1
 } from '@open-pencil/core/plugins'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
@@ -20,14 +21,15 @@ import AccordionItemsEditor from './AccordionItemsEditor.vue'
 import DataGridCsvEditor from './DataGridCsvEditor.vue'
 import DropdownMenuItemsEditor from './DropdownMenuItemsEditor.vue'
 import HtmlContentEditor from './HtmlContentEditor.vue'
+import type { SpecializedModuleFieldKind } from './module-property-field'
+import { valueAtPath } from './module-props-panel-controller'
 import MultilineModuleTextEditor from './MultilineModuleTextEditor.vue'
 import RichTextContentEditor from './RichTextContentEditor.vue'
 import SlideMenuItemsEditor from './SlideMenuItemsEditor.vue'
 import TableContentEditor from './TableContentEditor.vue'
 import TabsItemsEditor from './TabsItemsEditor.vue'
 import UploadAcceptEditor from './UploadAcceptEditor.vue'
-import { valueAtPath } from './module-props-panel-controller'
-import type { SpecializedModuleFieldKind } from './module-property-field'
+import VRTourScenesEditor from './VRTourScenesEditor.vue'
 
 const { field, config, kind, label, error, moduleEditorText } = defineProps<{
   field: ModulePropertyField
@@ -91,11 +93,32 @@ function accordionItems(): AccordionItemV1[] {
   const value = fieldValue()
   return Array.isArray(value) ? (value as AccordionItemV1[]) : []
 }
+
+function tourScenes(): VRTourSceneV1[] {
+  return Array.isArray(config.scenes) ? (config.scenes as VRTourSceneV1[]) : []
+}
 </script>
 
 <template>
+  <VRTourScenesEditor
+    v-if="kind === 'vr-tour-scenes'"
+    :model-value="tourScenes()"
+    :label="label"
+    @commit="emit('commit', $event)"
+  />
+  <select
+    v-else-if="kind === 'vr-tour-initial-scene'"
+    :value="textValue()"
+    :aria-label="label"
+    class="h-9 w-full rounded border border-border bg-input px-2 text-xs text-surface outline-none focus:border-accent"
+    @change="emit('commit', ($event.target as HTMLSelectElement).value)"
+  >
+    <option v-for="scene in tourScenes()" :key="scene.id" :value="scene.id">
+      {{ scene.title }}
+    </option>
+  </select>
   <RichTextContentEditor
-    v-if="kind === 'rich-text-content'"
+    v-else-if="kind === 'rich-text-content'"
     :model-value="richTextDocument()"
     @commit="emit('commit', $event)"
   />

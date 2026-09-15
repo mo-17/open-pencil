@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { VR_TOUR_MODULE_TYPE, VR_TOUR_PLUGIN_ID } from '@open-pencil/core/plugins'
+
 import { useSectionUI } from '@/components/ui/section'
 
-import ModulePropertyFieldEditor from './ModulePropertyFieldEditor.vue'
 import { useModulePropsPanelController } from './module-props-panel-controller'
+import ModulePropertyFieldEditor from './ModulePropertyFieldEditor.vue'
+import VRTourSamplesPanel from './VRTourSamplesPanel.vue'
 
 const sectionCls = useSectionUI()
 const {
@@ -44,6 +47,14 @@ const {
     >
       {{ statusMessage }}
     </p>
+
+    <VRTourSamplesPanel
+      v-if="
+        definition?.pluginId === VR_TOUR_PLUGIN_ID &&
+        definition.moduleType === VR_TOUR_MODULE_TYPE &&
+        !statusMessage
+      "
+    />
 
     <ModulePropertyFieldEditor
       v-for="field in fields"

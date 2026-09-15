@@ -3,6 +3,7 @@ import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'rek
 /* eslint-disable max-lines -- Plugin settings coordinates lifecycle, runtime, host actions, and dependency review. */
 import { computed, nextTick, ref } from 'vue'
 
+import { VR_TOUR_PLUGIN_ID } from '@open-pencil/core/plugins'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 
@@ -27,6 +28,7 @@ import {
   inspectConnectorManifestCompatibility,
   inspectPluginModuleContributionsCompatibility,
   inspectPluginModuleCompatibility,
+  installAppPlugin,
   resolveAppPluginDocumentDependencies,
   resetAppPluginLocalState,
   reviewAppPluginMarketplaceSource,
@@ -73,6 +75,11 @@ import {
   pluginV2ContractSummaries,
   type PluginMarketplaceKeyStatus
 } from '@/app/plugins/settings-view-model'
+import {
+  VRTourSampleAssetError,
+  vrTourSampleAssetCopy,
+  vrTourSampleAssetErrorMessage
+} from '@/app/plugins/vr-tour/assets'
 import { settingsDialogOpen } from '@/app/settings/dialog'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
 import AppBadge from '@/components/ui/feedback/AppBadge.vue'
@@ -100,6 +107,8 @@ const editor = useEditorStore()
 const view = ref<'browse' | 'installed'>('browse')
 const busyPluginId = ref<string | null>(null)
 const operationError = ref<string | null>(null)
+const sampleInstallBusy = ref(false)
+const sampleAssetCopy = computed(() => vrTourSampleAssetCopy(locale.value))
 const pendingUninstallId = ref<string | null>(null)
 const pendingPinReplacementId = ref<string | null>(null)
 const pendingResetPluginId = ref<string | null>(null)
@@ -666,7 +675,9 @@ async function mutate(
     await operation()
     return null
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error)
+    let reason = error instanceof Error ? error.message : String(error)
+    if (error instanceof VRTourSampleAssetError)
+      reason = vrTourSampleAssetErrorMessage(error, locale.value)
     operationError.value = dialogs.value.pluginOperationFailed({
       error: reason
     })
@@ -861,8 +872,19 @@ function install(pluginIdValue: string, event: Event): void {
     return
   }
   void mutate(pluginIdValue, async () => {
-    await appPluginStore.install(pluginIdValue)
-    view.value = 'installed'
+    sampleInstallBusy.value = pluginIdValue === VR_TOUR_PLUGIN_ID
+    try {
+      await installAppPlugin(pluginIdValue)
+      view.value = 'installed'
+    } catch (error) {
+      if (error instanceof VRTourSampleAssetError)
+        throw new Error(
+          `${sampleAssetCopy.value.failure} ${vrTourSampleAssetErrorMessage(error, locale.value)}`
+        )
+      throw error
+    } finally {
+      sampleInstallBusy.value = false
+    }
   })
 }
 
@@ -1353,7 +1375,11 @@ function confirmResetLocalState(): void {
                       )
                     ? dialogs.pluginReplacePin
                     : hasCompatibleContributions(item.package.manifest)
-                      ? dialogs.pluginInstall
+                      ? item.package.manifest.plugin.id === VR_TOUR_PLUGIN_ID
+                        ? sampleInstallBusy
+                          ? sampleAssetCopy.preparing
+                          : sampleAssetCopy.install
+                        : dialogs.pluginInstall
                       : dialogs.pluginNoCompatibleContributions
               }}
             </button>

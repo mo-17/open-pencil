@@ -127,9 +127,9 @@ export function createMiniProgramSourceExporter(
         }
       },
       buildProject(compiledFiles, warnings) {
-        assertMiniProgramCompilerOutputSafe({ files: compiledFiles, warnings })
+        assertMiniProgramCompilerOutputSafe({ files: compiledFiles, warnings }, target)
         const project = buildSourceProjectExportFiles(compiledFiles, warnings, definition.name)
-        assertMiniProgramProjectArtifactSafe(project)
+        assertMiniProgramProjectArtifactSafe(project, target)
         assertMiniProgramExportProjectBudget(target, project)
         return project
       }

@@ -23,6 +23,8 @@ import {
   TABS_PLUGIN_ID,
   UPLOAD_BUTTON_MODULE_TYPE,
   UPLOAD_BUTTON_PLUGIN_ID,
+  VR_TOUR_MODULE_TYPE,
+  VR_TOUR_PLUGIN_ID,
   type ModuleDefinition,
   type ModulePropertyField
 } from '@open-pencil/core/plugins'
@@ -40,6 +42,8 @@ export type SpecializedModuleFieldKind =
   | 'table-content'
   | 'tabs-items'
   | 'upload-accept'
+  | 'vr-tour-scenes'
+  | 'vr-tour-initial-scene'
 
 interface SpecializedFieldIdentity {
   readonly pluginId: string
@@ -49,6 +53,18 @@ interface SpecializedFieldIdentity {
 }
 
 const SPECIALIZED_FIELDS: readonly SpecializedFieldIdentity[] = Object.freeze([
+  {
+    pluginId: VR_TOUR_PLUGIN_ID,
+    moduleType: VR_TOUR_MODULE_TYPE,
+    path: 'scenes',
+    kind: 'vr-tour-scenes'
+  },
+  {
+    pluginId: VR_TOUR_PLUGIN_ID,
+    moduleType: VR_TOUR_MODULE_TYPE,
+    path: 'initialSceneId',
+    kind: 'vr-tour-initial-scene'
+  },
   {
     pluginId: RICH_TEXT_PLUGIN_ID,
     moduleType: RICH_TEXT_MODULE_TYPE,

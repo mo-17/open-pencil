@@ -1,4 +1,9 @@
-import { isReviewedMiniProgramRasterAsset, type CompileWarning } from '@open-pencil/compiler'
+import {
+  isReviewedMiniProgramRasterAsset,
+  reviewTaroVRTourHybridArtifacts,
+  type CompilerTarget,
+  type CompileWarning
+} from '@open-pencil/compiler'
 import { findCodePenSecretKinds } from '@open-pencil/lowcode'
 
 export type MiniProgramArtifactSecurityCode =
@@ -7,6 +12,7 @@ export type MiniProgramArtifactSecurityCode =
   | 'absolute-local-path-detected'
   | 'dynamic-code-detected'
   | 'unreviewed-binary-artifact'
+  | 'unreviewed-vr-tour-artifact'
   | 'unsafe-file-path'
 
 export type MiniProgramArtifactSecuritySource =
@@ -64,6 +70,7 @@ const MESSAGE_BY_CODE: Readonly<Record<MiniProgramArtifactSecurityCode, string>>
   'absolute-local-path-detected': 'an absolute local filesystem path',
   'dynamic-code-detected': 'a dynamic code-loading construct',
   'unreviewed-binary-artifact': 'an unreviewed or malformed binary artifact',
+  'unreviewed-vr-tour-artifact': 'an incomplete or modified VR tour source artifact',
   'unsafe-file-path': 'an unsafe archive file path'
 })
 
@@ -126,10 +133,11 @@ function localPathDetected(value: string): boolean {
 function scanText(
   value: string,
   source: MiniProgramArtifactSecuritySource,
-  entryIndex: number
+  entryIndex: number,
+  reviewedTourData = false
 ): void {
   if (secretDetected(value)) reject('secret-detected', source, entryIndex)
-  if (REMOTE_URL.test(value) || PROTOCOL_RELATIVE_REMOTE_URL.test(value)) {
+  if (!reviewedTourData && (REMOTE_URL.test(value) || PROTOCOL_RELATIVE_REMOTE_URL.test(value))) {
     reject('remote-url-detected', source, entryIndex)
   }
   if (localPathDetected(value)) {
@@ -172,13 +180,37 @@ function scanFilePath(path: string, entryIndex: number): void {
   }
 }
 
-function scanFiles(files: ReadonlyMap<string, string | Uint8Array>): void {
+function scanFiles(files: ReadonlyMap<string, string | Uint8Array>, target?: CompilerTarget): void {
   const entries = [...files].sort(([left], [right]) => compareCodeUnits(left, right))
+  entries.forEach(([path], entryIndex) => scanFilePath(path, entryIndex))
+  const review = target === 'taro' ? reviewTourArtifacts(files, entries) : undefined
   entries.forEach(([path, content], entryIndex) => {
-    scanFilePath(path, entryIndex)
+    if (review?.paths.has(path)) return
     if (typeof content === 'string') scanText(content, 'text-content', entryIndex)
     else scanBinary(path, content, entryIndex)
   })
+}
+
+function reviewTourArtifacts(
+  files: ReadonlyMap<string, string | Uint8Array>,
+  entries: readonly (readonly [string, string | Uint8Array])[]
+) {
+  const entryIndex = entries.findIndex(([path]) => path.startsWith('vr-tour-web/'))
+  let review: ReturnType<typeof reviewTaroVRTourHybridArtifacts>
+  try {
+    review = reviewTaroVRTourHybridArtifacts(files)
+  } catch {
+    reject('unreviewed-vr-tour-artifact', 'text-content', Math.max(0, entryIndex))
+  }
+  if (review) {
+    // Only closed authored tour data may contain reviewed panorama URLs. The
+    // compiler compared every executable/provenance file with its own output.
+    scanText(review.manifest, 'text-content', entryIndex, true)
+    for (const bytes of review.images) {
+      scanBinaryMetadata(BINARY_METADATA_DECODER.decode(bytes), entryIndex)
+    }
+  }
+  return review
 }
 
 function scanWarnings(warnings: readonly CompileWarning[]): void {
@@ -189,15 +221,19 @@ function scanWarnings(warnings: readonly CompileWarning[]): void {
   })
 }
 
-export function assertMiniProgramCompilerOutputSafe(output: MiniProgramCompilerArtifact): void {
-  scanFiles(output.files)
+export function assertMiniProgramCompilerOutputSafe(
+  output: MiniProgramCompilerArtifact,
+  target?: CompilerTarget
+): void {
+  scanFiles(output.files, target)
   scanWarnings(output.warnings)
 }
 
 export function assertMiniProgramProjectArtifactSafe(
-  files: ReadonlyMap<string, string | Uint8Array>
+  files: ReadonlyMap<string, string | Uint8Array>,
+  target?: CompilerTarget
 ): void {
-  scanFiles(files)
+  scanFiles(files, target)
 }
 
 export function assertMiniProgramWorkerDiagnosticSafe(error: string): void {

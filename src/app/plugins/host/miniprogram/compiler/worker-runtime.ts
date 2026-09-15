@@ -78,7 +78,7 @@ export async function executeMiniProgramSourceCompilerWorkerRequest(
     })
 
     postProgress(scope, request.requestId, 'audit', startedAt)
-    assertMiniProgramCompilerOutputForTransfer(output)
+    assertMiniProgramCompilerOutputForTransfer(output, request.options.target)
     scope.postMessage({
       version: MINIPROGRAM_SOURCE_COMPILER_WORKER_PROTOCOL_VERSION,
       type: 'result',

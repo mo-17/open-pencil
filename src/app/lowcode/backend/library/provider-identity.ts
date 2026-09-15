@@ -1,5 +1,7 @@
 import type { AppBackendProviderDescriptor } from '@/app/plugins/host/backend-provider'
 
+import { backendLibraryCopy } from './copy'
+
 export function backendProviderDescriptorKey(descriptor: AppBackendProviderDescriptor): string {
   return [
     descriptor.pluginId,
@@ -10,6 +12,13 @@ export function backendProviderDescriptorKey(descriptor: AppBackendProviderDescr
   ].join('\u0000')
 }
 
-export function backendProviderDescriptorLabel(descriptor: AppBackendProviderDescriptor): string {
-  return `${descriptor.providerId} · ${descriptor.pluginId}`
+export function backendProviderDescriptorLabel(
+  descriptor: AppBackendProviderDescriptor,
+  locale = 'en'
+): string {
+  const name =
+    descriptor.providerId === 'nestjs-prisma-crm'
+      ? backendLibraryCopy(locale).providers['nestjs-prisma-crm'].name
+      : descriptor.providerId
+  return `${name} · ${descriptor.pluginId}`
 }

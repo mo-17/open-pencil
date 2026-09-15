@@ -21,7 +21,7 @@ export interface BackendLibraryCopy {
   readonly genericProviderDescription: string
   readonly genericProviderRequirement: string
   readonly capabilities: Readonly<Record<PluginBackendProviderCapabilityV1, string>>
-  readonly providers: Readonly<Record<'supabase' | 'nestjs', EntryCopy>>
+  readonly providers: Readonly<Record<'supabase' | 'nestjs' | 'nestjs-prisma-crm', EntryCopy>>
   readonly templates: Readonly<Record<BackendLibraryTemplateId, TemplateCopy>>
 }
 
@@ -61,6 +61,18 @@ const english: BackendLibraryCopy = {
       requirements: [
         'PostgreSQL and an OIDC identity service',
         'Node.js; Docker for managed desktop preview'
+      ]
+    },
+    'nestjs-prisma-crm': {
+      name: 'NestJS + Prisma 8 CRM (Experimental)',
+      description: 'Export the CRM template with Prisma 8 RC customer queries and pg commands.',
+      tags: ['NestJS', 'Prisma 8 RC', 'CRM', 'Experimental', 'Source export'],
+      requirements: [
+        'Install and enable the experimental Prisma CRM plugin in Settings → Plugins.',
+        'Create the Customer CRM template with NestJS, then select this provider and save the Backend model.',
+        'Only the supported CRM model can be exported; other templates and combined modules are unsupported.',
+        'Export source and run it separately with a supported Node.js version, PostgreSQL and OIDC.',
+        'Editor preview is unsupported. SQL migrations remain the schema owner.'
       ]
     }
   },
@@ -216,6 +228,18 @@ const chinese: BackendLibraryCopy = {
       description: '生成使用 PostgreSQL 的可编辑 NestJS 后端。',
       tags: ['NestJS', 'PostgreSQL', 'TypeScript'],
       requirements: ['准备 PostgreSQL 和 OIDC 身份服务', '安装 Node.js；桌面托管预览还需要 Docker']
+    },
+    'nestjs-prisma-crm': {
+      name: 'NestJS + Prisma 8 CRM（实验）',
+      description: '导出使用 Prisma 8 RC 客户查询和 pg 业务命令的 CRM 模板。',
+      tags: ['NestJS', 'Prisma 8 RC', 'CRM', '实验', '源码导出'],
+      requirements: [
+        '先到「设置 → 插件」安装并启用 Prisma CRM 实验插件。',
+        '先用 NestJS 创建客户 CRM 模板，再选择此服务并保存后端模型。',
+        '仅支持通过校验的 CRM 模型；其他模板和组合业务模块暂不支持。',
+        '导出源码后独立运行，需兼容版本的 Node.js、PostgreSQL 和 OIDC。',
+        '暂不支持编辑器预览；数据库结构仍由 SQL 迁移管理。'
+      ]
     }
   },
   templates: {

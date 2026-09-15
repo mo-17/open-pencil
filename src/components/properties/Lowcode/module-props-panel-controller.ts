@@ -6,6 +6,8 @@ import {
   UPLOAD_BUTTON_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
   VIDEO_PLUGIN_ID,
+  VR_TOUR_MODULE_TYPE,
+  VR_TOUR_PLUGIN_ID,
   type AccordionItemV1,
   type ModulePropertyField,
   type TabsItemV1
@@ -25,6 +27,7 @@ import {
   reconcileInitialModuleItemId
 } from '@/app/plugins/module-items-editor-model'
 import { dropdownMenuOptionPanelKey } from '@/app/plugins/module-option-localization'
+import { vrTourEditorCopy } from '@/app/plugins/vr-tour/copy'
 
 function fieldKey(field: ModulePropertyField): string {
   return field.path.map(String).join('.')
@@ -128,6 +131,11 @@ export function useModulePropsPanelController() {
   }
 
   function optionLabel(field: ModulePropertyField, option: string): string {
+    if (
+      definition.value?.pluginId === VR_TOUR_PLUGIN_ID &&
+      field.i18nLabelKey === 'lowcodeModuleFieldVRTourLocale'
+    )
+      return option === 'zh-CN' ? '简体中文' : 'English'
     const key = field.i18nLabelKey ? `${field.i18nLabelKey}:${option}` : ''
     const panelKey = dropdownMenuOptionPanelKey(field.i18nLabelKey, option)
     return (
@@ -173,16 +181,39 @@ export function useModulePropsPanelController() {
       }
       return true
     } catch (error) {
-      jsonErrors[fieldKey(field)] = error instanceof Error ? error.message : String(error)
+      jsonErrors[fieldKey(field)] = fieldError(field, error)
       return false
     }
   }
 
+  function fieldError(field: ModulePropertyField, error: unknown): string {
+    if (definition.value?.pluginId !== VR_TOUR_PLUGIN_ID || !locale.value.startsWith('zh'))
+      return error instanceof Error ? error.message : String(error)
+    const copy = vrTourEditorCopy(locale.value)
+    const key = fieldKey(field)
+    if (key === 'scenes') return copy.invalidScenes
+    return key === 'locale' ? copy.invalidLocale : copy.invalidSetting
+  }
+
   function commitField(field: ModulePropertyField, value: unknown): boolean {
     try {
-      return commitConfig(field, withValueAtPath(config.value, field.path, value))
+      const next = withValueAtPath(config.value, field.path, value)
+      if (
+        definition.value?.pluginId === VR_TOUR_PLUGIN_ID &&
+        definition.value.moduleType === VR_TOUR_MODULE_TYPE &&
+        fieldKey(field) === 'scenes' &&
+        Array.isArray(value)
+      ) {
+        const ids = value.flatMap((entry: unknown) =>
+          entry && typeof entry === 'object' && 'id' in entry && typeof entry.id === 'string'
+            ? [{ id: entry.id }]
+            : []
+        )
+        next.initialSceneId = reconcileInitialModuleItemId(ids, config.value.initialSceneId)
+      }
+      return commitConfig(field, next)
     } catch (error) {
-      jsonErrors[fieldKey(field)] = error instanceof Error ? error.message : String(error)
+      jsonErrors[fieldKey(field)] = fieldError(field, error)
       return false
     }
   }

@@ -43,6 +43,16 @@ const plugin = (
  */
 const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocalizedText>>> =
   Object.freeze({
+    'open-pencil.vr-tour': plugin(
+      'OpenPencil VR 看房',
+      '使用 360° 全景图片与房间热点制作可导出的看房体验。',
+      {
+        'vr-tour': contribution(
+          'VR 看房',
+          '配置房间、全景图与跳转热点；画布离线示意，桌面预览及 React/Vue 导出支持全景互动。'
+        )
+      }
+    ),
     'open-pencil.map': plugin(
       'OpenPencil 地图',
       '可编辑地图模块，生成的 Web 项目使用经过审核的 MapLibre 适配器。',
@@ -785,6 +795,20 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
  */
 const ZH_CN_BUNDLED_MODULE_PROPERTY_TEXT: Readonly<Partial<Record<string, string>>> = Object.freeze(
   {
+    lowcodeModuleFieldVRTourLabel: '看房标题',
+    lowcodeModuleFieldVRTourLocale: '界面语言',
+    'lowcodeModuleFieldVRTourLocale:en': 'English',
+    'lowcodeModuleFieldVRTourLocale:zh-CN': '简体中文',
+    lowcodeModuleFieldVRTourScenes: '房间与热点',
+    lowcodeModuleFieldVRTourInitialSceneId: '初始房间',
+    lowcodeModuleFieldVRTourInitialYaw: '初始水平角度',
+    lowcodeModuleFieldVRTourInitialPitch: '初始垂直角度',
+    lowcodeModuleFieldVRTourInitialFov: '初始视野角度',
+    lowcodeModuleFieldVRTourShowControls: '显示视角控制',
+    lowcodeModuleFieldVRTourShowSceneList: '显示房间列表',
+    lowcodeModuleFieldVRTourAccentColor: '强调色',
+    lowcodeModuleFieldVRTourBackgroundColor: '背景色',
+    lowcodeModuleFieldVRTourTextColor: '文字颜色',
     'lowcodeModuleFieldModalFooterAlign:left': '左对齐',
     'lowcodeModuleFieldModalFooterAlign:center': '居中对齐',
     'lowcodeModuleFieldModalFooterAlign:right': '右对齐',

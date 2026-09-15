@@ -17,6 +17,7 @@ export {
   checkpointAppPluginMarketplacePrivilegeClock,
   clearAppPluginMarketplaceSource,
   refreshAppPluginCatalog,
+  installAppPlugin,
   resetAppPluginLocalState,
   reviewAppPluginMarketplaceSource,
   uninstallAppPlugin,

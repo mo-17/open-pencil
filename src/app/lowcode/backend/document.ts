@@ -1,4 +1,7 @@
-import { NESTJS_BACKEND_PROVIDER_BUNDLE } from '@open-pencil/compiler/backend'
+import {
+  NESTJS_BACKEND_PROVIDER_BUNDLE,
+  NESTJS_PRISMA_CRM_BACKEND_PROVIDER_BUNDLE
+} from '@open-pencil/compiler/backend'
 import {
   deriveBackendApplicationCapabilities,
   parseBackendApplicationSpecV1,
@@ -131,9 +134,13 @@ export function validateBackendApplicationDraft(
     }
   }
 
-  if (descriptor?.providerId === 'nestjs') {
+  const providerBundle = [
+    NESTJS_BACKEND_PROVIDER_BUNDLE,
+    NESTJS_PRISMA_CRM_BACKEND_PROVIDER_BUNDLE
+  ].find((bundle) => bundle.descriptor.providerId === descriptor?.providerId)
+  if (descriptor && providerBundle) {
     diagnostics.push(
-      ...NESTJS_BACKEND_PROVIDER_BUNDLE.validate({
+      ...providerBundle.validate({
         application: parsed.value,
         selection: {
           descriptor: { ...descriptor, outputs: descriptor.outputKinds },

@@ -73,7 +73,7 @@ function createStore() {
 describe('app plugin MCP catalog', () => {
   test('exposes all bundled contributions after all bundled plugins are enabled', async () => {
     const catalog = createBundledPluginCatalog()
-    expect(catalog).toHaveLength(69)
+    expect(catalog).toHaveLength(71)
 
     const store = createStore()
     await store.load()
@@ -87,8 +87,8 @@ describe('app plugin MCP catalog', () => {
     }
 
     const tools = listAppPluginMCPTools(store).tools
-    expect(tools).toHaveLength(33)
-    expect(tools.filter((tool) => tool.kind === 'module')).toHaveLength(20)
+    expect(tools).toHaveLength(34)
+    expect(tools.filter((tool) => tool.kind === 'module')).toHaveLength(21)
     expect(tools.filter((tool) => tool.kind === 'command')).toHaveLength(11)
     expect(tools.filter((tool) => tool.kind === 'exporter')).toHaveLength(2)
     expect(tools.some((tool) => tool.pluginId === COMPILER_PREVIEW_POPOUT_PLUGIN_ID)).toBe(false)

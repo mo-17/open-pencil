@@ -136,7 +136,7 @@ async function addModule(module: InstalledPluginModule): Promise<void> {
       if (!current) throw new Error(dialogs.value.pluginDisabledHint)
       const compatibility = inspectInstalledPluginModuleCompatibility(current)
       if (!compatibility.ok) throw new Error(compatibility.reason)
-      addInstalledPluginModuleToCanvas(editor, current)
+      addInstalledPluginModuleToCanvas(editor, current, locale.value)
       return current
     }
     const current =

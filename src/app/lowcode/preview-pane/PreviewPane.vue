@@ -14,6 +14,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { derivePagePaths, type PagePathInfo } from '@open-pencil/compiler'
 import type { IRTree } from '@open-pencil/compiler/ir/types'
 import { IS_TAURI } from '@open-pencil/core/constants'
+import { useI18n } from '@open-pencil/vue'
 
 import { useCollabInjected } from '@/app/collab/use'
 import type { PreviewDocStatePayload } from '@/app/collab/use'
@@ -34,6 +35,7 @@ import Tip from '@/components/ui/overlay/Tip.vue'
 
 import CodePenShowcaseControls from './CodePenShowcaseControls.vue'
 import {
+  compileErrorMessage,
   summarizeStructuredCompileDiagnostics,
   type CompileDiagnostic
 } from './compile-diagnostics'
@@ -67,6 +69,7 @@ import { resolvePreviewToolbarBand } from './toolbar-layout'
 import { useCompileOnChange, type PreviewTarget, type PreviewUIKit } from './use-compile-on-change'
 
 const emit = defineEmits<{ close: []; 'request-expand': [complete: () => void] }>()
+const { locale } = useI18n()
 const { embeddedVisible = true } = defineProps<{ embeddedVisible?: boolean }>()
 
 // docs/lowcode-phase-0.md §5.4 + Phase 2 §7 — bridge protocol over postMessage.
@@ -221,7 +224,7 @@ function closeTransferredPorts(ports: readonly MessagePort[]): void {
 }
 const diagnosticsOpen = ref(false)
 const diagnosticSummary = computed(() =>
-  summarizeStructuredCompileDiagnostics(compileDiagnostics.value)
+  summarizeStructuredCompileDiagnostics(compileDiagnostics.value, locale.value)
 )
 const diagnosticSummaryLabel = computed(() => {
   const { errorCount, warningCount, total } = diagnosticSummary.value
@@ -431,7 +434,7 @@ const statusLabel = computed(() => {
       return formatPreviewURL(status.value.frame.displayURL, route)
     }
     case 'error':
-      return `Error: ${status.value.message}`
+      return `${locale.value === 'zh-CN' ? '错误' : 'Error'}: ${compileErrorMessage(status.value.message, compileDiagnostics.value, locale.value)}`
     case 'unsupported':
       return `Unsupported: ${status.value.reason}`
   }

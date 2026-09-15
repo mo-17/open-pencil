@@ -39,6 +39,8 @@ import {
   UPLOAD_BUTTON_PLUGIN,
   VIDEO_MODULE_DEFINITION,
   VIDEO_PLUGIN,
+  VR_TOUR_MODULE_DEFINITION,
+  VR_TOUR_PLUGIN,
   type ModuleDefinition,
   type PluginDefinition
 } from '@open-pencil/core/plugins'
@@ -148,6 +150,10 @@ import {
   WECHAT_MINIPROGRAM_EXPORTER,
   WECHAT_MINIPROGRAM_EXPORTER_PLUGIN_ID
 } from './host/ids'
+import {
+  NESTJS_PRISMA_CRM_BACKEND_PROVIDER_CONTRIBUTION,
+  NESTJS_PRISMA_CRM_BACKEND_PROVIDER_PLUGIN_ID
+} from './host/nestjs-prisma-crm/backend-provider'
 import {
   NESTJS_BACKEND_PROVIDER_CONTRIBUTION,
   NESTJS_BACKEND_PROVIDER_PLUGIN_ID
@@ -803,6 +809,17 @@ function nestjsBackendProviderManifest(): PluginManifestPayloadV2 {
   )
 }
 
+function nestjsPrismaCRMBackendProviderManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: NESTJS_PRISMA_CRM_BACKEND_PROVIDER_PLUGIN_ID,
+      name: 'NestJS + Prisma 8 CRM (Experimental)',
+      version: '1.0.0'
+    },
+    { backendProviders: [NESTJS_PRISMA_CRM_BACKEND_PROVIDER_CONTRIBUTION] }
+  )
+}
+
 function deploymentPlanManifest(
   definition: (typeof REVIEWED_DEPLOYMENT_PLUGINS)[number]
 ): PluginManifestPayloadV2 {
@@ -818,6 +835,14 @@ function deploymentPlanManifest(
 
 export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
   return Object.freeze([
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        VR_TOUR_PLUGIN,
+        VR_TOUR_MODULE_DEFINITION,
+        'open-pencil.vr-tour'
+      )
+    },
     {
       trustSource: 'app-bundle',
       manifest: bundledModuleManifest(MAP_PLUGIN, MAP_MODULE_DEFINITION, 'open-pencil.map'),
@@ -1175,6 +1200,12 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
       manifest: nestjsBackendProviderManifest(),
       installedByDefault: true,
       enabledByDefault: true
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: nestjsPrismaCRMBackendProviderManifest(),
+      installedByDefault: false,
+      enabledByDefault: false
     },
     {
       trustSource: 'app-bundle',
