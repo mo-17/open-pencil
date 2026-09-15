@@ -57,11 +57,37 @@ function nameCollisions(
   return diagnostics
 }
 
+function foodContractDiagnostics(
+  from: BackendApplicationSpecV1,
+  to: BackendApplicationSpecV1
+): BackendDiagnostic[] {
+  const diagnostics: BackendDiagnostic[] = []
+  const foodContractChanged =
+    digestCanonicalBackendValue(from.foodOrdering ?? null, '$.from.foodOrdering') !==
+    digestCanonicalBackendValue(to.foodOrdering ?? null, '$.to.foodOrdering')
+  if (
+    foodContractChanged &&
+    (from.foodOrdering !== undefined ||
+      !to.modules ||
+      Object.values(to.foodOrdering?.entities ?? {}).some((id) =>
+        from.dataModel.entities.some((entity) => entity.id === id)
+      ))
+  )
+    diagnostics.push(
+      localMigrationDiagnostic(
+        'food-ordering-contract-change-blocked',
+        '$.toApplication.foodOrdering',
+        'Food ordering may only be added with separately owned new module tables. Changing or removing an existing food contract requires a separately reviewed migration.'
+      )
+    )
+  return diagnostics
+}
+
 export function validateLocalMigrationBoundary(
   from: BackendApplicationSpecV1,
   to: BackendApplicationSpecV1
 ): BackendDiagnostic[] {
-  const diagnostics = nameCollisions(from, to)
+  const diagnostics = [...nameCollisions(from, to), ...foodContractDiagnostics(from, to)]
   const hadCommands = (from.commands?.commands.length ?? 0) > 0
   const hasCommands = (to.commands?.commands.length ?? 0) > 0
   if (hadCommands !== hasCommands) {

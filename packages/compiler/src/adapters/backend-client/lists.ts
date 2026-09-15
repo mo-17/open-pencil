@@ -11,7 +11,8 @@ export function backendQueryInput(
   expression: (ast: ExprAst) => string = emitExpression
 ): string {
   const fields = backendQueryFields(query, expression)
-  return `{ resourceId: ${JSON.stringify(query.resourceId)} as const, operation: 'list' as const${query.limit === undefined ? '' : `, limit: ${query.limit}`}${after === undefined ? '' : `, after: String(${after}) || undefined`}${fields.length ? ', ' + fields.join(', ') : ''} }`
+  const currentUser = expression({ kind: 'ident', name: '$currentUser' })
+  return `{ resourceId: ${JSON.stringify(query.resourceId)} as const, operation: 'list' as const, sessionGeneration: Number(${currentUser}.generation ?? -1)${query.limit === undefined ? '' : `, limit: ${query.limit}`}${after === undefined ? '' : `, after: String(${after}) || undefined`}${fields.length ? ', ' + fields.join(', ') : ''} }`
 }
 function targetCallback(target: string | undefined, setter: string): string {
   return target ? `(value) => ${setter}(${JSON.stringify(target)}, value)` : 'undefined'

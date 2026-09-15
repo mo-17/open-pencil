@@ -3,10 +3,14 @@ import type { BackendApplicationSpecV1, BackendDiagnostic } from '@open-pencil/l
 import type { BackendProviderBundle } from './contracts'
 import { sameBackendProviderDescriptor } from './descriptor'
 import { NESTJS_BACKEND_PROVIDER_DESCRIPTOR } from './nestjs/descriptor'
+import { NESTJS_PRISMA_CRM_BACKEND_PROVIDER_DESCRIPTOR } from './nestjs/prisma-crm/descriptor'
 
 /** Only an already-resolved, reviewed V1 bundle may implement authored HTTP intent. */
 export function unsupportedBackendHttpAPIDiagnostics(
-  application: Pick<BackendApplicationSpecV1, 'httpApi' | 'commands' | 'commerce' | 'modules'> &
+  application: Pick<
+    BackendApplicationSpecV1,
+    'httpApi' | 'commands' | 'commerce' | 'foodOrdering' | 'modules'
+  > &
     Partial<Pick<BackendApplicationSpecV1, 'auth'>>,
   resolvedBundle?: BackendProviderBundle
 ): BackendDiagnostic[] {
@@ -17,17 +21,33 @@ export function unsupportedBackendHttpAPIDiagnostics(
     application.httpApi === undefined &&
     !application.commands?.commands.length &&
     !application.commerce &&
+    !application.foodOrdering &&
     !application.modules &&
     !conditionalAuthority
   )
     return []
   if (
     resolvedBundle &&
-    sameBackendProviderDescriptor(resolvedBundle.descriptor, NESTJS_BACKEND_PROVIDER_DESCRIPTOR)
+    (sameBackendProviderDescriptor(resolvedBundle.descriptor, NESTJS_BACKEND_PROVIDER_DESCRIPTOR) ||
+      sameBackendProviderDescriptor(
+        resolvedBundle.descriptor,
+        NESTJS_PRISMA_CRM_BACKEND_PROVIDER_DESCRIPTOR
+      ))
   ) {
     return []
   }
   return [
+    ...(application.foodOrdering
+      ? [
+          {
+            code: 'backend-food-ordering-provider-unimplemented',
+            severity: 'error' as const,
+            path: '$.application.foodOrdering',
+            message:
+              'Food ordering requires the reviewed NestJS transaction runtime for carts, price checks and kitchen transitions.'
+          }
+        ]
+      : []),
     ...(application.modules
       ? [
           {

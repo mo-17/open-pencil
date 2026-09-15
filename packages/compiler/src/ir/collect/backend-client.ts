@@ -154,8 +154,12 @@ export function collectBackendResourceQuery(
   if (diagnostics.length > 0) throw new BackendProviderCompilationError(diagnostics)
   const afterAst = expression(source.afterExpr, ctx)
   const query = queryFields(source, ctx)
+  // LIST inputs are evaluated in a render/session snapshot. Even fixed public
+  // queries must rebind after identity changes before reusing those inputs.
+  ctx.docStateReads?.add('$currentUser')
   const deps = [
     ...new Set([
+      '$currentUser',
       ...[source.afterExpr, source.searchExpr].flatMap((value) => {
         const parsed = value === undefined ? undefined : parseExpression(value)
         return parsed?.ok ? [...parsed.references] : []

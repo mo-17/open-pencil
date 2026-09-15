@@ -6,6 +6,24 @@ import { runtimeFixture, tick } from './helpers'
 const list = { resourceId: 'notes-api', operation: 'list' } as const
 
 describe('generated query paging and cancellation', () => {
+  test('discards a previous session cursor even when fixed query fields are unchanged', async () => {
+    const fixture = await runtimeFixture()
+    try {
+      const normalize = fixture.runtime.createBackendQueryState()
+      expect(normalize({ ...list, sessionGeneration: 1, after: 'reader-a-cursor' }).after).toBe(
+        'reader-a-cursor'
+      )
+      expect(
+        normalize({ ...list, sessionGeneration: 2, after: 'reader-a-cursor' }).after
+      ).toBeUndefined()
+      expect(normalize({ ...list, sessionGeneration: 2, after: 'reader-b-cursor' }).after).toBe(
+        'reader-b-cursor'
+      )
+    } finally {
+      fixture.dispose()
+    }
+  })
+
   test('keeps initial cursors but resets old paging when query meaning changes', async () => {
     const fixture = await runtimeFixture()
     try {

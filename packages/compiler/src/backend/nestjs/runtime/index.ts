@@ -8,12 +8,13 @@ import { emitDatabaseArtifacts } from './database'
 import { emitJWKSArtifact } from './jwks'
 
 export function emitNestJSRuntimeArtifacts(
-  application: BackendApplicationSpecV1
+  application: BackendApplicationSpecV1,
+  prismaCRM = false
 ): BackendArtifactSource[] {
   return [
     ...emitAuthenticationArtifacts(application),
     emitJWKSArtifact(),
-    ...emitDatabaseArtifacts(),
-    ...emitApplicationArtifacts(application)
+    ...emitDatabaseArtifacts(prismaCRM),
+    ...emitApplicationArtifacts(application, !prismaCRM)
   ]
 }

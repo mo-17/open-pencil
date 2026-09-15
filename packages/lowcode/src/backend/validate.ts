@@ -4,6 +4,12 @@ import { validateCommerceWriteBoundaries } from './commerce/access-validation'
 import { validateCommerceAuth } from './commerce/auth-validation'
 import { validateCommerceModel } from './commerce/model-validation'
 import { parseBackendCommerceIRV1 } from './commerce/shape'
+import {
+  validateFoodOrderingAuth,
+  validateFoodOrderingWriteBoundaries
+} from './food-ordering/access-validation'
+import { validateFoodOrderingModel } from './food-ordering/model-validation'
+import { parseBackendFoodOrderingIRV1 } from './food-ordering/shape'
 import { parseBackendHttpAPIIRV1 } from './http-api-validation'
 import { BACKEND_LIMITS } from './limits'
 import { parseDataModelIR } from './model-validation'
@@ -205,6 +211,7 @@ export function parseBackendApplicationSpecV1(
       'httpApi',
       'commands',
       'commerce',
+      'foodOrdering',
       'modules',
       'capabilities',
       'secrets'
@@ -287,6 +294,13 @@ export function parseBackendApplicationSpecV1(
       : parseBackendCommerceIRV1(source.commerce, '$.commerce', context)
   if (commerce && dataModel && auth) validateCommerceModel(commerce, dataModel, auth, context)
   if (commerce && auth) validateCommerceAuth(commerce, auth, api, context)
+  const foodOrdering =
+    source.foodOrdering === undefined
+      ? undefined
+      : parseBackendFoodOrderingIRV1(source.foodOrdering, '$.foodOrdering', context)
+  if (foodOrdering && dataModel && auth)
+    validateFoodOrderingModel(foodOrdering, dataModel, auth, context)
+  if (foodOrdering && auth) validateFoodOrderingAuth(foodOrdering, auth, api, context)
   const modules =
     source.modules === undefined
       ? undefined
@@ -296,17 +310,22 @@ export function parseBackendApplicationSpecV1(
       ? parseBackendCommandIRV1(
           source.commands,
           '$.commands',
-          { model: dataModel, auth, api, commerce },
+          { model: dataModel, auth, api, commerce, foodOrdering },
           context,
           modules ? 128 : 16
         )
       : undefined
   if (commerce && workflows)
     validateCommerceWriteBoundaries(commerce, api, commands, workflows, context)
+  if (foodOrdering && workflows)
+    validateFoodOrderingWriteBoundaries(
+      { foodOrdering, commerce, commands, httpApi: api, workflows },
+      context
+    )
   if (modules && dataModel && auth && workflows)
     validateBackendModules(
       modules,
-      { dataModel, auth, workflows, storage, httpApi: api, commands, commerce },
+      { dataModel, auth, workflows, storage, httpApi: api, commands, commerce, foodOrdering },
       context
     )
   const hasErrors = context.diagnostics.some((entry) => entry.severity === 'error')
@@ -338,6 +357,7 @@ export function parseBackendApplicationSpecV1(
       ...(api ? { httpApi: api } : {}),
       ...(commands ? { commands } : {}),
       ...(commerce ? { commerce } : {}),
+      ...(foodOrdering ? { foodOrdering } : {}),
       ...(modules ? { modules } : {}),
       capabilities: sorted(capabilities, (entry) => entry.capability),
       secrets: sorted(secrets, (entry) =>

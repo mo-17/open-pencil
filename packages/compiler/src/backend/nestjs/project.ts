@@ -4,6 +4,13 @@ import { nestJSArtifact, nestJSJSONArtifact } from './artifact'
 import { emitNestJSLocalRun, NESTJS_LOCAL_SCRIPTS } from './local-run'
 import { LOCAL_RUN_GUIDE } from './local-run/guide'
 import { NESTJS_PRESET_LOCK_SOURCE } from './preset-lock'
+import {
+  emitPrismaCRMProjectArtifacts,
+  prismaCRMProjectPackage,
+  PRISMA_CRM_PRESET_LOCK_SOURCE,
+  PRISMA_CRM_GUIDE
+} from './prisma-crm/project'
+import { nestJSUsageGuide } from './usage'
 
 export const NESTJS_PROJECT_PACKAGE = {
   name: 'openpencil-nestjs-backend',
@@ -32,13 +39,17 @@ export const NESTJS_PROJECT_PACKAGE = {
   }
 } as const
 
-export function emitNestJSProject(application: BackendApplicationSpecV1) {
+export function emitNestJSProject(application: BackendApplicationSpecV1, prismaCRM = false) {
   const environment = application.secrets.map((entry) => entry.name + '=').join('\n') + '\n'
   return [
-    nestJSJSONArtifact('package.json', NESTJS_PROJECT_PACKAGE, 'server-runtime'),
+    nestJSJSONArtifact(
+      'package.json',
+      prismaCRM ? prismaCRMProjectPackage(NESTJS_PROJECT_PACKAGE) : NESTJS_PROJECT_PACKAGE,
+      'server-runtime'
+    ),
     nestJSArtifact(
       'package-lock.json',
-      NESTJS_PRESET_LOCK_SOURCE,
+      prismaCRM ? PRISMA_CRM_PRESET_LOCK_SOURCE : NESTJS_PRESET_LOCK_SOURCE,
       'server-runtime',
       'application/json'
     ),
@@ -58,7 +69,10 @@ export function emitNestJSProject(application: BackendApplicationSpecV1) {
           skipLibCheck: false,
           outDir: 'dist',
           rootDir: 'src',
-          sourceMap: true
+          sourceMap: true,
+          ...(prismaCRM
+            ? { resolveJsonModule: true, lib: ['ES2022', 'DOM', 'ESNext.Temporal'] }
+            : {})
         },
         include: ['src/**/*.ts']
       },
@@ -67,10 +81,18 @@ export function emitNestJSProject(application: BackendApplicationSpecV1) {
     nestJSArtifact('.env.example', environment),
     nestJSArtifact('.gitignore', 'node_modules/\ndist/\n.env\n.local/\n'),
     ...emitNestJSLocalRun(application),
-    nestJSArtifact('LOCAL-RUN.md', LOCAL_RUN_GUIDE),
+    nestJSArtifact(
+      'LOCAL-RUN.md',
+      prismaCRM
+        ? PRISMA_CRM_GUIDE + '\n' + LOCAL_RUN_GUIDE.replace('Use Node 22.12+', 'Use Node 24.19')
+        : LOCAL_RUN_GUIDE
+    ),
+    ...(prismaCRM ? emitPrismaCRMProjectArtifacts() : []),
     nestJSArtifact(
       'README.md',
-      `# Generated NestJS backend
+      prismaCRM
+        ? PRISMA_CRM_GUIDE + '\n' + nestJSUsageGuide(application)
+        : `# Generated NestJS backend
 
 This is an editable NestJS 11 / node-postgres service generated from an explicit HTTP API.
 It is a separate Node application; exporting the frontend does not start or deploy this server.
@@ -81,11 +103,12 @@ normal startup never installs packages, downloads images or reapplies migrations
 
 ## Run
 
-1. Use Node 22.12 or newer. Run \`npm ci --ignore-scripts\`, then \`npm run build\`.
+1. In the exported \`backend/nestjs\` directory, use Node 22.12 or newer.
+   Run \`npm ci --ignore-scripts\`, then \`npm run build\`.
 2. Review \`migrations/001-initial.sql\` and apply it manually to fresh tables in an isolated
    PostgreSQL 16+ database. It is transactional and intentionally fails if the tables already exist.
    The application never runs migrations. Use a dedicated database role with only the required table access.
-3. Set the four server environment variables listed in \`.env.example\` in the launching shell
+3. Set the server environment variables listed in \`.env.example\` and the identity setup below in the launching shell
    or your process manager. The service does not automatically load .env files.
    DATABASE_URL must contain an explicit username, nonempty password, hostname, and database.
    Only an optional single \`sslmode=require\` or \`sslmode=verify-full\` parameter is accepted;
@@ -95,7 +118,7 @@ normal startup never installs packages, downloads images or reapplies migrations
 5. Run \`npm start\`. HOST defaults to 127.0.0.1 and PORT to 3000.
    Configure your authenticated HTTPS ingress and same-origin API forwarding before exposing it.
 
-## HTTP behavior
+${nestJSUsageGuide(application)}## HTTP behavior
 
 \`openapi.json\` describes the emitted resource paths. Protected resource routes require a Bearer JWT; explicit anonymous select policies allow tokenless reads.
 List returns \`{ data, nextCursor }\` and accepts \`limit\` and \`after\`. Without an explicit sort,

@@ -138,4 +138,19 @@ export function validateBackendModules(
         )
     }
   validateCommercePartition(application, entities, commands, context)
+  if (application.foodOrdering) {
+    const owners = Object.values(application.foodOrdering.entities).map((id) => entities.get(id))
+    owners.push(
+      ...(application.commands?.commands ?? [])
+        .filter((command) => command.foodOrderingOperation)
+        .map((command) => commands.get(command.id))
+    )
+    if (new Set(owners).size !== 1)
+      diagnostic(
+        context,
+        'backend-module-food-ordering-split',
+        '$.modules',
+        'Restaurant menu, carts, orders and fixed operations must belong to one module.'
+      )
+  }
 }

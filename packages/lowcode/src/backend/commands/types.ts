@@ -83,6 +83,8 @@ export interface BackendCommandDefinitionIR {
   parameters: BackendCommandParameterIR[]
   /** Closed host-reviewed commerce operation; executable step bodies are forbidden when present. */
   commerceOperation?: BackendCommerceOperation
+  /** Fixed single-restaurant operation, mutually exclusive with commerceOperation. */
+  foodOrderingOperation?: BackendFoodOrderingOperation
   /** Explicit command-local authority; it does not grant the caller resource CRUD permissions. */
   steps: BackendCommandStepIR[]
   return: { resultName: string; fields: string[] }
@@ -93,3 +95,4 @@ export interface BackendCommandIRV1 {
   commands: BackendCommandDefinitionIR[]
 }
 import type { BackendCommerceOperation } from '../commerce/types'
+import type { BackendFoodOrderingOperation } from '../food-ordering/types'

@@ -1,5 +1,6 @@
 import { nestJSCommandDefinitionDigest } from '#compiler/backend/nestjs/commands/plan'
 import { commerceAffectedEntities } from '#compiler/backend/nestjs/commerce/model'
+import { foodOrderingAffectedEntities } from '#compiler/backend/nestjs/food-ordering/model'
 
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
@@ -25,7 +26,8 @@ export function buildBackendCommandRuntime(application: BackendApplicationSpecV1
     commands.map((command) => {
       const entities = new Set([
         ...command.steps.flatMap((step) => (step.kind === 'data.mutate' ? [step.entityId] : [])),
-        ...commerceAffectedEntities(application, command)
+        ...commerceAffectedEntities(application, command),
+        ...foodOrderingAffectedEntities(application, command)
       ])
       return [
         command.id,

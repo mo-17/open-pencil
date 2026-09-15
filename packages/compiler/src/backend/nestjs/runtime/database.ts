@@ -1,13 +1,15 @@
 import type { BackendArtifactSource } from '#compiler/backend/contracts'
 
+import { PRISMA_CRM_DATABASE_IMPORT, PRISMA_CRM_QUERY_SOURCE } from '../prisma-crm/runtime'
 import { runtimeArtifact } from './artifact'
 
-const SERVICE_SOURCE = String.raw`import { ConflictException, HttpException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
+function serviceSource(prismaCRM: boolean): string {
+  return String.raw`import { ConflictException, HttpException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import type { OnModuleDestroy } from '@nestjs/common'
 import { Pool } from 'pg'
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
 import { requiredEnvironment } from './environment.js'
-
+${prismaCRM ? PRISMA_CRM_DATABASE_IMPORT : ''}
 export interface DatabaseTransaction {
   query(text: string, values?: unknown[]): Promise<QueryResult<Record<string, unknown>>>
 }
@@ -15,7 +17,7 @@ export interface DatabaseTransaction {
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
   private readonly pool: Pool
-  private readonly logger = new Logger(DatabaseService.name)
+${prismaCRM ? '  private readonly prisma: CRMPrismaDatabase\n' : ''}  private readonly logger = new Logger(DatabaseService.name)
   private active = 0
   private closing = false
 
@@ -53,12 +55,12 @@ export class DatabaseService implements OnModuleDestroy {
         application_name: 'openpencil-nestjs',
       })
       this.pool.on('error', () => this.logger.warn('An idle database connection failed.'))
-    } catch {
+${prismaCRM ? '      this.prisma = createCRMPrismaDatabase(this.pool)\n' : ''}    } catch {
       throw new Error('Backend runtime configuration is invalid.')
     }
   }
 
-  async query<T extends QueryResultRow>(text: string, values: unknown[]): Promise<QueryResult<T>> {
+${prismaCRM ? PRISMA_CRM_QUERY_SOURCE : ''}  async query<T extends QueryResultRow>(text: string, values: unknown[]): Promise<QueryResult<T>> {
     if (this.closing || this.active >= 16) {
       throw new ServiceUnavailableException('Database operation unavailable.')
     }
@@ -112,13 +114,14 @@ export class DatabaseService implements OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     this.closing = true
     try {
-      await this.pool.end()
+${prismaCRM ? '      await this.prisma.close()\n' : ''}      await this.pool.end()
     } catch {
       this.logger.warn('Database shutdown failed.')
     }
   }
 }
 `
+}
 
 const MODULE_SOURCE = `import { Global, Module } from '@nestjs/common'
 import { DatabaseService } from './database.service.js'
@@ -128,9 +131,9 @@ import { DatabaseService } from './database.service.js'
 export class DatabaseModule {}
 `
 
-export function emitDatabaseArtifacts(): BackendArtifactSource[] {
+export function emitDatabaseArtifacts(prismaCRM = false): BackendArtifactSource[] {
   return [
-    runtimeArtifact('database.service.ts', SERVICE_SOURCE),
+    runtimeArtifact('database.service.ts', serviceSource(prismaCRM)),
     runtimeArtifact('database.module.ts', MODULE_SOURCE)
   ]
 }

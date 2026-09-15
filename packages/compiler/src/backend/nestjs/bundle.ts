@@ -12,6 +12,9 @@ import { emitNestJSDTO } from './dto'
 import { nestJSResources } from './model'
 import { emitNestJSModules } from './modules'
 import { emitNestJSOpenAPI } from './openapi'
+import { emitPrismaCRMContract } from './prisma-crm/contract'
+import { emitPrismaCRMRuntime } from './prisma-crm/runtime'
+import { emitPrismaCRMService } from './prisma-crm/service'
 import { emitNestJSProject } from './project'
 import { emitNestJSListQuery } from './query'
 import { emitNestJSRequestValidation } from './request-validation'
@@ -62,18 +65,28 @@ const server: BackendProviderAdapter = {
   capabilities: ['server.http', 'server.functions', 'transactions.atomic'],
   outputs: ['server-runtime'],
   plan,
-  emit: ({ application }) => [
-    ...emitNestJSProject(application),
+  emit: ({ application }) => emitNestJSServer(application)
+}
+
+export function emitNestJSServer(
+  application: BackendProviderAdapterContext['application'],
+  prismaCRM = false
+) {
+  return [
+    ...emitNestJSProject(application, prismaCRM),
     emitNestJSOpenAPI(application),
     emitNestJSRequestValidation(),
     emitNestJSListQuery(),
-    ...emitNestJSRuntimeArtifacts(application),
+    ...emitNestJSRuntimeArtifacts(application, prismaCRM),
+    ...(prismaCRM ? [emitPrismaCRMContract(application), ...emitPrismaCRMRuntime()] : []),
     ...emitNestJSCommands(application),
     ...emitNestJSModules(application),
     ...nestJSResources(application).flatMap((model, index) => [
       ...emitNestJSController(model, index),
       ...emitNestJSDTO(model, index),
-      emitNestJSService(model, index)
+      prismaCRM && model.resource.id === 'customers'
+        ? emitPrismaCRMService(index)
+        : emitNestJSService(model, index)
     ])
   ]
 }

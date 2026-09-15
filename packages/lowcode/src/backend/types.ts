@@ -378,6 +378,8 @@ export interface BackendApplicationSpecV1 {
   commands?: BackendCommandIRV1
   /** Closed commerce semantics. Omitted from existing documents and their canonical bytes. */
   commerce?: BackendCommerceIRV1
+  /** Closed single-restaurant checkout and kitchen operations. */
+  foodOrdering?: BackendFoodOrderingIRV1
   /** Optional reviewed partition for a modular single-process backend; grants no authority. */
   modules?: BackendModuleIRV1
   capabilities: BackendCapabilityRequirement[]
@@ -436,4 +438,5 @@ export type BackendValidationResult<T> =
   | { ok: false; diagnostics: BackendDiagnostic[] }
 import type { BackendCommandIRV1 } from './commands/types'
 import type { BackendCommerceIRV1 } from './commerce/types'
+import type { BackendFoodOrderingIRV1 } from './food-ordering/types'
 import type { BackendModuleIRV1 } from './modules/types'

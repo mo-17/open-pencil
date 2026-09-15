@@ -1,6 +1,10 @@
 import { COMMERCE_OPERATIONS, type BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
 import { nestJSArtifact } from '../artifact'
+import {
+  withReviewedCommandServices,
+  type NestJSCommandServiceExtension
+} from '../commands/extensions'
 import { COMMERCE_AUTHORIZATION_SOURCE } from './authorization-source'
 import { COMMERCE_CART_SOURCE } from './cart-source'
 import { COMMERCE_CHECKOUT_SOURCE } from './checkout-source'
@@ -28,20 +32,16 @@ export function withCommerceCommandTypes(source: string): string {
   )
 }
 
+export const COMMERCE_COMMAND_EXTENSION: NestJSCommandServiceExtension = {
+  imports:
+    "import { authorizeCommerce } from './commerce-authorization.js'\nimport { executeCommerce } from './commerce-execution.js'\n",
+  authorize: 'const commerceContext = await authorizeCommerce(client, plan, input, principal)',
+  operation: 'commerceOperation',
+  execute: 'await executeCommerce(client, plan, input, principal.subject, commerceContext)'
+}
+
 export function withCommerceCommandService(source: string): string {
-  const imported =
-    "import { authorizeCommerce } from './commerce-authorization.js'\nimport { executeCommerce } from './commerce-execution.js'\n" +
-    source
-  const authorized = replace(
-    imported,
-    '      const inserted = await client.query(',
-    '      const commerceContext = await authorizeCommerce(client, plan, input, principal)\n      const inserted = await client.query('
-  )
-  return replace(
-    authorized,
-    '      const response = await executeCommand(client, plan, input, principal.subject)',
-    '      const response = plan.commerceOperation\n        ? await executeCommerce(client, plan, input, principal.subject, commerceContext)\n        : await executeCommand(client, plan, input, principal.subject)'
-  )
+  return withReviewedCommandServices(source, [COMMERCE_COMMAND_EXTENSION])
 }
 
 export function emitNestJSCommerce(application: BackendApplicationSpecV1) {

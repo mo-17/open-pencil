@@ -24,6 +24,48 @@ function expression(value: string): ExprAst {
 
 describe('Backend list query expression compilation', () => {
   test.each(['react', 'vue'] as const)(
+    'binds even a fixed public %s LIST to the reactive session generation',
+    (target) => {
+      const fixture = browserGraph()
+      fixture.graph.updateNode(fixture.notes.id, { lowcodeRequiresAuth: false })
+      // The query owns the only current-user read: no auth guard or authored binding supplies one.
+      fixture.graph.deleteNode(fixture.form.id)
+      for (const child of fixture.graph.getChildren(fixture.notes.id))
+        if (child.id !== fixture.list.id) fixture.graph.deleteNode(child.id)
+      fixture.graph.updateNode(fixture.list.id, {
+        interactiveProps: {
+          ...fixture.list.interactiveProps,
+          dataSourceRef: { kind: 'backendResource', resourceId: 'notes-api' }
+        }
+      })
+      const application = queryApplication()
+      application.auth.rowAccess.push({
+        id: 'public-query',
+        entityId: 'notes',
+        effect: 'allow',
+        operations: ['select'],
+        principal: { kind: 'anonymous' }
+      })
+      const output = compileBrowser(target, fixture, application)
+      const source = [...output.files]
+        .filter(([path]) => /src\/pages\//.test(path))
+        .map(([, content]) => String(content))
+        .join('\n')
+      expect(source).toContain('sessionGeneration:')
+      if (target === 'react') {
+        expect(source).toContain('sessionGeneration: Number($currentUser.generation ?? -1)')
+        expect(source).toContain('), [$currentUser])')
+        expect(source).toContain('useDocState("$currentUser")')
+      } else {
+        expect(source).toMatch(
+          /sessionGeneration: Number\(__opDoc_\$currentUser_\w+\.value\.generation \?\? -1\)/u
+        )
+        expect(source).toContain('__vueWatch(() => (')
+      }
+    }
+  )
+
+  test.each(['react', 'vue'] as const)(
     'omits empty AI-authored filters from %s LIST and action requests',
     (target) => {
       const fixture = browserGraph()
@@ -91,7 +133,7 @@ describe('Backend list query expression compilation', () => {
       expect(source).toContain('q: String(')
       expect(source).toContain('sort: "id"')
       expect(source).toContain('direction: "desc"')
-      if (target === 'react') expect(source).toContain('), [search, title])')
+      if (target === 'react') expect(source).toContain('), [$currentUser, search, title])')
       else {
         expect(source).toMatch(/"title": __opDoc_title_\w+\.value/u)
         expect(source).toMatch(/q: String\(__opState_search_\w+\.value\)/u)

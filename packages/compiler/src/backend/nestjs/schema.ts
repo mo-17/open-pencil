@@ -223,6 +223,14 @@ export function emitNestJSSchema(application: BackendApplicationSpecV1) {
               commerceLedger: 'append-only-business-effects'
             }
           : {}),
+        ...(application.foodOrdering
+          ? {
+              foodOrdering: application.foodOrdering,
+              foodOrderingEnforcement:
+                'verified-owner-or-manager-before-replay-with-locked-cart-and-menu-price-checks',
+              foodOrderingPayments: 'external-integration-only'
+            }
+          : {}),
         invariants: [
           'server-injected-create-owner',
           'operation-requires-an-explicit-policy-grant',

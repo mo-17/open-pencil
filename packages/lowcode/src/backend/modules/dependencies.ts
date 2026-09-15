@@ -4,7 +4,14 @@ import type { BackendModuleDefinitionIR } from './types'
 
 export type BackendModuleReferences = Pick<
   BackendApplicationSpecV1,
-  'dataModel' | 'auth' | 'httpApi' | 'commands' | 'commerce' | 'workflows' | 'storage'
+  | 'dataModel'
+  | 'auth'
+  | 'httpApi'
+  | 'commands'
+  | 'commerce'
+  | 'foodOrdering'
+  | 'workflows'
+  | 'storage'
 >
 
 function policyEntities(
@@ -25,6 +32,8 @@ function commandEntities(
   const entities = command.steps.flatMap((step) => (step.kind === 'assert' ? [] : [step.entityId]))
   if (command.commerceOperation && application.commerce)
     entities.push(...Object.values(application.commerce.entities))
+  if (command.foodOrderingOperation && application.foodOrdering)
+    entities.push(...Object.values(application.foodOrdering.entities))
   const access = command.access
   if (access.kind === 'row-policy') {
     entities.push(access.entityId)

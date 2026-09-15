@@ -16,6 +16,125 @@ function publicApplication() {
 }
 
 describe('generated public Backend reads', () => {
+  test('a synchronous consumer rebind dispatches once and cannot revive disposed subscriptions', async () => {
+    const fixture = await runtimeFixture(false, publicApplication())
+    let stop: () => void = () => undefined
+    let stopOther: () => void = () => undefined
+    let rebind = false
+    let otherWrites = 0
+    try {
+      fixture.auth.transition('reader-a')
+      const generation = fixture.runtime.getSession().generation
+      stop = fixture.runtime.watchBackendResource(
+        { resourceId: 'notes-api', operation: 'list', sessionGeneration: generation },
+        () => {
+          if (!rebind) return
+          rebind = false
+          stop()
+          stopOther()
+          stop = fixture.runtime.watchBackendResource(
+            {
+              resourceId: 'notes-api',
+              operation: 'list',
+              sessionGeneration: fixture.runtime.getSession().generation
+            },
+            () => undefined
+          )
+        }
+      )
+      stopOther = fixture.runtime.watchBackendResource(
+        { resourceId: 'notes-api', operation: 'list', sessionGeneration: generation },
+        () => {
+          otherWrites++
+        }
+      )
+      await tick()
+      expect(fixture.pending).toHaveLength(2)
+      const writesBeforeChange = otherWrites
+      rebind = true
+      fixture.auth.transition('reader-b')
+      await tick()
+      expect(fixture.pending).toHaveLength(3)
+      expect(otherWrites).toBe(writesBeforeChange)
+      expect(fixture.pending[0].call.init.signal?.aborted).toBe(true)
+      expect(fixture.pending[1].call.init.signal?.aborted).toBe(true)
+      expect(fixture.pending[2].call.init.signal?.aborted).toBe(false)
+    } finally {
+      stop()
+      stopOther()
+      fixture.dispose()
+    }
+  })
+
+  test('waits for consumer rebinding before sending a selected public article filter in a new session', async () => {
+    const application = publicApplication()
+    if (!application.httpApi) throw new Error('Missing public API')
+    application.httpApi.resources[0].query = {
+      filterFields: ['id'],
+      searchFields: [],
+      sortFields: ['id']
+    }
+    const fixture = await runtimeFixture(false, application)
+    const rows: unknown[][] = []
+    let stop: () => void = () => undefined
+    const firstId = '10000000-0000-4000-8000-000000000001'
+    const secondId = '20000000-0000-4000-8000-000000000002'
+    try {
+      fixture.auth.transition('reader-a')
+      const firstGeneration = fixture.runtime.getSession().generation
+      fixture.runtime.setBackendState(firstGeneration, 'selected', { article_id: firstId }, {})
+      stop = fixture.runtime.watchBackendResource(
+        {
+          resourceId: 'notes-api',
+          operation: 'list',
+          filter: { id: firstId },
+          sessionGeneration: firstGeneration
+        },
+        (value) => rows.push(value)
+      )
+      await tick()
+      expect(fixture.pending).toHaveLength(1)
+      const oldRequest = fixture.pending[0]
+      fixture.auth.transition('reader-b')
+      expect(fixture.values.get('selected')).toEqual({})
+      expect(rows.at(-1)).toEqual([])
+      expect(oldRequest.call.init.signal?.aborted).toBe(true)
+      await tick()
+      expect(fixture.pending).toHaveLength(1)
+      oldRequest.respond({ data: [{ id: firstId, title: 'Old article' }], nextCursor: null })
+      await tick()
+      expect(rows.at(-1)).toEqual([])
+      stop()
+      stop = fixture.runtime.watchBackendResource(
+        {
+          resourceId: 'notes-api',
+          operation: 'list',
+          filter: { id: secondId },
+          sessionGeneration: fixture.runtime.getSession().generation
+        },
+        (value) => rows.push(value)
+      )
+      await tick()
+      expect(fixture.pending).toHaveLength(2)
+      const url = new URL(fixture.pending[1].call.url, 'https://generated.test')
+      expect(url.searchParams.get('filter')).toBe(JSON.stringify({ id: secondId }))
+      expect(url.searchParams.has('sessionGeneration')).toBe(false)
+      fixture.pending[1].respond({
+        data: [{ id: secondId, title: 'Current article' }],
+        nextCursor: null
+      })
+      await tick()
+      expect(rows.at(-1)).toEqual([{ id: secondId, title: 'Current article' }])
+      fixture.auth.transition(null)
+      expect(rows.at(-1)).toEqual([])
+      await tick()
+      expect(fixture.pending).toHaveLength(2)
+    } finally {
+      stop()
+      fixture.dispose()
+    }
+  })
+
   test('loads declared public LIST without a token while writes still require login', async () => {
     const fixture = await runtimeFixture(false, publicApplication())
     const rows: unknown[][] = []

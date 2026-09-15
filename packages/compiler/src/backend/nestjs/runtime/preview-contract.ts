@@ -4,10 +4,12 @@ import { nestJSPreviewApplicationDigest } from '../preview-digest'
 import { runtimeArtifact } from './artifact'
 
 /** Compatibility metadata only; this never grants migration or release authority. */
-export function emitNestJSPreviewContract(application: BackendApplicationSpecV1) {
-  const available = !application.httpApi?.resources.some((resource) =>
-    /^\/_openpencil(?:\/|$)/iu.test(resource.path)
-  )
+export function emitNestJSPreviewContract(application: BackendApplicationSpecV1, supported = true) {
+  const available =
+    supported &&
+    !application.httpApi?.resources.some((resource) =>
+      /^\/_openpencil(?:\/|$)/iu.test(resource.path)
+    )
   const contract = JSON.stringify({
     version: 1,
     applicationId: application.applicationId,

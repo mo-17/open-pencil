@@ -1,5 +1,6 @@
 import { COMMERCE_OPERATIONS } from '../commerce/types'
 import { discriminatedRecord } from '../discriminated-record'
+import { FOOD_ORDERING_OPERATIONS } from '../food-ordering/types'
 import {
   boundedText,
   id,
@@ -169,14 +170,40 @@ function commandRoute(
 
 function validateStepBody(
   steps: BackendCommandStepIR[],
-  commerce: boolean,
+  fixed: boolean,
   path: string,
   context: BackendValidationContext
 ): void {
-  if (commerce && steps.length)
-    commandError(context, path, 'Commerce commands require an empty executable steps array.')
-  if (!commerce && !steps.some((entry) => entry.kind === 'data.mutate'))
+  if (fixed && steps.length)
+    commandError(context, path, 'Fixed domain commands require an empty executable steps array.')
+  if (!fixed && !steps.some((entry) => entry.kind === 'data.mutate'))
     commandError(context, path, 'Commands require at least one bounded mutation.')
+}
+
+function fixedOperations(
+  source: BackendUnknownRecord,
+  path: string,
+  context: BackendValidationContext
+): Pick<BackendCommandDefinitionIR, 'commerceOperation' | 'foodOrderingOperation'> {
+  const commerceOperation =
+    source.commerceOperation === undefined
+      ? undefined
+      : oneOf(source.commerceOperation, path + '.commerceOperation', context, COMMERCE_OPERATIONS)
+  const foodOrderingOperation =
+    source.foodOrderingOperation === undefined
+      ? undefined
+      : oneOf(
+          source.foodOrderingOperation,
+          path + '.foodOrderingOperation',
+          context,
+          FOOD_ORDERING_OPERATIONS
+        )
+  if (commerceOperation && foodOrderingOperation)
+    commandError(context, path, 'A command cannot select two fixed operation domains.')
+  return {
+    ...(commerceOperation ? { commerceOperation } : {}),
+    ...(foodOrderingOperation ? { foodOrderingOperation } : {})
+  }
 }
 
 export function commandDefinition(
@@ -196,6 +223,7 @@ export function commandDefinition(
       'idempotency',
       'parameters',
       'commerceOperation',
+      'foodOrderingOperation',
       'steps',
       'return'
     ],
@@ -213,17 +241,14 @@ export function commandDefinition(
       path + '.idempotency',
       'Commands require the fixed Idempotency-Key replay contract.'
     )
-  const commerceOperation =
-    source.commerceOperation === undefined
-      ? undefined
-      : oneOf(source.commerceOperation, path + '.commerceOperation', context, COMMERCE_OPERATIONS)
+  const operations = fixedOperations(source, path, context)
   const parameters = parseArrayItems(
     source.parameters,
     path + '.parameters',
     context,
     16,
     (entry, entryPath, entryContext) =>
-      commandParameter(entry, entryPath, entryContext, commerceOperation ? 1000 : 8192)
+      commandParameter(entry, entryPath, entryContext, operations.commerceOperation ? 1000 : 8192)
   )
   const steps = parseArrayItems(source.steps, path + '.steps', context, 32, step)
   const returns = record(source.return, path + '.return', context, ['resultName', 'fields'])
@@ -258,7 +283,12 @@ export function commandDefinition(
     context,
     'command result'
   )
-  validateStepBody(steps, Boolean(commerceOperation), path + '.steps', context)
+  validateStepBody(
+    steps,
+    Boolean(operations.commerceOperation || operations.foodOrderingOperation),
+    path + '.steps',
+    context
+  )
   return {
     id: commandId,
     name,
@@ -266,7 +296,7 @@ export function commandDefinition(
     access: grant,
     idempotency: { kind: 'required', header: 'Idempotency-Key' },
     parameters: sorted(parameters, (entry) => entry.name),
-    ...(commerceOperation ? { commerceOperation } : {}),
+    ...operations,
     steps,
     return: { resultName, fields }
   }

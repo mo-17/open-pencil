@@ -4,8 +4,8 @@ import {
   type BackendCommandDefinitionIR
 } from '@open-pencil/lowcode/backend'
 
-import { sqlIdentifier } from '../artifact'
-import { nestJSReadColumn } from '../schema-fields'
+import { nestJSEntitySQL } from '../entity-sql'
+import { foodOrderingResultEntityId } from '../food-ordering/model'
 
 /** Semantic fields are compiled into trusted identifiers; documents never supply SQL. */
 export function nestJSCommerceModel(application: BackendApplicationSpecV1) {
@@ -15,18 +15,7 @@ export function nestJSCommerceModel(application: BackendApplicationSpecV1) {
     Object.entries(commerce.entities).map(([key, id]) => {
       const entity = application.dataModel.entities.find((entry) => entry.id === id)
       if (!entity) throw new Error('Missing validated commerce entity.')
-      return [
-        key,
-        {
-          table: sqlIdentifier('public') + '.' + sqlIdentifier(entity.name),
-          columns: Object.fromEntries(
-            entity.fields.map((field) => [field.id, sqlIdentifier(field.name)])
-          ),
-          projection: entity.fields
-            .map((field) => nestJSReadColumn(field) + ' AS ' + sqlIdentifier(field.id))
-            .join(', ')
-        }
-      ]
+      return [key, nestJSEntitySQL(entity)]
     })
   )
   return { applicationId: application.applicationId, ...commerce, tables }
@@ -39,7 +28,9 @@ export function nestJSCommandResultEntity(
   const result = command.steps.find(
     (step) => step.kind !== 'assert' && step.resultName === command.return.resultName
   )
-  const sourceEntityId = result && result.kind !== 'assert' ? result.entityId : undefined
+  const sourceEntityId =
+    foodOrderingResultEntityId(application, command) ??
+    (result && result.kind !== 'assert' ? result.entityId : undefined)
   const id =
     command.commerceOperation && application.commerce
       ? application.commerce.entities[commerceOperationEntityKey(command.commerceOperation)]

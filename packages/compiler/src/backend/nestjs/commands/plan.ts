@@ -96,7 +96,8 @@ export function nestJSCommandDefinitionDigest(
       ...(command.access.kind === 'row-policy'
         ? { rowAccess: application.auth.rowAccess, roles: application.auth.roles }
         : {}),
-      ...(application.commerce ? { commerce: application.commerce } : {})
+      ...(application.commerce ? { commerce: application.commerce } : {}),
+      ...(application.foodOrdering ? { foodOrdering: application.foodOrdering } : {})
     },
     '$.commandDefinition'
   )
@@ -142,6 +143,9 @@ export function nestJSCommandPlan(
           }
         : existingAccess,
     ...(command.commerceOperation ? { commerceOperation: command.commerceOperation } : {}),
+    ...(command.foodOrderingOperation
+      ? { foodOrderingOperation: command.foodOrderingOperation }
+      : {}),
     parameters: command.parameters,
     steps: command.steps.map((step) => commandStep(application, command, step)),
     return: command.return

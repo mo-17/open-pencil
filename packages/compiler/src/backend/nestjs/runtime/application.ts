@@ -145,10 +145,11 @@ export class AppModule {}
 }
 
 export function emitApplicationArtifacts(
-  application: BackendApplicationSpecV1
+  application: BackendApplicationSpecV1,
+  previewSupported = true
 ): BackendArtifactSource[] {
   return [
-    emitNestJSPreviewContract(application),
+    emitNestJSPreviewContract(application, previewSupported),
     runtimeArtifact('environment.ts', ENVIRONMENT_SOURCE),
     runtimeArtifact('errors.filter.ts', FILTER_SOURCE),
     runtimeArtifact('app.module.ts', moduleSource(application)),

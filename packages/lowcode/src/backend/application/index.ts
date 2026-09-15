@@ -171,6 +171,7 @@ export function parseBackendApplicationSpecV2(
       'httpApi',
       'commands',
       'commerce',
+      'foodOrdering',
       'modules',
       'realtime',
       'transactions',
@@ -201,6 +202,15 @@ export function parseBackendApplicationSpecV2(
       'backend-modules-v2-unsupported',
       '$.modules',
       'Module ownership cannot be lowered or discarded by Backend V2.'
+    )
+    return { ok: false, diagnostics: context.diagnostics }
+  }
+  if (source.foodOrdering !== undefined) {
+    diagnostic(
+      context,
+      'backend-food-ordering-v2-unsupported',
+      '$.foodOrdering',
+      'Food ordering cannot be lowered or discarded by Backend V2.'
     )
     return { ok: false, diagnostics: context.diagnostics }
   }
@@ -354,6 +364,18 @@ export function lowerBackendApplicationSpecV1ToV2(
           severity: 'error',
           path: '$.modules',
           message: 'Module ownership cannot be lowered to Backend V2.'
+        }
+      ]
+    }
+  if (parsed.value.foodOrdering)
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          code: 'backend-food-ordering-v2-unsupported',
+          severity: 'error',
+          path: '$.foodOrdering',
+          message: 'Food ordering cannot be lowered to Backend V2.'
         }
       ]
     }

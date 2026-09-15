@@ -6,7 +6,27 @@ they do not configure production ingress, backups, identity accounts or applicat
 
 ## Configure once
 
-For an explicitly selected local Keycloak instance:
+Read the generated backend [identity and application setup](./README.md#identity-and-application-setup)
+first. It lists this export's exact environment names, browser identity, business roles and
+account initialization commands. Configure your existing identity provider before starting the app;
+these scripts do not create users, assign roles or provision an identity server.
+
+Use the issuer and browser client already authored in the export, and the API audience plus HTTPS
+JWKS endpoint configured at that issuer. Replace the example values below with those actual values:
+
+\x60\x60\x60sh
+npm --prefix backend/nestjs run local:configure -- --issuer 'https://identity.example.com' --audience 'YOUR_API_AUDIENCE' --jwks-url 'https://identity.example.com/keys'
+\x60\x60\x60
+
+All commands in this guide run from the full frontend export root. If your current directory is
+already \x60backend/nestjs\x60, omit \x60--prefix backend/nestjs\x60. A declared browser client requires
+its matching frontend at the export root; for API-only startup without that frontend, follow
+the manual Run steps in \x60README.md\x60. A modular monolith starts once, with one shared database
+and migration history; do not run each business module independently.
+
+### Optional personal-notes Keycloak shortcut
+
+Only for an explicitly selected matching local Keycloak instance:
 
 \x60\x60\x60sh
 npm --prefix backend/nestjs run local:configure -- --local-keycloak --ca /absolute/path/to/trusted-ca.pem
@@ -62,6 +82,9 @@ npm --prefix backend/nestjs run local:up
 \x60\x60\x60
 
 Open the printed login URL (the authored login route is listed in \x60BACKEND-CLIENT.md\x60).
+After login, follow the generated README's account and role instructions. Login does not register
+an application profile or grant business roles. If the export has no browser client, only the API
+and database start and there is no generated login URL.
 The command starts the existing database, validates its schema receipt and identity endpoints,
 starts NestJS, and serves the built frontend with a same-origin API proxy. API routes take
 priority over the SPA fallback, including login and callback deep links. No dependencies or
@@ -75,7 +98,7 @@ npm --prefix backend/nestjs run local:down
 \x60\x60\x60
 
 The runner stops only its child processes and verified database container. It preserves the
-volume, accounts and notes. It never removes volumes, runs Docker system prune, or kills a
+volume and application records. It never removes volumes, runs Docker system prune, or kills a
 PID taken from a stale file. If a machine crash leaves a stale startup lock, first verify the
 old runner has exited, then remove only \x60.local/up.lock\x60 and \x60.local/running.json\x60.
 

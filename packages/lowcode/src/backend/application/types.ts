@@ -312,7 +312,7 @@ export interface BackendAutomationIRV1 {
 
 export interface BackendApplicationSpecV2 extends Omit<
   BackendApplicationSpecV1,
-  'version' | 'capabilities' | 'commerce'
+  'version' | 'capabilities' | 'commerce' | 'foodOrdering'
 > {
   version: typeof BACKEND_APPLICATION_SPEC_V2_VERSION
   dataModel: DataModelIR

@@ -1,4 +1,5 @@
 import type { BackendCommerceIRV1 } from '../commerce/types'
+import type { BackendFoodOrderingIRV1 } from '../food-ordering/types'
 import type {
   AuthPolicyIR,
   BackendHttpAPIIRV1,
@@ -23,6 +24,7 @@ export interface CommandReferences {
   auth: AuthPolicyIR
   api?: BackendHttpAPIIRV1
   commerce?: BackendCommerceIRV1
+  foodOrdering?: BackendFoodOrderingIRV1
 }
 
 function entityInfo(

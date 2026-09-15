@@ -5,9 +5,14 @@ import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 import { nestJSArtifact } from '../artifact'
 import {
   emitNestJSCommerce,
-  withCommerceCommandService,
+  COMMERCE_COMMAND_EXTENSION,
   withCommerceCommandTypes
 } from '../commerce'
+import {
+  emitNestJSFoodOrdering,
+  FOOD_COMMAND_EXTENSION,
+  withFoodOrderingCommandTypes
+} from '../food-ordering'
 import { COMMAND_KERNEL_MODULE_SOURCE } from '../modules/commands'
 import {
   withRowPolicyCommandService,
@@ -19,6 +24,7 @@ import {
   withTenantCommandTypes
 } from '../tenant/command-source'
 import { COMMAND_EXECUTION_SOURCE } from './execution-source'
+import { withReviewedCommandServices } from './extensions'
 import { COMMAND_INPUT_SOURCE } from './input-source'
 import { nestJSCommandPlan } from './plan'
 import { COMMAND_SERVICE_SOURCE } from './service-source'
@@ -67,13 +73,19 @@ import { CommandService } from './command.service.js'
 export class CommandModule {}
 `
   const baseTypes = tenants ? withTenantCommandTypes(COMMAND_TYPES_SOURCE) : COMMAND_TYPES_SOURCE
-  const types = rowPolicies ? withRowPolicyCommandTypes(baseTypes) : baseTypes
+  const rowTypes = rowPolicies ? withRowPolicyCommandTypes(baseTypes) : baseTypes
+  const types = application.foodOrdering ? withFoodOrderingCommandTypes(rowTypes) : rowTypes
   const baseService = tenants
     ? withTenantCommandService(COMMAND_SERVICE_SOURCE)
     : COMMAND_SERVICE_SOURCE
-  const service = rowPolicies ? withRowPolicyCommandService(baseService) : baseService
+  const rowService = rowPolicies ? withRowPolicyCommandService(baseService) : baseService
+  const service = withReviewedCommandServices(rowService, [
+    ...(application.foodOrdering ? [FOOD_COMMAND_EXTENSION] : []),
+    ...(application.commerce ? [COMMERCE_COMMAND_EXTENSION] : [])
+  ])
   return [
     ...emitNestJSCommerce(application),
+    ...emitNestJSFoodOrdering(application),
     nestJSArtifact(
       'src/command-types.ts',
       application.commerce ? withCommerceCommandTypes(types) : types
@@ -91,10 +103,7 @@ export class CommandModule {}
       'src/command-execution.ts',
       tenants ? withTenantCommandExecution(COMMAND_EXECUTION_SOURCE) : COMMAND_EXECUTION_SOURCE
     ),
-    nestJSArtifact(
-      'src/command.service.ts',
-      application.commerce ? withCommerceCommandService(service) : service
-    ),
+    nestJSArtifact('src/command.service.ts', service),
     ...(application.modules
       ? [nestJSArtifact('src/command-kernel.module.ts', COMMAND_KERNEL_MODULE_SOURCE)]
       : [

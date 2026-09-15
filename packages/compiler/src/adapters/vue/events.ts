@@ -22,6 +22,7 @@ import {
   type VueEmitContext,
   type VueLocalBinding
 } from './shared'
+import { emitVueStateHandler } from './state-values'
 
 const EVENT_DIRECTIVES: Record<IREventName, string> = {
   onClick: 'click',
@@ -323,18 +324,8 @@ function emitHandler(
   }
   if (handler.kind === 'invokeServerWorkflow' && !context.serverWorkflowAvailable) return []
   switch (handler.kind) {
-    case 'setState': {
-      if (!context.writableStateNames.has(handler.stateName)) return []
-      const stateName = context.writableStateNames.get(handler.stateName) as string
-      const expressionAliases = new Map(aliases)
-      if (handler.mode === 'functional') {
-        expressionAliases.set('prev', '__opPrevious')
-        const expression = scriptExpression(handler.ast, context.refNames, expressionAliases)
-        return [`{ const __opPrevious = ${stateName}.value; ${stateName}.value = ${expression} }`]
-      }
-      const expression = scriptExpression(handler.ast, context.refNames, expressionAliases)
-      return [`${stateName}.value = ${expression}`]
-    }
+    case 'setState':
+      return emitVueStateHandler(handler, context, aliases)
     case 'setVariable': {
       const expressionAliases = new Map(aliases)
       if (handler.mode === 'functional') {

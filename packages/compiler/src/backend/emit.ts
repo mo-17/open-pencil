@@ -30,6 +30,7 @@ import {
   unsupportedBackendCompilationModeDiagnostic
 } from './diagnostics'
 import { isReviewedNestJSPresetLockArtifact } from './nestjs/preset-lock'
+import { isReviewedPrismaCRMPresetLockArtifact } from './nestjs/prisma-crm/project'
 import {
   activeBackendProviderAdapterSlots,
   backendProviderPlanDigest,
@@ -120,7 +121,8 @@ function acceptArtifact(
   if (typeof artifact.content === 'string') {
     if (
       containsBackendSecretLikeMaterial(artifact.content) &&
-      !isReviewedNestJSPresetLockArtifact(artifact, bundle.descriptor)
+      !isReviewedNestJSPresetLockArtifact(artifact, bundle.descriptor) &&
+      !isReviewedPrismaCRMPresetLockArtifact(artifact, bundle.descriptor)
     ) {
       collection.diagnostics.push(
         backendDiagnostic(

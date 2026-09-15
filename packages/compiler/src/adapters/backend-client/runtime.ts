@@ -53,12 +53,15 @@ export interface BackendRequestInput {
   payload?: object
   limit?: number
   after?: string
-  filter?: Record<string, string | number | boolean | null>
+  /** Document expressions are untrusted until the transport validates each filter value. */
+  filter?: Record<string, unknown>
   q?: string
   sort?: string
   direction?: 'asc' | 'desc'
   /** Generated read-action destination scope, used only to cancel superseded local requests. */
   queryKey?: string
+  /** Render snapshot for generated LIST subscriptions; never sent to the API. */
+  sessionGeneration?: number
 }
 export interface BackendResourceRows { ${rowTypes} }
 export type BackendData<I extends BackendRequestInput> = I['operation'] extends 'list' ? BackendResourceRows[I['resourceId']][] : I['operation'] extends 'delete' ? { deleted: true } : BackendResourceRows[I['resourceId']]
@@ -73,7 +76,7 @@ export function createBackendQueryState(): <Input extends BackendRequestInput>(i
   let discardedAfter: string | undefined
   let discarding = false
   return <Input extends BackendRequestInput>(input: Input): Input => {
-    const next = JSON.stringify([input.resourceId, input.limit ?? null,
+    const next = JSON.stringify([input.resourceId, input.limit ?? null, input.sessionGeneration ?? null,
       Object.entries(input.filter ?? {}).sort(([left], [right]) => left.localeCompare(right)),
       input.q ?? null, input.sort ?? null, input.direction ?? null])
     if (signature !== undefined && signature !== next) {
@@ -95,7 +98,7 @@ let stateGeneration = getSession().generation
 let initialized = false
 let initialization: Promise<void> | undefined
 let initializationAlert: HTMLElement | undefined
-function publish(resource?: string): void { for (const listener of listeners) listener(resource) }
+function publish(resource?: string): void { for (const listener of [...listeners]) listener(resource) }
 function syncSession(): void {
   for (const controller of requests) controller.abort()
   queryActions.clear()
@@ -132,12 +135,25 @@ export function initializeBackendClient(): Promise<void> {
   })()
 }
 async function dispatch(input: BackendRequestInput, signal: AbortSignal): Promise<unknown> {
+  const filter = input.operation === 'list' ? requestFilter(input.filter) : undefined
   const client = createNestJSClient({
     baseUrl: ${JSON.stringify(client.apiBasePath)}, getAccessToken: async () => getSession().signedIn ? getAccessToken() : null,
     fetch: (url, init) => fetch(url, { ...init, signal })
   })
   ${dispatch ? `switch (input.resourceId) { ${dispatch} }` : ''}
   throw new Error('Backend operation is unavailable.')
+}
+function requestFilter(value: Record<string, unknown> | undefined): Record<string, string | number | boolean | null> | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw new Error('Invalid Backend filter.')
+  const result: Record<string, string | number | boolean | null> = Object.create(null)
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== null && typeof entry !== 'string' && typeof entry !== 'boolean' &&
+        !(typeof entry === 'number' && Number.isFinite(entry))) throw new Error('Invalid Backend filter.')
+    result[key] = entry
+  }
+  return result
 }
 export async function backendRequest<I extends BackendRequestInput>(input: I, signal?: AbortSignal): Promise<BackendResult<BackendData<I>>> {
   const session = getSession()
@@ -176,11 +192,16 @@ export function watchBackendResource<K extends keyof BackendResourceRows>(input:
   let epoch = 0
   let request: AbortController | undefined
   const refresh: Listener = (resource) => {
+    if (!active) return
     if (resource !== undefined && resource !== input.resourceId) return
     const current = ++epoch
     request?.abort()
     rows([]); cursor?.(''); error?.('')
     const session = getSession()
+    if (!active || current !== epoch) return
+    // A new identity may reuse a fixed legacy subscription. Generated inputs
+    // instead wait for the consumer to bind its newly cleared reactive state.
+    if (input.sessionGeneration !== undefined && input.sessionGeneration !== session.generation) return
     if (!session.ready || (!session.signedIn && !isPublicRead(input))) return
     request = new AbortController()
     void backendRequest(input, request.signal).then((result) => {
@@ -199,7 +220,7 @@ export function watchBackendResource<K extends keyof BackendResourceRows>(input:
 
 function requestArguments(operation: string, method: string): string {
   if (operation === 'list')
-    return `{ limit: input.limit, after: input.after, filter: input.filter, q: input.q, sort: input.sort, direction: input.direction } as Parameters<typeof ${method}>[0]`
+    return `{ limit: input.limit, after: input.after, filter, q: input.q, sort: input.sort, direction: input.direction } as Parameters<typeof ${method}>[0]`
   if (operation === 'read' || operation === 'delete') return 'input.id!'
   if (operation === 'create') return `input.payload as Parameters<typeof ${method}>[0]`
   return `input.id!, input.payload as Parameters<typeof ${method}>[1]`

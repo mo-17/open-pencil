@@ -44,6 +44,7 @@ function identityUnchanged(from: BackendApplicationSpecV1, to: BackendApplicatio
     same(from.httpApi?.browserClient, to.httpApi?.browserClient) &&
     same(from.secrets, to.secrets) &&
     same(from.commerce, to.commerce) &&
+    (!from.foodOrdering || same(from.foodOrdering, to.foodOrdering)) &&
     same(from.storage, to.storage) &&
     same(from.workflows, to.workflows)
   )
@@ -153,6 +154,9 @@ function newRecordsAreAdditive(
     .every(
       (command) =>
         !command.commerceOperation &&
+        (!command.foodOrderingOperation ||
+          (to.foodOrdering !== undefined &&
+            Object.values(to.foodOrdering.entities).every((id) => !oldIds.has(id)))) &&
         command.steps.every((step) => step.kind !== 'data.mutate' || !oldIds.has(step.entityId))
     )
 }

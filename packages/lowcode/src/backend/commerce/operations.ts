@@ -1,3 +1,8 @@
+import {
+  requiredUUIDParameter,
+  requiredTextParameter,
+  requiredIntegerParameter
+} from '../commands/parameters'
 import type { BackendCommandDefinitionIR, BackendCommandParameterIR } from '../commands/types'
 import type { BackendApplicationSpecV1 } from '../types'
 import { commerceResultFields } from './schema'
@@ -7,21 +12,6 @@ import {
   type BackendCommerceIRV1,
   type BackendCommerceOperation
 } from './types'
-
-const uuid = (name: string): BackendCommandParameterIR => ({ name, type: 'uuid', required: true })
-const text = (name: string, maxLength: number): BackendCommandParameterIR => ({
-  name,
-  type: 'string',
-  required: true,
-  maxLength
-})
-const integer = (name: string, min: number, max: number): BackendCommandParameterIR => ({
-  name,
-  type: 'integer',
-  required: true,
-  min,
-  max
-})
 
 export function commerceOperationEntityKey(
   operation: BackendCommerceOperation
@@ -45,23 +35,34 @@ export function commerceOperationEntityKey(
 
 function parameters(operation: BackendCommerceOperation): BackendCommandParameterIR[] {
   const byOperation: Record<BackendCommerceOperation, BackendCommandParameterIR[]> = {
-    'cart.set': [uuid('skuId'), integer('quantity', 1, 99)],
-    'cart.remove': [uuid('itemId')],
+    'cart.set': [requiredUUIDParameter('skuId'), requiredIntegerParameter('quantity', 1, 99)],
+    'cart.remove': [requiredUUIDParameter('itemId')],
     'cart.checkout': [
-      integer('cartRevision', 0, 2147483647),
-      text('recipient', 100),
-      text('phone', 64),
-      text('address', 1000)
+      requiredIntegerParameter('cartRevision', 0, 2147483647),
+      requiredTextParameter('recipient', 100),
+      requiredTextParameter('phone', 64),
+      requiredTextParameter('address', 1000)
     ],
-    'purchase.cancel': [uuid('purchaseId')],
-    'payment.simulate': [uuid('purchaseId'), text('outcome', 16)],
-    'refund.request': [uuid('orderId'), text('reason', 500)],
-    'refund.approve': [uuid('refundId'), text('reference', 200)],
-    'refund.reject': [uuid('refundId'), text('reference', 200)],
-    'shipment.dispatch': [uuid('orderId'), text('carrier', 100), text('trackingNumber', 200)],
-    'shipment.deliver': [uuid('orderId')],
-    'settlement.record': [uuid('settlementId'), text('reference', 200)],
-    'inventory.restock': [uuid('skuId'), integer('quantity', 1, 100000), uuid('storeId')]
+    'purchase.cancel': [requiredUUIDParameter('purchaseId')],
+    'payment.simulate': [requiredUUIDParameter('purchaseId'), requiredTextParameter('outcome', 16)],
+    'refund.request': [requiredUUIDParameter('orderId'), requiredTextParameter('reason', 500)],
+    'refund.approve': [requiredUUIDParameter('refundId'), requiredTextParameter('reference', 200)],
+    'refund.reject': [requiredUUIDParameter('refundId'), requiredTextParameter('reference', 200)],
+    'shipment.dispatch': [
+      requiredUUIDParameter('orderId'),
+      requiredTextParameter('carrier', 100),
+      requiredTextParameter('trackingNumber', 200)
+    ],
+    'shipment.deliver': [requiredUUIDParameter('orderId')],
+    'settlement.record': [
+      requiredUUIDParameter('settlementId'),
+      requiredTextParameter('reference', 200)
+    ],
+    'inventory.restock': [
+      requiredUUIDParameter('skuId'),
+      requiredIntegerParameter('quantity', 1, 100000),
+      requiredUUIDParameter('storeId')
+    ]
   }
   return byOperation[operation].sort((left, right) => left.name.localeCompare(right.name, 'en'))
 }

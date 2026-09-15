@@ -40,10 +40,11 @@ export interface RuntimeRequestInput {
   payload?: object
   limit?: number
   after?: string
-  filter?: Record<string, string | number | boolean | null>
+  filter?: Record<string, unknown>
   q?: string
   sort?: string
   direction?: 'asc' | 'desc'
+  sessionGeneration?: number
 }
 interface RuntimeModule {
   disposeTestRuntime(): void

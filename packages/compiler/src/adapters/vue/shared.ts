@@ -24,6 +24,7 @@ export interface VueEmitContext {
   serverWorkflowAvailable: boolean
   refNames: Set<string>
   writableStateNames: ReadonlyMap<string, string>
+  stateTypes: ReadonlyMap<string, IRTree['states'][number]['type']>
   identAliases: ReadonlyMap<string, string>
   listAliases: ReadonlyMap<string, string>
   docStateTypes: ReadonlyMap<string, IRTree['docStates'][number]['type']>
@@ -71,6 +72,7 @@ export function createContext(
         .filter((state) => !state.computed)
         .map((state) => [state.name, identAliases.get(state.name) ?? state.name])
     ),
+    stateTypes: new Map(states.map((state) => [state.name, state.type])),
     identAliases,
     listAliases,
     docStateTypes,

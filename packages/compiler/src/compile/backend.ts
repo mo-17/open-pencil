@@ -12,6 +12,7 @@ import {
   createBuiltinBackendProviderRegistry,
   emitBackendProviderPlan,
   NESTJS_BACKEND_PROVIDER_DESCRIPTOR,
+  NESTJS_PRISMA_CRM_BACKEND_PROVIDER_DESCRIPTOR,
   sameBackendProviderDescriptor,
   SUPABASE_BACKEND_PROVIDER_COMPILER_BUNDLE_DIGEST,
   SUPABASE_BACKEND_PROVIDER_DESCRIPTOR,
@@ -260,7 +261,11 @@ export function compileBackendArtifacts(
   })
   if (!planned.ok) return blockedCompilation(normalizationDiagnostics, planned.diagnostics)
   if (
-    sameBackendProviderDescriptor(planned.plan.authority, NESTJS_BACKEND_PROVIDER_DESCRIPTOR) &&
+    (sameBackendProviderDescriptor(planned.plan.authority, NESTJS_BACKEND_PROVIDER_DESCRIPTOR) ||
+      sameBackendProviderDescriptor(
+        planned.plan.authority,
+        NESTJS_PRISMA_CRM_BACKEND_PROVIDER_DESCRIPTOR
+      )) &&
     hasSupabaseRuntimeBinding(graph, planned.plan.application.httpApi?.browserClient !== undefined)
   ) {
     return blockedCompilation(

@@ -146,7 +146,7 @@ describe('Backend browser frontend compilation', () => {
       expect(sources).toContain('data.title')
       if (target === 'react') {
         expect(sources).toContain('setAfter(cursor)')
-        expect(sources).toContain('), [after])')
+        expect(sources).toContain('), [$currentUser, after])')
       } else {
         expect(sources).toMatch(/__opState_after_\w+\.value = __opDoc_cursor_\w+\.value/u)
         expect(sources).toMatch(/String\(__opState_after_\w+\.value\)/u)
