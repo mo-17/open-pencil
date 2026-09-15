@@ -17,6 +17,40 @@ The preset implements owner CRUD, explicit public reads and JWT role access. Its
 JWT guard, PostgreSQL connection pool, API client, OpenAPI description, initial SQL and dependency
 lockfile are editable source. Generation does not start the server, run migrations or deploy it.
 
+## Experimental Prisma 8 CRM export
+
+An opt-in **NestJS + Prisma 8 CRM (Experimental)** plugin provides a separate source-export
+provider. The default NestJS provider continues to use `pg` and supports its existing preview modes.
+
+1. In **Settings → Plugins → Browse**, install and enable the experimental Prisma CRM plugin.
+2. Create the **Customer CRM** starter through the Backend library using the regular NestJS provider.
+3. In the Backend editor, select **NestJS + Prisma 8 CRM (Experimental)** and save the Backend draft.
+4. Export a React or Vue source project. In its `backend/nestjs` directory, use Node **24.19**,
+   run `npm ci --ignore-scripts`, then `npm run build`.
+
+The exported build runs the pinned local Prisma CLI to emit its query contract and types.
+It does not connect to a database or apply migrations. The current pins are `prisma` CLI
+`8.0.0-rc.15`, `@prisma/orm-postgres` `8.0.0-rc.11`, and `pg` `8.22.0`.
+Minimum runtime is Node 22.18 or 24.11; Node 24.19 is the verified version.
+
+Customer list/detail, filters, literal substring search and microsecond-precision pagination use
+Prisma. User/profile/history reads and all business commands retain `pg`, sharing the same pool.
+Customer reassignment, current-assignee/manager authorization, row locks, idempotency and audit
+history keep their existing server behavior.
+
+This first version accepts the reviewed three-entity CRM field/enum/key layout and the exact
+customer read authority. Custom customer fields, broader/conditional policies, tenant partitions
+and composed modules are rejected with a compatibility diagnostic. Switch back to the regular
+NestJS provider when working outside that profile.
+
+`migrations/001-initial.sql` remains the schema owner. The Prisma contract omits SQL-owned
+secondary indexes and must not be used to initialize, update or migrate a database with Prisma.
+The ORM's disabled marker verification is not proof that a database matches the contract.
+
+The standalone local application runner remains available after export. This experimental provider
+supports neither External nor Managed editor preview; its compatibility handshake is disabled.
+Real OIDC login, platform behavior and production deployment remain separate verification steps.
+
 ## Supported application
 
 Every entity must be managed and have a single, non-null UUID primary key with a generated UUID

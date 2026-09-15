@@ -31,11 +31,11 @@ or beta channel, publisher/key identity, snapshot status, the audit head, and wh
 authorizes an executable runtime index. Search matches the signed name, summary, category, keyword,
 plugin ID, and publisher metadata; it does not trust an unsigned search-service response.
 
-The current **Unreleased** source line contains 68 reviewed plugins with 73 contributions: 20
-modules, 13 commands, 13 exporters, 22 connectors, four storage providers, and one Backend Provider. A definition,
+The current **Unreleased** source line contains 71 reviewed plugins with 76 contributions: 21
+modules, 13 commands, 13 exporters, 22 connectors, four storage providers, and three Backend Providers. A definition,
 renderer, contract, or exporter source file alone does not make a plugin available; the contribution
 must also have its reviewed central host registration. Map, Google Drive Storage, OneDrive Storage,
-Aliyun Drive Storage, Baidu Netdisk Storage, Supabase Backend Provider, Compiler Preview Popout, and AI Popout are installed and enabled on a new profile; every other bundled
+Aliyun Drive Storage, Baidu Netdisk Storage, Supabase Backend Provider, NestJS Backend Provider, Compiler Preview Popout, and AI Popout are installed and enabled on a new profile; every other bundled
 plugin is opt-in.
 
 - **Map** is installed and enabled on a new profile. It creates a native editable map `FRAME` and
@@ -128,11 +128,13 @@ plugin is opt-in.
   scaffold into a `.zip` source archive. It never runs `npm`, `bun`, `cargo`, or generated code, and
   it does not give the plugin filesystem or process access.
 - **Expo React Native Exporter** packages the supported static design subset and native control
-  shells as a real Expo + React Native + TypeScript source project. It does not use a WebView or
-  React Native Web wrapper, install dependencies, or invoke mobile build tools. Web-only features
+  shells as a real Expo + React Native + TypeScript source project. Configured VR tours use an
+  explicitly documented WebView component; other pages use native components. Export does not
+  install dependencies or invoke mobile build tools. Web-only features
   are recorded in `EXPORT_WARNINGS.md` instead of being silently treated as native.
 - **Flutter Exporter** packages the supported static design subset as a source-only Dart + Flutter
-  project. It emits Flutter widgets and navigation source rather than a WebView, does not install
+  project. It emits Flutter widgets and navigation source, with a WebView component for configured
+  VR tours. Export does not install
   dependencies, generate platform runners, or invoke Flutter tooling, and records unsupported behavior in
   `EXPORT_WARNINGS.md`.
 - **Static Accessibility Audit** runs the host's bounded accessibility lint preset against the
@@ -305,14 +307,15 @@ WebView.
 
 After installing **Video**, insert it from the **Plugins** menu and configure its public HTTPS source
 under **Design → Module**. Compiler Preview does not attach the source or poster until you press
-**Load video preview**; generated Web or Tauri projects load the configured URL through the browser's
+**Load video**; generated Web or Tauri projects load the configured URL through the browser's
 native video element. The media host can therefore observe the viewer's IP address and ordinary
 HTTPS request metadata after activation or in the exported app. The initial URL rejects local hosts,
 IP literals, credentials, fragments, and non-HTTPS schemes, but DNS and redirects remain controlled
 by the media host and viewer's browser. Use only a media host you trust, and never put credentials,
 access tokens, or private data in source/poster URLs: query parameters are preserved in the `.fig`
 document and generated source, not treated as secrets. Browser autoplay policy may still require
-muted playback or a user gesture.
+muted playback or a user gesture. To connect the player to a catalog, creator forms and private
+favorites, use the [Video and live channel template](#video-and-live-channel-template).
 
 After installing **Table**, use **Design → Module** to edit header and body cells, add or remove rows
 and columns, and review the live size and text counters. The editor and core validator enforce the
@@ -504,11 +507,12 @@ complete file set still exactly matches that manifest. A non-empty unmarked dire
 marker, or any missing/extra file is rejected instead of being deleted; choose another empty output
 directory or remove the unrelated files yourself after reviewing them.
 
-Expo and Flutter source exports do not add a WebView for any plugin module, including **Lottie**,
+Expo and Flutter source exports keep static native fallbacks for **Lottie**,
 **Carousel**, **Advanced Data Grid**, and the seven Unreleased content modules above. They emit
 explicit unsupported-feature warnings and retain authored static native fallbacks without the
 interactive module behavior until reviewed native adapters exist. This preserves the native export
-security boundary instead of silently shipping a browser surface inside the mobile app.
+boundary for these modules. **VR Tour** has a separate, explicit WebView adapter for configured
+rooms and hotspots; its player preparation and limitations are described below.
 
 Installation and enablement are separate on purpose. A newly installed plugin starts disabled so
 you can review it before exposing its modules, commands, exporters, connectors, or storage-provider
@@ -1315,3 +1319,267 @@ or load plugin HTML/JavaScript into the main WebView.
 
 For the package contract, deployment configuration, and publisher workflow, see
 [Plugin Architecture](../development/plugins).
+
+## Personal blog and automotive news templates
+
+Enable **NestJS Backend Provider**, open **Backend library**, select **Personal blog** or **Automotive news**, review the roles and generated pages, then choose **Use template**. These are built-in business templates and require no extra canvas plugin. Creation is one undoable document operation; it does not start PostgreSQL, configure OIDC or grant a role.
+
+The blog creates **7 pages**, including shared sign-in and account setup:
+
+| Page                    | Route                                |
+| ----------------------- | ------------------------------------ |
+| Blog categories         | `/blog/categories`                   |
+| Read blog               | `/blog`                              |
+| My blog bookmarks       | `/blog/bookmarks`                    |
+| Manage blog categories  | `/blog/author/categories`            |
+| Write blog              | `/blog/author/articles`              |
+| Account setup / sign in | `/account-setup` / `/business-login` |
+
+An identity-service administrator grants `blog-author`. Authors maintain the shared category directory and write, edit, publish or withdraw **their own** articles. Ordinary signed-in readers can manage their own bookmarks without the author role. Registering an account profile does not grant publishing permission, and article creation does not require selecting a profile.
+
+The automotive template creates **12 pages**, including sign-in and account setup:
+
+| Page                    | Route                                |
+| ----------------------- | ------------------------------------ |
+| News categories         | `/automotive/categories`             |
+| Vehicle brands          | `/automotive/brands`                 |
+| Vehicle models          | `/automotive/models`                 |
+| Automotive news         | `/automotive/news`                   |
+| My news bookmarks       | `/automotive/bookmarks`              |
+| Manage news categories  | `/automotive/editor/categories`      |
+| Manage vehicle brands   | `/automotive/editor/brands`          |
+| Manage vehicle models   | `/automotive/editor/models`          |
+| Edit automotive news    | `/automotive/editor/articles`        |
+| Publish automotive news | `/automotive/publisher/articles`     |
+| Account setup / sign in | `/account-setup` / `/business-login` |
+
+`auto-editor` maintains categories, brands and models, and creates or edits their own drafts. `auto-publisher` reviews all articles and publishes or withdraws them; that role alone does not grant editing rights. A person who needs both responsibilities must receive both roles. A model's brand cannot be changed after creation; choosing the model for an article lets the server derive its brand and copy directory names.
+
+To try either workflow:
+
+1. Create an active category. For automotive news, also create an active brand and a model under it. These are manually maintained descriptions, not live vehicle specifications, availability or quotations.
+2. Create a draft, choose the directory entries, and enter a title, summary and article text. The body supports up to 8,192 characters of **plain text**. Draft bodies and summaries may be empty; publishing requires a non-empty title and body. HTML and Markdown are displayed as text, not executed or rendered as rich content.
+3. Select the draft to edit it. Only drafts can be edited. In automotive news, switch to the publishing page using an account with `auto-publisher` to publish. The server rechecks publication rights and current category/model/brand availability.
+4. Open the public reading page and select an article. The full body scrolls within its text area. Signed-in readers can bookmark it and then open their private bookmarks to read the current public article directly.
+5. Remove a bookmark to keep an inactive reference, or restore that original record while its article is published. Bookmarks contain only the article reference, not copied titles or body text. After withdrawal, a fresh public lookup returns no article; previously downloaded copies cannot be recalled.
+6. Withdraw a published article to return it to draft, edit it, and publish again. Disabling a category, model or brand prevents new publication but does not automatically withdraw existing articles. Use **Refresh list** to request current data; these pages do not promise real-time updates.
+
+The generated React and Vue applications cover browser reading and editorial forms. They do not yet provide comments, rich-text editing, uploads, scraping, news feeds, live prices, scheduled publication, SSR/SSG article routes or SEO indexing guarantees. Connect such services and production identity/deployment settings after export. Native/mobile and mini-program publishing flows still require separate implementation and device testing. Combining these templates with other modules keeps the existing backend document budgets; an oversized combination is rejected rather than silently truncated.
+
+## Hospital registration template
+
+The **Hospital registration** Backend template (`hospital-registration`) provides a single-hospital
+directory, patient profiles, appointment reservations and registration-desk handling. Keep
+**NestJS Backend Provider** enabled, open **Browse backend library**, review the template and choose
+**Use template**. No additional canvas plugin is required. Creation adds 11 editable pages in one
+undoable operation; a new document retains its original page and therefore contains 12 pages.
+
+| Page                     | Route                          | Purpose                                                                   |
+| ------------------------ | ------------------------------ | ------------------------------------------------------------------------- |
+| Business sign in         | `/business-login`              | Sign in through the configured OIDC provider.                             |
+| Account setup            | `/account-setup`               | Register the signed-in account's profile.                                 |
+| Hospital departments     | `/hospital/departments`        | Browse active departments and their listed doctors.                       |
+| Hospital doctors         | `/hospital/doctors`            | Search doctors and inspect their open sessions.                           |
+| Hospital registration    | `/hospital/registration`       | Select a session and a saved patient, then reserve one place.             |
+| My patients              | `/hospital/patients`           | Add, edit or deactivate patient records owned by your account.            |
+| My appointments          | `/hospital/appointments`       | Inspect, cancel or restore your appointments and view history.            |
+| Manage departments       | `/hospital/admin/departments`  | Create and edit department directory records.                             |
+| Manage doctors           | `/hospital/admin/doctors`      | Create and edit doctor directory records.                                 |
+| Manage hospital sessions | `/hospital/admin/slots`        | Create sessions and adjust capacity or availability.                      |
+| Registration desk        | `/hospital/admin/appointments` | Cancel appointments, record arrival and complete administrative handling. |
+
+Follow the generated README to configure PostgreSQL and OIDC. An identity-service administrator
+grants `hospital-admin` for department, doctor and session management. Both `hospital-admin` and
+`hospital-staff` can use Registration desk. Account registration does not grant roles. Patient
+master records are private to the owning account; the registration desk reads appointment snapshots,
+not a directory of every account's patients.
+
+For initial setup, register the administrator's profile, create an active department, then create
+an active doctor in that department. To create a session, choose its department and doctor and
+enter explicit zoned ISO 8601 start/end times, capacity, location and reference fee. Selecting a
+different department clears the chosen doctor. A doctor's department cannot be changed afterward;
+a session's doctor, times and fee are fixed after creation. Session edits change capacity and
+availability only, and capacity cannot fall below existing reservations. Fees are integer CNY cents
+(`2500` means CNY 25.00); no payment is collected or verified.
+
+Customers add a patient name in **My patients**; contact and relationship are optional. The template
+does not request government ID numbers, symptoms, diagnoses or medical history, and does not verify
+real-world identity or family relationships. In **Hospital registration**, select a session, review
+its recorded doctor, department, times, location and fee, then choose an active patient. The server
+checks ownership, active records, time, duplicate appointments and capacity in the reservation
+transaction. An open directory record alone does not guarantee that a place remains available.
+
+Customers can cancel a confirmed appointment before its session begins. **Restore my appointment**
+reuses that same appointment, patient and session; it rechecks availability and refreshes the
+patient/session snapshots, including the reference fee. Do not submit a second reservation for the
+same patient and session. To change sessions, cancel when permitted and reserve a different session.
+The hospital can cancel a still-confirmed appointment even after its session has started. Closing
+a session does not automatically cancel appointments; handle those records individually and contact
+patients separately.
+
+Hospital staff record check-in during the session, then mark the checked-in appointment complete.
+These are administrative statuses, not clinical records or proof of treatment. Explanations should
+contain administrative reasons only. **Refresh list** retrieves current records manually; there is
+no realtime queue, calling screen, notification, payment/refund, real-name verification, clinical
+record, prescription or HIS integration. Add required external services after export. This complete
+flow targets React/Vue web output; native/mobile and mini-program runtimes need separate development
+and device testing. Module composition remains subject to the existing backend size limits.
+
+## Restaurant ordering template
+
+The **Restaurant ordering** Backend template (`food-ordering`) generates a single-restaurant
+React/Vue application with a NestJS backend. Keep **NestJS Backend Provider** enabled, open
+**Browse backend library**, select the template and review its requirements before choosing
+**Use template**. No additional canvas module plugin is required. Creation adds eight pages in
+one undoable operation; a fresh document retains its original page, for nine pages in total.
+
+| Page               | Route              | Purpose                                                            |
+| ------------------ | ------------------ | ------------------------------------------------------------------ |
+| Business sign in   | `/business-login`  | Sign in through OIDC.                                              |
+| Account setup      | `/account-setup`   | Register your profile.                                             |
+| Order food         | `/menu`            | Browse available dishes and save the desired total quantity.       |
+| My food cart       | `/cart`            | Review your active cart lines, change quantities or remove dishes. |
+| Confirm food order | `/checkout`        | Select the cart summary, then submit a dine-in or pickup order.    |
+| My food orders     | `/food-orders`     | Inspect your order items and history; cancel a pending order.      |
+| Kitchen orders     | `/kitchen`         | Accept, prepare, mark ready, complete or reject orders.            |
+| Manage menu        | `/menu-management` | Create and edit dishes, prices and availability.                   |
+
+Configure PostgreSQL and OIDC using the generated README. Ordinary signed-in customers can use
+their own cart and orders; your identity administrator grants `food-manager` to restaurant staff
+for menu and kitchen operations. Registering a profile does not grant this role. Staff create
+dishes after selecting their registered profile. Prices and totals use integer minor units
+(the template uses CNY, so `1200` means CNY 12.00). Unavailable/sold-out is a
+menu flag, not ingredient or dish inventory accounting. Image fields store URLs; no image upload
+or automatic image display is provided by these forms.
+
+Saving a dish quantity **replaces** that dish's cart quantity with a value from 1 to 99. Checkout
+requires a contact name; dine-in also requires a table number. Phone and note are optional.
+The server checks the cart revision, current prices and availability in a transaction, and creates
+order-item snapshots and history. The client never submits its own total. Review the current cart
+after a conflict before submitting again. If a dish's price changed, save its desired quantity
+again to accept the current price, then refresh and review the cart. Removed or checked-out cart lines do not appear as an
+editable history list.
+
+Kitchen staff progress orders from pending to accepted, preparing, ready and completed. Customers
+may cancel only pending orders; staff may reject any unfinished order. **Refresh list** reloads the
+first page with the current search/filter, clears the selection, and preserves unfinished form
+input and saved/in-flight requests. Kitchen updates require this manual refresh; no realtime feed,
+polling, payment, refund, delivery, SMS or printer integration is included. Connect those services
+after export. The template does not verify table ownership or deploy services. Its complete flow
+targets React/Vue web output; native/mobile and mini-program runtimes require separate development
+and device testing. See [business application templates](../development/backend-business-templates.md).
+
+## Video and live channel template
+
+The **Video library and live channels** Backend template (`video-live`) creates editable React or
+Vue pages and a NestJS backend for videos, live-channel records and private favorites.
+
+1. Open **Settings → Plugins → Browse** and install **Video**. Switch to **Installed**, enable it,
+   then close Settings. Keep the **NestJS Backend Provider** enabled.
+2. Open **Browse backend library**, choose **Video library and live channels**, and review its
+   roles and setup requirements. Use a new application document, or add it as a business module to
+   a compatible application.
+3. Choose **Use template**. A new application adds the seven pages below; an existing default page
+   is preserved, so a fresh document contains eight pages. Creation is one undoable operation.
+   Adding a module shares the existing sign-in and account-setup pages instead of duplicating them.
+4. Configure PostgreSQL and OIDC, and follow the generated README to run the backend and frontend.
+   Sign in and register your profile on **Account setup**. Your identity-service administrator must
+   grant `media-creator` to creators, or `media-admin` to operators who manage all creators' content.
+   Template creation and account registration do not grant either role.
+
+| Page             | Route               | Purpose                                                                                   |
+| ---------------- | ------------------- | ----------------------------------------------------------------------------------------- |
+| Business sign in | `/business-login`   | Sign in through the configured OIDC service.                                              |
+| Account setup    | `/account-setup`    | Register the signed-in user's profile.                                                    |
+| Video library    | `/videos`           | Publicly browse published videos, select one to watch, or save it after signing in.       |
+| Live channels    | `/live`             | Publicly browse scheduled, marked-live and ended channels.                                |
+| My favorites     | `/favorites`        | Read, cancel or restore only your own saved videos.                                       |
+| Creator videos   | `/creator/videos`   | Create drafts, edit, publish, archive and restore videos; inspect history.                |
+| Creator channels | `/creator/channels` | Edit channel details, schedule, mark live or ended, archive and restore; inspect history. |
+
+In **Creator videos**, choose your registered profile, create a draft and enter a public playback
+URL before publishing. MP4 and WebM use the browser's video support; the codec must also be supported
+by that browser. HLS addresses ending in `.m3u8` use the bundled `hls.js` player. This HLS path requires
+a compatible browser media implementation and reports an unsupported message otherwise; it does not
+silently fall back to native HLS. The playlist and all referenced media must be public HTTPS resources
+with CORS enabled. The controlled HLS loader rejects redirects and omits credentials.
+
+Select a record in the video or channel list, then choose **Load video**. Selecting another record
+clears the previous player and requires another load action. An optional poster is configured
+alongside the playback URL. Keep secrets, signing tokens and private URLs out of these fields.
+Favorites retain a title and video reference, not a saved playback URL. Restore rechecks that the
+video is currently published; use the public catalog to watch its current version.
+
+For a channel, first create a draft and schedule a future time. **Mark live** requires a scheduled
+record and a non-empty playback URL, and may be used before the announced time. **Mark ended** changes
+the record again. These labels do not verify stream availability, start or stop an encoder, or create
+a replay. Connect real ingest, uploads, transcoding, media storage, CDN, paid access and any required
+stream monitoring after export. The template does not bundle video files or deploy those services.
+
+This template targets React/Vue web output. Its full player and backend flow have not been implemented
+or verified for Expo, Flutter or mini-program exports; mobile devices also need separate testing.
+See [business application templates](../development/backend-business-templates.md) for backend setup
+and module composition.
+
+## VR Tour and rental viewing
+
+### Exporting to Expo, Flutter and Taro
+
+For a configured tour with rooms and hotspots, enable the corresponding exporter plugin and use
+**File → Export → Expo / Flutter / Taro Project**. Apply the installed residential samples to the
+tour before exporting if you want the images inside the ZIP. The generated README explains each
+platform's requirements; the editor exports source and does not install dependencies or launch builds.
+
+| Target              | Preparation from the extracted project root                                                                 | Result                                                                                                                                                       |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Expo / React Native | `npm install`, then `npm start`                                                                             | Start prepares the local player automatically; the tour uses a WebView inside the native page. Direct Expo commands require `npm run prepare:vr-tour` first. |
+| Flutter             | `npm install --prefix vr-tour-web`, `node vr-tour-web/build.mjs`, then the Flutter setup commands in README | A Flutter WebView loads the bundled HTML assets.                                                                                                             |
+| Taro / WeChat       | `npm install --prefix vr-tour-web`, `node vr-tour-web/build.mjs`, then deploy `vr-tour-web/dist/` to HTTPS  | Set `VR_TOUR_BASE_URL` in the exported configuration and configure the WeChat business domain. The viewing button opens a separate full-page WebView.        |
+
+Personal-type WeChat accounts cannot use web-view. Taro export does not host or publish its player.
+The same authored language, load button and hotspot behavior are used on each target. Saved 8K
+originals remain in the source package; mobile display is limited to 4096 pixels wide to reduce GPU
+use, while initial image decoding can still consume substantial memory.
+
+This path supports configured scenes. A dynamic selected-property `panoramaUrl` binding displays
+an explicit unsupported message; it never substitutes a default room. Use React/Vue for the live
+rental-backend binding. Android/iOS and WeChat device checks, signing and deployment remain your
+post-export steps. Gyroscope and headset mode are not included.
+
+### Installing and configuring the viewer
+
+Installing **OpenPencil VR Tour** also downloads its two 8K residential samples (about 6.5 MB).
+Installation needs a connection and completes only after the pinned images are verified and cached.
+In the module properties, choose **Use real residential samples**, open desktop preview, then choose
+**Load panorama**. Older installations can use the same button to acquire the missing resource pack.
+Applying samples replaces the current scenes in one undoable action. The photos are independent
+residences by Greg Zaal / Poly Haven, licensed CC0; sample links do not imply adjacent rooms.
+
+New modules follow the editor language. **Interface language** selects English or Simplified Chinese
+for runtime controls, status/error messages and accessibility labels; existing documents retain their
+authored language. Sample images are embedded in the document and carried when copying the module.
+Export includes only referenced samples. Provenance is recorded in
+`public/assets/vr-tour/SOURCES.json` for React/Vue, or `vr-tour-web/SOURCES.json` for Expo/Flutter/Taro.
+Uninstalling the plugin removes its installation cache while preserving images already embedded in documents.
+
+Install and enable **OpenPencil VR Tour** in **Settings → Plugins → Browse**, then insert **VR Tour**
+from the canvas module menu. Its property panel has room-name, panorama-image and hotspot forms.
+Choose an initial room and viewing angles, add links to other rooms, and set each link's horizontal
+and vertical angle. Deleting a room also removes incoming links and selects another initial room
+in the same undo step.
+
+Supply your own 2:1 equirectangular JPG, PNG or WebP images, 512–8192 pixels wide and no larger than
+24 MiB each. Public HTTPS image URLs need CORS; URL credentials, query strings and fragments are
+not supported. For a local exported project, copy images into `public/assets/vr-tour/` and use
+`/assets/vr-tour/<file>.jpg`. The editor does not copy a local file simply because its path is typed.
+
+The canvas draws an offline room diagram. Desktop React/Vue preview and exported web projects use
+a 360° panorama viewer with drag, zoom, keyboard controls and room hotspots. Loading a remote
+panorama requires a load action; changing a bound property clears the previous view and load
+authorization. Empty images remain labelled diagrams. Ordinary browser Compiler Preview does
+not support this module. This edition does not offer headset WebXR or free movement in a GLB model.
+
+The **Rental and property viewing** Backend starter connects its selected property's panorama
+field to this viewer. Install VR Tour before creating that starter or adding its business module.
+See [business application templates](../development/backend-business-templates.md) for landlord,
+tenant, appointment and deployment setup.

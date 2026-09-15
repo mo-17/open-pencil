@@ -48,9 +48,11 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   Desktop review supports React and Vue, with the chosen framework retained through staging
   Apply, capability verification, and migration export. Compilation and preview never modify a
   remote database or deploy a server runtime
-- **Built-in plugin marketplace** — manage 68 reviewed plugins with 73 module, command, exporter,
+- **Business application templates** — create and combine CRM, commerce, booking, publishing and collaboration workflows. Add procurement/inventory, two-stage enterprise approvals, fixed-question surveys, text courses with instructor grading, moderated communities, asset custody, quote/contract fulfillment, or recruitment and employee transitions; export editable React/Vue pages and a NestJS backend. See [the template guide](packages/docs/development/backend-business-templates.md).
+- **Optional Prisma CRM export** — install the experimental NestJS + Prisma 8 CRM provider, select it for an existing CRM application, and export React/Vue sources with Prisma customer queries and retained `pg` transactions. The default NestJS provider and its desktop preview remain separate. See [the CRM guide](packages/docs/development/backend-nestjs.md#experimental-prisma-8-crm-export).
+- **Built-in plugin marketplace** — manage 71 reviewed plugins with 76 module, command, exporter,
   connector, storage-provider, and backend-provider contributions: 20 editable modules, 13 bounded commands, 13
-  source/data exporters, 22 host-reviewed connectors, one bundled Supabase Backend Provider, and four default-enabled Google Drive,
+  source/data exporters, 22 host-reviewed connectors, three Backend Providers (Supabase, NestJS and experimental Prisma CRM), and four default-enabled Google Drive,
   OneDrive, Aliyun Drive, and Baidu Netdisk Storage declarations. The opt-in additions include 17 read-only external-service connectors, local
   Application Security Readiness, and safe deployment-plan reviews for Vercel and Cloudflare Pages
 - **Local-first cloud documents** — connect the Tauri desktop app to Google Drive, OneDrive, Aliyun
@@ -343,18 +345,61 @@ unsaved drafts block template creation. The local profile expects an existing Ke
 creating a template does not start services or deploy the application.
 
 Business starters include **Customer CRM**, **Service desk**, **Content and knowledge base**,
-**Booking and registration**, and **Projects and tasks**. Each creates editable workspaces with
+**Booking and registration**, **Projects and tasks**, **Rental and property viewing**,
+**Video library and live channels**, **Restaurant ordering**, **Hospital registration**, **Personal blog**,
+and **Automotive news**. Each creates editable workspaces with
 registered-account pickers, transactional commands, access rules and React/Vue exports. The built-in
 AI can create them with `create_business_app` before restyling. Content uses plain text, ticket
 approval has one independent stage, and external payments, notifications and calendar integrations
 remain export-time extensions. See [business templates](packages/docs/development/backend-business-templates.md)
 for setup, roles and the included workflows.
 
-Existing NestJS applications can choose **Add module** in that library to combine the five business
+For rental viewing, install and enable **VR Tour** in Settings → Plugins first. The starter includes
+property publication, landlord management, viewing slots and appointments. Its selected-property
+panorama opens in a 360° viewer; you can also insert a standalone VR Tour module with multiple
+rooms and hotspots. The canvas shows an offline diagram; actual panoramas run in desktop preview
+and exported React/Vue pages. Static tours also export through a **WebView component in Expo and
+Flutter**, or a **separate HTTPS viewing page in Taro**. The source ZIP includes a local player
+preparation script and saved sample images; follow its README before launching. Taro additionally
+requires HTTPS hosting and a supported WeChat account with a configured business domain. Dynamic
+selected-property bindings remain React/Vue-only. Provide your own equirectangular images. Ordinary browser preview,
+headset WebXR and free movement through a 3D model are not supported in this edition.
+
+For video websites, enable the **Video** plugin and choose **Video library and live channels**.
+The template includes a public catalog, live-channel directory, private favorites and creator
+management. Selected videos play in React/Vue exports using public HTTPS MP4/WebM or HLS sources.
+Creators manage drafts, publication and channel schedules; marking a channel live updates its
+listing state. Connect real uploads, stream ingest, transcoding, CDN and paid access after export.
+
+For restaurant ordering, choose **Restaurant ordering** for menu management, a persistent cart,
+dine-in or pickup checkout, private order history and a kitchen workspace. Prices use integer
+CNY cents and are rechecked in the checkout transaction. Staff need the `food-manager` role;
+the kitchen list has a manual refresh button. Connect payment, printing and delivery after export.
+
+For writing and publishing, choose **Personal blog** or **Automotive news**. Both include article
+categories, drafts, publication/withdrawal, public reading and private bookmarks. Automotive news
+also includes brands and vehicle models, with separate editor and publisher roles. Export editable
+React/Vue pages and a NestJS backend, or combine either template with existing business modules.
+Content is plain text; comments, subscriptions, live automotive data and SEO prerendering can be
+added after export.
+
+For hospital appointments, choose **Hospital registration**. The starter includes public departments,
+doctors and schedules, private patient profiles and appointments, and separate staff workspaces.
+Capacity is reserved transactionally; cancellation releases it once, and restoration checks the current
+schedule again. Configure `hospital-admin` and `hospital-staff` in the identity service. Fees are
+appointment snapshots; connect payment, verified identity, HIS, insurance and notifications after export.
+
+Existing NestJS applications can choose **Add module** in that library to combine the business
 templates or extend a commerce application. A compatibility review protects existing pages, models,
 login and permissions; installation is one undo step. Export all routes as one React/Vue frontend
 and a modular NestJS backend with shared authentication and PostgreSQL. The AI tool also supports
 `create_business_app` with `mode: add-module`. Database updates remain a separate SQL review.
+
+After creating a business application, choose **Getting started** in the Backend panel to review
+the saved public sign-in configuration, required roles, first-record preparation and current routed
+pages. Unsaved drafts are called out separately. The exported NestJS guide lists the model's role
+IDs, identity-claim mapping, account initialization and startup order; these steps do not assign roles
+or start services automatically.
 
 Provider cards use **Select provider** to change the draft only; configure it and choose **Save
 Backend model** explicitly. Selecting a provider does not migrate a database. **Manage plugins**
@@ -434,8 +479,8 @@ stable/beta catalogs, searchable listings, immutable artifact coordinates, an ap
 checkpoint, and an optional executable-runtime index. Explicit update review, verified rollback,
 digest pins, cache status, and portable document dependency locks remain enforced.
 After enablement, insert module plugins from the canvas toolbar, run Clipboard Toolkit commands from
-the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 68
-reviewed built-ins expose 73 contributions: twenty modules (including Map, Rich Text, sandboxed
+the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 71
+reviewed built-ins expose 76 contributions: twenty-one modules (including Map, Rich Text, sandboxed
 HTML, Video, Lottie, Carousel, Advanced Data Grid, Tabs, Accordion, QR/Code 128, Markdown, Code
 Block, PDF Viewer, Audio Player, Modal, Dropdown Menu, and Upload Button), 13 commands (four Clipboard Toolkit
 actions, Compiler Preview Popout, AI Popout, Static Accessibility Audit, Static Design System Audit,
@@ -443,7 +488,7 @@ Application Security Readiness, safe Vercel and Cloudflare Pages deployment-plan
 Supabase Backend Provider audit/plan reviews), 13 exporters (Tauri React, Expo React Native, Flutter,
 Next.js, Vue, Capacitor, Electron, native WeChat Mini Program, Taro, uni-app, Mpx, Design Tokens JSON,
 and Figma Editable Projection), 22 connectors, four storage providers for Google Drive, OneDrive,
-Aliyun Drive, and Baidu Netdisk, and one data-only Supabase Backend Provider declaration. The connector set includes the original five bounded business
+Aliyun Drive, and Baidu Netdisk, and three data-only Backend Provider declarations for Supabase, NestJS and experimental Prisma CRM. The connector set includes the original five bounded business
 integrations plus opt-in read-only Neon, Sentry, HubSpot, Apollo, PostHog, Asana, Zotero, HeyGen,
 Linear, OpenAI, Box, Slack, Google Calendar, SharePoint, Outlook Email, Outlook Calendar, and
 Microsoft Teams integrations.

@@ -17,13 +17,13 @@ publishes root-signed discovery state. The optional executable channel runs only
 root-indexed, import-free WASM compute packages after an exact local grant. No manifest path or URL
 is dynamically imported as JavaScript, HTML, CSS, native code, or privileged host functionality.
 
-The current **Unreleased** source line contains 68 reviewed plugins and 73 contributions: 20 module
+The current **Unreleased** source line contains 71 reviewed plugins and 76 contributions: 21 module
 contributions; 13 commands (four Clipboard Toolkit commands, Compiler Preview Popout, AI Popout,
 Static Accessibility Audit, Static Design System Audit, Application Security Readiness, and safe
 Vercel and Cloudflare deployment-plan reviews, plus Backend Provider audit and plan); 13 exporters (Tauri React, Next.js, Vue, Capacitor,
 Electron, Expo React Native, Flutter, native WeChat Mini Program, Taro, uni-app, Mpx, Design Tokens
-JSON, and Figma Editable Projection); 22 connectors; four storage providers; and one data-only
-Supabase Backend Provider. Map, all four storage providers, Supabase Backend Provider, Compiler
+JSON, and Figma Editable Projection); 22 connectors; four storage providers; and three data-only
+Backend Providers for Supabase, NestJS and experimental Prisma CRM. Map, all four storage providers, Supabase Backend Provider, NestJS Backend Provider, Compiler
 Preview Popout, and AI Popout are installed and enabled by default. Catalog count is an application snapshot,
 not a promise that a signed remote manifest can introduce a new host implementation.
 
@@ -694,9 +694,9 @@ Web/React and Tauri output use the complete reviewed interactive adapter set. Vu
 local runtimes for Modal, Dropdown Menu, Slide Menu, and Upload Button: the first three retain their
 reviewed keyboard, focus, dismissal, reduced-motion, and safe-link behavior, while Upload Button
 validates local file selection without transferring or persisting bytes. Other plugin modules keep
-their authored shell and an explicit `vue-module-unsupported` warning. Expo and Flutter do not
-execute plugin module runtimes or insert a WebView: for all 20 modules they emit an unsupported-module
-warning and retain the authored static fallback until a reviewed native adapter exists.
+their authored shell and an explicit `vue-module-unsupported` warning. Expo and Flutter retain
+unsupported-module warnings and static fallbacks for these modules. VR Tour has a separate,
+reviewed WebView source adapter for configured scenes; it does not make other modules executable.
 
 Compiler Preview Popout is a default-installed and default-enabled command-only built-in for the
 Tauri desktop application. Its toolbar action re-enters the exact reviewed host command with an empty
@@ -731,7 +731,8 @@ The Expo React Native Exporter follows the same source-only boundary but dispatc
 exact trusted `adapterId` into the Compiler's Expo target. It emits native React Native source and an
 Expo Router scaffold rather than post-processing DOM React output. Unsupported web-only IR must
 produce a deterministic warning or an explicit authored-frame fallback; it must not be hidden behind
-React Native Web or a WebView. The host archives and saves the generated files but never installs
+React Native Web or a generic WebView fallback. The explicit VR Tour adapter is the bounded
+exception described below. The host archives and saves the generated files but never installs
 dependencies, launches Expo, or invokes Android/iOS build tools.
 
 The Unreleased Next.js, Capacitor, and Electron exporters instead transform a copy of the reviewed
@@ -1015,3 +1016,170 @@ The following steps intentionally require an operator and are not automated by t
 6. Select and integrate any public account/OAuth, organization, email recovery, billing, tax,
    ratings/reviews, abuse-reporting, sanctions, refund, and support systems. None of those systems is
    implied by the local publisher-signature/admin-token reference service.
+
+## VR Tour module
+
+`open-pencil.vr-tour` is an opt-in trusted host module stored as a versioned FRAME envelope.
+Core owns the bounded room/hotspot contract and deterministic offline Canvas drawing. App room
+forms commit room deletion, incoming-link cleanup and initial-room reconciliation atomically.
+The React and Vue compiler adapters share a reviewed Photo Sphere Viewer runtime with exact
+package pins and explicit cleanup. No document-provided code or iframe URL is executed.
+
+Only this exact module identity accepts the `panoramaUrl` expression binding. The compiler tracks
+its expression dependencies; runtime values are checked against the same closed image-URL policy
+and never become arbitrary config. An invalid bound value does not fall back to static rooms.
+Changing the URL disposes the previous viewer, aborts loading and clears load authorization.
+The rental starter uses this field for selected-property integration and rechecks plugin
+installation/enablement before creating or applying module pages.
+
+Ordinary browser preview reports the dedicated unsupported capability without expanding its CSP.
+Desktop preview and generated source projects carry the pinned local runtime and CSS. Mobile
+source targets retain their existing explicit unsupported-module fallback.
+
+### Reviewed 8K sample pack
+
+The optional sample pack contains the unchanged **8192 × 4096 Tonemapped JPG** originals of
+[Cayley Interior](https://polyhaven.com/a/cayley_interior) and
+[Lebombo](https://polyhaven.com/a/lebombo), by Greg Zaal under
+[Poly Haven's CC0 license](https://polyhaven.com/license). Together they occupy 6,456,319 bytes
+(about 6.5 MB). The files and source manifest live in `packages/demos/vr-tour/`; they are not
+imported into the editor bundle or loaded at startup. These are independent residential
+samples. Hotspot links demonstrate navigation, not adjacent rooms in one verified property.
+
+`packages/core/src/plugins/vr-tour/sample-assets.ts` owns the reviewed metadata. The app installer
+in `src/app/plugins/vr-tour/assets/` accepts only those fixed metadata objects and downloads only
+their pinned public source URLs. Requests omit credentials and referrers, reject redirects and
+unexpected final URLs, and enforce the JPEG response type, bounded byte length, SHA-256 digest
+and SceneGraph image hash. The upstream encoded-space download URLs are a narrow installer
+exception; they do not widen the runtime's closed panorama-URL policy.
+
+`installAppPlugin()` prepares the pack only after checking the exact `app-bundle` plugin, then
+rechecks its identity before marking installation complete. The complete pack must pass durable
+cache readback first. A failed download, invalid image or failed write leaves installation
+incomplete with a localized retry message. Explicit retries reuse verified files and repair only
+missing or invalid entries. Cache reads and opening existing documents never initiate downloads.
+
+Browser storage uses the dedicated `open-pencil-vr-tour-samples-v1` IndexedDB database. Tauri uses
+the existing native app cache under a pack-digest namespace. Uninstall invalidates active and
+queued repairs, waits for an in-flight cache write, and removes only plugin-owned cache bytes.
+It does not remove images embedded in documents. Previously installed VR plugins are not silently
+reinstalled or repaired after an upgrade: users select a VR module and explicitly choose **Use
+real residential samples** to prepare any missing cache and apply the pack.
+
+### Document assets and interface language
+
+The sample button requires the installed, enabled bundled module. It captures the concrete editor,
+graph and selected node before preparing assets, and checks them again before applying changes.
+Disposing the panel cancels its request. A viewer bound to a selected rental property's
+`panoramaUrl` cannot have its binding replaced through this sample action.
+
+Applying samples embeds their bytes in `graph.images` and updates the scene configuration in one
+undo step. It preserves the user's tour title and interface language. Undo and redo retain the
+original editor instance even after switching tabs. The images survive `.fig` save/reopen; the
+OpenPencil clipboard also carries referenced sample images from exact, valid VR FRAME modules,
+including descendants, without copying unrelated images or fetching missing ones.
+
+React and Vue exports include only referenced, persisted samples whose bytes still match the pins,
+at `public/assets/vr-tour/`. Missing or modified samples produce actionable compiler warnings.
+`public/assets/vr-tour/SOURCES.json` records the samples actually exported, their author, source
+and license URLs, hashes, byte lengths and dimensions, plus the independent-residences explanation.
+Documents with no sample references emit neither the pack nor its attribution file. Runtime image
+loading still requires an explicit **Load panorama** action, including after a scene change.
+
+The version 1 config accepts `locale: 'en' | 'zh-CN'`. Legacy configs without this field retain
+English. New app insertions use the editor language, and the property panel offers an explicit
+interface-language selection. Generated runtimes use that setting rather than browser language
+detection: loading, errors, retry guidance, controls, accessible names, PSV hints and image-header
+validation messages share the selected language. Authored room and hotspot labels remain document
+content. Applying samples respects an explicitly English tour inside a Chinese editor.
+
+### Expo, Flutter and Taro hybrid source exports
+
+Configured static VR modules now emit a shared `vr-tour-web/` source project. Its pinned local
+esbuild preparation bundles PSV, CSS, the authored configuration and referenced saved samples into
+self-contained HTML. The compiler itself performs no installation, network request or code execution.
+Source images are split into at most 1-MiB binary chunks, reassembled and SHA-256 checked during
+preparation; the normal source/archive budgets still apply. `SOURCES.json` preserves sample provenance.
+
+The mini-program host admits this source project only for a known Taro export request. It validates
+the closed manifest and complete chunk digests, regenerates the source project, and requires every
+file to match exactly. Authored data still receives credential and local-path checks. Only the two
+reviewed public samples, matched by their actual full-byte SHA-256 and length, bypass binary-text
+metadata scanning; other images and other mini-program targets retain the existing checks.
+
+- Expo adds the SDK-compatible WebView dependency only when a static VR module is present. Normal
+  npm start/android/ios scripts prepare `src/vr-tour-html.ts`; direct tool invocations must run
+  `npm run prepare:vr-tour` first. The native component blocks external navigation and releases its
+  WebView when backgrounded or its Expo Router screen loses focus.
+- Flutter adds `webview_flutter`, explicit HTML assets and `OpenPencilVRTourWebView`. Run
+  `npm install --prefix vr-tour-web` and `node vr-tour-web/build.mjs` before Flutter commands.
+  The generated README records Flutter/Dart and platform requirements. Unsupported platforms show
+  a message; native lifecycle transitions release the WebView and recreate it when resumed.
+- Taro leaves images and browser code outside `src/`. A native launch button opens a dedicated
+  full-page WebView route. Build and deploy `vr-tour-web/dist/` to HTTPS, then configure the exported
+  base URL and the WeChat business domain. Missing configuration or an unknown tour key cannot
+  navigate. Personal-type WeChat accounts cannot use web-view. Export never publishes a website.
+
+The shared player preserves explicit image loading and room-selection semantics. It downsizes the
+display image to at most 4096 pixels wide for mobile GPU use while retaining original source bytes;
+initial decoding can still require substantial memory. The local asset loader accepts only emitted
+image locators; external image fetches keep the existing URL, CORS, byte, timeout and image-header
+checks. Player JavaScript comes only from the generated local bundle. `pagehide` and native wrapper
+cleanup dispose the active PSV instance and revoke its Blob URL.
+
+Dynamic `panoramaUrl` bindings produce target-specific unsupported warnings and a blocked viewer,
+never an authored fallback image. Live rental-backend bindings remain React/Vue-only. Gyroscope,
+headset support, native mobile compilation/signing and WeChat hosting/account/device acceptance
+are separate from this source export capability.
+
+### Verification entry points and boundaries
+
+The checked-in originals make asset, persistence and export unit tests independent of the network:
+
+```sh
+bun test tests/engine/app/plugins/vr-tour/ \
+  tests/engine/clipboard/openpencil/vr-tour.test.ts \
+  tests/engine/clipboard/openpencil/images.test.ts \
+  tests/engine/compiler/vr-tour/
+```
+
+These include fixed-source and integrity checks, cancellation, cache readback, scoped removal,
+cross-document undo/redo, language preservation, clipboard transport, real-image `.fig` roundtrip
+and React/Vue output bytes and provenance. They do not exercise a native cache on a real device.
+
+After building the workspace packages, use Node 24 and isolated ports for the canonical browser
+suite. The runner uses Bun to generate fixtures and the public built compiler sidecar to serve them:
+
+```sh
+OPENPENCIL_TEST_PORT=15436 OPENPENCIL_TEST_MCP_PORT=17616 \
+OPENPENCIL_TEST_REUSE_SERVER=0 \
+OPENPENCIL_VR_REAL_ASSETS="$PWD/packages/demos/vr-tour" \
+node node_modules/@playwright/test/cli.js test \
+  tests/e2e/properties/modules/vr-tour-samples.spec.ts \
+  tests/e2e/compiler/vr-tour/samples.spec.ts \
+  tests/e2e/compiler/vr-tour/locale.spec.ts \
+  tests/e2e/compiler/vr-tour/runtime.spec.ts \
+  tests/e2e/compiler/vr-tour/rental.spec.ts \
+  --project=openpencil
+```
+
+The properties sample test uses locally intercepted, pinned originals by default; setting
+`OPENPENCIL_VR_SAMPLE_LIVE=1` explicitly opts into the official CDN download. The compiler sample
+test serves generated images and `SOURCES.json` through real local HTTP without intercepting image
+responses. Set `OPENPENCIL_VR_SAMPLE_EXPORT_ROOT` to a directory containing matching `react/dist`
+and `vue/dist` builds to add production-static coverage; generate these projects with
+`generatedVRTourSampleFixture()` from `tests/helpers/compiler/vr-tour/samples.ts` and use their
+emitted package manifests. No external image download is required for the default suite.
+
+The locale and photographic rental tests require `OPENPENCIL_VR_REAL_ASSETS`; the general tour
+test retains a synthetic fallback. The older component-export harness,
+`tests/e2e/compiler/vr-tour/export.spec.ts`, separately requires `OPENPENCIL_VR_EXPORT_ROOT` and
+the real-assets directory. It uses `runtimeFiles(target, true)` fixtures with test control buttons,
+not a complete rental backend.
+
+Chromium checks exercise PSV, Three, JPEG decoding, WebGL, mouse/keyboard navigation, Chinese
+controls, failure/retry, cancellation and resource cleanup. Screenshots wait for the PSV canvas
+container's opacity to reach 1. Rental API reads and authentication remain fixtures. Keep individual
+run logs and screenshots in the local validation report; these test entry points do not imply
+native Tauri installation/restart/WebView, headset, live OIDC, live database or production CDN/CORS
+acceptance.

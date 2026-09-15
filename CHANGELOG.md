@@ -14,6 +14,22 @@
 
 ### Added
 
+- Guide business-template setup from the Backend panel with saved sign-in settings, required roles, first-record steps and current page links; include model-specific identity and startup instructions in NestJS exports.
+
+- Add asset management, private quotation/contract fulfillment and recruitment with onboarding/offboarding checklists to the Backend library and AI, with editable React/Vue pages and NestJS exports.
+
+- Add procurement/inventory, fixed two-stage enterprise approvals, versioned surveys, text courses with instructor grading and moderated community templates to the Backend library and AI, with editable React/Vue pages and NestJS exports.
+
+- Add personal blog and automotive news templates with categories, draft editing, publication, public reading and private bookmarks. Automotive news also includes brand/model catalogs and separate editor/publisher roles; both export React/Vue pages and NestJS backends.
+
+- Add a single-hospital registration template with departments, doctors, schedule capacity, private patient profiles, appointment cancellation/restoration and staff check-in/completion. Export React/Vue pages and transactional NestJS commands; real payment, identity verification and hospital-system integrations remain post-export work.
+- Add a single-restaurant food-ordering starter with a persistent cart, dine-in/pickup checkout, server price checks, idempotent orders and kitchen transitions. Generate editable React/Vue pages with manual list refresh and a transactional NestJS backend; payments, printers and delivery remain post-export integrations.
+- Add a video and live-channel template with public playback, private favorites, creator publishing and channel management, plus React/Vue video and HLS playback bindings.
+- Add a rental and property-viewing starter with landlord-owned listings, publication, capacity-checked appointments, cancellation and audit history. Link the selected property's panorama to an opt-in VR Tour module with editable rooms and hotspots, interactive desktop previews and React/Vue exports.
+- Export configured VR tours as Expo and Flutter WebView components or a separate Taro HTTPS viewing page, with bundled sample images, local player preparation and explicit setup guidance.
+
+- Offer an opt-in experimental Prisma 8 CRM Backend Provider for React/Vue source exports, with Prisma customer queries, retained PostgreSQL business transactions and explicit model compatibility checks.
+
 - Compose the five business starters into an existing NestJS application through reviewed library or AI module installation, with shared sign-in, separate account-directory permissions, preserved pages and atomic undo. Export real NestJS business modules in one application with validated ownership and dependencies; keep database changes separately reviewed.
 - Add CRM, service desk, content/knowledge-base, booking/registration and project/task starters to the Backend library and Direct AI. Generate editable React/Vue workspaces with relation pickers, full article text, command recovery, role-aware server workflows and append-only business history.
 - Enforce conditional publication reads, active related membership and current-record command authority in generated NestJS applications. Add bounded date/time parameters, server time checks and transactional booking capacity; preserve compound authorization in the visual Backend editor.
@@ -131,6 +147,12 @@
 - Pan horizontally with Shift+wheel while preserving native horizontal trackpad movement.
 
 ### Fixed
+
+- Match asset handover actions to the selected request's kind and status while retaining unsent form input and saved-request review after refresh or navigation.
+
+- Stop generated backend lists from reusing account-specific filters when the signed-in account changes.
+
+- Keep CRM Vue exports type-safe when selected records populate forms, and reject invalid Backend filter values before sending requests.
 
 - Mount the editor before awaiting cloud-document presentation, and preserve the previous tab when opening is cancelled or fails without interrupting later tab selections.
 - Protect cloud documents from deletion while their editor tabs are still downloading, including after navigation back to the file list.

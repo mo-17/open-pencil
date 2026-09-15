@@ -1,6 +1,6 @@
 # Business application templates
 
-The Backend library contains five application starters, in addition to the notes and commerce
+The Backend library contains nineteen application starters, in addition to the notes and commerce
 starters. Each creates editable pages, a provider-neutral model, resource queries, access rules and
 transactional commands together. The executing provider for these starters is NestJS with
 PostgreSQL. Export all generated pages together as React or Vue source.
@@ -21,14 +21,29 @@ PostgreSQL. Export all generated pages together as React or Vue source.
 6. Sign in and register a profile on **Account setup** before an operation asks for a registered
    account. Relation pickers load authorized records; users do not need to copy database UUIDs.
 
+After creation, open **Getting started** in the Backend panel. The guide reads the saved application
+and lists its public OIDC configuration, referenced template roles and preparation steps for each
+recognized business module. It distinguishes unsaved drafts from saved configuration, and updates
+when modules are added or undone. The page list uses the document's current route names, including
+renamed routes; opening a page does not select it for export. Export the complete application and
+follow the generated NestJS `README.md` and `LOCAL-RUN.md` for the exact environment names,
+access-token role mapping, account-record initialization and startup order. The guide does not check
+service availability or perform identity, database or deployment setup.
+
 The UI includes navigation, paginated lists, search and applicable filters, selected-record details,
 forms, confirmation, error feedback, refreshed data and saved-request recovery. English and Chinese
 page copy are available. A browser check uses an isolated test identity and scripted HTTP responses;
 real account consent and deployment require the configured identity service.
 
+Actions with a selected-record condition expose their normal entry only when that condition
+matches. Asset handover checks both request kind and pending status. When an operation is no longer
+applicable, its saved-request review entry remains available, including after leaving and returning
+to a page. Refreshing a list preserves the open form's unsent input and shows why a current selection
+is required. These display conditions do not replace server authorization or transaction checks.
+
 ## Combine modules in one application
 
-An existing NestJS application can add these five starters as business modules. Open **Services &
+An existing NestJS application can add these nineteen starters as business modules. Open **Services &
 Workflows → Backend → Browse backend library**, choose a business template and review **Add module**.
 The library shows whether it is ready, already installed or blocked, together with the added-page
 count, shared routes and compatibility conflicts. Save or discard an unsaved Backend draft first.
@@ -45,7 +60,7 @@ controls and custom content remain. The model, new pages and navigation form one
 editing the document or changing its Provider invalidates an earlier review. Duplicate modules,
 conflicting identifiers, incompatible shared accounts and missing login routes block installation.
 
-The five modules can combine with one another, or extend the single-merchant and multi-merchant
+Selected modules can combine with one another, or extend the single-merchant and multi-merchant
 commerce applications. Commerce remains one module so checkout, inventory, refunds and settlement
 retain their existing transaction rules. In the data-model editor, select the owning module before
 adding a custom table. Changes to relationships and permissions must still satisfy the complete
@@ -65,6 +80,13 @@ existing 16-command limit and generation layout. Other Providers, Backend V2, an
 containing workflow or storage declarations are rejected until their execution and ownership
 contracts are implemented.
 
+The complete application also has a 20,000-node Backend data budget, counting JSON values across
+all modules. Combining all nineteen business templates exceeds the application budgets, as does adding full
+multi-merchant commerce, even though their individual module budgets pass. Composition rejects
+the oversized application without changing the existing document. Choose the modules the application
+needs and export that selection; hospital with CRM and restaurant ordering, video with CRM, and
+video with commerce, and CRM with assets, contracts and recruitment are supported combinations.
+
 Installation changes only the document. Use the separate
 [Managed Preview SQL review](./backend-nestjs.md#desktop-live-preview) before using new tables in an
 existing preview database. New model entities change command-definition digests: old idempotency
@@ -73,13 +95,317 @@ operations before upgrading; do not replace an unresolved attempt's key to force
 
 ## Included workflows
 
-| Starter                    | Main workflow                                                                             | Identity-service roles                                    |
-| -------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Customer CRM               | Create/edit customer → assign → follow up → advance sales stage → won/lost                | `crm-manager`                                             |
-| Service desk               | Submit → assign → start → request approval → independent approve/reject → close or resume | `support-manager`, `support-agent`, `support-approver`    |
-| Content and knowledge base | Draft → edit → submit → independent review → public/internal publish → withdraw           | `content-author`, `content-reviewer`, `content-publisher` |
-| Booking and registration   | Configure service/time slot → register places → reschedule/cancel → mark completed        | `booking-manager`                                         |
-| Projects and tasks         | Create project → add members → create/assign tasks → progress → complete/cancel/reopen    | `project-manager`                                         |
+| Starter                              | Main workflow                                                                                            | Identity-service roles                                    |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Customer CRM                         | Create/edit customer → assign → follow up → advance sales stage → won/lost                               | `crm-manager`                                             |
+| Service desk                         | Submit → assign → start → request approval → independent approve/reject → close or resume                | `support-manager`, `support-agent`, `support-approver`    |
+| Content and knowledge base           | Draft → edit → submit → independent review → public/internal publish → withdraw                          | `content-author`, `content-reviewer`, `content-publisher` |
+| Booking and registration             | Configure service/time slot → register places → reschedule/cancel → mark completed                       | `booking-manager`                                         |
+| Projects and tasks                   | Create project → add members → create/assign tasks → progress → complete/cancel/reopen                   | `project-manager`                                         |
+| Rental and property viewing          | Create/edit listing → publish → open viewing slots → reserve/reschedule/cancel → complete                | `rental-tenant`, `rental-landlord`, `rental-admin`        |
+| Personal blog                        | Category → draft → edit → publish/withdraw → public reading → private bookmark                           | `blog-author`                                             |
+| Automotive news                      | Brand/model/category → draft → publisher review → publish/withdraw → read/bookmark                       | `auto-editor`, `auto-publisher`                           |
+| Hospital registration                | Departments and doctors → schedules → patient profile → reserve/cancel/restore → check in → complete     | `hospital-admin`, `hospital-staff`                        |
+| Restaurant ordering                  | Menu → cart → dine-in/pickup checkout → accept → prepare → ready → complete                              | `food-manager`                                            |
+| Video library and live channels      | Draft/edit video → publish/archive; schedule channel → mark live → end; save/cancel/restore favorites    | `media-creator`, `media-admin`                            |
+| Procurement and inventory            | Catalogs → purchase → partial receipts → dispatch → bounded returns → stocktake                          | `inventory-manager`, `inventory-operator`                 |
+| Enterprise approvals                 | Leave/expense/purchase draft → submit → first review → second review → approved/rejected                 | `oa-reviewer`, `oa-approver`                              |
+| Survey forms                         | Edit draft → publish immutable version → one response per account/version → close collection             | `survey-manager`                                          |
+| Online courses                       | Draft course/chapters → publish → enroll → complete and submit → instructor grade                        | `course-instructor`, `course-student`                     |
+| Community forum                      | Submit post/reply → moderator review → public discussion → close; private follows and reports            | `community-moderator`                                     |
+| Asset management                     | Register asset → request assignment/loan → manager issue → return → repair/retire                        | `asset-manager`                                           |
+| Quotes and contract fulfillment      | Counterparty → quote version → record confirmation → partial delivery → record acceptance → close/cancel | `contract-manager`                                        |
+| Recruitment and employee transitions | Position → candidate → interview feedback → hiring → onboarding checklist → offboarding checklist        | `recruitment-hr`                                          |
+
+### Asset management
+
+`asset-management` tracks individual assets with permanently unique tags. Authenticated employees
+can browse the limited available-asset projection and make assignment or time-limited loan requests.
+Requests do not reserve stock: an administrator with `asset-manager` chooses which pending request
+to fulfill, and the server permits only one active custody per asset. Loan issuance checks the
+original requested due time again; expired requests cannot be issued by changing a browser field.
+
+Managers record returns, repairs and retirement. An in-use asset must be returned before repair or
+retirement, and retired assets cannot be reactivated. Asset state, the current custody reference,
+request status and append-only audit records change together with version checks. Employees see
+their own requests; full custody and audit views require the manager role. This is a single
+organization's asset register, not automatic integration with procurement SKU quantities. Barcode
+scanning, depreciation and notifications remain post-export work.
+
+### Quotes and contract fulfillment
+
+`quote-contracts` is an internal `contract-manager` workspace for each operator's private
+counterparties, quote drafts, published quote versions and contracts. Each quote has one line item;
+the server calculates integer CNY-cent totals. Publishing freezes the quote and counterparty
+snapshot. Recording confirmation requires the current version and creates at most one contract
+per quote draft; later directory changes do not rewrite the agreed snapshot.
+
+Record partial deliveries against the contract, then record acceptance in delivery order. The
+server checks the original contract, current revision and cumulative quantities. Closing requires
+all contracted quantities to be delivered and accepted. Cancellation preserves the records and
+does not refund or transfer money. Confirmation and acceptance are explicit internal records with
+supporting references, not customer electronic signatures or proof of payment. Electronic signing,
+invoices, payment collection, multi-line quotes and CRM data synchronization are post-export work.
+
+### Recruitment and employee transitions
+
+`recruitment-hr` is an internal HR workspace. Verified HR operators manage only their own positions,
+candidates, interview feedback, employees and history; private recruitment information does not
+enter the shared account directory. There is no applicant, interviewer or employee self-service
+portal. Interview feedback records a human assessment and does not automatically hire a candidate.
+
+Hiring and starting onboarding are separate recorded actions. A candidate can create only one
+employee record. Onboarding and offboarding use distinct checklists; each must contain work and be
+fully completed before the transition is confirmed. Version checks and transactional counters
+prevent duplicate completion or stale state changes, with append-only history. These actions record
+business work only: they do not grant or revoke OIDC roles, create accounts, calculate payroll,
+upload resumes, notify candidates or synchronize another business module.
+
+### Procurement and inventory
+
+`procurement-inventory` models one organization with SKU, warehouse and supplier catalogs. Create
+one inventory balance for each SKU/warehouse pair before opening a purchase or dispatch. Each
+purchase or dispatch has one SKU and warehouse; purchase receipts can be partial. The server
+changes balances and appends movement records in the same transaction. Supplier returns cannot
+exceed received quantities; customer returns cannot exceed the original dispatch. Returns and
+dispatches cannot make stock negative. Stocktakes require the displayed version to prevent an
+outdated count from overwriting a newer movement.
+
+Managers maintain catalogs, purchases and stocktakes; operators handle receipts, dispatches and
+returns. Amounts use integer CNY cents and are records only. Multi-line purchase transactions,
+warehouse transfers, stock batches, costing, accounting and payments remain extensions after export.
+Adding this module to commerce shares accounts, not SKU identity or inventory balances; implement
+an explicit business integration before using one module's stock to fulfill the other's orders.
+
+### Enterprise approvals
+
+`enterprise-approvals` includes separate leave, expense and purchase forms, an applicant tracking
+page, and two role-restricted review queues. Applicants can edit drafts, submit, cancel unfinished
+requests, and reopen rejected requests. Each review and mutation checks the locked current version.
+The applicant cannot approve their own request; the second reviewer must also differ from the first.
+Applicants can inspect their own append-only history. Reviewers see their current stage's queue,
+not other applicants' drafts. Completing a review removes the request from that queue.
+
+This is a fixed two-stage process, with no arbitrary workflow designer or delegated reviewer graph.
+Expense amounts are CNY-cent application records; no payment, payroll or leave-balance calculation
+occurs. Connect notifications and external HR/finance systems after export.
+
+### Versioned survey forms
+
+`survey-forms` contains a fixed 1–5 rating, a choice of option 1/2/3 and a bounded text response.
+Managers edit question prompts and option text in a draft. Publishing copies that content to an
+immutable numbered version; editing the draft later does not change old questions or responses.
+Each verified account submits once per published version. Closing a version and submitting a
+response use the same version lock so late submissions are rejected.
+
+Public readers see question versions. Only the submitting account and survey managers can read
+answers. The template provides individual response lists and details, with no aggregate chart,
+arbitrary question designer, anonymous submissions or answer editing/deletion.
+
+### Online courses and training
+
+`online-courses` provides text chapters, a written exercise per chapter, enrollments and learning
+records. Instructors can edit their own draft courses and chapters. Publishing requires at least
+one chapter and freezes its content. Closing a course stops new enrollment while existing active
+students retain access. Only accounts with `course-student` can enroll, once per course.
+
+Students submit one final answer or learning note per chapter. That record marks the chapter
+completed; it is not proof that a student watched media or passed an exam. Only the course's current
+instructor can grade other students, with one final score from 0 to 100 and feedback. Students see
+only their own submissions and grades. Revoking enrollment removes chapter access; existing
+learning records remain readable to their student and instructor. Re-enrollment after revocation
+is not part of this starter.
+
+The first version uses plain text and instructor grading. Video lessons, automatic exams,
+certificates, timed access and paid enrollment are post-export integrations.
+
+### Moderated community
+
+`community-forum` provides plain-text posts and replies with review before publication. Members
+can edit pending or rejected content for review. Moderators publish or reject posts and publish or
+remove replies. Closed discussions remain publicly readable but stop accepting new replies;
+closing is archival, not deletion. Private thread follows support cancellation/restoration.
+Members can submit reports and moderators can record their resolution. Reports and moderation
+reasons are absent from public projections.
+
+This starter does not implement real-time chat, notifications, rich text, accepted-answer ranking,
+a full moderation event log or cascading content deletion. Connect those features explicitly after
+export. Combining this module with a blog or course does not automatically attach threads to its
+articles or lessons.
+
+### Personal blog and automotive news
+
+Choose **Personal blog** (`personal-blog`) for an author-managed blog, or **Automotive news**
+(`automotive-news`) for an editorial site with vehicle catalogs. Both create editable React/Vue
+pages and a NestJS backend. They use independent `blog_` and `auto_` tables and can share the
+existing account and login when composed with other business modules.
+
+The blog has seven pages: login/account setup, public categories and articles, private bookmarks,
+and category/article management. Grant `blog-author` to the intended owner through the identity
+service. Authors can manage their own articles. The template does not assign that role during
+account registration or enforce that an identity service has granted it to only one person.
+
+Automotive news has twelve pages. It adds public and managed brand/model directories and a
+separate publication desk. Grant `auto-editor` for writing and editing owned drafts, and
+`auto-publisher` for reading editorial submissions and publishing or withdrawing articles.
+Grant both roles only when an operator should perform both functions. Vehicle descriptions,
+segments and energy types are editorial data, not manufacturer-verified specifications or live
+pricing. Create the brand and model before selecting that model for an article.
+
+Article bodies are bounded plain text, with multiline editing and scrollable reading areas. HTML
+is displayed as text. Authors create drafts, edit them, and publish when ready; a published article
+must be withdrawn to draft before changing its body. The public list/read endpoints return only
+published records, including server-side search and category/model filters. Administrative history
+stays separate from public content. Deactivating a category or vehicle does not withdraw existing
+articles automatically; withdraw the relevant articles through the publication action when needed.
+
+Each signed-in reader can save an article once, cancel that bookmark, and restore the original
+record while the article remains published. Bookmarks contain article IDs and state, without copies
+of titles or bodies. Selecting a bookmark reads the current public article; after withdrawal it
+returns no article content. The page remains a manually refreshed view, and cannot retract bytes a
+reader has already received. Related-list metadata uses a checked `selectionField` to match the
+bookmark's `article_id` against the public article resource's `id` filter.
+
+Both starters are client-rendered applications. They do not implement per-article server rendering,
+search-engine prerendering, RSS, comments, subscriptions, Markdown rendering, image uploading or
+external content ingestion. Add these after export as needed. Automotive news also leaves dealer
+inventory, live quotations, lead transactions and scraping outside the starter.
+
+### Hospital registration
+
+Choose **Hospital registration** in the Backend library or ask the built-in AI to create a
+hospital registration platform (`kind: hospital-registration`). It represents one hospital with
+multiple departments, doctors and schedules. The eleven generated pages include shared sign-in
+and account setup, public department/doctor/schedule browsing, private patient profiles and
+appointments, and separate department, doctor, schedule and appointment management workspaces.
+
+Grant `hospital-admin` through the configured identity service to maintain departments, doctors
+and schedules. Both `hospital-admin` and `hospital-staff` may handle appointments. Doctor entries
+are public directory records; creating one does not create a login or prove a clinician's identity.
+A user's account profile and private patient profiles are separate: a signed-in account can manage
+its own patient records, including family members. These contain names, contact details and
+relationship labels, without identity-document numbers, diagnoses or medical records.
+
+Administrators create a department, create its doctor, and create a schedule with start/end times,
+location, capacity and fee. Times use ISO 8601 with an explicit time zone. Schedule updates change
+capacity and availability; existing doctor/time/fee details remain fixed. Create another schedule
+for a new time or fee. Fees are integer CNY cents (`2500` = ¥25.00) and are copied from locked server
+records into an appointment. The template neither collects money nor produces a payment receipt.
+
+Select a schedule and one of your active patient profiles to reserve a place. The server locks
+and rechecks ownership, current department/doctor availability, schedule relationships and time,
+and remaining capacity before writing the appointment and history in one transaction. It allows
+one appointment record per patient-record/schedule pair. This does not identify the same natural
+person across duplicate profiles or accounts, or detect overlapping appointments across schedules.
+
+Cancel a confirmed appointment before its start to release one place. To book that same patient
+and schedule again, use **Restore appointment** on the cancelled record, which checks current
+availability and refreshes the server snapshots. Changing to another schedule means cancelling
+and making a new reservation. Saved requests retain their original Idempotency-Key; repeating a
+successful request does not reserve or release another place.
+
+Staff may cancel a confirmed appointment even after its start, check in a confirmed appointment
+during its inclusive start/end window, and complete an appointment only after check-in. Deactivating
+a patient prevents new reservations and restoration but leaves cancellation available. Patient
+master lists remain owner-only; staff appointment views expose the appointment's necessary patient
+and contact snapshots, with explicit history. Completion records an administrative status, not a
+diagnosis or a verified medical treatment.
+
+Use **Refresh** for current lists. Closing a department or doctor does not automatically close
+all its schedules, cancel existing appointments or notify patients. Remaining schedule metadata
+may stay visible, while booking checks the current parent status. Handle affected appointments
+explicitly. Real identity verification, payments/refunds, HIS/insurance systems, SMS, appointment
+reminders, queue calling, clinical records and multi-hospital tenancy are post-export integrations.
+
+### Restaurant ordering
+
+Choose **Restaurant ordering** in the Backend library or ask the built-in AI for a restaurant ordering
+app (`kind: food-ordering`). The eight generated pages contain shared sign-in and account setup,
+menu, cart items, checkout, private orders, kitchen orders and menu management. It can also join a
+compatible application as one module; food and commerce retain separate tables and transactions.
+
+This starter represents one restaurant. Verified customers browse available menu items, set cart
+quantities, remove items and submit dine-in or pickup orders. Prices are integer CNY cents: `1800`
+means ¥18.00. Choose the cart in checkout to see the server subtotal and item details. Dine-in
+requires a table number; both modes require a contact name. Phone and note are optional.
+
+The server locks the caller's cart, checks its revision and each item's current availability and
+price, then writes an order, item snapshots and history and clears the cart in one transaction.
+A changed price, stale cart or unavailable item returns a conflict without creating a partial order.
+Update the affected item in the cart and review checkout again. Limits are 50 distinct items and
+99 of each item. This is availability control; it does not reserve ingredient or stock quantities.
+An Idempotency-Key is mandatory, and saved retries return the same order instead of charging or
+ordering twice. Amounts, owner IDs and order status are never accepted as checkout parameters.
+
+Staff need the verified `food-manager` role, and register their own account profile before creating
+menu items. The role manages the whole restaurant, including menu entries created by other staff.
+Kitchen orders move **pending → accepted → preparing → ready → completed**. Customers can cancel
+only their own pending orders; staff can reject an unfinished order. Every transition appends
+history. Kitchen lists use the explicit **Refresh** button, with filters retained; there is no
+push notification or realtime subscription in this starter.
+
+Export every route together as React or Vue with the NestJS backend. Configure PostgreSQL and OIDC
+as described above. Real payment, refunds, receipt printers, QR table sessions, delivery platforms,
+reservations, loyalty/discount pricing and multiple restaurants need post-export implementation.
+
+### Video library and live channels
+
+Enable **Video** in Settings → Plugins, then select **Video library and live channels** in the
+Backend library. It can create a standalone application or join a compatible NestJS application
+as the `video-live` business module. The built-in AI accepts the same `kind` through
+`create_business_app`. Installation checks the enabled plugin again before committing a change.
+
+The seven generated pages include sign-in, account setup, the video catalog (`/videos`), live
+channels (`/live`), private favorites (`/favorites`), and video/channel creator workspaces.
+Public resources expose only published videos and scheduled, live or ended channels. Creators
+must register their own profile and receive `media-creator` or `media-admin` from the identity
+service before creating content. Owners manage their records; `media-admin` can manage all content.
+The generated navigation does not grant these permissions.
+
+Set a public HTTPS `playback_url` and optional `poster_url`. React and Vue exports bind the player
+to the current detail record and clear the old player when selection or account context changes.
+MP4/WebM use the browser's media support; `.m3u8` sources use bundled `hls.js`, requiring compatible
+Media Source Extensions and codecs. HLS requests omit credentials and reject redirects and unsafe
+URLs, including playlist, segment and key requests; configure CORS on all referenced media.
+Stream keys, private credentials and signed URL secrets do not belong in these public fields.
+Native/mobile targets and ordinary browser Compiler Preview do not gain this playback capability.
+
+Publishing a video requires a configured playback URL. Channel scheduling uses ISO 8601 with a
+time zone; operators explicitly mark a channel live or ended. These transitions record application
+state and audit history, not verified stream health. Restoring archived content returns it to draft
+for publication review. There is no automatic scheduler, ingest endpoint, video upload,
+transcoder, CDN provisioning, DRM, paid access, realtime chat or viewer-count service in this starter.
+Connect those services after export and keep their credentials on the server.
+
+Authenticated viewers can favorite a currently published video. A unique user/video record prevents
+duplicates; canceling retains that record, and restoring checks both ownership and current video
+publication. The favorites list contains a title snapshot and no private playback URL. Open the video
+catalog to view currently published content. Commands keep the shared idempotent retry/review flow.
+
+### Rental and property viewing
+
+Install and enable **VR Tour** in Settings → Plugins before creating this starter or adding its
+business module. The public catalog lists published properties. A landlord manages only their own
+properties, slots and viewing appointments; administrators can manage all properties. New reservations
+require the `rental-tenant` role, assigned by the identity service (it may be configured as the default
+role for tenant accounts). Existing tenants retain their own cancellation/rebooking access. Tenants
+see their own appointments and can cancel or reschedule them. Server commands check the current
+property status, time, remaining capacity and caller authority inside a transaction, with audit
+history and idempotent retries. Times use ISO 8601 with an explicit time zone. Prices are integer
+monthly cents and area uses hundredths of a square metre; label and convert them explicitly in a
+customized UI.
+
+Select a property to view its configured `panorama_url`. The reviewed VR module treats it only as
+an image URL, validates it again at runtime and requires a new load action when the selection
+changes. Static room and hotspot configuration remains available for standalone modules. Prepare
+your own 2:1 equirectangular images; public HTTPS images need CORS, or copy local export images into
+`public/assets/vr-tour/` and reference `/assets/vr-tour/<file>.jpg`.
+
+Authenticated users can read non-sensitive active slot metadata. Reservation commands also lock
+and recheck the property, so an archived property cannot accept a new reservation even when old
+slot metadata remains readable. Appointment contact information is private to its tenant, the
+property landlord and administrators. Rent payments, leases, identity verification and notifications
+remain export-time integrations.
 
 ### Customer CRM
 
