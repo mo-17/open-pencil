@@ -36,6 +36,7 @@ import {
   translateFlutterStyle
 } from './style'
 import type { FlutterComponentPlan, FlutterStyle, FlutterWarningSink } from './types'
+import { emitFlutterVRTour, flutterVRTourImport, isFlutterVRTour } from './vr-tour'
 
 export interface FlutterEmitEnvironment {
   componentBody?: boolean
@@ -45,6 +46,7 @@ export interface FlutterEmitEnvironment {
   nativeAssetNames: ReadonlySet<string>
   routeRewrites: ReadonlyMap<string, string>
   router: boolean
+  vrTourIds: ReadonlySet<string>
   warn: FlutterWarningSink
 }
 
@@ -94,6 +96,7 @@ export function emitFlutterPage(
   return `import 'package:flutter/material.dart';
 
 import '../openpencil_runtime.dart';
+${flutterVRTourImport(ir.children, environment.vrTourIds)}
 ${componentImports(ir.children, environment.componentPlans)}
 
 class ${className} extends StatefulWidget {
@@ -170,6 +173,7 @@ export function emitFlutterComponent(
   return `import 'package:flutter/material.dart';
 
 import '../openpencil_runtime.dart';
+${flutterVRTourImport(children, environment.vrTourIds)}
 
 class ${plan.className} extends StatelessWidget {
   const ${plan.className}({
@@ -356,8 +360,12 @@ function emitElement(node: IRElement, environment: NodeEnvironment): string {
     style.backgroundAsset = undefined
   }
   let widget: string
+  const vrTour = emitFlutterVRTour(node, environment.vrTourIds, environment.warn)
   const moduleTriggerFallback = emitStaticModuleTriggerFallback(node, style, environment)
-  if (moduleTriggerFallback !== undefined) {
+  if (vrTour !== undefined) {
+    style.height ??= 400
+    widget = vrTour
+  } else if (moduleTriggerFallback !== undefined) {
     widget = moduleTriggerFallback
   } else if (unsupportedControl(node)) {
     environment.warn({
@@ -969,7 +977,7 @@ function warnPageFeatures(ir: IRTree, warn: FlutterWarningSink): void {
 
 function warnElementFeatures(node: IRElement, warn: FlutterWarningSink): void {
   const features = [
-    node.module ? 'plugin module' : '',
+    node.module && !isFlutterVRTour(node) ? 'plugin module' : '',
     node.rawHtml ? 'raw HTML/vector markup' : '',
     node.upload ? 'upload' : '',
     node.overlay ? 'overlay' : '',

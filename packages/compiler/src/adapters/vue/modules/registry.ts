@@ -83,6 +83,7 @@ export function collectVueModuleProject(
   )
   const runtimePaths = new Set<string>()
   const componentNames = new Set<string>()
+  const dependencies: Record<string, string> = {}
   for (const adapter of ordered) {
     if (runtimePaths.has(adapter.runtimePath)) {
       throw new Error(`Duplicate Vue module runtime path: ${adapter.runtimePath}`)
@@ -92,17 +93,36 @@ export function collectVueModuleProject(
     }
     runtimePaths.add(adapter.runtimePath)
     componentNames.add(adapter.componentName)
+    for (const [name, version] of Object.entries(adapter.dependencies ?? {})) {
+      if (dependencies[name] && dependencies[name] !== version)
+        throw new Error(`Conflicting Vue module dependency: ${name}`)
+      dependencies[name] = version
+    }
   }
   return {
     adapters: ordered,
+    dependencies,
     usesLayerRuntime: ordered.some((adapter) => adapter.usesLayerRuntime === true)
   }
+}
+
+export function vueModuleOptimizeDepsForFiles(files: ReadonlyMap<string, unknown>): string[] {
+  return [
+    ...new Set(
+      BUILTIN_VUE_MODULE_REGISTRY.listBundles().flatMap((entry) => {
+        const adapter = entry.targets.vue
+        return isVueModuleAdapter(adapter) && files.has(adapter.runtimePath)
+          ? [...(adapter.optimizeDeps ?? [])]
+          : []
+      })
+    )
+  ].sort()
 }
 
 export function emitVueModuleRuntimes(
   files: Map<string, string | Uint8Array>,
   contribution: VueModuleProjectContribution,
-  options: { microfrontend?: boolean } = {}
+  options: { microfrontend?: boolean; devMode?: boolean } = {}
 ): void {
   if (contribution.usesLayerRuntime) {
     if (files.has(VUE_LAYER_RUNTIME_PATH)) {

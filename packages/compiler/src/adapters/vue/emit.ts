@@ -521,6 +521,7 @@ function emitElementCore(
   const moduleAdapter = node.module ? findVueModuleAdapter(node.module) : null
   if (moduleAdapter) {
     return emitVueModuleElement(node, moduleAdapter, context, indent, {
+      locals,
       attrs: emitVueElementAttributes(node, context, locals),
       children: emitNodes(node.children, context, indent + 1, locals)
     })

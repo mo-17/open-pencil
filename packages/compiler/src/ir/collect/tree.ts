@@ -1,5 +1,6 @@
 import { BUILTIN_COMPILER_MODULE_REGISTRY } from '#compiler/modules/builtin'
 import { collectCompilerModule } from '#compiler/modules/collect'
+import { collectVideoModuleBindings } from '#compiler/modules/video'
 import { designTokenCSSVariableName } from '#compiler/theme-css'
 import lucideIcons from '@iconify-json/lucide/icons.json' with { type: 'json' }
 
@@ -112,6 +113,7 @@ import {
 } from './prototype'
 import { collectServerWorkflows } from './server-workflows'
 import { collectPageStates, indexStatesById, resolveComputedStates } from './state'
+import { collectVRTourSampleAssets } from './vr-tour-assets'
 
 /**
  * Walk a CANVAS (page) node and produce a framework-neutral IRTree.
@@ -1597,6 +1599,15 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   applyInteractiveProps(node, attrs, children, ctx)
   applyBoundVariableStyles(node, ctx, attrs)
   const module = collectCompilerModule(node, ctx.warnings, BUILTIN_COMPILER_MODULE_REGISTRY)
+  collectVRTourSampleAssets(node.id, module, ctx.graph, ctx.assets, ctx.warnings)
+  collectVRTourBinding(node, module, ctx)
+  collectVideoModuleBindings(
+    node,
+    module,
+    attrs,
+    ctx.warnings,
+    (source) => resolveReactiveExpr(node, source, 'video-binding', ctx)?.ast
+  )
 
   // Icon nodes (a vector shape, or an all-vector container — see isVectorIcon)
   // emit their geometry as one inline SVG; the wrapper keeps layout/size classes
@@ -3903,6 +3914,24 @@ function resolveListOffset(
  *  sort / upload path) through the same read-context checks as a filter — reject
  *  `$prev`, reject unknown identifiers, register doc-state reads. Returns the
  *  parsed AST + its references, or null (with a warning) on failure. */
+function collectVRTourBinding(node: SceneNode, module: IRModule | null, ctx: WalkCtx): void {
+  if (module?.pluginId !== 'open-pencil.vr-tour' || module.moduleType !== 'vr-tour') return
+  if (!node.bindings || !Object.hasOwn(node.bindings, 'panoramaUrl')) return
+  const binding = node.bindings.panoramaUrl
+  // Presence is preserved even on failure: undefined is not the static URL.
+  module.panoramaUrlExpr = { kind: 'ident', name: 'undefined' }
+  if (binding?.kind !== 'expr' || typeof binding.expr !== 'string') {
+    ctx.warnings.push({
+      code: 'vr-tour-binding-invalid',
+      message: 'VR panoramaUrl requires a read expression binding',
+      nodeId: node.id
+    })
+    return
+  }
+  const resolved = resolveReactiveExpr(node, binding.expr, 'vr-tour-binding', ctx)
+  if (resolved) module.panoramaUrlExpr = resolved.ast
+}
+
 function resolveReactiveExpr(
   node: SceneNode,
   src: string,

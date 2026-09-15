@@ -19,6 +19,7 @@ import { TABLE_PLUGIN } from './table'
 import { TABS_PLUGIN } from './tabs'
 import { UPLOAD_BUTTON_PLUGIN } from './upload-button'
 import { VIDEO_PLUGIN } from './video'
+import { VR_TOUR_PLUGIN } from './vr-tour'
 
 export const BUILTIN_PLUGIN_REGISTRY = new PluginRegistry()
   .register(MAP_PLUGIN)
@@ -41,4 +42,5 @@ export const BUILTIN_PLUGIN_REGISTRY = new PluginRegistry()
   .register(CODE_BLOCK_PLUGIN)
   .register(PDF_VIEWER_PLUGIN)
   .register(AUDIO_PLAYER_PLUGIN)
+  .register(VR_TOUR_PLUGIN)
   .freeze()

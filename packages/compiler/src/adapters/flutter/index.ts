@@ -8,6 +8,7 @@ import {
   selectNativePages
 } from '../native-shared'
 import { derivePagePaths } from '../react/route-paths'
+import { emitVRTourHybridProject, vrTourHybridKey } from '../vr-tour/hybrid'
 import { emitFlutterComponent, emitFlutterPage } from './emit'
 import {
   allocateDartIdentifier,
@@ -26,6 +27,8 @@ import {
   type FlutterPageEntry
 } from './project'
 import type { FlutterComponentPlan, FlutterWarningSink } from './types'
+import { buildFlutterVRTourReadme } from './vr-tour'
+import { buildFlutterVRTourWidget } from './vr-tour-widget'
 
 const FLUTTER_RASTER_ASSET = /\.(?:gif|jpe?g|png|webp)$/i
 const UNSAFE_ROUTE_SEGMENT = /^(?:\.{1,2}|__proto__|constructor|prototype)$/i
@@ -60,6 +63,9 @@ function emitFlutterProject(
   const router = resolveFlutterRouter(options, warn)
   warnUnsupportedOptions(options, warn)
   const selected = selectPages(irs, router, warn)
+  const vrTours = emitVRTourHybridProject(selected, components, 'flutter')
+  const hasVRTours = vrTours.tourIds.size > 0
+  for (const [path, contents] of vrTours.files) files.set(path, contents)
   const assets = collectFlutterAssets(selected, components, warn)
   const componentPlans = planComponents(components, warn)
   const pageEntries = planPages(selected, warn)
@@ -88,14 +94,23 @@ function emitFlutterProject(
     nativeAssetNames: assets.names,
     routeRewrites,
     router,
+    vrTourIds: vrTours.tourIds,
     warn
   }
 
-  files.set('pubspec.yaml', buildFlutterPubspec(options, assets.assets.map(outputAssetPath)))
+  const assetPaths = [
+    ...assets.assets.map(outputAssetPath),
+    ...[...vrTours.tourIds].map((id) => `assets/vr-tour/${vrTourHybridKey(id)}.html`)
+  ]
+  files.set('pubspec.yaml', buildFlutterPubspec(options, assetPaths, hasVRTours))
   files.set('.gitignore', buildFlutterGitignore())
   files.set('analysis_options.yaml', buildFlutterAnalysisOptions())
-  files.set('README.md', buildFlutterReadme(options, router))
-  files.set('test/widget_test.dart', buildFlutterWidgetTest(options))
+  files.set(
+    'README.md',
+    buildFlutterReadme(options, router, hasVRTours) + (hasVRTours ? buildFlutterVRTourReadme() : '')
+  )
+  files.set('test/widget_test.dart', buildFlutterWidgetTest(options, hasVRTours))
+  if (hasVRTours) files.set('lib/openpencil_vr_tour.dart', buildFlutterVRTourWidget())
   files.set('lib/openpencil_runtime.dart', buildFlutterRuntime(selected[0]?.docStates ?? []))
   files.set(
     'lib/main.dart',
@@ -248,7 +263,9 @@ function collectFlutterAssets(
   const candidates = [
     ...irs.flatMap((ir) => ir.assets ?? []),
     ...components.flatMap((definition) => definition.assets ?? [])
-  ].sort((left, right) => compareCodeUnitStrings(left.path, right.path))
+  ]
+    .filter((asset) => !asset.path.startsWith('public/assets/vr-tour/'))
+    .sort((left, right) => compareCodeUnitStrings(left.path, right.path))
   const accepted = new Map<string, IRAsset>()
   const blocked = new Set<string>()
   const aliases = new Map<string, string>()

@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "packId": "open-pencil.vr-tour.samples.v1",
+  "relationship": "Independent public asset scenes. No official evidence establishes that these are rooms in the same house. Do not present the test hotspot connection as a real spatial adjacency or floor plan.",
+  "assets": [
+    {
+      "id": "cayley_interior",
+      "title": "Cayley Interior",
+      "file": "cayley_interior.jpg",
+      "sourcePage": "https://polyhaven.com/a/cayley_interior",
+      "author": "Greg Zaal",
+      "license": "CC0-1.0",
+      "licenseSource": "https://polyhaven.com/license",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "originalDownloadUrl": "https://dl.polyhaven.org/file/ph-assets/HDRIs/extra/Tonemapped%20JPG/cayley_interior.jpg",
+      "byteLength": 4583075,
+      "sha256": "abf4897f4c2f36226a1ffbb2dbc52e5777e04f2ab18a8b46d05f327b98c879cc",
+      "width": 8192,
+      "height": 4096,
+      "aspectRatio": "2:1",
+      "mimeType": "image/jpeg",
+      "imageProcessing": "None. Official 8K Tonemapped JPG downloaded unchanged; no resizing, recompression, or image edits."
+    },
+    {
+      "id": "lebombo",
+      "title": "Lebombo",
+      "file": "lebombo.jpg",
+      "sourcePage": "https://polyhaven.com/a/lebombo",
+      "author": "Greg Zaal",
+      "license": "CC0-1.0",
+      "licenseSource": "https://polyhaven.com/license",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "originalDownloadUrl": "https://dl.polyhaven.org/file/ph-assets/HDRIs/extra/Tonemapped%20JPG/lebombo.jpg",
+      "byteLength": 1873244,
+      "sha256": "2e70777b9947b8a74809c22b9485bea6c4d67955e1ab2747507890b429eb1e9b",
+      "width": 8192,
+      "height": 4096,
+      "aspectRatio": "2:1",
+      "mimeType": "image/jpeg",
+      "imageProcessing": "None. Official 8K Tonemapped JPG downloaded unchanged; no resizing, recompression, or image edits."
+    }
+  ]
+}

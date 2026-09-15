@@ -387,6 +387,12 @@ export interface IRModule {
   moduleType: string
   configVersion: number
   payload: Record<string, unknown>
+  /** Reviewed VR-only read binding. Present invalid bindings lower to undefined,
+   * so a selected listing never silently loads an authored fallback panorama. */
+  panoramaUrlExpr?: ExprAst
+  /** Presence keeps failed video bindings distinct from static authored media. */
+  videoSrcExpr?: ExprAst
+  videoPosterExpr?: ExprAst
 }
 
 /** Phase 4 §24 v2: binary asset emitted by the compiler project. */

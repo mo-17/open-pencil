@@ -84,6 +84,7 @@ function emitVueProject(
 
   emitAssets(files, irs, components)
   emitVueModuleRuntimes(files, moduleProject, {
+    devMode: options.devMode,
     microfrontend: options.packaging?.kind === 'microfrontend'
   })
   emitVueLowcodeRuntimes(files, lowcode)
@@ -116,11 +117,10 @@ function emitVueProject(
   const firstComponent = infos[0]?.component ?? 'PageIndex'
   files.set(
     'package.json',
-    buildVuePackageJSON(
-      options,
-      router,
-      supabaseConfig ? { '@supabase/supabase-js': SUPABASE_JS_VERSION } : {}
-    )
+    buildVuePackageJSON(options, router, {
+      ...moduleProject.dependencies,
+      ...(supabaseConfig ? { '@supabase/supabase-js': SUPABASE_JS_VERSION } : {})
+    })
   )
   files.set('vite.config.ts', buildVueViteConfig())
   files.set('tsconfig.json', buildVueTsConfig())

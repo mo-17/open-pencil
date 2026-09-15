@@ -13,6 +13,7 @@ import {
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { decodeBase64, encodeBase64 } from '#core/bytes'
+import { resolveVRTourModule, VR_TOUR_SAMPLE_ASSETS } from '#core/plugins/vr-tour'
 
 interface SerializedClipboardNode extends JSONObject {
   overrides?: Record<string, unknown>
@@ -97,6 +98,16 @@ function restoreNodeData(nodes: SerializedClipboardNode[]): ClipboardNode[] {
 
 export type TextPictureBuilder = (node: SceneNode) => Uint8Array | null
 
+function collectVRTourImageHashes(node: SceneNode, hashes: Set<string>): void {
+  if (node.type !== 'FRAME') return
+  const resolved = resolveVRTourModule(node.interactiveProps?.module)
+  if (!resolved?.ok) return
+  const references = new Set(resolved.config.scenes.map((scene) => scene.panoramaUrl))
+  for (const sample of VR_TOUR_SAMPLE_ASSETS) {
+    if (references.has(sample.panoramaUrl)) hashes.add(sample.graphImageHash)
+  }
+}
+
 function collectImageHashes(nodes: SceneNode[], graph: SceneGraph): Set<string> {
   const hashes = new Set<string>()
   function walk(nodeList: SceneNode[]) {
@@ -104,6 +115,7 @@ function collectImageHashes(nodes: SceneNode[], graph: SceneGraph): Set<string> 
       for (const fill of node.fills) {
         if (fill.imageHash) hashes.add(fill.imageHash)
       }
+      collectVRTourImageHashes(node, hashes)
       walk(graph.getChildren(node.id))
     }
   }

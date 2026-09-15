@@ -127,8 +127,10 @@ describe('preview browser — compiled Video and Table modules', () => {
 
       const video = page.locator('[data-openpencil-video] video')
       await video.waitFor({ state: 'visible' })
-      expect(await video.getAttribute('src')).toBe(`${MEDIA_ORIGIN}/demo.mp4`)
-      expect(await video.getAttribute('poster')).toBe(`${MEDIA_ORIGIN}/poster.webp`)
+      await page.getByRole('alert').filter({ hasText: 'Video could not load' }).waitFor()
+      expect(await video.getAttribute('src')).toBeNull()
+      expect(await video.getAttribute('poster')).toBeNull()
+      expect(await page.getByRole('button', { name: 'Retry video' }).count()).toBe(1)
       expect(await video.getAttribute('preload')).toBe('auto')
       expect(await video.getAttribute('playsinline')).not.toBeNull()
       expect(await video.evaluate((element) => (element as HTMLVideoElement).controls)).toBe(true)
@@ -195,7 +197,7 @@ describe('preview browser — compiled Video and Table modules', () => {
       await page.goto(server.url, { waitUntil: 'domcontentloaded' })
 
       const video = page.locator('[data-openpencil-video] video')
-      const loadButton = page.getByRole('button', { name: 'Load video preview' })
+      const loadButton = page.getByRole('button', { name: 'Load video', exact: true })
       await video.waitFor({ state: 'visible' })
       await loadButton.waitFor({ state: 'visible' })
 
@@ -211,11 +213,13 @@ describe('preview browser — compiled Video and Table modules', () => {
       await loadButton.click()
       await firstMediaRequest
 
-      expect(await video.getAttribute('src')).toBe(`${MEDIA_ORIGIN}/demo.mp4`)
-      expect(await video.getAttribute('poster')).toBe(`${MEDIA_ORIGIN}/poster.webp`)
+      await page.getByRole('alert').filter({ hasText: 'Video could not load' }).waitFor()
+      expect(await video.getAttribute('src')).toBeNull()
+      expect(await video.getAttribute('poster')).toBeNull()
       expect(await video.getAttribute('preload')).toBe('auto')
       expect(await video.evaluate((element) => (element as HTMLVideoElement).autoplay)).toBe(true)
       expect(await loadButton.count()).toBe(0)
+      expect(await page.getByRole('button', { name: 'Retry video' }).count()).toBe(1)
       expect(mediaRequests.length).toBeGreaterThan(0)
     },
     timeoutMs

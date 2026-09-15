@@ -28,6 +28,7 @@ import {
   emitTaroExpression,
   type TaroExpressionBindings
 } from './expression'
+import { emitTaroVRTourElement } from './vr-tour'
 import { warnTaroComponentDefinitionRuntime, warnTaroComponentReferenceRuntime } from './warnings'
 
 export interface TaroComponentPlan {
@@ -41,6 +42,8 @@ export interface TaroEmitEnvironment {
   assets: MiniProgramAssetPlan
   components: ReadonlyMap<string, TaroComponentPlan>
   routeByAuthoredPath: ReadonlyMap<string, string>
+  vrTourIds: ReadonlySet<string>
+  vrTourModules: Set<string>
   warn: MiniProgramWarningSink
 }
 
@@ -55,6 +58,7 @@ interface EmitContext extends TaroEmitEnvironment {
   expressionBindings: TaroExpressionBindings
   styleSheet: TaroStyleSheet
   stateNames: ReadonlySet<string>
+  usesVRTour: boolean
 }
 
 const SAFE_IMAGE_SOURCE = /^(?:\.?\.?\/)*assets\/[A-Za-z0-9._/-]+$/
@@ -145,7 +149,8 @@ export function emitTaroPage(
     componentMode: false,
     expressionBindings: new Map(),
     styleSheet,
-    stateNames
+    stateNames,
+    usesVRTour: false
   }
   auditTreeRuntime(plan.ir, environment.warn)
   const body = plan.ir.children.map((node) => emitNode(node, ctx, 3)).join('\n')
@@ -164,6 +169,7 @@ export function emitTaroPage(
     source: `import { useState } from 'react'
 import Taro, { useRouter } from '@tarojs/taro'
 import { Button, Checkbox, Form, Image, Input, Label, Picker, Radio, Switch, Text, Textarea, View } from '@tarojs/components'
+${ctx.usesVRTour ? "import OpenPencilVRTour from '../../vr-tour/launch'\n" : ''}
 ${componentImportSource ? `${componentImportSource}\n` : ''}
 import './index.scss'
 
@@ -192,7 +198,8 @@ export function emitTaroComponent(
     componentMode: true,
     expressionBindings: createTaroExpressionBindings(component.propAliases),
     styleSheet,
-    stateNames: new Set()
+    stateNames: new Set(),
+    usesVRTour: false
   }
   const definition = component.definition
   warnTaroComponentDefinitionRuntime(definition, environment.warn)
@@ -253,6 +260,7 @@ export function emitTaroComponent(
   return {
     source: `import Taro from '@tarojs/taro'
 import { Button, Checkbox, Form, Image, Input, Label, Picker, Radio, Switch, Text, Textarea, View } from '@tarojs/components'
+${ctx.usesVRTour ? "import OpenPencilVRTour from '../vr-tour/launch'\n" : ''}
 ${componentImportSource ? `${componentImportSource}\n` : ''}
 
 import './${component.slug}.scss'
@@ -413,7 +421,9 @@ function emitComponentRef(node: IRComponentRef, ctx: EmitContext, level: number)
 
 function emitElement(node: IRElement, ctx: EmitContext, level: number): string {
   const pad = '  '.repeat(level)
-  auditElement(node, ctx)
+  const tour = emitTaroVRTourElement(node, ctx, level)
+  auditElement(node, ctx, tour !== null)
+  if (tour) return tour
   const component = taroComponent(node)
   const className = ctx.styleSheet.register(node)
   const attrs = emitElementAttributes(node, component, className, ctx)
@@ -429,13 +439,13 @@ function emitElement(node: IRElement, ctx: EmitContext, level: number): string {
   return element
 }
 
-function auditElement(node: IRElement, ctx: EmitContext): void {
+function auditElement(node: IRElement, ctx: EmitContext, emittedVRTour: boolean): void {
   const unsupported = [
     node.motion || node.motionDrivers || node.motionScene ? 'motion' : '',
     node.generatedEffect ? 'generated-effect' : '',
     node.prototype || node.transitionKey || node.prototypeTarget ? 'prototype' : '',
     node.rawHtml ? 'raw-html-vector' : '',
-    node.module ? 'plugin-module' : '',
+    node.module && !emittedVRTour ? 'plugin-module' : '',
     node.icon ? 'lucide-icon' : '',
     node.link ? 'external-link' : '',
     node.upload ? 'upload' : '',

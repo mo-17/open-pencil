@@ -31,6 +31,7 @@ import { buildComponentRegistry } from './ir/collect/components'
 import type { MotionLoweringCache } from './ir/collect/motion'
 import { collectServerWorkflows } from './ir/collect/server-workflows'
 import { collectComponents, collectTree } from './ir/collect/tree'
+import { emitVRTourSampleSources } from './ir/collect/vr-tour-assets'
 import type { IRMotion } from './ir/motion'
 import type { IRServerWorkflow } from './ir/types'
 import {
@@ -81,6 +82,7 @@ export {
   type ResolveCompilerWebFontsInput
 } from './resolve-fonts'
 export { dartPackageName as safeFlutterPackageName } from './adapters/flutter/names'
+export { reviewTaroVRTourHybridArtifacts } from './adapters/vr-tour/hybrid/validate'
 export {
   createPreviewFileDecodeCache,
   createPreviewFileEncodeCache,
@@ -197,6 +199,7 @@ export function compile(input: CompilerInput): CompilerOutput {
     warnings: adapterWarnings,
     executableServerWorkflowFiles = []
   } = adapter.emit(irs, options, components)
+  emitVRTourSampleSources(files)
   let fontWarnings: CompileWarning[] = []
   if (input.fontManifest) {
     if (options.target === 'expo') {

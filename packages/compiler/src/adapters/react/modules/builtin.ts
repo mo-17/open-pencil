@@ -19,6 +19,7 @@ import { TABLE_COMPILER_MODULE_LOWERER } from '#compiler/modules/table'
 import { TABS_COMPILER_MODULE_LOWERER } from '#compiler/modules/tabs'
 import { UPLOAD_BUTTON_COMPILER_MODULE_LOWERER } from '#compiler/modules/upload-button'
 import { VIDEO_COMPILER_MODULE_LOWERER } from '#compiler/modules/video'
+import { VR_TOUR_COMPILER_MODULE_LOWERER } from '#compiler/modules/vr-tour'
 
 import { ACCORDION_REACT_MODULE_ADAPTER } from './accordion'
 import { AUDIO_PLAYER_REACT_MODULE_ADAPTER } from './audio-player'
@@ -40,10 +41,15 @@ import { TABLE_REACT_MODULE_ADAPTER } from './table'
 import { TABS_REACT_MODULE_ADAPTER } from './tabs'
 import { UPLOAD_BUTTON_REACT_MODULE_ADAPTER } from './upload-button'
 import { VIDEO_REACT_MODULE_ADAPTER } from './video'
+import { VR_TOUR_REACT_MODULE_ADAPTER } from './vr-tour'
 
 /** React-owned target registry. It deliberately mirrors the neutral lowerer
  * manifest while keeping framework adapters out of the IR dependency graph. */
 export const BUILTIN_REACT_MODULE_REGISTRY = new CompilerModuleRegistry()
+  .register({
+    lowerer: VR_TOUR_COMPILER_MODULE_LOWERER,
+    targets: { react: VR_TOUR_REACT_MODULE_ADAPTER }
+  })
   .register({
     lowerer: MAP_COMPILER_MODULE_LOWERER,
     targets: { react: MAP_REACT_MODULE_ADAPTER }

@@ -34,6 +34,9 @@ const SHARED_PINS: Readonly<Partial<Record<string, DependencyPin>>> = Object.fre
   'remark-gfm': PIN('4.0.1', '4.0.1'),
   'lottie-web': PIN('5.13.0', '5.13.0'),
   'maplibre-gl': PIN('6.4.1', '6.4.1'),
+  '@photo-sphere-viewer/core': PIN('5.15.1', '5.15.1'),
+  '@photo-sphere-viewer/markers-plugin': PIN('5.15.1', '5.15.1'),
+  three: PIN('0.185.1', '0.185.1'),
   jsbarcode: PIN('3.12.3', '3.12.3'),
   qrcode: PIN('1.5.4', '1.5.4')
 })

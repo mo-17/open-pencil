@@ -37,6 +37,7 @@ import {
   renderUploadButtonModulePreview
 } from './upload-button'
 import { VIDEO_MODULE_CANVAS_ADAPTER, renderVideoModulePreview } from './video'
+import { VR_TOUR_MODULE_CANVAS_ADAPTER, renderVRTourModulePreview } from './vr-tour'
 
 const MAP_MODULE_CANVAS_ADAPTER: ModuleCanvasAdapter = Object.freeze({
   pluginId: MAP_PLUGIN_ID,
@@ -100,6 +101,7 @@ export const BUILTIN_MODULE_CANVAS_ADAPTERS = new ModuleCanvasAdapterRegistry()
   .register(CODE_BLOCK_MODULE_CANVAS_ADAPTER)
   .register(PDF_VIEWER_MODULE_CANVAS_ADAPTER)
   .register(AUDIO_PLAYER_MODULE_CANVAS_ADAPTER)
+  .register(VR_TOUR_MODULE_CANVAS_ADAPTER)
   .freeze()
 
 export function renderModulePreview(
@@ -129,5 +131,6 @@ export {
   renderTableModulePreview,
   renderTabsModulePreview,
   renderUploadButtonModulePreview,
-  renderVideoModulePreview
+  renderVideoModulePreview,
+  renderVRTourModulePreview
 }

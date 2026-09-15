@@ -19,6 +19,7 @@ import vue from '@vitejs/plugin-vue'
 import { createServer, type Plugin, type PluginOption, type Update, type ViteDevServer } from 'vite'
 
 import { reactModuleOptimizeDepsForFiles } from './adapters/react/modules/registry'
+import { vueModuleOptimizeDepsForFiles } from './adapters/vue/modules/registry'
 import { createSupabaseBuildDefines } from './build'
 import {
   parsePreviewLocalBackendConnection,
@@ -258,7 +259,10 @@ const PREVIEW_BASE_OPTIMIZE_DEPS = [
  * Modules added later resolve on demand after the topology-triggered reload. */
 export function previewOptimizeDeps(files: PreviewFiles, target: WebVfsTarget = 'react'): string[] {
   if (target === 'vue') {
-    return files.has('src/router.ts') ? ['vue', 'vue-router'] : ['vue']
+    return [
+      ...(files.has('src/router.ts') ? ['vue', 'vue-router'] : ['vue']),
+      ...vueModuleOptimizeDepsForFiles(files)
+    ]
   }
   return [...PREVIEW_BASE_OPTIMIZE_DEPS, ...reactModuleOptimizeDepsForFiles(files)]
 }

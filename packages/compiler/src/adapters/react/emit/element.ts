@@ -202,13 +202,29 @@ function emitModuleElement(
   const pad = '  '.repeat(indent)
   const { attrsStr } = tagOpenParts(node, devMode, null)
   const attrs = attrsStr === '' ? '' : ` ${attrsStr}`
-  const opening = `${pad}<${adapter.componentName} config={${JSON.stringify(node.module?.payload)}}${attrs}`
+  const panorama =
+    node.module?.panoramaUrlExpr && adapter.pluginId === 'open-pencil.vr-tour'
+      ? ` panoramaBound panoramaUrl={(() => { try { return ${emitExpression(node.module.panoramaUrlExpr)} } catch { return undefined } })()}`
+      : ''
+  const video = videoModuleBindings(node)
+  const opening = `${pad}<${adapter.componentName} config={${JSON.stringify(node.module?.payload)}}${panorama}${video}${attrs}`
   if (node.children.length === 0) return `${opening} />`
   return [
     `${opening}>`,
     ...node.children.map((child) => emitElement(child, indent + 1, devMode, uiKit)),
     `${pad}</${adapter.componentName}>`
   ].join('\n')
+}
+
+function videoModuleBindings(node: IRElement): string {
+  if (node.module?.pluginId !== 'open-pencil.video' || node.module.moduleType !== 'video') return ''
+  return (['Src', 'Poster'] as const)
+    .map((key) => {
+      const ast = key === 'Src' ? node.module?.videoSrcExpr : node.module?.videoPosterExpr
+      if (!ast) return ''
+      return ` ${key.toLowerCase()}Bound video${key}={(() => { try { return ${emitExpression(ast)} } catch { return undefined } })()}`
+    })
+    .join('')
 }
 
 /** §19 follow-up: opt-in FORM-level aggregate over the same field errors used

@@ -134,6 +134,12 @@ function assertBrowserRuntimeCapabilities(
   files: ReadonlyMap<string, string | Uint8Array>,
   policy: BrowserPreviewDependencyPolicy
 ): void {
+  if (policy.declared['@photo-sphere-viewer/core']) {
+    failBrowserPreview(
+      'browser-preview-vr-tour-runtime-unsupported',
+      'VR tours require desktop preview or an exported React/Vue app. Browser preview blocks panorama networking and package CSS.'
+    )
+  }
   if (policy.declared['lottie-web']) {
     const usesRemoteLottie = [...files.values()].some(
       (value) => typeof value === 'string' && /\bsource\s*:\s*["']url["']/.test(value)

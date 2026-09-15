@@ -27,12 +27,14 @@ import {
 import { emitExpoEventHandler, setterName } from './event'
 import { translateExpoStyle } from './style'
 import type { ExpoStyleResult, ExpoStyleValue, ExpoWarningSink } from './types'
+import { emitExpoVRTour, expoVRTourImport, expoVRTourSymbol, isExpoVRTour } from './vr-tour'
 
 interface EmitEnvironment {
   assetPrefix: string
   componentImportPrefix: string
   devMode: boolean
   nativeAssetNames: ReadonlySet<string>
+  vrTourIds?: ReadonlySet<string>
   router: boolean
   routeRewrites: ReadonlyMap<string, string>
   warn: ExpoWarningSink
@@ -41,6 +43,7 @@ interface EmitEnvironment {
 interface ResolvedEmitEnvironment extends EmitEnvironment {
   componentSymbols: ReadonlyMap<string, string>
   unsupportedListArrays: ReadonlySet<string>
+  vrTourSymbol: string
 }
 
 interface ElementEnvironment extends ResolvedEmitEnvironment {
@@ -54,6 +57,7 @@ const EXPO_EMITTED_IDENTIFIERS = new Set([
   'ImageBackground',
   'KeyboardAvoidingView',
   'Linking',
+  'OpenPencilVRTour',
   'Platform',
   'Pressable',
   'SafeAreaView',
@@ -103,6 +107,14 @@ export function emitExpoPage(ir: IRTree, exportName: string, environment: EmitEn
         `import ${componentSymbols.get(name) ?? name} from '${environment.componentImportPrefix}${name}'`
     )
     .join('\n')
+  const vrTourSymbol = expoVRTourSymbol(
+    new Set([
+      exportName,
+      ...componentSymbols.values(),
+      ...ir.states.flatMap((state) => [state.name, setterName(state.name)]),
+      ...ir.docStateReads
+    ])
+  )
   const docStateActive = ir.docStateReads.length > 0 || ir.docStateWrites.length > 0
   const docStateImport = docStateActive
     ? `import { setDocState, useDocState } from '../runtime/document-state'\n`
@@ -135,6 +147,7 @@ export function emitExpoPage(ir: IRTree, exportName: string, environment: EmitEn
         ...environment,
         componentSymbols,
         unsupportedListArrays,
+        vrTourSymbol,
         textContext: false
       })
     )
@@ -146,6 +159,7 @@ export function emitExpoPage(ir: IRTree, exportName: string, environment: EmitEn
     `import { SafeAreaView } from 'react-native-safe-area-context'`,
     routerImport.trimEnd(),
     docStateImport.trimEnd(),
+    expoVRTourImport(ir.children, environment.vrTourIds, vrTourSymbol),
     componentImports
   ]
     .filter(Boolean)
@@ -198,6 +212,14 @@ export function emitExpoComponent(definition: ComponentDef, environment: EmitEnv
     .map((name) => `import ${componentSymbols.get(name) ?? name} from './${name}'`)
     .join('\n')
   const docStateReads = definition.docStateReads ?? []
+  const vrTourSymbol = expoVRTourSymbol(
+    new Set([
+      definition.name,
+      ...componentSymbols.values(),
+      ...props.map((prop) => prop.name),
+      ...docStateReads
+    ])
+  )
   const docStateActive = docStateReads.length > 0 || (definition.docStateWrites?.length ?? 0) > 0
   const docStateImport = docStateActive
     ? `import { setDocState, useDocState } from '../runtime/document-state'\n`
@@ -212,7 +234,8 @@ export function emitExpoComponent(definition: ComponentDef, environment: EmitEnv
     ? emitVariantContent(definition, 1, {
         ...environment,
         componentSymbols,
-        unsupportedListArrays
+        unsupportedListArrays,
+        vrTourSymbol
       })
     : definition.children
         .map((node) =>
@@ -220,6 +243,7 @@ export function emitExpoComponent(definition: ComponentDef, environment: EmitEnv
             ...environment,
             componentSymbols,
             unsupportedListArrays,
+            vrTourSymbol,
             textContext: false
           })
         )
@@ -230,6 +254,7 @@ export function emitExpoComponent(definition: ComponentDef, environment: EmitEnv
     `import { Image, ImageBackground, Linking, Pressable, Switch, Text, TextInput, View } from 'react-native'`,
     environment.router ? `import { useRouter } from 'expo-router'` : '',
     docStateImport.trimEnd(),
+    expoVRTourImport(nodes, environment.vrTourIds, vrTourSymbol),
     nestedImports
   ]
     .filter(Boolean)
@@ -408,11 +433,23 @@ function emitComponentRefProp(
 }
 
 function emitElement(node: IRElement, indent: number, environment: ElementEnvironment): string {
-  warnElementFeatures(node, environment.warn)
+  const vrTour = isExpoVRTour(node, environment.vrTourIds)
+  warnElementFeatures(node, environment.warn, vrTour)
   const style = translateExpoStyle(node.className, node.sourceId, environment.warn)
   validateBackgroundAsset(style, node.sourceId, environment)
   Object.assign(style.style, nativeInlineStyle(node.attrs.style))
   warnInlineStyle(node.attrs.style, node.sourceId, environment.warn)
+  if (vrTour) {
+    warnDroppedEvents(node, new Set(), environment.warn)
+    return emitExpoVRTour(
+      node,
+      style.style,
+      indent,
+      environment.warn,
+      environment.devMode,
+      environment.vrTourSymbol
+    )
+  }
   const modalTrigger = trustedNativeModalTrigger(node)
   const dropdownTrigger = trustedNativeDropdownMenuTrigger(node)
   const uploadTrigger = trustedNativeUploadButtonTrigger(node)
@@ -1027,8 +1064,8 @@ function warnComponentFeatures(definition: ComponentDef, warn: ExpoWarningSink):
   }
 }
 
-function warnElementFeatures(node: IRElement, warn: ExpoWarningSink): void {
-  if (node.module)
+function warnElementFeatures(node: IRElement, warn: ExpoWarningSink, vrTour = false): void {
+  if (node.module && !vrTour)
     warnFeature(
       warn,
       'expo-module-unsupported',

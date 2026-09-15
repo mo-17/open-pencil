@@ -1,5 +1,6 @@
 import type { AdapterEmission, FrameworkAdapter } from '#compiler/adapters/types'
-import type { ComponentDef, IRTree } from '#compiler/ir/types'
+import { emitVRTourHybridProject } from '#compiler/adapters/vr-tour/hybrid'
+import type { ComponentDef, IRAsset, IRTree } from '#compiler/ir/types'
 import type { CompileWarning, CompilerOptions } from '#compiler/types'
 
 import {
@@ -8,6 +9,7 @@ import {
   createMiniProgramPagePlan,
   createMiniProgramWarningSink,
   emitMiniProgramAssets,
+  MINIPROGRAM_PROJECT_LIMITS,
   safeMiniProgramName,
   setMiniProgramProjectFile
 } from '../miniprogram-shared'
@@ -26,6 +28,7 @@ import {
   buildTaroReadme,
   buildTaroTsConfig
 } from './project'
+import { emitTaroVRTourSupport, TARO_VR_TOUR_PAGE } from './vr-tour'
 
 export const taroAdapter: FrameworkAdapter = {
   emit(
@@ -46,7 +49,18 @@ export function emitTaroProject(
   const warnings: CompileWarning[] = []
   const warn = createMiniProgramWarningSink(warnings)
   const pages = createMiniProgramPagePlan(irs, warn, 'taro')
-  const assets = collectMiniProgramAssets(irs, components, warn, 'taro')
+  const hybrid = emitVRTourHybridProject(irs, components, 'taro')
+  if (hybrid.tourIds.size > 0 && pages.length >= MINIPROGRAM_PROJECT_LIMITS.maxPages) {
+    throw new RangeError(
+      'Taro VR WebView requires one additional page within the mini-program page limit'
+    )
+  }
+  const assets = collectMiniProgramAssets(
+    nativeAssetSources(irs),
+    nativeAssetSources(components),
+    warn,
+    'taro'
+  )
   const componentPlans = createTaroComponentPlans(components)
   const authoredRoutes = derivePagePaths(irs)
   const routeByAuthoredPath = new Map<string, string>()
@@ -56,26 +70,36 @@ export function emitTaroProject(
       routeByAuthoredPath.set(route.route, page.route)
     }
   }
-  const environment = { assets, components: componentPlans, routeByAuthoredPath, warn }
+  const environment = {
+    assets,
+    components: componentPlans,
+    routeByAuthoredPath,
+    vrTourIds: hybrid.tourIds,
+    vrTourModules: new Set<string>(),
+    warn
+  }
   const setFile = (path: string, content: string | Uint8Array) =>
     setMiniProgramProjectFile(files, path, content)
   const projectName = safeMiniProgramName(options.packageName, 'openpencil-taro')
   const productName = options.productName?.trim() || options.packageName
 
   warnUnsupportedOptions(options, warn)
-  setFile('package.json', buildTaroPackageJSON({ ...options, packageName: projectName }))
+  setFile(
+    'package.json',
+    buildTaroPackageJSON({ ...options, packageName: projectName }, hybrid.tourIds.size > 0)
+  )
   setFile('babel.config.js', buildTaroBabelConfig())
   setFile('config/index.ts', buildTaroConfig(projectName))
   setFile('tsconfig.json', buildTaroTsConfig())
   setFile('project.config.json', buildTaroProjectConfig(projectName))
   setFile('.gitignore', buildTaroGitignore())
-  setFile('README.md', buildTaroReadme(productName))
+  setFile('README.md', buildTaroReadme(productName, hybrid.tourIds.size > 0))
   setFile('src/app.ts', buildTaroAppSource())
   setFile('src/app.scss', buildTaroAppStyle())
   setFile(
     'src/app.config.ts',
     buildTaroAppConfig(
-      pages.map((page) => page.route),
+      [...pages.map((page) => page.route), ...(hybrid.tourIds.size > 0 ? [TARO_VR_TOUR_PAGE] : [])],
       productName
     )
   )
@@ -92,8 +116,19 @@ export function emitTaroProject(
     setFile(`src/components/${component.slug}.scss`, emitted.style)
   }
   emitMiniProgramAssets(assets, (path, content) => setFile(`src/${path}`, content))
+  if (environment.vrTourModules.size > 0) {
+    for (const [path, content] of emitTaroVRTourSupport(hybrid.tourIds)) setFile(path, content)
+  }
+  for (const [path, content] of hybrid.files) setFile(path, content)
   assertMiniProgramProjectBudget(files)
   return { files, warnings }
+}
+
+function nativeAssetSources<T extends { assets?: IRAsset[] }>(sources: readonly T[]): T[] {
+  return sources.map((source) => ({
+    ...source,
+    assets: source.assets?.filter((asset) => !asset.path.startsWith('public/assets/vr-tour/'))
+  }))
 }
 
 function warnUnsupportedOptions(

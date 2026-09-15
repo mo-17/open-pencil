@@ -19,11 +19,13 @@ import { TABLE_COMPILER_MODULE_LOWERER } from './table'
 import { TABS_COMPILER_MODULE_LOWERER } from './tabs'
 import { UPLOAD_BUTTON_COMPILER_MODULE_LOWERER } from './upload-button'
 import { VIDEO_COMPILER_MODULE_LOWERER } from './video'
+import { VR_TOUR_COMPILER_MODULE_LOWERER } from './vr-tour'
 
 /** Framework-neutral installation manifest for trusted compiler modules.
  * Adapter targets live in their owning adapter layer so IR collection never
  * imports framework code. */
 export const BUILTIN_COMPILER_MODULE_REGISTRY = new CompilerModuleRegistry()
+  .register({ lowerer: VR_TOUR_COMPILER_MODULE_LOWERER, targets: {} })
   .register({
     lowerer: MAP_COMPILER_MODULE_LOWERER,
     targets: {}

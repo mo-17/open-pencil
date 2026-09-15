@@ -110,6 +110,9 @@ export function resolveRelative(source: string, importerRel: string): string {
  */
 export function lookupFile(files: PreviewFiles, stem: string): string | null {
   if (files.has(stem)) return stem
+  if (isSafePublicAssetPath(stem) && files.get(`public/${stem}`) instanceof Uint8Array) {
+    return `public/${stem}`
+  }
   const exts = ['.vue', '.tsx', '.ts', '.jsx', '.js', '.css']
   for (const ext of exts) {
     if (files.has(stem + ext)) return stem + ext
@@ -133,6 +136,13 @@ interface BinaryBuildAsset {
   bytes: Uint8Array
 }
 
+/** Public files keep their directory layout, without path normalization or traversal aliases. */
+function isSafePublicAssetPath(path: string): boolean {
+  return (
+    path.length > 0 && path.split('/').every((part) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(part))
+  )
+}
+
 function binaryOutputRelativePath(path: string): string {
   const normalized = posix.normalize(path).replace(/^(\.\.\/)+/, '')
   return normalized.startsWith('src/assets/')
@@ -140,14 +150,21 @@ function binaryOutputRelativePath(path: string): string {
     : posix.basename(normalized)
 }
 
+function binaryOutputPath(path: string): string {
+  if (!path.startsWith('public/')) return `assets/${binaryOutputRelativePath(path)}`
+  const relative = path.slice('public/'.length)
+  if (!isSafePublicAssetPath(relative)) throw new TypeError('Invalid public asset path')
+  return relative
+}
+
 function binaryBuildAssets(files: PreviewFiles): BinaryBuildAsset[] {
   const assets: BinaryBuildAsset[] = []
   for (const [path, content] of files) {
     if (!(content instanceof Uint8Array)) continue
-    const relative = binaryOutputRelativePath(path)
+    const outputPath = binaryOutputPath(path)
     assets.push({
-      sourceUrl: `./assets/${relative}`,
-      outputPath: `assets/${relative}`,
+      sourceUrl: (path.startsWith('public/') ? '/' : './') + outputPath,
+      outputPath,
       bytes: content
     })
   }
@@ -229,9 +246,7 @@ export function inMemoryVFS(
       // because no source file exists on disk. Emit a tiny URL module; the
       // middleware serves that stable path in dev and generateBundle writes the
       // byte-identical asset at the same path for static builds.
-      return `export default import.meta.env.BASE_URL + ${JSON.stringify(
-        `assets/${binaryOutputRelativePath(rel)}`
-      )}\n`
+      return `export default import.meta.env.BASE_URL + ${JSON.stringify(binaryOutputPath(rel))}\n`
     },
 
     generateBundle(_options, bundle) {
@@ -328,6 +343,9 @@ function lookupBinaryAsset(
 ): { bytes: Uint8Array; contentType: string } | null {
   const rel = stripQuery(urlPath.replace(/^\/+/, ''))
   const candidates = rel.startsWith('assets/') ? [rel, `src/${rel}`] : [rel]
+  if (urlPath.startsWith('/') && !urlPath.startsWith('//') && isSafePublicAssetPath(rel)) {
+    candidates.push(`public/${rel}`)
+  }
   for (const candidate of candidates) {
     const content = files.get(candidate)
     if (content instanceof Uint8Array) {
@@ -339,6 +357,7 @@ function lookupBinaryAsset(
 
 export function contentTypeForPath(path: string): string {
   const lower = path.toLowerCase()
+  if (lower.endsWith('.json')) return 'application/json'
   if (lower.endsWith('.png')) return 'image/png'
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
   if (lower.endsWith('.gif')) return 'image/gif'

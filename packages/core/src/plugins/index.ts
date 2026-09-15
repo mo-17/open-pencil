@@ -4,6 +4,7 @@ export { BUILTIN_PLUGIN_REGISTRY } from './builtin'
 export * from './accordion'
 export * from './audio-player'
 export * from './carousel'
+export * from './vr-tour'
 export * from './code-block'
 export {
   CHART_MODULE_CONFIG_VERSION,

@@ -20,7 +20,8 @@ export {
   renderTableModulePreview,
   renderTabsModulePreview,
   renderUploadButtonModulePreview,
-  renderVideoModulePreview
+  renderVideoModulePreview,
+  renderVRTourModulePreview
 } from './registry'
 export { markdownPreviewLines } from './markdown'
 export { codeBlockPreviewLines } from './code-block'
@@ -33,4 +34,5 @@ export { richTextPreviewLines } from './rich-text'
 export { slideMenuPreviewMeta } from './slide-menu'
 export { visibleTableRows } from './table'
 export { videoPreviewLabel } from './video'
+export { vrTourPreviewLabel } from './vr-tour'
 export type { ModuleCanvasAdapter } from './types'

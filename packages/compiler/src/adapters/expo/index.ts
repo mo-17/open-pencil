@@ -1,4 +1,5 @@
 import type { AdapterEmission, FrameworkAdapter } from '#compiler/adapters/types'
+import { emitVRTourHybridProject } from '#compiler/adapters/vr-tour/hybrid'
 import { stableNameSuffix } from '#compiler/ir/stable-name'
 import type { ComponentDef, IRAsset, IRTree } from '#compiler/ir/types'
 import type { CompileWarning, CompilerOptions } from '#compiler/types'
@@ -24,6 +25,7 @@ import {
   buildExpoTsConfig
 } from './project'
 import type { ExpoWarningSink } from './types'
+import { buildExpoVRTourRuntime } from './vr-tour'
 
 const UNSAFE_ROUTE_SEGMENTS = new Set([
   '.',
@@ -77,25 +79,55 @@ function emitExpoProject(
   const routerPlan = router ? planRouterPages(infos, warn) : undefined
   const routeRewrites = routerPlan?.routeRewrites ?? new Map<string, string>()
   const assetPlan = collectExpoAssets(selected, components, warn)
+  const vrTours = emitVRTourHybridProject(selected, components, 'expo')
+  const hasVRTours = vrTours.tourIds.size > 0
 
-  files.set('package.json', buildExpoPackageJSON(options, router))
+  files.set('package.json', buildExpoPackageJSON(options, router, hasVRTours))
   files.set('app.json', buildExpoAppJSON(options, router))
-  files.set('tsconfig.json', buildExpoTsConfig())
+  files.set('tsconfig.json', buildExpoTsConfig(hasVRTours))
   files.set('.gitignore', buildExpoGitignore())
-  files.set('README.md', buildExpoReadme(router))
+  files.set('README.md', buildExpoReadme(router, hasVRTours))
   files.set('expo-env.d.ts', `/// <reference types="expo/types" />\n`)
   files.set('src/generated-fonts.ts', buildExpoFontStub())
   files.set('src/runtime/document-state.ts', buildExpoDocumentState(selected[0]?.docStates ?? []))
 
   if (router) {
     files.set('app/_layout.tsx', buildExpoRouterLayout())
-    emitRouterPages(files, routerPlan?.pages ?? [], options, routeRewrites, assetPlan.names, warn)
+    emitRouterPages(
+      files,
+      routerPlan?.pages ?? [],
+      options,
+      routeRewrites,
+      assetPlan.names,
+      warn,
+      vrTours.tourIds
+    )
   } else {
     files.set('App.tsx', buildExpoRootApp())
-    emitPageModule(files, infos[0], options, false, routeRewrites, assetPlan.names, warn)
+    emitPageModule(
+      files,
+      infos[0],
+      options,
+      false,
+      routeRewrites,
+      assetPlan.names,
+      warn,
+      vrTours.tourIds
+    )
   }
-  emitComponents(files, components, options, router, routeRewrites, assetPlan.names, warn)
+  emitComponents(
+    files,
+    components,
+    options,
+    router,
+    routeRewrites,
+    assetPlan.names,
+    warn,
+    vrTours.tourIds
+  )
   emitAssets(files, assetPlan.assets)
+  for (const [path, value] of vrTours.files) files.set(path, value)
+  if (hasVRTours) files.set('src/vr-tour.tsx', buildExpoVRTourRuntime(router))
   warnings.push(...duplicateSlugWarnings(infos))
   return { files, warnings }
 }
@@ -204,10 +236,11 @@ function emitRouterPages(
   options: CompilerOptions,
   routeRewrites: ReadonlyMap<string, string>,
   nativeAssetNames: ReadonlySet<string>,
-  warn: ExpoWarningSink
+  warn: ExpoWarningSink,
+  vrTourIds: ReadonlySet<string>
 ): void {
   for (const { info, routeFile } of pages) {
-    emitPageModule(files, info, options, true, routeRewrites, nativeAssetNames, warn)
+    emitPageModule(files, info, options, true, routeRewrites, nativeAssetNames, warn, vrTourIds)
     files.set(routeFile, buildExpoRouteProxy(routeFile, info.moduleSlug))
   }
 }
@@ -236,7 +269,8 @@ function emitPageModule(
   router: boolean,
   routeRewrites: ReadonlyMap<string, string>,
   nativeAssetNames: ReadonlySet<string>,
-  warn: ExpoWarningSink
+  warn: ExpoWarningSink,
+  vrTourIds: ReadonlySet<string>
 ): void {
   files.set(
     `src/pages/${info.moduleSlug}.tsx`,
@@ -247,6 +281,7 @@ function emitPageModule(
       router,
       routeRewrites,
       nativeAssetNames,
+      vrTourIds,
       warn
     })
   )
@@ -259,7 +294,8 @@ function emitComponents(
   router: boolean,
   routeRewrites: ReadonlyMap<string, string>,
   nativeAssetNames: ReadonlySet<string>,
-  warn: ExpoWarningSink
+  warn: ExpoWarningSink,
+  vrTourIds: ReadonlySet<string>
 ): void {
   for (const definition of components) {
     files.set(
@@ -271,6 +307,7 @@ function emitComponents(
         router,
         routeRewrites,
         nativeAssetNames,
+        vrTourIds,
         warn
       })
     )
@@ -369,6 +406,7 @@ function collectExpoAssets(
   const assets = new Map<string, IRAsset>()
   const blocked = new Set<string>()
   for (const asset of candidates.sort((a, b) => a.path.localeCompare(b.path))) {
+    if (asset.path.startsWith('public/assets/vr-tour/')) continue
     const name = asset.path.split('/').at(-1)
     if (!name || !EXPO_RASTER_ASSET_EXTENSION.test(name)) {
       warn({
