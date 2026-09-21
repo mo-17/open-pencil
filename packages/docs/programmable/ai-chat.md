@@ -47,6 +47,13 @@ credentials you provide. OpenPencil's built-in design MCP server remains attache
 does not need to be added here. These ACP-wide connections are separate from the per-model Remote
 MCP servers described below for Direct chat.
 
+The embedded connection uses the reserved name `open-pencil-editor` and the current app instance's
+MCP address. It stays separate from an agent's globally configured `open-pencil` server, which may
+point to another app instance. New and resumed ACP sessions receive guidance to use the embedded
+connection for the current canvas. After upgrading, reconnect the agent or reopen the AI panel to
+refresh an already running session; clearing its history or changing global agent configuration is
+not required.
+
 ### Desktop coding-agent session continuity
 
 Claude Code, Codex, and Gemini CLI use ACP in the desktop app. For a source-backed document,

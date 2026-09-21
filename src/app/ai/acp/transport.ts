@@ -24,7 +24,7 @@ import {
 } from 'ai'
 
 import { decodeBase64, encodeBase64 } from '@open-pencil/core/bytes'
-import { AUTOMATION_HTTP_PORT, type ACPAgentDef } from '@open-pencil/core/constants'
+import type { ACPAgentDef } from '@open-pencil/core/constants'
 
 import {
   DEFAULT_VISUAL_ATTACHMENT_LIMITS,
@@ -38,7 +38,8 @@ import {
 import { INTERRUPTED_TOOL_ERROR } from '@/app/ai/chat/interruption'
 import { designSystemPromptFor } from '@/app/ai/chat/prompt-policy'
 import { describeDiagnosticError, recordACPTransportFailure } from '@/app/diagnostics'
-import { buildACPMCPServers } from '@/app/integrations/mcp'
+import { buildACPMCPServers, builtInMCPServer } from '@/app/integrations/mcp'
+import { BUILT_IN_EDITOR_MCP_SERVER_NAME } from '@/app/integrations/mcp/names'
 
 import {
   beginACPDiagnostics,
@@ -50,6 +51,7 @@ import {
   recordACPSessionUpdate,
   resetACPDiagnostics
 } from './diagnostics'
+import EDITOR_CONTEXT from './editor-context.md?raw'
 import { createACPUpdateMapper } from './map-update'
 import { cancelPermissionsForSession, requestPermissionFromUser } from './permission'
 import { spawnACPProcess } from './process'
@@ -479,12 +481,7 @@ export function hasACPDebugEntries(): boolean {
 }
 
 export function buildOpenPencilMCPServerConfig(authToken: string | null): MCPServer {
-  return {
-    type: 'http',
-    name: 'open-pencil',
-    url: `http://127.0.0.1:${AUTOMATION_HTTP_PORT}/mcp`,
-    headers: authToken ? [{ name: 'Authorization', value: `Bearer ${authToken}` }] : []
-  }
+  return builtInMCPServer({ authorizationToken: authToken })
 }
 
 export function buildACPMCPServerConfigs(
@@ -664,7 +661,12 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     const runtimeContext = formatACPRuntimeContext(getACPDiagnostics())
     const promptText = [
       ...(consumedSystemContext ? [designSystemPromptFor('delegated')] : []),
-      ...(consumedRuntimeContext ? [runtimeContext] : []),
+      ...(consumedRuntimeContext
+        ? [
+            EDITOR_CONTEXT.replace('{{EDITOR_MCP_SERVER}}', BUILT_IN_EDITOR_MCP_SERVER_NAME),
+            runtimeContext
+          ]
+        : []),
       text,
       visualReferenceSourceContext
     ]
@@ -1252,10 +1254,10 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       appendACPDebugEntry('initialize_response', initializeResult)
 
       beginACPDiagnostics(this.agentDef.name)
-      const mcpServers = [
-        ...(await buildACPMCPServers({ authorizationToken: automationAuthToken })),
-        ...this.mcpServers
-      ]
+      const mcpServers = await buildACPMCPServers(
+        { authorizationToken: automationAuthToken },
+        this.mcpServers
+      )
       const capabilities: ACPSessionCapabilities = {
         list: initializeResult.agentCapabilities?.sessionCapabilities?.list != null,
         resume: initializeResult.agentCapabilities?.sessionCapabilities?.resume != null,

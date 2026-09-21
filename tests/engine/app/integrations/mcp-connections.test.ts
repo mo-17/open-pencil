@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'bun:test'
 
+import * as automationMCP from '@/app/automation/mcp/spawn'
 import {
   buildACPMCPServers,
   createMCPConnectionDraft,
@@ -19,6 +20,7 @@ import { captureACPSessionMCPServers } from '#tests/helpers/mcp/acp-session'
 let original: MCPConnectionSettings
 
 beforeEach(() => {
+  vi.spyOn(automationMCP, 'getMCPServerURL').mockReturnValue('http://127.0.0.1:17600/mcp')
   original = mcpConnectionSettingsSnapshot()
   replaceMCPConnectionSettings({ version: 1, connections: [] })
 })
@@ -54,6 +56,13 @@ describe('MCP connections', () => {
           {
             id: 'mcp-reserved',
             name: 'Open-Pencil',
+            enabled: true,
+            transport: { type: 'streamable-http', url: 'https://reserved.example.com/mcp' },
+            authentication: { type: 'none' }
+          },
+          {
+            id: 'mcp-editor-reserved',
+            name: 'Open-Pencil-Editor',
             enabled: true,
             transport: { type: 'streamable-http', url: 'https://reserved.example.com/mcp' },
             authentication: { type: 'none' }
@@ -98,6 +107,8 @@ describe('MCP connections', () => {
     expect(() => saveMCPConnectionDraft(duplicate)).toThrow('unique')
     duplicate.name = 'open-pencil'
     expect(() => saveMCPConnectionDraft(duplicate)).toThrow('reserved')
+    duplicate.name = 'Open-Pencil-Editor'
+    expect(() => saveMCPConnectionDraft(duplicate)).toThrow('reserved')
 
     duplicate.id = 'mcp-../../unsafe' as typeof duplicate.id
     duplicate.name = 'Safe name'
@@ -116,8 +127,8 @@ describe('MCP connections', () => {
       expect(await buildACPMCPServers({ authorizationToken: 'built-in-token' })).toEqual([
         {
           type: 'http',
-          name: 'open-pencil',
-          url: expect.stringContaining('/mcp'),
+          name: 'open-pencil-editor',
+          url: 'http://127.0.0.1:17600/mcp',
           headers: [{ name: 'Authorization', value: 'Bearer built-in-token' }]
         },
         {
@@ -147,6 +158,19 @@ describe('MCP connections', () => {
     )
   })
 
+  test('rejects additional servers that shadow the built-in editor', async () => {
+    await expect(
+      buildACPMCPServers({ authorizationToken: null }, [
+        {
+          type: 'http',
+          name: 'Open-Pencil-Editor',
+          url: 'https://other.example.com/mcp',
+          headers: []
+        }
+      ])
+    ).rejects.toThrow('reserved')
+  })
+
   test('delivers built-in and external server configuration over a real ACP session', async () => {
     const draft = createMCPConnectionDraft()
     draft.name = 'Smoke server'
@@ -157,8 +181,8 @@ describe('MCP connections', () => {
     expect(await captureACPSessionMCPServers()).toEqual([
       {
         type: 'http',
-        name: 'open-pencil',
-        url: expect.stringContaining('/mcp'),
+        name: 'open-pencil-editor',
+        url: 'http://127.0.0.1:17600/mcp',
         headers: [{ name: 'Authorization', value: 'Bearer built-in-token' }]
       },
       {

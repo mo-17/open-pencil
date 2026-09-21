@@ -4,6 +4,7 @@ import { appCredentialServices } from '@/app/settings/credentials/app'
 import { credentialRef } from '@/app/settings/credentials/reference'
 import type { CredentialRef, CredentialStatus } from '@/app/settings/credentials/types'
 
+import { isReservedMCPServerName } from './names'
 import { readMCPConnectionSettingsStorage, writeMCPConnectionSettingsStorage } from './storage'
 import type {
   MCPAuthentication,
@@ -75,7 +76,7 @@ export function parseMCPConnectionSettings(value: unknown): MCPConnectionSetting
     const connection = parseConnection(candidate)
     if (!connection || ids.has(connection.id)) continue
     const normalizedName = connection.name.toLowerCase()
-    if (normalizedName === 'open-pencil' || names.has(normalizedName)) continue
+    if (isReservedMCPServerName(normalizedName) || names.has(normalizedName)) continue
     ids.add(connection.id)
     names.add(normalizedName)
     connections.push(connection)
@@ -130,7 +131,8 @@ export function saveMCPConnectionDraft(draft: MCPConnectionDraft): MCPConnection
   const name = draft.name.trim()
   if (!name) throw new Error('Connection name is required')
   if (name.length > MCP_CONNECTION_NAME_MAX_LENGTH) throw new Error('Connection name is too long')
-  if (name.toLowerCase() === 'open-pencil') throw new Error('The open-pencil name is reserved')
+  if (isReservedMCPServerName(name))
+    throw new Error('The built-in editor MCP server name is reserved')
   const duplicateName = mcpConnectionSettings.value.connections.some(
     (connection) =>
       connection.id !== draft.id && connection.name.toLowerCase() === name.toLowerCase()

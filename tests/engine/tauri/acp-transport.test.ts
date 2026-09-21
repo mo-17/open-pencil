@@ -14,6 +14,7 @@ import {
   type ACPSessionOpenedEvent,
   type ACPSessionSetupEvent
 } from '@/app/ai/acp/transport'
+import { designSystemPromptFor } from '@/app/ai/chat/prompt-policy'
 import { createACPTransport } from '@/app/ai/chat/transports'
 import * as automationMCP from '@/app/automation/mcp/spawn'
 
@@ -27,6 +28,7 @@ if (!TEST_CODEX_AGENT) throw new Error('Missing Codex ACP agent fixture')
 
 beforeEach(() => {
   vi.spyOn(automationMCP, 'getAutomationAuthToken').mockResolvedValue(TEST_AUTOMATION_AUTH_TOKEN)
+  vi.spyOn(automationMCP, 'getMCPServerURL').mockReturnValue('http://127.0.0.1:17600/mcp')
 })
 
 afterEach(async () => {
@@ -218,8 +220,8 @@ describe('Tauri ACP transport', () => {
   test('connects ACP agents to the authenticated desktop HTTP MCP server', () => {
     expect(buildOpenPencilMCPServerConfig(TEST_AUTOMATION_AUTH_TOKEN)).toEqual({
       type: 'http',
-      name: 'open-pencil',
-      url: 'http://127.0.0.1:7600/mcp',
+      name: 'open-pencil-editor',
+      url: 'http://127.0.0.1:17600/mcp',
       headers: [{ name: 'Authorization', value: `Bearer ${TEST_AUTOMATION_AUTH_TOKEN}` }]
     })
   })
@@ -227,8 +229,8 @@ describe('Tauri ACP transport', () => {
   test('omits the authorization header when MCP authentication is disabled', () => {
     expect(buildOpenPencilMCPServerConfig(null)).toEqual({
       type: 'http',
-      name: 'open-pencil',
-      url: 'http://127.0.0.1:7600/mcp',
+      name: 'open-pencil-editor',
+      url: 'http://127.0.0.1:17600/mcp',
       headers: []
     })
   })
@@ -259,6 +261,51 @@ describe('Tauri ACP transport', () => {
 
     expect(transport.cwd).toBe('/Users/tester')
   })
+
+  test.each(['new', 'resume'] as const)(
+    'routes %s sessions to the current editor even without model metadata',
+    async (method) => {
+      const agent = await installFakeACPAgent()
+      agent.handleRequests((request, reply) => {
+        if (request.method === 'initialize') {
+          reply.respond({
+            protocolVersion: 1,
+            agentCapabilities: { sessionCapabilities: { resume: {} } }
+          })
+        } else if (request.method === `session/${method}`) {
+          reply.respond({ sessionId: 'editor-session' })
+        } else if (request.method === 'session/prompt') {
+          reply.respond({ stopReason: 'end_turn' })
+        }
+      })
+      const transport = new ACPChatTransport({
+        agentDef: TEST_CODEX_AGENT,
+        cwd: '/Users/tester/project',
+        ...(method === 'resume' ? { initialSessionId: 'editor-session' } : {})
+      })
+      try {
+        await readChunks(await transport.sendMessages(userMessage('list current pages')))
+        const setup = agent.requests.find((request) => request.method === `session/${method}`)
+        expect(setup?.params.mcpServers).toEqual([
+          {
+            type: 'http',
+            name: 'open-pencil-editor',
+            url: 'http://127.0.0.1:17600/mcp',
+            headers: [{ name: 'Authorization', value: `Bearer ${TEST_AUTOMATION_AUTH_TOKEN}` }]
+          }
+        ])
+        const prompt = JSON.stringify(
+          agent.requests.find((request) => request.method === 'session/prompt')?.params.prompt
+        )
+        expect(prompt).toContain('open-pencil-editor')
+        expect(prompt).toContain('Use only this server')
+        expect(prompt).not.toContain(TEST_AUTOMATION_AUTH_TOKEN)
+        expect(prompt).not.toContain('http://127.0.0.1:17600')
+      } finally {
+        await transport.destroy()
+      }
+    }
+  )
 
   test('publishes negotiated session setup exactly once when connect succeeds', async () => {
     const agent = await installFakeACPAgent()
@@ -581,7 +628,7 @@ describe('Tauri ACP transport', () => {
     expect(promptRequests).toHaveLength(2)
     for (const request of promptRequests) {
       const promptText = (request.params.prompt as Array<{ type: string; text: string }>)[0]?.text
-      expect(promptText).toContain('You are a design assistant inside a vector design editor.')
+      expect(promptText).toContain(designSystemPromptFor('delegated'))
     }
     expect(opened).toEqual([{ sessionId: 'prompted-session', method: 'new' }])
     await transport.destroy()
@@ -798,7 +845,7 @@ describe('Tauri ACP transport', () => {
       : undefined
     expect(promptText).toContain('# ACP runtime metadata')
     expect(promptText).toContain('continue the design')
-    expect(promptText).not.toContain('You are a design assistant inside a vector design editor.')
+    expect(promptText).not.toContain(designSystemPromptFor('delegated'))
     expect(opened).toEqual([{ sessionId: 'persisted-session', method: 'resume' }])
     await transport.destroy()
   })
@@ -1080,7 +1127,7 @@ describe('Tauri ACP transport', () => {
     await readChunks(await transport.sendMessages(userMessage('Retry without the image')))
     const retry = await waitForRequest(agent.requests, 'session/prompt')
     const retryText = (retry.params.prompt as Array<{ type: string; text?: string }>)[0]?.text
-    expect(retryText).toContain('You are a design assistant inside a vector design editor.')
+    expect(retryText).toContain(designSystemPromptFor('delegated'))
     expect(retryText).toContain('Retry without the image')
     await transport.destroy()
   })
@@ -1147,7 +1194,7 @@ describe('Tauri ACP transport', () => {
     await readChunks(await transport.sendMessages(userMessage('Retry after invalid image')))
     const retry = await waitForRequest(agent.requests, 'session/prompt')
     const retryText = (retry.params.prompt as Array<{ type: string; text?: string }>)[0]?.text
-    expect(retryText).toContain('You are a design assistant inside a vector design editor.')
+    expect(retryText).toContain(designSystemPromptFor('delegated'))
     expect(retryText).toContain('Retry after invalid image')
     await transport.destroy()
   })
@@ -1354,7 +1401,7 @@ describe('Tauri ACP transport', () => {
       )
     expect(prompts).toHaveLength(2)
     for (const prompt of prompts) {
-      expect(prompt).toContain('You are a design assistant inside a vector design editor.')
+      expect(prompt).toContain(designSystemPromptFor('delegated'))
       expect(prompt).toContain('# ACP runtime metadata')
     }
     await transport.destroy()
@@ -1388,7 +1435,7 @@ describe('Tauri ACP transport', () => {
       )
     expect(prompts).toHaveLength(2)
     for (const prompt of prompts) {
-      expect(prompt).toContain('You are a design assistant inside a vector design editor.')
+      expect(prompt).toContain(designSystemPromptFor('delegated'))
       expect(prompt).toContain('# ACP runtime metadata')
     }
     await transport.destroy()

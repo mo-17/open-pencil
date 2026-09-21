@@ -11,6 +11,7 @@ import {
 } from '@/app/integrations/mcp'
 import { requiredSetting, type SettingsValidationMessages } from '@/app/settings/validation/schema'
 
+import { isReservedMCPServerName } from '../names'
 import type { MCPConnectionDraft } from '../types'
 
 interface ConnectionFormMessages {
@@ -34,7 +35,7 @@ export function useMCPConnectionForm(
           v.check(
             (name) =>
               name.length <= MCP_CONNECTION_NAME_MAX_LENGTH &&
-              name.toLowerCase() !== 'open-pencil' &&
+              !isReservedMCPServerName(name) &&
               !mcpConnectionSettings.value.connections.some(
                 (connection) =>
                   connection.id !== id.value && connection.name.toLowerCase() === name.toLowerCase()
