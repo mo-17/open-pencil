@@ -6,12 +6,13 @@ export function openPencilPwaPlugin() {
     devOptions: { enabled: false },
     workbox: {
       maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
-      globPatterns: ['**/*.{js,css,html,wasm,png,ico,ttf,webmanifest}'],
+      globPatterns: ['**/*.{js,css,html,wasm,png,svg,ico,ttf,webmanifest}'],
       // esbuild-wasm is loaded on demand by the browser-preview Worker and is
       // larger than the app-shell precache budget. The preview also relies on
       // pinned esm.sh modules, so treating this runtime as an offline shell
       // asset would be misleading and makes Workbox reject production builds.
       globIgnores: ['**/esbuild-*.wasm'],
+
       navigateFallback: '/index.html'
     },
     manifest: {
@@ -26,9 +27,14 @@ export function openPencilPwaPlugin() {
       background_color: '#1e1e1e',
       categories: ['design', 'productivity'],
       icons: [
-        { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-        { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-        { src: '/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+        { src: '/brand/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/brand/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        {
+          src: '/brand/pwa-maskable-512.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'maskable'
+        }
       ]
     }
   })

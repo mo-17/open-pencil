@@ -70,6 +70,10 @@ Open the font picker in the Typography section of the properties panel to change
 - **Virtual scroll** — handles large font lists efficiently
 - **Scroll-to-current** — the current font is highlighted when the picker opens
 
+## Text on a Path
+
+Imported Figma text-on-path layers retain their curved glyph layout. You can edit their text and typography, resize and select them, and save or export the result while preserving the path layout. This is support for existing imported path-text layers, not a separate drawing tool for attaching arbitrary text to a new path.
+
 ## Font Weight
 
 Change the font weight in the Typography section of the properties panel. Available weights depend on the selected font family (e.g., Regular, Medium, Bold, Black).
@@ -82,7 +86,7 @@ Change the font weight in the Typography section of the properties panel. Availa
   import a TTF, OTF, or WOFF file. OpenPencil reads the font's internal family and style, validates
   it before CanvasKit registration, records available license evidence, and stores a checksummed
   local copy for restart and offline use.
-- **Browser** — system fonts are available in Chrome and Edge; online font catalogs require the desktop app
+- **Browser** — system fonts are available in Chrome and Edge with local-font permission. Enabled Fontsource, Bunny Fonts, and Fontshare providers can load online fonts, subject to network access and browser CORS rules; Google Fonts is disabled in the OpenPencil browser app
 - **Downloaded fonts** — the desktop app caches downloaded faces for reuse on the same machine
 
 ## Missing Fonts and Substitutions

@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OpenPencil",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "identifier": "net.dannote.open-pencil",
   "build": {
-    "beforeDevCommand": "bun run generate:tauri-menu && bun run build:codepen-sidecar && bun run dev",
+    "beforeDevCommand": "bun run generate:icons --target desktop && bun run generate:tauri-menu && bun run build:codepen-sidecar && bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run generate:tauri-menu && bun run build:codepen-sidecar && bun run build",
+    "beforeBuildCommand": "bun run generate:icons --target desktop && bun run generate:tauri-menu && bun run build:codepen-sidecar && bun run build",
     "beforeBundleCommand": "bun run build:codepen-sidecar --verify-only",
     "frontendDist": "../dist"
   },
@@ -27,7 +27,9 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/openpencil-codepen-sidecar"],
+    "externalBin": [
+      "binaries/openpencil-codepen-sidecar"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -37,7 +39,9 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["pen"],
+        "ext": [
+          "pen"
+        ],
         "name": "Pencil Design File",
         "description": "Pencil design file",
         "role": "Editor",
@@ -45,7 +49,9 @@
         "rank": "Alternate"
       },
       {
-        "ext": ["fig"],
+        "ext": [
+          "fig"
+        ],
         "name": "Figma Design File",
         "description": "Figma design file",
         "role": "Editor",
@@ -55,9 +61,24 @@
     ],
     "macOS": {
       "signingIdentity": "Developer ID Application: Danila Poyarkov (N7D7M3Q3CD)"
+    },
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/main.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "linux/main.desktop"
+      }
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "openpencil"
+        ]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU4QzBCRjBFNzhFNEVEMDEKUldRQjdlUjREci9BV0hLaEJPeG5tRXdsWkhQWFdEa0VxcEtNR1o1S2VJeGlKU1VDTldQTi9wYncK",
       "endpoints": [

@@ -19,6 +19,19 @@ inputs:
     description: Optional exact Bun release archive URL for a native runner.
     required: false
     default: ''
+  lfs-include:
+    description: Comma-separated `git lfs pull --include` patterns. Empty pulls every LFS object.
+    required: false
+    default: ''
+
+  cache-save:
+    description: Save the dependency cache; set false for other jobs sharing the same cache key.
+    required: false
+    default: 'true'
+  cache-scope:
+    description: Separate dependency caches for independently running workflow groups.
+    required: false
+    default: workspace
 
 runs:
   using: composite
@@ -26,33 +39,50 @@ runs:
     - name: Pull LFS files
       if: inputs.lfs == 'true'
       shell: bash
+      env:
+        LFS_INCLUDE: ${{ inputs.lfs-include }}
       run: |
         git lfs install --force
-        git lfs pull
-        head -c 4 tests/fixtures/material3.fig | xxd
+        if [ -n "$LFS_INCLUDE" ]; then
+          git lfs pull --include="$LFS_INCLUDE"
+        else
+          git lfs pull
+          head -c 4 tests/fixtures/material3.fig | xxd
+        fi
+        head -c 4 tests/fixtures/gold-preview.fig | xxd
 
     - uses: oven-sh/setup-bun@v2
       if: inputs.bun-download-url == ''
       with:
         bun-version: 1.3.10
+        no-cache: true
 
     - uses: oven-sh/setup-bun@v2
       if: inputs.bun-download-url != ''
       with:
         bun-version: 1.3.10
+        no-cache: true
         bun-download-url: ${{ inputs.bun-download-url }}
 
     - name: Verify exact Bun runtime
       shell: bash
       run: test "$(bun --version)" = "1.3.10"
 
-    - uses: actions/cache@v6
+    - uses: actions/cache/restore@v6
       if: inputs.cache == 'true'
+      id: dependencies
       with:
         path: ~/.bun/install/cache
-        key: bun-1.3.10-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
-        restore-keys: bun-1.3.10-${{ runner.os }}-${{ runner.arch }}-
+        key: bun-1.3.10-${{ inputs.cache-scope }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-1.3.10-${{ inputs.cache-scope }}-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Install dependencies
       shell: bash
       run: bun install ${{ inputs.install-args }}
+
+    - name: Save dependency cache
+      if: inputs.cache == 'true' && inputs.cache-save == 'true' && steps.dependencies.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ steps.dependencies.outputs.cache-primary-key }}

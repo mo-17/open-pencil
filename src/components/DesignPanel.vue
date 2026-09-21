@@ -64,6 +64,7 @@ import WorkflowsPanel from './properties/Lowcode/WorkflowsPanel.vue'
 import MaskSection from './properties/MaskSection.vue'
 import MotionSection from './properties/MotionSectionRoot.vue'
 import PageSection from './properties/PageSection.vue'
+import RetainedPanel from './properties/panel/RetainedPanel.vue'
 import PositionSection from './properties/PositionSection.vue'
 import SelectionActionsControl from './properties/SelectionActionsControl.vue'
 import StrokeSection from './properties/stroke/StrokeSection.vue'
@@ -618,228 +619,230 @@ const emptyHasMatches = computed(
     </div>
   </div>
 
-  <!-- Single selection -->
-  <div
-    v-else-if="node"
-    data-test-id="design-panel-single"
-    class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto pb-4"
-  >
-    <PanelHeader :component="isComponentType">
-      <template #icon>
-        <Tip :label="node.type">
-          <span role="img" :aria-label="node.type" class="contents">
-            <component :is="selectedIcon" class="size-3.5" />
-          </span>
-        </Tip>
-      </template>
-      <span role="heading" aria-level="2">{{ node.name }}</span>
-      <template #actions>
-        <InstanceUpdateAction
-          v-if="node.type === 'INSTANCE'"
-          :node="node"
-          :editor="store"
-          :service="libraryService"
-          @review="openSelectedInstanceReview"
-        />
-        <SelectionActionsControl />
-      </template>
-    </PanelHeader>
-
-    <InspectorWorkspaceBar
-      ref="workspaceBar"
-      :workspace="designPanelWorkspace"
-      :context="panelContext"
-      :sections="workspaceSections"
-      :focused-show-all="focusedShowAll"
-      @update:workspace="setWorkspace"
-      @update:focused-show-all="focusedShowAll = $event"
-      @toggle-section="toggleStudioSection"
-      @move-section="moveStudioSection"
-      @reset="resetStudioSections"
-    />
-    <InspectorFilter v-model="inspectorFilter" />
-
-    <template v-for="sectionId in panelSectionOrder" :key="sectionRenderKey(sectionId)">
-      <InspectorSection
-        v-if="sectionId === 'component' && (node.type === 'INSTANCE' || isVariantAuthoringNode)"
-        v-show="sectionVisible('component', showSingleComponent)"
-        id="component"
-        label="Component"
-        v-bind="inspectorSectionState('component')"
-        :highlighted="sectionHighlighted('component', 'Component')"
-      >
-        <div
-          v-if="node.type === 'INSTANCE'"
-          class="flex flex-col gap-1 border-b border-border px-3 py-2"
-        >
-          <button
-            type="button"
-            data-test-id="design-go-to-component"
-            class="rounded bg-component/10 px-2 py-1 text-left text-[11px] text-component hover:bg-component/20"
-            @click="goToMainComponent.run()"
-          >
-            {{ panels.goToMainComponent }}
-          </button>
-          <button
-            type="button"
-            data-test-id="design-detach-instance"
-            class="rounded px-2 py-1 text-left text-[11px] text-muted hover:bg-hover"
-            @click="detachInstance.run()"
-          >
-            {{ panels.detachInstance }}
-          </button>
-        </div>
-        <ComponentPropertiesSection v-if="node.type === 'INSTANCE'" />
-        <ComponentPropsPanel v-if="node.type === 'INSTANCE'" />
-        <VariantAuthoringSection v-if="isVariantAuthoringNode" />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'interaction-states'"
-        v-show="sectionVisible('interaction-states', showSingleInteractionStates)"
-        id="interaction-states"
-        :label="panels.lowcodeInteractionStates"
-        v-bind="inspectorSectionState('interaction-states')"
-        :highlighted="sectionHighlighted('interaction-states', panels.lowcodeInteractionStates)"
-      >
-        <InteractionStatePanel />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'module'"
-        v-show="sectionVisible('module', showSingleModule)"
-        id="module"
-        :label="panels.lowcodeModule"
-        v-bind="inspectorSectionState('module')"
-        :highlighted="sectionHighlighted('module', panels.lowcodeModule)"
-      >
-        <ModulePropsPanel />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'position'"
-        v-show="sectionVisible('position', showSinglePosition)"
-        id="position"
-        :label="panels.position"
-        v-bind="inspectorSectionState('position')"
-        :highlighted="sectionHighlighted('position', panels.position)"
-      >
-        <PositionSection />
-        <ConstraintsSection />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'layout'"
-        v-show="sectionVisible('layout', showSingleLayout)"
-        id="layout"
-        :label="panels.layout"
-        v-bind="inspectorSectionState('layout')"
-        :highlighted="sectionHighlighted('layout', panels.layout)"
-      >
-        <FramePresetSelect v-if="node.type === 'FRAME'" />
-        <LayoutSection />
-        <LayoutGridSection v-if="supportsLayoutGuides" />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'appearance'"
-        v-show="sectionVisible('appearance', showSingleAppearance)"
-        id="appearance"
-        :label="panels.appearance"
-        v-bind="inspectorSectionState('appearance')"
-        :highlighted="sectionHighlighted('appearance', panels.appearance)"
-      >
-        <AppearanceSection />
-        <MaskSection />
-        <TypographySection v-if="node.type === 'TEXT'" />
-        <FillSection />
-        <StrokeSection />
-        <EffectsSection />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'motion'"
-        v-show="sectionVisible('motion', showSingleMotion)"
-        id="motion"
-        :label="panels.motion"
-        v-bind="inspectorSectionState('motion')"
-        :highlighted="sectionHighlighted('motion', panels.motion)"
-      >
-        <MotionSection />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'export'"
-        v-show="sectionVisible('export', showSingleExport)"
-        id="export"
-        :label="panels.export"
-        v-bind="inspectorSectionState('export')"
-        :highlighted="sectionHighlighted('export', panels.export)"
-      >
-        <ExportSection />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'lowcode-bindings'"
-        v-show="sectionVisible('lowcode-bindings', showSingleLowcodeBindings)"
-        id="lowcode-bindings"
-        label="Bindings"
-        v-bind="inspectorSectionState('lowcode-bindings')"
-        :highlighted="sectionHighlighted('lowcode-bindings', 'Bindings')"
-      >
-        <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
-        <ValueBindingPanel v-if="hasValueBinding" />
-        <StatePanel v-if="hasStatePanel" />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'lowcode-events'"
-        v-show="sectionVisible('lowcode-events', showSingleLowcodeEvents)"
-        id="lowcode-events"
-        label="Events"
-        v-bind="inspectorSectionState('lowcode-events')"
-        :highlighted="sectionHighlighted('lowcode-events', 'Events')"
-      >
-        <EventsPanel v-if="hasEvents" />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'lowcode-validation'"
-        v-show="sectionVisible('lowcode-validation', showSingleLowcodeValidation)"
-        id="lowcode-validation"
-        label="Validation"
-        v-bind="inspectorSectionState('lowcode-validation')"
-        :highlighted="sectionHighlighted('lowcode-validation', 'Validation')"
-      >
-        <ValidationPanel v-if="hasValidation" />
-      </InspectorSection>
-
-      <InspectorSection
-        v-else-if="sectionId === 'lowcode-advanced'"
-        v-show="sectionVisible('lowcode-advanced', showSingleLowcodeAdvanced)"
-        id="lowcode-advanced"
-        label="Advanced"
-        v-bind="inspectorSectionState('lowcode-advanced')"
-        :highlighted="sectionHighlighted('lowcode-advanced', 'Advanced')"
-      >
-        <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
-        <ListPanel v-if="node.type === 'LIST'" />
-        <RenderConditionPanel />
-        <ResponsivePanel />
-      </InspectorSection>
-    </template>
-
+  <!-- Single selection: pause the inspector while inactive. -->
+  <RetainedPanel :active="activeTool !== 'FRAME' && multiCount === 1 && !!node">
     <div
-      v-if="hasFilter && !singleHasMatches"
-      data-test-id="inspector-filter-empty"
-      class="border-b border-border px-3 py-5 text-center text-xs text-muted"
+      v-if="node"
+      data-test-id="design-panel-single"
+      class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto pb-4"
     >
-      No matching property sections
+      <PanelHeader :component="isComponentType">
+        <template #icon>
+          <Tip :label="node.type">
+            <span role="img" :aria-label="node.type" class="contents">
+              <component :is="selectedIcon" class="size-3.5" />
+            </span>
+          </Tip>
+        </template>
+        <span role="heading" aria-level="2">{{ node.name }}</span>
+        <template #actions>
+          <InstanceUpdateAction
+            v-if="node.type === 'INSTANCE'"
+            :node="node"
+            :editor="store"
+            :service="libraryService"
+            @review="openSelectedInstanceReview"
+          />
+          <SelectionActionsControl />
+        </template>
+      </PanelHeader>
+
+      <InspectorWorkspaceBar
+        ref="workspaceBar"
+        :workspace="designPanelWorkspace"
+        :context="panelContext"
+        :sections="workspaceSections"
+        :focused-show-all="focusedShowAll"
+        @update:workspace="setWorkspace"
+        @update:focused-show-all="focusedShowAll = $event"
+        @toggle-section="toggleStudioSection"
+        @move-section="moveStudioSection"
+        @reset="resetStudioSections"
+      />
+      <InspectorFilter v-model="inspectorFilter" />
+
+      <template v-for="sectionId in panelSectionOrder" :key="sectionRenderKey(sectionId)">
+        <InspectorSection
+          v-if="sectionId === 'component' && (node.type === 'INSTANCE' || isVariantAuthoringNode)"
+          v-show="sectionVisible('component', showSingleComponent)"
+          id="component"
+          label="Component"
+          v-bind="inspectorSectionState('component')"
+          :highlighted="sectionHighlighted('component', 'Component')"
+        >
+          <div
+            v-if="node.type === 'INSTANCE'"
+            class="flex flex-col gap-1 border-b border-border px-3 py-2"
+          >
+            <button
+              type="button"
+              data-test-id="design-go-to-component"
+              class="rounded bg-component/10 px-2 py-1 text-left text-[11px] text-component hover:bg-component/20"
+              @click="goToMainComponent.run()"
+            >
+              {{ panels.goToMainComponent }}
+            </button>
+            <button
+              type="button"
+              data-test-id="design-detach-instance"
+              class="rounded px-2 py-1 text-left text-[11px] text-muted hover:bg-hover"
+              @click="detachInstance.run()"
+            >
+              {{ panels.detachInstance }}
+            </button>
+          </div>
+          <ComponentPropertiesSection v-if="node.type === 'INSTANCE'" />
+          <ComponentPropsPanel v-if="node.type === 'INSTANCE'" />
+          <VariantAuthoringSection v-if="isVariantAuthoringNode" />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'interaction-states'"
+          v-show="sectionVisible('interaction-states', showSingleInteractionStates)"
+          id="interaction-states"
+          :label="panels.lowcodeInteractionStates"
+          v-bind="inspectorSectionState('interaction-states')"
+          :highlighted="sectionHighlighted('interaction-states', panels.lowcodeInteractionStates)"
+        >
+          <InteractionStatePanel />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'module'"
+          v-show="sectionVisible('module', showSingleModule)"
+          id="module"
+          :label="panels.lowcodeModule"
+          v-bind="inspectorSectionState('module')"
+          :highlighted="sectionHighlighted('module', panels.lowcodeModule)"
+        >
+          <ModulePropsPanel />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'position'"
+          v-show="sectionVisible('position', showSinglePosition)"
+          id="position"
+          :label="panels.position"
+          v-bind="inspectorSectionState('position')"
+          :highlighted="sectionHighlighted('position', panels.position)"
+        >
+          <PositionSection />
+          <ConstraintsSection />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'layout'"
+          v-show="sectionVisible('layout', showSingleLayout)"
+          id="layout"
+          :label="panels.layout"
+          v-bind="inspectorSectionState('layout')"
+          :highlighted="sectionHighlighted('layout', panels.layout)"
+        >
+          <FramePresetSelect v-if="node.type === 'FRAME'" />
+          <LayoutSection />
+          <LayoutGridSection v-if="supportsLayoutGuides" />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'appearance'"
+          v-show="sectionVisible('appearance', showSingleAppearance)"
+          id="appearance"
+          :label="panels.appearance"
+          v-bind="inspectorSectionState('appearance')"
+          :highlighted="sectionHighlighted('appearance', panels.appearance)"
+        >
+          <AppearanceSection />
+          <MaskSection />
+          <TypographySection v-if="node.type === 'TEXT'" />
+          <FillSection />
+          <StrokeSection />
+          <EffectsSection />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'motion'"
+          v-show="sectionVisible('motion', showSingleMotion)"
+          id="motion"
+          :label="panels.motion"
+          v-bind="inspectorSectionState('motion')"
+          :highlighted="sectionHighlighted('motion', panels.motion)"
+        >
+          <MotionSection />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'export'"
+          v-show="sectionVisible('export', showSingleExport)"
+          id="export"
+          :label="panels.export"
+          v-bind="inspectorSectionState('export')"
+          :highlighted="sectionHighlighted('export', panels.export)"
+        >
+          <ExportSection />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'lowcode-bindings'"
+          v-show="sectionVisible('lowcode-bindings', showSingleLowcodeBindings)"
+          id="lowcode-bindings"
+          label="Bindings"
+          v-bind="inspectorSectionState('lowcode-bindings')"
+          :highlighted="sectionHighlighted('lowcode-bindings', 'Bindings')"
+        >
+          <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
+          <ValueBindingPanel v-if="hasValueBinding" />
+          <StatePanel v-if="hasStatePanel" />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'lowcode-events'"
+          v-show="sectionVisible('lowcode-events', showSingleLowcodeEvents)"
+          id="lowcode-events"
+          label="Events"
+          v-bind="inspectorSectionState('lowcode-events')"
+          :highlighted="sectionHighlighted('lowcode-events', 'Events')"
+        >
+          <EventsPanel v-if="hasEvents" />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'lowcode-validation'"
+          v-show="sectionVisible('lowcode-validation', showSingleLowcodeValidation)"
+          id="lowcode-validation"
+          label="Validation"
+          v-bind="inspectorSectionState('lowcode-validation')"
+          :highlighted="sectionHighlighted('lowcode-validation', 'Validation')"
+        >
+          <ValidationPanel v-if="hasValidation" />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'lowcode-advanced'"
+          v-show="sectionVisible('lowcode-advanced', showSingleLowcodeAdvanced)"
+          id="lowcode-advanced"
+          label="Advanced"
+          v-bind="inspectorSectionState('lowcode-advanced')"
+          :highlighted="sectionHighlighted('lowcode-advanced', 'Advanced')"
+        >
+          <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
+          <ListPanel v-if="node.type === 'LIST'" />
+          <RenderConditionPanel />
+          <ResponsivePanel />
+        </InspectorSection>
+      </template>
+
+      <div
+        v-if="hasFilter && !singleHasMatches"
+        data-test-id="inspector-filter-empty"
+        class="border-b border-border px-3 py-5 text-center text-xs text-muted"
+      >
+        No matching property sections
+      </div>
     </div>
-  </div>
+  </RetainedPanel>
 
   <div
-    v-else
+    v-if="activeTool !== 'FRAME' && multiCount <= 1 && !node"
     data-test-id="design-panel-empty"
     class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto pb-4"
   >

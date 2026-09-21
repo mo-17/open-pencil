@@ -2,13 +2,20 @@ import { readFile } from 'node:fs/promises'
 
 import type { Page, Route } from '@playwright/test'
 
+interface FontsourceFixture {
+  family: string
+  subset: string
+  data: Buffer
+  format?: 'ttf' | 'otf'
+}
+
 /** Exercise provider URL pinning and retries through actual browser requests. */
 export async function mockFontsource(
   page: Page,
-  families: string[] = [],
+  fixtures: readonly (string | FontsourceFixture)[] = [],
   { assetFailures = 0, unavailable = false }: { assetFailures?: number; unavailable?: boolean } = {}
 ) {
-  const counts = { metadata: 0, assets: 0, latestAssets: 0 }
+  const counts = { metadata: 0, assets: 0, latestAssets: 0, downloads: 0 }
   const headers = { 'access-control-allow-origin': '*' }
   const pattern =
     /^https:\/\/(api\.fontsource\.org\/v1\/fonts|cdn\.jsdelivr\.net\/fontsource\/fonts\/)/
@@ -35,10 +42,15 @@ export async function mockFontsource(
         await route.fulfill({ headers, status: 503, body: 'temporarily unavailable' })
         return
       }
+      const fixture = fixtures.find(
+        (entry) => typeof entry !== 'string' && url.pathname.includes(`/${fontId(entry.family)}@`)
+      )
+      const supplied = typeof fixture === 'object' ? fixture : undefined
+      counts.downloads++
       await route.fulfill({
         headers,
-        contentType: 'font/ttf',
-        body: await readFile('public/Inter-Regular.ttf')
+        contentType: `font/${supplied?.format ?? 'ttf'}`,
+        body: supplied?.data ?? (await readFile('public/Inter-Regular.ttf'))
       })
       return
     }
@@ -46,21 +58,30 @@ export async function mockFontsource(
     if (url.pathname === '/v1/fonts') {
       await route.fulfill({
         headers,
-        json: families.map((family) => ({
-          category: 'sans-serif',
-          defSubset: 'latin',
-          family,
-          id: fontId(family),
-          styles: ['normal'],
-          subsets: ['latin'],
-          variable: false,
-          weights: [400]
-        }))
+        json: fixtures.map((fixture) => {
+          const family = typeof fixture === 'string' ? fixture : fixture.family
+          const subset = typeof fixture === 'string' ? 'latin' : fixture.subset
+          return {
+            category: 'sans-serif',
+            defSubset: subset,
+            family,
+            id: fontId(family),
+            styles: ['normal'],
+            subsets: [subset],
+            variable: false,
+            weights: [400]
+          }
+        })
       })
       return
     }
     const id = url.pathname.slice('/v1/fonts/'.length)
-    const family = families.find((candidate) => fontId(candidate) === id)
+    const fixture = fixtures.find(
+      (entry) => fontId(typeof entry === 'string' ? entry : entry.family) === id
+    )
+    const family = typeof fixture === 'string' ? fixture : fixture?.family
+    const subset = typeof fixture === 'object' ? fixture.subset : 'latin'
+    const format = typeof fixture === 'object' ? (fixture.format ?? 'ttf') : 'ttf'
     if (!family) {
       await route.fulfill({ headers, status: 404, body: 'not found' })
       return
@@ -71,13 +92,13 @@ export async function mockFontsource(
         family,
         id,
         npmVersion: '1.2.3',
-        unicodeRange: { latin: 'U+0000-00FF' },
+        unicodeRange: typeof fixture === 'string' ? { latin: 'U+0000-00FF' } : {},
         variants: {
           400: {
             normal: {
-              latin: {
+              [subset]: {
                 url: {
-                  ttf: `https://cdn.jsdelivr.net/fontsource/fonts/${id}@latest/latin-400-normal.ttf`
+                  [format]: `https://cdn.jsdelivr.net/fontsource/fonts/${id}@latest/${subset}-400-normal.${format}`
                 }
               }
             }

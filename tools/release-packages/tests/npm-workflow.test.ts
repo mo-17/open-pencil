@@ -59,7 +59,19 @@ describe('npm release workflow', () => {
   test('runs non-npm release jobs automatically only in the official repository', () => {
     const buildWorkflow = readFileSync(WORKFLOW_PATH, 'utf8')
     const build = job(buildWorkflow, 'build', 'prepare-npm')
-    expect(build).toContain(NON_NPM_JOB_GATE)
+    expect(build).toContain(
+      "if: github.event_name == 'workflow_dispatch' && github.repository != 'open-pencil/open-pencil'"
+    )
+    for (const [name, nextName] of [
+      ['plan', 'frontend'],
+      ['frontend', 'native'],
+      ['native', 'publish'],
+      ['publish', 'build']
+    ]) {
+      expect(job(buildWorkflow, name, nextName)).toContain(
+        "if: github.repository == 'open-pencil/open-pencil'"
+      )
+    }
 
     for (const path of [APP_WORKFLOW_PATH, DOCS_WORKFLOW_PATH]) {
       const deployWorkflow = readFileSync(path, 'utf8')
@@ -78,27 +90,12 @@ describe('npm release workflow', () => {
   test('keeps manual desktop builds unsigned, secret-free, and artifact-only', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8')
     const build = job(workflow, 'build', 'prepare-npm')
-    const releaseNotes = namedStep(
-      build,
-      'Extract release notes',
-      'Build unsigned Tauri workflow artifacts'
-    )
     const manual = namedStep(
       build,
       'Build unsigned Tauri workflow artifacts',
       'Upload unsigned Tauri workflow artifacts'
     )
-    const upload = namedStep(
-      build,
-      'Upload unsigned Tauri workflow artifacts',
-      'Build signed Tauri release'
-    )
-    const release = namedStep(
-      build,
-      'Build signed Tauri release',
-      'Verify signed macOS CodePen sidecar'
-    )
-    const signedVerification = namedStep(build, 'Verify signed macOS CodePen sidecar')
+    const upload = namedStep(build, 'Upload unsigned Tauri workflow artifacts')
 
     expect(build).toContain(
       `uses: ${CHECKOUT_ACTION}\n        with:\n          persist-credentials: false`
@@ -109,9 +106,6 @@ describe('npm release workflow', () => {
     }
     expect(build).toContain('manualBundleArgs: --bundles deb,rpm')
     expect(build.match(/manualBundleArgs: --bundles deb,rpm/g)).toHaveLength(1)
-    expect(releaseNotes).toContain(
-      "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
-    )
 
     expect(manual).toContain("if: github.event_name == 'workflow_dispatch'")
     expect(manual).toContain('uses: tauri-apps/tauri-action@v0')
@@ -142,33 +136,9 @@ describe('npm release workflow', () => {
     expect(upload).not.toContain('tagName:')
     expect(upload).not.toContain('releaseName:')
 
-    const releaseGate = "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
-    expect(release).toContain(releaseGate)
-    expect(release).toContain(`tagName: \${{ github.ref_name }}`)
-    expect(release).toContain(`releaseName: \${{ github.ref_name }}`)
-    expect(release).toContain('includeUpdaterJson: true')
-    expect(release).not.toContain('matrix.manualBundleArgs')
-    expect(release).not.toContain('--bundles')
-    expect(release).not.toContain('uploadUpdaterJson:')
-    expect(release).not.toContain('uploadUpdaterSignatures:')
-    for (const secret of [
-      'secrets.GITHUB_TOKEN',
-      'secrets.TAURI_SIGNING_PRIVATE_KEY',
-      'secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD',
-      'secrets.APPLE_CERTIFICATE',
-      'secrets.APPLE_CERTIFICATE_PASSWORD',
-      'secrets.APPLE_ID',
-      'secrets.APPLE_PASSWORD',
-      'secrets.APPLE_TEAM_ID'
-    ]) {
-      expect(release).toContain(secret)
-      expect(build.replace(release, '')).not.toContain(secret)
-    }
-
-    expect(signedVerification).toContain("github.event_name == 'push' &&")
-    expect(signedVerification).toContain("startsWith(github.ref, 'refs/tags/v') &&")
-    expect(signedVerification).toContain("startsWith(matrix.target, 'aarch64-apple-')")
-    expect(signedVerification).toContain("startsWith(matrix.target, 'x86_64-apple-')")
+    expect(build).not.toContain('secrets.')
+    expect(build).not.toContain('contents: write')
+    expect(build).not.toContain('tagName:')
 
     const unsignedConfig = JSON.parse(readFileSync(UNSIGNED_TAURI_CONFIG_PATH, 'utf8')) as {
       bundle: {
@@ -429,23 +399,24 @@ describe('npm release workflow', () => {
     const build = job(workflow, 'build', 'prepare-npm')
     const prepare = job(workflow, 'prepare-npm', 'publish-npm')
     const publish = job(workflow, 'publish-npm')
+    const native = job(workflow, 'native', 'publish')
     const release = namedStep(
-      build,
-      'Build signed Tauri release',
+      native,
+      'Build and sign native bundles (no release uploads)',
       'Verify signed macOS CodePen sidecar'
     )
     const setupBunAction = readFileSync(SETUP_BUN_ACTION_PATH, 'utf8')
     const dollar = '$'
 
-    expect(workflow).toContain('permissions:\n  contents: read\n\njobs:')
-    expect(build).toContain('permissions:\n      contents: write')
+    expect(workflow).toContain('permissions:\n  contents: read\n')
+    expect(build).toContain('permissions:\n      contents: read')
     expect(prepare).toContain('permissions:\n      contents: read')
     expect(publish).toContain('permissions:\n      contents: read\n      id-token: write')
-    expect(workflow.match(new RegExp(CHECKOUT_ACTION, 'g'))).toHaveLength(2)
-    expect(workflow.match(new RegExp(SETUP_NODE_ACTION, 'g'))).toHaveLength(2)
+    expect(workflow.match(new RegExp(CHECKOUT_ACTION, 'g'))).toHaveLength(9)
+    expect(workflow.match(new RegExp(SETUP_NODE_ACTION, 'g'))).toHaveLength(5)
     expect(workflow).not.toContain('actions/checkout@v7')
     expect(workflow).not.toContain('actions/setup-node@v7')
-    expect(workflow.match(/node-version: 24\.19\.0/g)).toHaveLength(2)
+    expect(workflow.match(/node-version: 24\.19\.0/g)).toHaveLength(5)
     expect(workflow.match(/test "\$\(node --version\)" = "v24\.19\.0"/g)).toHaveLength(2)
 
     expect(build.match(/appleSigning: true/g)).toHaveLength(2)
@@ -459,14 +430,36 @@ describe('npm release workflow', () => {
     ]) {
       expect(release).toContain(`${secret}: \${{ matrix.appleSigning && secrets.${secret} || '' }}`)
     }
-
+    expect(native).toContain('needs: [plan, frontend]')
+    expect(native).not.toContain('contents: write')
+    expect(release).not.toContain('tagName:')
+    expect(release).not.toContain('releaseName:')
+    expect(release).toContain('release-build-config.json')
+    expect(native.indexOf('Extract shared frontend, icons and menu')).toBeLessThan(
+      native.indexOf('Build and verify CodePen sidecar')
+    )
+    expect(native.indexOf('Smoke Backend Compiler sidecar candidate protocol')).toBeLessThan(
+      native.indexOf('Build and sign native bundles')
+    )
+    expect(namedStep(native, 'Verify signed macOS CodePen sidecar')).toContain(
+      'if: matrix.appleSigning'
+    )
+    const officialPublish = job(workflow, 'publish', 'build')
+    expect(officialPublish).toContain('needs: [plan, frontend, native]')
+    expect(officialPublish).toContain('attestations: write')
+    expect(
+      officialPublish.indexOf('Verify all targets, digests and updater signatures')
+    ).toBeLessThan(officialPublish.indexOf('Publish verified npm artifacts with provenance'))
+    expect(officialPublish.indexOf('Refuse published releases or moved tags')).toBeLessThan(
+      officialPublish.indexOf('Replace and verify the entire draft asset set')
+    )
     expect(build).toContain(
       'run: bun test tests/engine/marketplace && bun --filter @open-pencil/marketplace build'
     )
     expect(setupBunAction.match(/bun-version: 1\.3\.10/g)).toHaveLength(2)
     expect(setupBunAction).toContain('run: test "$(bun --version)" = "1.3.10"')
     expect(setupBunAction).toContain(
-      `key: bun-1.3.10-${dollar}{{ runner.os }}-${dollar}{{ runner.arch }}-`
+      `key: bun-1.3.10-${dollar}{{ inputs.cache-scope }}-${dollar}{{ runner.os }}-${dollar}{{ runner.arch }}-`
     )
   })
 })

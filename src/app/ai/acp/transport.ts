@@ -48,8 +48,7 @@ import {
   recordACPConfigOptions,
   recordACPNewSession,
   recordACPPrompt,
-  recordACPSessionUpdate,
-  resetACPDiagnostics
+  recordACPSessionUpdate
 } from './diagnostics'
 import EDITOR_CONTEXT from './editor-context.md?raw'
 import { createACPUpdateMapper } from './map-update'
@@ -57,12 +56,6 @@ import { cancelPermissionsForSession, requestPermissionFromUser } from './permis
 import { spawnACPProcess } from './process'
 
 type TauriChild = Awaited<ReturnType<typeof spawnACPProcess>>['child']
-
-interface ACPDebugEntry {
-  ts: number
-  type: string
-  data: unknown
-}
 
 interface ACPSession {
   connection: ClientSideConnection
@@ -150,8 +143,6 @@ interface ACPActivePrompt {
   cancelTimer?: ReturnType<typeof setTimeout>
 }
 
-const MAX_LOG_AGE_MS = 5 * 60 * 1000
-const IS_DEV = import.meta.env.DEV
 const TRANSPORT_DESTROYED_MESSAGE = 'ACP transport was destroyed.'
 const AGENT_EXITED_MESSAGE = 'Agent process exited unexpectedly.'
 const ACP_CANCEL_DRAIN_TIMEOUT_MS = 3_000
@@ -165,8 +156,6 @@ const ACP_SESSION_TIMESTAMP_MAX_LENGTH = 128
 const ACP_SESSION_CURSOR_MAX_LENGTH = 8_192
 const STRICT_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\)/
-
-const acpDebugLog: ACPDebugEntry[] = []
 
 function abortError(): Error {
   const error = new Error('ACP request cancelled')
@@ -449,35 +438,6 @@ export function createSessionUpdateBuffer() {
       bufferingSetupUpdates = false
     }
   }
-}
-
-function appendACPDebugEntry(type: string, data: unknown): void {
-  if (!IS_DEV) return
-  acpDebugLog.push({ ts: Date.now(), type, data })
-}
-
-function pruneOldEntries() {
-  const cutoff = Date.now() - MAX_LOG_AGE_MS
-  while (acpDebugLog.length > 0 && acpDebugLog[0].ts < cutoff) {
-    acpDebugLog.shift()
-  }
-}
-
-export function getACPDebugText(): string {
-  pruneOldEntries()
-  return acpDebugLog
-    .map((e) => `[${new Date(e.ts).toISOString()}] ${e.type}\n${JSON.stringify(e.data, null, 2)}`)
-    .join('\n\n---\n\n')
-}
-
-export function clearACPDebugLog() {
-  acpDebugLog.length = 0
-  resetACPDiagnostics()
-}
-
-export function hasACPDebugEntries(): boolean {
-  pruneOldEntries()
-  return acpDebugLog.length > 0
 }
 
 export function buildOpenPencilMCPServerConfig(authToken: string | null): MCPServer {
@@ -770,7 +730,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           .then((result) => {
             if (closed) return undefined
             if (session.diagnosticsEnabled) {
-              appendACPDebugEntry('prompt_response', result)
               recordACPPrompt(result)
             }
             if (activePrompt.cancelRequested) {
@@ -847,10 +806,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
     this.assertSessionActive(session)
     sortSessionListItems(sessions)
-    appendACPDebugEntry('list_sessions_response', {
-      pages: pageCount,
-      count: sessions.length
-    })
     return sessions
   }
 
@@ -869,7 +824,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       }
 
       session.configOptions = [...configOptions]
-      appendACPDebugEntry('set_config_option_response', { configId, value, configOptions })
       recordACPConfigOptions(configOptions)
       this.runtimeContextDirty = true
       this.publishConfigOptions(configOptions)
@@ -933,7 +887,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         capabilities: { ...session.capabilities }
       })
     } catch (error) {
-      appendACPDebugEntry('session_setup_callback_error', formatConnectionError(error))
+      recordACPTransportFailure({ operation: 'start', ...describeDiagnosticError(error) })
     }
   }
 
@@ -943,7 +897,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     try {
       this.onSessionOpened({ ...session.openEvent })
     } catch (error) {
-      appendACPDebugEntry('session_opened_callback_error', formatConnectionError(error))
+      recordACPTransportFailure({ operation: 'start', ...describeDiagnosticError(error) })
     }
   }
 
@@ -1012,10 +966,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         })
       )
       if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
-      appendACPDebugEntry('resume_session_response', {
-        sessionId: initialSessionId,
-        ...resumeResult
-      })
       return {
         result: { ...resumeResult, sessionId: initialSessionId },
         openEvent: { sessionId: initialSessionId, method: 'resume' }
@@ -1023,10 +973,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     } catch (error) {
       if (this.isDestroying() || lifecycle.closedError) throw error
       const restoreError = formatConnectionError(error, this.agentDef)
-      appendACPDebugEntry('resume_session_error', {
-        sessionId: initialSessionId,
-        error: restoreError
-      })
       if (this.resumeFallback === 'error') throw new Error(restoreError)
       updates.discardPending()
       configUpdateState.latest = null
@@ -1058,7 +1004,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       sessionUpdate: async (params: SessionNotification): Promise<void> => {
         if (this.isDestroying()) return
         if (state.diagnosticsEnabled) {
-          appendACPDebugEntry(params.update.sessionUpdate, params)
           recordACPSessionUpdate(params.update)
         }
         if (params.update.sessionUpdate === 'config_option_update') {
@@ -1251,7 +1196,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         })
       )
       if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
-      appendACPDebugEntry('initialize_response', initializeResult)
 
       beginACPDiagnostics(this.agentDef.name)
       const mcpServers = await buildACPMCPServers(
@@ -1272,10 +1216,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         state.configUpdateState
       )
       if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
-      appendACPDebugEntry('session_setup_response', {
-        method: setup.openEvent.method,
-        result: setup.result
-      })
       return this.completeSessionSetup(
         connection,
         child,

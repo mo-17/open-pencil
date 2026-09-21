@@ -4,6 +4,7 @@ import type { Canvas } from 'canvaskit-wasm'
 
 import type { MotionVisualState } from '@open-pencil/motion'
 import { SceneGraph, type MotionSpec, type SceneNode } from '@open-pencil/scene-graph'
+import Matrix from '@open-pencil/scene-graph/matrix'
 
 import { renderBooleanOperation } from '#core/canvas/boolean'
 import { motionProjectionFlags, motionTrimProjection } from '#core/canvas/motion-projection'
@@ -39,6 +40,7 @@ function authoredMotion(): MotionSpec {
 
 function createCanvas() {
   return {
+    concat: mock(() => undefined),
     save: mock(() => undefined),
     restore: mock(() => undefined),
     translate: mock(() => undefined),
@@ -194,7 +196,7 @@ describe('CanvasKit motion preview', () => {
       ])
     })
 
-    expect(calls(canvas.rotate)).toContainEqual([10, 0, 0])
+    expect(calls(canvas.concat)[0][0]).toEqual(Matrix.rotated((10 * Math.PI) / 180, 0, 0))
     expect(calls(canvas.rotate)).toContainEqual([45, 50, 5])
   })
 
@@ -410,7 +412,8 @@ describe('CanvasKit motion preview', () => {
       {},
       expect.objectContaining({ id: node.id, x: 10, y: 20 }),
       12,
-      graph
+      graph,
+      undefined
     )
   })
 

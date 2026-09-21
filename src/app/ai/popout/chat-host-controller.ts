@@ -8,7 +8,6 @@ import { randomHex } from '@open-pencil/core/random'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { currentPermission, permissionQueue } from '@/app/ai/acp/permission'
-import { clearACPDebugLog } from '@/app/ai/acp/transport'
 import { snapshotNode } from '@/app/ai/attachment/node/snapshot'
 import { setMessageAttachments } from '@/app/ai/attachment/presentation/store'
 import { visualAttachmentPresentation } from '@/app/ai/attachment/presentation/visual'
@@ -141,42 +140,42 @@ function scheduleProjectionNotification(): void {
   })
 }
 
-async function refreshChat(): Promise<void> {
+async function refreshChat(connect = false): Promise<void> {
   const generation = ++refreshGeneration
-  const expectedSessionRevision = sessionRevision.value
-  const tabId = activeTab.value?.id ?? null
-  const expectedProviderID = providerID.value
   initializationFailed.value = false
   unpublishChat()
-  if (!tabId) {
+  if (!activeTab.value?.id || activeTab.value.store.state.preparation) {
     scheduleProjectionNotification()
     return
   }
   try {
+    await history.initialize()
+    if (!connect || generation !== refreshGeneration) return
+    const expectedTabId = activeTab.value?.id ?? null
+    const expectedProviderID = providerID.value
+    const expectedSessionRevision = sessionRevision.value
     const nextChat = await ensureChat()
     if (
+      !nextChat ||
       generation !== refreshGeneration ||
-      expectedSessionRevision !== sessionRevision.value ||
-      tabId !== (activeTab.value?.id ?? null) ||
-      expectedProviderID !== providerID.value
-    ) {
+      expectedTabId !== (activeTab.value?.id ?? null) ||
+      expectedProviderID !== providerID.value ||
+      expectedSessionRevision !== sessionRevision.value
+    )
       return
-    }
-    if (!nextChat) return
     const published = markRaw(nextChat)
     chat.value = published
     publishedChatContext = {
       chat: published,
       generation,
       sessionRevision: expectedSessionRevision,
-      tabId,
+      tabId: expectedTabId,
       providerID: expectedProviderID
     }
   } catch (error) {
     if (generation !== refreshGeneration) return
     initializationFailed.value = true
-    unpublishChat()
-    toast.error(error instanceof Error ? error.message : 'Failed to initialize chat')
+    toast.error(error instanceof Error ? error.message : 'Failed to load chat history')
   } finally {
     scheduleProjectionNotification()
   }
@@ -256,7 +255,11 @@ watch(
     if (error && !chatFailure.value) toast.error(error.message)
   }
 )
-watch([() => activeTab.value?.id, providerID], () => void refreshChat(), { immediate: true })
+watch(
+  [() => activeTab.value?.id, () => activeTab.value?.store.state.preparation, providerID],
+  () => void refreshChat(),
+  { immediate: true }
+)
 watch(sessionRevision, () => void refreshChat(), { flush: 'sync' })
 watch(
   [
@@ -556,7 +559,6 @@ async function handleClearChat(): Promise<boolean> {
   try {
     await resetChat()
     if (targetStore) clearToolLogEntries(targetStore)
-    clearACPDebugLog()
     return true
   } catch {
     return false
@@ -581,6 +583,7 @@ async function handleHistoryAction(action: () => Promise<unknown>): Promise<void
 async function handleRestoreACPSession(sessionId: string): Promise<void> {
   try {
     await restoreACPSession(sessionId)
+    await refreshChat(true)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     toast.error(`Failed to restore the ACP session: ${message}`)

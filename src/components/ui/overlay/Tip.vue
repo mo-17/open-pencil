@@ -1,7 +1,23 @@
 <script setup lang="ts">
-import { unrefElement, useEventListener, useTimeoutFn } from '@vueuse/core'
+import {
+  defaultDocument,
+  defaultWindow,
+  unrefElement,
+  useEventListener,
+  useTimeoutFn
+} from '@vueuse/core'
 import { Primitive } from 'reka-ui'
-import { type ComponentPublicInstance, computed, nextTick, ref, useAttrs, watch } from 'vue'
+import {
+  type ComponentPublicInstance,
+  computed,
+  nextTick,
+  onDeactivated,
+  ref,
+  useAttrs,
+  watch
+} from 'vue'
+
+import { useRetainedPopup } from '@open-pencil/vue'
 
 import { useTooltipUI } from '@/components/ui/overlay/tooltip'
 import { motionStyles } from '@/theme/motion/styles'
@@ -37,6 +53,9 @@ function setTrigger(value: Element | ComponentPublicInstance | null) {
 }
 const contentRef = ref<HTMLElement>()
 const open = ref(false)
+const { portalActive } = useRetainedPopup(open)
+const activeWindow = computed(() => (portalActive.value ? defaultWindow : undefined))
+const activeDocument = computed(() => (portalActive.value ? defaultDocument : undefined))
 const position = ref({ x: 0, y: 0 })
 
 const canOpen = computed(() => Boolean(label) && !disabled)
@@ -167,11 +186,12 @@ function onTooltipClaim(event: Event) {
   hide()
 }
 
-useEventListener(window, 'resize', refreshPosition)
-useEventListener(window, 'scroll', refreshPosition, { capture: true, passive: true })
-useEventListener(document, 'pointerdown', hide, { capture: true })
-useEventListener(document, 'click', hide, { capture: true })
-useEventListener(document, TOOLTIP_CLAIM_EVENT, onTooltipClaim)
+useEventListener(activeWindow, 'resize', refreshPosition)
+useEventListener(activeWindow, 'scroll', refreshPosition, { capture: true, passive: true })
+useEventListener(activeDocument, 'pointerdown', hide, { capture: true })
+useEventListener(activeDocument, 'click', hide, { capture: true })
+useEventListener(activeDocument, TOOLTIP_CLAIM_EVENT, onTooltipClaim)
+onDeactivated(hide)
 
 watch(canOpen, (value) => {
   if (!value) hide()
@@ -196,7 +216,7 @@ watch(canOpen, (value) => {
   >
     <slot />
   </Primitive>
-  <Teleport to="body">
+  <Teleport v-if="portalActive" to="body">
     <div
       v-if="open && label"
       ref="contentRef"

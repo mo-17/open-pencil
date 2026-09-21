@@ -1,13 +1,10 @@
 <script setup lang="ts">
-import { refAutoReset, useClipboard } from '@vueuse/core'
 import { computed, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
-import { clearACPDebugLog, getACPDebugText, hasACPDebugEntries } from '@/app/ai/acp/transport'
 import { chatDocumentId } from '@/app/ai/chat/history/document'
 import { useAIChat } from '@/app/ai/chat/use'
-import { copyChatLog } from '@/app/ai/debug'
 import { chatPanelController } from '@/app/ai/popout/chat-host-controller'
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import { openSettingsDialog } from '@/app/settings/dialog'
@@ -21,7 +18,6 @@ import CodePenAIReview from '@/components/chat/CodePenAIReview.vue'
 import ProviderSetup from '@/components/chat/ProviderSetup.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 
-const IS_DEV = import.meta.env.DEV
 const {
   isConfigured,
   history,
@@ -56,10 +52,7 @@ const {
   handleToolApproval
 } = chatPanelController
 const { chatFailure, clearChatFailure } = useAIChat()
-const { copy } = useClipboard()
 const { ai, common, dialogs } = useI18n()
-const debugCopied = refAutoReset(false, 1500)
-const acpLogCopied = refAutoReset(false, 1500)
 
 const historyOptions = computed(() => {
   const current = history.current.value
@@ -121,23 +114,10 @@ async function handleSubmit(text: string, restoreInput: () => void = () => undef
   return submitChatMessage(text, restoreInput)
 }
 
-async function handleCopyDebug(): Promise<void> {
-  await copyChatLog(messages.value, chatFailure.value)
-  debugCopied.value = true
-}
-
-async function handleCopyACPLog(): Promise<void> {
-  const text = getACPDebugText()
-  if (!text) return
-  await copy(text)
-  acpLogCopied.value = true
-}
-
 async function handleClearChat(): Promise<void> {
   clearChatFailure()
   if (await chatPanelController.handleClearChat()) return
   toast.error(dialogs.value.aiSessionClearFailed)
-  clearACPDebugLog()
 }
 </script>
 
@@ -147,18 +127,14 @@ async function handleClearChat(): Promise<void> {
       v-if="!isACPProvider"
       :conversations="historyOptions"
       :selected-id="history.current.value?.id"
-      :saved="messages.length > 0 || history.current.value?.titleSource === 'manual'"
+      :saved="history.conversations.value.some((row) => row.id === history.current.value?.id)"
       :disabled="history.busy.value || acpSessionInteractionBusy"
-      :debug="IS_DEV"
-      :acp-debug="IS_DEV && hasACPDebugEntries()"
       @select="(id) => handleHistoryAction(() => history.open(id))"
       @create="handleHistoryAction(() => history.newChat())"
       @rename="(id, title) => handleHistoryAction(() => history.rename(id, title))"
       @delete="(id) => handleHistoryAction(() => history.remove(id))"
-      @copy-debug="handleCopyDebug"
-      @copy-a-c-p-debug="handleCopyACPLog"
     />
-    <p v-if="history.storageError.value" role="status" class="px-3 py-2 text-xs text-danger">
+    <p v-if="history.storageError.value" role="alert" class="px-3 py-2 text-xs text-danger">
       {{ ai.chatStorageFailed }}
     </p>
     <p v-if="historyReadOnly" role="status" class="px-3 py-2 text-xs text-muted">
@@ -181,22 +157,6 @@ async function handleClearChat(): Promise<void> {
         v-if="messages.length > 0"
         class="flex shrink-0 items-center gap-1 border-t border-border px-3 py-1"
       >
-        <AppButton v-if="IS_DEV" color="neutral" variant="ghost" size="xs" @click="handleCopyDebug">
-          <icon-lucide-clipboard-copy v-if="!debugCopied" class="size-3" />
-          <icon-lucide-check v-else class="size-3 text-green-400" />
-          {{ debugCopied ? 'Copied' : 'Copy log' }}
-        </AppButton>
-        <AppButton
-          v-if="IS_DEV && hasACPDebugEntries()"
-          color="neutral"
-          variant="ghost"
-          size="xs"
-          @click="handleCopyACPLog"
-        >
-          <icon-lucide-bug v-if="!acpLogCopied" class="size-3" />
-          <icon-lucide-check v-else class="size-3 text-green-400" />
-          {{ acpLogCopied ? 'Copied' : 'ACP log' }}
-        </AppButton>
         <AppButton
           v-if="!isACPProvider"
           color="error"

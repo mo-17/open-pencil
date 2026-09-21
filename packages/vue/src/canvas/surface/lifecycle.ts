@@ -10,6 +10,10 @@ import {
 } from '@open-pencil/core/canvas'
 import type { Editor } from '@open-pencil/core/editor'
 
+import {
+  supportsWideGamutPresentation,
+  type PresentationColorSpace
+} from '#vue/canvas/surface/color-space'
 import { makeGLSurface, sizeCanvas, type CanvasGLContext } from '#vue/canvas/surface/gl-surface'
 import { useCanvasKitLoader } from '#vue/canvas/surface/kit-loader'
 import { createCanvasRenderLoop } from '#vue/canvas/surface/render-loop'
@@ -19,6 +23,7 @@ import type { UseCanvasOptions } from '#vue/canvas/surface/types'
 type SurfaceManagerState = {
   renderer: SkiaRenderer | null
   glContext: CanvasGLContext | null
+  presentation: PresentationColorSpace | null
   contextLost: boolean
 }
 
@@ -55,7 +60,12 @@ export function createCanvasSurfaceManager({
     ) => SkiaRenderer
   }
 }) {
-  const state: SurfaceManagerState = { renderer: null, glContext: null, contextLost: false }
+  const state: SurfaceManagerState = {
+    renderer: null,
+    glContext: null,
+    contextLost: false,
+    presentation: null
+  }
   const createGLSurface = dependencies?.makeSurface ?? makeGLSurface
   const createRenderer =
     dependencies?.makeRenderer ??
@@ -101,8 +111,16 @@ export function createCanvasSurfaceManager({
       // Reuse the live GrContext so the completed backing image remains valid until the
       // replacement presents its first frame. Context-loss recovery performs an explicit hard
       // reset below because GPU resources are invalid in that path anyway.
-      const result = createGLSurface(ck, canvas, editor, options, state.glContext)
+      const result = createGLSurface(
+        ck,
+        canvas,
+        options,
+        state.glContext,
+        editor.graph.documentColorSpace
+      )
       state.glContext = result.glContext
+      state.presentation = result.presentation
+      options?.onPresentation?.(result.presentation)
       return (
         result.surface ??
         reportSurfaceFailure(canvas, previousRenderer, 'CanvasKit surface recreation failed')
@@ -125,6 +143,7 @@ export function createCanvasSurfaceManager({
   ): SkiaRenderer | null {
     try {
       const renderer = createRenderer(ck, surface, canvas.getContext('webgl2') ?? null)
+      renderer.presentationColorSpace = state.presentation ?? 'srgb'
       renderer.setPerformanceMode(performanceMode)
       renderer.tracksSceneSettlement = options?.layer !== 'overlays'
       renderer.tiledSceneEnabled = options?.sceneRenderer === 'tiled'
@@ -278,7 +297,8 @@ export function createCanvasSurfaceManager({
         canvas.clientWidth,
         canvas.clientHeight,
         shouldShowRulers(),
-        options?.layer ?? 'full'
+        options?.layer ?? 'full',
+        editor.isInteractiveEditing()
       )
       renderLoop.markRendered()
       acknowledgePresentation(renderer, renderState)
@@ -336,6 +356,7 @@ export function createCanvasSurfaceManager({
       if (!createSurface(canvas, { reloadFonts: true })) scheduleSurfaceRecovery()
       return
     }
+    state.renderer.presentationColorSpace = state.presentation ?? 'srgb'
     state.renderer.replaceSurface(surface)
     renderNow()
   }
@@ -366,8 +387,27 @@ export function createCanvasSurfaceManager({
     if (!createSurface(canvas, { reloadFonts: true })) scheduleSurfaceRecovery()
     renderLoop.resume()
   }
+  const wantsWideGamut = () =>
+    editor.graph.documentColorSpace === 'display-p3' && supportsWideGamutPresentation()
+
+  /** A P3 document needs the P3 surface, and vice versa; documents arrive after mount. */
+  function refreshPresentation() {
+    if (isDestroyed()) return
+    const canvas = canvasRef.value
+    if (!canvas) return
+    if (wantsWideGamut() === (state.presentation === 'display-p3')) return
+    createSurface(canvas, { reloadFonts: true })
+  }
+
+  const stopPresentationRefresh = editor.onEditorEvent('graph:replaced', refreshPresentation)
+  const stopColorSpaceRefresh = editor.onEditorEvent(
+    'document:color-space-changed',
+    refreshPresentation
+  )
 
   function destroy() {
+    stopPresentationRefresh()
+    stopColorSpaceRefresh()
     clearSceneBackingRenderTimer()
     clearSurfaceRecoveryTimer()
     renderLoop.pause()
@@ -387,7 +427,8 @@ export function createCanvasSurfaceManager({
     destroy,
     setPerformanceMode,
     markDirty: renderLoop.markDirty,
-    getRenderer: () => state.renderer
+    getRenderer: () => state.renderer,
+    getPresentation: () => state.presentation
   }
 }
 

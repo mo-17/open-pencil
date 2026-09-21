@@ -12,12 +12,15 @@ on:
           - app
           - compiler
           - compiler-browser
-          - dom
-          - editor
-          - fig
           - motion
+          - lowcode
+          - cli
+          - core
+          - dom
+          - fig
+          - mcp
           - render
-          - scene
+          - scene-graph
           - vue
   schedule:
     - cron: '17 3 * * 1'
@@ -27,7 +30,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  fixture-heavy-unit-tests:
+  unit-tests:
+    name: Heavy and isolated unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -54,3 +58,9 @@ jobs:
         run: bun run test:unit:heavy "$TEST_GROUP"
         env:
           TEST_GROUP: ${{ inputs.group || 'all' }}
+      # Fresh global object per file: a suite that only passes because an
+      # earlier file initialized a codec, loaded a font or left a database
+      # open fails here instead of flaking in a PR shard.
+      - name: Quick unit tests with per-file isolation
+        if: ${{ !cancelled() }}
+        run: bun run test:unit:isolated

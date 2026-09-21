@@ -3,8 +3,6 @@ import { clearDocumentCaches } from '#core/canvas/renderer/state'
 import { fontManager } from '#core/text/fonts'
 
 function clearGlyphSilhouetteCache(r: SkiaRenderer): void {
-  // glyphSilhouetteCache maps to a single Path per entry (not an array).
-  for (const path of r.glyphSilhouetteCache.values()) path.delete()
   r.glyphSilhouetteCache.clear()
 }
 
@@ -15,6 +13,8 @@ export function destroyRenderer(r: SkiaRenderer): void {
   clearDocumentCaches(r)
   clearGlyphSilhouetteCache(r)
   r.fillPaint.delete()
+  r.diamondGradientEffect?.delete()
+  r.diamondGradientEffect = null
   r.strokePaint.delete()
   r.selectionPaint.delete()
   r.parentOutlinePaint.delete()

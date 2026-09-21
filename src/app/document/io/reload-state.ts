@@ -1,10 +1,9 @@
 import type { Editor, EditorState } from '@open-pencil/core/editor'
+import type { ViewportTransform } from '@open-pencil/core/geometry'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
-type ReloadViewport = Pick<EditorState, 'panX' | 'panY' | 'zoom'>
-
 export type ReloadStateSnapshot = {
-  viewport: ReloadViewport
+  viewport: ViewportTransform
   pageId: string
   pageSourceId: string | null
   pageName: string | null

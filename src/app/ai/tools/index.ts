@@ -2,18 +2,14 @@ import { tool } from 'ai'
 import type { ToolExecutionOptions } from 'ai'
 
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
-import {
-  CORE_TOOLS,
-  EXTENDED_TOOLS,
-  registerComponentCatalog,
-  isAtomicTool,
-  toolsToAI
-} from '@open-pencil/core/tools'
+import { registerComponentCatalog, isAtomicTool, toolsToAI } from '@open-pencil/core/tools'
 import type { StepBudget, ToolLogEntry } from '@open-pencil/core/tools'
 
+import { DEFAULT_AGENT_STEPS, resolveAgentStepLimit } from '@/app/ai/chat/step-limit'
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { executeAtomicEditorTool } from '@/app/automation/execution/editor'
 import { createCodePenAITools, getCodePenAIManager } from '@/app/codepen/ai/tools'
+import { recordToolCompleted, type AIDiagnosticContext } from '@/app/diagnostics/events/ai'
 import { saveMotionAnimationResult } from '@/app/document/export/motion/use-motion-animation-export'
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import type { EditorStore } from '@/app/editor/active-store'
@@ -28,6 +24,7 @@ import {
   BUSINESS_AI_TOOL_NAME,
   type BusinessAIToolOptions
 } from './business'
+import { aiToolDefinitions } from './catalog'
 import {
   createCommerceAITools,
   COMMERCE_AI_TOOL_NAME,
@@ -45,7 +42,7 @@ import {
 } from './single-sku-shop'
 import { createVisualInspectionTool } from './vision'
 
-export const MAX_AGENT_STEPS = 50
+export const MAX_AGENT_STEPS = DEFAULT_AGENT_STEPS
 const MAX_TOOL_LOG_ENTRIES = 200
 const DOCUMENT_SCOPE_TOOLS = new Set([
   'eval',
@@ -127,12 +124,6 @@ function executableAITool(value: unknown): ExecutableAITool | null {
   return typeof execute === 'function' ? { execute: execute.bind(value) } : null
 }
 
-const EXTENDED_AI_TOOL_NAMES = new Set([
-  'export_image',
-  'get_components',
-  'list_libraries',
-  'insert_library_component'
-])
 const COMPONENT_CATALOG_TOOL_NAMES = new Set([
   'get_components',
   'list_libraries',
@@ -141,6 +132,7 @@ const COMPONENT_CATALOG_TOOL_NAMES = new Set([
 class RunState {
   toolLog: ToolLogEntry[] = []
   currentSteps = 0
+  maxSteps = DEFAULT_AGENT_STEPS
   undoTurn = 0
 
   get undoCoalesceKey(): string {
@@ -154,13 +146,14 @@ class RunState {
     }
   }
 
-  resetSteps(): void {
+  resetSteps(maxSteps = DEFAULT_AGENT_STEPS): void {
     this.currentSteps = 0
+    this.maxSteps = resolveAgentStepLimit(maxSteps)
     this.undoTurn++
   }
 
   hitLimit(): boolean {
-    return this.currentSteps >= MAX_AGENT_STEPS
+    return this.currentSteps >= this.maxSteps
   }
 
   clear(): void {
@@ -189,8 +182,8 @@ export function recordStep(store?: EditorStore): void {
   getRunState(store).currentSteps++
 }
 
-export function resetRunSteps(store?: EditorStore): void {
-  getRunState(store).resetSteps()
+export function resetRunSteps(store?: EditorStore, maxSteps = DEFAULT_AGENT_STEPS): void {
+  getRunState(store).resetSteps(maxSteps)
 }
 
 export function didHitStepLimit(store?: EditorStore): boolean {
@@ -304,6 +297,7 @@ async function finalizeSuccessfulMutation(
 }
 
 export interface CreateAIToolsOptions {
+  readonly diagnosticContext?: AIDiagnosticContext
   readonly commerce?: CommerceAIToolOptions
   readonly business?: BusinessAIToolOptions
   readonly personalNotes?: PersonalNotesAIToolOptions
@@ -321,8 +315,7 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
     typeof store.onSourceChanged === 'function' && typeof store.onEditorEvent === 'function'
   const codePenManager = codePenToolsEnabled ? getCodePenAIManager(store) : null
   const toolDefinitions = [
-    ...CORE_TOOLS,
-    ...EXTENDED_TOOLS.filter((definition) => EXTENDED_AI_TOOL_NAMES.has(definition.name)),
+    ...aiToolDefinitions,
     ...createPersonalNotesAITools(store, options.personalNotes),
     ...createSingleSkuShopAITools(store, options.singleSkuShop),
     ...createCommerceAITools(store, options.commerce),
@@ -448,10 +441,19 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
       },
       onToolLog: (entry) => {
         runState.recordTool(entry)
+        recordToolCompleted(
+          {
+            tool: entry.tool,
+            durationMs: entry.durationMs,
+            mutates: entry.mutates,
+            failed: Boolean(entry.error)
+          },
+          options.diagnosticContext
+        )
       },
       getStepBudget: (): StepBudget => ({
         current: runState.currentSteps,
-        max: MAX_AGENT_STEPS
+        max: runState.maxSteps
       })
     },
     { tool }

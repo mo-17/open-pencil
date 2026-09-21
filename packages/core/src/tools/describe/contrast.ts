@@ -101,7 +101,7 @@ function resolveSolidFillStack(node: SceneNode, graph: SceneGraph): Premultiplie
     const fill = node.fills[index]
     if (!fill.visible || fill.opacity <= 0) continue
     if (fill.type !== 'SOLID' || !isSourceOverFill(fill)) return null
-    const color = resolveFillColor(fill, index, node, graph)
+    const color = resolveFillColor(fill, index, node, graph, 'srgb')
     painted = sourceOver(premultiply(color, fill.opacity), painted)
   }
   return painted
@@ -114,7 +114,7 @@ function resolveStyleRunPaint(
 ): PremultipliedColor | null {
   const fill = firstVisibleSolidTextFill(fills)
   if (!fill || !isSourceOverFill(fill)) return null
-  return premultiply(resolveFillColor(fill, fills.indexOf(fill), node, graph), fill.opacity)
+  return premultiply(resolveFillColor(fill, fills.indexOf(fill), node, graph, 'srgb'), fill.opacity)
 }
 
 /** Resolve every color that paints at least one character. Rich-text rendering

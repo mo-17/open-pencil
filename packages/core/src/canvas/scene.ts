@@ -6,13 +6,7 @@ import {
   projectMotionAdvancedChannels,
   type MotionVisualState
 } from '@open-pencil/motion'
-import {
-  getAbsolutePositionFull,
-  getWorldMatrix,
-  type SceneNode,
-  type SceneGraph,
-  type Fill
-} from '@open-pencil/scene-graph'
+import { type SceneNode, type SceneGraph, type Fill } from '@open-pencil/scene-graph'
 import type { ArrowEndpoint } from '@open-pencil/scene-graph/arrow-caps'
 import {
   arrowCapOverflow,
@@ -30,6 +24,7 @@ import {
   SECTION_CORNER_RADIUS,
   TRANSPARENT
 } from '#core/constants'
+import { createSceneGeometry, nodeOrientationMatrix, projectedNode } from '#core/geometry'
 import { transformTextCase } from '#core/text/case'
 import { fontManager } from '#core/text/fonts'
 import { vectorNetworkToCenterlinePath } from '#core/vector'
@@ -53,11 +48,8 @@ import {
 import type { SkiaRenderer, RenderOverlays } from './renderer'
 import {
   canCacheEffectRaster,
-  deleteEffectRaster,
   effectRasterScale,
-  effectRasterScaleMatches,
-  installEffectRaster,
-  touchEffectRaster
+  effectRasterScaleMatches
 } from './renderer/effect-raster-cache'
 import { makeSmoothRRectPath, nodeHasRadius, nodeHasSmoothCorners } from './shapes'
 import {
@@ -69,12 +61,12 @@ import {
   getStrokeJoinEntity,
   normalizeDashPattern
 } from './strokes'
+import { withTextParagraph } from './text'
 import {
   drawDerivedText,
   drawReflowedPathTextSilhouettes,
   isReflowedPathText
 } from './text/derived'
-import { textNodeToOutlinePath } from './text/outlines'
 
 function drawVisibleFills(
   r: SkiaRenderer,
@@ -188,7 +180,8 @@ function isCulled(
   visual: MotionVisualState,
   effectiveRotation: number,
   hasTransformedAncestor: boolean,
-  hasTransientTransformedAncestor: boolean
+  hasTransientTransformedAncestor: boolean,
+  preview?: RenderOverlays['rotationPreview']
 ): boolean {
   const canCull =
     node.childIds.length === 0 ||
@@ -206,8 +199,8 @@ function isCulled(
       visual.x === 0 && visual.y === 0
         ? node
         : { ...node, x: node.x + visual.x, y: node.y + visual.y }
-    const bounds = getAbsolutePositionFull(transformedNode, graph)
-    return isRectOutsideViewport(vp, bounds.boundX, bounds.boundY, bounds.width, bounds.height)
+    const bounds = createSceneGeometry(graph, preview).bounds(transformedNode)
+    return isRectOutsideViewport(vp, bounds.x, bounds.y, bounds.width, bounds.height)
   }
   const bw = node.width * Math.abs(visual.scaleX)
   const bh = node.height * Math.abs(visual.scaleY)
@@ -226,21 +219,11 @@ function applyNodeTransforms(
   _r: SkiaRenderer,
   canvas: Canvas,
   node: SceneNode,
-  nodeId: string,
+  _nodeId: string,
   overlays: RenderOverlays,
   visual: MotionVisualState
 ): void {
-  const rotation = effectiveNodeRotation(node, nodeId, overlays)
-  if (node.flipX || node.flipY) {
-    canvas.translate(node.flipX ? node.width : 0, node.flipY ? node.height : 0)
-    canvas.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1)
-  }
-
-  // Match getNodeLocalMatrix and Figma's raw matrix: reflection precedes authored rotation.
-  if (rotation !== 0) {
-    if (node.type === 'LINE') canvas.rotate(rotation, 0, 0)
-    else canvas.rotate(rotation, node.width / 2, node.height / 2)
-  }
+  canvas.concat(nodeOrientationMatrix(node, overlays.rotationPreview))
 
   const originX = node.width * (visual.originX ?? 0.5)
   const originY = node.height * (visual.originY ?? 0.5)
@@ -737,10 +720,11 @@ function viewportLayerBounds(
   r: SkiaRenderer,
   graph: SceneGraph,
   node: SceneNode,
-  padding: number
+  padding: number,
+  preview?: RenderOverlays['rotationPreview']
 ): Float32Array | null {
   if (!r.boundEffectLayersToViewport) return null
-  const inverse = Matrix.invert(getWorldMatrix(node, graph))
+  const inverse = Matrix.invert(createSceneGeometry(graph, preview).worldMatrix(node))
   if (!inverse) return null
   const viewport = r.worldViewport
   const points = Matrix.mapPoints(inverse, [
@@ -785,7 +769,9 @@ function beginNodeOpacityLayer(
   // on the canvas must not turn every isolated layer into an unbounded saveLayer.
   const hasAnimatedGeometry = subtreeHasMotionGeometry(graph, nodeId, overlays)
   const authoredPosition = graph.getAbsolutePosition(nodeId)
-  const viewportBounds = hasAnimatedGeometry ? null : viewportLayerBounds(r, graph, node, 0)
+  const viewportBounds = hasAnimatedGeometry
+    ? null
+    : viewportLayerBounds(r, graph, node, 0, overlays.rotationPreview)
   let layerBounds: Parameters<Canvas['saveLayer']>[1]
   if (hasAnimatedGeometry) {
     layerBounds = null
@@ -835,7 +821,7 @@ function beginNodeBlurLayer(
   const blurPadding = layerBlur.radius * 2
   const blurBounds = subtreeHasMotionGeometry(graph, nodeId, overlays)
     ? null
-    : (viewportLayerBounds(r, graph, node, blurPadding) ??
+    : (viewportLayerBounds(r, graph, node, blurPadding, overlays.rotationPreview) ??
       r.ck.LTRBRect(
         -blurPadding,
         -blurPadding,
@@ -898,7 +884,8 @@ export function renderNode(
       visual,
       effectiveRotation,
       hasTransformedAncestor,
-      hasTransientTransformedAncestor
+      hasTransientTransformedAncestor,
+      overlays.rotationPreview
     )
   ) {
     r._culledCount++
@@ -931,7 +918,8 @@ export function renderNode(
     overlays,
     absX,
     absY,
-    hasTransformedAncestor || hasNodeTransform(renderedNode),
+    hasTransformedAncestor ||
+      hasNodeTransform(projectedNode(renderedNode, overlays.rotationPreview)),
     hasTransientTransformedAncestor ||
       hasTransientNodeTransform(authoredNode, renderedNode, nodeId, overlays, visual)
   )
@@ -1020,6 +1008,37 @@ function canRasterCacheEffects(node: SceneNode): boolean {
   )
 }
 
+function drawCachedEffectRaster(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  node: SceneNode,
+  targetScale: number
+): boolean {
+  const cachedRaster = r.effectRasterCache.get(node.id)
+  if (!cachedRaster) return false
+  if (
+    cachedRaster.fontGeneration !== r.fontGeneration ||
+    !effectRasterScaleMatches(cachedRaster.scale, targetScale)
+  ) {
+    r.effectRasterCache.delete(node.id)
+    return false
+  }
+  canvas.drawImageRectOptions(
+    cachedRaster.image,
+    r.ck.LTRBRect(0, 0, cachedRaster.image.width(), cachedRaster.image.height()),
+    r.ck.LTRBRect(
+      cachedRaster.left,
+      cachedRaster.top,
+      cachedRaster.left + cachedRaster.width,
+      cachedRaster.top + cachedRaster.height
+    ),
+    r.ck.FilterMode.Linear,
+    r.ck.MipmapMode.None,
+    null
+  )
+  return true
+}
+
 export function renderShape(
   r: SkiaRenderer,
   canvas: Canvas,
@@ -1032,7 +1051,7 @@ export function renderShape(
     authoredNode?.vectorNetwork !== undefined &&
     authoredNode.vectorNetwork !== node.vectorNetwork
   if (hasProjectedVectorNetwork) r.invalidateVectorPath(node.id)
-  const hasEffects = node.effects.length > 0 && node.effects.some((e) => e.visible)
+  const hasEffects = node.effects.some((e) => e.visible)
   const isMotionProjection = authoredNode !== node
 
   try {
@@ -1044,29 +1063,7 @@ export function renderShape(
     const canRasterCache =
       !isMotionProjection && r.renderingSceneBacking && canRasterCacheEffects(node)
     const targetScale = effectRasterScale(r.zoom * r.dpr)
-    const cachedRaster = canRasterCache ? touchEffectRaster(r.effectRasterCache, node.id) : null
-    if (
-      cachedRaster &&
-      (cachedRaster.fontGeneration !== r.fontGeneration ||
-        !effectRasterScaleMatches(cachedRaster.scale, targetScale))
-    ) {
-      deleteEffectRaster(r.effectRasterCache, node.id)
-    } else if (cachedRaster) {
-      canvas.drawImageRectOptions(
-        cachedRaster.image,
-        r.ck.LTRBRect(0, 0, cachedRaster.image.width(), cachedRaster.image.height()),
-        r.ck.LTRBRect(
-          cachedRaster.left,
-          cachedRaster.top,
-          cachedRaster.left + cachedRaster.width,
-          cachedRaster.top + cachedRaster.height
-        ),
-        r.ck.FilterMode.Linear,
-        r.ck.MipmapMode.None,
-        null
-      )
-      return
-    }
+    if (canRasterCache && drawCachedEffectRaster(r, canvas, node, targetScale)) return
 
     const margin = Math.max(
       r.effectOverflow(node),
@@ -1092,7 +1089,7 @@ export function renderShape(
         surface.flush()
         const image = surface.makeImageSnapshot()
         const shadowChild = getShadowShapeChild(node, graph)
-        installEffectRaster(r.effectRasterCache, node.id, {
+        const retained = r.effectRasterCache.set(node.id, {
           image,
           left: -margin,
           top: -margin,
@@ -1103,14 +1100,18 @@ export function renderShape(
           fontGeneration: r.fontGeneration,
           dependencyIds: shadowChild ? [shadowChild.id] : []
         })
-        canvas.drawImageRectOptions(
-          image,
-          r.ck.LTRBRect(0, 0, image.width(), image.height()),
-          r.ck.LTRBRect(-margin, -margin, node.width + margin, node.height + margin),
-          r.ck.FilterMode.Linear,
-          r.ck.MipmapMode.None,
-          null
-        )
+        try {
+          canvas.drawImageRectOptions(
+            image,
+            r.ck.LTRBRect(0, 0, image.width(), image.height()),
+            r.ck.LTRBRect(-margin, -margin, node.width + margin, node.height + margin),
+            r.ck.FilterMode.Linear,
+            r.ck.MipmapMode.None,
+            null
+          )
+        } finally {
+          if (!retained) image.delete()
+        }
         return
       } finally {
         surface.delete()
@@ -1584,11 +1585,7 @@ export function renderShapeUncached(
   if (node.type === 'INPUT' || node.type === 'TEXTAREA') renderTextInputContent(r, canvas, node)
 }
 
-function isGradientFill(fill?: Fill): boolean {
-  return fill?.type.startsWith('GRADIENT') === true
-}
-
-function shouldRenderTextAsOutline(fill?: Fill): boolean {
+function hasComplexTextFill(fill?: Fill): boolean {
   return fill !== undefined && fill.type !== 'SOLID'
 }
 
@@ -1599,53 +1596,22 @@ export function textVerticalOffset(node: SceneNode, contentHeight: number): numb
   return 0
 }
 
-function drawOutlinedText(
-  r: SkiaRenderer,
-  canvas: Canvas,
-  node: SceneNode,
-  paragraphY: number
-): boolean {
-  const outlineNode =
-    node.textCase === 'ORIGINAL'
-      ? node
-      : { ...node, text: transformTextCase(node.text, node.textCase), styleRuns: [] }
-  const path = textNodeToOutlinePath(r, outlineNode)
-  if (!path) return false
-  canvas.save()
-  canvas.translate(0, paragraphY)
-  canvas.drawPath(path, r.fillPaint)
-  canvas.restore()
-  path.delete()
-  return true
-}
-
-function drawGradientText(r: SkiaRenderer, canvas: Canvas, node: SceneNode): boolean {
+function drawPaintedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode): boolean {
   if (!r.fontsLoaded || !r.fontProvider) return false
-
-  const paragraph = r.buildParagraph(node, r.ck.Color4f(0, 0, 0, 1), {
-    halfLeading: true
-  })
-  try {
-    const paragraphY = textVerticalOffset(node, paragraph.getHeight())
-    r.effectLayerPaint.setImageFilter(null)
-    r.effectLayerPaint.setColorFilter(null)
-    r.effectLayerPaint.setBlendMode(r.ck.BlendMode.SrcOver)
-    const bounds = r.ck.LTRBRect(0, paragraphY, node.width, paragraphY + node.height)
-    canvas.saveLayer(r.effectLayerPaint, bounds)
-    canvas.drawParagraph(paragraph, 0, paragraphY)
-
-    r.effectLayerPaint.setBlendMode(r.ck.BlendMode.SrcIn)
-    canvas.saveLayer(r.effectLayerPaint, bounds)
-    canvas.drawRect(r.ck.LTRBRect(0, 0, node.width, node.height), r.fillPaint)
-    canvas.restore()
-    canvas.restore()
-    return true
-  } finally {
-    paragraph.delete()
-    r.effectLayerPaint.setImageFilter(null)
-    r.effectLayerPaint.setColorFilter(null)
-    r.effectLayerPaint.setBlendMode(r.ck.BlendMode.SrcOver)
-  }
+  // Apply the shader directly to native glyphs: coverage layers add another rounding pass.
+  return withTextParagraph(
+    r,
+    node,
+    r.ck.Color4f(0, 0, 0, 1),
+    {
+      halfLeading: true,
+      foregroundPaint: r.fillPaint
+    },
+    (paragraph) => {
+      canvas.drawParagraph(paragraph, 0, textVerticalOffset(node, paragraph.getHeight()))
+      return true
+    }
+  )
 }
 
 function shouldClipTextToLayoutBox(node: SceneNode): boolean {
@@ -1692,31 +1658,15 @@ export function renderText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fil
     canvas.restore()
     return
   }
-  if (shouldRenderTextAsOutline(fill)) {
-    let paragraphY = 0
-    if (node.textAlignVertical !== 'TOP') {
-      const paragraph = r.buildParagraph(node, r.ck.Color4f(0, 0, 0, 1), {
-        halfLeading: true
-      })
-      paragraphY = textVerticalOffset(node, paragraph.getHeight())
-      paragraph.delete()
-    }
-    if (drawOutlinedText(r, canvas, node, paragraphY)) {
-      canvas.restore()
-      return
-    }
-  }
-  if (isGradientFill(fill) && drawGradientText(r, canvas, node)) {
+  if (hasComplexTextFill(fill) && drawPaintedText(r, canvas, node)) {
     canvas.restore()
     return
   }
   if (r.fontsLoaded && r.fontProvider) {
-    const paragraph = r.buildParagraph(node, r.fillPaint.getColor(), {
-      halfLeading: true
+    withTextParagraph(r, node, r.fillPaint.getColor(), { halfLeading: true }, (paragraph) => {
+      const paragraphY = textVerticalOffset(node, paragraph.getHeight())
+      canvas.drawParagraph(paragraph, 0, paragraphY)
     })
-    const paragraphY = textVerticalOffset(node, paragraph.getHeight())
-    canvas.drawParagraph(paragraph, 0, paragraphY)
-    paragraph.delete()
   } else if (r.textFont) {
     const fontSize = node.fontSize || r.DEFAULT_FONT_SIZE
     const paragraphY = textVerticalOffset(node, fontSize)

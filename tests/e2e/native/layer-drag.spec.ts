@@ -4,18 +4,12 @@ import {
   createNativeLayerFixture,
   readNativeLayerOrder
 } from '#tests/helpers/tauri/editor-snapshot'
-import { openNativeEditorDocument } from '#tests/helpers/tauri/editor-ready'
 import { withNativeEventRecorder } from '#tests/helpers/tauri/event-recorder'
 import { nativeDrag, readElementClientGeometry } from '#tests/helpers/tauri/windows-input'
 
 describe('native layer dragging', () => {
   it('delivers a WebView drag sequence and reorders once', async function () {
     if (process.platform !== 'win32') this.skip()
-    await browser.waitUntil(
-      async () => browser.execute(() => Boolean(window.openPencil?.getStore?.())),
-      { timeout: 30_000, timeoutMsg: 'OpenPencil editor did not initialize' }
-    )
-    await openNativeEditorDocument()
     const ids = await createNativeLayerFixture()
     const source = await $(`[data-node-id="${ids.third}"] [data-test-id="layers-item"]`)
     const target = await $(`[data-node-id="${ids.first}"] [data-test-id="layers-item"]`)

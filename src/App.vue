@@ -7,6 +7,7 @@ import { defineAsyncComponent, onMounted, watch, computed } from 'vue'
 
 import { provideEditor, useI18n } from '@open-pencil/vue'
 
+import { useDocumentCloseProtection } from '@/app/document/close/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import { applicationRuntimeGuideOpen } from '@/app/help/application-runtime-guide'
 import {
@@ -23,12 +24,13 @@ import { toast } from '@/app/shell/ui'
 import { scheduleStartupUpdateCheck } from '@/app/shell/updater'
 import { kickSyncEngine, resumeStorageSync } from '@/app/storage/sync'
 import { prepareForReload } from '@/app/tabs'
+import UnsavedChangesDialog from '@/components/document/UnsavedChangesDialog.vue'
 import PublishLibraryDialog from '@/components/libraries/PublishLibraryDialog.vue'
 import LibraryUpdateReviewDialog from '@/components/libraries/review/LibraryUpdateReviewDialog.vue'
 import RecoveryDialog from '@/components/recovery/RecoveryDialog.vue'
 import SettingsDialog from '@/components/settings/SettingsDialog.vue'
-import AppShell from '@/components/Shell/AppShell.vue'
-import AppToast from '@/components/Shell/AppToast.vue'
+import AppShell from '@/components/shell/AppShell.vue'
+import AppToast from '@/components/shell/AppToast.vue'
 
 const store = useEditorStore()
 const { updates, locale } = useI18n()
@@ -66,6 +68,7 @@ watch(
   { immediate: true }
 )
 
+useDocumentCloseProtection()
 useEventListener(window, 'pagehide', () => {
   void prepareForReload()
 })
@@ -86,6 +89,7 @@ onMounted(() => {
       <SettingsDialog />
       <ApplicationRuntimeGuideDialog v-if="applicationRuntimeGuideOpen" />
       <RecoveryDialog />
+      <UnsavedChangesDialog />
       <PublishLibraryDialog />
       <LibraryUpdateReviewDialog />
       <AppToast />

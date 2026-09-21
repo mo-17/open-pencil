@@ -151,6 +151,9 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
+      - name: Validate generated brand assets
+        run: bun run check:icons
+
       - name: Validate translations
         run: bun run check:i18n
 
@@ -213,6 +216,9 @@ jobs:
       - name: Typecheck native interaction tests
         run: bun run check:native-test
 
+      - name: Generate native brand assets
+        run: bun run generate:icons --target desktop
+
       - name: Compile native-test Tauri feature
         run: cargo check --manifest-path desktop/Cargo.toml --features native-test
 
@@ -224,7 +230,23 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        group: [app, compiler, compiler-browser, dom, editor, fig, motion, render, scene, vue]
+        group:
+          [
+            app,
+            compiler,
+            compiler-browser,
+            motion,
+            lowcode,
+            cli,
+            core,
+            dom,
+            fig,
+            mcp,
+            render,
+            scene-graph,
+            vue
+          ]
+
     name: Unit tests — ${{ matrix.group }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -234,6 +256,8 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           lfs: 'true'
+          # Quick shards read only the small fixtures; heavy-tests.yml pulls the large .fig corpora.
+          lfs-include: tests/fixtures/gold-preview.fig,tests/fixtures/circle-text.fig,tests/fixtures/fonts/*
 
       - name: Install Chromium for compiler browser tests
         if: matrix.group == 'compiler-browser'

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-path-matches-suffix"
+description = "Enables the path_matches_suffix command without any pre-configured scope."
+commands.allow = ["path_matches_suffix"]
+
+[[permission]]
+identifier = "deny-path-matches-suffix"
+description = "Denies the path_matches_suffix command without any pre-configured scope."
+commands.deny = ["path_matches_suffix"]

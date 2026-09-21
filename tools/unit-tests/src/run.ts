@@ -3,7 +3,7 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { listUnitTests, type UnitTestGroup, unitTestGroupNames } from './shards'
+import { listHeavyUnitTests, listUnitTests, type UnitTestGroup, unitTestGroupNames } from './shards'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 
@@ -21,6 +21,8 @@ interface SpawnResult {
 
 export interface UnitTestRunnerDeps {
   executable?: string
+  bunTestArgs?: string[]
+  includeHeavy?: boolean
   spawnSync?: (command: string[]) => SpawnResult
 }
 
@@ -36,15 +38,45 @@ export function parseUnitTestRunArgs(argv: string[]): UnitTestGroup {
   return group as UnitTestGroup
 }
 
-export async function buildUnitTestRunPlan(group: UnitTestGroup): Promise<UnitTestRun[]> {
+export interface UnitTestRunOptions {
+  includeHeavy?: boolean
+  heavyOnly?: boolean
+  isolate?: boolean
+}
+
+export function parseUnitTestRunOptions(argv: string[]) {
+  const separator = argv.indexOf('--')
+  const ownArgs = separator === -1 ? argv : argv.slice(0, separator)
+  const bunTestArgs = separator === -1 ? [] : argv.slice(separator + 1)
+  const flags = ownArgs.filter((arg) => arg.startsWith('--'))
+  for (const flag of flags) {
+    if (flag !== '--include-heavy' && flag !== '--heavy-only' && flag !== '--isolate') {
+      throw new Error(`Unknown unit test flag: ${flag}`)
+    }
+  }
+  return {
+    group: parseUnitTestRunArgs(ownArgs.filter((arg) => !arg.startsWith('--'))),
+    includeHeavy: flags.includes('--include-heavy') || flags.includes('--heavy-only'),
+    heavyOnly: flags.includes('--heavy-only'),
+    isolate: flags.includes('--isolate'),
+    bunTestArgs
+  }
+}
+
+export async function buildUnitTestRunPlan(
+  group: UnitTestGroup,
+  options: UnitTestRunOptions = {}
+): Promise<UnitTestRun[]> {
   const groups = (
     group === 'all' ? unitTestGroupNames().filter((candidate) => candidate !== 'all') : [group]
   ) as ConcreteUnitTestGroup[]
   const plan: UnitTestRun[] = []
 
   for (const currentGroup of groups) {
-    const files = await listUnitTests(currentGroup)
-    if (currentGroup === 'compiler-browser') {
+    const files = options.heavyOnly
+      ? await listHeavyUnitTests(currentGroup)
+      : await listUnitTests(currentGroup, options)
+    if (options.isolate || currentGroup === 'compiler-browser') {
       plan.push(...files.map((file) => ({ group: currentGroup, files: [file] })))
     } else if (files.length > 0) {
       plan.push({ group: currentGroup, files })
@@ -56,13 +88,19 @@ export async function buildUnitTestRunPlan(group: UnitTestGroup): Promise<UnitTe
 
 export function runUnitTestPlan(
   plan: UnitTestRun[],
-  { executable = process.execPath, spawnSync = spawnUnitTest }: UnitTestRunnerDeps = {}
+  {
+    executable = process.execPath,
+    bunTestArgs = [],
+    includeHeavy = false,
+    spawnSync
+  }: UnitTestRunnerDeps = {}
 ): number {
   for (const run of plan) {
     // Absolute paths select exact files; bare paths are Bun discovery filters.
-    const result = spawnSync([
+    const result = (spawnSync ?? ((command) => spawnUnitTest(command, includeHeavy)))([
       executable,
       'test',
+      ...bunTestArgs,
       ...run.files.map((file) => resolve(REPO_ROOT, file))
     ])
     if (!result.success) return result.exitCode || 1
@@ -70,9 +108,10 @@ export function runUnitTestPlan(
   return 0
 }
 
-function spawnUnitTest(command: string[]): SpawnResult {
+function spawnUnitTest(command: string[], includeHeavy: boolean): SpawnResult {
   return Bun.spawnSync(command, {
     cwd: REPO_ROOT,
+    env: { ...process.env, BUN_HEAVY_TESTS: includeHeavy ? 'true' : 'false' },
     stdout: 'inherit',
     stderr: 'inherit'
   })
@@ -80,9 +119,9 @@ function spawnUnitTest(command: string[]): SpawnResult {
 
 if (import.meta.main) {
   try {
-    const group = parseUnitTestRunArgs(process.argv.slice(2))
-    const plan = await buildUnitTestRunPlan(group)
-    process.exitCode = runUnitTestPlan(plan)
+    const options = parseUnitTestRunOptions(process.argv.slice(2))
+    const plan = await buildUnitTestRunPlan(options.group, options)
+    process.exitCode = runUnitTestPlan(plan, options)
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1

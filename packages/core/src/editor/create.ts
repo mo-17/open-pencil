@@ -72,6 +72,7 @@ export function createEditor(options?: EditorOptions) {
   let _ck: CanvasKit | null = null
   let _renderer: SkiaRenderer | null = null
   const _renderers = new Set<SkiaRenderer>()
+  const interactiveEdits = new Set<symbol>()
   let _textEditor: TextEditor | null = null
   let loadingLeaseCount = 0
   let cacheReleasingLeaseCount = 0
@@ -171,6 +172,16 @@ export function createEditor(options?: EditorOptions) {
     }
   }
 
+  /** Track an actual live edit independently of history batching. Release is idempotent. */
+  function beginInteractiveEdit() {
+    const token = Symbol('interactive-edit')
+    interactiveEdits.add(token)
+    requestRepaint()
+    return () => {
+      if (interactiveEdits.delete(token)) requestRepaint()
+    }
+  }
+
   function setNavigationPhase(phase: EditorState['navigation']['phase'], inputAt = 0) {
     const previous = { ...state.navigation }
     const active = phase === 'pan' || phase === 'zoom' || phase === 'momentum'
@@ -254,6 +265,8 @@ export function createEditor(options?: EditorOptions) {
     requestRepaint,
     requestOverlayRepaint,
     beginLoading,
+    beginInteractiveEdit,
+    onEditorEvent,
     emitEditorEvent,
     setSelectedIds,
     setActiveTool,
@@ -319,6 +332,8 @@ export function createEditor(options?: EditorOptions) {
 
   function replaceGraph(newGraph: SceneGraph, options: { currentPageId?: string } = {}) {
     cancelPendingSwitch()
+    nodes.cancelNodePreviews()
+    undo.discardBatches()
     _graph = newGraph
     subscribeToGraph()
     const previousPageId = state.currentPageId
@@ -345,6 +360,8 @@ export function createEditor(options?: EditorOptions) {
   }
 
   function dispose() {
+    nodes.cancelNodePreviews()
+    interactiveEdits.clear()
     stopFontResolutionEvents()
     unsubscribeFromGraph()
   }
@@ -377,6 +394,8 @@ export function createEditor(options?: EditorOptions) {
     ...graphReads,
 
     // Lifecycle
+    beginInteractiveEdit,
+    isInteractiveEditing: () => interactiveEdits.size > 0,
     requestRender,
     requestRepaint,
     requestOverlayRepaint,

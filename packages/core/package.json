@@ -1,6 +1,6 @@
 {
   "name": "@open-pencil/core",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -43,7 +43,8 @@
     "#core/text/resolver": "./src/text/resolver/index.ts",
     "#core/tools/analyze/overlaps": "./src/tools/analyze/overlaps/index.ts",
     "#core/vector": "./src/vector/index.ts",
-    "#core/vector/vectorize": "./src/vector/vectorize/index.ts"
+    "#core/vector/vectorize": "./src/vector/vectorize/index.ts",
+    "#core/geometry": "./src/geometry/index.ts"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -223,6 +224,11 @@
       "types": "./dist/layout.d.ts",
       "import": "./dist/layout.js",
       "default": "./dist/layout.js"
+    },
+    "./geometry": {
+      "types": "./dist/geometry/index.d.ts",
+      "import": "./dist/geometry/index.js",
+      "default": "./dist/geometry/index.js"
     }
   },
   "publishConfig": {

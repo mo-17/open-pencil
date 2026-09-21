@@ -267,7 +267,10 @@ describe('CodePen sidecar packaging contract', () => {
       expect(sidecarPackageJSON.scripts.lint).toContain(path)
     }
     expect(packageJSON.scripts['build:packages']).toContain('@open-pencil/codepen-sidecar')
-    expect(packageJSON.scripts['test:unit']).toContain('packages/codepen-sidecar/tests')
-    expect(packageJSON.scripts['test:coverage']).toContain('packages/codepen-sidecar/tests')
+    expect(packageJSON.scripts['test:unit']).toContain('tools/unit-tests/src/run.ts')
+    const unitTestGroups = readFileSync('tools/unit-tests/src/shards.ts', 'utf8')
+    expect(unitTestGroups).toContain("'packages/codepen-sidecar/tests'")
+    expect(packageJSON.scripts['test:coverage']).toContain('tools/unit-tests/src/run.ts')
+    expect(packageJSON.scripts['test:coverage']).toContain('--coverage')
   })
 })

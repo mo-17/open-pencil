@@ -42,10 +42,11 @@ describe('native preferences', () => {
 
     if (!(await settingsOpen())) {
       await browser.keys([process.platform === 'darwin' ? 'Meta' : 'Control', ','])
-      await browser.waitUntil(settingsOpen)
+      await browser.waitUntil(settingsOpen, { timeout: 10_000 })
     }
+    await (await $('[data-test-id="settings-section-general"]')).click()
     const snapping = $('[data-test-id="settings-snap-objects"]')
-    await snapping.waitForExist()
+    await snapping.waitForDisplayed({ timeout: 10_000 })
     await snapping.click()
     await browser.waitUntil(
       async () =>

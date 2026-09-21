@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mcp-lookup"
+description = "Enables the mcp_lookup command without any pre-configured scope."
+commands.allow = ["mcp_lookup"]
+
+[[permission]]
+identifier = "deny-mcp-lookup"
+description = "Denies the mcp_lookup command without any pre-configured scope."
+commands.deny = ["mcp_lookup"]

@@ -58,7 +58,7 @@ import { bindNodeEvents } from './events'
 import * as HitTest from './hit-test'
 import * as Instances from './instances'
 import { CONTAINER_TYPES, createDefaultNode } from './node-defaults'
-import { updateNodePreview } from './preview'
+import { updateNodePreview, type NodePreviewObserver } from './preview'
 import { styleDetachmentChanges } from './shared-styles'
 import { markSourceFieldsEdited } from './source-metadata'
 import { GLYPH_AFFECTING_KEYS, invalidateTextCaches, TEXT_PICTURE_KEYS } from './text-picture'
@@ -178,11 +178,12 @@ export class SceneGraph {
   figSchemaDeflated: Uint8Array | null = null
   /** Opaque Kiwi Message.objectAnimations payload retained for .fig roundtrip fidelity. */
   figMessageObjectAnimations: unknown = null
-  documentColorSpace: DocumentColorSpace = 'display-p3'
+  documentColorSpace: DocumentColorSpace = 'srgb'
   enabledLibraries = new Map<string, EnabledLibraryBinding>()
   readonly emitter: Emitter<SceneGraphEvents> = createNanoEvents()
   private absPosCache = new Map<string, Vector>()
   private previewMutationDepth = 0
+  private previewObservers: NodePreviewObserver[] = []
   private sourceMetadataPreservationDepth = 0
   private layoutMutationDepth = 0
   private nodeMutationOrigin: NodeMutationOrigin | undefined
@@ -513,11 +514,13 @@ export class SceneGraph {
     'maxHeight'
   ])
 
-  runPreviewUpdates(fn: () => void): void {
+  runPreviewUpdates(fn: () => void, beforeUpdate?: NodePreviewObserver): void {
     this.previewMutationDepth++
+    if (beforeUpdate) this.previewObservers.push(beforeUpdate)
     try {
       fn()
     } finally {
+      if (beforeUpdate) this.previewObservers.pop()
       this.previewMutationDepth--
     }
   }
@@ -571,7 +574,9 @@ export class SceneGraph {
     this.updateNodePreview(id, { x, y })
   }
   updateNodePreview(id: string, changes: Partial<SceneNode>): void {
-    const appliedChanges = updateNodePreview(this, id, changes)
+    const appliedChanges = updateNodePreview(this, id, changes, (node, applied) => {
+      for (const observe of this.previewObservers) observe(node, applied)
+    })
     if (appliedChanges) {
       this.emitNodeEvent((origin) =>
         this.emitter.emit('node:previewUpdated', id, appliedChanges, origin)

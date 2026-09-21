@@ -2,6 +2,7 @@ import type { EditorState } from '@open-pencil/core/editor'
 import { filesMessages } from '@open-pencil/vue'
 
 import { downloadBlob } from '@/app/document/io/browser'
+import { supportsFileSystemAccess } from '@/app/document/io/capability'
 import { documentNameFromFigPath } from '@/app/document/io/names'
 import { chooseBrowserFigSaveHandle, chooseTauriFigSavePath } from '@/app/document/io/save-targets'
 import type { DocumentSourceAccess } from '@/app/document/io/types'
@@ -50,9 +51,12 @@ export function createSaveActions({
   const writeFile = createDocumentWriter()
   let saveQueue = Promise.resolve()
 
-  function enqueueSave(operation: () => Promise<void>): Promise<void> {
+  function enqueueSave(operation: () => Promise<boolean>): Promise<boolean> {
     const result = saveQueue.then(operation, operation)
-    saveQueue = result.catch(() => undefined)
+    saveQueue = result.then(
+      () => undefined,
+      () => undefined
+    )
     return result
   }
 
@@ -112,15 +116,15 @@ export function createSaveActions({
   }
 
   async function saveFigFileNow(sourceRevision: number, options?: DocumentWriteOptions) {
-    if (!sourceIsUnchanged(sourceRevision)) return
+    if (!sourceIsUnchanged(sourceRevision)) return false
     const target = getCurrentWriteTarget()
     const downloadName = getDownloadName()
     if (target) {
       const { data, sceneVersion } = await buildFigFile()
-      if (!sourceIsUnchanged(sourceRevision, target)) return
+      if (!sourceIsUnchanged(sourceRevision, target)) return false
       setLastWriteTime(Date.now())
       await writeFile(target, data, options)
-      if (!sourceIsUnchanged(sourceRevision, target)) return
+      if (!sourceIsUnchanged(sourceRevision, target)) return false
       setLastWriteTime(Date.now())
       await notifyWriteSuccess(sceneVersion)
       if (target.kind === 'tauri-path') {
@@ -130,24 +134,25 @@ export function createSaveActions({
       }
     } else if (downloadName) {
       const { data, sceneVersion } = await buildFigFile()
-      if (!sourceIsUnchanged(sourceRevision)) return
+      if (!sourceIsUnchanged(sourceRevision)) return false
       downloadBlob(new Uint8Array(data), downloadName, 'application/octet-stream')
       await notifyDownloadSuccess(sceneVersion)
     } else {
-      await saveFigFileAsNow(sourceRevision)
+      return saveFigFileAsNow(sourceRevision)
     }
+    return true
   }
 
   async function saveFigFileAsNow(sourceRevision: number) {
-    if (!sourceIsUnchanged(sourceRevision)) return
+    if (!sourceIsUnchanged(sourceRevision)) return false
 
     if (IS_TAURI) {
       const path = await chooseTauriFigSavePath()
-      if (!path || !sourceIsUnchanged(sourceRevision)) return
+      if (!path || !sourceIsUnchanged(sourceRevision)) return false
       const built = await buildFigFile()
-      if (!sourceIsUnchanged(sourceRevision)) return
+      if (!sourceIsUnchanged(sourceRevision)) return false
       await writeFile({ kind: 'tauri-path', path }, built.data)
-      if (!sourceIsUnchanged(sourceRevision)) return
+      if (!sourceIsUnchanged(sourceRevision)) return false
       setStorageBinding(null)
       setFilePath(path)
       setFileHandle(null)
@@ -157,16 +162,16 @@ export function createSaveActions({
       setLastWriteTime(Date.now())
       await notifyWriteSuccess(built.sceneVersion)
       startWatchingFile()
-      return
+      return true
     }
 
-    if (window.showSaveFilePicker) {
+    if (supportsFileSystemAccess()) {
       const handle = await chooseBrowserFigSaveHandle()
-      if (!handle || !sourceIsUnchanged(sourceRevision)) return
+      if (!handle || !sourceIsUnchanged(sourceRevision)) return false
       const built = await buildFigFile()
-      if (!sourceIsUnchanged(sourceRevision)) return
+      if (!sourceIsUnchanged(sourceRevision)) return false
       await writeFile({ kind: 'browser-handle', handle }, built.data)
-      if (!sourceIsUnchanged(sourceRevision)) return
+      if (!sourceIsUnchanged(sourceRevision)) return false
       setStorageBinding(null)
       setFileHandle(handle)
       setFilePath(null)
@@ -176,13 +181,13 @@ export function createSaveActions({
       setLastWriteTime(Date.now())
       await notifyWriteSuccess(built.sceneVersion)
       startWatchingFile()
-      return
+      return true
     }
 
     const filename = prompt(filesMessages.get().saveAsPrompt, getDownloadName() ?? 'Untitled.fig')
-    if (!filename || !sourceIsUnchanged(sourceRevision)) return
+    if (!filename || !sourceIsUnchanged(sourceRevision)) return false
     const built = await buildFigFile()
-    if (!sourceIsUnchanged(sourceRevision)) return
+    if (!sourceIsUnchanged(sourceRevision)) return false
     downloadBlob(new Uint8Array(built.data), filename, 'application/octet-stream')
     setStorageBinding(null)
     setFileHandle(null)
@@ -193,14 +198,15 @@ export function createSaveActions({
     markSourceChanged()
     setLastWriteTime(0)
     await notifyDownloadSuccess(built.sceneVersion)
+    return true
   }
 
-  function saveFigFile(options?: DocumentWriteOptions): Promise<void> {
+  function saveFigFile(options?: DocumentWriteOptions): Promise<boolean> {
     const sourceRevision = getSourceRevision()
     return enqueueSave(() => saveFigFileNow(sourceRevision, options))
   }
 
-  function saveFigFileAs(): Promise<void> {
+  function saveFigFileAs(): Promise<boolean> {
     const sourceRevision = getSourceRevision()
     return enqueueSave(() => saveFigFileAsNow(sourceRevision))
   }

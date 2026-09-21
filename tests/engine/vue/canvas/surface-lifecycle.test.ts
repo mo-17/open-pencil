@@ -47,6 +47,7 @@ function createEditor(events: string[]) {
     state: {},
     textEditor: null,
     onEditorEvent: mock(() => () => undefined),
+    isInteractiveEditing: mock(() => false),
     setCanvasKit: mock(() => events.push('register')),
     removeCanvasRenderer: mock(() => events.push('remove')),
     setViewportSize: mock()
@@ -106,7 +107,7 @@ test('renderer recreation presents the transferred last-good frame before destro
     dependencies: {
       makeSurface: mock(() => {
         events.push('make-surface')
-        return { surface: createSurface(), glContext }
+        return { surface: createSurface(), glContext, presentation: 'srgb' }
       }),
       makeRenderer: mock(() => renderers.shift() as FakeRenderer)
     }
@@ -183,7 +184,11 @@ test('direct renders wait until the editor loading lease is released', () => {
     isDestroyed: () => false,
     shouldShowRulers: () => false,
     dependencies: {
-      makeSurface: mock(() => ({ surface: createSurface(), glContext: null })),
+      makeSurface: mock(() => ({
+        surface: createSurface(),
+        glContext: null,
+        presentation: 'srgb'
+      })),
       makeRenderer: mock(() => renderer)
     }
   })
@@ -206,7 +211,11 @@ test('performance mode changes update the live renderer without recreating its s
   const editor = createEditor(events)
   editor.state.loading = true
   const renderer = createRenderer('performance', events)
-  const makeSurface = mock(() => ({ surface: createSurface(), glContext: null }))
+  const makeSurface = mock(() => ({
+    surface: createSurface(),
+    glContext: null,
+    presentation: 'srgb'
+  }))
   const makeRenderer = mock(() => renderer)
   const manager = createCanvasSurfaceManager({
     editor,
@@ -248,7 +257,11 @@ test('page presentation waits for retained content and accepts the live-render f
     isDestroyed: () => false,
     shouldShowRulers: () => false,
     dependencies: {
-      makeSurface: mock(() => ({ surface: createSurface(), glContext: null })),
+      makeSurface: mock(() => ({
+        surface: createSurface(),
+        glContext: null,
+        presentation: 'srgb'
+      })),
       makeRenderer: mock(() => renderer)
     }
   })

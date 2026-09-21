@@ -13,6 +13,8 @@ import {
 } from 'reka-ui'
 import { tv } from 'tailwind-variants'
 
+import { useRetainedPopup } from '@open-pencil/vue'
+
 import type { ComponentUI } from '@/components/ui/types'
 import theme from '@/theme/select/grouped'
 import type { AppGroupedSelectTheme } from '@/theme/select/grouped'
@@ -41,15 +43,16 @@ const { groups, displayValue, disabled = false, ui } = defineProps<AppGroupedSel
 const modelValue = defineModel<T>({ required: true })
 
 const styles = tv(theme)()
+const { open: popupOpen, portalActive } = useRetainedPopup()
 </script>
 
 <template>
-  <SelectRoot v-model="modelValue" :disabled="disabled">
+  <SelectRoot v-model="modelValue" v-model:open="popupOpen" :disabled="disabled">
     <SelectTrigger v-bind="$attrs" :class="styles.trigger({ class: ui?.trigger })">
       <slot name="value">{{ displayValue }}</slot>
       <icon-lucide-chevron-down class="size-2.5 shrink-0 text-muted" />
     </SelectTrigger>
-    <SelectPortal>
+    <SelectPortal v-if="portalActive">
       <SelectContent
         position="popper"
         :side-offset="4"

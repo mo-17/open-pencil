@@ -14,8 +14,11 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { LabelCache } from '#core/canvas/labels/cache'
 import { SkiaRenderer } from '#core/canvas/renderer'
+import { EffectRasterCache } from '#core/canvas/renderer/effect-raster-cache'
 import { destroyRenderer } from '#core/canvas/renderer/lifecycle'
 import { transferLastGoodFrame, withIsolatedDocumentCaches } from '#core/canvas/renderer/state'
+import { createGlyphSilhouetteCache } from '#core/canvas/text/derived'
+import { TextPreparationCache } from '#core/canvas/text/preparation-cache'
 
 function deletable<T>() {
   return { delete: mock() } as T & { delete: ReturnType<typeof mock> }
@@ -32,6 +35,7 @@ function createRenderer() {
   const renderer: Partial<SkiaRenderer> = {
     ck: {} as SkiaRenderer['ck'],
     destroyed: false,
+    textPreparationCache: new TextPreparationCache(),
     imageCache: new Map(),
     imageCacheByteSize: 0,
     imageCacheByteBudget: 128 * 1024 * 1024,
@@ -46,7 +50,7 @@ function createRenderer() {
     vectorStrokeOutlineCache: new Map(),
     fillGeometryCache: new Map(),
     strokeGeometryCache: new Map(),
-    glyphSilhouetteCache: new Map(),
+    glyphSilhouetteCache: createGlyphSilhouetteCache(),
     fillPaint: deletable<Paint>(),
     strokePaint: deletable<Paint>(),
     selectionPaint: deletable<Paint>(),
@@ -81,7 +85,7 @@ function createRenderer() {
     nodePictureCache: new Map(),
     nodePictureCacheGenerations: new Map(),
     nodePictureCacheDependencies: new Map(),
-    effectRasterCache: new Map(),
+    effectRasterCache: new EffectRasterCache(),
     subtreePictureCache: new Map(),
     labelCache: new LabelCache(),
     scenePicture: null,
@@ -116,6 +120,9 @@ function createRenderer() {
 test('destroyRenderer releases tiled resources before deleting the main surface', () => {
   const renderer = createRenderer()
   const teardown: string[] = []
+  renderer.textPreparationCache.clear = mock(() => {
+    teardown.push('text')
+  })
   renderer.tiledScene.destroy = mock(() => teardown.push('tiled'))
   renderer.surface.delete = mock(() => teardown.push('surface')) as typeof renderer.surface.delete
 
@@ -123,7 +130,7 @@ test('destroyRenderer releases tiled resources before deleting the main surface'
 
   expect(renderer.tiledScene.destroy).toHaveBeenCalledTimes(1)
   expect(renderer.surface.delete).toHaveBeenCalledTimes(1)
-  expect(teardown).toEqual(['tiled', 'surface'])
+  expect(teardown).toEqual(['text', 'tiled', 'surface'])
 })
 
 test('destroyRenderer deletes all renderer-owned paints and label fonts', () => {

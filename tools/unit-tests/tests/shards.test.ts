@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { readdir, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import {
@@ -11,28 +11,6 @@ import {
 } from '../src/shards'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
-const REQUIRED_UNIT_TEST_ROOTS = [
-  'tests/engine',
-  'packages/motion/tests',
-  'packages/plugin-contracts/tests',
-  'packages/lowcode/tests',
-  'packages/motion-runtime/tests',
-  'packages/backend-compiler-sidecar/tests',
-  'packages/codepen-sidecar/tests'
-] as const
-
-async function repositoryTestFiles(path: string): Promise<string[]> {
-  const entries = await readdir(resolve(REPO_ROOT, path), { withFileTypes: true })
-  const files = await Promise.all(
-    entries.map(async (entry) => {
-      const childPath = `${path}/${entry.name}`
-      if (entry.isDirectory()) return repositoryTestFiles(childPath)
-      if (entry.isFile() && entry.name.endsWith('.test.ts')) return [childPath]
-      return []
-    })
-  )
-  return files.flat()
-}
 
 test('unit test groups cover all declared shards', () => {
   expect(unitTestGroupNames()).toContain('all')
@@ -46,7 +24,7 @@ test('unit test groups cover all declared shards', () => {
   expect(pathsForUnitTestGroup('motion')).toContain('packages/motion/tests')
   expect(pathsForUnitTestGroup('motion')).toContain('packages/motion-runtime/tests')
   expect(pathsForUnitTestGroup('app')).toContain('packages/plugin-contracts/tests')
-  expect(pathsForUnitTestGroup('scene')).toContain('packages/lowcode/tests')
+  expect(pathsForUnitTestGroup('lowcode')).toContain('packages/lowcode/tests')
 })
 
 test('compiler browser tests are isolated from the non-browser compiler shard', async () => {
@@ -74,10 +52,13 @@ test('unit test groups own every repository unit test exactly once', async () =>
       owners.set(file, [...(owners.get(file) ?? []), group])
     }
   }
-  const expected = (
-    await Promise.all(REQUIRED_UNIT_TEST_ROOTS.map((root) => repositoryTestFiles(root)))
-  )
-    .flat()
+  const expected = [
+    ...(await Array.fromAsync(new Bun.Glob('tests/engine/**/*.test.ts').scan({ cwd: REPO_ROOT }))),
+    ...(await Array.fromAsync(
+      new Bun.Glob('packages/*/tests/**/*.test.ts').scan({ cwd: REPO_ROOT })
+    ))
+  ]
+    .filter((file) => !file.startsWith('packages/harness/'))
     .sort()
   const actual = [...owners.keys()].sort()
   const duplicates = [...owners]
@@ -162,12 +143,10 @@ test('root unit test scripts select heavy suites explicitly', async () => {
     scripts?: Record<string, string>
   }
 
-  expect(packageJSON.scripts?.['test:unit']).toContain('BUN_HEAVY_TESTS=true')
-  expect(packageJSON.scripts?.['test:unit']).toContain('./packages/motion/tests')
-  expect(packageJSON.scripts?.['test:unit']).toContain('./packages/plugin-contracts/tests')
-  expect(packageJSON.scripts?.['test:unit']).toContain('./packages/motion-runtime/tests')
-  expect(packageJSON.scripts?.['test:unit']).toContain('./packages/backend-compiler-sidecar/tests')
-  expect(packageJSON.scripts?.['test:unit:quick']).toContain('BUN_HEAVY_TESTS=false')
+  expect(packageJSON.scripts?.['test:unit']).toBe(
+    'bun tools/unit-tests/src/run.ts all --include-heavy'
+  )
+  expect(packageJSON.scripts?.['test:unit:quick']).not.toContain('--include-heavy')
   expect(packageJSON.scripts?.['test:unit:quick']).toContain('tools/unit-tests/src/run.ts all')
   expect(packageJSON.scripts?.['test:unit:heavy']).toBe('bun tools/unit-tests/src/heavy.ts')
 })
@@ -187,7 +166,7 @@ test('root quality gates own the private Backend Compiler sidecar without buildi
     expect(scripts[script]).toContain('packages/backend-compiler-sidecar/scripts')
     expect(scripts[script]).toContain('packages/backend-compiler-sidecar/tests')
   }
-  expect(scripts['test:coverage']).toContain('./packages/backend-compiler-sidecar/tests')
+  expect(scripts['test:coverage']).toContain('run.ts all --include-heavy -- --coverage')
   expect(scripts['build:backend-compiler-sidecar']).toBe(
     'bun packages/backend-compiler-sidecar/scripts/build.ts'
   )
@@ -235,4 +214,24 @@ test('business template browser suites run only in the Chromium-equipped isolate
   expect(browser).toContain(commerce)
   expect(app).not.toContain(crm)
   expect(app).not.toContain(commerce)
+})
+
+test('canonical destinations are registered before they hold files', async () => {
+  const paths = pathsForUnitTestGroup('all')
+  expect(paths).toContain('tests/app')
+  expect(paths).toContain('tests/integration')
+  for (const owner of [
+    'core',
+    'scene-graph',
+    'vue',
+    'fig',
+    'kiwi',
+    'dom-css',
+    'pen',
+    'cli',
+    'mcp'
+  ]) {
+    expect(paths).toContain(`packages/${owner}/tests`)
+  }
+  await expect(listUnitTests('all')).resolves.toBeArray()
 })

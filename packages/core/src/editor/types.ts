@@ -8,6 +8,7 @@ import type {
 import type {
   MotionSpec,
   MotionTrigger,
+  DocumentColorSpace,
   SceneGraph,
   SceneGraphEvents,
   SceneNode,
@@ -23,6 +24,7 @@ import type { GuideOverlayState } from '#core/canvas/guides/types'
 import type { RulerTheme, SkiaRenderer } from '#core/canvas/renderer'
 import type { MeasurementMode, RenderOverlays } from '#core/canvas/renderer/types'
 import type { SnappingPreferences } from '#core/editor/preferences'
+import type { RotationPreview } from '#core/geometry'
 import type { TextEditor } from '#core/text/editor'
 import type { FontLoadOptions } from '#core/text/fonts'
 import type { FontResolutionEvent, FontResolutionSnapshot } from '#core/text/resolver'
@@ -130,7 +132,7 @@ export interface EditorViewState {
   marquee: Rect | null
   snapGuides: SnapGuide[]
   guides: GuideOverlayState
-  rotationPreview: { nodeId: string; angle: number } | null
+  rotationPreview: RotationPreview | null
   dropTargetId: string | null
   layoutInsertIndicator: {
     parentId: string
@@ -210,8 +212,10 @@ export interface EditorEvents extends SceneGraphEvents {
   'repaint:requested': (versions: { renderVersion: number; sceneVersion: number }) => void
   'overlay:requested': (versions: { renderVersion: number; sceneVersion: number }) => void
   'graph:replaced': (graph: SceneGraph) => void
+  'document:color-space-changed': (colorSpace: DocumentColorSpace) => void
   'history:changed': () => void
   'selection:changed': (selectedIds: string[], previousIds: string[]) => void
+  'rotation:preview-changed': (preview: RotationPreview | null) => void
   'tool:changed': (tool: Tool, previousTool: Tool) => void
   'page:changed': (pageId: string, previousPageId: string) => void
   'font:load-progress': (progress: FontLoadProgress) => void
@@ -264,6 +268,8 @@ export interface EditorContext {
   requestRepaint: () => void
   requestOverlayRepaint: () => void
   beginLoading: (options?: { releaseDocumentCaches?: boolean }) => () => void
+  beginInteractiveEdit: () => () => void
+  onEditorEvent: <K extends EditorEventName>(event: K, handler: EditorEvents[K]) => () => void
   emitEditorEvent: <K extends EditorEventName>(
     event: K,
     ...args: Parameters<EditorEvents[K]>

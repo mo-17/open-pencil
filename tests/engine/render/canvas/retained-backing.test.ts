@@ -28,7 +28,7 @@ function createRenderer(surfaceFactory: (info: ImageInfo) => Surface | null) {
         bottom
       ]),
       ClipOp: { Intersect: 'Intersect' },
-      FilterMode: { Linear: 'Linear' },
+      FilterMode: { Linear: 'Linear', Nearest: 'Nearest' },
       MipmapMode: { None: 'None' }
     } as SkiaRenderer['ck'],
     surface: {
@@ -46,6 +46,7 @@ function createRenderer(surfaceFactory: (info: ImageInfo) => Surface | null) {
     pageColor: { r: 1, g: 1, b: 1 },
     pageId: 'page',
     fontGeneration: 0,
+    navigationPhase: 'idle',
     sceneBacking: null,
     sceneBackingBuild: null,
     sceneBackingAllocationFailed: false,
@@ -71,7 +72,11 @@ function createRenderer(surfaceFactory: (info: ImageInfo) => Surface | null) {
 function createCanvas() {
   const canvas: Partial<Canvas> = {
     drawImageRect: mock(),
-    drawImageRectOptions: mock()
+    drawImageRectOptions: mock(),
+    save: mock(),
+    restore: mock(),
+    translate: mock(),
+    scale: mock()
   }
   return canvas as Canvas
 }
@@ -263,6 +268,10 @@ test('balanced to smooth hot switch reuses identical completed backing geometry'
   const r = createRenderer(() => null)
   r.sceneBacking = {
     image: { delete: mock() } as CKImage,
+    anchorPanX: 0,
+    anchorPanY: 0,
+    marginDeviceX: 100,
+    marginDeviceY: 100,
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 0,
@@ -281,9 +290,9 @@ test('balanced to smooth hot switch reuses identical completed backing geometry'
   r.performanceMode = 'smooth'
   const canvas = createCanvas()
 
-  expect(renderSceneBacking(r, canvas, createGraph(), 1)).toBe(true)
+  expect(renderSceneBacking(r, canvas, createGraph(), 1)).toBe('retained-pictures')
   expect(r.surface.makeSurface).not.toHaveBeenCalled()
-  expect(canvas.drawImageRectOptions).toHaveBeenCalledTimes(1)
+  expect(canvas.drawImageRectOptions).not.toHaveBeenCalled()
 })
 
 test('scene-version changes rebuild incrementally while presenting the last-good frame', () => {
@@ -345,7 +354,7 @@ test('scene-version changes rebuild incrementally while presenting the last-good
   })
   const canvas = createCanvas()
 
-  expect(renderSceneBacking(r, canvas, graph, 2)).toBe(true)
+  expect(renderSceneBacking(r, canvas, graph, 2)).toBe('backing')
   expect(r.sceneBackingBuild?.index).toBe(1)
   expect(r.sceneBacking?.image).toBe(oldImage)
   expect(oldImage.delete).not.toHaveBeenCalled()
@@ -389,7 +398,7 @@ test('first retained backing slices one huge top-level root and installs only th
   })
   const canvas = createCanvas()
 
-  expect(renderSceneBacking(r, canvas, graph, 1)).toBe(true)
+  expect(renderSceneBacking(r, canvas, graph, 1)).toBe('backing')
   expect(r.sceneBackingBuild?.index).toBe(1)
   expect(r.sceneBacking).toBeNull()
   expect(partialBuildSurface.flush).toHaveBeenCalledTimes(1)
@@ -399,7 +408,7 @@ test('first retained backing slices one huge top-level root and installs only th
   expect(r.renderNode).toHaveBeenLastCalledWith(buildCanvas, graph, hugeRoot.id, {})
   expect(r.sceneBackingNeedsCrispRender).toBe(true)
 
-  expect(renderSceneBacking(r, canvas, graph, 1)).toBe(true)
+  expect(renderSceneBacking(r, canvas, graph, 1)).toBe('backing')
   expect(r.sceneBackingBuild?.index).toBe(2)
   expect(r.sceneBacking).toBeNull()
   expect(partialBuildSurface.flush).toHaveBeenCalledTimes(2)
@@ -408,7 +417,7 @@ test('first retained backing slices one huge top-level root and installs only th
 
   let buildSteps = 2
   while (r.sceneBackingBuild && buildSteps < 20) {
-    expect(renderSceneBacking(r, canvas, graph, 1)).toBe(true)
+    expect(renderSceneBacking(r, canvas, graph, 1)).toBe('backing')
     buildSteps++
   }
 
@@ -421,7 +430,8 @@ test('first retained backing slices one huge top-level root and installs only th
   expect(r.sceneBackingBuild).toBeNull()
   expect(r.sceneBacking?.image).toBe(snapshot)
   expect(canvas.drawImageRectOptions).toHaveBeenCalledTimes(1)
-  expect(r.sceneBackingNeedsCrispRender).toBe(false)
+  // The next settled frame uses native viewport AA without adding work to this tile step.
+  expect(r.sceneBackingNeedsCrispRender).toBe(true)
 })
 
 test('smooth mode advances at most four retained tiles in one build step', () => {
@@ -454,7 +464,7 @@ test('smooth mode advances at most four retained tiles in one build step', () =>
     height: 2_000
   })
 
-  expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe(true)
+  expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe('backing')
   expect(r.sceneBackingBuild?.index).toBe(4)
   expect(r.renderNode).toHaveBeenCalledTimes(4)
   expect(partialBuildCanvas.clipRect).toHaveBeenCalledTimes(4)
@@ -496,7 +506,7 @@ test('smooth mode stops retained tile work when its six millisecond step budget 
       height: 2_000
     })
 
-    expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe(true)
+    expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe('backing')
     expect(r.sceneBackingBuild?.index).toBe(1)
     expect(r.renderNode).toHaveBeenCalledTimes(1)
     expect(partialBuildSurface.flush).toHaveBeenCalledTimes(1)
@@ -544,7 +554,7 @@ test('retained backing expands tile culling for effects larger than the default 
   const visitedViewports: SkiaRenderer['worldViewport'][] = []
   r.renderNode = mock(() => visitedViewports.push({ ...r.worldViewport }))
 
-  expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe(true)
+  expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe('backing')
   expect(visitedViewports).toEqual([
     {
       x: -400,
@@ -616,6 +626,10 @@ test('retained scene backing filters cross-zoom previews instead of falling back
   r.zoom = 1
   r.sceneBackingPreviewUntil = Number.POSITIVE_INFINITY
   r.sceneBacking = {
+    anchorPanX: 0,
+    anchorPanY: 0,
+    marginDeviceX: 0,
+    marginDeviceY: 0,
     image: { delete: mock() } as CKImage,
     pageId: 'page',
     sceneVersion: 1,
@@ -635,7 +649,7 @@ test('retained scene backing filters cross-zoom previews instead of falling back
   const canvas = createCanvas()
   const graph = createGraph()
 
-  expect(renderSceneBacking(r, canvas, graph, 1)).toBe(true)
+  expect(renderSceneBacking(r, canvas, graph, 1)).toBe('backing')
   expect(canvas.drawImageRectOptions).toHaveBeenCalledWith(
     r.sceneBacking.image,
     expect.anything(),
@@ -651,6 +665,10 @@ test('retained scene backing allows same-zoom previews while panning', () => {
   r.zoom = 1
   r.sceneBackingPreviewUntil = Number.POSITIVE_INFINITY
   r.sceneBacking = {
+    anchorPanX: 0,
+    anchorPanY: 0,
+    marginDeviceX: 0,
+    marginDeviceY: 0,
     image: { delete: mock() } as CKImage,
     pageId: 'page',
     sceneVersion: 1,
@@ -670,13 +688,24 @@ test('retained scene backing allows same-zoom previews while panning', () => {
   const canvas = createCanvas()
   const graph = createGraph()
 
-  expect(renderSceneBacking(r, canvas, graph, 1)).toBe(true)
-  expect(canvas.drawImageRectOptions).toHaveBeenCalled()
+  expect(renderSceneBacking(r, canvas, graph, 1)).toBe('backing')
+  expect(canvas.drawImageRectOptions).toHaveBeenCalledTimes(1)
+  expect(r.sceneBackingNeedsCrispRender).toBe(true)
+
+  r.sceneBackingPreviewUntil = 0
+  expect(renderSceneBacking(r, canvas, graph, 1)).toBe('retained-pictures')
+  expect(r.sceneBackingNeedsCrispRender).toBe(false)
+  expect(canvas.drawImageRectOptions).toHaveBeenCalledTimes(1)
+  expect(r.surface.makeSurface).not.toHaveBeenCalled()
 })
 
 test('retained scene backing falls back live when a metadata rebuild cannot start', () => {
   const r = createRenderer(() => null)
   r.sceneBacking = {
+    anchorPanX: 0,
+    anchorPanY: 0,
+    marginDeviceX: 0,
+    marginDeviceY: 0,
     image: { delete: mock() } as CKImage,
     pageId: 'page',
     sceneVersion: 1,

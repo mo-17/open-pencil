@@ -1,6 +1,8 @@
 import type { CanvasPerformanceMode } from '@open-pencil/core/canvas'
 import type { EditorState } from '@open-pencil/core/editor'
 
+import type { PresentationColorSpace } from '#vue/canvas/surface/color-space'
+
 /**
  * Options for {@link useCanvas}.
  */
@@ -58,6 +60,11 @@ export interface UseCanvasOptions {
    * Called once the rendering surface is ready.
    */
   onReady?: () => void
+  /**
+   * Reports the color space the canvas actually presents, including fallbacks, or null
+   * when no surface could be configured.
+   */
+  onPresentation?: (colorSpace: PresentationColorSpace | null) => void
   /**
    * Supplies the view state rendered by this canvas. Defaults to `editor.state`.
    *

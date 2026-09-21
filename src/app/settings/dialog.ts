@@ -8,6 +8,7 @@ export type SettingsSection =
   | 'mcp'
   | 'appearance'
   | 'performance'
+  | 'tools'
   | 'media'
   | 'plugins'
   | 'storage'

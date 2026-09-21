@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import {
   buildUnitTestRunPlan,
   parseUnitTestRunArgs,
+  parseUnitTestRunOptions,
   runUnitTestPlan,
   type UnitTestRun
 } from '../src/run'
@@ -110,4 +111,44 @@ describe('unit test runner execution', () => {
     expect(exitCode).toBe(23)
     expect(commands).toHaveLength(2)
   })
+})
+
+test('heavy controls remain separate from forwarded Bun arguments', () => {
+  expect(parseUnitTestRunOptions(['core', '--heavy-only', '--', '--timeout', '180000'])).toEqual({
+    group: 'core',
+    includeHeavy: true,
+    heavyOnly: true,
+    isolate: false,
+    bunTestArgs: ['--timeout', '180000']
+  })
+  expect(parseUnitTestRunOptions(['--include-heavy']).includeHeavy).toBeTrue()
+  expect(parseUnitTestRunOptions([]).includeHeavy).toBeFalse()
+  expect(() => parseUnitTestRunOptions(['--typo'])).toThrow('Unknown unit test flag')
+})
+
+test('heavy-only planning excludes quick files and forwards Bun options exactly', async () => {
+  const plan = await buildUnitTestRunPlan('cli', { heavyOnly: true })
+  expect(plan.flatMap((run) => run.files)).toContain('tests/engine/cli/eval.test.ts')
+  expect(plan.flatMap((run) => run.files)).not.toContain('tests/engine/cli/args.test.ts')
+  const commands: string[][] = []
+  runUnitTestPlan([{ group: 'cli', files: ['heavy.test.ts'] }], {
+    executable: '/test/bun',
+    bunTestArgs: ['--timeout', '180000'],
+    includeHeavy: true,
+    spawnSync(command) {
+      commands.push(command)
+      return { success: true, exitCode: 0 }
+    }
+  })
+  expect(commands).toEqual([
+    ['/test/bun', 'test', '--timeout', '180000', resolve(REPO_ROOT, 'heavy.test.ts')]
+  ])
+})
+
+test('explicit isolation runs each quick file in a fresh process', async () => {
+  const options = parseUnitTestRunOptions(['cli', '--isolate'])
+  const plan = await buildUnitTestRunPlan(options.group, options)
+  expect(plan.length).toBeGreaterThan(0)
+  expect(plan.every((run) => run.files.length === 1)).toBeTrue()
+  expect(options.bunTestArgs).toEqual([])
 })

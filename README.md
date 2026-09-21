@@ -1,5 +1,10 @@
 # OpenPencil
 
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@open-pencil/cli?label=%40open-pencil%2Fcli)](https://www.npmjs.com/package/@open-pencil/cli)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/4wXc9fuZfm)
+[![GitHub Discussions](https://img.shields.io/github/discussions/open-pencil/open-pencil?logo=github&label=Discussions)](https://github.com/open-pencil/open-pencil/discussions)
+
 Open-source design editor. Opens `.fig` and `.pen` design files, includes built-in AI, and ships as a programmable toolkit with a headless Vue SDK for building custom editors.
 
 > **Status:** Active development. Usable today, with some rough edges as features evolve.
@@ -71,7 +76,7 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
 - **Real-time collaboration** — peer-to-peer collaboration via WebRTC, with cursors, presence,
   follow mode, and fine-grained MotionSpec v3 timeline merging with remote playheads and selections
 - **Auto layout & CSS Grid** — flex and grid layout via Yoga WASM, with gap, padding, alignment, track sizing
-- **~7 MB desktop app** — Tauri v2 for macOS, Windows, Linux. Also runs in the browser as a PWA
+- **~15 MB desktop app** — Tauri v2 for macOS, Windows, Linux. Also runs in the browser as a PWA
 
 ## CLI
 
@@ -114,7 +119,7 @@ openpencil query design.fig "//SECTION//TEXT"                       # Text insid
 
 ### Export
 
-Render to PNG, JPG, WEBP, SVG, PDF, JSX, HTML, or `.fig` — or export selections/pages as `.fig` and convert whole documents between supported formats:
+Render to PNG, JPG, WEBP, SVG, PDF, PPTX, HTML, JSX, or `.fig` — or export selections/pages as `.fig` and convert whole documents between supported formats:
 
 ```sh
 openpencil export design.fig                           # PNG
@@ -753,7 +758,7 @@ For a safe end-to-end example, open or rebuild `packages/demos/lowcode/lowcode-o
 
 ### Built-in chat
 
-Press <kbd>⌘</kbd><kbd>J</kbd> to open the AI assistant. Its curated built-in tool set covers common work such as rendering and editing nodes, fills, strokes, text, auto-layout, structure changes, and lowcode state. Attach a PNG, JPEG, WebP, or the current canvas selection as an explicit visual reference; a vision-capable model can analyze it and generate editable layout. A selected canvas reference can remain in place while the assistant builds beside it; a paperclip attachment stays chat-only and is not inserted onto the canvas. The composer shows which configured provider and model will receive the image. Model settings also offer default-off OpenRouter web search, provider-hosted OpenAI Code Interpreter, and selected Remote Streamable HTTP MCP servers; citations, generated-file references, and Direct MCP approval requests stay visible in chat. ACP agents apply their own redirect and permission policies for forwarded MCP servers. Bearer tokens use the unified credential store rather than model settings. Advanced component, variable, vector, analysis, and export operations are available through coding-agent and MCP integrations. Bring your own API key for OpenRouter, Anthropic, OpenAI, Google AI, DeepSeek, Z.ai, MiniMax, or compatible endpoints. No OpenPencil account or hosted backend is required.
+Press <kbd>⌘</kbd><kbd>J</kbd> (<kbd>Ctrl</kbd><kbd>J</kbd> on Windows and Linux) to open the AI assistant. Its default built-in tool set covers common work such as rendering and editing nodes, fills, strokes, text, auto-layout, structure changes, and lowcode state. Attach a PNG, JPEG, WebP, or the current canvas selection as an explicit visual reference; a vision-capable model can analyze it and generate editable layout. A selected canvas reference can remain in place while the assistant builds beside it; a paperclip attachment stays chat-only and is not inserted onto the canvas. The composer shows which configured provider and model will receive the image. Model settings also offer default-off OpenRouter web search, provider-hosted OpenAI Code Interpreter, and selected Remote Streamable HTTP MCP servers; citations, generated-file references, and Direct MCP approval requests stay visible in chat. ACP agents apply their own redirect and permission policies for forwarded MCP servers. Bearer tokens use the unified credential store rather than model settings. Enable extended operations from Tool access when needed; advanced component, variable, vector, analysis, and export operations are also available through coding-agent and MCP integrations. Bring your own API key for OpenRouter, Anthropic, OpenAI, Google AI, DeepSeek, Z.ai, MiniMax, or compatible endpoints. No OpenPencil account or hosted backend is required.
 
 Not every provider works in the browser, and not every model streams tool calls correctly. See [BYOK provider & model compatibility](packages/docs/programmable/byok-provider-compatibility.md) for measured results — contributions welcome.
 
@@ -780,7 +785,7 @@ Pi is also available as an optional AI SDK Harness provider. Install its compani
      }
    }
    ```
-3. Open the desktop app → <kbd>Ctrl</kbd><kbd>J</kbd> → select **Claude Code** from the provider dropdown
+3. Open the desktop app → <kbd>⌘</kbd><kbd>J</kbd> → select **Claude Code** from the provider dropdown
 
 ### MCP server
 
@@ -844,6 +849,12 @@ Core editing is local-first and requires no OpenPencil account or hosted backend
 
 See the [roadmap](https://openpencil.dev/development/roadmap) for product direction and current Figma compatibility gaps.
 
+## Community
+
+- **[Discord](https://discord.gg/4wXc9fuZfm)** — chat, quick questions, and showing a problem live
+- **[GitHub Discussions](https://github.com/open-pencil/open-pencil/discussions)** — [Q&A](https://github.com/open-pencil/open-pencil/discussions/categories/q-a) for help, [Ideas](https://github.com/open-pencil/open-pencil/discussions/categories/ideas) for feature proposals, [Show and tell](https://github.com/open-pencil/open-pencil/discussions/categories/show-and-tell) for what you built; maintainers post [Announcements](https://github.com/open-pencil/open-pencil/discussions/categories/announcements) there
+- **[Issues](https://github.com/open-pencil/open-pencil/issues)** — reproducible bugs; report security problems through a [private advisory](https://github.com/open-pencil/open-pencil/security/advisories/new)
+
 ## Contributing
 
 ### Setup
@@ -863,12 +874,13 @@ The Dev Container supports the web editor, packages, CLI, and automated checks. 
 
 ### Quality gates
 
-| Command             | Description                                                       |
-| ------------------- | ----------------------------------------------------------------- |
-| `bun run check`     | Package build, lint, type, i18n, package, and architecture checks |
-| `bun run test`      | Playwright app and visual regression tests                        |
-| `bun run test:unit` | Bun engine unit tests                                             |
-| `bun run format`    | Format the repository with oxfmt                                  |
+| Command                   | Description                                                |
+| ------------------------- | ---------------------------------------------------------- |
+| `bun run check`           | Full gate: lint, typecheck, package, docs, and arch checks |
+| `bun run test:unit:quick` | Unit tests by owner, heavy fixtures skipped                |
+| `bun run test:unit`       | Every unit test, heavy fixtures included                   |
+| `bun run test`            | E2E visual regression                                      |
+| `bun run format`          | Code formatting                                            |
 
 ### Project structure
 
@@ -888,26 +900,29 @@ packages/
   compiler/       @open-pencil/compiler — design-to-code targets and trusted Backend Provider bundles
   cli/            @open-pencil/cli — headless CLI
   mcp/            @open-pencil/mcp — MCP server (stdio + HTTP)
+  harness/        @open-pencil/harness — companion CLI for coding-agent Harness sessions
   docs/           Documentation site (openpencil.dev)
   demos/          Demo media and example assets
 src/              Vue app (editor shell, AI, collaboration, document I/O)
 desktop/          Tauri v2 desktop app (Rust + config)
-tests/            E2E, visual, engine, and integration tests
+skills/           Agent skill (npx skills add open-pencil/open-pencil)
+tools/            Repository tooling: CI, release, lint, and test infrastructure
+tests/            E2E, visual, and engine tests
 ```
 
 ### Tech stack
 
-| Layer          | Tech                                                                               |
-| -------------- | ---------------------------------------------------------------------------------- |
-| Rendering      | Skia (CanvasKit WASM)                                                              |
-| Layout         | Yoga WASM (flex + grid via [fork](https://github.com/open-pencil/yoga/tree/grid))  |
-| UI             | Vue 3, Reka UI, Tailwind CSS 4                                                     |
-| Build tooling  | Bun workspaces, Vite 8, TypeScript                                                 |
-| File format    | Kiwi binary + Zstd + ZIP                                                           |
-| Collaboration  | Trystero (WebRTC P2P) + Yjs (CRDT)                                                 |
-| Desktop        | Tauri v2                                                                           |
-| AI/MCP         | Multi-provider (Anthropic, OpenAI, Google AI, DeepSeek, OpenRouter), MCP SDK, Hono |
-| Lowcode output | Vite, React, TypeScript, Tailwind CSS                                              |
+| Layer          | Tech                                                                              |
+| -------------- | --------------------------------------------------------------------------------- |
+| Rendering      | Skia (CanvasKit WASM)                                                             |
+| Layout         | Yoga WASM (flex + grid via [fork](https://github.com/open-pencil/yoga/tree/grid)) |
+| UI             | Vue 3, Reka UI, Tailwind CSS 4                                                    |
+| Build tooling  | Bun workspaces, Vite 8, TypeScript                                                |
+| File format    | Kiwi binary + Zstd + ZIP                                                          |
+| Collaboration  | Trystero (WebRTC P2P) + Yjs (CRDT)                                                |
+| Desktop        | Tauri v2                                                                          |
+| AI/MCP         | Vercel AI SDK (multi-provider BYOK), MCP SDK, Hono                                |
+| Lowcode output | Vite, React or Vue, TypeScript, Tailwind CSS                                      |
 
 ### Desktop builds
 

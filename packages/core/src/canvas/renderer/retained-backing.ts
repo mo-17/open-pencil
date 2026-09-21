@@ -133,8 +133,16 @@ function backingWorldCoverageContainsLiveViewport(r: SkiaRenderer): boolean {
   )
 }
 
-function backingZoomMatchesLiveViewport(r: SkiaRenderer): boolean {
-  return Math.abs((r.sceneBacking?.zoom ?? r.zoom) - r.zoom) <= 0.0001
+function backingPixelGridMatchesLiveViewport(r: SkiaRenderer): boolean {
+  const backing = r.sceneBacking
+  if (!backing || backing.dpr !== r.dpr || backing.zoom !== r.zoom) {
+    return false
+  }
+  // Compare against the original viewport, not its rounded overscan origin.
+  // A freshly built backing therefore always matches exactly (zero delta).
+  const x = (r.panX - backing.anchorPanX) * r.dpr
+  const y = (r.panY - backing.anchorPanY) * r.dpr
+  return Number.isInteger(x) && Number.isInteger(y)
 }
 
 function backingCoverageContainsLiveViewport(
@@ -144,9 +152,13 @@ function backingCoverageContainsLiveViewport(
   positionPreviewVersion: number
 ): boolean {
   if (!backingMetadataMatches(r, sceneVersion, positionPreviewVersion)) return false
-  const crispZoom = backingZoomMatchesLiveViewport(r)
   if (allowStaleZoom && backingScreenCoverageContainsViewport(r)) return true
-  return crispZoom && backingWorldCoverageContainsLiveViewport(r)
+  const cappedAtSameZoom =
+    r.sceneBacking !== null && r.sceneBacking.dpr < r.dpr && r.sceneBacking.zoom === r.zoom
+  return (
+    (backingPixelGridMatchesLiveViewport(r) || cappedAtSameZoom) &&
+    backingWorldCoverageContainsLiveViewport(r)
+  )
 }
 
 function drawSceneBacking(
@@ -173,9 +185,14 @@ function drawBackingImage(
   canvas: Canvas,
   backing: NonNullable<SkiaRenderer['sceneBacking']>
 ): void {
+  const pixelAligned = backingPixelGridMatchesLiveViewport(r)
   const scale = r.zoom / backing.zoom
-  const x = r.panX - backing.panX * scale
-  const y = r.panY - backing.panY * scale
+  const x = pixelAligned
+    ? ((r.panX - backing.anchorPanX) * r.dpr - backing.marginDeviceX) / r.dpr
+    : r.panX - backing.panX * scale
+  const y = pixelAligned
+    ? ((r.panY - backing.anchorPanY) * r.dpr - backing.marginDeviceY) / r.dpr
+    : r.panY - backing.panY * scale
   r.opacityPaint.setAlphaf(1)
   canvas.drawImageRectOptions(
     backing.image,
@@ -186,7 +203,7 @@ function drawBackingImage(
       Math.max(1, Math.floor(backing.height * backing.dpr))
     ),
     r.ck.LTRBRect(x, y, x + backing.width * scale, y + backing.height * scale),
-    r.ck.FilterMode.Linear,
+    pixelAligned ? r.ck.FilterMode.Nearest : r.ck.FilterMode.Linear,
     r.ck.MipmapMode.None,
     r.opacityPaint
   )
@@ -223,8 +240,12 @@ function sceneBackingGeometry(r: SkiaRenderer): SceneBackingGeometry {
     r.dpr,
     r.performanceMode
   )
-  const marginX = r.viewportWidth * ((backingScale - 1) / 2)
-  const marginY = r.viewportHeight * ((backingScale - 1) / 2)
+  // Keep the raster on the live viewport's device-pixel grid. Fractional
+  // overscan offsets otherwise resample already antialiased edges on every blit.
+  const marginDeviceX = Math.floor(r.viewportWidth * ((backingScale - 1) / 2) * r.dpr)
+  const marginDeviceY = Math.floor(r.viewportHeight * ((backingScale - 1) / 2) * r.dpr)
+  const marginX = marginDeviceX / r.dpr
+  const marginY = marginDeviceY / r.dpr
   const width = Math.max(1, Math.ceil(r.viewportWidth + marginX * 2))
   const height = Math.max(1, Math.ceil(r.viewportHeight + marginY * 2))
   // A single viewport can itself exceed the cap on a large/high-DPI display.
@@ -234,6 +255,10 @@ function sceneBackingGeometry(r: SkiaRenderer): SceneBackingGeometry {
   const backingPanX = r.panX + marginX
   const backingPanY = r.panY + marginY
   return {
+    anchorPanX: r.panX,
+    anchorPanY: r.panY,
+    marginDeviceX,
+    marginDeviceY,
     panX: backingPanX,
     panY: backingPanY,
     width,
@@ -330,6 +355,132 @@ export function computeRetainedSubtreeBounds(
   }
 
   return unionVisualBounds(visualBounds, transformedBounds)
+}
+
+function ensureSubtreePictureCacheScope(
+  r: SkiaRenderer,
+  graph: SceneGraph,
+  sceneVersion: number
+): void {
+  if (
+    r.subtreePictureCachePageId === r.pageId &&
+    r.subtreePictureCacheSceneVersion === sceneVersion &&
+    r.subtreePictureCachePositionPreviewVersion === graph.positionPreviewVersion &&
+    r.subtreePictureCacheFontGeneration === r.fontGeneration
+  ) {
+    return
+  }
+  clearSubtreePictureCache(r)
+  r.subtreePictureCachePageId = r.pageId
+  r.subtreePictureCacheSceneVersion = sceneVersion
+  r.subtreePictureCachePositionPreviewVersion = graph.positionPreviewVersion
+  r.subtreePictureCacheFontGeneration = r.fontGeneration
+}
+
+/**
+ * Retained pictures are recorded in world coordinates, so their recording bounds must account for
+ * the complete ancestor transform chain. The regular visual-bounds helper intentionally accepts
+ * only an absolute origin and a node-local rotation; that is insufficient for descendants of
+ * reflected or rotated instances and can clip otherwise valid draw commands from the picture.
+ */
+function cachedSubtreePicture(
+  r: SkiaRenderer,
+  graph: SceneGraph,
+  childId: string,
+  sceneVersion: number
+) {
+  ensureSubtreePictureCacheScope(r, graph, sceneVersion)
+  const cached = r.subtreePictureCache.get(childId)
+  if (
+    cached &&
+    cached.pageId === r.pageId &&
+    cached.sceneVersion === sceneVersion &&
+    cached.positionPreviewVersion === graph.positionPreviewVersion &&
+    cached.fontGeneration === r.fontGeneration
+  ) {
+    return cached.picture
+  }
+
+  cached?.picture.delete()
+  r.subtreePictureCache.delete(childId)
+  const bounds = computeRetainedSubtreeBounds(graph, childId)
+  if (!bounds) return null
+
+  const recorder = new r.ck.PictureRecorder()
+  const prevViewport = r.worldViewport
+  try {
+    const recCanvas = recorder.beginRecording(
+      r.ck.LTRBRect(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY)
+    )
+    r.worldViewport = {
+      x: bounds.minX,
+      y: bounds.minY,
+      w: bounds.maxX - bounds.minX,
+      h: bounds.maxY - bounds.minY
+    }
+    r.renderNode(recCanvas, graph, childId, {})
+    const picture = recorder.finishRecordingAsPicture()
+    r.subtreePictureCache.set(childId, {
+      picture,
+      pageId: r.pageId,
+      sceneVersion,
+      positionPreviewVersion: graph.positionPreviewVersion,
+      fontGeneration: r.fontGeneration
+    })
+    return picture
+  } finally {
+    r.worldViewport = prevViewport
+    recorder.delete()
+  }
+}
+
+function drawRetainedChild(
+  r: SkiaRenderer,
+  graph: SceneGraph,
+  canvas: Canvas,
+  childId: string,
+  sceneVersion: number,
+  renderingSceneBacking: boolean
+): void {
+  const child = graph.getNode(childId)
+  const hasCacheableEffects = child?.effects.some(
+    (effect) => effect.visible && (effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW')
+  )
+  if (hasCacheableEffects) {
+    const previous = r.renderingSceneBacking
+    r.renderingSceneBacking = renderingSceneBacking
+    try {
+      r.renderNode(canvas, graph, childId, {})
+    } finally {
+      r.renderingSceneBacking = previous
+    }
+  } else {
+    const picture = cachedSubtreePicture(r, graph, childId, sceneVersion)
+    if (picture) canvas.drawPicture(picture)
+    else r.renderNode(canvas, graph, childId, {})
+  }
+}
+
+function drawSettledScene(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  sceneVersion: number
+): void {
+  // Analytic AA depends on framebuffer dimensions as well as pixel/quad phase.
+  // Reuse existing pictures at the live viewport origin and size. Overscan
+  // remains available for navigation; this creates no additional cache.
+  canvas.save()
+  try {
+    canvas.translate(r.panX, r.panY)
+    canvas.scale(r.zoom, r.zoom)
+    const page = graph.getNode(r.pageId ?? graph.rootId)
+    for (const childId of page?.childIds ?? []) {
+      drawRetainedChild(r, graph, canvas, childId, sceneVersion, false)
+    }
+  } finally {
+    canvas.restore()
+  }
 }
 
 function sceneBackingCullPaddingDevicePx(
@@ -469,6 +620,10 @@ function renderBackingTile(
 
 function sceneBackingMetrics(backing: SceneBackingGeometry): SceneBackingGeometry {
   return {
+    anchorPanX: backing.anchorPanX,
+    anchorPanY: backing.anchorPanY,
+    marginDeviceX: backing.marginDeviceX,
+    marginDeviceY: backing.marginDeviceY,
     panX: backing.panX,
     panY: backing.panY,
     zoom: backing.zoom,
@@ -498,6 +653,17 @@ function installSceneBackingImage(
     fontGeneration: r.fontGeneration,
     ...sceneBackingMetrics(backing)
   }
+  // Advancing the preview baseline must not relabel an older whole-scene
+  // picture as current: navigation can still fall back to that picture.
+  if (
+    r.scenePictureVersion !== sceneVersion ||
+    r.scenePicturePositionPreviewVersion !== positionPreviewVersion ||
+    r.scenePicturePageId !== r.pageId ||
+    r.scenePictureFontGeneration !== r.fontGeneration
+  ) {
+    r.scenePicture?.delete()
+    r.scenePicture = null
+  }
   r.scenePictureVersion = sceneVersion
   r.scenePicturePositionPreviewVersion = positionPreviewVersion
   r.scenePicturePageId = r.pageId
@@ -524,6 +690,10 @@ function sceneBackingBuildMatches(r: SkiaRenderer, sceneVersion: number): boolea
     build.sceneVersion === sceneVersion &&
     build.positionPreviewVersion === build.graph.positionPreviewVersion &&
     build.fontGeneration === r.fontGeneration &&
+    build.anchorPanX === backing.anchorPanX &&
+    build.anchorPanY === backing.anchorPanY &&
+    build.width === backing.width &&
+    build.height === backing.height &&
     build.panX === backing.panX &&
     build.panY === backing.panY &&
     build.zoom === backing.zoom &&
@@ -573,23 +743,6 @@ function startSceneBackingBuild(r: SkiaRenderer, graph: SceneGraph, sceneVersion
   return true
 }
 
-function sceneBackingGeometryFromBuild(
-  build: NonNullable<SkiaRenderer['sceneBackingBuild']>
-): SceneBackingGeometry {
-  return {
-    panX: build.panX,
-    panY: build.panY,
-    width: build.width,
-    height: build.height,
-    worldX: build.worldX,
-    worldY: build.worldY,
-    worldWidth: build.worldWidth,
-    worldHeight: build.worldHeight,
-    zoom: build.zoom,
-    dpr: build.dpr
-  }
-}
-
 function stepSceneBackingBuild(r: SkiaRenderer, sceneVersion: number): boolean {
   const build = r.sceneBackingBuild
   if (!build) return false
@@ -598,7 +751,7 @@ function stepSceneBackingBuild(r: SkiaRenderer, sceneVersion: number): boolean {
     return false
   }
 
-  const backing = sceneBackingGeometryFromBuild(build)
+  const backing = sceneBackingMetrics(build)
   const tiles = sceneBackingBuildTiles.get(build)
   if (!tiles) {
     cancelSceneBackingBuild(r)
@@ -659,18 +812,16 @@ export function renderSceneBacking(
   canvas: Canvas,
   graph: SceneGraph,
   sceneVersion: number
-): boolean {
+): false | 'backing' | 'retained-pictures' {
   if (r.sceneBackingAllocationFailed) return false
-  const navigationActive =
-    r.navigationPhase === 'pan' ||
-    r.navigationPhase === 'zoom' ||
-    r.navigationPhase === 'momentum' ||
-    r.navigationPhase === 'settling'
+  const navigationActive = r.navigationPhase !== 'idle'
   if (navigationActive && r.sceneBacking) {
     r.sceneBackingBuild?.surface.delete()
     r.sceneBackingBuild = null
     r.sceneBackingNeedsCrispRender = true
     return drawSceneBacking(r, canvas, sceneVersion, true, graph.positionPreviewVersion)
+      ? 'backing'
+      : false
   }
   const positionPreviewVersion = graph.positionPreviewVersion
   const allowStaleZoom = now() < r.sceneBackingPreviewUntil
@@ -686,10 +837,44 @@ export function renderSceneBacking(
     // live renderer here would synchronously replay the very whole page this builder is slicing.
     if (!sceneBackingBuildMatches(r, sceneVersion)) startSceneBackingBuild(r, graph, sceneVersion)
   }
+  const wasBuilding = !!r.sceneBackingBuild
   if (r.sceneBackingBuild) {
     stepSceneBackingBuild(r, sceneVersion)
   }
 
+  return presentCompletedBacking(
+    r,
+    canvas,
+    graph,
+    sceneVersion,
+    allowStaleZoom,
+    wasBuilding,
+    hasCoverage
+  )
+}
+
+function presentCompletedBacking(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  sceneVersion: number,
+  allowStaleZoom: boolean,
+  wasBuilding: boolean,
+  hasCoverage: boolean
+): false | 'backing' | 'retained-pictures' {
+  const positionPreviewVersion = graph.positionPreviewVersion
+  const crisp = backingPixelGridMatchesLiveViewport(r)
+  r.sceneBackingNeedsCrispRender = allowStaleZoom || !crisp || !!r.sceneBackingBuild || wasBuilding
+  if (
+    !allowStaleZoom &&
+    !wasBuilding &&
+    !r.sceneBackingBuild &&
+    backingMetadataMatches(r, sceneVersion, positionPreviewVersion)
+  ) {
+    drawSettledScene(r, canvas, graph, sceneVersion)
+    r.sceneBackingNeedsCrispRender = false
+    return 'retained-pictures'
+  }
   const drewCurrent = drawSceneBacking(
     r,
     canvas,
@@ -697,20 +882,11 @@ export function renderSceneBacking(
     allowStaleZoom || !!r.sceneBackingBuild,
     positionPreviewVersion
   )
-  const crisp = Math.abs((r.sceneBacking?.zoom ?? r.zoom) - r.zoom) <= 0.0001
-  r.sceneBackingNeedsCrispRender = !drewCurrent || !crisp || !!r.sceneBackingBuild
-  if (drewCurrent) return true
+  if (drewCurrent) return 'backing'
   if (r.sceneBackingBuild) {
-    // The offscreen build is valid and will advance on the next scheduled scene frame. Preserve a
-    // completed stale frame when available; otherwise the already-cleared page color is the safe,
-    // responsive initial placeholder until the final snapshot can be installed atomically.
     drawLastGoodSceneBacking(r, canvas)
-    return true
+    return 'backing'
   }
-  if (!hasCoverage) {
-    // Allocation or recording failed. Presenting the stale image as a successful retained draw
-    // would permanently suppress the viewport-culling live fallback in the render pipeline.
-    return false
-  }
-  return drawLastGoodSceneBacking(r, canvas)
+  if (!hasCoverage) return false
+  return drawLastGoodSceneBacking(r, canvas) ? 'backing' : false
 }

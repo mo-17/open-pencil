@@ -116,6 +116,10 @@ CanvasKit runtime loading is centralized in `packages/core/src/canvaskit.ts` / `
 Each action module exports a factory: `createXxxActions(ctx: EditorContext) => { ... }`.
 `Editor` type = `ReturnType<typeof createEditor>`.
 
+#### Retained property panels
+
+`DesignPanel` retains at most one selection-property subtree through `RetainedPanel`. The app installs `createRetainedScopePlugin()` from the Vue SDK; opted-in descendants receive `provideRetainedActivity()`. Vue component scopes are detached, so pausing only a parent or using bare `KeepAlive` does not suspend descendant work. Cancel drafts synchronously before DOM detachment can fire blur, close transient state and gate portals with `useRetainedPopup()`, and invalidate pending async results on deactivation/disposal. The plugin lets cleanup flush before pausing each component scope and resumes it on activation; it requires Vue's Options API. Unmounting the owning editor releases the retained subtree.
+
 #### Editor event bus
 
 The editor exposes a typed nanoevents emitter for lifecycle events. Defined in `EditorEvents` (`types.ts`), emitted via `emitEditorEvent()` on the context, subscribed via `editor.onEditorEvent(event, handler)` which returns an unbind function.
@@ -222,6 +226,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun run test:coverage` — Bun coverage for engine and package-local unit tests
 - `bun run test` — Playwright app/visual regression (`--project=openpencil`)
 - `bun run test:update` — update Playwright snapshots for the OpenPencil project
+- `bun run test:storybook` — Storybook browser tests; scripts select their server, while direct Playwright commands need `OPENPENCIL_TEST_SERVER=app|storybook|all`
 - `bun run test:figma` — Playwright Figma automation project
 - `bun run test:dupes` — jscpd clone detection across selected framework-agnostic, package, compiler, and app sources
 - `bun run test:type-shapes` — duplicate object-type shape detector
@@ -229,7 +234,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun run test:packages` — package metadata check + packed tarball smoke tests
 - `bun run check:figma-motion-plugin` — typecheck, test, and build the development Figma Motion adapter plugin
 - `bun run docs:dev` / `docs:build` / `docs:preview` — VitePress docs lifecycle
-- `bun run generate:tauri-menu` — regenerate `desktop/generated/menu.json` from shared menu schema
+- `bun run generate:tauri-menu` — regenerate `desktop/generated/app-menu.json` from shared menu schema
 - `bun run visual-compare` — Figma vs OpenPencil renderer visual comparison helper
 - `bun open-pencil info <file>` — document stats
 - `bun open-pencil tree <file>` — node tree
@@ -289,13 +294,14 @@ Browser tests use the canonical `playwright.config.ts`; do not create task-speci
 3. Commit: `Release v0.x.y`
 4. Tag: `git tag v0.x.y && git push --tags`
 5. Ensure GitHub Actions has repository variables `VITE_GOOGLE_DRIVE_CLIENT_ID`, `OPENPENCIL_GOOGLE_DRIVE_OAUTH_BROKER_ORIGIN`, `VITE_ONEDRIVE_CLIENT_ID`, `VITE_ALIYUN_DRIVE_CLIENT_ID`, `OPENPENCIL_ALIYUN_DRIVE_OAUTH_BROKER_ORIGIN`, `OPENPENCIL_ALIYUN_DRIVE_REDIRECT_URI`, `VITE_BAIDU_NETDISK_APP_KEY`, and `OPENPENCIL_BAIDU_NETDISK_OAUTH_BROKER_ORIGIN`. They are public IDs, origins, and a fixed callback; never add an Aliyun Client Secret or Baidu SecretKey to repository variables, Vite, or the desktop artifact. Before distributing any desktop artifact, manually verify every deployed Broker route/TLS and exact client identity, then complete real provider flows. For Google, cover consent/exchange/refresh and repeat consent, restart, refresh, revoke, and Drive operations with imported Desktop `credentials.json` if advanced mode ships, verifying that official and custom modes never contact one another's token backend. For OneDrive, cover consent, restart/refresh, upload, download, conflict-copy, and delete with both personal and work/school accounts. For Aliyun, cover the fixed callback, exact folder-style consent, service-enforced root, 30-day no-refresh expiry/reconnect, transfer, conflict, and trash. For Baidu, complete production launch review before public distribution and cover device-code consent, refresh, `/apps/OpenPencil` confinement, transfer, conflict, and trash. Workflow syntax and unit/native-bridge tests cannot prove these live gates. Release secrets must include `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the updater key is password-protected); the public updater key is configured in `desktop/tauri.conf.json`. macOS signing and notarization additionally require `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID`.
-6. The `build.yml` workflow triggers on `v*` tags, with repository-specific release authority:
-   - In `open-pencil/open-pencil`, it builds Tauri binaries for macOS (arm64 + x64), Windows (x64 + arm64), and Linux (x64), then creates a draft GitHub Release whose title exactly matches the tag and whose body is the matching version section from `CHANGELOG.md`. The release includes platform installers, updater signatures, and `latest.json`.
+6. The `build.yml` workflow is the source of truth for release authority and validates immutable version refs before publication:
+   - In `open-pencil/open-pencil`, release jobs build shared frontend/package outputs once, build signed native artifacts in parallel, verify and attest a complete same-run artifact set, publish prepared npm tarballs, and replace draft release assets using the matching changelog section. Native release policy and recovery rules live in `tools/release-packages/README.md`; record workflow and application source commits separately.
    - In `mo-17/open-pencil`, it prepares, audits, and publishes the public `@open-pencil-lowcode/*` workspace packages to npm with provenance. Keep the exact package list in sync with `.github/workflows/build.yml` and `tools/release-packages/src/publish-dirs.ts`.
-   - A manual `workflow_dispatch` can run the Tauri build for the selected ref, but it never authorizes npm publication.
+   - Manual fork dispatches may run unsigned desktop smoke builds but never authorize fork npm publication; retain repository-specific conditions instead of inheriting official release authority.
 7. The production web app/docs deploy workflows (`app.yml`, `docs.yml`) also trigger on `v*` tags. They do **not** deploy on ordinary `master` pushes.
 8. `@open-pencil/compiler` is private and built for app/CLI consumption, but it is not currently published as a standalone npm package.
-9. For an official desktop release, verify the draft’s title and changelog-derived body, then publish it. Publishing the GitHub Release triggers `homebrew.yml`, which updates the Homebrew cask from the signed macOS updater archives.
+9. For an official desktop release, verify the draft’s exact tag title, changelog-derived body, and complete artifacts before publishing. Homebrew’s official `openpencil` cask is maintained upstream through BrewTestBot and Homebrew review; check its update after publication. Do not restore the removed custom-tap workflow or duplicate its automation. Install the desktop app with `brew install --cask openpencil`; install the CLI separately through npm or Bun.
+10. Discover public workspace packages through the package-artifacts catalog. Bun source exports require the complete `src` directory in published contents; Node exports use `dist`. Preserve resolution maps and verify prepared tarballs through the shared Node/Bun consumer checks; do not publish package directories manually.
 
 Bun source-first workspace exports require complete source files in package contents. Node exports use `dist`. Fork release preparation preserves its scope mapping and publishes only reviewed tarballs; shared package-artifact and Node/Bun consumer checks validate the resulting entrypoints.
 
@@ -343,6 +349,13 @@ PR CI always classifies changed paths through `tools/ci/`. Docs-only changes run
 
 When adding features, update `CHANGELOG.md` (Unreleased section) and `README.md` (if user-facing). Changelog entries use the public categories `Breaking changes`, `Added`, `Changed`, `Fixed`, `Performance`, and `Security`; omit empty categories. Use `## x.y.z — YYYY-MM-DD` for release headings, describe one user-visible outcome per bullet in present tense, end complete sentences with periods, and append related issue or PR references such as `(#395)`. Avoid implementation details, test counts, and internal refactors unless they affect users or package consumers. Update `AGENTS.md` when architecture or conventions change. Do not put speculative/internal implementation plans in `packages/docs/**`; VitePress docs are published. Keep temporary plans in ignored `scratch/` or distill durable public direction into the canonical roadmap.
 
+Before finalizing `Unreleased`:
+
+- Compare released behavior at the latest published tag with the final implementation, not just commit subjects. Verify questionable fixes existed at that tag; fold fixes to newly added features into their final feature description.
+- Check public exports, model/config/data contracts, and peer requirements for removals, renames, and upgrade instructions under `Breaking changes`.
+- Remove superseded intermediate behavior and duplicate outcomes across categories. State platform requirements and concrete supported behavior instead of unqualified compatibility or performance claims.
+- Run `bun run check:changelog`. Keep historical sections unchanged during routine cleanup; release publication uses the matching tagged section, not regenerated prose.
+
 ## Commit messages
 
 `commitlint.config.ts` enforces message structure through the **Commit messages** CI job on all PRs, including docs-only changes. Run `bun run check:commits --last` or pass `--from`/`--to` for a branch range. Preserve the release exception and product casing when changing rules; CI gate policy lives in `tools/ci/src/policy.ts`.
@@ -350,6 +363,8 @@ When adding features, update `CHANGELOG.md` (Unreleased section) and `README.md`
 Use Conventional Commits (`feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `build`, `ci`, `chore`) for regular work. Keep subjects short, imperative, and narrowly scoped; explain rationale in the body. Preserve product casing such as DOM/CSS, HTML, JSX, Tailwind, Kiwi, `.fig`, MCP, CLI, AI, ACP, and i18n. Release commits use `Release vX.Y.Z`.
 
 Keep body lines and bullets capitalized.
+
+Keep AI assistance in the PR's AI assistance section, not commit authorship or `Co-authored-by` trailers. Do not append tool-generated promotional signatures or session links. Preserve human co-author credits and required third-party notices. Follow the vendor-neutral attribution policy in `CONTRIBUTING.md`; the existing commitlint gate checks known AI co-author identities without rewriting base history.
 
 PR titles use Conventional Commits because GitHub uses them as merge subjects. The separate **PR title** workflow validates titles, including title edits, without rerunning the full CI suite. Preserve the conventional subject when merging via CLI/API; if setting it explicitly with `gh pr merge --subject`, use the validated PR title. Give branch-update merges explicit subjects such as `chore: merge master into <branch>`. Commitlint's default merge exceptions are not a naming convention. Do not rewrite published history solely to normalize messages.
 
@@ -569,6 +584,10 @@ PR titles use Conventional Commits because GitHub uses them as merge subjects. T
 - Test placement is strict and enforced by Steiger: app E2E tests live under `tests/e2e/**` and use `*.spec.ts`; Figma automation tests live under `tests/figma/**` and use `*.spec.ts`; engine/unit tests live under `tests/engine/**` and use `*.test.ts` (with `helpers.ts`, `*.bench.ts`, and `visual-*` support scripts allowed); shared test utilities live under `tests/helpers/**`. Engine tests should live under a domain folder that mirrors the source module under test (for example `tests/engine/io/fig/**`, not `tests/engine/fig/**`). Do not commit temporary/profile specs (`*.tmp.*`, `*.profile.*`). Do not put store-only/internal-state assertions in E2E. If a test drives the UI like a user and verifies visible behavior, it can be E2E; if it creates nodes through internals and asserts graph state, it belongs in engine/unit coverage.
 - Use Valibot for first-party runtime validation. MCP v2 registration uses Standard Schema with Valibot JSON Schema conversion; AI and WebMCP adapters share the Core tool input contract. Keep Zod only where upstream dependencies require it; do not maintain parallel first-party schemas in both libraries.
 
+- Put code and tests in the established owning domain; inspect nearby structure before adding files.
+- `bun run check:arch` enforces boundaries: use public workspace exports, keep Core framework-neutral, keep app services out of views/shared UI, and keep property-panel internals scoped to that panel.
+- Follow the canonical [testing architecture](packages/docs/development/testing.md): package-local tests mirror source domains; central app tests mirror `src/app/**`; central integration requires a genuinely cross-owner contract. E2E follows user workflows; native and Figma acceptance remain explicit exceptions. Existing `tests/engine/**` domains migrate together with runner discovery—`tools/unit-tests/src/shards.ts` lists each owner's canonical home and its current `tests/engine` directories, so a move is a `git mv` plus imports; do not create competing homes or undiscovered suites. Owner-local helpers/fixtures stay local; only genuinely shared support is central. Specs use domain drivers/probes, not scattered Window/store traversal or unrestricted evaluator wrappers. Test contracts, not source text; never commit temporary/profile specs.
+
 ### File and folder naming
 
 OpenPencil follows a Reka UI-inspired component namespace structure:
@@ -580,6 +599,10 @@ OpenPencil follows a Reka UI-inspired component namespace structure:
 - Non-component TypeScript files use lowercase or kebab-case unless they are conventional entrypoints such as `index.ts`, `types.ts`, `context.ts`, or `use.ts`.
 - Multi-file root components live inside their component namespace folder, not beside it.
 - Use subfolders for multi-file domains instead of sibling files with repeated prefixes. Prefer `selection/container.ts`, `selection/hit-test.ts` over `selection-container.ts`, `selection-hit-test.ts`. When adding a second file for a domain (e.g. `eval-wrap.ts` next to `eval.ts`), create the folder immediately (`eval/index.ts` + `eval/wrap.ts`) instead of prefixing. Oxlint catches sibling prefix files when a sibling folder exists; Steiger catches 3+ sibling files with the same prefix. The convention applies even before either rule triggers.
+
+### Brand assets
+
+Canonical brand artwork lives in `assets/brand/`: the main mark and an optical micro master. `tools/brand/` derives web/docs/native icons locally with RealFaviconGenerator and Tauri; generated assets are ignored, not committed. Vite/VitePress configs prepare their own targets, and Tauri dev/build hooks prepare native icons. Direct Cargo checks must run `bun run generate:icons --target desktop` first. Keep the app manifest in `vite/pwa.ts`, use `BrandMark` for in-app branding, and never symlink web assets to desktop icons. See `assets/brand/README.md` for commands and output ownership.
 
 ### Repo tools and scripts
 
@@ -668,6 +691,25 @@ Self-review checklist:
 - `es-toolkit` is available in core for small, focused utility helpers when it clearly improves readability. Prefer subpath imports such as `es-toolkit/object`, `es-toolkit/array`, and `es-toolkit/predicate`; good fits include `omit` / `pick` for object key selection, `uniq` for dedupe, and `isNotNil` for typed nullish filtering. Do not replace clear native JavaScript just for consistency, and avoid `es-toolkit/compat` unless deliberately migrating lodash-compatible behavior.
 - Check Reka UI for existing components (Dialog, Popover, DropdownMenu, Select, Tooltip, Toast, etc.) before building custom ones — especially dropdowns, popovers, and modals
 
+### Dependency documentation
+
+Before using an unfamiliar dependency API or writing a replacement utility, inspect existing project wrappers and read the relevant official documentation. Start with the indexes below, then fetch specific pages rather than entire `llms-full.txt` dumps. Match documentation to versions in the package manifests and lockfiles; verify signatures against installed types/source when versions differ. Do not guess APIs or invent primitives already supplied by dependencies.
+
+| Dependency                   | Official documentation entrypoint                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| Vue                          | https://vuejs.org/llms.txt                                                                     |
+| VueUse                       | https://vueuse.org/guide/ — follow individual composable documentation.                        |
+| Reka UI                      | https://reka-ui.com/llms.txt                                                                   |
+| Tauri v2                     | https://v2.tauri.app/llms.txt                                                                  |
+| Tailwind CSS                 | https://tailwindcss.com/docs                                                                   |
+| Tailwind Variants            | https://www.tailwind-variants.org/llms.txt                                                     |
+| Motion (use the Vue section) | https://motion.dev/llms.txt                                                                    |
+| Valibot                      | https://valibot.dev/llms.txt                                                                   |
+| es-toolkit                   | https://es-toolkit.dev/llms.txt                                                                |
+| CanvasKit                    | https://skia.org/docs/user/modules/canvaskit/ and installed `canvaskit-wasm/types/index.d.ts`. |
+
+VueUse currently serves HTML homepage content at its `llms.txt` URL; Tailwind CSS and Skia have no verified index there. Use their official documentation above instead. If an index disappears or returns HTML, fall back to official API documentation, not guessed methods or unofficial generated indexes.
+
 ### Native WebView tests
 
 Native desktop interaction checks live under `tests/e2e/native/**` and run through WebdriverIO against an explicit test-only Tauri binary. Use `bun run test:native` to build and run them, or `bun run build:native-test` when only the binary is needed. The embedded WebDriver plugin is compiled only with the `native-test` Cargo feature and must never be enabled in normal development or production binaries.
@@ -679,16 +721,24 @@ Keep responsibilities distinct: engine tests cover state contracts, Playwright b
 ## Rendering
 
 - Canvas is CanvasKit (Skia WASM) on a WebGL surface, not DOM
-- `renderVersion` vs `sceneVersion`: `renderVersion` = canvas repaint (pan/zoom/hover); `sceneVersion` = scene graph mutations. UI panels watch `sceneVersion` only.
-- `requestRender()` bumps both counters; `requestRepaint()` bumps only `renderVersion`
+- Bounded rendering caches share `packages/core/src/cache/resource.ts` for recency, count/weight accounting, and removal disposal. Domain adapters own keys, font/page/dependency invalidation, and sizing units; use non-touching `peek()` for FIFO/planning reads. Rejected insertions leave ownership with the caller. Keep weak memos, async request registries, pools, and dependency-owned picture/path maps on their distinct lifetime policies.
+- `renderVersion` vs `sceneVersion`: `renderVersion` = canvas repaint (pan/zoom/hover); `sceneVersion` = scene graph mutations. UI that only cares about graph data should avoid watching repaint-only state; use editor events for incremental surfaces such as the layer tree.
+- Live property controls use selected-node projections from `editor/selection-state/nodes.ts`: shallow reactive copies receive `node:previewUpdated` patches at property granularity. Never add preview invalidation to all `useSceneComputed` consumers; catalogs and unrelated controls must not refresh for geometry previews. Projection subscriptions belong to the consuming scope/session and must be disposed.
+- Numeric geometry edits own a `beginNodePreview()` handle with `update`, `commit`, and `cancel`. It captures all affected fields/layout children, publishes the complete delta once, and restores exact originals on cancellation. Selection/page/graph changes and disposal cancel the old edit; trailing input must not target the new selection. Controls must close previews even when a gesture returns to its starting value.
+- Renderer interaction policy uses explicit `beginInteractiveEdit()` leases and `isInteractiveEditing()`, not undo batching. Release leases on every terminal path. Keep live queries callable across app facades that spread editor actions.
+- Drawing and input share preview-aware geometry through `@open-pencil/core/geometry`, built on Scene Graph matrices. Use it for world/screen transforms, inverses, bounds, and handle placement instead of independently interpreting ancestor rotations or reflections. LINE pivots remain at the origin; other nodes rotate around their centers.
+- Label drawing and hit testing share `canvas/labels/{layout,transform,style}.ts`, including paragraph measurements and unreflected label axes. Rotation previews change through `setRotationPreview()` and `rotation:preview-changed`; cancellation must close the owning gesture without deselecting or committing it.
+- Paragraph construction is typed against `canvas/text/paragraph-inputs.ts`; the same inputs drive preparation-cache invalidation. Add a mutation case when extending that contract. Drawing borrows native paragraphs; the renderer owns their bounded cache and destruction.
+- `requestRender()` bumps `renderVersion` and `sceneVersion`; `requestRepaint()` bumps only `renderVersion`
 - `renderNow()` is only for surface recreation and font loading (need immediate draw)
 - Resize observer uses rAF throttle, not debounce — debounce causes canvas skew
+- Overscan images accelerate navigation; settled scenes rasterize existing retained pictures at the live viewport size/origin. Pixel-grid alignment alone does not guarantee Skia AA parity. Keep settlement pending until the viewport pass completes; do not add a second viewport image cache.
 - Viewport culling skips off-screen nodes; unclipped parents are NOT culled (children may extend beyond bounds)
 - Selection border width must be constant regardless of zoom — divide by scale
 - Section/frame title text never scales — render at fixed font size, ellipsize to fit
 - Rulers are rendered on the canvas (not DOM), with selection range badges that don't overlap tick numbers
 - Remote cursors: Figma-style colored arrows with white border + name pill, rendered in screen space
-- Pixel-affecting renderer features need committed visual coverage, not just mock/geometry assertions. Add or update a Playwright canvas snapshot for changes to fills, gradients, images, blend modes, masks, boolean geometry, corners, strokes, shadows, blur, text rendering, or demo showcase scenes. Use targeted snapshot updates such as `bunx playwright test tests/e2e/canvas/renderer-visuals.spec.ts --project=openpencil --update-snapshots` and then rerun the same test without `--update-snapshots`.
+- Pixel-affecting renderer features need committed visual coverage, not just mock/geometry assertions. Add or update a Playwright canvas snapshot for changes to fills, gradients, images, blend modes, masks, boolean geometry, corners, strokes, shadows, blur, text rendering, or demo showcase scenes. Use targeted snapshot updates such as `bun run test tests/e2e/canvas/fill-modes-visual.spec.ts --update-snapshots` and then rerun the same test without `--update-snapshots`.
 
 ## Scene graph
 

@@ -76,7 +76,7 @@ export interface ServerOptions {
   mcpRoot?: string | null
   /** Auth token for /mcp and /rpc endpoints. Auto-generated (32-hex) when omitted. Pass null explicitly to disable auth. */
   authToken?: string | null
-  corsOrigin?: string | null
+  corsOrigin?: string | readonly string[] | null
   /**
    * If set, the server starts a grace-period timer while no app is attached.
    * The timer closes the server and removes its discovery file unless an app
@@ -88,6 +88,12 @@ export interface ServerOptions {
    * app opts in when it spawns the server.
    */
   appAttachTimeoutMs?: number
+  /**
+   * How long a tool call waits for the app to register before it fails with
+   * APP_NOT_CONNECTED. Defaults to 10 s so a stdio bridge started slightly
+   * before the desktop app still succeeds; tests shorten it.
+   */
+  appWaitTimeoutMs?: number
 }
 
 export interface ServerHandle {
@@ -106,7 +112,7 @@ export interface ServerHandle {
 /** Set up Hono routes: /health, /rpc, /mcp */
 function createHonoApp(options: {
   authToken: string | null
-  corsOrigin: string | null
+  corsOrigin: string | readonly string[] | null
   browserRPC: ReturnType<typeof createBrowserRPCBridge>
   mcpSessions: ReturnType<typeof createMCPSessionManager>
   sendToBrowser: (
@@ -319,6 +325,7 @@ function buildServerContext(options: ServerOptions) {
   const browserRPC = createBrowserRPCBridge({
     authToken,
     onConnectionChange: (connected) => handleConnectionChange(connected),
+    appWaitTimeoutMs: options.appWaitTimeoutMs,
     onPluginToolsChanged: (revision) => handlePluginToolsChanged(revision),
     requestPreflight: async (body, sendRPC, sendOptions) =>
       (await prepareRootScopedRPCRequest(body, resolvedRoot, sendRPC, sendOptions)).body
@@ -469,7 +476,8 @@ function buildHandle(
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<ServerHandle> {
-  validateAppAttachTimeout(options.appAttachTimeoutMs)
+  validateTimeoutOption('appAttachTimeoutMs', options.appAttachTimeoutMs)
+  validateTimeoutOption('appWaitTimeoutMs', options.appWaitTimeoutMs)
   const ctx = buildServerContext(options)
 
   // Wire shared connection handling BEFORE starting listeners so that
@@ -531,13 +539,13 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerHa
 
 const MAX_TIMER_MS = 2_147_483_647
 
-function validateAppAttachTimeout(timeoutMs: number | undefined): void {
+function validateTimeoutOption(name: string, timeoutMs: number | undefined): void {
   if (timeoutMs === undefined) return
   if (!Number.isSafeInteger(timeoutMs)) {
-    throw new RangeError('appAttachTimeoutMs must be a safe integer')
+    throw new RangeError(`${name} must be a safe integer`)
   }
   if (timeoutMs < 0 || timeoutMs > MAX_TIMER_MS) {
-    throw new RangeError(`appAttachTimeoutMs must be in the range 0–${MAX_TIMER_MS}`)
+    throw new RangeError(`${name} must be in the range 0–${MAX_TIMER_MS}`)
   }
 }
 

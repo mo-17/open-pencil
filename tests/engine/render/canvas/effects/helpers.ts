@@ -175,6 +175,7 @@ export function createMockCanvas() {
     save: mock(() => undefined),
     restore: mock(() => undefined),
     translate: mock(() => undefined),
+    concat: mock(() => undefined),
     rotate: mock(() => undefined),
     scale: mock(() => undefined),
     drawOval: mock(() => undefined),

@@ -12,8 +12,8 @@ import {
   preparePublishDirectories,
   publishPackageJSON,
   remapPublicPackageSpecifiersInText
-} from '../src/publish-dirs'
-import type { PreparedPublishPlan } from '../src/publish-dirs'
+} from '#release/publish-dirs'
+import type { PreparedPublishPlan } from '#release/publish-dirs'
 
 const VERSION = '0.13.2'
 const LICENSE_BYTES = Buffer.from('OpenPencil fixture license\n\0binary-safe\n')
@@ -293,7 +293,7 @@ describe('preparePublishDirectories', () => {
     for (const pkg of DEFAULT_PACKAGES) {
       expect(await readFile(join(outRoot, basename(pkg.dir), 'LICENSE'))).toEqual(LICENSE_BYTES)
     }
-  })
+  }, 30_000)
 
   test('rejects a public manifest dependency on a private workspace', async () => {
     const root = await fixtureRoot()

@@ -11,9 +11,15 @@ Two transports: **stdio** for MCP clients, and **Streamable HTTP** for browser e
 
 Tool definitions own native Valibot input schemas, execution/mutation metadata, capabilities, and optional interface exposure exclusions. Tools are included by default; `exposure: { mcp: false, ai: false, webmcp: false }` can exclude them independently from each adapter. Exposure does not bypass execution support or user permissions: WebMCP still requires supported execution and explicit Off, Inspect, or Edit access. AI and MCP consume the same schema through Standard Schema; WebMCP derives its JSON Schema from that input. Numeric strings are accepted consistently across adapters, while non-finite values are rejected. Programmatic integrations use MCP SDK v2; custom tools replace the former `params`/`ParamDef` contract with `input` and execution metadata.
 
+## Tool access settings
+
+Use **Settings → Tool access** (select **Local MCP**) to search and toggle the local server's tools, individually or by read-only/side-effect group. Group switches affect all group members, even during search. **Restore defaults** enables the configurable MCP tools again. Existing MCP preferences are preserved separately from the **Built-in AI** settings.
+
+Restart the MCP server, then reconnect stdio clients, to apply changes. For an externally managed server, restart its owning process. The list reflects the tools discovered from the server; disabling a dedicated tool does not prevent an enabled script tool from performing the same operation. These switches are not a sandbox and do not configure remote MCP servers or WebMCP.
+
 ## Browser-native WebMCP (experimental) {#webmcp}
 
-WebMCP is **off by default**. Open **Settings → MCP & automation → WebMCP** and choose **Inspect** for read-only access or **Edit** to also allow scoped, undoable changes. **Off** unregisters all browser tools; changing modes revokes the previous registrations immediately. This preference is independent of local MCP authentication, tool switches, and outbound connections.
+WebMCP is **off by default**. Open **Settings → MCP → WebMCP** and choose **Inspect** for read-only access or **Edit** to also allow scoped, undoable changes. **Off** unregisters all browser tools; changing modes revokes the previous registrations immediately. This preference is independent of local MCP authentication, tool switches, and outbound connections.
 
 For local testing, use a Chrome version exposing `document.modelContext`, enable `chrome://flags/#enable-webmcp-testing`, and relaunch the browser. Open a document, enable access in Settings, and connect a WebMCP-capable browser agent or the [Model Context Tool Inspector](https://developer.chrome.com/docs/ai/webmcp). Settings shows browser support and registration status. See the [Chrome WebMCP guide](https://developer.chrome.com/docs/ai/webmcp) for current availability.
 
@@ -127,7 +133,7 @@ Security defaults:
 - Authentication is enabled by default with a generated token stored in the private discovery file.
 - `eval` is disabled.
 - File operations are limited to `OPENPENCIL_MCP_ROOT` (defaults to the current working directory) and reject symlink escapes.
-- CORS is disabled by default; set `OPENPENCIL_MCP_CORS_ORIGIN` to allow one origin.
+- Only the desktop app's own origin (`tauri://localhost` and its `http(s)://tauri.localhost` variants) is allowed by default, so a server you start yourself works from the app without extra configuration. Set `OPENPENCIL_MCP_CORS_ORIGIN` to a comma-separated list to allow other origins, such as a worktree dev server.
 
 Set `PORT=0` to disable TCP on macOS and Linux. Windows requires TCP. Set `OPENPENCIL_MCP_SOCKET` to override the Unix socket path, or `OPENPENCIL_MCP_DISCOVERY_PATH` to override the discovery file location. To provide a stable token, set `OPENPENCIL_MCP_AUTH_TOKEN`; an explicitly empty value disables authentication and should only be used with a trusted local socket.
 
@@ -154,6 +160,7 @@ Endpoints are available over both active transports:
    `update_lowcode_nodes`, `ensure_form_value_bindings`, or the bounded Motion tools
 6. **Structure** — `reparent_nodes`, `group_nodes`, `clone_node`, `delete_node`
 7. **Save** — `save_file` to write back to `.fig`
+8. **Close** — `close_file` to close an open document tab; it prompts to save unsaved changes.
 
 Most tools accept optional `document_id` and `page_id` fields. Pass them explicitly for agent workflows instead of relying on the visible active tab/page. `create_page` only creates a page; call `switch_page` separately when the workflow should change the active page.
 
@@ -226,43 +233,44 @@ OpenPencil currently registers 100+ shared design tools, plus MCP-only document 
 
 ### Document
 
-| Tool             | Description                                  |
-| ---------------- | -------------------------------------------- |
-| `open_file`      | Open a `.fig` file for editing               |
-| `save_file`      | Save the current document to a `.fig` file   |
-| `new_document`   | Create a new empty document                  |
-| `list_documents` | List open app documents/tabs and their pages |
+| Tool             | Description                                                   |
+| ---------------- | ------------------------------------------------------------- |
+| `open_file`      | Open a `.fig` file for editing                                |
+| `close_file`     | Close an open document tab, prompting to save unsaved changes |
+| `save_file`      | Save the current document to a `.fig` file                    |
+| `new_document`   | Create a new empty document                                   |
+| `list_documents` | List open app documents/tabs and their pages                  |
 
 ### Read
 
-| Tool                        | Description                                                                 |
-| --------------------------- | --------------------------------------------------------------------------- |
-| `get_selection`             | Get currently selected nodes                                                |
-| `get_page_tree`             | Get the full node tree of the current page                                  |
-| `get_current_page`          | Get the current page name and ID                                            |
-| `get_node`                  | Get detailed properties of a node by ID                                     |
-| `find_nodes`                | Find nodes by name pattern and/or type                                      |
-| `get_components`            | List all components in the document                                         |
-| `list_pages`                | List all pages                                                              |
-| `list_variables`            | List design variables                                                       |
-| `list_collections`          | List variable collections                                                   |
-| `list_fonts`                | List fonts used in the current page                                         |
-| `list_available_fonts`      | List font families the current host can render                              |
+| Tool                        | Description                                                                      |
+| --------------------------- | -------------------------------------------------------------------------------- |
+| `get_selection`             | Get currently selected nodes                                                     |
+| `get_page_tree`             | Get the full node tree of the current page                                       |
+| `get_current_page`          | Get the current page name and ID                                                 |
+| `get_node`                  | Get detailed properties of a node by ID                                          |
+| `find_nodes`                | Find nodes by name pattern and/or type                                           |
+| `get_components`            | List all components in the document                                              |
+| `list_pages`                | List all pages                                                                   |
+| `list_variables`            | List design variables                                                            |
+| `list_collections`          | List variable collections                                                        |
+| `list_fonts`                | List fonts used in the current page                                              |
+| `list_available_fonts`      | List font families the current host can render                                   |
 | `get_font_status`           | Report requested faces, loaded sources, active substitutions, and affected nodes |
-| `check_font`                | Verify assignment, exact face loading, fallback readiness, and glyph state  |
-| `audit_font_rendering`      | Audit bounded live font effectiveness across subtrees, pages, or a document |
-| `audit_form_controls`       | Audit validated controls with bounded results (50 default, 200 max)         |
-| `audit_application_runtime` | Audit Supabase, schema, RLS, server env names, and deploy readiness         |
-| `read_lowcode_nodes`        | Read projected lowcode metadata for multiple nodes in one bounded call      |
-| `read_server_workflows`     | Read validated document-level authenticated server workflows                |
-| `read_motions`              | Read compact or complete Motion metadata for multiple nodes                 |
-| `read_page_route`           | Read the compiler-effective route and collision metadata for one page       |
-| `page_bounds`               | Get bounding box of all objects on the current page                         |
-| `node_bounds`               | Get bounding box of a node                                                  |
-| `node_ancestors`            | Get ancestor chain of a node                                                |
-| `node_children`             | Get direct children of a node                                               |
-| `node_tree`                 | Get the subtree rooted at a node                                            |
-| `node_bindings`             | Get variable bindings on a node                                             |
+| `check_font`                | Verify assignment, exact face loading, fallback readiness, and glyph state       |
+| `audit_font_rendering`      | Audit bounded live font effectiveness across subtrees, pages, or a document      |
+| `audit_form_controls`       | Audit validated controls with bounded results (50 default, 200 max)              |
+| `audit_application_runtime` | Audit Supabase, schema, RLS, server env names, and deploy readiness              |
+| `read_lowcode_nodes`        | Read projected lowcode metadata for multiple nodes in one bounded call           |
+| `read_server_workflows`     | Read validated document-level authenticated server workflows                     |
+| `read_motions`              | Read compact or complete Motion metadata for multiple nodes                      |
+| `read_page_route`           | Read the compiler-effective route and collision metadata for one page            |
+| `page_bounds`               | Get bounding box of all objects on the current page                              |
+| `node_bounds`               | Get bounding box of a node                                                       |
+| `node_ancestors`            | Get ancestor chain of a node                                                     |
+| `node_children`             | Get direct children of a node                                                    |
+| `node_tree`                 | Get the subtree rooted at a node                                                 |
+| `node_bindings`             | Get variable bindings on a node                                                  |
 
 ### Create
 

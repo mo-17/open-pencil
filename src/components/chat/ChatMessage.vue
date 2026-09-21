@@ -24,6 +24,7 @@ import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.v
 import ChatMarkdown from '@/components/chat/ChatMarkdown.vue'
 import ReasoningBlock from '@/components/chat/ReasoningBlock.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
+import { collapsibleContentMotion } from '@/theme/collapsible/collapsible'
 
 const {
   message,
@@ -267,7 +268,7 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
               </div>
               <CollapsibleContent
                 v-if="toolState(part) !== 'pending' && toolState(part) !== 'approval'"
-                class="data-[state=closed]:collapsible-up data-[state=open]:collapsible-down overflow-hidden text-[10px]"
+                :class="[collapsibleContentMotion, 'text-[10px]']"
               >
                 <pre class="mt-1 overflow-x-auto rounded bg-input p-2 text-muted">{{
                   part.state === 'output-error'

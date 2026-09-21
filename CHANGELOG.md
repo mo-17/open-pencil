@@ -10,35 +10,21 @@
   installation, imports, peer dependencies, and compatibility subpaths. The external Yoga fork
   remains `npm:@open-pencil/yoga-layout` and is not remapped.
 
-- Use MCP SDK v2 server/client types for programmatic MCP integrations. Define custom tools with native Valibot `input` schemas and execution metadata instead of `params`, `ParamDef`, or `paramToZod()`; tool arguments and effects derive from this shared contract. Tool exposure defaults to inclusion, with independent `mcp`, `ai`, and `webmcp` exclusions; execution support and user permissions still apply.
-- Update custom Vue SDK binding providers to implement `getBindingId()` and handle `unresolved`. Replace `setValue()` with `prepareEdit()`, returning a stable edit key, captured value, setter, and restoration callback.
-
 ### Added
 
 - Guide business-template setup from the Backend panel with saved sign-in settings, required roles, first-record steps and current page links; include model-specific identity and startup instructions in NestJS exports.
-- Expose design inspection and undoable layer-property and variable edits to browser agents through experimental WebMCP in supporting browsers, with explicit Off, Inspect, and Edit access controls in Settings.
-- Bind Design JSX spacing, sizing, corners, and typography directly to numeric document variables.
-- Define component properties and assign instance values in Design JSX using stable property IDs.
-- Save AI conversations and attachment previews locally, switch between chats, rename or delete them, and browse saved transcripts across documents. Choose whether reasoning stays collapsed, expands while thinking, or stays expanded, with animated disclosure controls that respect reduced motion.
-
 - Add asset management, private quotation/contract fulfillment and recruitment with onboarding/offboarding checklists to the Backend library and AI, with editable React/Vue pages and NestJS exports.
-
 - Add procurement/inventory, fixed two-stage enterprise approvals, versioned surveys, text courses with instructor grading and moderated community templates to the Backend library and AI, with editable React/Vue pages and NestJS exports.
-
 - Add personal blog and automotive news templates with categories, draft editing, publication, public reading and private bookmarks. Automotive news also includes brand/model catalogs and separate editor/publisher roles; both export React/Vue pages and NestJS backends.
-
 - Add a single-hospital registration template with departments, doctors, schedule capacity, private patient profiles, appointment cancellation/restoration and staff check-in/completion. Export React/Vue pages and transactional NestJS commands; real payment, identity verification and hospital-system integrations remain post-export work.
 - Add a single-restaurant food-ordering starter with a persistent cart, dine-in/pickup checkout, server price checks, idempotent orders and kitchen transitions. Generate editable React/Vue pages with manual list refresh and a transactional NestJS backend; payments, printers and delivery remain post-export integrations.
 - Add a video and live-channel template with public playback, private favorites, creator publishing and channel management, plus React/Vue video and HLS playback bindings.
 - Add a rental and property-viewing starter with landlord-owned listings, publication, capacity-checked appointments, cancellation and audit history. Link the selected property's panorama to an opt-in VR Tour module with editable rooms and hotspots, interactive desktop previews and React/Vue exports.
 - Export configured VR tours as Expo and Flutter WebView components or a separate Taro HTTPS viewing page, with bundled sample images, local player preparation and explicit setup guidance.
-
 - Offer an opt-in experimental Prisma 8 CRM Backend Provider for React/Vue source exports, with Prisma customer queries, retained PostgreSQL business transactions and explicit model compatibility checks.
-
 - Compose the five business starters into an existing NestJS application through reviewed library or AI module installation, with shared sign-in, separate account-directory permissions, preserved pages and atomic undo. Export real NestJS business modules in one application with validated ownership and dependencies; keep database changes separately reviewed.
 - Add CRM, service desk, content/knowledge-base, booking/registration and project/task starters to the Backend library and Direct AI. Generate editable React/Vue workspaces with relation pickers, full article text, command recovery, role-aware server workflows and append-only business history.
 - Enforce conditional publication reads, active related membership and current-record command authority in generated NestJS applications. Add bounded date/time parameters, server time checks and transactional booking capacity; preserve compound authorization in the visual Backend editor.
-
 - Add separate commerce operations templates with a persistent multi-product cart, atomic store-split checkout, explicitly gated payment simulation, shipment and receipt actions, whole-order refund decisions, and commission/settlement records. Live payment channels, carrier integrations and actual payouts remain separate integrations.
 - Create single-merchant and multi-merchant commerce applications from the Backend library or Direct AI chat, including catalog management, buyer orders, merchant fulfillment and store pages. Multi-merchant templates use one store per account with verified merchant roles and store membership; payment, carts and settlement remain outside these templates.
 - Generate NestJS resources with selected read policies and tenant membership combined with verified roles, and recheck command membership inside the transaction before replaying a saved result. Unsupported tenant semantics are rejected by the Supabase provider.
@@ -46,7 +32,6 @@
 - Recover explicitly opted-in Backend command attempts after reload using an account-bound browser journal, saved-parameter retries, cross-tab exclusion, and visual inspect/acknowledge actions in React/Vue exports and the single-SKU shop example.
 - Add bounded atomic NestJS commands with verified caller access, row locking, checked integer arithmetic and persistent idempotency; include a single-SKU checkout/cancellation example, visual command review, and React/Vue command actions with retained attempt keys and a request deadline.
 - Extend NestJS generation with explicit public reads, verified JWT roles, enum and date types, constrained relations and indexes, and bounded filtering, search and sorted pagination exposed through the visual Backend editor.
-
 - Add validated HTTP API contracts for explicit resource exposure, field projections, and server-side JWT configuration, with unsupported provider generation blocked.
 - Add a NestJS Backend Provider that exports PostgreSQL owner-protected CRUD services, validated DTOs, JWT authentication, OpenAPI, a typed client and pinned dependencies alongside React/Vue source projects.
 - Connect the NestJS visual workflow with public OIDC + PKCE configuration, undoable login/notes pages, authenticated LIST and form actions, and React/Vue browser clients that clear account data on logout and ignore stale requests.
@@ -55,21 +40,10 @@
 - Simplify NestJS preview setup with a status-led side panel, separate SQL review, and reusable Keycloak and OIDC configuration presets.
 - Choose React or Vue for Desktop Backend review, staging Apply, capability verification, and migration export, with a fresh review required after switching frameworks.
 - Edit nested Backend Workflow branches and declare server environment reference names, with reference-preserving renames and deletion guards.
-- Add a searchable command palette for editor and application actions.
-- Search current AI provider catalogs from model pickers, with curated recommendations, recent compatible models, and offline fallbacks.
-- Render triangle and line arrow stroke caps on lines and open vector paths, and choose them from the stroke cap picker.
-- Expose component properties and instance-swap targets through the Figma API and automation.
-- Normalize imported stroke dash patterns for more reliable `.fig` compatibility.
 - Add provider-neutral Backend/DataModel/Auth/Workflow/Migration contracts, data-only Backend
   Provider plugin declarations, a trusted deterministic Compiler Registry and artifact manifest,
   the first bundled Supabase provider, and a host-owned fail-closed release state machine with
   stale-plan checks, destructive confirmations, strict production gates, and secret-free receipts.
-- Duplicate guides with Option/Alt-drag, show active guide coordinates in rulers, measure ruler-created guides against selected frames and their contents, and remove guides from the context menu.
-- Create, select, move, transfer, and delete canvas and frame guides directly from rulers, with undoable edits and `.fig` round-trip fidelity.
-- Open to a unified home with recent and configured storage documents, including grid or list layouts.
-- Snap vector points, moved layers, and resized edges to nearby geometry, sibling layer bounds, canvas and frame layout guides, and whole-pixel coordinates with visible alignment guides, fractional-coordinate preservation when pixel snapping is off, and persistent geometry, object, and pixel-grid controls in General settings and the Preferences menu.
-- Run Pi through AI SDK HarnessAgent as a configurable desktop provider with multiple saved model profiles, secure credentials, existing MCP design tools, and per-profile thinking and permission settings.
-- Open multiple selected design files in separate tabs.
 - Add opt-in source exporters for native WeChat Mini Program, Taro React, uni-app, and Mpx. Each
   target compiles the shared SceneGraph IR in a bounded Worker, archives through the path-safe ZIP
   boundary, preserves reviewed local raster assets and native pages, and emits explicit warnings
@@ -88,84 +62,23 @@
   parameter and connector schemas, signed catalogs/packages, publisher trust, runtime indexes, and
   marketplace snapshots. Core keeps its host registries and built-in modules while its existing
   root and `plugins` exports remain compatible.
-- Let Figma API scripts and automation combine components into variant sets.
-- Monitor and restart the local MCP server, configure its root directory or authentication, and choose individual, read-only, or side-effecting tools it exposes from Settings.
-- Add deterministic two-browser collaboration coverage for bidirectional edits, awareness, departure cleanup, partitioned-peer convergence, and reconnect synchronization without public network dependencies. (#530)
-- Import, render, edit, resize, select, and export Figma text-on-path layers while preserving their curved glyph layout.
 - Add tested pane-registry and recursive split-tree models for independently viewed same-document canvases, capped at four visible panes.
 - Add explicit shared/view editor-state ownership and canvas render-state hooks as a foundation for independent same-document canvas panes.
-- Improve collaboration efficiency by avoiding redundant unchanged-field Yjs writes and covering repeated and concurrent two-peer edits.
-- Add reusable remote MCP connections for ACP agents, with Streamable HTTP endpoints and bearer tokens stored in the configured credential backend.
-- Author multidimensional component variants in the Design panel, including property/value renaming, sparse-combination diagnostics, variant duplication, and exact instance transitions. (#239)
-- Create deterministic, dependency-complete component-library revisions through the provider-neutral Core library catalog, with browser IndexedDB persistence for local catalogs. (#239)
-- Enable published component libraries per document, browse their assets alongside local components, and lazily materialize read-only definitions for offline linked instances. (#239)
-- Detect newer component-library revisions and explicitly apply stable-key updates to linked instances while preserving assignments and retaining old definitions. (#239)
-- Let AI, MCP, and headless tools discover enabled library components, rank preferred libraries before local assets, and insert components by stable library identity. (#239)
-- Publish the current document as an immutable local component library from the Assets panel, assigning durable collision-safe asset keys on first publication. (#239)
-- Preview component-library asset changes before acceptance and undo or redo accepted instance updates as one editor history action. (#239)
-- Preserve enabled-library bindings and materialized definition identities through `.fig` save/reopen, and reject Figma API or AI edits to read-only library definitions. (#239)
-- Enforce read-only library capabilities across visual/layout Figma API setters, structural edits, editor history actions, variant authoring, and clipboard replacement while keeping instances editable. (#239)
-- Publish component-library revisions to storage-provider object namespaces with immutable revision objects, validated manifests, and conflict-checked latest pointers. (#239)
-- Switch the library manager between local and configured storage catalogs, caching remote revisions in IndexedDB for offline browsing and insertion. (#239)
-- Bind the active library catalog into live automation requests so MCP component discovery and stable-identity insertion use the targeted document’s enabled libraries. (#239)
-- Show affected-instance and variant-fallback counts before accepting a component-library update. (#239)
-- Persist the selected local/storage catalog and preferred-library priorities, restoring them for Assets browsing and AI component ranking. (#239)
-- Validate downloaded library revisions against size, node, image, content-hash, and revision-hash limits before caching or materialization. (#239)
-- Manage bounded filesystem component-library catalogs from the CLI with JSON-capable `libraries list` and immutable `libraries publish` commands. (#239)
-- Track library update state per linked instance so individual instances or every instance of one asset can accept a revision while older definitions remain usable. (#239)
-- Show outdated linked library instances by asset and update the current page or all pages in one undoable action. (#239)
-- Add a reproducible Dev Container for web, package, CLI, and non-browser test development.
-- Add local crash recovery for unsaved and pathless documents, including MCP-created documents. (#487)
-- Add isolated visual inspection that sends bounded selection renders to the configured Vision model and returns text findings without retaining image data in Design chat history. (#232, #471)
-- Add image attachments to AI chat with bounded analysis, immediate transcript thumbnails, hover previews, and click-to-view images. (#232)
-- Show temporary Figma-style distance measurements between selected and Option/Alt-hovered layers. (#491)
-- Edit Design JSX and HTML/CSS previews in CodeMirror, with theme-aware highlighting, Tailwind viewing, completion, diagnostics, bounded execution, and session-level undo. (#130)
-- Set provider-specific reasoning effort on supported AI model profiles. (#454)
-- Show unavailable or substituted document fonts with affected-layer selection and retry actions, and expose font fidelity through the Figma API and MCP tooling. (#503)
 - Run React lowcode previews in ordinary browsers through a bounded SceneGraph Worker, a
   browser-safe bundler, and a script-only sandbox while preserving the desktop sidecar path.
-
-- Add reusable remote MCP connections for ACP agents, with Streamable HTTP endpoints and credential-backed bearer tokens.
-- Author and manage multidimensional component variants and published component libraries, including revision previews, linked-instance updates, stable library identities, offline catalogs, storage-backed catalogs, and read-only library definitions. (#239)
-- Recover unsaved and pathless documents locally, with settings to disable recovery and remove retained snapshots. (#487, #574)
-- Inspect selected designs with a configured Vision model and attach images to AI chat with bounded analysis and previews. (#232, #471)
-- Pin selected layers as explicit AI chat context, show collapsible reasoning, copy individual responses, and grow the composer with multiline prompts. (#13)
-- Render streaming AI responses with the upstream Comark-based Markdown pipeline and optional Shiki code highlighting without the former project fork.
 
 ### Changed
 
 - Improve the single-SKU shop template with title search, ascending prices, sold-out indicators, stock-aware quantity checks, price estimates, checkout and cancellation confirmations, and recent orders showing saved product titles, creation times and localized status. Existing documents require a new template or an explicit migration; the server still confirms stock and final prices.
 - Extend the shop's manager page with searchable, paginated products, validated creation, title and price editing, availability controls, and a separate stock-addition command with saved-request recovery. Product edits preserve inventory; deletion and absolute stock replacement remain unavailable, and existing templates require explicit migration.
-- Explore editable component, typography, and paint comparisons in the demo, with the original examples preserved on a reference page.
-- Use compact desktop Home search actions with consistent responsive layout and control sizing.
-- Keep applied and available Effect styles concise, and collapse equal independent corner fields when all four use the same variable.
-- Keep pixel-grid rounding invisible while showing alignment guides only for real geometry, objects, and canvas/layout guides.
-- Copy selections with embedded images into Figma while preserving typed geometry, text sizing, images, components, variables, modes, and shared styles for lossless in-app paste.
-- Choose the app theme and whether animations follow the system or stay off under Appearance in General Settings, with live updates and persistent preferences.
-- Put unbound fill and stroke style pickers in section headers, preserve applied and missing style rows, and remove the redundant Dimensions heading for text layers.
-- Open variable pickers below their trigger when space permits, flipping above near the viewport edge.
-- Keep AI chat preferences with the model overview and edit models in a fixed-size Settings pane with explicit Save and Cancel actions.
-- Match page-list density to the layer tree and add subtle, reduced-motion-aware dialog transitions.
-- Fade in streaming Markdown list items and code lines without animating completed responses.
-- Vertically center shaped section titles and allow renaming a section by double-clicking its canvas label.
-- Load supported online fonts before revealing imported pages, preserve substituted text during editing, and shape canvas labels with bundled Inter typography.
-- Upgrade CanvasKit to 0.41 and migrate renderer geometry to immutable paths built through `PathBuilder`.
-- Upgrade direct model chat providers and transports to AI SDK 7 while retaining the local ACP execution path.
-- Localize file, clipboard, collaboration, chat, vectorization, storage, recovery, and component-library notifications in every supported language.
-- Separate local MCP server controls, browser WebMCP access, and remote connections in Settings, with inline searchable tool permissions.
-- Show translated field errors, hints, and consistent contextual alerts in Settings forms, focus the first invalid field on submission, and explain missing requirements instead of silently disabling Save or Test.
-- Pan horizontally with Shift+wheel while preserving native horizontal trackpad movement.
 
 ### Fixed
 
 - Connect embedded ACP agents to the current editor even when a global `open-pencil` MCP server is configured, and retain the correct connection when resuming sessions.
 - Keep local ACP editor connections working behind system HTTP proxies while preserving existing proxy exceptions and external proxy settings.
 - Match asset handover actions to the selected request's kind and status while retaining unsent form input and saved-request review after refresh or navigation.
-
 - Stop generated backend lists from reusing account-specific filters when the signed-in account changes.
-
 - Keep CRM Vue exports type-safe when selected records populate forms, and reject invalid Backend filter values before sending requests.
-
 - Mount the editor before awaiting cloud-document presentation, and preserve the previous tab when opening is cancelled or fails without interrupting later tab selections.
 - Protect cloud documents from deletion while their editor tabs are still downloading, including after navigation back to the file list.
 - Preserve instance override maps across binary Yjs synchronization, including descendant and explicitly cleared overrides.
@@ -184,87 +97,180 @@
 - Preserve document Backend Provider declarations across preview Host and Browser Worker compilation, and invalidate stale previews when the provider or declaration changes.
 - Report unsupported Supabase browser networking without mistaking generated client key-validation code for embedded secrets.
 - Preserve sub-millisecond evidence ordering when validating Backend production gates and release receipts.
-
-- Keep Undo and Redo commands available as edit history changes, without requiring another scene edit.
-- Avoid recursive desktop HTTP proxy requests when font downloads intercept Tauri IPC traffic.
-- Keep FIT image fills proportional, centered, and fully visible without stretching or cropped edges.
-- Preserve edited instance text, including cleared labels, when saving and reopening `.fig` files.
-- Honor `.pen` frame layout defaults and sizing and padding shorthands so imported auto-layout frames keep their computed dimensions and child positions. (#564)
-
-- Honor explicit Design JSX instance dimensions and preserve authored overrides through component synchronization.
-- Route browser Command/Ctrl plus and minus shortcuts to canvas zoom instead of page zoom.
-- Resolve `$name` references in imported `.pen` fills, stroke fills, font families, dimensions, and spacing without requiring a `--` prefix. (#563)
-- Resolve bound fields in each layer’s mode, keep variable edits scoped and undoable, and make broken bindings visible and recoverable.
-- Display letter spacing in pixels and support explicit automatic line height.
-- Prevent the stock photo tool from replacing text, lines, structural layers, or containers with content while supporting closed shape geometry.
-- Preserve explicit text alignment metadata on imported Figma vectors across save and reload.
-
-- Preserve explicit normal blend modes on imported Figma text and vector nodes across save and reload.
-
-- Preserve implicit fixed-size text inside imported Figma auto-layout frames across save and reload.
-- Stop showing a misleading desktop-only warning when web font loading or catalog lookup fails.
-- Preserve source text offsets when resolving fallback languages after text-case transformations.
-- Track character coverage restored from downloaded font cache entries.
-- Preserve imported Figma divider-line geometry during auto-layout recomputation, preventing half-pixel shifts on save and reload.
-
-- Resolve package imports under Node and Bun from ordinary tarballs while preserving Bun source-first workspace execution. (#663)
-- Use the user's home directory as the default MCP file root on Windows, avoiding the caller's unreliable working directory.
-- Open legacy raw `.fig` files that store the Kiwi document and thumbnail without a ZIP wrapper. (#582)
-- Preserve a frame's auto-layout HUG sizing mode when converting it into a component with `create_component`.
-- Run `openpencil import` on Node so npm-installed CLI users no longer encounter `Bun is not defined`. (#575)
-- Commit vector vertex and Bézier-handle edits when the pointer is released and keep transformed vector-edit overlays aligned. (#586)
-- Preserve selected layers when browser clipboard serialization fails during cut operations, and fall back to the session clipboard when system clipboard access is unavailable. (#568)
-- Treat MCP tool results with an omitted `isError` field as successful while preserving explicit MCP errors. (#583)
-- Isolate browser-development MCP servers behind worktree-aware Portless WebSocket routes and per-runtime socket/discovery paths, preventing concurrent worktrees from competing for port 7600 or the global MCP socket.
-
-- Generate and cache recent-file previews from the conventional `Cover` page after opening a `.fig`, without modifying the source file.
-- Preserve app-created component properties and instance-swap targets across `.fig` save and reload cycles. (#548)
-- Reconnect desktop automation to an already-running MCP server by allowing access to its discovery file. (#546)
-- Keep text-editing carets, hit testing, and selection highlights aligned with vertically centered or bottom-aligned text. (#539)
-- Match AI chat code-block syntax colors and backgrounds to the active light or dark theme. (#537)
-- Let desktop users select and copy AI chat text without replacing it with the selected canvas layers. (#538)
-- Restore visible above, below, and child drop feedback while dragging layers in the Layers panel.
-- Place editor-created instances beside nested source components in world space, including transformed source and destination parents.
-- Prevent malformed collaboration updates from corrupting synchronized nodes or derived text rendering.
-- Transfer native `.fig` exports over binary Tauri IPC instead of JSON byte arrays, preventing large desktop saves from being truncated or exhausting WebView memory. (#484)
-- Keep unsaved source-less documents recoverable after their editor tab is closed, matching Figma's retained offline-change behavior.
-- Decode zstd-compressed FIG containers, reject invalid compressed payloads, and preserve exact fixture byte ranges. (#397)
-- Compose caller CSS with Tailwind defaults when importing DOM/CSS documents. (#397)
-- Preserve desktop HTTP timeout, abort, and empty-response semantics. (#397)
-- Resolve Vue SDK semantic test selectors correctly in non-browser runtimes. (#397)
-- Report whether missing Figma clipboard images were actually fetched. (#397)
-- Report exhausted provider credit, request failures, and output-token limits through localized chat toasts and copied diagnostics. (#451, #454)
-- Prevent Windows desktop crashes when loading large system fonts for non-Latin text.
 - Load reviewed, version-pinned Fontsource faces in the browser editor and preview, with bounded
   caching, retry, fallback, and diagnostics.
 - Let image-heavy browser previews use their separately reviewed asset budget without weakening the
   ordinary document-content limit or the 32 MiB sandbox hard limit.
-- Preserve open vector segments when the same vector network also contains filled regions. (#450)
-- Match Figma Plugin API behavior for `rescale()`, page `backgrounds`, and nullable visual `absoluteRenderBounds`. (#442)
-- Keep imported Figma instances linked to their remapped source components so later component edits update existing instances. (#385)
-- Restore native copy, cut, and paste shortcuts in desktop text inputs while preserving design clipboard handling on the canvas.
-- Remove the permanent CORS configuration action from cloud-storage settings and report connection results through standard toasts with clear browser-specific guidance.
-- Complete translated app, accessibility, font, color, collaboration, import, connection-test, and browser fallback text across all supported locales, and keep the document language synchronized with the selected locale.
-- Preserve effective nested instance text overrides when importing complex Figma component hierarchies. (#102)
-- Preserve SVG clip paths, including clip shapes referenced through `<use>`, when importing editable vectors.
-- Preserve circles, ellipses, rectangles, lines, polylines, and polygons supplied as JSX children of inline SVG elements. (#452)
-- Preserve component links when pasting Figma instances so later component edits continue to update them.
-- Stop local MCP servers after the app disconnects instead of leaving orphaned background processes. (#494)
 
-- Prevent unbounded instance duplication when editing Figma-imported or pasted components with serialized or renamed children, keep extra instance children stable instead of yanking them to the front, and avoid pasted instances re-linking pre-existing instances during clipboard import.
+## 0.15.1 — 2026-09-18
+
+### Added
+
+- Configure built-in AI and local MCP tool access independently on a Tool access page, including optional extended AI tools, searchable read-only and side-effect groups, and per-target defaults (#584).
+- Set the built-in AI's maximum steps per message in Chat settings, including a custom number, with consistent stopping and remaining-step warnings (#573).
+- Open documents and jump to a named layer from `openpencil://open?file=&node=` links, resolving the file against open tabs or a one-time file picker. Path segments match the way the filesystem does: case-insensitively on macOS and Windows, exactly on Linux.
+- Open documents and jump to a named layer in the web app from `?file=&node=` links, fetching the file from an `https:` URL without credentials, ignoring the URL fragment, and refusing a document larger than 64 MiB — a ceiling the automation bridge's `openFile` now shares.
+
+### Changed
+
+- Create new documents with the sRGB colour profile, so Display P3 is reserved for documents that declare it.
+- Export diagnostics from Settings only, with a retention count you choose. AI requests and tool activity now carry conversation and request identifiers, while chat no longer offers a separate diagnostic log or includes transcript content.
+- Replace the demo's legacy reference page with a component library on the first page, including component sets, linked instances, component properties, and the variable collections, and show the standard canvas loading overlay and tab indicator while it is generated instead of an empty canvas.
+
+### Fixed
+
+- Store colours edited in the colour picker in the document's colour profile, and convert them on the way to the display, so a Display-P3 document no longer looks different on an sRGB display than on a wide-gamut one.
+- Keep Display-P3 documents rendering correctly in wide gamut where the browser supports it and in sRGB elsewhere, fixing the black rectangles and incorrect blend colours, with a dismissible notice when wide gamut is unavailable.
+- Classify MCP `open_file` and `close_file` operations as read-only hints, and close opened document tabs through the new `close_file` tool with the usual unsaved-change prompt.
+- Let the desktop app use an MCP server you started yourself by allowing the app's own origin by default, instead of requiring `OPENPENCIL_MCP_CORS_ORIGIN`.
+- Explain why the local MCP server did not start — a missing `@open-pencil/mcp` install, a denied command, an early exit, or an unreachable address — with translated guidance, and find a globally installed server when the desktop app is launched from the system shell.
+- Animate the AI chat tool-call disclosure, which expanded and collapsed without motion because its animation classes were misspelled.
+- Mark unsaved documents and ask whether to save before closing a tab, the desktop window, or the application, rather than relying on recovery alone.
+- Defer AI provider connections and system credential reads until you send a message or use a connected feature, so opening documents and browsing chat history no longer trigger unexpected credential prompts.
+- Save and recover documents whose text uses disabled numeric, fraction, or small-caps OpenType features, which previously failed to write a `.fig` file.
+- Update instance text properties on the canvas while typing, with grouped undo for rapid edits.
+- Point Homebrew installation instructions to the official `openpencil` cask and document separate CLI installation.
+- Reach the custom model option in the model picker for providers with large model catalogs instead of requiring a search for it.
 
 ### Performance
 
-- Scope automation and Figma API layout reconciliation to graph nodes and parent containers actually changed by each mutation.
+- Reduce editor pauses while generating recovery snapshots and exporting text-heavy `.fig` documents.
+- Recompute layout only for the pages an edit affects, instead of every page, when editing a component or its instances.
+
+## 0.15.0 — 2026-09-16
+
+### Breaking changes
+
+- Use MCP SDK v2 server/client types for programmatic MCP integrations. Define custom tools with native Valibot `input` schemas and execution metadata instead of `params`, `ParamDef`, or `paramToZod()`.
+- Replace Scene Graph `overrides` records with `instanceOverrides`, using separate `self` and `descendants` maps. Rename `figmaDerivedLayout`, `figmaDerivedTextGlyphs`, and `FigmaDerivedTextGlyph` to `derivedLayout`, `derivedTextGlyphs`, and `DerivedTextGlyph`.
+- Update custom Vue SDK binding providers to implement `getBindingId()` and handle `unresolved`. Replace `setValue()` with `prepareEdit()`, returning a stable edit key, captured value, setter, and restoration callback.
+- Replace Vue SDK `useDialogMessages()`, `dialogMessages`, and their catalog keys with the corresponding product-domain message composables and catalogs.
+- Use Vue 3.5.41 or newer within Vue 3 for the Vue SDK, and CanvasKit 0.41.1 or newer when supplying its optional CanvasKit peer. Update custom CanvasKit integrations to use `PathBuilder` and immutable `Path` operations.
+
+### Added
+
+- Expose design inspection and undoable layer-property and variable edits to browser agents through experimental WebMCP in supporting browsers, with explicit Off, Inspect, and Edit access controls in Settings.
+- Control custom tool exposure independently through `mcp`, `ai`, and `webmcp` exclusions. Tools are included by default, subject to execution support and user permissions.
+- Bind Design JSX spacing, sizing, corners, and typography directly to numeric document variables.
+- Define component properties and assign instance values in Design JSX using stable property IDs.
+- Save AI conversations and attachment previews locally, switch between chats, rename or delete them, and browse saved transcripts across documents. Choose whether reasoning stays collapsed, expands while thinking, or stays expanded, with animated disclosure controls that respect reduced motion.
+- Add a searchable command palette for editor and application actions.
+- Search current AI provider catalogs from model pickers, with curated recommendations, recent compatible models, and offline fallbacks.
+- Render triangle and line arrow stroke caps on lines and open vector paths, and choose them from the stroke cap picker.
+- Expose component properties and instance-swap targets through the Figma API and automation.
+- Create, select, move, duplicate, transfer, and delete canvas and frame guides directly from rulers, with undoable edits, measurements, context-menu actions, and `.fig` round-trip fidelity.
+- Open to a unified home with recent and configured storage documents in grid or list layouts, and open multiple selected design files in separate tabs.
+- Snap vector points, moved layers, and resized edges to nearby geometry, guides, frame and canvas bounds, and whole-pixel coordinates, with visible alignment guides and persistent snapping preferences.
+- Run Pi through AI SDK HarnessAgent as a configurable desktop provider with saved model profiles, secure credentials, existing MCP design tools, and per-profile thinking and permission settings.
+- Combine components into variant sets through Figma API scripts and automation.
+- Add local AI usage and technical diagnostics, including token telemetry, provider/model summaries, recent failures, configurable retention, export, and clear controls (#588).
+- Import, render, edit, resize, select, and export Figma text-on-path layers while preserving their curved glyph layout.
+- Show temporary Figma-style distance measurements between selected and Option/Alt-hovered layers (#491).
+- Edit Design JSX and HTML/CSS previews in CodeMirror, with theme-aware highlighting, Tailwind viewing, completion, diagnostics, bounded execution, and session-level undo (#130).
+- Set provider-specific reasoning effort on supported AI model profiles (#454).
+- Show unavailable or substituted document fonts with affected-layer selection and retry actions, and expose font fidelity through the Figma API, MCP, and `openpencil fonts [file] --json`. Choose `warn`, `strict`, or `allow` font-substitution policies for file-backed CLI raster and PDF exports with `--font-policy` (#503, #625).
+- Add reusable remote MCP connections for ACP agents, with Streamable HTTP endpoints and credential-backed bearer tokens.
+- Author and manage multidimensional component variants and published component libraries, including revision previews, linked-instance updates, stable library identities, offline catalogs, storage-backed catalogs, and read-only library definitions (#239).
+- Recover unsaved and pathless documents locally, including after closing their tabs, with options to disable recovery and restore or discard retained snapshots (#487, #505, #574).
+- Inspect selected designs with a configured Vision model and attach images to AI chat with bounded analysis and previews (#232, #471).
+- Pin selected layers as explicit AI chat context, show collapsible reasoning, copy individual responses, and grow the composer with multiline prompts (#13).
+
+### Changed
+
+- Refresh the OpenPencil mark across the editor, documentation, browser tabs, installed web apps, and desktop icons, with small-size and dark-background adaptations.
+- Explore editable component, typography, and paint comparisons in the demo, with the original examples preserved on a reference page.
+- Use compact desktop Home search actions with consistent responsive layout and control sizing.
+- Keep pixel-grid rounding invisible while showing alignment guides only for real geometry, objects, and canvas/layout guides.
+- Embed images when copying selections into Figma, and preserve geometry, text sizing, component links, variables, modes, and shared styles when pasting within OpenPencil.
+- Choose the app theme and whether animations follow the system or stay off under Appearance in General Settings, with live updates and persistent preferences.
+- Simplify property panels with fill and stroke style pickers in section headers, concise effect style rows, and collapsed equal corner fields when all four share a variable. Preserve applied and missing styles and remove the redundant Dimensions heading for text layers.
+- Open variable pickers below their trigger when space permits, flipping above near the viewport edge.
+- Keep AI chat preferences with the model overview and edit models in a fixed-size Settings pane with explicit Save and Cancel actions.
+- Match page-list density to the layer tree and add subtle, reduced-motion-aware dialog transitions.
+- Fade in streaming Markdown list items and code lines without animating completed responses.
+- Vertically center shaped section titles and allow renaming a section by double-clicking its canvas label.
+- Load supported online fonts before revealing imported pages, preserve substituted text during editing, and shape canvas labels with Inter typography and shared Arabic/CJK font fallback.
+- Complete translated app, accessibility, font, color, file, clipboard, collaboration, chat, vectorization, storage, recovery, component-library, and connection feedback across supported locales, and synchronize document language with the selected locale.
+- Separate local MCP server controls, browser WebMCP access, and remote connections in Settings, with inline searchable tool permissions.
+- Show translated field errors, hints, and consistent contextual alerts in Settings forms, focus the first invalid field on submission, and explain missing requirements instead of silently disabling Save or Test.
+- Pan horizontally with Shift+wheel while preserving native horizontal trackpad movement.
+
+### Fixed
+
+- Render four-point diamond gradients, preserve text layout across fill types, and keep image colors accurate on sRGB displays.
+- Keep newly created and edited objects visible during zoom instead of replaying outdated scene content.
+- Keep property fields and paint previews live during editing, rotated selection labels readable and aligned, and object edges stable when previews settle.
+- Show compact bordered section labels with inset nested titles and clearer hover feedback.
+- Keep Undo and Redo commands available as edit history changes, without requiring another scene edit.
+- Avoid recursive desktop HTTP proxy requests when font downloads intercept Tauri IPC traffic.
+- Keep FIT image fills proportional, centered, and fully visible without stretching or cropped edges.
+- Preserve edited instance text, including cleared labels, when saving and reopening `.fig` files.
+- Honor `.pen` frame layout defaults and sizing and padding shorthands so imported auto-layout frames keep their computed dimensions and child positions (#564).
+- Avoid macOS Keychain prompts during credential status checks and pause repeated credential access after failures until explicitly retried from Settings.
+- Honor explicit Design JSX instance dimensions and preserve authored overrides through component synchronization.
+- Route browser Command/Ctrl plus and minus shortcuts to canvas zoom instead of page zoom.
+- Resolve `$name` references in imported `.pen` fills, stroke fills, font families, dimensions, and spacing without requiring a `--` prefix (#563).
+- Resolve bound fields in each layer’s mode, keep variable edits scoped and undoable, and make broken bindings visible and recoverable.
+- Display letter spacing in pixels and support explicit automatic line height.
+- Prevent the stock photo tool from replacing text, lines, structural layers, or containers with content while supporting closed shape geometry.
+- Preserve imported Figma text alignment metadata, explicit normal blend modes on text and vectors, and implicit fixed text sizing in auto-layout frames across save and reload.
+- Render imported Figma strokes with odd-length dash patterns correctly.
+- Stop showing a misleading desktop-only warning when web font loading or catalog lookup fails.
+- Resolve fallback fonts reliably for cached characters, mixed-language text, and text-case transformations.
+- Preserve imported Figma divider-line geometry during auto-layout recomputation, preventing half-pixel shifts on save and reload.
+- Resolve package imports under Node and Bun from ordinary tarballs while preserving Bun source-first workspace execution (#663).
+- Use the user's home directory as the default MCP file root on Windows, avoiding the caller's unreliable working directory.
+- Open legacy raw `.fig` files that store the Kiwi document and thumbnail without a ZIP wrapper (#582).
+- Preserve a frame's auto-layout HUG sizing, variable bindings, and variable modes when converting it into a component through the Figma API or automation (#595).
+- Run `openpencil import` on Node so npm-installed CLI users no longer encounter `Bun is not defined` (#575).
+- Generate recent-file previews from the conventional `Cover` page without modifying the source file.
+- Resolve Vue SDK semantic test selectors correctly in non-browser runtimes (#397).
+- Commit vector vertex and Bézier-handle edits when the pointer is released and keep transformed vector-edit overlays aligned (#586).
+- Preserve app-created component properties and instance-swap targets across `.fig` save and reload cycles (#548).
+- Reconnect desktop automation to an already-running MCP server through its discovery file (#546).
+- Keep text-editing carets, hit testing, and selection highlights aligned with vertically centered or bottom-aligned text (#539).
+- Match AI chat code-block colors and backgrounds to the active theme, and let desktop users select and copy chat text without replacing it with canvas layers (#537, #538).
+- Restore visible above, below, and child drop feedback while dragging layers in the Layers panel.
+- Place editor-created instances beside nested source components in world space, including transformed parents.
+- Prevent malformed collaboration updates from corrupting synchronized nodes or derived text rendering.
+- Transfer native `.fig` exports over binary Tauri IPC, preventing large desktop saves from being truncated or exhausting WebView memory (#484).
+- Decode zstd-compressed FIG containers and reject invalid compressed payloads (#397).
+- Compose caller CSS with Tailwind defaults when importing DOM/CSS documents (#397).
+- Preserve desktop HTTP timeout, abort, and empty-response semantics (#397).
+- Report whether missing Figma clipboard images were actually fetched (#397).
+- Report exhausted provider credit, request failures, and output-token limits through localized chat toasts and copied diagnostics (#451, #454).
+- Prevent Windows desktop crashes when loading large system fonts for non-Latin text.
+- Preserve open vector segments when the same vector network also contains filled regions (#450).
+- Match Figma Plugin API behavior for `rescale()`, page `backgrounds`, and nullable visual `absoluteRenderBounds` (#442).
+- Keep imported and pasted Figma instances linked to their remapped source components so later component edits update existing instances (#385).
+- Restore native copy, cut, and paste shortcuts in desktop text inputs while preserving design clipboard handling on the canvas.
+- Preserve committed desktop text input when the WebView supplies text through the input event before updating the hidden text field (#607).
+- Preserve selected layers when browser clipboard serialization fails during cut operations, and fall back to the session clipboard when system clipboard access is unavailable (#568).
+- Treat MCP tool results with an omitted `isError` field as successful while preserving explicit MCP errors (#583).
+- Preserve effective nested instance text overrides when importing complex Figma component hierarchies (#102).
+- Preserve SVG clip paths, including clip shapes referenced through `<use>`, when importing editable vectors.
+- Preserve circles, ellipses, rectangles, lines, polylines, and polygons supplied as JSX children of inline SVG elements (#452).
+- Stop local MCP servers after the app disconnects instead of leaving orphaned background processes (#494).
+- Prevent unbounded instance duplication when editing Figma-imported or pasted components with serialized or renamed children, keep extra instance children in their intended order, and avoid pasted instances re-linking pre-existing instances during clipboard import.
+
+### Performance
+
+- Reduce pauses after repeated frame creation without leaving hidden property edits or popups active.
+- Reduce repeated text shaping and scene invalidation while moving and resizing objects, and reuse fitting canvas labels during zoom.
+- Reduce unnecessary layout work after automation and Figma API edits by updating only affected layers and containers.
 - Keep rapid trackpad zoom reversals and effect-heavy document navigation responsive by cancelling obsolete reconstruction and reusing safe raster snapshots.
-- Show the FIG page list from a lightweight Kiwi scan before materializing the full document, making large files feel responsive sooner.
+- Show the FIG page list from a lightweight Kiwi scan before materializing the full document.
 - Avoid redundant collaboration writes when synchronized node fields have not changed.
-- Release obsolete streamed Markdown parser history after each AI response completes, preventing chat memory from multiplying with every streamed chunk. (#544)
-- Open large documents faster by using cached world positions while finding layers under the pointer. (#527)
-- Coalesce writable-document autosaves that overlap an active `.fig` export while preserving a trailing save for newer edits. (#528)
-- Defer JSX generation and syntax highlighting until the Code panel is active, keeping large canvas selections responsive. (#500)
-- Index Figma clipboard children once during import instead of rescanning every pasted node, keeping large flat pastes linear. (#500)
+- Release completed streaming-response state to reduce retained chat memory (#544).
+- Open large documents faster by reducing repeated position calculations when finding layers under the pointer (#527).
+- Avoid redundant autosaves while a `.fig` export is in progress, while ensuring newer edits are saved afterward (#528).
+- Defer JSX generation and syntax highlighting until the Code panel is active, keeping large canvas selections responsive (#500).
+- Paste large, flat Figma selections faster by avoiding repeated scans of clipboard layers (#500).
 - Reduce peak memory during `.fig` export by sharing immutable binary resources with the isolated export graph.
+
+### Security
+
+- Protect new real-time collaboration sessions with stronger invitation credentials.
 
 ## 0.14.0 — 2026-08-10
 

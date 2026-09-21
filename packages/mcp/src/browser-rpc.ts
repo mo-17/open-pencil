@@ -22,6 +22,8 @@ type BrowserRPCBridgeOptions = {
     sendRPC: (body: Record<string, unknown>, options?: BrowserRPCSendOptions) => Promise<unknown>,
     options: BrowserRPCSendOptions
   ) => Promise<Record<string, unknown>>
+  /** How long an RPC waits for the editor to register. Defaults to 10 seconds. */
+  appWaitTimeoutMs?: number
 }
 
 type ConnectionListener = (connected: boolean) => void
@@ -77,7 +79,8 @@ export function createBrowserRPCBridge({
   onConnectionChange,
   onPluginToolsChanged,
   resolveTimeoutMs = resolveBrowserRPCTimeoutMs,
-  requestPreflight
+  requestPreflight,
+  appWaitTimeoutMs = APP_WAIT_TIMEOUT
 }: BrowserRPCBridgeOptions) {
   const pending = new Map<string, PendingRequest>()
   const clients = new Set<WebSocket>()
@@ -141,7 +144,7 @@ export function createBrowserRPCBridge({
         if (waiter) connectionWaiters.delete(waiter)
         cleanupAbort()
         reject(new Error(APP_NOT_CONNECTED_MESSAGE))
-      }, APP_WAIT_TIMEOUT)
+      }, appWaitTimeoutMs)
 
       waiter = {
         resolve: () => {
@@ -165,7 +168,7 @@ export function createBrowserRPCBridge({
       // race: if the browser registers between sendRPC's initial check and
       // this point, notifyConnectionWaiters() will have already fired and
       // cleared the set. Without this re-check, the waiter would stall for
-      // APP_WAIT_TIMEOUT even though the browser is connected.
+      // appWaitTimeoutMs even though the browser is connected.
       connectionWaiters.add(waiter)
       if (browserWs && browserWs.readyState === browserWs.OPEN && browserRegistered) {
         waiter.resolve(undefined)

@@ -18,7 +18,31 @@ You can configure multiple reusable models and separately assign models for desi
 
 The chat composer grows with multiline prompts and can pin the current canvas selection as explicit node context. Assistant messages show provider reasoning in collapsible sections and provide a per-response copy action. Image attachments remain available for visual references when a Vision model is configured. Streaming responses use a hardened Markdown renderer with Shiki-highlighted code blocks; unsafe link protocols and embedded data images are blocked.
 
-### Supported Providers
+## Step limit
+
+In **Settings → AI & agents → Chat**, set **Maximum steps per message** to a whole number from 1 to 1,000. The default is 50. Press Enter or leave the field to save a valid value; invalid drafts do not replace the saved preference. Higher limits allow longer tool-driven tasks but can increase latency and provider cost.
+
+The built-in AI captures this limit when each message starts. Stopping, remaining-step warnings, and the **Continue** action use that same budget. Changing it does not interrupt an ongoing request; the next message or continuation uses the new limit. A step is one model iteration and can include multiple tool calls. ACP and Pi agents manage their own limits.
+
+## Tool access
+
+Open **Settings → Tool access** to choose which tools direct AI model connections can use. Search by name or description, expand read-only or side-effect groups, and toggle individual tools or an entire group. Group switches affect all tools in that group, not only search results. **Restore defaults** restores the compact default tool set; extended tools such as `create_component` can be enabled individually.
+
+Preferences are saved locally and apply to the next message, including in an existing conversation. They do not change an already-running request. Enabling many tools increases the schemas sent to the model.
+
+The **Local MCP** segment has independent settings for clients connected to OpenPencil's MCP server, including ACP and Pi agents. Restart the server and reconnect stdio clients after changing those settings. Remote MCP connections, WebMCP access, and Pi's shell/filesystem permissions remain separate.
+
+Tool toggles control which tools are offered, not which operations scripts may perform. An enabled `eval` or other script-capable tool can perform design operations whose dedicated tools are disabled; these switches are not a sandbox.
+
+## Saved Conversations
+
+Use **Conversation history** to return to a saved chat, start a **New chat**, or rename or delete a conversation. History and attachment previews are stored locally; **All chats** lets you browse transcripts from other documents.
+
+A conversation belonging to another document is read-only until you open that document. A saved agent transcript is not a guarantee that its external agent session can resume: when resumption is unavailable, start a new chat. Local history is not cloud synchronization or a backup.
+
+In the Chat settings beside the model overview, choose whether reasoning is **Collapsed by default**, **Expand while thinking**, or **Expanded by default**. Disclosure animations follow the app's reduced-motion preference. Expanding older reasoning does not force the conversation to scroll to the bottom.
+
+## Supported Providers
 
 | Provider                 | Models                                          | Setup                                                                                                       |
 | ------------------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -33,13 +57,9 @@ The chat composer grows with multiline prompts and can pin the current canvas se
 
 No backend, no subscription — your key talks directly to the provider. Browser requests are subject to each provider's CORS policy, and model deployments vary in how reliably they stream tool calls. See [BYOK provider and model compatibility](./byok-provider-compatibility) for measured results and reproduction steps.
 
-### External MCP connections
+## External MCP connections
 
-Desktop ACP agents can also use trusted remote
-[Model Context Protocol](https://modelcontextprotocol.io/) servers. In
-**Settings → MCP connections**, add a named Streamable HTTP endpoint, optionally save a bearer
-token, and enable the connection. OpenPencil stores the token in the configured credential backend
-rather than ordinary settings and resolves it only when starting the ACP session.
+Desktop ACP agents can also use trusted remote [Model Context Protocol](https://modelcontextprotocol.io/) servers. In **Settings → MCP**, under MCP connections, add a named Streamable HTTP endpoint, optionally save a bearer token, and enable the connection. OpenPencil stores the token in the configured credential backend rather than ordinary settings and resolves it only when starting the ACP session.
 
 Remote servers must use HTTPS. Loopback HTTP endpoints are accepted for local development. Review
 and trust a server before enabling it: its tools may read external data or perform actions with the
@@ -114,12 +134,12 @@ To verify continuity across a real desktop restart:
    session control and copy its session ID.
 2. Quit OpenPencil normally, relaunch it, and reopen the same design without changing the Design
    model, connection, credentials, Remote MCP selection, or agent.
-3. Open AI chat and confirm that the control reports **Session restored** with the same ID. The
-   visible transcript will be empty by design; send a follow-up that depends on the earlier context
-   to verify the agent retained the thread.
+3. Open AI chat and confirm that the control reports **Session restored** with the same ID. Saved
+   chat history is separate from ACP restoration; send a follow-up that depends on the earlier
+   context to verify that the agent retained the thread.
 4. A **New session after restore failed** or **Session unavailable** result is a real failed restore,
-   not a restored conversation. Record the requested and active IDs; development builds can also
-   copy the ACP log before retrying.
+   not a restored conversation. Record the requested and active IDs, then export available
+   diagnostics from Settings before retrying. Diagnostics omit chat transcript content.
 
 Manager, storage, and mocked transport tests exercise the same binding rules but are not substitutes
 for this installed-agent, quit-and-relaunch check.
@@ -133,9 +153,9 @@ alias used for local routing: an alias with no retained session is pruned after 
 cleanup.
 
 Session records expire after 90 days of inactivity. Cleanup retains at most 8 bindings per document
-and 200 globally. Direct API providers do not read ACP records and continue to use only bounded
-in-memory message history. In both paths, the visible OpenPencil transcript itself is not currently
-persisted across an application restart, even when an ACP agent restores its internal context.
+and 200 globally. Direct API providers do not read ACP session records. Saved chat transcripts and
+attachment previews use the separate local conversation history described above; restoring that
+visible history does not itself prove that an ACP agent has resumed its internal context.
 
 ## Visual references
 
@@ -229,7 +249,7 @@ a pixel-identical editable reconstruction. Website URL import remains a separate
 
 ## What It Can Do
 
-The assistant has a curated 50+ tools across these categories:
+The configurable tool catalog covers these categories; the tools offered to a model depend on your Tool access settings:
 
 - **Create** — frames, shapes, text, components, pages, and real lowcode controls. Renders JSX for complex layouts without substituting visual Frames for functional controls.
 - **Style** — fills, strokes, effects, opacity, corner radius, blend modes.
@@ -256,6 +276,9 @@ structure and correct concrete layout warnings. When you attach a visual referen
 vision-capable model also grounds the initial plan in its visible pixels. OpenPencil does not
 automatically upload the canvas or promise pixel-perfect recovery of exact fonts, hidden
 interactions, or responsive behavior that cannot be observed.
+
+When `export_image` is enabled in Tool access, the assistant can also request a rendered image for
+visual checks. Enabling this capability does not guarantee an automatic screenshot after every edit.
 
 ## Example Prompts
 

@@ -60,7 +60,8 @@
       "@open-pencil/pen": ["./packages/pen/src/index.ts"],
       "@open-pencil/pen/*": ["./packages/pen/src/*"],
       "#authoring-reference/*": ["./tools/authoring-reference/src/*"],
-      "#ci/*": ["./tools/ci/src/*"]
+      "#ci/*": ["./tools/ci/src/*"],
+      "#vite-config/*": ["./vite/*"]
     }
   },
   "include": [

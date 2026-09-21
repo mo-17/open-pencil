@@ -1,24 +1,10 @@
 import type { UIMessage } from 'ai'
 
-import { buildDebugLog } from '@open-pencil/core/tools'
-import type { ToolDebugLog, ToolLogEntry } from '@open-pencil/core/tools'
+import type { ToolDebugLog } from '@open-pencil/core/tools'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { formatACPDiagnostics, getACPDiagnostics } from '@/app/ai/acp/diagnostics'
-import type { AIChatFailure } from '@/app/ai/chat/failure'
-import { getToolLogEntries } from '@/app/ai/tools'
 import { diagnostics } from '@/app/diagnostics'
-
-const MAX_FAILURE_DETAIL_LENGTH = 240
-const SENSITIVE_DETAIL_PATTERN =
-  /(api[-_ ]?key|authorization|token|secret|password)(\s*[:=]\s*|\s+)([^\s,;]+)/gi
-
-export function safeFailureDetail(detail: string): string {
-  const redacted = detail.replace(SENSITIVE_DETAIL_PATTERN, '$1$2[redacted]')
-  return redacted.length <= MAX_FAILURE_DETAIL_LENGTH
-    ? redacted
-    : `${redacted.slice(0, MAX_FAILURE_DETAIL_LENGTH)}…`
-}
 
 export function formatTokenUsage(): string {
   const acp = getACPDiagnostics()
@@ -49,61 +35,6 @@ export function formatTokenUsage(): string {
     `Steps: ${events.length}`
   )
   return lines.join('\n')
-}
-
-export function formatLogEntry(entry: ToolLogEntry, index: number): string {
-  const time = new Date(entry.timestamp).toISOString().slice(11, 23)
-  const lines = [`  #${index + 1} [${time}] ${entry.tool} (${entry.durationMs}ms)`]
-  lines.push(`    args: ${JSON.stringify(entry.args)}`)
-
-  if (entry.error) {
-    lines.push(`    ERROR: ${entry.error}`)
-  } else {
-    lines.push(`    result: ${JSON.stringify(entry.result)}`)
-  }
-
-  if (entry.isDuplicate) {
-    lines.push(`    ⚠ DUPLICATE: same tool+args called earlier in session`)
-  }
-
-  if (entry.unchangedProps?.length) {
-    lines.push(`    ⚠ NO-OP PROPS: ${entry.unchangedProps.join(', ')}`)
-    if (entry.nodeBefore) {
-      for (const prop of entry.unchangedProps) {
-        const val = entry.nodeBefore[prop]
-        lines.push(`      ${prop} stayed: ${JSON.stringify(val)}`)
-      }
-    }
-  }
-
-  if (entry.nodeBefore && entry.nodeAfter) {
-    const changed = diffNodeSnapshots(entry.nodeBefore, entry.nodeAfter)
-    if (changed.length > 0) {
-      lines.push(
-        `    changed: ${changed.map((c) => `${c.prop}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`).join(', ')}`
-      )
-    }
-  }
-
-  return lines.join('\n')
-}
-
-function diffNodeSnapshots(
-  before: Record<string, unknown>,
-  after: Record<string, unknown>
-): Array<{ prop: string; before: unknown; after: unknown }> {
-  const skip = new Set(['childIds', 'parentId', 'id'])
-  const changed: Array<{ prop: string; before: unknown; after: unknown }> = []
-  const allKeys = new Set([...Object.keys(before), ...Object.keys(after)])
-  for (const key of allKeys) {
-    if (skip.has(key)) continue
-    const bStr = JSON.stringify(before[key])
-    const aStr = JSON.stringify(after[key])
-    if (bStr !== aStr) {
-      changed.push({ prop: key, before: before[key], after: after[key] })
-    }
-  }
-  return changed
 }
 
 export function formatDiagnostics(log: ToolDebugLog): string {
@@ -176,39 +107,6 @@ function formatToolPart(part: Record<string, unknown>): string {
   return lines.join('\n')
 }
 
-function formatMessageStats(messages: UIMessage[]): string {
-  let userMessages = 0
-  let assistantMessages = 0
-  let toolCalls = 0
-  let totalTextLength = 0
-
-  for (const msg of messages) {
-    if (msg.role === 'user') userMessages++
-    else if (msg.role === 'assistant') assistantMessages++
-    for (const part of msg.parts) {
-      const p = part as JSONObject
-      if (p.type === 'text') {
-        totalTextLength += typeof p.text === 'string' ? p.text.length : 0
-      } else if (
-        p.type === 'tool-invocation' ||
-        p.type === 'dynamic-tool' ||
-        p.toolInvocation ||
-        (typeof p.type === 'string' && p.type.startsWith('tool-'))
-      ) {
-        toolCalls++
-        totalTextLength += JSON.stringify(p).length
-      }
-    }
-  }
-
-  const lines = [
-    `Messages: ${messages.length} (${userMessages} user, ${assistantMessages} assistant)`,
-    `Tool parts in messages (provider-reported/rendered): ${toolCalls}`,
-    `Total text content: ${(totalTextLength / 1024).toFixed(1)} KB (~${Math.ceil(totalTextLength / 4)} tokens approx)`
-  ]
-  return lines.join('\n')
-}
-
 export function formatConversationMessage(message: UIMessage): string {
   const header = `--- ${message.role.toUpperCase()} (${message.id}) ---`
   const parts: string[] = []
@@ -238,62 +136,4 @@ export function formatConversationMessage(message: UIMessage): string {
   }
 
   return `${header}\n${parts.join('\n')}`
-}
-
-export function serializeChatLog(messages: UIMessage[], failure?: AIChatFailure | null): string {
-  const sections: string[] = []
-
-  const toolLog = getToolLogEntries()
-  const debugLog = buildDebugLog(toolLog)
-
-  sections.push('╔══════════════════════════════════════╗')
-  sections.push('║     OPEN PENCIL AI DEBUG LOG         ║')
-  sections.push(`║     ${new Date().toISOString()}   ║`)
-  sections.push('╚══════════════════════════════════════╝')
-  sections.push('')
-
-  sections.push('=== TOKEN USAGE & CACHING ===')
-  sections.push(formatTokenUsage())
-  sections.push('')
-
-  sections.push('=== DIAGNOSTICS ===')
-  sections.push(formatDiagnostics(debugLog))
-  sections.push('')
-
-  sections.push('=== ERRORS ===')
-  if (failure) {
-    const detail = failure.detail ? `: ${safeFailureDetail(failure.detail)}` : ''
-    sections.push(`  ${failure.reason}${detail}`)
-  } else {
-    sections.push('  (none recorded)')
-  }
-  sections.push('')
-
-  sections.push('=== MESSAGE STATS ===')
-  sections.push(formatMessageStats(messages))
-  sections.push('')
-
-  sections.push('=== DIRECT/LOCAL TOOL EXECUTION LOG ===')
-  if (toolLog.length === 0) {
-    sections.push(
-      '  (no direct/local tool executions recorded; ACP tools appear in the conversation)'
-    )
-  } else {
-    for (let i = 0; i < toolLog.length; i++) {
-      sections.push(formatLogEntry(toolLog[i], i))
-    }
-  }
-  sections.push('')
-
-  sections.push('=== CONVERSATION ===')
-  for (const msg of messages) {
-    sections.push(formatConversationMessage(msg))
-  }
-
-  return sections.join('\n\n')
-}
-
-export function copyChatLog(messages: UIMessage[], failure?: AIChatFailure | null): Promise<void> {
-  const text = serializeChatLog(messages, failure)
-  return navigator.clipboard.writeText(text)
 }

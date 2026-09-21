@@ -1,3 +1,4 @@
+import { tryOnScopeDispose, watchImmediate } from '@vueuse/core'
 import { useFilter } from 'reka-ui'
 import { computed, ref, watch } from 'vue'
 
@@ -6,6 +7,8 @@ import type {
   FontFamilyOption,
   FontLicenseDisplayStatus
 } from '@open-pencil/core/text'
+
+import { useRetainedActivity } from '#vue/lifecycle/retention/context'
 
 export type FontAccessState = 'unsupported' | 'prompt' | 'granted' | 'denied'
 export type {
@@ -74,6 +77,22 @@ export function useFontPicker(options: UseFontPickerOptions) {
   const open = ref(false)
   const loading = ref(false)
   const accessState = ref<FontAccessState>(options.localFontAccess?.state() ?? 'granted')
+  const active = useRetainedActivity()
+  let requestVersion = 0
+
+  function cancelLoad() {
+    requestVersion++
+    loading.value = false
+  }
+
+  watchImmediate(
+    () => active?.value ?? true,
+    (enabled) => {
+      if (!enabled) cancelLoad()
+    },
+    { flush: 'sync' }
+  )
+  tryOnScopeDispose(cancelLoad)
 
   const { contains } = useFilter({ sensitivity: 'base' })
   const filtered = computed(() => {
@@ -87,11 +106,14 @@ export function useFontPicker(options: UseFontPickerOptions) {
   async function loadFamilies() {
     if (families.value.length > 0 || loading.value) return
     loading.value = true
+    const version = ++requestVersion
     try {
-      families.value = normalizeOptions(await options.listFamilies())
+      const items = await options.listFamilies()
+      if (version !== requestVersion) return
+      families.value = normalizeOptions(items)
       accessState.value = options.localFontAccess?.state() ?? accessState.value
     } finally {
-      loading.value = false
+      if (version === requestVersion) loading.value = false
     }
   }
 
@@ -109,11 +131,14 @@ export function useFontPicker(options: UseFontPickerOptions) {
   async function requestAccess() {
     if (!options.localFontAccess || loading.value) return
     loading.value = true
+    const version = ++requestVersion
     try {
-      families.value = normalizeOptions(await options.localFontAccess.load())
+      const items = await options.localFontAccess.load()
+      if (version !== requestVersion) return
+      families.value = normalizeOptions(items)
       accessState.value = options.localFontAccess.state()
     } finally {
-      loading.value = false
+      if (version === requestVersion) loading.value = false
     }
   }
 

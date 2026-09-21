@@ -1,13 +1,9 @@
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import { EffectRasterCache } from '#core/canvas/renderer/effect-raster-cache'
 import { clearDecodedImageCache } from '#core/canvas/renderer/image-cache'
-
-import {
-  clearEffectRasterCache,
-  deleteEffectRaster,
-  deleteEffectRasterDependencies
-} from './effect-raster-cache'
+import { TextPreparationCache } from '#core/canvas/text/preparation-cache'
 
 export function invalidateScenePicture(r: SkiaRenderer): void {
   r.scenePicture?.delete()
@@ -84,10 +80,11 @@ export function clearSubtreePictureCache(r: SkiaRenderer): void {
 }
 
 export function invalidateAllPictures(r: SkiaRenderer): void {
+  r.textPreparationCache.clear()
   invalidateScenePicture(r)
   r.tiledScene.invalidateStructure()
   clearNodePictureCache(r)
-  clearEffectRasterCache(r.effectRasterCache)
+  r.effectRasterCache.clear()
   clearSubtreePictureCache(r)
 }
 
@@ -126,8 +123,9 @@ function clearEffectFilterCaches(r: SkiaRenderer): void {
 }
 
 function clearNodeRenderCaches(r: SkiaRenderer): void {
+  r.textPreparationCache.clear()
   clearNodePictureCache(r)
-  clearEffectRasterCache(r.effectRasterCache)
+  r.effectRasterCache.clear()
   clearDecodedImageCache(r)
   clearGeometryPathCaches(r)
   clearEffectFilterCaches(r)
@@ -140,7 +138,7 @@ export function clearDocumentCaches(r: SkiaRenderer): void {
   // Pictures can retain decoded SkImages, so drop them before their decoded-image wrappers.
   invalidateScenePicture(r)
   r.tiledScene.invalidateStructure()
-  clearEffectRasterCache(r.effectRasterCache)
+  r.effectRasterCache.clear()
   clearSubtreePictureCache(r)
   clearNodeRenderCaches(r)
   r.labelCache.invalidate()
@@ -181,6 +179,7 @@ export function withIsolatedDocumentCaches<T>(
     nodePictureCache: r.nodePictureCache,
     nodePictureCacheGenerations: r.nodePictureCacheGenerations,
     nodePictureCacheDependencies: r.nodePictureCacheDependencies,
+    textPreparationCache: r.textPreparationCache,
     effectRasterCache: r.effectRasterCache
   }
 
@@ -202,7 +201,8 @@ export function withIsolatedDocumentCaches<T>(
   r.nodePictureCache = new Map()
   r.nodePictureCacheGenerations = new Map()
   r.nodePictureCacheDependencies = new Map()
-  r.effectRasterCache = new Map()
+  r.textPreparationCache = new TextPreparationCache()
+  r.effectRasterCache = new EffectRasterCache()
 
   try {
     return render()
@@ -228,14 +228,16 @@ export function withIsolatedDocumentCaches<T>(
       r.nodePictureCache = previous.nodePictureCache
       r.nodePictureCacheGenerations = previous.nodePictureCacheGenerations
       r.nodePictureCacheDependencies = previous.nodePictureCacheDependencies
+      r.textPreparationCache = previous.textPreparationCache
       r.effectRasterCache = previous.effectRasterCache
     }
   }
 }
 
 export function invalidateNodePicture(r: SkiaRenderer, nodeId: string): void {
-  deleteEffectRaster(r.effectRasterCache, nodeId)
-  deleteEffectRasterDependencies(r.effectRasterCache, nodeId)
+  r.textPreparationCache.deleteNode(nodeId)
+  r.effectRasterCache.delete(nodeId)
+  r.effectRasterCache.deleteDependencies(nodeId)
   for (const [ownerId, dependencyIds] of r.nodePictureCacheDependencies) {
     if (!dependencyIds.includes(nodeId)) continue
     r.nodePictureCache.get(ownerId)?.delete()

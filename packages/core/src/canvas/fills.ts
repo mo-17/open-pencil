@@ -4,6 +4,7 @@ import type { SceneNode, SceneGraph, Fill } from '@open-pencil/scene-graph'
 import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
 
 import { figmaBlendModeToSkia } from './blend'
+import { makeDiamondGradient } from './gradients/diamond'
 import type { SkiaRenderer } from './renderer'
 import {
   cacheDecodedImage,
@@ -376,7 +377,10 @@ export function applyGradientFill(
       r.ck.TileMode.Clamp
     )
     return setOwnedFillShader(r, shader)
-  } else if (fill.type === 'GRADIENT_RADIAL' || fill.type === 'GRADIENT_DIAMOND') {
+  } else if (fill.type === 'GRADIENT_DIAMOND') {
+    const shader = makeDiamondGradient(r, colors, positions, makeGradientLocalMatrix(r, w, h, t))
+    return setOwnedFillShader(r, shader)
+  } else if (fill.type === 'GRADIENT_RADIAL') {
     // Figma's gradientTransform maps gradient space (center 0.5,0.5, radius 0.5)
     // to the node's normalized [0,1] coordinate space. The full local matrix
     // converts to pixel coordinates: scale(w, h) * gradientTransform.

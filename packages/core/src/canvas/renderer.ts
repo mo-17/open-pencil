@@ -3,7 +3,7 @@ import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
 import { decodeBase64 } from '#core/bytes'
-import type { ResolvedRenderColor } from '#core/color/management'
+import type { RenderColorSpace, ResolvedRenderColor } from '#core/color/management'
 /* eslint-disable max-lines -- SkiaRenderer facade owns CanvasKit state and delegates domain drawing */
 import {
   SELECTION_COLOR,
@@ -23,6 +23,7 @@ import type { FontResolutionSnapshot } from '#core/text/resolver'
 import { LabelCache } from './labels/cache'
 import * as LabelHitTest from './labels/hit-test'
 import { LabelParagraphCache } from './labels/paragraph-cache'
+import { labelHitOptions } from './labels/style'
 import {
   canvasPerformanceProfile,
   DEFAULT_CANVAS_PERFORMANCE_MODE,
@@ -42,6 +43,8 @@ import * as RenderPipeline from './renderer/pipeline'
 import type { SceneBacking, SceneBackingBuild } from './renderer/retained-backing/types'
 import * as RendererState from './renderer/state'
 import * as RenderText from './text'
+import { createGlyphSilhouetteCache } from './text/derived'
+import { TextPreparationCache } from './text/preparation-cache'
 export type { MeasurementMode, RenderOverlays, RulerTheme } from './renderer/types'
 import type {
   Path,
@@ -55,6 +58,7 @@ import type {
   SkPicture,
   ImageFilter,
   MaskFilter,
+  RuntimeEffect,
   Paragraph
 } from 'canvaskit-wasm'
 
@@ -71,7 +75,7 @@ export interface PendingFontNode {
   keys: Set<string>
 }
 
-import type { EffectRasterCacheEntry } from './renderer/effect-raster-cache'
+import { EffectRasterCache } from './renderer/effect-raster-cache'
 import { TiledSceneController } from './renderer/tiles'
 import type { RenderOverlays, RulerTheme } from './renderer/types'
 
@@ -79,6 +83,7 @@ export class SkiaRenderer {
   ck: CanvasKit
   surface: Surface
   declare fillPaint: Paint
+  diamondGradientEffect: RuntimeEffect | null = null
   declare strokePaint: Paint
   declare selectionPaint: Paint
   declare parentOutlinePaint: Paint
@@ -119,7 +124,7 @@ export class SkiaRenderer {
   fillGeometryCache = new Map<string, Path[]>()
   strokeGeometryCache = new Map<string, Path[]>()
   /** Path-text glyph silhouettes (stroke-and-union, font units) keyed by blob hash + relative weight. */
-  glyphSilhouetteCache = new Map<string, Path>()
+  glyphSilhouetteCache = createGlyphSilhouetteCache()
   renderingSceneBacking = false
   scenePicture: SkPicture | null = null
   scenePictureVersion = -1
@@ -138,6 +143,8 @@ export class SkiaRenderer {
   navigationGeneration = 0
   tiledSceneEnabled = false
   tracksSceneSettlement = true
+  /** Colour space this renderer's surface presents; colours convert into it when painting. */
+  presentationColorSpace: RenderColorSpace = 'srgb'
   tiledScenePending = false
   tiledSceneCovered = false
   lastSceneViewport: { panX: number; panY: number; zoom: number } | null = null
@@ -145,14 +152,17 @@ export class SkiaRenderer {
   nodePictureCache = new Map<string, SkPicture | null>()
   nodePictureCacheGenerations = new Map<string, number>()
   nodePictureCacheDependencies = new Map<string, readonly string[]>()
-  effectRasterCache = new Map<string, EffectRasterCacheEntry>()
+  effectRasterCache = new EffectRasterCache()
   subtreePictureCache = new Map<string, SubtreePictureCacheEntry>()
   subtreePictureCachePageId: string | null = null
   subtreePictureCacheSceneVersion = -1
   subtreePictureCachePositionPreviewVersion = -1
   subtreePictureCacheFontGeneration = -1
   readonly labelCache = new LabelCache()
-  readonly labelParagraphCache = new LabelParagraphCache()
+  readonly labelParagraphCache = new LabelParagraphCache(undefined, undefined, {
+    onMissingGlyphs: (missing) => RendererFonts.resolveLabelFontCoverage(this, missing)
+  })
+  textPreparationCache = new TextPreparationCache()
   readonly tiledScene = new TiledSceneController()
   readonly profiler: RenderProfiler
 
@@ -196,7 +206,8 @@ export class SkiaRenderer {
   declare drawHoverHighlight: (
     canvas: Canvas,
     graph: SceneGraph,
-    hoveredNodeId?: string | null
+    hoveredNodeId?: string | null,
+    preview?: RenderOverlays['rotationPreview']
   ) => void
   declare drawMeasurements: (
     canvas: Canvas,
@@ -207,7 +218,8 @@ export class SkiaRenderer {
   declare drawEnteredContainer: (
     canvas: Canvas,
     graph: SceneGraph,
-    enteredContainerId?: string | null
+    enteredContainerId?: string | null,
+    preview?: RenderOverlays['rotationPreview']
   ) => void
   declare drawSelection: (
     canvas: Canvas,
@@ -219,7 +231,8 @@ export class SkiaRenderer {
     canvas: Canvas,
     node: SceneNode,
     rotation: number,
-    graph: SceneGraph
+    graph: SceneGraph,
+    preview?: RenderOverlays['rotationPreview']
   ) => void
   declare drawSelectionLabels: (
     canvas: Canvas,
@@ -230,15 +243,22 @@ export class SkiaRenderer {
   declare drawParentFrameOutlines: (
     canvas: Canvas,
     graph: SceneGraph,
-    selectedIds: Set<string>
+    selectedIds: Set<string>,
+    preview?: RenderOverlays['rotationPreview']
   ) => void
   declare drawNodeOutline: (
     canvas: Canvas,
     node: SceneNode,
     rotation: number,
-    graph: SceneGraph
+    graph: SceneGraph,
+    preview?: RenderOverlays['rotationPreview']
   ) => void
-  declare drawGroupBounds: (canvas: Canvas, nodes: SceneNode[], graph: SceneGraph) => void
+  declare drawGroupBounds: (
+    canvas: Canvas,
+    nodes: SceneNode[],
+    graph: SceneGraph,
+    preview?: RenderOverlays['rotationPreview']
+  ) => void
   declare getRotatedCorners: (node: SceneNode, abs: Vector) => Vector[]
   declare drawHandle: (canvas: Canvas, x: number, y: number) => void
   declare drawSnapGuides: (canvas: Canvas, guides?: SnapGuide[]) => void
@@ -271,8 +291,12 @@ export class SkiaRenderer {
     selectedIds: Set<string>,
     guides?: RenderOverlays['guides']
   ) => void
-  declare drawSectionTitles: (canvas: Canvas, graph: SceneGraph) => void
-  declare drawComponentLabels: (canvas: Canvas, graph: SceneGraph) => void
+  declare drawSectionTitles: (canvas: Canvas, graph: SceneGraph, overlays?: RenderOverlays) => void
+  declare drawComponentLabels: (
+    canvas: Canvas,
+    graph: SceneGraph,
+    overlays?: RenderOverlays
+  ) => void
   declare renderNodeSelf: (
     canvas: Canvas,
     graph: SceneGraph,
@@ -545,7 +569,12 @@ export class SkiaRenderer {
     return RendererState.hasActiveFlashes(this)
   }
 
-  hitTestSectionTitle(graph: SceneGraph, canvasX: number, canvasY: number): SceneNode | null {
+  hitTestSectionTitle(
+    graph: SceneGraph,
+    canvasX: number,
+    canvasY: number,
+    preview?: RenderOverlays['rotationPreview']
+  ): SceneNode | null {
     return LabelHitTest.hitTestSectionTitle(
       graph,
       canvasX,
@@ -553,11 +582,17 @@ export class SkiaRenderer {
       this.zoom,
       this.pageId ?? graph.rootId,
       this.sectionTitleFont,
-      this.labelCache
+      this.labelCache,
+      labelHitOptions(this, graph, preview)
     )
   }
 
-  hitTestComponentLabel(graph: SceneGraph, canvasX: number, canvasY: number): SceneNode | null {
+  hitTestComponentLabel(
+    graph: SceneGraph,
+    canvasX: number,
+    canvasY: number,
+    preview?: RenderOverlays['rotationPreview']
+  ): SceneNode | null {
     return LabelHitTest.hitTestComponentLabel(
       graph,
       canvasX,
@@ -565,7 +600,8 @@ export class SkiaRenderer {
       this.zoom,
       this.pageId ?? graph.rootId,
       this.componentLabelFont,
-      this.labelCache
+      this.labelCache,
+      labelHitOptions(this, graph, preview)
     )
   }
 
@@ -573,7 +609,8 @@ export class SkiaRenderer {
     graph: SceneGraph,
     canvasX: number,
     canvasY: number,
-    selectedIds: Set<string>
+    selectedIds: Set<string>,
+    preview?: RenderOverlays['rotationPreview']
   ): SceneNode | null {
     return LabelHitTest.hitTestFrameTitle(
       graph,
@@ -581,7 +618,8 @@ export class SkiaRenderer {
       canvasY,
       this.zoom,
       selectedIds,
-      this.labelFont
+      this.labelFont,
+      labelHitOptions(this, graph, preview)
     )
   }
 
@@ -601,7 +639,8 @@ export class SkiaRenderer {
     viewportWidth: number,
     viewportHeight: number,
     showRulers = true,
-    layer: RenderPipeline.RenderLayer = 'full'
+    layer: RenderPipeline.RenderLayer = 'full',
+    interactive = false
   ): void {
     const dpr = IS_BROWSER ? window.devicePixelRatio || 1 : 1
     RenderPipeline.renderFromEditorState(
@@ -613,7 +652,8 @@ export class SkiaRenderer {
       viewportHeight,
       showRulers,
       dpr,
-      layer
+      layer,
+      interactive
     )
   }
 
@@ -683,7 +723,7 @@ export class SkiaRenderer {
   buildParagraph(
     node: SceneNode,
     color?: Float32Array,
-    opts?: { halfLeading?: boolean }
+    opts?: RenderText.ParagraphBuildOptions
   ): Paragraph {
     return RenderText.buildParagraph(this, node, color, opts)
   }
@@ -694,11 +734,17 @@ export class SkiaRenderer {
     node: SceneNode,
     graph: SceneGraph
   ): ResolvedRenderColor {
-    return RenderColors.resolveFillColorInfo(fill, fillIndex, node, graph)
+    return RenderColors.resolveFillColorInfo(
+      fill,
+      fillIndex,
+      node,
+      graph,
+      this.presentationColorSpace
+    )
   }
 
   resolveFillColor(fill: Fill, fillIndex: number, node: SceneNode, graph: SceneGraph): Color {
-    return RenderColors.resolveFillColor(fill, fillIndex, node, graph)
+    return RenderColors.resolveFillColor(fill, fillIndex, node, graph, this.presentationColorSpace)
   }
 
   resolveStrokeColorInfo(
@@ -707,7 +753,13 @@ export class SkiaRenderer {
     node: SceneNode,
     graph: SceneGraph
   ): ResolvedRenderColor {
-    return RenderColors.resolveStrokeColorInfo(stroke, strokeIndex, node, graph)
+    return RenderColors.resolveStrokeColorInfo(
+      stroke,
+      strokeIndex,
+      node,
+      graph,
+      this.presentationColorSpace
+    )
   }
 
   resolveStrokeColor(
@@ -716,7 +768,13 @@ export class SkiaRenderer {
     node: SceneNode,
     graph: SceneGraph
   ): Color {
-    return RenderColors.resolveStrokeColor(stroke, strokeIndex, node, graph)
+    return RenderColors.resolveStrokeColor(
+      stroke,
+      strokeIndex,
+      node,
+      graph,
+      this.presentationColorSpace
+    )
   }
 
   screenToCanvas(sx: number, sy: number): Vector {
