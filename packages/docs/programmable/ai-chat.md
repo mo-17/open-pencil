@@ -54,6 +54,12 @@ connection for the current canvas. After upgrading, reconnect the agent or reope
 refresh an already running session; clearing its history or changing global agent configuration is
 not required.
 
+Desktop ACP processes also receive loopback proxy exceptions for `127.0.0.1`, `localhost`, and
+`::1`, so a system HTTP proxy cannot intercept their connection to the embedded MCP server.
+OpenPencil preserves existing `NO_PROXY`/`no_proxy` entries and external proxy settings; these
+exceptions apply only to the launched agent process and do not change system settings.
+Restart the updated desktop app to load the native proxy handling before reconnecting the agent.
+
 ### Desktop coding-agent session continuity
 
 Claude Code, Codex, and Gemini CLI use ACP in the desktop app. For a source-backed document,

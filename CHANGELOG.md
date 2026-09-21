@@ -159,6 +159,7 @@
 ### Fixed
 
 - Connect embedded ACP agents to the current editor even when a global `open-pencil` MCP server is configured, and retain the correct connection when resuming sessions.
+- Keep local ACP editor connections working behind system HTTP proxies while preserving existing proxy exceptions and external proxy settings.
 - Match asset handover actions to the selected request's kind and status while retaining unsent form input and saved-request review after refresh or navigation.
 
 - Stop generated backend lists from reusing account-specific filters when the signed-in account changes.

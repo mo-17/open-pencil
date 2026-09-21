@@ -1,4 +1,5 @@
 pub const APP_COMMANDS: &[&str] = &[
+    "acp_process_environment",
     "aliyun_drive_oauth_authorize",
     "aliyun_drive_oauth_cancel",
     "aliyun_drive_oauth_refresh",

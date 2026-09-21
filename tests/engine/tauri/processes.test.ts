@@ -8,6 +8,10 @@ import { checkForAppUpdate } from '@/app/shell/updater'
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
 const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+const ACP_ENVIRONMENT = {
+  NO_PROXY: 'internal.example,127.0.0.1,localhost,::1',
+  no_proxy: 'internal.example,127.0.0.1,localhost,::1'
+}
 
 afterEach(async () => {
   await clearTauriMocks()
@@ -26,11 +30,12 @@ describe('Tauri process helpers', () => {
     const calls: Array<{ cmd: string; args: unknown }> = []
     await mockTauriIPC((cmd, args) => {
       calls.push({ cmd, args })
+      if (cmd === 'acp_process_environment') return ACP_ENVIRONMENT
       if (cmd === 'plugin:shell|spawn') {
         expect(args).toMatchObject({
           program: 'agent-cli',
           args: ['--stdio'],
-          options: { encoding: 'raw', env: {} }
+          options: { encoding: 'raw', env: ACP_ENVIRONMENT }
         })
         onEvent = (args as { onEvent: { onmessage: (event: unknown) => void } }).onEvent.onmessage
         return 42
@@ -55,12 +60,13 @@ describe('Tauri process helpers', () => {
     await process.child.kill()
 
     expect(calls.map((call) => call.cmd)).toEqual([
+      'acp_process_environment',
       'plugin:shell|spawn',
       'plugin:shell|stdin_write',
       'plugin:shell|kill'
     ])
-    expect(calls[1]?.args).toEqual({ pid: 42, buffer: [4, 5] })
-    expect(calls[2]?.args).toEqual({ cmd: 'killChild', pid: 42 })
+    expect(calls[2]?.args).toEqual({ pid: 42, buffer: [4, 5] })
+    expect(calls[3]?.args).toEqual({ cmd: 'killChild', pid: 42 })
   })
 
   test('starts Windows ACP command shims through cmd', async () => {
@@ -69,11 +75,12 @@ describe('Tauri process helpers', () => {
       value: { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
     })
     await mockTauriIPC((cmd, args) => {
+      if (cmd === 'acp_process_environment') return ACP_ENVIRONMENT
       if (cmd === 'plugin:shell|spawn') {
         expect(args).toMatchObject({
           program: 'cmd',
           args: ['/c', 'agent-cli', '--stdio'],
-          options: { encoding: 'raw', env: {} }
+          options: { encoding: 'raw', env: ACP_ENVIRONMENT }
         })
         return 44
       }
@@ -94,6 +101,7 @@ describe('Tauri process helpers', () => {
     let onEvent: ((event: unknown) => void) | null = null
     const onUnexpectedClose = vi.fn()
     await mockTauriIPC((cmd, args) => {
+      if (cmd === 'acp_process_environment') return ACP_ENVIRONMENT
       if (cmd === 'plugin:shell|spawn') {
         onEvent = (args as { onEvent: { onmessage: (event: unknown) => void } }).onEvent.onmessage
         return 43
@@ -114,6 +122,26 @@ describe('Tauri process helpers', () => {
 
     await expect(reader.read()).rejects.toThrow('Agent process exited unexpectedly.')
     expect(onUnexpectedClose).toHaveBeenCalled()
+  })
+
+  test('does not launch ACP when its native environment cannot be resolved', async () => {
+    const calls: string[] = []
+    await mockTauriIPC((cmd) => {
+      calls.push(cmd)
+      if (cmd === 'acp_process_environment') throw new Error('Environment unavailable')
+      return null
+    })
+
+    await expect(
+      spawnACPProcess({
+        command: 'agent-cli',
+        args: [],
+        logId: 'test',
+        destroying: () => false,
+        onUnexpectedClose: vi.fn()
+      })
+    ).rejects.toThrow('Environment unavailable')
+    expect(calls).toEqual(['acp_process_environment'])
   })
 })
 

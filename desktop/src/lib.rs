@@ -1,3 +1,4 @@
+mod acp_environment;
 mod ai_window;
 mod aliyun_drive;
 #[cfg(test)]
@@ -32,6 +33,7 @@ mod supabase_management;
 #[cfg(target_os = "macos")]
 mod window;
 
+use acp_environment::acp_process_environment;
 use ai_window::{
     close_ai_window, focus_ai_editor_window, get_ai_window_latest_payload, open_ai_window,
     send_ai_window_intent, set_ai_window_always_on_top, update_ai_window, AIWindowState,
@@ -216,6 +218,7 @@ pub fn run() {
         .manage(AIWindowState::default())
         .manage(PreviewWindowState::default())
         .invoke_handler(tauri::generate_handler![
+            acp_process_environment,
             aliyun_drive_oauth_authorize,
             aliyun_drive_oauth_cancel,
             aliyun_drive_oauth_refresh,

@@ -65,6 +65,9 @@ async function installFakeACPAgent() {
 
   await mockTauriIPC((cmd, args) => {
     if (cmd === 'plugin:path|resolve_directory') return '/Users/tester'
+    if (cmd === 'acp_process_environment') {
+      return { NO_PROXY: '127.0.0.1,localhost,::1', no_proxy: '127.0.0.1,localhost,::1' }
+    }
     if (cmd === 'plugin:shell|spawn') {
       onEvent = (args as { onEvent: { onmessage: (event: unknown) => void } }).onEvent.onmessage
       pid += 1
@@ -949,6 +952,9 @@ describe('Tauri ACP transport', () => {
 
     await mockTauriIPC((cmd, args) => {
       if (cmd === 'plugin:path|resolve_directory') return '/Users/tester'
+      if (cmd === 'acp_process_environment') {
+        return { NO_PROXY: '127.0.0.1,localhost,::1', no_proxy: '127.0.0.1,localhost,::1' }
+      }
       if (cmd === 'plugin:shell|spawn') {
         onEvent = (args as { onEvent: { onmessage: (event: unknown) => void } }).onEvent.onmessage
         return 77

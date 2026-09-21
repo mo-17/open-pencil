@@ -17,6 +17,7 @@
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-html",
     "clipboard-manager:allow-write-text",
+    "allow-acp-process-environment",
     "allow-aliyun-drive-oauth-authorize",
     "allow-aliyun-drive-oauth-cancel",
     "allow-aliyun-drive-oauth-refresh",

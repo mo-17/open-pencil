@@ -1,6 +1,11 @@
 import { decodeTauriStderr } from '@/app/shell/ui'
 import { resolvePlatformCommand } from '@/app/tauri/command'
 
+type ACPProcessEnvironment = {
+  NO_PROXY: string
+  no_proxy: string
+}
+
 export type TauriChild = {
   write(data: number[]): Promise<void>
   kill(): Promise<void>
@@ -21,11 +26,13 @@ export async function spawnACPProcess({
   destroying,
   onUnexpectedClose
 }: ACPProcessOptions) {
+  const { invoke } = await import('@tauri-apps/api/core')
   const { Command } = await import('@tauri-apps/plugin-shell')
+  const environment = await invoke<ACPProcessEnvironment>('acp_process_environment')
   const resolved = resolvePlatformCommand(commandName, args)
   const command = Command.create(resolved.command, resolved.args, {
     encoding: 'raw',
-    env: {}
+    env: environment
   })
 
   const stdoutChunks: Uint8Array[] = []
