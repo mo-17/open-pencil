@@ -4,6 +4,7 @@ import { nestJSArtifact, nestJSJSONArtifact } from '../artifact'
 import { CONFIGURATION_SOURCE } from './configuration'
 import { DATABASE_SOURCE } from './database'
 import { DOCTOR_SOURCE } from './doctor'
+import { DOCTOR_CHECKS_SOURCE } from './doctor-checks'
 import { LIFECYCLE_SOURCE, WEB_SOURCE } from './lifecycle'
 import { MANAGED_DATABASE_SOURCE } from './managed/database'
 import { MANAGED_WORKER_SOURCE } from './managed/worker'
@@ -34,6 +35,7 @@ export function emitNestJSLocalRun(application: BackendApplicationSpecV1) {
       'local-config.mjs': CONFIGURATION_SOURCE,
       'local-database.mjs': DATABASE_SOURCE,
       'local-doctor.mjs': DOCTOR_SOURCE,
+      'local-doctor-checks.mjs': DOCTOR_CHECKS_SOURCE,
       'local-web.mjs': WEB_SOURCE,
       'managed/database.mjs': MANAGED_DATABASE_SOURCE,
       'managed/worker.mjs': MANAGED_WORKER_SOURCE

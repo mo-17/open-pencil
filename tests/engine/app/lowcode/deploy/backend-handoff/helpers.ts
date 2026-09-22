@@ -1,4 +1,3 @@
-import { mock } from 'bun:test'
 import {
   appendFileSync,
   existsSync,
@@ -20,6 +19,7 @@ import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import type { EditorStore } from '@/app/editor/active-store'
+import { createDeployCLIRunner } from '@/app/lowcode/preview-pane/deploy/runner'
 import {
   createAppPluginStore,
   createBundledPluginCatalog,
@@ -434,28 +434,20 @@ async function runHost(scenario: BridgeScenario, directory: string): Promise<voi
       record(directory, 'changed')
     }
   }
-  mock.module('@tauri-apps/plugin-shell', () => ({
-    Command: {
-      create: (
-        name: string,
-        args: string[],
-        options: { cwd: string; env: Record<string, string> }
-      ) => {
-        if (
-          name !== 'lowcode-preview' ||
-          options.cwd !== ROOT ||
-          args.includes('test-only-test-only')
-        ) {
-          throw new Error('Unexpected Desktop CLI invocation in the bridge test')
-        }
-        return new BunShellCommand(args, options, directory, scenario, beforeReady)
-      }
+  const runner = createDeployCLIRunner((name, args, options) => {
+    if (
+      name !== 'lowcode-preview' ||
+      options.cwd !== ROOT ||
+      args.includes('test-only-test-only')
+    ) {
+      throw new Error('Unexpected Desktop CLI invocation in the bridge test')
     }
-  }))
+    return new BunShellCommand(args, options, directory, scenario, beforeReady)
+  })
   const adapter = createDeploymentPluginHostAdapter(
     VERCEL_DEPLOYMENT_PLUGIN,
     { resolve: async () => 'test-only-test-only' },
-    undefined,
+    runner,
     undefined,
     fixture.store
   )

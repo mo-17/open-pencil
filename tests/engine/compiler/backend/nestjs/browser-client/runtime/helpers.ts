@@ -131,12 +131,13 @@ export async function runtimeFixture(
     )
     write(
       'lowcode-backend-auth',
-      `let state = Object.freeze({ready:false,signedIn:false,id:null,email:null,generation:0}); const listeners = new Set();
+      `let state = Object.freeze({notice:null,ready:false,signedIn:false,id:null,email:null,generation:0}); const listeners = new Set();
 export function getSession(){return state}
 export function subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener)}
 export function dispose(){listeners.clear()}
-export function transition(id){state=Object.freeze({ready:true,signedIn:id!==null,id,email:null,generation:state.generation+1});for(const listener of listeners)listener()}
-export async function initialize(){transition(null); ${initializationFailure ? "throw new Error('synthetic-private-callback-detail')" : ''}}
+export function transition(id,notice=null){state=Object.freeze({notice,ready:true,signedIn:id!==null,id,email:null,generation:state.generation+1});for(const listener of listeners)listener()}
+export async function initialize(){transition(null, ${initializationFailure ? "'failed'" : 'null'}); ${initializationFailure ? "throw new Error('synthetic-private-callback-detail')" : ''}}
+export function cancelSignIn(){transition(null,'cancelled')}
 export async function signOut(){transition(null)}
 export async function signIn(){}
 export async function getAccessToken(){return 'synthetic-session-token'}
@@ -147,7 +148,7 @@ export async function getAccessToken(){return 'synthetic-session-token'}
       'browser',
       `export const events = [];
 export const history = { replaceState(state,title,path){events.push({kind:'navigation',path})} };
-export const document = { createElement(){return { style:{}, attributes:{}, setAttribute(key,value){this.attributes[key]=value}, remove(){events.push({kind:'removed'})} }}, body:{prepend(element){events.push({kind:'alert',role:element.attributes.role,text:element.textContent})}} };
+export const document = { documentElement:{lang:'en'}, createElement(){return { style:{}, attributes:{}, append(...children){this.textContent=children.map(child=>child.textContent).join(' ')}, setAttribute(key,value){this.attributes[key]=value}, remove(){events.push({kind:'removed'})} }}, body:{prepend(element){events.push({kind:'alert',role:element.attributes.role,text:element.textContent})}} };
 export let indexedDB;
 export const navigator = {};
 export const location = {origin:'https://generated.test'};
@@ -172,7 +173,7 @@ export function configureRecovery(environment){ indexedDB=environment.indexedDB;
     }
     write(
       'runtime',
-      `import { fetch } from './transport'\nimport { document, history, location } from './browser'\n` +
+      `import { fetch } from './transport'\nimport { document, history, location, navigator } from './browser'\n` +
         buildBackendClientRuntime(application, './lowcode-state') +
         '\nexport function disposeTestRuntime(){for(const controller of requests)controller.abort();requests.clear();listeners.clear();queryActions.clear()}\n'
     )

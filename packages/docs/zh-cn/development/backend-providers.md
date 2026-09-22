@@ -87,7 +87,7 @@ Backend 列表和请求目标，旧会话晚到的响应不会覆盖新用户的
 检查完成后，在独立审核窗口查看 SQL 并确认初始化，再启动并打开预览。日常配置和日志默认收起，
 关闭侧栏会保留运行状态和同文档草稿；「停止」或关闭 Compiler Preview 才会停止预览。
 
-详细能力和运行要求见 [NestJS Provider](../../development/backend-nestjs.md)。本地协议与数据库
+详细能力和运行要求见 [NestJS Provider](/development/backend-nestjs)。本地协议与数据库
 测试使用隔离身份服务；真实身份账号、远程数据库 TLS、生产网关和部署仍需独立验收。
 
 可视化 Workflow 编辑器支持在其步骤数量与嵌套深度限制内编辑多层分支。可以按名称新增、重命名或

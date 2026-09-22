@@ -63,14 +63,23 @@ interface CommandBase {
 }
 export type ManagedPreviewCommand =
   | (CommandBase & {
-      readonly command: 'prepare'
+      readonly command: 'prepare' | 'diagnose'
       readonly application: BackendApplicationSpecV1
       readonly config: ManagedPreviewConfig
     })
   | (CommandBase & { readonly command: 'setup' | 'apply'; readonly planId: string })
   | (CommandBase & { readonly command: 'start' | 'stop' | 'status' | 'close' })
 
+export type { ManagedPreviewDiagnostic } from './diagnostic-types'
+import type { ManagedPreviewDiagnostic } from './diagnostic-types'
+
 export type ManagedPreviewEvent =
+  | {
+      readonly version: 1
+      readonly type: 'diagnostic'
+      readonly id: string
+      readonly diagnostic: ManagedPreviewDiagnostic
+    }
   | { readonly version: 1; readonly type: 'ready'; readonly sessionId: string }
   | {
       readonly version: 1

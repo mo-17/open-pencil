@@ -21,11 +21,11 @@ import { createServer, type Plugin, type PluginOption, type Update, type ViteDev
 import { reactModuleOptimizeDepsForFiles } from './adapters/react/modules/registry'
 import { vueModuleOptimizeDepsForFiles } from './adapters/vue/modules/registry'
 import { createSupabaseBuildDefines } from './build'
+import { createLocalBackendPreviewServices } from './local-backend-preview/auth-relay'
 import {
   parsePreviewLocalBackendConnection,
   type PreviewLocalBackendConnection
 } from './local-backend-preview/connection'
-import { createLocalBackendPreviewGuard } from './local-backend-preview/server'
 import {
   createPreviewFileDecodeCache,
   deserializePreviewFiles,
@@ -306,8 +306,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
     opts.port !== localBackend.previewPort
   )
     throw new Error('NestJS preview port must match the explicitly configured callback origin.')
-  const backendGuard = localBackend ? createLocalBackendPreviewGuard(localBackend) : undefined
-  await backendGuard?.check()
+  const { backendGuard, authRelay } = await createLocalBackendPreviewServices(localBackend)
   const state = { files: opts.initialFiles ?? new Map(), spaFallback: localBackend !== undefined }
   const workspaceRoot = opts.fsRoot ?? process.cwd()
   const target = opts.target ?? 'react'
@@ -344,6 +343,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       port: chosenPort,
       host: '127.0.0.1',
       strictPort: localBackend !== undefined,
+      cors: localBackend ? false : undefined,
       fs: { strict: true, allow: fileSystemAllowlist }
     },
     optimizeDeps: {
@@ -362,6 +362,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
     // workspace dependencies to the same React instance as react-dom.
     ...(target === 'react' ? reactViteOptions() : {}),
     plugins: [
+      ...(authRelay ? [authRelay.plugin] : []),
       ...(backendGuard ? [backendGuard.plugin] : []),
       previewFileBoundaryPlugin(fileSystemAllowlist),
       vfs,
@@ -433,6 +434,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       updateFiles(files)
     },
     async close() {
+      authRelay?.dispose()
       const closed = server.close()
       server.httpServer?.closeIdleConnections?.()
       server.httpServer?.closeAllConnections?.()

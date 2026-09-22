@@ -3,6 +3,8 @@ import { computed, ref, shallowRef } from 'vue'
 import type {
   ManagedPreviewConfig,
   ManagedPreviewEvent,
+  ManagedPreviewDiagnostic,
+  ManagedPreviewPhase,
   ManagedPreviewState
 } from '@open-pencil/compiler/managed-preview'
 
@@ -32,6 +34,9 @@ export const DEFAULT_MANAGED_PREVIEW_CONFIG: ManagedPreviewConfig = Object.freez
 export function createManagedBackendPreviewController(input: ManagedBackendControllerInput) {
   const state = shallowRef<ManagedPreviewState | null>(null)
   const busy = ref(false)
+  const stage = ref<ManagedPreviewPhase | 'capturing' | 'diagnosing' | 'connecting' | null>(null)
+  const diagnostics = ref<ManagedPreviewDiagnostic[]>([])
+  const diagnosedAt = ref<number | null>(null)
   const message = ref('Prepare an isolated local backend to begin.')
   const error = ref<string | null>(null)
   const logs = ref<string[]>([])
@@ -59,9 +64,18 @@ export function createManagedBackendPreviewController(input: ManagedBackendContr
   }
 
   function onEvent(event: ManagedPreviewEvent) {
-    if (disposed || event.type !== 'progress') return
+    if (disposed || !busy.value) return
+    if (event.type === 'diagnostic') {
+      diagnostics.value = [
+        ...diagnostics.value.filter((item) => item.code !== event.diagnostic.code),
+        event.diagnostic
+      ]
+      return
+    }
+    if (event.type !== 'progress') return
+    stage.value = event.phase
     log(event.message)
-    if (busy.value) message.value = event.message
+    message.value = event.message
   }
 
   function ensureHost(): ManagedHost {
@@ -125,7 +139,10 @@ export function createManagedBackendPreviewController(input: ManagedBackendContr
       log(message.value)
       await Promise.allSettled([input.stopFrontend(), host?.stop()])
     } finally {
-      if (isCurrent()) busy.value = false
+      if (isCurrent()) {
+        busy.value = false
+        stage.value = null
+      }
     }
   }
 
@@ -140,6 +157,7 @@ export function createManagedBackendPreviewController(input: ManagedBackendContr
     if (!isCurrent()) return
     publish(next)
     if (!next.connection) throw new Error('The managed backend did not become ready.')
+    stage.value = 'connecting'
     await input.connectFrontend({
       connection: next.connection,
       loginPath: currentSnapshot().loginPath
@@ -149,6 +167,7 @@ export function createManagedBackendPreviewController(input: ManagedBackendContr
   }
 
   async function prepare(nextConfig: ManagedPreviewConfig, automatic = false) {
+    stage.value = 'capturing'
     enabled.value = true
     config.value = Object.freeze({ ...nextConfig })
     const identity = ++epoch
@@ -215,6 +234,7 @@ export function createManagedBackendPreviewController(input: ManagedBackendContr
   async function start() {
     if (!canStart.value) return
     wantsRunning.value = true
+    stage.value = 'starting'
     await run('Starting the managed backend…', startPrepared)
   }
 
@@ -246,8 +266,15 @@ export function createManagedBackendPreviewController(input: ManagedBackendContr
     void prepare(config.value, true)
   }
 
+  function clearDiagnostics() {
+    diagnostics.value = []
+    diagnosedAt.value = null
+  }
+
   async function invalidate(reason = 'Configuration changed. Prepare the backend again.') {
     error.value = null
+    clearDiagnostics()
+    stage.value = null
     enabled.value = false
     epoch++
     const serial = ++operation
@@ -283,7 +310,41 @@ export function createManagedBackendPreviewController(input: ManagedBackendContr
     await invalidate('Managed preview is stopped. Its database data is retained.')
   }
 
+  async function diagnose(nextConfig: ManagedPreviewConfig) {
+    if (busy.value) return
+    const serial = ++operation
+    const identity = epoch
+    const isCurrent = () => !disposed && serial === operation && identity === epoch
+    busy.value = true
+    diagnostics.value = []
+    diagnosedAt.value = null
+    stage.value = 'diagnosing'
+    let capturedCurrent = false
+    try {
+      const captured = await input.capture(isCurrent)
+      capturedCurrent = true
+      if (!isCurrent()) return
+      await ensureHost().diagnose(captured, nextConfig)
+      if (isCurrent()) diagnosedAt.value = Date.now()
+    } catch {
+      if (isCurrent())
+        diagnostics.value = [
+          { code: capturedCurrent ? 'node-runtime' : 'preview-configuration', status: 'failed' }
+        ]
+    } finally {
+      if (isCurrent()) {
+        busy.value = false
+        stage.value = null
+      }
+    }
+  }
+
   return {
+    stage,
+    clearDiagnostics,
+    diagnostics,
+    diagnosedAt,
+    diagnose,
     state,
     busy,
     message,

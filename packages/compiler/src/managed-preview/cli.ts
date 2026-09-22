@@ -33,6 +33,7 @@ async function main(): Promise<void> {
   const service = await ManagedPreviewService.create({
     sessionId,
     onProgress: emit,
+    onDiagnostic: emit,
     onTerminal: emit
   })
   let closing = false

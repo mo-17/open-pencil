@@ -1,5 +1,7 @@
 export const STATE_SOURCE = String.raw`
+export type AuthenticationNotice = 'signing-in' | 'expired' | 'cancelled' | 'timeout' | 'browser-unavailable' | 'failed'
 export interface AuthenticationSession {
+  readonly notice: AuthenticationNotice | null
   readonly ready: boolean
   readonly signedIn: boolean
   readonly id: string | null
@@ -9,15 +11,22 @@ export interface AuthenticationSession {
 
 const listeners = new Set<() => void>()
 let session: AuthenticationSession = Object.freeze({
-  ready: false, signedIn: false, id: null, email: null, generation: 0,
+  notice: null, ready: false, signedIn: false, id: null, email: null, generation: 0,
 })
+let reauthenticationPath: string | undefined
 let accessToken: string | undefined
 let expiresAt = 0
 let expiryTimer: ReturnType<typeof setTimeout> | undefined
 let operation = new AbortController()
 let initialization: Promise<void> | undefined
 
-function failure(): Error { return new Error('Sign-in could not be completed. Please try again.') }
+class AuthenticationError extends Error {
+  constructor(readonly reason: AuthenticationNotice = 'failed') { super('Sign-in could not be completed. Please try again.') }
+}
+function failure(reason?: AuthenticationNotice): Error { return new AuthenticationError(reason) }
+function failureNotice(cause: unknown): AuthenticationNotice {
+  return cause instanceof AuthenticationError ? cause.reason : 'failed'
+}
 
 function publish(next: Omit<AuthenticationSession, 'generation'>): void {
   session = Object.freeze({ ...next, generation: session.generation + 1 })
@@ -26,14 +35,14 @@ function publish(next: Omit<AuthenticationSession, 'generation'>): void {
   }
 }
 
-function clearSession(ready = true): void {
+function clearSession(ready = true, notice: AuthenticationNotice | null = null): void {
   operation.abort()
   operation = new AbortController()
   accessToken = undefined
   expiresAt = 0
   if (expiryTimer !== undefined) clearTimeout(expiryTimer)
   expiryTimer = undefined
-  publish({ ready, signedIn: false, id: null, email: null })
+  publish({ notice, ready, signedIn: false, id: null, email: null })
 }
 
 function assertCurrent(generation: number): void {
@@ -41,7 +50,10 @@ function assertCurrent(generation: number): void {
 }
 
 function expire(): void {
-  if (session.signedIn && Date.now() >= expiresAt) clearSession()
+  if (session.signedIn && Date.now() >= expiresAt) {
+    try { reauthenticationPath = localReturnPath(new URL(window.location.href).pathname + new URL(window.location.href).search) } catch { reauthenticationPath = undefined }
+    clearSession(true, 'expired')
+  }
 }
 
 export function getSession(): AuthenticationSession { expire(); return session }
@@ -58,7 +70,13 @@ export async function getAccessToken(): Promise<string> {
   return accessToken
 }
 
+export function cancelSignIn(): void {
+  clearSession(true, 'cancelled')
+  try { window.sessionStorage.removeItem(STORAGE_KEY) } catch { /* No credential is stored here. */ }
+}
+
 export async function signOut(): Promise<void> {
+  reauthenticationPath = undefined
   clearSession()
   try { window.sessionStorage.removeItem(STORAGE_KEY) } catch { throw failure() }
 }
@@ -105,6 +123,7 @@ function consumeTransaction(): LoginTransaction {
   if (Object.keys(value).length !== keys.length || Object.keys(value).some((key) => !keys.includes(key))) throw failure()
   const item = value as LoginTransaction
   const now = Date.now()
+  if (Number.isSafeInteger(item.expiresAt) && now >= item.expiresAt) throw failure('timeout')
   if (item.version !== 1 || item.binding !== BINDING || item.redirectURI !== redirectURI() ||
       ![item.state, item.nonce, item.verifier].every((entry) => typeof entry === 'string' && /^[A-Za-z0-9_-]{43,128}$/u.test(entry)) ||
       !Number.isSafeInteger(item.createdAt) || !Number.isSafeInteger(item.expiresAt) ||

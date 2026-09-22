@@ -1,8 +1,10 @@
-export const FLOW_SOURCE = String.raw`
+export function browserAuthenticationFlow(previewRelay: boolean): string {
+  return String.raw`
 export async function signIn(returnPath?: string): Promise<void> {
   if (!session.ready) await initialize()
-  const path = localReturnPath(returnPath)
-  clearSession()
+  const path = localReturnPath(reauthenticationPath ?? returnPath)
+  reauthenticationPath = path
+  clearSession(true, 'signing-in')
   const generation = session.generation
   try {
     window.sessionStorage.removeItem(STORAGE_KEY)
@@ -22,8 +24,11 @@ export async function signIn(returnPath?: string): Promise<void> {
     assertCurrent(generation)
     storeTransaction({ version: 1, binding: BINDING, state, nonce, verifier,
       redirectURI: redirectURI(), returnPath: path, createdAt: now, expiresAt: now + TRANSACTION_AGE })
-    window.location.assign(url.href)
-  } catch { throw failure() }
+${previewRelay ? `    if (window.parent !== window) { await signInThroughPreview(url, generation); return }\n` : ''}    window.location.assign(url.href)
+  } catch (cause) {
+    if (generation === session.generation) clearSession(true, failureNotice(cause))
+    throw failure()
+  }
 }
 
 function validatedTokens(tokens: oidc.TokenEndpointResponse & oidc.TokenEndpointResponseHelpers) {
@@ -48,7 +53,8 @@ function acceptTokens(value: ReturnType<typeof validatedTokens>, generation: num
   accessToken = value.token
   expiresAt = value.deadline
   expiryTimer = setTimeout(expire, Math.max(0, value.deadline - Date.now()))
-  publish({ ready: true, signedIn: true, id: value.id, email: value.email })
+  reauthenticationPath = undefined
+  publish({ notice: null, ready: true, signedIn: true, id: value.id, email: value.email })
 }
 
 async function initializeSession(): Promise<void> {
@@ -62,23 +68,29 @@ async function initializeSession(): Promise<void> {
     const current = new URL(window.location.href)
     window.history.replaceState(null, '', CONFIG.authentication.callbackPath)
     const transaction = consumeTransaction()
-    if (current.href.length > 16384 || current.hash ||
-        current.searchParams.getAll('state').length !== 1 ||
-        current.searchParams.get('state') !== transaction.state ||
-        current.searchParams.getAll('code').length !== 1 || current.searchParams.has('error')) throw failure()
-    const config = await configuration(generation)
-    const tokens = await oidc.authorizationCodeGrant(config, current, {
-      pkceCodeVerifier: transaction.verifier, expectedState: transaction.state,
-      expectedNonce: transaction.nonce, idTokenExpected: true,
-    }, CONFIG.authentication.resource ? { resource: CONFIG.authentication.resource } : undefined)
-    assertCurrent(generation)
-    const validated = validatedTokens(tokens)
-    window.history.replaceState(null, '', transaction.returnPath)
-    acceptTokens(validated, generation)
-  } catch {
-    if (generation === session.generation) clearSession()
+    await completeAuthorization(current, transaction, generation)
+  } catch (cause) {
+    if (generation === session.generation) clearSession(true, failureNotice(cause))
     throw failure()
   }
+}
+
+async function completeAuthorization(current: URL, transaction: LoginTransaction, generation: number): Promise<void> {
+  if (current.href.length > 16384 || current.hash || current.username || current.password ||
+      current.origin + current.pathname !== redirectURI() ||
+      current.searchParams.getAll('state').length !== 1 ||
+      current.searchParams.get('state') !== transaction.state) throw failure()
+  if (current.searchParams.get('error') === 'access_denied') throw failure('cancelled')
+  if (current.searchParams.getAll('code').length !== 1 || current.searchParams.has('error')) throw failure()
+  const config = await configuration(generation)
+  const tokens = await oidc.authorizationCodeGrant(config, current, {
+    pkceCodeVerifier: transaction.verifier, expectedState: transaction.state,
+    expectedNonce: transaction.nonce, idTokenExpected: true,
+  }, CONFIG.authentication.resource ? { resource: CONFIG.authentication.resource } : undefined)
+  assertCurrent(generation)
+  const validated = validatedTokens(tokens)
+  window.history.replaceState(window.history.state ?? null, '', transaction.returnPath)
+  acceptTokens(validated, generation)
 }
 
 export function initialize(): Promise<void> {
@@ -86,3 +98,4 @@ export function initialize(): Promise<void> {
   return initialization
 }
 `
+}

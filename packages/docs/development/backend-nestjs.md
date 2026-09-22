@@ -225,9 +225,17 @@ NestJS; they require an explicit client migration. Authenticated pages are suppo
 ## Desktop live preview
 
 Desktop Compiler Preview offers **External backend** and **Managed backend** modes for React and
-Vue. Both update the frontend when the document changes and open the actual application in the
-system browser for OIDC login and CRUD. The embedded editor pane shows status; it does not share
-the browser's login session. Ordinary browser-hosted editors do not start these services.
+Vue. Both update the embedded frontend when the document changes and support authenticated CRUD
+inside the panel. OIDC authorization opens in the system browser; after authorizing, return to the
+embedded page. Its PKCE verifier and access token stay in the preview runtime, never in the editor
+or collaboration. A separate **Open in browser** preview has its own login session; existing browser
+sessions are not copied into the panel. Ordinary browser-hosted editors do not start these services.
+
+The loopback sidecar relays a one-use authorization result between the system browser and the
+initiating frame. Transactions are memory-only, expire after ten minutes, and are bounded to eight
+pending requests. The frame alone holds the result capability and exchanges the code using its own
+PKCE transaction. The editor can open only the fixed loopback start route and receives no
+authorization code, verifier, token, or identity. Disconnecting discards pending transactions.
 
 ### External backend
 
@@ -242,7 +250,8 @@ External mode connects to an already-running local NestJS backend:
    `http://127.0.0.1:5181` as an allowed origin in the public OIDC client. The desktop control uses
    fixed port `5181`. An occupied preview port is an error; it never silently changes.
 4. Open Compiler Preview in the desktop editor, choose **NestJS → External backend**, enter the
-   API port (default `3000`), connect, then open the preview in the browser and sign in.
+   API port (default `3000`), connect, then sign in from the embedded application. Complete the
+   authorization in your system browser and return to the panel.
 
 The host checks the generated backend's application ID and normalized contract digest before
 connection, frontend updates and API forwarding. A mismatch or unavailable service blocks further
@@ -290,7 +299,8 @@ APIs, databases and identity services remain independent; Managed does not adopt
    Open the pending database review, inspect the initial SQL and summary, and explicitly confirm
    dependency installation and database initialization. This installs the pinned backend dependencies, builds the server, and initializes the
    isolated database. First setup may download npm packages and the PostgreSQL Docker image.
-4. Start the preview, open it in the browser, and sign in. Preview actions save real data in this
+4. Start the embedded preview and sign in through the system-browser authorization page, then
+   return to the panel. Preview actions save real data in this
    dedicated database. The panel reports installation, build, migration and startup progress;
    its bounded log withholds raw process output that could contain private values.
 
@@ -317,7 +327,11 @@ For an existing client, merge the preview callback and required settings while p
 used by other applications; do not replace its configuration blindly. The preset does not verify
 that your identity service has accepted these settings.
 
-The local CA file is machine-specific and is never bundled into a preset. Selecting it adds trust
+The local CA file is machine-specific and is never bundled into a preset. Its absolute path is
+remembered in this computer's application preferences for the exact issuer and JWKS endpoint.
+Clearing the field removes that saved path. Paths and certificate contents are never included in
+design files, collaboration, or portable exports. On another computer, select that computer's public
+CA file; moved or deleted files must be selected again before preparation can succeed. Selecting it adds trust
 only to the generated Node processes; browser certificate trust remains separate. A preset shown
 as complete means its fields are filled, not that network connectivity or authentication has passed.
 
@@ -497,3 +511,45 @@ never enter generated applications. A selected external issuer/account, remote d
 production ingress and release readiness require their own acceptance. The editor's Native
 PostgreSQL management driver is a
 different runtime and does not supply this server's database connection or authority.
+
+### First run on another computer and session recovery
+
+In **Compiler Preview → NestJS backend → Managed backend**, fill the connection fields and select
+that computer's public CA file, then choose **Check environment**. The panel checks the CA file,
+Node.js 22.12+, npm, Docker, free API/preview ports, OIDC discovery and HTTPS JWKS. For an existing
+initialized preview, it also checks the database runtime role and the applied initial schema.
+Database checks remain **Not checked** before initialization; a running preview's ports are also
+left unprobed. This diagnostic action never installs dependencies, starts services, changes the
+system trust store or applies migrations. Stopped databases must be started explicitly by their
+operator if database diagnostics are needed.
+
+Each row has a stable check code and status, an English/Chinese explanation and a next step.
+Missing or moved certificates can be selected again under **Connection & sign-in → Advanced
+settings**. Choose **Check again** afterwards. The copyable report contains only check codes,
+statuses and a completion timestamp; it omits paths, URLs, credentials and raw process output.
+Changing the configuration clears the old report, and results from cancelled or replaced contexts
+cannot update the current report. Preparation and startup show the actual capture, installation,
+build, migration, API startup and frontend connection stages without an invented percentage.
+
+Generated React/Vue applications show a compact sign-in notice with **Cancel sign-in** while the
+system browser is open. Cancellation, timeout and a browser-opening failure have distinct retry
+messages. When the access token expires, the app revokes its in-memory session and clears private
+application state. **Sign in again** returns to the validated same-origin business page after
+successful authentication; it does not retry a failed write. Logout clears this return destination.
+A full preview reload still requires a new sign-in. Local logout does not sign out the identity
+provider's browser session; switching users may require choosing or signing out the account there.
+No refresh token is persisted.
+
+Repeatable acceptance for this boundary:
+
+| Layer                                   | Steps and pass criteria                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Automated                               | Run `bun test ./tests/engine/compiler/managed-preview/diagnostics.test.ts ./tests/engine/app/lowcode/preview/managed/controller.test.ts ./tests/engine/app/lowcode/preview/managed/settings/ca-paths.test.ts ./tests/engine/compiler/backend/nestjs/browser-auth/runtime.test.ts ./tests/engine/compiler/backend/nestjs/browser-auth/preview-relay.test.ts`. Missing files, TLS failure, stale results, retry and token revocation must retain their separate outcomes. |
+| Real browser, simulated native/identity | Run the `nestjs-preview-ca.spec.ts` and `nestjs-preview.spec.ts` Playwright tests, plus `preview-relay-runtime-browser.test.ts`. Check the visible diagnostics and certificate picker, then expiry → explicit retry → original page, logout and reload for React/Vue. This does not verify real Tauri or Keycloak.                                                                                                                                                      |
+| Real desktop and Keycloak               | Start an operator-owned realm and dedicated existing preview database; register the displayed public client callback/origin and audience. In Tauri, log in through the system browser, cancel once, retry, expire the token, and confirm one retry returns to the page without repeating a write. Test browser-open failure with an unavailable default browser only on a disposable test profile.                                                                      |
+| Two accounts                            | Create a disposable note as account A, log out locally and select account B at the identity provider. B must not list, read, modify or delete A's note. Repeat after preview stop/start. These deliberate database writes require operator acceptance.                                                                                                                                                                                                                  |
+| Another computer                        | Open the same `.fig` on a second computer/profile. The CA field must initially be empty, and selecting the second computer's certificate must not alter the document. Move that test certificate, detect the missing file, select it again and recheck successfully.                                                                                                                                                                                                    |
+
+Passing discovery/JWKS checks proves metadata reachability and the bounded public-key response
+only. Real identity claims, account isolation, Tauri browser opening and production readiness
+remain separate acceptance steps.

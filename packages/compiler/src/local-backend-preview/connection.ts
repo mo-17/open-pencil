@@ -1,3 +1,5 @@
+import { isBackendId } from '@open-pencil/lowcode/backend'
+
 /** Portable host configuration; no URL, credential or execution command is accepted. */
 export interface PreviewLocalBackendConnection {
   readonly previewPort: number
@@ -46,8 +48,7 @@ export function parsePreviewLocalBackendConnection(value: unknown): PreviewLocal
     apiBasePath.length > 128 ||
     !/^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(apiBasePath) ||
     apiBasePath.startsWith('/_openpencil') ||
-    typeof applicationId !== 'string' ||
-    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(applicationId) ||
+    !isBackendId(applicationId) ||
     typeof applicationDigest !== 'string' ||
     !/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/.test(applicationDigest)
   )

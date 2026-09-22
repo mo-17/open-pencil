@@ -33,6 +33,7 @@ import { openExternalLink, toast } from '@/app/shell/ui'
 import { menuItem, useMenuUI } from '@/components/ui/menu/menu'
 import Tip from '@/components/ui/overlay/Tip.vue'
 
+import BackendPreviewStatus from './backend-controls/BackendPreviewStatus.vue'
 import CodePenShowcaseControls from './CodePenShowcaseControls.vue'
 import {
   compileErrorMessage,
@@ -45,6 +46,7 @@ import {
   type PreviewRefreshPolicy
 } from './compile-scheduler'
 import DeployControls from './DeployControls.vue'
+import { localBackendSignInURL, parseLocalBackendSignInRequest } from './iframe/local-backend-auth'
 import {
   createPreviewEditorMessage,
   parsePreviewInboundMessage,
@@ -380,6 +382,14 @@ watch(activeFrame, (frame) => {
   }
 })
 const url = computed(() => activeFrame.value?.src ?? null)
+const embeddedURL = computed(() =>
+  localBackendActive.value ? localBackendBrowserURL.value : url.value
+)
+const embeddedSandbox = computed(() =>
+  localBackendActive.value
+    ? 'allow-scripts allow-same-origin allow-forms'
+    : (activeFrame.value?.sandbox ?? undefined)
+)
 
 function consumeWebdriverAutomationForReload(): boolean {
   if (!(import.meta.env.DEV && IS_TAURI && hostKind.value === 'tauri-sidecar')) return false
@@ -396,6 +406,7 @@ const frameName = computed(() => {
     const automation =
       import.meta.env.DEV &&
       IS_TAURI &&
+      !localBackendActive.value &&
       hostKind.value === 'tauri-sidecar' &&
       webdriverAutomationIframeKey.value === iframeKey.value
     return serializePreviewFrameName(
@@ -865,6 +876,52 @@ function handlePreviewRuntimeErrorWindowMessage(
   reportRuntimeError(channelId, message)
 }
 
+const openedSignInRequests = new Set<string>()
+watch(
+  () => activeFrame.value?.channelId,
+  () => openedSignInRequests.clear()
+)
+
+async function openEmbeddedSignIn(event: MessageEvent, frameWindow: Window): Promise<void> {
+  const frame = activeFrame.value
+  if (!frame || !localBackendBrowserURL.value || status.value.kind !== 'ready') return
+  const request = parseLocalBackendSignInRequest(event, frameWindow, frame.channelId)
+  if (!request || openedSignInRequests.has(request.requestId)) return
+  openedSignInRequests.add(request.requestId)
+  // The relay has at most eight pending transactions. Bound replay bookkeeping as well.
+  if (openedSignInRequests.size > 16) {
+    const oldest = openedSignInRequests.values().next().value
+    if (oldest) openedSignInRequests.delete(oldest)
+  }
+  let opened = false
+  try {
+    await openExternalLink(localBackendSignInURL(request))
+    opened = true
+  } catch {
+    toast.warning(
+      locale.value === 'zh-CN'
+        ? '无法打开登录浏览器，请重试。'
+        : 'Could not open the sign-in browser. Please try again.'
+    )
+  }
+  if (
+    activeFrame.value?.channelId !== frame.channelId ||
+    iframeEl.value?.contentWindow !== frameWindow ||
+    !localBackendBrowserURL.value
+  )
+    return
+  frameWindow.postMessage(
+    {
+      type: 'openpencil:local-backend-sign-in-result',
+      version: 1,
+      channel: request.channel,
+      requestId: request.requestId,
+      opened
+    },
+    frame.expectedMessageOrigin
+  )
+}
+
 useEventListener(window, 'message', (event: MessageEvent) => {
   const frame = activeFrame.value
   if (!frame) return
@@ -872,6 +929,15 @@ useEventListener(window, 'message', (event: MessageEvent) => {
   if (!frameWindow) return
   const eventMatchesFrame =
     event.source === frameWindow && event.origin === frame.expectedMessageOrigin
+  if (
+    localBackendActive.value &&
+    eventMatchesFrame &&
+    event.data?.type === 'openpencil:local-backend-sign-in'
+  ) {
+    void openEmbeddedSignIn(event, frameWindow)
+    closeTransferredPorts(event.ports)
+    return
+  }
   const data = parsePreviewMessageEvent(
     event,
     frameWindow,
@@ -1489,14 +1555,20 @@ onBeforeUnmount(() => {
         Open this document in the desktop editor to connect an already running local NestJS backend.
         You can also export the application and run it locally.
       </p>
+      <BackendPreviewStatus
+        v-if="localBackendActive && localBackendBrowserURL"
+        :message="backendMode === 'managed' ? managedBackendMessage : localBackendState.message"
+        :url="localBackendBrowserURL"
+        @open="openLocalBackendPreview"
+      />
       <div class="relative min-h-0 flex-1">
         <iframe
-          v-if="url && embeddedVisible && !localBackendActive"
+          v-if="embeddedURL && embeddedVisible"
           :key="iframeKey"
           ref="iframeEl"
           :name="frameName"
-          :sandbox="activeFrame?.sandbox ?? undefined"
-          :src="url"
+          :sandbox="embeddedSandbox"
+          :src="embeddedURL"
           referrerpolicy="no-referrer"
           class="absolute inset-0 size-full border-0"
           :class="{ invisible: status.kind !== 'ready' }"
@@ -1504,7 +1576,7 @@ onBeforeUnmount(() => {
           @load="onIframeLoad"
         />
         <div
-          v-if="localBackendActive"
+          v-if="localBackendActive && !localBackendBrowserURL"
           data-test-id="lowcode-preview-local-status"
           class="flex h-full flex-col items-center justify-center gap-3 bg-panel px-6 text-center text-xs text-surface"
         >
@@ -1513,8 +1585,8 @@ onBeforeUnmount(() => {
             {{ backendMode === 'managed' ? managedBackendMessage : localBackendState.message }}
           </p>
           <p class="max-w-sm text-muted">
-            Login and data operations run in your system browser. Frontend edits refresh there
-            automatically.
+            The application appears here once the backend is connected. Sign-in authorization opens
+            in your system browser; after signing in, return here to continue.
             <template v-if="backendMode === 'managed'"
               >Backend updates rebuild automatically; database changes require reviewing and
               applying the SQL in the NestJS controls.</template
@@ -1523,21 +1595,9 @@ onBeforeUnmount(() => {
               >Backend model changes require synchronization and reconnection.</template
             >
           </p>
-          <button
-            v-if="localBackendBrowserURL"
-            type="button"
-            data-test-id="lowcode-preview-local-browser"
-            class="rounded bg-accent px-3 py-2 text-white"
-            @click="openLocalBackendPreview"
-          >
-            Open in browser
-          </button>
-          <code v-if="localBackendBrowserURL" class="select-text break-all text-muted">
-            {{ localBackendBrowserURL }}
-          </code>
         </div>
         <div
-          v-else-if="!url || status.kind === 'starting'"
+          v-else-if="!embeddedURL || status.kind === 'starting'"
           class="flex h-full items-center justify-center px-4 text-center text-xs text-muted"
         >
           {{ statusLabel }}

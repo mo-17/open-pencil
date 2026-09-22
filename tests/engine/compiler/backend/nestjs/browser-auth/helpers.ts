@@ -29,6 +29,14 @@ export function authenticationApplication() {
 }
 
 export interface AuthenticationSnapshot {
+  notice:
+    | 'signing-in'
+    | 'expired'
+    | 'cancelled'
+    | 'timeout'
+    | 'browser-unavailable'
+    | 'failed'
+    | null
   ready: boolean
   signedIn: boolean
   id: string | null
@@ -43,6 +51,7 @@ interface AuthenticationRuntime {
   subscribe(listener: () => void): () => void
   signIn(returnPath?: string): Promise<void>
   signOut(): Promise<void>
+  cancelSignIn(): void
   getAccessToken(): Promise<string>
 }
 interface BrowserControl {
@@ -51,6 +60,13 @@ interface BrowserControl {
   address(): string
   assigned(): string
   failStorage(): void
+  embed(opened?: boolean): void
+  frameName(value: string): void
+  setFetch(handler: (url: string, init: RequestInit) => Promise<Response>): void
+  requests: Array<{ url: string; init: RequestInit }>
+  messages: Array<{ value: unknown; origin: string }>
+  events: string[]
+  leave(): void
 }
 interface LibraryControl {
   calls: { discovery: number; grant: number }
@@ -62,11 +78,47 @@ export const storage = new Map()
 let current = new URL('http://127.0.0.1:4173/login')
 let target = ''
 let broken = false
+let fetchHandler
+export const requests = []
+export const messages = []
+export const events = []
+const listeners = new Map()
 export function navigate(value) { current = new URL(value) }
 export function address() { return current.href }
 export function assigned() { return target }
 export function failStorage() { broken = true }
+export function frameName(value) { window.name = value }
+export function setFetch(handler) { fetchHandler = handler }
+export function fetch(url, init) {
+  requests.push({ url, init })
+  if (!fetchHandler) throw new Error('Unexpected fetch')
+  return fetchHandler(url, init)
+}
+export class PopStateEvent extends Event {
+  constructor(type, options) { super(type); this.state = options?.state }
+}
+export function embed(opened = true) {
+  current = new URL('http://127.0.0.1:5181/login')
+  window.name = JSON.stringify({ protocol: 'open-pencil-preview-v2', channel: 'channel-1234567890',
+    parentOrigin: 'tauri://localhost', transport: 'window' })
+  window.parent = { postMessage(value, origin) {
+    messages.push({ value, origin })
+    queueMicrotask(() => window.dispatchEvent({ type: 'message', source: window.parent, origin,
+      data: { ...value, type: 'openpencil:local-backend-sign-in-result', opened } }))
+  } }
+}
+export function leave() { window.dispatchEvent({ type: 'pagehide' }) }
 export const window = {
+  name: '',
+  addEventListener(type, listener) {
+    if (!listeners.has(type)) listeners.set(type, new Set())
+    listeners.get(type).add(listener)
+  },
+  removeEventListener(type, listener) { listeners.get(type)?.delete(listener) },
+  dispatchEvent(event) {
+    events.push(event.type)
+    for (const listener of [...(listeners.get(event.type) ?? [])]) listener(event)
+  },
   sessionStorage: {
     getItem(key) { if (broken) throw new Error('Private storage detail'); return storage.get(key) ?? null },
     setItem(key, value) { if (broken) throw new Error('Private storage detail'); storage.set(key, value) },
@@ -79,11 +131,12 @@ export const window = {
   },
   history: { replaceState(_state, _title, path) { current = new URL(path, current) } },
 }
+window.parent = window
 `
 
 // Protocol crypto is deliberately absent in these lifetime tests. The separate isolated
 // protocol suite runs the fixed real openid-client package and a signed local identity provider.
-const LIBRARY_SOURCE = String.raw`
+export const OIDC_LIFETIME_STUB = String.raw`
 export const calls = { discovery: 0, grant: 0 }
 export const exchange = { subject: '11111111-1111-4111-8111-111111111111', accessToken: 'header.payload.signature' }
 export const customFetch = Symbol('customFetch')
@@ -112,16 +165,16 @@ export async function authorizationCodeGrant() {
 }
 `
 
-export async function authenticationRuntime() {
+export async function authenticationRuntime(previewRelay = false) {
   const directory = mkdtempSync(join(tmpdir(), 'openpencil-auth-lifetime-'))
   const write = (name: string, content: string) =>
     writeFileSync(join(directory, name + '.ts'), content)
   const load = (name: string) => import(pathToFileURL(join(directory, name + '.ts')).href)
   write('browser', BROWSER_SOURCE)
-  write('library', LIBRARY_SOURCE)
-  const source = emitBrowserAuthentication(authenticationApplication()).replace(
+  write('library', OIDC_LIFETIME_STUB)
+  const source = emitBrowserAuthentication(authenticationApplication(), { previewRelay }).replace(
     "import * as oidc from 'openid-client'",
-    "import * as oidc from './library'\nimport { window } from './browser'"
+    "import * as oidc from './library'\nimport { window, fetch, PopStateEvent } from './browser'"
   )
   write('initial', source + '\nexport const requestBodyForTest = requestBody\n')
   write('callback', source)

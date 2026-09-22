@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { useI18n } from '@open-pencil/vue'
 import { computed, ref, watch } from 'vue'
+
 import type { BackendHttpAPIOIDCAuthenticationIRV1 } from '@open-pencil/lowcode/backend'
+import { useI18n } from '@open-pencil/vue'
 
 import BackendPreviewCopyValue from '../backend-controls/BackendPreviewCopyValue.vue'
+import BackendPreviewDiagnostics from '../backend-controls/BackendPreviewDiagnostics.vue'
 import BackendPreviewReview from '../backend-controls/BackendPreviewReview.vue'
 import BackendPreviewSettings from '../backend-controls/BackendPreviewSettings.vue'
 import { backendPreviewCopy } from '../backend-controls/copy'
+import { stageLabel } from '../backend-controls/diagnostics-copy'
 import { DEFAULT_MANAGED_PREVIEW_CONFIG, type ManagedBackendPreviewController } from './controller'
 import type { ManagedBackendPresetDraft } from './presets'
 import {
@@ -23,10 +26,11 @@ const { controller, authentication, browserURL } = defineProps<{
   browserURL: string | null
 }>()
 const draft = defineModel<ManagedBackendPresetDraft>('draft', { required: true })
-const emit = defineEmits<{ open: [] }>()
+const emit = defineEmits<{ open: []; preview: [] }>()
 const { locale } = useI18n()
 const text = computed(() => backendPreviewCopy(locale.value))
-const { state, busy, message, error, logs, plan, canStart } = controller
+const { state, busy, message, error, logs, plan, canStart, stage, diagnostics, diagnosedAt } =
+  controller
 const configurationReady = computed(
   () =>
     controller.enabled.value &&
@@ -83,13 +87,17 @@ watch(
   }
 )
 
-async function prepare() {
-  await controller.prepare({
+function currentConfig() {
+  return {
     ...DEFAULT_MANAGED_PREVIEW_CONFIG,
     audience: draft.value.audience.trim(),
     jwksURL: draft.value.jwksURL.trim(),
     caFile: draft.value.caFile.trim()
-  })
+  }
+}
+
+async function prepare() {
+  await controller.prepare(currentConfig())
   if (!error.value && state.value) settingsOpen.value = false
 }
 </script>
@@ -113,7 +121,7 @@ async function prepare() {
         :role="error ? 'alert' : 'status'"
         data-test-id="managed-backend-message"
       >
-        {{ message }}
+        {{ busy ? stageLabel(stage, locale) || text.busy : message }}
       </p>
       <div v-else class="sr-only" role="status" data-test-id="managed-backend-message">
         {{ message }}
@@ -128,6 +136,15 @@ async function prepare() {
       </button>
       <div v-if="!plan" class="mt-4 flex items-center gap-2">
         <button
+          v-if="running && !busy"
+          type="button"
+          :disabled="!browserURL"
+          class="min-h-10 flex-1 rounded-lg bg-accent px-3 text-xs font-medium text-white focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
+          @click="emit('preview')"
+        >
+          {{ text.previewHere }}
+        </button>
+        <button
           v-if="busy"
           type="button"
           disabled
@@ -140,7 +157,7 @@ async function prepare() {
           type="button"
           :disabled="!browserURL"
           data-test-id="managed-backend-open"
-          class="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-xs font-medium text-white focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:opacity-40"
+          class="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border px-3 text-xs hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
           @click="emit('open')"
         >
           <icon-lucide-external-link class="size-4" />{{ text.open }}
@@ -181,6 +198,13 @@ async function prepare() {
         :value="browserURL"
       />
     </section>
+    <BackendPreviewDiagnostics
+      :items="diagnostics"
+      :checked-at="diagnosedAt"
+      :busy="busy"
+      :can-check="canPrepare"
+      @check="controller.diagnose(currentConfig())"
+    />
     <section
       v-if="plan"
       class="rounded-xl border border-amber-500/50 bg-amber-500/5 p-4"

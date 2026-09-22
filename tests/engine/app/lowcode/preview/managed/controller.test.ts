@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { NESTJS_BACKEND_PROVIDER_DESCRIPTOR } from '@open-pencil/compiler/backend'
 import type {
   ManagedPreviewConfig,
+  ManagedPreviewEvent,
   ManagedPreviewPlan,
   ManagedPreviewState
 } from '@open-pencil/compiler/managed-preview'
@@ -57,6 +58,8 @@ function fixture() {
   let kind: ManagedPreviewPlan['kind'] = 'initial'
   let allowed = true
   let stopFailure = false
+  let event: ((event: ManagedPreviewEvent) => void) | undefined
+  let pendingDiagnosis: Promise<void> | null = null
   let terminal: ((message: string) => void) | undefined
   let pendingPrepare: ReturnType<typeof deferred<ManagedPreviewState>> | null = null
   let captured = snapshot('A'.repeat(43), () => true)
@@ -78,6 +81,22 @@ function fixture() {
     applicationDigest: captured.applicationDigest
   })
   const host = {
+    async diagnose() {
+      calls.push('diagnose')
+      event?.({
+        version: 1,
+        type: 'diagnostic',
+        id: 'check',
+        diagnostic: { code: 'ca-file', status: 'missing' }
+      })
+      if (pendingDiagnosis) await pendingDiagnosis
+      event?.({
+        version: 1,
+        type: 'diagnostic',
+        id: 'check',
+        diagnostic: { code: 'jwks', status: 'passed' }
+      })
+    },
     async prepare(next: ManagedBackendSnapshot) {
       calls.push('prepare')
       entered.resolve(undefined)
@@ -140,6 +159,7 @@ function fixture() {
   const controller = createManagedBackendPreviewController({
     createHost: (options) => {
       terminal = options.onTerminal
+      event = options.onEvent
       return host
     },
     capture: async (isCurrent) => {
@@ -155,6 +175,11 @@ function fixture() {
   })
   return {
     controller,
+    holdDiagnosis() {
+      const pending = deferred<undefined>()
+      pendingDiagnosis = pending.promise
+      return pending
+    },
     calls,
     change(nextKind: ManagedPreviewPlan['kind']) {
       revision++
@@ -192,6 +217,29 @@ async function running() {
 }
 
 describe('managed Backend lifecycle controls', () => {
+  test('read-only diagnosis does not prepare/install/migrate and invalidated late results stay hidden', async () => {
+    const testCase = fixture()
+    const pending = testCase.holdDiagnosis()
+    const checking = testCase.controller.diagnose(config)
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    expect(testCase.calls).toEqual(['diagnose'])
+    expect(testCase.controller.stage.value).toBe('diagnosing')
+    expect(testCase.controller.diagnostics.value).toEqual([{ code: 'ca-file', status: 'missing' }])
+    await testCase.controller.invalidate()
+    pending.resolve(undefined)
+    await checking
+    expect(testCase.controller.diagnostics.value).toEqual([])
+    expect(testCase.controller.diagnosedAt.value).toBeNull()
+    await testCase.controller.diagnose(config)
+    expect(testCase.controller.diagnostics.value).toHaveLength(2)
+    expect(testCase.controller.diagnosedAt.value).not.toBeNull()
+    expect(
+      testCase.calls.some((call) => call.startsWith('setup') || call.startsWith('apply'))
+    ).toBe(false)
+  })
+
   test('failed native cleanup revokes Start and is contained for stop and invalidation', async () => {
     const { controller, failStop } = await running()
     failStop()

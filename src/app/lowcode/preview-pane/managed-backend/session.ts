@@ -1,3 +1,5 @@
+import { isBackendId } from '@open-pencil/lowcode/backend'
+
 const PREFIX = 'openpencil:managed-nestjs-preview:v1:'
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u
 
@@ -12,7 +14,7 @@ export function resolveManagedPreviewSession(
   },
   randomUUID: () => string = () => crypto.randomUUID()
 ): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(applicationId)) {
+  if (!isBackendId(applicationId)) {
     throw new Error('Managed preview requires a valid application ID.')
   }
   const key = PREFIX + applicationId

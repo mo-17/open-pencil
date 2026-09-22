@@ -315,12 +315,17 @@ export function parseArrayItems<T>(
   return parsed.length === values.length ? parsed : undefined
 }
 
+/** Portable Backend IDs are opaque identifiers, not filesystem paths or SQL names. */
+export function isBackendId(value: unknown): value is string {
+  return typeof value === 'string' && SAFE_ID.test(value)
+}
+
 export function id(
   value: unknown,
   path: string,
   context: BackendValidationContext
 ): string | undefined {
-  if (typeof value !== 'string' || !SAFE_ID.test(value)) {
+  if (!isBackendId(value)) {
     diagnostic(context, 'backend-id-invalid', path, 'Value must be a safe backend identifier.')
     return undefined
   }

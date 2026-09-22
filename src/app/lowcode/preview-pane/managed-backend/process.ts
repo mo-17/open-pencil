@@ -7,6 +7,8 @@ import {
   type ManagedPreviewState
 } from '@open-pencil/compiler/managed-preview'
 
+import { createPreviewNativeCommand, type CreatePreviewNativeCommand } from '../host/native-command'
+
 export interface ManagedPreviewChild {
   write(data: string): Promise<void>
   kill(): Promise<void>
@@ -39,11 +41,12 @@ export function managedPreviewCommandArgs(sessionId: string): string[] {
 
 export async function startManagedPreviewProcess(
   sessionId: string,
-  callbacks: ManagedPreviewProcessCallbacks = {}
+  callbacks: ManagedPreviewProcessCallbacks = {},
+  createCommand: CreatePreviewNativeCommand = createPreviewNativeCommand,
+  projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
 ): Promise<ManagedPreviewProcess> {
-  const { Command } = await import('@tauri-apps/plugin-shell')
-  const command = Command.create('lowcode-preview', managedPreviewCommandArgs(sessionId), {
-    cwd: __OPENPENCIL_PROJECT_ROOT__
+  const command = await createCommand('lowcode-preview', managedPreviewCommandArgs(sessionId), {
+    cwd: projectRoot
   })
   const pending = new Map<string, PendingManagedRequest>()
   let buffer = ''
@@ -102,7 +105,7 @@ export async function startManagedPreviewProcess(
       throw new Error('Managed preview session changed unexpectedly.')
     }
     callbacks.onEvent?.(event)
-    if (event.type === 'progress') return
+    if (event.type === 'progress' || event.type === 'diagnostic') return
     if (event.id !== null) pending.delete(event.id)
     clearTimeout(item.timer)
     if (event.type === 'error') item.reject(new Error(event.message))

@@ -1,4 +1,5 @@
 export { BACKEND_LIMITS } from './limits'
+export { isBackendId } from './validation-helpers'
 export * from './types'
 export * from './commands/types'
 export * from './modules/types'

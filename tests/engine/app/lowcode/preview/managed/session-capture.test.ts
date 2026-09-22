@@ -12,28 +12,47 @@ import { connectedBackendFixture, PLUGIN_ID } from '../connected-backend/helpers
 const SESSION = 'c8f08a42-c2b8-4b7c-89dd-43bd648acf2f'
 
 describe('managed preview persisted locator', () => {
-  test('reuses a saved UUID and never puts the application ID in command arguments', () => {
-    const values = new Map<string, string>()
-    const storage = {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        values.set(key, value)
+  test.each(['notes', 'app:0:1', `app:${'a'.repeat(60)}`])(
+    'reuses the saved UUID for %s without putting the application ID in command arguments',
+    (applicationId) => {
+      const values = new Map<string, string>()
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          values.set(key, value)
+        }
       }
+      expect(resolveManagedPreviewSession(applicationId, storage, () => SESSION)).toBe(SESSION)
+      expect(
+        resolveManagedPreviewSession(applicationId, storage, () => {
+          throw new Error('Must reuse')
+        })
+      ).toBe(SESSION)
+      expect([...values.keys()]).toEqual([`openpencil:managed-nestjs-preview:v1:${applicationId}`])
+      expect(managedPreviewCommandArgs(SESSION)).toEqual([
+        'packages/compiler/src/managed-preview/cli.ts',
+        '--session',
+        SESSION
+      ])
+      expect(() => managedPreviewCommandArgs('../../other')).toThrow('valid session')
+      expect(() => resolveManagedPreviewSession('../other', storage)).toThrow('application ID')
     }
-    expect(resolveManagedPreviewSession('notes', storage, () => SESSION)).toBe(SESSION)
-    expect(
-      resolveManagedPreviewSession('notes', storage, () => {
-        throw new Error('Must reuse')
-      })
-    ).toBe(SESSION)
-    expect(managedPreviewCommandArgs(SESSION)).toEqual([
-      'packages/compiler/src/managed-preview/cli.ts',
-      '--session',
-      SESSION
-    ])
-    expect(() => managedPreviewCommandArgs('../../other')).toThrow('valid session')
-    expect(() => resolveManagedPreviewSession('../other', storage)).toThrow('application ID')
-  })
+  )
+
+  test.each(['', '../other', 'app/0/1', 'app\\0\\1', 'app:0:1\n', ' app:0:1', 'a'.repeat(65)])(
+    'rejects malformed or oversized application IDs before accessing session storage: %j',
+    (applicationId) => {
+      const storage = {
+        getItem: () => {
+          throw new Error('Session storage must not be read')
+        },
+        setItem: () => {
+          throw new Error('Session storage must not be written')
+        }
+      }
+      expect(() => resolveManagedPreviewSession(applicationId, storage)).toThrow('application ID')
+    }
+  )
 
   test('fails before spawning if saved data is invalid or persistence fails', () => {
     const malformed = {

@@ -5,6 +5,7 @@ import { createServer } from 'node:net'
 import { nestJSPreviewApplicationDigest } from '../backend/nestjs/preview-digest'
 import type { PreviewLocalBackendConnection } from '../local-backend-preview/connection'
 import { createLocalBackendPreviewGuard } from '../local-backend-preview/server'
+import { diagnoseManagedPreview } from './diagnostics'
 import { ManagedPreviewDirectory } from './directory'
 import {
   compileManagedGeneration,
@@ -42,6 +43,7 @@ export interface ManagedPreviewServiceOptions {
   /** Test/library injection only. The CLI never accepts an output path. */
   readonly baseDirectory?: string
   readonly onProgress?: (event: Extract<ManagedPreviewEvent, { type: 'progress' }>) => void
+  readonly onDiagnostic?: (event: Extract<ManagedPreviewEvent, { type: 'diagnostic' }>) => void
   readonly onTerminal?: (event: Extract<ManagedPreviewEvent, { type: 'error' }>) => void
 }
 function receipt(value: unknown): { applicationDigest: string; planId: string } {
@@ -184,7 +186,22 @@ export class ManagedPreviewService {
     command: Exclude<ManagedPreviewCommand, { command: 'stop' | 'status' | 'close' }>,
     signal: AbortSignal
   ): Promise<ManagedPreviewState> {
-    if (command.command === 'prepare') {
+    if (command.command === 'diagnose') {
+      await diagnoseManagedPreview(
+        this.directory,
+        command,
+        this.current?.application.applicationId === command.application.applicationId,
+        this.phase === 'running',
+        signal,
+        (diagnostic) =>
+          this.options.onDiagnostic?.({
+            version: 1,
+            type: 'diagnostic',
+            id: this.activeId,
+            diagnostic
+          })
+      )
+    } else if (command.command === 'prepare') {
       await this.prepare({ application: command.application, config: command.config }, signal)
     } else if (command.command === 'setup' || command.command === 'apply') {
       await this.apply(command.command, command.planId, signal)

@@ -43,6 +43,7 @@ export function createManagedBackendPreviewHost(
     ...dependencies
   }
   let session: ManagedHostSession | null = null
+  let diagnosticSession: ManagedHostSession | null = null
   let snapshot: ManagedBackendSnapshot | null = null
   let config: ManagedPreviewConfig | null = null
   let state: ManagedPreviewState | null = null
@@ -65,6 +66,16 @@ export function createManagedBackendPreviewHost(
     await process?.close()
   }
 
+  async function closeDiagnosticSession() {
+    const current = diagnosticSession
+    diagnosticSession = null
+    if (current) await closeSession(current)
+  }
+
+  function ownsSession(current: ManagedHostSession) {
+    return session === current || diagnosticSession === current
+  }
+
   function launch(id: string): ManagedHostSession {
     const current: ManagedHostSession = {
       id,
@@ -72,9 +83,14 @@ export function createManagedBackendPreviewHost(
       starting: Promise.resolve().then(async () => {
         const process = await env.startProcess(id, {
           onEvent(event) {
-            if (!disposed && session === current) callbacks.onEvent?.(event)
+            if (!disposed && ownsSession(current)) callbacks.onEvent?.(event)
           },
           onTerminal(message) {
+            if (diagnosticSession === current) {
+              diagnosticSession = null
+              void closeSession(current).catch(() => undefined)
+              return
+            }
             if (session !== current || disposed) return
             serial += 1
             state = null
@@ -84,7 +100,7 @@ export function createManagedBackendPreviewHost(
           }
         })
         current.process = process
-        if (disposed || session !== current) {
+        if (disposed || !ownsSession(current)) {
           await process.close()
           throw new Error(CANCELLED)
         }
@@ -151,6 +167,8 @@ export function createManagedBackendPreviewHost(
     config = nextConfig
     state = null
     session?.process?.cancelPending()
+    await closeDiagnosticSession()
+    assertCurrent(operation, next)
     const { current, process } = await getProcess(id, operation, next)
     // Stop is a priority command; it aborts any older install or migration before preparing again.
     await process.request({ version: 1, id: env.requestId(), command: 'stop' })
@@ -197,6 +215,7 @@ export function createManagedBackendPreviewHost(
   async function stop(): Promise<ManagedPreviewState | null> {
     const operation = ++serial
     const current = session
+    await closeDiagnosticSession()
     if (!current) return null
     current.process?.cancelPending()
     const process = await current.starting.catch(() => null)
@@ -207,7 +226,41 @@ export function createManagedBackendPreviewHost(
     return state
   }
 
+  async function diagnose(next: ManagedBackendSnapshot, publicConfig: ManagedPreviewConfig) {
+    assertAvailable()
+    next.assertCurrent()
+    const nextConfig = parseManagedPreviewConfig(publicConfig)
+    const id = env.resolveSession(next.application.applicationId)
+    const operation = ++serial
+    await closeDiagnosticSession()
+    const assertDiagnosticCurrent = () => {
+      assertAvailable()
+      if (operation !== serial) throw new Error(CANCELLED)
+      next.assertCurrent()
+    }
+    assertDiagnosticCurrent()
+    // A diagnosis has a short-lived capture guard. Never replace the prepared
+    // snapshot/configuration or move its companion to another application.
+    const current = session?.id === id ? session : (diagnosticSession = launch(id))
+    try {
+      const process = await current.starting
+      assertDiagnosticCurrent()
+      if (!ownsSession(current)) throw new Error(CANCELLED)
+      await process.request({
+        version: 1,
+        id: env.requestId(),
+        command: 'diagnose',
+        application: next.application,
+        config: nextConfig
+      })
+      assertDiagnosticCurrent()
+    } finally {
+      if (diagnosticSession === current) await closeDiagnosticSession()
+    }
+  }
+
   return {
+    diagnose,
     prepare,
     setup: (planId: string) => run('setup', planId),
     apply: (planId: string) => run('apply', planId),
@@ -227,11 +280,16 @@ export function createManagedBackendPreviewHost(
       disposed = true
       ++serial
       const current = session
+      const diagnostic = diagnosticSession
       session = null
+      diagnosticSession = null
       snapshot = null
       state = null
       current?.process?.cancelPending()
-      if (current) await closeSession(current)
+      await Promise.all([
+        current ? closeSession(current) : undefined,
+        diagnostic ? closeSession(diagnostic) : undefined
+      ])
     }
   }
 }

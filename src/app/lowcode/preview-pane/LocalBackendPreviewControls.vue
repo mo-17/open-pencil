@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useI18n } from '@open-pencil/vue'
 import {
   DialogClose,
   DialogContent,
@@ -10,7 +9,9 @@ import {
   DialogTrigger
 } from 'reka-ui'
 import { computed, ref, watch } from 'vue'
+
 import type { BackendHttpAPIOIDCAuthenticationIRV1 } from '@open-pencil/lowcode/backend'
+import { useI18n } from '@open-pencil/vue'
 
 import BackendPreviewCopyValue from './backend-controls/BackendPreviewCopyValue.vue'
 import { backendPreviewCopy } from './backend-controls/copy'
@@ -19,12 +20,13 @@ import {
   LOCAL_BACKEND_PREVIEW_ORIGIN,
   type LocalBackendPreviewState
 } from './local-backend-connection'
-import ManagedBackendPreviewControls from './managed-backend/ManagedBackendPreviewControls.vue'
 import {
   DEFAULT_MANAGED_PREVIEW_CONFIG,
   type ManagedBackendPreviewController
 } from './managed-backend/controller'
+import ManagedBackendPreviewControls from './managed-backend/ManagedBackendPreviewControls.vue'
 import type { ManagedBackendPresetDraft } from './managed-backend/presets'
+import { useManagedBackendCAPath } from './managed-backend/settings/use'
 
 const { state, browserURL, mode, managed, authentication, documentIdentity, applicationId } =
   defineProps<{
@@ -52,6 +54,7 @@ const draft = ref<ManagedBackendPresetDraft>({
   jwksURL: initial.jwksURL,
   caFile: initial.caFile
 })
+useManagedBackendCAPath(draft, () => authentication?.issuer ?? '')
 const status = computed(() => {
   if (mode === 'managed') {
     if (managed.busy.value) return text.value.busy
@@ -71,8 +74,9 @@ const running = computed(() =>
 watch(
   draft,
   () => {
-    if (managed.enabled.value)
+    if (managed.enabled.value || managed.busy.value)
       void managed.invalidate('Server configuration changed. Prepare the backend again.')
+    else managed.clearDiagnostics()
   },
   { deep: true }
 )
@@ -167,6 +171,7 @@ watch(
             :controller="managed"
             :authentication="authentication"
             :browser-u-r-l="browserURL"
+            @preview="panelOpen = false"
             @open="emit('open')"
           />
           <div v-else class="space-y-5">
@@ -190,8 +195,17 @@ watch(
                   v-if="state.kind === 'connected'"
                   type="button"
                   :disabled="!browserURL"
+                  class="min-h-10 flex-1 rounded-lg bg-accent px-3 text-xs font-medium text-white focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
+                  @click="panelOpen = false"
+                >
+                  {{ text.previewHere }}
+                </button>
+                <button
+                  v-if="state.kind === 'connected'"
+                  type="button"
+                  :disabled="!browserURL"
                   data-test-id="lowcode-preview-local-open"
-                  class="min-h-10 flex-1 rounded-lg bg-accent px-4 text-xs font-medium text-white focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
+                  class="min-h-10 rounded-lg border border-border px-3 text-xs hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
                   @click="emit('open')"
                 >
                   {{ text.open }}

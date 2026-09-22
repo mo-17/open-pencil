@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { useI18n } from '@open-pencil/vue'
 import { computed, onScopeDispose, ref, watch } from 'vue'
-import type { BackendHttpAPIOIDCAuthenticationIRV1 } from '@open-pencil/lowcode/backend'
 
+import type { BackendHttpAPIOIDCAuthenticationIRV1 } from '@open-pencil/lowcode/backend'
+import { useI18n } from '@open-pencil/vue'
+
+import { LOCAL_BACKEND_PREVIEW_CALLBACK } from '../local-backend-connection'
 import {
   MANAGED_BACKEND_PRESET_IDS,
   MANAGED_BACKEND_PREVIEW_ORIGIN,
@@ -13,7 +15,6 @@ import {
   type ManagedBackendPresetIssue,
   type ManagedBackendPresetMissing
 } from '../managed-backend/presets'
-import { LOCAL_BACKEND_PREVIEW_CALLBACK } from '../local-backend-connection'
 import {
   LOCAL_KEYCLOAK_ISSUER,
   LOCAL_KEYCLOAK_JWKS,
@@ -105,12 +106,14 @@ async function chooseCA() {
   const requestDraft = draft.value
   const requestIssuer = authentication?.issuer
   const requestClientId = authentication?.clientId
+  const requestJWKS = draft.value.jwksURL
   const isCurrent = () =>
     !disposed &&
     !busy &&
     draft.value === requestDraft &&
     authentication?.issuer === requestIssuer &&
-    authentication?.clientId === requestClientId
+    authentication?.clientId === requestClientId &&
+    draft.value.jwksURL === requestJWKS
   choosingCA.value = true
   caError.value = false
   try {

@@ -1,5 +1,6 @@
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
+import { AUTH_NOTICE_SOURCE } from './auth-notice'
 import { buildBackendCommandRuntime } from './commands'
 
 /** One transport/session owner shared by generated React and Vue applications. */
@@ -43,7 +44,7 @@ export function buildBackendClientRuntime(
     .map((resource) => resource.id)
   return `import { createNestJSClient${hasCommands ? ', BackendCommandError, commandError, normalizeCommandParameters, validCommandKey' : ''} } from './lowcode-backend-api'
 ${hasCommands ? "import { readCommandJournal, createCommandJournal, acknowledgeCommandJournal, withCommandJournalLock, type CommandJournalRecord } from './lowcode-backend-command-journal'" : ''}
-import { initialize, getSession, subscribe, signIn, signOut, getAccessToken } from './lowcode-backend-auth'
+import { initialize, getSession, subscribe, signIn, signOut, cancelSignIn, getAccessToken } from './lowcode-backend-auth'
 import { setDocState${hasCommands ? ', ' + (stateModule === './lowcode-state' ? 'getDocState' : 'getDocStateSnapshot') + ' as readBackendState' : ''} } from ${JSON.stringify(stateModule)}
 export { getSession, subscribe, signIn, signOut }
 export interface BackendRequestInput {
@@ -98,12 +99,13 @@ let stateGeneration = getSession().generation
 let initialized = false
 let initialization: Promise<void> | undefined
 let initializationAlert: HTMLElement | undefined
+${AUTH_NOTICE_SOURCE}
 function publish(resource?: string): void { for (const listener of [...listeners]) listener(resource) }
 function syncSession(): void {
   for (const controller of requests) controller.abort()
   queryActions.clear()
   const session = getSession()
-  if (session.signedIn) { initializationAlert?.remove(); initializationAlert = undefined }
+  updateAuthenticationNotice(session.notice)
   if (stateGeneration !== session.generation) {
     stateGeneration = session.generation
     for (const [name, empty] of privateState) setDocState(name, structuredClone(empty))
@@ -124,12 +126,7 @@ export function initializeBackendClient(): Promise<void> {
     if (!initialized) { initialized = true; subscribe(syncSession) }
     try { await initialize() } catch {
       history.replaceState(null, '', ${JSON.stringify(loginPath)})
-      initializationAlert = document.createElement('p')
-      initializationAlert.setAttribute('role', 'alert')
-      initializationAlert.setAttribute('data-openpencil-auth-error', '')
-      initializationAlert.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;margin:0;padding:12px;background:#fff3f3;color:#7f1d1d;font:16px sans-serif'
-      initializationAlert.textContent = 'Sign-in could not be completed. Please try again.'
-      document.body.prepend(initializationAlert)
+      updateAuthenticationNotice(getSession().notice ?? 'failed')
     }
     syncSession()
   })()

@@ -12,6 +12,7 @@ import { decodeTauriStderr } from '@/app/shell/ui'
 
 import { parsePreviewSidecarReady, type PreviewSidecarReady } from '../sidecar-ready'
 import { createPreviewStartupEventBuffer, waitForPreviewUpdateAck } from '../update-ack'
+import { createPreviewNativeCommand, type CreatePreviewNativeCommand } from './native-command'
 import type { PreviewTarget } from './types'
 
 interface SidecarReadyEvent {
@@ -79,12 +80,12 @@ function parsePreviewSidecarEvent(line: string): SidecarEvent {
 
 export async function startTauriPreviewSidecar(
   target: PreviewTarget,
-  input?: PreviewLocalBackendConnection
+  input?: PreviewLocalBackendConnection,
+  createCommand: CreatePreviewNativeCommand = createPreviewNativeCommand,
+  projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
 ): Promise<TauriPreviewSidecar> {
   const localBackend = input ? parsePreviewLocalBackendConnection(input) : undefined
-  const { Command } = await import('@tauri-apps/plugin-shell')
-  const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
-  const command = Command.create(
+  const command = await createCommand(
     SIDECAR_NAME,
     previewSidecarCommandArgs(projectRoot, target, localBackend),
     {

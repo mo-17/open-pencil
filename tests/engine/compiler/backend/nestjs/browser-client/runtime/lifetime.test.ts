@@ -51,8 +51,12 @@ describe('generated shared Backend request lifetime', () => {
     const fixture = await runtimeFixture(true)
     try {
       expect(fixture.browserEvents).toEqual([
-        { kind: 'navigation', path: '/login' },
-        { kind: 'alert', role: 'alert', text: 'Sign-in could not be completed. Please try again.' }
+        {
+          kind: 'alert',
+          role: 'alert',
+          text: 'Sign-in could not be completed. Check the identity service and try again. Sign in again'
+        },
+        { kind: 'navigation', path: '/login' }
       ])
       expect(fixture.values.get('$currentUser')).toMatchObject({ ready: true, signedIn: false })
       await fixture.runtime.initializeBackendClient()

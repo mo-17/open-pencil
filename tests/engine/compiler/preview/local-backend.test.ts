@@ -12,7 +12,7 @@ const INPUT = {
   previewPort: 5188,
   apiPort: 3019,
   apiBasePath: '/api',
-  applicationId: 'notes',
+  applicationId: 'app:0:1',
   applicationDigest: DIGEST
 }
 const CONTRACT = { version: 1, applicationId: INPUT.applicationId, applicationDigest: DIGEST }
@@ -20,6 +20,42 @@ const HTML = '<!doctype html><html><body><main>Virtual notes login</main></body>
 type Handler = (request: IncomingMessage, response: ServerResponse) => void
 
 describe('local NestJS preview connection', () => {
+  test('accepts Backend IR IDs created by the template library without changing them', () => {
+    for (const applicationId of [
+      'notes',
+      'app:0:1',
+      'App_1:notes.v2-local',
+      `a${'b'.repeat(63)}`
+    ]) {
+      const parsed = parsePreviewLocalBackendConnection({ ...INPUT, applicationId })
+      expect(parsed.applicationId).toBe(applicationId)
+      expect(Object.isFrozen(parsed)).toBe(true)
+    }
+  })
+
+  test('rejects IDs outside the canonical Backend IR boundary', () => {
+    for (const applicationId of [
+      '',
+      ':app',
+      '_app',
+      '../app',
+      'app/notes',
+      'app\\notes',
+      'app notes',
+      'app\n',
+      'app@notes',
+      '应用',
+      'a'.repeat(65),
+      'a'.repeat(128),
+      null,
+      42
+    ]) {
+      expect(() => parsePreviewLocalBackendConnection({ ...INPUT, applicationId })).toThrow(
+        'NestJS preview connection'
+      )
+    }
+  })
+
   test('accepts only an immutable closed public loopback configuration', () => {
     const source = { ...INPUT }
     const parsed = parsePreviewLocalBackendConnection(source)

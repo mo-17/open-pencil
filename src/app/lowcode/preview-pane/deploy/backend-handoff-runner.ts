@@ -1,5 +1,3 @@
-import type { Child, Command } from '@tauri-apps/plugin-shell'
-
 import {
   BACKEND_PROVIDER_COMPILE_HANDOFF_MAX_BYTES,
   BACKEND_PROVIDER_DEPLOY_READY_PREFIX,
@@ -10,8 +8,10 @@ import {
 
 import { decodeTauriStderr } from '@/app/shell/ui'
 
+import type { PreviewNativeChild } from '../host/native-command'
 import type { BackendProviderDeployHandoffOptions } from './backend-handoff'
 import { parseDeployCLIResult, type DeployCLIResult } from './command'
+import type { DeployNativeCommand } from './native-command'
 
 const MAX_READY_BYTES = 4096
 const MAX_RESULT_BYTES = 1024 * 1024
@@ -28,12 +28,12 @@ export class BackendProviderDeployPreDispatchError extends Error {
 }
 
 export function runBackendProviderDeployCommand(
-  command: Command<string>,
+  command: DeployNativeCommand,
   handoff: BackendProviderDeployHandoffOptions
 ): Promise<DeployCLIResult> {
   return new Promise((resolve, reject) => {
     const encoder = new TextEncoder()
-    let child: Child | null = null
+    let child: PreviewNativeChild | null = null
     let requestWrite: Promise<void> | null = null
     let authorizationWrite: Promise<void> | null = null
     let handoffDigest = ''

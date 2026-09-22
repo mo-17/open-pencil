@@ -137,7 +137,25 @@ export async function mockDesktopPreview(page: Page) {
             if (managed) {
               const request = JSON.parse(String(args?.buffer)) as ManagedPreviewCommand
               state.managedCommands.push(request)
-              if (request.command === 'prepare') {
+              if (request.command === 'diagnose') {
+                for (const diagnostic of [
+                  {
+                    code: 'ca-file',
+                    status: request.config.caFile.includes('moved') ? 'missing' : 'passed'
+                  },
+                  { code: 'database', status: 'unavailable' },
+                  {
+                    code: 'jwks',
+                    status: request.config.caFile.includes('moved') ? 'tls' : 'passed'
+                  }
+                ])
+                  emit(
+                    pid,
+                    'Stdout',
+                    JSON.stringify({ version: 1, type: 'diagnostic', id: request.id, diagnostic }) +
+                      '\n'
+                  )
+              } else if (request.command === 'prepare') {
                 const digestURL = new URL(
                   '/packages/compiler/src/backend/nestjs/preview-digest.ts',
                   window.location.origin
@@ -226,6 +244,26 @@ export async function mockDesktopPreview(page: Page) {
     route.fulfill({
       contentType: 'text/html',
       body: '<!doctype html><p>Ordinary preview fixture</p>'
+    })
+  )
+  await page.route('http://127.0.0.1:5181/**', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: `<!doctype html><p>Connected preview fixture</p><button id="sign-in">Sign in</button><p id="sign-in-status"></p>
+        <script>
+          const boot = JSON.parse(window.name);
+          const requestId = 'a'.repeat(43);
+          document.getElementById('sign-in').onclick = () => parent.postMessage({
+            type: 'openpencil:local-backend-sign-in', version: 1, channel: boot.channel, requestId
+          }, boot.parentOrigin);
+          addEventListener('message', event => {
+            if (event.source === parent && event.origin === boot.parentOrigin &&
+                event.data?.type === 'openpencil:local-backend-sign-in-result' &&
+                event.data.channel === boot.channel && event.data.requestId === requestId) {
+              document.getElementById('sign-in-status').textContent = event.data.opened ? 'Browser opened' : 'Could not open browser';
+            }
+          });
+        </script>`
     })
   )
 }

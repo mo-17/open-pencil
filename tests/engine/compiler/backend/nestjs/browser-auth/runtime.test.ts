@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 
 import {
   emitBrowserAuthentication,
@@ -21,6 +21,48 @@ afterEach(async () => {
 })
 
 describe('generated browser authentication boundary', () => {
+  test('expiration is visible, revokes the token and preserves the business page for explicit sign-in', async () => {
+    const fixture = await runtime()
+    await fixture.start()
+    await fixture.callback.initialize()
+    fixture.browser.navigate('http://127.0.0.1:4173/notes/42?view=mine')
+    const clock = spyOn(Date, 'now').mockReturnValue(Date.now() + 3600001)
+    try {
+      expect(fixture.callback.getSession()).toMatchObject({ signedIn: false, notice: 'expired' })
+      await expect(fixture.callback.getAccessToken()).rejects.toThrow(safeError)
+      expect(fixture.library.calls.grant).toBe(1)
+      await fixture.callback.signIn('/login')
+      const transaction = JSON.parse([...fixture.browser.storage.values()][0])
+      expect(transaction.returnPath).toBe('/notes/42?view=mine')
+      expect(fixture.library.calls.grant).toBe(1)
+    } finally {
+      clock.mockRestore()
+    }
+    await fixture.callback.signOut()
+    expect(fixture.callback.getSession().notice).toBeNull()
+  })
+
+  test('provider cancellation and expired transactions have distinct non-secret reasons', async () => {
+    const cancelled = await runtime()
+    await cancelled.start()
+    cancelled.browser.navigate(
+      cancelled.browser.address().replace('code=one-use', 'error=access_denied')
+    )
+    await expect(cancelled.callback.initialize()).rejects.toThrow(safeError)
+    expect(cancelled.callback.getSession().notice).toBe('cancelled')
+    expect(cancelled.library.calls.grant).toBe(0)
+    const expired = await runtime()
+    await expired.start()
+    const [key, raw] = [...expired.browser.storage][0]
+    const transaction = JSON.parse(raw)
+    transaction.createdAt -= 600001
+    transaction.expiresAt -= 600001
+    expired.browser.storage.set(key, JSON.stringify(transaction))
+    await expect(expired.callback.initialize()).rejects.toThrow(safeError)
+    expect(expired.callback.getSession().notice).toBe('timeout')
+    expect(expired.library.calls.grant).toBe(0)
+  })
+
   test('requires explicit browser configuration and emits deterministic valid TypeScript', () => {
     expect(() => emitBrowserAuthentication(nestJSApplication())).toThrow('reviewed browser client')
     const application = authenticationApplication()

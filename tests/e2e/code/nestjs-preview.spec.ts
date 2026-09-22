@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 
+import { useBackendTemplate } from '#tests/helpers/backend-library'
 import { CanvasHelper } from '#tests/helpers/canvas'
 import {
   addNotesField,
@@ -32,7 +33,10 @@ test('desktop explicitly connects a local Backend, updates frontend and disconne
   await expect(settings).toContainText('http://127.0.0.1:5181/_openpencil/auth/callback')
   await page.getByTestId('lowcode-preview-local-connect').click()
   await expect(page.getByTestId('lowcode-preview-local-status')).toContainText('Connected.')
-  await expect(page.locator('iframe[aria-label="lowcode preview"]')).toHaveCount(0)
+  const embedded = page.locator('iframe[aria-label="lowcode preview"]')
+  await expect(embedded).toHaveAttribute('src', `http://127.0.0.1:5181${loginPath}`)
+  await expect(embedded).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms')
+  await expect(embedded.contentFrame().getByText('Connected preview fixture')).toBeVisible()
   const fixture = await page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__)
   const latest = fixture.spawns.at(-1)
   if (!latest) throw new Error('No local preview sidecar was launched')
@@ -48,7 +52,16 @@ test('desktop explicitly connects a local Backend, updates frontend and disconne
   await expect
     .poll(() => page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.opened))
     .toEqual([`http://127.0.0.1:5181${loginPath}`])
-  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Preview here', exact: true }).click()
+  await expect(settings).not.toBeVisible()
+  await embedded.contentFrame().getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(embedded.contentFrame().getByText('Browser opened', { exact: true })).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.opened))
+    .toEqual([
+      `http://127.0.0.1:5181${loginPath}`,
+      `http://127.0.0.1:5181/_openpencil/preview-auth/start/${'a'.repeat(43)}`
+    ])
   const previousUpdates = fixture.updates.length
   await page.evaluate(() => {
     const editor = window.openPencil?.getStore?.()
@@ -112,7 +125,7 @@ test('browser editor explains the desktop requirement without exposing a local c
   canvas.assertNoErrors()
 })
 
-test('managed panel keeps one next action and requires each current SQL review', async ({
+test('UI-created app keeps its ID through managed SQL review and frontend connection', async ({
   page
 }) => {
   test.setTimeout(60_000)
@@ -121,7 +134,22 @@ test('managed panel keeps one next action and requires each current SQL review',
   await page.goto('/')
   await page.getByRole('button', { name: 'New design', exact: true }).click()
   await canvas.waitForInit()
-  const loginPath = await createNotes(page)
+  await useBackendTemplate(page, 'Personal notes')
+  const authored = await page.evaluate(() => {
+    const editor = window.openPencil?.getStore?.()
+    if (!editor) throw new Error('Missing editor')
+    const root = editor.graph.getNode(editor.graph.rootId)
+    const declaration = root?.pluginData.find(
+      (entry) => entry.pluginId === 'open-pencil' && entry.key === 'lowcode/backendProvider.v1'
+    )
+    if (!root || !declaration) throw new Error('Missing UI-created document backend')
+    return {
+      rootId: root.id,
+      applicationId: JSON.parse(declaration.value).application.applicationId as string,
+      loginPath: root.lowcodeAuthRedirect
+    }
+  })
+  expect(authored.applicationId).toBe(`app:${authored.rootId}`)
   await page.getByTestId('lowcode-preview-local-backend-toggle').click()
   await page.getByTestId('backend-preview-managed-mode').click()
   const panel = page.getByTestId('lowcode-preview-local-backend-settings')
@@ -164,18 +192,36 @@ test('managed panel keeps one next action and requires each current SQL review',
   await expect(open).toBeEnabled()
   await expect(start).not.toBeVisible()
   await expect(page.getByTestId('managed-backend-stop')).toBeEnabled()
-  await expect(page.locator('iframe[aria-label="lowcode preview"]')).toHaveCount(0)
+  await expect(page.locator('iframe[aria-label="lowcode preview"]')).toHaveAttribute(
+    'src',
+    `http://127.0.0.1:5181${authored.loginPath}`
+  )
   await panel.screenshot({ path: test.info().outputPath('managed-running.png') })
   await open.click()
   await expect
     .poll(() => page.evaluate(() => (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.opened))
-    .toEqual([`http://127.0.0.1:5181${loginPath}`])
+    .toEqual([`http://127.0.0.1:5181${authored.loginPath}`])
   const first = await page.evaluate(() =>
     (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.managedCommands.find(
       (command) => command.command === 'prepare'
     )
   )
-  expect(first).toMatchObject({ config: { previewPort: 5181, apiPort: 3012, dbPort: 55443 } })
+  expect(first).toMatchObject({
+    application: { applicationId: authored.applicationId },
+    config: { previewPort: 5181, apiPort: 3012, dbPort: 55443 }
+  })
+  const connected = await page.evaluate(() =>
+    (window as PreviewFixtureWindow).__OP_NESTJS_PREVIEW__.spawns.find((spawn) =>
+      spawn.args.includes('--local-backend')
+    )
+  )
+  if (!connected) throw new Error('Managed backend did not connect its frontend preview')
+  // The IPC fixture only intercepts spawn after the real connection parser has accepted the ID.
+  expect(JSON.parse(connected.args[connected.args.indexOf('--local-backend') + 1])).toMatchObject({
+    applicationId: authored.applicationId,
+    previewPort: 5181,
+    apiPort: 3012
+  })
 
   await addNotesField(page, 'summary')
   await expect(page.getByTestId('managed-backend-plan')).toContainText(

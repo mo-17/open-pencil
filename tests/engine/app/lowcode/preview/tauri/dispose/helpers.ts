@@ -1,76 +1,81 @@
-// Run in an isolated Bun process so the native module mock cannot leak to other tests.
-import { mock } from 'bun:test'
+// A per-invocation native adapter keeps lifecycle tests independent of the module registry.
 import assert from 'node:assert/strict'
 
-const connection = {
-  previewPort: 5188,
-  apiPort: 3019,
-  apiBasePath: '/api',
-  applicationId: 'notes',
-  applicationDigest: 'A'.repeat(43)
-}
-function channel() {
-  const target = new EventTarget()
-  return {
-    on: (name: string, listener: (data: unknown) => void) =>
-      target.addEventListener(name, (event) => {
-        if (event instanceof CustomEvent) listener(event.detail)
-      }),
-    emit: (name: string, data: unknown) =>
-      target.dispatchEvent(new CustomEvent(name, { detail: data }))
+import type { CreatePreviewNativeCommand } from '@/app/lowcode/preview-pane/host/native-command'
+
+export async function verifyImmediateDisconnect(): Promise<void> {
+  const connection = {
+    previewPort: 5188,
+    apiPort: 3019,
+    apiBasePath: '/api',
+    applicationId: 'notes',
+    applicationDigest: 'A'.repeat(43)
   }
-}
-const stdout = channel()
-const stderr = channel()
-const events = channel()
-let killCalls = 0
-let markWritten!: () => void
-const written = new Promise<void>((resolve) => {
-  markWritten = resolve
-})
-const child = {
-  write: async (message: string) => {
-    if ((JSON.parse(message) as { type: string }).type === 'update') markWritten()
-    // Deliberately never acknowledge this update.
-  },
-  kill: async () => {
-    killCalls += 1
-    events.emit('close', { code: null })
-  }
-}
-mock.module('@tauri-apps/plugin-shell', () => ({
-  Command: {
-    create: (_name: string, args: string[]) => {
-      assert.equal(args.at(-2), '--local-backend')
-      assert.deepEqual(JSON.parse(args.at(-1) ?? ''), connection)
-      return {
-        stdout,
-        stderr,
-        on: (name: string, listener: (...args: unknown[]) => void) => events.on(name, listener),
-        spawn: async () => {
-          stdout.emit(
-            'data',
-            JSON.stringify({ type: 'ready', url: 'http://127.0.0.1:5188/', port: 5188 }) + '\n'
-          )
-          return child
-        }
+  function channel<Events>() {
+    const target = new EventTarget()
+    return {
+      on<Key extends keyof Events>(name: Key, listener: (data: Events[Key]) => void) {
+        target.addEventListener(String(name), (event) => {
+          if (event instanceof CustomEvent) listener(event.detail as Events[Key])
+        })
+      },
+      emit<Key extends keyof Events>(name: Key, data: Events[Key]) {
+        target.dispatchEvent(new CustomEvent(String(name), { detail: data }))
       }
     }
   }
-}))
-Reflect.set(globalThis, '__OPENPENCIL_PROJECT_ROOT__', process.cwd())
-const { startTauriPreviewSidecar } = await import('@/app/lowcode/preview-pane/host/tauri-sidecar')
-const sidecar = await startTauriPreviewSidecar('react', connection)
-const update = sidecar.update(new Map([['index.html', '<main>test</main>']]))
-const rejected = update.then(
-  () => false,
-  () => true
-)
-await written
-const disposed = sidecar.dispose()
-assert.equal(killCalls, 1, 'Disconnect must kill before waiting for a hung update acknowledgement')
-await disposed
-assert.equal(await rejected, true)
-assert.equal(sidecar.isAlive(), false)
-assert.equal(killCalls, 1)
-process.stdout.write('immediate-disconnect-passed\n')
+  const stdout = channel<{ data: string }>()
+  const stderr = channel<{ data: string }>()
+  const events = channel<{ close: { code: number | null }; error: string }>()
+  let killCalls = 0
+  const { promise: written, resolve: markWritten } = Promise.withResolvers<undefined>()
+  const child = {
+    write: async (message: string) => {
+      if ((JSON.parse(message) as { type: string }).type === 'update') markWritten(undefined)
+      // Deliberately never acknowledge this update.
+    },
+    kill: async () => {
+      killCalls += 1
+      events.emit('close', { code: null })
+    }
+  }
+  const createCommand: CreatePreviewNativeCommand = (_name, args) => {
+    assert.equal(args.at(-2), '--local-backend')
+    assert.deepEqual(JSON.parse(args.at(-1) ?? ''), connection)
+    return {
+      stdout,
+      stderr,
+      on: events.on,
+      spawn: async () => {
+        stdout.emit(
+          'data',
+          JSON.stringify({ type: 'ready', url: 'http://127.0.0.1:5188/', port: 5188 }) + '\n'
+        )
+        return child
+      }
+    }
+  }
+  const { startTauriPreviewSidecar } = await import('@/app/lowcode/preview-pane/host/tauri-sidecar')
+  const sidecar = await startTauriPreviewSidecar('react', connection, createCommand, process.cwd())
+  const update = sidecar.update(new Map([['index.html', '<main>test</main>']]))
+  const rejected = update.then(
+    () => false,
+    () => true
+  )
+  await written
+  const disposed = sidecar.dispose()
+  assert.equal(
+    killCalls,
+    1,
+    'Disconnect must kill before waiting for a hung update acknowledgement'
+  )
+  await disposed
+  assert.equal(await rejected, true)
+  assert.equal(sidecar.isAlive(), false)
+  assert.equal(killCalls, 1)
+}
+
+if (import.meta.main) {
+  await verifyImmediateDisconnect()
+  process.stdout.write('immediate-disconnect-passed\n')
+}

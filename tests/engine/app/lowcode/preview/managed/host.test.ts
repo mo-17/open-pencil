@@ -7,6 +7,7 @@ import type {
 } from '@open-pencil/compiler/managed-preview'
 
 import { captureManagedBackendSnapshot } from '@/app/lowcode/preview-pane/managed-backend/capture'
+import { createManagedBackendPreviewController } from '@/app/lowcode/preview-pane/managed-backend/controller'
 import { createManagedBackendPreviewHost } from '@/app/lowcode/preview-pane/managed-backend/host'
 import type {
   ManagedPreviewProcess,
@@ -115,6 +116,103 @@ async function fixture() {
 }
 
 describe('managed desktop host authority and lifetime', () => {
+  test('controller diagnosis preserves the prepared review and original connection through confirm and start', async () => {
+    const item = await fixture()
+    let connected = false
+    const controller = createManagedBackendPreviewController({
+      createHost: (callbacks) => createManagedBackendPreviewHost(callbacks, item.env),
+      capture: async (isCurrent) => ({
+        ...item.snapshot,
+        assertCurrent() {
+          item.snapshot.assertCurrent()
+          if (!isCurrent()) throw new Error('Capture is no longer current')
+        }
+      }),
+      stopFrontend: async () => undefined,
+      connectFrontend: async () => {
+        connected = true
+      }
+    })
+    await controller.prepare(CONFIG)
+    const review = controller.plan.value
+    await controller.diagnose({ ...CONFIG, previewPort: 5182, apiPort: 3013 })
+    expect(controller.diagnosedAt.value).not.toBeNull()
+    expect(controller.plan.value).toBe(review)
+    item.respond(async (command) => ({
+      ...item.state,
+      initialized: true,
+      plan: null,
+      applicationDigest: item.snapshot.applicationDigest,
+      phase: command.command === 'start' ? 'running' : 'prepared',
+      connection:
+        command.command === 'start'
+          ? {
+              previewPort: CONFIG.previewPort,
+              apiPort: CONFIG.apiPort,
+              apiBasePath: '/api',
+              applicationId: item.snapshot.application.applicationId,
+              applicationDigest: item.snapshot.applicationDigest
+            }
+          : null
+    }))
+    await controller.confirm(item.snapshot.applicationDigest)
+    expect(controller.error.value).toBeNull()
+    expect(controller.canStart.value).toBe(true)
+    await controller.start()
+    expect(controller.error.value).toBeNull()
+    expect(connected).toBe(true)
+    expect(item.commands.map(({ command }) => command)).toEqual([
+      'stop',
+      'prepare',
+      'diagnose',
+      'setup',
+      'start'
+    ])
+    await controller.dispose()
+  })
+
+  test('diagnosing another application uses a temporary companion without changing prepared ownership', async () => {
+    const item = await fixture()
+    let temporaryClosed = 0
+    const temporaryCommands: ManagedPreviewCommand[] = []
+    const host = createManagedBackendPreviewHost(
+      {},
+      {
+        ...item.env,
+        resolveSession: (id) =>
+          id === item.snapshot.application.applicationId ? SESSION : 'diagnostic',
+        startProcess: async (id, callbacks) =>
+          id === SESSION
+            ? item.env.startProcess(id, callbacks)
+            : {
+                request: async (command) => {
+                  temporaryCommands.push(command)
+                  return item.state
+                },
+                cancelPending: () => undefined,
+                close: async () => {
+                  temporaryClosed++
+                }
+              }
+      }
+    )
+    await host.prepare(item.snapshot, CONFIG)
+    await host.diagnose(
+      {
+        ...item.snapshot,
+        application: { ...item.snapshot.application, applicationId: 'another-application' }
+      },
+      CONFIG
+    )
+    expect(temporaryCommands.map(({ command }) => command)).toEqual(['diagnose'])
+    expect(temporaryClosed).toBe(1)
+    expect(item.closed()).toBe(0)
+    await host.setup(item.snapshot.applicationDigest)
+    expect(item.commands.at(-1)?.command).toBe('setup')
+    await host.dispose()
+    expect(item.closed()).toBe(1)
+  })
+
   test('sends only public application/config data and consumes the displayed plan', async () => {
     const item = await fixture()
     await item.host.prepare(item.snapshot, CONFIG)
@@ -167,23 +265,26 @@ describe('managed desktop host authority and lifetime', () => {
     await item.host.dispose()
   })
 
-  test('dispose during native startup closes the arriving child before sending prepare', async () => {
-    const item = await fixture()
-    const started = deferred<ManagedPreviewProcess>()
-    const host = createManagedBackendPreviewHost(
-      {},
-      { ...item.env, startProcess: () => started.promise }
-    )
-    const preparing = host.prepare(item.snapshot, CONFIG)
-    void preparing.catch(() => undefined)
-    await Promise.resolve()
-    const closing = host.dispose()
-    started.resolve(item.process)
-    await closing
-    await expect(preparing).rejects.toThrow('changed while')
-    expect(item.commands.length).toBe(0)
-    expect(item.closed()).toBe(1)
-  })
+  test.each(['prepare', 'diagnose'] as const)(
+    'dispose during native startup closes the arriving child before sending %s',
+    async (action) => {
+      const item = await fixture()
+      const started = deferred<ManagedPreviewProcess>()
+      const host = createManagedBackendPreviewHost(
+        {},
+        { ...item.env, startProcess: () => started.promise }
+      )
+      const preparing = host[action](item.snapshot, CONFIG)
+      void preparing.catch(() => undefined)
+      await Promise.resolve()
+      const closing = host.dispose()
+      started.resolve(item.process)
+      await closing
+      await expect(preparing).rejects.toThrow('changed while')
+      expect(item.commands.length).toBe(0)
+      expect(item.closed()).toBe(1)
+    }
+  )
 
   test('a running API connection must match the approved application and ports', async () => {
     const item = await fixture()

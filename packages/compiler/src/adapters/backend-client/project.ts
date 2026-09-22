@@ -43,7 +43,9 @@ export function integrateBackendClientProject(
           'openpencil-local-app.json': JSON.stringify({ version: 1, loginPath }, null, 2) + '\n'
         }),
     [mount]: original,
-    'src/lowcode-backend-auth.ts': emitBrowserAuthentication(application),
+    'src/lowcode-backend-auth.ts': emitBrowserAuthentication(application, {
+      previewRelay: connectedPreview
+    }),
     'src/lowcode-backend-api.ts': String(emitNestJSClient(application).content),
     'src/lowcode-backend.ts': buildBackendClientRuntime(
       application,

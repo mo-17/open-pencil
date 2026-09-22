@@ -1,6 +1,7 @@
 import { parseBackendApplicationSpecV1, type BackendDiagnostic } from '@open-pencil/lowcode/backend'
 
 import { parsePreviewLocalBackendConnection } from '../local-backend-preview/connection'
+import { MANAGED_DIAGNOSTIC_CODES, MANAGED_DIAGNOSTIC_STATUSES } from './diagnostic-types'
 import type {
   ManagedPreviewCommand,
   ManagedPreviewConfig,
@@ -188,12 +189,12 @@ export function parseManagedPreviewCommand(value: unknown): ManagedPreviewComman
   if (!value || typeof value !== 'object') return invalid()
   const command = Object.getOwnPropertyDescriptor(value, 'command')?.value
   const keys = ['version', 'id', 'command']
-  if (command === 'prepare') keys.push('application', 'config')
+  if (command === 'prepare' || command === 'diagnose') keys.push('application', 'config')
   else if (command === 'setup' || command === 'apply') keys.push('planId')
   const source = record(value, keys)
   if (source.version !== 1) return invalid()
   const base = { version: 1 as const, id: id(source.id) }
-  if (command === 'prepare') {
+  if (command === 'prepare' || command === 'diagnose') {
     const application = parseBackendApplicationSpecV1(source.application)
     if (!application.ok) return invalid()
     return {
@@ -213,6 +214,7 @@ export function parseManagedPreviewEvent(value: unknown): ManagedPreviewEvent {
   let fields = ['id', 'code', 'message', 'state']
   if (type === 'ready') fields = ['sessionId']
   if (type === 'result') fields = ['id', 'state']
+  if (type === 'diagnostic') fields = ['id', 'diagnostic']
   if (type === 'progress') fields = ['id', 'phase', 'message']
   const source = record(value, ['version', 'type', ...fields])
   if (source.version !== 1) return invalid()
@@ -227,6 +229,18 @@ export function parseManagedPreviewEvent(value: unknown): ManagedPreviewEvent {
       phase: choice(source.phase, PHASES) as ManagedPreviewPhase,
       message: text(source.message)
     }
+  if (type === 'diagnostic') {
+    const item = record(source.diagnostic, ['code', 'status'])
+    return {
+      version: 1,
+      type,
+      id: id(source.id),
+      diagnostic: {
+        code: choice(item.code, MANAGED_DIAGNOSTIC_CODES),
+        status: choice(item.status, MANAGED_DIAGNOSTIC_STATUSES)
+      }
+    }
+  }
   if (type === 'error')
     return {
       version: 1,
