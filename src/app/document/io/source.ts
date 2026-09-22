@@ -85,7 +85,7 @@ export function createDocumentSourceActions({
     hasWritableSource: () => !!getFileHandle() || !!getFilePath() || !!getStorageBinding()
   })
 
-  const { saveFigFile, saveFigFileAs } = createSaveActions({
+  const { saveFigFile, saveFigFileAs, getSaveStatus, disposeSaveActions } = createSaveActions({
     state,
     buildFigFile,
     getFilePath,
@@ -134,7 +134,7 @@ export function createDocumentSourceActions({
     setLastWriteTime(0)
     setSavedVersion(state.sceneVersion)
     changes.markSaved()
-    void recovery.markProtectedVersion(state.sceneVersion)
+    void recovery.markProtectedVersion(state.sceneVersion, true)
     if (isFig && (handle || path)) void startWatchingFile()
   }
 
@@ -151,7 +151,7 @@ export function createDocumentSourceActions({
     setLastWriteTime(0)
     setSavedVersion(state.sceneVersion)
     changes.markSaved()
-    void recovery.markProtectedVersion(state.sceneVersion)
+    void recovery.markProtectedVersion(state.sceneVersion, true)
   }
 
   function setPlannedFilePath(path: string) {
@@ -171,6 +171,7 @@ export function createDocumentSourceActions({
   }
 
   function disposeDocumentIO() {
+    disposeSaveActions()
     changes.dispose()
     stopWatchingFile()
     autosave.disposeAutosave()
@@ -189,10 +190,12 @@ export function createDocumentSourceActions({
     hasUnsavedChanges: changes.hasUnsavedChanges,
     markDocumentSaved: changes.markSaved,
     getStorageBinding,
+    getSaveStatus,
+    getRecoveryStatus: () => recovery.getRecoveryStatus(),
     getRecoveryId: () => recovery.getRecoveryId(),
-    adoptRecoverySnapshot: (id: string, version: number) => {
+    adoptRecoverySnapshot: (id: string, version: number, updatedAt?: string) => {
       changes.markChanged()
-      return recovery.adoptRecoverySnapshot(id, version)
+      return recovery.adoptRecoverySnapshot(id, version, updatedAt)
     },
     persistRecoveryNow: () => recovery.persistNow(),
     discardRecovery: () => recovery.discardRecovery()

@@ -1,3 +1,5 @@
+import { ref } from 'vue'
+
 import type { DocumentSourceIdentity } from '@/app/document/io/types'
 import {
   resolveStorageDocumentBinding,
@@ -11,7 +13,7 @@ export function createDocumentSourceState() {
   let downloadName: string | null = null
   let sourceIdentity: DocumentSourceIdentity = { handle: null, path: null }
   let storageBinding: StorageDocumentBinding | null = null
-  let sourceRevision = 0
+  const sourceRevision = ref(0)
   const sourceChangeListeners = new Set<() => void>()
   let savedVersion = 0
   let lastWriteTime = 0
@@ -33,9 +35,9 @@ export function createDocumentSourceState() {
     setSourceIdentity: (identity: DocumentSourceIdentity) => {
       sourceIdentity = identity
     },
-    getSourceRevision: () => sourceRevision,
+    getSourceRevision: () => sourceRevision.value,
     markSourceChanged: () => {
-      sourceRevision++
+      sourceRevision.value++
       for (const listener of sourceChangeListeners) {
         try {
           listener()

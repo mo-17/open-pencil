@@ -37,6 +37,7 @@ import EditorWorkspace from '@/components/editor/EditorWorkspace.vue'
 import FileApiBanner from '@/components/FileApiBanner.vue'
 import FontStatusBanner from '@/components/font-status/FontStatusBanner.vue'
 import HomeWorkspace from '@/components/home/HomeWorkspace.vue'
+import DocumentSaveStatus from '@/components/recovery/DocumentSaveStatus.vue'
 import RenameSelectionDialog from '@/components/selection/RenameSelectionDialog.vue'
 import TabBar from '@/components/TabBar.vue'
 import { IS_BROWSER } from '@/constants'
@@ -192,6 +193,10 @@ onUnmounted(() => {
     <RenameSelectionDialog />
     <CommandPalette />
     <TabBar />
+    <DocumentSaveStatus
+      v-if="activeTab?.kind === 'document' && appRuntimeConfig.showChrome"
+      :key="activeTab.id"
+    />
     <HomeWorkspace v-show="activeTab?.kind === 'home'" @new-document="createDocumentInCurrentTab" />
     <EditorWorkspace v-if="activeTab?.kind !== 'home'" />
   </div>

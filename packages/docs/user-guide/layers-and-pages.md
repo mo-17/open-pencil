@@ -47,6 +47,12 @@ The Home workspace lists recent local documents and documents from configured st
 
 In **Settings → General → Recovery**, **Automatically preserve unsaved work** controls local recovery copies. With recovery enabled, unsaved documents without a file path remain recoverable even after their tabs close. When OpenPencil offers **Recover unsaved work**, choose **Restore** to reopen a document or **Discard** to remove its recovery copy.
 
+The status bar below the tabs separates **Original file saved**, **Recovery snapshot available**, and **Local cache saved**. Each successful save or snapshot shows its own time. A browser download is labeled **Download requested** because OpenPencil cannot confirm that the browser wrote it to disk. Opening an existing document does not invent a save time for the current session.
+
+A failed save or recovery snapshot stays visible with a **Retry** action. The last successful time remains visible, so it does not imply the latest edits were preserved. Recovery failure does not repeatedly open dialogs; you can also use **File → Save as** to write a file. If persistent browser storage is unavailable, the status says the recovery copy is **session-only**: save a file before closing the app. After restoring a snapshot, its recorded timestamp is retained and the document still needs an explicit file save.
+
+For a document connected to cloud storage, **Local cache saved** only confirms the local write. Use **Remote sync status and retry…** to open the existing storage workspace and check pending, error, conflict, or synced state for that document. A recovery snapshot never confirms a file save or cloud synchronization.
+
 Disabling recovery stops automatic preservation and removes recovery copies owned by currently open documents. It does not bulk-delete snapshots from previously closed documents. Recovery is local to this installation/browser profile; it is not a replacement for saving a file, cloud synchronization, or a backup.
 
 ## Properties Panel

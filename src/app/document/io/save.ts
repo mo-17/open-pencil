@@ -1,3 +1,5 @@
+import { shallowRef } from 'vue'
+
 import type { EditorState } from '@open-pencil/core/editor'
 import { filesMessages } from '@open-pencil/vue'
 
@@ -12,6 +14,18 @@ import {
   type DocumentWriteTarget
 } from '@/app/document/io/write'
 import { IS_TAURI } from '@/constants'
+
+export type DocumentSaveStatus = Readonly<{
+  phase: 'idle' | 'saving' | 'saved' | 'failed'
+  destination: 'file' | 'local-cache' | 'download'
+  updatedAt: string | null
+}>
+
+const INITIAL_SAVE_STATUS: DocumentSaveStatus = {
+  phase: 'idle',
+  destination: 'file',
+  updatedAt: null
+}
 
 type SaveDocumentState = EditorState & { documentName: string }
 
@@ -50,6 +64,33 @@ export function createSaveActions({
 }: SaveActionsOptions) {
   const writeFile = createDocumentWriter()
   let saveQueue = Promise.resolve()
+  let disposed = false
+  let statusRevision = getSourceRevision()
+  const status = shallowRef<DocumentSaveStatus>(INITIAL_SAVE_STATUS)
+
+  function getSaveStatus(): DocumentSaveStatus {
+    return statusRevision === getSourceRevision() ? status.value : INITIAL_SAVE_STATUS
+  }
+
+  function saved(destination: DocumentSaveStatus['destination']): void {
+    statusRevision = getSourceRevision()
+    status.value = { phase: 'saved', destination, updatedAt: new Date().toISOString() }
+  }
+
+  async function trackSave(revision: number, operation: () => Promise<boolean>): Promise<boolean> {
+    if (!sourceIsUnchanged(revision)) return false
+    const previous = getSaveStatus()
+    statusRevision = revision
+    status.value = { ...previous, phase: 'saving' }
+    try {
+      const result = await operation()
+      if (!result && sourceIsUnchanged(revision)) status.value = previous
+      return result && !disposed && statusRevision === getSourceRevision()
+    } catch (error) {
+      if (sourceIsUnchanged(revision)) status.value = { ...previous, phase: 'failed' }
+      throw error
+    }
+  }
 
   function enqueueSave(operation: () => Promise<boolean>): Promise<boolean> {
     const result = saveQueue.then(operation, operation)
@@ -94,7 +135,9 @@ export function createSaveActions({
 
   function sourceIsUnchanged(revision: number, target?: DocumentWriteTarget): boolean {
     return (
-      getSourceRevision() === revision && (target === undefined || isCurrentWriteTarget(target))
+      !disposed &&
+      getSourceRevision() === revision &&
+      (target === undefined || isCurrentWriteTarget(target))
     )
   }
 
@@ -126,7 +169,9 @@ export function createSaveActions({
       await writeFile(target, data, options)
       if (!sourceIsUnchanged(sourceRevision, target)) return false
       setLastWriteTime(Date.now())
+      saved(target.kind === 'storage' ? 'local-cache' : 'file')
       await notifyWriteSuccess(sceneVersion)
+      if (!sourceIsUnchanged(sourceRevision, target)) return false
       if (target.kind === 'tauri-path') {
         setSourceIdentity({ handle: null, path: target.path })
       } else if (target.kind === 'browser-handle') {
@@ -136,6 +181,7 @@ export function createSaveActions({
       const { data, sceneVersion } = await buildFigFile()
       if (!sourceIsUnchanged(sourceRevision)) return false
       downloadBlob(new Uint8Array(data), downloadName, 'application/octet-stream')
+      saved('download')
       await notifyDownloadSuccess(sceneVersion)
     } else {
       return saveFigFileAsNow(sourceRevision)
@@ -160,7 +206,10 @@ export function createSaveActions({
       setSourceIdentity({ handle: null, path })
       markSourceChanged()
       setLastWriteTime(Date.now())
+      saved('file')
+      const savedSourceRevision = getSourceRevision()
       await notifyWriteSuccess(built.sceneVersion)
+      if (!sourceIsUnchanged(savedSourceRevision)) return false
       startWatchingFile()
       return true
     }
@@ -179,7 +228,10 @@ export function createSaveActions({
       setSourceIdentity({ handle, path: null })
       markSourceChanged()
       setLastWriteTime(Date.now())
+      saved('file')
+      const savedSourceRevision = getSourceRevision()
       await notifyWriteSuccess(built.sceneVersion)
+      if (!sourceIsUnchanged(savedSourceRevision)) return false
       startWatchingFile()
       return true
     }
@@ -197,19 +249,29 @@ export function createSaveActions({
     setSourceIdentity({ handle: null, path: null })
     markSourceChanged()
     setLastWriteTime(0)
+    saved('download')
     await notifyDownloadSuccess(built.sceneVersion)
     return true
   }
 
   function saveFigFile(options?: DocumentWriteOptions): Promise<boolean> {
     const sourceRevision = getSourceRevision()
-    return enqueueSave(() => saveFigFileNow(sourceRevision, options))
+    return enqueueSave(() =>
+      trackSave(sourceRevision, () => saveFigFileNow(sourceRevision, options))
+    )
   }
 
   function saveFigFileAs(): Promise<boolean> {
     const sourceRevision = getSourceRevision()
-    return enqueueSave(() => saveFigFileAsNow(sourceRevision))
+    return enqueueSave(() => trackSave(sourceRevision, () => saveFigFileAsNow(sourceRevision)))
   }
 
-  return { saveFigFile, saveFigFileAs }
+  return {
+    saveFigFile,
+    saveFigFileAs,
+    getSaveStatus,
+    disposeSaveActions: () => {
+      disposed = true
+    }
+  }
 }

@@ -92,6 +92,8 @@ export function createEditorStoreModules(
     getSourceIdentity: documentIO.getSourceIdentity,
     onSourceChanged: documentIO.onSourceChanged,
     getStorageBinding: documentIO.getStorageBinding,
+    getSaveStatus: documentIO.getSaveStatus,
+    getRecoveryStatus: documentIO.getRecoveryStatus,
     getRecoveryId: documentIO.getRecoveryId,
     adoptRecoverySnapshot: documentIO.adoptRecoverySnapshot,
     persistRecoveryNow: documentIO.persistRecoveryNow,

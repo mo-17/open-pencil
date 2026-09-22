@@ -1,9 +1,9 @@
 import { watchDebounced } from '@vueuse/core'
-import { watch, type WatchHandle } from 'vue'
+import { shallowRef, watch, type WatchHandle } from 'vue'
 
 import type { EditorState } from '@open-pencil/core/editor'
 
-import { getRecoveryStore } from '@/app/document/recovery/store'
+import { getRecoveryStore, isRecoveryStoreMemoryFallback } from '@/app/document/recovery/store'
 import type { RecoveryStore } from '@/app/document/recovery/types'
 import { createCanvasId } from '@/app/storage/id'
 
@@ -18,11 +18,19 @@ interface DocumentRecoveryOptions {
   recoveryId?: string
 }
 
+export type RecoveryStatus = Readonly<{
+  phase: 'idle' | 'writing' | 'ready' | 'failed' | 'disabled'
+  updatedAt: string | null
+  sessionOnly: boolean
+  errorCode: 'snapshot-write-failed' | 'snapshot-cleanup-failed' | null
+}>
+
 export interface DocumentRecoveryController {
+  getRecoveryStatus(): RecoveryStatus
   getRecoveryId(): string
-  adoptRecoverySnapshot(id: string, sceneVersion: number): Promise<void>
+  adoptRecoverySnapshot(id: string, sceneVersion: number, updatedAt?: string): Promise<void>
   persistNow(): Promise<void>
-  markProtectedVersion(version: number): Promise<void>
+  markProtectedVersion(version: number, resetForSource?: boolean): Promise<void>
   discardRecovery(): Promise<void>
   disposeRecovery(): void
 }
@@ -35,6 +43,18 @@ export function createDocumentRecovery({
   store = getRecoveryStore(),
   recoveryId = createCanvasId()
 }: DocumentRecoveryOptions): DocumentRecoveryController {
+  const status = shallowRef<RecoveryStatus>({
+    phase: 'idle',
+    updatedAt: null,
+    sessionOnly: false,
+    errorCode: null
+  })
+  function resetStatus(): void {
+    status.value = { phase: 'idle', updatedAt: null, sessionOnly: false, errorCode: null }
+  }
+  function current(generation: number): boolean {
+    return !disposed && generation === lifecycleGeneration
+  }
   let id = recoveryId
   let protectedVersion = state.sceneVersion
   let persistedVersion: number | null = null
@@ -48,30 +68,50 @@ export function createDocumentRecovery({
     if (disposed || generation !== lifecycleGeneration || !isEnabled()) return
     if (hasWritableSource() || requestedVersion === protectedVersion) return
     const version = requestedVersion
+    const snapshotId = id
+    const documentName = state.documentName
+    status.value = { ...status.value, phase: 'writing', errorCode: null }
     const bytes = await buildFigFile()
-    if (generation !== lifecycleGeneration || hasWritableSource() || !isEnabled()) return
-    await store.write({
-      id,
-      documentName: state.documentName,
+    if (!current(generation) || hasWritableSource() || !isEnabled()) return
+    const metadata = await store.write({
+      id: snapshotId,
+      documentName,
       sceneVersion: version,
       figBytes: bytes
     })
     persistedVersion = version
-    if (generation !== lifecycleGeneration) return
+    if (!current(generation)) return
+    status.value = {
+      phase: 'ready',
+      updatedAt: metadata.updatedAt,
+      sessionOnly: isRecoveryStoreMemoryFallback(),
+      errorCode: null
+    }
     protectedVersion = version
     if (requestedVersion !== version) await runWrites(generation)
   }
 
   async function persistNow(): Promise<void> {
-    await cleanup
+    let awaitedCleanup: Promise<void>
+    do {
+      awaitedCleanup = cleanup
+      await awaitedCleanup
+    } while (awaitedCleanup !== cleanup)
     if (disposed || hasWritableSource() || !isEnabled()) return
     requestedVersion = state.sceneVersion
     if (requestedVersion === protectedVersion) return
     if (!writing) {
       const generation = lifecycleGeneration
-      writing = runWrites(generation).finally(() => {
-        writing = null
-      })
+      writing = runWrites(generation)
+        .catch((error: unknown) => {
+          if (current(generation)) {
+            status.value = { ...status.value, phase: 'failed', errorCode: 'snapshot-write-failed' }
+          }
+          throw error
+        })
+        .finally(() => {
+          writing = null
+        })
     }
     await writing
   }
@@ -90,9 +130,11 @@ export function createDocumentRecovery({
       if (enabled) {
         protectedVersion = state.sceneVersion
         requestedVersion = state.sceneVersion
+        resetStatus()
         return
       }
       lifecycleGeneration++
+      resetStatus()
       const cleanupGeneration = lifecycleGeneration
       const snapshotId = id
       requestedVersion = state.sceneVersion
@@ -100,49 +142,88 @@ export function createDocumentRecovery({
       const activeWrite = writing
       cleanup = cleanup
         .then(async () => {
-          await activeWrite
+          await activeWrite?.catch(() => undefined)
           await store.remove(snapshotId)
           if (cleanupGeneration === lifecycleGeneration) persistedVersion = null
           return undefined
         })
-        .catch((error) => console.warn('[Recovery] Failed to disable recovery:', error))
+        .catch((error: unknown) => {
+          if (current(cleanupGeneration)) {
+            status.value = {
+              ...status.value,
+              phase: 'failed',
+              errorCode: 'snapshot-cleanup-failed'
+            }
+          }
+          console.warn('[Recovery] Failed to disable recovery:', error)
+        })
     },
     { flush: 'sync' }
   )
 
-  async function invalidateActiveWrite(): Promise<void> {
-    lifecycleGeneration++
-    await Promise.all([writing, cleanup])
+  function serializeCleanup(operation: (generation: number) => Promise<void>): Promise<void> {
+    const generation = ++lifecycleGeneration
+    const activeWrite = writing
+    const result = cleanup.then(async () => {
+      await activeWrite?.catch(() => undefined)
+      if (!current(generation)) return undefined
+      await operation(generation)
+      return undefined
+    })
+    // Publish the entire deletion/adoption transaction before yielding. New
+    // snapshots must never race a delayed deletion of the same recovery id.
+    cleanup = result.then(
+      () => undefined,
+      () => undefined
+    )
+    return result
   }
 
   return {
     getRecoveryId: () => id,
-    async adoptRecoverySnapshot(nextId, sceneVersion) {
-      const previousId = id
-      await invalidateActiveWrite()
-      id = nextId
-      protectedVersion = sceneVersion
-      persistedVersion = sceneVersion
-      requestedVersion = sceneVersion
-      disposed = false
-      if (previousId !== nextId) await store.remove(previousId)
+    getRecoveryStatus: () => {
+      if (!isEnabled() && status.value.phase !== 'failed')
+        return { ...status.value, phase: 'disabled' }
+      return status.value
+    },
+    adoptRecoverySnapshot(nextId, sceneVersion, updatedAt) {
+      return serializeCleanup(async () => {
+        const previousId = id
+        id = nextId
+        protectedVersion = sceneVersion
+        persistedVersion = sceneVersion
+        requestedVersion = sceneVersion
+        status.value = {
+          phase: 'ready',
+          updatedAt: updatedAt ?? null,
+          sessionOnly: isRecoveryStoreMemoryFallback(),
+          errorCode: null
+        }
+        if (previousId !== nextId) await store.remove(previousId)
+      })
     },
     persistNow,
-    async markProtectedVersion(version) {
-      await invalidateActiveWrite()
-      protectedVersion = version
-      requestedVersion = state.sceneVersion
-      if (persistedVersion == null || persistedVersion <= version) {
-        await store.remove(id)
-        persistedVersion = null
-      }
+    markProtectedVersion(version, resetForSource = false) {
+      if (resetForSource) resetStatus()
+      return serializeCleanup(async (generation) => {
+        protectedVersion = version
+        requestedVersion = state.sceneVersion
+        if (persistedVersion == null || persistedVersion <= version) {
+          await store.remove(id)
+          if (!current(generation)) return
+          persistedVersion = null
+          resetStatus()
+        }
+      })
     },
-    async discardRecovery() {
-      await invalidateActiveWrite()
-      protectedVersion = state.sceneVersion
-      persistedVersion = null
-      requestedVersion = state.sceneVersion
-      await store.remove(id)
+    discardRecovery() {
+      return serializeCleanup(async (generation) => {
+        protectedVersion = state.sceneVersion
+        persistedVersion = null
+        requestedVersion = state.sceneVersion
+        await store.remove(id)
+        if (current(generation)) resetStatus()
+      })
     },
     disposeRecovery() {
       disposed = true

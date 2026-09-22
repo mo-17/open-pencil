@@ -184,6 +184,13 @@ export async function closeTab(tabId: string): Promise<void> {
   if (closingTab.kind === 'home' && tabsRef.value.length === 1) return
   if (closingStores.has(closingTab.store)) return
   closingStores.add(closingTab.store)
+  // A clean loading tab needs no save decision. Invalidate its download before
+  // awaiting recovery so late data cannot populate an editor being closed.
+  const opening = openingStorageBindings.get(closingTab.store)
+  if (opening && !closingTab.store.hasUnsavedChanges()) {
+    opening.load.cancel('tab-closed')
+    openingStorageBindings.delete(closingTab.store)
+  }
   try {
     const choice = await requestDocumentClose(closingTab.store, closingTab.store.state.documentName)
     if (choice === 'cancel') return
@@ -793,7 +800,7 @@ export async function restoreRecoverySnapshot(id: string): Promise<void> {
       imported,
       async () => {
         store.state.documentName = snapshot.documentName
-        await store.adoptRecoverySnapshot(id, snapshot.sceneVersion)
+        await store.adoptRecoverySnapshot(id, snapshot.sceneVersion, snapshot.updatedAt)
       },
       load
     )

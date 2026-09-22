@@ -81,6 +81,8 @@ export function createDocumentIOActions(
     getSourceIdentity: sourceState.getSourceIdentity,
     onSourceChanged: sourceState.onSourceChanged,
     getStorageBinding: sourceState.getStorageBinding,
+    getSaveStatus: sourceActions.getSaveStatus,
+    getRecoveryStatus: sourceActions.getRecoveryStatus,
     getRecoveryId: sourceActions.getRecoveryId,
     adoptRecoverySnapshot: sourceActions.adoptRecoverySnapshot,
     persistRecoveryNow: sourceActions.persistRecoveryNow,
