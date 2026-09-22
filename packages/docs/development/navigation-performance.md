@@ -165,3 +165,21 @@ Chromium replay does not establish WKWebView or physical trackpad behavior. Befo
 5. Store the recording, metrics, hardware/macOS metadata, and Instruments trace as release artifacts.
 
 Native automation may add OS-level scroll injection, but it must preserve continuous-scroll and momentum phases before being called trackpad-equivalent. Synthetic composition or DOM wheel events are not native acceptance evidence.
+
+## Fixed document stability matrix
+
+The generated scenarios include `light` (80 nodes), `large-flat` (5,000 nodes), `image-heavy` (400 image-filled nodes sharing 32 locally generated bitmaps), `complex-text` (500 wrapped and styled text nodes), and `mixed-fonts` (180 Latin/Chinese text nodes). `raster-stress` remains available for effect-heavy raster work. Use the same scenario, gesture, fonts, browser, renderer, viewport and device scale for comparisons.
+
+The development-browser matrix also exercises a real `.fig` serialize → import → edit → export → reimport cycle:
+
+```sh
+OPENPENCIL_TEST_SERVER=app OPENPENCIL_TEST_PORT=1488 OPENPENCIL_TEST_MCP_PORT=7688 \
+  bunx playwright test tests/e2e/canvas/stability-roundtrip.spec.ts \
+  --project=openpencil --output=/tmp/openpencil-stability-evidence
+```
+
+Each test attaches navigation profiler metrics, editor bootstrap and scene setup times, FIG import/encoding durations, recovery-store write duration, PNG export duration, node counts, browser/GPU metadata, and before/after PNGs for nine representative nodes. Structure is compared for the whole document; decoded pixels are compared for the representative export. FIG encoding is not a disk-write durability measurement. Memory usage is deliberately omitted because this harness does not have a reliable cross-browser measurement.
+
+The mixed-font browser fixture uses the repository's existing licensed Noto CJK subset (`tests/fixtures/fonts/OFL.txt`) and bundled Inter; online font requests are intercepted. It neither installs system fonts nor downloads unlicensed fonts. For standalone `mixed-fonts` CLI measurements, explicitly establish and record the font environment before comparing results. The development fixture requires the source font-manager module and is not a production-bundle benchmark.
+
+This matrix records a local baseline, not a performance improvement claim. The standard browser project uses software rendering; concurrent builds, development compilation and synthetic DOM input affect the numbers. Use an idle machine, production build, hardware GPU, one warmup and at least five repeated runs before making performance decisions. A zero-pixel same-run export difference checks the tested import/export path; it does not prove equal font substitution or antialiasing on another OS/GPU. Run the existing missing-font, CJK, and substitution browser suites, then inspect the same exported files on the second computer with its actual installed fonts.

@@ -26,6 +26,7 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
 ## What it does
 
 - **Opens `.fig` and `.pen` files** — read and write native Figma files, open supported Pencil documents from the app or OS file browser, copy & paste nodes between apps
+- **Visible local status** — distinguish original-file saves, local recovery snapshots and cloud synchronization, with timestamps and retry actions. Inspect managed-preview environment checks on each computer, and see agent-reported ACP context usage in chat. See the [repeatable acceptance checklist](packages/docs/development/stability-acceptance.md) for browser, desktop and second-computer verification.
 - **AI builds designs** — describe what you want in chat with a curated set of common design operations, including real buttons, inputs, forms, lists, and other lowcode controls. Connect OpenRouter, Anthropic, OpenAI, Google AI, DeepSeek, Z.ai, MiniMax, or compatible endpoints; optionally enable cited web search, hosted code execution, or Remote MCP tools per model (per-call approval for Direct chat; agent-owned policy for ACP)
 - **Fully programmable** — headless CLI, XPath queries, Figma Plugin API via `eval`, MCP server for AI agents, and desktop agent integrations for Claude Code, Codex, and Gemini CLI
 - **Lint, convert, and extract tokens** — inspect documents, lint naming/layout/accessibility, convert between supported formats, analyze colors/typography/spacing/clusters, and extract design tokens
@@ -332,10 +333,13 @@ The **NestJS** toolbar entry opens a side panel with the current status and next
 settings and logs collapse after setup; database changes open a separate SQL review. Local
 Keycloak, HTTPS Keycloak, and custom OIDC presets fill missing settings without replacing entered
 values. Keycloak presets also provide a public PKCE client configuration to copy into your identity
-service; local certificates can be selected from a file picker.
+service; local certificates can be selected from a file picker. The trusted CA path is remembered
+on this computer for the matching issuer and JWKS endpoint. Opening the design on another computer
+requires selecting its local certificate; paths are not included in design files or collaboration.
 
-Both modes open the live frontend in the system browser for OIDC login and real CRUD; component
-edits update through HMR. Register the exact preview callback for `http://127.0.0.1:5181` with your
+Both modes show the live frontend inside the preview panel, including authenticated CRUD. Sign-in opens the system browser for OIDC authorization; return to the
+embedded page after authorization to continue. You can also open a separate browser preview, with
+its own login session. Component edits update through HMR. Register the exact preview callback for `http://127.0.0.1:5181` with your
 identity service. Managed preview uses separate API/database ports `3012`/`55443`. Tokens and
 backend response state stay outside the editor's document-state bridge. These are local development
 tools, not a production deployment or release approval.

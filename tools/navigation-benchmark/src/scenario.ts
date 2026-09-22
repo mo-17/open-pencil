@@ -1,9 +1,22 @@
 import type { Page } from '@playwright/test'
 
-export type NavigationScenario = 'light' | 'large-flat' | 'raster-stress' | 'current-document'
+import { setupContentScenario } from './content-scenarios'
+
+export type NavigationScenario =
+  | 'light'
+  | 'large-flat'
+  | 'raster-stress'
+  | 'image-heavy'
+  | 'complex-text'
+  | 'mixed-fonts'
+  | 'current-document'
 
 export async function setupScenario(page: Page, scenario: NavigationScenario): Promise<void> {
   if (scenario === 'current-document') return
+  if (scenario === 'image-heavy' || scenario === 'complex-text' || scenario === 'mixed-fonts') {
+    await setupContentScenario(page, scenario)
+    return
+  }
   await page.evaluate((selectedScenario) => {
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not available')

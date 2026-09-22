@@ -131,7 +131,7 @@ test('does not report a local font as missing while its bytes are still loading'
     deferredStyle: 'Regular',
     deferredStyleAttempt: 1
   })
-  await page.goto('/')
+  await page.goto('/?test')
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   await disableOnlineFonts(page)
@@ -186,7 +186,7 @@ test('manually retries a confirmed missing font and refreshes the canvas', async
     failedLoadsByStyle: { Regular: 1 },
     unavailableStyles: ['Bold']
   })
-  await page.goto('/')
+  await page.goto('/?test')
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
   await disableOnlineFonts(page)

@@ -12,6 +12,12 @@
 
 ### Added
 
+- Show separate file-save and recovery-snapshot status with success times, persistent failure feedback and retry actions; keep cloud synchronization status separate.
+- Check the managed preview's local dependencies, certificate, ports, database and identity metadata from the editor, with actionable diagnostics and a redacted copyable report.
+- Show session-scoped ACP context capacity and latest token reports in chat, with explicit unavailable, invalid and expired states.
+- Explain preview sign-in cancellation, timeouts and session expiry, and return to the previous business page after explicit sign-in without repeating failed writes.
+- Run connected NestJS previews inside the editor, with system-browser sign-in authorization and authenticated data operations back in the embedded page.
+- Remember trusted CA file paths on the current computer for each preview identity service, with separate configuration when a design is opened on another computer.
 - Guide business-template setup from the Backend panel with saved sign-in settings, required roles, first-record steps and current page links; include model-specific identity and startup instructions in NestJS exports.
 - Add asset management, private quotation/contract fulfillment and recruitment with onboarding/offboarding checklists to the Backend library and AI, with editable React/Vue pages and NestJS exports.
 - Add procurement/inventory, fixed two-stage enterprise approvals, versioned surveys, text courses with instructor grading and moderated community templates to the Backend library and AI, with editable React/Vue pages and NestJS exports.
@@ -74,6 +80,7 @@
 
 ### Fixed
 
+- Allow managed NestJS preview to prepare and connect applications created from the Backend library while preserving their original application IDs and saved preview sessions.
 - Connect embedded ACP agents to the current editor even when a global `open-pencil` MCP server is configured, and retain the correct connection when resuming sessions.
 - Keep local ACP editor connections working behind system HTTP proxies while preserving existing proxy exceptions and external proxy settings.
 - Match asset handover actions to the selected request's kind and status while retaining unsent form input and saved-request review after refresh or navigation.

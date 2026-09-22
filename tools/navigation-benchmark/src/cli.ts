@@ -30,7 +30,7 @@ if (command === 'compare') {
 }
 if (command !== 'run') {
   console.log(
-    'Usage: bun tools/navigation-benchmark/src/cli.ts run --url URL --gesture FILE [--mode cdp|dom] [--scenario light|large-flat|raster-stress|current-document] [--document FILE] [--no-trace] [--cpu-profile] [--software-gpu] [--output DIR]\n       bun tools/navigation-benchmark/src/cli.ts compare --baseline METRICS --candidate METRICS [--output FILE]'
+    'Usage: bun tools/navigation-benchmark/src/cli.ts run --url URL --gesture FILE [--mode cdp|dom] [--scenario light|large-flat|raster-stress|image-heavy|complex-text|mixed-fonts|current-document] [--document FILE] [--no-trace] [--cpu-profile] [--software-gpu] [--output DIR]\n       bun tools/navigation-benchmark/src/cli.ts compare --baseline METRICS --candidate METRICS [--output FILE]'
   )
   process.exit(command ? 1 : 0)
 }
@@ -50,7 +50,17 @@ const cpuProfile = process.argv.includes('--cpu-profile')
 const softwareGpu = process.argv.includes('--software-gpu')
 const output = resolve(argument('--output', 'artifacts/navigation-benchmark'))
 if (mode !== 'cdp' && mode !== 'dom') throw new Error(`Unsupported replay mode: ${mode}`)
-if (!['light', 'large-flat', 'raster-stress', 'current-document'].includes(scenario)) {
+if (
+  ![
+    'light',
+    'large-flat',
+    'raster-stress',
+    'image-heavy',
+    'complex-text',
+    'mixed-fonts',
+    'current-document'
+  ].includes(scenario)
+) {
   throw new Error(`Unsupported scenario: ${scenario}`)
 }
 
