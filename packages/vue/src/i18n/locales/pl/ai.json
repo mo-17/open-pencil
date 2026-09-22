@@ -1,4 +1,16 @@
 {
+  "contextWindow": "Okno kontekstu",
+  "contextUsageUnavailable": "Nie podano",
+  "contextUsageInvalid": "Nieprawidłowy raport",
+  "contextUsageStale": "Raport wygasł",
+  "contextUpdated": "Aktualizacja",
+  "contextTokenReport": "Ostatni raport tokenów",
+  "contextInput": "Wejście",
+  "contextOutput": "Wyjście",
+  "contextTokenScope": "Tokeny i zajętość kontekstu to osobne miary. Agent może raportować turę lub sumę. Raporty wygasają po pięciu minutach.",
+  "contextSkillsUnknown": "Skracanie opisów Skills różni się od kompresji historii; wpływ na jakość jest nieznany. Protokół nie podaje udziału Skills.",
+  "contextCompactionUnknown": "Brak wiarygodnego zdarzenia kompresji historii; spadek użycia nie potwierdza kompresji.",
+
   "maxAgentSteps": "Maksymalna liczba kroków na wiadomość",
   "maxAgentStepsHint": "Tylko dla wbudowanej AI; ACP i Pi zarządzają własnymi limitami. Zapis po naciśnięciu Enter lub opuszczeniu pola, obowiązuje od następnej wiadomości. Wyższe limity mogą zwiększyć koszt.",
   "maxAgentStepsRange": "Wpisz liczbę całkowitą od {min} do {max}.",

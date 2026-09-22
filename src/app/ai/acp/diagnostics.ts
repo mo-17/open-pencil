@@ -6,11 +6,16 @@ import type {
   Usage,
   UsageUpdate
 } from '@agentclientprotocol/sdk'
+import { readonly, shallowRef } from 'vue'
 
 import { findACPConfigOption } from './config-options'
 
 export interface ACPDiagnosticsSnapshot {
   active: boolean
+  sessionId?: string
+  contextUpdatedAt?: number
+  usageUpdatedAt?: number
+  contextInvalid?: boolean
   agentName?: string
   modelId?: string
   thoughtLevel?: string
@@ -18,7 +23,32 @@ export interface ACPDiagnosticsSnapshot {
   context?: Pick<UsageUpdate, 'used' | 'size' | 'cost'>
 }
 
-let snapshot: ACPDiagnosticsSnapshot = { active: false }
+function validCount(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0
+}
+
+function validUsage(value: Usage | null | undefined): value is Usage {
+  return Boolean(
+    value &&
+    validCount(value.inputTokens) &&
+    validCount(value.outputTokens) &&
+    validCount(value.totalTokens)
+  )
+}
+
+function clearedUsage(): Partial<ACPDiagnosticsSnapshot> {
+  return {
+    context: undefined,
+    usage: undefined,
+    contextUpdatedAt: undefined,
+    usageUpdatedAt: undefined,
+    contextInvalid: false
+  }
+}
+
+const diagnostics = shallowRef<ACPDiagnosticsSnapshot>({ active: false })
+export const acpDiagnostics = readonly(diagnostics)
+let generation = 0
 
 function modelIdFrom(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
@@ -73,51 +103,92 @@ function selectedValue(
   return options ? findACPConfigOption(options, category)?.currentValue : undefined
 }
 
-export function recordACPConfigOptions(options: SessionConfigOption[] | null | undefined): void {
+export function recordACPConfigOptions(
+  options: SessionConfigOption[] | null | undefined,
+  owner = generation
+): void {
+  if (owner !== generation) return
   const selectedModelId = modelIdFrom(selectedValue(options, 'model'))
   const thoughtLevel = selectedValue(options, 'thought_level')
   const modelId = selectedModelId ? normalizeModelId(selectedModelId, thoughtLevel) : undefined
-  const { modelId: _previousModelId, thoughtLevel: _previousThoughtLevel, ...rest } = snapshot
-  snapshot = {
+  const {
+    modelId: _previousModelId,
+    thoughtLevel: _previousThoughtLevel,
+    ...rest
+  } = diagnostics.value
+  diagnostics.value = {
     ...rest,
+    ...(modelId !== diagnostics.value.modelId ? clearedUsage() : {}),
     ...(modelId ? { modelId } : {}),
     ...(thoughtLevel ? { thoughtLevel } : {})
   }
 }
 
-export function beginACPDiagnostics(agentName: string): void {
-  snapshot = { active: true, agentName }
+export function beginACPDiagnostics(agentName: string): number {
+  generation += 1
+  diagnostics.value = { active: true, agentName }
+  return generation
 }
 
-export function recordACPNewSession(result: NewSessionResponse): void {
+export function recordACPNewSession(result: NewSessionResponse, owner = generation): void {
+  if (owner !== generation) return
+  diagnostics.value = { ...diagnostics.value, sessionId: result.sessionId, ...clearedUsage() }
   const configModelId = modelIdFrom(selectedValue(result.configOptions, 'model'))
-  recordACPConfigOptions(result.configOptions)
+  recordACPConfigOptions(result.configOptions, owner)
   const modelId = modelIdFrom(result.models?.currentModelId)
   if (!configModelId && modelId) {
-    snapshot = { ...snapshot, modelId: normalizeModelId(modelId, snapshot.thoughtLevel) }
+    diagnostics.value = {
+      ...diagnostics.value,
+      modelId: normalizeModelId(modelId, diagnostics.value.thoughtLevel)
+    }
   }
 }
 
-export function recordACPPrompt(result: PromptResponse): void {
+export function recordACPPrompt(result: PromptResponse, owner = generation): void {
+  if (owner !== generation) return
   const reportedModelId = promptModelId(result)
   const modelId = reportedModelId
-    ? normalizeModelId(reportedModelId, snapshot.thoughtLevel)
-    : snapshot.modelId
+    ? normalizeModelId(reportedModelId, diagnostics.value.thoughtLevel)
+    : diagnostics.value.modelId
+  const usage = validUsage(result.usage) ? result.usage : undefined
   // ACP implementations differ on whether usage is per-turn or cumulative. Keep the latest
   // protocol snapshot instead of producing a misleading sum.
-  snapshot = {
-    ...snapshot,
+  diagnostics.value = {
+    ...diagnostics.value,
     active: true,
     ...(modelId ? { modelId } : {}),
-    ...(result.usage ? { usage: { ...result.usage } } : {})
+    ...(modelId !== diagnostics.value.modelId ? clearedUsage() : {}),
+    usage: usage ? { ...usage } : undefined,
+    usageUpdatedAt: usage ? Date.now() : undefined
   }
 }
 
-export function recordACPSessionUpdate(update: SessionUpdate): void {
+export function recordACPSessionUpdate(
+  update: SessionUpdate,
+  owner = generation,
+  receivedAt = Date.now()
+): void {
+  if (owner !== generation) return
   if (update.sessionUpdate === 'usage_update') {
-    snapshot = {
-      ...snapshot,
+    if (
+      !validCount(update.used) ||
+      !validCount(update.size) ||
+      update.size === 0 ||
+      update.used > update.size
+    ) {
+      diagnostics.value = {
+        ...diagnostics.value,
+        context: undefined,
+        contextUpdatedAt: undefined,
+        contextInvalid: true
+      }
+      return
+    }
+    diagnostics.value = {
+      ...diagnostics.value,
       active: true,
+      contextUpdatedAt: receivedAt,
+      contextInvalid: false,
       context: {
         used: update.used,
         size: update.size,
@@ -125,12 +196,12 @@ export function recordACPSessionUpdate(update: SessionUpdate): void {
       }
     }
   } else if (update.sessionUpdate === 'config_option_update') {
-    recordACPConfigOptions(update.configOptions)
+    recordACPConfigOptions(update.configOptions, owner)
   }
 }
 
 export function getACPDiagnostics(): Readonly<ACPDiagnosticsSnapshot> {
-  return snapshot
+  return diagnostics.value
 }
 
 export function formatACPDiagnostics(value: Readonly<ACPDiagnosticsSnapshot>): string {
@@ -180,6 +251,8 @@ export function formatACPRuntimeContext(value: Readonly<ACPDiagnosticsSnapshot>)
   ].join('\n')
 }
 
-export function resetACPDiagnostics(): void {
-  snapshot = { active: false }
+export function resetACPDiagnostics(owner = generation): void {
+  if (owner !== generation) return
+  generation += 1
+  diagnostics.value = { active: false }
 }

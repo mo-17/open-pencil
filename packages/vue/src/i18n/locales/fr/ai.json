@@ -1,4 +1,16 @@
 {
+  "contextWindow": "Fenêtre de contexte",
+  "contextUsageUnavailable": "Non fourni",
+  "contextUsageInvalid": "Rapport invalide",
+  "contextUsageStale": "Rapport périmé",
+  "contextUpdated": "Mis à jour",
+  "contextTokenReport": "Dernier rapport de tokens",
+  "contextInput": "Entrée",
+  "contextOutput": "Sortie",
+  "contextTokenScope": "Les tokens et le contexte sont distincts. L’agent peut rapporter un tour ou un cumul. Les rapports expirent après cinq minutes.",
+  "contextSkillsUnknown": "Raccourcir les descriptions des Skills diffère de la compression de l’historique ; l’effet sur la qualité est inconnu. Le protocole ne détaille pas les Skills.",
+  "contextCompactionUnknown": "Aucun événement fiable de compression de l’historique ; une baisse ne confirme pas une compression.",
+
   "maxAgentSteps": "Nombre maximal d’étapes par message",
   "maxAgentStepsHint": "Pour l’IA intégrée uniquement ; ACP et Pi gèrent leurs propres limites. Enregistré avec Entrée ou en quittant le champ, puis appliqué au prochain message. Une limite élevée peut augmenter le coût.",
   "maxAgentStepsRange": "Saisissez un nombre entier entre {min} et {max}.",

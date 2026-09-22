@@ -142,12 +142,6 @@ describe('ACP diagnostics', () => {
   test('records context utilization, cost, and later model changes', () => {
     beginACPDiagnostics('Codex')
     recordACPSessionUpdate({
-      sessionUpdate: 'usage_update',
-      used: 12_000,
-      size: 200_000,
-      cost: { amount: 0, currency: 'USD' }
-    })
-    recordACPSessionUpdate({
       sessionUpdate: 'config_option_update',
       configOptions: [
         {
@@ -159,6 +153,12 @@ describe('ACP diagnostics', () => {
           options: []
         }
       ]
+    })
+    recordACPSessionUpdate({
+      sessionUpdate: 'usage_update',
+      used: 12_000,
+      size: 200_000,
+      cost: { amount: 0, currency: 'USD' }
     })
 
     expect(getACPDiagnostics()).toMatchObject({

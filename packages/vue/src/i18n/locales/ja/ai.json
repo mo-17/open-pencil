@@ -1,4 +1,16 @@
 {
+  "contextWindow": "コンテキストウィンドウ",
+  "contextUsageUnavailable": "未提供",
+  "contextUsageInvalid": "無効なデータ",
+  "contextUsageStale": "データの有効期限切れ",
+  "contextUpdated": "更新",
+  "contextTokenReport": "最新のトークン報告",
+  "contextInput": "入力",
+  "contextOutput": "出力",
+  "contextTokenScope": "トークン数とコンテキスト使用量は別の指標です。エージェントはターン単位または累計値を報告する場合があります。報告は5分で期限切れになります。",
+  "contextSkillsUnknown": "スキルの説明短縮と履歴圧縮は異なり、品質への影響は不明です。プロトコルはスキル別の使用量を提供しません。",
+  "contextCompactionUnknown": "信頼できる履歴圧縮イベントはありません。使用量の減少だけでは圧縮を確認できません。",
+
   "maxAgentSteps": "メッセージごとの最大ステップ数",
   "maxAgentStepsHint": "内蔵 AI のみが対象です。ACP と Pi は独自の上限を使用します。Enter キーまたは入力欄から移動したときに保存され、次のメッセージから適用されます。上限を増やすと費用が増える場合があります。",
   "maxAgentStepsRange": "{min} から {max} までの整数を入力してください。",

@@ -140,6 +140,10 @@ function scheduleProjectionNotification(): void {
   })
 }
 
+function currentChatTabId(): string | null {
+  return activeTab.value?.id ?? null
+}
+
 async function refreshChat(connect = false): Promise<void> {
   const generation = ++refreshGeneration
   initializationFailed.value = false
@@ -151,14 +155,14 @@ async function refreshChat(connect = false): Promise<void> {
   try {
     await history.initialize()
     if (!connect || generation !== refreshGeneration) return
-    const expectedTabId = activeTab.value?.id ?? null
+    const expectedTabId = currentChatTabId()
     const expectedProviderID = providerID.value
     const expectedSessionRevision = sessionRevision.value
     const nextChat = await ensureChat()
     if (
       !nextChat ||
       generation !== refreshGeneration ||
-      expectedTabId !== (activeTab.value?.id ?? null) ||
+      expectedTabId !== currentChatTabId() ||
       expectedProviderID !== providerID.value ||
       expectedSessionRevision !== sessionRevision.value
     )

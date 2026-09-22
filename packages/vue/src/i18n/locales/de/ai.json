@@ -1,4 +1,16 @@
 {
+  "contextWindow": "Kontextfenster",
+  "contextUsageUnavailable": "Nicht angegeben",
+  "contextUsageInvalid": "Ungültiger Bericht",
+  "contextUsageStale": "Bericht veraltet",
+  "contextUpdated": "Aktualisiert",
+  "contextTokenReport": "Letzter Token-Bericht",
+  "contextInput": "Eingabe",
+  "contextOutput": "Ausgabe",
+  "contextTokenScope": "Token-Zahlen und Kontextbelegung sind getrennt. Der Agent kann einzelne Runden oder Gesamtwerte melden. Kontextberichte veralten nach fünf Minuten.",
+  "contextSkillsUnknown": "Gekürzte Skill-Beschreibungen unterscheiden sich von Verlaufskomprimierung; die Qualitätsauswirkung ist unbekannt. Das Protokoll liefert keine Skill-Aufschlüsselung.",
+  "contextCompactionUnknown": "Kein zuverlässiges Ereignis zur Verlaufskomprimierung verfügbar; weniger Belegung bestätigt keine Komprimierung.",
+
   "maxAgentSteps": "Maximale Schritte pro Nachricht",
   "maxAgentStepsHint": "Nur für die integrierte KI; ACP und Pi verwalten eigene Limits. Mit Enter oder beim Verlassen des Feldes gespeichert und ab der nächsten Nachricht angewendet. Höhere Limits können die Kosten erhöhen.",
   "maxAgentStepsRange": "Gib eine ganze Zahl von {min} bis {max} ein.",

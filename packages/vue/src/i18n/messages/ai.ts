@@ -3,6 +3,20 @@ import { params } from '@nanostores/i18n'
 import { i18n } from '#vue/i18n/create'
 
 export const aiMessageDefaults = {
+  contextWindow: 'Context window',
+  contextUsageUnavailable: 'Not provided',
+  contextUsageInvalid: 'Invalid report',
+  contextUsageStale: 'Report expired',
+  contextUpdated: 'Updated',
+  contextTokenReport: 'Latest token report',
+  contextInput: 'Input',
+  contextOutput: 'Output',
+  contextTokenScope:
+    'Token counts are separate from context occupancy. The agent may report a turn or cumulative total. Context reports expire after five minutes.',
+  contextSkillsUnknown:
+    'Skill description shortening is separate from history compression; its quality impact is unknown. The protocol provides no Skill usage breakdown.',
+  contextCompactionUnknown:
+    'No reliable history compression event is available; a lower usage count does not confirm compression.',
   jumpToLatest: 'Jump to latest',
   chatSettings: 'Chat',
   maxAgentSteps: 'Maximum steps per message',

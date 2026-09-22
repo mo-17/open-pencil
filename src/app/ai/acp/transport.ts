@@ -48,10 +48,12 @@ import {
   recordACPConfigOptions,
   recordACPNewSession,
   recordACPPrompt,
-  recordACPSessionUpdate
+  recordACPSessionUpdate,
+  resetACPDiagnostics
 } from './diagnostics'
 import EDITOR_CONTEXT from './editor-context.md?raw'
 import { createACPUpdateMapper } from './map-update'
+import { createPendingACPUsage } from './pending-usage'
 import { cancelPermissionsForSession, requestPermissionFromUser } from './permission'
 import { spawnACPProcess } from './process'
 
@@ -68,6 +70,7 @@ interface ACPSession {
   configOptions: SessionConfigOption[]
   supportsImagePrompts: boolean
   diagnosticsEnabled: boolean
+  diagnosticsGeneration: number
   dead: boolean
 }
 
@@ -81,6 +84,8 @@ interface ACPConfigUpdateState {
 }
 
 interface ACPSpawnState {
+  pendingUsage: ReturnType<typeof createPendingACPUsage>
+  diagnosticsGeneration: number
   diagnosticsEnabled: boolean
   createdSession: ACPSession | null
   configUpdateState: ACPConfigUpdateState
@@ -730,7 +735,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           .then((result) => {
             if (closed) return undefined
             if (session.diagnosticsEnabled) {
-              recordACPPrompt(result)
+              recordACPPrompt(result, session.diagnosticsGeneration)
             }
             if (activePrompt.cancelRequested) {
               restoreContext()
@@ -824,7 +829,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       }
 
       session.configOptions = [...configOptions]
-      recordACPConfigOptions(configOptions)
+      recordACPConfigOptions(configOptions, session.diagnosticsGeneration)
       this.runtimeContextDirty = true
       this.publishConfigOptions(configOptions)
     } catch (error) {
@@ -855,6 +860,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       cancelPermissionsForSession(session.sessionId)
       session.dead = true
       session.diagnosticsEnabled = false
+      resetACPDiagnostics(session.diagnosticsGeneration)
       session.updates.setHandler(null)
       session.updates.clear()
       this.session = null
@@ -919,6 +925,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
     session.dead = true
     session.diagnosticsEnabled = false
+    resetACPDiagnostics(session.diagnosticsGeneration)
     cancelPermissionsForSession(session.sessionId)
     session.updates.setHandler(null)
     session.updates.clear()
@@ -934,7 +941,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     mcpServers: MCPServer[],
     canResume: boolean,
     updates: ReturnType<typeof createSessionUpdateBuffer>,
-    configUpdateState: ACPConfigUpdateState
+    configUpdateState: ACPConfigUpdateState,
+    pendingUsage: ReturnType<typeof createPendingACPUsage>
   ): Promise<ACPSessionSetup> {
     const initialSessionId = this.resumeSessionId
     if (!initialSessionId) {
@@ -976,6 +984,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       if (this.resumeFallback === 'error') throw new Error(restoreError)
       updates.discardPending()
       configUpdateState.latest = null
+      pendingUsage.clear()
       const result = await requestWithLifecycle(lifecycle, () =>
         connection.newSession({ cwd: this.cwd, mcpServers })
       )
@@ -1003,8 +1012,14 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
       sessionUpdate: async (params: SessionNotification): Promise<void> => {
         if (this.isDestroying()) return
-        if (state.diagnosticsEnabled) {
-          recordACPSessionUpdate(params.update)
+        if (state.diagnosticsEnabled && state.createdSession?.sessionId === params.sessionId) {
+          recordACPSessionUpdate(params.update, state.diagnosticsGeneration)
+        } else if (
+          state.diagnosticsEnabled &&
+          !state.createdSession &&
+          params.update.sessionUpdate === 'usage_update'
+        ) {
+          state.pendingUsage.record(params.sessionId, params.update)
         }
         if (params.update.sessionUpdate === 'config_option_update') {
           const configOptions = [...params.update.configOptions]
@@ -1040,14 +1055,19 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     supportsImagePrompts: boolean
   ): ACPSession {
     const sessionResult = setup.result
-    recordACPNewSession(sessionResult)
+    recordACPNewSession(sessionResult, state.diagnosticsGeneration)
     const latestConfigUpdate = state.configUpdateState.latest
     const configOptions =
       latestConfigUpdate?.sessionId === sessionResult.sessionId
         ? latestConfigUpdate.configOptions
         : [...(sessionResult.configOptions ?? [])]
     if (latestConfigUpdate?.sessionId === sessionResult.sessionId) {
-      recordACPConfigOptions(configOptions)
+      recordACPConfigOptions(configOptions, state.diagnosticsGeneration)
+    }
+
+    const earlyUsage = state.pendingUsage.take(sessionResult.sessionId)
+    if (earlyUsage) {
+      recordACPSessionUpdate(earlyUsage.update, state.diagnosticsGeneration, earlyUsage.receivedAt)
     }
 
     const session: ACPSession = {
@@ -1060,6 +1080,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       lifecycle,
       configOptions,
       supportsImagePrompts,
+      diagnosticsGeneration: state.diagnosticsGeneration,
       dead: false,
       get diagnosticsEnabled() {
         return state.diagnosticsEnabled
@@ -1100,6 +1121,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     const shouldKill = !session.dead
     session.dead = true
     session.diagnosticsEnabled = false
+    resetACPDiagnostics(session.diagnosticsGeneration)
     session.updates.setHandler(null)
     session.updates.clear()
     cancelPermissionsForSession(session.sessionId)
@@ -1129,6 +1151,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         if (!session.dead) {
           session.dead = true
           session.diagnosticsEnabled = false
+          resetACPDiagnostics(session.diagnosticsGeneration)
           session.updates.clear()
           await session.child.kill()
         }
@@ -1149,6 +1172,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     const lifecycle = createRequestLifecycle()
     this.requestLifecycle = lifecycle
     const state: ACPSpawnState = {
+      pendingUsage: createPendingACPUsage(),
+      diagnosticsGeneration: beginACPDiagnostics(this.agentDef.name),
       diagnosticsEnabled: true,
       createdSession: null,
       configUpdateState: { latest: null }
@@ -1162,6 +1187,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         destroying: () => this.destroying,
         onUnexpectedClose: () => {
           state.diagnosticsEnabled = false
+          resetACPDiagnostics(state.diagnosticsGeneration)
           this.handleUnexpectedClose(lifecycle, state.createdSession)
         }
       })
@@ -1197,7 +1223,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       )
       if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
 
-      beginACPDiagnostics(this.agentDef.name)
       const mcpServers = await buildACPMCPServers(
         { authorizationToken: automationAuthToken },
         this.mcpServers
@@ -1213,7 +1238,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         mcpServers,
         capabilities.resume,
         updates,
-        state.configUpdateState
+        state.configUpdateState,
+        state.pendingUsage
       )
       if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
       return this.completeSessionSetup(
@@ -1231,6 +1257,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         recordACPTransportFailure({ operation: 'start', ...describeDiagnosticError(e) })
       }
       state.diagnosticsEnabled = false
+      resetACPDiagnostics(state.diagnosticsGeneration)
       updates.clear()
       const message = this.isDestroying()
         ? TRANSPORT_DESTROYED_MESSAGE

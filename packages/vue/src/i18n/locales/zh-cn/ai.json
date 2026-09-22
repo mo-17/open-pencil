@@ -1,4 +1,16 @@
 {
+  "contextWindow": "上下文窗口",
+  "contextUsageUnavailable": "未提供",
+  "contextUsageInvalid": "数据无效",
+  "contextUsageStale": "数据已过期",
+  "contextUpdated": "更新于",
+  "contextTokenReport": "最近一次令牌报告",
+  "contextInput": "输入",
+  "contextOutput": "输出",
+  "contextTokenScope": "令牌数与上下文占用分开统计；代理可能上报本轮或累计值。上下文报告五分钟后过期。",
+  "contextSkillsUnknown": "技能描述缩短与历史压缩不同，质量影响未知。协议未提供技能用量明细。",
+  "contextCompactionUnknown": "未收到可靠的历史压缩事件；用量下降不能证明发生了压缩。",
+
   "maxAgentSteps": "每条消息的最大步骤数",
   "maxAgentStepsHint": "仅适用于内置 AI；ACP 和 Pi 使用各自的限制。按 Enter 或离开输入框时保存，从下一条消息开始生效。提高上限可能增加费用。",
   "maxAgentStepsRange": "请输入 {min} 到 {max} 之间的整数。",

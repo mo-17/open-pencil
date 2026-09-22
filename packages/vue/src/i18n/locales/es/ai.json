@@ -1,4 +1,16 @@
 {
+  "contextWindow": "Ventana de contexto",
+  "contextUsageUnavailable": "No proporcionado",
+  "contextUsageInvalid": "Informe no válido",
+  "contextUsageStale": "Informe caducado",
+  "contextUpdated": "Actualizado",
+  "contextTokenReport": "Último informe de tokens",
+  "contextInput": "Entrada",
+  "contextOutput": "Salida",
+  "contextTokenScope": "Los tokens y la ocupación del contexto son distintos. El agente puede informar por turno o de forma acumulada. Los informes caducan a los cinco minutos.",
+  "contextSkillsUnknown": "Acortar descripciones de Skills no equivale a comprimir el historial; se desconoce su impacto. El protocolo no ofrece un desglose por Skill.",
+  "contextCompactionUnknown": "No hay un evento fiable de compresión del historial; una menor ocupación no confirma compresión.",
+
   "maxAgentSteps": "Máximo de pasos por mensaje",
   "maxAgentStepsHint": "Solo para la IA integrada; ACP y Pi controlan sus propios límites. Se guarda al pulsar Enter o salir del campo y se aplica al siguiente mensaje. Un límite mayor puede aumentar el coste.",
   "maxAgentStepsRange": "Introduce un número entero entre {min} y {max}.",

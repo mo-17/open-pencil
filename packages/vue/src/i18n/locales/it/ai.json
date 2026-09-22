@@ -1,4 +1,16 @@
 {
+  "contextWindow": "Finestra di contesto",
+  "contextUsageUnavailable": "Non fornito",
+  "contextUsageInvalid": "Report non valido",
+  "contextUsageStale": "Report scaduto",
+  "contextUpdated": "Aggiornato",
+  "contextTokenReport": "Ultimo report token",
+  "contextInput": "Ingresso",
+  "contextOutput": "Uscita",
+  "contextTokenScope": "I token sono separati dal contesto occupato. L’agente può riportare un turno o un totale cumulativo. I report scadono dopo cinque minuti.",
+  "contextSkillsUnknown": "Accorciare le descrizioni degli Skill è diverso dalla compressione della cronologia; l’impatto sulla qualità è ignoto. Il protocollo non dettaglia gli Skill.",
+  "contextCompactionUnknown": "Nessun evento affidabile di compressione della cronologia; un calo non conferma la compressione.",
+
   "maxAgentSteps": "Passaggi massimi per messaggio",
   "maxAgentStepsHint": "Solo per l’IA integrata; ACP e Pi gestiscono i propri limiti. Si salva premendo Invio o uscendo dal campo e si applica al messaggio successivo. Limiti più alti possono aumentare i costi.",
   "maxAgentStepsRange": "Inserisci un numero intero da {min} a {max}.",

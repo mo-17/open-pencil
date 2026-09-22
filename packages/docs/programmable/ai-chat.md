@@ -18,6 +18,14 @@ You can configure multiple reusable models and separately assign models for desi
 
 The chat composer grows with multiline prompts and can pin the current canvas selection as explicit node context. Assistant messages show provider reasoning in collapsible sections and provide a per-response copy action. Image attachments remain available for visual references when a Vision model is configured. Streaming responses use a hardened Markdown renderer with Shiki-highlighted code blocks; unsafe link protocols and embedded data images are blocked.
 
+## ACP context usage
+
+The desktop ACP chat panel shows **Context window** when an agent reports its usage: used tokens, capacity, percentage and update time. Expand the row for the latest input/output token report. Agents differ on whether that report describes one turn or a cumulative total; it is not the context occupancy.
+
+Unreported, invalid and expired reports have explicit labels instead of a zero estimate. Reports expire after five minutes without an update. Changing the session, agent or reported model clears the previous usage; late events from an older agent cannot replace the current report. Reports stay in memory and are not saved in a design document.
+
+Skill description shortening and conversation-history compression are separate concepts. The protocol provides neither a per-Skill usage breakdown nor a reliable compression event. The panel does not estimate Skill shares or infer compression from a drop in usage. The quality impact of shortened descriptions depends on the task and cannot be established by these counters. OpenPencil does not disable skills/plugins or change the agent's global configuration.
+
 ## Step limit
 
 In **Settings → AI & agents → Chat**, set **Maximum steps per message** to a whole number from 1 to 1,000. The default is 50. Press Enter or leave the field to save a valid value; invalid drafts do not replace the saved preference. Higher limits allow longer tool-driven tasks but can increase latency and provider cost.

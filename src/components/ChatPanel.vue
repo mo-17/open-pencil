@@ -3,12 +3,14 @@ import { computed, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
+import { useACPContextUsage } from '@/app/ai/acp/context-usage'
 import { chatDocumentId } from '@/app/ai/chat/history/document'
 import { useAIChat } from '@/app/ai/chat/use'
 import { chatPanelController } from '@/app/ai/popout/chat-host-controller'
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { toast } from '@/app/shell/ui'
+import ACPContextUsage from '@/components/chat/AcpContextUsage.vue'
 import ACPPermissionDialog from '@/components/chat/ACPPermissionDialog.vue'
 import ACPSessionControl from '@/components/chat/AcpSessionControl.vue'
 import ChatHistory from '@/components/chat/ChatHistory.vue'
@@ -53,6 +55,7 @@ const {
 } = chatPanelController
 const { chatFailure, clearChatFailure } = useAIChat()
 const { ai, common, dialogs } = useI18n()
+const acpUsage = useACPContextUsage(() => acpSessionStatus.value.sessionId)
 
 const historyOptions = computed(() => {
   const current = history.current.value
@@ -193,6 +196,8 @@ async function handleClearChat(): Promise<void> {
           {{ common.clear }}
         </AppButton>
       </div>
+
+      <ACPContextUsage v-if="isACPProvider" :usage="acpUsage" />
 
       <ChatInput
         v-if="!historyReadOnly && isConfigured"
