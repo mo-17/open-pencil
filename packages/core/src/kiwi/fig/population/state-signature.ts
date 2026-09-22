@@ -128,6 +128,10 @@ function writeValue(sink: HashSink, value: unknown, active: WeakSet<object>): vo
   if (typeof value !== 'object') {
     throw new TypeError(`Unsupported persistent graph value: ${typeof value}`)
   }
+  writeObject(sink, value, active)
+}
+
+function writeObject(sink: HashSink, value: object, active: WeakSet<object>): void {
   if (active.has(value)) throw new TypeError('Cyclic persistent graph state is unsupported')
   active.add(value)
   try {
@@ -176,7 +180,7 @@ function writeValue(sink: HashSink, value: unknown, active: WeakSet<object>): vo
 
     const prototype = Object.getPrototypeOf(value)
     if (prototype !== Object.prototype && prototype !== null) {
-      throw new TypeError(`Unsupported persistent graph object: ${value.constructor?.name}`)
+      throw new TypeError(`Unsupported persistent graph object: ${value.constructor.name}`)
     }
     const keys = enumerableOwnStringKeys(value)
     writeTag(sink, SignatureTag.Object)
@@ -215,21 +219,22 @@ function writeImmutableBytesIndex(sink: HashSink, bytes: Uint8Array | null): voi
  */
 export function persistentGraphLevelSignature(graph: SceneGraph): string | null {
   try {
-    const graphRecord = graph as unknown as Record<string, unknown>
     const keys = enumerableOwnStringKeys(graph).filter((key) => !EXCLUDED_GRAPH_FIELDS.has(key))
     const hash = sha256.create()
     writeTag(hash, SignatureTag.Object)
     writeLength(hash, keys.length)
     const active = new WeakSet<object>()
     for (const key of keys) {
-      writeString(hash, key)
       // Imported image/schema buffers are immutable shared document assets.
       // Signing their keys/lengths keeps large saves constant-time; the client
       // separately checks exact Uint8Array references to catch replacement.
-      if (key === 'images') writeImageIndex(hash, graph.images)
-      else if (key === 'figSchemaDeflated') {
+      if (key === 'images') {
+        writeString(hash, key)
+        writeImageIndex(hash, graph.images)
+      } else if (key === 'figSchemaDeflated') {
+        writeString(hash, key)
         writeImmutableBytesIndex(hash, graph.figSchemaDeflated)
-      } else writeValue(hash, graphRecord[key], active)
+      } else writeProperty(hash, graph, key, active)
     }
     return Array.from(hash.digest(), (byte) => byte.toString(16).padStart(2, '0')).join('')
   } catch {

@@ -8,6 +8,8 @@ import { captureReloadState, resolveReloadPageId } from '@/app/document/io/reloa
 
 import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
 
+import { createOwnershipWorker } from '#tests/helpers/worker'
+
 function graphWithPages(pages: Array<{ name: string; sourceId: string }>) {
   const graph = new SceneGraph()
   const firstPage = graph.getPages()[0]
@@ -24,7 +26,7 @@ function graphWithPages(pages: Array<{ name: string; sourceId: string }>) {
 
 function trackGraphResource(graph: SceneGraph) {
   const terminate = mock(() => undefined)
-  registerFigPopulationWorker(graph, { terminate } as unknown as Worker)
+  registerFigPopulationWorker(graph, createOwnershipWorker(terminate))
   return terminate
 }
 

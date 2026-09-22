@@ -6,8 +6,8 @@ import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { createComponentSyncScheduler } from '#core/editor/component-sync'
 import { restoreDocumentFromSnapshot, snapshotDocument } from '#core/editor/history/snapshot'
-import type { EditorContext } from '#core/editor/types'
-import { getLazyFigImportContext, setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
+import { createDefaultEditorState } from '#core/editor/state'
+import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
 import {
   createFigPopulationWorker,
   registerFigPopulationWorker,
@@ -156,7 +156,9 @@ describe('FIG session ownership', () => {
     const cases: Array<[string, (graph: SceneGraph) => void, (graph: SceneGraph) => void]> = [
       [
         'document color space',
-        () => undefined,
+        (graph) => {
+          graph.documentColorSpace = 'display-p3'
+        },
         (graph) => {
           graph.documentColorSpace = 'srgb'
         }
@@ -231,6 +233,24 @@ describe('FIG session ownership', () => {
     releaseFigPopulationWorker(graph)
   })
 
+  test('rejects accessor-backed persistent state without invoking it', async () => {
+    const graph = new SceneGraph()
+    let reads = 0
+    Object.defineProperty(graph, 'figMessageObjectAnimations', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        reads += 1
+        return {}
+      }
+    })
+    registerOriginalArchiveRequest(graph, async () => new Uint8Array([1, 2, 3]))
+
+    await expect(requestOriginalArchive(graph)).resolves.toBeNull()
+    expect(reads).toBe(0)
+    releaseFigPopulationWorker(graph)
+  })
+
   test('keeps immutable schema ownership through an identical document snapshot restore', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
@@ -241,9 +261,7 @@ describe('FIG session ownership', () => {
     registerOriginalArchiveRequest(graph, async () => archive)
     const snapshot = snapshotDocument(graph, page.id)
     const state = {
-      currentPageId: page.id,
-      hoveredNodeId: null,
-      selectedIds: new Set<string>()
+      ...createDefaultEditorState(page.id)
     }
     const ctx = {
       graph,
@@ -254,7 +272,7 @@ describe('FIG session ownership', () => {
       setSelectedIds: (ids: Set<string>) => {
         state.selectedIds = ids
       }
-    } as unknown as EditorContext
+    }
 
     restoreDocumentFromSnapshot(ctx, snapshot)
 
@@ -855,7 +873,9 @@ describe('FIG session ownership', () => {
     registerFigPopulationWorker(graph, worker, channel.port1)
 
     channel.port2.postMessage({ type: 'population-error', error: 'synthetic failure' })
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
 
     await expect(requestOriginalArchive(graph)).resolves.toBeNull()
     expect(released).toBe(true)
@@ -899,9 +919,9 @@ describe('FIG session ownership', () => {
         const pending = population.populate(page.id)
 
         if (target === 'port') {
-          channel.port1.onmessageerror?.call(channel.port1, new MessageEvent('messageerror'))
+          channel.port1.onmessageerror?.(new MessageEvent('messageerror'))
         } else {
-          worker.onmessageerror?.call(worker, new MessageEvent('messageerror'))
+          worker.onmessageerror?.(new MessageEvent('messageerror'))
         }
 
         await expect(pending).resolves.toBeNull()

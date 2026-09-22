@@ -138,10 +138,10 @@ export async function settleBackendReleaseDispatch(
 
 export function settlementForAppliedDispatch(
   claim: BackendHostReleaseDispatchJournalRecord,
-  result: Extract<BackendHostReleaseApplyResult, { readonly ok: true }>,
+  result: BackendHostReleaseApplyResult,
   settledAt: string
 ): BackendHostReleaseDispatchSettlementInput {
-  if (result.ok !== true) {
+  if (!result.ok) {
     throw new TypeError('Backend Release dispatch result is not an exact positive result.')
   }
   return {

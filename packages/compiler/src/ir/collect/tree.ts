@@ -3917,10 +3917,17 @@ function resolveListOffset(
 function collectVRTourBinding(node: SceneNode, module: IRModule | null, ctx: WalkCtx): void {
   if (module?.pluginId !== 'open-pencil.vr-tour' || module.moduleType !== 'vr-tour') return
   if (!node.bindings || !Object.hasOwn(node.bindings, 'panoramaUrl')) return
-  const binding = node.bindings.panoramaUrl
+  const binding: unknown = Object.getOwnPropertyDescriptor(node.bindings, 'panoramaUrl')?.value
   // Presence is preserved even on failure: undefined is not the static URL.
   module.panoramaUrlExpr = { kind: 'ident', name: 'undefined' }
-  if (binding?.kind !== 'expr' || typeof binding.expr !== 'string') {
+  if (
+    !binding ||
+    typeof binding !== 'object' ||
+    !('kind' in binding) ||
+    binding.kind !== 'expr' ||
+    !('expr' in binding) ||
+    typeof binding.expr !== 'string'
+  ) {
     ctx.warnings.push({
       code: 'vr-tour-binding-invalid',
       message: 'VR panoramaUrl requires a read expression binding',

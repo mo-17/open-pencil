@@ -209,35 +209,53 @@ export interface CompiledDocument {
  * failures and returns null so commands can stop with a failure exit code
  * while unwinding their owned resources. Document I/O failures still reject.
  */
-export async function loadAndCompile(opts: {
-  file?: string
-  page?: string
-  packageName?: string
-  outDir: string
-  json?: boolean
-  /** Phase 3 §9 v13: enable the react-intl i18n runtime in the emitted project
-   *  (externalize display strings, emit locale catalogs + LocaleSwitcher). */
-  i18n?: boolean
-  /** Target locales beyond the source (each gets a catalog stub + switcher entry). */
-  locales?: readonly string[]
-  /** The source locale the canvas strings are authored in (default 'en'). */
-  sourceLocale?: string
-  /** Phase 3 §15: emit interactive nodes with a code UI kit (e.g. 'shadcn')
-   *  instead of hand-rolled Tailwind HTML. Undefined → plain HTML. */
-  uiKit?: UIKitName
-  /** Web framework target. Defaults to React for CLI compatibility. */
-  target?: CodegenWebTarget
-  /** Explicitly opt into the lifecycle/manifest packaging contract. */
-  packaging?: CompilerMicrofrontendPackaging
-  /** Explicit process input prepared by the caller, never inferred from document data. */
-  backendProviderHandoff?: BackendProviderCompileHandoff
-}): Promise<CompiledDocument | null> {
+export interface CodegenDependencies {
+  loadDocument?: typeof loadDocument
+  compile?: typeof compile
+}
+
+function resolveCodegenDependencies(
+  dependencies: CodegenDependencies
+): Required<CodegenDependencies> {
+  return {
+    loadDocument: dependencies.loadDocument ?? loadDocument,
+    compile: dependencies.compile ?? compile
+  }
+}
+
+export async function loadAndCompile(
+  opts: {
+    file?: string
+    page?: string
+    packageName?: string
+    outDir: string
+    json?: boolean
+    /** Phase 3 §9 v13: enable the react-intl i18n runtime in the emitted project
+     *  (externalize display strings, emit locale catalogs + LocaleSwitcher). */
+    i18n?: boolean
+    /** Target locales beyond the source (each gets a catalog stub + switcher entry). */
+    locales?: readonly string[]
+    /** The source locale the canvas strings are authored in (default 'en'). */
+    sourceLocale?: string
+    /** Phase 3 §15: emit interactive nodes with a code UI kit (e.g. 'shadcn')
+     *  instead of hand-rolled Tailwind HTML. Undefined → plain HTML. */
+    uiKit?: UIKitName
+    /** Web framework target. Defaults to React for CLI compatibility. */
+    target?: CodegenWebTarget
+    /** Explicitly opt into the lifecycle/manifest packaging contract. */
+    packaging?: CompilerMicrofrontendPackaging
+    /** Explicit process input prepared by the caller, never inferred from document data. */
+    backendProviderHandoff?: BackendProviderCompileHandoff
+  },
+  dependencies: CodegenDependencies = {}
+): Promise<CompiledDocument | null> {
   if (!opts.file) {
     printError('A document file path is required.')
     return null
   }
 
-  const graph = await loadDocument(opts.file)
+  const { loadDocument: load, compile: compileDocument } = resolveCodegenDependencies(dependencies)
+  const graph = await load(opts.file)
   const pages = graph.getPages()
   if (pages.length === 0) {
     printError('Document has no pages.')
@@ -278,7 +296,7 @@ export async function loadAndCompile(opts: {
             graph,
             pageIds: resolved.pageIds
           })
-    compiled = compile({
+    compiled = compileDocument({
       graph,
       pageIds: resolved.pageIds,
       fontManifest,

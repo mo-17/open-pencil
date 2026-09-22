@@ -80,8 +80,8 @@ export function createFigSessionOriginalArchiveRequester(
   port.start()
 
   return {
-    request() {
-      if (failure) return Promise.reject(failure)
+    async request() {
+      if (failure) throw failure
       const requestId = randomHex()
       return new Promise<Uint8Array>((resolve, reject) => {
         const timeout = setTimeout(() => {

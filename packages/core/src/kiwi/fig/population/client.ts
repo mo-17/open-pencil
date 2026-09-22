@@ -91,7 +91,7 @@ function emitTelemetry(detail: FigPopulationWorkerTelemetry): void {
   try {
     globalThis.dispatchEvent(new CustomEvent('openpencil:fig-population-worker', { detail }))
   } catch {
-    // Diagnostics must never change worker ownership or document behavior.
+    console.warn('[fig] Could not publish worker diagnostic event.')
   }
 }
 
@@ -176,6 +176,7 @@ export function registerOriginalArchiveRequest(
 export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Array | null> {
   const entry = originalArchiveRequests.get(graph)
   if (!entry) return null
+  const isEntryValid = () => entry.valid
   const rejectEntry = () => {
     if (originalArchiveRequests.get(graph) === entry) {
       entry.valid = false
@@ -183,7 +184,7 @@ export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Ar
     }
     return null
   }
-  if (!entry.valid) return rejectEntry()
+  if (!isEntryValid()) return rejectEntry()
   if (!originalImageRefsMatch(graph.images, entry.imageRefs)) {
     return rejectEntry()
   }
@@ -201,7 +202,7 @@ export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Ar
     return rejectEntry()
   }
   if (originalArchiveRequests.get(graph) !== entry) return null
-  if (!entry.valid) return rejectEntry()
+  if (!isEntryValid()) return rejectEntry()
   if (!originalImageRefsMatch(graph.images, entry.imageRefs)) {
     return rejectEntry()
   }
@@ -249,7 +250,7 @@ function createDisposalOnlyWorker(
     try {
       port.postMessage({ type: 'dispose' })
     } catch {
-      // The session may already have failed or closed its port.
+      console.warn('[fig] Worker disposal message could not be delivered; closing resources.')
     } finally {
       port.close()
       worker.terminate()
@@ -309,6 +310,7 @@ function createPopulationWorkerClient(
   >()
   let revision = 0
   let stale = false
+  const isStale = () => stale
   let disposed = false
   let failed = false
   let unbind: (() => void) | undefined
@@ -391,7 +393,7 @@ function createPopulationWorkerClient(
       fail()
       return request.resolve(null)
     }
-    if (stale) return request.resolve(null)
+    if (isStale()) return request.resolve(null)
     request.resolve(result.populated)
     emitTelemetry({
       event: 'populate',
@@ -447,7 +449,7 @@ function createPopulationWorkerClient(
       try {
         port?.postMessage({ type: 'dispose' })
       } catch {
-        // The session may already have failed or closed its port.
+        console.warn('[fig] Worker disposal message could not be delivered; closing resources.')
       }
       fail(false)
     }

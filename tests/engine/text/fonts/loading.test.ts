@@ -241,32 +241,28 @@ describe('FontManager loaded font cache', () => {
     }
     expect(requested).toContain('B')
   })
-  test('forwards cancellation to fallback web-font requests', async () => {
+  test('cancels a fallback waiter without aborting the shared font load', async () => {
     const manager = new FontManager()
-    let remoteRequestStarted: (() => void) | null = null
-    const started = new Promise<void>((resolve) => {
-      remoteRequestStarted = resolve
+    const started = Promise.withResolvers<undefined>()
+    const remote = Promise.withResolvers<ArrayBuffer | null>()
+    let hostRequests = 0
+    manager.setHostFontLoader(async () => {
+      hostRequests += 1
+      started.resolve(undefined)
+      return remote.promise
     })
-    const originalLoadRemoteFont = manager.loadRemoteFont.bind(manager)
-    manager.loadRemoteFont = async (_family, _style, _characters, signal) => {
-      remoteRequestStarted?.()
-      return new Promise<ArrayBuffer | null>((_resolve, reject) => {
-        signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
-          once: true
-        })
-      })
-    }
     const abort = new AbortController()
-    const loading = manager.ensureFallbackPack(['cjk'], '字', abort.signal)
+    const loading = manager.ensureFallbackPack(['arabic'], 'ع', abort.signal)
+    const retained = manager.ensureFallbackPack(['arabic'], 'ع')
+    void loading.catch(() => undefined)
 
-    await started
+    await started.promise
     abort.abort()
+    await expect(loading).rejects.toHaveProperty('name', 'AbortError')
+    remote.resolve(new ArrayBuffer(16))
 
-    try {
-      await expect(loading).rejects.toHaveProperty('name', 'AbortError')
-    } finally {
-      manager.loadRemoteFont = originalLoadRemoteFont
-    }
+    await expect(retained).resolves.toEqual({ arabic: ['Noto Naskh Arabic'] })
+    expect(hostRequests).toBe(1)
   })
 
   test('loads bundled Inter ExtraBold without network access', async () => {

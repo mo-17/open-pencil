@@ -55,7 +55,7 @@ type FontLoadArgument = FontLoadOptions | AbortSignal
 
 function normalizeFontLoadOptions(value: FontLoadArgument = {}): FontLoadOptions {
   return 'aborted' in value && typeof value.addEventListener === 'function'
-    ? { signal: value as AbortSignal }
+    ? { signal: value }
     : (value as FontLoadOptions)
 }
 
@@ -424,6 +424,23 @@ export class FontManager {
     }
   }
 
+  private registerRemoteCoverage(
+    family: string,
+    style: string,
+    supplementalBuffers: ArrayBuffer[],
+    characters: string
+  ): void {
+    let completeCoverage = true
+    for (const supplemental of supplementalBuffers) {
+      const accepted = this.registerSupplemental(family, style, supplemental)
+      completeCoverage = accepted && completeCoverage
+    }
+    if (!completeCoverage) return
+    const loadedCoverage = this.remoteCoverage.get(`${family}|${style}`) ?? new Set<string>()
+    for (const character of characters) loadedCoverage.add(character)
+    this.remoteCoverage.set(`${family}|${style}`, loadedCoverage)
+  }
+
   async loadRemoteFont(
     family: string,
     style = 'Regular',
@@ -453,16 +470,7 @@ export class FontManager {
       const registered = this.registerAndCache(family, style, primary, source)
       if (!registered) return null
       await this.writeDownloadedFont(family, style, primary, requestedCharacters)
-      let completeCoverage = true
-      for (const supplemental of buffers.slice(1)) {
-        const accepted = this.registerSupplemental(family, style, supplemental)
-        completeCoverage = accepted && completeCoverage
-      }
-      if (completeCoverage) {
-        const loadedCoverage = this.remoteCoverage.get(`${family}|${style}`) ?? new Set<string>()
-        for (const character of requestedCharacters) loadedCoverage.add(character)
-        this.remoteCoverage.set(`${family}|${style}`, loadedCoverage)
-      }
+      this.registerRemoteCoverage(family, style, buffers.slice(1), requestedCharacters)
       return registered
     } catch (e) {
       if (signal?.aborted) throw e

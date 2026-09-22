@@ -679,6 +679,14 @@ export function exportFigFile(
   })
 }
 
+function nativeFigArchiveBytes(response: ArrayBuffer | Uint8Array | number[]): Uint8Array {
+  if (response instanceof ArrayBuffer) return new Uint8Array(response)
+  if (ArrayBuffer.isView(response)) {
+    return new Uint8Array(response.buffer, response.byteOffset, response.byteLength)
+  }
+  return Uint8Array.from(response)
+}
+
 export async function exportFigFileWithOptions(
   sourceGraph: SceneGraph,
   options: ExportFigFileOptions = {}
@@ -883,11 +891,7 @@ export async function exportFigFileWithOptions(
         figKiwiVersion: version
       })
     )
-    if (response instanceof ArrayBuffer) return new Uint8Array(response)
-    if (ArrayBuffer.isView(response)) {
-      return new Uint8Array(response.buffer, response.byteOffset, response.byteLength)
-    }
-    return Uint8Array.from(response)
+    return nativeFigArchiveBytes(response)
   }
 
   return compressFigData(schemaDeflated, kiwiData, thumbnailPNG, metaJSON, imageEntries, version)

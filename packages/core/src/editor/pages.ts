@@ -457,30 +457,24 @@ export function createPageActions(ctx: EditorContext) {
     const generation = ++pageSwitchGeneration
     const switchGraph = ctx.graph
     const prepareOptions = { ...options, signal }
+    const isCurrent = () => generation === pageSwitchGeneration && ctx.graph === switchGraph
 
     try {
       prepareOptions.onProgress?.({ phase: 'populating-page', detail: page.name })
       const populated = await populatePage(pageId, generation, signal)
-      if (
-        populated === null ||
-        generation !== pageSwitchGeneration ||
-        ctx.graph !== switchGraph ||
-        signal.aborted
-      ) {
+      if (populated === null || !isCurrent() || signal.aborted) {
         return null
       }
 
       await resolvePageFonts(pageId, page.name, prepareOptions)
       throwIfAborted(signal)
-      if (generation !== pageSwitchGeneration || ctx.graph !== switchGraph) return null
+      if (!isCurrent()) return null
       if (page.source.format !== 'fig' && (ctx.getRenderer() || populated)) {
         prepareOptions.onProgress?.({ phase: 'layout', detail: page.name })
         await computeAllLayoutsAsync(switchGraph, pageId, signal)
       }
       throwIfAborted(signal)
-      return generation === pageSwitchGeneration && ctx.graph === switchGraph
-        ? { pageId, generation }
-        : null
+      return isCurrent() ? { pageId, generation } : null
     } finally {
       options.signal?.removeEventListener('abort', forwardAbort)
       if (activeSwitch === switchController) activeSwitch = null

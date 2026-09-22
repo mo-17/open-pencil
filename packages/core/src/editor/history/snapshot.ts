@@ -104,7 +104,15 @@ export function restorePageFromSnapshot(
   ctx.requestRender()
 }
 
-export function restoreDocumentFromSnapshot(ctx: EditorContext, snapshot: DocumentSnapshot): void {
+type DocumentRestoreContext = Pick<
+  EditorContext,
+  'graph' | 'state' | 'emitEditorEvent' | 'getRenderer' | 'requestRender' | 'setSelectedIds'
+>
+
+export function restoreDocumentFromSnapshot(
+  ctx: DocumentRestoreContext,
+  snapshot: DocumentSnapshot
+): void {
   const previousPageId = ctx.state.currentPageId
   const previousSelection = [...ctx.state.selectedIds]
   const previousHoveredNodeId = ctx.state.hoveredNodeId

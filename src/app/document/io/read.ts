@@ -149,107 +149,96 @@ export function createReloadActions(
     )
   }
 
+  function reloadCancelled(
+    version: number,
+    controller: AbortController,
+    load?: EditorPreparationHandle
+  ) {
+    if (wasSuperseded(version, controller)) return true
+    if (!load?.signal.aborted) return false
+    handledReloadVersion = version
+    return true
+  }
+
+  function installReloadGraph(imported: SceneGraph, pageId: string, transferred: () => void): void {
+    const previousGraph = editor.graph
+    try {
+      editor.replaceGraph(imported, { currentPageId: pageId })
+    } finally {
+      if (editor.graph === imported) {
+        transferred()
+        if (previousGraph !== imported) editor.releaseGraphResources(previousGraph)
+      }
+    }
+    editor.undo.clear()
+  }
+
+  async function reloadOnce(reloadVersion: number): Promise<void> {
+    runningReloadVersion = reloadVersion
+    const controller = new AbortController()
+    activeReloadController = controller
+    const load = preparationController?.begin({
+      kind: 'document-reload',
+      subject: state.documentName
+    })
+    activePreparation = load ?? null
+    const snapshot = captureReloadState(editor, state)
+    const signal = load?.signal ?? controller.signal
+    let imported: SceneGraph | null | undefined
+    let ownsImported = false
+    try {
+      load?.update({ phase: 'reading', detail: state.documentName })
+      imported = await readSource({
+        documentName: state.documentName,
+        filePath: getFilePath(),
+        fileHandle: getFileHandle(),
+        signal
+      })
+      ownsImported = imported !== null
+      if (reloadCancelled(reloadVersion, controller, load)) return
+      if (!imported) {
+        handledReloadVersion = reloadVersion
+        load?.complete()
+        return
+      }
+      const pageId = resolveReloadPageId(imported, snapshot)
+      if (computeLayouts) {
+        // Explicit host/test preparation seam; production uses the isolated staging editor.
+        load?.update({ phase: 'materializing', detail: state.documentName })
+        populateLazyFigImportRoots(imported, [pageId])
+        await computeLayouts(imported, pageId, signal)
+        signal.throwIfAborted()
+        installReloadGraph(imported, pageId, () => {
+          ownsImported = false
+        })
+      } else {
+        // applyImportedDocument consumes ownership even when installation fails.
+        ownsImported = false
+        await applyImportedDocument(editor, imported, load, pageId)
+      }
+      if (reloadCancelled(reloadVersion, controller, load)) return
+      restoreReloadState(editor, state, snapshot)
+      load?.update({ phase: 'preparing-render', detail: state.documentName })
+      editor.requestRender()
+      setSavedVersion(state.sceneVersion)
+      handledReloadVersion = reloadVersion
+      load?.complete()
+    } catch (error) {
+      if (reloadCancelled(reloadVersion, controller, load)) return
+      handledReloadVersion = reloadVersion
+      if (load) reportReloadFailure(load, error)
+      else throw error
+    } finally {
+      if (ownsImported && imported) editor.releaseGraphResources(imported)
+    }
+  }
+
   async function runReloadLoop() {
     runningReloadVersion = requestedReloadVersion
     const finishLoading = preparationController ? null : editor.beginLoading()
     try {
       while (handledReloadVersion < requestedReloadVersion) {
-        const reloadVersion = requestedReloadVersion
-        runningReloadVersion = reloadVersion
-        const controller = new AbortController()
-        activeReloadController = controller
-        const load = preparationController?.begin({
-          kind: 'document-reload',
-          subject: state.documentName
-        })
-        activePreparation = load ?? null
-        const snapshot = captureReloadState(editor, state)
-        const filePath = getFilePath()
-        const fileHandle = getFileHandle()
-        const signal = load?.signal ?? controller.signal
-
-        let imported: SceneGraph | null | undefined
-        let ownsImported = false
-        try {
-          try {
-            load?.update({ phase: 'reading', detail: state.documentName })
-            imported = await readSource({
-              documentName: state.documentName,
-              filePath,
-              fileHandle,
-              signal
-            })
-            ownsImported = imported !== null && imported !== undefined
-          } catch (error) {
-            if (wasSuperseded(reloadVersion, controller)) continue
-            handledReloadVersion = reloadVersion
-            if (load?.signal.aborted) continue
-            if (load) {
-              reportReloadFailure(load, error)
-              continue
-            }
-            throw error
-          }
-          if (wasSuperseded(reloadVersion, controller)) continue
-          if (load?.signal.aborted) {
-            handledReloadVersion = reloadVersion
-            continue
-          }
-          if (!imported) {
-            handledReloadVersion = reloadVersion
-            load?.complete()
-            continue
-          }
-
-          const pageId = resolveReloadPageId(imported, snapshot)
-          try {
-            if (computeLayouts) {
-              // Test and host injection path: retain the fork's explicit preparation seam.
-              // Production uses applyImportedDocument's isolated staging editor below.
-              load?.update({ phase: 'materializing', detail: state.documentName })
-              populateLazyFigImportRoots(imported, [pageId])
-              await computeLayouts(imported, pageId, signal)
-              signal.throwIfAborted()
-              const previousGraph = editor.graph
-              try {
-                editor.replaceGraph(imported, { currentPageId: pageId })
-              } finally {
-                if (editor.graph === imported) {
-                  ownsImported = false
-                  if (previousGraph !== imported) editor.releaseGraphResources(previousGraph)
-                }
-              }
-              editor.undo.clear()
-            } else {
-              // applyImportedDocument consumes ownership: it either installs imported or releases it.
-              ownsImported = false
-              await applyImportedDocument(editor, imported, load, pageId)
-            }
-          } catch (error) {
-            if (wasSuperseded(reloadVersion, controller)) continue
-            handledReloadVersion = reloadVersion
-            if (load?.signal.aborted) continue
-            if (load) {
-              reportReloadFailure(load, error)
-              continue
-            }
-            throw error
-          }
-          if (wasSuperseded(reloadVersion, controller)) continue
-          if (load?.signal.aborted) {
-            handledReloadVersion = reloadVersion
-            continue
-          }
-
-          restoreReloadState(editor, state, snapshot)
-          load?.update({ phase: 'preparing-render', detail: state.documentName })
-          editor.requestRender()
-          setSavedVersion(state.sceneVersion)
-          handledReloadVersion = reloadVersion
-          load?.complete()
-        } finally {
-          if (ownsImported && imported) editor.releaseGraphResources(imported)
-        }
+        await reloadOnce(requestedReloadVersion)
       }
     } finally {
       activeReloadController = null

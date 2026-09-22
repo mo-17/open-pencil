@@ -317,7 +317,7 @@ function parseViaStartedSessionWorker(
       try {
         port.postMessage({ type: 'dispose' })
       } catch {
-        // A failed transfer or worker crash may already have detached the port.
+        console.warn('[fig] Session disposal message could not be delivered; closing resources.')
       }
       port.close()
       worker.terminate()

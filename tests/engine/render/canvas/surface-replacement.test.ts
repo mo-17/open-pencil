@@ -1,6 +1,8 @@
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { Surface } from 'canvaskit-wasm'
+import type { Image as CKImage, Surface } from 'canvaskit-wasm'
+
+import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { SkiaRenderer, type SubtreePictureCacheEntry } from '#core/canvas/renderer'
 
@@ -13,8 +15,28 @@ describe('renderer surface replacement', () => {
     const previous = surface()
     const next = surface()
     const buildSurface = surface()
-    const retainedImage = { delete: mock() }
+    const retainedImage = { delete: mock() } as CKImage & { delete: ReturnType<typeof mock> }
     const subtreePicture = { delete: mock() }
+    const geometry = {
+      pageId: 'page',
+      sceneVersion: 1,
+      positionPreviewVersion: 1,
+      fontGeneration: 1,
+      anchorPanX: 0,
+      anchorPanY: 0,
+      marginDeviceX: 0,
+      marginDeviceY: 0,
+      panX: 0,
+      panY: 0,
+      zoom: 1,
+      width: 100,
+      height: 100,
+      dpr: 1,
+      worldX: 0,
+      worldY: 0,
+      worldWidth: 100,
+      worldHeight: 100
+    }
     const renderer: Pick<
       SkiaRenderer,
       | 'surface'
@@ -33,10 +55,15 @@ describe('renderer surface replacement', () => {
     > = {
       surface: previous,
       tiledScene: { destroy: mock() } as SkiaRenderer['tiledScene'],
-      sceneBacking: { image: retainedImage } as unknown as SkiaRenderer['sceneBacking'],
+      sceneBacking: { ...geometry, image: retainedImage },
       sceneBackingBuild: {
-        surface: buildSurface
-      } as unknown as SkiaRenderer['sceneBackingBuild'],
+        ...geometry,
+        surface: buildSurface,
+        graph: new SceneGraph(),
+        childIds: [],
+        index: 0,
+        startedAt: 0
+      },
       sceneBackingNeedsCrispRender: false,
       sceneBackingAllocationFailed: true,
       subtreePictureCache: new Map([

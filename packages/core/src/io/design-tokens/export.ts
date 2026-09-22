@@ -58,10 +58,9 @@ function tokenType(variable: Variable): 'color' | 'number' | 'string' | 'boolean
   return 'string'
 }
 
-function aliasTarget(value: VariableValue): string | null {
-  const candidate: unknown = value
+function aliasTarget(candidate: unknown): string | null {
   if (candidate === null || typeof candidate !== 'object' || !('aliasId' in candidate)) return null
-  const aliasId = (candidate as { aliasId?: unknown }).aliasId
+  const aliasId = candidate.aliasId
   if (typeof aliasId !== 'string' || aliasId.length === 0 || aliasId.length > 512) {
     throw new TypeError('Design token alias id is invalid')
   }
@@ -69,7 +68,7 @@ function aliasTarget(value: VariableValue): string | null {
 }
 
 function assertVariableValueType(variable: Variable, value: unknown, modeId: string): void {
-  if (aliasTarget(value as VariableValue)) return
+  if (aliasTarget(value)) return
   const color = value as TokenColorCandidate | null
   const valid =
     (variable.type === 'FLOAT' && typeof value === 'number' && Number.isFinite(value)) ||

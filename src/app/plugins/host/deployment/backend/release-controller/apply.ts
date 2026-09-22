@@ -170,7 +170,7 @@ async function dispatchNewClaim(
   } catch (cause) {
     result = input.applyFailure(cause)
   }
-  if (result.ok !== true) {
+  if (!result.ok) {
     const occurredAt = input.now()
     const failure = safePostDispatchFailure(precommitted, result, occurredAt)
     return input.transition(

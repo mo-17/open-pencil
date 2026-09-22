@@ -468,7 +468,7 @@
     },
     "packages/lowcode": {
       "name": "@open-pencil/lowcode",
-      "version": "0.15.0",
+      "version": "0.15.1",
       "dependencies": {
         "valibot": "^1.4.2",
       },
@@ -524,7 +524,7 @@
     },
     "packages/motion": {
       "name": "@open-pencil/motion",
-      "version": "0.15.0",
+      "version": "0.15.1",
       "devDependencies": {
         "@types/bun": "^1.3.14",
         "tsdown": "^0.22.14",
@@ -536,7 +536,7 @@
     },
     "packages/motion-runtime": {
       "name": "@open-pencil/motion-runtime",
-      "version": "0.15.0",
+      "version": "0.15.1",
       "devDependencies": {
         "@types/bun": "^1.3.14",
         "tsdown": "^0.22.14",
@@ -570,7 +570,7 @@
     },
     "packages/plugin-contracts": {
       "name": "@open-pencil/plugin-contracts",
-      "version": "0.15.0",
+      "version": "0.15.1",
       "devDependencies": {
         "@types/bun": "^1.3.14",
         "tsdown": "^0.22.14",

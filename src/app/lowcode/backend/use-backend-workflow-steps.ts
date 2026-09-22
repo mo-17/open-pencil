@@ -79,7 +79,7 @@ export function useBackendWorkflowSteps(props: BackendWorkflowStepsProps) {
     }
   }
 
-  function removeById<T extends { id: string }>(entries: T[], id: string): void {
+  function removeById(entries: { id: string }[], id: string): void {
     const index = entries.findIndex((entry) => entry.id === id)
     if (index !== -1) entries.splice(index, 1)
   }
@@ -203,7 +203,7 @@ export function useBackendWorkflowSteps(props: BackendWorkflowStepsProps) {
   function addFilter(step: DataStep): void {
     run(() => {
       const fields = fieldsForEntity(step.entityId)
-      const field = fields[0]
+      const field = fields.at(0)
       if (!field) throw new BackendDraftOperationError('Select an entity with a field first.')
       if ((step.filters?.length ?? 0) >= BACKEND_LIMITS.maxFieldsPerEntity) {
         throw new BackendDraftOperationError(

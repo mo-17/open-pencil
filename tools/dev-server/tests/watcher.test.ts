@@ -33,11 +33,10 @@ test('Vite invalidates source inside an active worktree while excluding nested c
       configFile: false,
       root,
       logLevel: 'silent',
-      server: { ...createDevServerOptions(undefined, root), port: 0 },
+      server: { ...createDevServerOptions(undefined, root), middlewareMode: true },
       optimizeDeps: { noDiscovery: true }
     })
     server = activeServer
-    await activeServer.listen()
     expect((await activeServer.transformRequest('/src/entry.ts'))?.code).toContain('version = 1')
     await waitFor(
       () => activeServer.watcher.getWatched()[sourceDir]?.includes('entry.ts') ?? false,

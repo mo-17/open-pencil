@@ -9,9 +9,11 @@ import { createInitialAppEditorState } from '@/app/editor/session/types'
 
 import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
 
+import { createOwnershipWorker } from '#tests/helpers/worker'
+
 function trackGraphResource(graph: SceneGraph) {
   const terminate = mock(() => undefined)
-  registerFigPopulationWorker(graph, { terminate } as unknown as Worker)
+  registerFigPopulationWorker(graph, createOwnershipWorker(terminate))
   return terminate
 }
 

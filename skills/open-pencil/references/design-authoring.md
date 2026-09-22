@@ -42,7 +42,7 @@ Lowcode tags create the corresponding SceneGraph `NodeType`; they are not visual
 
 Button, Input, and Textarea also accept canonical `#RRGGBB` text colors through `textColor`; Input and Textarea accept `placeholderColor`.
 
-All ten tags accept `interactiveProps={{...}}` for JSON-safe advanced properties. Direct convenience props override duplicate keys in the object, and Button child text overrides both. The renderer validates field-validation schemas and DATEPICKER dates before creating any node. Exported JSX and `get_jsx` are structural projections: they retain visible structure and `interactiveProps`, but not `bindings`, `events`, `stateOverrides`, or `renderCondition`. Use `read_lowcode_node` to inspect those fields and `update_lowcode_node` after rendering to write them.
+All ten tags accept an `interactiveProps` object containing JSON-safe advanced properties. Direct convenience props override duplicate keys in the object, and Button child text overrides both. The renderer validates field-validation schemas and DATEPICKER dates before creating any node. Exported JSX and `get_jsx` are structural projections: they retain visible structure and `interactiveProps`, but not `bindings`, `events`, `stateOverrides`, or `renderCondition`. Use `read_lowcode_node` to inspect those fields and `update_lowcode_node` after rendering to write them.
 
 ```jsx
 <Form name="Signup" w={320} flex="col" gap={12} p={16}>

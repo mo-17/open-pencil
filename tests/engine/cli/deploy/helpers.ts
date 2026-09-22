@@ -1,4 +1,3 @@
-import { mock } from 'bun:test'
 import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -145,9 +144,9 @@ async function runIsolatedCommand(): Promise<void> {
     throw new Error('CLI fixture temporary directory is not isolated')
   }
   const graph = scenarioGraph(scenario)
-  mock.module('#cli/headless', () => ({ loadDocument: async () => graph }))
   globalThis.fetch = providerDouble(requestsPath, scenario)
-  const { default: command } = await import('#cli/commands/deploy')
+  const { createDeployCommand } = await import('#cli/commands/deploy')
+  const command = createDeployCommand({ loadDocument: async () => graph })
   if (!command.run) throw new Error('CLI deploy command run is missing')
   let override: string | undefined
   if (

@@ -32,6 +32,8 @@ import { fileIdentitiesMatch, findTabByFileIdentity } from '@/app/tabs/open/iden
 
 import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
 
+import { createOwnershipWorker } from '#tests/helpers/worker'
+
 function setupGlobals() {
   globalThis.window = {
     innerWidth: 1024,
@@ -92,7 +94,7 @@ function makeHandle(
 
 function trackGraphResource(graph: SceneGraph) {
   const terminate = vi.fn(() => undefined)
-  registerFigPopulationWorker(graph, { terminate } as unknown as Worker)
+  registerFigPopulationWorker(graph, createOwnershipWorker(terminate))
   return terminate
 }
 

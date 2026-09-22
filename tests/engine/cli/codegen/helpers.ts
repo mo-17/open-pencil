@@ -1,4 +1,3 @@
-import { mock } from 'bun:test'
 import {
   appendFileSync,
   existsSync,
@@ -13,6 +12,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
+
+import type { CodegenDependencies } from '#cli/codegen'
 
 const COMMANDS = ['compile', 'build', 'deploy'] as const
 const TARGETS = ['react', 'vue'] as const
@@ -155,35 +156,32 @@ async function runIsolatedCommand(): Promise<void> {
     throw new Error('Codegen fixture temporary directory is not isolated')
   }
   const graph = scenarioGraph(scenario)
-  mock.module('#cli/headless', () => ({
+  const dependencies: CodegenDependencies = {
     loadDocument: async () => {
       appendFileSync(eventsPath, 'load-document\n')
       if (scenario === 'load-rejection') throw new Error('Fixture document loading rejected')
       return graph
     }
-  }))
+  }
   globalThis.fetch = rejectNetwork(join(directory, 'requests.log'))
   if (scenario === 'empty-compiler-seam') {
     // Current closed CLI page/target guards make an empty real Compiler result
     // unreachable. This seam preserves the defensive diagnostic/JSON contract.
-    const compiler = await import('@open-pencil/compiler')
-    mock.module('@open-pencil/compiler', () => ({
-      ...compiler,
-      compile: () => {
-        appendFileSync(eventsPath, 'empty-compiler-seam\n')
-        return {
-          files: new Map(),
-          warnings: [{ code: 'fixture-empty-output', message: 'Defensive empty Compiler seam' }]
-        }
+    dependencies.compile = () => {
+      appendFileSync(eventsPath, 'empty-compiler-seam\n')
+      return {
+        files: new Map(),
+        warnings: [{ code: 'fixture-empty-output', message: 'Defensive empty Compiler seam' }]
       }
-    }))
+    }
   }
+
   const loaders = {
-    compile: () => import('#cli/commands/compile'),
-    build: () => import('#cli/commands/build'),
-    deploy: () => import('#cli/commands/deploy')
+    compile: async () => (await import('#cli/commands/compile')).createCompileCommand(dependencies),
+    build: async () => (await import('#cli/commands/build')).createBuildCommand(dependencies),
+    deploy: async () => (await import('#cli/commands/deploy')).createDeployCommand(dependencies)
   }
-  const { default: command } = await loaders[name]()
+  const command = await loaders[name]()
   if (!command.run) throw new Error('CLI codegen command run is missing')
   try {
     await command.run({

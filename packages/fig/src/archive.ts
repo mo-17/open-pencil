@@ -135,6 +135,55 @@ function parseRawFigKiwi(
   return { ...decoded, images: [], thumbnailPNG, metaJSON: null }
 }
 
+type ResolvedEntryLimits = Required<
+  Pick<
+    FigArchiveLimits,
+    'maxEntries' | 'maxEntryBytes' | 'maxTotalEntryBytes' | 'maxImageBytes' | 'maxTotalImageBytes'
+  >
+>
+
+function assertExtractedArchiveLimits(
+  actualEntries: Array<[string, Uint8Array]>,
+  {
+    maxEntries,
+    maxEntryBytes,
+    maxTotalEntryBytes,
+    maxImageBytes,
+    maxTotalImageBytes
+  }: ResolvedEntryLimits
+): void {
+  // Recheck the actual output as well as ZIP metadata. A hostile archive may
+  // announce inconsistent sizes; only the decompressed byte arrays are
+  // authoritative after extraction.
+  if (actualEntries.length > maxEntries) {
+    throw new Error(`.fig archive exceeds the ${maxEntries} entry limit`)
+  }
+  let actualTotalEntryBytes = 0
+  let actualTotalImageBytes = 0
+  for (const [name, data] of actualEntries) {
+    if (data.byteLength > maxEntryBytes) {
+      throw new Error(`.fig archive entry "${name}" exceeds the ${maxEntryBytes} byte limit`)
+    }
+    actualTotalEntryBytes += data.byteLength
+    if (actualTotalEntryBytes > maxTotalEntryBytes) {
+      throw new Error(
+        `.fig archive exceeds the ${maxTotalEntryBytes} total uncompressed byte limit`
+      )
+    }
+    if (name.startsWith('images/') && name !== 'images/') {
+      if (data.byteLength > maxImageBytes) {
+        throw new Error(`.fig image "${name}" exceeds the ${maxImageBytes} byte limit`)
+      }
+      actualTotalImageBytes += data.byteLength
+      if (actualTotalImageBytes > maxTotalImageBytes) {
+        throw new Error(
+          `.fig images exceed the ${maxTotalImageBytes} total uncompressed byte limit`
+        )
+      }
+    }
+  }
+}
+
 /** Parse a complete zipped or legacy raw `.fig` file into its protocol payload and resources. */
 export function parseFigBuffer(
   buffer: ArrayBuffer,
@@ -205,37 +254,13 @@ export function parseFigBuffer(
     decoded = decodeFigKiwiCanvas(canvasData, limits, options.onPages)
   }
 
-  // Recheck the actual output as well as ZIP metadata. A hostile archive may
-  // announce inconsistent sizes; only the decompressed byte arrays are
-  // authoritative after extraction.
-  const actualEntries = [...Object.entries(canvasArchive), ...Object.entries(archive)]
-  if (actualEntries.length > maxEntries) {
-    throw new Error(`.fig archive exceeds the ${maxEntries} entry limit`)
-  }
-  let actualTotalEntryBytes = 0
-  let actualTotalImageBytes = 0
-  for (const [name, data] of actualEntries) {
-    if (data.byteLength > maxEntryBytes) {
-      throw new Error(`.fig archive entry "${name}" exceeds the ${maxEntryBytes} byte limit`)
-    }
-    actualTotalEntryBytes += data.byteLength
-    if (actualTotalEntryBytes > maxTotalEntryBytes) {
-      throw new Error(
-        `.fig archive exceeds the ${maxTotalEntryBytes} total uncompressed byte limit`
-      )
-    }
-    if (name.startsWith('images/') && name !== 'images/') {
-      if (data.byteLength > maxImageBytes) {
-        throw new Error(`.fig image "${name}" exceeds the ${maxImageBytes} byte limit`)
-      }
-      actualTotalImageBytes += data.byteLength
-      if (actualTotalImageBytes > maxTotalImageBytes) {
-        throw new Error(
-          `.fig images exceed the ${maxTotalImageBytes} total uncompressed byte limit`
-        )
-      }
-    }
-  }
+  assertExtractedArchiveLimits([...Object.entries(canvasArchive), ...Object.entries(archive)], {
+    maxEntries,
+    maxEntryBytes,
+    maxTotalEntryBytes,
+    maxImageBytes,
+    maxTotalImageBytes
+  })
   const metaBytes = archive['meta.json']
   const images = Object.entries(archive)
     .filter(([name]) => name.startsWith('images/') && name !== 'images/')

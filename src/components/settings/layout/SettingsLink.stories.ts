@@ -2,10 +2,7 @@ import type { Meta, StoryObj } from '@storybook/vue3-vite'
 
 import SettingsLink from './SettingsLink.vue'
 
-interface Args {
-  href: string
-  label: string
-}
+type Args = Pick<HTMLAnchorElement, 'href'> & { label: string }
 
 const meta = {
   title: 'Settings/Layout/Link',

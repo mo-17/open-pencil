@@ -53,8 +53,7 @@ export function createComponentSyncScheduler(
     isFlushingComponentSync = true
     try {
       const { graph, ids } = batch
-      let didSync = false
-      graph.withNodeMutationOrigin('derived-component-sync', () => {
+      const didSync = graph.withNodeMutationOrigin('derived-component-sync', () => {
         const componentIds = new Set<string>()
         for (const id of ids) {
           let current = graph.getNode(id)
@@ -75,8 +74,8 @@ export function createComponentSyncScheduler(
             if (pageIds.size === 0) computeLayouts(graph)
             else for (const pageId of pageIds) computeLayouts(graph, pageId)
           })
-          didSync = true
         }
+        return componentIds.size > 0
       })
       if (didSync) requestRender()
     } finally {
