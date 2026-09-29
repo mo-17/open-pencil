@@ -1,3 +1,4 @@
+import { validationErrorExpression } from '#compiler/adapters/form-validation'
 import { controlledWriteCall } from '#compiler/adapters/react/emit/element'
 import { emitEventHandler } from '#compiler/adapters/react/emit/event'
 import { VALIDATION_INVALID_FIELD_CLASS } from '#compiler/adapters/react/lowcode/validation'
@@ -8,6 +9,8 @@ import type { IRAttrValue, IRControlledInput, IRElement, IRNode } from '#compile
 import { emitExpression } from '@open-pencil/lowcode'
 
 import type { KitEmitCtx, UIKitAdapter, UIKitMapping } from '../types'
+import { controlAttrParts, nativeControlFallbackReason } from './control-attrs'
+import { templateClassCandidates } from './template-classes'
 import {
   ACCORDION_TSX,
   ALERT_TSX,
@@ -227,6 +230,8 @@ function attrSuffix(parts: readonly string[]): string {
 }
 
 interface SelectOption {
+  className?: string
+  disabled?: boolean
   value: string
   valueExpr?: string
   labelNode: IRNode | undefined
@@ -245,7 +250,13 @@ function optionValueCode(o: SelectOption): string {
 }
 
 function selectItemValueAttr(o: SelectOption, ctx: KitEmitCtx): string {
-  return o.valueExpr !== undefined ? `value={${o.valueExpr}}` : `value="${ctx.escapeAttr(o.value)}"`
+  const value =
+    o.valueExpr !== undefined ? `value={${o.valueExpr}}` : `value="${ctx.escapeAttr(o.value)}"`
+  return (
+    value +
+    (o.disabled ? ' disabled' : '') +
+    (o.className ? ` className="${ctx.escapeAttr(o.className)}"` : '')
+  )
 }
 
 /** SELECT children are `<option value>{label}</option>` — extract value + label. */
@@ -255,6 +266,8 @@ function selectOptions(children: readonly IRNode[]): SelectOption[] {
     if (child.kind !== 'element' || child.tag !== 'option') continue
     out.push({
       ...optionValue(child.attrs.value),
+      className: child.className,
+      disabled: child.attrs.disabled === true,
       labelNode: child.children[0]
     })
   }
@@ -263,7 +276,11 @@ function selectOptions(children: readonly IRNode[]): SelectOption[] {
 
 function selectOptionFromTemplate(node: IRNode): SelectOption | null {
   if (node.kind !== 'element' || node.tag !== 'option') return null
-  return { ...optionValue(node.attrs.value), labelNode: node.children[0] }
+  return {
+    ...optionValue(node.attrs.value),
+    disabled: node.attrs.disabled === true,
+    labelNode: node.children[0]
+  }
 }
 
 function selectOptionLists(children: readonly IRNode[], ctx: KitEmitCtx, pad: string): string[] {
@@ -296,6 +313,7 @@ function optionLeafFromLabel(label: IRNode): OptionLeaf | null {
   if (!input) return null
   return {
     ...optionValue(input.attrs.value),
+    disabled: input.attrs.disabled === true,
     labelNode: label.children.find((c) => c !== input),
     defaultChecked: input.attrs.defaultChecked === true,
     controlled: input.controlled
@@ -406,7 +424,13 @@ function validationRootAttrParts(node: IRElement): string[] {
     handlers && handlers.length > 0
       ? `onBlur={${emitEventHandler(handlers, { eventLocals: true, prelude: [validate], forceAsync: true })}}`
       : `onBlur={async () => { ${validate}; }}`
-  return [`aria-invalid={__fieldErrors[${key}] != null}`, onBlur]
+  return [
+    ...(node.validationScopeMarker ? [`data-openpencil-validation-key={${key}}`] : []),
+    `data-openpencil-validation-field-key={${key}}`,
+    `aria-invalid={__fieldErrors[${key}] != null}`,
+    `aria-describedby={__fieldErrors[${key}] ? ${validationErrorExpression(node.validation.key)} : undefined}`,
+    onBlur
+  ]
 }
 
 function rootClassNameAttr(node: IRElement, ctx: KitEmitCtx): string | undefined {
@@ -441,6 +465,7 @@ function rootAttrParts(node: IRElement, ctx: KitEmitCtx): string[] {
     parts.push(`data-op-motion-drivers="${motionDriverToken(node.motionDrivers)}"`)
     parts.push('data-op-motion-scope')
   }
+  if (node.controlKind) parts.push(...controlAttrParts(node, ctx))
   parts.push(...validationRootAttrParts(node))
   return parts
 }
@@ -599,7 +624,7 @@ function emitCheckboxGroup(node: IRElement, ctx: KitEmitCtx): string {
   const { pad, i1, i2, options, controlled, rootParts } = optionGroupBase(node, ctx)
   const rows = options.flatMap((o, i) => {
     const id = `${node.sourceId}-${i}`
-    const idAttr = `id="${ctx.escapeAttr(id)}"`
+    const idAttr = `id="${ctx.escapeAttr(id)}"${o.disabled ? ' disabled' : ''}`
     const control = controlled
       ? `${i2}<Checkbox ${idAttr} ${checkboxToggleParts(controlled, o, node.validation?.key)} />`
       : `${i2}<Checkbox ${idAttr} />`
@@ -607,8 +632,8 @@ function emitCheckboxGroup(node: IRElement, ctx: KitEmitCtx): string {
   })
   const dynamicRows = optionGroupLists(node, ctx, i1, (o, idExpr, controlPad) =>
     controlled
-      ? `${controlPad}<Checkbox id={${idExpr}} ${checkboxToggleParts(controlled, o, node.validation?.key)} />`
-      : `${controlPad}<Checkbox id={${idExpr}} />`
+      ? `${controlPad}<Checkbox id={${idExpr}}${o.disabled ? ' disabled' : ''} ${checkboxToggleParts(controlled, o, node.validation?.key)} />`
+      : `${controlPad}<Checkbox id={${idExpr}}${o.disabled ? ' disabled' : ''} />`
   )
   return [`${pad}<div${attrSuffix(rootParts)}>`, ...rows, ...dynamicRows, `${pad}</div>`].join('\n')
 }
@@ -747,8 +772,22 @@ export const shadcnAdapter: UIKitAdapter = {
     return mappingFor(name)
   },
 
-  mapControl(kind: NonNullable<IRElement['controlKind']>): UIKitMapping | null {
+  mapControl(kind: NonNullable<IRElement['controlKind']>, node?: IRElement): UIKitMapping | null {
+    if (node?.selectFeatures) return null
+    if (node && nativeControlFallbackReason(node)) return null
     return CONTROL_TO_MAPPING[kind] ?? null
+  },
+
+  controlWarning(node: IRElement) {
+    if (node.selectFeatures) return undefined
+    const reason = nativeControlFallbackReason(node)
+    return reason
+      ? {
+          code: 'ui-kit-native-control-fallback',
+          message: `This field uses a native HTML control instead of shadcn because ${reason}. Field behavior is preserved; its appearance can differ.`,
+          nodeId: node.sourceId
+        }
+      : undefined
   },
 
   mapContainer(kind: NonNullable<IRElement['containerKind']>): UIKitMapping | null {
@@ -775,6 +814,8 @@ export const shadcnAdapter: UIKitAdapter = {
   },
 
   emitControl(node: IRElement, ctx: KitEmitCtx): string | null {
+    if (node.selectFeatures) return null
+    if (nativeControlFallbackReason(node)) return null
     switch (node.controlKind) {
       case 'checkbox':
         return emitToggle(node, ctx, 'Checkbox')
@@ -825,6 +866,24 @@ export const shadcnAdapter: UIKitAdapter = {
     // Stable, sorted order so repeated emits are byte-identical.
     for (const dep of [...names].sort()) out[dep] = DEP_VERSIONS[dep]
     return out
+  },
+
+  optimizeDepsForFiles(files): readonly string[] {
+    const used = new Set<string>()
+    for (const [name, component] of Object.entries(COMPONENTS)) {
+      if (component && files.has(component.file)) used.add(name)
+    }
+    if (used.size === 0 && !files.has('src/lib/utils.ts')) return []
+    return Object.keys(shadcnAdapter.deps(used))
+  },
+
+  classNames(used: ReadonlySet<string>): string[] {
+    return templateClassCandidates(
+      [...used].flatMap((name) => {
+        const component = COMPONENTS[name]
+        return component ? [component.source] : []
+      })
+    )
   },
 
   themeCSS(): string {

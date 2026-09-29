@@ -1,4 +1,4 @@
-import type { Tool } from '@open-pencil/core/editor'
+import type { Editor, Tool } from '@open-pencil/core/editor'
 import type {
   DerivedTextGlyph,
   GeometryPath,
@@ -17,6 +17,7 @@ export type CornerPosition = 'nw' | 'ne' | 'se' | 'sw'
 
 export interface DragDraw {
   type: 'draw'
+  toLocal?: (x: number, y: number) => Vector
   startX: number
   startY: number
   nodeId: string
@@ -68,6 +69,13 @@ export interface DragResize {
   origTextPathBox: Rect | null
   origChildren: Map<string, ResizeSnapshot> | null
   appliedRect?: Rect
+  resizeStarted?: boolean
+  originalDerivedLayout?: SceneNode['derivedLayout']
+  preview?: ReturnType<Editor['beginNodePreview']>
+  originalSizing?: Pick<
+    SceneNode,
+    'primaryAxisSizing' | 'counterAxisSizing' | 'layoutGrow' | 'layoutAlignSelf' | 'textAutoResize'
+  >
 }
 
 export interface DragMarquee {

@@ -45,6 +45,8 @@ export interface TabsItemV1 extends JSONObject {
   id: string
   label: string
   content: string
+  /** Optional unique direct-child layer name for this panel. */
+  contentChildName?: string
 }
 
 export interface TabsModuleConfigV1 extends JSONObject {
@@ -95,6 +97,7 @@ const CONFIG_KEYS = new Set([
   'fontSize'
 ])
 const TAB_KEYS = new Set(['id', 'label', 'content'])
+const CONTENT_TAB_KEYS = new Set([...TAB_KEYS, 'contentChildName'])
 const ORIENTATIONS = new Set<TabsOrientationV1>(['horizontal', 'vertical'])
 const ACTIVATION_MODES = new Set<TabsActivationModeV1>(['automatic', 'manual'])
 const ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/
@@ -117,7 +120,12 @@ function parseTabs(value: unknown): TabsItemV1[] {
     `tabs config tabs must contain ${TABS_MODULE_LIMITS.tabsMin} to ${TABS_MODULE_LIMITS.tabsMax} items`,
     (index) => `tabs config tabs[${index}] must be a tab object`,
     (entry, index) => {
-      if (!hasExactPluginKeys(entry, TAB_KEYS)) {
+      if (
+        !hasExactPluginKeys(
+          entry,
+          Object.hasOwn(entry, 'contentChildName') ? CONTENT_TAB_KEYS : TAB_KEYS
+        )
+      ) {
         throw new TypeError(
           `tabs config tabs[${index}] must contain exactly id, label, and content`
         )
@@ -143,7 +151,21 @@ function parseTabs(value: unknown): TabsItemV1[] {
           `tabs config text must not exceed ${TABS_MODULE_LIMITS.totalText} characters`
         )
       }
-      return { id, label, content }
+      return {
+        id,
+        label,
+        content,
+        ...(Object.hasOwn(entry, 'contentChildName')
+          ? {
+              contentChildName: parseBoundedPluginText(
+                entry.contentChildName,
+                `tabs config tabs[${index}].contentChildName`,
+                0,
+                120
+              )
+            }
+          : {})
+      }
     }
   )
 }

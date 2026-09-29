@@ -40,7 +40,7 @@ export function createEditorStore(initialGraph?: SceneGraph) {
   const state = shallowReactive<AppEditorState>(createInitialAppEditorState(graph.getPages()[0].id))
 
   const viewportSize = { width: 0, height: 0 }
-  const panes = createCanvasPaneRegistry(state)
+  const panes = createCanvasPaneRegistry(state, (): void => editor.exitContentEdit())
   const editor = createEditor({
     graph,
     state,

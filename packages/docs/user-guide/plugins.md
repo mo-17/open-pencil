@@ -31,7 +31,23 @@ or beta channel, publisher/key identity, snapshot status, the audit head, and wh
 authorizes an executable runtime index. Search matches the signed name, summary, category, keyword,
 plugin ID, and publisher metadata; it does not trust an unsigned search-service response.
 
-The current **Unreleased** source line contains 71 reviewed plugins with 76 contributions: 21
+- **Alert**, **Progress**, and **Chip** are opt-in. Install and enable them in Settings, then insert through the module toolbar or Assets. Alert offers four semantic tones, three appearances and optional dismissal. Chip can be static, selectable or removable. Linear/circular Progress shows a configured percentage or a clearly indeterminate state; it does not connect to a live task. All fields are visual controls with English/Chinese labels, and both React and Vue implement the runtime.
+
+- **Avatar**, **Badge**, and **Timeline** are opt-in modules with canvas, React and Vue support. Avatar uses local image fills from the Fill panel, with circle/rounded/square shapes, cover/contain fitting and a named text fallback when an image is missing or cannot load. Badge places an authored count (including overflow such as `99+`) or decorative dot on a text host; screen readers receive the full count. Zero may be hidden. Arbitrary child hosts and live notification bindings are not provided. Timeline has up to 24 events with editable title, description, time text and status, plus add/remove/reorder controls. Alternating layout becomes single-sided in narrow containers. Time text is not parsed or automatically sorted. These modules neither fetch remote assets nor connect to a backend.
+
+- **Tooltip**, **Skeleton**, and **Empty State** are opt-in modules with visual properties and React/Vue output. Tooltip shows a text trigger on the canvas; hover, keyboard focus or touch in the running preview opens the plain-text hint, and Escape dismisses it. Configure placement, delay, width and colors. Skeleton offers text lines, rectangles or circles, with optional pulse animation that respects reduced motion; canvas placeholders stay static. Empty State offers a box/search illustration or text-only presentation, editable title/description, alignment and colors. Neither placeholder infers backend loading or empty data: connect existing visibility expressions to your data and use ordinary buttons with configured events for actions. Tooltip is not supported in microfrontend packaging. Older WebViews without the Popover API use an inline fallback that can be clipped by an ancestor; verify the actual desktop WebView before relying on overlay placement.
+
+**Org Chart** is opt-in. Install and enable it, then insert it from the module menu or the `org-chart` component template. Edit names, descriptions and parents in the design panel, set layout and colors, and choose initial folded branches. Canvas renders authored configuration; React/Vue supports instance-local folding. It does not fetch an organization directory or submit data.
+
+**Pagination** is opt-in, with bounded page buttons, previous/next and optional first/last controls, plus compact layouts. Current page can read/write numeric page or document state; total/page size can read state or expressions. It does not fetch data or submit forms. See [component templates](./lowcode-apps#insert-a-basic-component-or-common-composition).
+
+**Descriptions** is an opt-in label/value module with paired editing, 1–3 responsive columns, horizontal or vertical labels, density and color controls. It renders authored plain text on the canvas and in React/Vue, without FORM or remote-data bindings. The Color picker is an ordinary INPUT type instead of a separate plugin; find both examples under Assets → Component templates. See [the template guide](./lowcode-apps#insert-a-basic-component-or-common-composition) for value and platform boundaries.
+
+**Cascader** is opt-in. Its visual inspector edits a bounded local hierarchy, disabled branches and appearance. React/Vue supports progressive columns, full-path search, keyboard selection and clearing; optional array bindings participate in FORM validation and reset.
+
+**Walktour** is opt-in. Enable it and insert the `walktour` template, then edit steps and direct-child targets in the design panel. It starts manually and shows highlights with previous/next navigation without clicking targets or submitting data. See [component template usage](./lowcode-apps.md#insert-a-basic-component-or-common-composition).
+
+The current **Unreleased** source line contains 92 reviewed plugins with 97 contributions: 41
 modules, 13 commands, 13 exporters, 22 connectors, four storage providers, and three Backend Providers. A definition,
 renderer, contract, or exporter source file alone does not make a plugin available; the contribution
 must also have its reviewed central host registration. Map, Google Drive Storage, OneDrive Storage,
@@ -70,7 +86,7 @@ plugin is opt-in.
   document context, and tool execution; the window receives only a bounded, redacted message
   projection and sends a closed set of actions back to the host. Disable the plugin to remove the
   entry and close its window. This UI command is not exposed to MCP.
-- **Chart** is an installable reference module with deterministic Canvas and Compiler adapters.
+- **Chart** supports bar, line, area, pie and donut views in Canvas, React and Vue. Edit paired labels and values in **Design → Module → Values**, then apply or cancel the draft. Up to 64 local points form one series; bar/line/area support negative values, while pie/donut require nonnegative values and display an empty state for a zero total. Colors and value labels are configurable. The generated SVG preserves proportions and includes a complete accessible data table; crowded visual labels may be omitted with a count. These are authored static datasets, without remote data, live bindings, tooltips or multi-series axes. Existing version-1 bar charts remain readable.
 - **Rich Text** is an installable editable content module with reviewed Canvas and Compiler
   adapters.
 - **</> HTML** is an installable, opt-in HTML content module. Its reviewed adapter accepts at most
@@ -80,7 +96,7 @@ plugin is opt-in.
   poster. It provides generic controls for playback behavior and sizing without granting the plugin
   network or credential capabilities.
 - **Table** is an installable structured-data module with an editable header and up to 12 columns
-  and 100 body rows. Cells remain bounded plain text and never execute HTML.
+  and 100 body rows. React and Vue render bounded plain-text cells without executing HTML.
 - **Slide Menu** is an installable trigger module that opens either an edge menu or a modal from the
   left, right, top, or bottom. Its links are bounded plain text with safe document, anchor, or public
   HTTPS destinations.
@@ -92,7 +108,9 @@ plugin is opt-in.
   selections but never uploads or persists their contents.
 - **Modal** is an installable dialog trigger with a bounded plain-text title and body, independently
   visible trigger icon/text, configurable dismissal controls, footer actions, colors, and responsive
-  panel width. It does not accept HTML, script, remote content, or credentials.
+  panel width. Its body can instead use a uniquely named direct child frame containing ordinary
+  editable components in React/Vue. The configuration does not accept HTML, script, remote content,
+  or credentials; built-in footer buttons close the dialog.
 - **Lottie** is an installable vector-animation module for bounded embedded JSON or a canonical
   public HTTPS source. Canvas stays offline; embedded data loads locally, while generated Web/React
   output requires an explicit user action before fetching a URL. Expressions, external images,
@@ -103,14 +121,25 @@ plugin is opt-in.
 - **Advanced Data Grid** is an installable typed grid with bounded text/number/date/boolean data,
   initial sorting and filters, pagination, single/multiple selection, density, and visual controls.
   It accepts at most 16 columns, 200 rows, and 2,000 cells and does not fetch remote data.
+  React and Vue provide the same bounded local operations, including CSV import/export.
 - **Tabs** is an installable accessible tab set with two to 12 bounded plain-text panels, horizontal
   or vertical orientation, automatic or manual activation, an initial tab, and visual controls.
+  React/Vue panels can instead map unique direct child frames to editable content; only the active
+  panel is mounted. Missing or duplicate mappings are diagnosed.
 - **Accordion** is an installable set of one to 16 bounded plain-text expandable sections. It can
   allow one or several open items and validates every configured initial item ID.
+- **Slider / Range** selects one number or an ordered pair with configurable bounds, decimal step,
+  initial values, disabled/read-only behavior, labels, colors and optional value/bounds display.
+- **Rating** provides one to ten stars, whole or half-star selection, optional clearing, initial
+  values and disabled/read-only behavior.
+- **Stepper** displays one to twelve editable steps with descriptions, completed/error states,
+  horizontal/vertical layout and optional local step selection.
+- **Breadcrumb** displays editable safe links and a non-clickable current-page item, with optional
+  wrapping and slash, chevron or dot separators.
 - **QR / Barcode** generates a real QR code or Code 128 barcode locally in generated React output.
   The design canvas intentionally draws only a deterministic offline placeholder; it is not a
   scannable-code verification surface.
-- **Markdown** renders up to 65,536 characters of CommonMark or GFM in generated React output. Raw
+- **Markdown** renders up to 65,536 characters of CommonMark or GFM in generated React/Vue output. Raw
   HTML is skipped, and links are limited to safe anchors, root-relative paths, or public HTTPS URLs.
 - **Code Block** displays bounded source as inert text with a language label, line numbers, wrapping,
   theme, and an optional copy button. It does not execute code, interpret HTML, or perform syntax
@@ -157,7 +186,8 @@ plugin is opt-in.
 - **Vue Exporter** packages a source-only Vite + Vue 3 + TypeScript + Tailwind project. It emits
   editable `.vue` SFCs, Vue Router v4 for multiple pages, local images under `src/assets/**`, and
   basic reactive state, bindings, events, route/query parameters, Toast/Confirm feedback, local form
-  validation, and real Modal, Dropdown Menu, Slide Menu, and local-only Upload Button runtimes. Vue
+  validation, and 35 reviewed module runtimes: Table, DataGrid, Tabs, Accordion, Carousel, Chart, Code Block, Markdown, Date Range, Tree/TreeSelect, Popover/Confirmation, Descriptions, Pagination, Org Chart, Walktour, Cascader, Video,
+  VR Tour, Modal, Dropdown Menu, Slide Menu, Slider/Range, Rating, Stepper, Breadcrumb, Alert, Progress, Chip, Avatar, Badge, Timeline, Tooltip, Skeleton, Empty State and local-only Upload Button. Vue
   v1 records unsupported
   advanced runtimes in `EXPORT_WARNINGS.md` instead of claiming React feature parity. Its UI and MCP
   paths share disposable compiler and ZIP Workers; cancellation terminates the active Worker without
@@ -357,6 +387,19 @@ add-module tool exists only while the plugin is installed and enabled and carrie
 configuration only—never selected file names or file bytes. The same local-only validation and clear
 not-uploaded status run in generated React/Vue/Tauri projects.
 
+Selections accumulate in multi-file mode; a valid selection replaces the previous file in single-file
+mode. Cancelling or rejecting every new file preserves the previous selection. Repeated entries with
+the same name, type, size, and modification time count once; this compares metadata, not file contents.
+**Clear selection** remains available when the file list is hidden. Removing a file moves focus to a
+neighboring remove button, or back to the picker when empty. The exact Upload module accepts a static
+`interactiveProps.disabled` flag and a `bindings.disabled` read expression from page/document state,
+such as `{ kind: 'expr', expr: 'fileSelectionLocked' }`. Only boolean `false` enables a dynamically
+bound picker; invalid, failed or non-boolean reads keep it disabled. Direct `ref`, `docState` or
+`literal` disabled bindings and LIST item/index references are unsupported. Other FRAME modules do
+not inherit this capability. Generated components also retain their `disabled` prop for embedding.
+Disabled pickers reject late selections, drops, removals and clear actions. Errors remain associated
+with the picker for correction.
+
 After installing **Modal**, edit its trigger, title, multiline body, close/Escape/backdrop rules,
 cancel and confirm labels, footer alignment, colors, opacity, and panel width under
 **Design → Module**. Compiler Preview and exported React/Vue/Tauri projects open a responsive local
@@ -367,6 +410,23 @@ mutation or callback. Canvas stays deterministic and offline, while Expo/Flutter
 explicitly non-interactive static trigger until native modal behavior is implemented. All configured
 copy is rendered as bounded text, never HTML.
 
+For custom dialog bodies, **Content child layer** lists uniquely named direct child layers of the
+Modal; these are your document layers, not two fixed content types. Choose **Create content** to
+add a normal editable frame and select it as the body in one undoable operation. Existing children
+are preserved. Choose **Edit content** to work directly on the selected body's nodes in a focused
+canvas view. Add text, inputs, buttons, or nested frames with the usual tools, then use **Back to
+dialog button**. Changes apply directly and support Undo; returning does not discard changes.
+The body lays out its children within its own bounds, independently of the compact trigger. Opening
+an existing `.fig` or entering content editing recalculates fill-sized inputs and buttons; you do not
+need to recreate the form. Authored sizing modes and imported instance interiors are preserved.
+
+The ordinary canvas shows the configured trigger icon and label, without drawing the body on top
+of the button. Entering content editing does not change the trigger size. The temporary view state
+does not enter `.fig` data; the actual content layers and edits are saved with the document.
+The body must remain visible and uniquely named. After renaming or reparenting
+its root layer, select the corresponding content layer again. Text mode continues to use the
+configured body text. React and Vue display the selected child only inside the open dialog.
+
 After installing **Lottie**, choose `url` or `json` under **Design → Module**, then configure loop,
 autoplay, speed, direction, and fit. The Canvas placeholder never fetches a URL. Bounded embedded JSON
 loads locally; Compiler Preview and generated Web/React output require **Load Lottie animation**
@@ -374,18 +434,71 @@ before making a public HTTPS request, and retry remains user initiated. Reduced-
 suppress autoplay. The validator accepts a bounded vector subset and rejects external assets,
 expressions, audio, and external font loads rather than passing them to the renderer.
 
-After installing **Carousel**, edit its bounded `Slides` JSON and accessible label, then choose the
-initial slide, transition, autoplay interval, loop, arrows/dots, hover pause, and colors. Each slide
-has plain-text title/description, optional public HTTPS image with required alternative text, and an
-optional document path, anchor, or public HTTPS destination. Compiler Preview requires **Load remote
-slide media** before attaching images. The generated Web/React adapter provides keyboard-operable
-controls, pause/resume, an announced current slide, and reduced-motion handling.
+Install **Carousel** in **Settings → Plugins → Browse**, then enable it under **Installed**.
+Insert it from the toolbar's plugin menu or **Assets → Plugin modules → Media**. Under
+**Design → Module**, edit each slide's title, description, image URL, alternative text, and link
+directly. Add, remove, and reorder up to twelve slides, and choose the initial slide. Reordering
+preserves the chosen initial slide; deleting it selects a remaining neighbor. Invalid drafts stay
+in the inspector until corrected or discarded, and valid edits support undo.
+
+Choose the layout and appearance in the same panel:
+
+- **Image and text sections** keeps separate image and caption areas; **Text over image** fills the container
+  with the image and overlays the caption.
+- **Image fit** offers cover (crop to fill), contain (show the complete image), or stretch.
+- Overlay captions can sit at the top, center, or bottom. Set left/center/right text alignment and
+  the dark overlay opacity to keep text readable against the image.
+- **Pagination style** offers dots, clickable page numbers, or the current/total fraction. Turn
+  **Show pagination** off to hide it; arrows and keyboard navigation remain independent.
+
+Navigation and playback are configured independently in this panel:
+
+- **Show arrows** hides or shows both previous/next buttons. **Arrow position** offers centered sides,
+  top corners, bottom corners, bottom left, and bottom right. Hiding arrows preserves their position;
+  pagination and keyboard navigation remain available.
+- Enable **Autoplay**, set the interval (2–60 seconds), and choose **Loop** to cycle back to the start.
+  Without loop, playback stops on the last slide. **Pause on hover** is optional; focus inside the
+  carousel, a drag gesture, hidden browser tabs, and reduced-motion preferences also pause playback.
+- Enable **Drag or swipe to switch** for horizontal mouse dragging or touch swiping in React/Vue
+  previews and exports. Short or vertical gestures do not switch slides. Links, controls, selectable
+  text, and nested carousels retain their own interactions. Hidden arrows do not disable swiping.
+
+New carousels enable dragging/swiping and leave autoplay off. Version-1/2 documents retain their
+previous playback behavior, with dragging/swiping off until explicitly enabled. Version-1 carousels
+also retain split layout and dots. Editing saves version 3; use an updated OpenPencil on other
+computers to edit these controls. Simply opening an older document does not rewrite module data.
+
+Images must use public HTTPS URLs and have alternative text. Links may use document paths,
+anchors, or public HTTPS destinations. The canvas renders the initial slide with an offline image
+placeholder and multilingual text, including caption placement, arrow position, and pagination; it does not
+fetch or animate remote media. Verify actual image cropping in Compiler Preview, which
+requires **Load remote slide media** before attaching images. React and Vue previews and exports
+provide keyboard-operable controls, pause/resume, a current-slide announcement, and reduced-motion
+handling. Remote image files are not embedded in the `.fig` document; their availability depends on
+the published URL. Native targets retain their documented static fallback.
 
 After installing **Advanced Data Grid**, edit its typed `Grid data`, optional initial sort/filters,
 page size, selection mode, density, headers, stripes, and colors under **Design → Module**. Row and
 column IDs are stable bounded identifiers; every cell must match its declared text, number, date, or
 boolean column. The generated Web/React table supports accessible sorting, filtering, pagination,
 and row selection over this authored static data. It is not a remote database connector.
+Property labels and selection/density choices follow the editor language; changing language does
+not change their saved values. Initial sort and filter rules still use bounded JSON configuration.
+
+**Show CSV import/export tools** is off by default, including for existing version-1 grids.
+Turn it on under **Design → Module** only when end users need to paste or copy CSV data. This
+setting applies equally to React/Vue previews and exported applications; editor authoring helpers
+remain available. Selection and column-filter reset buttons appear only when there is something
+to clear. Sorting, filtering and pagination remain available independently of CSV tools.
+Hiding these tools during a session does not discard locally imported rows.
+When the scroll area cannot fit the header and one data row, the header scrolls with the rows
+instead of covering them. The configured sticky header resumes automatically when enough space
+is available.
+
+The canvas uses the editor's font fallback for grid headers and cells, including Chinese and
+mixed text, and clips text inside each cell. Reopening existing `.fig` files uses this rendering
+fix without regenerating templates; missing fonts on another computer still require a local
+font or an available fallback.
 
 The same property panel has bounded CSV helpers. **Paste CSV** accepts UTF-8 comma-delimited text up
 to 192 KiB, preserves the existing column schema, and requires every header to exactly match the
@@ -393,17 +506,67 @@ corresponding column label or ID. Numbers use locale-independent JSON syntax, bo
 `false`, dates use `YYYY-MM-DD`, and an empty non-text field becomes `null`. A successful editor import
 replaces the authored rows, is stored in the design, and participates in undo. **Prepare CSV text**
 shows read-only text for manual copying; it requests neither file nor clipboard authority and prefixes
-formula-like text fields before spreadsheet use. In generated React output, a pasted import changes
+formula-like text fields before spreadsheet use. In generated React/Vue output, a pasted import changes
 only the current running session and is not written back to the design or persisted across reloads.
 
 After installing **Tabs**, edit its labelled items in **Design → Module**, choose horizontal or
-vertical orientation, and choose automatic or manual activation. Generated React output uses tablist,
+vertical orientation, and choose automatic or manual activation. Generated React/Vue output uses tablist,
 tab, and tabpanel semantics with roving focus. Arrow keys, Home, and End move focus; in manual mode,
-Enter or Space activates the focused tab. Content is bounded plain text, not nested Markdown or HTML.
+Enter or Space activates the focused tab. Inline content is bounded plain text, not Markdown or HTML;
+the canvas preserves line breaks and wraps it within the panel.
 
-After installing **Accordion**, edit its labelled sections, choose single-open or multi-open behavior,
-and select valid initial-open IDs. Generated React output exposes `aria-expanded`/`aria-controls`, and
-Arrow Up/Down, Home, and End move focus between headers. Section content remains bounded plain text.
+Each item's **Content child layer** chooses between inline text and a uniquely named direct child.
+When a layer is mapped, the inspector identifies that layer and hides the unused text box; the
+text draft is preserved if you switch back to text mode. Missing or duplicate mappings show a
+warning rather than silently substituting another layer or the old text.
+
+Use **View on canvas** on an item to inspect that tab, and **Show initial tab** to return to
+the configured initial tab. This view choice does not change the initial tab, document data, or
+the running compiler preview. Use **Edit content** for a mapped layer to edit its original nodes
+in the focused canvas, then return to Tabs. Edits support Undo; locked or protected layers cannot
+be edited through this action. Canvas headers use compact rounded selected buttons, matching the
+spacing and colors of the compiled controls. Temporary view choices are not saved in `.fig` files.
+
+After installing **Accordion**, edit and reorder sections in **Design → Module**. Use each section's
+**Initial open** checkbox and **Allow multiple open** to choose the initial display without editing
+JSON. Renaming a section ID retains its initial-open selection; deleting it removes that selection.
+Switching to single-open keeps the first selected section in the current order. Changes support Undo.
+Invalid or stale drafts cannot overwrite another selected node.
+
+Canvas, React and Vue share right-aligned expansion indicators, wrapped headings, and multiline plain
+text. Generated React/Vue output supports Enter/Space to expand or collapse and Arrow Up/Down, Home,
+and End to focus headers. Equal host rerenders preserve local expansion; changed section IDs or
+initial-open settings reset it to the authored initial state. Canvas shows that initial state only.
+The **Frequently asked questions** composition in Assets provides an editable bilingual starting point.
+Existing v1 documents remain supported; this change does not introduce a new module or file format.
+
+### Value and navigation components
+
+Install and enable **Slider**, **Rating**, **Stepper** or **Breadcrumb** in **Settings → Plugins**.
+Insert a module from the canvas module menu, or choose its example in **Assets → Component
+templates**. The library has 62 templates: 54 basic components and eight compositions; Slider and
+Range slider are separate recipes for the same module. Missing plugins stay unavailable until you
+explicitly install and enable them.
+
+| Component | Configure in Design → Module | Generated React/Vue behavior |
+| --- | --- | --- |
+| Slider / Range | Bounds, decimal step, initial value(s), labels, appearance, read-only and disabled state | Native range semantics, arrow/Home/End/Page keys and two handles that cannot cross |
+| Rating | Maximum stars, half steps, initial value, clearing and appearance | Keyboard and pointer selection, optional clear action and local value feedback |
+| Stepper | Add/reorder steps, title, description, state, direction and initial step | Optional selection of enabled steps; selection changes the current step only |
+| Breadcrumb | Add/reorder labels and links, separator, wrapping and appearance | Validated navigation links; the last item identifies the current page without navigating |
+
+Changing slider bounds or step size clamps and snaps the initial values. Reducing the star count
+or disabling half steps also adjusts the initial rating. Changing selection or receiving an external
+configuration update cancels the old input draft, so a late blur cannot overwrite newer settings.
+
+Canvas shows authored defaults, including bound state defaults. Slider/Range and Rating can bind to page/document state and participate in FORM validation and reset. Unbound values remain local; this does not configure backend saving. Stepper does not validate
+forms, switch business pages or execute a workflow. Breadcrumb accepts safe relative paths, anchors
+and public HTTPS links; it does not grant an application access to a remote service. Editing initial
+configuration or remounting a component resets its local state.
+
+These modules use ordinary `FRAME` nodes with versioned metadata in `.fig`. Keeping that geometry
+and metadata does not make OpenPencil interactions executable in Figma. React and Vue have reviewed
+adapters for all four modules; other targets retain explicit unsupported behavior or static fallback.
 
 After installing **QR / Barcode**, select QR or Code 128, enter the value, and configure caption,
 colors, error-correction level, and quiet zone. QR values accept up to 2,048 characters; Code 128
@@ -412,17 +575,18 @@ Generated React output creates the actual code locally with bundled libraries an
 request; validate the result with a scanner before production use.
 
 After installing **Markdown**, edit CommonMark or GFM source, link behavior, colors, type size, and
-line height. The canvas renders a bounded plain-text approximation. Generated React output skips raw
+line height. The canvas uses font fallback for headings, lists and code in a bounded static summary; compiled preview provides full layout. Generated React/Vue output skips raw
 HTML and accepts only safe anchors, root-relative paths, and canonical public HTTPS links; an unsafe
 destination is rendered as text instead of a link. Markdown image syntax is shown as an inert
 alt-text placeholder and never loads its `src`; use a reviewed Image node or explicit media module
-when remote media is required. This is display content, not a rich-text write-back editor.
+when remote media is required. Footnotes and return links stay inside their module instance, including Chinese identifiers and repeated references. This is display content, not a rich-text write-back editor.
 
 After installing **Code Block**, edit the inert source text and choose its language label, light/dark
 theme, line numbers, wrapping, copy-button visibility, type size, tab size, and colors. The language
 selection is metadata and presentation only: the current adapter does not execute, compile, validate,
-or syntax-highlight the code. The generated copy button uses the browser clipboard when available and
-reports failure instead of claiming success.
+or syntax-highlight the code. React/Vue copy buttons write only after an explicit click, with English/Chinese success or failure feedback. Configuration changes and unmounts invalidate pending results. Wrapped source lines keep their own line numbers.
+
+Assets includes **Markdown note**, **Markdown checklist** and **Code example** recipes. Multiline source drafts are cancelled on node/configuration changes or property-panel deactivation, preventing late blur from writing into another node.
 
 After installing **PDF Viewer**, configure either a safe root-relative path or a canonical public
 HTTPS source, plus title, initial-page/page-count hints, fit, toolbar, download, and colors. Canvas is
@@ -1449,8 +1613,15 @@ their own cart and orders; your identity administrator grants `food-manager` to 
 for menu and kitchen operations. Registering a profile does not grant this role. Staff create
 dishes after selecting their registered profile. Prices and totals use integer minor units
 (the template uses CNY, so `1200` means CNY 12.00). Unavailable/sold-out is a
-menu flag, not ingredient or dish inventory accounting. Image fields store URLs; no image upload
-or automatic image display is provided by these forms.
+menu flag, not ingredient or dish inventory accounting. Customer-facing prices display in yuan
+(for example, `¥12.00`), while menu-management inputs and backend values remain integer cents.
+Dish cards display configured image URLs and use an editable illustration when no URL is set;
+the template does not upload images.
+
+New restaurant templates include a warm visual style, grouped customer and staff navigation,
+and compact forms. These are ordinary editable canvas nodes. Existing documents keep their
+authored pages; to try the new layout, create a blank document and apply **Restaurant ordering**
+again. This does not migrate data or change an existing identity-service configuration.
 
 Saving a dish quantity **replaces** that dish's cart quantity with a value from 1 to 99. Checkout
 requires a contact name; dine-in also requires a table number. Phone and note are optional.

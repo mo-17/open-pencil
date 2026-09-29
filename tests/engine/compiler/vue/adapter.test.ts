@@ -190,7 +190,9 @@ describe('Vue compiler adapter', () => {
     expect(page).toContain('__vueRef<number>(0)')
     expect(page).toContain('__vueRef<string>("")')
     expect(page).toMatch(/:value="__opState_name_[a-z0-9]+"/)
-    expect(page).toContain('.value = (__opEvent.target as HTMLInputElement).value')
+    expect(page).toContain(
+      '.value = (__opEvent.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value'
+    )
     expect(page).toMatch(/__opState_count_[a-z0-9]+\.value = __opState_count_[a-z0-9]+\.value \+ 1/)
     expect(page).toContain('__setDocState("message", "Updated")')
     expect(page).toContain('&lt;/template&gt;&lt;script&gt;')

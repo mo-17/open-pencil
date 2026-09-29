@@ -1,3 +1,4 @@
+import { omitUnsupportedMultipleSelect } from '#compiler/adapters/native-controls'
 /* eslint-disable max-lines -- one recursive WXML walk keeps tag pairing and warning policy auditable */
 import type {
   ComponentDef,
@@ -183,6 +184,8 @@ function emitWechatElement(
   indent: number,
   environment: WechatNodeEnvironment
 ): string {
+  if (omitUnsupportedMultipleSelect(node, 'wechat-miniprogram', environment.warn))
+    return `${'  '.repeat(indent)}<view />`
   const pad = '  '.repeat(indent)
   warnElementFeatures(node, environment.warn)
   const tag = miniProgramElementTag(node)

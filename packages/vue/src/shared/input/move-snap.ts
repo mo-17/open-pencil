@@ -1,6 +1,6 @@
 import type { Editor } from '@open-pencil/core/editor'
 import { computeSelectionBounds } from '@open-pencil/scene-graph'
-import type { SceneNode } from '@open-pencil/scene-graph'
+import type { SceneNode, Vector } from '@open-pencil/scene-graph'
 import { getAxisAlignedWorldBounds } from '@open-pencil/scene-graph/coordinate'
 
 import { explicitSnapTargets } from '#vue/shared/input/explicit-snap-targets'
@@ -52,10 +52,13 @@ export function applyMoveSnap(
   dx: number,
   dy: number,
   editor: Editor,
-  disableSnapping = false
+  disableSnapping = false,
+  coordinateSpace: 'parent' | 'world' = 'parent'
 ): { dx: number; dy: number } {
   const parentId = moveParentId(drag, editor)
-  const localDelta = worldDeltaToParentLocal({ x: dx, y: dy }, parentId, editor)
+  const convert = (delta: Vector) =>
+    coordinateSpace === 'world' ? delta : worldDeltaToParentLocal(delta, parentId, editor)
+  const localDelta = convert({ x: dx, y: dy })
   const selectionBounds = computeSelectionBounds(movingSelection(drag, dx, dy, editor))
   if (!selectionBounds || disableSnapping) {
     editor.setSnapGuides([])
@@ -70,7 +73,7 @@ export function applyMoveSnap(
     explicitSnapTargets(parentId, editor)
   )
   editor.setSnapGuides(snap.guides)
-  const localCorrection = worldDeltaToParentLocal(snap.correction, parentId, editor)
+  const localCorrection = convert(snap.correction)
   return {
     dx: localDelta.x + localCorrection.x,
     dy: localDelta.y + localCorrection.y

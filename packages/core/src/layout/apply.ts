@@ -2,6 +2,9 @@ import type { Node as YogaNode } from 'yoga-layout'
 
 import { isAutoLayoutMode, type SceneNode } from '@open-pencil/scene-graph'
 
+import { resolveModalContent } from '#core/plugins/content/modal'
+import { resolveTabsContent } from '#core/plugins/content/tabs'
+
 import { usesDetachedDerivedLayout } from './derived'
 import type { LayoutGraph } from './graph'
 
@@ -69,11 +72,12 @@ function computedChildPosition(
   child: SceneNode,
   yogaChild: YogaNode,
   axis: 'x' | 'y',
-  preservesImportedGeometry: boolean
+  preservesImportedGeometry: boolean,
+  parentLayoutEdited: boolean
 ): number {
   if (preservesImportedGeometry) return child[axis]
   const computed = axis === 'x' ? yogaChild.getComputedLeft() : yogaChild.getComputedTop()
-  if (child.type === 'INSTANCE') return computed
+  if (child.type === 'INSTANCE' || parentLayoutEdited) return computed
   return child.derivedLayout?.[axis] ?? computed
 }
 
@@ -91,22 +95,32 @@ function computedChildSize(
   child: SceneNode,
   yogaChild: YogaNode,
   axis: 'width' | 'height',
-  preservesImportedFrameGeometry: boolean
+  preservesImportedFrameGeometry: boolean,
+  parentLayoutEdited: boolean
 ): number {
-  if (preservesImportedFrameGeometry || preservesStaleImportedTextSize(child, axis)) {
+  if (
+    preservesImportedFrameGeometry ||
+    (!parentLayoutEdited && preservesStaleImportedTextSize(child, axis))
+  ) {
     return child[axis]
   }
   const computed = axis === 'width' ? yogaChild.getComputedWidth() : yogaChild.getComputedHeight()
   if (child.type === 'TEXT' && child.source.format === 'fig') {
     return computed > 0 ? computed : child[axis]
   }
-  return child.derivedLayout?.[axis] ?? computed
+  return parentLayoutEdited ? computed : (child.derivedLayout?.[axis] ?? computed)
 }
 
 function updateChildFromYoga(graph: LayoutGraph, child: SceneNode, yogaChild: YogaNode): void {
   if (!child.visible || child.layoutPositioning === 'ABSOLUTE') return
 
+  // Preserve imported geometry until the user explicitly changes its parent's
+  // flow. After that, stale FIG positions must not override the chosen layout.
+  const parentLayoutEdited = child.parentId
+    ? graph.getNode(child.parentId)?.source.editedFields.includes('layoutMode') === true
+    : false
   const preservesImportedFrameGeometry =
+    !parentLayoutEdited &&
     child.source.format === 'fig' &&
     frameSourceIsFig(graph, child.parentId) &&
     (child.type === 'FRAME' || child.type === 'LINE')
@@ -114,10 +128,22 @@ function updateChildFromYoga(graph: LayoutGraph, child: SceneNode, yogaChild: Yo
     preservesImportedFrameGeometry ||
     (child.source.format === 'fig' && Math.abs(child.rotation) > 0.001)
   graph.updateNode(child.id, {
-    x: computedChildPosition(child, yogaChild, 'x', preservesImportedPosition),
-    y: computedChildPosition(child, yogaChild, 'y', preservesImportedPosition),
-    width: computedChildSize(child, yogaChild, 'width', preservesImportedFrameGeometry),
-    height: computedChildSize(child, yogaChild, 'height', preservesImportedFrameGeometry)
+    x: computedChildPosition(child, yogaChild, 'x', preservesImportedPosition, parentLayoutEdited),
+    y: computedChildPosition(child, yogaChild, 'y', preservesImportedPosition, parentLayoutEdited),
+    width: computedChildSize(
+      child,
+      yogaChild,
+      'width',
+      preservesImportedFrameGeometry,
+      parentLayoutEdited
+    ),
+    height: computedChildSize(
+      child,
+      yogaChild,
+      'height',
+      preservesImportedFrameGeometry,
+      parentLayoutEdited
+    )
   })
 }
 
@@ -180,6 +206,10 @@ export function* applyYogaLayoutSteps(
 
     if (!child.visible) continue
     if (preservesImportedInstanceInternals(child)) continue
+    if (resolveTabsContent(graph, child) || resolveModalContent(graph, child)) {
+      yield* computeLayoutSteps(graph, child.id)
+      continue
+    }
 
     if (usesDetachedDerivedLayout(child)) {
       yield* computeLayoutSteps(graph, child.id)

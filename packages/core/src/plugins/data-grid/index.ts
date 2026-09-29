@@ -13,7 +13,7 @@ import {
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from '#core/plugins/module-frame'
-import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from '#core/plugins/types'
+import type { ModuleDefinition, ModuleResolution } from '#core/plugins/types'
 
 import {
   exportDataGridCsvWithContract,
@@ -22,6 +22,7 @@ import {
   type DataGridCsvImportResult
 } from './csv'
 import { DEFAULT_DATA_GRID_COLUMNS, DEFAULT_DATA_GRID_ROWS } from './defaults'
+import { dataGridModuleFields } from './fields'
 
 export type { DataGridCsvExportResult, DataGridCsvImportResult } from './csv'
 
@@ -103,6 +104,7 @@ export interface DataGridModuleConfigV1 extends JSONObject {
   showHeader: boolean
   stickyHeader: boolean
   striped: boolean
+  showCsvTools: boolean
   borderColor: string
   headerBackground: string
   textColor: string
@@ -123,6 +125,7 @@ export const DATA_GRID_MODULE_DEFAULT_CONFIG: Readonly<DataGridModuleConfigV1> =
   showHeader: true,
   stickyHeader: true,
   striped: true,
+  showCsvTools: false,
   borderColor: '#D1D5DB',
   headerBackground: '#F3F4F6',
   textColor: '#111827',
@@ -146,6 +149,7 @@ const CONFIG_KEYS = new Set([
   'accentColor',
   'fontSize'
 ])
+const CONFIG_KEYS_WITH_CSV_TOOLS = new Set([...CONFIG_KEYS, 'showCsvTools'])
 const DATA_KEYS = new Set(['columns', 'rows'])
 const COLUMN_KEYS = new Set(['id', 'label', 'type', 'align', 'width', 'sortable', 'filterable'])
 const ROW_KEYS = new Set(['id', 'cells'])
@@ -401,12 +405,24 @@ function parseFilters(value: unknown, columns: DataGridColumnV1[]): DataGridFilt
   })
 }
 
+function parseShowCsvTools(config: JSONObject): boolean {
+  if (!Object.hasOwn(config, 'showCsvTools')) return false
+  if (typeof config.showCsvTools !== 'boolean') {
+    throw new TypeError('data grid showCsvTools must be a boolean')
+  }
+  return config.showCsvTools
+}
+
 function parseDataGridConfig(value: unknown): ParseResult {
-  if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
+  if (
+    !isPlainJSONObject(value) ||
+    (!hasExactPluginKeys(value, CONFIG_KEYS) &&
+      !hasExactPluginKeys(value, CONFIG_KEYS_WITH_CSV_TOOLS))
+  ) {
     return {
       ok: false,
       reason:
-        'data grid config must contain exactly data, initialSort, filters, pageSize, selectionMode, density, showHeader, stickyHeader, striped, borderColor, headerBackground, textColor, accentColor, and fontSize'
+        'data grid config must contain exactly data, initialSort, filters, pageSize, selectionMode, density, showHeader, stickyHeader, striped, borderColor, headerBackground, textColor, accentColor, and fontSize, with optional showCsvTools'
     }
   }
   try {
@@ -452,6 +468,7 @@ function parseDataGridConfig(value: unknown): ParseResult {
       showHeader: value.showHeader as boolean,
       stickyHeader: value.stickyHeader as boolean,
       striped: value.striped as boolean,
+      showCsvTools: parseShowCsvTools(value),
       borderColor: canonicalColor(value.borderColor, 'data grid borderColor'),
       headerBackground: canonicalColor(value.headerBackground, 'data grid headerBackground'),
       textColor: canonicalColor(value.textColor, 'data grid textColor'),
@@ -514,47 +531,6 @@ export function resolveDataGridModule(value: unknown): ModuleResolution<DataGrid
   }
 }
 
-const DATA_GRID_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
-  { path: ['data'], kind: 'json', label: 'Grid data' },
-  { path: ['initialSort'], kind: 'json', label: 'Initial sort' },
-  { path: ['filters'], kind: 'json', label: 'Initial filters' },
-  {
-    path: ['pageSize'],
-    kind: 'number',
-    label: 'Page size',
-    min: DATA_GRID_MODULE_LIMITS.pageSizeMin,
-    max: DATA_GRID_MODULE_LIMITS.pageSizeMax,
-    step: 1
-  },
-  {
-    path: ['selectionMode'],
-    kind: 'select',
-    label: 'Selection mode',
-    options: ['none', 'single', 'multiple']
-  },
-  {
-    path: ['density'],
-    kind: 'select',
-    label: 'Density',
-    options: ['compact', 'comfortable']
-  },
-  { path: ['showHeader'], kind: 'boolean', label: 'Show header' },
-  { path: ['stickyHeader'], kind: 'boolean', label: 'Sticky header' },
-  { path: ['striped'], kind: 'boolean', label: 'Striped rows' },
-  { path: ['borderColor'], kind: 'color', label: 'Border color' },
-  { path: ['headerBackground'], kind: 'color', label: 'Header background' },
-  { path: ['textColor'], kind: 'color', label: 'Text color' },
-  { path: ['accentColor'], kind: 'color', label: 'Accent color' },
-  {
-    path: ['fontSize'],
-    kind: 'number',
-    label: 'Font size',
-    min: DATA_GRID_MODULE_LIMITS.fontSizeMin,
-    max: DATA_GRID_MODULE_LIMITS.fontSizeMax,
-    step: 1
-  }
-])
-
 export const DATA_GRID_MODULE_DEFINITION: ModuleDefinition<DataGridModuleConfigV1> = Object.freeze({
   pluginId: DATA_GRID_PLUGIN_ID,
   moduleType: DATA_GRID_MODULE_TYPE,
@@ -563,7 +539,7 @@ export const DATA_GRID_MODULE_DEFINITION: ModuleDefinition<DataGridModuleConfigV
   configVersion: DATA_GRID_MODULE_CONFIG_VERSION,
   defaultSize: DATA_GRID_MODULE_DEFAULT_SIZE,
   defaultConfig: structuredClone(DATA_GRID_MODULE_DEFAULT_CONFIG),
-  fields: DATA_GRID_MODULE_FIELDS,
+  fields: dataGridModuleFields(DATA_GRID_MODULE_LIMITS),
   createInstance: createDataGridModuleInstance,
   createFrameOverrides: createDataGridModuleFrameOverrides,
   resolve: resolveDataGridModule

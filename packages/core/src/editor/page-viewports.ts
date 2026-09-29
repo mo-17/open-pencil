@@ -16,9 +16,9 @@ export function createPageViewportStore(ctx: EditorContext) {
 
   function saveCurrentPageViewport() {
     pageViewports.set(ctx.state.currentPageId, {
-      panX: ctx.state.panX,
-      panY: ctx.state.panY,
-      zoom: ctx.state.zoom,
+      panX: ctx.state.contentEdit?.previousViewport.panX ?? ctx.state.panX,
+      panY: ctx.state.contentEdit?.previousViewport.panY ?? ctx.state.panY,
+      zoom: ctx.state.contentEdit?.previousViewport.zoom ?? ctx.state.zoom,
       pageColor: { ...ctx.state.pageColor }
     })
   }

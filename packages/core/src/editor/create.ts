@@ -26,6 +26,7 @@ import { createClipboardActions } from './clipboard'
 import { createColorSpaceActions } from './color-space'
 import { createComponentSyncScheduler } from './component-sync'
 import { createComponentActions } from './components'
+import { createContentEditActions } from './content-edit'
 import { createGraphEventSubscription } from './graph-events'
 import { createGraphReadActions } from './graph-reads'
 import { createGuideActions } from './guides'
@@ -37,6 +38,7 @@ import { createSelectionActions } from './selection'
 import { createShapeActions } from './shapes'
 import { createDefaultEditorState } from './state'
 import { createStructureActions } from './structure'
+import { createTabsPreviewActions } from './tabs-preview'
 import { createTextActions } from './text'
 import type {
   EditorContext,
@@ -278,16 +280,26 @@ export function createEditor(options?: EditorOptions) {
 
   // Assemble domain modules
   const viewport = createViewportActions(ctx)
+  const shapes = createShapeActions(ctx)
+  const text = createTextActions(ctx)
+  const contentEdit = createContentEditActions(ctx, (preserveDrafts) => {
+    if (!preserveDrafts) _textEditor?.stop()
+    text.commitTextEdit()
+    if (preserveDrafts && state.penState) shapes.penCommit(false)
+    shapes.penCancel()
+  })
+  const tabsPreview = createTabsPreviewActions(ctx, (preserveDrafts) => {
+    if (!preserveDrafts) _textEditor?.stop()
+    text.commitTextEdit()
+  })
   const selection = createSelectionActions(ctx)
   const { cancelPendingSwitch, ...pages } = createPageActions(ctx)
   const guides = createGuideActions(ctx)
-  const shapes = createShapeActions(ctx)
   const structure = createStructureActions(ctx)
   const components = createComponentActions(ctx)
   const clipboard = createClipboardActions(ctx)
   const colorSpace = createColorSpaceActions(ctx)
   const undoActions = createUndoActions(ctx)
-  const text = createTextActions(ctx)
   const nodes = createNodeActions(ctx)
   const motionPreview = createMotionPreviewActions(ctx)
   const clearPreviewForTarget = (nodeId: string) => {
@@ -412,6 +424,8 @@ export function createEditor(options?: EditorOptions) {
 
     // Selection
     ...selection,
+    ...contentEdit,
+    ...tabsPreview,
 
     // Pages
     ...pages,

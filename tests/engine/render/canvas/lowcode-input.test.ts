@@ -6,14 +6,18 @@ import { SceneGraph, type NodeType, type SceneNode } from '@open-pencil/scene-gr
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 
 import { initCanvasKit } from '#cli/headless'
+import { controlDesignDependencies } from '#core/canvas/control-state'
 import { lowcodeTextProjection, renderTextInputContent } from '#core/canvas/lowcode'
 import { SkiaRenderer } from '#core/canvas/renderer'
 import { renderShapeUncached } from '#core/canvas/scene'
 import { fontManager } from '#core/text/fonts'
+import { collectGraphFontRequirements } from '#core/text/requirements'
+import { missingGlyphCharacters } from '#core/text/resolver'
 
 import { expectDefined } from '#tests/helpers/assert'
 import { repoPath } from '#tests/helpers/paths'
 
+import { carouselPixelHarness } from './carousel/helpers'
 import { createMockCanvas, createMockRenderer, mockCalls } from './effects/helpers'
 
 type TextInputType = Extract<NodeType, 'INPUT' | 'TEXTAREA'>
@@ -227,33 +231,257 @@ describe('lowcode INPUT and TEXTAREA canvas text', () => {
     renderer.fontsLoaded = true
     renderer.fontProvider = fontProvider
 
-    const canvas = surface.getCanvas()
-    canvas.clear(ck.WHITE)
-    renderer.renderShape(canvas, node, graph)
-    surface.flush()
+    try {
+      const canvas = surface.getCanvas()
+      canvas.clear(ck.WHITE)
+      renderer.renderShape(canvas, node, graph)
+      surface.flush()
 
-    const image = surface.makeImageSnapshot()
-    const pixels = image.readPixels(0, 0, {
+      const image = surface.makeImageSnapshot()
+      const pixels = image.readPixels(0, 0, {
+        width: 220,
+        height: 44,
+        colorType: ck.ColorType.RGBA_8888,
+        alphaType: ck.AlphaType.Unpremul,
+        colorSpace: ck.ColorSpace.SRGB
+      })
+      image.delete()
+
+      let blueTextPixels = 0
+      for (let y = 2; y < 42; y++) {
+        for (let x = 2; x < 218; x++) {
+          const offset = (y * 220 + x) * 4
+          const red = pixels[offset]
+          const green = pixels[offset + 1]
+          const blue = pixels[offset + 2]
+          if (blue > green + 8 && green > red + 8) blueTextPixels++
+        }
+      }
+
+      expect(blueTextPixels).toBeGreaterThan(40)
+    } finally {
+      renderer.destroy()
+    }
+  })
+})
+
+test('INPUT and TEXTAREA canvas use the bound initial value rather than a stale literal', () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  graph.updateNode(page.id, {
+    state: [{ id: 'name', name: 'name', type: 'string', defaultValue: '张三' }]
+  })
+  for (const type of ['INPUT', 'TEXTAREA'] as const) {
+    const node = graph.createNode(type, page.id, {
+      interactiveProps: { value: 'Stale literal', placeholder: 'Name' },
+      bindings: { value: { kind: 'ref', stateId: 'name' } }
+    })
+    const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
+    renderShapeUncached(renderer, createMockCanvas() as Canvas, node, graph)
+    expect(mockCalls(renderer.renderText as ReturnType<typeof mock>)[0]?.[1]).toMatchObject({
+      text: '张三'
+    })
+  }
+})
+
+test('input bindings honor empty/document defaults, unknown scopes and font preflight', () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  const node = graph.createNode('INPUT', page.id, {
+    interactiveProps: { value: 'Stale', placeholder: '请输入' },
+    bindings: { value: { kind: 'docState', docStateName: 'name' } }
+  })
+  const labels = () => {
+    const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
+    renderShapeUncached(renderer, createMockCanvas() as Canvas, node, graph)
+    return mockCalls(renderer.renderText as ReturnType<typeof mock>).map((call) => call[1])
+  }
+  for (const defaultValue of ['中文姓名', '']) {
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [{ id: 'name', name: 'name', type: 'string', defaultValue }]
+    })
+    expect(labels()).toMatchObject([{ text: defaultValue || '请输入' }])
+    expect(collectGraphFontRequirements(graph, [node.id]).scripts).toContain('cjk-sc')
+  }
+  expect(controlDesignDependencies(graph, node)).toContain(graph.rootId)
+  graph.updateNode(node.id, { bindings: { value: { kind: 'ref', stateId: 'missing' } } })
+  expect(labels()).toMatchObject([{ text: '请输入' }])
+  graph.updateNode(page.id, {
+    state: [{ id: 'missing', name: 'missing', type: 'string', defaultValue: 'Wrong scope' }]
+  })
+  const component = graph.createNode('COMPONENT', page.id)
+  graph.reparentNode(node.id, component.id)
+  expect(labels()).toMatchObject([{ text: '请输入' }])
+  expect(node.interactiveProps.value).toBe('Stale')
+})
+
+test('password values are masked, single-line inputs remove line breaks, and textareas retain them', () => {
+  const source = textInput('INPUT', {
+    interactiveProps: { inputType: 'password', value: 'Ab中文\n123' }
+  })
+  expect(lowcodeTextProjection(source)?.node).toMatchObject({ text: '•••••••', maxLines: 1 })
+  expect(
+    lowcodeTextProjection({ ...source, interactiveProps: { value: 'one\r\ntwo' } })?.node.text
+  ).toBe('onetwo')
+  expect(
+    lowcodeTextProjection({ ...source, type: 'TEXTAREA', interactiveProps: { value: 'one\ntwo' } })
+      ?.node.text
+  ).toBe('one\ntwo')
+  expect(
+    lowcodeTextProjection({
+      ...source,
+      interactiveProps: { inputType: 'number', value: 'invalid', placeholder: 'Amount' }
+    })?.node.text
+  ).toBe('Amount')
+  expect(
+    lowcodeTextProjection({
+      ...source,
+      interactiveProps: { inputType: 'password', value: '', placeholder: 'Password' }
+    })?.node.text
+  ).toBe('Password')
+})
+
+test('disabled text dims, readonly text remains legible, and zero content area never draws', () => {
+  const node = textInput('INPUT', {
+    interactiveProps: { value: 'Text', textColor: '#336699', disabled: true }
+  })
+  const renderer = createMockRenderer()
+  const canvas = createMockCanvas()
+  renderTextInputContent(renderer, canvas as Canvas, node)
+  expect(renderer.color4f).toHaveBeenCalledWith(0.2, 0.4, 0.6, 0.45)
+  renderTextInputContent(renderer, canvas as Canvas, {
+    ...node,
+    interactiveProps: { value: 'Text', textColor: '#336699', readOnly: true }
+  })
+  expect(renderer.color4f).toHaveBeenCalledWith(0.2, 0.4, 0.6, 1)
+  const count = mockCalls(renderer.renderText as ReturnType<typeof mock>).length
+  renderTextInputContent(renderer, canvas as Canvas, {
+    ...node,
+    width: 10,
+    paddingLeft: 12,
+    paddingRight: 12
+  })
+  expect(mockCalls(renderer.renderText as ReturnType<typeof mock>)).toHaveLength(count)
+})
+
+test.each([false, true])(
+  'bound Chinese input content invalidates cached effects (raster=%s)',
+  async (raster) => {
+    const h = await carouselPixelHarness()
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const node = graph.createNode('INPUT', page.id, {
       width: 220,
       height: 44,
-      colorType: ck.ColorType.RGBA_8888,
-      alphaType: ck.AlphaType.Unpremul,
-      colorSpace: ck.ColorSpace.SRGB
+      fontSize: 16,
+      bindings: { value: { kind: 'ref', stateId: 'name' } },
+      interactiveProps: { placeholder: 'Name' },
+      effects: [
+        {
+          type: 'DROP_SHADOW',
+          color: { r: 0, g: 0, b: 0, a: 0.2 },
+          offset: { x: 1, y: 1 },
+          radius: 2,
+          spread: 0,
+          visible: true
+        }
+      ]
     })
-    image.delete()
-    surface.delete()
-
-    let blueTextPixels = 0
-    for (let y = 2; y < 42; y++) {
-      for (let x = 2; x < 218; x++) {
-        const offset = (y * 220 + x) * 4
-        const red = pixels[offset]
-        const green = pixels[offset + 1]
-        const blue = pixels[offset + 2]
-        if (blue > green + 8 && green > red + 8) blueTextPixels++
-      }
+    const set = (defaultValue: string) =>
+      graph.updateNode(page.id, {
+        state: [{ id: 'name', name: 'name', type: 'string', defaultValue }]
+      })
+    const paint = () => {
+      h.canvas.clear(h.ck.WHITE)
+      h.renderer.renderShape(h.canvas, node, graph)
+      return h.pixels()
     }
+    h.renderer.renderingSceneBacking = raster
+    try {
+      set('初始姓名')
+      const first = paint()
+      expect(
+        raster
+          ? h.renderer.effectRasterCache.has(node.id)
+          : h.renderer.nodePictureCache.has(node.id)
+      ).toBe(true)
+      set('更新后的名字')
+      h.renderer.invalidateNodePicture(page.id)
+      const updated = paint()
+      expect(updated).not.toEqual(first)
+      const label = collectGraphFontRequirements(graph, [node.id]).nodes[0]
+      const paragraph = h.renderer.buildParagraph(label, h.ck.BLACK)
+      try {
+        expect(missingGlyphCharacters(label.text, paragraph.getShapedLines())).toEqual([])
+      } finally {
+        paragraph.delete()
+      }
+      await h.save(`input-bound-${raster}`)
+    } finally {
+      h.dispose()
+    }
+  }
+)
 
-    expect(blueTextPixels).toBeGreaterThan(40)
+test('real single-line and multiline input pixels stay within small authored content bounds', async () => {
+  const h = await carouselPixelHarness()
+  const graph = new SceneGraph()
+  const node = graph.createNode('INPUT', graph.getPages()[0].id, {
+    x: 20,
+    y: 20,
+    width: 100,
+    height: 28,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingTop: 4,
+    paddingBottom: 4,
+    strokes: [],
+    fontSize: 16,
+    interactiveProps: { value: 'First\nSecond 中文 Third' }
   })
+  try {
+    const projection = expectDefined(lowcodeTextProjection(node), 'input text projection')
+    const paragraph = h.renderer.buildParagraph(projection.node, h.ck.BLACK)
+    try {
+      expect(paragraph.getNumberOfLines()).toBe(1)
+    } finally {
+      paragraph.delete()
+    }
+    for (const type of ['INPUT', 'TEXTAREA'] as const) {
+      graph.updateNode(node.id, { type })
+      h.renderer.invalidateNodePicture(node.id)
+      h.canvas.clear(h.ck.WHITE)
+      h.renderer.renderNode(h.canvas, graph, node.id, {})
+      const pixels = h.pixels()
+      for (const [x, y] of [
+        [30, 19],
+        [30, 48],
+        [19, 30],
+        [120, 30]
+      ])
+        expect(h.rgb(pixels, x, y)).toEqual([255, 255, 255])
+      await h.save(`bounded-${type.toLowerCase()}`)
+    }
+  } finally {
+    h.dispose()
+  }
+})
+
+test('number bindings are supported by INPUT but do not invent a valid TEXTAREA binding', () => {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  graph.updateNode(page.id, {
+    state: [{ id: 'amount', name: 'amount', type: 'number', defaultValue: 42 }]
+  })
+  for (const type of ['INPUT', 'TEXTAREA'] as const) {
+    const node = graph.createNode(type, page.id, {
+      interactiveProps: { placeholder: 'Not configured', value: 'Stale' },
+      bindings: { value: { kind: 'ref', stateId: 'amount' } }
+    })
+    const renderer = createMockRenderer({ renderEffects: mock(() => undefined) })
+    renderShapeUncached(renderer, createMockCanvas() as Canvas, node, graph)
+    expect(mockCalls(renderer.renderText as ReturnType<typeof mock>)[0]?.[1]).toMatchObject({
+      text: type === 'INPUT' ? '42' : 'Not configured'
+    })
+  }
 })

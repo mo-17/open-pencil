@@ -15,6 +15,11 @@ import {
 import { useNodePreview } from '#vue/controls/node-preview/use'
 import { useSelectedNodeState } from '#vue/editor/selection-state/nodes'
 import type { useI18n } from '#vue/i18n'
+import {
+  axisSizingForParent,
+  axisSizingPatchForParent,
+  sizingOptionsForParent
+} from '#vue/shared/layout/sizing'
 
 export type AlignCell = { primary: LayoutAlign; counter: LayoutCounterAlign }
 
@@ -174,6 +179,7 @@ export function createPaddingActions(editor: Editor, node: ComputedRef<SceneNode
   }
 }
 
+/** Legacy directionless API. Editor workflows use axisSizingPatchForParent with the real parent. */
 export function axisSizingPatchForNode(
   node: SceneNode,
   axis: LayoutAxis,
@@ -205,8 +211,7 @@ export function axisSizingPatchForNode(
 
 export function createLayoutActions({
   editor,
-  node,
-  isInAutoLayout
+  node
 }: {
   editor: Editor
   node: ComputedRef<SceneNode | null>
@@ -253,22 +258,17 @@ export function createLayoutActions({
   function setAxisSizing(axis: LayoutAxis, sizing: LayoutSizing) {
     const n = node.value
     if (!n) return
-    editor.updateNodeWithUndo(
-      n.id,
-      axisSizingPatchForNode(n, axis, sizing, isInAutoLayout.value),
-      `Set ${axis} sizing`
-    )
+    const edit = editor.beginNodePreview(`Set ${axis} sizing`)
+    const parent = n.parentId ? (editor.getNode(n.parentId) ?? null) : null
+    edit.update(n.id, axisSizingPatchForParent(n, axis, sizing, parent))
+    edit.commit()
   }
 
   function updateAxisSize(axis: LayoutAxis, value: number) {
     const n = node.value
     if (!n) return
-    const sizing =
-      axis === 'width'
-        ? widthSizingForNode(n, isInAutoLayout.value)
-        : heightSizingForNode(n, isInAutoLayout.value)
-    const sizingPatch =
-      sizing !== 'FIXED' ? axisSizingPatchForNode(n, axis, 'FIXED', isInAutoLayout.value) : {}
+    const parent = n.parentId ? (editor.getNode(n.parentId) ?? null) : null
+    const sizingPatch = axisSizingPatchForParent(n, axis, 'FIXED', parent)
     preview.update([n.id], { ...sizingPatch, [axis]: value }, `Change ${axis}`)
   }
 
@@ -326,6 +326,7 @@ export function canNodeHugContents(node: SceneNode | null): boolean {
   return !!node && node.childIds.length > 0
 }
 
+/** Retained for legacy boolean callers; effective modes require axisSizingForParent. */
 export function widthSizingForNode(node: SceneNode | null, isInAutoLayout: boolean): LayoutSizing {
   if (!node) return 'FIXED'
   if (node.layoutMode === 'HORIZONTAL') return node.primaryAxisSizing
@@ -335,6 +336,7 @@ export function widthSizingForNode(node: SceneNode | null, isInAutoLayout: boole
   return 'FIXED'
 }
 
+/** Retained for legacy boolean callers; effective modes require axisSizingForParent. */
 export function heightSizingForNode(node: SceneNode | null, isInAutoLayout: boolean): LayoutSizing {
   if (!node) return 'FIXED'
   if (node.layoutMode === 'VERTICAL') return node.primaryAxisSizing
@@ -363,11 +365,18 @@ export function createLayoutSizingState(
   node: ComputedRef<SceneNode | null>,
   panels: ValueRef<LayoutPanelStrings>
 ) {
+  const parent = computed(() => {
+    const n = node.value
+    return n?.parentId ? (editor.getNode(n.parentId) ?? null) : null
+  })
   const isInAutoLayout = computed(() => {
     const n = node.value
-    if (!n?.parentId) return false
-    const parent = editor.getNode(n.parentId)
-    return parent ? isAutoLayoutMode(parent.layoutMode) : false
+    return (
+      !!n &&
+      n.layoutPositioning !== 'ABSOLUTE' &&
+      !!parent.value &&
+      isAutoLayoutMode(parent.value.layoutMode)
+    )
   })
 
   const isGrid = computed(() => node.value?.layoutMode === 'GRID')
@@ -375,15 +384,15 @@ export function createLayoutSizingState(
     () => node.value?.layoutMode === 'HORIZONTAL' || node.value?.layoutMode === 'VERTICAL'
   )
   const widthSizing = computed<LayoutSizing>(() =>
-    widthSizingForNode(node.value, isInAutoLayout.value)
+    axisSizingForParent(node.value, 'width', parent.value)
   )
 
   const heightSizing = computed<LayoutSizing>(() =>
-    heightSizingForNode(node.value, isInAutoLayout.value)
+    axisSizingForParent(node.value, 'height', parent.value)
   )
 
   function sizingOptions() {
-    return sizingOptionsForNode(node.value, isInAutoLayout.value, {
+    return sizingOptionsForParent(node.value, parent.value, {
       FIXED: panels.value.sizingFixed,
       HUG: panels.value.sizingHug,
       FILL: panels.value.sizingFill

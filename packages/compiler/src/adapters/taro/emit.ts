@@ -1,3 +1,4 @@
+import { omitUnsupportedMultipleSelect } from '#compiler/adapters/native-controls'
 import type {
   ComponentDef,
   IRAttrValue,
@@ -420,6 +421,7 @@ function emitComponentRef(node: IRComponentRef, ctx: EmitContext, level: number)
 }
 
 function emitElement(node: IRElement, ctx: EmitContext, level: number): string {
+  if (omitUnsupportedMultipleSelect(node, 'taro', ctx.warn)) return `${'  '.repeat(level)}<View />`
   const pad = '  '.repeat(level)
   const tour = emitTaroVRTourElement(node, ctx, level)
   auditElement(node, ctx, tour !== null)

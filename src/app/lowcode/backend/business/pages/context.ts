@@ -9,8 +9,25 @@ import {
   type BusinessTemplateEditor
 } from '../types'
 import { businessPageCopy } from './copy'
+import { foodOrderingStyle } from './food-ordering/style'
 import { createBusinessLayout } from './layout'
 import type { BusinessModulePageOptions, BusinessNavigationEntry } from './module-types'
+import { businessPresentation } from './presentation/profiles'
+import { businessPresentationStyle } from './presentation/style'
+
+function pageCopy(definition: BusinessTemplateDefinition, locale: string) {
+  const chinese = locale.toLowerCase().startsWith('zh')
+  return {
+    ...businessPageCopy(locale),
+    ...(definition.id === 'food-ordering'
+      ? {
+          select: chinese ? '查看详情' : 'View details',
+          search: chinese ? '搜索菜品' : 'Search dishes',
+          apply: chinese ? '更新列表' : 'Update list'
+        }
+      : {})
+  }
+}
 
 export function createBusinessPageContext(
   editor: BusinessTemplateEditor,
@@ -78,6 +95,7 @@ export function createBusinessPageContext(
       navigationByPath.set(entry.path, { ...entry, key: entry.path })
   }
   const navigation = [...navigationByPath.values()]
+  const presentation = businessPresentation(definition.id)
   const pageIds: string[] = []
   return {
     editor,
@@ -86,11 +104,17 @@ export function createBusinessPageContext(
     locale,
     paths,
     navigation,
+    presentation,
     pageIds,
     doc,
     documentStates,
-    layout: createBusinessLayout(editor),
-    copy: businessPageCopy(locale),
+    layout: createBusinessLayout(
+      editor,
+      definition.id === 'food-ordering'
+        ? foodOrderingStyle
+        : businessPresentationStyle(presentation)
+    ),
+    copy: pageCopy(definition, locale),
     label: (value: Parameters<typeof businessLabel>[0]) => businessLabel(value, locale)
   }
 }

@@ -1,7 +1,20 @@
 import type { NodeType } from '@open-pencil/scene-graph'
 
 import { parseBackendResourceDataSource } from './backend/client-bindings/shape'
+import { validateColorInputProps } from './color-input'
+import {
+  LOWCODE_AUTOCOMPLETE_VALUES,
+  LOWCODE_INPUT_MODES,
+  LOWCODE_INPUT_TYPES,
+  isLowcodeControlChoice,
+  isLowcodeNumberValue,
+  parseLowcodeSelectOption
+} from './control-props'
+import { validateDateTimeInputProps } from './date-time-input'
 import { validateDatePickerProps } from './datepicker-props'
+import { validateInputAffordances } from './input-affordances'
+import { validateInputSuggestions } from './input-suggestions'
+import { validateTimeInputProps } from './time-input'
 import { validateExpression } from './validate'
 
 export type InteractivePropsIssueSeverity = 'error' | 'warning'
@@ -52,43 +65,102 @@ export function normalizeLowcodeTextColor(value: unknown, fallback: string): str
   return isLowcodeTextColor(value) ? value.toUpperCase() : fallback
 }
 
-type KnownInteractivePropKind = 'string' | 'boolean' | 'string-array' | 'color' | 'text-input-type'
+type KnownInteractivePropKind =
+  | 'string'
+  | 'boolean'
+  | 'string-array'
+  | 'color'
+  | 'text-input-type'
+  | 'input-mode'
+  | 'autocomplete'
+  | 'accessible-name'
+  | 'number'
+  | 'length'
+  | 'step'
+  | 'select-options'
+
+const CONTROL_FIELDS = { disabled: 'boolean', ariaLabel: 'accessible-name' } as const
+const TEXT_FIELDS = {
+  ...CONTROL_FIELDS,
+  readOnly: 'boolean',
+  inputMode: 'input-mode',
+  autoComplete: 'autocomplete',
+  minLength: 'length',
+  maxLength: 'length'
+} as const
 
 const KNOWN_INTERACTIVE_PROP_TYPES: Partial<
   Record<NodeType, Readonly<Record<string, KnownInteractivePropKind>>>
 > = {
-  BUTTON: { text: 'string', textColor: 'color' },
+  BUTTON: { ...CONTROL_FIELDS, text: 'string', textColor: 'color' },
   INPUT: {
+    ...TEXT_FIELDS,
     placeholder: 'string',
     value: 'string',
     inputType: 'text-input-type',
     textColor: 'color',
-    placeholderColor: 'color'
+    placeholderColor: 'color',
+    min: 'number',
+    max: 'number',
+    step: 'step'
   },
   TEXTAREA: {
+    ...TEXT_FIELDS,
     placeholder: 'string',
     value: 'string',
     textColor: 'color',
     placeholderColor: 'color'
   },
-  SELECT: { options: 'string-array', value: 'string' },
-  RADIO: { options: 'string-array', value: 'string', groupName: 'string' },
-  CHECKBOX: { options: 'string-array', checked: 'boolean' },
-  SWITCH: { checked: 'boolean' },
-  DATEPICKER: { value: 'string', min: 'string', max: 'string' }
+  SELECT: {
+    ...CONTROL_FIELDS,
+    options: 'select-options',
+    multiple: 'boolean',
+    value: 'string',
+    placeholder: 'string',
+    allowClear: 'boolean',
+    showSearch: 'boolean',
+    virtual: 'boolean',
+    textColor: 'color',
+    placeholderColor: 'color',
+    autoComplete: 'autocomplete'
+  },
+  RADIO: { ...CONTROL_FIELDS, options: 'string-array', value: 'string', groupName: 'string' },
+  CHECKBOX: { ...CONTROL_FIELDS, options: 'string-array', checked: 'boolean' },
+  SWITCH: { ...CONTROL_FIELDS, checked: 'boolean' },
+  DATEPICKER: {
+    ...CONTROL_FIELDS,
+    readOnly: 'boolean',
+    value: 'string',
+    min: 'string',
+    max: 'string'
+  }
 }
 
 function error(code: string, path: string, reason: string): InteractivePropsIssue {
   return { code, path, severity: 'error', reason }
 }
 
+function isNativeNumberStep(value: unknown): boolean {
+  return value === 'any' || (typeof value === 'number' && Number.isFinite(value) && value > 0)
+}
+
 function matchesKnownPropKind(value: unknown, kind: KnownInteractivePropKind): boolean {
   if (kind === 'string') return typeof value === 'string'
   if (kind === 'boolean') return typeof value === 'boolean'
   if (kind === 'color') return isLowcodeTextColor(value)
-  if (kind === 'text-input-type') {
-    return value === 'text' || value === 'email' || value === 'password'
-  }
+  if (kind === 'text-input-type') return isLowcodeControlChoice(LOWCODE_INPUT_TYPES, value)
+  if (kind === 'input-mode') return isLowcodeControlChoice(LOWCODE_INPUT_MODES, value)
+  if (kind === 'autocomplete') return isLowcodeControlChoice(LOWCODE_AUTOCOMPLETE_VALUES, value)
+  if (kind === 'accessible-name')
+    return typeof value === 'string' && value.trim().length > 0 && value.length <= 320
+  if (kind === 'number') return typeof value === 'number' && Number.isFinite(value)
+  if (kind === 'length')
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+  if (kind === 'step') return isNativeNumberStep(value)
+  if (kind === 'select-options')
+    return (
+      Array.isArray(value) && value.every((entry) => parseLowcodeSelectOption(entry) !== undefined)
+    )
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
 }
 
@@ -101,12 +173,21 @@ function knownPropTypeIssues(
 
   const issues: InteractivePropsIssue[] = []
   for (const [key, kind] of Object.entries(schema)) {
-    if (!(key in value) || matchesKnownPropKind(value[key], kind)) continue
+    if (
+      nodeType === 'INPUT' &&
+      (value.inputType === 'time' || value.inputType === 'datetime-local') &&
+      ['value', 'min', 'max', 'step'].includes(key)
+    )
+      continue
+    const expectedKind =
+      nodeType === 'SELECT' && key === 'value' && value.multiple === true ? 'string-array' : kind
+    if (!(key in value) || matchesKnownPropKind(value[key], expectedKind)) continue
     const path = `interactiveProps.${key}`
-    let expected = `a ${kind}`
-    if (kind === 'string-array') expected = 'an array of strings'
+    let expected = `a ${expectedKind}`
+    if (expectedKind === 'string-array') expected = 'an array of strings'
     if (kind === 'color') expected = 'a #RRGGBB color'
-    if (kind === 'text-input-type') expected = 'text, email, or password'
+    if (kind === 'text-input-type') expected = LOWCODE_INPUT_TYPES.join(', ')
+    if (kind === 'select-options') expected = 'an array of strings or label/value options'
     issues.push(error(`interactive-props-${key}-type`, path, `${path} must be ${expected}`))
   }
   return issues
@@ -400,6 +481,26 @@ function datePickerIssues(ip: Record<string, unknown>): InteractivePropsIssue[] 
   })
 }
 
+function inputTemporalIssues(value: Record<string, unknown>) {
+  if (value.inputType === 'color') return validateColorInputProps(value)
+  if (value.inputType === 'datetime-local') return validateDateTimeInputProps(value)
+  if (value.inputType === 'time') return validateTimeInputProps(value)
+  return []
+}
+
+function inputPropertyIssues(value: Record<string, unknown>): InteractivePropsIssue[] {
+  const issues = validateInputSuggestions(value)
+  const temporalIssues = inputTemporalIssues(value)
+  for (const issue of [...temporalIssues, ...validateInputAffordances(value)])
+    issues.push({
+      code: issue.code,
+      path: `interactiveProps.${issue.key}`,
+      severity: issue.severity,
+      reason: issue.reason
+    })
+  return issues
+}
+
 /**
  * Validate the shared lowcode `interactiveProps` boundary without rejecting
  * unknown top-level keys. The compiler intentionally supports extensible
@@ -442,14 +543,38 @@ export function validateInteractiveProps(
       )
   }
   issues.push(...knownPropTypeIssues(nodeType, value))
+  if (
+    nodeType === 'INPUT' &&
+    value.inputType === 'number' &&
+    typeof value.value === 'string' &&
+    !isLowcodeNumberValue(value.value)
+  ) {
+    issues.push(
+      error(
+        'interactive-props-value-number',
+        'interactiveProps.value',
+        'Number input defaults must be empty or a finite decimal number string'
+      )
+    )
+  }
   if ('validation' in value) {
     const issue = fieldValidationIssue(value.validation)
     if (issue) issues.push(issue)
+  }
+  if ('endValidation' in value) {
+    const issue = fieldValidationIssue(value.endValidation)
+    if (issue)
+      issues.push({
+        ...issue,
+        path: issue.path.replace('validation', 'endValidation'),
+        reason: issue.reason.replaceAll('validation', 'endValidation')
+      })
   }
   if ('validationSummary' in value) {
     const issue = validationSummaryIssue(value.validationSummary)
     if (issue) issues.push(issue)
   }
+  if (nodeType === 'INPUT') issues.push(...inputPropertyIssues(value))
   if (nodeType === 'DATEPICKER') issues.push(...datePickerIssues(value))
   return issues
 }

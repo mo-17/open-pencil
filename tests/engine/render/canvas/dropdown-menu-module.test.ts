@@ -19,6 +19,7 @@ import {
 } from '#core/plugins/dropdown-menu'
 
 import { createMockCanvas, createMockRenderer, type MockCanvasPath } from './effects/helpers'
+import { moduleTextRenderer, paragraphText } from './modules/helpers'
 
 const CONFIG: DropdownMenuModuleConfig = {
   triggerLabel: 'Open menu',
@@ -59,11 +60,7 @@ function dropdownMenuFrame(
 }
 
 function rendererWithFont() {
-  const labelFont = {
-    getGlyphIDs: (value: string) => Array.from(value, (_, index) => index),
-    getGlyphWidths: (glyphs: number[]) => glyphs.map(() => 6)
-  }
-  return createMockRenderer({ zoom: 1, labelFont: labelFont as never })
+  return moduleTextRenderer()
 }
 
 function chevronPath(canvas: ReturnType<typeof createMockCanvas>): MockCanvasPath | undefined {
@@ -72,7 +69,7 @@ function chevronPath(canvas: ReturnType<typeof createMockCanvas>): MockCanvasPat
 
 describe('dropdown menu module canvas preview', () => {
   test('draws an offline inert centered trigger and vector chevron', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     const renderer = rendererWithFont()
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.reject(new Error('Canvas preview must stay offline')))
@@ -89,9 +86,9 @@ describe('dropdown menu module canvas preview', () => {
     expect(canvas.save).toHaveBeenCalledTimes(1)
     expect(canvas.clipRRect).toHaveBeenCalledTimes(1)
     expect(canvas.drawRect).toHaveBeenCalledTimes(1)
-    expect(canvas.drawText.mock.calls.map((call) => call.slice(0, 3))).toEqual([
-      ['Open menu', 52, 28]
-    ])
+    expect(
+      canvas.drawParagraph.mock.calls.map((call) => [paragraphText(call[0]), call[1], call[2]])
+    ).toEqual([['Open menu', 52, 28]])
     expect(canvas.drawPath).toHaveBeenCalledTimes(1)
     const path = chevronPath(canvas)
     const builder = path?.sourceBuilder
@@ -132,7 +129,7 @@ describe('dropdown menu module canvas preview', () => {
     ] as const
 
     for (const visibility of cases) {
-      const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+      const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
       expect(
         renderDropdownMenuModulePreview(
           rendererWithFont(),
@@ -149,7 +146,7 @@ describe('dropdown menu module canvas preview', () => {
         visibility.name
       ).toBe(true)
       expect(
-        canvas.drawText.mock.calls.map((call) => call.slice(0, 3)),
+        canvas.drawParagraph.mock.calls.map((call) => [paragraphText(call[0]), call[1], call[2]]),
         visibility.name
       ).toEqual(visibility.expectedText)
       if (visibility.expectedChevronLeft === null) {
@@ -163,7 +160,7 @@ describe('dropdown menu module canvas preview', () => {
   })
 
   test('uses configured trigger colors without drawing popup items', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     const renderer = rendererWithFont()
     expect(
       renderDropdownMenuModulePreview(
@@ -178,11 +175,13 @@ describe('dropdown menu module canvas preview', () => {
 
     expect(renderer.color4f.mock.calls[0]).toEqual([16 / 255, 32 / 255, 48 / 255, 1])
     expect(renderer.color4f).toHaveBeenLastCalledWith(160 / 255, 176 / 255, 192 / 255, 1)
-    expect(canvas.drawText.mock.calls.flat()).not.toContain('Dashboard')
+    expect(
+      canvas.drawParagraph.mock.calls.flatMap((call) => [paragraphText(call[0]), call[1], call[2]])
+    ).not.toContain('Dashboard')
   })
 
   test('lets authored children replace the intrinsic trigger preview', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     expect(
       renderDropdownMenuModulePreview(
         rendererWithFont(),
@@ -192,12 +191,12 @@ describe('dropdown menu module canvas preview', () => {
     ).toBe(true)
     expect(canvas.save).not.toHaveBeenCalled()
     expect(canvas.drawRect).not.toHaveBeenCalled()
-    expect(canvas.drawText).not.toHaveBeenCalled()
+    expect(canvas.drawParagraph).not.toHaveBeenCalled()
     expect(canvas.drawPath).not.toHaveBeenCalled()
   })
 
   test('keeps fontless, tiny, and empty frames inert and balanced', () => {
-    const fontlessCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const fontlessCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     expect(
       renderDropdownMenuModulePreview(
         createMockRenderer({ zoom: 1, labelFont: null }),
@@ -205,11 +204,11 @@ describe('dropdown menu module canvas preview', () => {
         dropdownMenuFrame()
       )
     ).toBe(true)
-    expect(fontlessCanvas.drawText).not.toHaveBeenCalled()
+    expect(fontlessCanvas.drawParagraph).not.toHaveBeenCalled()
     expect(fontlessCanvas.drawPath).toHaveBeenCalledTimes(1)
     expect(fontlessCanvas.restore).toHaveBeenCalledTimes(1)
 
-    const tinyCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const tinyCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     expect(
       renderDropdownMenuModulePreview(
         rendererWithFont(),
@@ -218,11 +217,11 @@ describe('dropdown menu module canvas preview', () => {
       )
     ).toBe(true)
     expect(tinyCanvas.drawRect).toHaveBeenCalledTimes(1)
-    expect(tinyCanvas.drawText).not.toHaveBeenCalled()
+    expect(tinyCanvas.drawParagraph).not.toHaveBeenCalled()
     expect(tinyCanvas.drawPath).not.toHaveBeenCalled()
     expect(tinyCanvas.restore).toHaveBeenCalledTimes(1)
 
-    const emptyCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const emptyCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     expect(
       renderDropdownMenuModulePreview(
         rendererWithFont(),
@@ -235,7 +234,7 @@ describe('dropdown menu module canvas preview', () => {
   })
 
   test('ellipsizes a long trigger label while keeping the group centered', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     const triggerLabel = 'Open the complete dropdown menu for this workspace'
     expect(
       renderDropdownMenuModulePreview(
@@ -245,7 +244,8 @@ describe('dropdown menu module canvas preview', () => {
       )
     ).toBe(true)
 
-    const [text, x, y] = canvas.drawText.mock.calls[0]
+    const [paragraph, x, y] = canvas.drawParagraph.mock.calls[0]
+    const text = paragraphText(paragraph)
     expect(text).not.toBe(triggerLabel)
     expect(text).toEndWith('…')
     expect(y).toBe(28)
@@ -259,7 +259,7 @@ describe('dropdown menu module canvas preview', () => {
   test('restores the Canvas save stack when label drawing fails', () => {
     const canvas = {
       ...createMockCanvas(),
-      drawText: mock(() => {
+      drawParagraph: mock(() => {
         throw new Error('draw failed')
       })
     }
@@ -273,21 +273,23 @@ describe('dropdown menu module canvas preview', () => {
     expect(
       BUILTIN_MODULE_CANVAS_ADAPTERS.get(DROPDOWN_MENU_PLUGIN_ID, DROPDOWN_MENU_MODULE_TYPE)
     ).toBeDefined()
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     const renderer = rendererWithFont()
     renderShapeUncached(renderer, canvas as Canvas, dropdownMenuFrame(), new SceneGraph())
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
-    expect(canvas.drawText.mock.calls.map((call) => call[0])).toEqual(['Open menu'])
+    expect(canvas.drawParagraph.mock.calls.map((call) => paragraphText(call[0]))).toEqual([
+      'Open menu'
+    ])
 
     const invalid = dropdownMenuFrame({
       interactiveProps: {
         module: { ...createDropdownMenuModuleInstance(), pluginId: 'unknown.plugin' }
       }
     })
-    const invalidCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const invalidCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     expect(renderDropdownMenuModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
     expect(invalidCanvas.drawRect).not.toHaveBeenCalled()
-    expect(invalidCanvas.drawText).not.toHaveBeenCalled()
+    expect(invalidCanvas.drawParagraph).not.toHaveBeenCalled()
     expect(invalidCanvas.drawPath).not.toHaveBeenCalled()
 
     const invalidVersion = dropdownMenuFrame({

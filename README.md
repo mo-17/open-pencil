@@ -31,6 +31,7 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
 - **Fully programmable** — headless CLI, XPath queries, Figma Plugin API via `eval`, MCP server for AI agents, and desktop agent integrations for Claude Code, Codex, and Gemini CLI
 - **Lint, convert, and extract tokens** — inspect documents, lint naming/layout/accessibility, convert between supported formats, analyze colors/typography/spacing/clusters, and extract design tokens
 - **Components and variants** — create reusable components, group variants into component sets, insert local assets as instances, and switch variants from the inspector
+- **Design workbench** — find components and enabled plugin modules by source, category or description, keep favorites, and insert them into the canvas. Import optional variable presets without changing existing designs; review a generated design brief and add it to AI input when ready. See [components](packages/docs/user-guide/components.md), [variables](packages/docs/user-guide/variables.md) and [AI handoff](packages/docs/programmable/ai-chat.md#review-a-design-brief).
 - **Image vectorization** — convert image layers into editable vector layers with Recraft or fal.ai
 - **Adaptive canvas performance** — use Automatic mode or choose resource saving, balanced, or
   smoothness-first rendering. Ordinary pointer, drag, pan, and zoom interaction stays on the native
@@ -54,10 +55,11 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   Desktop review supports React and Vue, with the chosen framework retained through staging
   Apply, capability verification, and migration export. Compilation and preview never modify a
   remote database or deploy a server runtime
-- **Business application templates** — create and combine CRM, commerce, booking, publishing and collaboration workflows. Add procurement/inventory, two-stage enterprise approvals, fixed-question surveys, text courses with instructor grading, moderated communities, asset custody, quote/contract fulfillment, or recruitment and employee transitions; export editable React/Vue pages and a NestJS backend. See [the template guide](packages/docs/development/backend-business-templates.md).
+- **Business application templates** — create and combine CRM, commerce, booking, publishing and collaboration workflows. Add procurement/inventory, two-stage enterprise approvals, fixed-question surveys, text courses with instructor grading, moderated communities, asset custody, quote/contract fulfillment, or recruitment and employee transitions; export editable React/Vue pages and a NestJS backend. All 25 starters include compact web layouts with mobile navigation, single-column cards and grouped form fields. The embedded preview offers phone, landscape, tablet and desktop sizes without resetting the current page. See [the template guide](packages/docs/development/backend-business-templates.md).
 - **Optional Prisma CRM export** — install the experimental NestJS + Prisma 8 CRM provider, select it for an existing CRM application, and export React/Vue sources with Prisma customer queries and retained `pg` transactions. The default NestJS provider and its desktop preview remain separate. See [the CRM guide](packages/docs/development/backend-nestjs.md#experimental-prisma-8-crm-export).
-- **Built-in plugin marketplace** — manage 71 reviewed plugins with 76 module, command, exporter,
-  connector, storage-provider, and backend-provider contributions: 20 editable modules, 13 bounded commands, 13
+- **Editable dialog content** — create a custom Modal body, edit its original nodes on a focused canvas, and return to a trigger that shows its configured icon and label. Content creation and edits support Undo.
+- **Built-in plugin marketplace** — manage 92 reviewed plugins with 97 module, command, exporter,
+  connector, storage-provider, and backend-provider contributions: 39 editable modules, 13 bounded commands, 13
   source/data exporters, 22 host-reviewed connectors, three Backend Providers (Supabase, NestJS and experimental Prisma CRM), and four default-enabled Google Drive,
   OneDrive, Aliyun Drive, and Baidu Netdisk Storage declarations. The opt-in additions include 17 read-only external-service connectors, local
   Application Security Readiness, and safe deployment-plan reviews for Vercel and Cloudflare Pages
@@ -276,6 +278,23 @@ npm install
 npm run dev
 ```
 
+Single-select controls show labels and placeholders on the canvas, expose option ordering and default selection in the inspector, and support optional clearing through the menu in React/Vue exports. Plain native selectors keep their arrow inset from the right edge and reserve space for the label. Optional inspector switches add in-menu label search and bounded virtual scrolling for large option lists in React/Vue. [Configure Select behavior](packages/docs/user-guide/lowcode-apps.md#configure-field-behavior).
+
+Autocomplete adds editable local suggestions while preserving free text and string form bindings. Time picker adds native time input with bounds and step in seconds; both can be configured in the visual inspector and exported to React/Vue. Date-time picker uses a local date/time string without timezone conversion. Number inputs offer native, custom or hidden step controls, with custom controls at the end or on both sides. Password inputs can opt into a local reveal button; the template starts empty and never echoes the password as feedback. These are INPUT variants, not additional plugins, and retain the existing React/Vue binding and FORM paths.
+
+Color picker adds a hexadecimal color field with string bindings, a native picker, and read-only/disabled states. The opt-in Descriptions module displays editable label/value rows with responsive columns, horizontal or vertical labels, borders and density controls. Both include canvas previews and React/Vue output; Descriptions displays authored text without fetching business data.
+
+The opt-in Org Chart module adds editable names, descriptions and parent relationships, horizontal/vertical layouts and local branch folding. Canvas and React/Vue share the hierarchy layout; the example uses authored local data without connecting an organization directory.
+
+The opt-in Walktour module guides users through named child layers with editable steps, target highlights, previous/next controls and an explicit finish or skip. It starts only when clicked and never submits forms or executes business actions. Targets stay inside the module; unavailable targets produce a centered explanation.
+
+For smaller reusable starting points, open **Assets → Component templates**. The library includes
+54 basic components and 8 common compositions: a search toolbar, validated form, settings card,
+dialog form, tabbed details, filterable table, FAQ and paginated list. Insert editable layers, applicable bindings, and independent
+local example state in one undo step; search or favorite recipes to reuse them. These React/Vue
+examples do not connect a backend, persist submitted data, or change application settings. See
+[component template usage and boundaries](packages/docs/user-guide/lowcode-apps.md#insert-a-basic-component-or-common-composition).
+
 For Vue delivery, install and enable the opt-in **Vue Exporter** plugin, then choose
 **File → Export → Vue Project…** (or call its dynamically registered MCP export tool). It emits a
 source-only Vite + Vue 3 + TypeScript + Tailwind project; multiple pages use Vue Router v4, route and
@@ -337,7 +356,8 @@ service; local certificates can be selected from a file picker. The trusted CA p
 on this computer for the matching issuer and JWKS endpoint. Opening the design on another computer
 requires selecting its local certificate; paths are not included in design files or collaboration.
 
-Both modes show the live frontend inside the preview panel, including authenticated CRUD. Sign-in opens the system browser for OIDC authorization; return to the
+Both modes show the live frontend inside the preview panel, including authenticated CRUD and
+responsive preview sizes. Sign-in opens the system browser for OIDC authorization; return to the
 embedded page after authorization to continue. You can also open a separate browser preview, with
 its own login session. Component edits update through HMR. Register the exact preview callback for `http://127.0.0.1:5181` with your
 identity service. Managed preview uses separate API/database ports `3012`/`55443`. Tokens and
@@ -381,7 +401,9 @@ Creators manage drafts, publication and channel schedules; marking a channel liv
 listing state. Connect real uploads, stream ingest, transcoding, CDN and paid access after export.
 
 For restaurant ordering, choose **Restaurant ordering** for menu management, a persistent cart,
-dine-in or pickup checkout, private order history and a kitchen workspace. Prices use integer
+dine-in or pickup checkout, private order history and a kitchen workspace. New starters include
+editable warm-toned pages, dish-photo cards, grouped navigation and compact forms. Customers see
+prices in yuan; the backend and menu-management inputs use integer
 CNY cents and are rechecked in the checkout transaction. Staff need the `food-manager` role;
 the kitchen list has a manual refresh button. Connect payment, printing and delivery after export.
 
@@ -488,10 +510,11 @@ stable/beta catalogs, searchable listings, immutable artifact coordinates, an ap
 checkpoint, and an optional executable-runtime index. Explicit update review, verified rollback,
 digest pins, cache status, and portable document dependency locks remain enforced.
 After enablement, insert module plugins from the canvas toolbar, run Clipboard Toolkit commands from
-the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 71
-reviewed built-ins expose 76 contributions: twenty-one modules (including Map, Rich Text, sandboxed
+the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 92
+reviewed built-ins expose 97 contributions: forty-two modules (including Map, Rich Text, sandboxed
 HTML, Video, Lottie, Carousel, Advanced Data Grid, Tabs, Accordion, QR/Code 128, Markdown, Code
-Block, PDF Viewer, Audio Player, Modal, Dropdown Menu, and Upload Button), 13 commands (four Clipboard Toolkit
+Block, PDF Viewer, Audio Player, Modal, Dropdown Menu, Upload Button, Slider/Range, Rating,
+Stepper, Breadcrumb, Alert, Progress, Chip, Avatar, Badge, Timeline, Tooltip, Skeleton, Empty State, Date Range, Tree, Popover, Descriptions, Pagination, Org Chart, Walktour and Cascader), 13 commands (four Clipboard Toolkit
 actions, Compiler Preview Popout, AI Popout, Static Accessibility Audit, Static Design System Audit,
 Application Security Readiness, safe Vercel and Cloudflare Pages deployment-plan reviews, and the
 Supabase Backend Provider audit/plan reviews), 13 exporters (Tauri React, Expo React Native, Flutter,
@@ -501,8 +524,23 @@ Aliyun Drive, and Baidu Netdisk, and three data-only Backend Provider declaratio
 integrations plus opt-in read-only Neon, Sentry, HubSpot, Apollo, PostHog, Asana, Zotero, HeyGen,
 Linear, OpenAI, Box, Slack, Google Calendar, SharePoint, Outlook Email, Outlook Calendar, and
 Microsoft Teams integrations.
+Alert supports semantic tones and dismissal; Chip supports selection and removal. These actions are instance-local. Linear/circular Progress displays configured values or an indeterminate state, without claiming to track a real task.
+Avatar supports local image fills with readable fallback text; Badge adds a count or decorative dot to a text host; Timeline offers editable ordered events with time text and status. All three include visual properties and React/Vue exports.
+The Assets library includes 54 basic component templates and 8 editable compositions. Install and
+enable Slider, Rating, Stepper, Breadcrumb, Alert, Progress, Chip, Avatar, Badge or Timeline in **Settings → Plugins**, then insert them from
+**Assets → Component templates** or the module menu. Slider/Range, Rating, Date Range and Cascader support optional page/document state and FORM bindings. Stepper changes only its local current step. State bindings do not configure a backend workflow. Breadcrumb uses validated links and a non-clickable current
+item. Canvas displays authored initial settings; React and Vue provide the interactive behavior.
+These modules retain normal `.fig` FRAME geometry and metadata, without promising that their
+interactions run in Figma. Vue currently implements 35 of the 42 bundled modules; unsupported
+modules remain static with explicit export warnings. Accordion
+offers visual initial-open and section-order controls, wrapped canvas content, and React/Vue
+keyboard-accessible output; the FAQ composition reuses this existing module. See the
+[component template guide](packages/docs/user-guide/lowcode-apps.md#insert-a-basic-component-or-common-composition) for local
+state, insertion and export boundaries.
 Upload Button only selects and validates files in the generated browser runtime; it does not upload,
-persist, or report transfer progress. Use the existing low-code `INPUT` plus Supabase upload workflow
+persist, or report transfer progress. React and Vue preserve the previous selection after cancellation
+or rejected files, deduplicate matching file metadata, and support clearing even when the list is hidden.
+Use the existing low-code `INPUT` plus Supabase upload workflow
 when an application needs server storage. Dynamic MCP can add the declarative Upload Button module
 only while its plugin is installed and enabled; file names and file bytes never enter MCP arguments
 or results.

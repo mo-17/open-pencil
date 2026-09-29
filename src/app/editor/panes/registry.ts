@@ -16,7 +16,7 @@ import type { CanvasSplitNode, SplitDirection } from './split-tree'
 import { cloneCanvasPaneState, createCanvasPaneState } from './state'
 import type { CanvasPaneState } from './state'
 
-export function createCanvasPaneRegistry(state: EditorState) {
+export function createCanvasPaneRegistry(state: EditorState, beforeViewChange?: () => void) {
   let nextPaneIndex = 1
   let nextSplitIndex = 1
   const initialPane = createCanvasPaneState(`pane-${nextPaneIndex++}`, state)
@@ -40,7 +40,7 @@ export function createCanvasPaneRegistry(state: EditorState) {
   function getPaneRenderState(paneId: string): EditorState {
     const pane = getPane(paneId)
     if (!pane || paneId === activePaneId.value) return state
-    return { ...state, ...pane } satisfies EditorState
+    return { ...state, ...pane, contentEdit: null } satisfies EditorState
   }
 
   function getActivePane(): CanvasPaneState {
@@ -51,6 +51,7 @@ export function createCanvasPaneRegistry(state: EditorState) {
     if (paneId === activePaneId.value) return true
     const pane = getPane(paneId)
     if (!containsPane(splitTree.value, paneId) || !pane) return false
+    beforeViewChange?.()
     const current = getPane(activePaneId.value)
     if (current) syncPaneFromState(current)
     syncStateFromPane(pane)
@@ -62,6 +63,7 @@ export function createCanvasPaneRegistry(state: EditorState) {
   function splitPane(paneId: string, direction: SplitDirection) {
     const source = getPane(paneId)
     if (!source || visiblePaneCount.value >= MAX_VISIBLE_CANVAS_PANES) return null
+    beforeViewChange?.()
     if (paneId === activePaneId.value) syncPaneFromState(source)
     const pane = cloneCanvasPaneState(`pane-${nextPaneIndex++}`, source)
     splitTree.value = splitPaneNode(
@@ -81,6 +83,7 @@ export function createCanvasPaneRegistry(state: EditorState) {
     if (visiblePaneCount.value <= 1 || !getPane(paneId)) return false
     const nextTree = closePaneNode(splitTree.value, paneId)
     if (!nextTree) return false
+    if (activePaneId.value === paneId) beforeViewChange?.()
     panes.value.delete(paneId)
     splitTree.value = nextTree
     if (activePaneId.value === paneId) {

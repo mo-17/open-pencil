@@ -30,6 +30,8 @@ export interface ModalModuleConfigV1 extends JSONObject {
   showTriggerLabel: boolean
   title: string
   content: string
+  /** Optional unique direct-child layer name; absent keeps the legacy text body. */
+  contentChildName?: string
   showCloseButton: boolean
   closeOnBackdrop: boolean
   closeOnEscape: boolean
@@ -53,6 +55,7 @@ export const MODAL_MODULE_DEFAULT_CONFIG: Readonly<ModalModuleConfigV1> = Object
   showTriggerLabel: true,
   title: 'Modal title',
   content: 'Add supporting content for this dialog.',
+  contentChildName: '',
   showCloseButton: true,
   closeOnBackdrop: true,
   closeOnEscape: true,
@@ -88,12 +91,15 @@ const CONFIG_KEYS = new Set([
   'accentColor',
   'overlayOpacity'
 ])
+const CONTENT_CONFIG_KEYS = new Set([...CONFIG_KEYS, 'contentChildName'])
 const FOOTER_ALIGNMENTS = new Set<ModalFooterAlignV1>(['left', 'center', 'right'])
 
 function parseModalConfig(value: unknown) {
   return moduleContract.parseExactModuleConfig(
     value,
-    CONFIG_KEYS,
+    value !== null && typeof value === 'object' && Object.hasOwn(value, 'contentChildName')
+      ? CONTENT_CONFIG_KEYS
+      : CONFIG_KEYS,
     'modal config must contain exactly triggerLabel, showTriggerIcon, showTriggerLabel, title, content, showCloseButton, closeOnBackdrop, closeOnEscape, showCancelButton, cancelLabel, showConfirmButton, confirmLabel, panelWidth, footerAlign, panelBackground, textColor, accentColor, and overlayOpacity',
     (source): ModalModuleConfigV1 => {
       const config: ModalModuleConfigV1 = {
@@ -186,6 +192,14 @@ function parseModalConfig(value: unknown) {
           MODAL_MODULE_LIMITS.overlayOpacityMax
         )
       }
+      if (Object.hasOwn(source, 'contentChildName')) {
+        config.contentChildName = pluginAdapter.parseBoundedPluginText(
+          source.contentChildName,
+          'modal config contentChildName',
+          0,
+          120
+        )
+      }
       if (
         !config.showCloseButton &&
         !config.closeOnBackdrop &&
@@ -233,6 +247,12 @@ export function resolveModalModule(value: unknown): ModuleResolution<ModalModule
 }
 
 const MODAL_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
+  {
+    path: ['contentChildName'],
+    kind: 'text',
+    label: 'Content child layer',
+    i18nLabelKey: 'lowcodeModuleFieldModalContentChild'
+  },
   {
     path: ['triggerLabel'],
     kind: 'text',

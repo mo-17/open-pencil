@@ -8,6 +8,7 @@ import {
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
+import { TABLE_HEADER_FIELD, TABLE_APPEARANCE_FIELDS } from './table-fields'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
 export const TABLE_PLUGIN_ID = 'open-pencil.table'
@@ -236,36 +237,8 @@ const TABLE_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
     label: 'Table data',
     i18nLabelKey: 'lowcodeModuleFieldTableData'
   },
-  {
-    path: ['showHeader'],
-    kind: 'boolean',
-    label: 'Show header',
-    i18nLabelKey: 'lowcodeModuleFieldShowHeader'
-  },
-  {
-    path: ['striped'],
-    kind: 'boolean',
-    label: 'Striped rows',
-    i18nLabelKey: 'lowcodeModuleFieldStriped'
-  },
-  {
-    path: ['borderColor'],
-    kind: 'color',
-    label: 'Border color',
-    i18nLabelKey: 'lowcodeModuleFieldBorderColor'
-  },
-  {
-    path: ['headerBackground'],
-    kind: 'color',
-    label: 'Header background',
-    i18nLabelKey: 'lowcodeModuleFieldHeaderBackground'
-  },
-  {
-    path: ['textColor'],
-    kind: 'color',
-    label: 'Text color',
-    i18nLabelKey: 'lowcodeModuleFieldTextColor'
-  },
+  TABLE_HEADER_FIELD,
+  ...TABLE_APPEARANCE_FIELDS,
   {
     path: ['fontSize'],
     kind: 'number',

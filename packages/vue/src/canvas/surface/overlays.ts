@@ -18,6 +18,7 @@ export function createRulerVisibility(options?: RulerVisibilityOptions) {
 
 export function createCanvasHitTests(editor: Editor, getRenderer: () => SkiaRenderer | null) {
   function hitTestSectionTitle(canvasX: number, canvasY: number) {
+    if (editor.state.contentEdit) return null
     return (
       getRenderer()?.hitTestSectionTitle(
         editor.graph,
@@ -29,6 +30,7 @@ export function createCanvasHitTests(editor: Editor, getRenderer: () => SkiaRend
   }
 
   function hitTestComponentLabel(canvasX: number, canvasY: number) {
+    if (editor.state.contentEdit) return null
     return (
       getRenderer()?.hitTestComponentLabel(
         editor.graph,
@@ -40,6 +42,7 @@ export function createCanvasHitTests(editor: Editor, getRenderer: () => SkiaRend
   }
 
   function hitTestFrameTitle(canvasX: number, canvasY: number) {
+    if (editor.state.contentEdit) return null
     return (
       getRenderer()?.hitTestFrameTitle(
         editor.graph,

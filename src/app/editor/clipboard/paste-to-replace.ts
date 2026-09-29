@@ -1,4 +1,5 @@
 import type { EditorStore } from '@/app/editor/active-store'
+import { captureClipboardContext } from '@/app/editor/clipboard/context'
 import { isDesignClipboardHTML } from '@/app/editor/clipboard/html'
 import { getInMemoryClipboardHTML } from '@/app/editor/clipboard/memory'
 import { pasteClipboardHTML } from '@/app/editor/clipboard/paste'
@@ -41,15 +42,21 @@ async function readClipboardHTML() {
   return memory && isDesignClipboardHTML(memory) ? memory : null
 }
 
-export async function pasteClipboardToReplace(store: EditorStore) {
+export async function pasteClipboardToReplace(
+  store: EditorStore,
+  readHTML: () => Promise<string | null> = readClipboardHTML
+) {
+  const isCurrent = captureClipboardContext(store)
   try {
-    const html = await readClipboardHTML()
+    const html = await readHTML()
+    if (!isCurrent()) return
     if (!html) {
       toast.error(notificationMessages.get().clipboardMissingDesignData)
       return
     }
     await pasteClipboardHTML(store, html, undefined, { replaceSelection: true })
   } catch (error) {
+    if (!isCurrent()) return
     console.warn('Paste to replace failed', error)
     toast.error(notificationMessages.get().clipboardAccessBlocked)
   }

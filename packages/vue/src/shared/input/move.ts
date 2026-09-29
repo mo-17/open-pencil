@@ -10,7 +10,8 @@ import { findMoveDropTarget, reparentOutsideNodes } from '#vue/shared/input/drop
 export { duplicateAndDrag } from '#vue/shared/input/duplicate-drag'
 import { AUTO_LAYOUT_BREAK_THRESHOLD } from '@open-pencil/core/constants'
 import type { Editor } from '@open-pencil/core/editor'
-import { isAutoLayoutMode } from '@open-pencil/scene-graph'
+import { createSceneGeometry } from '@open-pencil/core/geometry'
+import { isAutoLayoutMode, type Vector } from '@open-pencil/scene-graph'
 
 import { applyMoveSnap } from '#vue/shared/input/move-snap'
 import type { DragMove } from '#vue/shared/input/types'
@@ -58,6 +59,34 @@ function isPastDragStartThreshold(d: DragMove, sx: number, sy: number) {
   return isPastPointerDragThreshold(d.startScreenX, d.startScreenY, sx, sy)
 }
 
+/** Content roots are top-level for containment, but retain their real ancestor transforms. */
+function contentMoveDelta(editor: Editor, parentId: string, dx: number, dy: number): Vector {
+  if (!editor.state.contentEdit) return { x: dx, y: dy }
+  const parent = editor.graph.getNode(parentId)
+  if (!parent) return { x: dx, y: dy }
+  const geometry = createSceneGeometry(editor.graph)
+  const origin = geometry.toLocal(parent, { x: 0, y: 0 })
+  const endpoint = geometry.toLocal(parent, { x: dx, y: dy })
+  return origin && endpoint
+    ? { x: endpoint.x - origin.x, y: endpoint.y - origin.y }
+    : { x: dx, y: dy }
+}
+
+function previewAutoLayoutMove(d: DragMove, dx: number, dy: number, editor: Editor) {
+  let firstApplied: { dx: number; dy: number } | null = null
+  for (const [id, orig] of d.originals) {
+    const local = contentMoveDelta(editor, orig.parentId, dx, dy)
+    const previewX = editor.state.contentEdit ? orig.x + local.x : Math.round(orig.x + dx)
+    const previewY = editor.state.contentEdit ? orig.y + local.y : Math.round(orig.y + dy)
+    firstApplied ??= { dx: previewX - orig.x, dy: previewY - orig.y }
+    editor.graph.updateNodePositionPreview(id, previewX, previewY)
+  }
+  if (firstApplied) {
+    d.appliedDx = editor.state.contentEdit ? dx : firstApplied.dx
+    d.appliedDy = editor.state.contentEdit ? dy : firstApplied.dy
+  }
+}
+
 export function handleMoveMove(
   d: DragMove,
   cx: number,
@@ -93,31 +122,29 @@ export function handleMoveMove(
   if (dropParent && isAutoLayoutMode(dropParent.layoutMode)) {
     computeAutoLayoutIndicatorForFrame(dropParent, cx, cy, editor)
     editor.setDropTarget(dropParent.id)
-    let firstApplied: { dx: number; dy: number } | null = null
-    for (const [id, orig] of d.originals) {
-      const previewX = Math.round(orig.x + dx)
-      const previewY = Math.round(orig.y + dy)
-      firstApplied ??= { dx: previewX - orig.x, dy: previewY - orig.y }
-      editor.graph.updateNodePositionPreview(id, previewX, previewY)
-    }
-    if (firstApplied) {
-      d.appliedDx = firstApplied.dx
-      d.appliedDy = firstApplied.dy
-    }
+    previewAutoLayoutMove(d, dx, dy, editor)
     editor.requestRepaint()
     return
   }
 
   editor.setLayoutInsertIndicator(null)
 
-  const snapped = applyMoveSnap(d, dx, dy, editor, disableSnapping)
+  const snapped = applyMoveSnap(
+    d,
+    dx,
+    dy,
+    editor,
+    disableSnapping,
+    editor.state.contentEdit ? 'world' : 'parent'
+  )
   dx = snapped.dx
   dy = snapped.dy
   d.appliedDx = dx
   d.appliedDy = dy
 
   for (const [id, orig] of d.originals) {
-    editor.graph.updateNodePositionPreview(id, orig.x + dx, orig.y + dy)
+    const local = contentMoveDelta(editor, orig.parentId, dx, dy)
+    editor.graph.updateNodePositionPreview(id, orig.x + local.x, orig.y + local.y)
   }
 
   editor.setDropTarget(dropTarget?.id ?? null)
@@ -143,7 +170,8 @@ function restoreOriginalPositions(d: DragMove, editor: Editor) {
 
 function applyFinalPositions(d: DragMove, editor: Editor) {
   for (const [id, orig] of d.originals) {
-    editor.updateNode(id, { x: orig.x + d.appliedDx, y: orig.y + d.appliedDy })
+    const local = contentMoveDelta(editor, orig.parentId, d.appliedDx, d.appliedDy)
+    editor.updateNode(id, { x: orig.x + local.x, y: orig.y + local.y })
   }
 }
 

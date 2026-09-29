@@ -1,15 +1,23 @@
-import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import { readModuleInstance, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import type { LayerNode, LayerRow, LayerSelectionMode } from '#vue/primitives/LayerTree/context'
 
+function layerModuleIdentity(node: SceneNode): LayerNode['moduleIdentity'] {
+  if (node.type !== 'FRAME') return undefined
+  const module = readModuleInstance(node.interactiveProps?.module)
+  return module ? { pluginId: module.pluginId, moduleType: module.moduleType } : undefined
+}
+
 function nodeToLayerNode(node: SceneNode): LayerNode {
+  const moduleIdentity = layerModuleIdentity(node)
   return {
     id: node.id,
     name: node.name,
     type: node.type,
     layoutMode: node.layoutMode,
     visible: node.visible,
-    locked: node.locked
+    locked: node.locked,
+    ...(moduleIdentity ? { moduleIdentity } : {})
   }
 }
 
@@ -52,18 +60,27 @@ export function indexLayerNodes(items: readonly LayerNode[]): Map<string, LayerN
 }
 
 export function patchLayerNode(target: LayerNode, source: SceneNode): boolean {
+  const moduleIdentity = layerModuleIdentity(source)
+  const moduleIdentityChanged =
+    target.moduleIdentity?.pluginId !== moduleIdentity?.pluginId ||
+    target.moduleIdentity?.moduleType !== moduleIdentity?.moduleType
   const changed =
     target.name !== source.name ||
     target.type !== source.type ||
     target.layoutMode !== source.layoutMode ||
     target.visible !== source.visible ||
-    target.locked !== source.locked
+    target.locked !== source.locked ||
+    moduleIdentityChanged
   if (!changed) return false
   target.name = source.name
   target.type = source.type
   target.layoutMode = source.layoutMode
   target.visible = source.visible
   target.locked = source.locked
+  if (moduleIdentityChanged) {
+    if (moduleIdentity) target.moduleIdentity = moduleIdentity
+    else delete target.moduleIdentity
+  }
   return true
 }
 

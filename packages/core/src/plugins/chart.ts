@@ -1,3 +1,4 @@
+import { mergePluginConfigWithDefaults } from '@open-pencil/plugin-contracts/adapter-helpers'
 import {
   isPlainJSONObject,
   validateModuleInstance,
@@ -20,7 +21,7 @@ export const CHART_MODULE_LIMITS = Object.freeze({
 })
 
 export interface ChartModuleConfigV1 extends JSONObject {
-  chartType: 'bar'
+  chartType: 'bar' | 'line' | 'area' | 'pie' | 'donut'
   values: number[]
   labels: string[]
   color: string
@@ -34,6 +35,7 @@ const DEFAULT_LABELS: string[] = ['Q1', 'Q2', 'Q3', 'Q4']
 Object.freeze(DEFAULT_VALUES)
 Object.freeze(DEFAULT_LABELS)
 const CHART_CONFIG_KEYS = new Set(['chartType', 'values', 'labels', 'color', 'showValues'])
+const CHART_TYPES = new Set(['bar', 'line', 'area', 'pie', 'donut'])
 const HEX_COLOR = /^#[\dA-F]{6}$/i
 
 export const CHART_MODULE_DEFAULT_CONFIG: Readonly<ChartModuleConfigV1> = Object.freeze({
@@ -85,8 +87,8 @@ function parseChartConfig(value: unknown): ParseResult {
       reason: 'chart config must contain exactly chartType, values, labels, color, and showValues'
     }
   }
-  if (value.chartType !== 'bar') {
-    return { ok: false, reason: 'chart config chartType must be bar' }
+  if (typeof value.chartType !== 'string' || !CHART_TYPES.has(value.chartType)) {
+    return { ok: false, reason: 'chart config chartType must be bar, line, area, pie, or donut' }
   }
   const values = parseValues(value.values)
   if (!values) {
@@ -94,6 +96,12 @@ function parseChartConfig(value: unknown): ParseResult {
       ok: false,
       reason: `chart config values must contain 1 to ${CHART_MODULE_LIMITS.values} bounded numbers`
     }
+  }
+  if (
+    (value.chartType === 'pie' || value.chartType === 'donut') &&
+    values.some((entry) => entry < 0)
+  ) {
+    return { ok: false, reason: 'pie and donut values must be non-negative' }
   }
   const labels = parseLabels(value.labels, values.length)
   if (!labels) {
@@ -111,7 +119,7 @@ function parseChartConfig(value: unknown): ParseResult {
   return {
     ok: true,
     config: {
-      chartType: 'bar',
+      chartType: value.chartType as ChartModuleConfigV1['chartType'],
       values,
       labels,
       color: value.color.toUpperCase(),
@@ -120,14 +128,10 @@ function parseChartConfig(value: unknown): ParseResult {
   }
 }
 
-function mergeWithDefaults(config: unknown): unknown {
-  if (config === undefined) return structuredClone(CHART_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJSONObject(config)) return config
-  return { ...structuredClone(CHART_MODULE_DEFAULT_CONFIG), ...config }
-}
-
 export function createChartModuleInstance(config?: unknown): ModuleInstanceV1 {
-  const parsed = parseChartConfig(mergeWithDefaults(config))
+  const parsed = parseChartConfig(
+    mergePluginConfigWithDefaults(CHART_MODULE_DEFAULT_CONFIG, config)
+  )
   if (!parsed.ok) throw new TypeError(parsed.reason)
   return {
     version: 1,
@@ -172,7 +176,7 @@ const CHART_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
     kind: 'select',
     label: 'Chart type',
     i18nLabelKey: 'lowcodeModuleFieldChartType',
-    options: ['bar']
+    options: ['bar', 'line', 'area', 'pie', 'donut']
   },
   {
     path: ['values'],
@@ -204,7 +208,7 @@ export const CHART_MODULE_DEFINITION: ModuleDefinition<ChartModuleConfigV1> = Ob
   pluginId: CHART_PLUGIN_ID,
   moduleType: CHART_MODULE_TYPE,
   name: 'Chart',
-  description: 'Deterministic bar chart with bounded declarative data.',
+  description: 'Deterministic charts with bounded authored data and shared canvas/export geometry.',
   i18nNameKey: 'lowcodeModuleChartName',
   i18nDescriptionKey: 'lowcodeModuleChartDescription',
   configVersion: CHART_MODULE_CONFIG_VERSION,
@@ -222,3 +226,6 @@ export const CHART_PLUGIN = Object.freeze({
   version: '1.0.0',
   modules: Object.freeze([CHART_MODULE_DEFINITION])
 })
+
+export { buildChartLayout } from './chart/layout'
+export type { ChartLayout, ChartText, ChartPath, ChartRect, ChartCircle } from './chart/types'

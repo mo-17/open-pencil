@@ -13,7 +13,7 @@ import {
   resolveModalModule
 } from '@open-pencil/core/plugins'
 
-const CONFIG_KEYS = [
+const LEGACY_CONFIG_KEYS = [
   'triggerLabel',
   'showTriggerIcon',
   'showTriggerLabel',
@@ -46,6 +46,7 @@ describe('built-in modal plugin', () => {
     expect(definition?.i18nNameKey).toBe('lowcodeModuleModalName')
     expect(definition?.i18nDescriptionKey).toBe('lowcodeModuleModalDescription')
     expect(definition?.fields.map((field) => [field.path, field.kind])).toEqual([
+      [['contentChildName'], 'text'],
       [['triggerLabel'], 'text'],
       [['showTriggerIcon'], 'boolean'],
       [['showTriggerLabel'], 'boolean'],
@@ -65,7 +66,7 @@ describe('built-in modal plugin', () => {
       [['accentColor'], 'color'],
       [['overlayOpacity'], 'number']
     ])
-    expect(Object.keys(instance.config)).toEqual(CONFIG_KEYS)
+    expect(Object.keys(instance.config)).toEqual([...LEGACY_CONFIG_KEYS, 'contentChildName'])
     expect(resolved?.ok).toBe(true)
     if (!resolved?.ok) throw new Error('expected modal module to resolve')
     expect(resolved.config).toEqual(MODAL_MODULE_DEFAULT_CONFIG)
@@ -83,6 +84,21 @@ describe('built-in modal plugin', () => {
         }
       }
     })
+  })
+
+  test('preserves legacy version 1 text-body configurations without a content child key', () => {
+    const legacy = createModalModuleInstance({ content: 'Existing document text' })
+    Reflect.deleteProperty(legacy.config, 'contentChildName')
+    const before = structuredClone(legacy)
+    const resolved = resolveModalModule(legacy)
+    expect(resolved?.ok).toBe(true)
+    if (!resolved?.ok) throw new Error('expected legacy modal module to resolve')
+    expect(resolved.instance.configVersion).toBe(1)
+    expect(Object.keys(resolved.config)).toEqual(LEGACY_CONFIG_KEYS)
+    expect(resolved.config.content).toBe('Existing document text')
+    expect(Object.hasOwn(resolved.config, 'contentChildName')).toBe(false)
+    expect(legacy).toEqual(before)
+    expect(createModalModuleInstance().config.contentChildName).toBe('')
   })
 
   test('preserves bounded plain text and canonicalizes colors', () => {

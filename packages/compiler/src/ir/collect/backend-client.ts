@@ -24,7 +24,7 @@ import type {
   IRBackendRequestHandler,
   IRBackendResourceQuery
 } from '../backend-types'
-import type { IRDocStateDecl, IRStateDecl } from '../types'
+import type { IRDocStateDecl, IRNode, IRStateDecl } from '../types'
 import { registerDocStateReads, unknownIdentifiers } from './expression-scope'
 
 export interface BackendBindingContext {
@@ -34,6 +34,16 @@ export interface BackendBindingContext {
   inScope: ReadonlySet<string>
   docStateReads?: Set<string>
   docStateWrites?: Set<string>
+}
+
+/** The status is out of flow; existing base/responsive positioning classes retain precedence. */
+export function backendListContainerClassName(
+  className: string,
+  children: readonly IRNode[]
+): string {
+  if (!children.some((child) => child.kind === 'list' && child.backendResourceId)) return className
+  if (/(?:^|\s)(?:absolute|relative|fixed|sticky)(?:\s|$)/u.test(className)) return className
+  return `${className} relative`.trim()
 }
 
 function reject(message: string): never {
@@ -168,10 +178,20 @@ export function collectBackendResourceQuery(
     ])
   ]
   const rowsName = `__opBackendRows${queries.length}`
+  const reserved = [
+    rowsName,
+    `set${rowsName}`,
+    `${rowsName}Status`,
+    `set${rowsName}Status`,
+    `${rowsName}Control`
+  ]
   if (
-    ctx.states.has(rowsName) ||
-    ctx.docStates.has(rowsName) ||
-    [...ctx.states.values()].some((state) => state.name === rowsName)
+    reserved.some(
+      (name) =>
+        ctx.states.has(name) ||
+        ctx.docStates.has(name) ||
+        [...ctx.states.values()].some((state) => state.name === name)
+    )
   )
     return reject('Backend resource row identifier collides with a state.')
   if (source.nextCursorTarget) ctx.docStateWrites?.add(source.nextCursorTarget)

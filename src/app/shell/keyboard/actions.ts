@@ -69,6 +69,13 @@ export function createKeyboardActions({
       store.penCancel()
       return
     }
+    if (
+      store.state.contentEdit &&
+      store.state.enteredContainerId === store.state.contentEdit.rootId
+    ) {
+      store.exitContentEdit()
+      return
+    }
     if (store.state.enteredContainerId) {
       store.exitContainer()
       return

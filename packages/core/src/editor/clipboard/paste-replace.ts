@@ -15,7 +15,10 @@ export function selectedReplacementTargets(ctx: EditorContext) {
     .map((id) => ctx.graph.getNode(id))
     .filter(
       (node): node is SceneNode =>
-        node != null && !node.locked && getNodeEditCapability(ctx.graph, node.id).editable
+        node != null &&
+        node.id !== ctx.state.contentEdit?.rootId &&
+        !node.locked &&
+        getNodeEditCapability(ctx.graph, node.id).editable
     )
   const selectedSet = new Set(selected.map((node) => node.id))
   return selected.filter((node) => !node.parentId || !selectedSet.has(node.parentId))

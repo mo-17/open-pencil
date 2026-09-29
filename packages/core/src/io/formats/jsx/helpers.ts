@@ -61,7 +61,9 @@ export function formatProp(key: string, value: unknown): string {
   return `${key}={${JSON.stringify(value)}}`
 }
 
-export function getNodeContext(node: SceneNode, graph: SceneGraph) {
+export type JSXStyleGraph = Pick<SceneGraph, 'getNode'>
+
+export function getNodeContext(node: SceneNode, graph: JSXStyleGraph) {
   const parent = node.parentId ? graph.getNode(node.parentId) : null
   return {
     isAutoLayout: isAutoLayoutMode(node.layoutMode),

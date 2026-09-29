@@ -61,11 +61,16 @@ function nativeModalTriggerElement(
 }
 
 describe('compiler trusted Modal module adapter', () => {
-  test('lowers the bounded config and emits an accessible dependency-free portal runtime', () => {
+  test('lowers a legacy text-body config and preserves its authored trigger and accessible portal', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
+    const legacyConfig = structuredClone(MODAL_CONFIG)
+    Reflect.deleteProperty(legacyConfig, 'contentChildName')
+    const legacyFrame = createModalModuleFrameOverrides(MODAL_CONFIG)
+    if (!legacyFrame.interactiveProps?.module) throw new Error('Expected modal module')
+    legacyFrame.interactiveProps.module.config = legacyConfig
     const frame = graph.createNode('FRAME', pageId, {
-      ...createModalModuleFrameOverrides(MODAL_CONFIG),
+      ...legacyFrame,
       width: 220,
       height: 56
     })
@@ -81,9 +86,9 @@ describe('compiler trusted Modal module adapter', () => {
       pluginId: 'open-pencil.modal',
       moduleType: 'modal',
       configVersion: 1,
-      payload: MODAL_CONFIG
+      payload: legacyConfig
     })
-    expect(element.module?.payload).not.toBe(MODAL_CONFIG)
+    expect(element.module?.payload).not.toBe(legacyConfig)
 
     const output = compile({
       graph,
@@ -121,7 +126,7 @@ describe('compiler trusted Modal module adapter', () => {
     expect(runtime).toContain("width: 'min(' + config.panelWidth + 'px, calc(100vw - 32px))'")
     expect(runtime).toContain('data-openpencil-modal-action="cancel"')
     expect(runtime).toContain('data-openpencil-modal-action="confirm"')
-    expect(runtime).toContain('{config.content}')
+    expect(runtime).toContain('{content !== undefined ? content : config.content}')
     expect(runtime).not.toContain('dangerouslySetInnerHTML')
     expect(runtime).not.toContain('.innerHTML')
     expect(runtime).not.toContain('onConfirm')
@@ -130,6 +135,27 @@ describe('compiler trusted Modal module adapter', () => {
     expect(pkg.dependencies['@radix-ui/react-dialog']).toBeUndefined()
     expect(output.warnings).toEqual([expect.objectContaining({ code: 'button-no-events' })])
   })
+
+  test.each(['react', 'vue'] as const)(
+    '%s keeps the new empty content selector in text-body mode',
+    (target) => {
+      const graph = makeSceneGraph()
+      const pageId = firstPageId(graph)
+      graph.createNode('FRAME', pageId, createModalModuleFrameOverrides())
+      const element = collectTree(graph, pageId).children[0] as IRElement
+      expect(element.module?.contentSlots).toEqual([])
+      expect(element.module?.payload.contentChildName).toBe('')
+      expect(element.module?.payload.content).toBe(MODAL_MODULE_DEFAULT_CONFIG.content)
+      const output = compile({
+        graph,
+        pageIds: [pageId],
+        options: withDefaults({ target, packageName: 'modal-text-default', devMode: false })
+      })
+      const entry = output.files.get(target === 'react' ? 'src/App.tsx' : 'src/pages/index.vue')
+      expect(entry).toContain(MODAL_MODULE_DEFAULT_CONFIG.content)
+      expect(output.warnings).toEqual([])
+    }
+  )
 
   test('keeps the standalone portal byte path while routing microfrontend overlays to the host target', () => {
     const standaloneRuntime = buildOpenPencilModalComponent({ devMode: false })

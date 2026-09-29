@@ -12,6 +12,8 @@ export function templateCommandRecoveryActions(options: {
   acknowledged: ActionDef[]
   confirmation: string
   started?: ActionDef[]
+  /** Actual command results only; inspecting a saved request is not command success. */
+  succeeded?: ActionDef[]
 }) {
   const busy = (value: boolean): ActionDef => ({
     id: crypto.randomUUID(),
@@ -45,7 +47,16 @@ export function templateCommandRecoveryActions(options: {
     operation: 'retry',
     attemptKeyExpr: `${options.infoTarget}.key`,
     resultTarget: options.resultTarget,
-    onSuccess: [inspect()],
+    onSuccess: [
+      {
+        id: crypto.randomUUID(),
+        kind: 'setVariable',
+        targetName: options.errorTarget,
+        valueExpr: '""'
+      },
+      ...structuredClone(options.succeeded ?? []),
+      inspect()
+    ],
     onError: [inspect()]
   }
   const acknowledge: BackendCommandRecoveryAction = {

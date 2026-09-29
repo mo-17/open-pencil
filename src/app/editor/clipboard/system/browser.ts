@@ -3,6 +3,7 @@ import copy from 'copy-to-clipboard'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
+import { captureClipboardContext } from '@/app/editor/clipboard/context'
 import { isDesignClipboardHTML } from '@/app/editor/clipboard/html'
 import {
   clearInMemoryClipboardHTML,
@@ -93,7 +94,9 @@ async function pasteSelection(
   cursorPos: Vector | undefined,
   io: BrowserClipboardIO
 ): Promise<boolean> {
+  const isCurrent = captureClipboardContext(store)
   const result = await io.readHTML()
+  if (!isCurrent()) return false
   if (result.available) {
     if (result.html && isDesignClipboardHTML(result.html)) {
       await pasteClipboardHTML(store, result.html, cursorPos)

@@ -2,6 +2,7 @@ import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
 import { AUTH_NOTICE_SOURCE } from './auth-notice'
 import { buildBackendCommandRuntime } from './commands'
+import { BACKEND_LIST_RUNTIME_SOURCE } from './list-runtime'
 
 /** One transport/session owner shared by generated React and Vue applications. */
 export function buildBackendClientRuntime(
@@ -42,7 +43,7 @@ export function buildBackendClientRuntime(
       )
     )
     .map((resource) => resource.id)
-  return `import { createNestJSClient${hasCommands ? ', BackendCommandError, commandError, normalizeCommandParameters, validCommandKey' : ''} } from './lowcode-backend-api'
+  return `import { createNestJSClient, NestJSAPIError${hasCommands ? ', BackendCommandError, commandError, normalizeCommandParameters, validCommandKey' : ''} } from './lowcode-backend-api'
 ${hasCommands ? "import { readCommandJournal, createCommandJournal, acknowledgeCommandJournal, withCommandJournalLock, type CommandJournalRecord } from './lowcode-backend-command-journal'" : ''}
 import { initialize, getSession, subscribe, signIn, signOut, cancelSignIn, getAccessToken } from './lowcode-backend-auth'
 import { setDocState${hasCommands ? ', ' + (stateModule === './lowcode-state' ? 'getDocState' : 'getDocStateSnapshot') + ' as readBackendState' : ''} } from ${JSON.stringify(stateModule)}
@@ -65,6 +66,9 @@ export interface BackendRequestInput {
   sessionGeneration?: number
 }
 export interface BackendResourceRows { ${rowTypes} }
+class BackendRequestFailure extends Error {
+  constructor(readonly code: 'authentication-required' | 'forbidden' | 'request-failed') { super('Backend request failed.') }
+}
 export type BackendData<I extends BackendRequestInput> = I['operation'] extends 'list' ? BackendResourceRows[I['resourceId']][] : I['operation'] extends 'delete' ? { deleted: true } : BackendResourceRows[I['resourceId']]
 export type BackendResult<T> = { current: false } | { current: true; data: T; cursor: string }
 const publicResources: readonly string[] = ${JSON.stringify(publicResources)}
@@ -77,9 +81,7 @@ export function createBackendQueryState(): <Input extends BackendRequestInput>(i
   let discardedAfter: string | undefined
   let discarding = false
   return <Input extends BackendRequestInput>(input: Input): Input => {
-    const next = JSON.stringify([input.resourceId, input.limit ?? null, input.sessionGeneration ?? null,
-      Object.entries(input.filter ?? {}).sort(([left], [right]) => left.localeCompare(right)),
-      input.q ?? null, input.sort ?? null, input.direction ?? null])
+    const next = listSignature({ ...input, after: undefined })
     if (signature !== undefined && signature !== next) {
       discardedAfter = input.after
       discarding = true
@@ -174,44 +176,18 @@ export async function backendRequest<I extends BackendRequestInput>(input: I, si
       return { current: true, data: page.data as BackendData<I>, cursor: page.nextCursor ?? '' }
     }
     return { current: true, data: result as BackendData<I>, cursor: '' }
-  } catch {
+  } catch (cause) {
     if (!current()) return { current: false }
-    throw new Error('Backend request failed.')
+    const code = cause instanceof NestJSAPIError && cause.status === 401 ? 'authentication-required'
+      : cause instanceof NestJSAPIError && cause.status === 403 ? 'forbidden' : 'request-failed'
+    throw new BackendRequestFailure(code)
   } finally {
     requests.delete(controller); signal?.removeEventListener('abort', abort)
     if (queryKey && queryActions.get(queryKey) === controller) queryActions.delete(queryKey)
   }
 }
 ${buildBackendCommandRuntime(application)}
-/** Each list has its own epoch; neither old queries nor old sessions may publish rows. */
-export function watchBackendResource<K extends keyof BackendResourceRows>(input: BackendRequestInput & { resourceId: K; operation: 'list' }, rows: (value: BackendResourceRows[K][]) => void, cursor?: (value: string) => void, error?: (value: string) => void): () => void {
-  let active = true
-  let epoch = 0
-  let request: AbortController | undefined
-  const refresh: Listener = (resource) => {
-    if (!active) return
-    if (resource !== undefined && resource !== input.resourceId) return
-    const current = ++epoch
-    request?.abort()
-    rows([]); cursor?.(''); error?.('')
-    const session = getSession()
-    if (!active || current !== epoch) return
-    // A new identity may reuse a fixed legacy subscription. Generated inputs
-    // instead wait for the consumer to bind its newly cleared reactive state.
-    if (input.sessionGeneration !== undefined && input.sessionGeneration !== session.generation) return
-    if (!session.ready || (!session.signedIn && !isPublicRead(input))) return
-    request = new AbortController()
-    void backendRequest(input, request.signal).then((result) => {
-      if (!active || current !== epoch || !result.current) return
-      rows(result.data as BackendResourceRows[K][]); cursor?.(result.cursor)
-    }).catch(() => {
-      if (active && current === epoch) error?.('Backend request failed.')
-    })
-  }
-  listeners.add(refresh)
-  refresh()
-  return () => { active = false; epoch++; request?.abort(); listeners.delete(refresh) }
-}
+${BACKEND_LIST_RUNTIME_SOURCE}
 `
 }
 

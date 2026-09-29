@@ -7,6 +7,7 @@ export {
 } from './expression-scope'
 import {
   type ExprAst,
+  lowcodeInputRequiresString,
   hasPrevReference,
   normalizeSupabaseMutationPayloadJSON,
   parseExpression,
@@ -201,8 +202,10 @@ function checkboxHasOptions(node: SceneNode): boolean {
 }
 
 function allowedTargetTypes(node: SceneNode): ReadonlySet<CtrlTargetType> {
-  if (node.type === 'INPUT') return new Set(['string', 'number'])
+  if (node.type === 'INPUT' && !lowcodeInputRequiresString(node.interactiveProps))
+    return new Set(['string', 'number'])
   if (node.type === 'SWITCH') return new Set(['boolean'])
+  if (node.type === 'SELECT' && node.interactiveProps?.multiple === true) return new Set(['array'])
   if (node.type === 'CHECKBOX') {
     return new Set([checkboxHasOptions(node) ? 'array' : 'boolean'])
   }

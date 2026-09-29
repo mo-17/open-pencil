@@ -19,7 +19,8 @@ export function createCommerceRecoverySection(
 ) {
   const { text, button } = layout
   const { info, busy, display, actions } = options
-  text(parent, copy.recoveryTitle, 48, y)
+  layout.section(parent, 'Saved request recovery', y - 16, 304)
+  text(parent, copy.recoveryTitle, 48, y, 860, { fontSize: 18, fontWeight: 600 })
   button(parent, copy.inspect, 48, y + 42, actions.startInspect, { renderCondition: `!${busy}` })
   text(parent, copy.recoveryUninspected, 48, y + 98, 860, {
     height: 64,

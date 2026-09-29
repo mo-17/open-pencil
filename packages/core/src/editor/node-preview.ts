@@ -7,8 +7,14 @@ import type { EditorContext } from './types'
 
 export interface NodePreview {
   readonly closed: boolean
-  update: (id: string, changes: Partial<SceneNode>) => void
-  commit: () => void
+  /** Defer derived layout while composing a geometric update; flush with a normal update. */
+  update: (id: string, changes: Partial<SceneNode>, options?: { deferLayout?: boolean }) => void
+  commit: (
+    finalize?: (
+      node: SceneNode,
+      before: Readonly<Partial<SceneNode>>
+    ) => Partial<SceneNode> | undefined
+  ) => void
   cancel: () => void
 }
 
@@ -23,9 +29,15 @@ export function createNodePreviewActions(
     current?.cancel()
   }
 
-  function beginNodePreview(label = 'Update'): NodePreview {
+  function beginNodePreview(
+    label = 'Update',
+    options: { preserveSourceMetadata?: boolean } = {}
+  ): NodePreview {
     cancelNodePreviews()
     const graph = ctx.graph
+    // Geometric editors own their targeted raw-metadata invalidation. Preserve their
+    // source payload on the initial commit and every later history replay as well.
+    const preserveSourceMetadata = options.preserveSourceMetadata === true
     const originals = new Map<string, Partial<SceneNode>>()
     const targets = new Set<string>()
     const layoutOnly = new Set<string>()
@@ -51,24 +63,44 @@ export function createNodePreviewActions(
       if (current === preview) current = null
     }
 
+    // Callback/event dispatch can cancel the transaction synchronously.
+    function isClosed(): boolean {
+      return closed
+    }
+
+    function collectEdits() {
+      const edits: Array<{ id: string; before: Partial<SceneNode>; after: Partial<SceneNode> }> = []
+      for (const [id, before] of originals) {
+        const node = graph.getNode(id)
+        if (!node) continue
+        const after = structuredClone(pick(node, Object.keys(before) as (keyof SceneNode)[]))
+        if (!isEqual(before, after)) edits.push({ id, before, after })
+      }
+      return edits
+    }
+
     const preview: NodePreview = {
       get closed() {
         return closed
       },
-      update(id, changes) {
+      update(id, changes, updateOptions) {
         if (closed || graph !== ctx.graph || !graph.getNode(id)) return
         targets.add(id)
         endInteraction ??= ctx.beginInteractiveEdit()
         try {
           assertNodeEditable(graph, id)
-          graph.runPreviewUpdates(() => updateNode(id, changes), capture)
+          graph.runPreviewUpdates(() => {
+            if (updateOptions?.deferLayout) graph.updateNodePreview(id, changes)
+            else if (Object.keys(changes).length === 0) ctx.runLayoutForNode(id)
+            else updateNode(id, changes)
+          }, capture)
           ctx.requestRepaint()
         } catch (error) {
           preview.cancel()
           throw error
         }
       },
-      commit() {
+      commit(finalize) {
         if (closed) return
         try {
           for (const id of targets) assertNodeEditable(graph, id)
@@ -76,13 +108,27 @@ export function createNodePreviewActions(
           preview.cancel()
           throw error
         }
-        const edits: Array<{ id: string; before: Partial<SceneNode>; after: Partial<SceneNode> }> =
-          []
-        for (const [id, before] of originals) {
-          const node = graph.getNode(id)
-          if (!node) continue
-          const after = structuredClone(pick(node, Object.keys(before) as (keyof SceneNode)[]))
-          if (!isEqual(before, after)) edits.push({ id, before, after })
+        let edits = collectEdits()
+        if (finalize) {
+          try {
+            for (const edit of edits) {
+              const node = graph.getNode(edit.id)
+              if (!node) continue
+              const changes = finalize(node, edit.before)
+              if (isClosed()) return
+              if (!changes) continue
+              graph.runPreviewUpdates(() => {
+                const update = () => graph.updateNodePreview(edit.id, changes)
+                if (layoutOnly.has(edit.id)) graph.withLayoutMutations(update)
+                else update()
+              }, capture)
+              if (isClosed()) return
+            }
+            edits = collectEdits()
+          } catch (error) {
+            preview.cancel()
+            throw error
+          }
         }
         close()
         if (edits.length === 0) {
@@ -90,11 +136,15 @@ export function createNodePreviewActions(
           return
         }
         function apply(direction: 'before' | 'after') {
-          for (const edit of edits) {
-            const update = () => graph.updateNode(edit.id, structuredClone(edit[direction]))
-            if (layoutOnly.has(edit.id)) graph.withLayoutMutations(update)
-            else update()
+          const applyEdits = () => {
+            for (const edit of edits) {
+              const update = () => graph.updateNode(edit.id, structuredClone(edit[direction]))
+              if (layoutOnly.has(edit.id)) graph.withLayoutMutations(update)
+              else update()
+            }
           }
+          if (preserveSourceMetadata) graph.preserveSourceMetadataDuring(applyEdits)
+          else applyEdits()
           ctx.requestRender()
         }
         ctx.undo.push({ label, forward: () => apply('after'), inverse: () => apply('before') })

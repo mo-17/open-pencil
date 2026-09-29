@@ -101,6 +101,24 @@ export {
 } from './datepicker-props'
 
 export {
+  LOWCODE_SWITCH_APPEARANCE,
+  type LowcodeSwitchGeometry,
+  lowcodeSwitchGeometry
+} from './switch-appearance'
+
+export {
+  LOWCODE_INPUT_TYPES,
+  LOWCODE_INPUT_MODES,
+  LOWCODE_AUTOCOMPLETE_VALUES,
+  type LowcodeSelectOption,
+  isLowcodeControlChoice,
+  isLowcodeNumberValue,
+  parseLowcodeSelectOption,
+  lowcodeSelectOptions,
+  DEFAULT_LOWCODE_SELECT_PLACEHOLDER
+} from './control-props'
+
+export {
   DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
   DEFAULT_LOWCODE_TEXT_COLOR,
   type InteractivePropsIssue,
@@ -153,6 +171,8 @@ export {
   FORM_VALUE_BINDING_MAX_REPAIRS,
   type FormControlAuditEntry,
   type FormControlBindingTargetType,
+  type FormControlFieldDescriptor,
+  type FormControlFieldResolver,
   type FormControlBindingStatus,
   type FormControlsAuditOptions,
   type FormControlsAudit,
@@ -164,3 +184,25 @@ export {
   isCheckboxGroupControl,
   planValidatedFormValueBindings
 } from './form-controls'
+
+export {
+  isIsoTime,
+  timeInputSeconds,
+  validateTimeInputProps,
+  type TimeInputIssue,
+  type TimeInputIssueCode
+} from './time-input'
+export {
+  isIsoLocalDateTime,
+  dateTimeInputSeconds,
+  validateDateTimeInputProps,
+  type DateTimeInputIssueCode,
+  type DateTimeInputIssue
+} from './date-time-input'
+export * from './input-affordances'
+export * from './color-input'
+export {
+  lowcodeInputRequiresString,
+  parseInputSuggestions,
+  validateInputSuggestions
+} from './input-suggestions'

@@ -13,7 +13,7 @@ export function resolveHit(
     fns.hitTestFrameTitle(cx, cy) ??
     fns.hitTestSectionTitle(cx, cy) ??
     fns.hitTestComponentLabel(cx, cy)
-  if (titleHit) return titleHit
+  if (titleHit && !editor.state.contentEdit) return titleHit
 
   const hit = fns.hitTestInScope(cx, cy, false)
   if (hit) return hit

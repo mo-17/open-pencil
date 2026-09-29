@@ -11,6 +11,7 @@ import {
   LOWCODE_GENERATED_RUNTIME_IDENTIFIERS,
   lowcodeStateSetterName
 } from './identifiers'
+import { lowcodeInputRequiresString } from './input-suggestions'
 
 const FORM_CONTROL_TYPES = new Set<SceneNode['type']>([
   'INPUT',
@@ -38,13 +39,25 @@ const COMPILER_RESERVED_STATE_IDENTIFIERS = new Set([
 ])
 
 export type FormControlBindingStatus = 'missing' | 'valid' | 'invalid'
-export type FormControlStateType = Extract<StateValueType, 'string' | 'boolean' | 'array'>
+export type FormControlStateType = Extract<
+  StateValueType,
+  'string' | 'number' | 'boolean' | 'array'
+>
 export type FormControlBindingTargetType = Extract<
   StateValueType,
   'string' | 'number' | 'boolean' | 'array'
 >
 
+export interface FormControlFieldDescriptor {
+  key: 'value' | 'endValue'
+  validationKey: 'validation' | 'endValidation'
+  type: 'number' | 'string' | 'array'
+  initialValue: unknown
+}
+export type FormControlFieldResolver = (node: SceneNode) => readonly FormControlFieldDescriptor[]
+
 export interface FormControlAuditEntry {
+  fieldKey?: 'value' | 'endValue'
   id: string
   name: string
   type: SceneNode['type']
@@ -76,6 +89,7 @@ export interface FormControlsAudit {
 }
 
 export interface FormControlsAuditOptions {
+  moduleFields?: FormControlFieldResolver
   limit?: number
 }
 
@@ -128,7 +142,8 @@ export function auditValidatedFormControls(
 ): FormControlsResult<FormControlsAudit> {
   const analyzed = analyzeValidatedFormControls(graph, scopeId, {
     collectRepairs: false,
-    limit: options.limit
+    limit: options.limit,
+    moduleFields: options.moduleFields
   })
   return analyzed.ok ? { ok: true, data: analyzed.data.audit } : analyzed
 }
@@ -136,11 +151,13 @@ export function auditValidatedFormControls(
 /** Build a non-mutating plan that appends page state and preserves every existing binding channel. */
 export function planValidatedFormValueBindings(
   graph: SceneGraph,
-  scopeId: string
+  scopeId: string,
+  options: FormControlsAuditOptions = {}
 ): FormControlsResult<FormValueBindingPlan> {
   const analyzed = analyzeValidatedFormControls(graph, scopeId, {
     collectRepairs: true,
-    limit: FORM_CONTROLS_AUDIT_DEFAULT_LIMIT
+    limit: FORM_CONTROLS_AUDIT_DEFAULT_LIMIT,
+    moduleFields: options.moduleFields
   })
   if (!analyzed.ok) return analyzed
   const { audit, page, repairs } = analyzed.data
@@ -158,17 +175,27 @@ export function planValidatedFormValueBindings(
 function analyzeValidatedFormControls(
   graph: SceneGraph,
   scopeId: string,
-  options: { collectRepairs: boolean; limit?: number }
+  options: FormControlsAuditOptions & { collectRepairs: boolean }
 ): FormControlsResult<FormControlsAnalysis> {
-  const resolvedScope = resolveFormControlScope(graph, scopeId)
+  const resolvedScope = resolveFormControlScope(graph, scopeId, options.moduleFields)
   if (!resolvedScope.ok) return resolvedScope
   const { page, scope } = resolvedScope.data
   const state = createAnalysisState(graph, page, options)
 
-  for (const node of scopedNodes(graph, scope)) {
-    if (!isValidatedFormControl(node)) continue
-    const error = analyzeFormControl(node, state)
-    if (error) return { ok: false, error }
+  const nodes = options.moduleFields?.(scope).length ? [scope] : scopedNodes(graph, scope)
+  for (const node of nodes) {
+    const fields = options.moduleFields?.(node) ?? []
+    if (fields.length) {
+      for (const field of fields) {
+        const validation = node.interactiveProps?.[field.validationKey]
+        if (!validation || typeof validation !== 'object' || Array.isArray(validation)) continue
+        const error = analyzeFormControl(node, state, field)
+        if (error) return { ok: false, error }
+      }
+    } else if (isValidatedFormControl(node)) {
+      const error = analyzeFormControl(node, state)
+      if (error) return { ok: false, error }
+    }
   }
 
   return {
@@ -197,13 +224,19 @@ function analyzeValidatedFormControls(
 
 function resolveFormControlScope(
   graph: SceneGraph,
-  scopeId: string
+  scopeId: string,
+  moduleFields?: FormControlFieldResolver
 ): FormControlsResult<{ page: SceneNode; scope: SceneNode }> {
   const scope = graph.getNode(scopeId)
   if (!scope) return { ok: false, error: `Scope node "${scopeId}" not found` }
   const page = pageForNode(graph, scope)
   if (!page) return { ok: false, error: `Scope node "${scopeId}" is not inside a page` }
-  if (scope.type !== 'CANVAS' && scope.type !== 'FORM' && !FORM_CONTROL_TYPES.has(scope.type)) {
+  if (
+    scope.type !== 'CANVAS' &&
+    scope.type !== 'FORM' &&
+    !FORM_CONTROL_TYPES.has(scope.type) &&
+    !moduleFields?.(scope).length
+  ) {
     return {
       ok: false,
       error: `scope_id must reference a CANVAS, FORM, or supported form control; got ${scope.type}`
@@ -253,11 +286,22 @@ function isValidatedFormControl(node: SceneNode): boolean {
   return FORM_CONTROL_TYPES.has(node.type) && hasValidation(node)
 }
 
-function analyzeFormControl(node: SceneNode, state: FormControlsAnalysisState): string | undefined {
+function controlField(node: SceneNode, field: FormControlFieldDescriptor | undefined) {
+  return {
+    fieldKey: field?.key ?? 'value',
+    stateType: field?.type ?? controlStateType(node),
+    allowedBindingTypes: field ? [field.type] : controlBindingTypes(node)
+  }
+}
+
+function analyzeFormControl(
+  node: SceneNode,
+  state: FormControlsAnalysisState,
+  field?: FormControlFieldDescriptor
+): string | undefined {
   state.total++
-  const stateType = controlStateType(node)
-  const allowedBindingTypes = controlBindingTypes(node)
-  const binding = node.bindings?.value
+  const { fieldKey, stateType, allowedBindingTypes } = controlField(node, field)
+  const binding = node.bindings?.[fieldKey]
   const resolved = resolveBinding(binding, state.pageStates, state.docStates, allowedBindingTypes)
   incrementBindingCount(state, resolved.status)
 
@@ -276,14 +320,21 @@ function analyzeFormControl(node: SceneNode, state: FormControlsAnalysisState): 
   const identifierPool =
     resolved.status === 'missing' ? state.usedIdentifiers : new Set(state.usedIdentifiers)
   const idPool = resolved.status === 'missing' ? state.usedIds : new Set(state.usedIds)
-  const suggestedState = createSuggestedState(node, stateType, identifierPool, idPool)
+  const suggestedState = createSuggestedState(
+    fieldKey === 'endValue' ? { ...node, name: node.name + ' end' } : node,
+    stateType,
+    identifierPool,
+    idPool
+  )
+  if (field) suggestedState.defaultValue = field.initialValue
 
   if (shouldPrepareRepair) {
     state.repairs.push({
       nodeId: node.id,
       bindings: {
         ...node.bindings,
-        value: { kind: 'ref', stateId: suggestedState.id }
+        ...state.repairs.findLast((repair) => repair.nodeId === node.id)?.bindings,
+        [fieldKey]: { kind: 'ref', stateId: suggestedState.id }
       },
       state: suggestedState
     })
@@ -291,6 +342,7 @@ function analyzeFormControl(node: SceneNode, state: FormControlsAnalysisState): 
   if (shouldReturn) {
     state.controls.push({
       id: node.id,
+      ...(field ? { fieldKey } : {}),
       name: node.name,
       type: node.type,
       pageId: state.page.id,
@@ -435,17 +487,22 @@ export function isCheckboxGroupControl(node: SceneNode): boolean {
 function controlStateType(node: SceneNode): FormControlStateType {
   if (node.type === 'CHECKBOX') return isCheckboxGroupControl(node) ? 'array' : 'boolean'
   if (node.type === 'SWITCH') return 'boolean'
+  if (node.type === 'SELECT' && node.interactiveProps?.multiple === true) return 'array'
   return 'string'
 }
 
 function controlBindingTypes(node: SceneNode): FormControlBindingTargetType[] {
-  if (node.type === 'INPUT') return ['string', 'number']
+  if (node.type === 'INPUT' && !lowcodeInputRequiresString(node.interactiveProps))
+    return ['string', 'number']
   return [controlStateType(node)]
 }
 
 function controlDefaultValue(node: SceneNode, type: FormControlStateType): unknown {
   if (type === 'boolean') return node.interactiveProps?.checked === true
-  if (type === 'array') return []
+  if (type === 'array')
+    return node.type === 'SELECT' && Array.isArray(node.interactiveProps?.value)
+      ? node.interactiveProps.value.filter((value): value is string => typeof value === 'string')
+      : []
   return typeof node.interactiveProps?.value === 'string' ? node.interactiveProps.value : ''
 }
 
@@ -501,9 +558,15 @@ function resolveBinding(
     state = docStates.find((candidate) => candidate.name === binding.docStateName)
   }
   if (!state) return { status: 'invalid', reason: 'binding target does not exist' }
-  if (binding.kind === 'ref' && state.computedExpr !== undefined) {
+  if (state.computedExpr !== undefined) {
     return { status: 'invalid', state, reason: 'binding target is computed and read-only' }
   }
+  const declarations = binding.kind === 'ref' ? pageStates : docStates
+  if (
+    declarations.filter((candidate) => candidate.name === state.name || candidate.id === state.id)
+      .length !== 1
+  )
+    return { status: 'invalid', state, reason: 'binding target is ambiguous' }
   if (!allowedTypes.includes(state.type as FormControlBindingTargetType)) {
     return {
       status: 'invalid',

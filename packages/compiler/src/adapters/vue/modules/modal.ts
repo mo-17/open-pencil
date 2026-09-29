@@ -21,6 +21,7 @@ interface ModalConfig {
   showTriggerLabel: boolean
   title: string
   content: string
+  contentChildName?: string
   showCloseButton: boolean
   closeOnBackdrop: boolean
   closeOnEscape: boolean
@@ -224,7 +225,10 @@ onBeforeUnmount(() => releaseLayer?.())
               </svg>
             </button>
           </header>
-          <p :id="contentId" class="openpencil-modal-content">{{ config.content }}</p>
+          <div :id="contentId" class="openpencil-modal-content">
+            <slot v-if="config.contentChildName || $slots.content" name="content" />
+            <template v-else>{{ config.content }}</template>
+          </div>
           <footer
             v-if="config.showCancelButton || config.showConfirmButton"
             class="openpencil-modal-footer"

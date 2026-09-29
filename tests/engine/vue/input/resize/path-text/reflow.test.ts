@@ -1,15 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { Editor } from '@open-pencil/core/editor'
+import { createEditor } from '@open-pencil/core/editor'
 import { parseFigBuffer } from '@open-pencil/fig'
 import { SceneGraph } from '@open-pencil/scene-graph'
-import type { Fill, SceneNode, Stroke, VectorNetwork } from '@open-pencil/scene-graph'
+import type { Fill, Stroke, VectorNetwork } from '@open-pencil/scene-graph'
 import { copyGeometryPaths, copyStrokes } from '@open-pencil/scene-graph/copy'
+import type { ResizeSnapshot } from '@open-pencil/scene-graph/resize'
 
 import { exportFigFile } from '#core/io/formats/fig/export'
 import { getTextPathData, layoutPathTextFromAdvances } from '#core/text/path'
 import { applyResize, commitResizePreview } from '#vue/shared/input/resize'
-import type { DragResize, OrigChildState } from '#vue/shared/input/types'
+import type { DragResize } from '#vue/shared/input/types'
 
 import { expectDefined } from '#tests/helpers/assert'
 
@@ -127,16 +128,9 @@ describe('group resize reflows path text instead of squashing it', () => {
       commandsBlob: new Uint8Array(g.commandsBlob)
     }))
 
-    const editor = {
-      graph,
-      renderer: undefined,
-      requestRepaint: () => undefined,
-      updateNode: (id: string, changes: Partial<SceneNode>) => graph.updateNode(id, changes),
-      commitResize: () => undefined,
-      commitGroupResize: () => undefined
-    } as Editor
+    const editor = createEditor({ graph })
 
-    const origChild: OrigChildState = {
+    const origChild: ResizeSnapshot = {
       x: 0,
       y: 0,
       width: 256,
@@ -245,14 +239,7 @@ describe('direct (non-group) resize reflows path text instead of squashing it', 
       commandsBlob: new Uint8Array(g.commandsBlob)
     }))
 
-    const editor = {
-      graph,
-      renderer: undefined,
-      requestRepaint: () => undefined,
-      updateNode: (id: string, changes: Partial<SceneNode>) => graph.updateNode(id, changes),
-      commitResize: () => undefined,
-      commitGroupResize: () => undefined
-    } as Editor
+    const editor = createEditor({ graph })
 
     const drag: DragResize = {
       type: 'resize',
@@ -372,14 +359,7 @@ describe('resize + export integration: real commit path clears stale raw payload
       ]
     }
 
-    const editor = {
-      graph,
-      renderer: undefined,
-      requestRepaint: () => undefined,
-      updateNode: (id: string, changes: Partial<SceneNode>) => graph.updateNode(id, changes),
-      commitResize: () => undefined,
-      commitGroupResize: () => undefined
-    } as Editor
+    const editor = createEditor({ graph })
 
     const drag: DragResize = {
       type: 'resize',

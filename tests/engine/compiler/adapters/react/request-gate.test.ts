@@ -177,7 +177,7 @@ describe('React request single-flight gate', () => {
     expect(out).toContain('new Map<EventTarget, ReturnType<typeof setTimeout>>()')
     expect(out).toContain('const __opDebounceChange = (target: EventTarget')
     expect(out).toContain(
-      'const $value = (e.target as HTMLInputElement).value; setDocState("query", e.target.value); __opDebounceChange(e.currentTarget, async () => {'
+      'const $value = (e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value; setDocState("query", e.target.value); __opDebounceChange(e.currentTarget, async () => {'
     )
     expect(out).not.toContain('__opRunRequest("search-input:onChange"')
     expect(out).not.toContain('disabled={__opPendingRequests.has("search-input:onChange")}')

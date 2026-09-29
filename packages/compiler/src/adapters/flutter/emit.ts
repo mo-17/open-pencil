@@ -1,3 +1,4 @@
+import { omitUnsupportedMultipleSelect } from '#compiler/adapters/native-controls'
 /* eslint-disable max-lines -- one recursive IR-to-Widget walk keeps Flutter emission coherent */
 import type {
   ComponentDef,
@@ -345,6 +346,8 @@ function emitComponentRef(node: IRComponentRef, environment: NodeEnvironment): s
 }
 
 function emitElement(node: IRElement, environment: NodeEnvironment): string {
+  if (omitUnsupportedMultipleSelect(node, 'flutter', environment.warn))
+    return 'const SizedBox.shrink()'
   warnElementFeatures(node, environment.warn)
   const style = translateFlutterStyle(node.className, node.sourceId, environment.warn)
   if (style.backgroundAsset) {

@@ -229,6 +229,26 @@ export function resolveNumberVariable(graph: SceneGraph, variableId: string): nu
   return typeof value === 'number' ? value : undefined
 }
 
+/** Resolve each alias in its own collection's effective node mode, without mode fallbacks. */
+export function resolveEffectiveVariableForNode(
+  graph: SceneGraph,
+  nodeId: string,
+  variableId: string,
+  visited = new Set<string>()
+): VariableValue | undefined {
+  if (visited.has(variableId)) return undefined
+  visited.add(variableId)
+  const variable = graph.variables.get(variableId)
+  if (!variable || !graph.variableCollections.has(variable.collectionId)) return undefined
+  const modeId = getNodeVariableModeId(graph, nodeId, variable.collectionId)
+  if (!Object.hasOwn(variable.valuesByMode, modeId)) return undefined
+  const value = variable.valuesByMode[modeId]
+  if (value && typeof value === 'object' && 'aliasId' in value) {
+    return resolveEffectiveVariableForNode(graph, nodeId, value.aliasId, visited)
+  }
+  return value
+}
+
 export function resolveColorVariableForNode(
   graph: SceneGraph,
   nodeId: string,
@@ -299,6 +319,10 @@ const SCALAR_BINDING_FIELDS: ReadonlySet<string> = new Set([
   'gridRowGap',
   'gridColumnGap'
 ])
+
+export function isNumberVariableBindingField(field: string): boolean {
+  return SCALAR_BINDING_FIELDS.has(field)
+}
 
 const STRING_BINDING_FIELDS: ReadonlySet<string> = new Set(['fontFamily'])
 

@@ -10,6 +10,7 @@ import { assertBusinessTemplateId, type BusinessTemplateId } from '../model/type
 import { businessText, type BusinessTemplateEditor } from '../types'
 import { prepareBusinessActions, renderBusinessActions } from './actions'
 import { createBusinessPageContext, type BusinessPageContext } from './context'
+import { FOOD_LOGIN_CONTENT_HEIGHT, renderFoodOrderingLogin } from './food-ordering/login'
 import { renderBusinessPrimaryList } from './listing'
 import type {
   BusinessModulePageOptions,
@@ -22,6 +23,7 @@ import {
   type BusinessNavigationAddition
 } from './navigation'
 import { preflightBusinessPages } from './preflight'
+import { renderBusinessLogin } from './presentation/login'
 import { createBusinessScreen } from './screen'
 import { renderBusinessVideo } from './video'
 import { renderBusinessVRTour } from './vr-tour'
@@ -141,20 +143,18 @@ function renderLogin(ctx: BusinessPageContext): void {
     public: true,
     actions: []
   })
-  ctx.layout.button(
-    login.page,
-    ctx.copy.signIn,
-    { x: 272, y: login.reserve(64), width: 240, height: 44 },
-    [
-      {
-        id: crypto.randomUUID(),
-        kind: 'backendAuth',
-        operation: 'signIn',
-        returnPath: ctx.paths.account,
-        errorTarget: login.error
-      }
-    ]
-  )
+  const restaurant = ctx.definition.id === 'food-ordering'
+  const button = restaurant ? renderFoodOrderingLogin(ctx, login.page) : renderBusinessLogin(login)
+  if (restaurant) login.reserve(FOOD_LOGIN_CONTENT_HEIGHT)
+  ctx.layout.button(button.parent, ctx.copy.signIn, button.rect, [
+    {
+      id: crypto.randomUUID(),
+      kind: 'backendAuth',
+      operation: 'signIn',
+      returnPath: ctx.paths.account,
+      errorTarget: login.error
+    }
+  ])
   login.finish()
 }
 

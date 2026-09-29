@@ -1,3 +1,5 @@
+import { CONTAINER_TYPES } from '@open-pencil/scene-graph/node-defaults'
+
 import { createSelectionContainerActions } from './selection/container'
 import { createSelectionHitTestActions } from './selection/hit-test'
 import { createSelectionOverlayActions } from './selection/overlays'
@@ -22,13 +24,20 @@ export function createSelectionActions(ctx: EditorContext) {
     ctx.setSelectedIds(new Set())
   }
 
+  function scopeChildren() {
+    const root = ctx.state.contentEdit ? ctx.graph.getNode(ctx.state.contentEdit.rootId) : undefined
+    return root && !CONTAINER_TYPES.has(root.type)
+      ? [root]
+      : ctx.graph.getChildren(ctx.state.contentEdit?.rootId ?? ctx.state.currentPageId)
+  }
+
   function selectAll() {
-    const children = ctx.graph.getChildren(ctx.state.currentPageId)
+    const children = scopeChildren()
     ctx.setSelectedIds(new Set(children.map((n) => n.id)))
   }
 
   function selectInverse() {
-    const children = ctx.graph.getChildren(ctx.state.currentPageId)
+    const children = scopeChildren()
     ctx.setSelectedIds(
       new Set(children.filter((node) => !ctx.state.selectedIds.has(node.id)).map((node) => node.id))
     )

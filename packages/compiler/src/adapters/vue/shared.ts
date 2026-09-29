@@ -47,6 +47,7 @@ export interface VueSourceEmission {
 export interface VueLocalBinding {
   name: string
   alias: string
+  iterationIndex?: boolean
 }
 
 export function createContext(

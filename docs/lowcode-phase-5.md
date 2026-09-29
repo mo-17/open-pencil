@@ -630,7 +630,7 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   - cancel action 使用 `text-muted-foreground` / `hover:bg-secondary`。
 - 新增/更新 focused compiler coverage:
   - `tests/engine/compiler/theme-css.test.ts`
-  - `tests/engine/compiler/toast.test.ts`
+  - `tests/engine/compiler/toast/compile.test.ts`
   - `tests/engine/compiler/confirm.test.ts`
 - 本刀不改 shadcn UI kit 本身,也不新增真实 browser/Tauri ACK;仅让 generated runtime
   surfaces 先使用现有 token/theme 通道。
@@ -679,7 +679,7 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
     track token 同时出现在 compiled output。
 - 新增/更新 focused compiler coverage:
   - `tests/engine/compiler/confirm.test.ts`
-  - `tests/engine/compiler/toast.test.ts`
+  - `tests/engine/compiler/toast/compile.test.ts`
   - `tests/engine/compiler/form-validation.test.ts`
   - `tests/engine/compiler/overlay.test.ts`
   - `tests/engine/compiler/ir/collect/interactive-components.test.ts`
@@ -931,7 +931,7 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   `tests/engine/compiler/theme-stroke-geometry.test.ts` 覆盖。**
 - Generated runtime UI 的 theme switch、toast 和 confirm surface 消费 semantic theme/design
   token。**2026-06-26 第十六刀已完成;由 `tests/engine/compiler/theme-css.test.ts`、
-  `tests/engine/compiler/toast.test.ts` 和 `tests/engine/compiler/confirm.test.ts` 覆盖。**
+  `tests/engine/compiler/toast/compile.test.ts` 和 `tests/engine/compiler/confirm.test.ts` 覆盖。**
 - Validation runtime 的 error text surface 消费 semantic destructive token。
   **2026-06-26 第十七刀已完成;由 `tests/engine/compiler/form-validation.test.ts` 覆盖。**
 - Validated field invalid state 和 overlay backdrop 消费 semantic token classes。

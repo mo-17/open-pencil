@@ -7,6 +7,8 @@ import type { Mat3 } from '@open-pencil/scene-graph/matrix'
 import Matrix from '@open-pencil/scene-graph/matrix'
 
 import { worldNodeVisualBounds } from '#core/canvas/renderer/visual-bounds'
+import { modalHidesContent } from '#core/plugins/content/modal'
+import { resolveTabsContent } from '#core/plugins/content/tabs'
 
 export type RenderChunkKind = 'self' | 'subtree'
 
@@ -55,7 +57,15 @@ export function nodeRequiresAtomicChunk(graph: SceneGraph, node: SceneNode): boo
   // Generated effects are composited after the node's descendants. Splitting the node into a
   // self chunk would only call renderNodeSelf(), so the effect would be skipped entirely.
   const hasGeneratedEffect = node.generatedEffect !== undefined
-  return isolated || hasMasks || hasGeneratedEffect
+  // The host owns the active panel filter and body clip. A detached child chunk
+  // would bypass both and reveal inactive content again in large documents.
+  return (
+    isolated ||
+    hasMasks ||
+    hasGeneratedEffect ||
+    modalHidesContent(node) ||
+    resolveTabsContent(graph, node) !== null
+  )
 }
 
 function shouldSplit(graph: SceneGraph, node: SceneNode, descendantCount: number): boolean {

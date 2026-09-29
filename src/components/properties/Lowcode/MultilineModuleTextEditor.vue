@@ -1,7 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
+
+import type { SceneNode } from '@open-pencil/scene-graph'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
+import { useRetainedActivity } from '@open-pencil/vue'
+
+import { useModuleTextDraft } from '@/app/lowcode/module-editor/multiline'
+import type { ModuleScalarCommit } from '@/app/lowcode/module-editor/scalar'
 
 const {
+  owner,
+  config,
   modelValue,
   label,
   maxLength,
@@ -11,6 +20,8 @@ const {
   monospace = true,
   error = ''
 } = defineProps<{
+  owner?: SceneNode
+  config: JSONObject
   modelValue: string
   label: string
   maxLength: number
@@ -22,38 +33,36 @@ const {
 }>()
 
 const emit = defineEmits<{
-  commit: [value: string]
+  commit: [request: ModuleScalarCommit]
 }>()
 
-const draft = ref(modelValue)
-const lastCommitted = ref(modelValue)
+const { draft, generation, beginInput, update, submit } = useModuleTextDraft(
+  () => owner,
+  () => config,
+  () => modelValue,
+  () => maxLength,
+  useRetainedActivity(),
+  (request) => emit('commit', request)
+)
 const overLimit = computed(() => draft.value.length > maxLength)
 const countText = computed(() =>
   countLabel ? countLabel(draft.value.length, maxLength) : `${draft.value.length}/${maxLength}`
 )
 
-watch(
-  () => modelValue,
-  (value) => {
-    draft.value = value
-    lastCommitted.value = value
-  }
-)
-
-function updateDraft(event: Event): void {
-  draft.value = (event.target as HTMLTextAreaElement).value
+function renderedGeneration(event: Event): number {
+  return Number((event.currentTarget as HTMLElement).dataset.generation)
 }
 
-function commit(): void {
-  if (overLimit.value || draft.value === lastCommitted.value) return
-  lastCommitted.value = draft.value
-  emit('commit', draft.value)
+function updateDraft(event: Event): void {
+  update((event.target as HTMLTextAreaElement).value, renderedGeneration(event))
 }
 </script>
 
 <template>
   <div data-test-id="multiline-module-text-editor" class="flex flex-col gap-1.5">
     <textarea
+      :key="generation"
+      :data-generation="generation"
       :value="draft"
       :aria-label="label"
       :maxlength="maxLength"
@@ -68,8 +77,11 @@ function commit(): void {
         monospace ? 'font-mono' : ''
       ]"
       @input="updateDraft"
-      @change="commit"
-      @blur="commit"
+      @focus="beginInput(renderedGeneration($event))"
+      @pointerdown="beginInput(renderedGeneration($event))"
+      @keydown="beginInput(renderedGeneration($event))"
+      @change="submit(renderedGeneration($event))"
+      @blur="submit(renderedGeneration($event))"
     />
 
     <div class="flex items-center justify-end gap-2 text-[9px] text-muted">

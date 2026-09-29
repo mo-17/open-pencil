@@ -1,8 +1,13 @@
+import {
+  emitMountedValidationCapture,
+  MOUNTED_VALIDATION_COMPLETION_GUARD
+} from '#compiler/adapters/form-validation'
 import type { IRElement, IREventHandler, IREventName, IRUpload } from '#compiler/ir/types'
 
 import { inspectLowcodeRouteParameters, lowcodeNavigationPathname } from '@open-pencil/lowcode'
 
 import { emitBackendClientEvent } from '../backend-client/events'
+import { vueControlledEventValue, vueFieldEventLocals } from './html'
 import { emitVueBackendHandler } from './lowcode/backend-actions'
 import {
   eventUsesRequestDebounce,
@@ -10,7 +15,7 @@ import {
   handlersHaveVueExecutableRequest,
   vueRequestKey
 } from './lowcode/request-gate'
-import { vueValidationErrorId, vueValidationKeyBinding } from './lowcode/validation'
+import { vueValidationErrorExpression, vueValidationKeyBinding } from './lowcode/validation'
 import {
   docStateTypeScript,
   escapeAttr,
@@ -75,27 +80,47 @@ export function emitControlledAttribute(
   const directive =
     radio || checkboxGroup || booleanLike || node.tag === 'select' ? 'change' : 'input'
   const functionName = eventFunctionName(context, node.sourceId, directive)
-  let raw = controlledEventValue(controlled.write.targetType)
+  let raw = vueControlledEventValue(controlled.write.targetType)
   if (checkboxGroup) {
     raw = `(__opEvent.target as HTMLInputElement).checked ? [...${scriptRead}, ${option.script}] : ${scriptRead}.filter((__opValue) => __opValue !== ${option.script})`
   }
+  if (node.tag === 'select' && node.attrs.multiple === true)
+    raw =
+      'Array.from((__opEvent.target as HTMLSelectElement).selectedOptions, option => option.value)'
   if (radio) raw = option.script
-  const write = controlledWriteStatement(controlled, context, raw)
   const authored = node.events?.onChange ?? []
-  const prelude = [write]
-  if (node.validation) {
-    const key = vueValidationKeyBinding(context, node.validation.key)
-    prelude.push(`__validateFieldValue(${key}, ${raw})`)
-  }
+  const prelude = controlledWritePrelude(controlled, raw, node.validation?.key, context)
   registerEventFunction(context, functionName, authored, locals, prelude, {
     eventName: 'onChange',
-    requestKey: vueRequestKey(node.sourceId, 'onChange')
+    requestKey: vueRequestKey(node.sourceId, 'onChange'),
+    targetTag: node.tag
   })
   const args = ['$event', ...locals.map((local) => local.alias)].join(', ')
   return {
     attrs: [binding, `@${directive}="${functionName}(${escapeAttr(args)})"`],
     skip: 'onChange'
   }
+}
+
+function controlledWritePrelude(
+  controlled: NonNullable<IRElement['controlled']>,
+  raw: string,
+  fieldValidationKey: string | undefined,
+  context: VueEmitContext
+): string[] {
+  const validationKey = fieldValidationKey ?? controlled.validationKey
+  // Group toggles read the current array; evaluate before the synchronous Vue
+  // write so validation does not append/remove the option a second time.
+  const nextValue = controlled.validationKey ? '__opNextValue' : raw
+  const prelude = [
+    ...(controlled.validationKey ? [`const __opNextValue = ${raw}`] : []),
+    controlledWriteStatement(controlled, context, nextValue)
+  ]
+  if (validationKey) {
+    const key = vueValidationKeyBinding(context, validationKey)
+    prelude.push(`__validateFieldValue(${key}, ${nextValue})`)
+  }
+  return prelude
 }
 
 function controlledWriteStatement(
@@ -114,14 +139,6 @@ function controlledWriteStatement(
     return 'void 0'
   }
   return `${context.writableStateNames.get(controlled.write.name)}.value = ${raw}`
-}
-
-function controlledEventValue(
-  type: NonNullable<IRElement['controlled']>['write']['targetType']
-): string {
-  if (type === 'boolean') return '(__opEvent.target as HTMLInputElement).checked'
-  if (type === 'number') return 'Number((__opEvent.target as HTMLInputElement).value)'
-  return '(__opEvent.target as HTMLInputElement).value'
 }
 
 function controlledOptionValue(
@@ -162,7 +179,8 @@ export function emitEventAttributes(
   context: VueEmitContext,
   sourceId: string,
   locals: readonly VueLocalBinding[],
-  skip?: string | ReadonlySet<string>
+  skip?: string | ReadonlySet<string>,
+  targetTag?: IRElement['tag']
 ): string[] {
   const attrs: string[] = []
   for (const [eventName, rawHandlers] of Object.entries(events ?? {}) as [
@@ -179,7 +197,8 @@ export function emitEventAttributes(
     const functionName = eventFunctionName(context, sourceId, directive)
     registerEventFunction(context, functionName, handlers, locals, [], {
       eventName,
-      requestKey: vueRequestKey(sourceId, eventName)
+      requestKey: vueRequestKey(sourceId, eventName),
+      targetTag
     })
     const args = ['$event', ...locals.map((local) => local.alias)].join(', ')
     const modifier = eventName === 'onSubmit' ? '.prevent' : ''
@@ -201,22 +220,37 @@ export function emitValidationEventAttributes(
   const validation = node.validation
   if (!validation) return []
   const key = vueValidationKeyBinding(context, validation.key)
-  const errorId = vueValidationErrorId(validation.key)
+  const errorId = vueValidationErrorExpression(validation.key, locals)
   let validationCall = `__validateField(${key})`
   if (node.controlled?.write.targetType === 'boolean') {
     validationCall = `__validateFieldValue(${key}, (__opEvent.target as HTMLInputElement).checked)`
+  } else if (node.controlled?.write.targetType === 'array') {
+    validationCall = `__validateFieldValue(${key}, Array.from((__opEvent.target as HTMLSelectElement).selectedOptions, option => option.value))`
   } else if (node.controlled) {
-    validationCall = `__validateFieldValue(${key}, (__opEvent.target as HTMLInputElement).value)`
+    validationCall = `__validateFieldValue(${key}, (__opEvent.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value)`
   }
   const functionName = eventFunctionName(context, node.sourceId, 'blur')
-  registerEventFunction(context, functionName, node.events?.onBlur ?? [], locals, [validationCall])
+  registerEventFunction(
+    context,
+    functionName,
+    node.events?.onBlur ?? [],
+    locals,
+    [validationCall],
+    {
+      eventName: 'onBlur',
+      requestKey: vueRequestKey(node.sourceId, 'onBlur'),
+      targetTag: node.tag
+    }
+  )
   const args = ['$event', ...locals.map((local) => local.alias)].join(', ')
   return [
+    ...(node.validationScopeMarker ? [`:data-openpencil-validation-key="${key}"`] : []),
+    `:data-openpencil-validation-field-key="${key}"`,
     `:aria-invalid="__fieldErrors[${key}] != null"`,
-    `:aria-describedby="__fieldErrors[${key}] ? '${errorId}' : undefined"`,
+    `:aria-describedby="__fieldErrors[${key}] ? ${errorId} : undefined"`,
     'data-openpencil-validation-field',
     `:data-openpencil-validation-invalid="__fieldErrors[${key}] ? 'true' : undefined"`,
-    `@blur="${functionName}(${escapeAttr(args)})"`
+    `@${node.controlled ? 'blur' : 'focusout'}="${functionName}(${escapeAttr(args)})"`
   ]
 }
 
@@ -229,16 +263,25 @@ export function emitValidatedSubmitAttribute(
   const handlers = supportedHandlers(node.events?.onSubmit ?? [], context)
   const functionName = eventFunctionName(context, node.sourceId, 'submit')
   const keySource = keys.map((key) => scriptJSON(key)).join(', ')
+  const mountedOnly = node.formValidationMountedOnly === true
   registerEventFunction(
     context,
     functionName,
     handlers,
     locals,
-    [`if (!__validateFields([${keySource}])) return`],
+    [
+      ...(mountedOnly ? ['if (!(__opSubmitForm instanceof HTMLFormElement) || !__opSubmitForm.checkValidity()) return'] : []),
+      ...(keys.length > 0 ? [`if (!__validateFields(${mountedOnly ? '__opValidationKeys' : `[${keySource}]`}, __opSubmitForm)) return`] : []),
+      ...(mountedOnly ? [MOUNTED_VALIDATION_COMPLETION_GUARD] : [])
+    ],
     {
       eventName: 'onSubmit',
       requestKey: vueRequestKey(node.sourceId, 'onSubmit')
-    }
+    },
+    [
+      'const __opSubmitForm = __opEvent.currentTarget',
+      ...(mountedOnly ? emitMountedValidationCapture('__opEvent', `[${keySource}]`) : [])
+    ]
   )
   const args = ['$event', ...locals.map((local) => local.alias)].join(', ')
   return `@submit.prevent="${functionName}(${escapeAttr(args)})"`
@@ -247,6 +290,7 @@ export function emitValidatedSubmitAttribute(
 interface VueEventRequestOptions {
   eventName: IREventName
   requestKey: string
+  targetTag?: IRElement['tag']
 }
 
 function registerEventFunction(
@@ -255,7 +299,8 @@ function registerEventFunction(
   handlers: readonly IREventHandler[],
   locals: readonly VueLocalBinding[],
   prelude: readonly string[] = [],
-  request?: VueEventRequestOptions
+  request?: VueEventRequestOptions,
+  capture: readonly string[] = []
 ): void {
   const handlerAliases = new Map(context.identAliases)
   const localParams = locals.map((local) => {
@@ -265,8 +310,9 @@ function registerEventFunction(
   const params = ['__opEvent: Event', ...localParams].join(', ')
   const statements = emitHandlerList(handlers, context, handlerAliases)
   const eventLocals = [
-    `const $event = __opEvent`,
-    `const $value = (__opEvent.target as HTMLInputElement | null)?.value ?? ''`
+    ...vueFieldEventLocals(request?.targetTag),
+    `const $value = (__opEvent.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value ?? ''`,
+    ...capture
   ]
   let body = [...eventLocals, ...prelude, ...statements]
   const executableRequest = handlersHaveVueExecutableRequest(handlers, {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 
+import { moduleValueFields } from '@open-pencil/core/plugins'
 import {
   useComponentProperties,
   useEditorCommands,
@@ -11,6 +12,8 @@ import {
 import { useEditorStore } from '@/app/editor/active-store'
 import { COMPONENT_TYPES, nodeIcon } from '@/app/editor/icons'
 import { openLibraryReview, useLibraryService } from '@/app/libraries'
+import { editableNodeEvents } from '@/app/lowcode/events/selection'
+import { useFormOverviewReveal } from '@/app/lowcode/form-overview/use-reveal'
 import {
   designPanelWorkspace,
   getDesignPanelSectionOrder,
@@ -46,12 +49,14 @@ import ComponentPropsPanel from './properties/Lowcode/ComponentPropsPanel.vue'
 import CustomCodePanel from './properties/Lowcode/CustomCodePanel.vue'
 import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
 import EventsPanel from './properties/Lowcode/EventsPanel.vue'
+import FormOverviewPanel from './properties/Lowcode/FormOverviewPanel.vue'
 import InteractionStatePanel from './properties/Lowcode/InteractionStatePanel.vue'
 import { INTERACTIVE_PROP_FIELDS } from './properties/Lowcode/interactive-fields'
 import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vue'
 import LibrariesPanel from './properties/Lowcode/LibrariesPanel.vue'
 import ListPanel from './properties/Lowcode/ListPanel.vue'
 import ModulePropsPanel from './properties/Lowcode/ModulePropsPanel.vue'
+import ModuleValueBindingPanel from './properties/Lowcode/ModuleValueBindingPanel.vue'
 import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
 import ResponsivePanel from './properties/Lowcode/ResponsivePanel.vue'
 import StatePanel from './properties/Lowcode/StatePanel.vue'
@@ -82,6 +87,11 @@ const store = useEditorStore()
 const libraryService = useLibraryService()
 const activeTool = computed(() => store.state.activeTool)
 const { selectedNode: node, selectedCount: multiCount } = useSelectionState()
+const {
+  setRoot: setSinglePanelRoot,
+  isRevealedSection: isFormRevealedSection,
+  reveal: revealFormConfiguration
+} = useFormOverviewReveal(store, node, multiCount, inspectorFilter)
 const { active: componentPropertiesActive } = useComponentProperties()
 const showBooleanOperations = computed(() => multiCount.value >= 2)
 const { getCommand } = useEditorCommands()
@@ -92,6 +102,15 @@ const isComponentType = computed(() => {
   return type ? COMPONENT_TYPES.has(type) : false
 })
 const selectedIcon = computed(() => (node.value ? nodeIcon(node.value) : undefined))
+const hasPrimaryControl = computed(
+  () => node.value?.type === 'RADIO' || node.value?.type === 'SELECT'
+)
+const primaryControlLabel = computed(() =>
+  node.value?.type === 'SELECT' ? tools.value.selectField : tools.value.radio
+)
+const hasModuleValueBinding = computed(
+  () => !!node.value && moduleValueFields(node.value).length > 0
+)
 const hasValueBinding = computed(() => {
   const type = node.value?.type
   return (
@@ -121,10 +140,7 @@ const hasStatePanel = computed(() => {
   const type = node.value?.type
   return type === 'TEXT' || type === 'BUTTON' || type === 'FORM'
 })
-const hasEvents = computed(() => {
-  const type = node.value?.type
-  return type === 'BUTTON' || type === 'FORM'
-})
+const hasEvents = computed(() => editableNodeEvents(node.value?.type).length > 0)
 const INTERACTION_STATE_NODE_TYPES: ReadonlySet<string> = new Set([
   'BUTTON',
   'INPUT',
@@ -169,7 +185,7 @@ const supportsLayoutGuides = computed(() => {
   const type = node.value?.type
   return type === 'FRAME' || type === 'COMPONENT' || type === 'COMPONENT_SET' || type === 'INSTANCE'
 })
-const { dialogs, panels } = useI18n()
+const { dialogs, panels, tools } = useI18n()
 const focusedShowAll = ref(false)
 const workspaceBar = ref<InspectorWorkspaceBarHandle | null>(null)
 const panelContext = computed<DesignPanelContext>(() => {
@@ -187,6 +203,7 @@ watch([panelContext, designPanelWorkspace], () => {
 function sectionLabel(id: string): string {
   const labels: Record<string, string> = {
     component: 'Component',
+    'lowcode-control': primaryControlLabel.value,
     'interaction-states': panels.value.lowcodeInteractionStates,
     module: panels.value.lowcodeModule,
     position: panels.value.position,
@@ -220,6 +237,7 @@ function setWorkspace(workspace: DesignPanelWorkspace): void {
 }
 
 function workspaceAllowsSection(id: string): boolean {
+  if (isFormRevealedSection(id)) return true
   if (hasFilter.value) return true
   if (designPanelWorkspace.value === 'focused' && focusedShowAll.value) return true
   return !isDesignPanelSectionHidden(panelContext.value, id)
@@ -241,7 +259,13 @@ function sectionDefaultOpen(id: string): boolean {
   if (panelContext.value === 'multi') {
     return id === 'component' || id === 'position' || id === 'appearance'
   }
-  return id === 'component' || id === 'position' || id === 'layout' || id === 'appearance'
+  return (
+    id === 'component' ||
+    id === 'lowcode-control' ||
+    id === 'position' ||
+    id === 'layout' ||
+    id === 'appearance'
+  )
 }
 
 function sectionRenderKey(id: string): string {
@@ -256,7 +280,8 @@ function inspectorSectionState(id: string) {
   return {
     storageScope: sectionStorageScope(),
     defaultOpen: sectionDefaultOpen(id),
-    forceOpen: designPanelWorkspace.value !== 'classic' && hasFilter.value,
+    forceOpen:
+      isFormRevealedSection(id) || (designPanelWorkspace.value !== 'classic' && hasFilter.value),
     hideable,
     hideLabel: dialogs.value.designPanelWorkspaceHideSection({ section: sectionLabel(id) }),
     onHide: () => hideStudioSection(id)
@@ -289,6 +314,20 @@ function resetStudioSections(): void {
 }
 
 const SECTION_KEYWORDS: Record<string, string[]> = {
+  'lowcode-control': [
+    'radio',
+    'select',
+    '下拉',
+    'options',
+    'default',
+    'value',
+    'binding',
+    '单选',
+    '选项',
+    '默认',
+    '值',
+    '绑定'
+  ],
   position: [
     'position',
     'x',
@@ -443,8 +482,18 @@ const multiHasMatches = computed(
 
 const hasLowcodeBindings = computed(() => {
   const type = node.value?.type
-  return type === 'TEXT' || type === 'BUTTON' || hasValueBinding.value || hasStatePanel.value
+  return (
+    !hasPrimaryControl.value &&
+    (type === 'TEXT' ||
+      type === 'BUTTON' ||
+      hasValueBinding.value ||
+      hasModuleValueBinding.value ||
+      hasStatePanel.value)
+  )
 })
+const showSingleLowcodeControl = computed(
+  () => hasPrimaryControl.value && sectionMatches('lowcode-control', primaryControlLabel.value)
+)
 const showSinglePosition = computed(() => sectionMatches('position', panels.value.position))
 const showSingleLayout = computed(() => sectionMatches('layout', panels.value.layout))
 const showSingleComponent = computed(
@@ -472,7 +521,9 @@ const showSingleLowcodeEvents = computed(
   () => hasEvents.value && sectionMatches('lowcode-events', 'Events')
 )
 const showSingleLowcodeValidation = computed(
-  () => hasValidation.value && sectionMatches('lowcode-validation', 'Validation')
+  () =>
+    (hasValidation.value || hasModuleValueBinding.value) &&
+    sectionMatches('lowcode-validation', 'Validation')
 )
 const showSingleLowcodeAdvanced = computed(() => sectionMatches('lowcode-advanced', 'Advanced'))
 const showSingleExport = computed(() => sectionMatches('export', panels.value.export))
@@ -481,6 +532,7 @@ const singleHasMatches = computed(
     sectionVisible('position', showSinglePosition.value) ||
     sectionVisible('layout', showSingleLayout.value) ||
     sectionVisible('component', showSingleComponent.value) ||
+    sectionVisible('lowcode-control', showSingleLowcodeControl.value) ||
     sectionVisible('appearance', showSingleAppearance.value) ||
     sectionVisible('interaction-states', showSingleInteractionStates.value) ||
     sectionVisible('module', showSingleModule.value) ||
@@ -623,6 +675,7 @@ const emptyHasMatches = computed(
   <RetainedPanel :active="activeTool !== 'FRAME' && multiCount === 1 && !!node">
     <div
       v-if="node"
+      :ref="setSinglePanelRoot"
       data-test-id="design-panel-single"
       class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto pb-4"
     >
@@ -661,6 +714,8 @@ const emptyHasMatches = computed(
       />
       <InspectorFilter v-model="inspectorFilter" />
 
+      <FormOverviewPanel @reveal="revealFormConfiguration" />
+
       <template v-for="sectionId in panelSectionOrder" :key="sectionRenderKey(sectionId)">
         <InspectorSection
           v-if="sectionId === 'component' && (node.type === 'INSTANCE' || isVariantAuthoringNode)"
@@ -694,6 +749,18 @@ const emptyHasMatches = computed(
           <ComponentPropertiesSection v-if="node.type === 'INSTANCE'" />
           <ComponentPropsPanel v-if="node.type === 'INSTANCE'" />
           <VariantAuthoringSection v-if="isVariantAuthoringNode" />
+        </InspectorSection>
+
+        <InspectorSection
+          v-else-if="sectionId === 'lowcode-control'"
+          v-show="sectionVisible('lowcode-control', showSingleLowcodeControl)"
+          id="lowcode-control"
+          :label="primaryControlLabel"
+          v-bind="inspectorSectionState('lowcode-control')"
+          :highlighted="sectionHighlighted('lowcode-control', primaryControlLabel)"
+        >
+          <InteractivePropsPanel v-if="hasPrimaryControl" />
+          <ValueBindingPanel v-if="hasPrimaryControl" />
         </InspectorSection>
 
         <InspectorSection
@@ -790,7 +857,8 @@ const emptyHasMatches = computed(
           :highlighted="sectionHighlighted('lowcode-bindings', 'Bindings')"
         >
           <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
-          <ValueBindingPanel v-if="hasValueBinding" />
+          <ValueBindingPanel v-if="hasValueBinding && !hasPrimaryControl" />
+          <ModuleValueBindingPanel v-if="hasModuleValueBinding" />
           <StatePanel v-if="hasStatePanel" />
         </InspectorSection>
 
@@ -814,6 +882,7 @@ const emptyHasMatches = computed(
           :highlighted="sectionHighlighted('lowcode-validation', 'Validation')"
         >
           <ValidationPanel v-if="hasValidation" />
+          <ModuleValueBindingPanel v-if="hasModuleValueBinding" mode="validation" />
         </InspectorSection>
 
         <InspectorSection
@@ -824,7 +893,9 @@ const emptyHasMatches = computed(
           v-bind="inspectorSectionState('lowcode-advanced')"
           :highlighted="sectionHighlighted('lowcode-advanced', 'Advanced')"
         >
-          <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
+          <InteractivePropsPanel
+            v-if="!hasPrimaryControl && node.type in INTERACTIVE_PROP_FIELDS"
+          />
           <ListPanel v-if="node.type === 'LIST'" />
           <RenderConditionPanel />
           <ResponsivePanel />

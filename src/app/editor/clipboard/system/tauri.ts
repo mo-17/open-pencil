@@ -1,6 +1,7 @@
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
+import { captureClipboardContext } from '@/app/editor/clipboard/context'
 import { isDesignClipboardHTML } from '@/app/editor/clipboard/html'
 import {
   clearInMemoryClipboardHTML,
@@ -38,8 +39,10 @@ async function copySelection(store: EditorStore): Promise<boolean> {
 
 async function pasteSelection(store: EditorStore, cursorPos?: Vector): Promise<boolean> {
   if (!isTauri()) return false
+  const isCurrent = captureClipboardContext(store)
   try {
     const text = await readTauriClipboardText()
+    if (!isCurrent()) return false
     if (text && isDesignClipboardHTML(text)) {
       await pasteClipboardHTML(store, text, cursorPos)
       return true

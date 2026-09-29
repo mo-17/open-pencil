@@ -387,7 +387,9 @@ provideNumberField({
   invalidReason
 })
 
-watch(editing, (value) => emit('editing-change', value))
+// Publish cancellation before unmount stops queued watchers, so the host releases
+// keyboard guards when a focused field is replaced with another selection.
+watch(editing, (value) => emit('editing-change', value), { flush: 'sync' })
 watch(
   () => modelValue,
   (value) => {

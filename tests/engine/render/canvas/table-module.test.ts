@@ -13,7 +13,8 @@ import {
   type TableModuleConfigV1
 } from '#core/plugins/table'
 
-import { createMockCanvas, createMockRenderer } from './effects/helpers'
+import { createMockCanvas } from './effects/helpers'
+import { moduleTextRenderer, paragraphText } from './modules/helpers'
 
 const CONFIG: TableModuleConfigV1 = {
   table: {
@@ -51,7 +52,7 @@ function rendererWithFont() {
       fontSize = value
     })
   }
-  return { renderer: createMockRenderer({ zoom: 1, labelFont: labelFont as never }), labelFont }
+  return { renderer: moduleTextRenderer({ labelFont: labelFont as never }), labelFont }
 }
 
 describe('table module canvas preview', () => {
@@ -66,15 +67,15 @@ describe('table module canvas preview', () => {
   })
 
   test('draws the inline grid, headers, stripes, and bounded cell labels', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     const { renderer, labelFont } = rendererWithFont()
 
     expect(renderTableModulePreview(renderer, canvas as Canvas, tableFrame())).toBe(true)
-    expect(canvas.save).toHaveBeenCalledTimes(1)
+    expect(canvas.save).toHaveBeenCalledTimes(9)
     expect(canvas.clipRRect).toHaveBeenCalledTimes(1)
     expect(canvas.drawRect.mock.calls.length).toBeGreaterThanOrEqual(7)
-    expect(canvas.drawText).toHaveBeenCalledTimes(8)
-    expect(canvas.drawText.mock.calls.map((call) => call[0])).toEqual([
+    expect(canvas.drawParagraph).toHaveBeenCalledTimes(8)
+    expect(canvas.drawParagraph.mock.calls.map((call) => paragraphText(call[0]))).toEqual([
       'Name',
       'Status',
       'Landing',
@@ -84,15 +85,15 @@ describe('table module canvas preview', () => {
       'System',
       'Draft'
     ])
-    expect(canvas.restore).toHaveBeenCalledTimes(1)
-    expect(labelFont.getSize).toHaveBeenCalledTimes(1)
+    expect(canvas.restore).toHaveBeenCalledTimes(canvas.save.mock.calls.length)
+    expect(labelFont.getSize).toHaveBeenCalledTimes(9)
     expect(labelFont.setSize.mock.calls.map((call) => call[0])).toEqual([14, 11])
   })
 
   test('restores the shared preview font when cell drawing fails', () => {
     const canvas = {
       ...createMockCanvas(),
-      drawText: mock(() => {
+      drawParagraph: mock(() => {
         throw new Error('draw failed')
       })
     }
@@ -101,24 +102,24 @@ describe('table module canvas preview', () => {
     expect(() => renderTableModulePreview(renderer, canvas as Canvas, tableFrame())).toThrow(
       'draw failed'
     )
-    expect(canvas.restore).toHaveBeenCalledTimes(1)
+    expect(canvas.restore).toHaveBeenCalledTimes(canvas.save.mock.calls.length)
     expect(labelFont.setSize.mock.calls.map((call) => call[0])).toEqual([14, 11])
   })
 
   test('regular FRAME rendering dispatches table and invalid identities fail closed', () => {
-    const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const canvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     const { renderer } = rendererWithFont()
     renderShapeUncached(renderer, canvas as Canvas, tableFrame(), new SceneGraph())
     expect(renderer.drawNodeFill).toHaveBeenCalledTimes(1)
-    expect(canvas.drawText).toHaveBeenCalled()
+    expect(canvas.drawParagraph).toHaveBeenCalled()
 
     const invalid = tableFrame({
       interactiveProps: {
         module: { ...createTableModuleInstance(CONFIG), moduleType: 'unknown' }
       }
     })
-    const invalidCanvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+    const invalidCanvas = { ...createMockCanvas(), drawParagraph: mock(() => undefined) }
     expect(renderTableModulePreview(renderer, invalidCanvas as Canvas, invalid)).toBe(false)
-    expect(invalidCanvas.drawText).not.toHaveBeenCalled()
+    expect(invalidCanvas.drawParagraph).not.toHaveBeenCalled()
   })
 })

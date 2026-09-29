@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import type { SceneNode } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
+import { useSectionUI } from '@/components/ui/section'
+
+import ValidationFieldEditor from './ValidationFieldEditor.vue'
 
 type ValidationMethod = 'GET' | 'POST'
 type AsyncMode = 'url' | 'urlExpr'
@@ -46,8 +49,6 @@ interface FormValidationSummary {
 }
 
 type Props = Record<string, unknown>
-type NumericRule = 'minLength' | 'maxLength' | 'min' | 'max'
-type MessageRule = keyof ValidationMessages
 
 const FIELD_TYPES = new Set([
   'INPUT',
@@ -67,6 +68,25 @@ const presence = usePresenceTarget('interactiveProps', () => selectedNode.value?
 
 const ip = useSceneComputed<Props>(() => (selectedNode.value?.interactiveProps ?? {}) as Props)
 
+const owner = useSceneComputed(() => {
+  const id = selectedNode.value?.id
+  return id ? editor.graph.getNode(id) : undefined
+})
+function commitControlledValidation(value: JSONObject, target: SceneNode | undefined) {
+  if (
+    !target ||
+    target !== owner.value ||
+    editor.graph.getNode(target.id) !== target ||
+    !editor.state.selectedIds.has(target.id) ||
+    editor.state.selectedIds.size !== 1
+  )
+    return
+  const nextIp = { ...ip.value }
+  if (Object.keys(value).length) nextIp.validation = value
+  else Reflect.deleteProperty(nextIp, 'validation')
+  commitInteractiveProps(nextIp)
+}
+
 const isField = computed(() => FIELD_TYPES.has(selectedNode.value?.type ?? ''))
 const isForm = computed(() => selectedNode.value?.type === 'FORM')
 const hasValueBinding = computed(() => {
@@ -74,6 +94,10 @@ const hasValueBinding = computed(() => {
   return kind === 'docState' || kind === 'ref'
 })
 
+const validationRecord = computed<JSONObject>(() => {
+  const raw = selectedNode.value?.interactiveProps?.validation
+  return isPlainObject(raw) ? raw : {}
+})
 const validation = computed<FieldValidation>(() =>
   isPlainObject(ip.value.validation) ? (ip.value.validation as FieldValidation) : {}
 )
@@ -161,29 +185,6 @@ function cleanAsync(input: AsyncValidation): AsyncValidation | undefined {
   return next.url || next.urlExpr || next.message ? next : { method }
 }
 
-function setRequired(checked: boolean): void {
-  commitField({ ...validation.value, required: checked })
-}
-
-function setTextRule(key: 'pattern' | 'customExpr', value: string): void {
-  commitField({ ...validation.value, [key]: value })
-}
-
-function setNumberRule(key: NumericRule, value: string): void {
-  const trimmed = value.trim()
-  commitField({
-    ...validation.value,
-    [key]: trimmed === '' ? undefined : Number(trimmed)
-  })
-}
-
-function setMessage(key: MessageRule, value: string): void {
-  commitField({
-    ...validation.value,
-    messages: { ...validation.value.messages, [key]: value }
-  })
-}
-
 function setAsyncEnabled(checked: boolean): void {
   const next = { ...validation.value }
   if (checked) next.async = { method: 'POST' }
@@ -225,11 +226,6 @@ function setSummaryEnabled(checked: boolean): void {
 function setSummaryTitle(value: string): void {
   commitSummary({ ...summary.value, enabled: true, title: value })
 }
-
-function numericValue(key: NumericRule): string {
-  const value = validation.value[key]
-  return typeof value === 'number' && Number.isFinite(value) ? String(value) : ''
-}
 </script>
 
 <template>
@@ -265,98 +261,11 @@ function numericValue(key: NumericRule): string {
     </template>
 
     <template v-else>
-      <label class="flex items-center gap-2 text-[11px] text-surface">
-        <input
-          type="checkbox"
-          :checked="validation.required === true"
-          data-test-id="lowcode-validation-required"
-          class="size-3.5 accent-accent"
-          @change="setRequired(($event.target as HTMLInputElement).checked)"
-        />
-        Required
-      </label>
-
-      <div class="mt-1.5 grid grid-cols-2 gap-1">
-        <input
-          :value="numericValue('minLength')"
-          data-test-id="lowcode-validation-min-length"
-          type="number"
-          min="0"
-          placeholder="Min length"
-          class="min-w-0 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="setNumberRule('minLength', ($event.target as HTMLInputElement).value)"
-        />
-        <input
-          :value="numericValue('maxLength')"
-          data-test-id="lowcode-validation-max-length"
-          type="number"
-          min="0"
-          placeholder="Max length"
-          class="min-w-0 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="setNumberRule('maxLength', ($event.target as HTMLInputElement).value)"
-        />
-        <input
-          :value="numericValue('min')"
-          data-test-id="lowcode-validation-min"
-          type="number"
-          placeholder="Min"
-          class="min-w-0 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="setNumberRule('min', ($event.target as HTMLInputElement).value)"
-        />
-        <input
-          :value="numericValue('max')"
-          data-test-id="lowcode-validation-max"
-          type="number"
-          placeholder="Max"
-          class="min-w-0 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="setNumberRule('max', ($event.target as HTMLInputElement).value)"
-        />
-      </div>
-
-      <input
-        :value="validation.pattern ?? ''"
-        data-test-id="lowcode-validation-pattern"
-        spellcheck="false"
-        placeholder="Pattern regex"
-        class="mt-1 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-        @change="setTextRule('pattern', ($event.target as HTMLInputElement).value)"
+      <ValidationFieldEditor
+        :model-value="validationRecord"
+        :owner="owner"
+        @commit="commitControlledValidation"
       />
-
-      <input
-        :value="validation.customExpr ?? ''"
-        data-test-id="lowcode-validation-custom-expr"
-        spellcheck="false"
-        placeholder="Custom expression"
-        class="mt-1 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-        @change="setTextRule('customExpr', ($event.target as HTMLInputElement).value)"
-      />
-
-      <div class="mt-1.5 grid grid-cols-2 gap-1">
-        <input
-          :value="validation.messages?.required ?? ''"
-          data-test-id="lowcode-validation-message-required"
-          spellcheck="false"
-          placeholder="Required message"
-          class="min-w-0 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="setMessage('required', ($event.target as HTMLInputElement).value)"
-        />
-        <input
-          :value="validation.messages?.pattern ?? ''"
-          data-test-id="lowcode-validation-message-pattern"
-          spellcheck="false"
-          placeholder="Pattern message"
-          class="min-w-0 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="setMessage('pattern', ($event.target as HTMLInputElement).value)"
-        />
-        <input
-          :value="validation.messages?.custom ?? ''"
-          data-test-id="lowcode-validation-message-custom"
-          spellcheck="false"
-          placeholder="Custom message"
-          class="min-w-0 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="setMessage('custom', ($event.target as HTMLInputElement).value)"
-        />
-      </div>
 
       <label class="mt-2 flex items-center gap-2 text-[11px] text-surface">
         <input

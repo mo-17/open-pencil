@@ -20,9 +20,10 @@ export function opacityFromBuffer(buffer: string): number {
 }
 
 export function createNodeActions(ctx: EditorContext) {
-  const layoutModeActions = createLayoutModeActions(ctx)
+  const nodePreviewActions = createNodePreviewActions(ctx, updateNode)
+  const layoutModeActions = createLayoutModeActions(ctx, nodePreviewActions)
   const nudgeActions = createNudgeActions(ctx)
-  const variableBindingActions = createVariableBindingActions(ctx)
+  const variableBindingActions = createVariableBindingActions(ctx, updateNodeWithUndo)
 
   function updateNode(id: string, changes: Partial<SceneNode>) {
     const node = ctx.graph.getNode(id)
@@ -88,7 +89,7 @@ export function createNodeActions(ctx: EditorContext) {
 
   return {
     updateNode,
-    ...createNodePreviewActions(ctx, updateNode),
+    ...nodePreviewActions,
     updateNodeWithUndo,
     setOpacity,
     ...layoutModeActions,

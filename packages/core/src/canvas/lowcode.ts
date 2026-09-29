@@ -3,16 +3,28 @@ import type { Canvas } from 'canvaskit-wasm'
 import {
   DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
   DEFAULT_LOWCODE_TEXT_COLOR,
+  inputControlConfig,
   normalizeLowcodeTextColor
 } from '@open-pencil/lowcode'
-import type { SceneNode } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 import { parseColor } from '#core/color'
 import { resolveMapModule, type MapModuleConfig } from '#core/plugins'
-import { buttonLabelTextNode, lowcodeTextNode, lowcodeTextProjection } from '#core/text/lowcode'
+import {
+  buttonLabelTextNode,
+  lowcodeTextNode,
+  lowcodeTextProjection,
+  textInputProjection
+} from '#core/text/lowcode'
 
+import { renderColorInputContent } from './color-input'
+import { clipControlContent, configureControlPaint, controlContentBox } from './control-content'
+import { textInputDesignContent } from './control-state'
+import { dateTimeInputCalendarSize, renderDateTimeInputCalendar } from './date-time-input'
+import { renderAuthoredInputControls } from './input-controls'
 import type { SkiaRenderer } from './renderer'
+import { renderTimeInputClock, timeInputClockSize } from './time-input'
 
 export { buttonLabelTextNode, lowcodeTextNode, lowcodeTextProjection }
 
@@ -38,9 +50,22 @@ export function renderButtonLabel(r: SkiaRenderer, canvas: Canvas, node: SceneNo
   r.renderText(canvas, label)
 }
 
-export function renderTextInputContent(r: SkiaRenderer, canvas: Canvas, node: SceneNode): void {
-  const projection = lowcodeTextProjection(node)
-  if (!projection || projection.contentKind === 'button_label' || projection.node.text === '')
+export function renderTextInputContent(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  node: SceneNode,
+  graph?: SceneGraph
+): void {
+  const projection = textInputProjection(
+    node,
+    graph ? textInputDesignContent(graph, node) : undefined
+  )
+  const content = controlContentBox(node)
+  if (
+    !content ||
+    !projection ||
+    (projection.node.text === '' && !inputControlConfig(node.interactiveProps ?? {}))
+  )
     return
 
   const placeholder = projection.contentKind.endsWith('_placeholder')
@@ -48,12 +73,24 @@ export function renderTextInputContent(r: SkiaRenderer, canvas: Canvas, node: Sc
     node.interactiveProps?.[placeholder ? 'placeholderColor' : 'textColor'],
     placeholder ? DEFAULT_LOWCODE_PLACEHOLDER_COLOR : DEFAULT_LOWCODE_TEXT_COLOR
   )
-  configureTextPaint(r, color)
+  configureControlPaint(r, color, node.interactiveProps?.disabled === true ? 0.45 : 1)
 
   canvas.save()
-  canvas.translate(node.paddingLeft, node.type === 'TEXTAREA' ? node.paddingTop : 0)
-  r.renderText(canvas, projection.node)
-  canvas.restore()
+  try {
+    clipControlContent(r, canvas, node, content)
+    if (renderColorInputContent(r, canvas, node, projection.node, content, color)) return
+    if (renderAuthoredInputControls(r, canvas, node, projection.node, content, color)) return
+    const calendarSize = dateTimeInputCalendarSize(node, content.width, content.height)
+    const iconSize = calendarSize || timeInputClockSize(node, content.width, content.height)
+    const width = Math.max(0, projection.node.width - (iconSize > 0 ? iconSize + 8 : 0))
+    if (width > 0) r.renderText(canvas, { ...projection.node, width })
+    if (iconSize > 0) {
+      const drawIcon = calendarSize ? renderDateTimeInputCalendar : renderTimeInputClock
+      drawIcon(r, canvas, node, content.width, content.height, iconSize)
+    }
+  } finally {
+    canvas.restore()
+  }
 }
 
 const MAP_PALETTES = {

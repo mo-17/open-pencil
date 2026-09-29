@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 
 const propertyRoot = resolve(import.meta.dir, '../../../../../src/components/properties/Lowcode')
 const source = readFileSync(resolve(propertyRoot, 'UploadAcceptEditor.vue'), 'utf8')
-const fieldSource = readFileSync(resolve(propertyRoot, 'ModulePropertyFieldEditor.vue'), 'utf8')
+const scalarSource = readFileSync(resolve(propertyRoot, 'ModuleScalarFieldEditor.vue'), 'utf8')
 const specializedSource = readFileSync(
   resolve(propertyRoot, 'ModuleSpecializedFieldEditor.vue'),
   'utf8'
@@ -54,12 +54,12 @@ describe('Upload Button accept editor', () => {
     expect(source).toContain('data-test-id="upload-accept-validation-hint"')
     expect(source).toContain('data-test-id="upload-local-only-notice"')
     expect(source).toContain('panels.lowcodeUploadLocalOnlyNotice')
-    expect(fieldSource).toContain('data-test-id="upload-boolean-control"')
-    expect(fieldSource).toMatch(
+    expect(scalarSource).toContain('data-test-id="upload-boolean-control"')
+    expect(scalarSource).toMatch(
       /data-test-id="upload-boolean-control"[\s\S]*?class="[^"]*min-h-11[^"]*focus-within:ring-2[^"]*"/
     )
-    expect(fieldSource).toContain("const uploadNumberFieldUI = { root: 'h-11 min-h-11' }")
-    expect(fieldSource).toContain(':ui="isUploadNumberField ? uploadNumberFieldUI : undefined"')
+    expect(scalarSource).toContain("const uploadNumberFieldUI = { root: 'h-11 min-h-11' }")
+    expect(scalarSource).toContain(':ui="isUploadNumberField ? uploadNumberFieldUI : undefined"')
   })
 
   test('atomically couples multiple and maxFiles without an invalid transient state', () => {
@@ -68,8 +68,8 @@ describe('Upload Button accept editor', () => {
     expect(controllerSource).toContain('multiple: input.checked')
     expect(controllerSource).toContain('Math.max(2,')
     expect(controllerSource).toContain(': 1')
-    expect(fieldSource).toContain(':disabled="uploadSingleFileMode"')
-    expect(fieldSource).toContain('data-test-id="upload-single-file-max-hint"')
+    expect(scalarSource).toContain(':disabled="uploadSingleFileMode"')
+    expect(scalarSource).toContain('data-test-id="upload-single-file-max-hint"')
   })
 
   test('wires accept through the dedicated specialized editor', () => {

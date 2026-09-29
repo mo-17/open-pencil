@@ -27,7 +27,7 @@ for (const theme of ['light', 'dark']) {
         const id = editor.createShape('FRAME', 0, 0, 12345, 6789)
         editor.select([id])
       })
-      const section = page.getByRole('region', { name: 'Layout', exact: true })
+      const section = page.getByRole('region', { name: 'Auto layout', exact: true })
       const width = section.locator('[data-property="width"]')
       await expect(width).toContainText('12345')
       await expect(section.locator('[data-property="height"]')).toContainText('6789')

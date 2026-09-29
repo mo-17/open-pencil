@@ -147,6 +147,7 @@ export function createCommerceCatalogPage(
     renderCondition: catalog.currentOperation,
     bindings: { text: { kind: 'expr', expr: f.feedback.name } }
   })
+  layout.section(admin, 'Inventory adjustment', 1228, 350)
   text(admin, copy.restockTitle, 48, 1234, 850, { fontSize: 24 })
   text(admin, copy.restockHint, 48, 1276, 880, { height: 60, fontSize: 14 })
   shape('INPUT', copy.restockQuantity, admin, 48, 1350, 300, 42, {

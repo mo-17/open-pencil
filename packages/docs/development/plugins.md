@@ -17,7 +17,7 @@ publishes root-signed discovery state. The optional executable channel runs only
 root-indexed, import-free WASM compute packages after an exact local grant. No manifest path or URL
 is dynamically imported as JavaScript, HTML, CSS, native code, or privileged host functionality.
 
-The current **Unreleased** source line contains 71 reviewed plugins and 76 contributions: 21 module
+The current **Unreleased** source line contains 92 reviewed plugins and 97 contributions: 42 module
 contributions; 13 commands (four Clipboard Toolkit commands, Compiler Preview Popout, AI Popout,
 Static Accessibility Audit, Static Design System Audit, Application Security Readiness, and safe
 Vercel and Cloudflare deployment-plan reviews, plus Backend Provider audit and plan); 13 exporters (Tauri React, Next.js, Vue, Capacitor,
@@ -605,9 +605,7 @@ compile as overlays after the map layer without disabling interaction in uncover
 Module configuration cannot supply raw script, style, HTML, token, arbitrary attribution, or URL
 execution.
 
-The Chart reference module exercises the same registries without adding another conditional branch.
-Its Canvas preview is dependency-free and its generated React component has no runtime package
-dependency. The Rich Text module follows the same pattern with a deterministic Canvas preview and
+The Chart reference module exercises the same registries without adding another conditional branch. Its version-1 five-field envelope accepts bar, line, area, pie and donut, while retaining old bar data. `buildChartLayout` owns deterministic bounded geometry and text boxes for Canvas and both web targets. Compiler IR includes the layout computed at the authored dimensions; generated SVG scales it proportionally and exposes the full source data in an accessible table. This is a static single-series contract, not reactive business-data binding. The chart editor atomically submits paired labels and values with an owner snapshot, preserves invalid drafts and cancels them when the selection or configuration changes. Circular data rejects negative values and treats a zero total as an empty state. Canvas and generated React/Vue charts require no chart runtime dependency. The Rich Text module follows the same pattern with a deterministic Canvas preview and
 reviewed Compiler adapter. Its generated editor keeps the editable DOM outside React's managed child
 tree so browser editing cannot corrupt reconciliation during a parent render. Initial and edited
 content is projected through bounded semantic nodes rather than raw HTML; paste/drop is plain-text
@@ -623,6 +621,19 @@ explicit load action in dev-mode Compiler Preview before attaching either remote
 React/Tauri apps use the browser's native `<video>` element. Table accepts bounded rectangular string
 data and renders cells through React text nodes in a semantic `<table>`; cell content is never
 interpreted as markup.
+
+Modal content slots resolve a unique visible direct-child name; absent legacy configuration keeps
+its authored trigger children, while an explicit `contentChildName` (including the empty text mode)
+keeps body children off the normal canvas trigger. The renderer, chunk planner and hit testing share
+that presentation boundary. Trigger labels use the font-demand and fallback path with the real host
+node identity so late font loading invalidates cached drawing.
+
+The app's `lowcode/modal-content` service creates ordinary frames and updates the slot mapping in
+one undo batch. Content editing uses an editor-owned ephemeral view of the original subtree, not a
+copy or a temporary document page. The scope bounds canvas drawing and input, restores the previous
+viewport on return, and is cleared when the target, page, graph or active pane changes. It is absent
+from document data, collaboration and compiler output. Content roots still follow the exact-name
+contract; renaming a root requires selecting its new name in the module inspector.
 
 Slide Menu accepts only bounded plain-text content plus document paths, anchors, or canonical public
 HTTPS link targets. Its React and Vue adapters emit dependency-free portal runtimes with two reviewed
@@ -665,8 +676,16 @@ match each column label or ID, every row must have the exact column count, and n
 cells use strict locale-independent representations. Editor imports commit through the existing
 undoable module-property path. Export returns read-only text for manual copying, requests neither
 file nor clipboard authority, emits CRLF records, and prefixes formula-like text fields. The generated
-React runtime reimplements the same bounds, but imported rows are component-local session state only
+React/Vue runtimes implement the same bounds, but imported rows are component-local session state only
 and are not written to the design or persisted across reloads.
+
+Data Grid config v1 accepts the additive optional `showCsvTools` boolean and normalizes missing
+values to `false`. All previously required fields, unknown-key rejection and byte limits remain
+enforced. The normalized config includes this flag; it controls only generated CSV UI, independently
+of dev mode, and must not reset imported rows or grant file/network authority. Empty selection and
+query reset actions are hidden while selection descriptions remain available to assistive technology.
+Canvas grid labels share paragraph shaping and font fallback with other module labels; font
+requirements are collected from the bounded visible grid summary using the host node identity.
 
 Seven bounded content modules form a reviewed group within the current module set:
 
@@ -676,24 +695,55 @@ Seven bounded content modules form a reviewed group within the current module se
 - QR / Barcode Canvas rendering is explicitly a deterministic placeholder, not an encoder. The
   React adapter performs actual local QR and Code 128 generation through pinned `qrcode` and
   `jsbarcode` dependencies and performs no fetch.
-- Markdown Canvas rendering strips formatting to bounded text. The React adapter uses
+- Markdown Canvas rendering uses paragraph font fallback and bounded heading/list/code projections; it is a static summary, not a full Markdown layout engine. The React adapter uses
   `react-markdown` with optional `remark-gfm`, skips raw HTML, and applies a fail-closed link transform
   for anchors, root-relative paths, and canonical public HTTPS URLs. Markdown image syntax renders an
   inert alt-text placeholder instead of attaching a remote `src`, so Compiler Preview cannot make an
-  implicit tracking request.
+  implicit tracking request. Vue uses the same unified/remark CommonMark/GFM parser family and an allowlisted HAST-to-VNode renderer, without `v-html`. Generated projects declare their parser dependencies; the host resolves the already installed, locked react-markdown parsers without installing packages.
 - Code Block renders source as text. The language value is a bounded presentation label; there is no
-  syntax engine or code execution. Clipboard access exists only in the generated React copy button
-  and fails visibly when unavailable.
+  syntax engine or code execution. Clipboard access exists only in the generated React/Vue copy button
+  and fails visibly when unavailable. Both runtimes keep line numbers with wrapped source lines and invalidate pending copy outcomes on config change/unmount. The multiline inspector reuses owner-snapshot commit guards and cancels drafts synchronously before retained deactivation.
 - PDF Viewer and Audio Player accept only an empty source, a safe canonical root-relative path, or a
   canonical public HTTPS URL. Canvas draws inert metadata placeholders and never loads bytes. Dev-mode
   Compiler Preview requires explicit activation before attaching a source; production React output
   delegates to a sandboxed browser PDF iframe or native `<audio>` element. Autoplay audio must be
   muted.
 
-Web/React and Tauri output use the complete reviewed interactive adapter set. Vue v1 now emits real,
-local runtimes for Modal, Dropdown Menu, Slide Menu, and Upload Button: the first three retain their
-reviewed keyboard, focus, dismissal, reduced-motion, and safe-link behavior, while Upload Button
-validates local file selection without transferring or persisting bytes. Other plugin modules keep
+Slider/Range, Rating, Stepper and Breadcrumb add four opt-in, version-1 FRAME modules. Their
+closed configuration parsers reject unknown fields, unsafe link values and unsupported versions;
+Canvas reads authored initial state and uses the shared font-fallback path without network access.
+React/Vue adapters share numeric, navigation and presentation helpers. Slider values snap to a
+min-based step grid with up to six decimal places and do not allow handles to cross. Rating supports
+whole/half steps and optional clearing. Slider/Range and Rating support typed writable state and independent FORM bindings; unbound values remain local. Binding does not configure persistence. Stepper optionally selects a local step; it does not submit, validate or
+advance a business workflow. Breadcrumb accepts reviewed safe paths, anchors and public HTTPS URLs,
+keeps labels as plain text and renders the final item as the current page without a link.
+
+Alert, Progress and Chip use the same versioned, bounded FRAME module contract. Semantic palettes, geometry and text projection are shared by offline canvas and React/Vue output. Alert dismissal and Chip selection/removal are instance-local; equivalent configuration objects retain runtime state, while changed configurations/remounts reset it. Close/remove controls remain keyboard accessible and move focus to an instance-owned continuation or status. Progress is configured presentation, without backend task or FORM binding. Its indeterminate mode omits percentage and `aria-valuenow`; runtime animation respects reduced motion and canvas previews remain deterministic.
+
+Avatar, Badge and Timeline share that FRAME contract. Avatar consumes only local PNG/JPEG/WebP image fills and falls back to authored text or initials when an image is absent or fails. Badge presents an authored count or decorative dot on a text host; it has no live unread-count or arbitrary child-slot contract. Timeline preserves authored event order, plain-text time labels and status markers; its retained inspector invalidates pending choices when the current configuration changes. These display modules neither request remote data nor add form or backend bindings.
+
+Tooltip, Skeleton and Empty State use strict version-1 FRAME configurations and shared presentation geometry. Tooltip keeps its plain-text bubble instance-owned, closes on Escape, cleans up delayed work and positioning observers, and remains in the microfrontend overlay rejection set. Canvas paints only its trigger. Skeleton has bounded lines/shapes, no progress percentage and reduced-motion-aware runtime animation. Empty State has fixed host-owned illustrations and no automatic data detector or action contract. Neither module starts network requests.
+
+Cascader uses a strict v1 FRAME envelope with up to 128 local items and six levels. A shared hierarchy parser rejects duplicate keys, cycles and invalid initial leaf paths. Canvas shows authored selection; React/Vue runtimes own progressive columns, full-path search and keyboard navigation. `moduleValueFields` provides optional writable array state and FORM bindings. Slider/Range, Rating and Date Range use the same contract with independent endpoint validators and reset invalidation. Explicit cross-FORM reassignment is unsupported and fails closed.
+
+Walktour uses a strict v1 FRAME envelope with 1–12 steps and optional unique direct-child names. Compiler-only slot metadata preserves all child content exactly once and keeps authored placement. The same DOM controller owns React/Vue native-dialog presentation, target measurement, focus, reset and cleanup; missing targets become centered explanations. Canvas draws the inert start trigger and ordinary children, with no live overlay. No CSS selectors, arbitrary HTML, remote data, auto-clicks or business writes are accepted; microfrontend output is blocked.
+
+Org Chart uses a strict v1 FRAME envelope with 1–64 items, at most eight levels and checked parent references. Shared deterministic layout places cards and connectors in Canvas and both web targets. The retained item editor commits valid hierarchies atomically; folding is instance-local runtime state. Plain-text labels/descriptions grant no remote-data or FORM authority.
+
+Pagination uses a strict v1 FRAME envelope and shares deterministic page/width projections between Canvas and React/Vue. Only its exact reviewed identity receives numeric currentPage read/write bindings and total/pageSize read expressions. The runtime bounds controls independently of total, keeps invalid bound data explicit, and never writes merely to clamp a projection. The local paginated-list recipe consumes the same page state; no network or FORM authority is granted.
+
+Descriptions keeps 1–24 bounded plain-text label/value pairs in a normal FRAME envelope. Shared width rules determine one to three columns for canvas and generated React/Vue description lists. The retained panel commits the paired list atomically and invalidates drafts on owner changes. Ordinary color INPUT controls instead use string state and FORM validation; a nameless native chooser never serializes its fallback black value as business data. Neither component adds remote access.
+
+The Assets catalog has 62 component templates: 54 basic components and eight compositions. Single
+Slider and Range slider recipes share one module identity. Insertion rechecks that the required
+plugin is installed, enabled and compatible; recipes do not silently grant or install it.
+The ordinary FRAME envelope preserves `.fig` geometry and metadata, not Figma execution of these
+interactive behaviors.
+
+Web/React and Tauri output use the complete reviewed interactive adapter set. Vue registers 35 of
+the 42 bundled modules: Accordion, Alert, Avatar, Badge, Breadcrumb, Carousel, Chart, Chip, Code Block, Markdown, DataGrid, Date Range, Tree/TreeSelect, Popover/Confirmation, Descriptions, Pagination, Org Chart, Walktour, Cascader, Dropdown Menu, Modal, Progress, Rating,
+Slide Menu, Slider/Range, Stepper, Table, Tabs, Timeline, Tooltip, Skeleton, Empty State, Upload Button, Video and VR Tour. Upload Button
+validates local file selection without transferring or persisting bytes. The other seven modules keep
 their authored shell and an explicit `vue-module-unsupported` warning. Expo and Flutter retain
 unsupported-module warnings and static fallbacks for these modules. VR Tour has a separate,
 reviewed WebView source adapter for configured scenes; it does not make other modules executable.
@@ -751,7 +801,7 @@ The opt-in Vue Exporter dispatches the shared IR through the dedicated Vue adapt
 path-safe, 64-MiB source archive boundary. It emits Vite + Vue 3 + TypeScript + Tailwind source,
 editable SFC pages/components, Vue Router v4 for multiple pages, basic reactive state/bindings/events,
 route/query expressions backed by `useRoute()`, safe optional/repeated/splat navigation parameters,
-query/hash suffixes, the four reviewed module runtimes above, and byte-preserved assets. The exporter
+query/hash suffixes, the 34 reviewed module runtimes above, and byte-preserved assets. The exporter
 does not install dependencies or execute generated code. Routerless single-page exports keep route
 and query context empty and warn instead of inventing browser state.
 
@@ -883,8 +933,8 @@ host explicitly marks MCP-safe into the MCP catalog: modules become add tools, c
 tools, cancellable exporters become export tools, and explicitly session-authorized connector
 queries become query tools. Connector mutations stay out of MCP and require a fresh confirmation in
 the installed-plugin UI. With all bundled plugins installed and enabled but no connector session
-grant, the current snapshot contains 33 dynamic tools: 20 module add tools, 11 command run tools, and
-two exporter tools. Authorized connector queries can add temporary query tools. Vue source export is
+grant, the current catalog exposes reviewed module add, command run and exporter tools according to
+their registered MCP policy. Authorized connector queries can add temporary query tools. Vue source export is
 MCP-visible only while its opt-in plugin is installed
 and enabled. The Tauri, Next.js, Capacitor, Electron, Expo,
 Flutter, and Figma source/projection exporters remain UI-only until their synchronous

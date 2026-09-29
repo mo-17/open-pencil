@@ -164,7 +164,7 @@ describe('compile — dynamic control options (Phase 4 §17.4)', () => {
     )
   })
 
-  test('shadcn emits dynamic SelectItem, RadioGroupItem, and Checkbox rows', () => {
+  test('shadcn keeps dynamic SELECT native while retaining RadioGroupItem and Checkbox rows', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.updateNode(page.id, {
@@ -196,9 +196,11 @@ describe('compile — dynamic control options (Phase 4 §17.4)', () => {
 
     const app = compileApp(graph, page.id, 'shadcn')
 
-    expect(app).toContain('<Select value={choice} onValueChange={(value) => setChoice(value)}>')
+    expect(app).toContain('<select ')
+    expect(app).toContain('value={choice} onChange={(e) => setChoice(e.target.value)}')
     expect(app).toContain('{(options).map((opt, index) => (')
-    expect(app).toContain('<SelectItem key={index} value={opt.value}>{opt.label}</SelectItem>')
+    expect(app).toMatch(/<option key={index}[^>]*value={opt.value}>{opt.label}<\/option>/)
+    expect(app).not.toContain('<SelectItem')
     expect(app).toContain('<RadioGroupItem value={opt.value} id={"')
     expect(app).toContain('checked={choices.includes(opt.value)}')
     expect(app).toContain(

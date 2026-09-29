@@ -1,5 +1,16 @@
+import { collectAvatarImage, avatarHostStyleNode } from '#compiler/modules/avatar'
 import { BUILTIN_COMPILER_MODULE_REGISTRY } from '#compiler/modules/builtin'
 import { collectCompilerModule } from '#compiler/modules/collect'
+import { collectContentModuleLanguage } from '#compiler/modules/content-language'
+import {
+  collectModuleContentSlots,
+  containsModuleContent,
+  markModuleFormValidationScope,
+  moduleContentNodes
+} from '#compiler/modules/content-slots'
+import { collectPaginationModuleBindings } from '#compiler/modules/pagination'
+import { collectUploadButtonDisabledBinding } from '#compiler/modules/upload-button'
+import { collectModuleValueFields } from '#compiler/modules/value-controls'
 import { collectVideoModuleBindings } from '#compiler/modules/video'
 import { designTokenCSSVariableName } from '#compiler/theme-css'
 import lucideIcons from '@iconify-json/lucide/icons.json' with { type: 'json' }
@@ -8,6 +19,18 @@ import { colorToHex8 } from '@open-pencil/core/color'
 import { gradientFillCSS } from '@open-pencil/core/io/formats/jsx'
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
+  DEFAULT_LOWCODE_SELECT_PLACEHOLDER,
+  LOWCODE_AUTOCOMPLETE_VALUES,
+  LOWCODE_INPUT_MODES,
+  LOWCODE_INPUT_TYPES,
+  isIsoTime,
+  isIsoLocalDateTime,
+  validateDateTimeInputProps,
+  validateTimeInputProps,
+  isLowcodeControlChoice,
+  isLowcodeNumberValue,
+  lowcodeSelectOptions,
+  validateInteractiveProps,
   type DatePickerIssueCode,
   emitExpression,
   type ExprAst,
@@ -40,8 +63,16 @@ import {
   type BackendResourceDataSource
 } from '@open-pencil/scene-graph'
 
+import { inputSuggestionFeatures } from '../autocomplete'
 import type { IRBackendResourceQuery } from '../backend-types'
 import { collectGeneratedEffect } from '../generated-effect'
+import { inputControlFeatures } from '../input-control'
+import {
+  selectPlaceholder,
+  selectPlaceholderOption,
+  selectOptionClassName,
+  selectFeatures
+} from '../select'
 import { tailwindClassName, type CompilerStyleOptions } from '../style'
 import type {
   ComponentDef,
@@ -81,6 +112,7 @@ import type {
 } from '../types'
 import {
   collectBackendResourceQuery,
+  backendListContainerClassName,
   backendClientConfig,
   backendTreeFields,
   attachBackendClient
@@ -1575,18 +1607,20 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
 
   warnUnsupportedVisualSemantics(node, ctx)
 
-  let className = tailwindClassName(node, ctx.graph, ctx.styleOptions)
+  const module = collectCompilerModule(node, ctx.warnings, BUILTIN_COMPILER_MODULE_REGISTRY)
+  const visualNode = avatarHostStyleNode(node, module)
+  let className = tailwindClassName(visualNode, ctx.graph, ctx.styleOptions)
   // Phase 4 §24.3: an `interactiveProps.aspectRatio` adds `aspect-[w/h]` to any
   // node (most useful on image / media containers, but not limited to them).
   className = appendAspectRatio(className, node, ctx)
   // Phase 4 §24 v2/v7: Figma visual fills become background classes. Single
   // fills keep the old compact utilities; multiple fills are collapsed into
   // one CSS multi-background so layers don't overwrite each other.
-  className = appendVisualFillClasses(className, node, ctx)
+  className = appendVisualFillClasses(className, visualNode, ctx)
   // Phase 4 §24.1: a node carrying `interactiveProps.image` renders as a void
   // `<img>` leaf — resolved + returned here so it skips the control / vector /
   // child-recursion path (an image has none). Events (e.g. onClick) still apply.
-  const image = resolveImageNode(node, ctx)
+  const image = resolveImageNode(visualNode, ctx)
   if (image) {
     collectGeneratedEffect(node, ctx.warnings, false)
     return wrapConditional(node, buildImageElement(node, ctx, className, image), ctx)
@@ -1597,10 +1631,29 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const children: IRNode[] = []
 
   applyInteractiveProps(node, attrs, children, ctx)
+  collectContentModuleLanguage(node, module, attrs)
   applyBoundVariableStyles(node, ctx, attrs)
-  const module = collectCompilerModule(node, ctx.warnings, BUILTIN_COMPILER_MODULE_REGISTRY)
+  collectAvatarImage(node, module, (fill) => registerImageFillAsset(fill, node, ctx), ctx.warnings)
   collectVRTourSampleAssets(node.id, module, ctx.graph, ctx.assets, ctx.warnings)
   collectVRTourBinding(node, module, ctx)
+  collectUploadButtonDisabledBinding(
+    node,
+    module,
+    attrs,
+    ctx.warnings,
+    (source) =>
+      resolveReactiveExpr(node, source, 'upload-button-binding', { ...ctx, inScope: new Set() })
+        ?.ast
+  )
+  collectPaginationModuleBindings(
+    node,
+    module,
+    attrs,
+    ctx,
+    (source) => resolveReactiveExpr(node, source, 'pagination-binding', ctx)?.ast
+  )
+  collectModuleValueFields(node, module, ctx, attrs)
+  applyModuleFieldValidation(node, module, ctx)
   collectVideoModuleBindings(
     node,
     module,
@@ -1618,6 +1671,8 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const vector = resolveVectorSVG(node, ctx.graph, className, module !== null)
   className = vector.className
   collectElementChildren(node, ctx, children, vector.extra.rawHtml, module)
+  collectModuleContentSlots(node, module, ctx.graph, children, ctx.warnings)
+  className = backendListContainerClassName(className, children)
 
   const events = resolveEvents(
     node,
@@ -1641,7 +1696,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // §18/§3.x/§15: the mutually-exclusive interactive control descriptors —
   // file upload > controlled value > UI-kit control hint. Folded into one helper
   // (with its own side effects) to keep nodeToIR under the complexity gate.
-  const controls = resolveControlDescriptors(node, ctx, attrs, children)
+  const controls = resolveControlDescriptors(node, ctx, attrs, children, module)
 
   // Phase 3 §8 v3: inside a component body, a child with a `:fills` override
   // slot emits `className={prop}` so an instance can re-style it; the static
@@ -1682,19 +1737,16 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ...(module ? { module } : {}),
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
     ...controls,
+    ...(node.type === 'SELECT' && optionSource(node.interactiveProps ?? {})
+      ? { selectOptionsSource: true as const }
+      : {}),
+    ...selectFeatures(node),
+    ...inputSuggestionFeatures(node, ctx.warnings),
+    ...inputControlFeatures(node, ctx.warnings),
     ...semantics,
     ...vector.extra
   }
-  // §19: a <form> with validated descendant fields validates them at submit —
-  // the adapter wraps onSubmit to preventDefault + abort when any is invalid.
-  if (node.type === 'FORM') {
-    const validationKeys = collectValidationKeys(element.children)
-    if (validationKeys.length > 0) {
-      element.formValidationKeys = validationKeys
-      const summary = resolveFormValidationSummary(node)
-      if (summary) element.formValidationSummary = summary
-    }
-  }
+  applyFormValidation(node, element)
   return wrapConditional(node, element, ctx)
 }
 
@@ -3169,7 +3221,8 @@ function resolveControlDescriptors(
   node: SceneNode,
   ctx: WalkCtx,
   attrs: Record<string, IRAttrValue>,
-  children: IRNode[]
+  children: IRNode[],
+  module: IRModule | null
 ): Pick<IRElement, 'controlled' | 'upload' | 'controlKind' | 'validation'> {
   const upload = applyUploadInput(node, ctx, attrs)
   if (upload) return { upload }
@@ -3180,8 +3233,12 @@ function resolveControlDescriptors(
     // §19: a controlled field may carry validation rules — its value is read
     // fresh from `controlled.write.name` at validate time.
     const validation = applyValidation(node, ctx, resolved.controlled)
-    if (validation) out.validation = validation
-  } else if (hasValidationConfig(node)) {
+    if (validation) {
+      out.validation = validation
+      if (!resolved.attachToWrapper) resolved.controlled.validationKey = validation.key
+      if (validation.rules.required && !isCheckboxGroup(node)) attrs['aria-required'] = 'true'
+    }
+  } else if (hasValidationConfig(node) && !module?.valueFields) {
     // §19: validation needs a controlled value source (the field's doc-state);
     // an uncontrolled input (or a radio/checkbox group, whose value lives on
     // the leaves) has none → skip with a warning. v1 boundary.
@@ -3388,6 +3445,36 @@ const MESSAGE_KEYS: (keyof IRValidationMessages)[] = [
   'max'
 ]
 
+function applyModuleFieldValidation(node: SceneNode, module: IRModule | null, ctx: WalkCtx): void {
+  if (
+    !module?.valueFields ||
+    module.payload.disabled === true ||
+    module.payload.readOnly === true ||
+    node.interactiveProps?.readOnly === true
+  )
+    return
+  for (const field of module.valueFields) {
+    if (!field.write) continue
+    const validation =
+      node.interactiveProps?.[field.key === 'value' ? 'validation' : 'endValidation']
+    const projected = {
+      ...node,
+      id: field.key === 'value' ? node.id : `${node.id}:endValue`,
+      interactiveProps: { ...node.interactiveProps, validation }
+    }
+    field.validation = applyValidation(projected, ctx, {
+      read: field.write.name,
+      write: field.write
+    })
+    if (module.moduleType === 'rating' && field.validation?.rules.required) {
+      field.validation.rules.min = Math.max(
+        module.payload.allowHalf === true ? 0.5 : 1,
+        field.validation.rules.min ?? 0
+      )
+    }
+  }
+}
+
 /** Phase 4 §19: resolve a controlled field's `interactiveProps.validation` into
  *  an IRFieldValidation. The field's value is read fresh from its controlled
  *  doc-/page-state at validate time; core rules JSON-serialize into the page
@@ -3402,9 +3489,19 @@ function applyValidation(
   controlled: IRControlledInput
 ): IRFieldValidation | undefined {
   const ip = node.interactiveProps as { validation?: ValidationConfig } | undefined
-  const cfg = ip?.validation
+  // Native disabled/read-only controls cannot be corrected by the user and do not
+  // participate in constraint validation. Keep their binding and authored value intact.
+  if (node.interactiveProps?.disabled === true) return undefined
+  if (
+    ['INPUT', 'TEXTAREA', 'DATEPICKER'].includes(node.type) &&
+    node.interactiveProps?.readOnly === true
+  )
+    return undefined
+  const colorInput = node.type === 'INPUT' && node.interactiveProps?.inputType === 'color'
+  const cfg = ip?.validation ?? (colorInput ? {} : undefined)
   if (!cfg || typeof cfg !== 'object') return undefined
   const rules = resolveValidationRules(node, cfg, ctx)
+  applyColorInputValidationRules(node, rules)
   const custom = resolveValidationCustom(node, cfg, ctx)
   const async = resolveValidationAsync(node, cfg, ctx)
   if (!hasAnyRule(rules) && !custom && !async) return undefined
@@ -3418,6 +3515,17 @@ function applyValidation(
   }
   ctx.validatedFields?.push(validation)
   return validation
+}
+
+function applyColorInputValidationRules(node: SceneNode, rules: IRValidationRules): void {
+  if (node.type === 'INPUT' && node.interactiveProps?.inputType === 'color') {
+    // Validate the editable hex business value independently from the nameless native
+    // picker, preserving partial drafts instead of coercing its fallback black.
+    rules.pattern = rules.pattern
+      ? `^(?=#[0-9a-fA-F]{6}$)[\\s\\S]*?(?:${rules.pattern})`
+      : '^#[0-9a-fA-F]{6}$'
+    if (node.interactiveProps.required === true) rules.required = true
+  }
 }
 
 /** §19: parse the data-driven core rules — `required`, a compiling `pattern`,
@@ -3588,6 +3696,20 @@ function isValidRegex(src: string): boolean {
   }
 }
 
+/** Forms own validation separately; module content additionally follows DOM mount/portal scope. */
+function applyFormValidation(node: SceneNode, element: IRElement): void {
+  if (node.type !== 'FORM') return
+  const keys = collectValidationKeys(element.children)
+  if (keys.length === 0 && !containsModuleContent(element.children)) return
+  element.formValidationKeys = keys
+  if (containsModuleContent(element.children)) {
+    element.formValidationMountedOnly = true
+    markModuleFormValidationScope(element.children)
+  }
+  const summary = resolveFormValidationSummary(node)
+  if (summary) element.formValidationSummary = summary
+}
+
 /** §19: collect the validation keys of every validated field in an IR subtree,
  *  for a `<form>`'s submit-time validation. Descends element children,
  *  conditional consequents, and list templates. ComponentRefs remain leaves
@@ -3596,8 +3718,12 @@ function collectValidationKeys(nodes: readonly IRNode[]): string[] {
   const keys: string[] = []
   for (const n of nodes) {
     if (n.kind === 'element') {
+      if (n.tag === 'form') continue
       if (n.validation) keys.push(n.validation.key)
-      keys.push(...collectValidationKeys(n.children))
+      for (const field of n.module?.valueFields ?? [])
+        if (field.validation) keys.push(field.validation.key)
+      const slots = moduleContentNodes(n)
+      keys.push(...collectValidationKeys(slots ? slots.flatMap((slot) => slot.nodes) : n.children))
     } else if (n.kind === 'conditional') {
       keys.push(...collectValidationKeys([n.consequent]))
     } else if (n.kind === 'list') {
@@ -3682,6 +3808,7 @@ interface UploadConfig {
  *  (Phase 4 §17, `kind: 'supabaseQuery'` + `query`). */
 interface ListDataSourceRef {
   kind?: string
+  resourceId?: string
   stateId?: string
   docStateName?: string
   query?: ListSupabaseQueryConfig
@@ -3795,6 +3922,9 @@ function collectListDirective(node: SceneNode, ctx: WalkCtx): IRList | null {
   if (!template) return null
   return {
     kind: 'list',
+    ...(ip.dataSourceRef?.kind === 'backendResource'
+      ? { backendResourceId: ip.dataSourceRef.resourceId }
+      : {}),
     arrayName,
     itemName,
     indexName,
@@ -4109,18 +4239,61 @@ function applyTextInputProps(
   ctx: WalkCtx
 ): void {
   if (typeof ip.placeholder === 'string') attrs.placeholder = displayAttr(ip.placeholder, ctx)
-  if (typeof ip.value === 'string' && ip.value !== '') attrs.defaultValue = ip.value
+  const initialValue = textInputDefaultValue(node, ip)
+  if (initialValue !== undefined) attrs.defaultValue = initialValue
   if (node.type === 'INPUT' && typeof ip.inputType === 'string') {
-    if (ip.inputType === 'text' || ip.inputType === 'email' || ip.inputType === 'password') {
+    if (isLowcodeControlChoice(LOWCODE_INPUT_TYPES, ip.inputType)) {
       attrs.type = ip.inputType
     } else {
       ctx.warnings.push({
         code: 'input-type-unsupported',
-        message: `INPUT ${node.id} interactiveProps.inputType must be text, email, or password; type dropped`,
+        message: `INPUT ${node.id} interactiveProps.inputType must be ${LOWCODE_INPUT_TYPES.join(', ')}; type dropped`,
         nodeId: node.id
       })
     }
   }
+  if (isLowcodeControlChoice(LOWCODE_INPUT_MODES, ip.inputMode)) attrs.inputMode = ip.inputMode
+  for (const key of ['minLength', 'maxLength'] as const) {
+    const value = ip[key]
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) attrs[key] = value
+  }
+  if (node.type === 'INPUT' && ip.inputType === 'number') applyNumberConstraints(ip, attrs)
+  if (node.type === 'INPUT' && (ip.inputType === 'time' || ip.inputType === 'datetime-local'))
+    applyTemporalConstraints(ip, attrs)
+}
+
+function textInputDefaultValue(node: SceneNode, ip: InteractiveProps): string | undefined {
+  if (typeof ip.value !== 'string' || ip.value === '') return undefined
+  if (node.type === 'INPUT') {
+    if (ip.inputType === 'number' && !isLowcodeNumberValue(ip.value)) return undefined
+    if (ip.inputType === 'time' && !isIsoTime(ip.value)) return undefined
+    if (ip.inputType === 'datetime-local' && !isIsoLocalDateTime(ip.value)) return undefined
+  }
+  return ip.value
+}
+
+function applyTemporalConstraints(ip: InteractiveProps, attrs: Record<string, IRAttrValue>): void {
+  const dateTime = ip.inputType === 'datetime-local'
+  const valid = dateTime ? isIsoLocalDateTime : isIsoTime
+  const issues = dateTime ? validateDateTimeInputProps(ip) : validateTimeInputProps(ip)
+  // Never reinterpret an inverted authored date-time interval as a periodic time-only range.
+  if (!issues.some((issue) => issue.code === 'date-time-input-range-inverted')) {
+    for (const key of ['min', 'max'] as const) {
+      if (valid(ip[key])) attrs[key] = ip[key]
+    }
+  }
+  if (!issues.some((issue) => issue.key === 'step')) {
+    if (typeof ip.step === 'number' || ip.step === 'any') attrs.step = ip.step
+  }
+}
+
+function applyNumberConstraints(ip: InteractiveProps, attrs: Record<string, IRAttrValue>): void {
+  for (const key of ['min', 'max'] as const) {
+    const value = ip[key]
+    if (typeof value === 'number' && Number.isFinite(value)) attrs[key] = value
+  }
+  if (ip.step === 'any' || (typeof ip.step === 'number' && Number.isFinite(ip.step) && ip.step > 0))
+    attrs.step = ip.step
 }
 
 /** CHECKBOX / SWITCH — a checkbox input; SWITCH adds the `switch` ARIA role
@@ -4441,27 +4614,34 @@ function applySelectOptions(
   children: IRNode[],
   ctx: WalkCtx
 ): void {
+  const placeholder = ip.multiple === true ? undefined : selectPlaceholder(ip)
+  const className = selectOptionClassName(node)
   const src = optionSource(ip)
   if (src) {
     const list = dynamicOptionsList(node, src, ctx, (value, label) => ({
       kind: 'element',
       sourceId: node.id,
       tag: 'option',
-      className: '',
+      className,
       attrs: { value },
       children: [label]
     }))
+    if (placeholder !== undefined)
+      children.push(selectPlaceholderOption(node, displayText(placeholder, ctx), list ?? undefined))
     if (list) children.push(list)
     return
   }
-  for (const opt of optionStrings(ip)) {
+  const options = lowcodeSelectOptions(ip.options)
+  if (placeholder !== undefined && !options.some((option) => option.value === ''))
+    children.push(selectPlaceholderOption(node, displayText(placeholder, ctx)))
+  for (const opt of options) {
     children.push({
       kind: 'element',
       sourceId: node.id,
       tag: 'option',
-      className: '',
-      attrs: { value: opt },
-      children: [displayText(opt, ctx)]
+      className,
+      attrs: { value: opt.value, ...(opt.disabled ? { disabled: true } : {}) },
+      children: [displayText(opt.label, ctx)]
     })
   }
 }
@@ -4498,7 +4678,7 @@ function appendOptionInputs(
           sourceId: node.id,
           tag: 'input',
           className: OPTION_INPUT_CLASSES,
-          attrs: makeInputAttrs(opt),
+          attrs: { ...makeInputAttrs(opt), ...(ip.disabled === true ? { disabled: true } : {}) },
           children: []
         },
         displayText(opt, ctx)
@@ -4528,7 +4708,7 @@ function appendDynamicOptionInputs(
         sourceId: node.id,
         tag: 'input',
         className: OPTION_INPUT_CLASSES,
-        attrs: makeInputAttrs(value),
+        attrs: { ...makeInputAttrs(value), ...(ip.disabled === true ? { disabled: true } : {}) },
         children: []
       },
       label
@@ -4591,11 +4771,77 @@ function applyRadioOptions(
     (opt) => {
       const inputAttrs: Record<string, IRAttrValue> = { type: 'radio', value: opt }
       if (groupName !== '') inputAttrs.name = groupName
-      if (opt === selected) inputAttrs.defaultChecked = true
+      if (selected !== '' && opt === selected) inputAttrs.defaultChecked = true
       return inputAttrs
     },
     ctx
   )
+}
+
+const NATIVE_CONTROL_TYPES = new Set<NodeType>([
+  'INPUT',
+  'TEXTAREA',
+  'SELECT',
+  'BUTTON',
+  'CHECKBOX',
+  'RADIO',
+  'SWITCH',
+  'DATEPICKER'
+])
+const NATIVE_CONTROL_WARNING_KEYS = new Set([
+  'multiple',
+  'value',
+  'disabled',
+  'readOnly',
+  'ariaLabel',
+  'inputMode',
+  'autoComplete',
+  'minLength',
+  'maxLength',
+  'step',
+  'options',
+  'placeholder',
+  'allowClear',
+  'textColor',
+  'placeholderColor'
+])
+
+function applyNativeControlProps(
+  node: SceneNode,
+  ip: InteractiveProps,
+  attrs: Record<string, IRAttrValue>,
+  ctx: WalkCtx
+): void {
+  if (!NATIVE_CONTROL_TYPES.has(node.type)) return
+  const grouped = node.type === 'RADIO' || isCheckboxGroup(node)
+  if (ip.disabled === true) attrs[grouped ? 'aria-disabled' : 'disabled'] = grouped ? 'true' : true
+  if (grouped) attrs.role = node.type === 'RADIO' ? 'radiogroup' : 'group'
+  if (['INPUT', 'TEXTAREA', 'DATEPICKER'].includes(node.type) && ip.readOnly === true)
+    attrs.readOnly = true
+  if (
+    ['INPUT', 'TEXTAREA', 'SELECT'].includes(node.type) &&
+    isLowcodeControlChoice(LOWCODE_AUTOCOMPLETE_VALUES, ip.autoComplete)
+  )
+    attrs.autoComplete = ip.autoComplete
+  if (
+    typeof ip.ariaLabel === 'string' &&
+    ip.ariaLabel.trim().length > 0 &&
+    ip.ariaLabel.length <= 320
+  )
+    attrs['aria-label'] = displayAttr(ip.ariaLabel.trim(), ctx)
+  for (const issue of validateInteractiveProps(node.type, ip)) {
+    const key = issue.path.slice('interactiveProps.'.length)
+    if (
+      !NATIVE_CONTROL_WARNING_KEYS.has(key) &&
+      !(node.type === 'INPUT' && ['min', 'max', 'value'].includes(key))
+    )
+      continue
+    ctx.warnings.push({
+      code: issue.code,
+      message: `${node.type} ${node.id}: ${issue.reason}${issue.severity === 'error' ? '; invalid property skipped' : ''}`,
+      nodeId: node.id
+    })
+  }
 }
 
 function applyInteractiveProps(
@@ -4605,6 +4851,7 @@ function applyInteractiveProps(
   ctx: WalkCtx
 ): void {
   const ip = node.interactiveProps ?? {}
+  applyNativeControlProps(node, ip, attrs, ctx)
   switch (node.type) {
     case 'INPUT':
     case 'TEXTAREA':
@@ -4627,6 +4874,12 @@ function applyInteractiveProps(
       return
     case 'SELECT':
       applySelectOptions(node, ip, children, ctx)
+      if (ip.multiple === true) {
+        attrs.multiple = true
+        attrs.allowClear = ip.allowClear === true
+        attrs.placeholder = selectPlaceholder(ip) ?? DEFAULT_LOWCODE_SELECT_PLACEHOLDER
+      } else if (typeof ip.value === 'string') attrs.defaultValue = ip.value
+      else if (selectPlaceholder(ip) !== undefined) attrs.defaultValue = ''
       return
     case 'RADIO':
       applyRadioOptions(node, ip, children, ctx)

@@ -98,8 +98,9 @@ export function createOperationsScreen(
       ...query,
       ...(filterEntries ? { filterEntries } : {})
     }
-    l.text(page, title, 48, y - 32, 880, {
+    l.text(page, title, 48, y - 26, 880, {
       fontSize: 20,
+      height: 24,
       ...(condition ? { renderCondition: condition } : {})
     })
     const card = l.listing(

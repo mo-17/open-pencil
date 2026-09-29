@@ -2,13 +2,14 @@ import { describe, expect, test } from 'bun:test'
 
 import { reactive } from 'vue'
 
-import type { Editor } from '@open-pencil/core/editor'
+import { createEditor } from '@open-pencil/core/editor'
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { DerivedTextGlyph, Fill, SceneNode, Stroke } from '@open-pencil/scene-graph'
 import { copyGeometryPaths, copyStrokes } from '@open-pencil/scene-graph/copy'
+import type { ResizeSnapshot } from '@open-pencil/scene-graph/resize'
 
 import { applyResize, commitResizePreview } from '#vue/shared/input/resize'
-import type { DragResize, OrigChildState } from '#vue/shared/input/types'
+import type { DragResize } from '#vue/shared/input/types'
 
 import { expectDefined } from '#tests/helpers/assert'
 
@@ -87,13 +88,9 @@ describe('resize scales path-text stroke geometry and glyphs', () => {
       derivedTextGlyphs: glyphs
     })
 
-    const editor = {
-      graph,
-      renderer: undefined,
-      requestRepaint: () => undefined
-    } as Editor
+    const editor = createEditor({ graph })
 
-    const origChild: OrigChildState = {
+    const origChild: ResizeSnapshot = {
       x: text.x,
       y: text.y,
       width: text.width,
@@ -172,16 +169,9 @@ describe('resize scales path-text stroke geometry and glyphs', () => {
       ]
     })
 
-    const editor = {
-      graph,
-      renderer: undefined,
-      requestRepaint: () => undefined,
-      updateNode: (id: string, changes: Partial<SceneNode>) => graph.updateNode(id, changes),
-      commitGroupResize: () => undefined,
-      commitResize: () => undefined
-    } as Editor
+    const editor = createEditor({ graph })
 
-    const origChild: OrigChildState = {
+    const origChild: ResizeSnapshot = {
       x: text.x,
       y: text.y,
       width: text.width,

@@ -1,3 +1,4 @@
+import { avatarOwnsFills } from './modules/avatar'
 /* eslint-disable max-lines -- scene dispatch stays together while shape domains live in sibling modules */
 import type { Canvas, Path } from 'canvaskit-wasm'
 
@@ -25,6 +26,9 @@ import {
   TRANSPARENT
 } from '#core/constants'
 import { createSceneGeometry, nodeOrientationMatrix, projectedNode } from '#core/geometry'
+import { modalHidesContent } from '#core/plugins/content/modal'
+import { resolveTabsContent } from '#core/plugins/content/tabs'
+import { tabsPreviewNode } from '#core/plugins/content/tabs-preview'
 import { transformTextCase } from '#core/text/case'
 import { fontManager } from '#core/text/fonts'
 import { vectorNetworkToCenterlinePath } from '#core/vector'
@@ -32,6 +36,9 @@ import { evalCubic, isLineSegment, segmentToAbsolute } from '#core/vector/curve-
 
 import { figmaBlendModeToSkia, needsIsolatedBlendLayer } from './blend'
 import { renderBooleanOperation } from './boolean'
+import { renderCheckboxContent } from './checkbox'
+import { controlDesignDependencies } from './control-state'
+import { renderDatePickerContent } from './datepicker'
 import { drawVectorMultiStyleFills, paintFills } from './fills'
 import { drawGeneratedEffect } from './generated-effect'
 import { drawLayoutGrids } from './layout-grids'
@@ -45,12 +52,14 @@ import {
   motionProjectionFlags,
   motionTrimProjection
 } from './motion-projection'
+import { renderRadioContent } from './radio'
 import type { SkiaRenderer, RenderOverlays } from './renderer'
 import {
   canCacheEffectRaster,
   effectRasterScale,
   effectRasterScaleMatches
 } from './renderer/effect-raster-cache'
+import { renderSelectContent } from './select'
 import { makeSmoothRRectPath, nodeHasRadius, nodeHasSmoothCorners } from './shapes'
 import {
   configureStrokePaint,
@@ -61,6 +70,7 @@ import {
   getStrokeJoinEntity,
   normalizeDashPattern
 } from './strokes'
+import { renderSwitchContent, withSwitchSurface } from './switch'
 import { withTextParagraph } from './text'
 import {
   drawDerivedText,
@@ -74,7 +84,8 @@ function drawVisibleFills(
   graph: SceneGraph,
   draw: (fill: Fill) => void
 ): void {
-  paintFills(r, node.fills, node, graph, draw)
+  // SWITCH uses the shared native-control palette, independent of authored fill bindings.
+  paintFills(r, node.fills, node, graph, draw, { bindToNodeFills: node.type !== 'SWITCH' })
 }
 function motionVisual(overlays: RenderOverlays, nodeId: string): MotionVisualState {
   return overlays.motionVisualStates?.get(nodeId) ?? MOTION_VISUAL_IDENTITY
@@ -644,6 +655,42 @@ function renderChildren(
   hasTransientTransformedAncestor: boolean
 ): void {
   if (node.type === 'BOOLEAN_OPERATION') return
+  if (modalHidesContent(node)) return
+  const tabsContent = resolveTabsContent(graph, node)
+  if (tabsContent) {
+    const { body, activeChildId } = tabsContent
+    if (!activeChildId || body.width <= 0 || body.height <= 0) return
+    canvas.save()
+    try {
+      if (node.clipsContent) {
+        r.clipNodeShape(
+          canvas,
+          node,
+          r.ck.LTRBRect(0, 0, node.width, node.height),
+          nodeHasRadius(node)
+        )
+      }
+      canvas.clipRect(
+        r.ck.LTRBRect(body.x, body.y, body.x + body.width, body.y + body.height),
+        r.ck.ClipOp.Intersect,
+        true
+      )
+      renderChildIds(
+        r,
+        canvas,
+        graph,
+        [activeChildId],
+        overlays,
+        absX,
+        absY,
+        hasTransformedAncestor,
+        hasTransientTransformedAncestor
+      )
+    } finally {
+      canvas.restore()
+    }
+    return
+  }
   const isClippableContainer =
     node.type === 'FRAME' ||
     node.type === 'COMPONENT' ||
@@ -704,7 +751,7 @@ export function renderNodeSelf(
   ) {
     return
   }
-  const node = motionLayoutNode(authoredNode, overlays)
+  const node = motionLayoutNode(tabsPreviewNode(authoredNode, overlays.tabsPreview), overlays)
   const visual = motionVisual(overlays, nodeId)
   const renderedNode = motionNode(node, visual)
   canvas.save()
@@ -861,7 +908,7 @@ export function renderNode(
   ) {
     return
   }
-  const node = motionLayoutNode(authoredNode, overlays)
+  const node = motionLayoutNode(tabsPreviewNode(authoredNode, overlays.tabsPreview), overlays)
 
   // Hide the node being edited in node-edit mode (overlay draws it live)
   if (overlays.nodeEditState?.nodeId === nodeId) return
@@ -1098,7 +1145,10 @@ export function renderShape(
           scale,
           pixels: image.width() * image.height(),
           fontGeneration: r.fontGeneration,
-          dependencyIds: shadowChild ? [shadowChild.id] : []
+          dependencyIds: [
+            ...(shadowChild ? [shadowChild.id] : []),
+            ...controlDesignDependencies(graph, node)
+          ]
         })
         try {
           canvas.drawImageRectOptions(
@@ -1143,7 +1193,10 @@ export function renderShape(
       r.nodePictureCache.set(node.id, picture)
       r.nodePictureCacheGenerations.set(node.id, r.fontGeneration)
       const shadowChild = getShadowShapeChild(node, graph)
-      r.nodePictureCacheDependencies.set(node.id, shadowChild ? [shadowChild.id] : [])
+      r.nodePictureCacheDependencies.set(node.id, [
+        ...(shadowChild ? [shadowChild.id] : []),
+        ...controlDesignDependencies(graph, node)
+      ])
       canvas.drawPicture(picture)
     } finally {
       recorder.delete()
@@ -1548,6 +1601,21 @@ export function renderShapeUncached(
   node: SceneNode,
   graph: SceneGraph
 ): void {
+  if (node.type === 'SWITCH') {
+    withSwitchSurface(r, canvas, node, graph, (surface) =>
+      drawShapeContent(r, canvas, surface, graph)
+    )
+    return
+  }
+  drawShapeContent(r, canvas, node, graph)
+}
+
+function drawShapeContent(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  node: SceneNode,
+  graph: SceneGraph
+): void {
   const rect = r.ck.LTRBRect(0, 0, node.width, node.height)
   const hasRadius = nodeHasRadius(node)
 
@@ -1569,20 +1637,25 @@ export function renderShapeUncached(
     )
   }
 
-  if (!drawVectorMultiStyleFills(r, canvas, node, graph)) {
+  if (!avatarOwnsFills(node) && !drawVectorMultiStyleFills(r, canvas, node, graph)) {
     drawVisibleFills(r, node, graph, (fill) => r.drawNodeFill(canvas, node, rect, hasRadius, fill))
   }
   // Module previews are frame content. Draw them above the authored fallback
   // fill but below authored strokes and front effects so borders and inner
   // shadows remain visible in the editor.
-  renderModulePreview(r, canvas, node)
+  renderModulePreview(r, canvas, node, graph)
 
   if (!pathTextStrokeFirst && !reflowedPathText) {
     paintNodeStrokes(r, canvas, node, graph, rect, hasRadius, sg, vectorPaths, vectorStroke)
   }
   r.renderEffects(canvas, node, rect, hasRadius, 'front', shadowChild)
   if (node.type === 'BUTTON') renderButtonLabel(r, canvas, node)
-  if (node.type === 'INPUT' || node.type === 'TEXTAREA') renderTextInputContent(r, canvas, node)
+  if (node.type === 'INPUT' || node.type === 'TEXTAREA') renderTextInputContent(r, canvas, node, graph)
+  if (node.type === 'RADIO') renderRadioContent(r, canvas, node, graph)
+  if (node.type === 'CHECKBOX') renderCheckboxContent(r, canvas, node, graph)
+  if (node.type === 'SWITCH') renderSwitchContent(r, canvas, node, graph)
+  if (node.type === 'DATEPICKER') renderDatePickerContent(r, canvas, node, graph)
+  if (node.type === 'SELECT') renderSelectContent(r, canvas, node, graph)
 }
 
 function hasComplexTextFill(fill?: Fill): boolean {

@@ -9,9 +9,15 @@ Components are reusable design elements. Edit the main component and all its ins
 
 ## Browse Components
 
-Open the **Assets** tab in the left panel to browse local components and enabled libraries. Use grid or list view, search by component name, and select a component to see its details. You can insert an asset by clicking it, pressing <kbd>Enter</kbd>, or dragging it onto the canvas.
+Open the **Assets** tab in the left panel to browse the component workbench. Filter by source (this file, enabled libraries or enabled plugin modules), narrow the category, or search names and descriptions. Component assets retain grid/list views and details, including variant choices. Select a component to review it, then choose **Insert**, press <kbd>Enter</kbd> from the asset list, or drag it onto the canvas.
 
 Local assets are grouped by source page. Published library assets remain available when their revision has been downloaded, including when the remote provider is temporarily offline.
+
+Use the star beside an asset to add it to **Favorites**, then use **Favorites only** to narrow the list. Favorites are local preferences, separate from the design document. If saving the preference fails, the workbench reports it and keeps the current session choice usable. Favoriting a module does not install or enable its plugin.
+
+For a plugin module, read its description and choose **Add to canvas**. The inserted node is selected so its existing inspector opens for configuration. Use Undo to remove that insertion. If a module is unavailable, open **Plugins** from the workbench to manage its installation and enabled state. Library and plugin insertion recheck the active document before applying a delayed result.
+
+Choose **Design handoff** in the workbench header to [review design facts and prepare an AI handoff](../programmable/ai-chat#review-a-design-brief).
 
 ## Creating a Component
 

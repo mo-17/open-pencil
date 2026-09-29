@@ -67,6 +67,9 @@ export function parseCompilerMicrofrontendPackaging(
 const OVERLAY_MODULE_IDENTITIES = new Set([
   'open-pencil.dropdown-menu/dropdown-menu',
   'open-pencil.modal/modal',
+  'open-pencil.walktour/walktour',
+  'open-pencil.tooltip/tooltip',
+  'open-pencil.popover/popover',
   'open-pencil.slide-menu/slide-menu',
   'open-pencil.upload-button/upload-button'
 ])

@@ -7,11 +7,12 @@ import type {
   ResponsiveOverride,
   ResponsiveOverrides
 } from '@open-pencil/scene-graph'
+import { RESPONSIVE_BREAKPOINTS } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
+import { useSectionUI } from '@/components/ui/section'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
@@ -19,8 +20,8 @@ const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
 const presence = usePresenceTarget('responsiveOverrides', () => selectedNode.value?.id)
 
-const BREAKPOINTS: readonly ResponsiveBreakpoint[] = ['sm', 'md', 'lg', 'xl']
-const LAYOUT_MODES: readonly LayoutMode[] = ['NONE', 'FREE', 'HORIZONTAL', 'VERTICAL']
+const BREAKPOINTS = RESPONSIVE_BREAKPOINTS
+const LAYOUT_MODES: readonly LayoutMode[] = ['NONE', 'FREE', 'HORIZONTAL', 'VERTICAL', 'GRID']
 const WRAP_MODES: readonly LayoutWrap[] = ['NO_WRAP', 'WRAP']
 const SIZING_MODES: readonly LayoutSizing[] = ['FIXED', 'HUG', 'FILL']
 const NUMERIC_FIELDS = [
@@ -32,6 +33,16 @@ const NUMERIC_FIELDS = [
   'paddingLeft',
   'width',
   'height',
+  'x',
+  'y',
+  'fontSize',
+  'lineHeight',
+  'minWidth',
+  'maxWidth',
+  'minHeight',
+  'maxHeight',
+  'gridColumnGap',
+  'gridRowGap',
   'layoutGrow'
 ] as const
 
@@ -92,7 +103,23 @@ function onSelect<K extends keyof ResponsiveOverride>(
 
 function onNumber(bp: ResponsiveBreakpoint, key: NumericField, event: Event): void {
   const raw = (event.target as HTMLInputElement).value.trim()
+  if (raw !== '' && !Number.isFinite(Number(raw))) return
   setBreakpointField(bp, key, raw === '' ? undefined : Number(raw))
+}
+
+function onGridColumns(bp: ResponsiveBreakpoint, event: Event): void {
+  const raw = (event.target as HTMLInputElement).value.trim()
+  if (!raw) {
+    setBreakpointField(bp, 'gridTemplateColumns', undefined)
+    return
+  }
+  const count = Number(raw)
+  if (!Number.isInteger(count) || count < 1 || count > 12) return
+  setBreakpointField(
+    bp,
+    'gridTemplateColumns',
+    Array.from({ length: count }, () => ({ sizing: 'FR' as const, value: 1 }))
+  )
 }
 
 function onVisible(bp: ResponsiveBreakpoint, event: Event): void {
@@ -123,7 +150,9 @@ function clearBreakpoint(bp: ResponsiveBreakpoint): void {
         :data-test-id="`lowcode-responsive-${bp}`"
       >
         <div class="mb-1.5 flex items-center gap-2">
-          <span class="font-mono text-[11px] font-semibold text-surface">{{ bp }}</span>
+          <span class="font-mono text-[11px] font-semibold text-surface">{{
+            bp === 'compact' ? 'compact · <1280px' : bp
+          }}</span>
           <button
             type="button"
             class="ml-auto rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
@@ -191,6 +220,46 @@ function clearBreakpoint(bp: ResponsiveBreakpoint): void {
               <option value="">{{ panels.lowcodeResponsiveInherit }}</option>
               <option v-for="mode in SIZING_MODES" :key="mode" :value="mode">{{ mode }}</option>
             </select>
+          </label>
+
+          <label class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-[10px] text-muted">counterAxisSizing</span>
+            <select
+              :value="overrideFor(bp).counterAxisSizing ?? ''"
+              :aria-label="`${bp} counterAxisSizing`"
+              class="h-7 rounded border border-border bg-input px-1.5 text-xs text-surface outline-none focus:border-accent"
+              @change="onSelect(bp, 'counterAxisSizing', $event)"
+            >
+              <option value="">{{ panels.lowcodeResponsiveInherit }}</option>
+              <option v-for="mode in SIZING_MODES" :key="mode" :value="mode">{{ mode }}</option>
+            </select>
+          </label>
+
+          <label class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-[10px] text-muted">layoutPositioning</span>
+            <select
+              :value="overrideFor(bp).layoutPositioning ?? ''"
+              :aria-label="`${bp} layoutPositioning`"
+              class="h-7 rounded border border-border bg-input px-1.5 text-xs text-surface outline-none focus:border-accent"
+              @change="onSelect(bp, 'layoutPositioning', $event)"
+            >
+              <option value="">{{ panels.lowcodeResponsiveInherit }}</option>
+              <option value="AUTO">AUTO</option>
+              <option value="ABSOLUTE">ABSOLUTE</option>
+            </select>
+          </label>
+
+          <label class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-[10px] text-muted">gridTemplateColumns</span>
+            <input
+              :value="overrideFor(bp).gridTemplateColumns?.length ?? ''"
+              type="number"
+              min="1"
+              max="12"
+              :aria-label="`${bp} gridTemplateColumns`"
+              class="h-7 min-w-0 rounded border border-border bg-input px-1.5 text-xs text-surface outline-none focus:border-accent"
+              @change="onGridColumns(bp, $event)"
+            />
           </label>
         </div>
 

@@ -14,9 +14,11 @@
 
 import { Buffer } from 'node:buffer'
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
-import { dirname, join, posix } from 'node:path'
+import { dirname, join, posix, resolve } from 'node:path'
 
 import type { Plugin } from 'vite'
+
+import { markdownDependencyAliases } from './markdown-dependencies'
 
 export type PreviewFiles = Map<string, string | Uint8Array>
 export type WebVfsTarget = 'react' | 'vue'
@@ -184,6 +186,11 @@ export function inMemoryVFS(
     name: 'openpencil-lowcode-vfs',
     enforce: 'pre',
 
+    config() {
+      // vfsPrefix is <workspace>/packages/compiler/.preview-root/<target>/.
+      return { resolve: { alias: markdownDependencyAliases(resolve(vfsPrefix, '../../../../')) } }
+    },
+
     resolveId(source, importer) {
       if (source.startsWith(vfsPrefix)) return source
 
@@ -298,6 +305,9 @@ export function inMemoryVFS(
         const url = (req.url ?? '/').split('?')[0]
         const asset = lookupBinaryAsset(state.files, url)
         if (asset) {
+          // Vite requests imported binaries as JavaScript URL modules. Leave these
+          // to the existing load hook; raw image bytes here would block app startup.
+          if (/[?&]import=?(?:&|$)/.test(req.url ?? '')) return next()
           res.setHeader('Content-Type', asset.contentType)
           res.setHeader('Content-Length', String(asset.bytes.byteLength))
           res.setHeader('Connection', 'close')

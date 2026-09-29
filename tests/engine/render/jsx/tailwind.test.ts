@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph, sceneNodeToJSX, selectionToJSX } from '@open-pencil/core'
+import {
+  collectResponsiveTailwindClasses,
+  collectTailwindClasses
+} from '@open-pencil/core/io/formats/jsx'
 
 function makeGraph() {
   const graph = new SceneGraph()
@@ -15,6 +19,79 @@ function pageId(graph: SceneGraph) {
 function tw(graph: SceneGraph, nodeId: string) {
   return sceneNodeToJSX(nodeId, graph, 'tailwind')
 }
+
+describe.each(['INPUT', 'TEXTAREA', 'SELECT', 'DATEPICKER', 'SWITCH'] as const)(
+  '%s native field padding',
+  (type) => {
+    test('exports default content inset without changing the native field layout', () => {
+      const graph = makeGraph()
+      const node = graph.createNode(type, pageId(graph))
+      const jsx = tw(graph, node.id)
+
+      expect(node.layoutMode).toBe('NONE')
+      expect(jsx).toContain(type === 'SWITCH' ? 'p-0' : 'px-3')
+      expect(jsx).not.toMatch(/\b(?:flex|grid)\b/)
+    })
+
+    test('retains authored asymmetric padding and an explicit zero inset', () => {
+      const graph = makeGraph()
+      const node = graph.createNode(type, pageId(graph), {
+        paddingTop: 8,
+        paddingRight: 16,
+        paddingBottom: 12,
+        paddingLeft: 20
+      })
+      const classes = collectTailwindClasses(node, graph)
+      expect(classes).toEqual(expect.arrayContaining(['pt-2', 'pr-4', 'pb-3', 'pl-5']))
+
+      const zero = graph.createNode(type, pageId(graph), {
+        paddingTop: 0,
+        paddingRight: 0,
+        paddingBottom: 0,
+        paddingLeft: 0
+      })
+      const zeroClasses = collectTailwindClasses(zero, graph)
+      expect(zeroClasses).toContain('p-0')
+      expect(zeroClasses).not.toContain('px-3')
+    })
+
+    test('uses the existing logical-padding option for RTL and clears padding responsively', () => {
+      const graph = makeGraph()
+      const node = graph.createNode(type, pageId(graph), {
+        layoutDirection: 'RTL',
+        paddingTop: 8,
+        paddingRight: 16,
+        paddingBottom: 12,
+        paddingLeft: 20,
+        responsiveOverrides: {
+          md: { paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0 }
+        }
+      })
+      const physical = collectTailwindClasses(node, graph)
+      const logical = collectTailwindClasses(node, graph, { logicalProperties: true })
+      expect(physical).toEqual(expect.arrayContaining(['pl-5', 'pr-4']))
+      expect(logical).toEqual(expect.arrayContaining(['[direction:rtl]', 'ps-5', 'pe-4']))
+      expect(logical).not.toContain('pl-5')
+      expect(logical).not.toContain('pr-4')
+      expect(collectResponsiveTailwindClasses(node, graph)).toContain('md:p-0')
+      expect(collectResponsiveTailwindClasses(node, graph, { logicalProperties: true })).toContain(
+        'md:p-0'
+      )
+    })
+  }
+)
+
+test('native field padding does not add padding to a free-layout frame', () => {
+  const graph = makeGraph()
+  const frame = graph.createNode('FRAME', pageId(graph), {
+    layoutMode: 'NONE',
+    paddingTop: 12,
+    paddingRight: 12,
+    paddingBottom: 12,
+    paddingLeft: 12
+  })
+  expect(collectTailwindClasses(frame, graph)).not.toContain('p-3')
+})
 
 describe('Tailwind JSX export', () => {
   test('basic rectangle — div with w/h', () => {

@@ -14,6 +14,7 @@ import { effectiveFigmaRawNodeFields, effectiveFigmaSourcePayload } from '../sou
 /* eslint-disable max-lines */
 import { bytesToHex } from './bytes'
 import { exportCanvasGuides } from './canvas-guides'
+import { applyLayoutPreferences } from './layout-preferences'
 import {
   applyExportSettingsPluginData,
   applyLibrarySourcePluginData,
@@ -1127,6 +1128,7 @@ export function sceneNodeToKiwiWithContext(
 
   applyExportSettingsPluginData(node)
   applyLibrarySourcePluginData(node)
+  applyLayoutPreferences(node)
   applyTextPathBoxPluginData(node)
   const additionalPluginData = context.getAdditionalPluginData(node, context.graph)
   const pluginData = mergePluginData(

@@ -5,11 +5,11 @@ import type { LayoutMode } from '@open-pencil/scene-graph'
 import { useI18n, useLayoutControlsContext } from '@open-pencil/vue'
 
 import IconButton from '@/components/ui/button/IconButton.vue'
-import Tip from '@/components/ui/overlay/Tip.vue'
 import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 
 const ctx = useLayoutControlsContext()
 const { panels } = useI18n()
+const flowMode = computed(() => (ctx.node.layoutMode === 'FREE' ? 'NONE' : ctx.node.layoutMode))
 
 const layoutModes = computed<Array<{ value: LayoutMode; label: string }>>(() => [
   { value: 'NONE', label: panels.value.freeform },
@@ -39,27 +39,8 @@ function setLayoutMode(mode: string) {
 
 <template>
   <div>
-    <label class="mb-1 block text-[11px] text-muted">{{ panels.flow }}</label>
-    <div class="flex items-center gap-1.5">
-      <SegmentedControl
-        :model-value="ctx.node.layoutMode"
-        :options="layoutModes"
-        :label="panels.flow"
-        :ui="{ root: 'flex min-w-0 flex-1' }"
-        @change="setLayoutMode"
-      >
-        <template #option="{ option }">
-          <Tip :label="option.label">
-            <span class="flex items-center justify-center">
-              <icon-lucide-move v-if="option.value === 'NONE'" class="size-3.5" />
-              <icon-lucide-rows-2 v-else-if="option.value === 'VERTICAL'" class="size-3.5" />
-              <icon-lucide-columns-2 v-else-if="option.value === 'HORIZONTAL'" class="size-3.5" />
-              <icon-lucide-layout-grid v-else class="size-3.5" />
-            </span>
-          </Tip>
-        </template>
-      </SegmentedControl>
-
+    <div class="mb-1 flex items-center justify-between gap-2">
+      <span class="text-[11px] text-muted">{{ panels.flow }}</span>
       <IconButton
         v-if="ctx.isFlex"
         :label="panels.layoutWrap"
@@ -70,5 +51,27 @@ function setLayoutMode(mode: string) {
         <icon-lucide-wrap-text class="size-3.5" />
       </IconButton>
     </div>
+    <SegmentedControl
+      :model-value="flowMode"
+      :options="layoutModes"
+      :label="panels.flow"
+      orientation="vertical"
+      :ui="{
+        root: 'flex w-full min-w-0 flex-col items-stretch',
+        item: 'h-auto min-w-0 justify-start py-1.5'
+      }"
+      @change="setLayoutMode"
+    >
+      <template #option="{ option }">
+        <icon-lucide-move v-if="option.value === 'NONE'" class="size-3.5 shrink-0" />
+        <icon-lucide-rows-2 v-else-if="option.value === 'VERTICAL'" class="size-3.5 shrink-0" />
+        <icon-lucide-columns-2
+          v-else-if="option.value === 'HORIZONTAL'"
+          class="size-3.5 shrink-0"
+        />
+        <icon-lucide-layout-grid v-else class="size-3.5 shrink-0" />
+        <span class="min-w-0 text-left">{{ option.label }}</span>
+      </template>
+    </SegmentedControl>
   </div>
 </template>

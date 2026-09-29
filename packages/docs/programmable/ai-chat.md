@@ -65,6 +65,18 @@ In the Chat settings beside the model overview, choose whether reasoning is **Co
 
 No backend, no subscription — your key talks directly to the provider. Browser requests are subject to each provider's CORS policy, and model deployments vary in how reliably they stream tool calls. See [BYOK provider and model compatibility](./byok-provider-compatibility) for measured results and reproduction steps.
 
+## Review a Design Brief
+
+Open **Design handoff** from the **Assets** workbench or the **Code** tab. Choose the current page, selected nodes or the whole document, and select English or Simplified Chinese for the output. Generate the brief, review its design facts, then add your implementation notes in the separate author-notes field.
+
+The brief describes the inspected nodes, layout, styles, variable references and configured interaction metadata. Backend coverage is limited to resource and command references found in bindings; it does not inspect a deployed backend or verify that an application works. Large designs receive an explicit truncation notice. Internal library pages, raw module configuration and executable expressions are excluded. Visible authored text can still be included, so review the output before sharing it.
+
+Changes to the design, scope or output language mark the previous brief as out of date. Choose **Update brief** before copying, downloading or handing it to AI. Updating preserves your author notes. Notes remain available when reopening the dialog during the current document session; they are not saved into the design file or restored after restarting the app.
+
+Choose **Copy**, **Download Markdown** or **Place in AI input**. Clipboard/save failures remain visible and leave the text available for selection and retry. The AI action appends the reviewed brief to the current document's existing input and opens the AI tab; it does not send a message. If an AI provider is not connected, complete the existing Settings setup, then review and send the retained draft. Normal provider usage applies only when you send it.
+
+Agents can also request the read-only `get_design_brief` tool. It uses the same bounded design-fact builder as the dialog and does not change the canvas.
+
 ## External MCP connections
 
 Desktop ACP agents can also use trusted remote [Model Context Protocol](https://modelcontextprotocol.io/) servers. In **Settings → MCP**, under MCP connections, add a named Streamable HTTP endpoint, optionally save a bearer token, and enable the connection. OpenPencil stores the token in the configured credential backend rather than ordinary settings and resolves it only when starting the ACP session.

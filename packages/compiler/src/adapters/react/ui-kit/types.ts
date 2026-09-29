@@ -1,4 +1,5 @@
 import type { IRAttrValue, IRElement, IRNode } from '#compiler/ir/types'
+import type { CompileWarning } from '#compiler/types'
 
 /**
  * Phase 3 §15 — pluggable code-UI-kit adapter. When `CompilerOptions.uiKit` is
@@ -63,7 +64,9 @@ export interface UIKitAdapter {
    * identified by their semantic `controlKind` (a RADIO/checkbox-group wrapper
    * is an unmarked `<div>`), not their HTML tag.
    */
-  mapControl?(kind: NonNullable<IRElement['controlKind']>): UIKitMapping | null
+  mapControl?(kind: NonNullable<IRElement['controlKind']>, node?: IRElement): UIKitMapping | null
+  /** Explain a control-specific fallback without discarding its authored behavior. */
+  controlWarning?(node: IRElement): CompileWarning | undefined
   /**
    * Phase 3 §15 Phase B — emit the full JSX for a marked control as a composed
    * kit component (e.g. `<Select><SelectTrigger>…`). Returns null to fall back
@@ -100,7 +103,12 @@ export interface UIKitAdapter {
   /** npm dependencies for the used components + shared helpers, merged into the
    *  emitted package.json. */
   deps(used: ReadonlySet<string>): Record<string, string>
+  /** Fixed trusted dependencies for known generated kit files present in a preview.
+   * Never derive package names from arbitrary source imports or package.json. */
+  optimizeDepsForFiles?(files: ReadonlyMap<string, string | Uint8Array>): readonly string[]
   /** Tailwind v4 theme CSS (CSS variables + `@theme` mapping + base layer) merged
    *  into `src/index.css` so the kit's semantic color utilities resolve. */
+  /** Static Tailwind candidates from the used host-owned templates, for VFS previews. */
+  classNames?(used: ReadonlySet<string>): readonly string[]
   themeCSS(): string
 }

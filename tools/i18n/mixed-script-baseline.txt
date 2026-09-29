@@ -289,6 +289,7 @@ ja:panels.colorHintHsl
 ja:panels.colorHintOkhcl
 ja:panels.libraryId
 ja:panels.localFontsAccessHint
+ja:panels.lowcodeModuleFieldDataGridShowCsvTools
 ja:panels.lowcodeSupabaseBackendCapabilityAuthMissing
 ja:panels.lowcodeSupabaseBackendCapabilityDescription
 ja:panels.lowcodeSupabaseBackendCapabilityEdgeToken
@@ -345,6 +346,7 @@ ja:updates.downloading
 ja:updates.installed
 ja:updates.unavailable
 ja:updates.upToDate
+zh-cn:panels.lowcodeModuleFieldDataGridShowCsvTools
 zh-cn:ai.apiKey
 zh-cn:ai.apiType
 zh-cn:ai.baseURL

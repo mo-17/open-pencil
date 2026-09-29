@@ -22,6 +22,7 @@ import {
 } from '@/app/code/live-preview'
 import { starterSourceFor, type CodeSource } from '@/app/code/templates'
 import { useEditorStore } from '@/app/editor/active-store'
+import DesignBriefLauncher from '@/components/design-brief/DesignBriefLauncher.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import Tip from '@/components/ui/overlay/Tip.vue'
 import AppSelect from '@/components/ui/select/AppSelect.vue'
@@ -219,6 +220,9 @@ watch(
 
 <template>
   <div data-test-id="code-panel-root" class="flex min-h-0 flex-1 flex-col">
+    <div class="flex shrink-0 justify-end border-b border-border px-2 py-1">
+      <DesignBriefLauncher />
+    </div>
     <header class="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
       <AppSelect
         :model-value="source"

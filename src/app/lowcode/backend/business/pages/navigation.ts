@@ -3,10 +3,14 @@ import type { Rect } from '@open-pencil/scene-graph/primitives'
 
 import type { BusinessTemplateEditor } from '../types'
 import { businessLabel } from '../types'
+import { foodButton, foodOrderingStyle } from './food-ordering/style'
 import { createBusinessLayout } from './layout'
 import { businessMarkerData, readBusinessPageMarker } from './markers'
+import { appendBusinessMobileNavigation } from './mobile'
 import type { BusinessNavigationEntry } from './module-types'
 import { updateBusinessNavigationNode } from './navigation-history'
+import { businessPresentation } from './presentation/profiles'
+import { businessButton, businessPresentationStyle } from './presentation/style'
 
 export interface BusinessNavigationAddition {
   readonly pageId: string
@@ -138,12 +142,27 @@ export function renderBusinessNavigation(
   additions: readonly BusinessNavigationAddition[],
   locale: string
 ): string[] {
-  const layout = createBusinessLayout(editor)
   const touched: string[] = []
   for (const addition of additions) {
     if (!addition.entries.length) continue
+    const mobileNavigationAvailable = appendBusinessMobileNavigation(
+      editor,
+      applicationId,
+      addition,
+      locale
+    )
     const page = editor.graph.getNode(addition.pageId)
     if (!page) throw new Error('The existing application page is unavailable.')
+    const marker = readBusinessPageMarker(page)
+    const kind = marker?.role === 'page' ? marker.kind : undefined
+    const profile = kind ? businessPresentation(kind) : undefined
+    let style = profile ? businessPresentationStyle(profile) : undefined
+    let buttonStyle = profile ? businessButton(profile, 'secondary') : {}
+    if (kind === 'food-ordering') {
+      style = foodOrderingStyle
+      buttonStyle = foodButton('secondary')
+    }
+    const layout = createBusinessLayout(editor, style)
     const container =
       addition.containerId ??
       layout.shape(
@@ -153,7 +172,8 @@ export function renderBusinessNavigation(
         addition.rect.x,
         addition.rect.y,
         addition.rect.width,
-        addition.rect.height
+        addition.rect.height,
+        mobileNavigationAvailable ? { responsiveOverrides: { compact: { visible: false } } } : {}
       )
     if (!addition.containerId)
       layout.text(
@@ -173,7 +193,8 @@ export function renderBusinessNavigation(
           width,
           height: 44
         },
-        [{ id: crypto.randomUUID(), kind: 'navigate', to: entry.path }]
+        [{ id: crypto.randomUUID(), kind: 'navigate', to: entry.path }],
+        buttonStyle
       )
     const node = editor.graph.getNode(container)
     if (!node) throw new Error('The module navigation could not be created.')

@@ -68,7 +68,7 @@ export async function installBusinessTransport(page: Page, application: BackendA
       const filters: unknown = JSON.parse(url.searchParams.get('filter') ?? '{}')
       if (!filters || typeof filters !== 'object' || Array.isArray(filters))
         throw new Error('Invalid test filter')
-      const search = url.searchParams.get('search')?.toLowerCase()
+      const search = url.searchParams.get('q')?.toLowerCase()
       const data = rows.filter(
         (row) =>
           Object.entries(filters).every(([field, value]) => row[field] === value) &&

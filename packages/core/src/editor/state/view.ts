@@ -5,6 +5,8 @@ import type { EditorState, EditorViewState } from '#core/editor/types'
 export function createDefaultEditorViewState(pageId: string): EditorViewState {
   return {
     currentPageId: pageId,
+    contentEdit: null,
+    tabsPreview: null,
     selectedIds: new Set<string>(),
     marquee: null,
     snapGuides: [],
@@ -35,6 +37,8 @@ export function createDefaultEditorViewState(pageId: string): EditorViewState {
 export function copyEditorViewState(source: EditorViewState): EditorViewState {
   return {
     ...source,
+    tabsPreview: source.tabsPreview ? { ...source.tabsPreview } : null,
+    contentEdit: source.contentEdit ? structuredClone(source.contentEdit) : null,
     selectedIds: new Set(source.selectedIds),
     marquee: structuredClone(source.marquee),
     snapGuides: structuredClone(source.snapGuides),

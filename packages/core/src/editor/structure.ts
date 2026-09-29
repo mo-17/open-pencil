@@ -2,6 +2,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { DEFAULT_FRAME_FILL } from '#core/constants'
 
+import { isInContentEditScope } from './content-edit'
 import { wrapInAutoLayout as wrapInAutoLayoutImpl } from './structure/auto-layout-wrap'
 import {
   booleanOperationSelected as booleanOperationSelectedImpl,
@@ -27,10 +28,16 @@ export function createStructureActions(ctx: EditorContext) {
   const stateActions = createStructureStateActions(ctx)
 
   function isTopLevel(parentId: string | null): boolean {
-    return !parentId || parentId === ctx.graph.rootId || parentId === ctx.state.currentPageId
+    return (
+      !parentId ||
+      parentId === ctx.graph.rootId ||
+      parentId === ctx.state.currentPageId ||
+      parentId === ctx.state.contentEdit?.rootId
+    )
   }
 
   function reparentNodes(nodeIds: string[], newParentId: string) {
+    if (!isInContentEditScope(ctx, newParentId)) return
     const parent = ctx.graph.getNode(newParentId)
     for (const id of nodeIds) {
       const node = ctx.graph.getNode(id)

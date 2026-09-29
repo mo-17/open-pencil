@@ -9,6 +9,7 @@ import type { EditorState } from '#core/editor/types'
 import { computeMotionLayoutPreview } from '#core/layout'
 import { emitNavigationTrace } from '#core/profiler'
 
+import { prepareContentEditCache, renderContentEditRoot } from './content-edit'
 import { beginDecodedImageCacheFrame, endDecodedImageCacheFrame } from './image-cache'
 import { drawChromePass, drawLabelPass, drawOverlayPass } from './overlay-pass'
 import {
@@ -113,6 +114,8 @@ export function renderFromEditorState(
     graph,
     state.selectedIds,
     {
+      contentRootId: state.contentEdit?.rootId,
+      tabsPreview: state.tabsPreview,
       motionVisualStates: state.motionPreview?.visuals,
       ...(generatedEffectsAnimate ? { generatedEffectTimeMs: now() } : {}),
       generatedEffectMode: reducedMotion ? 'reduce' : 'allow',
@@ -146,6 +149,8 @@ export function renderFromEditorState(
 
 export function hasVolatileOverlay(overlays: RenderOverlays): boolean {
   return (
+    overlays.contentRootId !== undefined ||
+    overlays.tabsPreview != null ||
     (overlays.motionVisualStates?.size ?? 0) > 0 ||
     overlays.generatedEffectTimeMs !== undefined ||
     overlays.dropTargetId != null ||
@@ -283,6 +288,7 @@ export function render(
   layer: RenderLayer = 'full',
   interactive = false
 ): void {
+  prepareContentEditCache(r, overlays.contentRootId)
   prepareRenderCacheScope(r, graph)
   emitNavigationTrace('render:start', {
     layer,
@@ -393,7 +399,7 @@ export function render(
       canvas.save()
       canvas.scale(r.dpr, r.dpr)
       r.labelCache.update(graph, r.pageId, sceneVersion, graph.positionPreviewVersion)
-      drawLabelPass(r, canvas, graph, overlays)
+      if (!overlays.contentRootId) drawLabelPass(r, canvas, graph, overlays)
       canvas.restore()
 
       canvas.save()
@@ -537,6 +543,7 @@ function renderPageChildren(
   graph: SceneGraph,
   overlays: RenderOverlays
 ): void {
+  if (renderContentEditRoot(r, canvas, graph, overlays)) return
   const pageNode = graph.getNode(r.pageId ?? graph.rootId)
   if (!pageNode) return
   renderChildrenWithMotionLayout(r, canvas, graph, pageNode.childIds, overlays)

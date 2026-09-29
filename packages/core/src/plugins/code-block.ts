@@ -298,3 +298,5 @@ export const CODE_BLOCK_PLUGIN = moduleContract.createSingleModulePlugin(
   'OpenPencil Code Block',
   CODE_BLOCK_MODULE_DEFINITION
 )
+
+export { CODE_BLOCK_LAYOUT } from './code-block/layout'

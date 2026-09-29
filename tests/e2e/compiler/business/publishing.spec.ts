@@ -251,14 +251,14 @@ for (const fixture of publishingCases) {
           await navigate(publishTitle)
           await navigate('Select record')
           if (!auto) {
-            await navigate('Edit article draft')
-            await expect(page.getByPlaceholder('Article text', { exact: true })).toHaveValue(
-              publishingBody
-            )
-            // The action menu stays available, but the published record has no form submit button.
+            const callsBeforeReview = api.calls.length
+            await navigate('Inspect saved request · Edit article draft')
+            // Published records expose receipt review, never the draft editor or its submit action.
+            await expect(page.getByPlaceholder('Article text', { exact: true })).toHaveCount(0)
             await expect(
               page.getByRole('button', { name: 'Edit article draft', exact: true })
-            ).toHaveCount(1)
+            ).toHaveCount(0)
+            expect(api.calls).toHaveLength(callsBeforeReview)
           }
           await navigate('Withdraw article')
           await fill({ 'Editorial note': 'Return to draft' })

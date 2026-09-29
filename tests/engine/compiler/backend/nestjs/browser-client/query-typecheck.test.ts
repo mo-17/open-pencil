@@ -9,7 +9,7 @@ import type { StateDef } from '@open-pencil/scene-graph'
 import { browserApplication, browserGraph, compileBrowser } from './helpers'
 
 test.each(['react', 'vue'] as const)(
-  '%s generated project typechecks unknown document filters and Vue record-to-state assignments',
+  '%s generated project typechecks conditional nested Backend LIST status, unknown filters and state assignments',
   async (target) => {
     const fixture = browserGraph()
     const application = browserApplication()
@@ -57,12 +57,31 @@ test.each(['react', 'vue'] as const)(
         }
       })
     }
+    // A conditional backend LIST used as another LIST's template must retain
+    // its authored element wrapper around the generated status and mapped rows.
+    fixture.graph.updateNode(fixture.notes.id, {
+      state: [
+        ...(fixture.graph.getNode(fixture.notes.id)?.state ?? []),
+        { id: 'groups', name: 'groups', type: 'array', defaultValue: [{}] }
+      ]
+    })
+    const outer = fixture.graph.createNode('LIST', fixture.notes.id, {
+      interactiveProps: {
+        dataSourceRef: { kind: 'stateRef', stateId: 'groups' },
+        itemName: 'group',
+        indexName: 'groupIndex'
+      }
+    })
+    fixture.graph.reparentNode(fixture.list.id, outer.id)
+    fixture.graph.updateNode(fixture.list.id, { renderCondition: 'title !== "hidden"' })
     const output = compileBrowser(target, fixture, application)
     const pages = [...output.files]
       .filter(([path]) => path.startsWith('src/pages/'))
       .map(([, source]) => String(source))
       .join('\n')
     expect(pages).toContain('filter: { "title":')
+    expect(pages).toContain('data-backend-list-status="notes-api"')
+    expect(pages).toContain('data-backend-list-retry="notes-api"')
     if (target === 'vue') {
       expect(pages.match(/const __opNextState: unknown = /g)).toHaveLength(6)
       expect(pages).toContain('__opPrevious ||')

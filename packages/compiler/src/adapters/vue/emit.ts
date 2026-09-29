@@ -1,6 +1,9 @@
+import { vueAutocompleteImports } from '#compiler/adapters/autocomplete/emit'
+import { vueInputControlImports } from '#compiler/adapters/input-control/emit'
 import type { ComponentDef, IRElement, IRNode, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions } from '#compiler/types'
 
+import { emitVueBackendListStatus } from '../backend-client/list-status'
 import { emitVueBackendPageRuntime } from '../backend-client/lists'
 import {
   emitVueElementAttributes,
@@ -19,12 +22,14 @@ import { emitVueListQueryRuntime } from './lowcode/supabase'
 import { collectVueComponentLowcodeUsage, collectVueTreeLowcodeUsage } from './lowcode/usage'
 import {
   buildVueValidationGlue,
-  vueValidationErrorId,
+  vueValidationErrorExpression,
   vueValidationKeyBinding
 } from './lowcode/validation'
+import { buildVueValidationImport, emitVueValidationSummary } from './lowcode/validation-summary'
 import { emitVueModuleElement } from './modules/emit'
 import { buildVueModuleImports, findVueModuleAdapter } from './modules/registry'
 import { componentRootAttrs, pageRootAttrs } from './root-attributes'
+import { vueSelectImports, vueSelectOptionsBinding } from './select/options'
 import {
   componentPropAlias,
   componentRuntimeAlias,
@@ -132,6 +137,7 @@ export function buildVuePageModule(
   const currentUser = identAliases.get('$currentUser')
   const template = wrapVueAuthGuard(body, ir.requiresAuth === true, currentUser)
   const vueNames = ['computed as __vueComputed', 'ref as __vueRef']
+  if (lowcode.validation) vueNames.push('useId as __vueUseId')
   if (vuePageNeedsWatch(ir, routerAvailable)) {
     vueNames.push('watch as __vueWatch')
   }
@@ -152,11 +158,14 @@ export function buildVuePageModule(
   const scriptLines: string[] = [vueImports + routerImports]
   if (backendAvailable) scriptLines.push("import * as __opBackend from '../lowcode-backend'")
   if (componentImports) scriptLines.push(componentImports)
+  scriptLines.push(...vueSelectImports(ir.children, '../components'))
+  scriptLines.push(...vueAutocompleteImports(ir.children, '../components'))
+  scriptLines.push(...vueInputControlImports(ir.children, '../components'))
   if (moduleImports) scriptLines.push(moduleImports)
   if (lowcode.toast) scriptLines.push(`import { __opToast } from '../lowcode-toast'`)
   if (lowcode.confirm) scriptLines.push(`import { __opConfirm } from '../lowcode-confirm'`)
   if (lowcode.validation) {
-    scriptLines.push(`import { __opValidateValue } from '../lowcode-validation'`)
+    scriptLines.push(buildVueValidationImport(ir.children))
   }
   if ((lowcode.supabase || currentUser) && supabaseAvailable) {
     scriptLines.push(
@@ -285,6 +294,7 @@ export function buildVueComponentModule(
   }
   const vueNames = ['computed as __vueComputed']
   if (lowcode.validation || requestGateActive) vueNames.push('ref as __vueRef')
+  if (lowcode.validation) vueNames.push('useId as __vueUseId')
   if (requestDebounceActive) vueNames.push('onBeforeUnmount as __vueOnBeforeUnmount')
   const vueImports = `import { ${vueNames.join(', ')} } from 'vue'`
   const scriptLines = [vueImports]
@@ -310,11 +320,14 @@ export function buildVueComponentModule(
   for (const name of componentNames) {
     scriptLines.push(`import ${componentAliases.get(name)} from './${name}.vue'`)
   }
+  scriptLines.push(...vueSelectImports(bodyNodes, '.'))
+  scriptLines.push(...vueAutocompleteImports(bodyNodes, '.'))
+  scriptLines.push(...vueInputControlImports(bodyNodes, '.'))
   if (moduleImports) scriptLines.push(moduleImports)
   if (lowcode.toast) scriptLines.push(`import { __opToast } from '../lowcode-toast'`)
   if (lowcode.confirm) scriptLines.push(`import { __opConfirm } from '../lowcode-confirm'`)
   if (lowcode.validation) {
-    scriptLines.push(`import { __opValidateValue } from '../lowcode-validation'`)
+    scriptLines.push(buildVueValidationImport(bodyNodes))
   }
   if ((lowcode.supabase || rawDocStateReads.includes('$currentUser')) && supabaseAvailable) {
     scriptLines.push(
@@ -459,17 +472,21 @@ function emitNode(
     case 'list': {
       const item = createLocalBinding(node.itemName, locals.length)
       const index = createLocalBinding(node.indexName, locals.length + 1)
+      index.iterationIndex = true
       const nextLocals = [...locals, item, index]
       const arrayName =
         context.listAliases.get(node.arrayName) ??
         scopedIdentifier(node.arrayName, context.identAliases, locals)
       const expression = `(${arrayName} ?? [])`
-      return `${pad}<template v-for="(${item.alias}, ${index.alias}) in ${escapeAttr(expression)}" :key="${escapeAttr(index.alias)}">\n${emitNode(
-        node.template,
-        context,
-        indent + 1,
-        nextLocals
-      )}${pad}</template>\n`
+      return (
+        emitVueBackendListStatus(node, arrayName, indent) +
+        `${pad}<template v-for="(${item.alias}, ${index.alias}) in ${escapeAttr(expression)}" :key="${escapeAttr(index.alias)}">\n${emitNode(
+          node.template,
+          context,
+          indent + 1,
+          nextLocals
+        )}${pad}</template>\n`
+      )
     }
     case 'componentRef': {
       const attrs: string[] = []
@@ -509,7 +526,7 @@ function emitElement(
 ): string {
   const element = emitElementCore(node, context, indent, locals)
   if (!node.validation) return element
-  return `${element}${emitValidationError(node.validation.key, context, indent)}`
+  return `${element}${emitValidationError(node.validation.key, context, indent, locals)}`
 }
 
 function emitElementCore(
@@ -523,7 +540,7 @@ function emitElementCore(
     return emitVueModuleElement(node, moduleAdapter, context, indent, {
       locals,
       attrs: emitVueElementAttributes(node, context, locals),
-      children: emitNodes(node.children, context, indent + 1, locals)
+      renderChildren: (nodes, childIndent) => emitNodes(nodes, context, childIndent, locals)
     })
   }
   const pad = '  '.repeat(indent)
@@ -532,49 +549,53 @@ function emitElementCore(
   if (node.link) tagName = 'a'
   const tag = safeVueTag(tagName)
   const attrs = emitVueElementAttributes(node, context, locals)
+  if (node.tag === 'input' && node.inputControl) {
+    const binding = `__opInputControl_${++context.expressionIndex}`
+    context.templateBindings.push(`const ${binding} = ${scriptJSON(node.inputControl)} as const`)
+    attrs.push(`:config="${binding}"`)
+    return `${pad}<OpInputControl${attrs.length ? ` ${attrs.join(' ')}` : ''} />\n`
+  }
+  if (node.tag === 'input' && node.inputSuggestions) {
+    const binding = `__opSuggestions_${++context.expressionIndex}`
+    context.templateBindings.push(`const ${binding} = ${scriptJSON(node.inputSuggestions)}`)
+    attrs.push(`:suggestions="${binding}"`)
+    return `${pad}<OpAutocomplete${attrs.length ? ` ${attrs.join(' ')}` : ''} />\n`
+  }
+  if (node.tag === 'select' && node.selectFeatures) {
+    attrs.push(
+      `:options="${escapeAttr(vueSelectOptionsBinding(node, context, locals))}"`,
+      `:show-search="${node.selectFeatures.showSearch}"`,
+      `:virtual="${node.selectFeatures.virtual}"`
+    )
+    return `${pad}<OpEnhancedSelect${attrs.length ? ` ${attrs.join(' ')}` : ''} />\n`
+  }
   const open = `${pad}<${tag}${attrs.length ? ` ${attrs.join(' ')}` : ''}`
   if (VUE_VOID_TAGS.has(tag)) return `${open} />\n`
   if (node.rawHtml !== undefined) return `${open}></${tag}>\n`
   const children = emitNodes(node.children, context, indent + 1, locals)
   const summary =
     node.formValidationSummary && node.formValidationKeys
-      ? emitValidationSummary(
+      ? emitVueValidationSummary(
           node.formValidationKeys,
           node.formValidationSummary.title,
           context,
-          indent + 1
+          indent + 1,
+          node.formValidationMountedOnly
         )
       : ''
   return `${open}>\n${summary}${children}${pad}</${tag}>\n`
 }
 
-function emitValidationError(key: string, context: VueEmitContext, indent: number): string {
-  const pad = '  '.repeat(indent)
-  const binding = vueValidationKeyBinding(context, key)
-  const id = vueValidationErrorId(key)
-  return `${pad}<p v-if="${binding} in __fieldErrors && __fieldErrors[${binding}]" id="${id}" class="openpencil-validation-error" role="alert">{{ __fieldErrors[${binding}] }}</p>\n`
-}
-
-function emitValidationSummary(
-  keys: readonly string[],
-  title: string,
+function emitValidationError(
+  key: string,
   context: VueEmitContext,
-  indent: number
+  indent: number,
+  locals: readonly VueLocalBinding[]
 ): string {
   const pad = '  '.repeat(indent)
-  const innerPad = '  '.repeat(indent + 1)
-  const itemPad = '  '.repeat(indent + 2)
-  context.expressionIndex += 1
-  const binding = `__opValidationSummaryKeys_${context.expressionIndex}`
-  context.templateBindings.push(`const ${binding} = ${scriptJSON(keys)}`)
-  return [
-    `${pad}<div v-if="${binding}.some((id) => __fieldErrors[id])" class="openpencil-validation-error" role="alert">`,
-    `${innerPad}<p>${escapeStaticText(title)}</p>`,
-    `${innerPad}<ul>`,
-    `${itemPad}<li v-for="id in ${binding}.filter((item) => __fieldErrors[item])" :key="id">{{ __fieldErrors[id] }}</li>`,
-    `${innerPad}</ul>`,
-    `${pad}</div>\n`
-  ].join('\n')
+  const binding = vueValidationKeyBinding(context, key)
+  const id = vueValidationErrorExpression(key, locals)
+  return `${pad}<p v-if="${binding} in __fieldErrors && __fieldErrors[${binding}]" :id="${id}" class="openpencil-validation-error" role="alert">{{ __fieldErrors[${binding}] }}</p>\n`
 }
 
 function referencedComponents(nodes: readonly IRNode[]): string[] {

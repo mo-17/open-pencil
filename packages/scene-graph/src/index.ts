@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- SceneGraph exposes a stable facade over domain modules */
 export * from './mutation-impact'
+export { isNumberVariableBindingField } from './variables'
 export * from './backend-client'
 export * from './instance-overrides'
 export * from './images'
@@ -333,6 +334,10 @@ export class SceneGraph {
 
   resolveNumberVariableForNode(nodeId: string, variableId: string): number | undefined {
     return Variables.resolveNumberVariableForNode(this, nodeId, variableId)
+  }
+
+  resolveEffectiveVariableForNode(nodeId: string, variableId: string): VariableValue | undefined {
+    return Variables.resolveEffectiveVariableForNode(this, nodeId, variableId)
   }
 
   getVariablesForCollection(collectionId: string): Variable[] {

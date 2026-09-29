@@ -11,6 +11,7 @@ import { importCanvasGuides } from './canvas-guides'
 import { convertFigmaDerivedTextGlyphs } from './derived/glyphs'
 import { convertFontFeatures } from './font/features'
 import { convertFontVariations } from './font/variations'
+import { extractLayoutPreferences } from './layout-preferences'
 import { convertEffects, convertFills, convertStrokes } from './paint'
 import { expandPathTextLayoutBox } from './path/text-layout'
 import {
@@ -472,7 +473,12 @@ function convertLayoutProps(
   | 'strokesIncludedInLayout'
   | 'layoutDirection'
 > &
-  Partial<Pick<SceneNode, 'derivedLayout'>> {
+  Partial<
+    Pick<
+      SceneNode,
+      'derivedLayout' | 'gridTemplateColumns' | 'gridTemplateRows' | 'gridColumnGap' | 'gridRowGap'
+    >
+  > {
   const layoutMode = mapStackMode(nc.stackMode)
   const primaryAxisSizing = mapStackSizing(nc.stackPrimarySizing)
   const counterAxisSizing = mapStackSizing(nc.stackCounterSizing)
@@ -504,7 +510,8 @@ function convertLayoutProps(
       (getOpenPencilPluginValue(nc, LAYOUT_DIRECTION_PLUGIN_KEY) as
         | SceneNode['layoutDirection']
         | null) || 'AUTO',
-    ...(derivedLayout ? { derivedLayout } : {})
+    ...(derivedLayout ? { derivedLayout } : {}),
+    ...extractLayoutPreferences(nc)
   }
 }
 

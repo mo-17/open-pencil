@@ -6,6 +6,7 @@ import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 import type { GuideOverlayState } from '#core/canvas/guides/types'
 import type { RotationPreview } from '#core/geometry'
 import type { MotionLayoutPreviewNode } from '#core/layout'
+import type { TabsTabPreview } from '#core/plugins/content/tabs-preview'
 import type { TextEditor } from '#core/text/editor'
 
 export interface RulerTheme {
@@ -18,6 +19,10 @@ export interface RulerTheme {
 export type MeasurementMode = 'off' | 'shallow' | 'deep'
 
 export interface RenderOverlays {
+  /** View-local Tabs choice, omitted from static exports. */
+  tabsPreview?: TabsTabPreview | null
+  /** Editor-only subtree view; never included in static export. */
+  contentRootId?: string
   /** Ephemeral scene-only motion deltas; absent from static render/export paths. */
   motionVisualStates?: ReadonlyMap<string, MotionVisualState>
   /** Non-persistent Yoga geometry derived from animated layout channels. */

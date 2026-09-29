@@ -12,12 +12,83 @@
 
 ### Added
 
+- Add typed page/document state bindings, independent FORM validation and reset for Slider/Range, Rating and Date Range. Add opt-in Cascader with visual hierarchy editing, canvas path previews, accessible React/Vue selection and a bound basic template; invalid bindings never silently use example values.
+
+- Add opt-in Walktour with editable steps and named child-layer targets, shared canvas trigger styling, and manually started React/Vue guidance with target highlights, previous/next navigation and clear unavailable-target feedback. Include a reusable local guide template without automatic business actions.
+
+- Add opt-in Org Chart with bounded editable hierarchies, visual parent and card editing, horizontal/vertical layouts and branch folding. Share offline canvas geometry with React/Vue output and include a reusable local organization template; no directory service or business-state authority is added.
+
+- Add opt-in Pagination with responsive canvas and React/Vue navigation, bounded page buttons and numeric page/document state bindings. Include editable pagination and paginated-list templates; empty data, disabled controls and projected out-of-range pages never silently write state or fetch data.
+
+- Add a Color picker INPUT variant with hexadecimal string bindings, native selection, form validation and read-only handling. Add opt-in Descriptions with editable label/value rows, responsive columns, layout and density settings, matching canvas and React/Vue presentation, and two reusable templates.
+
+- Add Date-time picker, Number input and Password input templates, alongside the existing component library. Extend existing INPUT nodes with strict local date/time bounds and step validation, configurable native/custom/hidden number controls, and opt-in instance-local password reveal. Keep native form semantics, React/Vue bindings, canvas previews and explicit warnings for unsupported source-only targets.
+
+- Add Autocomplete and Time picker input variants with visual properties, string value bindings and React/Vue form behavior. Include editable templates, local keyboard-searchable suggestions, time bounds and second-based steps, and readable canvas previews. Show array state choices for multiple Select bindings.
+
+- Add array-valued multi-select with search, virtualized options, clear actions and React/Vue form binding; preserve authored empty values and multiple defaults. Add opt-in Date Range, Tree/TreeSelect and Popover/Popconfirm modules with visual properties, canvas renderers, keyboard interactions and six editable templates. Date-range/tree values remain instance-local; popover confirmation provides local feedback, without executing a business action.
+
+- Complete Markdown and Code Block Vue runtimes, multilingual canvas text and three editable content recipes. Align wrapped code line numbers, expose localized copy outcomes, and invalidate stale clipboard results. Keep Markdown HTML inert and images unloaded, isolate footnote return links per instance, and preserve authored runtime language. Cancel multiline inspector drafts before late events can target another node.
+
+- Extend Chart with line, area, pie and donut views, shared canvas/React/Vue geometry, multilingual canvas labels, proportion-preserving SVG and an accessible data table. Add paired data editing with atomic undo and five templates; preserve v1 bar documents and reject negative circular data.
+
+- Add opt-in Tooltip, Skeleton and Empty State modules with bilingual visual properties, offline canvas rendering and React/Vue runtimes, plus four templates. Tooltips support hover/focus/touch and Escape dismissal; skeleton animation respects reduced motion. Keep loading and empty presentation separate from automatic business-state detection.
+
+- Add opt-in Avatar, count/dot Badge and Timeline modules with visual properties, matching canvas and React/Vue presentation, local-image avatar fallbacks, editable event lists and four reusable templates.
+- Add opt-in Alert, linear/circular Progress and interactive Chip modules with bilingual visual properties, shared canvas/React/Vue appearance and four editable templates. Keep dismiss/select state instance-local, distinguish indeterminate progress from percentages, and support keyboard focus and reduced-motion preferences.
+
+- Add opt-in Slider/Range, Rating, Stepper and Breadcrumb modules with visual configuration, offline canvas previews and React/Vue output. Support bounded local value selection, keyboard controls, editable step lists and safe breadcrumb links; retain explicit limits for form binding and business workflows.
+- Expand Assets to 44 component templates: 37 basic components and seven compositions, including single-value and range sliders, star ratings, progress steps and breadcrumbs.
+- Show checkbox and checkbox-group initial values on the canvas, with multilingual labels and disabled states. Resolve bound Input/Textarea initial text, mask password content, and clip single-line inputs correctly.
+- Focus the first editable invalid form field without requiring an error summary, expose required/error associations, and ignore stale field identities. Fix Vue group blur validation, reject non-numeric values for numeric bounds, and keep empty React array state usable by controlled checkbox groups.
+- Configure Accordion initial expansion, section order and single/multiple behavior visually with undo and stale-draft protection. Preserve multiline content and align canvas indicators with React/Vue output; add Vue playback and an editable FAQ composition.
+- Localize the remaining DataGrid inspector labels and selection/density choices without changing version-1 configuration values.
+- Use paragraph font fallback for Table cells and Slide Menu, Dropdown Menu and Upload Button canvas labels, retaining clipping and existing trigger geometry. Keep repeated form error descriptions unique across nested lists and component instances in React/Vue exports.
+- Refresh tiled canvas images when a font finishes loading, even when the document has not changed, so newly inserted controls do not retain blank text tiles.
+
+- Complete the opt-in Carousel plugin with visual slide editing, atomic initial-slide ordering, offline multilingual canvas previews, and React/Vue playback controls that remain within the authored bounds. Add configurable split/overlay layouts, image fit, caption placement/alignment, overlay opacity, and dots/numbers/fraction pagination. Position or hide navigation arrows and enable mouse dragging/touch swiping alongside autoplay and loop controls. Preserve explicit remote-image loading in previews and version-1/2 playback behavior; save edited settings with version 3.
+
+- Align Tabs canvas headers with the compact rounded React/Vue controls, including CJK font loading. Distinguish inline text from mapped child content in the inspector; preview each tab without changing its initial selection and edit the corresponding original child layers with undo.
+
+- Create custom Modal content and edit its original layers in a focused canvas with undo and a return-to-trigger action. Keep mapped content off the canvas trigger and display its configured icon and multilingual label. Resolve the body's fill layout within its own bounds so inputs and buttons remain visible in new templates and existing `.fig` files, without changing the trigger size or authored sizing modes.
+
+- Make DataGrid CSV tools opt-in through the inspector in React/Vue previews and exports; hide empty selection/filter reset actions while preserving accessible status and local data. Resolve missing Chinese grid labels through canvas font fallback, including existing `.fig` documents.
+- Keep short DataGrid viewports usable by scrolling oversized headers with their rows and restoring configured sticky headers when space is available.
+
+- Add opt-in Select search and virtual scrolling to React/Vue previews and exports, with inspector switches, label filtering, keyboard navigation and bounded option DOM for large local lists. Preserve selected values while searching.
+- Show Select labels, placeholders and bound initial options on the canvas. Add primary inspector option ordering, atomic default edits, duplicate-value guidance, localized clearing controls and text colors; fix Vue literal selection and guard dynamic empty values through native shadcn fallbacks. Inset plain native selector arrows with space for the label. Preserve settings through `.fig` readback.
+
+- Paint radio-group options and initial selection on the canvas, including CJK fallback, disabled appearance and bound-state cache refresh. Expose Radio settings in Classic and Focused inspectors with undoable option edits and explicit binding precedence; prevent blank draft options from becoming selected defaults.
+- Match switch canvas geometry and blue/gray colors with React, Vue and shadcn output using full authored bounds, scaled thumbs, padding and disabled opacity. Remove conflicting corner classes, undefined theme-color dependencies and duplicate shadcn thumbs; retain keyboard focus and reduced-motion behavior.
+- Paint date-picker values on the canvas, respecting bound initial state, disabled/read-only appearance, padding and clipping. Show a date-format placeholder for empty or invalid dates without changing existing node sizes or requiring `.fig` regeneration.
+
+- Browse basic component templates and common compositions in Assets, with bilingual search, local favorites, plugin availability, independent editable state and one-step insertion undo.
+- Connect the reviewed Upload module's disabled state to bounded page/document expressions in React and Vue, keeping invalid or non-boolean results disabled.
+- Configure native lowcode input types, bounded constraints, accessible names, disabled/read-only states and Select labels/values; edit independent field change/focus/blur actions with undo and stale-target protection.
+- Place editable child frames inside Modal bodies and individual Tabs panels, preserving legacy text configurations and diagnosing invalid content mappings.
+- Generate Vue Table, DataGrid and Tabs runtimes with bounded local operations and interactive content, alongside their React counterparts; show cross-page selection counts and provide explicit selection and column-filter reset actions.
+- Preserve local Upload Button selections after cancellation or rejected files, deduplicate matching file metadata, and keep clear, removal focus, and disabled behavior consistent in React and Vue.
+- Preserve native field event semantics in shadcn exports through diagnosed native-control fallbacks, and retain disabled options and accessible control names.
+
+- Review field bindings, validation, submission and failure handling together in the form inspector, with direct navigation to the existing controls.
+- Show Backend list loading, refresh, empty and failure states in React/Vue apps, retain same-query results during refresh, and retry reads without repeating writes.
+
 - Show separate file-save and recovery-snapshot status with success times, persistent failure feedback and retry actions; keep cloud synchronization status separate.
 - Check the managed preview's local dependencies, certificate, ports, database and identity metadata from the editor, with actionable diagnostics and a redacted copyable report.
 - Show session-scoped ACP context capacity and latest token reports in chat, with explicit unavailable, invalid and expired states.
 - Explain preview sign-in cancellation, timeouts and session expiry, and return to the previous business page after explicit sign-in without repeating failed writes.
+
 - Run connected NestJS previews inside the editor, with system-browser sign-in authorization and authenticated data operations back in the embedded page.
 - Remember trusted CA file paths on the current computer for each preview identity service, with separate configuration when a design is opened on another computer.
+
+- Confirm template saves, deletes and business commands with editable React/Vue Toast actions; retain inline errors, drafts and saved-request recovery. Add note-deletion confirmation and keep command buttons visible while processing. Reject HTTP 202 as an unconfirmed command result instead of showing success.
+
+- Adapt all 25 Backend starters to compact React/Vue web layouts with mobile page navigation, single-column records, grouped fields and preserved confirmation/recovery actions. Keep the desktop canvas editable and expose compact overrides in Responsive settings.
+- Add phone, landscape, tablet and desktop sizes to embedded compiler preview without reloading the iframe or clearing unsaved inputs.
+
+- Discover components and enabled plugin modules in the Assets workbench with source/category filters, description search, persistent favorites and direct access to insertion and configuration.
+- Review a design brief from Assets or Code, preserve author notes while regenerating it, download or copy Markdown, and place it in AI input for review before sending.
+- Import optional Business, Soft or Contrast variable presets with light/dark modes into independent collections, then bind selected properties and undo the import in one step.
 - Guide business-template setup from the Backend panel with saved sign-in settings, required roles, first-record steps and current page links; include model-specific identity and startup instructions in NestJS exports.
 - Add asset management, private quotation/contract fulfillment and recruitment with onboarding/offboarding checklists to the Backend library and AI, with editable React/Vue pages and NestJS exports.
 - Add procurement/inventory, fixed two-stage enterprise approvals, versioned surveys, text courses with instructor grading and moderated community templates to the Backend library and AI, with editable React/Vue pages and NestJS exports.
@@ -75,14 +146,39 @@
 
 ### Changed
 
+- Make container auto-layout controls explicit with an on/off switch and labeled flow choices, show parent-layout guidance for leaf controls, and keep width/height sizing modes visible. Sizing-menu undo restores layout geometry together with the mode.
+- Refresh all built-in Backend application starters with editable, domain-specific navigation, sign-in pages, record cards and compact forms; preserve existing document designs and business actions.
+
+- Give newly created restaurant templates a warm visual style, grouped customer and staff navigation, dish photos, readable CNY prices and compact forms while preserving the ordering workflow in React and Vue exports.
+
 - Improve the single-SKU shop template with title search, ascending prices, sold-out indicators, stock-aware quantity checks, price estimates, checkout and cancellation confirmations, and recent orders showing saved product titles, creation times and localized status. Existing documents require a new template or an explicit migration; the server still confirms stock and final prices.
 - Extend the shop's manager page with searchable, paginated products, validated creation, title and price editing, availability controls, and a separate stock-addition command with saved-request recovery. Product edits preserve inventory; deletion and absolute stock replacement remain unavailable, and existing templates require explicit migration.
 
 ### Fixed
 
-- Allow managed NestJS preview to prepare and connect applications created from the Backend library while preserving their original application IDs and saved preview sessions.
+- Preserve Vite URL-module handling for imported local images in compiler previews so image-backed components do not prevent the page from loading.
+- Exclude root-level generated output from development watching so exported project configurations do not reload the editor; retain normal source and worktree invalidation.
+
+- Discard stale module property drafts after selection or configuration changes, and synchronously release numeric editing focus when a field is replaced so editor shortcuts remain available.
+
+- Show lowcode control and plugin-module icons in the layer tree, matching the toolbar; update module icons on replacement, removal and undo while preserving ordinary container layout icons and the existing `.fig` format.
+- Keep Tabs, Accordion, and Table configuration text readable in dark and light themes, including focused table cells.
+- Align mapped Tabs content with its canvas panel, exclude inactive layers from painting and pointer selection, preserve editable document data, and shape Chinese tab labels through the existing font fallback.
+
+- Retain lowcode control typography and edited padding, including zero values, through `.fig` save and reopen; verify template field styles against the actual exported archives before publishing the local gallery.
+- Preserve existing spacing, padding, alignment and sizing when switching through Freeform and back to auto layout, including settings saved while Freeform is active. Initialize only missing Grid tracks without resetting authored tracks or enlarging the frame, recalculate imported geometry when explicitly changing flow, and restore all affected layer geometry in one undo step, including saved `.fig` results.
+- Keep mouse-resize previews and released geometry consistent across parent layouts, convert only the resized Hug/Fill axis to Fixed, and show child sizing modes against the parent's direction. Preserve min/max limits and Shift aspect ratios when jointly feasible; releasing Grid's shared stretch keeps the other axis at its current pixel size rather than future Fill.
+- Cancel resize previews on Escape, pointer cancellation, blur, canvas deactivation, or selection/page/document changes, and ignore trailing drag events. Keep affected parent/sibling geometry, imported sizing, and text-on-path metadata consistent through one-step undo/redo and `.fig` export.
+- Preserve authored input, textarea, select and date-picker padding in generated web projects, including responsive and logical spacing.
+- Keep the bundled plugin catalog loadable when Modal exposes its optional content-layer field, while retaining older saved Modal configurations without that field.
+- Include used shadcn component utilities in generated styles so preview icons keep their intended size and do not block neighboring controls.
+- Keep conditional list templates valid in generated React expressions, including nested Backend lists.
+
 - Connect embedded ACP agents to the current editor even when a global `open-pencil` MCP server is configured, and retain the correct connection when resuming sessions.
 - Keep local ACP editor connections working behind system HTTP proxies while preserving existing proxy exceptions and external proxy settings.
+- Allow managed NestJS preview to prepare and connect applications created from the Backend library while preserving their original application IDs and saved preview sessions.
+- Keep generated React theme previews usable when sandbox or privacy settings deny browser storage, and retain theme changes for the current session.
+- Preserve the displayed numeric value when detaching a variable in the editor, with one-step undo and redo; unresolved bindings keep the original property value.
 - Match asset handover actions to the selected request's kind and status while retaining unsent form input and saved-request review after refresh or navigation.
 - Stop generated backend lists from reusing account-specific filters when the signed-in account changes.
 - Keep CRM Vue exports type-safe when selected records populate forms, and reject invalid Backend filter values before sending requests.

@@ -10,7 +10,9 @@ import type { AppBackendProviderDescriptor } from '@/app/plugins/host/backend-pr
 
 import { createCommerceCatalogPage } from '../catalog/page'
 import { createCommerceCatalogState } from '../catalog/state'
+import { createCommerceLoginIntroduction } from '../login'
 import { assertCommerceMerchantMode, type CommerceMerchantMode } from '../merchant/types'
+import { adaptCommercePagesToMobile } from '../responsive'
 import { canInstallCommerceExample } from '../template'
 import { createOperationsCart, createOperationsCheckout } from './cart'
 import { createOperationsContext } from './context'
@@ -44,8 +46,9 @@ export function createCommerceOperationsPages(
   const ctx = createOperationsContext(editor, root, application, mode, locale)
   editor.undo.runBatch('Create commerce operations application', () => {
     commitBackendProviderDocumentRequest(editor, descriptor, application)
-    const login = createOperationsScreen(ctx, 'login', 600, ctx.copy.loginHint, false)
-    ctx.layout.button(login.page, ctx.copy.signIn, 48, 244, [
+    const login = createOperationsScreen(ctx, 'login', 780, ctx.copy.loginHint, false)
+    const loginIntro = createCommerceLoginIntroduction(ctx.layout, login.page, 224, locale)
+    ctx.layout.button(login.page, ctx.copy.signIn, loginIntro.x, loginIntro.y, [
       {
         id: crypto.randomUUID(),
         kind: 'backendAuth',
@@ -54,7 +57,7 @@ export function createCommerceOperationsPages(
         errorTarget: login.error
       }
     ])
-    ctx.layout.button(login.page, ctx.copy.signOut, 280, 244, [
+    ctx.layout.button(login.page, ctx.copy.signOut, loginIntro.x + 220, loginIntro.y, [
       {
         id: crypto.randomUUID(),
         kind: 'backendAuth',
@@ -79,6 +82,7 @@ export function createCommerceOperationsPages(
       { lowcodeDocumentState: ctx.docStates, lowcodeAuthRedirect: ctx.paths.login },
       'Configure commerce operations state'
     )
+    adaptCommercePagesToMobile(editor, ctx.layout.pageIds, locale)
     validateOperationsPages(ctx)
   })
   return { pageIds: ctx.layout.pageIds, paths: ctx.paths }

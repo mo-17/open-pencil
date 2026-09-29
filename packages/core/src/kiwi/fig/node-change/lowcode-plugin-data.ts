@@ -63,6 +63,12 @@ import type {
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import {
+  LOWCODE_CONTROL_TYPOGRAPHY_KEY,
+  parseControlTypography,
+  serializeControlTypography,
+  type ControlTypography
+} from './control-typography-plugin-data'
+import {
   LOWCODE_GRID_LAYOUT_KEY,
   parseGridLayout,
   serializeGridLayout,
@@ -240,6 +246,7 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_NODE_TYPE_KEY,
   LOWCODE_FREE_LAYOUT_KEY,
   LOWCODE_GRID_LAYOUT_KEY,
+  LOWCODE_CONTROL_TYPOGRAPHY_KEY,
   LOWCODE_SUPABASE_CONFIG_KEY,
   LOWCODE_SEO_METADATA_KEY,
   LOWCODE_ANALYTICS_CONFIG_KEY,
@@ -356,6 +363,7 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   entries.push(...serializePrototypeFields(node))
   entries.push(...serializeTransitionKeyField(node))
   entries.push(...serializeGeneratedEffectField(node))
+  if (LOWCODE_NODE_TYPES.has(node.type)) entries.push(...serializeControlTypography(node))
   return entries
 }
 
@@ -994,6 +1002,7 @@ export interface ExtractedLowcodeAndPluginData {
   /** Override for `mapNodeType`'s 'RECTANGLE' fallback. Present only when
    *  the SceneNode was one of the lowcode interactive types on save. */
   nodeTypeOverride?: NodeType
+  controlTypographyOverride?: ControlTypography
   state?: StateDef[]
   bindings?: Record<string, BindingExpr>
   events?: Partial<Record<EventName, ActionDef[]>>
@@ -1084,6 +1093,7 @@ export function extractLowcodeAndPluginData(
   const pluginData: PluginDataEntry[] = []
   const result: ExtractedLowcodeAndPluginData = { pluginData }
   const sharedMotionCandidates: Array<{ entry: PluginDataEntry; motion: MotionSpec }> = []
+  const controlTypographyEntries: PluginDataEntry[] = []
   let inertPrivateMotion = false
   let sharedMotionCleared = false
   for (const entry of nc.pluginData ?? []) {
@@ -1115,6 +1125,10 @@ export function extractLowcodeAndPluginData(
       else pluginData.push(preservedEntry)
       continue
     }
+    if (entry.key === LOWCODE_CONTROL_TYPOGRAPHY_KEY) {
+      controlTypographyEntries.push(preservedEntry)
+      continue
+    }
     let parsed: unknown
     try {
       parsed = JSON.parse(entry.value)
@@ -1137,6 +1151,11 @@ export function extractLowcodeAndPluginData(
       continue
     }
     assignLowcodeField(result, entry.key, parsed)
+  }
+  for (const entry of controlTypographyEntries) {
+    const typography = parseControlTypography(entry.value)
+    if (result.nodeTypeOverride && typography) result.controlTypographyOverride = typography
+    else pluginData.push(entry)
   }
   resolveSharedMotionCandidates(
     result,
@@ -1239,6 +1258,7 @@ export function extractImportedLowcodeProps(nc: Pick<NodeChange, 'pluginData'>):
 } {
   const {
     nodeTypeOverride,
+    controlTypographyOverride,
     freeLayoutOverride,
     gridLayoutOverride,
     primaryAxisSizingOverride,
@@ -1251,6 +1271,7 @@ export function extractImportedLowcodeProps(nc: Pick<NodeChange, 'pluginData'>):
     nodeTypeOverride,
     props: {
       ...props,
+      ...controlTypographyOverride,
       ...(freeLayoutOverride ? { layoutMode: 'FREE' as const } : {}),
       ...gridLayoutOverride,
       ...(primaryAxisSizingOverride ? { primaryAxisSizing: primaryAxisSizingOverride } : {}),
@@ -1445,7 +1466,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Light guard: a non-null, non-array object. The emit side only iterates the
- *  known breakpoint keys (`sm`/`md`/`lg`/`xl`), so any stray keys are ignored
+ *  known breakpoint keys (`compact`/`sm`/`md`/`lg`/`xl`), so any stray keys are ignored
  *  harmlessly; we just reject scalars/arrays from a corrupt .fig. */
 function isResponsiveOverrides(value: unknown): value is ResponsiveOverrides {
   return value !== null && typeof value === 'object' && !Array.isArray(value)

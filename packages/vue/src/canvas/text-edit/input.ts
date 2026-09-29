@@ -83,7 +83,7 @@ export function createTextEditInput(options: TextEditInputOptions) {
     cx: number,
     cy: number
   ): SceneNode | null {
-    const hit = editor.graph.hitTestDeep(cx, cy, editor.state.currentPageId)
+    const hit = editor.hitTestPageAtPoint(cx, cy)
     if (!hit) return null
     if (hit.id === containerId || editor.graph.isDescendant(hit.id, containerId)) return hit
     return null

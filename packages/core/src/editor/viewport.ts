@@ -1,6 +1,7 @@
 import { computeBounds, computeAbsoluteBounds } from '@open-pencil/scene-graph/geometry'
 
 import { ZOOM_DIVISOR, ZOOM_SCALE_MAX, ZOOM_SCALE_MIN } from '#core/constants'
+import { createSceneGeometry } from '#core/geometry/scene'
 import { emitNavigationTrace } from '#core/profiler'
 
 import type { EditorContext } from './types'
@@ -75,6 +76,12 @@ export function createViewportActions(ctx: EditorContext) {
   }
 
   function zoomToFit() {
+    const root = ctx.state.contentEdit ? ctx.graph.getNode(ctx.state.contentEdit.rootId) : undefined
+    if (root) {
+      const b = createSceneGeometry(ctx.graph).bounds(root)
+      zoomToBounds(b.x, b.y, b.x + b.width, b.y + b.height)
+      return
+    }
     const nodes = ctx.graph.getChildren(ctx.state.currentPageId)
     if (nodes.length === 0) return
 

@@ -13,7 +13,10 @@ for (const type of ['TEXT', 'RECTANGLE', 'FRAME'] as const) {
       if (type === 'TEXT') editor.updateNode(id, { text: 'Sizing', fontSize: 24 })
       editor.select([id])
     }, type)
-    const layout = page.getByRole('region', { name: 'Layout', exact: true })
+    const layout = page.getByRole('region', {
+      name: type === 'FRAME' ? 'Auto layout' : 'Layout',
+      exact: true
+    })
     await expect(layout.getByText('Dimensions', { exact: true })).toHaveCount(
       type === 'TEXT' ? 0 : 1
     )

@@ -1,3 +1,4 @@
+import { omitUnsupportedMultipleSelect } from '#compiler/adapters/native-controls'
 import type {
   ComponentDef,
   IRElement,
@@ -181,6 +182,8 @@ function renderComponentReference(
 }
 
 function renderElement(node: IRElement, level: number, context: MpxTemplateContext): string {
+  if (omitUnsupportedMultipleSelect(node, 'mpx', context.warn))
+    return `${'  '.repeat(level)}<view />`
   warnNodeFeatures(node, context)
   const tag = miniProgramElementTag(node)
   const attributes: string[] = []

@@ -13,10 +13,10 @@ const panelSource = readFileSync(
   resolve(import.meta.dir, '../../../../src/components/properties/Lowcode/ModulePropsPanel.vue'),
   'utf8'
 )
-const fieldSource = readFileSync(
+const scalarSource = readFileSync(
   resolve(
     import.meta.dir,
-    '../../../../src/components/properties/Lowcode/ModulePropertyFieldEditor.vue'
+    '../../../../src/components/properties/Lowcode/ModuleScalarFieldEditor.vue'
   ),
   'utf8'
 )
@@ -51,7 +51,7 @@ describe('Slide Menu module item editor', () => {
       /data-test-id="slide-menu-item-href"[\s\S]*?class="[^"]*bg-surface[^"]*text-input[^"]*placeholder:text-input\/60[^"]*focus:border-accent[^"]*"/
     )
     expect(source).not.toMatch(/bg-surface[^"\n]*text-surface/)
-    expect(fieldSource).toMatch(
+    expect(scalarSource).toMatch(
       /v-else-if="field\.kind === 'select'"[\s\S]*?class="[^"]*bg-input[^"]*text-surface[^"]*focus:border-accent[^"]*"/
     )
   })

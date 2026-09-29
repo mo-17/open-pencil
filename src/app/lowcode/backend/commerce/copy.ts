@@ -122,6 +122,7 @@ const english = {
   confirmCheckout: 'Confirm order',
   keepEditing: 'Keep editing',
   placed: 'Order placed',
+  orderRecorded: 'Order recorded. No payment was collected.',
   pendingStatus: 'Pending',
   cancelledStatus: 'Cancelled',
   unknownStatus: 'Unknown status',
@@ -135,6 +136,7 @@ const english = {
   created: 'Checkout example created.'
 }
 const chinese: typeof english = {
+  orderRecorded: '订单已记录，尚未收取款项。',
   install: '生成单商品下单示例',
   installHint:
     '一次撤销可移除新增的商品、订单、原子命令和登录页面。使用本地 Keycloak 登录示例，可在“HTTP API 与登录”中修改。此操作不会添加数据库商品或启动服务。',

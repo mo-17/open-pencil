@@ -88,16 +88,27 @@ describe('NestJS visual user flow', () => {
       const classAttributes = [...String(source).matchAll(/class(?:Name)?="([^"]+)"/g)].map(
         (match) => match[1].split(/\s+/)
       )
-      const viewport = classAttributes.find((classes) => classes.includes('overflow-y-auto'))
+      const list = [...editor.graph.getAllNodes()].find((node) => node.type === 'LIST')
+      const card = list ? editor.graph.getChildren(list.id)[0] : undefined
+      if (!list || !card) throw new Error('Missing authored notes list and item')
+      const heightInPixels = (classes: string[]) => {
+        const fixed = classes.find((value) => /^h-\[[\d.]+px\]$/.test(value))
+        if (fixed) return Number(fixed.slice(3, -3))
+        const scale = classes.find((value) => /^h-[\d.]+$/.test(value))
+        return scale ? Number(scale.slice(2)) * 4 : undefined
+      }
+      const viewport = classAttributes.find(
+        (classes) => classes.includes('overflow-y-auto') && classes.includes('grid')
+      )
       expect(viewport).toBeDefined()
       expect(viewport).toContain('grid')
       expect(viewport).toContain('grid-cols-1')
-      expect(viewport).toContain('grid-rows-[150px]')
-      expect(viewport).toContain('h-[350px]')
+      expect(viewport).toContain(`grid-rows-[${card.height}px]`)
+      expect(heightInPixels(viewport ?? [])).toBe(list.height)
       expect(viewport).toContain('overflow-x-hidden')
       expect(viewport).not.toContain('overflow-hidden')
       expect(viewport).not.toContain('flex-col')
-      expect(classAttributes.some((classes) => classes.includes('h-[150px]'))).toBe(true)
+      expect(classAttributes.some((classes) => heightInPixels(classes) === card.height)).toBe(true)
       const formClasses = String(source)
         .match(/<form\b[^>]*\bclass(?:Name)?="([^"]+)"/)?.[1]
         ?.split(/\s+/)
@@ -251,9 +262,12 @@ describe('NestJS visual user flow', () => {
     application.httpApi.resources[0].readFields[0] = 'note_key'
     const result = createPersonalNotesPages(editor, descriptor, application)
     expect(result.notesPath).toBe('/notes-2')
-    const remove = [...editor.graph.getAllNodes()].find((node) => node.name === 'Delete')?.events
-      ?.onClick?.[0]
-    expect(remove).toMatchObject({ kind: 'backendRequest', idExpr: 'item.note_key' })
+    const remove = [...editor.graph.getAllNodes()].find((node) => node.name === 'Delete')
+    let deletion: ActionDef | undefined
+    eachAction(remove?.events?.onClick ?? [], (action) => {
+      if (action.kind === 'backendRequest' && action.operation === 'delete') deletion = action
+    })
+    expect(deletion).toMatchObject({ kind: 'backendRequest', idExpr: 'item.note_key' })
   })
   test('nullable inputs preserve null separately and all template expressions resolve to declared scope', async () => {
     const { application, descriptor, editor } = await fixture()
@@ -272,6 +286,7 @@ describe('NestJS visual user flow', () => {
       'error',
       'err',
       '$prev',
+      '$currentUser',
       ...(page?.state ?? []).map((state) => state.name),
       ...(editor.graph.getNode(editor.graph.rootId)?.lowcodeDocumentState ?? []).map(
         (state) => state.name
@@ -305,13 +320,57 @@ describe('NestJS visual user flow', () => {
       expect.objectContaining({ name: 'nullable_title', type: 'boolean', defaultValue: true })
     )
     const form = [...editor.graph.getAllNodes()].find((node) => node.type === 'FORM')
-    const condition = form?.events?.onSubmit?.[0]
-    if (condition?.kind !== 'condition') throw new Error('Missing form action')
-    expect(condition.consequent[0]).toMatchObject({
+    let create: ActionDef | undefined
+    eachAction(form?.events?.onSubmit ?? [], (action) => {
+      if (action.kind === 'backendRequest' && action.operation === 'create') create = action
+    })
+    expect(create).toMatchObject({
       payloadEntries: [
         { key: 'title', valueExpr: 'nullable_title ? noteNullValue.value : note_title' },
         { key: 'content', valueExpr: 'nullable_content ? noteNullValue.value : note_content' }
       ]
+    })
+  })
+  test('notes writes report actual success, preserve failed drafts and require explicit deletion', async () => {
+    const { application, descriptor, editor } = await fixture()
+    const pages = createPersonalNotesPages(editor, descriptor, application)
+    const busy = editor.graph
+      .getNode(pages.notesPageId)
+      ?.state?.find((state) => state.name === 'notesBusy')
+    expect(busy?.defaultValue).toBe(false)
+    const nodes = [...editor.graph.getAllNodes()]
+    const form = nodes.find((node) => node.type === 'FORM')
+    expect(form?.renderCondition).toContain('notesBusy')
+    const guard = form?.events?.onSubmit?.[0]
+    expect(guard).toMatchObject({ kind: 'condition', condExpr: form?.renderCondition })
+    const actions: ActionDef[] = []
+    for (const node of nodes)
+      eachAction(Object.values(node.events ?? {}).flat(), (action) => actions.push(action))
+    const requests = actions.filter((action) => action.kind === 'backendRequest')
+    expect(requests).toHaveLength(3)
+    for (const request of requests) {
+      expect(request.onSuccess).toContainEqual(
+        expect.objectContaining({ kind: 'toast', variant: 'success' })
+      )
+      expect(request.onError).toEqual([
+        { id: expect.any(String), kind: 'setState', targetStateId: busy?.id, valueExpr: '!1' }
+      ])
+      expect(request.errorTarget).toBeTruthy()
+    }
+    const confirmation = actions.find((action) => action.kind === 'confirm')
+    expect(confirmation).toMatchObject({ confirmLabel: 'Delete note', cancelLabel: 'Keep note' })
+    if (confirmation?.kind !== 'confirm') throw new Error('Missing delete confirmation')
+    expect(confirmation.consequent[0]).toMatchObject({
+      kind: 'backendRequest',
+      operation: 'delete'
+    })
+    expect(confirmation.alternate).toEqual([
+      { id: expect.any(String), kind: 'setState', targetStateId: busy?.id, valueExpr: '!1' }
+    ])
+    const deleteRequest = requests.find((request) => request.operation === 'delete')
+    expect(deleteRequest?.onSuccess?.[0]).toMatchObject({
+      kind: 'condition',
+      condExpr: 'noteId === item.id'
     })
   })
   test('removing a NestJS entity removes its owned declarations but preserves other models', async () => {

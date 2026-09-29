@@ -2,6 +2,7 @@ import { useEventListener } from '@vueuse/core'
 import { ref, type Ref } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
+import { createSceneGeometry } from '@open-pencil/core/geometry'
 
 import { findMoveDropTarget } from '#vue/shared/input/drop-target'
 
@@ -28,15 +29,14 @@ function componentDropPlacement(componentId: string, cx: number, cy: number, edi
   if (component?.type !== 'COMPONENT') return null
 
   const target = findMoveDropTarget(cx, cy, editor)
-  const parentId = target?.id ?? editor.state.currentPageId
-  const parentOffset =
-    parentId === editor.state.currentPageId
-      ? { x: 0, y: 0 }
-      : editor.graph.getAbsolutePosition(parentId)
+  const parentId = target?.id ?? editor.getContentEditInsertionParent()
+  if (!parentId) return null
+  const parent = editor.graph.getNode(parentId)
+  const local = parent ? createSceneGeometry(editor.graph).toLocal(parent, { x: cx, y: cy }) : null
   return {
     parentId,
-    x: cx - parentOffset.x - component.width / 2,
-    y: cy - parentOffset.y - component.height / 2
+    x: (local?.x ?? cx) - component.width / 2,
+    y: (local?.y ?? cy) - component.height / 2
   }
 }
 
@@ -83,6 +83,7 @@ export function useCanvasDrop(
       return
     }
 
+    if (!editor.getContentEditInsertionParent()) return
     const files = filterCanvasFiles(e.dataTransfer?.files ?? null)
     if (!files.length) return
     void editor.placeFiles(files, point.x, point.y).catch((error: unknown) => {

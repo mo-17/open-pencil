@@ -1,3 +1,5 @@
+import { buildToastTimerRuntime } from '#compiler/adapters/toast-timers'
+
 export const VUE_TOAST_RUNTIME_FILE = 'src/lowcode-toast.ts'
 export const VUE_TOAST_HOST_FILE = 'src/LowcodeToastHost.vue'
 
@@ -39,19 +41,15 @@ const positions = new Set<OpenPencilToastPosition>([
   'bottom-right'
 ])
 const active = shallowRef<OpenPencilToast[]>([])
-const timers = new Map<number, ReturnType<typeof setTimeout>>()
 let sequence = 0
 
 export const __opToasts = readonly(active)
 
-function clearTimer(id: number): void {
-  const timer = timers.get(id)
-  if (timer !== undefined) clearTimeout(timer)
-  timers.delete(id)
-}
+${buildToastTimerRuntime('__opDismissToast')}
 
 export function __opDismissToast(id: number): void {
   clearTimer(id)
+  if (!active.value.some((toast) => toast.id === id)) return
   active.value = active.value.filter((toast) => toast.id !== id)
 }
 
@@ -93,12 +91,7 @@ export function __opToast(
       ? Math.min(authoredDuration, MAX_DURATION_MS)
       : 3000
   if (duration === 0) return
-  timers.set(
-    id,
-    setTimeout(() => {
-      __opDismissToast(id)
-    }, duration)
-  )
+  startTimer(id, duration)
 }
 `
 }
@@ -110,6 +103,8 @@ import { computed, onBeforeUnmount } from 'vue'
 import {
   __opClearToasts,
   __opDismissToast,
+  __opPauseToast,
+  __opResumeToast,
   __opToasts,
   type OpenPencilToastPosition
 } from './lowcode-toast'
@@ -120,6 +115,15 @@ const activePositions = computed(() => [
 
 onBeforeUnmount(__opClearToasts)
 
+const dismissLabel = typeof document !== 'undefined' && document.documentElement.lang.startsWith('zh')
+  ? '关闭通知' : 'Dismiss notification'
+
+function leaveToastFocus(id: number, event: FocusEvent): void {
+  const row = event.currentTarget
+  if (row instanceof Node && event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return
+  __opResumeToast(id, 'focus')
+}
+
 function positionClass(position: OpenPencilToastPosition): string {
   return 'openpencil-toast-position-' + position
 }
@@ -129,7 +133,7 @@ function positionClass(position: OpenPencilToastPosition): string {
   <div
     class="openpencil-toast-host"
     aria-live="polite"
-    aria-relevant="additions removals"
+    aria-relevant="additions text"
   >
     <section
       v-for="position in activePositions"
@@ -144,12 +148,17 @@ function positionClass(position: OpenPencilToastPosition): string {
         class="openpencil-toast"
         :class="'openpencil-toast-' + toast.variant"
         :role="toast.variant === 'error' ? 'alert' : 'status'"
+        aria-atomic="true"
+        @pointerenter="__opPauseToast(toast.id, 'pointer')"
+        @pointerleave="__opResumeToast(toast.id, 'pointer')"
+        @focusin="__opPauseToast(toast.id, 'focus')"
+        @focusout="leaveToastFocus(toast.id, $event)"
       >
-        <span>{{ toast.message }}</span>
+        <span class="openpencil-toast-message">{{ toast.message }}</span>
         <button
           type="button"
           class="openpencil-toast-dismiss"
-          aria-label="Dismiss notification"
+          :aria-label="dismissLabel"
           @click="__opDismissToast(toast.id)"
         >
           ×
@@ -161,17 +170,18 @@ function positionClass(position: OpenPencilToastPosition): string {
 
 <style scoped>
 .openpencil-toast-host{position:fixed;inset:0;z-index:2147483000;pointer-events:none}
-.openpencil-toast-stack{position:fixed;display:flex;max-width:min(26rem,calc(100vw - 2rem));flex-direction:column;gap:.5rem}
-.openpencil-toast-position-top-left{top:1rem;left:1rem}
-.openpencil-toast-position-top-center{top:1rem;left:50%;transform:translateX(-50%)}
-.openpencil-toast-position-top-right{top:1rem;right:1rem}
-.openpencil-toast-position-bottom-left{bottom:1rem;left:1rem}
-.openpencil-toast-position-bottom-center{bottom:1rem;left:50%;transform:translateX(-50%)}
-.openpencil-toast-position-bottom-right{right:1rem;bottom:1rem}
-.openpencil-toast{display:flex;min-width:15rem;align-items:center;gap:.75rem;border:1px solid var(--color-border,#d4d4d8);border-radius:.5rem;padding:.75rem 1rem;background:var(--color-background,#fff);color:var(--color-foreground,#18181b);box-shadow:0 10px 25px #00000029;pointer-events:auto}
+.openpencil-toast-stack{position:fixed;display:flex;width:min(26rem,calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right)));max-height:50dvh;overflow-y:auto;overscroll-behavior:contain;flex-direction:column;gap:.5rem}
+.openpencil-toast-position-top-left{top:calc(1rem + env(safe-area-inset-top));left:calc(1rem + env(safe-area-inset-left))}
+.openpencil-toast-position-top-center{top:calc(1rem + env(safe-area-inset-top));left:50%;transform:translateX(-50%)}
+.openpencil-toast-position-top-right{top:calc(1rem + env(safe-area-inset-top));right:calc(1rem + env(safe-area-inset-right))}
+.openpencil-toast-position-bottom-left{bottom:calc(1rem + env(safe-area-inset-bottom));left:calc(1rem + env(safe-area-inset-left))}
+.openpencil-toast-position-bottom-center{bottom:calc(1rem + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%)}
+.openpencil-toast-position-bottom-right{right:calc(1rem + env(safe-area-inset-right));bottom:calc(1rem + env(safe-area-inset-bottom))}
+.openpencil-toast{display:flex;flex-shrink:0;min-width:0;align-items:center;gap:.75rem;border:1px solid var(--color-border,#d4d4d8);border-radius:.5rem;padding:.75rem 1rem;background:var(--color-background,#fff);color:var(--color-foreground,#18181b);box-shadow:0 10px 25px #00000029;pointer-events:auto}
+.openpencil-toast-message{min-width:0;max-height:10rem;overflow-y:auto;overflow-wrap:anywhere;white-space:pre-wrap}
 .openpencil-toast-success{border-color:var(--color-primary,#2563eb)}
 .openpencil-toast-error{border-color:var(--color-destructive,#dc2626);color:var(--color-destructive,#b91c1c)}
-.openpencil-toast-dismiss{display:inline-flex;min-width:2.75rem;min-height:2.75rem;margin-left:auto;align-items:center;justify-content:center;border:0;border-radius:.375rem;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.openpencil-toast-dismiss{display:inline-flex;flex-shrink:0;min-width:2.75rem;min-height:2.75rem;margin-left:auto;align-items:center;justify-content:center;border:0;border-radius:.375rem;background:transparent;color:inherit;font:inherit;cursor:pointer}
 .openpencil-toast-dismiss:hover{background:#7f7f7f24}
 .openpencil-toast-dismiss:focus-visible{outline:2px solid currentColor;outline-offset:2px}
 @media (prefers-reduced-motion:no-preference){.openpencil-toast{animation:openpencil-toast-in 140ms ease-out}@keyframes openpencil-toast-in{from{opacity:0;transform:translateY(.5rem)}to{opacity:1;transform:translateY(0)}}}

@@ -207,7 +207,8 @@ function nodeHasTranslatableText(node: IRNode): boolean {
   if (node.kind === 'text') return node.messageId !== undefined
   if (node.kind === 'conditional') return nodeHasTranslatableText(node.consequent)
   if (node.kind === 'list') return nodeHasTranslatableText(node.template)
-  if (node.kind === 'element') return node.children.some(nodeHasTranslatableText)
+  if (node.kind === 'element')
+    return !node.selectFeatures && node.children.some(nodeHasTranslatableText)
   return false
 }
 
@@ -226,6 +227,7 @@ function nodeHasIntlAttr(node: IRNode): boolean {
   if (node.kind === 'conditional') return nodeHasIntlAttr(node.consequent)
   if (node.kind === 'list') return nodeHasIntlAttr(node.template)
   if (node.kind !== 'element') return false
+  if (node.selectFeatures && hasTranslatableText(node.children)) return true
   for (const value of Object.values(node.attrs)) {
     if (typeof value === 'object' && value.kind === 'intlMessage') return true
   }

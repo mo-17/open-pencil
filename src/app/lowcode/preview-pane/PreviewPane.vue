@@ -69,6 +69,8 @@ import {
 import PreviewSettingsPopover from './PreviewSettingsPopover.vue'
 import { resolvePreviewToolbarBand } from './toolbar-layout'
 import { useCompileOnChange, type PreviewTarget, type PreviewUIKit } from './use-compile-on-change'
+import PreviewViewportControls from './viewport/Controls.vue'
+import { usePreviewViewport } from './viewport/use'
 
 const emit = defineEmits<{ close: []; 'request-expand': [complete: () => void] }>()
 const { locale } = useI18n()
@@ -84,6 +86,7 @@ const previewUIKit = ref<PreviewUIKit>('none')
 const previewI18nEnabled = ref(false)
 const previewLocalesInput = ref('')
 const previewTheme = ref<'light' | 'dark'>('light')
+const { viewport: previewViewport, frameStyle: previewFrameStyle } = usePreviewViewport()
 const toolbarEl = ref<HTMLElement | null>(null)
 const { width: toolbarWidth } = useElementSize(toolbarEl)
 const toolbarBand = computed(() => resolvePreviewToolbarBand(toolbarWidth.value))
@@ -1561,7 +1564,8 @@ onBeforeUnmount(() => {
         :url="localBackendBrowserURL"
         @open="openLocalBackendPreview"
       />
-      <div class="relative min-h-0 flex-1">
+      <PreviewViewportControls v-if="embeddedURL" v-model="previewViewport" />
+      <div class="relative min-h-0 flex-1 overflow-auto">
         <iframe
           v-if="embeddedURL && embeddedVisible"
           :key="iframeKey"
@@ -1570,7 +1574,8 @@ onBeforeUnmount(() => {
           :sandbox="embeddedSandbox"
           :src="embeddedURL"
           referrerpolicy="no-referrer"
-          class="absolute inset-0 size-full border-0"
+          class="block border-0"
+          :style="previewFrameStyle"
           :class="{ invisible: status.kind !== 'ready' }"
           aria-label="lowcode preview"
           @load="onIframeLoad"

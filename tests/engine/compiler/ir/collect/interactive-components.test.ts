@@ -12,7 +12,7 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
  * radio-group `<div>` of `<label><input type="radio">…</label>`.
  */
 describe('collectTree — Phase 2 §8 interactive components', () => {
-  test('INPUT emits only the bounded text/email/password input types', () => {
+  test('INPUT rejects file types outside the native input allowlist', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
     graph.createNode('INPUT', pageId, {
@@ -29,9 +29,7 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
     expect((ir.children[0] as IRElement).attrs.type).toBe('email')
     expect((ir.children[1] as IRElement).attrs.type).toBe('password')
     expect((ir.children[2] as IRElement).attrs.type).toBeUndefined()
-    expect(ir.warnings).toContainEqual(
-      expect.objectContaining({ code: 'input-type-unsupported' })
-    )
+    expect(ir.warnings).toContainEqual(expect.objectContaining({ code: 'input-type-unsupported' }))
   })
 
   test('TEXTAREA → <textarea> with placeholder + defaultValue', () => {
@@ -174,30 +172,30 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
     expect(sw.attrs.defaultChecked).toBe(true)
   })
 
-  test('SWITCH className → §3.v5 full CSS (cqw slide tween + semantic colors)', () => {
+  test('SWITCH owns its capsule, bounded content-box thumb and shared default colors', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
     graph.createNode('SWITCH', pageId)
 
     const ir = collectTree(graph, pageId)
     const sw = ir.children[0] as IRElement
-    // container query unit anchor + smooth translate-x tween (replaces the
-    // §3.v4 left↔right anchor swap, which couldn't animate).
+    // Query units track the content box, including authored padding and border.
     expect(sw.className).toContain('[container-type:size]')
+    expect(sw.className).toContain('before:h-[min(80cqh,50cqw)]')
     expect(sw.className).toContain('before:transition-transform')
-    expect(sw.className).toContain('checked:before:translate-x-[calc(100cqw_-_100cqh)]')
-    // Semantic off/on colors — not derived from the (gray) fill.
-    expect(sw.className).toContain('bg-secondary')
-    expect(sw.className).toContain('checked:bg-primary')
-    expect(sw.className).toContain('before:bg-background')
-    expect(sw.className).not.toContain('bg-gray-300')
-    expect(sw.className).not.toContain('checked:bg-blue-500')
-    // The §3.v4 anchor-swap tokens are gone.
+    expect(sw.className).toContain(
+      'checked:before:translate-x-[calc(100cqw_-_2*min(10cqw,10cqh)_-_min(80cqh,50cqw))]'
+    )
+    expect(sw.className).toContain('bg-[#cbd5e1]')
+    expect(sw.className).toContain('checked:bg-[#2563eb]')
+    expect(sw.className).toContain('before:bg-[#ffffff]')
+    expect(sw.className).not.toContain('bg-secondary')
+    expect(sw.className).not.toContain('checked:bg-primary')
     expect(sw.className).not.toContain('checked:before:right-[5%]')
     expect(sw.className).not.toContain('before:left-[5%]')
   })
 
-  test('SWITCH semantic classes seed generated runtime theme tokens', () => {
+  test('SWITCH colors are seeded without relying on runtime semantic theme tokens', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
     graph.createNode('SWITCH', pageId)
@@ -208,12 +206,12 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
       options: withDefaults({ packageName: 'switch' })
     })
     const css = out.files.get('src/index.css') as string
-    expect(css).toContain('bg-secondary')
-    expect(css).toContain('checked:bg-primary')
-    expect(css).toContain('before:bg-background')
-    expect(css).toContain('@theme inline')
-    expect(css).toContain('--color-secondary')
-    expect(css).toContain('--color-background')
+    expect(css).toContain('bg-[#cbd5e1]')
+    expect(css).toContain('checked:bg-[#2563eb]')
+    expect(css).toContain('before:bg-[#ffffff]')
+    expect(css).toContain('focus-visible:ring-[#2563eb]')
+    expect(css).not.toContain('bg-secondary')
+    expect(css).not.toContain('before:bg-background')
   })
 
   test('SWITCH unchecked → no defaultChecked attr', () => {
@@ -255,6 +253,21 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
       defaultChecked: true
     })
   })
+
+  test.each([undefined, ''])(
+    'RADIO does not select a new blank option with default %p',
+    (value) => {
+      const graph = makeSceneGraph()
+      const pageId = firstPageId(graph)
+      graph.createNode('RADIO', pageId, {
+        interactiveProps: { options: ['Personal', ''], ...(value === undefined ? {} : { value }) }
+      })
+      const radio = collectTree(graph, pageId).children[0] as IRElement
+      for (const label of radio.children as IRElement[]) {
+        expect((label.children[0] as IRElement).attrs.defaultChecked).toBeUndefined()
+      }
+    }
+  )
 
   test('RADIO with default props (empty options) → empty <div>', () => {
     const graph = makeSceneGraph()

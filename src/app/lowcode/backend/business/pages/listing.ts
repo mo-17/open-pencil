@@ -1,65 +1,45 @@
-import type { ActionDef, BackendResourceDataSource, SceneNode } from '@open-pencil/scene-graph'
+import type {
+  ActionDef,
+  BackendResourceDataSource,
+  SceneNode,
+  StateDef
+} from '@open-pencil/scene-graph'
 
 import { backendTemplateListProps } from '@/app/lowcode/backend/notes-template-style'
 
-import type { BusinessColumn, BusinessListing } from '../types'
+import type { BusinessListing } from '../types'
+import { foodListPresentation, renderFoodListCard } from './food-ordering/cards'
+import { renderFoodDetails } from './food-ordering/details'
+import { foodButton } from './food-ordering/style'
 import { BUSINESS_CONTENT_WIDTH, BUSINESS_CONTENT_X } from './layout'
+import { renderBusinessDetails } from './presentation/details'
+import { businessRecordPresentation, renderBusinessRecord } from './presentation/records'
+import { businessButton } from './presentation/style'
 import type { BusinessScreen } from './screen'
 import { businessLiteral, businessSet } from './state'
 
-function columnTextProps(
-  column: BusinessColumn,
-  label: string,
-  record: string
-): Pick<SceneNode, 'interactiveProps' | 'bindings'> {
-  return {
-    ...(column.multiline
-      ? { interactiveProps: { layout: { overflowY: 'auto', whiteSpace: 'pre-wrap' } } }
-      : {}),
-    bindings: {
-      text: {
-        kind: 'expr',
-        expr: `${JSON.stringify(label + ': ')} + ${record}.${column.field}`
-      }
-    }
-  }
+interface BusinessListOptions {
+  x?: number
+  width?: number
+  filters?: BackendResourceDataSource['filterEntries']
+  searchExpr?: string
+  condition?: string
+  choose?: ActionDef[]
+  chooseLabel?: string
+  refreshable?: boolean
 }
 
-function renderBusinessRowFields(
-  screen: BusinessScreen,
-  card: string,
-  columns: readonly BusinessColumn[],
-  width: number
-): void {
-  const { ctx } = screen
-  let columnOffset = 12
-  for (const column of columns) {
-    ctx.layout.text(
-      card,
-      '',
-      { x: 16, y: columnOffset, width: width - 64, height: column.multiline ? 160 : 30 },
-      columnTextProps(column, ctx.label(column.label), 'item')
-    )
-    columnOffset += column.multiline ? 184 : 34
-  }
+function listHeight(screen: BusinessScreen, definition: BusinessListing): number {
+  return screen.ctx.definition.id === 'food-ordering'
+    ? foodListPresentation(definition).listHeight
+    : 310
 }
 
-export function renderBusinessList(
+function prepareBusinessListSource(
   screen: BusinessScreen,
-  parent: string,
   definition: BusinessListing,
-  y: number,
-  options: {
-    x?: number
-    width?: number
-    filters?: BackendResourceDataSource['filterEntries']
-    searchExpr?: string
-    condition?: string
-    choose?: ActionDef[]
-    chooseLabel?: string
-    refreshable?: boolean
-  } = {}
-): number {
+  options: BusinessListOptions
+) {
   const { ctx } = screen
   const resource = ctx.application.httpApi?.resources.find(
     (item) => item.id === definition.resourceId
@@ -70,11 +50,6 @@ export function renderBusinessList(
     ? screen.field(definition.resourceId + 'Refresh', 'boolean', false)
     : undefined
   const cursor = ctx.doc(screen.definition.id + definition.resourceId + 'Cursor')
-  const x = options.x ?? BUSINESS_CONTENT_X
-  const width = options.width ?? BUSINESS_CONTENT_WIDTH
-  const cardHeight =
-    definition.columns.reduce((height, column) => height + (column.multiline ? 184 : 34), 0) +
-    (options.choose ? 68 : 24)
   const source: BackendResourceDataSource = {
     kind: 'backendResource',
     resourceId: definition.resourceId,
@@ -87,40 +62,99 @@ export function renderBusinessList(
     ...(options.filters ? { filterEntries: options.filters } : {}),
     ...(options.searchExpr ? { searchExpr: options.searchExpr } : {})
   }
-  const list = ctx.layout.shape('LIST', definition.resourceId, parent, x, y, width, 310, {
-    ...backendTemplateListProps(source, cardHeight),
-    ...(options.condition ? { renderCondition: options.condition } : {})
-  })
+  return { source, after, refresh, cursor }
+}
+
+function businessListPresentation(
+  screen: BusinessScreen,
+  definition: BusinessListing,
+  options: BusinessListOptions
+) {
+  const x = options.x ?? BUSINESS_CONTENT_X
+  const width = options.width ?? BUSINESS_CONTENT_WIDTH
+  const food =
+    screen.ctx.definition.id === 'food-ordering' ? foodListPresentation(definition) : undefined
+  const height = listHeight(screen, definition)
+  const record = businessRecordPresentation(screen, definition)
+  const columns = food?.columns ?? record.columns
+  const cardHeight = food?.cardHeight ?? record.contentHeight + (options.choose ? 72 : 20)
+  const cardWidth = (width - (columns - 1) * 16) / columns
+  const style: Partial<SceneNode> = {
+    fills: [],
+    gridTemplateColumns: Array.from({ length: columns }, () => ({
+      sizing: 'FR' as const,
+      value: 1
+    })),
+    gridColumnGap: 16,
+    gridRowGap: 16
+  }
+  return { x, width, height, cardHeight, cardWidth, food, style, buttonHeight: 44 }
+}
+
+function renderBusinessListRow(
+  screen: BusinessScreen,
+  list: string,
+  definition: BusinessListing,
+  presentation: ReturnType<typeof businessListPresentation>,
+  options: BusinessListOptions
+): void {
+  const { ctx } = screen
+  const { food, width, cardHeight, cardWidth, buttonHeight } = presentation
   const card = ctx.layout.shape(
     'FRAME',
     definition.resourceId + ' row',
     list,
     0,
     0,
-    width - 24,
+    cardWidth,
     cardHeight
   )
-  renderBusinessRowFields(screen, card, definition.columns, width)
+  if (food) renderFoodListCard(screen, card, definition, cardWidth)
+  else renderBusinessRecord(screen, card, definition, cardWidth)
+  const buttonX = food ? 16 : 24
   if (options.choose)
     ctx.layout.button(
       card,
       options.chooseLabel ?? ctx.copy.select,
-      { x: 16, y: cardHeight - 54, width: 250, height: 42 },
-      options.choose
+      {
+        x: food?.menu ? (width - 16) / 2 - 192 : buttonX,
+        y: cardHeight - 56,
+        width: food?.menu ? 172 : 250,
+        height: buttonHeight
+      },
+      options.choose,
+      food ? foodButton('secondary') : businessButton(ctx.presentation, 'secondary')
     )
+}
+
+function renderBusinessListPagination(
+  screen: BusinessScreen,
+  parent: string,
+  y: number,
+  presentation: ReturnType<typeof businessListPresentation>,
+  query: ReturnType<typeof prepareBusinessListSource>,
+  options: BusinessListOptions
+): void {
+  const { ctx } = screen
+  const { x, height, food, buttonHeight } = presentation
+  const { after, refresh, cursor } = query
   ctx.layout.button(
     parent,
     ctx.copy.first,
-    { x, y: y + 326, width: 180, height: 42 },
+    { x, y: y + height + 16, width: 180, height: buttonHeight },
     [businessSet(after, '""')],
-    options.condition ? { renderCondition: options.condition } : {}
+    {
+      ...(food ? foodButton('quiet') : businessButton(ctx.presentation, 'quiet')),
+      ...(options.condition ? { renderCondition: options.condition } : {})
+    }
   )
   ctx.layout.button(
     parent,
     ctx.copy.next,
-    { x: x + 204, y: y + 326, width: 180, height: 42 },
+    { x: x + 204, y: y + height + 16, width: 180, height: buttonHeight },
     [businessSet(after, cursor)],
     {
+      ...(food ? foodButton('quiet') : businessButton(ctx.presentation, 'quiet')),
       renderCondition: `${options.condition ? '(' + options.condition + ') && ' : ''}${cursor} !== ""`
     }
   )
@@ -128,16 +162,100 @@ export function renderBusinessList(
     ctx.layout.button(
       parent,
       ctx.copy.refresh,
-      { x: x + 408, y: y + 326, width: 190, height: 42 },
+      { x: x + 408, y: y + height + 16, width: 190, height: buttonHeight },
       [
         screen.clearSelection,
         businessSet(screen.selectionReady, '!1'),
         businessSet(after, '""'),
         businessSet(refresh, `!${refresh.name}`)
       ],
-      options.condition ? { renderCondition: options.condition } : {}
+      {
+        ...(food ? foodButton('secondary') : businessButton(ctx.presentation, 'secondary')),
+        ...(options.condition ? { renderCondition: options.condition } : {})
+      }
     )
-  return 380
+}
+
+export function renderBusinessList(
+  screen: BusinessScreen,
+  parent: string,
+  definition: BusinessListing,
+  y: number,
+  options: BusinessListOptions = {}
+): number {
+  const query = prepareBusinessListSource(screen, definition, options)
+  const presentation = businessListPresentation(screen, definition, options)
+  const { x, width, height, cardHeight, style } = presentation
+  const list = screen.ctx.layout.shape('LIST', definition.resourceId, parent, x, y, width, height, {
+    ...backendTemplateListProps(query.source, cardHeight),
+    ...style,
+    ...(options.condition ? { renderCondition: options.condition } : {})
+  })
+  renderBusinessListRow(screen, list, definition, presentation, options)
+  renderBusinessListPagination(screen, parent, y, presentation, query, options)
+  return height + 70
+}
+
+function renderBusinessSearch(
+  screen: BusinessScreen,
+  listing: BusinessListing,
+  search: StateDef,
+  query: StateDef,
+  filter: StateDef
+): void {
+  const { ctx } = screen
+  if (listing.search || listing.filter) {
+    const food = ctx.definition.id === 'food-ordering'
+    const y = screen.reserve(food ? 100 : 44)
+    const pairedSearchWidth = listing.filter ? 344 : 672
+    const searchWidth = food ? 390 : pairedSearchWidth
+    const filterX = listing.search ? 360 : 0
+    const filterWidth = listing.search ? 304 : 672
+    if (listing.search)
+      ctx.layout.shape(
+        'INPUT',
+        ctx.copy.search,
+        screen.page,
+        BUSINESS_CONTENT_X,
+        y,
+        searchWidth,
+        44,
+        {
+          bindings: { value: { kind: 'ref', stateId: search.id } },
+          interactiveProps: { placeholder: ctx.copy.search }
+        }
+      )
+    if (listing.filter)
+      ctx.layout.shape(
+        'SELECT',
+        ctx.copy.all,
+        screen.page,
+        BUSINESS_CONTENT_X + (food ? 410 : filterX),
+        y,
+        food ? 320 : filterWidth,
+        44,
+        {
+          bindings: { value: { kind: 'ref', stateId: filter.id } },
+          interactiveProps: {
+            options: [
+              ctx.copy.all,
+              ...listing.filter.choices.map((choice) => ctx.label(choice.label))
+            ]
+          }
+        }
+      )
+    ctx.layout.button(
+      screen.page,
+      ctx.copy.apply,
+      {
+        x: BUSINESS_CONTENT_X + (food ? 0 : 688),
+        y: y + (food ? 54 : 0),
+        width: 190,
+        height: food ? 42 : 44
+      },
+      [businessSet(query, search.name), screen.clearSelection]
+    )
+  }
 }
 
 export function renderBusinessPrimaryList(screen: BusinessScreen): void {
@@ -164,31 +282,8 @@ export function renderBusinessPrimaryList(screen: BusinessScreen): void {
       onSuccess: [businessSet(screen.selectionReady, '!0')]
     }
   ]
-  if (listing.search || listing.filter) {
-    const y = screen.reserve(100)
-    if (listing.search)
-      ctx.layout.shape('INPUT', ctx.copy.search, screen.page, BUSINESS_CONTENT_X, y, 390, 44, {
-        bindings: { value: { kind: 'ref', stateId: search.id } },
-        interactiveProps: { placeholder: ctx.copy.search }
-      })
-    if (listing.filter)
-      ctx.layout.shape('SELECT', ctx.copy.all, screen.page, BUSINESS_CONTENT_X + 410, y, 320, 44, {
-        bindings: { value: { kind: 'ref', stateId: filter.id } },
-        interactiveProps: {
-          options: [
-            ctx.copy.all,
-            ...listing.filter.choices.map((choice) => ctx.label(choice.label))
-          ]
-        }
-      })
-    ctx.layout.button(
-      screen.page,
-      ctx.copy.apply,
-      { x: BUSINESS_CONTENT_X, y: y + 54, width: 190, height: 42 },
-      [businessSet(query, search.name), screen.clearSelection]
-    )
-  }
-  const y = screen.reserve(380)
+  renderBusinessSearch(screen, listing, search, query, filter)
+  const y = screen.reserve(listHeight(screen, listing) + 70)
   const common = { searchExpr: listing.search ? query.name : undefined, choose, refreshable: true }
   if (!listing.filter) renderBusinessList(screen, screen.page, listing, y, common)
   else {
@@ -210,41 +305,10 @@ export function renderBusinessPrimaryList(screen: BusinessScreen): void {
     })
   }
   const details = screen.definition.details ?? listing.columns
-  const detailsY = screen.reserve(
-    74 + details.reduce((height, column) => height + (column.multiline ? 344 : 38), 0)
-  )
-  ctx.layout.text(
-    screen.page,
-    ctx.copy.details,
-    { x: BUSINESS_CONTENT_X, y: detailsY, width: BUSINESS_CONTENT_WIDTH, height: 34 },
-    { fontSize: 20 }
-  )
-  let detailOffset = 44
-  for (const column of details) {
-    ctx.layout.text(
-      screen.page,
-      '',
-      {
-        x: BUSINESS_CONTENT_X,
-        y: detailsY + detailOffset,
-        width: BUSINESS_CONTENT_WIDTH,
-        height: column.multiline ? 320 : 34
-      },
-      {
-        renderCondition: screen.selection,
-        ...columnTextProps(column, ctx.label(column.label), screen.selected)
-      }
-    )
-    detailOffset += column.multiline ? 344 : 38
-  }
-  ctx.layout.text(
-    screen.page,
-    ctx.copy.none,
-    { x: BUSINESS_CONTENT_X, y: detailsY + 44, width: BUSINESS_CONTENT_WIDTH, height: 34 },
-    { renderCondition: `!(${screen.selection})` }
-  )
+  if (ctx.definition.id === 'food-ordering') renderFoodDetails(screen, details)
+  else renderBusinessDetails(screen, details)
   for (const related of screen.definition.related ?? []) {
-    const relatedY = screen.reserve(424)
+    const relatedY = screen.reserve(listHeight(screen, related) + 114)
     ctx.layout.text(screen.page, ctx.label(related.title), {
       x: BUSINESS_CONTENT_X,
       y: relatedY,

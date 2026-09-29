@@ -19,6 +19,7 @@ import IconMap from '~icons/lucide/map'
 import IconMinus from '~icons/lucide/minus'
 import IconMousePointer from '~icons/lucide/mouse-pointer'
 import IconMousePointerSquare from '~icons/lucide/mouse-pointer-square'
+import IconPalette from '~icons/lucide/palette'
 import IconPenTool from '~icons/lucide/pen-tool'
 import IconRows from '~icons/lucide/rows-3'
 import IconSquare from '~icons/lucide/square'
@@ -28,11 +29,17 @@ import IconToggleLeft from '~icons/lucide/toggle-left'
 import IconTriangle from '~icons/lucide/triangle'
 import IconType from '~icons/lucide/type'
 
-import { resolveMapModule } from '@open-pencil/core/plugins'
-import { isAutoLayoutMode, type LayoutMode } from '@open-pencil/scene-graph'
+import {
+  isAutoLayoutMode,
+  readModuleInstance,
+  type LayoutMode,
+  type ModuleInstanceV1
+} from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import type { Tool } from '@/app/editor/session'
+
+import { moduleIcon } from './module-icons'
 
 export const toolIcons: Record<Tool, Component> = {
   SELECT: IconMousePointer,
@@ -59,7 +66,7 @@ export const toolIcons: Record<Tool, Component> = {
   MAP: IconMap
 }
 
-export const NODE_ICONS: Partial<Record<string, typeof IconSquare>> = {
+export const NODE_ICONS: Partial<Record<string, Component>> = {
   SECTION: IconSection,
   ELLIPSE: IconCircle,
   FRAME: IconFrame,
@@ -70,7 +77,17 @@ export const NODE_ICONS: Partial<Record<string, typeof IconSquare>> = {
   LINE: IconMinus,
   TEXT: IconType,
   VECTOR: IconPenTool,
-  RECTANGLE: IconSquare
+  RECTANGLE: IconSquare,
+  INPUT: toolIcons.INPUT,
+  BUTTON: toolIcons.BUTTON,
+  SELECT: toolIcons.SELECT_FIELD,
+  CHECKBOX: toolIcons.CHECKBOX,
+  FORM: toolIcons.FORM,
+  LIST: toolIcons.LIST,
+  RADIO: toolIcons.RADIO,
+  TEXTAREA: toolIcons.TEXTAREA,
+  DATEPICKER: toolIcons.DATEPICKER,
+  SWITCH: toolIcons.SWITCH
 }
 
 export const AUTO_LAYOUT_ICONS: Partial<Record<string, typeof IconSquare>> = {
@@ -87,11 +104,14 @@ interface NodeIconSource {
   type: string
   layoutMode: LayoutMode
   interactiveProps?: JSONObject
+  moduleIdentity?: Pick<ModuleInstanceV1, 'pluginId' | 'moduleType'>
 }
 
 export function nodeIcon(node: NodeIconSource) {
-  if (node.type === 'FRAME' && resolveMapModule(node.interactiveProps?.module)?.ok) {
-    return IconMap
+  if (node.type === 'INPUT' && node.interactiveProps?.inputType === 'color') return IconPalette
+  if (node.type === 'FRAME') {
+    const module = node.moduleIdentity ?? readModuleInstance(node.interactiveProps?.module)
+    if (module) return moduleIcon(module.pluginId, module.moduleType)
   }
   // Phase 2 §6: only auto-layout frames pick from AUTO_LAYOUT_ICONS;
   // FREE (and any future non-auto-layout mode) falls back to IconFrame.

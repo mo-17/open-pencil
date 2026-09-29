@@ -27,6 +27,48 @@ function handler(): IRBackendCommandHandler {
 }
 
 describe('generated atomic command attempts', () => {
+  test('an async acknowledgement cannot run success feedback and retries the same attempt', async () => {
+    const fixture = await runtimeFixture(false, commandApplication())
+    try {
+      fixture.auth.transition('user-a')
+      fixture.values.set('attempt', '')
+      fixture.values.set('completed', false)
+      const value = parseExpression('!0')
+      if (!value.ok) throw new Error('Invalid test expression')
+      const action = handler()
+      action.onSuccess = [
+        {
+          kind: 'setVariable',
+          docStateName: 'completed',
+          ast: value.ast,
+          references: [],
+          mode: 'absolute'
+        }
+      ]
+      const event = await fixture.event(emitEventHandler([action]))
+      const running = event.run()
+      const key = fixture.values.get('attempt')
+      await fixture.waitForRequest(0)
+      fixture.pending[0].respond({ id: 'accepted', status: 'pending' }, 202)
+      await running
+      expect(fixture.values.get('completed')).toBe(false)
+      expect(fixture.values.get('result')).toBeUndefined()
+      expect(fixture.values.get('attempt')).toBe(key)
+      expect(fixture.values.get('error')).toBe(
+        'Request accepted. Completion is not confirmed; inspect the saved request before retrying.'
+      )
+      const retry = event.run()
+      await fixture.waitForRequest(1)
+      expect(new Headers(fixture.pending[1].call.init.headers).get('Idempotency-Key')).toBe(key)
+      fixture.pending[1].respond({ id: 'saved', title: 'A note' })
+      await retry
+      expect(fixture.values.get('completed')).toBe(true)
+      expect(fixture.values.get('result')).toEqual({ id: 'saved', title: 'A note' })
+    } finally {
+      fixture.dispose()
+    }
+  })
+
   test('coalesces equal payloads and retains its synchronous key through success and explicit retry', async () => {
     const fixture = await runtimeFixture(false, commandApplication())
     try {

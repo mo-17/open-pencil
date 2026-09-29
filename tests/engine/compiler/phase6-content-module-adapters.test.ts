@@ -106,12 +106,13 @@ describe('phase 6 React content module adapters', () => {
   test('keeps Markdown HTML inert and allows only canonical safe link destinations', () => {
     const runtime = buildOpenPencilMarkdownComponent()
     expect(runtime).toContain('skipHtml')
-    expect(runtime).toContain('urlTransform={safeHref}')
+    expect(runtime).toContain('urlTransform={value=>markdownHref(value,instancePrefix)}')
+    expect(runtime).toContain('return safeHref(value)')
     expect(runtime).toContain("parsed.protocol === 'https:'")
     expect(runtime).toContain("parsed.username === '' && parsed.password === ''")
     expect(runtime).toContain("if (value.startsWith('//')) return ''")
     expect(runtime).toContain("rel={newTab ? 'nofollow noopener noreferrer' : undefined}")
-    expect(runtime).toContain('img: ({ alt }) => <InertImage alt={alt} />')
+    expect(runtime).toContain('img: ({ alt }) => <InertImage alt={alt} locale={hostProps.lang} />')
     expect(runtime).toContain('data-openpencil-markdown-image=""')
     expect(runtime).not.toContain('<img')
     expect(runtime).not.toContain('dangerouslySetInnerHTML')
@@ -163,8 +164,8 @@ describe('phase 6 React content module adapters', () => {
 
   test('renders code only as text and exposes copy without an execution path', () => {
     const runtime = buildOpenPencilCodeBlockComponent()
-    expect(runtime).toContain('navigator.clipboard.writeText(config.code)')
-    expect(runtime).toContain('<code>{config.code}</code>')
+    expect(runtime).toContain('navigator.clipboard.writeText(code)')
+    expect(runtime).toContain('<span data-code-text="">{line}</span>')
     expect(runtime).not.toContain('dangerouslySetInnerHTML')
     expect(runtime).not.toContain('.innerHTML')
     expect(runtime).not.toContain('eval(')

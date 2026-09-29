@@ -8,7 +8,9 @@ import { pageUsesRequestDebounce, pageUsesRequestGate } from './request-timing'
  *  hook, and `useRef` for remote validation cancellation. Extracted to keep
  *  `buildPageFile` under the complexity limit. */
 export function buildReactPageImport(ir: IRTree, hasMotionDriver: boolean): string {
-  const hasListQueries = (ir.listQueries?.length ?? 0) > 0 || (ir.backendQueries?.length ?? 0) > 0
+  const hasListQueries = [ir.listQueries, ir.backendQueries].some((queries) =>
+    Boolean(queries?.length)
+  )
   // Phase 4 §19: a validated page needs `useState` for its field-errors store.
   const hasValidation = (ir.validatedFields?.length ?? 0) > 0
   const hasRemoteValidation = validationUsesRemote(ir.validatedFields ?? [])
@@ -18,8 +20,10 @@ export function buildReactPageImport(ir: IRTree, hasMotionDriver: boolean): stri
   const hasRequestDebounce = pageUsesRequestDebounce(ir)
   const hooks: string[] = []
   if (hasWritableState || hasListQueries || hasValidation || hasRequestGate) hooks.push('useState')
+  if (hasValidation) hooks.push('useId')
   if (hasRemoteValidation || hasRequestGate) hooks.push('useRef')
   if (hasComputedState) hooks.push('useMemo')
-  if (hasListQueries || hasMotionDriver || hasRequestDebounce) hooks.push('useEffect')
+  if (ir.listQueries?.length || hasMotionDriver || hasRequestDebounce) hooks.push('useEffect')
+  if (ir.backendQueries?.length) hooks.push('useLayoutEffect')
   return hooks.length > 0 ? `import { ${hooks.join(', ')} } from 'react'\n` : ''
 }

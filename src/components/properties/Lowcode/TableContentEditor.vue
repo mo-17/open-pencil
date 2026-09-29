@@ -160,7 +160,7 @@ function deleteRow(index: number): void {
                   :maxlength="TABLE_MODULE_LIMITS.cellText"
                   :aria-label="panels.lowcodeTableHeaderCell({ column: columnIndex + 1 })"
                   data-test-id="table-header-input"
-                  class="min-w-0 flex-1 rounded border border-border bg-surface px-1 py-0.5 text-[10px] font-medium text-surface outline-none focus:border-accent"
+                  class="min-w-0 flex-1 rounded border border-border bg-input px-1 py-0.5 text-[10px] font-medium text-surface outline-none focus:border-accent"
                   @input="updateColumn(columnIndex, $event)"
                   @blur="commit"
                   @keydown="commitShortcut"
@@ -194,7 +194,7 @@ function deleteRow(index: number): void {
                   panels.lowcodeTableBodyCell({ row: rowIndex + 1, column: columnIndex + 1 })
                 "
                 data-test-id="table-cell-input"
-                class="w-full min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[10px] text-surface outline-none hover:border-border focus:border-accent focus:bg-surface"
+                class="w-full min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[10px] text-surface outline-none hover:border-border focus:border-accent focus:bg-input"
                 @input="updateCell(rowIndex, columnIndex, $event)"
                 @blur="commit"
                 @keydown="commitShortcut"

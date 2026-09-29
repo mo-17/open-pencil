@@ -11,7 +11,7 @@ import {
 import {
   createModulePreviewChevronAccessory as chevronAccessory,
   createModulePreviewTriggerRenderer as triggerRenderer
-} from './preview'
+} from './trigger'
 import type { ModuleCanvasAdapter } from './types'
 
 const CHEVRON_WIDTH = 14

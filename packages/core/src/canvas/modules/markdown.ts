@@ -2,57 +2,27 @@ import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
+import { moduleMultilineLabelNode } from '#core/canvas/modules/label'
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import { parseColor } from '#core/color'
 import {
   MARKDOWN_MODULE_TYPE,
   MARKDOWN_PLUGIN_ID,
   resolveMarkdownModule
 } from '#core/plugins/markdown'
 
+import { markdownPreviewBlocks } from './markdown/projection'
 import {
   configureModulePreviewPaint,
-  drawModulePreviewCellText,
   renderResolvedModulePreview,
-  withModulePreviewFont,
   withModulePreviewSurface
 } from './preview'
 import type { ModuleCanvasAdapter } from './types'
 
-export interface MarkdownPreviewLine {
-  text: string
-  heading: boolean
-}
+export { markdownPreviewLines, markdownTextNode } from './markdown/projection'
+export type { MarkdownPreviewLine } from './markdown/projection'
 
-function plainMarkdownLine(value: string): MarkdownPreviewLine | null {
-  const trimmed = value.trim()
-  if (trimmed === '') return null
-  const heading = /^#{1,6}\s/.test(trimmed)
-  const withoutHTML = trimmed.replace(/<[^>]{0,256}>/g, '')
-  const text = withoutHTML
-    .replace(/^#{1,6}\s+/, '')
-    .replace(/^>\s?/, '')
-    .replace(/^[-*+]\s+/, '• ')
-    .replace(/^\d+[.)]\s+/, '• ')
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/[*_~`]/g, '')
-    .trim()
-  return text === '' ? null : { text: text.slice(0, 512), heading }
-}
-
-/** Convert Markdown to a bounded plain-text preview; raw HTML is stripped and never interpreted. */
-export function markdownPreviewLines(source: string, maximumLines: number): MarkdownPreviewLine[] {
-  const lines: MarkdownPreviewLine[] = []
-  for (const sourceLine of source.split(/\r?\n/)) {
-    const line = plainMarkdownLine(sourceLine)
-    if (!line) continue
-    lines.push(line)
-    if (lines.length >= maximumLines) break
-  }
-  return lines
-}
-
-/** Draw bounded plain text only; Markdown HTML and link destinations are never executed or fetched. */
+/** Canvas is a bounded static text projection; the web targets own CommonMark/GFM semantics. */
 export function renderMarkdownModulePreview(
   renderer: SkiaRenderer,
   canvas: Canvas,
@@ -60,33 +30,61 @@ export function renderMarkdownModulePreview(
 ): boolean {
   return renderResolvedModulePreview(node, resolveMarkdownModule, (frame) => {
     const { width, height, config } = frame
-    const rowHeight = Math.max(18, config.fontSize * config.lineHeight)
-    const maximumLines = Math.min(24, Math.max(1, Math.floor(height / rowHeight)))
-    const lines = markdownPreviewLines(config.source, maximumLines)
-    withModulePreviewFont(renderer, config.fontSize, () => {
-      withModulePreviewSurface(renderer, canvas, frame, config.backgroundColor, () => {
-        lines.forEach((line, index) => {
-          drawModulePreviewCellText(
-            renderer,
-            canvas,
-            line.text,
-            0,
-            index * rowHeight,
-            width,
-            rowHeight,
-            line.heading ? config.headingColor : config.textColor,
-            { horizontalInsetRatio: 0.035, baselineRatio: 0.72 }
+    withModulePreviewSurface(renderer, canvas, frame, config.backgroundColor, () => {
+      if (!renderer.fontProvider || !renderer.fontsLoaded) return
+      const inset = Math.min(16, width / 8, height / 8)
+      const innerWidth = Math.max(0, width - inset * 2)
+      let y = inset
+      for (const block of markdownPreviewBlocks(config.source)) {
+        if (y >= height - inset || !innerWidth) break
+        if (block.kind === 'space') {
+          y += config.fontSize * 0.4
+          continue
+        }
+        if (block.kind === 'rule') {
+          configureModulePreviewPaint(renderer, config.accentColor)
+          canvas.drawRect(
+            renderer.ck.LTRBRect(inset, y + 3, width - inset, Math.min(height, y + 4)),
+            renderer.fillPaint
           )
-          if (line.heading && index * rowHeight + rowHeight < height) {
+          y += config.fontSize
+          continue
+        }
+        const decorated = block.kind === 'code' || block.kind === 'quote'
+        const textInset = decorated ? Math.min(8, innerWidth / 8) : 0
+        const fontSize =
+          config.fontSize * (block.kind === 'heading' ? Math.max(1.1, 2 - block.level * 0.15) : 1)
+        const label = moduleMultilineLabelNode(node, block.text, {
+          width: Math.max(1, innerWidth - textInset * 2),
+          fontSize,
+          fontWeight: block.kind === 'heading' ? 600 : 400,
+          lineHeight: fontSize * config.lineHeight
+        })
+        const readiness = renderer.nodeFontReadiness(label)
+        if (readiness !== 'ready' && readiness !== 'substituted') break
+        const color = parseColor(block.kind === 'heading' ? config.headingColor : config.textColor)
+        const paragraph = renderer.buildParagraph(
+          label,
+          renderer.color4f(color.r, color.g, color.b, color.a),
+          { halfLeading: true }
+        )
+        try {
+          const blockHeight = paragraph.getHeight()
+          if (decorated) {
             configureModulePreviewPaint(renderer, config.accentColor)
-            const bottom = (index + 1) * rowHeight
+            renderer.fillPaint.setAlphaf(block.kind === 'code' ? 0.08 : 0.5)
+            const right = block.kind === 'code' ? width - inset : inset + Math.min(3, innerWidth)
             canvas.drawRect(
-              renderer.ck.LTRBRect(8, bottom - 2, width - 8, bottom),
+              renderer.ck.LTRBRect(inset, y, right, Math.min(height - inset, y + blockHeight)),
               renderer.fillPaint
             )
           }
-        })
-      })
+          canvas.drawParagraph(paragraph, inset + textInset, y)
+          y += blockHeight + (block.kind === 'heading' ? config.fontSize * 0.5 : 0)
+        } finally {
+          paragraph.delete()
+        }
+      }
     })
   })
 }

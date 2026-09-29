@@ -1,5 +1,5 @@
 import { tryOnScopeDispose, useEventListener } from '@vueuse/core'
-import { ref, type Ref } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
 import type { SceneNode } from '@open-pencil/scene-graph'
@@ -21,7 +21,7 @@ import { createClickCounter } from '#vue/shared/input/click-count'
 import { handleDrawMove } from '#vue/shared/input/draw'
 import { handleMoveMove, handleMoveUp } from '#vue/shared/input/move'
 import { setupPanZoom } from '#vue/shared/input/pan-zoom'
-import { applyResize, commitResizePreview } from '#vue/shared/input/resize'
+import { applyResize, cancelResizePreview, commitResizePreview } from '#vue/shared/input/resize'
 import { updateHoverCursor } from '#vue/shared/input/select'
 import { useSpaceHeld } from '#vue/shared/input/space-key'
 import type { DragState } from '#vue/shared/input/types'
@@ -430,6 +430,11 @@ export function useCanvasInput(
 
   function cancelPointerInteraction() {
     cancelPassiveHover()
+    if (drag.value?.type === 'resize') {
+      const resizing = drag.value
+      drag.value = null
+      cancelResizePreview(resizing)
+    }
     if (drag.value?.type === 'rotate') {
       const rotation = drag.value
       drag.value = null
@@ -479,6 +484,7 @@ export function useCanvasInput(
   useEventListener(canvasRef, 'pointerdown', onPointerDown)
   useEventListener(canvasRef, 'pointerup', onPointerUp)
   useEventListener(canvasRef, 'pointercancel', onPointerCancel)
+  useEventListener(canvasRef, 'lostpointercapture', onPointerCancel)
   useEventListener(canvasRef, 'dblclick', onDblClick)
   useEventListener(canvasRef, 'mousedown', onMouseDown)
   useEventListener(canvasRef, 'mousemove', onMouseMove)
@@ -493,7 +499,12 @@ export function useCanvasInput(
     'keydown',
     (event) => {
       if (event.code !== 'Escape' || event.isComposing || !isEnabled()) return
-      if (drag.value?.type !== 'draw' && drag.value?.type !== 'rotate') return
+      if (
+        drag.value?.type !== 'draw' &&
+        drag.value?.type !== 'rotate' &&
+        drag.value?.type !== 'resize'
+      )
+        return
       event.preventDefault()
       event.stopImmediatePropagation()
       cancelPointerInteraction()
@@ -540,7 +551,12 @@ export function useCanvasInput(
     ['selection:changed', 'page:changed', 'graph:replaced'] as const
   ).map((event) =>
     editor.onEditorEvent(event, () => {
-      if (drag.value?.type === 'draw' || drag.value?.type === 'rotate') cancelPointerInteraction()
+      if (
+        drag.value?.type === 'draw' ||
+        drag.value?.type === 'rotate' ||
+        drag.value?.type === 'resize'
+      )
+        cancelPointerInteraction()
     })
   )
   tryOnScopeDispose(() => {
@@ -549,6 +565,13 @@ export function useCanvasInput(
     for (const stop of stopPreviewListeners) stop()
     cancelPointerInteraction()
   })
+  watch(
+    isEnabled,
+    (enabled) => {
+      if (!enabled) cancelPointerInteraction()
+    },
+    { flush: 'sync' }
+  )
 
   setupPanZoom(canvasRef, editor, drag, onMouseDown, onMouseMove, onMouseUp)
   tryOnScopeDispose(cancelPassiveHover)

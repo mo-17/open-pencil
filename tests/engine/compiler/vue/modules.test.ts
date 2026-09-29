@@ -11,6 +11,9 @@ import { compileScript, compileTemplate, parse as parseVueSfc } from 'vue/compil
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import {
+  createDataGridModuleFrameOverrides,
+  createLottieModuleInstance,
+  createTableModuleFrameOverrides,
   createDropdownMenuModuleFrameOverrides,
   createModalModuleFrameOverrides,
   createSlideMenuModuleFrameOverrides,
@@ -69,17 +72,32 @@ function maybeWriteVerificationProject(files: ReadonlyMap<string, string | Uint8
 }
 
 describe('Vue trusted module runtimes', () => {
-  test('uses core-lowered payloads and emits the four supported local SFC runtimes', () => {
+  test('uses core-lowered payloads and emits supported local SFC runtimes', () => {
     const graph = makeSceneGraph('Modules')
     const pageId = firstPageId(graph)
     const frames = [
-      graph.createNode('FRAME', pageId, createModalModuleFrameOverrides()),
+      graph.createNode(
+        'FRAME',
+        pageId,
+        createModalModuleFrameOverrides({ contentChildName: 'Authored content' })
+      ),
       graph.createNode('FRAME', pageId, createDropdownMenuModuleFrameOverrides()),
       graph.createNode('FRAME', pageId, createSlideMenuModuleFrameOverrides()),
-      graph.createNode('FRAME', pageId, createUploadButtonModuleFrameOverrides())
+      graph.createNode('FRAME', pageId, createUploadButtonModuleFrameOverrides()),
+      graph.createNode('FRAME', pageId, createTableModuleFrameOverrides()),
+      graph.createNode('FRAME', pageId, createDataGridModuleFrameOverrides())
     ]
     for (const [index, frame] of frames.entries()) {
-      graph.createNode('BUTTON', frame.id, {
+      // Modal renders its explicitly mapped content; other modules accept ordinary overlays.
+      const content =
+        index === 0
+          ? graph.createNode('FRAME', frame.id, {
+              name: 'Authored content',
+              width: 160,
+              height: 44
+            })
+          : frame
+      graph.createNode('BUTTON', content.id, {
         height: 44,
         interactiveProps: { text: `Authored trigger ${index + 1}` },
         width: 160
@@ -92,7 +110,9 @@ describe('Vue trusted module runtimes', () => {
       'src/__openpencil_modal.vue',
       'src/__openpencil_dropdown_menu.vue',
       'src/__openpencil_slide_menu.vue',
-      'src/__openpencil_upload_button.vue'
+      'src/__openpencil_upload_button.vue',
+      'src/__openpencil_table.vue',
+      'src/__openpencil_data_grid.vue'
     ]
 
     expect(output.warnings.map((warning) => warning.code)).not.toContain('vue-module-unsupported')
@@ -205,27 +225,27 @@ describe('Vue trusted module runtimes', () => {
   test('keeps unimplemented trusted modules fail-closed as static shells', () => {
     const unsupported: IRElement = {
       kind: 'element',
-      sourceId: 'table-module',
+      sourceId: 'lottie-module',
       tag: 'div',
       className: 'w-40',
       attrs: {},
-      children: [{ kind: 'text', sourceId: 'fallback-copy', value: 'Static table fallback' }],
+      children: [{ kind: 'text', sourceId: 'fallback-copy', value: 'Static Lottie fallback' }],
       module: {
-        pluginId: 'open-pencil.table',
-        moduleType: 'table',
+        pluginId: 'open-pencil.lottie',
+        moduleType: 'lottie',
         configVersion: 1,
-        payload: {}
+        payload: createLottieModuleInstance().config
       }
     }
     const output = vueAdapter.emit([minimalIr([unsupported])], vueOptions())
     const page = textFile(output.files, 'src/pages/index.vue')
 
     expect(output.warnings).toContainEqual(
-      expect.objectContaining({ code: 'vue-module-unsupported', nodeId: 'table-module' })
+      expect.objectContaining({ code: 'vue-module-unsupported', nodeId: 'lottie-module' })
     )
     expect(page).toContain('<div class="w-40"')
-    expect(page).toContain('Static table fallback')
-    expect([...output.files.keys()].some((path) => path.includes('table'))).toBe(false)
+    expect(page).toContain('Static Lottie fallback')
+    expect([...output.files.keys()].some((path) => path.includes('lottie'))).toBe(false)
   })
 
   test('deduplicates runtimes while keeping instance state inside each SFC setup', () => {

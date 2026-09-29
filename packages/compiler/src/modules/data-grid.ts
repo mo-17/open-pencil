@@ -32,6 +32,7 @@ export const DATA_GRID_COMPILER_MODULE_LOWERER: CompilerModuleLowerer = Object.f
         selectionMode: config.selectionMode,
         density: config.density,
         showHeader: config.showHeader,
+        showCsvTools: config.showCsvTools,
         stickyHeader: config.stickyHeader,
         striped: config.striped,
         borderColor: config.borderColor,

@@ -1,3 +1,4 @@
+import { moduleValueFields } from '#core/plugins/value-controls'
 import {
   FORM_CONTROLS_AUDIT_DEFAULT_LIMIT,
   FORM_CONTROLS_AUDIT_MAX_LIMIT,
@@ -29,5 +30,5 @@ export const auditFormControls = defineTool({
     }
   },
   execute: (figma, { scope_id, limit }) =>
-    auditValidatedFormControls(figma.graph, scopeId(figma, scope_id), { limit })
+    auditValidatedFormControls(figma.graph, scopeId(figma, scope_id), { limit, moduleFields: moduleValueFields })
 })

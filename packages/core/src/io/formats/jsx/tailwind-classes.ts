@@ -11,7 +11,6 @@ import {
   type Fill,
   type GridTrack,
   type InteractionState,
-  type ResponsiveBreakpoint,
   type SceneGraph,
   type SceneNode,
   type StateOverride,
@@ -23,7 +22,19 @@ import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import { resolveNodeTextDirection } from '#core/text/direction'
 import { lowcodeTextNode } from '#core/text/lowcode'
 
-import { formatColor, formatTrack, getNodeContext, solidFillColor, solidStroke } from './helpers'
+import {
+  formatColor,
+  formatTrack,
+  getNodeContext,
+  solidFillColor,
+  solidStroke,
+  type JSXStyleGraph
+} from './helpers'
+import {
+  applyResponsiveSizing,
+  responsiveStyleVariants,
+  type ResponsiveStyleContext
+} from './responsive'
 
 function px(v: number): string {
   return `${v}px`
@@ -114,13 +125,24 @@ function applyFlexSizing(style: Record<string, string>, node: SceneNode): void {
   else if (node.counterAxisSizing !== 'HUG') style[crossAxis] = px(node[crossAxis])
 }
 
+// Native fields use authored padding for their value/placeholder inset even
+// though they have no auto-layout children. Keep ordinary free-layout nodes out.
+const NATIVE_FIELD_PADDING_TYPES = new Set<SceneNode['type']>([
+  'INPUT',
+  'TEXTAREA',
+  'SELECT',
+  'DATEPICKER',
+  'SWITCH'
+])
+
 function applyPadding(
   style: Record<string, string>,
   node: SceneNode,
   options: TailwindClassOptions = {}
 ): void {
   const { paddingTop: pt, paddingRight: pr, paddingBottom: pb, paddingLeft: pl } = node
-  if (pt === 0 && pr === 0 && pb === 0 && pl === 0) return
+  if (pt === 0 && pr === 0 && pb === 0 && pl === 0 && !NATIVE_FIELD_PADDING_TYPES.has(node.type))
+    return
   if (options.logicalProperties === true) {
     if (pt === pr && pr === pb && pb === pl) {
       style.padding = px(pt)
@@ -140,17 +162,43 @@ function applyPadding(
   else style.padding = `${px(pt)} ${px(pr)} ${px(pb)} ${px(pl)}`
 }
 
-function needsLocalPositioningContext(node: SceneNode, graph: SceneGraph): boolean {
+function needsLocalPositioningContext(node: SceneNode, graph: JSXStyleGraph): boolean {
   if (node.childIds.length === 0) return false
   if (!isAutoLayoutMode(node.layoutMode)) return true
   return node.childIds.some((childId) => graph.getNode(childId)?.layoutPositioning === 'ABSOLUTE')
 }
 
+function applyPositionStyle(
+  style: Record<string, string>,
+  node: SceneNode,
+  graph: JSXStyleGraph,
+  parentIsFreeLayout: boolean,
+  responsive?: ResponsiveStyleContext
+): void {
+  if (needsLocalPositioningContext(node, graph)) style.position = 'relative'
+  const canvasFlow =
+    responsive?.override.layoutPositioning === 'AUTO' &&
+    node.parentId !== null &&
+    graph.getNode(node.parentId)?.type === 'CANVAS'
+  if (canvasFlow) {
+    style.position = 'relative'
+    return
+  }
+  if (!parentIsFreeLayout && node.layoutPositioning !== 'ABSOLUTE') return
+  style.position = 'absolute'
+  style.left = px(node.x)
+  style.top = px(node.y)
+  // Absolute HUG children still need their authored box outside normal flow.
+  if (!style.width) style.width = px(node.width)
+  if (!style.height) style.height = px(node.height)
+}
+
 function applyLayoutStyle(
   style: Record<string, string>,
   node: SceneNode,
-  graph: SceneGraph,
-  options: TailwindClassOptions = {}
+  graph: JSXStyleGraph,
+  options: TailwindClassOptions = {},
+  responsive?: ResponsiveStyleContext
 ): void {
   const ctx = getNodeContext(node, graph)
 
@@ -169,27 +217,11 @@ function applyLayoutStyle(
   }
 
   if (ctx.parentIsAutoLayout && node.layoutGrow > 0) style.flexGrow = '1'
-  if (ctx.isAutoLayout) applyPadding(style, node, options)
+  if (ctx.isAutoLayout || NATIVE_FIELD_PADDING_TYPES.has(node.type))
+    applyPadding(style, node, options)
 
-  // Absolute descendants must resolve x/y inside their own design container,
-  // not against the generated page root. `absolute` below overrides this for
-  // a container that is itself freely positioned while still establishing the
-  // same containing block for its children.
-  if (needsLocalPositioningContext(node, graph)) style.position = 'relative'
-
-  // Free positioning fires for two cases that share the same CSS shape: a
-  // non-auto-layout parent positions all children from stored x/y coordinates,
-  // or one child opts out of auto-layout through layoutPositioning=ABSOLUTE.
-  if (ctx.parentIsFreeLayout || node.layoutPositioning === 'ABSOLUTE') {
-    style.position = 'absolute'
-    style.left = px(node.x)
-    style.top = px(node.y)
-    // §6 decision #g: sizing fallback for both code paths — HUG-sized
-    // children would otherwise collapse once `position: absolute` removes
-    // them from the parent's flow.
-    if (!style.width) style.width = px(node.width)
-    if (!style.height) style.height = px(node.height)
-  }
+  applyPositionStyle(style, node, graph, ctx.parentIsFreeLayout, responsive)
+  if (responsive) applyResponsiveSizing(style, node, responsive)
 }
 
 function applyAppearanceStyle(style: Record<string, string>, node: SceneNode): void {
@@ -461,19 +493,17 @@ function collectTextInputExtraClasses(node: SceneNode): string[] {
 
 function nodeToStyle(
   node: SceneNode,
-  graph: SceneGraph,
-  options: TailwindClassOptions = {}
+  graph: JSXStyleGraph,
+  options: TailwindClassOptions = {},
+  responsive?: ResponsiveStyleContext
 ): Record<string, string> {
   const style: Record<string, string> = {}
-  applyLayoutStyle(style, node, graph, options)
+  applyLayoutStyle(style, node, graph, options, responsive)
   applyAppearanceStyle(style, node)
   applyShapeStyle(style, node)
   applyTextStyle(style, node)
   return style
 }
-
-// Tailwind's default viewport breakpoints, smallest → largest (min-width).
-const RESPONSIVE_BREAKPOINTS: readonly ResponsiveBreakpoint[] = ['sm', 'md', 'lg', 'xl']
 
 // CSS values the canvas style object OMITS at their default — when a breakpoint
 // override clears one of these layout properties (e.g. VERTICAL→HORIZONTAL drops
@@ -487,6 +517,7 @@ const LAYOUT_STYLE_RESET: Record<string, string> = {
   rowGap: '0px',
   justifyContent: 'flex-start',
   alignItems: 'stretch',
+  alignContent: 'normal',
   paddingTop: '0px',
   paddingRight: '0px',
   paddingBottom: '0px',
@@ -500,15 +531,32 @@ const LAYOUT_STYLE_RESET: Record<string, string> = {
   width: 'auto',
   height: 'auto',
   flexGrow: '0',
-  display: 'block'
+  display: 'block',
+  position: 'static',
+  left: 'auto',
+  top: 'auto',
+  right: 'auto',
+  bottom: 'auto',
+  gridTemplateColumns: 'none',
+  gridTemplateRows: 'none',
+  columnGap: '0px',
+  minWidth: '0px',
+  maxWidth: 'none',
+  minHeight: '0px',
+  maxHeight: 'none',
+  overflow: 'visible',
+  lineHeight: 'normal',
+  borderWidth: '0px',
+  borderColor: 'transparent',
+  borderRadius: '0px'
 }
 
 /**
  * Phase 3 §7 — responsive (breakpoint-prefixed) Tailwind classes for a node's
  * `responsiveOverrides`. For each breakpoint we shallow-merge the override onto
- * the node, re-derive the FULL CSS style via the same {@link nodeToStyle} (one
- * source of truth), diff it against the base style at the CSS-property level,
- * and `twirl` only the changed properties — each class prefixed `md:` / `lg:`.
+ * the node and its parent context, re-derive CSS via {@link nodeToStyle}, and
+ * compare consecutive min-width breakpoints. compact is a max-xl delta from
+ * the authored base, preserving desktop geometry above that boundary.
  *
  * Diffing at the style level (not the class level) is what makes column→row and
  * other "back to default" changes work: a property the breakpoint resets to its
@@ -528,27 +576,12 @@ export function collectResponsiveTailwindClasses(
   graph: SceneGraph,
   options: TailwindClassOptions = {}
 ): string[] {
-  const overrides = node.responsiveOverrides
-  if (!overrides) return []
-  const baseStyle = nodeToStyle(node, graph, options)
-  return collectVariantClasses(
-    node,
-    graph,
-    options,
-    baseStyle,
-    RESPONSIVE_BREAKPOINTS,
-    (bp) => overrides[bp],
-    LAYOUT_STYLE_RESET,
-    (bp, override, bpStyle) => {
-      if (override.visible === false && node.visible) return [`${bp}:hidden`]
-      if (override.visible === true && !node.visible) {
-        // Re-assert the node's (breakpoint-effective) display so it un-hides;
-        // fall back to `block` when the node carries no explicit display.
-        const show = twirl({ display: bpStyle.display }) || 'block'
-        return [`${bp}:${show}`]
-      }
-      return []
-    }
+  return responsiveStyleVariants(node, graph, (current, contextGraph, responsive) =>
+    nodeToStyle(current, contextGraph, options, responsive)
+  ).flatMap(({ prefix, previous, style }) =>
+    tailwindClassesFromStyle(styleDelta(previous, style, LAYOUT_STYLE_RESET)).map(
+      (value) => `${prefix}:${value}`
+    )
   )
 }
 
@@ -883,9 +916,12 @@ function tailwindClassesFromStyle(style: Record<string, string>): string[] {
   // font-size. Emit only real default typography tokens, otherwise preserve
   // the authored value with an arbitrary utility.
   delete twirlStyle.fontSize
+  // Tailwind leading-normal means 1.5, not CSS normal.
+  if (style.lineHeight === 'normal') delete twirlStyle.lineHeight
   const twirled = twirl(twirlStyle)
   return [
     ...(twirled ? twirled.split(' ') : []),
+    ...(style.lineHeight === 'normal' ? ['leading-[normal]'] : []),
     ...fontSizeClasses(style.fontSize),
     ...borderWidthClasses(style.borderWidth),
     ...roundedClasses(style.borderRadius)

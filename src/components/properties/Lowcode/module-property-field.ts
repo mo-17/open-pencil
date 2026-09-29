@@ -1,6 +1,8 @@
 import {
   ACCORDION_MODULE_TYPE,
   ACCORDION_PLUGIN_ID,
+  CAROUSEL_MODULE_TYPE,
+  CAROUSEL_PLUGIN_ID,
   CODE_BLOCK_MODULE_TYPE,
   CODE_BLOCK_PLUGIN_ID,
   DATA_GRID_MODULE_TYPE,
@@ -30,7 +32,15 @@ import {
 } from '@open-pencil/core/plugins'
 
 export type SpecializedModuleFieldKind =
+  | 'walktour-steps'
+  | 'org-chart-items'
+  | 'descriptions-items'
+  | 'chart-data'
+  | 'navigation-items'
+  | 'timeline-items'
+  | 'tree-items'
   | 'accordion-items'
+  | 'carousel-slides'
   | 'code-block-code'
   | 'data-grid-data'
   | 'dropdown-menu-items'
@@ -53,6 +63,58 @@ interface SpecializedFieldIdentity {
 }
 
 const SPECIALIZED_FIELDS: readonly SpecializedFieldIdentity[] = Object.freeze([
+  {
+    pluginId: 'open-pencil.walktour',
+    moduleType: 'walktour',
+    path: 'steps',
+    kind: 'walktour-steps'
+  },
+  {
+    pluginId: 'open-pencil.org-chart',
+    moduleType: 'org-chart',
+    path: 'items',
+    kind: 'org-chart-items'
+  },
+  {
+    pluginId: 'open-pencil.descriptions',
+    moduleType: 'descriptions',
+    path: 'items',
+    kind: 'descriptions-items'
+  },
+  { pluginId: 'open-pencil.tree', moduleType: 'tree', path: 'items', kind: 'tree-items' },
+  { pluginId: 'open-pencil.cascader', moduleType: 'cascader', path: 'items', kind: 'tree-items' },
+  {
+    pluginId: 'open-pencil.popover',
+    moduleType: 'popover',
+    path: 'content',
+    kind: 'modal-content'
+  },
+  { pluginId: 'open-pencil.chart', moduleType: 'chart', path: 'values', kind: 'chart-data' },
+  {
+    pluginId: 'open-pencil.timeline',
+    moduleType: 'timeline',
+    path: 'items',
+    kind: 'timeline-items'
+  },
+  {
+    pluginId: 'open-pencil.stepper',
+    moduleType: 'stepper',
+    path: 'items',
+    kind: 'navigation-items'
+  },
+  {
+    pluginId: 'open-pencil.breadcrumb',
+    moduleType: 'breadcrumb',
+    path: 'items',
+    kind: 'navigation-items'
+  },
+
+  {
+    pluginId: CAROUSEL_PLUGIN_ID,
+    moduleType: CAROUSEL_MODULE_TYPE,
+    path: 'slides',
+    kind: 'carousel-slides'
+  },
   {
     pluginId: VR_TOUR_PLUGIN_ID,
     moduleType: VR_TOUR_MODULE_TYPE,

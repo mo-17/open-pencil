@@ -231,7 +231,10 @@ test('graph replacement cancels a page font load for the previous graph', async 
 
 test('graph replacement clears renderer resources even when the page ID is unchanged', () => {
   const editor = createEditor({ skipInitialGraphSetup: true })
-  const renderer = { clearDocumentCaches: mock(() => undefined) }
+  const renderer = {
+    clearDocumentCaches: mock(() => undefined),
+    tiledScene: { invalidateStructure: mock(() => undefined) }
+  }
   editor.setCanvasKit({} as Parameters<typeof editor.setCanvasKit>[0], renderer as SkiaRenderer)
   const pageId = editor.state.currentPageId
   const replacement = new SceneGraph()
@@ -246,4 +249,5 @@ test('graph replacement clears renderer resources even when the page ID is uncha
   expect(editor.state.currentPageId).toBe(pageId)
   expect(pageChanges).toBe(0)
   expect(renderer.clearDocumentCaches).toHaveBeenCalledTimes(1)
+  expect(renderer.tiledScene.invalidateStructure).toHaveBeenCalledTimes(1)
 })

@@ -17,7 +17,15 @@ import {
   createBackendProviderDocumentRequest
 } from './document'
 import { BackendDraftOperationError } from './draft'
-import { backendTemplateListProps, backendTemplateShape } from './notes-template-style'
+import { backendTemplateListProps } from './notes-template-style'
+import { createNotesFeedback } from './notes-template/feedback'
+import {
+  createNotesPresentation,
+  notesSecondaryButton,
+  notesSurface,
+  NOTES_PALETTE
+} from './notes-template/presentation'
+import { adaptNotesPagesToMobile } from './notes-template/responsive'
 
 export type NotesTemplateEditor = Pick<
   Editor,
@@ -136,6 +144,7 @@ export function createPersonalNotesPages(
     return name
   }
   const errorName = addDoc('notesError')
+  const feedback = createNotesFeedback(errorName)
   const cursorName = addDoc('notesCursor')
   const afterState: StateDef = {
     id: crypto.randomUUID(),
@@ -150,14 +159,12 @@ export function createPersonalNotesPages(
     type: 'string',
     defaultValue: ''
   }
-  const fieldStates = fields.map(
-    (field): StateDef => ({
-      id: crypto.randomUUID(),
-      name: `note_${field.id}`,
-      type: fieldStateType(field),
-      defaultValue: initialValue(field)
-    })
-  )
+  const fieldStates = fields.map((field): StateDef => ({
+    id: crypto.randomUUID(),
+    name: `note_${field.id}`,
+    type: fieldStateType(field),
+    defaultValue: initialValue(field)
+  }))
   const nullValueState: StateDef = {
     id: crypto.randomUUID(),
     name: 'noteNullValue',
@@ -166,14 +173,12 @@ export function createPersonalNotesPages(
   }
   const nullableStates = fields
     .filter((field) => field.nullable)
-    .map(
-      (field): StateDef => ({
-        id: crypto.randomUUID(),
-        name: `nullable_${field.id}`,
-        type: 'boolean',
-        defaultValue: field.default?.kind === 'literal' && field.default.value === null
-      })
-    )
+    .map((field): StateDef => ({
+      id: crypto.randomUUID(),
+      name: `nullable_${field.id}`,
+      type: 'boolean',
+      defaultValue: field.default?.kind === 'literal' && field.default.value === null
+    }))
   const fieldExpression = (key: string): string =>
     fields.find((field) => field.id === key)?.nullable
       ? `nullable_${key} ? noteNullValue.value : note_${key}`
@@ -195,7 +200,11 @@ export function createPersonalNotesPages(
       : (resource.updateFields ?? [])
     ).map((key) => ({ key, valueExpr: fieldExpression(key) })),
     errorTarget: errorName,
-    onSuccess: structuredClone(clear)
+    onSuccess: [
+      ...structuredClone(clear),
+      ...feedback.success(operation === 'create' ? 'Note created.' : 'Note updated.')
+    ],
+    onError: [feedback.unlock()]
   })
   const prototypeActions: ActionDef[] = [
     request('create'),
@@ -247,7 +256,7 @@ export function createPersonalNotesPages(
       { lowcodeDocumentState: docStates, lowcodeAuthRedirect: loginPath },
       'Configure notes state'
     )
-    const shape = backendTemplateShape(editor)
+    const shape = createNotesPresentation(editor)
     const text = (
       parent: string,
       name: string,
@@ -256,18 +265,75 @@ export function createPersonalNotesPages(
       width: number,
       props: Partial<SceneNode> = {}
     ) => shape('TEXT', name, parent, x, y, width, 32, { text: name, fontSize: 18, ...props })
-    const button = (parent: string, label: string, x: number, y: number, actions: ActionDef[]) =>
-      shape('BUTTON', label, parent, x, y, 150, 40, {
-        interactiveProps: { text: label },
+    const button = (
+      parent: string,
+      label: string,
+      x: number,
+      y: number,
+      actions: ActionDef[],
+      secondary = false,
+      props: Partial<SceneNode> = {}
+    ) =>
+      shape('BUTTON', label, parent, x, y, 150, 44, {
+        ...(secondary ? notesSecondaryButton() : {}),
+        ...props,
+        interactiveProps: {
+          ...(secondary ? notesSecondaryButton().interactiveProps : {}),
+          text: label
+        },
         events: { onClick: actions }
       })
-    loginPageId = shape('CANVAS', 'Notes login', root.id, 0, 0, 1000, 760, {
+    loginPageId = shape('CANVAS', 'Notes login', root.id, 0, 0, 1200, 760, {
       lowcodeRoutePattern: loginPath
     })
-    const loginFrame = shape('FRAME', 'Sign in', loginPageId, 0, 0, 1000, 760)
-    text(loginFrame, 'Personal notes', 64, 64, 800, { fontSize: 32 })
-    text(loginFrame, 'Sign in to view your private notes.', 64, 118, 800)
-    button(loginFrame, 'Sign in', 64, 176, [
+    const loginFrame = shape('FRAME', 'Sign in', loginPageId, 0, 0, 1200, 760, {
+      ...notesSurface(NOTES_PALETTE.background),
+      cornerRadius: 0
+    })
+    shape('FRAME', 'A place for your thoughts', loginFrame, 64, 80, 1072, 580, notesSurface())
+    shape(
+      'FRAME',
+      'Notebook illustration',
+      loginFrame,
+      64,
+      80,
+      490,
+      580,
+      notesSurface(NOTES_PALETTE.tint)
+    )
+    text(loginFrame, 'MAKE ROOM FOR IDEAS', 104, 122, 390, { fontSize: 12, fontWeight: 600 })
+    text(loginFrame, 'Small thoughts.\nA little more space.', 104, 176, 380, {
+      fontSize: 38,
+      fontWeight: 600,
+      height: 112
+    })
+    shape(
+      'FRAME',
+      'Notebook sheet',
+      loginFrame,
+      154,
+      342,
+      288,
+      242,
+      notesSurface(NOTES_PALETTE.paper, true)
+    )
+    for (let index = 0; index < 5; index++)
+      shape(
+        'RECTANGLE',
+        'Notebook line',
+        loginFrame,
+        184,
+        386 + index * 30,
+        index === 4 ? 142 : 216,
+        2,
+        notesSurface(NOTES_PALETTE.line)
+      )
+    text(loginFrame, 'Personal notes', 620, 198, 440, { fontSize: 34, fontWeight: 600, height: 52 })
+    text(loginFrame, 'Sign in to view your private notes.', 620, 282, 438, {
+      fontSize: 16,
+      height: 56
+    })
+    button(loginFrame, 'Sign in', 620, 382, [
       {
         id: crypto.randomUUID(),
         kind: 'backendAuth',
@@ -276,10 +342,16 @@ export function createPersonalNotesPages(
         errorTarget: errorName
       }
     ])
-    text(loginFrame, '', 64, 234, 850, {
-      bindings: { text: { kind: 'docState', docStateName: errorName } }
+    text(loginFrame, 'Your words, together in one quiet place.', 620, 458, 438, {
+      fontSize: 14,
+      height: 54
     })
-    notesPageId = shape('CANVAS', 'Personal notes', root.id, 0, 0, 1000, 1000, {
+    text(loginFrame, '', 620, 534, 438, {
+      bindings: { text: { kind: 'docState', docStateName: errorName } },
+      height: 72,
+      interactiveProps: { layout: { overflowY: 'auto', whiteSpace: 'pre-wrap' } }
+    })
+    notesPageId = shape('CANVAS', 'Personal notes', root.id, 0, 0, 1200, 1000, {
       lowcodeRoutePattern: notesPath,
       lowcodeRequiresAuth: true,
       state: [
@@ -287,19 +359,34 @@ export function createPersonalNotesPages(
         afterState,
         ...fieldStates,
         ...nullableStates,
+        ...feedback.states,
         ...(nullableStates.length ? [nullValueState] : [])
       ]
     })
-    const frame = shape('FRAME', 'Personal notes', notesPageId, 0, 0, 1000, 1000)
-    text(frame, 'Personal notes', 48, 28, 650, { fontSize: 30 })
-    button(frame, 'Sign out', 780, 28, [
-      {
-        id: crypto.randomUUID(),
-        kind: 'backendAuth',
-        operation: 'signOut',
-        errorTarget: errorName
-      }
-    ])
+    const frame = shape('FRAME', 'Personal notes', notesPageId, 0, 0, 1200, 1000, {
+      ...notesSurface(NOTES_PALETTE.background),
+      cornerRadius: 0
+    })
+    text(frame, 'YOUR PRIVATE SPACE', 48, 28, 650, { fontSize: 12, fontWeight: 600 })
+    text(frame, 'Personal notes', 48, 68, 650, { fontSize: 34, fontWeight: 600, height: 46 })
+    text(frame, 'Capture an idea. Come back to it whenever you need.', 48, 120, 900, {
+      fontSize: 15
+    })
+    button(
+      frame,
+      'Sign out',
+      1000,
+      60,
+      [
+        {
+          id: crypto.randomUUID(),
+          kind: 'backendAuth',
+          operation: 'signOut',
+          errorTarget: errorName
+        }
+      ],
+      true
+    )
     const fieldOffsets: number[] = []
     let controlsHeight = 0
     for (const field of fields) {
@@ -307,28 +394,47 @@ export function createPersonalNotesPages(
       controlsHeight += fieldControlType(field) === 'TEXTAREA' ? 168 : 84
     }
     const formHeight = controlsHeight + 64
-    const form = shape('FORM', 'Edit note', frame, 48, 92, 884, formHeight, {
+    shape(
+      'FRAME',
+      'Writing desk',
+      frame,
+      48,
+      184,
+      528,
+      formHeight + 148,
+      notesSurface(NOTES_PALETTE.paper, true)
+    )
+    text(frame, 'Write a note', 72, 208, 440, { fontSize: 22, fontWeight: 600 })
+    const form = shape('FORM', 'Edit note', frame, 72, 260, 480, formHeight, {
       // The template places labels, controls and its button row with explicit coordinates.
       // Keep those coordinates instead of allowing FORM's default flex column to shrink them.
       layoutMode: 'NONE',
+      renderCondition: `!${feedback.pending}`,
       events: {
         onSubmit: [
-          {
-            id: crypto.randomUUID(),
-            kind: 'condition',
-            condExpr: `${editState.name} === ""`,
-            consequent: [request('create')],
-            alternate: [request('update')]
-          }
+          feedback.guard([
+            ...feedback.start('Saving note…'),
+            {
+              id: crypto.randomUUID(),
+              kind: 'condition',
+              condExpr: `${editState.name} === ""`,
+              consequent: [request('create')],
+              alternate: [request('update')]
+            }
+          ])
         ]
       }
     })
+    text(frame, 'Saving note…', 72, 260, 480, {
+      bindings: { text: { kind: 'ref', stateId: feedback.activity.id } },
+      renderCondition: feedback.pending
+    })
     fields.forEach((field, index) => {
-      text(form, field.name, 0, fieldOffsets[index], 820)
+      text(form, field.name, 0, fieldOffsets[index], 300, { fontSize: 14, fontWeight: 600 })
       const type = fieldControlType(field)
       const nullState = nullableStates.find((state) => state.name === `nullable_${field.id}`)
       if (nullState)
-        shape('BUTTON', `${field.name}: Empty value`, form, 650, fieldOffsets[index], 170, 28, {
+        shape('BUTTON', `${field.name}: Empty value`, form, 310, fieldOffsets[index], 170, 28, {
           bindings: {
             text: { kind: 'expr', expr: `${nullState.name} ? "Use value" : "Set empty"` }
           },
@@ -350,7 +456,7 @@ export function createPersonalNotesPages(
         form,
         0,
         fieldOffsets[index] + 30,
-        820,
+        480,
         type === 'TEXTAREA' ? 126 : 42,
         {
           bindings: { value: { kind: 'ref', stateId: fieldStates[index].id } },
@@ -359,24 +465,35 @@ export function createPersonalNotesPages(
         }
       )
     })
-    shape('BUTTON', 'Save note', form, 0, controlsHeight, 150, 40, {
+    shape('BUTTON', 'Save note', form, 0, controlsHeight, 150, 44, {
       interactiveProps: { text: 'Save note' }
     })
-    button(form, 'Clear form', 168, controlsHeight, clear)
-    const listY = formHeight + 118
-    text(frame, '', 48, listY, 884, {
-      bindings: { text: { kind: 'docState', docStateName: errorName } }
+    button(form, 'Clear form', 168, controlsHeight, clear, true)
+    text(frame, '', 72, 272 + formHeight, 480, {
+      bindings: { text: { kind: 'docState', docStateName: errorName } },
+      height: 52,
+      interactiveProps: { layout: { overflowY: 'auto', whiteSpace: 'pre-wrap' } }
     })
-    const cardHeight = Math.max(150, fields.length * 38 + 70)
-    const list = shape(
-      'LIST',
-      'Notes',
+    const cardOffsets: number[] = []
+    let cardContentHeight = 0
+    for (const field of fields) {
+      cardOffsets.push(cardContentHeight)
+      cardContentHeight += fieldControlType(field) === 'TEXTAREA' ? 132 : 40
+    }
+    const cardHeight = Math.max(180, cardContentHeight + 80)
+    shape(
+      'FRAME',
+      'Notes collection',
       frame,
-      48,
-      listY + 40,
-      884,
-      350,
-      backendTemplateListProps(
+      608,
+      184,
+      544,
+      730,
+      notesSurface(NOTES_PALETTE.paper, true)
+    )
+    text(frame, 'Your notes', 632, 208, 496, { fontSize: 22, fontWeight: 600 })
+    const list = shape('LIST', 'Notes', frame, 632, 260, 496, 556, {
+      ...backendTemplateListProps(
         {
           kind: 'backendResource',
           resourceId: resource.id,
@@ -386,12 +503,17 @@ export function createPersonalNotesPages(
           errorTarget: errorName
         },
         cardHeight
-      )
-    )
-    const card = shape('FRAME', 'Note', list, 0, 0, 860, cardHeight)
+      ),
+      fills: []
+    })
+    const card = shape('FRAME', 'Note', list, 0, 0, 472, cardHeight)
     fields.forEach((field, index) =>
-      text(card, field.name, 16, index * 38 + 12, 800, {
-        bindings: { text: { kind: 'expr', expr: fieldDisplayExpression(field) } }
+      text(card, field.name, 16, cardOffsets[index] + 16, 440, {
+        bindings: { text: { kind: 'expr', expr: fieldDisplayExpression(field) } },
+        fontSize: index === 0 ? 20 : 15,
+        fontWeight: index === 0 ? 600 : 400,
+        height: fieldControlType(field) === 'TEXTAREA' ? 116 : 32,
+        interactiveProps: { layout: { overflowY: 'auto', whiteSpace: 'pre-wrap' } }
       })
     )
     const editActions: ActionDef[] = [
@@ -401,16 +523,14 @@ export function createPersonalNotesPages(
         targetStateId: editState.id,
         valueExpr: `item.${primaryField}`
       },
-      ...fields.map(
-        (field, index): ActionDef => ({
-          id: crypto.randomUUID(),
-          kind: 'setState',
-          targetStateId: fieldStates[index].id,
-          valueExpr: field.nullable
-            ? `item.${field.id} === noteNullValue.value ? ${primitiveExpression(initialValue(field))} : item.${field.id}`
-            : `item.${field.id}`
-        })
-      )
+      ...fields.map((field, index): ActionDef => ({
+        id: crypto.randomUUID(),
+        kind: 'setState',
+        targetStateId: fieldStates[index].id,
+        valueExpr: field.nullable
+          ? `item.${field.id} === noteNullValue.value ? ${primitiveExpression(initialValue(field))} : item.${field.id}`
+          : `item.${field.id}`
+      }))
     ]
     for (const field of fields.filter((entry) => entry.nullable)) {
       const target = nullableStates.find((state) => state.name === `nullable_${field.id}`)
@@ -422,28 +542,56 @@ export function createPersonalNotesPages(
           valueExpr: `item.${field.id} === noteNullValue.value`
         })
     }
-    button(card, 'Edit', 16, fields.length * 38 + 24, editActions)
-    button(card, 'Delete', 184, fields.length * 38 + 24, [
-      {
-        id: crypto.randomUUID(),
-        kind: 'backendRequest',
-        resourceId: resource.id,
-        operation: 'delete',
-        idExpr: `item.${primaryField}`,
-        errorTarget: errorName
-      }
-    ])
-    button(frame, 'First page', 48, listY + 420, [
-      { id: crypto.randomUUID(), kind: 'setState', targetStateId: afterState.id, valueExpr: '""' }
-    ])
-    button(frame, 'Next page', 216, listY + 420, [
-      {
-        id: crypto.randomUUID(),
-        kind: 'setState',
-        targetStateId: afterState.id,
-        valueExpr: cursorName
-      }
-    ])
+    button(card, 'Edit', 16, cardContentHeight + 24, [feedback.guard(editActions)], true, {
+      renderCondition: `!${feedback.pending}`
+    })
+    button(
+      card,
+      'Delete',
+      184,
+      cardContentHeight + 24,
+      [
+        feedback.remove(resource.id, `item.${primaryField}`, [
+          {
+            id: crypto.randomUUID(),
+            kind: 'condition',
+            condExpr: `${editState.name} === item.${primaryField}`,
+            consequent: structuredClone(clear)
+          }
+        ])
+      ],
+      true,
+      { renderCondition: `!${feedback.pending}` }
+    )
+    button(
+      frame,
+      'First page',
+      632,
+      842,
+      [
+        { id: crypto.randomUUID(), kind: 'setState', targetStateId: afterState.id, valueExpr: '""' }
+      ],
+      true
+    )
+    button(
+      frame,
+      'Next page',
+      800,
+      842,
+      [
+        {
+          id: crypto.randomUUID(),
+          kind: 'setState',
+          targetStateId: afterState.id,
+          valueExpr: cursorName
+        }
+      ],
+      true
+    )
+    const height = Math.max(1000, formHeight + 380)
+    editor.updateNodeWithUndo(frame, { height }, 'Size notes workspace')
+    editor.updateNodeWithUndo(notesPageId, { height }, 'Size notes page')
+    adaptNotesPagesToMobile(editor, [loginFrame, frame])
   })
   return { notesPageId, loginPageId, notesPath, loginPath }
 }

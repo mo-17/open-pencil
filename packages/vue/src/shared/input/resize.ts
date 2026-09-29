@@ -3,11 +3,9 @@ export { tryStartResize } from '#vue/shared/input/resize/start'
 import { toRaw } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
-import { computeAllLayouts } from '@open-pencil/core/layout'
 import { calibratePathTextLayout, reflowPathTextGlyphs } from '@open-pencil/core/text'
-import { cloneVectorNetwork } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
-import { copyDerivedGlyphs, copyGeometryPaths, copyStrokes } from '@open-pencil/scene-graph/copy'
+import { copyStrokes } from '@open-pencil/scene-graph/copy'
 import {
   computeConstrainedResizeChanges,
   scaledGeometryChanges,
@@ -15,7 +13,9 @@ import {
 } from '@open-pencil/scene-graph/resize'
 
 import { calculateResizeRect } from '#vue/shared/input/resize/rect'
+import { limitResizeRect, resizeSizingPatch } from '#vue/shared/input/resize/sizing'
 import { applyResizeSnap } from '#vue/shared/input/resize/snap'
+import { resizedSource } from '#vue/shared/input/resize/source'
 import { optionalEditorState } from '#vue/shared/input/snap'
 import type { DragResize } from '#vue/shared/input/types'
 
@@ -74,9 +74,13 @@ function resizeChanges(
     cy - d.startY,
     constrain
   )
-  const newRect = constrain
-    ? calculatedRect
-    : applyResizeSnap(d, calculatedRect, editor, disableSnapping)
+  const requestedRect =
+    constrain ||
+    (calculatedRect.width === origRect.width && calculatedRect.height === origRect.height)
+      ? calculatedRect
+      : applyResizeSnap(d, calculatedRect, editor, disableSnapping)
+  const node = editor.graph.getNode(d.nodeId)
+  const newRect = node ? limitResizeRect(d, node, requestedRect, constrain) : requestedRect
 
   const changes: Partial<SceneNode> = {
     ...newRect,
@@ -126,9 +130,28 @@ function applyConstrainedChildren(
       const reflow = reflowedPathTextChanges(orig, width / orig.width, height / orig.height)
       if (reflow) Object.assign(childChanges, reflow)
     }
-    editor.graph.updateNodePreview(childId, childChanges)
+    d.preview?.update(childId, childChanges, { deferLayout: true })
     editor.renderer?.invalidateVectorPath(childId)
   }
+}
+
+function applyRootPathReflow(
+  d: DragResize,
+  newRect: Pick<SceneNode, 'width' | 'height'>,
+  changes: Partial<SceneNode>
+) {
+  if (d.origRect.width <= 0 || d.origRect.height <= 0) return
+  const reflow = reflowedPathTextChanges(
+    {
+      textPathData: d.origTextPathData,
+      textPathBox: d.origTextPathBox,
+      derivedTextGlyphs: d.origDerivedTextGlyphs,
+      strokes: d.origStrokes
+    },
+    newRect.width / d.origRect.width,
+    newRect.height / d.origRect.height
+  )
+  if (reflow) Object.assign(changes, reflow)
 }
 
 export function applyResize(
@@ -144,147 +167,56 @@ export function applyResize(
   // structuredClone consumers (export subgraph clone, undo snapshots) with
   // DataCloneError. Unwrap once — also keeps the drag hot path off proxies.
   const d = toRaw(dragState)
+  if (d.preview?.closed) return
+  const node = editor.graph.getNode(d.nodeId)
+  if (!node) return
+  // A click on a handle must not detach sizing or create an undo entry.
+  d.preview ??= editor.beginNodePreview('Resize', { preserveSourceMetadata: true })
   const { changes, newRect } = resizeChanges(d, cx, cy, constrain, editor, disableSnapping)
+  if (
+    !d.resizeStarted &&
+    (['x', 'y', 'width', 'height'] as const).every((key) => newRect[key] === d.origRect[key])
+  )
+    return
+  d.resizeStarted = true
   d.appliedRect = { ...newRect }
-  if (d.origRect.width > 0 && d.origRect.height > 0) {
-    const reflow = reflowedPathTextChanges(
-      {
-        textPathData: d.origTextPathData,
-        textPathBox: d.origTextPathBox,
-        derivedTextGlyphs: d.origDerivedTextGlyphs,
-        strokes: d.origStrokes
-      },
-      newRect.width / d.origRect.width,
-      newRect.height / d.origRect.height
-    )
-    if (reflow) Object.assign(changes, reflow)
-  }
-  editor.graph.updateNodePreview(d.nodeId, changes)
+  applyRootPathReflow(d, newRect, changes)
+  const parent = node.parentId ? (editor.graph.getNode(node.parentId) ?? null) : null
+  Object.assign(changes, resizeSizingPatch(d, node, parent, newRect))
+  // Paragraph text retains its untouched auto-height; geometric/path resizes
+  // are laid out after their constrained descendants have received the patch.
+  d.preview.update(d.nodeId, changes, { deferLayout: node.type !== 'TEXT' || !!node.textPathData })
   if (changes.fillGeometry || changes.strokeGeometry || changes.vectorNetwork) {
     editor.renderer?.invalidateVectorPath(d.nodeId)
   }
 
-  // Two passes around the layout run: the first sizes children so Yoga can
-  // resolve HUG/FILL, the second re-applies against the settled boxes.
-  applyConstrainedChildren(d, newRect, editor)
-  editor.graph.runPreviewUpdates(() => computeAllLayouts(editor.graph, d.nodeId))
-  applyConstrainedChildren(d, newRect, editor)
-  editor.graph.runPreviewUpdates(() => computeAllLayouts(editor.graph, d.nodeId))
+  // Both passes include parents and ancestors, exactly as ordinary node edits
+  // do. The same transaction captures every resulting sibling/ancestor change.
+  for (let pass = 0; pass < 2; pass++) {
+    applyConstrainedChildren(d, node, editor)
+    d.preview.update(d.nodeId, {})
+  }
+  d.appliedRect = { x: node.x, y: node.y, width: node.width, height: node.height }
   editor.requestRepaint()
 }
 
-/**
- * Deep-copy geometry read back from a previewed node — preview values can
- * be reactivity-wrapped, and storing proxies breaks structuredClone snapshots
- * (delete/undo would throw DataCloneError).
- */
-function snapshotResizeFinal(node: SceneNode): Partial<SceneNode> {
-  const final: Partial<SceneNode> = {
-    x: node.x,
-    y: node.y,
-    width: node.width,
-    height: node.height
-  }
-  if (node.vectorNetwork) final.vectorNetwork = cloneVectorNetwork(node.vectorNetwork)
-  if (node.fillGeometry.length > 0) final.fillGeometry = copyGeometryPaths(node.fillGeometry)
-  // Path-text reflow legitimately EMPTIES strokeGeometry (textPathBox marks
-  // those nodes) — commit it so the pre-resize silhouettes don't resurrect.
-  // Everything else keeps the length guard: a spurious strokeGeometry key on
-  // plain nodes would clear their raw Figma payload on commit.
-  if (node.strokeGeometry.length > 0 || node.textPathBox) {
-    final.strokeGeometry = copyGeometryPaths(node.strokeGeometry)
-  }
-  if (node.derivedTextGlyphs?.length) {
-    final.derivedTextGlyphs = copyDerivedGlyphs(node.derivedTextGlyphs)
-  }
-  if (node.textPathBox) final.textPathBox = { ...node.textPathBox }
-  if (node.textPathData) final.textPathData = structuredClone(node.textPathData)
-  if (node.strokes.length > 0) final.strokes = copyStrokes(node.strokes)
-  return final
-}
-
-/**
- * Resize commits run inside preserveSourceMetadataDuring so the raw Figma
- * payload (vectorData, textPathStart, effects, ...) survives — but the
- * geometry-derived raw fields are now stale and export PREFERS them over
- * node values (rawSize would resurrect the pre-resize dimensions in the
- * exported file). Invalidate exactly those.
- */
-function clearResizedRawGeometry(editor: Editor, nodeId: string): void {
-  const node = editor.graph.getNode(nodeId)
-  if (!node) return
-  node.source.fig.rawSize = null
-  node.source.fig.rawTransform = null
-  const raw = node.source.fig.rawNodeFields
-  delete raw.fillGeometry
-  delete raw.strokeGeometry
-  delete raw.strokeWeight
-  // vectorData is dual-use: for VECTOR nodes it gates nodeForGeometryExport —
-  // leaving it makes export pair stale raw vectorData with styleID-less
-  // explicit paths (multi-color icons turn gray). For TEXT it is the
-  // TEXT_PATH layout path and must survive or reflow dies.
-  if (node.type !== 'TEXT') delete raw.vectorData
-}
-
 export function commitResizePreview(dragState: DragResize, editor: Editor) {
-  // See applyResize — reactive drag state must not leak into graph writes.
   const d = toRaw(dragState)
   optionalEditorState(editor)?.snapGuides.splice(0)
-  const node = editor.graph.getNode(d.nodeId)
-  if (!node) return
-  const finalChanges = snapshotResizeFinal(node)
+  if (!d.preview || d.preview.closed) return
+  // Finalize every actual geometry change, including layout ancestors and
+  // siblings. Metadata joins the same undo entry and keeps its layout provenance.
+  d.preview.commit((node, before) => {
+    const moved = (['x', 'y', 'width', 'height'] as const).some(
+      (key) => before[key] !== undefined && before[key] !== node[key]
+    )
+    if (!moved) return undefined
+    return {
+      source: resizedSource(node, before, node.id === d.nodeId ? d.originalSizing : undefined)
+    }
+  })
+}
 
-  if (d.origChildren) {
-    const finalChildren = new Map<string, Partial<SceneNode>>()
-    for (const [childId] of d.origChildren) {
-      const child = editor.graph.getNode(childId)
-      if (!child) continue
-      finalChildren.set(childId, snapshotResizeFinal(child))
-    }
-    editor.graph.updateNodePreview(d.nodeId, d.origRect)
-    for (const [childId, orig] of d.origChildren) {
-      editor.graph.updateNodePreview(childId, {
-        x: orig.x,
-        y: orig.y,
-        width: orig.width,
-        height: orig.height,
-        vectorNetwork: orig.vectorNetwork,
-        fillGeometry: orig.fillGeometry,
-        strokeGeometry: orig.strokeGeometry,
-        derivedTextGlyphs: orig.derivedTextGlyphs,
-        strokes: orig.strokes,
-        textPathData: orig.textPathData,
-        textPathBox: orig.textPathBox
-      })
-    }
-    // Resize is geometric — the raw Figma import payload (vectorData,
-    // textPathStart, effects, ...) must survive or path-text reflow works
-    // exactly once and export fidelity degrades.
-    editor.graph.preserveSourceMetadataDuring(() => {
-      editor.updateNode(d.nodeId, finalChanges)
-      for (const [childId, final] of finalChildren) {
-        editor.updateNode(childId, final)
-      }
-    })
-    clearResizedRawGeometry(editor, d.nodeId)
-    for (const [childId] of finalChildren) clearResizedRawGeometry(editor, childId)
-    editor.commitGroupResize(d.nodeId, d.origRect, d.origChildren)
-    editor.requestRepaint()
-  } else {
-    editor.graph.updateNodePreview(d.nodeId, d.origRect)
-    // See the group branch — raw import payload survives geometric commits.
-    editor.graph.preserveSourceMetadataDuring(() => {
-      editor.updateNode(d.nodeId, finalChanges)
-    })
-    clearResizedRawGeometry(editor, d.nodeId)
-    const original: Parameters<typeof editor.commitResize>[1] = { ...d.origRect }
-    if (d.origVectorNetwork || node.vectorNetwork) original.vectorNetwork = d.origVectorNetwork
-    if (d.origFillGeometry.length > 0) original.fillGeometry = d.origFillGeometry
-    if (d.origStrokeGeometry.length > 0) original.strokeGeometry = d.origStrokeGeometry
-    if (d.origDerivedTextGlyphs?.length) original.derivedTextGlyphs = d.origDerivedTextGlyphs
-    if (d.origStrokes.length > 0) original.strokes = d.origStrokes
-    if (d.origTextPathData) original.textPathData = d.origTextPathData
-    if (d.origTextPathBox) original.textPathBox = d.origTextPathBox
-    editor.commitResize(d.nodeId, original)
-  }
+export function cancelResizePreview(dragState: DragResize) {
+  toRaw(dragState).preview?.cancel()
 }

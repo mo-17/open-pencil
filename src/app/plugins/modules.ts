@@ -1,4 +1,46 @@
 import {
+  CASCADER_PLUGIN_ID,
+  CASCADER_MODULE_TYPE,
+  WALKTOUR_PLUGIN_ID,
+  WALKTOUR_MODULE_TYPE,
+  ORG_CHART_PLUGIN_ID,
+  ORG_CHART_MODULE_TYPE,
+  PAGINATION_PLUGIN_ID,
+  PAGINATION_MODULE_TYPE,
+  DESCRIPTIONS_PLUGIN_ID,
+  DESCRIPTIONS_MODULE_TYPE,
+  DATE_RANGE_PLUGIN_ID,
+  DATE_RANGE_MODULE_TYPE,
+  TREE_PLUGIN_ID,
+  TREE_MODULE_TYPE,
+  POPOVER_PLUGIN_ID,
+  POPOVER_MODULE_TYPE,
+  TOOLTIP_PLUGIN_ID,
+  TOOLTIP_MODULE_TYPE,
+  SKELETON_PLUGIN_ID,
+  SKELETON_MODULE_TYPE,
+  EMPTY_STATE_PLUGIN_ID,
+  EMPTY_STATE_MODULE_TYPE,
+  AVATAR_PLUGIN_ID,
+  AVATAR_MODULE_TYPE,
+  BADGE_PLUGIN_ID,
+  BADGE_MODULE_TYPE,
+  TIMELINE_PLUGIN_ID,
+  TIMELINE_MODULE_TYPE,
+  ALERT_PLUGIN_ID,
+  ALERT_MODULE_TYPE,
+  PROGRESS_PLUGIN_ID,
+  PROGRESS_MODULE_TYPE,
+  CHIP_PLUGIN_ID,
+  CHIP_MODULE_TYPE,
+  SLIDER_MODULE_TYPE,
+  SLIDER_PLUGIN_ID,
+  RATING_MODULE_TYPE,
+  RATING_PLUGIN_ID,
+  STEPPER_MODULE_TYPE,
+  STEPPER_PLUGIN_ID,
+  BREADCRUMB_MODULE_TYPE,
+  BREADCRUMB_PLUGIN_ID,
   ACCORDION_MODULE_TYPE,
   ACCORDION_PLUGIN_ID,
   AUDIO_PLAYER_MODULE_TYPE,
@@ -52,6 +94,45 @@ import type { EditorStore } from '@/app/editor/active-store'
 import type { InstalledPluginModule } from './types'
 
 const TRUSTED_MODULE_ADAPTERS = new Map([
+  ['open-pencil.cascader', { pluginId: CASCADER_PLUGIN_ID, moduleType: CASCADER_MODULE_TYPE }],
+  ['open-pencil.walktour', { pluginId: WALKTOUR_PLUGIN_ID, moduleType: WALKTOUR_MODULE_TYPE }],
+  ['open-pencil.org-chart', { pluginId: ORG_CHART_PLUGIN_ID, moduleType: ORG_CHART_MODULE_TYPE }],
+  [
+    'open-pencil.pagination',
+    { pluginId: PAGINATION_PLUGIN_ID, moduleType: PAGINATION_MODULE_TYPE }
+  ],
+  [
+    'open-pencil.descriptions',
+    { pluginId: DESCRIPTIONS_PLUGIN_ID, moduleType: DESCRIPTIONS_MODULE_TYPE }
+  ],
+  [
+    'open-pencil.date-range',
+    { pluginId: DATE_RANGE_PLUGIN_ID, moduleType: DATE_RANGE_MODULE_TYPE }
+  ],
+  ['open-pencil.tree', { pluginId: TREE_PLUGIN_ID, moduleType: TREE_MODULE_TYPE }],
+  ['open-pencil.popover', { pluginId: POPOVER_PLUGIN_ID, moduleType: POPOVER_MODULE_TYPE }],
+  ['open-pencil.tooltip', { pluginId: TOOLTIP_PLUGIN_ID, moduleType: TOOLTIP_MODULE_TYPE }],
+  ['open-pencil.skeleton', { pluginId: SKELETON_PLUGIN_ID, moduleType: SKELETON_MODULE_TYPE }],
+  [
+    'open-pencil.empty-state',
+    { pluginId: EMPTY_STATE_PLUGIN_ID, moduleType: EMPTY_STATE_MODULE_TYPE }
+  ],
+
+  ['open-pencil.alert', { pluginId: ALERT_PLUGIN_ID, moduleType: ALERT_MODULE_TYPE }],
+  ['open-pencil.progress', { pluginId: PROGRESS_PLUGIN_ID, moduleType: PROGRESS_MODULE_TYPE }],
+  ['open-pencil.chip', { pluginId: CHIP_PLUGIN_ID, moduleType: CHIP_MODULE_TYPE }],
+  ['open-pencil.avatar', { pluginId: AVATAR_PLUGIN_ID, moduleType: AVATAR_MODULE_TYPE }],
+  ['open-pencil.badge', { pluginId: BADGE_PLUGIN_ID, moduleType: BADGE_MODULE_TYPE }],
+  ['open-pencil.timeline', { pluginId: TIMELINE_PLUGIN_ID, moduleType: TIMELINE_MODULE_TYPE }],
+
+  ['open-pencil.slider', { pluginId: SLIDER_PLUGIN_ID, moduleType: SLIDER_MODULE_TYPE }],
+  ['open-pencil.rating', { pluginId: RATING_PLUGIN_ID, moduleType: RATING_MODULE_TYPE }],
+  ['open-pencil.stepper', { pluginId: STEPPER_PLUGIN_ID, moduleType: STEPPER_MODULE_TYPE }],
+  [
+    'open-pencil.breadcrumb',
+    { pluginId: BREADCRUMB_PLUGIN_ID, moduleType: BREADCRUMB_MODULE_TYPE }
+  ],
+
   ['open-pencil.vr-tour', { pluginId: VR_TOUR_PLUGIN_ID, moduleType: VR_TOUR_MODULE_TYPE }],
   ['open-pencil.map', { pluginId: MAP_PLUGIN_ID, moduleType: MAP_MODULE_TYPE }],
   ['open-pencil.chart', { pluginId: CHART_PLUGIN_ID, moduleType: CHART_MODULE_TYPE }],

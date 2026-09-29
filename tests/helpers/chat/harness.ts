@@ -51,7 +51,7 @@ export class ChatHarness {
     await this.page.locator('[data-model-id]').first().click()
     await this.page.getByTestId('settings-model-provider').click()
     await this.page.getByRole('option', { name: 'OpenRouter' }).click()
-    await this.page.getByLabel('Name').fill('Claude Sonnet')
+    await this.page.getByLabel('Name', { exact: true }).fill('Claude Sonnet')
     await this.apiKeyInput.fill(apiKey)
     await this.page.getByRole('button', { name: 'Save model' }).click()
     await this.page.getByTestId('app-settings-done').click()

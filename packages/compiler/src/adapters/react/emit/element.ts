@@ -1,3 +1,10 @@
+import { emitReactBackendListStatus } from '#compiler/adapters/backend-client/list-status'
+import {
+  nodeHasFieldValidation,
+  validationErrorExpression
+} from '#compiler/adapters/form-validation'
+import { reactModuleValueBindings } from '#compiler/adapters/module-values'
+import { reactPaginationBindings } from '#compiler/adapters/pagination/bindings'
 import type {
   IRAttrValue,
   IRControlledInput,
@@ -14,8 +21,9 @@ import type {
   IRText,
   IRUpload
 } from '#compiler/ir/types'
+import { moduleContentNodes } from '#compiler/modules/content-slots'
 
-import { emitExpression } from '@open-pencil/lowcode'
+import { collectReferences, emitExpression } from '@open-pencil/lowcode'
 
 import { VALIDATION_ERROR_CLASS, VALIDATION_INVALID_FIELD_CLASS } from '../lowcode/validation'
 import { requireReactModuleAdapter } from '../modules/registry'
@@ -24,6 +32,7 @@ import { motionDriverToken } from '../motion/drivers'
 import { motionToken } from '../motion/key'
 import { instrumentVectorMotionHTML } from '../motion/target'
 import { eventUsesRequestDebounce, eventUsesRequestGate } from '../request-timing'
+import { emitEnhancedSelect } from '../select/emit'
 import type { UIKitAdapter } from '../ui-kit/types'
 import { emitEventHandler, emitFormSubmitHandler } from './event'
 import { setterName } from './state'
@@ -84,15 +93,61 @@ export function emitElement(
     // React needs `key=` on the iterated element; we inject it into the
     // template's first JSX opening tag so even an IRConditional template
     // ends up with the key on the inner element rather than the `&&`.
-    const tpl = injectKey(emitElement(node.template, indent + 1, devMode, uiKit), node.indexName)
+    const template = emitListTemplate(node.template, node.indexName, indent + 1, devMode, uiKit)
+    const tpl = nodeHasFieldValidation(node.template)
+      ? `((__opValidationIteration: readonly number[]) => (\n${template}\n${pad}))([...__opValidationIteration, ${node.indexName}])`
+      : template
     return (
+      emitReactBackendListStatus(node, indent) +
       `${pad}{(${node.arrayName}).map((${node.itemName}, ${node.indexName}) => (\n` +
       `${tpl}\n` +
       `${pad}))}`
     )
   }
 
+  if (node.selectEmptyOptionGuard) {
+    const guard = node.selectEmptyOptionGuard
+    const params = collectReferences(guard.value).has(guard.indexName)
+      ? `${guard.itemName}, ${guard.indexName}`
+      : guard.itemName
+    const condition = `!(${guard.arrayName}).some((${params}) => (${emitExpression(guard.value)}) === "")`
+    return `${pad}{${condition} && (\n${emitTagElement(node, indent + 1, devMode, uiKit)}\n${pad})}`
+  }
   return emitTagElement(node, indent, devMode, uiKit)
+}
+
+/** A map callback is a JavaScript expression, so conditional templates omit JSX child braces. */
+function emitListTemplate(
+  node: IRNode,
+  indexName: string,
+  indent: number,
+  devMode: boolean,
+  uiKit: UIKitAdapter | null
+): string {
+  if (node.kind === 'conditional') {
+    const pad = '  '.repeat(indent)
+    const inner = emitListTemplate(node.consequent, indexName, indent + 1, devMode, uiKit)
+    return `${pad}(${emitExpression(node.ast)}) && (\n${inner}\n${pad})`
+  }
+  return injectKey(emitElement(node, indent, devMode, uiKit), indexName)
+}
+
+/** Enhanced fields reuse the native field attributes, binding and validation events. */
+function emitEnhancedField(node: IRElement, indent: number, devMode: boolean): string | null {
+  const pad = '  '.repeat(indent)
+  if (node.inputControl) {
+    const { attrsStr } = tagOpenParts(node, devMode, null)
+    return `${pad}<__OpenPencilInputControl ${attrsStr} config={${JSON.stringify(node.inputControl)}} />`
+  }
+  if (node.inputSuggestions) {
+    const { attrsStr } = tagOpenParts(node, devMode, null)
+    return `${pad}<__OpenPencilAutocomplete ${attrsStr} suggestions={${JSON.stringify(node.inputSuggestions)}} />`
+  }
+
+  if (node.selectFeatures)
+    return emitEnhancedSelect(node, tagOpenParts(node, devMode, null).attrsStr, indent)
+
+  return null
 }
 
 /** Emit a plain element node (the `kind === 'element'` tail of `emitElement`).
@@ -122,7 +177,7 @@ function wrapValidatedField(inner: string, key: string, indent: number): string 
     `${pad}<>`,
     inner,
     `${errPad}{__fieldErrors[${k}] && (`,
-    `${errPad}  <p className="${VALIDATION_ERROR_CLASS}" role="alert">{__fieldErrors[${k}]}</p>`,
+    `${errPad}  <p id={${validationErrorExpression(key)}} className="${VALIDATION_ERROR_CLASS}" role="alert">{__fieldErrors[${k}]}</p>`,
     `${errPad})}`,
     `${pad}</>`
   ].join('\n')
@@ -145,6 +200,9 @@ function emitTagElementCore(
     return emitModuleElement(node, moduleAdapter, indent, devMode, uiKit)
   }
   if (node.icon) return emitLucideIconElement(node, indent, devMode)
+
+  const enhancedField = emitEnhancedField(node, indent, devMode)
+  if (enhancedField !== null) return enhancedField
 
   // Phase 3 §15 Phase B: a marked form control (SELECT/CHECKBOX/SWITCH/RADIO)
   // may be emitted as a composed kit component (`<Select><SelectTrigger>…`),
@@ -182,7 +240,12 @@ function emitTagElementCore(
   const lines = [`${pad}${opening}>`]
   if (node.formValidationSummary && node.formValidationKeys) {
     lines.push(
-      emitValidationSummary(node.formValidationKeys, node.formValidationSummary.title, indent + 1)
+      emitValidationSummary(
+        node.formValidationKeys,
+        node.formValidationSummary.title,
+        indent + 1,
+        node.formValidationMountedOnly
+      )
     )
   }
   for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode, uiKit))
@@ -207,13 +270,33 @@ function emitModuleElement(
       ? ` panoramaBound panoramaUrl={(() => { try { return ${emitExpression(node.module.panoramaUrlExpr)} } catch { return undefined } })()}`
       : ''
   const video = videoModuleBindings(node)
-  const opening = `${pad}<${adapter.componentName} config={${JSON.stringify(node.module?.payload)}}${panorama}${video}${attrs}`
-  if (node.children.length === 0) return `${opening} />`
+  const uploadDisabled =
+    node.module?.uploadDisabledExpr && adapter.pluginId === 'open-pencil.upload-button'
+      ? ` disabled={(() => { try { return (${emitExpression(node.module.uploadDisabledExpr)} as unknown) !== false } catch { return true } })()}`
+      : ''
+  const slots = moduleContentNodes(node)
+  const content = slots?.map((slot) => ({
+    name: slot.name,
+    source: `<>${slot.nodes.map((child) => emitElement(child, indent + 2, devMode, uiKit)).join('\n')}</>`
+  }))
+  const slotProps = moduleContentProps(content, adapter.moduleType)
+  const opening = `${pad}<${adapter.componentName} config={${JSON.stringify(node.module?.payload)}}${panorama}${video}${uploadDisabled}${reactPaginationBindings(node.module)}${reactModuleValueBindings(node.module)}${attrs}${slotProps}`
+  if (slots || node.children.length === 0) return `${opening} />`
   return [
     `${opening}>`,
     ...node.children.map((child) => emitElement(child, indent + 1, devMode, uiKit)),
     `${pad}</${adapter.componentName}>`
   ].join('\n')
+}
+
+function moduleContentProps(
+  content: { name: string; source: string }[] | undefined,
+  moduleType: string
+): string {
+  if (!content) return ''
+  if (moduleType === 'modal' || moduleType === 'popover')
+    return content[0] ? ` content={${content[0].source}}` : ''
+  return ` panels={{${content.map((slot) => `${JSON.stringify(slot.name)}: (${slot.source})`).join(',')}}}`
 }
 
 function videoModuleBindings(node: IRElement): string {
@@ -230,11 +313,19 @@ function videoModuleBindings(node: IRElement): string {
 /** §19 follow-up: opt-in FORM-level aggregate over the same field errors used
  *  by the per-field messages. The individual fields remain the source of truth;
  *  this only improves submit-time scanability. */
-function emitValidationSummary(keys: readonly string[], title: string, indent: number): string {
+function emitValidationSummary(
+  keys: readonly string[],
+  title: string,
+  indent: number,
+  mountedOnly = false
+): string {
   const pad = '  '.repeat(indent)
   const innerPad = '  '.repeat(indent + 1)
   const itemPad = '  '.repeat(indent + 2)
   const ids = keys.map((k) => JSON.stringify(k)).join(', ')
+  if (mountedOnly) {
+    return `${pad}<__OpenPencilMountedValidationSummary fieldKeys={[${ids}]} errors={__fieldErrors} title={${JSON.stringify(title)}} />`
+  }
   return [
     `${pad}{[${ids}].some((id) => __fieldErrors[id]) && (`,
     `${innerPad}<div className="${VALIDATION_ERROR_CLASS}" role="alert">`,
@@ -275,7 +366,9 @@ function tagOpenParts(
     node.image,
     node.link,
     node.sourceId,
-    requestState.overriddenAttrs
+    requestState.overriddenAttrs,
+    node.formValidationMountedOnly,
+    node.validationScopeMarker
   )
   const baseAttrsStr = joinAttrs(
     standardAttrs,
@@ -606,11 +699,13 @@ function formatAttrs(
   image?: IRImage,
   link?: IRLink,
   requestSourceId?: string,
-  overriddenAttrs: ReadonlySet<string> = new Set()
+  overriddenAttrs: ReadonlySet<string> = new Set(),
+  formValidationMountedOnly = false,
+  validationScopeMarker = false
 ): string {
   const parts: string[] = []
   const classAttr = classNameAttr(className, classNameProp, classNamePropFallback)
-  if (classAttr) parts.push(validationClassAttr(classAttr, validationKey))
+  if (classAttr) parts.push(validationClassAttr(classAttr, className, validationKey))
   const styleAttr = stylePropAttr(attrs.style, styleProp, stylePropFallback)
   if (styleAttr) parts.push(styleAttr)
   if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
@@ -634,21 +729,29 @@ function formatAttrs(
     )
   // §19: a validated field gets `aria-invalid` + an `onBlur` that validates it.
   if (validationKey !== undefined)
-    parts.push(...validationFieldParts(validationKey, events?.onBlur, controlled))
+    parts.push(
+      ...validationFieldParts(validationKey, events?.onBlur, controlled, validationScopeMarker)
+    )
   parts.push(
     ...eventAttrParts(events, formValidationKeys, {
       skip: eventSkipSet(controlled, validationKey),
-      requestSourceId
+      requestSourceId,
+      mountedOnly: formValidationMountedOnly
     })
   )
   return parts.join(' ')
 }
 
-function validationClassAttr(classAttr: string, validationKey: string | undefined): string {
+function validationClassAttr(
+  classAttr: string,
+  className: string,
+  validationKey: string | undefined
+): string {
   if (validationKey === undefined) return classAttr
   const k = JSON.stringify(validationKey)
   if (classAttr.startsWith('className="') && classAttr.endsWith('"')) {
-    const className = classAttr.slice('className="'.length, -1)
+    // JSX attributes decode HTML entities; JavaScript expressions do not.
+    // Keep the original classes when adding validation state to the expression.
     return `className={${JSON.stringify(className)} + (__fieldErrors[${k}] ? " ${VALIDATION_INVALID_FIELD_CLASS}" : "")}`
   }
   if (classAttr.startsWith('className={') && classAttr.endsWith('}')) {
@@ -668,7 +771,7 @@ function classNameAttr(
   // inside a COMPONENT_SET variant subtree the prop spans variants with
   // different static defaults → `className={prop ?? "thisVariantsClasses"}`.
   if (classNameProp && classNamePropFallback) {
-    return `className={${classNameProp} ?? "${escapeAttr(className)}"}`
+    return `className={${classNameProp} ?? ${JSON.stringify(className)}}`
   }
   if (classNameProp) return `className={${classNameProp}}`
   if (className) return `className="${escapeAttr(className)}"`
@@ -830,7 +933,8 @@ function controlledValueAttrParts(
 function validationFieldParts(
   key: string,
   handlers: IREventHandler[] | undefined,
-  controlled: IRControlledInput | undefined
+  controlled: IRControlledInput | undefined,
+  scopeMarker: boolean
 ): string[] {
   const k = JSON.stringify(key)
   // RADIO / CHECKBOX-group validation belongs to their div wrapper while the
@@ -839,8 +943,11 @@ function validationFieldParts(
   let eventValue: string | undefined
   if (controlled?.write.targetType === 'boolean') {
     eventValue = '(e.target as HTMLInputElement).checked'
+  } else if (controlled?.write.targetType === 'array') {
+    eventValue =
+      'Array.from((e.target as HTMLSelectElement).selectedOptions, option => option.value)'
   } else if (controlled) {
-    eventValue = '(e.target as HTMLInputElement).value'
+    eventValue = '(e.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value'
   }
   const validate = eventValue
     ? `await __validateFieldValue(${k}, ${eventValue}, true)`
@@ -849,7 +956,13 @@ function validationFieldParts(
     handlers && handlers.length > 0
       ? `onBlur={${emitEventHandler(handlers, { eventLocals: true, prelude: [validate], forceAsync: true })}}`
       : `onBlur={async (e) => { ${validate}; }}`
-  return [`aria-invalid={__fieldErrors[${k}] != null}`, onBlur]
+  return [
+    ...(scopeMarker ? [`data-openpencil-validation-key={${k}}`] : []),
+    `data-openpencil-validation-field-key={${k}}`,
+    `aria-invalid={__fieldErrors[${k}] != null}`,
+    `aria-describedby={__fieldErrors[${k}] ? ${validationErrorExpression(key)} : undefined}`,
+    onBlur
+  ]
 }
 
 /** The event-handler attrs. Phase 4 §19: when `formValidationKeys` is set (a
@@ -859,7 +972,7 @@ function validationFieldParts(
 function eventAttrParts(
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
   formValidationKeys: readonly string[] | undefined,
-  options: { skip?: ReadonlySet<IREventName>; requestSourceId?: string } = {}
+  options: { skip?: ReadonlySet<IREventName>; requestSourceId?: string; mountedOnly?: boolean } = {}
 ): string[] {
   const parts: string[] = []
   if (events) {
@@ -882,7 +995,8 @@ function eventAttrParts(
       `onSubmit={${emitFormSubmitHandler(
         submitHandlers,
         formValidationKeys,
-        eventRequestTiming(options.requestSourceId, 'onSubmit', submitHandlers)?.requestKey
+        eventRequestTiming(options.requestSourceId, 'onSubmit', submitHandlers)?.requestKey,
+        options.mountedOnly
       )}}`
     )
   }
@@ -1088,8 +1202,9 @@ function controlledOnChangeAttr(
 ): string {
   const write = controlledWriteCall(c, valueExpr)
   const prelude = [write]
-  if (validationKey !== undefined) {
-    prelude.push(`await __validateFieldValue(${JSON.stringify(validationKey)}, ${valueExpr})`)
+  const changeValidationKey = validationKey ?? c.validationKey
+  if (changeValidationKey !== undefined) {
+    prelude.push(`await __validateFieldValue(${JSON.stringify(changeValidationKey)}, ${valueExpr})`)
   }
   if (!handlers || handlers.length === 0) {
     if (prelude.length === 1) return `onChange={(e) => ${write}}`
@@ -1098,7 +1213,7 @@ function controlledOnChangeAttr(
   return `onChange={${emitEventHandler(handlers, {
     ...eventHandlerOptions('onChange', eventRequestTiming(requestSourceId, 'onChange', handlers)),
     prelude,
-    forceAsync: validationKey !== undefined
+    forceAsync: changeValidationKey !== undefined
   })}}`
 }
 
@@ -1117,6 +1232,8 @@ export function controlledWriteCall(c: IRControlledInput, valueExpr: string): st
 function controlledEventValue(targetType: IRControlledInput['write']['targetType']): string {
   if (targetType === 'boolean') return 'e.target.checked'
   if (targetType === 'number') return 'Number(e.target.value)'
+  if (targetType === 'array')
+    return 'Array.from(e.currentTarget.selectedOptions, option => option.value)'
   return 'e.target.value'
 }
 

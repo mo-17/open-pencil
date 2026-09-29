@@ -14,6 +14,7 @@ import {
   FIGMA_PROJECTION_VERSION
 } from '#core/kiwi/fig/node-change/figma-projection'
 import { LOWCODE_NODE_TYPE_KEY } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+import { selectTextProjection } from '#core/text/lowcode'
 
 export const FIGMA_PROJECTABLE_LOWCODE_TYPES = [
   'BUTTON',
@@ -280,14 +281,14 @@ function addTextControlProjection(
 
 function addSelectProjection(builder: ProjectionBuilder, source: SceneNode): void {
   const value = stringProp(source, 'value')
-  const options = stringOptions(source)
-  const showsValue = value !== null && value !== ''
-  const text = showsValue ? value : (options[0] ?? 'Select…')
+  const projection = selectTextProjection(source)
+  const showsValue = projection?.contentKind === 'select_value'
+  const text = projection?.node.text ?? ''
   let marker: SyntheticMarker = { role: 'placeholder' }
-  if (showsValue) marker = { role: 'value', field: 'value' }
-  else if (options.length > 0) marker = { role: 'option' }
+  // A display label is not a submitted value. Preserve the authored value in plugin data.
+  if (showsValue) marker = text === value ? { role: 'value', field: 'value' } : { role: 'option' }
   textNode(builder, source, source.id, marker, text, {
-    color: showsValue || options.length > 0 ? INK : MUTED,
+    color: textControlColor(source, !showsValue),
     width: availableWidth(source, 20)
   })
   textNode(builder, source, source.id, { role: 'chevron' }, '⌄', {

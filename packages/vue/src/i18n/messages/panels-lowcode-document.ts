@@ -323,6 +323,9 @@ export const lowcodeDocumentPanelMessageDefaults = {
   lowcodeBackendResultState: 'Result document state',
   lowcodeBackendErrorState: 'Error document state',
   lowcodeBackendCursorState: 'Next cursor document state',
+  lowcodeBackendListFeedbackHint:
+    'Generated lists show loading, refresh, empty and error states. Retry only reads data.',
+  lowcodeBackendListInvalid: 'Review list configuration',
   lowcodeBackendAfterExpression: 'Page cursor expression (optional)',
   lowcodeBackendReturnPath: 'Return path after sign in',
   lowcodeBackendNoResource:

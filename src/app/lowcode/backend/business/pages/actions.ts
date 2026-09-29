@@ -1,8 +1,15 @@
 import type { BusinessActionDefinition } from '../types'
 import { createBusinessCommand, renderBusinessCommandFeedback } from './commands'
 import { businessActionConditionExpression } from './conditions'
+import {
+  FOOD_ORDERING_COLORS as colors,
+  foodButton,
+  foodSurface,
+  foodText
+} from './food-ordering/style'
 import { prepareBusinessInputs, renderBusinessInputs } from './forms'
 import { BUSINESS_CONTENT_WIDTH, BUSINESS_CONTENT_X } from './layout'
+import { businessButton, businessSurface, businessText } from './presentation/style'
 import type { BusinessScreen } from './screen'
 import { businessLiteral, businessSet } from './state'
 
@@ -45,16 +52,24 @@ export function renderBusinessActions(
 ): void {
   if (!actions.length) return
   const { ctx } = screen
+  const food = ctx.definition.id === 'food-ordering'
   const y = screen.reserve(92 + Math.ceil(actions.length / 3) * 56)
   ctx.layout.text(
     screen.page,
-    ctx.copy.actions,
+    food ? ctx.label({ en: 'Make it yours', zh: '接下来，你可以' }) : ctx.copy.actions,
     { x: BUSINESS_CONTENT_X, y, width: BUSINESS_CONTENT_WIDTH, height: 34 },
-    { fontSize: 22 }
+    food
+      ? foodText(colors.text, 22, 600)
+      : businessText(ctx.presentation, { size: 22, weight: 600 })
   )
   ctx.layout.text(
     screen.page,
-    ctx.copy.chooseAction,
+    food
+      ? ctx.label({
+          en: 'Choose an option below. Review the details before confirming.',
+          zh: '选择下方操作，核对信息后再确认。'
+        })
+      : ctx.copy.chooseAction,
     { x: BUSINESS_CONTENT_X, y: y + 42, width: BUSINESS_CONTENT_WIDTH, height: 42 },
     { fontSize: 14 }
   )
@@ -93,7 +108,10 @@ export function renderBusinessActions(
             )
         }
       ],
-      entry.available ? { renderCondition: entry.available } : {}
+      {
+        ...(food ? foodButton('secondary') : businessButton(ctx.presentation, 'secondary')),
+        ...(entry.available ? { renderCondition: entry.available } : {})
+      }
     )
     if (entry.available && entry.reviewOnly)
       ctx.layout.button(
@@ -105,10 +123,13 @@ export function renderBusinessActions(
           businessSet(entry.reviewOnly, '!0'),
           ...entry.command.recovery.startInspect
         ],
-        { renderCondition: `!(${entry.available})` }
+        {
+          ...(food ? foodButton('quiet') : businessButton(ctx.presentation, 'quiet')),
+          renderCondition: `!(${entry.available})`
+        }
       )
   }
-  const panelY = screen.reserve(Math.max(...actions.map((entry) => entry.height)))
+  const panelY = screen.reserve(Math.max(...actions.map((entry) => entry.height)) + 48)
   for (const { definition, inputs, command, available, reviewOnly, height } of actions) {
     const panel = ctx.layout.shape(
       'FRAME',
@@ -117,13 +138,29 @@ export function renderBusinessActions(
       BUSINESS_CONTENT_X,
       panelY,
       BUSINESS_CONTENT_WIDTH,
-      height,
+      height + 48,
       {
+        ...(food
+          ? foodSurface({ stroke: colors.border, radius: 18 })
+          : businessSurface(ctx.presentation, {
+              stroke: ctx.presentation.colors.border,
+              radius: 14
+            })),
         renderCondition: `(${screen.current}) && ${screen.action.name} === ${JSON.stringify(definition.id)}`
       }
     )
-    ctx.layout.text(
+    const body = ctx.layout.shape(
+      'FRAME',
+      food ? 'Restaurant action content' : 'Business action content',
       panel,
+      24,
+      24,
+      832,
+      height,
+      food ? foodSurface({ radius: 0 }) : businessSurface(ctx.presentation, { radius: 0 })
+    )
+    ctx.layout.text(
+      body,
       ctx.label(definition.description),
       { x: 0, y: 0, width: 820, height: 60 },
       { fontSize: 14 }
@@ -131,7 +168,7 @@ export function renderBusinessActions(
     const form = ctx.layout.shape(
       'FORM',
       ctx.label(definition.label),
-      panel,
+      body,
       0,
       76,
       820,
@@ -148,11 +185,19 @@ export function renderBusinessActions(
       ctx.label(definition.label),
       { x: 0, y: inputs.height + 8, width: 300, height: 44 },
       [],
-      { renderCondition: command.allowed }
+      {
+        renderCondition: `(${command.allowed}) || (${command.running})`,
+        bindings: {
+          text: {
+            kind: 'expr',
+            expr: `${command.running} ? ${JSON.stringify(ctx.copy.busy)} : ${JSON.stringify(ctx.label(definition.label))}`
+          }
+        }
+      }
     )
     if (available)
       ctx.layout.text(
-        panel,
+        body,
         ctx.label({
           en: 'Select a record that supports this action to continue. You can still review any saved request below.',
           zh: '请重新选择适用于此操作的记录。下方仍可核对已保存的请求。'
@@ -160,6 +205,6 @@ export function renderBusinessActions(
         { x: 0, y: inputs.height + 84, width: 820, height: 60 },
         { renderCondition: `!(${available})`, fontSize: 14 }
       )
-    renderBusinessCommandFeedback(screen, panel, inputs.height + 172, definition, command)
+    renderBusinessCommandFeedback(screen, body, inputs.height + 172, definition, command)
   }
 }

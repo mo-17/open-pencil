@@ -1,3 +1,4 @@
+import { moduleValueFields } from '#core/plugins/value-controls'
 import {
   FORM_VALUE_BINDING_MAX_REPAIRS,
   planValidatedFormValueBindings,
@@ -59,10 +60,11 @@ export const ensureFormValueBindings = defineTool({
       }
     }
 
-    const planned = planValidatedFormValueBindings(figma.graph, scopeId(figma, scope_id))
+    const planned = planValidatedFormValueBindings(figma.graph, scopeId(figma, scope_id), {moduleFields:moduleValueFields})
     if (!planned.ok) return planned
     const { audit, bindings, nextState, pageId } = planned.data
-    const boundNodeIds = bindings.map((binding) => binding.nodeId)
+    const nodeBindings = new Map(bindings.map(binding => [binding.nodeId,binding.bindings]))
+    const boundNodeIds = [...nodeBindings.keys()]
     if (dry_run === true || bindings.length === 0) {
       return {
         ok: true,
@@ -80,10 +82,7 @@ export const ensureFormValueBindings = defineTool({
         {
           operations: [
             { id: pageId, patch: { state: nextState } },
-            ...bindings.map((binding) => ({
-              id: binding.nodeId,
-              patch: { bindings: binding.bindings }
-            }))
+            ...[...nodeBindings].map(([id,values]) => ({id,patch:{bindings:values}}))
           ],
           ...(expected_scene_version === undefined ? {} : { expected_scene_version })
         },

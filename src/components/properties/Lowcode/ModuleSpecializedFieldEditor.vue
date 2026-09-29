@@ -3,51 +3,95 @@ import {
   CODE_BLOCK_MODULE_LIMITS,
   MARKDOWN_MODULE_LIMITS,
   MODAL_MODULE_LIMITS,
-  type AccordionItemV1,
   type DataGridDataV1,
   type DropdownMenuEntryV1,
   type ModulePropertyField,
   type RichTextDocumentV1,
   type SlideMenuItemV1,
   type TableDataV1,
-  type TabsItemV1,
-  type VRTourSceneV1
+  type TabsItemV1
 } from '@open-pencil/core/plugins'
+import type { SceneNode } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
+import type { AccordionEditorCommit } from '@/app/lowcode/accordion-editor'
+import type { CarouselSlidesCommit } from '@/app/lowcode/carousel-editor'
+import type { ChartDataCommit } from '@/app/lowcode/chart-editor'
+import type { ModuleScalarCommit } from '@/app/lowcode/module-editor/scalar'
+import type { NavigationEditorCommit } from '@/app/lowcode/navigation-editor'
+import type { TabsContentStates, TabsContentRequest } from '@/app/lowcode/tabs-content'
+import type { TimelineEditorCommit } from '@/app/lowcode/timeline-editor'
+import type { TreeEditorCommit } from '@/app/lowcode/tree-editor'
 import type { AppPluginModuleEditorText } from '@/app/plugins/localization'
 
-import AccordionItemsEditor from './AccordionItemsEditor.vue'
 import DataGridCsvEditor from './DataGridCsvEditor.vue'
 import DropdownMenuItemsEditor from './DropdownMenuItemsEditor.vue'
 import HtmlContentEditor from './HtmlContentEditor.vue'
 import type { SpecializedModuleFieldKind } from './module-property-field'
 import { valueAtPath } from './module-props-panel-controller'
+import ModuleStructuredFieldEditor from './ModuleStructuredFieldEditor.vue'
 import MultilineModuleTextEditor from './MultilineModuleTextEditor.vue'
 import RichTextContentEditor from './RichTextContentEditor.vue'
 import SlideMenuItemsEditor from './SlideMenuItemsEditor.vue'
 import TableContentEditor from './TableContentEditor.vue'
-import TabsItemsEditor from './TabsItemsEditor.vue'
 import UploadAcceptEditor from './UploadAcceptEditor.vue'
-import VRTourScenesEditor from './VRTourScenesEditor.vue'
 
-const { field, config, kind, label, error, moduleEditorText } = defineProps<{
+const structuredKinds = new Set<SpecializedModuleFieldKind>([
+  'walktour-steps',
+  'org-chart-items',
+  'descriptions-items',
+  'chart-data',
+  'timeline-items',
+  'navigation-items',
+  'tree-items',
+  'carousel-slides',
+  'vr-tour-scenes',
+  'vr-tour-initial-scene',
+  'tabs-items',
+  'accordion-items'
+])
+
+const {
+  field,
+  config,
+  kind,
+  label,
+  error,
+  moduleEditorText,
+  tabsOwner,
+  tabsContentStates = {},
+  tabsPreviewId,
+  contentChildOptions = []
+} = defineProps<{
   field: ModulePropertyField
   config: JSONObject
+  contentChildOptions?: { value: string; label: string; disabled?: boolean }[]
   kind: SpecializedModuleFieldKind
   label: string
   error?: string
   moduleEditorText: AppPluginModuleEditorText
+  tabsOwner?: SceneNode
+  tabsContentStates?: TabsContentStates
+  tabsPreviewId?: string
 }>()
 
 const emit = defineEmits<{
   commit: [value: unknown]
+  commitScalar: [request: ModuleScalarCommit]
   commitTabs: [value: TabsItemV1[]]
-  commitAccordion: [value: AccordionItemV1[]]
+  commitChartData: [request: ChartDataCommit]
+  commitTimeline: [request: TimelineEditorCommit]
+  commitNavigation: [request: NavigationEditorCommit]
+  commitTree: [request: TreeEditorCommit]
+  commitAccordion: [request: AccordionEditorCommit]
+  commitCarousel: [request: CarouselSlidesCommit]
+  viewTabContent: [request: TabsContentRequest]
+  editTabContent: [request: TabsContentRequest]
+  resetTabsPreview: [owner: SceneNode | undefined]
 }>()
 
-function fieldValue(): unknown {
-  return valueAtPath(config, field.path)
+function fieldValue<Value = unknown>(): Value {
+  return valueAtPath(config, field.path) as Value
 }
 
 function textValue(): string {
@@ -55,21 +99,9 @@ function textValue(): string {
   return typeof value === 'string' ? value : ''
 }
 
-function richTextDocument(): RichTextDocumentV1 {
-  return fieldValue() as RichTextDocumentV1
-}
-
-function tableData(): TableDataV1 {
-  return fieldValue() as TableDataV1
-}
-
-function dataGridData(): DataGridDataV1 {
-  return fieldValue() as DataGridDataV1
-}
-
-function dropdownMenuItems(): DropdownMenuEntryV1[] {
+function fieldItems<Item>(): Item[] {
   const value = fieldValue()
-  return Array.isArray(value) ? (value as DropdownMenuEntryV1[]) : []
+  return Array.isArray(value) ? (value as Item[]) : []
 }
 
 function uploadAcceptTokens(): string[] {
@@ -78,48 +110,37 @@ function uploadAcceptTokens(): string[] {
     ? value.filter((token): token is string => typeof token === 'string')
     : []
 }
-
-function slideMenuItems(): SlideMenuItemV1[] {
-  const value = fieldValue()
-  return Array.isArray(value) ? (value as SlideMenuItemV1[]) : []
-}
-
-function tabsItems(): TabsItemV1[] {
-  const value = fieldValue()
-  return Array.isArray(value) ? (value as TabsItemV1[]) : []
-}
-
-function accordionItems(): AccordionItemV1[] {
-  const value = fieldValue()
-  return Array.isArray(value) ? (value as AccordionItemV1[]) : []
-}
-
-function tourScenes(): VRTourSceneV1[] {
-  return Array.isArray(config.scenes) ? (config.scenes as VRTourSceneV1[]) : []
-}
 </script>
 
 <template>
-  <VRTourScenesEditor
-    v-if="kind === 'vr-tour-scenes'"
-    :model-value="tourScenes()"
+  <ModuleStructuredFieldEditor
+    v-if="structuredKinds.has(kind)"
+    :field="field"
+    :config="config"
+    :kind="kind"
     :label="label"
+    :error="error"
+    :module-editor-text="moduleEditorText"
+    :tabs-owner="tabsOwner"
+    :tabs-content-states="tabsContentStates"
+    :tabs-preview-id="tabsPreviewId"
+    :content-child-options="contentChildOptions"
     @commit="emit('commit', $event)"
+    @commit-scalar="emit('commitScalar', $event)"
+    @commit-tabs="emit('commitTabs', $event)"
+    @commit-chart-data="emit('commitChartData', $event)"
+    @commit-timeline="emit('commitTimeline', $event)"
+    @commit-navigation="emit('commitNavigation', $event)"
+    @commit-tree="emit('commitTree', $event)"
+    @commit-accordion="emit('commitAccordion', $event)"
+    @commit-carousel="emit('commitCarousel', $event)"
+    @view-tab-content="emit('viewTabContent', $event)"
+    @edit-tab-content="emit('editTabContent', $event)"
+    @reset-tabs-preview="emit('resetTabsPreview', $event)"
   />
-  <select
-    v-else-if="kind === 'vr-tour-initial-scene'"
-    :value="textValue()"
-    :aria-label="label"
-    class="h-9 w-full rounded border border-border bg-input px-2 text-xs text-surface outline-none focus:border-accent"
-    @change="emit('commit', ($event.target as HTMLSelectElement).value)"
-  >
-    <option v-for="scene in tourScenes()" :key="scene.id" :value="scene.id">
-      {{ scene.title }}
-    </option>
-  </select>
   <RichTextContentEditor
     v-else-if="kind === 'rich-text-content'"
-    :model-value="richTextDocument()"
+    :model-value="fieldValue<RichTextDocumentV1>()"
     @commit="emit('commit', $event)"
   />
 
@@ -133,7 +154,7 @@ function tourScenes(): VRTourSceneV1[] {
 
   <TableContentEditor
     v-else-if="kind === 'table-content'"
-    :model-value="tableData()"
+    :model-value="fieldValue<TableDataV1>()"
     :label="label"
     :error="error"
     @commit="emit('commit', $event)"
@@ -141,14 +162,14 @@ function tourScenes(): VRTourSceneV1[] {
 
   <DataGridCsvEditor
     v-else-if="kind === 'data-grid-data'"
-    :model-value="dataGridData()"
+    :model-value="fieldValue<DataGridDataV1>()"
     :label="label"
     @commit="emit('commit', $event)"
   />
 
   <SlideMenuItemsEditor
     v-else-if="kind === 'slide-menu-items'"
-    :model-value="slideMenuItems()"
+    :model-value="fieldItems<SlideMenuItemV1>()"
     :label="label"
     :invalid="Boolean(error)"
     @commit="emit('commit', $event)"
@@ -156,7 +177,7 @@ function tourScenes(): VRTourSceneV1[] {
 
   <DropdownMenuItemsEditor
     v-else-if="kind === 'dropdown-menu-items'"
-    :model-value="dropdownMenuItems()"
+    :model-value="fieldItems<DropdownMenuEntryV1>()"
     :label="label"
     :invalid="Boolean(error)"
     @commit="emit('commit', $event)"
@@ -170,69 +191,41 @@ function tourScenes(): VRTourSceneV1[] {
     @commit="emit('commit', $event)"
   />
 
-  <TabsItemsEditor
-    v-else-if="kind === 'tabs-items'"
-    :model-value="tabsItems()"
-    :label="label"
-    :add-label="moduleEditorText.addItem"
-    :remove-label="moduleEditorText.removeItem"
-    :id-label="moduleEditorText.identifier"
-    :title-label="moduleEditorText.title"
-    :content-label="moduleEditorText.content"
-    :new-item-title="moduleEditorText.newTab"
-    :count-label="moduleEditorText.count"
-    :item-label="moduleEditorText.item"
-    :invalid="Boolean(error)"
-    :error="error"
-    @commit="emit('commitTabs', $event)"
-  />
-
-  <AccordionItemsEditor
-    v-else-if="kind === 'accordion-items'"
-    :model-value="accordionItems()"
-    :label="label"
-    :add-label="moduleEditorText.addItem"
-    :remove-label="moduleEditorText.removeItem"
-    :id-label="moduleEditorText.identifier"
-    :title-label="moduleEditorText.title"
-    :content-label="moduleEditorText.content"
-    :new-item-title="moduleEditorText.newSection"
-    :count-label="moduleEditorText.count"
-    :item-label="moduleEditorText.item"
-    :invalid="Boolean(error)"
-    :error="error"
-    @commit="emit('commitAccordion', $event)"
-  />
-
   <MultilineModuleTextEditor
     v-else-if="kind === 'modal-content'"
+    :owner="tabsOwner"
+    :config="config"
     :model-value="textValue()"
     :label="label"
     :max-length="MODAL_MODULE_LIMITS.content"
     :rows="8"
     wrap="soft"
     :error="error"
-    @commit="emit('commit', $event)"
+    @commit="emit('commitScalar', $event)"
   />
 
   <MultilineModuleTextEditor
     v-else-if="kind === 'markdown-source'"
+    :owner="tabsOwner"
+    :config="config"
     :model-value="textValue()"
     :label="label"
     :max-length="MARKDOWN_MODULE_LIMITS.source"
     :monospace="false"
     wrap="soft"
     :error="error"
-    @commit="emit('commit', $event)"
+    @commit="emit('commitScalar', $event)"
   />
 
   <MultilineModuleTextEditor
     v-else-if="kind === 'code-block-code'"
+    :owner="tabsOwner"
+    :config="config"
     :model-value="textValue()"
     :label="label"
     :max-length="CODE_BLOCK_MODULE_LIMITS.code"
     :rows="12"
     :error="error"
-    @commit="emit('commit', $event)"
+    @commit="emit('commitScalar', $event)"
   />
 </template>

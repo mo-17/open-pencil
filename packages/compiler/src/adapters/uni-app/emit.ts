@@ -1,3 +1,4 @@
+import { omitUnsupportedMultipleSelect } from '#compiler/adapters/native-controls'
 import type {
   ComponentDef,
   IRElement,
@@ -170,6 +171,8 @@ function emitComponentReference(
 }
 
 function emitElement(node: IRElement, depth: number, context: TemplateContext): string {
+  if (omitUnsupportedMultipleSelect(node, 'uni-app', context.warn))
+    return `${'  '.repeat(depth)}<view />`
   warnElementFeatures(node, context)
   if (node.rawHtml) warnMiniProgramUnsupported(context.warn, 'uni-app', 'raw-html', node.sourceId)
   const tag = miniProgramElementTag(node)

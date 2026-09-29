@@ -13,16 +13,19 @@ import {
   readBackendProviderDocumentRequest
 } from '../document'
 import { BackendDraftOperationError } from '../draft'
+import { templateToast } from '../feedback/actions'
 import type { NotesTemplateEditor } from '../notes-template'
 import { templateCommandRecoveryActions } from '../template-command-recovery'
 import { createCommerceCatalogPage } from './catalog/page'
 import { createCommerceCatalogState } from './catalog/state'
 import { createCommercePageContext } from './context'
 import { createCommerceLayout } from './layout'
+import { createCommerceLoginIntroduction } from './login'
 import { createCommerceMerchantPages } from './merchant/pages'
 import type { CommerceMerchantMode } from './merchant/types'
 import { createCommerceProducts } from './products'
 import { createCommerceRecoverySection } from './recovery/section'
+import { adaptCommercePagesToMobile } from './responsive'
 import { commerceState as state, setCommerceState as set } from './state'
 
 export function canInstallCommerceExample(editor: NotesTemplateEditor): boolean {
@@ -107,6 +110,7 @@ export function createCommercePages(
     errorTarget: names.error,
     busy: checkoutBusy,
     confirmation: copy.recoveryConfirm,
+    succeeded: [templateToast(copy.orderRecorded)],
     acknowledged: [
       clear(names.error),
       setDoc(selected, '""'),
@@ -127,6 +131,7 @@ export function createCommercePages(
     errorTarget: names.error,
     busy: cancelBusy,
     confirmation: copy.recoveryConfirm,
+    succeeded: [templateToast(copy.cancelled)],
     acknowledged: [
       clear(names.error),
       setDoc(selectedOrder, '""'),
@@ -147,7 +152,7 @@ export function createCommercePages(
     idempotencyKeyTarget: names.checkoutKey,
     resultTarget: names.order,
     errorTarget: names.error,
-    onSuccess: [checkoutRecovery.inspect()],
+    onSuccess: [templateToast(copy.orderRecorded), checkoutRecovery.inspect()],
     onError: [checkoutRecovery.inspect()]
   }
   const cancel: ActionDef = {
@@ -159,7 +164,7 @@ export function createCommercePages(
     idempotencyKeyTarget: names.cancelKey,
     resultTarget: names.cancel,
     errorTarget: names.error,
-    onSuccess: [cancelRecovery.inspect()],
+    onSuccess: [templateToast(copy.cancelled), cancelRecovery.inspect()],
     onError: [cancelRecovery.inspect()]
   }
   const productSource = {
@@ -242,10 +247,11 @@ export function createCommercePages(
       { lowcodeDocumentState: docStates, lowcodeAuthRedirect: paths.login },
       'Configure checkout state'
     )
-    const login = page(copy.login, paths.login, [])
+    const login = page(copy.login, paths.login, [], false, 800)
     text(login, copy.shop, 48, 44, 850, { fontSize: 32 })
     text(login, copy.loginHint, 48, 104)
-    button(login, copy.signIn, 48, 160, [
+    const loginIntro = createCommerceLoginIntroduction(layout, login, 174, locale)
+    button(login, copy.signIn, loginIntro.x, loginIntro.y, [
       {
         id: crypto.randomUUID(),
         kind: 'backendAuth',
@@ -254,7 +260,7 @@ export function createCommercePages(
         errorTarget: names.error
       }
     ])
-    error(login, 226)
+    error(login, loginIntro.errorY)
     const shop = page(
       copy.shop,
       paths.shop,
@@ -348,6 +354,7 @@ export function createCommercePages(
         `!!${merchant.browseStore}`
       )
     }
+    layout.section(shop, 'Order review', 644, 528)
     text(shop, copy.review, 48, 662, 850, { fontSize: 24 })
     text(shop, copy.chooseFirst, 48, 706, 860, {
       bindings: {
@@ -510,6 +517,7 @@ export function createCommercePages(
       { renderCondition: `item.status === "pending" && !${cancelLocked}` }
     )
     pagination(orderPage, ordersAfter, names.ordersCursor, 476)
+    layout.section(orderPage, 'Selected order', 528, 374)
     text(orderPage, copy.selectedOrder, 48, 544, 880, { fontSize: 22 })
     text(orderPage, '', 48, 584, 880, {
       height: 60,
@@ -564,6 +572,7 @@ export function createCommercePages(
     })
     const admin = createCommerceCatalogPage(layout, copy, catalog, paths)
     if (merchant) createCommerceMerchantPages(layout, merchant, admin)
+    adaptCommercePagesToMobile(editor, pageIds, locale)
   })
   return { pageIds, paths }
 }

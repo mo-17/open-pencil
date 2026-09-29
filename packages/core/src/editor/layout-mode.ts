@@ -1,130 +1,95 @@
-import { pick } from 'es-toolkit/object'
+import { isEqual } from 'es-toolkit'
 
 import { isAutoLayoutMode, type LayoutMode, type SceneNode } from '@open-pencil/scene-graph'
 
-import { computeLayout } from '#core/layout'
-
+import type { createNodePreviewActions } from './node-preview'
 import type { EditorContext } from './types'
 
-export function createLayoutModeActions(ctx: EditorContext) {
+export function createLayoutModeActions(
+  ctx: EditorContext,
+  previews: ReturnType<typeof createNodePreviewActions>
+) {
   function setLayoutMode(id: string, mode: LayoutMode) {
+    // A panel change supersedes any unfinished numeric edit. Read its baseline
+    // only after cancellation has restored the authored geometry.
+    previews.cancelNodePreviews()
     const node = ctx.graph.getNode(id)
-    if (!node) return
+    if (!node || node.layoutMode === mode) return
 
-    const previous = captureLayoutState(node)
-    const updates = layoutModeUpdates(ctx, node, id, mode)
-
-    ctx.graph.updateNode(id, updates)
-    // Phase 2 §6: only auto-layout modes need Yoga; FREE / NONE don't.
-    if (isAutoLayoutMode(mode)) computeLayout(ctx.graph, id)
-    ctx.runLayoutForNode(id)
-
-    const updated = ctx.graph.getNode(id)
-    if (!updated) return
-    const finalState = pickState(updated, Object.keys(previous) as (keyof SceneNode)[])
-
-    ctx.undo.push({
-      label: isAutoLayoutMode(mode) ? 'Add auto layout' : 'Remove auto layout',
-      forward: () => {
-        ctx.graph.updateNode(id, finalState)
-        if (isAutoLayoutMode(mode)) computeLayout(ctx.graph, id)
-        ctx.runLayoutForNode(id)
-      },
-      inverse: () => {
-        ctx.graph.updateNode(id, previous)
-        ctx.runLayoutForNode(id)
-      }
+    const preview = previews.beginNodePreview(
+      isAutoLayoutMode(mode) ? 'Set auto layout' : 'Remove auto layout',
+      { preserveSourceMetadata: true }
+    )
+    const source = structuredClone(node.source)
+    source.editedFields = [...new Set([...source.editedFields, 'layoutMode'])]
+    preview.update(id, {
+      ...layoutModeUpdates(ctx, node, mode),
+      source,
+      // Imported Hug measurements describe the previous flow. An explicit
+      // activation must measure the current flow; undo keeps the original cache.
+      ...(isAutoLayoutMode(mode) ? { derivedLayout: null } : {})
     })
+    // Capture the full layout delta, including children, Hug ancestors and siblings.
+    preview.commit(layoutModeSource)
   }
 
   return { setLayoutMode }
 }
 
-function captureLayoutState(node: SceneNode): Partial<SceneNode> {
-  return {
-    layoutMode: node.layoutMode,
-    itemSpacing: node.itemSpacing,
-    paddingTop: node.paddingTop,
-    paddingRight: node.paddingRight,
-    paddingBottom: node.paddingBottom,
-    paddingLeft: node.paddingLeft,
-    primaryAxisSizing: node.primaryAxisSizing,
-    counterAxisSizing: node.counterAxisSizing,
-    primaryAxisAlign: node.primaryAxisAlign,
-    counterAxisAlign: node.counterAxisAlign,
-    gridTemplateColumns: node.gridTemplateColumns,
-    gridTemplateRows: node.gridTemplateRows,
-    gridColumnGap: node.gridColumnGap,
-    gridRowGap: node.gridRowGap,
-    width: node.width,
-    height: node.height
-  }
-}
-
-function pickState(node: SceneNode, keys: (keyof SceneNode)[]): Partial<SceneNode> {
-  return pick(node, keys) as Partial<SceneNode>
-}
-
 function layoutModeUpdates(
   ctx: EditorContext,
   node: SceneNode,
-  id: string,
   mode: LayoutMode
 ): Partial<SceneNode> {
   const updates: Partial<SceneNode> = { layoutMode: mode }
-  if (mode === 'GRID' && node.layoutMode !== 'GRID') {
-    applyGridDefaults(ctx, node, id, updates)
-  } else if (isAutoLayoutMode(mode) && !isAutoLayoutMode(node.layoutMode)) {
-    // Phase 2 §6: any transition INTO an auto-layout mode FROM a
-    // non-auto-layout mode (NONE or FREE) gets fresh auto-layout defaults.
-    Object.assign(updates, autoLayoutDefaults())
+  // Layout preferences belong to the document, even while freeform is active.
+  // Initialize only absent grid axes; switching mode never resets authored values.
+  if (mode === 'GRID') {
+    const count = ctx.graph.getChildren(node.id).length
+    const cols = node.gridTemplateColumns.length || Math.max(2, Math.ceil(Math.sqrt(count)))
+    if (node.gridTemplateColumns.length === 0) {
+      updates.gridTemplateColumns = Array.from({ length: cols }, () => ({
+        sizing: 'FR' as const,
+        value: 1
+      }))
+    }
+    if (node.gridTemplateRows.length === 0) {
+      updates.gridTemplateRows = Array.from(
+        { length: Math.max(1, Math.ceil(count / cols)) },
+        () => ({
+          sizing: 'FR' as const,
+          value: 1
+        })
+      )
+    }
   }
   return updates
 }
 
-function applyGridDefaults(
-  ctx: EditorContext,
+/** Keep imported metadata consistent with the complete, undoable layout delta. */
+function layoutModeSource(
   node: SceneNode,
-  id: string,
-  updates: Partial<SceneNode>
-) {
-  const children = ctx.graph.getChildren(id)
-  const cols = Math.max(2, Math.ceil(Math.sqrt(children.length)))
-  const rows = Math.max(1, Math.ceil(children.length / cols))
-  updates.gridTemplateColumns = Array.from({ length: cols }, () => ({
-    sizing: 'FR' as const,
-    value: 1
-  }))
-  updates.gridTemplateRows = Array.from({ length: rows }, () => ({
-    sizing: 'FR' as const,
-    value: 1
-  }))
-  updates.gridColumnGap = 0
-  updates.gridRowGap = 0
-  updates.primaryAxisSizing = 'FIXED'
-  updates.counterAxisSizing = 'FIXED'
-  if (node.primaryAxisSizing === 'HUG' || node.counterAxisSizing === 'HUG') {
-    const maxChildW = Math.max(...children.map((child) => child.width), 100)
-    const maxChildH = Math.max(...children.map((child) => child.height), 100)
-    updates.width = maxChildW * cols
-    updates.height = maxChildH * rows
+  before: Readonly<Partial<SceneNode>>
+): Partial<SceneNode> {
+  const changed = (Object.keys(before) as (keyof SceneNode)[]).filter(
+    (key) => key !== 'source' && !isEqual(before[key], node[key])
+  )
+  const source = structuredClone(node.source)
+  source.editedFields = [...new Set([...source.editedFields, ...changed])]
+  if (changed.includes('layoutMode') && source.fig.layout) {
+    source.fig.layout.stackMode =
+      node.layoutMode === 'VERTICAL' || node.layoutMode === 'HORIZONTAL' ? node.layoutMode : 'NONE'
   }
-  updates.paddingTop = 0
-  updates.paddingRight = 0
-  updates.paddingBottom = 0
-  updates.paddingLeft = 0
-}
-
-function autoLayoutDefaults(): Partial<SceneNode> {
-  return {
-    itemSpacing: 0,
-    paddingTop: 0,
-    paddingRight: 0,
-    paddingBottom: 0,
-    paddingLeft: 0,
-    primaryAxisSizing: 'HUG',
-    counterAxisSizing: 'HUG',
-    primaryAxisAlign: 'MIN',
-    counterAxisAlign: 'MIN'
+  if (changed.includes('width') || changed.includes('height')) {
+    source.fig.rawSize = null
+    delete source.fig.rawNodeFields.fillGeometry
+    delete source.fig.rawNodeFields.strokeGeometry
+    delete source.fig.rawNodeFields.strokeWeight
+    // Imported TEXT vectorData can be its authored layout path.
+    if (node.type !== 'TEXT') delete source.fig.rawNodeFields.vectorData
   }
+  if (changed.some((key) => key === 'x' || key === 'y' || key === 'width' || key === 'height')) {
+    source.fig.rawTransform = null
+  }
+  return { source }
 }

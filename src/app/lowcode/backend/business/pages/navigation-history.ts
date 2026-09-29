@@ -6,7 +6,7 @@ import type { BusinessTemplateEditor } from '../types'
 export function updateBusinessNavigationNode(
   editor: BusinessTemplateEditor,
   id: string,
-  changes: Pick<Partial<SceneNode>, 'height' | 'pluginData'>,
+  changes: Pick<Partial<SceneNode>, 'height' | 'pluginData' | 'interactiveProps' | 'events'>,
   label: string
 ): void {
   const node = editor.graph.getNode(id)

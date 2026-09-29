@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   CAROUSEL_MODULE_LIMITS,
+  CAROUSEL_STYLE_DEFAULTS,
+  CAROUSEL_NAVIGATION_DEFAULTS,
   createCarouselModuleInstance,
   isSafeCarouselHref,
   resolveCarouselModule
@@ -13,7 +15,83 @@ function sparseArray<T>(length: number): T[] {
   return value
 }
 
+function legacyInstance() {
+  const current = createCarouselModuleInstance()
+  const config = structuredClone(current.config)
+  for (const key of Object.keys({ ...CAROUSEL_STYLE_DEFAULTS, ...CAROUSEL_NAVIGATION_DEFAULTS }))
+    Reflect.deleteProperty(config, key)
+  return { ...current, configVersion: 1, config }
+}
+
 describe('built-in carousel plugin', () => {
+  test('creates style version 3 with the previous split-layout defaults', () => {
+    const instance = createCarouselModuleInstance()
+    expect(instance.configVersion).toBe(3)
+    expect(instance.config).toMatchObject({
+      layout: 'split',
+      imageFit: 'cover',
+      textPosition: 'bottom',
+      textAlign: 'left',
+      overlayOpacity: 0.45,
+      paginationStyle: 'dots',
+      showDots: true
+    })
+  })
+
+  test('resolves a strict v1 into a defensive v3 projection without rewriting legacy data', () => {
+    const legacy = legacyInstance()
+    const original = structuredClone(legacy)
+    const resolved = resolveCarouselModule(legacy)
+    if (!resolved?.ok) throw new Error('Expected legacy carousel')
+    expect(resolved.config).toMatchObject(CAROUSEL_STYLE_DEFAULTS)
+    expect(resolved.instance.configVersion).toBe(3)
+    expect(legacy).toEqual(original)
+    resolved.config.slides[0].title = 'Changed projection'
+    expect(legacy).toEqual(original)
+    expect(resolveCarouselModule({ ...legacy, configVersion: 2 })?.ok).toBe(false)
+    expect(
+      resolveCarouselModule({ ...legacy, config: { ...legacy.config, layout: 'overlay' } })?.ok
+    ).toBe(false)
+    expect(resolveCarouselModule({ ...legacy, configVersion: 3 })?.ok).toBe(false)
+  })
+
+  test('validates every style field and finite overlay bounds without coercion', () => {
+    for (const patch of [
+      { layout: 'grid' },
+      { imageFit: 'crop' },
+      { textPosition: 'baseline' },
+      { textAlign: 'justify' },
+      { paginationStyle: 'thumbnails' },
+      { overlayOpacity: -0.01 },
+      { overlayOpacity: 0.91 },
+      { overlayOpacity: Number.NaN },
+      { overlayOpacity: Number.POSITIVE_INFINITY },
+      { overlayOpacity: '0.45' },
+      { imageOnly: true }
+    ])
+      expect(() => createCarouselModuleInstance(patch)).toThrow()
+    for (const overlayOpacity of [0, 0.45, 0.9]) {
+      const instance = createCarouselModuleInstance({ layout: 'overlay', overlayOpacity })
+      expect(resolveCarouselModule(instance)?.ok).toBe(true)
+    }
+  })
+
+  test('preserves inactive overlay and pagination preferences in canonical data', () => {
+    const source = createCarouselModuleInstance({
+      layout: 'split',
+      imageFit: 'contain',
+      textPosition: 'top',
+      textAlign: 'right',
+      overlayOpacity: 0.2,
+      showDots: false,
+      paginationStyle: 'fraction'
+    })
+    const resolved = resolveCarouselModule(source)
+    expect(resolved?.ok && resolved.config).toEqual(source.config)
+    const incomplete = structuredClone(source)
+    Reflect.deleteProperty(incomplete.config, 'imageFit')
+    expect(resolveCarouselModule(incomplete)?.ok).toBe(false)
+  })
   test('creates a bounded accessible default and returns defensive slide copies', () => {
     const source = [
       {

@@ -26,7 +26,7 @@ export function handleMarqueeMove(
   const localMaxY = Math.max(localMin.ly, localMax.ly)
 
   const hits: string[] = []
-  for (const node of editor.graph.getChildren(parentId)) {
+  for (const node of editor.getCanvasSelectionChildren(parentId)) {
     if (!node.visible || node.locked) continue
     if (
       node.x + node.width > localMinX &&

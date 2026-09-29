@@ -1,3 +1,6 @@
+import { reactAutocompleteImport } from '#compiler/adapters/autocomplete/emit'
+import { reactInputControlImport } from '#compiler/adapters/input-control/emit'
+import { nodesUseMountedValidationSummary } from '#compiler/adapters/validation-summary'
 import type { IRNode, IRTree } from '#compiler/ir/types'
 
 import {
@@ -37,6 +40,7 @@ import { motionToken } from './motion/key'
 import { buildReactPageImport } from './page-imports'
 import { pageUsesRequestDebounce, pageUsesRequestGate } from './request-timing'
 import type { PagePathInfo } from './route-paths'
+import { enhancedSelectImport } from './select/emit'
 import { collectKitImports, kitImportLine } from './ui-kit/registry'
 import type { UIKitAdapter } from './ui-kit/types'
 
@@ -376,6 +380,9 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     componentImportBlock +
     lucideImport +
     moduleImportBlock +
+    enhancedSelectImport(ir.children, componentImportPrefix) +
+    reactAutocompleteImport(ir.children, componentImportPrefix) +
+    reactInputControlImport(ir.children, componentImportPrefix) +
     kitImportBlock +
     i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
@@ -545,7 +552,7 @@ function buildLowcodeRuntimeImports(
   const confirm = pageUsesConfirm(ir) ? `import { __opConfirm } from '${paths.confirm}'\n` : ''
   const validation =
     (ir.validatedFields?.length ?? 0) > 0
-      ? `import { ${validationImportNames(ir.validatedFields ?? []).join(', ')} } from '${paths.validation}'\n`
+      ? `import { ${validationImportNames(ir.validatedFields ?? [], ir.children).join(', ')} } from '${paths.validation}'\n`
       : ''
   const analytics = pageUsesAnalytics(ir)
     ? `import { __opTrackEvent } from '${paths.analytics}'\n`
@@ -554,10 +561,12 @@ function buildLowcodeRuntimeImports(
 }
 
 function validationImportNames(
-  fields: readonly NonNullable<IRTree['validatedFields']>[number][]
+  fields: readonly NonNullable<IRTree['validatedFields']>[number][],
+  nodes: readonly IRNode[]
 ): string[] {
   const names = ['validateValue']
   if (validationUsesRemote(fields)) names.push('validateRemote')
+  if (nodesUseMountedValidationSummary(nodes)) names.push('__OpenPencilMountedValidationSummary')
   return names.sort()
 }
 

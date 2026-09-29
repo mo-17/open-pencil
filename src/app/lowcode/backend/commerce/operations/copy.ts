@@ -1,3 +1,5 @@
+import type { BackendCommerceOperation } from '@open-pencil/lowcode/backend'
+
 const english = {
   shop: 'Commerce shop',
   cart: 'Shopping cart',
@@ -90,6 +92,18 @@ const english = {
   purchaseChildren: 'Store orders for the selected purchase',
   details: 'Items and shipment details',
   success: 'Recorded',
+  cartSaved: 'Cart quantity saved.',
+  cartRemoved: 'Item removed from your cart.',
+  purchaseRecorded: 'Purchase recorded. Payment is still required.',
+  purchaseCancelled: 'Unpaid purchase cancelled.',
+  paymentRecorded: 'Simulation result recorded. No real payment was collected.',
+  refundRequested: 'Refund request submitted for review.',
+  refundApproved: 'Refund approval recorded. No money was transferred.',
+  refundRejected: 'Refund rejection recorded.',
+  shipmentRecorded: 'Shipment details recorded manually. No carrier request was sent.',
+  deliveryRecorded: 'Delivery confirmation recorded.',
+  settlementRecorded: 'Settlement recorded for bookkeeping. No money was transferred.',
+  inventoryRestocked: 'Restock recorded. Review the server result below.',
   empty: 'No saved request',
   unavailable: 'Saved request is incompatible',
   saved: 'Saved request',
@@ -184,6 +198,18 @@ const chinese: OperationsCopy = {
   purchaseChildren: '当前采购单的店铺订单',
   details: '商品及物流详情',
   success: '已记录',
+  cartSaved: '购物车数量已保存。',
+  cartRemoved: '商品已从购物车移除。',
+  purchaseRecorded: '采购单已记录，仍需付款。',
+  purchaseCancelled: '未付款采购单已取消。',
+  paymentRecorded: '模拟结果已记录，未收取真实款项。',
+  refundRequested: '退款申请已提交，等待审核。',
+  refundApproved: '退款同意结果已登记，尚未划转资金。',
+  refundRejected: '退款拒绝结果已登记。',
+  shipmentRecorded: '发货信息已手动登记，未调用快递服务。',
+  deliveryRecorded: '收货确认已记录。',
+  settlementRecorded: '结算账务已登记，尚未划转资金。',
+  inventoryRestocked: '补货已记录，请核对下方服务器结果。',
   empty: '没有已保存请求',
   unavailable: '已保存请求与当前版本不兼容',
   saved: '已保存请求',
@@ -191,4 +217,25 @@ const chinese: OperationsCopy = {
 }
 export function commerceOperationsCopy(locale: string): OperationsCopy {
   return locale.toLowerCase().startsWith('zh') ? chinese : english
+}
+
+export function commerceOperationFeedback(
+  copy: OperationsCopy,
+  operation: BackendCommerceOperation
+): string {
+  const messages: Record<BackendCommerceOperation, string> = {
+    'cart.set': copy.cartSaved,
+    'cart.remove': copy.cartRemoved,
+    'cart.checkout': copy.purchaseRecorded,
+    'purchase.cancel': copy.purchaseCancelled,
+    'payment.simulate': copy.paymentRecorded,
+    'refund.request': copy.refundRequested,
+    'refund.approve': copy.refundApproved,
+    'refund.reject': copy.refundRejected,
+    'shipment.dispatch': copy.shipmentRecorded,
+    'shipment.deliver': copy.deliveryRecorded,
+    'settlement.record': copy.settlementRecorded,
+    'inventory.restock': copy.inventoryRestocked
+  }
+  return messages[operation]
 }

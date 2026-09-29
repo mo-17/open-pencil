@@ -1,10 +1,20 @@
 import type { SceneGraph, SceneNode, NodeType } from './'
 import { getWorldMatrix } from './coordinate'
 import Matrix from './matrix'
+import type { Rect } from './primitives'
+
+/** Host-owned presentation can restrict input without changing authored visibility. */
+export interface HitTestOptions {
+  /** Optional view boundary: ancestors outside it do not clip or hide this scope. */
+  rootId?: string
+  includeChild?: (parent: SceneNode, child: SceneNode) => boolean
+  childClip?: (parent: SceneNode) => Rect | null
+}
 
 const CONTAINER_TYPES = new Set<NodeType>([
   'CANVAS',
   'FRAME',
+  'FORM',
   'GROUP',
   'SECTION',
   'COMPONENT',
@@ -39,15 +49,16 @@ function containsPoint(
   py: number,
   node: SceneNode,
   graph: SceneGraph,
-  transformCache: Map<string, boolean>
+  transformCache: Map<string, boolean>,
+  bounds: Rect = { x: 0, y: 0, width: node.width, height: node.height }
 ): boolean {
   if (!hasTransformedAncestor(node, graph, transformCache)) {
     const absolute = graph.getAbsolutePosition(node.id)
     return (
-      px >= absolute.x &&
-      px <= absolute.x + node.width &&
-      py >= absolute.y &&
-      py <= absolute.y + node.height
+      px >= absolute.x + bounds.x &&
+      px <= absolute.x + bounds.x + bounds.width &&
+      py >= absolute.y + bounds.y &&
+      py <= absolute.y + bounds.y + bounds.height
     )
   }
 
@@ -57,7 +68,54 @@ function containsPoint(
   if (!inv) return false
 
   const [localX, localY] = Matrix.mapPoints(inv, [px, py])
-  return localX >= 0 && localX <= node.width && localY >= 0 && localY <= node.height
+  return (
+    localX >= bounds.x &&
+    localX <= bounds.x + bounds.width &&
+    localY >= bounds.y &&
+    localY <= bounds.y + bounds.height
+  )
+}
+
+function childrenContainPoint(
+  graph: SceneGraph,
+  px: number,
+  py: number,
+  parent: SceneNode,
+  transformCache: Map<string, boolean>,
+  options?: HitTestOptions
+): boolean {
+  if (parent.clipsContent && !containsPoint(px, py, parent, graph, transformCache)) return false
+  const clip = options?.childClip?.(parent)
+  return (
+    !clip ||
+    (clip.width > 0 &&
+      clip.height > 0 &&
+      containsPoint(px, py, parent, graph, transformCache, clip))
+  )
+}
+
+function scopeIncludesPoint(
+  graph: SceneGraph,
+  px: number,
+  py: number,
+  scopeId: string,
+  transformCache: Map<string, boolean>,
+  options?: HitTestOptions
+): boolean {
+  let node = graph.getNode(scopeId)
+  while (node) {
+    if (!node.visible || node.internalOnly) return false
+    if (node.id === options?.rootId) return true
+    const parent = node.parentId ? graph.getNode(node.parentId) : undefined
+    if (!parent) return options?.rootId === undefined
+    if (
+      options?.includeChild?.(parent, node) === false ||
+      !childrenContainPoint(graph, px, py, parent, transformCache, options)
+    )
+      return false
+    node = parent
+  }
+  return false
 }
 
 function hitTestOpaqueContainer(
@@ -67,10 +125,11 @@ function hitTestOpaqueContainer(
   child: SceneNode,
   childId: string,
   deep: boolean,
-  transformCache: Map<string, boolean>
+  transformCache: Map<string, boolean>,
+  options?: HitTestOptions
 ): SceneNode | null {
   if (!containsPoint(px, py, child, graph, transformCache)) return null
-  const childHit = hitTestChildren(graph, px, py, childId, deep, transformCache)
+  const childHit = hitTestChildren(graph, px, py, childId, deep, transformCache, options)
   if (childHit) return child
   if (hasVisibleFillOrStroke(child)) return child
   return null
@@ -82,17 +141,18 @@ function hitTestTransparentContainer(
   child: SceneNode,
   childId: string,
   deep: boolean,
-  transformCache: Map<string, boolean>
+  transformCache: Map<string, boolean>,
+  options?: HitTestOptions
 ): SceneNode | null {
   if (child.type === 'GROUP') {
     if (!containsPoint(px, py, child, graph, transformCache)) return null
 
-    if (deep) return hitTestChildren(graph, px, py, childId, deep, transformCache) ?? child
+    if (deep) return hitTestChildren(graph, px, py, childId, deep, transformCache, options) ?? child
 
     return child
   }
 
-  const childHit = hitTestChildren(graph, px, py, childId, deep, transformCache)
+  const childHit = hitTestChildren(graph, px, py, childId, deep, transformCache, options)
   if (childHit) {
     if (child.locked) return child
     return childHit
@@ -109,27 +169,45 @@ function hitTestChildren(
   py: number,
   parentId: string,
   deep = false,
-  transformCache = new Map<string, boolean>()
+  transformCache = new Map<string, boolean>(),
+  options?: HitTestOptions
 ): SceneNode | null {
   const parent = graph.nodes.get(parentId)
   if (!parent) return null
 
-  if (parent.clipsContent) {
-    if (!containsPoint(px, py, parent, graph, transformCache)) return null
-  }
+  if (!childrenContainPoint(graph, px, py, parent, transformCache, options)) return null
 
   for (let i = parent.childIds.length - 1; i >= 0; i--) {
     const childId = parent.childIds[i]
     const child = graph.nodes.get(childId)
     if (!child || child.internalOnly || !child.visible) continue
+    if (options?.includeChild?.(parent, child) === false) continue
     if (CONTAINER_TYPES.has(child.type)) {
       if (OPAQUE_CONTAINER_TYPES.has(child.type) && !deep) {
-        const hit = hitTestOpaqueContainer(graph, px, py, child, childId, deep, transformCache)
+        const hit = hitTestOpaqueContainer(
+          graph,
+          px,
+          py,
+          child,
+          childId,
+          deep,
+          transformCache,
+          options
+        )
         if (hit) return hit
         continue
       }
 
-      const hit = hitTestTransparentContainer(graph, px, py, child, childId, deep, transformCache)
+      const hit = hitTestTransparentContainer(
+        graph,
+        px,
+        py,
+        child,
+        childId,
+        deep,
+        transformCache,
+        options
+      )
       if (hit) return hit
       continue
     }
@@ -140,24 +218,38 @@ function hitTestChildren(
   return null
 }
 
+function hitTestInScope(
+  graph: SceneGraph,
+  px: number,
+  py: number,
+  deep: boolean,
+  scopeId?: string,
+  options?: HitTestOptions
+): SceneNode | null {
+  const scope = scopeId ?? graph.rootId
+  const transformCache = new Map<string, boolean>()
+  if (options && !scopeIncludesPoint(graph, px, py, scope, transformCache, options)) return null
+  return hitTestChildren(graph, px, py, scope, deep, transformCache, options)
+}
+
 export function hitTest(
   graph: SceneGraph,
   px: number,
   py: number,
-  scopeId?: string
+  scopeId?: string,
+  options?: HitTestOptions
 ): SceneNode | null {
-  const scope = scopeId ?? graph.rootId
-  return hitTestChildren(graph, px, py, scope, false)
+  return hitTestInScope(graph, px, py, false, scopeId, options)
 }
 
 export function hitTestDeep(
   graph: SceneGraph,
   px: number,
   py: number,
-  scopeId?: string
+  scopeId?: string,
+  options?: HitTestOptions
 ): SceneNode | null {
-  const scope = scopeId ?? graph.rootId
-  return hitTestChildren(graph, px, py, scope, true)
+  return hitTestInScope(graph, px, py, true, scopeId, options)
 }
 
 function hitTestFrameChildren(
@@ -165,12 +257,13 @@ function hitTestFrameChildren(
   px: number,
   py: number,
   parentId: string,
-  offsetX: number,
-  offsetY: number,
-  excludeIds: Set<string>
+  excludeIds: Set<string>,
+  transformCache: Map<string, boolean>,
+  options?: HitTestOptions
 ): SceneNode | null {
   const parent = graph.nodes.get(parentId)
   if (!parent) return null
+  if (!childrenContainPoint(graph, px, py, parent, transformCache, options)) return null
 
   let best: SceneNode | null = null
 
@@ -178,16 +271,14 @@ function hitTestFrameChildren(
     if (excludeIds.has(childId)) continue
     const child = graph.nodes.get(childId)
     if (!child || child.internalOnly || !child.visible) continue
-
-    const ax = offsetX + child.x
-    const ay = offsetY + child.y
+    if (options?.includeChild?.(parent, child) === false) continue
 
     if (!CONTAINER_TYPES.has(child.type)) continue
-    if (px < ax || px > ax + child.width || py < ay || py > ay + child.height) continue
+    if (!containsPoint(px, py, child, graph, transformCache)) continue
 
     best = child
 
-    const deeper = hitTestFrameChildren(graph, px, py, childId, ax, ay, excludeIds)
+    const deeper = hitTestFrameChildren(graph, px, py, childId, excludeIds, transformCache, options)
     if (deeper) best = deeper
   }
 
@@ -199,7 +290,11 @@ export function hitTestFrame(
   px: number,
   py: number,
   excludeIds: Set<string>,
-  scopeId?: string
+  scopeId?: string,
+  options?: HitTestOptions
 ): SceneNode | null {
-  return hitTestFrameChildren(graph, px, py, scopeId ?? graph.rootId, 0, 0, excludeIds)
+  const scope = scopeId ?? graph.rootId
+  const transformCache = new Map<string, boolean>()
+  if (options && !scopeIncludesPoint(graph, px, py, scope, transformCache, options)) return null
+  return hitTestFrameChildren(graph, px, py, scope, excludeIds, transformCache, options)
 }

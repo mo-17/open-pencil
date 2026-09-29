@@ -1,7 +1,9 @@
 import type { StateDef } from '@open-pencil/scene-graph'
 
 import type { BusinessInput } from '../types'
+import { foodText, FOOD_ORDERING_COLORS } from './food-ordering/style'
 import { renderBusinessList } from './listing'
+import { businessText } from './presentation/style'
 import type { BusinessScreen } from './screen'
 import { businessLiteral, businessSet } from './state'
 
@@ -24,8 +26,30 @@ export function prepareBusinessInputs(screen: BusinessScreen, inputs: readonly B
         : state.name
     return { input, state, label, valueExpr }
   })
-  const height = entries.reduce((sum, entry) => sum + inputHeight(entry.input), 0)
-  return { entries, height }
+  const positions = inputPositions(inputs)
+  const height = positions.reduce(
+    (bottom, position) => Math.max(bottom, position.y + position.height),
+    0
+  )
+  return { entries, height, positions }
+}
+
+function inputPositions(inputs: readonly BusinessInput[]) {
+  let y = 0
+  let column = 0
+  return inputs.map((input) => {
+    const wide = input.kind === 'relation' || input.kind === 'textarea'
+    if (wide && column) {
+      y += 100
+      column = 0
+    }
+    const rect = { x: column * 420, y, width: wide ? 820 : 400, height: inputHeight(input) }
+    if (wide || column) {
+      y += inputHeight(input)
+      column = 0
+    } else column = 1
+    return rect
+  })
 }
 
 function inputHeight(input: BusinessInput): number {
@@ -112,20 +136,38 @@ export function renderBusinessInputs(
   prepared: ReturnType<typeof prepareBusinessInputs>
 ): void {
   const { ctx } = screen
-  let y = 0
-  for (const entry of prepared.entries) {
+  for (const [index, entry] of prepared.entries.entries()) {
+    const { x, y, width, height } = prepared.positions[index]
     const { input, state } = entry
     const label = ctx.label(input.label)
-    ctx.layout.text(parent, label, { x: 0, y, width: 820, height: 30 })
-    if (input.kind === 'relation') renderBusinessRelation(screen, parent, y, entry, prepared)
+    const group = ctx.layout.shape('FRAME', label + ' field', parent, x, y, width, height, {
+      fills: [],
+      strokes: [],
+      cornerRadius: 0,
+      layoutMode: 'NONE',
+      responsiveOverrides: { compact: { itemSpacing: 8 } }
+    })
+    ctx.layout.text(
+      group,
+      label,
+      { x: 0, y: 0, width, height: 30 },
+      ctx.definition.id === 'food-ordering'
+        ? foodText(FOOD_ORDERING_COLORS.muted, 14, 500)
+        : businessText(ctx.presentation, {
+            color: ctx.presentation.colors.muted,
+            size: 14,
+            weight: 500
+          })
+    )
+    if (input.kind === 'relation') renderBusinessRelation(screen, group, 0, entry, prepared)
     else
       ctx.layout.shape(
         inputControl(input),
         label,
-        parent,
+        group,
         0,
-        y + 36,
-        820,
+        36,
+        width,
         input.kind === 'textarea' ? 120 : 44,
         {
           bindings: { value: { kind: 'ref', stateId: state.id } },
@@ -144,6 +186,5 @@ export function renderBusinessInputs(
           }
         }
       )
-    y += inputHeight(input)
   }
 }

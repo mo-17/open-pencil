@@ -4,6 +4,7 @@ import { expectDefined } from '#tests/helpers/assert'
 const editor = useEditorSetupWithClear('/?test')
 
 const width = () => editor.page.getByRole('spinbutton', { name: 'Width', exact: true })
+const widthValue = () => width().locator('[data-slot="value"]')
 
 async function setTool(tool: 'FRAME' | 'SELECT') {
   await editor.page.evaluate((tool) => window.openPencil?.getStore?.().setTool(tool), tool)
@@ -92,14 +93,14 @@ test('reuses the panel for a newly drawn frame', async () => {
 })
 
 test('discards an unfinished text edit and restores normal editing on activation', async () => {
-  await width().dblclick()
+  await widthValue().dblclick()
   await editor.page.keyboard.press('ControlOrMeta+A')
   await editor.page.keyboard.type('999')
   await setTool('FRAME')
   await expect(width()).toHaveCount(0)
   await setTool('SELECT')
   await expect(width()).toHaveAttribute('aria-valuenow', '320')
-  await width().dblclick()
+  await widthValue().dblclick()
   await editor.page.keyboard.press('ControlOrMeta+A')
   await editor.page.keyboard.type('400')
   await editor.page.keyboard.press('Enter')
@@ -120,7 +121,7 @@ test('restores a bound width when a live text edit is deactivated', async () => 
     store.bindVariable(node.id, 'width', variable.id)
     return variable.id
   })
-  await width().dblclick()
+  await widthValue().dblclick()
   await editor.page.keyboard.press('ControlOrMeta+A')
   await editor.page.keyboard.type('999')
   await setTool('FRAME')
@@ -154,7 +155,7 @@ test('removes open paint portals and does not reopen them on activation', async 
 })
 
 test('cancels a held scrub before retaining the panel', async () => {
-  const box = expectDefined(await width().boundingBox(), 'width field')
+  const box = expectDefined(await widthValue().boundingBox(), 'width value')
   await editor.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await editor.page.mouse.down()
   try {
@@ -173,7 +174,7 @@ test('cancels a held scrub before retaining the panel', async () => {
   }
   await setTool('SELECT')
   await expect(width()).toHaveAttribute('aria-valuenow', '320')
-  await width().dblclick()
+  await widthValue().dblclick()
   await editor.page.keyboard.press('ControlOrMeta+A')
   await editor.page.keyboard.type('400')
   await editor.page.keyboard.press('Enter')

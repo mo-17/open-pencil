@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   type HTMLAttributes,
+  type ReactNode,
   type KeyboardEvent
 } from 'react'
 
@@ -18,6 +19,7 @@ export interface OpenPencilTabItem {
   id: string
   label: string
   content: string
+  contentChildName?: string
 }
 
 export interface OpenPencilTabsConfig {
@@ -35,10 +37,12 @@ export interface OpenPencilTabsConfig {
 
 export interface OpenPencilTabsProps extends HTMLAttributes<HTMLDivElement> {
   config: OpenPencilTabsConfig
+  panels?: Readonly<Record<string, ReactNode>>
 }
 
 export default function OpenPencilTabs({
   config,
+  panels,
   className,
   children,
   style,
@@ -100,7 +104,7 @@ ${REACT_MODULE_POSITIONED_HOST_SOURCE}
       {...hostProps}
       className={className}
       data-openpencil-tabs=""
-      style={{ ...hostStyle, background: config.backgroundColor, color: config.textColor }}
+      style={{ ...hostStyle, background: config.backgroundColor, color: config.textColor, display: 'flex', flexDirection: config.orientation === 'vertical' ? 'row' : 'column', minWidth: 0, minHeight: 0 }}
     >
       <div
         aria-label={config.label}
@@ -156,13 +160,16 @@ ${REACT_MODULE_POSITIONED_HOST_SOURCE}
       </div>
       {active ? (
         <div
+          key={active.id}
           aria-labelledby={instanceId + '-tab-' + active.id}
           id={instanceId + '-panel-' + active.id}
           role="tabpanel"
-          style={{ font: config.fontSize + 'px/1.6 system-ui, sans-serif', overflow: 'auto', padding: 16 }}
+          style={{ font: config.fontSize + 'px/1.6 system-ui, sans-serif', overflow: 'auto', padding: 16, position: 'relative', minWidth: 0, minHeight: 0 }}
           tabIndex={0}
         >
-          {active.content}
+          {panels && Object.hasOwn(panels, 'panel-' + active.id)
+            ? panels['panel-' + active.id]
+            : active.content}
         </div>
       ) : null}
       {children}

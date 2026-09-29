@@ -41,6 +41,56 @@ applicable, its saved-request review entry remains available, including after le
 to a page. Refreshing a list preserves the open form's unsent input and shows why a current selection
 is required. These display conditions do not replace server authorization or transaction checks.
 
+## Editable starter presentation
+
+All 25 Backend library starters use native editable canvas nodes. Notes use a writing workspace;
+commerce uses storefront and operations sections; the nineteen business templates use colors and
+navigation groups suited to customer work, publishing, appointments, learning and internal operations.
+Record cards separate titles from supporting fields. Selected details use compact columns and
+scrollable long text; normal form inputs share a row while relation pickers and longer text keep the
+full width. Search, filtering, confirmation and saved-request recovery retain their existing behavior.
+
+These layouts apply when creating a template in a new document. Existing canvases keep their
+authored design: there is no automatic replacement or business-data migration. To try a refreshed
+starter, create a blank document, open the Backend library and choose **Use template**. Keep all
+application routes together when previewing or exporting. Colors, spacing and labels can be edited
+like any other design; this is not a global editor theme or an enforced design system.
+
+The canvas retains the desktop design at 1000–1200 pixels. New React and Vue starters also carry
+editable **Compact (<1280px)** overrides: navigation becomes a native page picker, cards and details
+use one column, and labels move together with their inputs. Lists remain bounded scrolling regions;
+confirmation and saved-request recovery keep their original actions. Notes retain their two-page
+sign-in/workspace flow without adding a redundant navigation picker.
+
+In the embedded compiler preview, choose **Preview size → Phone, Landscape, Tablet or Desktop**.
+Changing size resizes the same iframe, so the current route and unsent inputs remain. Choose **Fit
+panel** to return to the available width. Connected NestJS previews use the same embedded size
+controls. Login authorization opens in the system browser; return to the preview after signing in. The design canvas itself continues to show the base
+desktop geometry. Select a node and open **Advanced → Responsive** to edit its compact overrides.
+
+This is responsive web output, not a native RN/Flutter or mini-program implementation. Browser
+viewport and touch emulation do not validate a physical device, mobile Safari or the system keyboard.
+Identity-service registration, password reset and password changes remain identity-provider
+configuration rather than new placeholder controls on the sign-in pages.
+
+### Operation feedback
+
+New starters use editable Toast actions after successful saves, deletes and business commands.
+Notifications close automatically after four seconds, can be dismissed manually and pause while
+being read with a pointer or keyboard focus. React and Vue exports announce them without moving
+focus. They remain usable in compact viewports and with long messages.
+
+Validation errors, failed requests and saved-request recovery stay in the page. Cancelling a
+confirmation or merely inspecting a saved request does not show a success notification. A successful
+retry clears the previous error and confirms the result; it still uses the original attempt key.
+Notes require confirmation before deletion, preserve drafts after failure and prevent repeat submits
+while a request runs.
+
+An HTTP 202 response means the command result is not confirmed: keep the saved request available
+for inspection and retry instead of reporting success. An order-created notification does not mean
+payment, delivery or payout completed. Keep the server result and recovery controls when editing
+the generated workflow; a Toast is only a short confirmation.
+
 ## Combine modules in one application
 
 An existing NestJS application can add these nineteen starters as business modules. Open **Services &

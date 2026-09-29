@@ -246,6 +246,7 @@ OpenPencil currently registers 100+ shared design tools, plus MCP-only document 
 | Tool                        | Description                                                                      |
 | --------------------------- | -------------------------------------------------------------------------------- |
 | `get_selection`             | Get currently selected nodes                                                     |
+| `get_design_brief`          | Read bounded design facts and referenced backend operations as Markdown; up to 300 nodes and 64 hierarchy levels, with explicit truncation warnings |
 | `get_page_tree`             | Get the full node tree of the current page                                       |
 | `get_current_page`          | Get the current page name and ID                                                 |
 | `get_node`                  | Get detailed properties of a node by ID                                          |

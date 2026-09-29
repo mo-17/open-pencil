@@ -453,7 +453,9 @@ describe('Vue local low-code runtimes', () => {
     )
     expect(page).toContain('__setDocState("status", "confirmed")')
     expect(page).toContain('else { __setDocState("status", "cancelled") }')
-    expect(page).toContain(`if (!__validateFields([${JSON.stringify(email.id)}])) return`)
+    expect(page).toContain(
+      `if (!__validateFields([${JSON.stringify(email.id)}], __opSubmitForm)) return`
+    )
     expect(page).toContain('data-openpencil-validation-field')
     expect(page).toContain(':aria-invalid="__fieldErrors[')
     expect(page).toContain(':aria-describedby="__fieldErrors[')
@@ -521,7 +523,9 @@ describe('Vue local low-code runtimes', () => {
     expect(page).toContain(
       'if (error === null) error = "Remote validation is unavailable in this Vue export."'
     )
-    expect(page).toContain(`if (!__validateFields([${JSON.stringify(email.id)}])) return`)
+    expect(page).toContain(
+      `if (!__validateFields([${JSON.stringify(email.id)}], __opSubmitForm)) return`
+    )
     expect(page).not.toContain('/api/check-email')
     expect(runtime).not.toContain('fetch(')
     expectValidVueFiles(output.files)

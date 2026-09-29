@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { TreeRoot } from 'reka-ui'
-import { computed, nextTick, onScopeDispose, ref } from 'vue'
+import { computed, nextTick, onScopeDispose, reactive, ref } from 'vue'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
@@ -61,7 +61,8 @@ function rebuildTree() {
   rebuildToken++
   const model = buildLayerTreeModel(editor.graph, editor.state.currentPageId)
   items.value = model.items
-  nodesById = model.byId
+  // Patch through the same reactive nodes that the rendered items expose.
+  nodesById = reactive(model.byId)
   expanded.value = expanded.value.filter((id) => nodesById.has(id))
   treeVersion.value++
 }
@@ -83,7 +84,8 @@ const PATCHABLE_NODE_KEYS = new Set<keyof SceneNode>([
   'type',
   'layoutMode',
   'visible',
-  'locked'
+  'locked',
+  'interactiveProps'
 ])
 
 function patchTreeNode(id: string, changes: Partial<SceneNode>) {

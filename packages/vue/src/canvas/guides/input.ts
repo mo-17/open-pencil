@@ -63,7 +63,7 @@ export function createGuideInput({
   }
 
   function ownerAt(cx: number, cy: number): string {
-    let node = editor.graph.hitTestDeep(cx, cy, editor.state.currentPageId)
+    let node = editor.hitTestPageAtPoint(cx, cy)
     while (node) {
       if (node.type === 'FRAME' || node.type === 'COMPONENT') return node.id
       node = node.parentId ? (editor.graph.getNode(node.parentId) ?? null) : null

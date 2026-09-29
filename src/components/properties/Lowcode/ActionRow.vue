@@ -24,6 +24,7 @@ import { ANALYTICS_TRACK_EVENT_CONFIG_HINT } from '@/app/lowcode/analytics-help'
 import { commerceCopy } from '@/app/lowcode/backend/commerce/copy'
 import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
 import Tip from '@/components/ui/overlay/Tip.vue'
+import { lowcodeEventsTheme } from '@/theme/lowcode-events'
 
 // ActionRow ↔ ActionList are mutually recursive components (a row renders nested
 // branch lists, a list renders rows) — the import cycle is intentional and
@@ -71,6 +72,7 @@ const emit = defineEmits<{
 }>()
 
 const { panels, locale } = useI18n()
+const eventStyles = lowcodeEventsTheme()
 
 const API_METHODS = ['GET', 'POST'] as const
 const TOAST_VARIANTS = ['info', 'success', 'error'] as const
@@ -404,12 +406,7 @@ function changeServerWorkflow(id: string): void {
     tabindex="-1"
     class="flex flex-col gap-0.5 rounded outline-none transition-colors focus-visible:ring-1 focus-visible:ring-accent"
   >
-    <div
-      class="flex items-center gap-1"
-      :class="{
-        'flex-wrap': action.kind === 'backendCommand' || action.kind === 'backendCommandRecovery'
-      }"
-    >
+    <div :class="eventStyles.actionFields()">
       <select
         :value="action.kind"
         aria-label="Action kind"

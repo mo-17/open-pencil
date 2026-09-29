@@ -30,11 +30,11 @@ describe('compile — user events (Phase 4 §28)', () => {
     })
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain(
-      'onFocus={(e) => { const $event = e; const $value = (e.target as HTMLInputElement).value;'
+      'onFocus={(e) => { const $event = e; const $value = (e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;'
     )
     expect(app).toContain('setDocState("status", "focused")')
     expect(app).toContain(
-      'onBlur={(e) => { const $event = e; const $value = (e.target as HTMLInputElement).value;'
+      'onBlur={(e) => { const $event = e; const $value = (e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;'
     )
     expect(app).toContain('setDocState("status", "blurred")')
   })
@@ -63,7 +63,7 @@ describe('compile — user events (Phase 4 §28)', () => {
     const app = out.files.get('src/App.tsx') as string
     expect(out.warnings).toEqual([])
     expect(app).toContain(
-      'onChange={(e) => { const $event = e; const $value = (e.target as HTMLInputElement).value;'
+      'onChange={(e) => { const $event = e; const $value = (e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;'
     )
     expect(app).toContain('setDocState("email", e.target.value);')
     expect(app).toContain('setDocState("lastValue", $value);')

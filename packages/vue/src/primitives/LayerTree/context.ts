@@ -1,7 +1,7 @@
 import { type ComputedRef, type InjectionKey, type Ref, inject, provide } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
-import type { LayoutMode } from '@open-pencil/scene-graph'
+import type { LayoutMode, ModuleInstanceV1 } from '@open-pencil/scene-graph'
 
 export interface LayerNode {
   id: string
@@ -14,6 +14,7 @@ export interface LayerNode {
   layoutMode: LayoutMode
   visible: boolean
   locked: boolean
+  moduleIdentity?: Pick<ModuleInstanceV1, 'pluginId' | 'moduleType'>
   children?: LayerNode[]
 }
 

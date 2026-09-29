@@ -2,6 +2,7 @@ import type { Editor } from '@open-pencil/core/editor'
 import { collectResizeDescendants, createResizeSnapshot } from '@open-pencil/scene-graph/resize'
 
 import { getHitHandleByMatrix } from '#vue/shared/input/geometry'
+import { snapshotResizeSizing } from '#vue/shared/input/resize/sizing'
 import type { DragResize } from '#vue/shared/input/types'
 
 export function tryStartResize(cx: number, cy: number, editor: Editor): DragResize | null {
@@ -25,6 +26,9 @@ export function tryStartResize(cx: number, cy: number, editor: Editor): DragResi
         startY: cy,
         origRect: { x: node.x, y: node.y, width: node.width, height: node.height },
         nodeId: id,
+        preview: editor.beginNodePreview('Resize', { preserveSourceMetadata: true }),
+        originalSizing: snapshotResizeSizing(node),
+        originalDerivedLayout: node.derivedLayout ? { ...node.derivedLayout } : null,
         origVectorNetwork: snap.vectorNetwork,
         origFillGeometry: snap.fillGeometry,
         origStrokeGeometry: snap.strokeGeometry,

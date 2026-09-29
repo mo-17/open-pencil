@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
 import { validateBackendResourceDataSource } from '@open-pencil/lowcode/backend'
 import type { BackendResourceDataSource } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
@@ -7,6 +8,7 @@ import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useEditorStore } from '@/app/editor/active-store'
 import { useBackendBindingApplication } from '@/app/lowcode/backend/bindings/context'
 import BackendQueryBindings from '@/app/lowcode/backend/components/BackendQueryBindings.vue'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 
 const { source } = defineProps<{ source: BackendResourceDataSource }>()
 const emit = defineEmits<{ 'update:source': [BackendResourceDataSource] }>()
@@ -34,6 +36,7 @@ function patch(value: Partial<BackendResourceDataSource>): void {
 
 <template>
   <div class="flex flex-col gap-1.5" data-property="backend-list-source">
+    <p class="text-[10px] text-muted">{{ panels.lowcodeBackendListFeedbackHint }}</p>
     <BackendQueryBindings :query="source" :resource="resource" @update:query="patch" />
     <label class="flex flex-col gap-1 text-[10px] text-muted"
       >{{ panels.lowcodeBackendPageSize }}
@@ -89,8 +92,10 @@ function patch(value: Partial<BackendResourceDataSource>): void {
         </option>
       </select>
     </label>
-    <ul v-if="diagnostics.length" class="space-y-1 text-[10px] text-red-500">
-      <li v-for="(entry, index) in diagnostics" :key="index">{{ entry.message }}</li>
-    </ul>
+    <AppAlert v-if="diagnostics.length" tone="error" :heading="panels.lowcodeBackendListInvalid">
+      <ul class="space-y-1">
+        <li v-for="(entry, index) in diagnostics" :key="index">{{ entry.message }}</li>
+      </ul>
+    </AppAlert>
   </div>
 </template>

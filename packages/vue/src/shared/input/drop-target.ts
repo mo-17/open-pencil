@@ -2,12 +2,7 @@ import type { Editor } from '@open-pencil/core/editor'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 export function findMoveDropTarget(cx: number, cy: number, editor: Editor): SceneNode | null {
-  let dropTarget = editor.graph.hitTestFrame(
-    cx,
-    cy,
-    editor.state.selectedIds,
-    editor.state.currentPageId
-  )
+  let dropTarget = editor.hitTestFrameAtPoint(cx, cy)
   const movingSection = [...editor.state.selectedIds].some(
     (id) => editor.graph.getNode(id)?.type === 'SECTION'
   )
@@ -24,6 +19,7 @@ export function findMoveDropTarget(cx: number, cy: number, editor: Editor): Scen
 
 export function reparentOutsideNodes(editor: Editor) {
   for (const id of editor.state.selectedIds) {
+    if (id === editor.state.contentEdit?.rootId) continue
     const node = editor.graph.getNode(id)
     if (!node?.parentId || editor.isTopLevel(node.parentId)) continue
     const parent = editor.graph.getNode(node.parentId)

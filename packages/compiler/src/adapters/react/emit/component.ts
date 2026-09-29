@@ -1,3 +1,6 @@
+import { reactAutocompleteImport } from '#compiler/adapters/autocomplete/emit'
+import { reactInputControlImport } from '#compiler/adapters/input-control/emit'
+import { nodesUseMountedValidationSummary } from '#compiler/adapters/validation-summary'
 import type { ComponentDef, ComponentProp, IRNode, VariantCase } from '#compiler/ir/types'
 
 import {
@@ -16,6 +19,7 @@ import {
 } from '../lowcode/validation'
 import { buildReactModuleImports } from '../modules/registry'
 import { nodesUseRequestDebounce, nodesUseRequestGate } from '../request-timing'
+import { enhancedSelectImport } from '../select/emit'
 import { collectKitImports, kitImportLine } from '../ui-kit/registry'
 import type { UIKitAdapter } from '../ui-kit/types'
 import { emitElement } from './element'
@@ -84,6 +88,9 @@ export function buildComponentModule(
     kitImportBlock,
     lucideImport,
     moduleImportBlock,
+    enhancedSelectImport(bodyNodes, './'),
+    reactAutocompleteImport(bodyNodes, './'),
+    reactInputControlImport(bodyNodes, './'),
     serverImport
   ].join('')
   const importBlock = imports ? `${imports}\n` : ''
@@ -378,6 +385,7 @@ function buildComponentReactImport(
 ): string {
   const names: string[] = []
   if ((def.validatedFields?.length ?? 0) > 0 || usesRequestGate) names.push('useState')
+  if ((def.validatedFields?.length ?? 0) > 0) names.push('useId')
   if (validationUsesRemote(def.validatedFields ?? []) || usesRequestGate) names.push('useRef')
   if (usesRequestDebounce) names.push('useEffect')
   const valueImport = names.length > 0 ? `import { ${names.join(', ')} } from 'react'\n` : ''
@@ -404,6 +412,9 @@ function buildComponentValidationImport(def: ComponentDef): string {
   if ((def.validatedFields?.length ?? 0) === 0) return ''
   const names = ['validateValue']
   if (validationUsesRemote(def.validatedFields ?? [])) names.push('validateRemote')
+  if (nodesUseMountedValidationSummary(componentBodyNodes(def))) {
+    names.push('__OpenPencilMountedValidationSummary')
+  }
   return `import { ${names.sort().join(', ')} } from '../_lowcode_validation'\n`
 }
 

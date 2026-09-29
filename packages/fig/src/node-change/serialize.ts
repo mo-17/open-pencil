@@ -10,6 +10,8 @@ import { buildDerivedTextFontMetaData } from './derived/font-metadata'
 import { EMPTY_EXPORT_RUNTIME, type FigNodeChangeExportRuntime } from './export-runtime'
 import { applyFontFeaturesToKiwi } from './font/features'
 import { weightToFigmaStyle } from './font/style'
+import { hasNativeLayoutPreferences } from './layout-preferences'
+import { serializeImportedPadding } from './padding'
 import { fillToKiwiPaint, safeColor } from './paint'
 import { bakeGlyphScale, encodePathCommandsBlob } from './path/commands'
 import {
@@ -304,17 +306,6 @@ function serializeInheritedCounterAxisStretch(
   }
 }
 
-function preserveTrailingPadding(
-  explicitValue: number | undefined,
-  leadingValue: number | undefined,
-  baseValue: number | undefined,
-  normalizedValue: number
-): number | undefined {
-  if (explicitValue !== undefined) return explicitValue
-  const inheritedValue = leadingValue ?? baseValue ?? normalizedValue
-  return normalizedValue !== inheritedValue ? normalizedValue : undefined
-}
-
 function serializeSizeConstraints(node: SceneNode, nc: KiwiNodeChange): void {
   if (node.minWidth != null || node.minHeight != null) {
     nc.minSize = { value: { x: node.minWidth ?? 0, y: node.minHeight ?? 0 } }
@@ -336,19 +327,7 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneG
   if (figLayout) {
     nc.stackMode = normalizeStackMode(figLayout.stackMode)
     nc.stackSpacing = figLayout.stackSpacing
-    nc.stackPadding = figLayout.stackPadding
-    nc.stackPaddingRight = preserveTrailingPadding(
-      figLayout.stackPaddingRight,
-      figLayout.stackHorizontalPadding,
-      figLayout.stackPadding,
-      node.paddingRight
-    )
-    nc.stackPaddingBottom = preserveTrailingPadding(
-      figLayout.stackPaddingBottom,
-      figLayout.stackVerticalPadding,
-      figLayout.stackPadding,
-      node.paddingBottom
-    )
+    serializeImportedPadding(node, nc, figLayout)
     nc.stackCounterAlign = normalizeStackCounterAlign(figLayout.stackCounterAlign)
     nc.stackJustify = normalizeStackJustify(figLayout.stackJustify)
     nc.stackCounterAlignItems = normalizeStackCounterAlignItems(figLayout.stackCounterAlignItems)
@@ -359,8 +338,6 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneG
     if (stackPrimarySizing) nc.stackPrimarySizing = stackPrimarySizing
     const stackCounterSizing = normalizeStackSizing(figLayout.stackCounterSizing)
     if (stackCounterSizing) nc.stackCounterSizing = stackCounterSizing
-    nc.stackVerticalPadding = figLayout.stackVerticalPadding
-    nc.stackHorizontalPadding = figLayout.stackHorizontalPadding
     nc.stackWrap = figLayout.stackWrap
     nc.stackPositioning = figLayout.stackPositioning
     nc.stackChildPrimaryGrow = figLayout.stackChildPrimaryGrow
@@ -371,8 +348,9 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneG
     serializeInheritedCounterAxisStretch(node, nc, graph)
     return
   }
-  if (node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL') {
-    nc.stackMode = node.layoutMode
+  if (hasNativeLayoutPreferences(node)) {
+    nc.stackMode =
+      node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL' ? node.layoutMode : 'NONE'
     nc.stackSpacing = node.itemSpacing
     nc.stackVerticalPadding = node.paddingTop
     nc.stackHorizontalPadding = node.paddingLeft

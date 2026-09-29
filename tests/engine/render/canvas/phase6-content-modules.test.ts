@@ -130,11 +130,20 @@ describe('phase 6 content module CanvasKit previews', () => {
     try {
       for (const entry of CASES) {
         const canvas = { ...createMockCanvas(), drawText: mock(() => undefined) }
+        let depth = 0
+        canvas.save.mockImplementation(() => {
+          depth += 1
+        })
+        canvas.restore.mockImplementation(() => {
+          expect(depth, entry.name).toBeGreaterThan(0)
+          depth -= 1
+        })
         expect(entry.render(rendererWithFont(), canvas as Canvas, entry.frame()), entry.name).toBe(
           true
         )
-        expect(canvas.save).toHaveBeenCalledTimes(1)
-        expect(canvas.restore).toHaveBeenCalledTimes(1)
+        expect(canvas.save).toHaveBeenCalled()
+        expect(canvas.restore).toHaveBeenCalledTimes(canvas.save.mock.calls.length)
+        expect(depth, entry.name).toBe(0)
         expect(canvas.clipRRect).toHaveBeenCalledTimes(1)
         expect(canvas.drawRect).toHaveBeenCalled()
         expect(entry.adapter.pluginId.startsWith('open-pencil.')).toBe(true)

@@ -16,7 +16,11 @@ export function emitStateDecl(state: IRStateDecl, indent: number): string {
     return `${pad}const ${state.name} = ${formatDefault(state)}`
   }
   const setter = setterName(state.name)
-  return `${pad}const [${state.name}, ${setter}] = useState(${formatDefault(state)})`
+  const initial = formatDefault(state)
+  // Empty authored arrays have no element samples for TypeScript to infer.
+  // Keep the declared array writable without inventing a string-only schema.
+  const type = state.type === 'array' && initial === '[]' ? '<unknown[]>' : ''
+  return `${pad}const [${state.name}, ${setter}] = useState${type}(${initial})`
 }
 
 export function setterName(stateName: string): string {

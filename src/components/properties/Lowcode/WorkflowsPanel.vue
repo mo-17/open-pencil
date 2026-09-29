@@ -284,7 +284,7 @@ async function jumpToWorkflowAction(edge: WorkflowGraphEdge): Promise<void> {
 function jumpToEntrypointSource(entrypoint: WorkflowGraphEntrypoint): void {
   const node = editor.graph.getNode(entrypoint.nodeId)
   if (!node) return
-  requestLowcodeActionFocus({
+  requestLowcodeActionFocus(editor.graph, {
     nodeId: node.id,
     actionId: entrypoint.actionId,
     actionPath: entrypoint.actionPath

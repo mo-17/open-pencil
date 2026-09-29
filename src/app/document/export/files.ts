@@ -27,6 +27,11 @@ export interface ExportedFile {
   mime: string
 }
 
+export interface ExportedFileSaveOptions {
+  /** Keep an explicit picker failure visible instead of silently downloading elsewhere. */
+  browserPickerFailure?: 'throw' | 'download'
+}
+
 // Layer/page names flow into zip entry keys; flatten them to a single safe
 // segment so separators, parent refs (`..`), or control chars can't escape the
 // archive or corrupt it.
@@ -156,7 +161,8 @@ export async function saveExportedFile(
   format: string,
   ext: string,
   mime: string,
-  downloadBlob: DownloadBlob
+  downloadBlob: DownloadBlob,
+  options: ExportedFileSaveOptions = {}
 ) {
   if (isTauri()) {
     const path = await chooseTauriExportPath(fileName, format, ext)
@@ -183,6 +189,7 @@ export async function saveExportedFile(
       return true
     } catch (e) {
       if ((e as Error).name === 'AbortError') return false
+      if (options.browserPickerFailure === 'throw') throw e
     }
   }
 

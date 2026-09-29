@@ -8,6 +8,7 @@ import {
   emitValidationEventAttributes
 } from './events'
 import { buildVueRequestStateAttributes } from './lowcode/request-gate'
+import { vueSelectDefaultValue, vueSelectEmptyOptionGuard, vueSelectOptionValue } from './select'
 import {
   attrName,
   escapeAttr,
@@ -29,6 +30,13 @@ export function emitVueElementAttributes(
 ): string[] {
   const requestState = buildVueRequestStateAttributes(node, context, locals)
   const attrs: string[] = [...requestState.attrs]
+  if (!node.controlled && node.selectDefaultValues) {
+    const name = `__opSelectDefaults_${++context.expressionIndex}`
+    context.templateBindings.push(`const ${name} = ${scriptJSON(node.selectDefaultValues)}`)
+    attrs.push(`:default-value="${name}"`)
+  }
+  const emptyOptionGuard = vueSelectEmptyOptionGuard(node, context, locals)
+  if (emptyOptionGuard) attrs.push(`v-if="${escapeAttr(emptyOptionGuard)}"`)
   if (node.classNameProp) {
     const prop = scopedIdentifier(node.classNameProp, context.identAliases, locals)
     const fallback = node.classNamePropFallback ? ` ?? ${scriptJSON(node.className)}` : ''
@@ -54,15 +62,31 @@ export function emitVueElementAttributes(
     if (node.upload && (rawName === 'type' || rawName === 'accept')) continue
     if (node.controlled && (rawName === 'defaultValue' || rawName === 'defaultChecked')) continue
     if (node.image && ['src', 'alt', 'loading'].includes(rawName)) continue
-    const name = attrName(rawName)
+    const name =
+      (node.selectFeatures || node.inputSuggestions || node.inputControl) &&
+      rawName === 'defaultValue'
+        ? 'default-value'
+        : attrName(rawName)
     if (!name) continue
+    if (
+      node.tag === 'select' &&
+      !node.selectFeatures &&
+      rawName === 'defaultValue' &&
+      typeof value === 'string'
+    ) {
+      const defaultValue = vueSelectDefaultValue(value, node, context)
+      if (defaultValue) attrs.push(`:value="${defaultValue}"`)
+      continue
+    }
     if (typeof value === 'boolean') {
       if (value) attrs.push(name)
     } else if (typeof value === 'number' || typeof value === 'string') {
       attrs.push(`${name}="${escapeAttr(String(value))}"`)
     } else if (value.kind === 'exprAttr') {
+      const optionValue =
+        rawName === 'value' ? vueSelectOptionValue(node, context, locals) : undefined
       attrs.push(
-        `:${name}="${escapeAttr(templateExpression(value.ast, context.identAliases, locals))}"`
+        `:${name}="${escapeAttr(optionValue ?? templateExpression(value.ast, context.identAliases, locals))}"`
       )
     } else if (value.kind === 'intlMessage') {
       attrs.push(`${name}="${escapeAttr(value.defaultMessage)}"`)
@@ -116,11 +140,13 @@ export function emitVueElementAttributes(
   if (controlled) skippedEvents.add(controlled.skip)
   if (node.upload) skippedEvents.add('onChange')
   if (node.validation) skippedEvents.add('onBlur')
-  if (node.formValidationKeys && node.formValidationKeys.length > 0) {
+  if (node.formValidationKeys) {
     attrs.push(emitValidatedSubmitAttribute(node, context, locals))
     skippedEvents.add('onSubmit')
   }
-  attrs.push(...emitEventAttributes(node.events, context, node.sourceId, locals, skippedEvents))
+  attrs.push(
+    ...emitEventAttributes(node.events, context, node.sourceId, locals, skippedEvents, node.tag)
+  )
   return attrs
 }
 

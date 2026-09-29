@@ -59,8 +59,13 @@ function systemTheme(): LowcodeTheme {
 
 function readInitialTheme(): LowcodeTheme {
   if (typeof window === 'undefined') return 'light'
-  const saved = window.localStorage.getItem(STORAGE_KEY)
-  return isTheme(saved) ? saved : systemTheme()
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY)
+    if (isTheme(saved)) return saved
+  } catch {
+    // Sandboxed previews and browser privacy settings may deny storage access.
+  }
+  return systemTheme()
 }
 
 function applyTheme(theme: LowcodeTheme): void {
@@ -74,7 +79,11 @@ export function LowcodeThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback((next: LowcodeTheme) => {
     setThemeState(next)
-    window.localStorage.setItem(STORAGE_KEY, next)
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next)
+    } catch {
+      // The current page still changes theme when persistence is unavailable.
+    }
   }, [])
 
   useEffect(() => {

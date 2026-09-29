@@ -7,7 +7,9 @@ import {
   SECTION_DEFAULT_FILL,
   SECTION_DEFAULT_STROKE
 } from '#core/constants'
+import { createSceneGeometry } from '#core/geometry/scene'
 
+import { contentEditInsertionParent } from './content-edit'
 import { createFramePresetActions } from './shapes/frame-presets'
 import { createPenActions } from './shapes/pen'
 import { adoptNodesIntoSection as adoptNodesIntoSectionImpl } from './shapes/section-adopt'
@@ -58,7 +60,13 @@ export function createShapeActions(ctx: EditorContext) {
     name?: string,
     initialOverrides: Partial<SceneNode> = {}
   ): string {
-    const pid = parentId ?? ctx.state.currentPageId
+    const pid = parentId ?? contentEditInsertionParent(ctx)
+    if (!pid) throw new Error('Content root cannot contain child nodes')
+    if (!parentId && ctx.state.contentEdit) {
+      const parent = ctx.graph.getNode(pid)
+      const local = parent ? createSceneGeometry(ctx.graph).toLocal(parent, { x, y }) : null
+      if (local) ({ x, y } = local)
+    }
     const overrides: Partial<SceneNode> = {
       x,
       y,

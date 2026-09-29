@@ -3,6 +3,7 @@ import type { IRBackendResourceQuery, IRTree } from '#compiler/ir/types'
 import { emitExpression, type ExprAst } from '@open-pencil/lowcode'
 
 import { scriptExpression, type VueEmitContext } from '../vue/shared'
+import { backendListStatusStyleExpression } from './list-status'
 import { backendQueryFields } from './query-fields'
 
 export function backendQueryInput(
@@ -20,8 +21,9 @@ function targetCallback(target: string | undefined, setter: string): string {
 export function emitReactBackendQuery(query: IRBackendResourceQuery): string {
   const input = backendQueryInput(query, query.afterAst && emitExpression(query.afterAst))
   return `  const [${query.rowsName}, set${query.rowsName}] = useState<__opBackend.BackendResourceRows[${JSON.stringify(query.resourceId)}][]>([])
-  const [normalize${query.rowsName}] = useState(__opBackend.createBackendQueryState)
-  useEffect(() => __opBackend.watchBackendResource(normalize${query.rowsName}(${input}), set${query.rowsName}, ${targetCallback(query.nextCursorTarget, 'setDocState')}, ${targetCallback(query.errorTarget, 'setDocState')}), [${query.deps.join(', ')}])`
+  const [${query.rowsName}Status, set${query.rowsName}Status] = useState<__opBackend.BackendResourceState>({ phase: 'idle', hasRows: false })
+  const [${query.rowsName}Control] = useState(() => ({ normalize: __opBackend.createBackendQueryState(), cache: __opBackend.createBackendResourceCache<${JSON.stringify(query.resourceId)}>(), subscription: undefined as __opBackend.BackendResourceSubscription | undefined }))
+  useLayoutEffect(() => (${query.rowsName}Control.subscription = __opBackend.watchBackendResource(${query.rowsName}Control.normalize(${input}), set${query.rowsName}, ${targetCallback(query.nextCursorTarget, 'setDocState')}, ${targetCallback(query.errorTarget, 'setDocState')}, set${query.rowsName}Status, ${query.rowsName}Control.cache)), [${query.deps.join(', ')}])`
 }
 export function emitVueBackendQuery(
   query: IRBackendResourceQuery,
@@ -34,9 +36,12 @@ export function emitVueBackendQuery(
   )
   const rows = context.listAliases.get(query.rowsName) ?? query.rowsName
   return `const ${rows} = __vueRef<__opBackend.BackendResourceRows[${JSON.stringify(query.resourceId)}][]>([])
-const normalize${rows} = __opBackend.createBackendQueryState()
+const ${rows}Status = __vueRef<__opBackend.BackendResourceState>({ phase: 'idle', hasRows: false })
+const ${rows}Style = __vueComputed(() => (${backendListStatusStyleExpression(`${rows}Status.value`)}))
+const ${rows}Control = { normalize: __opBackend.createBackendQueryState(), cache: __opBackend.createBackendResourceCache<${JSON.stringify(query.resourceId)}>(), subscription: undefined as __opBackend.BackendResourceSubscription | undefined }
 __vueWatch(() => (${input}), (input, _previous, onCleanup) => {
-  onCleanup(__opBackend.watchBackendResource(normalize${rows}(input), (value) => { ${rows}.value = value }, ${targetCallback(query.nextCursorTarget, '__setDocState')}, ${targetCallback(query.errorTarget, '__setDocState')}))
+  ${rows}Control.subscription = __opBackend.watchBackendResource(${rows}Control.normalize(input), (value) => { ${rows}.value = value }, ${targetCallback(query.nextCursorTarget, '__setDocState')}, ${targetCallback(query.errorTarget, '__setDocState')}, (value) => { ${rows}Status.value = value }, ${rows}Control.cache)
+  onCleanup(${rows}Control.subscription)
 }, { immediate: true, deep: true })`
 }
 

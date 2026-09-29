@@ -1,117 +1,33 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ACCORDION_MODULE_LIMITS } from '@open-pencil/core/plugins'
+import type { SceneNode } from '@open-pencil/scene-graph'
+import type { JSONObject } from '@open-pencil/scene-graph/primitives'
+import { usePanelMessages, useRetainedActivity } from '@open-pencil/vue'
 
-import { ACCORDION_MODULE_LIMITS, type AccordionItemV1 } from '@open-pencil/core/plugins'
+import type { AccordionEditorCommit } from '@/app/lowcode/accordion-editor'
+import { useAccordionEditorDraft } from '@/app/lowcode/accordion-editor/use'
+import type { AppPluginModuleEditorText } from '@/app/plugins/localization'
+import AppButton from '@/components/ui/button/AppButton.vue'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
+import AppInput from '@/components/ui/input/AppInput.vue'
+import AppTextarea from '@/components/ui/input/AppTextarea.vue'
+import AppCheckbox from '@/components/ui/toggle/AppCheckbox.vue'
 
-import {
-  appendBoundedModuleEditorItem,
-  nextModuleEditorItemId,
-  removeBoundedModuleEditorItem,
-  replaceModuleEditorItem
-} from '@/app/plugins/module-items-editor-model'
-
-const {
-  modelValue,
-  label,
-  addLabel,
-  removeLabel,
-  idLabel,
-  titleLabel,
-  contentLabel,
-  newItemTitle,
-  countLabel,
-  itemLabel,
-  invalid = false,
-  error = ''
-} = defineProps<{
-  modelValue: readonly AccordionItemV1[]
+const { owner, config, label, copy } = defineProps<{
+  owner?: SceneNode
+  config: JSONObject
   label: string
-  addLabel: string
-  removeLabel: string
-  idLabel: string
-  titleLabel: string
-  contentLabel: string
-  newItemTitle: string
-  countLabel?: (count: number, maximum: number) => string
-  itemLabel?: (item: number) => string
-  invalid?: boolean
-  error?: string
+  copy: AppPluginModuleEditorText
 }>()
-
-const emit = defineEmits<{
-  commit: [value: AccordionItemV1[]]
-}>()
-
-const draft = ref(cloneItems(modelValue))
-
-watch(
-  () => modelValue,
-  (value) => {
-    draft.value = cloneItems(value)
-  },
-  { deep: true }
+const emit = defineEmits<{ commit: [request: AccordionEditorCommit] }>()
+const panels = usePanelMessages()
+const active = useRetainedActivity()
+const { draft, invalid, restore, beginInput, input, commit, edit } = useAccordionEditorDraft(
+  () => owner,
+  () => config,
+  (request) => emit('commit', request),
+  active
 )
-
-function cloneItems(value: readonly AccordionItemV1[]): AccordionItemV1[] {
-  return value.map((item) => ({ id: item.id, title: item.title, content: item.content }))
-}
-
-function sameItems(left: readonly AccordionItemV1[], right: readonly AccordionItemV1[]): boolean {
-  return (
-    left.length === right.length &&
-    left.every(
-      (item, index) =>
-        item.id === right[index]?.id &&
-        item.title === right[index]?.title &&
-        item.content === right[index]?.content
-    )
-  )
-}
-
-function eventValue(event: Event): string {
-  return (event.target as HTMLInputElement | HTMLTextAreaElement).value
-}
-
-function updateItem(index: number, key: keyof AccordionItemV1, event: Event): void {
-  const next = replaceModuleEditorItem(draft.value, index, (item) => ({
-    ...item,
-    [key]: eventValue(event)
-  }))
-  if (next) draft.value = next
-}
-
-function commit(): void {
-  if (!invalid && sameItems(draft.value, modelValue)) return
-  emit('commit', cloneItems(draft.value))
-}
-
-function commitShortcut(event: KeyboardEvent): void {
-  if (event.key !== 'Enter' || (!event.metaKey && !event.ctrlKey)) return
-  event.preventDefault()
-  commit()
-}
-
-function addItem(): void {
-  const next = appendBoundedModuleEditorItem(
-    draft.value,
-    {
-      id: nextModuleEditorItemId(draft.value, 'section'),
-      title: newItemTitle,
-      content: ''
-    },
-    ACCORDION_MODULE_LIMITS.itemsMax
-  )
-  if (!next) return
-  draft.value = next
-  commit()
-}
-
-function removeItem(index: number): void {
-  const next = removeBoundedModuleEditorItem(draft.value, index, ACCORDION_MODULE_LIMITS.itemsMin)
-  if (!next) return
-  draft.value = next
-  commit()
-}
 </script>
 
 <template>
@@ -119,94 +35,127 @@ function removeItem(index: number): void {
     data-test-id="accordion-items-editor"
     role="group"
     :aria-label="label"
-    class="flex flex-col gap-1.5"
+    class="flex flex-col gap-2"
   >
-    <div class="flex items-center gap-1">
-      <button
-        type="button"
-        data-test-id="accordion-add-item"
-        :disabled="draft.length >= ACCORDION_MODULE_LIMITS.itemsMax"
-        class="rounded border border-border px-1.5 py-1 text-[10px] text-surface disabled:cursor-not-allowed disabled:opacity-40"
-        @click="addItem"
-      >
-        {{ addLabel }}
-      </button>
-      <span data-test-id="accordion-item-count" class="ml-auto text-[9px] text-muted">
-        {{
-          countLabel
-            ? countLabel(draft.length, ACCORDION_MODULE_LIMITS.itemsMax)
-            : `${draft.length}/${ACCORDION_MODULE_LIMITS.itemsMax}`
-        }}
-      </span>
-    </div>
-
-    <div class="flex max-h-80 flex-col gap-1.5 overflow-auto">
+    <label class="flex items-center gap-2 text-[10px] text-surface">
+      <AppCheckbox
+        :model-value="draft.allowMultiple"
+        :ariaLabel="panels.lowcodeAccordionAllowMultiple"
+        data-test-id="accordion-allow-multiple"
+        @update:model-value="edit({ kind: 'multiple', value: $event })"
+      />
+      {{ panels.lowcodeAccordionAllowMultiple }}
+    </label>
+    <p class="text-[10px] leading-relaxed text-muted">{{ panels.lowcodeAccordionInitialHint }}</p>
+    <span data-test-id="accordion-item-count" class="text-right text-[9px] text-muted">
+      {{ copy.count(draft.items.length, ACCORDION_MODULE_LIMITS.itemsMax) }}
+    </span>
+    <div class="flex max-h-[32rem] flex-col gap-2 overflow-y-auto">
       <fieldset
-        v-for="(item, index) in draft"
+        v-for="(item, index) in draft.items"
         :key="index"
         data-test-id="accordion-item-row"
-        class="rounded border border-border bg-input p-1.5"
+        class="min-w-0 rounded border border-border bg-input p-2"
       >
-        <legend class="flex w-full items-center gap-1 px-0.5 text-[9px] font-medium text-muted">
-          <span>{{ itemLabel ? itemLabel(index + 1) : `#${index + 1}` }}</span>
-          <button
-            type="button"
-            data-test-id="accordion-remove-item"
-            :disabled="draft.length <= ACCORDION_MODULE_LIMITS.itemsMin"
-            class="ml-auto rounded border border-transparent px-1.5 py-0.5 text-[9px] text-muted hover:border-border hover:bg-hover disabled:cursor-not-allowed disabled:opacity-30"
-            @click="removeItem(index)"
-          >
-            {{ removeLabel }}
-          </button>
+        <legend class="px-1 text-[10px] font-medium text-surface">
+          {{ copy.item(index + 1) }}
         </legend>
-
-        <label class="mb-1 block text-[9px] text-muted">
-          {{ idLabel }}
-          <input
-            :value="item.id"
-            :maxlength="ACCORDION_MODULE_LIMITS.id"
-            data-test-id="accordion-item-id"
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-            class="mt-0.5 w-full rounded border border-border bg-surface px-1.5 py-1 font-mono text-[10px] text-surface outline-none focus:border-accent"
-            @input="updateItem(index, 'id', $event)"
-            @blur="commit"
-            @keydown="commitShortcut"
-          />
-        </label>
-
-        <label class="mb-1 block text-[9px] text-muted">
-          {{ titleLabel }}
-          <input
-            :value="item.title"
-            :maxlength="ACCORDION_MODULE_LIMITS.title"
-            data-test-id="accordion-item-title"
-            class="mt-0.5 w-full rounded border border-border bg-surface px-1.5 py-1 text-[10px] text-surface outline-none focus:border-accent"
-            @input="updateItem(index, 'title', $event)"
-            @blur="commit"
-            @keydown="commitShortcut"
-          />
-        </label>
-
-        <label class="block text-[9px] text-muted">
-          {{ contentLabel }}
-          <textarea
-            :value="item.content"
+        <div class="mb-2 flex items-center gap-1">
+          <label class="mr-auto flex items-center gap-2 text-[10px] text-surface">
+            <AppCheckbox
+              :model-value="draft.initialOpenIndexes.includes(index)"
+              :ariaLabel="panels.lowcodeAccordionInitialOpen"
+              data-test-id="accordion-initial-open"
+              @update:model-value="edit({ kind: 'open', index, value: $event })"
+            />
+            {{ panels.lowcodeAccordionInitialOpen }}
+          </label>
+          <AppButton
+            variant="ghost"
+            size="xs"
+            data-test-id="accordion-move-up"
+            :disabled="index === 0"
+            :aria-label="panels.lowcodeSelectMoveUp"
+            @click="edit({ kind: 'move', index, offset: -1 })"
+            ><icon-lucide-arrow-up class="size-3"
+          /></AppButton>
+          <AppButton
+            variant="ghost"
+            size="xs"
+            data-test-id="accordion-move-down"
+            :disabled="index === draft.items.length - 1"
+            :aria-label="panels.lowcodeSelectMoveDown"
+            @click="edit({ kind: 'move', index, offset: 1 })"
+            ><icon-lucide-arrow-down class="size-3"
+          /></AppButton>
+          <AppButton
+            variant="ghost"
+            size="xs"
+            data-test-id="accordion-remove-item"
+            :disabled="draft.items.length <= ACCORDION_MODULE_LIMITS.itemsMin"
+            :aria-label="copy.removeItem"
+            @click="edit({ kind: 'remove', index })"
+            ><icon-lucide-x class="size-3"
+          /></AppButton>
+        </div>
+        <label
+          v-for="field in ['id', 'title', 'content'] as const"
+          :key="field"
+          class="mb-1.5 block text-[10px] text-muted"
+        >
+          {{ field === 'id' ? copy.identifier : field === 'title' ? copy.title : copy.content }}
+          <AppTextarea
+            v-if="field === 'content'"
+            :model-value="item.content"
+            :rows="3"
+            :aria-label="copy.content"
             :maxlength="ACCORDION_MODULE_LIMITS.content"
             data-test-id="accordion-item-content"
-            rows="3"
-            class="mt-0.5 w-full resize-y rounded border border-border bg-surface px-1.5 py-1 text-[10px] leading-relaxed text-surface outline-none focus:border-accent"
-            @input="updateItem(index, 'content', $event)"
+            @focus="beginInput"
+            @update:model-value="input(index, field, $event)"
             @blur="commit"
-            @keydown="commitShortcut"
+            @keydown.ctrl.enter.prevent="commit"
+            @keydown.meta.enter.prevent="commit"
+            @keydown.esc="restore"
+          />
+          <AppInput
+            v-else
+            :model-value="item[field]"
+            :ariaLabel="field === 'id' ? copy.identifier : copy.title"
+            :maxlength="ACCORDION_MODULE_LIMITS[field]"
+            :data-test-id="`accordion-item-${field}`"
+            @focus="beginInput"
+            @update:model-value="input(index, field, $event)"
+            @change="commit"
+            @enter="($event.target as HTMLInputElement).blur()"
+            @keydown.ctrl.enter.prevent="commit"
+            @keydown.meta.enter.prevent="commit"
+            @keydown.esc="restore"
           />
         </label>
       </fieldset>
     </div>
-
-    <p v-if="error" data-test-id="accordion-items-error" class="text-[10px] text-red-400">
-      {{ error }}
-    </p>
+    <AppButton
+      variant="outline"
+      size="xs"
+      data-test-id="accordion-add-item"
+      :disabled="draft.items.length >= ACCORDION_MODULE_LIMITS.itemsMax"
+      @click="edit({ kind: 'add', title: copy.newSection })"
+      >{{ copy.addItem }}</AppButton
+    >
+    <AppAlert
+      v-if="invalid"
+      tone="warning"
+      :heading="panels.lowcodeAccordionInvalidDraft"
+      data-test-id="accordion-draft-error"
+    />
+    <AppButton
+      v-if="invalid"
+      variant="ghost"
+      size="xs"
+      data-test-id="accordion-restore"
+      @click="restore"
+      >{{ panels.lowcodeAccordionRestore }}</AppButton
+    >
   </div>
 </template>

@@ -4,6 +4,7 @@ import Matrix from '@open-pencil/scene-graph/matrix'
 
 import { TRANSPARENT } from '#core/constants'
 import { resolvePasteTarget } from '#core/editor/clipboard/paste-target'
+import { captureContentEditInsertion, contentEditInsertionParent } from '#core/editor/content-edit'
 import type { EditorContext } from '#core/editor/types'
 import { computeImageHash } from '#core/figma-api'
 import {
@@ -132,10 +133,13 @@ export function createClipboardAssetActions(
   }
 
   async function placeFiles(files: File[], cx: number, cy: number) {
+    if (!contentEditInsertionParent(ctx)) return
+    const canInsert = captureContentEditInsertion(ctx)
     const prepared = (await Promise.all(files.map(prepareAsset))).filter(
       (asset): asset is PreparedAsset => asset !== null
     )
     if (prepared.length === 0) return
+    if (!canInsert()) return
 
     const previousSelection = new Set(ctx.state.selectedIds)
     const parentId = resolvePasteTarget(ctx)

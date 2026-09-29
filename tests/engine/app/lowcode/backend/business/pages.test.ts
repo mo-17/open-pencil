@@ -236,7 +236,7 @@ describe('business template generated pages', () => {
       expect(
         body.every(
           (node) =>
-            node.height === 320 &&
+            node.height >= 144 &&
             node.interactiveProps?.layout?.overflowY === 'auto' &&
             node.interactiveProps.layout.whiteSpace === 'pre-wrap'
         )

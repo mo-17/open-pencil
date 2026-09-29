@@ -6,6 +6,7 @@ import { computed } from 'vue'
 import { useEditorStore } from '@/app/editor/active-store'
 import type { CanvasSplitNode } from '@/app/editor/panes/split-tree'
 import CanvasPaneHeader from '@/components/canvas/CanvasPaneHeader.vue'
+import ContentEditBanner from '@/components/canvas/ContentEditBanner.vue'
 import EditorCanvas from '@/components/EditorCanvas.vue'
 import splitterTheme from '@/theme/splitter'
 
@@ -29,6 +30,7 @@ function setLayout(sizes: number[]) {
     class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
   >
     <CanvasPaneHeader v-if="store.visiblePaneCount.value > 1" :pane-id="node.paneId" />
+    <ContentEditBanner :pane-id="node.paneId" />
     <EditorCanvas :pane-id="node.paneId" />
   </div>
 

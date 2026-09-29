@@ -19,6 +19,7 @@ import vue from '@vitejs/plugin-vue'
 import { createServer, type Plugin, type PluginOption, type Update, type ViteDevServer } from 'vite'
 
 import { reactModuleOptimizeDepsForFiles } from './adapters/react/modules/registry'
+import { reactUIKitOptimizeDepsForFiles } from './adapters/react/ui-kit/registry'
 import { vueModuleOptimizeDepsForFiles } from './adapters/vue/modules/registry'
 import { createSupabaseBuildDefines } from './build'
 import { createLocalBackendPreviewServices } from './local-backend-preview/auth-relay'
@@ -255,7 +256,7 @@ const PREVIEW_BASE_OPTIMIZE_DEPS = [
   'zustand/vanilla'
 ] as const
 
-/** Prebundle optional trusted-module runtimes present in the initial VFS.
+/** Prebundle optional trusted module and UI-kit runtimes present in the initial VFS.
  * Modules added later resolve on demand after the topology-triggered reload. */
 export function previewOptimizeDeps(files: PreviewFiles, target: WebVfsTarget = 'react'): string[] {
   if (target === 'vue') {
@@ -264,7 +265,13 @@ export function previewOptimizeDeps(files: PreviewFiles, target: WebVfsTarget = 
       ...vueModuleOptimizeDepsForFiles(files)
     ]
   }
-  return [...PREVIEW_BASE_OPTIMIZE_DEPS, ...reactModuleOptimizeDepsForFiles(files)]
+  return [
+    ...new Set([
+      ...PREVIEW_BASE_OPTIMIZE_DEPS,
+      ...reactModuleOptimizeDepsForFiles(files),
+      ...reactUIKitOptimizeDepsForFiles(files)
+    ])
+  ]
 }
 
 // VFS ids look like `${scanRoot}/src/main.tsx`. Two constraints:
@@ -349,7 +356,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
     optimizeDeps: {
       // Skip Vite's html crawler; we pre-declare the npm deps the emitted
       // app needs so the depscan has nothing to do. Optional module runtimes
-      // are included only when their generated VFS file is present.
+      // and UI kits are included only when their generated VFS file is present.
       entries: [],
       // Vite 8 cancels its crawl when closing. Holding cold optimization
       // results until that crawl ends can strand pending transforms forever

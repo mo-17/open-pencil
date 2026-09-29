@@ -115,8 +115,11 @@ describe('emitElement — IRList (Phase 2 §9)', () => {
     }
     const out = emitElement(list({ template: conditionalTemplate }), 0)
     expect(out).toContain('(users).map((item, index) => (')
-    // `&&` lives inside the .map callback.
-    expect(out).toContain('{(item.active) && (')
+    // The callback already is a JS expression; JSX child braces would be invalid here.
+    expect(out).toContain('(item.active) && (')
+    expect(() =>
+      new Bun.Transpiler({ loader: 'tsx' }).transformSync(`function List() { return <>${out}</> }`)
+    ).not.toThrow()
     // Key on the inner element, not the outer conditional shell.
     expect(out).toContain('<p key={index}>')
   })

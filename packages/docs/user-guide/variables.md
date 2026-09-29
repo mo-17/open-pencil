@@ -10,6 +10,16 @@ Variables store reusable design tokens — colors, spacing values, and other pro
 
 With no nodes selected, the Design tab shows page-level properties including a Variables section with collection and variable counts. Click the settings icon to open the variables dialog.
 
+## Optional Design Presets
+
+Choose **Design system presets** from the variables dialog, including its empty state. Preview **Business**, **Soft** or **Bold contrast**, then explicitly import the selected preset. Each provides six color variables and six numeric variables with Light and Dark modes.
+
+Importing creates a separate collection and selects it in the dialog. Existing canvas nodes, variables and bindings keep their current values. Repeated imports receive numbered collection names and namespaced variable names, so they remain distinguishable in binding pickers. Closing the preset preview without importing makes no document change.
+
+After import, select a node and use the existing variable picker beside a supported property, such as fill or corner radius. Choose the imported variable to apply it to that property. Edit its values in the variables dialog or detach the binding to keep the resolved value as an ordinary property. Use Undo to reverse a binding or, immediately after import, remove the whole imported collection in one step. Collections and bindings are saved with the design's `.fig` file.
+
+These are editable starting points. Choosing a preset does not switch the editor theme, restyle the document or require a particular component framework.
+
 ## Collections
 
 Variables are organized into collections. Each collection appears as a tab in the dialog.

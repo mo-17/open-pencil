@@ -1,3 +1,4 @@
+import { withBundledModuleAssets } from '#compiler/adapters/avatar/assets'
 import type { ComponentDef, IRModule, IRNode } from '#compiler/ir/types'
 import type { CompilerModuleRegistry } from '#compiler/modules/registry'
 
@@ -136,6 +137,6 @@ export function emitVueModuleRuntimes(
     if (files.has(adapter.runtimePath)) {
       throw new Error(`Vue module runtime would overwrite generated file: ${adapter.runtimePath}`)
     }
-    files.set(adapter.runtimePath, adapter.buildRuntime(options))
+    files.set(adapter.runtimePath, adapter.buildRuntime(withBundledModuleAssets(options, files)))
   }
 }

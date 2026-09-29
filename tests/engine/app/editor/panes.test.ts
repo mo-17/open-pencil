@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { createDefaultEditorState, createEditor } from '@open-pencil/core/editor'
+import { createModalModuleFrameOverrides } from '@open-pencil/core/plugins'
 import type { MotionSpec } from '@open-pencil/scene-graph'
 
 import { createCanvasPaneRegistry } from '@/app/editor/panes/registry'
@@ -107,4 +108,47 @@ describe('canvas pane registry', () => {
     expect(editor.state.motionPreview).toBeNull()
     expect(editor.isMotionPreviewActive()).toBe(false)
   })
+})
+
+describe('content editing across canvas panes', () => {
+  test.each(['activate', 'split', 'close'] as const)(
+    '%s exits the editor-only scope before saving view state',
+    (action) => {
+      const editor = createEditor()
+      try {
+        const host = editor.graph.createNode(
+          'FRAME',
+          editor.state.currentPageId,
+          createModalModuleFrameOverrides({ contentChildName: 'Body' })
+        )
+        const root = editor.graph.createNode('FRAME', host.id, {
+          name: 'Body',
+          width: 300,
+          height: 240
+        })
+        const registry = createCanvasPaneRegistry(editor.state, () => editor.exitContentEdit())
+        const first = registry.getActivePane()
+        const second = registry.splitPane(first.id, 'horizontal')
+        if (!second) throw new Error('Expected second pane')
+        editor.setZoomAroundPoint(0.75, 0, 0)
+        editor.pan(31 - editor.state.panX, 47 - editor.state.panY)
+        expect(editor.enterContentEdit(root.id)).toBe(true)
+        expect(registry.getPaneRenderState(first.id).contentEdit).toBeNull()
+        expect(registry.getPaneRenderState(second.id).contentEdit?.rootId).toBe(root.id)
+        if (action === 'activate') registry.setActivePane(first.id)
+        else if (action === 'split') registry.splitPane(second.id, 'vertical')
+        else registry.closePane(second.id)
+        expect(editor.state.contentEdit).toBeNull()
+        if (action !== 'close') {
+          registry.setActivePane(second.id)
+          expect(editor.state.contentEdit).toBeNull()
+          expect(editor.state.panX).toBe(31)
+          expect(editor.state.panY).toBe(47)
+          expect(editor.state.zoom).toBe(0.75)
+        }
+      } finally {
+        editor.dispose()
+      }
+    }
+  )
 })

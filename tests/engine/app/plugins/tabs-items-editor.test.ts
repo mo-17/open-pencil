@@ -9,7 +9,7 @@ const source = readFileSync(
 
 describe('Tabs module item editor', () => {
   test('edits exact id, title, and content fields as inert text', () => {
-    expect(source).toContain('id: item.id, label: item.label, content: item.content')
+    expect(source).toMatch(/id: item.id,\s+label: item.label,\s+content: item.content/)
     expect(source).toContain('@input="updateItem(index, \'id\', $event)"')
     expect(source).toContain('@input="updateItem(index, \'label\', $event)"')
     expect(source).toContain('@input="updateItem(index, \'content\', $event)"')

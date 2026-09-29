@@ -7,6 +7,7 @@ import type {
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 import { BLACK } from '#core/constants'
+import { contentEditInsertionParent } from '#core/editor/content-edit'
 import type { EditorContext } from '#core/editor/types'
 import { computeAccurateBounds } from '#core/vector'
 
@@ -61,6 +62,7 @@ function applyAnchorTangent(
 
 export function createPenActions(ctx: EditorContext, createShape: CreateShape) {
   function penAddVertex(x: number, y: number) {
+    if (contentEditInsertionParent(ctx) === null) return
     if (!ctx.state.penState) {
       ctx.state.penState = {
         vertices: [{ x, y }],
@@ -150,6 +152,10 @@ export function createPenActions(ctx: EditorContext, createShape: CreateShape) {
   }
 
   function penCommit(closed: boolean) {
+    if (contentEditInsertionParent(ctx) === null) {
+      penCancel()
+      return
+    }
     const ps = ctx.state.penState
     if (!ps || ps.vertices.length < 2) {
       ctx.state.penState = null

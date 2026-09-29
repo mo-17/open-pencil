@@ -7,8 +7,11 @@ import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRElement } from '@open-pencil/compiler/ir/types'
-import { createChartModuleFrameOverrides } from '@open-pencil/core/plugins'
+import { buildChartLayout, createChartModuleFrameOverrides } from '@open-pencil/core/plugins'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { chartFixture } from '#tests/helpers/compiler/modules/chart/fixture'
+import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 describe('compiler trusted chart module adapter', () => {
@@ -38,7 +41,18 @@ describe('compiler trusted chart module adapter', () => {
         values: [12, 40, 28],
         labels: ['Alpha', 'Beta', 'Gamma'],
         color: '#EF4444',
-        showValues: true
+        showValues: true,
+        layout: buildChartLayout(
+          {
+            chartType: 'bar',
+            values: [12, 40, 28],
+            labels: ['Alpha', 'Beta', 'Gamma'],
+            color: '#EF4444',
+            showValues: true
+          },
+          480,
+          280
+        )
       }
     })
     expect(JSON.stringify(element.children)).toContain('Chart overlay')
@@ -149,3 +163,44 @@ describe('compiler trusted chart module adapter', () => {
     }
   }, 15_000)
 })
+
+for (const target of ['react', 'vue'] as const) {
+  for (const updates of [false, true])
+    test(`${target} charts compile all static types, dense and empty data with complete typed runtime (updates ${updates})`, () => {
+      const result = chartFixture(target, updates)
+      expect(result.warnings).toEqual([])
+      expect(result.files.has(`src/__openpencil_chart.${target === 'react' ? 'tsx' : 'vue'}`)).toBe(
+        true
+      )
+      const files = new Map<string, string>()
+      for (const [path, content] of result.files)
+        if (typeof content === 'string') files.set(path, content)
+      expect(() => typeCheckCompilerFiles(files, target)).not.toThrow()
+    }, 35000)
+  test(`${target} rejects negative circular data without hiding authored fallback`, () => {
+    const graph = new SceneGraph(),
+      page = graph.getPages()[0]
+    const frame = graph.createNode('FRAME', page.id, createChartModuleFrameOverrides())
+    const module = frame.interactiveProps?.module
+    if (!module) throw new Error('Missing chart module')
+    graph.updateNode(frame.id, {
+      interactiveProps: {
+        module: {
+          ...module,
+          config: { ...module.config, chartType: 'pie', values: [-1, 2], labels: ['Loss', 'Gain'] }
+        }
+      }
+    })
+    graph.createNode('TEXT', frame.id, { text: 'Invalid circular chart' })
+    const result = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({ target, router: 'none', devMode: false })
+    })
+    expect(result.warnings.map((warning) => warning.code)).toContain('chart-module-invalid')
+    expect([...result.files.keys()].some((path) => path.includes('__openpencil_chart'))).toBe(false)
+    expect(
+      [...result.files.values()].filter((value) => typeof value === 'string').join('\n')
+    ).toContain('Invalid circular chart')
+  })
+}

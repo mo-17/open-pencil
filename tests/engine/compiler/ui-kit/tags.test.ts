@@ -169,6 +169,10 @@ describe('compile — shadcn UI kit (Phase 3 §15)', () => {
     expect(out.files.has('src/components/ui/textarea.tsx')).toBe(false)
     const pkg = JSON.parse(out.files.get('package.json') as string)
     expect(pkg.dependencies).not.toHaveProperty('@radix-ui/react-label')
+    const css = out.files.get('src/index.css') as string
+    expect(css).toContain('disabled:pointer-events-none')
+    expect(css).not.toContain('min-w-[8rem]')
+    expect(css).not.toContain('--background: Canvas;')
   })
 
   test('no uiKit → byte-identical to the plain Tailwind emit', () => {

@@ -36,7 +36,7 @@ export type BackendCommandErrorCode = 'invalid-request' | 'authentication-requir
 export class BackendCommandError extends Error {
   readonly code: BackendCommandErrorCode
   constructor(readonly status: number) {
-    super('Backend command failed.')
+    super(status === 202 ? 'Request accepted. Completion is not confirmed; inspect the saved request before retrying.' : 'Backend command failed.')
     this.name = 'BackendCommandError'
     this.code = status === 400 ? 'invalid-request' : status === 401 ? 'authentication-required' : status === 403 ? 'forbidden' : status === 404 ? 'not-found' : status === 409 ? 'conflict' : status === 503 ? 'unavailable' : 'request-failed'
   }
@@ -107,7 +107,9 @@ export const NESTJS_COMMAND_CLIENT_METHOD = String.raw`
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', 'Idempotency-Key': options.idempotencyKey },
         body: JSON.stringify(body)
       })
-      if (!response.ok) throw new BackendCommandError(response.status)
+      // The generated command contract returns a completed result. An async
+      // acknowledgement must retain its attempt for recovery, never run onSuccess.
+      if (!response.ok || response.status === 202) throw new BackendCommandError(response.status)
       const data: unknown = await response.json()
       if (data === null || typeof data !== 'object' || Array.isArray(data)) throw new BackendCommandError(0)
       return data as T

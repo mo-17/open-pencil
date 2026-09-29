@@ -279,7 +279,9 @@ describe('preview browser — phase 6 content module runtimes', () => {
       expect(await beta.getAttribute('aria-expanded')).toBe('true')
 
       const codeBlock = page.getByRole('region', { name: 'Inert code sample' })
-      expect(await codeBlock.locator('code').textContent()).toBe(INERT_CODE)
+      expect((await codeBlock.locator('[data-code-text]').allTextContents()).join('\n')).toBe(
+        INERT_CODE
+      )
       expect(await codeBlock.locator('script').count()).toBe(0)
       expect(
         await page.evaluate(

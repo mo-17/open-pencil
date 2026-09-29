@@ -15,6 +15,10 @@ export interface AppPluginModuleEditorText {
   readonly identifier: string
   readonly title: string
   readonly content: string
+  readonly contentChild: string
+  readonly contentChildNone: string
+  readonly contentChildMissing: string
+  readonly contentChildHint: string
   readonly newTab: string
   readonly newSection: string
   count(current: number, maximum: number): string
@@ -43,6 +47,58 @@ const plugin = (
  */
 const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocalizedText>>> =
   Object.freeze({
+    'open-pencil.walktour': plugin(
+      'OpenPencil 操作引导',
+      '为可编辑子图层配置分步说明和目标高亮。',
+      {
+        walktour: contribution('操作引导', '手动开始、前后切换与结束；只显示引导，不执行业务操作。')
+      }
+    ),
+    'open-pencil.alert': plugin('OpenPencil 提示条', '带语义颜色与关闭操作的消息提示。', {
+      alert: contribution('提示条', '配置类型、外观、文字和无障碍通告；关闭仅影响当前预览实例。')
+    }),
+    'open-pencil.progress': plugin('OpenPencil 进度展示', '条形与环形进度，支持不确定状态。', {
+      progress: contribution(
+        '进度展示',
+        '配置展示值与外观，尚未连接真实任务；不确定状态不显示百分比。'
+      )
+    }),
+    'open-pencil.tooltip': plugin('OpenPencil 提示说明', '悬停、聚焦或触摸查看纯文本提示。', {
+      tooltip: contribution('提示说明', '配置触发文字、提示内容、位置和延迟。')
+    }),
+    'open-pencil.skeleton': plugin('OpenPencil 加载占位', '可配置的静态或脉冲加载占位。', {
+      skeleton: contribution('加载占位', '调整占位形状、行数、颜色与动画。')
+    }),
+    'open-pencil.org-chart': plugin('OpenPencil 组织架构图', '展示可编辑的本地组织层级。', {
+      'org-chart': contribution(
+        '组织架构图',
+        '配置卡片内容、上级关系、横纵布局和折叠分支；不连接企业通讯录。'
+      )
+    }),
+    'open-pencil.pagination': plugin('OpenPencil 分页', '为列表与搜索结果提供可绑定的页码导航。', {
+      pagination: contribution('分页', '配置总条数、每页条数和页码，支持页面或文档数值状态绑定。')
+    }),
+    'open-pencil.descriptions': plugin('OpenPencil 描述列表', '按标签与内容展示本地详情信息。', {
+      descriptions: contribution(
+        '描述列表',
+        '编辑字段条目、列数、布局、密度与配色；不自动读取业务数据。'
+      )
+    }),
+    'open-pencil.empty-state': plugin('OpenPencil 空状态', '可编辑的图形与文字占位。', {
+      'empty-state': contribution('空状态', '调整空盒或搜索图形、标题说明与对齐。')
+    }),
+    'open-pencil.avatar': plugin('OpenPencil 头像', '本地图片与文字回退头像。', {
+      avatar: contribution('头像', '配置姓名、形状、配色与尺寸；使用本地图片填充。')
+    }),
+    'open-pencil.badge': plugin('OpenPencil 角标', '文字宿主上的数字或装饰圆点。', {
+      badge: contribution('角标', '配置数量、溢出上限、位置与配色。')
+    }),
+    'open-pencil.timeline': plugin('OpenPencil 时间线', '按顺序展示本地事件。', {
+      timeline: contribution('时间线', '编辑事件标题、说明、时间文字和状态。')
+    }),
+    'open-pencil.chip': plugin('OpenPencil 交互标签', '可选择和移除的内容标签。', {
+      chip: contribution('交互标签', '配置文字、颜色与外观；选择和移除只影响当前预览实例。')
+    }),
     'open-pencil.vr-tour': plugin(
       'OpenPencil VR 看房',
       '使用 360° 全景图片与房间热点制作可导出的看房体验。',
@@ -113,11 +169,48 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         lottie: contribution('Lottie 动画', '添加不含表达式、外部图片、音频或外部字体的矢量动画。')
       }
     ),
-    'open-pencil.carousel': plugin(
-      'OpenPencil 轮播',
-      '具有键盘操作、指示点、箭头和可暂停自动播放的无障碍轮播。',
+    'open-pencil.slider': plugin(
+      'OpenPencil 滑块与范围选择',
+      '配置单值或双端范围、步长、初值和外观；交互值仅保留于本次预览。',
       {
-        carousel: contribution('轮播', '添加最多十二张幻灯片及安全链接和可选远程图片。')
+        slider: contribution(
+          '滑块与范围选择',
+          '配置单值或双端范围、步长、初值和外观；交互值仅保留于本次预览。'
+        )
+      }
+    ),
+    'open-pencil.rating': plugin(
+      'OpenPencil 评分',
+      '配置星数、半星、初值、清空及只读状态；交互值仅保留于本次预览。',
+      {
+        rating: contribution(
+          '评分',
+          '配置星数、半星、初值、清空及只读状态；交互值仅保留于本次预览。'
+        )
+      }
+    ),
+    'open-pencil.stepper': plugin(
+      'OpenPencil 步骤条',
+      '可视化编辑步骤、说明、完成与错误状态；点击不会提交表单。',
+      {
+        stepper: contribution('步骤条', '可视化编辑步骤、说明、完成与错误状态；点击不会提交表单。')
+      }
+    ),
+    'open-pencil.breadcrumb': plugin(
+      'OpenPencil 面包屑',
+      '编辑导航项目和安全链接，配置分隔符、换行与外观。',
+      {
+        breadcrumb: contribution('面包屑', '编辑导航项目和安全链接，配置分隔符、换行与外观。')
+      }
+    ),
+    'open-pencil.carousel': plugin(
+      'OpenPencil 轮播图',
+      '可视化编辑图片与文字，支持键盘操作、指示点、箭头和可暂停自动播放。',
+      {
+        carousel: contribution(
+          '轮播图',
+          '添加最多十二张幻灯片，可配置图片、说明、安全链接和播放方式。'
+        )
       }
     ),
     'open-pencil.data-grid': plugin(
@@ -243,6 +336,31 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         markdown: contribution('Markdown', '添加标题、段落、列表、引用、代码和安全链接等文档内容。')
       }
     ),
+    'open-pencil.date-range': plugin(
+      'OpenPencil 日期范围',
+      '本地选择开始与结束日期，并校验范围。',
+      {
+        'date-range': contribution(
+          '日期范围',
+          '原生日期输入与范围反馈；可分别绑定起止日期状态并参与表单。'
+        )
+      }
+    ),
+    'open-pencil.cascader': plugin('OpenPencil 级联选择', '沿层级选择叶节点并绑定完整路径。', {
+      cascader: contribution(
+        '级联选择',
+        '支持本地路径搜索、禁用分支与清除；可绑定数组状态并参与表单。'
+      )
+    }),
+    'open-pencil.tree': plugin('OpenPencil 树与树选择', '编辑层级结构、搜索与独立选择。', {
+      tree: contribution('树与树选择', '可切换树视图或下拉树，支持单选和多选。')
+    }),
+    'open-pencil.popover': plugin('OpenPencil 气泡浮层', '可编辑内容与本地确认反馈。', {
+      popover: contribution(
+        '气泡浮层与确认',
+        '点击触发浮层，支持内容子图层；确认操作仅提供本地反馈。'
+      )
+    }),
     'open-pencil.code-block': plugin(
       'OpenPencil 代码块',
       '展示有界纯文本代码并提供主题、换行、行号和复制控制。',
@@ -795,6 +913,227 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
  */
 const ZH_CN_BUNDLED_MODULE_PROPERTY_TEXT: Readonly<Partial<Record<string, string>>> = Object.freeze(
   {
+    lowcodeModuleFieldChartType: '图表类型',
+    lowcodeModuleFieldValues: '图表数据',
+    lowcodeModuleFieldLabels: '标签',
+    lowcodeModuleFieldShowValues: '显示数值',
+    'lowcodeModuleFieldChartType:bar': '柱状图',
+    'lowcodeModuleFieldChartType:line': '折线图',
+    'lowcodeModuleFieldChartType:area': '面积图',
+    'lowcodeModuleFieldChartType:pie': '饼图',
+    'lowcodeModuleFieldChartType:donut': '环形图',
+    lowcodeModuleFieldTooltipTriggerLabel: '触发文字',
+    lowcodeModuleFieldTooltipContent: '提示内容',
+    lowcodeModuleFieldTooltipPlacement: '首选方向',
+    lowcodeModuleFieldTooltipGap: '提示间距',
+    lowcodeModuleFieldTooltipMaxWidth: '提示最大宽度',
+    lowcodeModuleFieldTooltipBackgroundColor: '提示背景',
+    lowcodeModuleFieldTooltipTextColor: '提示文字颜色',
+    lowcodeModuleFieldTooltipTriggerBackground: '触发器背景',
+    lowcodeModuleFieldTooltipTriggerTextColor: '触发器文字颜色',
+    lowcodeModuleFieldTooltipBorderRadius: '圆角',
+    lowcodeModuleFieldTooltipFontSize: '字号',
+    lowcodeModuleFieldTooltipOpenDelay: '悬停延迟（毫秒）',
+    lowcodeModuleFieldTooltipCloseDelay: '关闭延迟（毫秒）',
+    'lowcodeModuleFieldTooltipPlacement:top': '上方',
+    'lowcodeModuleFieldTooltipPlacement:right': '右侧',
+    'lowcodeModuleFieldTooltipPlacement:bottom': '下方',
+    'lowcodeModuleFieldTooltipPlacement:left': '左侧',
+    lowcodeModuleFieldSkeletonVariant: '占位形状',
+    lowcodeModuleFieldSkeletonRows: '占位行数',
+    lowcodeModuleFieldSkeletonLineHeight: '占位行高',
+    lowcodeModuleFieldSkeletonGap: '行间距',
+    lowcodeModuleFieldSkeletonLastLineWidth: '末行宽度（%）',
+    lowcodeModuleFieldSkeletonColor: '占位颜色',
+    lowcodeModuleFieldSkeletonBackgroundColor: '背景颜色',
+    lowcodeModuleFieldSkeletonBorderRadius: '圆角',
+    lowcodeModuleFieldSkeletonAnimation: '动画',
+    lowcodeModuleFieldSkeletonLabel: '加载说明',
+    lowcodeModuleFieldSkeletonShowLabel: '显示说明文字',
+    lowcodeModuleFieldSkeletonTextColor: '说明颜色',
+    lowcodeModuleFieldSkeletonFontSize: '说明字号',
+    'lowcodeModuleFieldSkeletonVariant:text': '文字行',
+    'lowcodeModuleFieldSkeletonVariant:rectangle': '矩形',
+    'lowcodeModuleFieldSkeletonVariant:circle': '圆形',
+    'lowcodeModuleFieldSkeletonAnimation:none': '静态',
+    'lowcodeModuleFieldSkeletonAnimation:pulse': '脉冲',
+    lowcodeModuleFieldEmptyStateTitle: '标题',
+    lowcodeModuleFieldEmptyStateDescription: '说明',
+    lowcodeModuleFieldEmptyStateIllustration: '示意图',
+    lowcodeModuleFieldEmptyStateAlignment: '对齐方式',
+    lowcodeModuleFieldEmptyStateIconSize: '示意图尺寸',
+    lowcodeModuleFieldEmptyStateFontSize: '文字字号',
+    lowcodeModuleFieldEmptyStateGap: '内容间距',
+    lowcodeModuleFieldEmptyStatePadding: '内边距',
+    lowcodeModuleFieldEmptyStateRadius: '圆角',
+    lowcodeModuleFieldEmptyStateBackground: '背景颜色',
+    lowcodeModuleFieldEmptyStateTextColor: '标题颜色',
+    lowcodeModuleFieldEmptyStateDescriptionColor: '说明颜色',
+    lowcodeModuleFieldEmptyStateIllustrationColor: '示意图颜色',
+    'lowcodeModuleFieldEmptyStateIllustration:box': '空盒',
+    'lowcodeModuleFieldEmptyStateIllustration:search': '搜索',
+    'lowcodeModuleFieldEmptyStateIllustration:none': '不显示',
+    'lowcodeModuleFieldEmptyStateAlignment:center': '居中',
+    'lowcodeModuleFieldEmptyStateAlignment:left': '左对齐',
+    lowcodeModuleFieldAvatarName: '姓名与无障碍名称',
+    lowcodeModuleFieldAvatarFallbackText: '回退文字',
+    lowcodeModuleFieldAvatarShape: '形状',
+    lowcodeModuleFieldAvatarBackgroundColor: '背景颜色',
+    lowcodeModuleFieldAvatarTextColor: '文字颜色',
+    lowcodeModuleFieldAvatarBorderColor: '边框颜色',
+    lowcodeModuleFieldAvatarBorderWidth: '边框粗细',
+    lowcodeModuleFieldAvatarBorderRadius: '圆角',
+    lowcodeModuleFieldAvatarSize: '头像尺寸',
+    lowcodeModuleFieldAvatarFontSize: '字号',
+    lowcodeModuleFieldAvatarImageFit: '图片适应方式',
+    'lowcodeModuleFieldAvatarShape:circle': '圆形',
+    'lowcodeModuleFieldAvatarShape:rounded': '圆角方形',
+    'lowcodeModuleFieldAvatarShape:square': '方形',
+    'lowcodeModuleFieldAvatarImageFit:cover': '铺满裁切',
+    'lowcodeModuleFieldAvatarImageFit:contain': '完整显示',
+    lowcodeModuleFieldBadgeMode: '角标类型',
+    lowcodeModuleFieldBadgeCount: '数量',
+    lowcodeModuleFieldBadgeMax: '显示上限',
+    lowcodeModuleFieldBadgeShowZero: '显示零值',
+    lowcodeModuleFieldBadgePlacement: '位置',
+    lowcodeModuleFieldBadgeSize: '尺寸',
+    lowcodeModuleFieldBadgeHostLabel: '宿主文字',
+    lowcodeModuleFieldBadgeLabel: '数量无障碍标签',
+    lowcodeModuleFieldBadgeColor: '角标颜色',
+    lowcodeModuleFieldBadgeTextColor: '数字颜色',
+    lowcodeModuleFieldBadgeHostBackground: '宿主背景',
+    lowcodeModuleFieldBadgeHostTextColor: '宿主文字颜色',
+    'lowcodeModuleFieldBadgeMode:count': '数字',
+    'lowcodeModuleFieldBadgeMode:dot': '装饰圆点',
+    'lowcodeModuleFieldBadgePlacement:top-left': '左上',
+    'lowcodeModuleFieldBadgePlacement:top-right': '右上',
+    'lowcodeModuleFieldBadgePlacement:bottom-left': '左下',
+    'lowcodeModuleFieldBadgePlacement:bottom-right': '右下',
+    'lowcodeModuleFieldBadgeSize:small': '小',
+    'lowcodeModuleFieldBadgeSize:medium': '中',
+    'lowcodeModuleFieldBadgeSize:large': '大',
+    lowcodeModuleFieldTimelineItemId: '标识符',
+    lowcodeModuleFieldTimelineItemTitle: '标题',
+    lowcodeModuleFieldTimelineItemDescription: '说明',
+    lowcodeModuleFieldTimelineItemTime: '时间文字',
+    lowcodeModuleFieldTimelineItemStatus: '状态',
+    lowcodeModuleFieldTimelineItems: '事件项目',
+    lowcodeModuleFieldTimelineLayout: '排列方式',
+    lowcodeModuleFieldTimelineEmptyText: '空状态文字',
+    lowcodeModuleFieldTimelineCompletedColor: '完成颜色',
+    lowcodeModuleFieldTimelineErrorColor: '错误颜色',
+    lowcodeModuleFieldTimelineLineColor: '连线颜色',
+    lowcodeModuleFieldTimelineItemGap: '项目间距',
+    lowcodeModuleFieldTimelineMarkerSize: '状态点尺寸',
+    lowcodeModuleFieldTimelineLineWidth: '连线粗细',
+    'lowcodeModuleFieldTimelineLayout:start': '起始侧',
+    'lowcodeModuleFieldTimelineLayout:alternate': '左右交错',
+    'lowcodeModuleFieldTimelineItemStatus:completed': '已完成',
+    'lowcodeModuleFieldTimelineItemStatus:current': '当前',
+    'lowcodeModuleFieldTimelineItemStatus:pending': '待处理',
+    'lowcodeModuleFieldTimelineItemStatus:error': '错误',
+    lowcodeModuleFieldAlertTone: '提示类型',
+    lowcodeModuleFieldAlertVariant: '外观',
+    lowcodeModuleFieldAlertTitle: '标题',
+    lowcodeModuleFieldAlertDescription: '正文',
+    lowcodeModuleFieldAlertShowIcon: '显示图标',
+    lowcodeModuleFieldAlertClosable: '允许关闭',
+    lowcodeModuleFieldAlertCloseLabel: '关闭按钮标签',
+    lowcodeModuleFieldAlertFontSize: '字号',
+    lowcodeModuleFieldAlertRadius: '圆角',
+    lowcodeModuleFieldAlertAnnouncement: '屏幕阅读器通告',
+    lowcodeModuleFieldProgressVariant: '展示方式',
+    lowcodeModuleFieldProgressValue: '进度百分比',
+    lowcodeModuleFieldProgressIndeterminate: '不确定进度',
+    lowcodeModuleFieldProgressLabel: '标题与无障碍标签',
+    lowcodeModuleFieldProgressPendingLabel: '进行中文字',
+    lowcodeModuleFieldProgressShowLabel: '显示标题',
+    lowcodeModuleFieldProgressShowValue: '显示百分比',
+    lowcodeModuleFieldProgressAccentColor: '进度颜色',
+    lowcodeModuleFieldProgressTrackColor: '轨道颜色',
+    lowcodeModuleFieldProgressTextColor: '文字颜色',
+    lowcodeModuleFieldProgressBackgroundColor: '背景颜色',
+    lowcodeModuleFieldProgressFontSize: '字号',
+    lowcodeModuleFieldProgressThickness: '轨道厚度',
+    lowcodeModuleFieldProgressDiameter: '圆环直径',
+    lowcodeModuleFieldChipLabel: '标签文字',
+    lowcodeModuleFieldChipVariant: '外观',
+    lowcodeModuleFieldChipColor: '主题色',
+    lowcodeModuleFieldChipFilledTextColor: '实心文字颜色',
+    lowcodeModuleFieldChipBorderRadius: '圆角',
+    lowcodeModuleFieldChipFontSize: '字号',
+    lowcodeModuleFieldChipSelectable: '允许选择',
+    lowcodeModuleFieldChipInitialSelected: '初始选中',
+    lowcodeModuleFieldChipDeletable: '允许移除',
+    lowcodeModuleFieldChipDeleteLabel: '移除按钮标签',
+    lowcodeModuleFieldChipRemovedLabel: '移除后的提示',
+    lowcodeModuleFieldChipDisabled: '禁用',
+    'lowcodeModuleFieldAlertTone:info': '信息',
+    'lowcodeModuleFieldAlertTone:success': '成功',
+    'lowcodeModuleFieldAlertTone:warning': '警告',
+    'lowcodeModuleFieldAlertTone:error': '错误',
+    'lowcodeModuleFieldAlertVariant:soft': '浅色',
+    'lowcodeModuleFieldAlertVariant:outlined': '描边',
+    'lowcodeModuleFieldAlertVariant:filled': '实心',
+    'lowcodeModuleFieldChipVariant:soft': '浅色',
+    'lowcodeModuleFieldChipVariant:outlined': '描边',
+    'lowcodeModuleFieldChipVariant:filled': '实心',
+    'lowcodeModuleFieldAlertAnnouncement:polite': '适时通告',
+    'lowcodeModuleFieldAlertAnnouncement:assertive': '立即通告',
+    'lowcodeModuleFieldAlertAnnouncement:off': '关闭通告',
+    'lowcodeModuleFieldProgressVariant:linear': '条形',
+    'lowcodeModuleFieldProgressVariant:circular': '环形',
+    lowcodeModuleFieldSliderLabel: '标题',
+    lowcodeModuleFieldSliderRange: '双端范围选择',
+    lowcodeModuleFieldSliderMin: '最小值',
+    lowcodeModuleFieldSliderMax: '最大值',
+    lowcodeModuleFieldSliderStep: '步长',
+    lowcodeModuleFieldSliderInitialValue: '初始值／范围起点',
+    lowcodeModuleFieldSliderInitialEndValue: '初始范围终点',
+    lowcodeModuleFieldSliderDisabled: '禁用',
+    lowcodeModuleFieldSliderReadOnly: '只读',
+    lowcodeModuleFieldSliderShowValue: '显示数值',
+    lowcodeModuleFieldSliderShowBounds: '显示范围边界',
+    lowcodeModuleFieldSliderBackground: '背景色',
+    lowcodeModuleFieldSliderTextColor: '文字颜色',
+    lowcodeModuleFieldSliderAccentColor: '选中颜色',
+    lowcodeModuleFieldSliderTrackColor: '轨道颜色',
+    lowcodeModuleFieldSliderFontSize: '字号',
+    lowcodeModuleFieldRatingLabel: '标题',
+    lowcodeModuleFieldRatingMax: '星星数量',
+    lowcodeModuleFieldRatingHalf: '允许半星',
+    lowcodeModuleFieldRatingInitialValue: '初始评分',
+    lowcodeModuleFieldRatingDisabled: '禁用',
+    lowcodeModuleFieldRatingReadOnly: '只读',
+    lowcodeModuleFieldRatingShowValue: '显示数值',
+    lowcodeModuleFieldRatingAllowClear: '允许清空',
+    lowcodeModuleFieldRatingClearLabel: '清空按钮文字',
+    lowcodeModuleFieldRatingActiveColor: '选中颜色',
+    lowcodeModuleFieldRatingInactiveColor: '未选中颜色',
+    lowcodeModuleFieldRatingTextColor: '文字颜色',
+    lowcodeModuleFieldRatingBackground: '背景色',
+    lowcodeModuleFieldRatingStarSize: '星星大小',
+    lowcodeModuleFieldRatingFontSize: '字号',
+    lowcodeModuleFieldStepperItems: '步骤项目',
+    lowcodeModuleFieldStepperCurrentIndex: '初始步骤（从0开始）',
+    lowcodeModuleFieldStepperOrientation: '排列方向',
+    lowcodeModuleFieldStepperAllowStepClick: '允许点击切换步骤',
+    lowcodeModuleFieldStepperShowNumbers: '显示步骤编号',
+    lowcodeModuleFieldStepperErrorColor: '错误状态颜色',
+    lowcodeModuleFieldBreadcrumbItems: '导航项目',
+    lowcodeModuleFieldBreadcrumbSeparator: '分隔符',
+    lowcodeModuleFieldBreadcrumbWrap: '允许换行',
+    lowcodeModuleFieldNavigationLabel: '无障碍标签',
+    lowcodeModuleFieldNavigationBackground: '背景色',
+    lowcodeModuleFieldNavigationTextColor: '文字颜色',
+    lowcodeModuleFieldNavigationAccentColor: '强调色',
+    lowcodeModuleFieldNavigationFontSize: '字号',
+    'lowcodeModuleFieldStepperOrientation:horizontal': '横向',
+    'lowcodeModuleFieldStepperOrientation:vertical': '纵向',
+    'lowcodeModuleFieldBreadcrumbSeparator:slash': '斜线',
+    'lowcodeModuleFieldBreadcrumbSeparator:chevron': '箭头',
+    'lowcodeModuleFieldBreadcrumbSeparator:dot': '圆点',
+    lowcodeModuleFieldModalContentChild: '内容子图层',
     lowcodeModuleFieldVRTourLabel: '看房标题',
     lowcodeModuleFieldVRTourLocale: '界面语言',
     'lowcodeModuleFieldVRTourLocale:en': 'English',
@@ -899,6 +1238,56 @@ const ZH_CN_BUNDLED_MODULE_PROPERTY_TEXT: Readonly<Partial<Record<string, string
     lowcodeModuleFieldMarkdownFontSize: '字号',
     lowcodeModuleFieldMarkdownLineHeight: '行高',
 
+    lowcodeModuleFieldDateRangeLabel: '组标签',
+    lowcodeModuleFieldDateRangeStartLabel: '开始标签（留空自动）',
+    lowcodeModuleFieldDateRangeEndLabel: '结束标签（留空自动）',
+    lowcodeModuleFieldDateRangeInitialStart: '初始开始（YYYY-MM-DD 或空）',
+    lowcodeModuleFieldDateRangeInitialEnd: '初始结束（YYYY-MM-DD 或空）',
+    lowcodeModuleFieldDateRangeMin: '最早日期（YYYY-MM-DD 或空）',
+    lowcodeModuleFieldDateRangeMax: '最晚日期（YYYY-MM-DD 或空）',
+    lowcodeModuleFieldDateRangeAllowClear: '允许清空',
+    lowcodeModuleFieldTreePresentation: '展示方式',
+    lowcodeModuleFieldTreeLabel: '标签',
+    lowcodeModuleFieldTreePlaceholder: '占位提示',
+    lowcodeModuleFieldTreeSelectionMode: '选择方式',
+    lowcodeModuleFieldTreeItems: '树项目与初始状态',
+    lowcodeModuleFieldTreeSearchable: '允许搜索',
+    lowcodeModuleFieldTreeDisabled: '禁用',
+    lowcodeModuleFieldTreeShowValue: '显示已选值',
+    lowcodeModuleFieldTreeBackgroundColor: '背景颜色',
+    lowcodeModuleFieldTreeTextColor: '文字颜色',
+    lowcodeModuleFieldTreeAccentColor: '强调颜色',
+    lowcodeModuleFieldTreeBorderColor: '边框颜色',
+    lowcodeModuleFieldTreeFontSize: '字号',
+    lowcodeModuleFieldTreeRowHeight: '行高',
+    lowcodeModuleFieldPopoverMode: '模式',
+    lowcodeModuleFieldPopoverTriggerLabel: '触发文字',
+    lowcodeModuleFieldPopoverTitle: '标题',
+    lowcodeModuleFieldPopoverContentChildName: '内容子图层',
+    lowcodeModuleFieldPopoverContent: '正文',
+    lowcodeModuleFieldPopoverPlacement: '优先位置',
+    lowcodeModuleFieldPopoverGap: '间距',
+    lowcodeModuleFieldPopoverPanelWidth: '浮层宽度',
+    lowcodeModuleFieldPopoverDisabled: '禁用',
+    lowcodeModuleFieldPopoverConfirmLabel: '确认文字',
+    lowcodeModuleFieldPopoverCancelLabel: '取消文字',
+    lowcodeModuleFieldPopoverPanelBackground: '浮层背景',
+    lowcodeModuleFieldPopoverTextColor: '正文颜色',
+    lowcodeModuleFieldPopoverAccentColor: '确认按钮背景',
+    lowcodeModuleFieldPopoverTriggerBackground: '触发按钮背景',
+    lowcodeModuleFieldPopoverTriggerTextColor: '触发文字颜色',
+    lowcodeModuleFieldPopoverBorderRadius: '圆角',
+    lowcodeModuleFieldPopoverFontSize: '字号',
+    'lowcodeModuleFieldTreePresentation:tree': '树视图',
+    'lowcodeModuleFieldTreePresentation:select': '下拉树选择',
+    'lowcodeModuleFieldTreeSelectionMode:single': '单选',
+    'lowcodeModuleFieldTreeSelectionMode:multiple': '多选',
+    'lowcodeModuleFieldPopoverMode:popover': '内容浮层',
+    'lowcodeModuleFieldPopoverMode:confirm': '确认浮层',
+    'lowcodeModuleFieldPopoverPlacement:top': '上方',
+    'lowcodeModuleFieldPopoverPlacement:right': '右侧',
+    'lowcodeModuleFieldPopoverPlacement:bottom': '下方',
+    'lowcodeModuleFieldPopoverPlacement:left': '左侧',
     lowcodeModuleFieldCodeBlockLabel: '无障碍标签',
     lowcodeModuleFieldCodeBlockCode: '代码内容',
     lowcodeModuleFieldCodeBlockLanguage: '代码语言',
@@ -975,6 +1364,11 @@ const DEFAULT_MODULE_EDITOR_TEXT: AppPluginModuleEditorText = Object.freeze({
   identifier: 'Identifier',
   title: 'Title',
   content: 'Content',
+  contentChild: 'Content child layer',
+  contentChildNone: 'Use text content',
+  contentChildMissing: 'Missing or duplicate child layer. Rename or select a unique direct child.',
+  contentChildHint:
+    'Choose a direct child by its unique layer name. Mapped content replaces text; unmapped children are not rendered.',
   newTab: 'New tab',
   newSection: 'New section',
   count: (current: number, maximum: number) => `${current}/${maximum}`,
@@ -987,6 +1381,10 @@ const ZH_CN_MODULE_EDITOR_TEXT: AppPluginModuleEditorText = Object.freeze({
   identifier: '标识符',
   title: '标题',
   content: '内容',
+  contentChild: '内容子图层',
+  contentChildNone: '使用文本内容',
+  contentChildMissing: '子图层不存在或名称重复，请重命名或重新选择唯一的直接子图层。',
+  contentChildHint: '按唯一图层名选择直接子图层。映射内容替代文本，未映射子图层不会显示。',
   newTab: '新标签页',
   newSection: '新分区',
   count: (current: number, maximum: number) => `${current}/${maximum} 项`,

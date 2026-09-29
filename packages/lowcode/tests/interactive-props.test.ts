@@ -7,14 +7,20 @@ const INVALID_KNOWN_FIELDS = [
   ['BUTTON', 'textColor', 'black', 'a #RRGGBB color'],
   ['INPUT', 'placeholder', false, 'a string'],
   ['INPUT', 'value', 42, 'a string'],
-  ['INPUT', 'inputType', 'file', 'text, email, or password'],
+  ['INPUT', 'inputType', 'file', 'text, email, password, number, tel, url, search'],
   ['INPUT', 'textColor', 'white', 'a #RRGGBB color'],
   ['INPUT', 'placeholderColor', '#12345G', 'a #RRGGBB color'],
   ['TEXTAREA', 'placeholder', [], 'a string'],
   ['TEXTAREA', 'value', {}, 'a string'],
   ['TEXTAREA', 'textColor', '#FFF', 'a #RRGGBB color'],
-  ['SELECT', 'options', ['Valid', 7], 'an array of strings'],
+  ['SELECT', 'options', ['Valid', 7], 'an array of strings or label/value options'],
   ['SELECT', 'value', true, 'a string'],
+  ['SELECT', 'placeholder', true, 'a string'],
+  ['SELECT', 'allowClear', 'yes', 'a boolean'],
+  ['SELECT', 'showSearch', 'true', 'a boolean'],
+  ['SELECT', 'virtual', 1000, 'a boolean'],
+  ['SELECT', 'textColor', 'red', 'a #RRGGBB color'],
+  ['SELECT', 'placeholderColor', '#123', 'a #RRGGBB color'],
   ['RADIO', 'options', 'Free,Pro', 'an array of strings'],
   ['RADIO', 'value', 1, 'a string'],
   ['RADIO', 'groupName', false, 'a string'],
@@ -100,7 +106,19 @@ describe('validateInteractiveProps', () => {
         'TEXTAREA',
         { placeholder: 'Bio', value: 'Hello', textColor: '#111827', placeholderColor: '#6B7280' }
       ],
-      ['SELECT', { options: ['Admin'], value: 'Admin' }],
+      [
+        'SELECT',
+        {
+          options: ['Admin'],
+          value: 'Admin',
+          placeholder: 'Choose role',
+          allowClear: true,
+          showSearch: true,
+          virtual: true,
+          textColor: '#111827',
+          placeholderColor: '#6B7280'
+        }
+      ],
       ['RADIO', { options: ['Free'], value: 'Free', groupName: 'plans' }],
       ['CHECKBOX', { options: ['News'], checked: false }],
       ['SWITCH', { checked: true }],
@@ -116,4 +134,38 @@ describe('validateInteractiveProps', () => {
       ).toEqual([])
     }
   })
+
+  test.each([
+    {},
+    { showSearch: false, virtual: false },
+    { showSearch: true, virtual: false },
+    { showSearch: false, virtual: true },
+    { showSearch: true, virtual: true }
+  ])('SELECT search and virtualization remain independent opt-in JSON properties: %j', (modes) => {
+    const props = {
+      options: [{ label: '团队', value: 'team' }],
+      value: 'team',
+      ...modes
+    }
+    const before = structuredClone(props)
+    expect(validateInteractiveProps('SELECT', props)).toEqual([])
+    expect(props).toEqual(before)
+    const serialized = JSON.stringify(props)
+    const restored: unknown = JSON.parse(serialized)
+    expect(validateInteractiveProps('SELECT', restored)).toEqual([])
+    expect(restored).toEqual(before)
+  })
+
+  test.each(['showSearch', 'virtual'] as const)(
+    'SELECT %s accepts no callable configuration',
+    (key) => {
+      expect(validateInteractiveProps('SELECT', { [key]: () => true })).toMatchObject([
+        {
+          code: 'interactive-props-non-json-value',
+          path: `interactiveProps.${key}`,
+          severity: 'error'
+        }
+      ])
+    }
+  )
 })

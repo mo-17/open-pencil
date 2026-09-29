@@ -89,3 +89,27 @@ test.each([
     'Invalid public asset path'
   )
 })
+
+test('imported source binaries reach Vite URL-module transformation while image requests retain their bytes', () => {
+  const path = 'src/assets/avatar.png'
+  const files: PreviewFiles = new Map([[path, BYTES]])
+  const plugin = inMemoryVFS({ files }, PREFIX)
+  const load = plugin.load as (id: string) => string | null
+  for (const query of ['?import', '?import=&t=123', '?v=1&import']) {
+    const response = request(files, '/' + path + query)
+    expect(response.passed).toBe(true)
+    expect(response.body).toBeUndefined()
+    expect(response.headers.has('Content-Type')).toBe(false)
+    expect(load(PREFIX + path + query)).toBe(
+      'export default import.meta.env.BASE_URL + "assets/avatar.png"\n'
+    )
+  }
+  for (const query of ['', '?t=123', '?important=1', '?value=import']) {
+    const response = request(files, '/' + path + query)
+    expect(response.passed).toBe(false)
+    expect(response.headers.get('Content-Type')).toBe('image/png')
+    expect(new Uint8Array(response.body as Uint8Array)).toEqual(BYTES)
+  }
+  expect(request(files, '/src/assets/missing.png?import').passed).toBe(true)
+  expect(load(PREFIX + 'src/assets/missing.png?import')).toBeNull()
+})

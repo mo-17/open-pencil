@@ -16,7 +16,7 @@ export type BusinessPageMarker =
     }
   | {
       readonly version: 1
-      readonly role: 'navigation'
+      readonly role: 'navigation' | 'mobile-navigation'
       readonly applicationId: string
       readonly knownKeys: readonly string[]
     }
@@ -62,7 +62,7 @@ export function readBusinessPageMarker(node: SceneNode): BusinessPageMarker | un
       : undefined
   }
   if (
-    record.role !== 'navigation' ||
+    (record.role !== 'navigation' && record.role !== 'mobile-navigation') ||
     !exact(record, ['version', 'role', 'applicationId', 'knownKeys']) ||
     !Array.isArray(record.knownKeys) ||
     record.knownKeys.length > 100
@@ -71,7 +71,7 @@ export function readBusinessPageMarker(node: SceneNode): BusinessPageMarker | un
   const knownKeys = record.knownKeys.filter(text)
   if (knownKeys.length !== record.knownKeys.length || new Set(knownKeys).size !== knownKeys.length)
     return undefined
-  return { version: 1, role: 'navigation', applicationId: record.applicationId, knownKeys }
+  return { version: 1, role: record.role, applicationId: record.applicationId, knownKeys }
 }
 
 export function businessMarkerData(

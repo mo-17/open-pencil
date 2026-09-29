@@ -22,22 +22,24 @@ import {
   TabsTrigger
 } from 'reka-ui'
 import { tv } from 'tailwind-variants'
-import { watch, type Component } from 'vue'
+import { nextTick, ref, watch, type Component } from 'vue'
 import IconHash from '~icons/lucide/hash'
 import IconPalette from '~icons/lucide/palette'
 import IconToggleLeft from '~icons/lucide/toggle-left'
 import IconType from '~icons/lucide/type'
 import IconX from '~icons/lucide/x'
 
-import type { VariableType } from '@open-pencil/scene-graph'
+import type { VariableCollection, VariableType } from '@open-pencil/scene-graph'
 import { variablesAddTestId, vTestId, useI18n, useVariablesEditor } from '@open-pencil/vue'
 
 import ColorInput from '@/components/ColorPicker/ColorInput.vue'
 import AppButton from '@/components/ui/button/AppButton.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
 import { AppDialogRoot } from '@/components/ui/dialog'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppPlaceholder from '@/components/ui/feedback/AppPlaceholder.vue'
 import { useMenuUI } from '@/components/ui/menu/menu'
+import DesignPresetsDialog from '@/components/variables/DesignPresetsDialog.vue'
 import variableTableTheme from '@/theme/variable-table'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -90,6 +92,29 @@ const ctx = useVariablesEditor({
 })
 const collectionInput = templateRef<HTMLInputElement>('collectionInput')
 const modeInput = templateRef<HTMLInputElement>('modeInput')
+const presetActions = templateRef<HTMLDivElement>('presetActions')
+const presetsOpen = ref(false)
+const importedCollectionId = ref('')
+
+function acceptPreset(collection: VariableCollection) {
+  ctx.setActiveCollection(collection.id)
+  ctx.setSearchTerm('')
+  importedCollectionId.value = collection.id
+}
+
+function restorePresetFocus(event: Event) {
+  event.preventDefault()
+  void nextTick(() => presetActions.value?.querySelector('button')?.focus())
+}
+
+watch(open, (value) => {
+  if (!value) presetsOpen.value = false
+})
+watch(ctx.collections, (collections) => {
+  if (!collections.some((collection) => collection.id === ctx.activeCollectionId.value)) {
+    ctx.setActiveCollection(collections[0]?.id ?? '')
+  }
+})
 
 watch(collectionInput, (input) => {
   void ctx.collectionRename.focusInput(input)
@@ -139,18 +164,43 @@ function resizeHandleClass(resizing: boolean) {
           <icon-lucide-folder class="size-5" />
         </template>
         <template #action>
-          <AppButton
-            variant="soft"
-            data-test-id="variables-create-collection"
-            @click="ctx.addCollection"
-          >
-            {{ variables.createCollection }}
-          </AppButton>
+          <div ref="presetActions" class="flex flex-wrap justify-center gap-2">
+            <AppButton @click="presetsOpen = true">{{ variables.designPresets }}</AppButton>
+            <AppButton
+              variant="soft"
+              data-test-id="variables-create-collection"
+              @click="ctx.addCollection"
+            >
+              {{ variables.createCollection }}
+            </AppButton>
+          </div>
         </template>
       </AppPlaceholder>
     </div>
 
     <template v-else>
+      <div
+        class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2"
+      >
+        <span class="text-xs text-muted">{{ variables.presetOptional }}</span>
+        <div ref="presetActions">
+          <AppButton variant="soft" @click="presetsOpen = true">{{
+            variables.designPresets
+          }}</AppButton>
+        </div>
+      </div>
+      <AppAlert
+        v-if="importedCollectionId && ctx.editor.getCollection(importedCollectionId)"
+        :heading="variables.presetImported"
+        :description="variables.presetNextSteps"
+        :ui="{ root: 'm-3' }"
+      >
+        <template #actions>
+          <AppButton variant="ghost" @click="importedCollectionId = ''">{{
+            common.dismiss
+          }}</AppButton>
+        </template>
+      </AppAlert>
       <TabsRoot v-model="ctx.activeCollectionId.value" class="flex flex-1 flex-col overflow-hidden">
         <div class="flex shrink-0 items-center border-b border-border">
           <TabsList class="flex flex-1 gap-0.5 overflow-x-auto px-3 py-1">
@@ -404,5 +454,10 @@ function resizeHandleClass(resizing: boolean) {
         </TabsContent>
       </TabsRoot>
     </template>
+    <DesignPresetsDialog
+      v-model:open="presetsOpen"
+      @imported="acceptPreset"
+      @return-focus="restorePresetFocus"
+    />
   </AppDialogRoot>
 </template>

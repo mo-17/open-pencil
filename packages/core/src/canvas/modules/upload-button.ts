@@ -11,7 +11,7 @@ import {
 import {
   createModulePreviewIconAccessory as iconAccessory,
   createModulePreviewTriggerRenderer as triggerRenderer
-} from './preview'
+} from './trigger'
 import type { ModuleCanvasAdapter } from './types'
 
 const ICON_WIDTH = 18

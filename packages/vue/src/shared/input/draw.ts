@@ -1,5 +1,6 @@
 import { DEFAULT_TEXT_HEIGHT, DEFAULT_TEXT_WIDTH } from '@open-pencil/core/constants'
 import type { Editor } from '@open-pencil/core/editor'
+import { createSceneGeometry } from '@open-pencil/core/geometry'
 import {
   createMapModuleFrameOverrides,
   MAP_MODULE_DEFAULT_SIZE,
@@ -16,6 +17,7 @@ export function startTextDraw(
   editor: Editor,
   setDrag: (d: DragState) => void
 ) {
+  if (!editor.getContentEditInsertionParent()) return
   editor.undo.beginBatch('Create text')
   const nodeId = editor.createShape('TEXT', cx, cy, 0, 0)
   editor.graph.updateNode(nodeId, { text: '' })
@@ -29,6 +31,7 @@ export function startShapeDraw(
   editor: Editor,
   setDrag: (d: DragState) => void
 ) {
+  if (!editor.getContentEditInsertionParent()) return
   const nodeType = TOOL_TO_NODE[editor.state.activeTool]
   if (!nodeType) return
 
@@ -50,6 +53,7 @@ export function startShapeDraw(
 }
 
 export function handleDrawMove(d: DragDraw, cx: number, cy: number, shiftKey: boolean) {
+  if (d.toLocal) ({ x: cx, y: cy } = d.toLocal(cx, cy))
   let w = cx - d.startX
   let h = cy - d.startY
 
@@ -85,6 +89,13 @@ function finalDrawDimensions(node: SceneNode | undefined): Partial<SceneNode> | 
 
 function createDraw(editor: Editor, nodeId: string, startX: number, startY: number): DragDraw {
   const graph = editor.graph
+  const parentId = editor.state.contentEdit ? graph.getNode(nodeId)?.parentId : undefined
+  const parent = parentId ? graph.getNode(parentId) : undefined
+  const geometry = createSceneGeometry(graph)
+  const toLocal = parent
+    ? (x: number, y: number) => geometry.toLocal(parent, { x, y }) ?? { x, y }
+    : undefined
+  if (toLocal) ({ x: startX, y: startY } = toLocal(startX, startY))
   const preview = editor.beginNodePreview('Draw dimensions')
   let finished = false
 
@@ -129,6 +140,7 @@ function createDraw(editor: Editor, nodeId: string, startX: number, startY: numb
 
   return {
     type: 'draw',
+    toLocal,
     startX,
     startY,
     nodeId,

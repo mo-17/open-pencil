@@ -40,6 +40,7 @@ const DATA_GRID_CONFIG = {
   selectionMode: 'single',
   density: 'compact',
   showHeader: true,
+  showCsvTools: false,
   stickyHeader: true,
   striped: true,
   borderColor: '#D1D5DB',
@@ -133,7 +134,7 @@ function freshCarouselConfig(revision: number) {
 }
 
 function freshDataGridConfig() {
-  return ${dataGridConfig}
+  return { ...${dataGridConfig}, showCsvTools: new URLSearchParams(window.location.search).has('csv-tools') }
 }
 
 function freshHiddenHeaderDataGridConfig() {
@@ -277,6 +278,7 @@ describe('preview browser — carousel and data grid runtimes', () => {
       const grids = page.locator('[data-openpencil-data-grid]')
       expect(await grids.count()).toBe(3)
       const firstGrid = grids.nth(0)
+      expect(await firstGrid.locator('[data-openpencil-data-grid-csv-tools]').count()).toBe(0)
       const secondGrid = grids.nth(1)
       const multipleGrid = grids.nth(2)
       const firstRadio = firstGrid.locator('input[type="radio"]').first()
@@ -347,7 +349,7 @@ describe('preview browser — carousel and data grid runtimes', () => {
     'imports bounded pasted CSV locally and prepares formula-safe CSV text without permissions',
     async () => {
       if (!server || !page) throw new Error('Missing module preview runtime')
-      await page.goto(server.url, { waitUntil: 'networkidle' })
+      await page.goto(server.url + '?csv-tools', { waitUntil: 'networkidle' })
 
       const firstGrid = page.locator('[data-openpencil-data-grid]').first()
       const csvTools = firstGrid.getByRole('region', { name: 'Data grid CSV tools' })

@@ -8,6 +8,37 @@ import { createLayoutActions } from '#vue/controls/layout/helpers'
 import { usePropScrub } from '#vue/controls/prop-scrub/use'
 
 describe('property previews', () => {
+  test('sizing menu undoes the mode and layout geometry together', () => {
+    const editor = createEditor()
+    try {
+      const frame = editor.graph.createNode('FRAME', editor.state.currentPageId, {
+        width: 160,
+        height: 120,
+        layoutMode: 'VERTICAL',
+        primaryAxisSizing: 'FIXED',
+        counterAxisSizing: 'FIXED',
+        counterAxisAlign: 'CENTER'
+      })
+      const child = editor.graph.createNode('RECTANGLE', frame.id, { width: 80, height: 40 })
+      editor.runLayoutForNode(frame.id)
+      const actions = createLayoutActions({
+        editor,
+        node: computed(() => frame),
+        isInAutoLayout: computed(() => false)
+      })
+      expect(child.x).toBe(40)
+      actions.setAxisSizing('width', 'HUG')
+      expect([frame.width, frame.counterAxisSizing, child.x]).toEqual([80, 'HUG', 0])
+      editor.undoAction()
+      expect([frame.width, frame.counterAxisSizing, child.x]).toEqual([160, 'FIXED', 40])
+      expect(editor.undo.canUndo).toBe(false)
+      editor.redoAction()
+      expect([frame.width, frame.counterAxisSizing, child.x]).toEqual([80, 'HUG', 0])
+    } finally {
+      editor.dispose()
+    }
+  })
+
   test('pins targets through selection changes and releases previews on scope disposal', () => {
     const editor = createEditor()
     const scope = effectScope()

@@ -1,13 +1,27 @@
+import { hasInputSuggestions } from '#compiler/adapters/autocomplete/emit'
+import { autocompleteRuntimeSource } from '#compiler/adapters/autocomplete/runtime'
+import { hasInputControls } from '#compiler/adapters/input-control/emit'
+import { inputControlRuntimeSource } from '#compiler/adapters/input-control/runtime'
 import { buildPreviewBridge } from '#compiler/adapters/preview-bridge'
 import { buildServerArtifacts } from '#compiler/adapters/react/lowcode/server-edge'
 import { derivePagePaths } from '#compiler/adapters/react/route-paths'
+import { selectRuntimeSource } from '#compiler/adapters/select/runtime'
 import type { AdapterEmission, FrameworkAdapter } from '#compiler/adapters/types'
+import { projectUsesMountedValidationSummary } from '#compiler/adapters/validation-summary'
 import { LEGACY_SUPABASE_SERVER_WORKFLOW_ARTIFACT_PATHS } from '#compiler/backend/supabase/legacy-react-artifacts'
 import type { ComponentDef, IRNode, IRTree } from '#compiler/ir/types'
 import { buildOpenPencilMicrofrontendTypes } from '#compiler/microfrontend/runtime'
 import type { CompileWarning, CompilerOptions, HTMLMetadata } from '#compiler/types'
 
+import {
+  buildVueAutocompleteComponent,
+  VUE_AUTOCOMPLETE_COMPONENT_FILE
+} from './autocomplete/component'
 import { buildVueComponentModule, buildVuePageModule } from './emit'
+import {
+  VUE_INPUT_CONTROL_COMPONENT_FILE,
+  buildVueInputControlComponent
+} from './input-control/component'
 import {
   buildVueConfirmHost,
   buildVueConfirmRuntime,
@@ -48,6 +62,8 @@ import {
   buildVueTsConfig,
   buildVueViteConfig
 } from './project'
+import { buildVueSelectComponent, VUE_SELECT_COMPONENT_FILE } from './select/component'
+import { nodesUseEnhancedVueSelect } from './select/options'
 import { collectVueWarnings } from './warnings'
 
 export const vueAdapter: FrameworkAdapter = {
@@ -87,7 +103,32 @@ function emitVueProject(
     devMode: options.devMode,
     microfrontend: options.packaging?.kind === 'microfrontend'
   })
-  emitVueLowcodeRuntimes(files, lowcode)
+  const selectNodes = [
+    ...irs.flatMap((ir) => ir.children),
+    ...components.flatMap((component) => [
+      ...component.children,
+      ...(component.variants?.flatMap((variant) => variant.children) ?? [])
+    ])
+  ]
+  if (nodesUseEnhancedVueSelect(selectNodes)) {
+    files.set('src/lib/open-pencil-select.ts', selectRuntimeSource())
+    files.set(
+      VUE_SELECT_COMPONENT_FILE,
+      buildVueSelectComponent(options.packaging?.kind === 'microfrontend')
+    )
+  }
+  if (hasInputSuggestions(selectNodes)) {
+    files.set('src/lib/open-pencil-autocomplete.ts', autocompleteRuntimeSource())
+    files.set(
+      VUE_AUTOCOMPLETE_COMPONENT_FILE,
+      buildVueAutocompleteComponent(options.packaging?.kind === 'microfrontend')
+    )
+  }
+  if (hasInputControls(selectNodes)) {
+    files.set('src/lib/open-pencil-input-control.ts', inputControlRuntimeSource())
+    files.set(VUE_INPUT_CONTROL_COMPONENT_FILE, buildVueInputControlComponent())
+  }
+  emitVueLowcodeRuntimes(files, lowcode, projectUsesMountedValidationSummary(irs, components))
   if (supabaseConfig) {
     files.set('src/lowcode-supabase.ts', buildVueSupabaseClientRuntime(supabaseConfig))
     files.set('.env.example', buildVueSupabaseEnvironmentExample(supabaseConfig))
@@ -171,7 +212,8 @@ function emitVueProject(
 
 function emitVueLowcodeRuntimes(
   files: Map<string, string | Uint8Array>,
-  usage: VueLowcodeUsage
+  usage: VueLowcodeUsage,
+  mountedSummary: boolean
 ): void {
   if (usage.toast) {
     files.set(VUE_TOAST_RUNTIME_FILE, buildVueToastRuntime())
@@ -182,7 +224,7 @@ function emitVueLowcodeRuntimes(
     files.set(VUE_CONFIRM_HOST_FILE, buildVueConfirmHost())
   }
   if (usage.validation) {
-    files.set(VUE_VALIDATION_RUNTIME_FILE, buildVueValidationRuntime())
+    files.set(VUE_VALIDATION_RUNTIME_FILE, buildVueValidationRuntime(mountedSummary))
     files.set(VUE_VALIDATION_CSS_FILE, buildVueValidationCSS())
   }
 }

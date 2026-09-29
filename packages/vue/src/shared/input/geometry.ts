@@ -45,22 +45,7 @@ export function hitTestInEditorScope(
   deep: boolean,
   editor: Editor
 ): SceneNode | null {
-  const scopeId = editor.state.enteredContainerId
-
-  const renderer = editor.renderer
-  if (!renderer) return null
-  if (scopeId) {
-    if (!editor.graph.getNode(scopeId)) {
-      editor.state.enteredContainerId = null
-    } else {
-      return deep
-        ? editor.graph.hitTestDeep(cx, cy, scopeId)
-        : editor.graph.hitTest(cx, cy, scopeId)
-    }
-  }
-  return deep
-    ? editor.graph.hitTestDeep(cx, cy, editor.state.currentPageId)
-    : editor.graph.hitTest(cx, cy, editor.state.currentPageId)
+  return editor.hitTestAtPoint(cx, cy, deep)
 }
 
 export function isInsideEditorContainerBounds(

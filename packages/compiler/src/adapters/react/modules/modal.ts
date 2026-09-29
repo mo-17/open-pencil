@@ -11,6 +11,7 @@ import {
   useState,
   type ButtonHTMLAttributes,
   type CSSProperties,
+  type ReactNode,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
 } from 'react'
@@ -22,6 +23,7 @@ export interface OpenPencilModalConfig {
   showTriggerLabel: boolean
   title: string
   content: string
+  contentChildName?: string
   showCloseButton: boolean
   closeOnBackdrop: boolean
   closeOnEscape: boolean
@@ -38,8 +40,9 @@ export interface OpenPencilModalConfig {
 }
 
 export interface OpenPencilModalProps
-  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'onKeyDown' | 'type'> {
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'onKeyDown' | 'type' | 'content'> {
   config: OpenPencilModalConfig
+  content?: ReactNode
   onClick?: (event: ReactMouseEvent<HTMLButtonElement>) => void
   onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void
 }
@@ -219,6 +222,7 @@ function footerJustify(align: OpenPencilModalConfig['footerAlign']): CSSProperti
 
 export default function OpenPencilModal({
   config,
+  content,
   className,
   children,
   onClick,
@@ -371,6 +375,7 @@ export default function OpenPencilModal({
               boxShadow: '0 24px 80px #00000040',
               boxSizing: 'border-box',
               color: config.textColor,
+              margin: 'auto',
               maxHeight: 'calc(100vh - 32px)',
               maxWidth: 'calc(100vw - 32px)',
               opacity: visible ? 1 : 0,
@@ -423,7 +428,7 @@ export default function OpenPencilModal({
                   ) : null}
                 </header>
               ) : null}
-              {config.content ? (
+              {content !== undefined || config.content ? (
                 <div
                   data-openpencil-modal-content=""
                   id={contentId}
@@ -435,7 +440,7 @@ export default function OpenPencilModal({
                     whiteSpace: 'pre-wrap'
                   }}
                 >
-                  {config.content}
+                  {content !== undefined ? content : config.content}
                 </div>
               ) : null}
               {config.showCancelButton || config.showConfirmButton ? (

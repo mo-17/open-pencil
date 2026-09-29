@@ -1,3 +1,8 @@
+import {
+  ACCORDION_CONFIG_SOURCE,
+  ACCORDION_STYLE_SOURCE
+} from '#compiler/adapters/accordion/source'
+
 import { ACCORDION_MODULE_TYPE, ACCORDION_PLUGIN_ID } from '@open-pencil/core/plugins'
 
 import { REACT_MODULE_POSITIONED_HOST_SOURCE } from './runtime-source'
@@ -10,27 +15,14 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type HTMLAttributes,
   type KeyboardEvent
 } from 'react'
 
-export interface OpenPencilAccordionItem {
-  id: string
-  title: string
-  content: string
-}
+${ACCORDION_CONFIG_SOURCE}
 
-export interface OpenPencilAccordionConfig {
-  label: string
-  items: readonly OpenPencilAccordionItem[]
-  allowMultiple: boolean
-  initialOpenIds: readonly string[]
-  showDividers: boolean
-  backgroundColor: string
-  textColor: string
-  accentColor: string
-  fontSize: number
-}
+const accordionStyles = ${JSON.stringify(ACCORDION_STYLE_SOURCE)}
 
 export interface OpenPencilAccordionProps extends HTMLAttributes<HTMLDivElement> {
   config: OpenPencilAccordionConfig
@@ -88,18 +80,20 @@ ${REACT_MODULE_POSITIONED_HOST_SOURCE}
       className={className}
       data-openpencil-accordion=""
       role="region"
-      style={{ ...hostStyle, background: config.backgroundColor, color: config.textColor, overflow: 'auto' }}
+      style={{ ...hostStyle, background: config.backgroundColor, color: config.textColor,
+        '--openpencil-accordion-accent': config.accentColor,
+        '--openpencil-accordion-font-size': config.fontSize + 'px',
+        '--openpencil-accordion-divider': config.showDividers ? '1px solid ' + config.accentColor + '44' : 'none'
+      } as CSSProperties}
     >
+      <style>{accordionStyles}</style>
       {config.items.map((item, index) => {
         const open = openIds.has(item.id)
         const headerId = instanceId + '-header-' + item.id
         const panelId = instanceId + '-panel-' + item.id
         return (
-          <section
-            key={item.id}
-            style={{ borderBottom: config.showDividers ? '1px solid ' + config.accentColor + '44' : undefined }}
-          >
-            <h3 style={{ margin: 0 }}>
+          <section key={item.id}>
+            <h3>
               <button
                 aria-controls={panelId}
                 aria-expanded={open}
@@ -107,34 +101,20 @@ ${REACT_MODULE_POSITIONED_HOST_SOURCE}
                 onClick={() => toggle(item.id)}
                 onKeyDown={(event) => onHeaderKeyDown(event, index)}
                 ref={(element) => { buttonRefs.current[index] = element }}
-                style={{
-                  alignItems: 'center',
-                  background: 'transparent',
-                  border: 0,
-                  color: config.textColor,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  font: '600 ' + config.fontSize + 'px/1.4 system-ui, sans-serif',
-                  gap: 12,
-                  justifyContent: 'space-between',
-                  padding: '12px 16px',
-                  textAlign: 'start',
-                  width: '100%'
-                }}
                 type="button"
               >
                 <span>{item.title}</span>
-                <span aria-hidden="true" style={{ color: config.accentColor }}>
+                <span aria-hidden="true">
                   {open ? '−' : '+'}
                 </span>
               </button>
             </h3>
             <div
+              data-accordion-panel=""
               aria-labelledby={headerId}
               hidden={!open}
               id={panelId}
-              role="region"
-              style={{ font: config.fontSize + 'px/1.6 system-ui, sans-serif', padding: '0 16px 16px' }}
+              role={!config.allowMultiple || config.items.length <= 6 ? 'region' : undefined}
             >
               {item.content}
             </div>

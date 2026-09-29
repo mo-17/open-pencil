@@ -202,6 +202,8 @@ describe('microfrontend v1 feature policy', () => {
 
   test.each([
     ['open-pencil.modal', 'modal'],
+    ['open-pencil.tooltip', 'tooltip'],
+    ['open-pencil.popover', 'popover'],
     ['open-pencil.dropdown-menu', 'dropdown-menu'],
     ['open-pencil.slide-menu', 'slide-menu'],
     ['open-pencil.upload-button', 'upload-button']

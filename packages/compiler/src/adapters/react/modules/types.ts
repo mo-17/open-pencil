@@ -1,5 +1,7 @@
 export interface ReactModuleRuntimeOptions {
   devMode: boolean
+  /** Paths emitted from graph-owned bytes before module runtime generation. */
+  bundledAssetPaths?: readonly string[]
   microfrontend?: boolean
 }
 

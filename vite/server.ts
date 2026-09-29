@@ -35,7 +35,12 @@ export function createDevServerOptions(host: string | undefined, rootDir: string
       : undefined,
     watch: {
       // Ignore nested checkouts, not an active checkout whose own path contains .worktrees.
-      ignored: [...WATCH_IGNORED, `${normalizePath(resolve(rootDir, '.worktrees'))}/**`]
+      ignored: [
+        ...WATCH_IGNORED,
+        `${normalizePath(resolve(rootDir, '.worktrees'))}/**`,
+        // Generated projects contain tsconfigs that would otherwise force an editor reload.
+        `${normalizePath(resolve(rootDir, 'output'))}/**`
+      ]
     }
   }
 }

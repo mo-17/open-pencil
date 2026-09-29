@@ -19,6 +19,7 @@ import { replaceTargetsWithCreated, selectedReplacementTargets } from './clipboa
 import { resolvePasteTarget } from './clipboard/paste-target'
 import { createClipboardPlacementActions } from './clipboard/placement'
 import { collectSubtrees, restoreSubtree, snapshotSubtree } from './clipboard/subtree-history'
+import { captureContentEditInsertion, contentEditInsertionParent } from './content-edit'
 import type { EditorContext } from './types'
 
 type PasteOptions = {
@@ -101,6 +102,7 @@ export function createClipboardActions(ctx: EditorContext) {
     cursorPos?: Vector,
     options: PasteOptions = {}
   ) {
+    if (!contentEditInsertionParent(ctx)) return
     let created: string[] = []
     ctx.undo.runBatch('Paste', () => {
       const dependencies = importClipboardDependencies(ctx, snapshot)
@@ -138,6 +140,8 @@ export function createClipboardActions(ctx: EditorContext) {
   }
 
   async function pasteFromHTML(html: string, cursorPos?: Vector, options: PasteOptions = {}) {
+    if (!contentEditInsertionParent(ctx)) return
+    const canInsert = captureContentEditInsertion(ctx)
     const openPencil = parseOpenPencilClipboard(html)
     if (openPencil) {
       const created = pasteOpenPencilNodes(
@@ -152,6 +156,7 @@ export function createClipboardActions(ctx: EditorContext) {
     }
 
     const figma = await parseFigmaClipboard(html)
+    if (!canInsert()) return
     if (figma) {
       const prevSelection = new Set(ctx.state.selectedIds)
       const replacementTargets = options.replaceSelection ? selectedReplacementTargets(ctx) : []
@@ -192,6 +197,7 @@ export function createClipboardActions(ctx: EditorContext) {
     cursorPos?: Vector,
     options: PasteOptions = {}
   ) {
+    if (!contentEditInsertionParent(ctx)) return []
     const prevSelection = new Set(ctx.state.selectedIds)
     const replacementTargets = options.replaceSelection ? selectedReplacementTargets(ctx) : []
     for (const [hash, bytes] of images) ctx.graph.images.set(hash, bytes)

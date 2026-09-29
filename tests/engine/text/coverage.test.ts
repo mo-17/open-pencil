@@ -74,6 +74,49 @@ describe('font fallback coverage indexing', () => {
     ])
   })
 
+  test('preflights every RADIO option including CJK without adding graph children', async () => {
+    const family = `RadioLatin_${Date.now()}`
+    fontManager.markLoaded(
+      family,
+      'Regular',
+      await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    )
+    const graph = new SceneGraph()
+    const radio = graph.createNode('RADIO', pageId(graph), {
+      fontFamily: family,
+      textLanguage: 'zh-CN',
+      interactiveProps: { options: ['Personal', '团队', 12, null] }
+    })
+    const requirements = collectGraphFontRequirements(graph, [radio.id])
+    expect(requirements.nodes[0]).toMatchObject({
+      id: radio.id,
+      type: 'TEXT',
+      text: 'Personal\n团队'
+    })
+    expect(missingGraphFontScripts(requirements)).toContain('cjk-sc')
+    expect(collectGraphFontKeys(graph, [radio.id])).toEqual([[family, 'Regular']])
+    expect(radio.type).toBe('RADIO')
+    expect(radio.childIds).toEqual([])
+  })
+
+  test('preflights a valid date or neutral format placeholder without inventing a selected day', () => {
+    const graph = new SceneGraph()
+    const valid = graph.createNode('DATEPICKER', pageId(graph), {
+      interactiveProps: { value: '2024-02-29' }
+    })
+    const invalid = graph.createNode('DATEPICKER', pageId(graph), {
+      interactiveProps: { value: '2026-02-30' }
+    })
+    const empty = graph.createNode('DATEPICKER', pageId(graph))
+    expect(
+      collectGraphFontRequirements(graph, [valid.id, invalid.id, empty.id]).nodes.map(
+        (node) => node.text
+      )
+    ).toEqual(['2024-02-29', 'YYYY-MM-DD', 'YYYY-MM-DD'])
+    expect(invalid.interactiveProps?.value).toBe('2026-02-30')
+    expect(empty.interactiveProps?.value).toBe('')
+  })
+
   test('detects supplementary-plane Han code points', async () => {
     const family = `SupplementaryHan_${Date.now()}`
     const data = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()

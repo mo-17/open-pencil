@@ -1,3 +1,8 @@
+import {
+  scanSourceLiterals,
+  skipSourceComment,
+  readSourceQuotedLiteral
+} from '#compiler/tailwind/source-literals'
 import { compile as compileTailwind } from 'tailwindcss'
 
 import type { BrowserPreviewAssetRegistry } from './assets'
@@ -33,59 +38,6 @@ function addCandidates(value: string, candidates: Set<string>): void {
   }
 }
 
-function skipComment(source: string, start: number): number {
-  if (source[start + 1] === '/') {
-    const newline = source.indexOf('\n', start + 2)
-    return newline === -1 ? source.length : newline + 1
-  }
-  const end = source.indexOf('*/', start + 2)
-  return end === -1 ? source.length : end + 2
-}
-
-function quotedLiteral(source: string, start: number): { value: string; end: number } {
-  const quote = source[start]
-  let value = ''
-  let index = start + 1
-  while (index < source.length) {
-    if (source[index] === '\\') {
-      index += 2
-      continue
-    }
-    if (source[index] === quote) return { value, end: index + 1 }
-    value += source[index++]
-  }
-  return { value: '', end: source.length }
-}
-
-function templateLiteral(
-  source: string,
-  start: number,
-  candidates: Set<string>
-): { dynamic: boolean; end: number } {
-  let chunk = ''
-  let dynamic = false
-  let index = start + 1
-  while (index < source.length) {
-    if (source[index] === '\\') {
-      index += 2
-      continue
-    }
-    if (source[index] === '`') {
-      addCandidates(chunk, candidates)
-      return { dynamic, end: index + 1 }
-    }
-    if (source.startsWith('${', index)) {
-      addCandidates(chunk, candidates)
-      chunk = ''
-      dynamic = true
-      index += 2
-      continue
-    }
-    chunk += source[index++]
-  }
-  return { dynamic, end: source.length }
-}
-
 function extractCandidates(files: ReadonlyMap<string, string | Uint8Array>): {
   candidates: readonly string[]
   dynamic: boolean
@@ -94,26 +46,10 @@ function extractCandidates(files: ReadonlyMap<string, string | Uint8Array>): {
   let dynamic = false
   for (const [path, source] of files) {
     if (typeof source !== 'string' || !path.startsWith('src/')) continue
-    let index = 0
-    while (index < source.length) {
-      if (source.startsWith('//', index) || source.startsWith('/*', index)) {
-        index = skipComment(source, index)
-        continue
-      }
-      if (source[index] === '"' || source[index] === "'") {
-        const literal = quotedLiteral(source, index)
-        addCandidates(literal.value, candidates)
-        index = literal.end
-        continue
-      }
-      if (source[index] === '`') {
-        const literal = templateLiteral(source, index, candidates)
-        dynamic ||= literal.dynamic
-        index = literal.end
-        continue
-      }
-      index += 1
-    }
+    const hasDynamicLiteral = scanSourceLiterals(source, (value) =>
+      addCandidates(value, candidates)
+    )
+    dynamic ||= hasDynamicLiteral
     dynamic ||= /\bclassName\s*=\s*\{/.test(source)
   }
   return { candidates: [...candidates].sort(), dynamic }
@@ -158,11 +94,11 @@ function stripTailwindSourceDirectives(source: string): string {
   let output = ''
   while (index < source.length) {
     if (source.startsWith('/*', index)) {
-      index = skipComment(source, index)
+      index = skipSourceComment(source, index)
       continue
     }
     if (source[index] === '"' || source[index] === "'") {
-      index = quotedLiteral(source, index).end
+      index = readSourceQuotedLiteral(source, index).end
       continue
     }
     if (source[index] !== '@') {

@@ -11,11 +11,16 @@ import {
   type Node as YogaNode
 } from 'yoga-layout'
 
+import { resolveModalContent } from '#core/plugins/content/modal'
+import { resolveTabsContent } from '#core/plugins/content/tabs'
+
 import { applyYogaLayoutSteps, type LayoutApplyStep } from './layout/apply'
 import { usesDetachedDerivedLayout } from './layout/derived'
 import { applyEffectiveGeneratedTextLayout } from './layout/effective-generated-text'
 import type { LayoutGraph } from './layout/graph'
 import { buildGridTreeSteps, createGridChildNode } from './layout/grid'
+import { computeModalContentLayoutSteps } from './layout/modules/modal'
+import { computeTabsContentLayoutSteps } from './layout/modules/tabs'
 import { resolveNodeLayoutDirection } from './text/direction'
 export {
   estimateTextSize,
@@ -115,7 +120,18 @@ function runWithLayoutMutations<T>(graph: LayoutGraph, operation: () => T): T {
 
 function* computeLayoutSteps(graph: LayoutGraph, frameId: string): LayoutSteps {
   const frame = graph.getNode(frameId)
-  if (!frame || !isAutoLayoutMode(frame.layoutMode)) return
+  if (!frame) return
+  const content = resolveTabsContent(graph, frame)
+  if (content) {
+    yield* computeTabsContentLayoutSteps(graph, content, computeLayoutSteps)
+    return
+  }
+  const modalContent = resolveModalContent(graph, frame)
+  if (modalContent) {
+    yield* computeModalContentLayoutSteps(graph, modalContent, computeLayoutSteps)
+    return
+  }
+  if (!isAutoLayoutMode(frame.layoutMode)) return
 
   const rootDirection = resolveComputedLayoutDirection(graph, frame)
   const yogaRoot = yield* asLayoutSteps(
@@ -217,16 +233,24 @@ async function computeAllLayoutsPassAsync(
     const node = graph.getNode(nodeId)
     if (!node) continue
     visited.add(nodeId)
+    const moduleContent = resolveTabsContent(graph, node) ?? resolveModalContent(graph, node)
     const participatesInLayout =
-      isAutoLayoutMode(node.layoutMode) && !preservesImportedInstanceLayout(node)
+      (isAutoLayoutMode(node.layoutMode) || moduleContent !== null) &&
+      !preservesImportedInstanceLayout(node)
     if (participatesInLayout && !coveredByParentLayout) layoutRoots.push(nodeId)
 
+    if (moduleContent) {
+      await checkpointLayout(execution)
+      continue
+    }
     for (const childId of node.childIds) {
       const child = graph.getNode(childId)
       const childCovered =
         participatesInLayout &&
         !!child &&
-        isAutoLayoutMode(child.layoutMode) &&
+        (isAutoLayoutMode(child.layoutMode) ||
+          resolveTabsContent(graph, child) !== null ||
+          resolveModalContent(graph, child) !== null) &&
         !preservesImportedInstanceLayout(child) &&
         child.visible &&
         child.layoutPositioning !== 'ABSOLUTE'
@@ -527,6 +551,10 @@ function computeLayoutsBottomUp(graph: SceneGraph, nodeId: string, visited: Set<
   const node = graph.getNode(nodeId)
   if (!node || visited.has(nodeId)) return
   visited.add(nodeId)
+  if (resolveTabsContent(graph, node) || resolveModalContent(graph, node)) {
+    computeLayout(graph, nodeId)
+    return
+  }
 
   for (const childId of node.childIds) {
     computeLayoutsBottomUp(graph, childId, visited)
@@ -576,6 +604,8 @@ function* buildYogaTreeSteps(
         configureAbsoluteChild(yogaChild, child)
       } else if (!child.visible) {
         yogaChild.setDisplay(Display.None)
+      } else if (resolveTabsContent(graph, child) || resolveModalContent(graph, child)) {
+        configureChildAsLeaf(yogaChild, child, frame, graph)
       } else if (child.layoutMode === 'GRID') {
         yield* configureChildAsGridSteps(yogaChild, child, frame, graph, direction)
       } else if (isAutoLayoutMode(child.layoutMode)) {
@@ -815,6 +845,8 @@ function* configureChildAsAutoLayoutSteps(
       configureAbsoluteChild(yogaGC, gc)
     } else if (!gc.visible) {
       yogaGC.setDisplay(Display.None)
+    } else if (resolveTabsContent(graph, gc) || resolveModalContent(graph, gc)) {
+      configureChildAsLeaf(yogaGC, gc, child, graph)
     } else if (gc.layoutMode === 'GRID') {
       yield* configureChildAsGridSteps(yogaGC, gc, child, graph, direction)
     } else if (isAutoLayoutMode(gc.layoutMode)) {

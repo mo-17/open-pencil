@@ -1,4 +1,46 @@
 import {
+  CASCADER_PLUGIN,
+  CASCADER_MODULE_DEFINITION,
+  POPOVER_PLUGIN,
+  POPOVER_MODULE_DEFINITION,
+  TREE_PLUGIN,
+  TREE_MODULE_DEFINITION,
+  WALKTOUR_PLUGIN,
+  WALKTOUR_MODULE_DEFINITION,
+  ORG_CHART_PLUGIN,
+  ORG_CHART_MODULE_DEFINITION,
+  PAGINATION_PLUGIN,
+  PAGINATION_MODULE_DEFINITION,
+  DESCRIPTIONS_PLUGIN,
+  DESCRIPTIONS_MODULE_DEFINITION,
+  DATE_RANGE_PLUGIN,
+  DATE_RANGE_MODULE_DEFINITION,
+  TOOLTIP_PLUGIN,
+  TOOLTIP_MODULE_DEFINITION,
+  SKELETON_PLUGIN,
+  SKELETON_MODULE_DEFINITION,
+  EMPTY_STATE_PLUGIN,
+  EMPTY_STATE_MODULE_DEFINITION,
+  AVATAR_PLUGIN,
+  AVATAR_MODULE_DEFINITION,
+  BADGE_PLUGIN,
+  BADGE_MODULE_DEFINITION,
+  TIMELINE_PLUGIN,
+  TIMELINE_MODULE_DEFINITION,
+  ALERT_PLUGIN,
+  ALERT_MODULE_DEFINITION,
+  PROGRESS_PLUGIN,
+  PROGRESS_MODULE_DEFINITION,
+  CHIP_PLUGIN,
+  CHIP_MODULE_DEFINITION,
+  SLIDER_MODULE_DEFINITION,
+  SLIDER_PLUGIN,
+  RATING_MODULE_DEFINITION,
+  RATING_PLUGIN,
+  STEPPER_MODULE_DEFINITION,
+  STEPPER_PLUGIN,
+  BREADCRUMB_MODULE_DEFINITION,
+  BREADCRUMB_PLUGIN,
   ACCORDION_MODULE_DEFINITION,
   ACCORDION_PLUGIN,
   AUDIO_PLAYER_MODULE_DEFINITION,
@@ -895,6 +937,146 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
         UPLOAD_BUTTON_PLUGIN,
         UPLOAD_BUTTON_MODULE_DEFINITION,
         'open-pencil.upload-button'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(ALERT_PLUGIN, ALERT_MODULE_DEFINITION, 'open-pencil.alert')
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        POPOVER_PLUGIN,
+        POPOVER_MODULE_DEFINITION,
+        'open-pencil.popover'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(TREE_PLUGIN, TREE_MODULE_DEFINITION, 'open-pencil.tree')
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        CASCADER_PLUGIN,
+        CASCADER_MODULE_DEFINITION,
+        'open-pencil.cascader'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        WALKTOUR_PLUGIN,
+        WALKTOUR_MODULE_DEFINITION,
+        'open-pencil.walktour'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        ORG_CHART_PLUGIN,
+        ORG_CHART_MODULE_DEFINITION,
+        'open-pencil.org-chart'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        PAGINATION_PLUGIN,
+        PAGINATION_MODULE_DEFINITION,
+        'open-pencil.pagination'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        DESCRIPTIONS_PLUGIN,
+        DESCRIPTIONS_MODULE_DEFINITION,
+        'open-pencil.descriptions'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        DATE_RANGE_PLUGIN,
+        DATE_RANGE_MODULE_DEFINITION,
+        'open-pencil.date-range'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        PROGRESS_PLUGIN,
+        PROGRESS_MODULE_DEFINITION,
+        'open-pencil.progress'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(CHIP_PLUGIN, CHIP_MODULE_DEFINITION, 'open-pencil.chip')
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        TOOLTIP_PLUGIN,
+        TOOLTIP_MODULE_DEFINITION,
+        'open-pencil.tooltip'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        SKELETON_PLUGIN,
+        SKELETON_MODULE_DEFINITION,
+        'open-pencil.skeleton'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        EMPTY_STATE_PLUGIN,
+        EMPTY_STATE_MODULE_DEFINITION,
+        'open-pencil.empty-state'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(AVATAR_PLUGIN, AVATAR_MODULE_DEFINITION, 'open-pencil.avatar')
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(BADGE_PLUGIN, BADGE_MODULE_DEFINITION, 'open-pencil.badge')
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        TIMELINE_PLUGIN,
+        TIMELINE_MODULE_DEFINITION,
+        'open-pencil.timeline'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(SLIDER_PLUGIN, SLIDER_MODULE_DEFINITION, 'open-pencil.slider')
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(RATING_PLUGIN, RATING_MODULE_DEFINITION, 'open-pencil.rating')
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        STEPPER_PLUGIN,
+        STEPPER_MODULE_DEFINITION,
+        'open-pencil.stepper'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        BREADCRUMB_PLUGIN,
+        BREADCRUMB_MODULE_DEFINITION,
+        'open-pencil.breadcrumb'
       )
     },
     {

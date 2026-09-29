@@ -18,13 +18,14 @@ describe('multiline module text editor', () => {
     expect(source).toContain('aria-live="polite"')
   })
 
-  test('commits once across native change and blur and tracks external values', () => {
-    expect(source).toContain('@change="commit"')
-    expect(source).toContain('@blur="commit"')
-    expect(source).toContain('draft.value === lastCommitted.value')
-    expect(source).toContain('lastCommitted.value = draft.value')
+  test('routes native change and blur through the owner-aware draft workflow', () => {
+    expect(source).toContain('@change="submit(renderedGeneration($event))"')
+    expect(source).toContain('@blur="submit(renderedGeneration($event))"')
+    expect(source).toContain('useModuleTextDraft(')
+    expect(source).toContain('() => owner')
+    expect(source).toContain('() => config')
     expect(source).toContain('() => modelValue')
-    expect(source).toContain("emit('commit', draft.value)")
+    expect(source).toContain("emit('commit', request)")
   })
 
   test('treats Markdown and code as plain textarea content', () => {

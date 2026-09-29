@@ -3,22 +3,24 @@ import { computed } from 'vue'
 
 import {
   findComponentMasterAncestor,
+  lowcodeInputRequiresString,
   isCheckboxGroupControl,
   planValidatedFormValueBindings
 } from '@open-pencil/lowcode'
 import type { BindingExpr, NodeType } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
+import { useSectionUI } from '@/components/ui/section'
 
 // Phase 3 §3.x + §3.v4 — controlled form-control value binding. IR collect
 // only accepts `kind: 'ref'` (page-state) or `kind: 'docState'`, and per
 // node type a specific target state-type set:
-//   INPUT                                  → string | number
-//   TEXTAREA / SELECT / RADIO / DATEPICKER → string
-//   CHECKBOX / SWITCH                      → boolean
+//   INPUT time/datetime-local/suggestions / TEXTAREA / SELECT single / RADIO / DATEPICKER → string
+//   Other INPUT                            → string | number
+//   SELECT multiple / CHECKBOX group      → array
+//   CHECKBOX single / SWITCH              → boolean
 // Anything else falls back to uncontrolled emit with a warning. This panel
 // mirrors those rules at the UI level so users never commit a binding the
 // compiler would reject. The candidate dropdown filters page-state and
@@ -40,7 +42,11 @@ function checkboxHasOptions(): boolean {
 
 const allowedTypes = computed<readonly CtrlType[]>(() => {
   const t = selectedNode.value?.type as NodeType | undefined
-  if (t === 'INPUT') return ['string', 'number']
+  if (t === 'INPUT') {
+    const props = selectedNode.value?.interactiveProps
+    return lowcodeInputRequiresString(props ?? {}) ? ['string'] : ['string', 'number']
+  }
+  if (t === 'SELECT' && selectedNode.value?.interactiveProps?.multiple === true) return ['array']
   if (t === 'SWITCH') return ['boolean']
   // Phase 3 §3.v4 step 8 — CHECKBOX with options[] becomes a multi-select
   // group bound to array<string>; without options it's a single boolean.
@@ -51,6 +57,7 @@ const allowedTypes = computed<readonly CtrlType[]>(() => {
 const controlMode = computed<'boolean' | 'array' | 'text'>(() => {
   const t = selectedNode.value?.type
   if (t === 'SWITCH') return 'boolean'
+  if (t === 'SELECT' && selectedNode.value?.interactiveProps?.multiple === true) return 'array'
   if (t === 'CHECKBOX') return checkboxHasOptions() ? 'array' : 'boolean'
   return 'text'
 })

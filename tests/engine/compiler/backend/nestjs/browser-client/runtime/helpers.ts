@@ -46,7 +46,17 @@ export interface RuntimeRequestInput {
   direction?: 'asc' | 'desc'
   sessionGeneration?: number
 }
+export interface RuntimeListState {
+  phase: 'idle' | 'loading' | 'refreshing' | 'ready' | 'empty' | 'error'
+  hasRows: boolean
+  errorCode?: 'authentication-required' | 'forbidden' | 'request-failed'
+}
+export interface RuntimeListSubscription {
+  (): void
+  retry(): void
+}
 interface RuntimeModule {
+  createBackendResourceCache(): object
   disposeTestRuntime(): void
   getSession(): { generation: number }
   setBackendState(generation: number, name: string, value: unknown, empty: unknown): void
@@ -73,8 +83,10 @@ interface RuntimeModule {
     input: RuntimeRequestInput & { operation: 'list' },
     rows: (rows: unknown[]) => void,
     cursor?: (cursor: string) => void,
-    error?: (error: string) => void
-  ): () => void
+    error?: (error: string) => void,
+    state?: (state: RuntimeListState) => void,
+    cache?: object
+  ): RuntimeListSubscription
 }
 
 const TRANSPORT_SOURCE = `export const pending = [];
@@ -135,6 +147,7 @@ export async function runtimeFixture(
 export function getSession(){return state}
 export function subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener)}
 export function dispose(){listeners.clear()}
+export function availability(ready,signedIn){state=Object.freeze({...state,ready,signedIn});for(const listener of listeners)listener()}
 export function transition(id,notice=null){state=Object.freeze({notice,ready:true,signedIn:id!==null,id,email:null,generation:state.generation+1});for(const listener of listeners)listener()}
 export async function initialize(){transition(null, ${initializationFailure ? "'failed'" : 'null'}); ${initializationFailure ? "throw new Error('synthetic-private-callback-detail')" : ''}}
 export function cancelSignIn(){transition(null,'cancelled')}
@@ -180,6 +193,7 @@ export function configureRecovery(environment){ indexedDB=environment.indexedDB;
     const runtime = (await read('runtime')) as RuntimeModule
     const auth = (await read('lowcode-backend-auth')) as {
       transition(id: string | null): void
+      availability(ready: boolean, signedIn: boolean): void
       dispose(): void
     }
     const transport = (await read('transport')) as TestTransport
@@ -199,7 +213,7 @@ export function configureRecovery(environment){ indexedDB=environment.indexedDB;
           watchers.delete(stop)
         }
         watchers.add(stop)
-        return stop
+        return Object.assign(stop, { retry: unsubscribe.retry })
       }
     }
     const waitForRequest = (index: number, timeoutMs = 1000): Promise<PendingRequest> => {

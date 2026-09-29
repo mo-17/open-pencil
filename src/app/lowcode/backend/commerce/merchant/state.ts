@@ -1,5 +1,6 @@
 import type { ActionDef, BackendResourceDataSource } from '@open-pencil/scene-graph'
 
+import { templateToast } from '@/app/lowcode/backend/feedback/actions'
 import { templateCommandRecoveryActions } from '@/app/lowcode/backend/template-command-recovery'
 
 import {
@@ -53,6 +54,7 @@ export function prepareCommerceMerchantState(
     busy,
     displayExpr: `data.status === "recorded" && data.payload ? ${JSON.stringify(copy.base.savedOrder + ': ')} + data.payload.orderId : ""`,
     confirmation: copy.completionRecovery,
+    succeeded: [templateToast(copy.completionSaved)],
     acknowledged: [
       variable(targets.order, '""'),
       variable(targets.summary, '""'),
@@ -71,7 +73,7 @@ export function prepareCommerceMerchantState(
     idempotencyKeyTarget: targets.key,
     resultTarget: targets.result,
     errorTarget: targets.error,
-    onSuccess: [recovery.inspect()],
+    onSuccess: [templateToast(copy.completionSaved), recovery.inspect()],
     onError: [recovery.inspect()]
   }
   const submit: ActionDef = {
@@ -132,7 +134,11 @@ export function prepareCommerceMerchantState(
     payloadEntries: [{ key: 'title', valueExpr: storeTitle.name }],
     resultTarget: targets.createdStore,
     errorTarget: targets.error,
-    onSuccess: [set(storeBusy, '!1'), ...(storeId ? [variable(storeId, 'data.id')] : [])],
+    onSuccess: [
+      set(storeBusy, '!1'),
+      ...(storeId ? [variable(storeId, 'data.id')] : []),
+      templateToast(copy.storeCreated)
+    ],
     onError: [set(storeBusy, '!1')]
   }
   return {

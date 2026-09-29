@@ -34,7 +34,15 @@ export const CAROUSEL_COMPILER_MODULE_LOWERER: CompilerModuleLowerer = Object.fr
         pauseOnHover: config.pauseOnHover,
         backgroundColor: config.backgroundColor,
         textColor: config.textColor,
-        accentColor: config.accentColor
+        accentColor: config.accentColor,
+        layout: config.layout,
+        imageFit: config.imageFit,
+        textPosition: config.textPosition,
+        textAlign: config.textAlign,
+        overlayOpacity: config.overlayOpacity,
+        paginationStyle: config.paginationStyle,
+        arrowPosition: config.arrowPosition,
+        swipeEnabled: config.swipeEnabled
       }
     }
   }

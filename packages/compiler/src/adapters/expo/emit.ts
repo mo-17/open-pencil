@@ -1,3 +1,4 @@
+import { omitUnsupportedMultipleSelect } from '#compiler/adapters/native-controls'
 /* eslint-disable max-lines -- the native target emitter keeps one recursive IR walk in one module */
 import type {
   ComponentDef,
@@ -433,6 +434,8 @@ function emitComponentRefProp(
 }
 
 function emitElement(node: IRElement, indent: number, environment: ElementEnvironment): string {
+  if (omitUnsupportedMultipleSelect(node, 'expo', environment.warn))
+    return `${'  '.repeat(indent)}<View />`
   const vrTour = isExpoVRTour(node, environment.vrTourIds)
   warnElementFeatures(node, environment.warn, vrTour)
   const style = translateExpoStyle(node.className, node.sourceId, environment.warn)

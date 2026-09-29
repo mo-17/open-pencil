@@ -1,6 +1,7 @@
 import { withDefaults } from '@open-pencil/compiler'
 import { createEditor } from '@open-pencil/core/editor'
 
+import { businessTemplateDefinition } from '@/app/lowcode/backend/business/definitions'
 import { prepareBusinessModuleInstallation } from '@/app/lowcode/backend/business/installation'
 import { createBusinessApplication } from '@/app/lowcode/backend/business/model'
 import type { BusinessTemplateId } from '@/app/lowcode/backend/business/model/types'
@@ -19,21 +20,24 @@ import {
 export const BUSINESS_BROWSER_USER_ID = '00000000-0000-4000-8000-000000000001'
 
 /** This fixture replaces authentication only; application, compiler and browser bindings are real. */
-const TEST_SESSION = `
-const state = Object.freeze({ready:true,signedIn:true,id:'${BUSINESS_BROWSER_USER_ID}',email:null,generation:1});
+const testSession = (observeSignIn: boolean) => `
+const state = Object.freeze({ready:true,signedIn:true,id:'${BUSINESS_BROWSER_USER_ID}',email:null,generation:1,notice:null});
 export function getSession(){return state}
 export const getSnapshot = getSession;
 export function subscribe(){return()=>{}}
 export async function initialize(){}
 export async function getAccessToken(){return 'business-test-session'}
-export async function signIn(){throw new Error('Real OIDC is outside this browser fixture')}
+export async function signIn(returnPath){${observeSignIn ? "globalThis.dispatchEvent(new CustomEvent('business-test-sign-in',{detail:returnPath}))" : "throw new Error('Real OIDC is outside this browser fixture')"}}
 export async function signOut(){throw new Error('Real OIDC is outside this browser fixture')}
+export function cancelSignIn(){throw new Error('Real OIDC is outside this browser fixture')}
 `
 
 export async function businessBrowserFixture(
   kind: BusinessTemplateId,
   target: 'react' | 'vue',
-  modules: readonly BusinessTemplateId[] = []
+  modules: readonly BusinessTemplateId[] = [],
+  locale = 'en',
+  observeSignIn = false
 ) {
   const store = createAppPluginStore({
     catalog: createBundledPluginCatalog().filter((entry) =>
@@ -64,7 +68,7 @@ export async function businessBrowserFixture(
     kind
   )
   const editor = createEditor()
-  const pages = createBusinessPages(editor, descriptor, application, kind, 'en')
+  const pages = createBusinessPages(editor, descriptor, application, kind, locale)
   for (const moduleKind of modules) {
     const installation = prepareBusinessModuleInstallation({ editor, store, kind: moduleKind })
     if (installation.review.status !== 'ready') throw new Error(installation.review.summary)
@@ -92,13 +96,14 @@ export async function businessBrowserFixture(
     throw new Error('Unexpected business template warnings: ' + JSON.stringify(output.warnings))
   const files = new Map(output.files)
   if (!files.has('src/lowcode-backend-auth.ts')) throw new Error('Missing browser auth boundary')
-  files.set('src/lowcode-backend-auth.ts', TEST_SESSION)
+  files.set('src/lowcode-backend-auth.ts', testSession(observeSignIn))
   const apiBasePath = application.httpApi?.browserClient?.apiBasePath
   if (!apiBasePath) throw new Error('Missing browser API path')
   return {
     files,
     output,
     application,
+    definition: businessTemplateDefinition(kind),
     graph: editor.graph,
     apiBasePath,
     editor,

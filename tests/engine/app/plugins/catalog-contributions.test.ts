@@ -1,6 +1,27 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  ALERT_PLUGIN_ID,
+  POPOVER_PLUGIN_ID,
+  TREE_PLUGIN_ID,
+  CASCADER_PLUGIN_ID,
+  WALKTOUR_PLUGIN_ID,
+  ORG_CHART_PLUGIN_ID,
+  PAGINATION_PLUGIN_ID,
+  DESCRIPTIONS_PLUGIN_ID,
+  DATE_RANGE_PLUGIN_ID,
+  PROGRESS_PLUGIN_ID,
+  CHIP_PLUGIN_ID,
+  TOOLTIP_PLUGIN_ID,
+  SKELETON_PLUGIN_ID,
+  EMPTY_STATE_PLUGIN_ID,
+  AVATAR_PLUGIN_ID,
+  BADGE_PLUGIN_ID,
+  TIMELINE_PLUGIN_ID,
+  SLIDER_PLUGIN_ID,
+  RATING_PLUGIN_ID,
+  STEPPER_PLUGIN_ID,
+  BREADCRUMB_PLUGIN_ID,
   ACCORDION_MODULE_TYPE,
   ACCORDION_PLUGIN_ID,
   AUDIO_PLAYER_MODULE_TYPE,
@@ -39,6 +60,7 @@ import {
   TABS_MODULE_TYPE,
   TABS_PLUGIN_ID,
   UPLOAD_BUTTON_PLUGIN_ID,
+  VR_TOUR_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
   VIDEO_PLUGIN_ID
 } from '@open-pencil/core/plugins'
@@ -149,11 +171,12 @@ function bundledManifest(pluginId: string) {
 }
 
 describe('bundled plugin catalog contributions', () => {
-  test('publishes the sixty-nine reviewed built-in plugin identities', () => {
+  test('publishes the reviewed built-in plugin identities', () => {
     const catalog = createBundledPluginCatalog()
     const ids = catalog.map((entry) => entry.manifest.plugin.id)
 
     expect(ids).toEqual([
+      VR_TOUR_PLUGIN_ID,
       MAP_PLUGIN_ID,
       CHART_PLUGIN_ID,
       RICH_TEXT_PLUGIN_ID,
@@ -163,6 +186,27 @@ describe('bundled plugin catalog contributions', () => {
       SLIDE_MENU_PLUGIN_ID,
       DROPDOWN_MENU_PLUGIN_ID,
       UPLOAD_BUTTON_PLUGIN_ID,
+      ALERT_PLUGIN_ID,
+      POPOVER_PLUGIN_ID,
+      TREE_PLUGIN_ID,
+      CASCADER_PLUGIN_ID,
+      WALKTOUR_PLUGIN_ID,
+      ORG_CHART_PLUGIN_ID,
+      PAGINATION_PLUGIN_ID,
+      DESCRIPTIONS_PLUGIN_ID,
+      DATE_RANGE_PLUGIN_ID,
+      PROGRESS_PLUGIN_ID,
+      CHIP_PLUGIN_ID,
+      TOOLTIP_PLUGIN_ID,
+      SKELETON_PLUGIN_ID,
+      EMPTY_STATE_PLUGIN_ID,
+      AVATAR_PLUGIN_ID,
+      BADGE_PLUGIN_ID,
+      TIMELINE_PLUGIN_ID,
+      SLIDER_PLUGIN_ID,
+      RATING_PLUGIN_ID,
+      STEPPER_PLUGIN_ID,
+      BREADCRUMB_PLUGIN_ID,
       MODAL_PLUGIN_ID,
       LOTTIE_PLUGIN_ID,
       CAROUSEL_PLUGIN_ID,
@@ -204,6 +248,7 @@ describe('bundled plugin catalog contributions', () => {
       ...REVIEWED_DEPLOYMENT_PLUGINS.map((definition) => definition.pluginId),
       SUPABASE_BACKEND_PROVIDER_PLUGIN_ID,
       'open-pencil.nestjs-backend',
+      'open-pencil.nestjs-prisma-crm-backend',
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
       ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
@@ -223,7 +268,7 @@ describe('bundled plugin catalog contributions', () => {
             : 0),
         0
       )
-    ).toBe(74)
+    ).toBe(97)
     for (const descriptor of REVIEWED_EXTERNAL_SERVICE_CATALOG) {
       const entry = catalog.find(
         (candidate) => candidate.manifest.plugin.id === descriptor.connector.contract.pluginId
@@ -379,6 +424,29 @@ describe('bundled plugin catalog contributions', () => {
   test('keeps all non-default reviewed modules opt-in and bound to trusted adapters', () => {
     const catalog = createBundledPluginCatalog()
     const expected = [
+      { pluginId: WALKTOUR_PLUGIN_ID, moduleType: 'walktour', adapterId: 'open-pencil.walktour' },
+      {
+        pluginId: ORG_CHART_PLUGIN_ID,
+        moduleType: 'org-chart',
+        adapterId: 'open-pencil.org-chart'
+      },
+      {
+        pluginId: PAGINATION_PLUGIN_ID,
+        moduleType: 'pagination',
+        adapterId: 'open-pencil.pagination'
+      },
+      {
+        pluginId: DESCRIPTIONS_PLUGIN_ID,
+        moduleType: 'descriptions',
+        adapterId: 'open-pencil.descriptions'
+      },
+      { pluginId: POPOVER_PLUGIN_ID, moduleType: 'popover', adapterId: 'open-pencil.popover' },
+      { pluginId: TREE_PLUGIN_ID, moduleType: 'tree', adapterId: 'open-pencil.tree' },
+      {
+        pluginId: DATE_RANGE_PLUGIN_ID,
+        moduleType: 'date-range',
+        adapterId: 'open-pencil.date-range'
+      },
       {
         pluginId: VIDEO_PLUGIN_ID,
         moduleType: VIDEO_MODULE_TYPE,

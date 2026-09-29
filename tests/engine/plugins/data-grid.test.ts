@@ -38,6 +38,39 @@ const COLUMNS: DataGridColumnV1[] = [
 ]
 
 describe('built-in advanced data grid plugin', () => {
+  test('keeps CSV tools opt-in for new and legacy version-1 documents without altering data', () => {
+    const instance = createDataGridModuleInstance()
+    expect(instance.config.showCsvTools).toBe(false)
+    const legacyConfig = { ...instance.config }
+    Reflect.deleteProperty(legacyConfig, 'showCsvTools')
+    const legacy = resolveDataGridModule({ ...instance, config: legacyConfig })
+    expect(legacy?.ok).toBe(true)
+    if (!legacy?.ok) throw new Error('expected legacy data grid module to resolve')
+    expect(legacy.config.showCsvTools).toBe(false)
+    expect(legacy.config.data).toEqual(instance.config.data)
+    expect(Object.hasOwn(legacyConfig, 'showCsvTools')).toBe(false)
+
+    const enabled = resolveDataGridModule(createDataGridModuleInstance({ showCsvTools: true }))
+    expect(enabled?.ok && enabled.config.showCsvTools).toBe(true)
+  })
+
+  test('rejects malformed CSV visibility without loosening the rest of the configuration', () => {
+    for (const showCsvTools of [null, 'true', 1]) {
+      expect(() => createDataGridModuleInstance({ showCsvTools })).toThrow(
+        'showCsvTools must be a boolean'
+      )
+    }
+    const instance = createDataGridModuleInstance()
+    for (const key of ['showHeader', 'data', 'pageSize']) {
+      const config = { ...instance.config }
+      Reflect.deleteProperty(config, key)
+      expect(resolveDataGridModule({ ...instance, config })?.ok).toBe(false)
+    }
+    expect(() => createDataGridModuleInstance({ csvEndpoint: 'https://example.com' })).toThrow(
+      'config must contain exactly'
+    )
+  })
+
   test('accepts typed rows and returns defensive data, sort, and filter copies', () => {
     const data = {
       columns: COLUMNS,

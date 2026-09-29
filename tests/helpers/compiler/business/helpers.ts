@@ -8,6 +8,7 @@ import type { PreviewServer } from '@open-pencil/compiler/dev-server'
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 
 import type { BusinessTemplateId } from '@/app/lowcode/backend/business/model/types'
+import type { BusinessTemplateDefinition } from '@/app/lowcode/backend/business/types'
 
 import { installBusinessTransport } from '#tests/engine/app/lowcode/backend/business/browser/transport/helpers'
 
@@ -19,22 +20,28 @@ export async function withBusinessBrowser(
   target: 'react' | 'vue',
   run: (session: {
     page: Page
-    fixture: { application: BackendApplicationSpecV1; apiBasePath: string }
+    fixture: {
+      application: BackendApplicationSpecV1
+      definition: BusinessTemplateDefinition
+      apiBasePath: string
+    }
     api: Awaited<ReturnType<typeof installBusinessTransport>>
     open: (pageId: string) => Promise<void>
-  }) => Promise<void>
+  }) => Promise<void>,
+  options: { locale?: string; observeSignIn?: boolean } = {}
 ): Promise<void> {
   const emitted = execFileSync(
     'bun',
     [
       '-e',
-      `import {businessBrowserFixture} from './tests/engine/app/lowcode/backend/business/browser/helpers'; const v=await businessBrowserFixture('${kind}','${target}'); process.stdout.write(JSON.stringify({files:[...v.files],application:v.application,apiBasePath:v.apiBasePath,paths:v.paths}))`
+      `import {businessBrowserFixture} from './tests/engine/app/lowcode/backend/business/browser/helpers'; const v=await businessBrowserFixture(${JSON.stringify(kind)},${JSON.stringify(target)},[],${JSON.stringify(options.locale ?? 'en')},${JSON.stringify(options.observeSignIn ?? false)}); process.stdout.write(JSON.stringify({files:[...v.files],application:v.application,definition:v.definition,apiBasePath:v.apiBasePath,paths:v.paths}))`
     ],
     { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
   )
   const fixture = JSON.parse(emitted) as {
     files: [string, string][]
     application: BackendApplicationSpecV1
+    definition: BusinessTemplateDefinition
     apiBasePath: string
     paths: Record<string, string>
   }

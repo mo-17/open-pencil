@@ -1,4 +1,8 @@
 import { emitBackendClientEvent } from '#compiler/adapters/backend-client/events'
+import {
+  emitMountedValidationCapture,
+  MOUNTED_VALIDATION_COMPLETION_GUARD
+} from '#compiler/adapters/form-validation'
 import type {
   IRAPICallHandler,
   IRConfirmHandler,
@@ -150,7 +154,7 @@ export function emitEventHandler(
     return `${arrow} ${emitHandlerStatement(handlers[0])}`
   }
   const locals = options.eventLocals
-    ? 'const $event = e; const $value = (e.target as HTMLInputElement).value;'
+    ? 'const $event = e; const $value = (e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;'
     : ''
   const prefix = prelude.map((stmt) => `${stmt};`).join(' ')
   const scopeCapture = motionScope ? 'const __opMotionScope = e.currentTarget;' : ''
@@ -215,20 +219,25 @@ function emitRequestTimedArrow(options: {
 export function emitFormSubmitHandler(
   handlers: IREventHandler[],
   validationKeys: readonly string[],
-  requestKey?: string
+  requestKey?: string,
+  mountedOnly = false
 ): string {
   const arrow = 'async (e) =>'
   const ids = validationKeys.map((k) => JSON.stringify(k)).join(', ')
-  const validationGuard = `if (!(await __validateFields([${ids}]))) return;`
+  const capture =
+    `const __opSubmitForm = e.currentTarget; ` +
+    (mountedOnly ? `${emitMountedValidationCapture('e', `[${ids}]`).join('; ')}; ` : '')
+  const nativeGuard = mountedOnly ? 'if (!__opSubmitForm.checkValidity()) return;' : ''
+  const validationGuard = nativeGuard + (validationKeys.length > 0 ? `if (!(await __validateFields(${mountedOnly ? '__opValidationKeys' : `[${ids}]`}, __opSubmitForm))) return;` : '')
   const motionScope = handlersContainMotion(handlers) ? '__opMotionScope' : undefined
   const scopeCapture = motionScope ? 'const __opMotionScope = e.currentTarget; ' : ''
-  const body = `${scopeCapture}${validationGuard}${
+  const body = `${scopeCapture}${validationGuard}${mountedOnly ? MOUNTED_VALIDATION_COMPLETION_GUARD : ''}${
     handlers.length > 0 ? ` ${emitStatementList(handlers, motionScope)}` : ''
   }`
   if (requestKey !== undefined && handlersUseRequestGate(handlers)) {
-    return `${arrow} { e.preventDefault(); await __opRunRequest(${JSON.stringify(requestKey)}, async () => { ${body} }); }`
+    return `${arrow} { e.preventDefault(); ${capture}await __opRunRequest(${JSON.stringify(requestKey)}, async () => { ${body} }); }`
   }
-  return `${arrow} { e.preventDefault(); ${body} }`
+  return `${arrow} { e.preventDefault(); ${capture}${body} }`
 }
 
 /** Join handlers as statements: expression / `return` statements get a

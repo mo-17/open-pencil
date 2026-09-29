@@ -1,3 +1,6 @@
+import { templateToast } from '@/app/lowcode/backend/feedback/actions'
+
+import { createProductIllustration } from '../products'
 import { setCommerceState as set, setCommerceVariable as variable } from '../state'
 import { createOperation } from './actions'
 import type { OperationsContext } from './context'
@@ -5,7 +8,7 @@ import { createOperationsScreen, EMPTY_COMMERCE_ID } from './screen'
 
 export function createOperationsShop(ctx: OperationsContext): void {
   const { copy: c, layout: l } = ctx
-  const s = createOperationsScreen(ctx, 'shop', 1400, c.cartHint + ' ' + c.currency, false)
+  const s = createOperationsScreen(ctx, 'shop', 1480, c.cartHint + ' ' + c.currency, false)
   const sku = s.field('Sku'),
     title = s.field('Title'),
     quantity = s.field('Quantity', 'number', 1)
@@ -41,7 +44,7 @@ export function createOperationsShop(ctx: OperationsContext): void {
     const rows = s.list(
       'products',
       c.shop,
-      340,
+      360,
       180,
       [
         { key: 'active', valueExpr: '!0' },
@@ -52,30 +55,38 @@ export function createOperationsShop(ctx: OperationsContext): void {
       { searchExpr: search.name, sortField: 'price', sortDirection: 'asc' },
       filtered ? `!!${ctx.browseStore}` : `!${ctx.browseStore}`
     )
-    s.bound(rows.card, 'item.title', 16)
-    s.bound(
-      rows.card,
-      'item.price + " · " + ' + JSON.stringify(c.stock + ': ') + ' + item.stock',
-      58
-    )
+    createProductIllustration(l, rows.card)
+    l.text(rows.card, '', 176, 16, 668, {
+      fontSize: 20,
+      bindings: { text: { kind: 'expr', expr: 'item.title' } }
+    })
+    l.text(rows.card, '', 176, 58, 668, {
+      fontSize: 14,
+      bindings: {
+        text: {
+          kind: 'expr',
+          expr: 'item.price + " · " + ' + JSON.stringify(c.stock + ': ') + ' + item.stock'
+        }
+      }
+    })
     l.button(
       rows.card,
       c.select,
-      16,
+      176,
       112,
       s.select([sku, 'item.id'], [title, 'item.title'], [quantity, '1']),
       { renderCondition: `item.stock > 0 && !${operation.locked}` }
     )
   }
-  s.bound(s.page, `${s.current} ? ${title.name} : ${JSON.stringify(c.none)}`, 706)
-  const add = l.shape('FORM', c.add, s.page, 48, 754, 890, 152, {
+  s.bound(s.page, `${s.current} ? ${title.name} : ${JSON.stringify(c.none)}`, 738)
+  const add = l.shape('FORM', c.add, s.page, 48, 784, 890, 152, {
     layoutMode: 'NONE',
     renderCondition: `${s.current} && !!${sku.name} && !${operation.locked} && $currentUser.signedIn`,
     events: { onSubmit: [operation.submit] }
   })
   s.input(add, c.quantity, quantity, 0, { required: true, customExpr: valid })
   l.button(add, c.add, 0, 98, [])
-  operation.feedback(928)
+  operation.feedback(984)
   s.finish()
 }
 
@@ -119,18 +130,26 @@ export function createOperationsStores(ctx: OperationsContext): void {
     renderCondition: `!${creating}`,
     events: {
       onSubmit: [
-        set(generation, '"" + $currentUser.generation'),
-        set(busy, '!0'),
         {
           id: crypto.randomUUID(),
-          kind: 'backendRequest',
-          resourceId: 'stores',
-          operation: 'create',
-          payloadEntries: [{ key: 'title', valueExpr: title.name }],
-          resultTarget: result,
-          errorTarget: s.error,
-          onSuccess: [set(busy, '!1'), set(title, '""')],
-          onError: [set(busy, '!1')]
+          kind: 'condition',
+          condExpr: `!${creating}`,
+          consequent: [
+            set(generation, '"" + $currentUser.generation'),
+            set(busy, '!0'),
+            variable(s.error, '""'),
+            {
+              id: crypto.randomUUID(),
+              kind: 'backendRequest',
+              resourceId: 'stores',
+              operation: 'create',
+              payloadEntries: [{ key: 'title', valueExpr: title.name }],
+              resultTarget: result,
+              errorTarget: s.error,
+              onSuccess: [set(busy, '!1'), set(title, '""'), templateToast(c.created)],
+              onError: [set(busy, '!1')]
+            }
+          ]
         }
       ]
     }

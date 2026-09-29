@@ -5,6 +5,7 @@ import type {
   BackendCommandAction
 } from '@open-pencil/scene-graph'
 
+import { templateToast } from '@/app/lowcode/backend/feedback/actions'
 import { templateCommandRecoveryActions } from '@/app/lowcode/backend/template-command-recovery'
 
 import type { commerceCopy } from '../copy'
@@ -69,7 +70,8 @@ export function createCommerceCatalogState(
   ]
   const finish = (message: string): ActionDef[] => [
     set(fields.busy, '!1'),
-    set(fields.feedback, JSON.stringify(message))
+    set(fields.feedback, JSON.stringify(message)),
+    templateToast(message)
   ]
   const request = (operation: 'create' | 'update'): BackendRequestAction => ({
     id: crypto.randomUUID(),
@@ -123,6 +125,7 @@ export function createCommerceCatalogState(
     busy: fields.busy,
     started: [set(fields.operationGeneration, generation), set(fields.activity, '"restocking"')],
     confirmation: copy.restockAcknowledge,
+    succeeded: [templateToast(copy.restocked)],
     acknowledged: [...clearFeedback(), variable(targets.restock, 'data')]
   })
   const restock: BackendCommandAction = {
@@ -138,7 +141,7 @@ export function createCommerceCatalogState(
     idempotencyKeyTarget: targets.key,
     resultTarget: targets.restock,
     errorTarget: targets.error,
-    onSuccess: [recovery.inspect()],
+    onSuccess: [templateToast(copy.restocked), recovery.inspect()],
     onError: [recovery.inspect()]
   }
   const restockSubmit: ActionDef = {

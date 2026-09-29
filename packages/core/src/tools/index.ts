@@ -33,3 +33,12 @@ export {
 } from './analyze/overlaps/params'
 export { setPexelsAPIKey, setUnsplashAccessKey } from './stock-photo'
 export { importSVG } from './create'
+
+export { buildDesignBrief, getDesignBrief, DESIGN_BRIEF_LIMITS } from './describe/brief'
+export type {
+  DesignBrief,
+  DesignBriefOptions,
+  DesignBriefResult,
+  DesignBriefScope,
+  DesignBriefLocale
+} from './describe/brief'

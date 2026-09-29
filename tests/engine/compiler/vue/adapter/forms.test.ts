@@ -80,7 +80,11 @@ describe('Vue compiler form fail-closed behavior', () => {
     expect(page).toMatch(/<input type="number"[^>]+@input=/)
     expect(page).toMatch(/<input type="text"[^>]+@input=/)
     expect(page).toMatch(/<select :value=[^>]+@change=/)
-    expect(page.match(/Number\(\(__opEvent.target as HTMLInputElement\).value\)/g)).toHaveLength(3)
+    expect(
+      page.match(
+        /Number\(\(__opEvent.target as HTMLInputElement \| HTMLTextAreaElement \| HTMLSelectElement\).value\)/g
+      )
+    ).toHaveLength(3)
     expect(output.warnings).toEqual([])
     expectValidSfc(page)
   })
@@ -131,7 +135,8 @@ describe('Vue compiler form fail-closed behavior', () => {
     expect(page).toContain('<form @submit.prevent>')
     expect(page.match(/<form @submit\.prevent>/g)).toHaveLength(1)
     expect(page).toMatch(/<form @submit\.prevent="__op_validation_form_submit_[0-9]+\(\$event\)">/)
-    expect(page).toContain('if (!__validateFields(["field"])) return')
+    expect(page).toContain('const __opSubmitForm = __opEvent.currentTarget')
+    expect(page).toContain('if (!__validateFields(["field"], __opSubmitForm)) return')
     expect(page).toContain('__opState_count_')
     expect(output.warnings.map((warning) => warning.code)).toContain('vue-supabase-config-required')
     expect(output.warnings.map((warning) => warning.code)).not.toContain('vue-supabase-unsupported')

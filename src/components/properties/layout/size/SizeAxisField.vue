@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectViewport
 } from 'reka-ui'
+import { watch } from 'vue'
 
 import type { LayoutSizing } from '@open-pencil/scene-graph'
 import { useI18n, useLayoutControlsContext, useRetainedPopup } from '@open-pencil/vue'
@@ -27,13 +28,30 @@ const ctx = useLayoutControlsContext()
 const { open: popupOpen, portalActive } = useRetainedPopup()
 const { panels } = useI18n()
 const selectUI = useSelectUI({ item: 'rounded py-1.5 pr-2 pl-6 text-xs' })
+let menuTarget: typeof ctx.node | null = null
+let menuGraph = ctx.editor.graph
+watch(
+  popupOpen,
+  (open) => {
+    menuTarget = open && ctx.node ? (ctx.editor.getNode(ctx.node.id) ?? null) : null
+    menuGraph = ctx.editor.graph
+  },
+  { flush: 'sync' }
+)
+watch(
+  () => ctx.node?.id,
+  () => {
+    popupOpen.value = false
+  },
+  { flush: 'sync' }
+)
 
 const sizing = () => (axis === 'width' ? ctx.widthSizing : ctx.heightSizing)
 const sizingOptions = () => (axis === 'width' ? ctx.widthSizingOptions : ctx.heightSizingOptions)
 const sizingLabel = () => {
-  if (sizing() === 'HUG') return panels.value.sizingHugShort
-  if (sizing() === 'FILL') return panels.value.sizingFillShort
-  return ''
+  if (sizing() === 'HUG') return panels.value.sizingHug
+  if (sizing() === 'FILL') return panels.value.sizingFill
+  return panels.value.sizingFixed
 }
 const limitItems = () =>
   axis === 'width'
@@ -63,6 +81,16 @@ const limitItems = () =>
       ]
 
 function handleSelect(value: SizeSelectValue) {
+  // Reka may deliver a queued choice after selection or document replacement.
+  if (
+    !popupOpen.value ||
+    !menuTarget ||
+    ctx.editor.graph !== menuGraph ||
+    ctx.node?.id !== menuTarget.id ||
+    ctx.editor.getNode(menuTarget.id) !== menuTarget
+  )
+    return
+
   if (value === 'FIXED' || value === 'HUG' || value === 'FILL') {
     ctx.setAxisSizing(axis, value)
     return
@@ -96,10 +124,10 @@ function handleSelect(value: SizeSelectValue) {
           <SelectTrigger
             data-slot="sizing-trigger"
             :aria-label="label"
-            class="flex shrink-0 cursor-pointer items-center gap-0.5 self-stretch border-none bg-transparent px-1.5 text-[10px] text-muted outline-none data-[state=open]:text-foreground"
+            class="flex shrink-0 cursor-pointer items-center gap-1 self-stretch rounded border-none bg-transparent px-2 text-[11px] text-muted outline-none hover:bg-hover focus-visible:ring-1 focus-visible:ring-panel-focus data-[state=open]:text-foreground"
             @pointerdown.stop
           >
-            <span v-if="sizingLabel()">{{ sizingLabel() }}</span>
+            <span>{{ sizingLabel() }}</span>
             <icon-lucide-chevron-down class="size-3" />
           </SelectTrigger>
           <SelectPortal v-if="portalActive">

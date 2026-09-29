@@ -35,7 +35,16 @@ describe('business module navigation', () => {
     if (!pageId) throw new Error('Missing CRM entry')
     const graph = value.editor.graph
     const navigation = navigationFrame(graph, pageId)
-    const [deleted, edited] = graph.getChildren(navigation.id)
+    const originalLinks = graph.getChildren(navigation.id).filter((node) => node.type === 'BUTTON')
+    const linkTo = (path: string) => {
+      const link = originalLinks.find((node) =>
+        node.events?.onClick?.some((action) => action.kind === 'navigate' && action.to === path)
+      )
+      if (!link) throw new Error('Missing navigation link')
+      return link
+    }
+    const deleted = linkTo(value.pages.paths.account)
+    const edited = linkTo(value.pages.paths.customers)
     graph.deleteNode(deleted.id)
     graph.updateNode(edited.id, {
       name: 'My customer shortcut',
@@ -49,7 +58,7 @@ describe('business module navigation', () => {
     prepared.apply()
     expect(graph.getNode(edited.id)).toEqual(original)
     expect(graph.getNode(deleted.id)).toBeUndefined()
-    const links = graph.getChildren(navigation.id)
+    const links = graph.getChildren(navigation.id).filter((node) => node.type === 'BUTTON')
     expect(links).toHaveLength(3)
     expect(
       links.filter((node) =>

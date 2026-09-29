@@ -145,43 +145,46 @@ describe('lowcode BUTTON canvas label', () => {
     renderer.fontsLoaded = true
     renderer.fontProvider = fontProvider
 
-    const canvas = surface.getCanvas()
-    canvas.clear(ck.WHITE)
-    renderer.renderShape(canvas, node, graph)
-    surface.flush()
+    try {
+      const canvas = surface.getCanvas()
+      canvas.clear(ck.WHITE)
+      renderer.renderShape(canvas, node, graph)
+      surface.flush()
 
-    const image = surface.makeImageSnapshot()
-    const pixels = image.readPixels(0, 0, {
-      width: 180,
-      height: 56,
-      colorType: ck.ColorType.RGBA_8888,
-      alphaType: ck.AlphaType.Unpremul,
-      colorSpace: ck.ColorSpace.SRGB
-    })
-    image.delete()
-    surface.delete()
+      const image = surface.makeImageSnapshot()
+      const pixels = image.readPixels(0, 0, {
+        width: 180,
+        height: 56,
+        colorType: ck.ColorType.RGBA_8888,
+        alphaType: ck.AlphaType.Unpremul,
+        colorSpace: ck.ColorSpace.SRGB
+      })
+      image.delete()
 
-    let darkPixels = 0
-    let minX = 180
-    let maxX = 0
-    let minY = 56
-    let maxY = 0
-    for (let y = 4; y < 52; y++) {
-      for (let x = 4; x < 176; x++) {
-        const offset = (y * 180 + x) * 4
-        if (pixels[offset] >= 100 || pixels[offset + 1] >= 100 || pixels[offset + 2] >= 100) {
-          continue
+      let darkPixels = 0
+      let minX = 180
+      let maxX = 0
+      let minY = 56
+      let maxY = 0
+      for (let y = 4; y < 52; y++) {
+        for (let x = 4; x < 176; x++) {
+          const offset = (y * 180 + x) * 4
+          if (pixels[offset] >= 100 || pixels[offset + 1] >= 100 || pixels[offset + 2] >= 100) {
+            continue
+          }
+          darkPixels++
+          minX = Math.min(minX, x)
+          maxX = Math.max(maxX, x)
+          minY = Math.min(minY, y)
+          maxY = Math.max(maxY, y)
         }
-        darkPixels++
-        minX = Math.min(minX, x)
-        maxX = Math.max(maxX, x)
-        minY = Math.min(minY, y)
-        maxY = Math.max(maxY, y)
       }
-    }
 
-    expect(darkPixels).toBeGreaterThan(150)
-    expect((minX + maxX) / 2).toBeWithin(86, 94)
-    expect((minY + maxY) / 2).toBeWithin(25, 31)
+      expect(darkPixels).toBeGreaterThan(150)
+      expect((minX + maxX) / 2).toBeWithin(86, 94)
+      expect((minY + maxY) / 2).toBeWithin(25, 31)
+    } finally {
+      renderer.destroy()
+    }
   })
 })

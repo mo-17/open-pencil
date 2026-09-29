@@ -1,9 +1,11 @@
 import type { BackendCommerceOperation } from '@open-pencil/lowcode/backend'
 import type { ActionDef, ActionPayloadEntry } from '@open-pencil/scene-graph'
 
+import { templateToast } from '@/app/lowcode/backend/feedback/actions'
 import { templateCommandRecoveryActions } from '@/app/lowcode/backend/template-command-recovery'
 
 import { setCommerceState as set, setCommerceVariable as variable } from '../state'
+import { commerceOperationFeedback } from './copy'
 import type { OperationsScreen } from './screen'
 
 /** Commands and retries retain the reviewed server operation, original payload and account. */
@@ -30,6 +32,11 @@ export function createOperation(
   const running = `(${busy.name} && ${generation.name} === ("" + $currentUser.generation))`
   const locked = `(${running} || ${key} !== "" || !!${info}.key)`
   const started = [set(generation, '"" + $currentUser.generation')]
+  const succeeded = () =>
+    templateToast(
+      commerceOperationFeedback(c, operation),
+      operation === 'payment.simulate' ? 'info' : 'success'
+    )
   const recovery = templateCommandRecoveryActions({
     commandId: definition.id,
     keyTarget: key,
@@ -41,6 +48,7 @@ export function createOperation(
     busy,
     started,
     confirmation: c.acknowledgeHint,
+    succeeded: [succeeded()],
     acknowledged: [variable(error, '""'), screen.clearSelection]
   })
   const command: ActionDef = {
@@ -52,7 +60,7 @@ export function createOperation(
     recovery: 'browser',
     resultTarget: result,
     errorTarget: error,
-    onSuccess: [recovery.inspect()],
+    onSuccess: [succeeded(), recovery.inspect()],
     onError: [recovery.inspect()]
   }
   const allowed = `($currentUser.signedIn && ${condition} && !${locked})`
@@ -75,6 +83,7 @@ export function createOperation(
     ]
   }
   const feedback = (y: number) => {
+    l.section(screen.page, 'Request status and recovery', y - 4, 328)
     l.text(screen.page, c.busy, 48, y, 880, { renderCondition: running })
     screen.bound(
       screen.page,

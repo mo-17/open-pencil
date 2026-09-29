@@ -52,10 +52,11 @@ describe('design panel workspace settings', () => {
     }
   )
 
-  test('keeps the legacy single, multi, and empty section order as the defaults', () => {
+  test('places lowcode controls before styling in the default section order', () => {
     expect(DEFAULT_DESIGN_PANEL_SECTION_ORDER).toEqual({
       single: [
         'component',
+        'lowcode-control',
         'interaction-states',
         'module',
         'position',
@@ -160,7 +161,7 @@ describe('design panel workspace settings', () => {
   test('moves, hides, reveals, and resets studio sections per context', () => {
     designPanelWorkspace.value = 'studio'
     moveDesignPanelStudioSection('single', 'appearance', 'up')
-    expect(getDesignPanelSectionOrder('single', 'studio').slice(3, 6)).toEqual([
+    expect(getDesignPanelSectionOrder('single', 'studio').slice(4, 7)).toEqual([
       'position',
       'appearance',
       'layout'

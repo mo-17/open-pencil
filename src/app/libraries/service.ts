@@ -531,8 +531,15 @@ export class LibraryService implements ComponentCatalog {
     await this.refresh(editor)
   }
 
-  async materialize(editor: EditorStore, libraryId: string, revisionId: string, assetKey: string) {
+  async materialize(
+    editor: Pick<EditorStore, 'graph' | 'requestRender'>,
+    libraryId: string,
+    revisionId: string,
+    assetKey: string,
+    beforeApply?: () => void
+  ) {
     const revision = await this.#getRevision(libraryId, revisionId)
+    beforeApply?.()
     const result = materializeLibraryAsset(editor.graph, revision, assetKey)
     editor.requestRender()
     return result

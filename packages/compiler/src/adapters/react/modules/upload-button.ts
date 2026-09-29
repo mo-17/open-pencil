@@ -1,4 +1,5 @@
-/* eslint-disable max-lines -- the generated local-file runtime stays beside its adapter contract */
+import { UPLOAD_LOCAL_FILES_RUNTIME } from '#compiler/adapters/upload-button/local-files'
+
 import { UPLOAD_BUTTON_MODULE_TYPE, UPLOAD_BUTTON_PLUGIN_ID } from '@open-pencil/core/plugins'
 
 import type { ReactModuleAdapter, ReactModuleRuntimeOptions } from './types'
@@ -11,7 +12,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type ButtonHTMLAttributes,
+  type HTMLAttributes,
   type ChangeEvent,
   type CSSProperties,
   type DragEvent as ReactDragEvent,
@@ -39,25 +40,16 @@ export interface OpenPencilUploadButtonConfig {
 
 export interface OpenPencilUploadButtonProps
   extends Omit<
-    ButtonHTMLAttributes<HTMLButtonElement>,
+    HTMLAttributes<HTMLDivElement>,
     'onClick' | 'onKeyDown' | 'type'
   > {
   config: OpenPencilUploadButtonConfig
+  disabled?: boolean
   onClick?: (event: ReactMouseEvent<HTMLButtonElement>) => void
   onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void
 }
 
-interface SelectedLocalFile {
-  id: number
-  file: File
-}
-
-interface DropFiles {
-  files: File[]
-  ignoredItems: number
-  rejectedDirectory: boolean
-  rejectedNonFile: boolean
-}
+${UPLOAD_LOCAL_FILES_RUNTIME}
 
 interface DetailsPosition {
   left: number
@@ -68,9 +60,6 @@ interface DetailsPosition {
 
 const VIEWPORT_INSET = 8
 const DETAILS_GAP = 8
-const MAX_INCOMING_FILES = 100
-const MAX_ERROR_MESSAGES = 4
-const MAX_DISPLAY_NAME_CODE_POINTS = 157
 
 const ROOT_STYLE: CSSProperties = {
   background: 'transparent',
@@ -197,95 +186,8 @@ const REMOVE_STYLE: CSSProperties = {
   padding: '0 8px'
 }
 
-function fileNameTail(value: string): string {
-  const boundedTail = value.slice(Math.max(0, value.length - 512))
-  const separator = Math.max(boundedTail.lastIndexOf('/'), boundedTail.lastIndexOf('\\\\'))
-  return boundedTail.slice(separator + 1) || 'Unnamed file'
-}
-
-function displayFileName(value: string): string {
-  let result = ''
-  let length = 0
-  for (const character of fileNameTail(value)) {
-    if (length >= MAX_DISPLAY_NAME_CODE_POINTS) return result + '...'
-    const point = character.codePointAt(0) ?? 0
-    const unsafe =
-      point < 32 ||
-      (point >= 127 && point <= 159) ||
-      point === 0x061c ||
-      point === 0x200e ||
-      point === 0x200f ||
-      (point >= 0x2028 && point <= 0x202e) ||
-      (point >= 0x2066 && point <= 0x2069)
-    result += unsafe ? '�' : character
-    length += 1
-  }
-  return result
-}
-
-function formatBytes(value: number): string {
-  if (value < 1024) return value + ' B'
-  if (value < 1024 * 1024) return (value / 1024).toFixed(value < 10 * 1024 ? 1 : 0) + ' KB'
-  return (value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0) + ' MB'
-}
-
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(value, maximum))
-}
-
-function matchesAccept(file: File, accept: readonly string[]): boolean {
-  if (accept.length === 0) return true
-  const name = fileNameTail(file.name)
-  const mime = file.type.length <= 127 ? file.type.trim().toLowerCase() : ''
-  return accept.some((rawToken) => {
-    const token = rawToken.trim().toLowerCase()
-    if (token.startsWith('.')) return name.slice(-token.length).toLowerCase() === token
-    if (token.endsWith('/*')) return mime !== '' && mime.startsWith(token.slice(0, -1))
-    return mime !== '' && mime === token
-  })
-}
-
-function filesFromDrop(dataTransfer: DataTransfer): DropFiles {
-  const result: DropFiles = {
-    files: [],
-    ignoredItems: 0,
-    rejectedDirectory: false,
-    rejectedNonFile: false
-  }
-  if (dataTransfer.items.length === 0) {
-    const count = Math.min(dataTransfer.files.length, MAX_INCOMING_FILES)
-    for (let index = 0; index < count; index += 1) {
-      const file = dataTransfer.files[index]
-      if (file) result.files.push(file)
-    }
-    result.ignoredItems = Math.max(0, dataTransfer.files.length - count)
-    return result
-  }
-  const count = Math.min(dataTransfer.items.length, MAX_INCOMING_FILES)
-  result.ignoredItems = Math.max(0, dataTransfer.items.length - count)
-  for (let index = 0; index < count; index += 1) {
-    const item = dataTransfer.items[index]
-    if (!item) continue
-    if (item.kind !== 'file') {
-      result.rejectedNonFile = true
-      continue
-    }
-    const candidate = item as DataTransferItem & {
-      webkitGetAsEntry?: () => { isDirectory: boolean; isFile: boolean } | null
-    }
-    const entry = candidate.webkitGetAsEntry?.()
-    if (entry?.isDirectory) {
-      result.rejectedDirectory = true
-      continue
-    }
-    const file = item.getAsFile()
-    if (!file || (entry && !entry.isFile)) {
-      result.rejectedNonFile = true
-      continue
-    }
-    result.files.push(file)
-  }
-  return result
 }
 
 export default function OpenPencilUploadButton({
@@ -336,10 +238,18 @@ export default function OpenPencilUploadButton({
     return () => query.removeEventListener('change', sync)
   }, [])
 
+  useEffect(() => {
+    if (disabled || !config.allowDrop) {
+      dragDepthRef.current = 0
+      setDragging(false)
+    }
+  }, [disabled, config.allowDrop])
+
   useLayoutEffect(() => {
     const target = focusAfterSelectionRef.current
     if (target === null) return
     focusAfterSelectionRef.current = null
+    if (disabled) return
     if (target === 'trigger') {
       triggerRef.current?.focus({ preventScroll: true })
       return
@@ -347,68 +257,22 @@ export default function OpenPencilUploadButton({
     const remove = removeRefs.current.get(target)
     if (remove) remove.focus({ preventScroll: true })
     else triggerRef.current?.focus({ preventScroll: true })
-  }, [selected])
+  }, [selected, disabled])
 
   const processFiles = useCallback((
     files: ArrayLike<File>,
     dropMessages: readonly string[] = [],
     additionalUnchecked = 0
   ) => {
-    const accepted: File[] = []
-    const messages = dropMessages.slice(0, MAX_ERROR_MESSAGES)
-    let suppressedRejections = Math.max(0, dropMessages.length - messages.length)
-    const addRejection = (message: string) => {
-      if (messages.length < MAX_ERROR_MESSAGES) messages.push(message)
-      else suppressedRejections += 1
-    }
-    const candidateCount = Math.min(files.length, MAX_INCOMING_FILES)
-    for (let index = 0; index < candidateCount; index += 1) {
-      const file = files[index]
-      if (!file) continue
-      const name = displayFileName(file.name)
-      if (!matchesAccept(file, config.accept)) {
-        addRejection('“' + name + '” is not an accepted file type.')
-      } else if (file.size > config.maxFileBytes) {
-        addRejection(
-          '“' + name + '” exceeds the ' + formatBytes(config.maxFileBytes) + ' limit.'
-        )
-      } else {
-        accepted.push(file)
-      }
-    }
-    const summaries: string[] = []
-    const current = selectedRef.current
-    let next = current
-    if (!config.multiple) {
-      if (accepted.length > 1) summaries.push('Choose one file at a time.')
-      const first = accepted[0]
-      if (first) next = [{ id: nextFileIdRef.current++, file: first }]
-    } else {
-      const available = Math.max(0, config.maxFiles - current.length)
-      if (accepted.length > available) {
-        summaries.push('You can select up to ' + config.maxFiles + ' files.')
-      }
-      next = [
-        ...current,
-        ...accepted.slice(0, available).map((file) => ({
-          id: nextFileIdRef.current++,
-          file
-        }))
-      ]
-    }
-    if (suppressedRejections > 0) {
-      summaries.push(suppressedRejections + ' more files were rejected.')
-    }
-    const unchecked = Math.max(0, files.length - candidateCount) + additionalUnchecked
-    if (unchecked > 0) summaries.push(unchecked + ' additional files were not checked.')
-    selectedRef.current = next
-    setSelected(next)
-    setError([...messages, ...summaries].join(' '))
-  }, [config.accept, config.maxFileBytes, config.maxFiles, config.multiple])
+    if (disabled || (files.length === 0 && dropMessages.length === 0 && additionalUnchecked === 0)) return
+    const result = selectLocalFiles(selectedRef.current, files, config, () => nextFileIdRef.current++, dropMessages, additionalUnchecked)
+    selectedRef.current = result.selected
+    setSelected(result.selected)
+    setError(result.error)
+  }, [config.accept, config.maxFileBytes, config.maxFiles, config.multiple, disabled])
 
   const openPicker = () => {
     if (disabled) return
-    setError('')
     const input = inputRef.current
     if (!input) return
     input.value = ''
@@ -427,7 +291,9 @@ export default function OpenPencilUploadButton({
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     processFiles(event.currentTarget.files ?? [])
     event.currentTarget.value = ''
-    window.requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }))
+    window.requestAnimationFrame(() => {
+      if (!triggerRef.current?.disabled) triggerRef.current?.focus({ preventScroll: true })
+    })
   }
 
   const isFileDrag = (event: ReactDragEvent<HTMLDivElement>): boolean =>
@@ -470,10 +336,13 @@ export default function OpenPencilUploadButton({
     if (dropped.rejectedNonFile) messages.push('Only local files can be selected.')
     if (dropped.files.length === 0 && messages.length === 0) messages.push('No local files were found.')
     processFiles(dropped.files, messages, dropped.ignoredItems)
-    window.requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }))
+    window.requestAnimationFrame(() => {
+      if (!triggerRef.current?.disabled) triggerRef.current?.focus({ preventScroll: true })
+    })
   }
 
   const removeFile = (id: number) => {
+    if (disabled) return
     setError('')
     const current = selectedRef.current
     const index = current.findIndex((entry) => entry.id === id)
@@ -486,6 +355,7 @@ export default function OpenPencilUploadButton({
   }
 
   const clearLocalSelection = () => {
+    if (disabled) return
     selectedRef.current = []
     focusAfterSelectionRef.current = 'trigger'
     setSelected([])
@@ -652,6 +522,7 @@ export default function OpenPencilUploadButton({
                       <button
                         aria-label={'Remove ' + name + ' from local selection'}
                         data-openpencil-upload-remove=""
+                        disabled={disabled}
                         onClick={() => removeFile(entry.id)}
                         ref={(element) => {
                           if (element) removeRefs.current.set(entry.id, element)
@@ -667,9 +538,10 @@ export default function OpenPencilUploadButton({
                 })}
               </ul>
             ) : null}
-            {!config.showFileList && selected.length > 0 ? (
+            {selected.length > 0 ? (
               <button
                 data-openpencil-upload-clear=""
+                disabled={disabled}
                 onClick={clearLocalSelection}
                 style={{ ...REMOVE_STYLE, color: config.accentColor, width: '100%' }}
                 type="button"

@@ -900,10 +900,11 @@ export interface SceneNode {
 export type LowcodeTranslations = Record<string, Record<string, string>>
 
 // ── Lowcode (Phase 3 §7) — responsive breakpoints ──────────────────
-// Tailwind's default viewport breakpoints, used as class prefixes. Ordered
-// smallest → largest; the base (un-prefixed) layout is the implicit "mobile"
-// state (min-width semantics — an override applies at its breakpoint and up).
-export type ResponsiveBreakpoint = 'sm' | 'md' | 'lg' | 'xl'
+// compact uses Tailwind max-xl (<1280px) while preserving authored desktop
+// geometry. sm → xl retain cumulative min-width semantics. Unprefixed classes
+// always describe the original canvas, regardless of the responsive mode.
+export const RESPONSIVE_BREAKPOINTS = ['compact', 'sm', 'md', 'lg', 'xl'] as const
+export type ResponsiveBreakpoint = (typeof RESPONSIVE_BREAKPOINTS)[number]
 
 // The subset of SceneNode layout props that may be overridden per breakpoint.
 // `Pick` keeps this in lockstep with SceneNode's own field types — every key
@@ -926,11 +927,28 @@ export type ResponsiveOverride = Partial<
     | 'paddingLeft'
     | 'width'
     | 'height'
+    | 'x'
+    | 'y'
+    | 'layoutPositioning'
+    | 'gridTemplateColumns'
+    | 'gridTemplateRows'
+    | 'gridColumnGap'
+    | 'gridRowGap'
+    | 'fontSize'
+    | 'lineHeight'
+    | 'minWidth'
+    | 'maxWidth'
+    | 'minHeight'
+    | 'maxHeight'
+    | 'clipsContent'
+    | 'cornerRadius'
+    | 'strokes'
     | 'layoutGrow'
     | 'visible'
   >
 >
 
+/** compact preserves a desktop base and applies below Tailwind xl (1280 CSS pixels). */
 export type ResponsiveOverrides = Partial<Record<ResponsiveBreakpoint, ResponsiveOverride>>
 
 // ── Lowcode (Phase 4 §20) — interaction-state styling ──────────────

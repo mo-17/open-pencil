@@ -8,13 +8,21 @@ const readPropertySource = (file: string): string =>
 
 const panelSource = readPropertySource('ModulePropsPanel.vue')
 const fieldSource = readPropertySource('ModulePropertyFieldEditor.vue')
+const scalarSource = readPropertySource('ModuleScalarFieldEditor.vue')
 const specializedSource = readPropertySource('ModuleSpecializedFieldEditor.vue')
+const structuredSource = readPropertySource('ModuleStructuredFieldEditor.vue')
 const controllerSource = readPropertySource('module-props-panel-controller.ts')
 const identitySource = readPropertySource('module-property-field.ts')
 
 describe('module property panel split', () => {
   test('keeps every property-section SFC below the architecture limit', () => {
-    for (const source of [panelSource, fieldSource, specializedSource]) {
+    for (const source of [
+      panelSource,
+      fieldSource,
+      scalarSource,
+      specializedSource,
+      structuredSource
+    ]) {
       expect(source.split('\n').length).toBeLessThanOrEqual(250)
     }
   })
@@ -29,9 +37,7 @@ describe('module property panel split', () => {
     expect(controllerSource).toContain(
       'reconcileInitialModuleItemId(value, config.value.initialTabId)'
     )
-    expect(controllerSource).toContain(
-      'filterReferencedModuleItemIds(value, config.value.initialOpenIds)'
-    )
+    expect(controllerSource).toContain('commitAccordionEditor(editor, request)')
   })
 
   test('dispatches every structured editor and localizes field and option labels', () => {
@@ -50,10 +56,10 @@ describe('module property panel split', () => {
       'code-block-code'
     ]) {
       expect(identitySource).toContain(`kind: '${kind}'`)
-      expect(specializedSource).toContain(`kind === '${kind}'`)
+      expect(specializedSource + structuredSource).toContain(`kind === '${kind}'`)
     }
     expect(controllerSource).toContain('localizedAppPluginModulePropertyText(field.i18nLabelKey')
     expect(controllerSource).toContain('localizedAppPluginModulePropertyText(key, locale.value)')
-    expect(fieldSource).toContain('{{ optionLabel(field, option) }}')
+    expect(scalarSource).toContain('{{ optionLabel(field, option) }}')
   })
 })

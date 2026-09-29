@@ -1,9 +1,257 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
+import { effectiveFigmaRawNodeFields } from '@open-pencil/fig'
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 describe('owned node previews', () => {
+  for (const terminal of ['cancel', 'commit'] as const) {
+    test(`finalizes captured ancestor and sibling metadata with ${terminal} and layout provenance`, () => {
+      const editor = createEditor()
+      try {
+        const parent = editor.graph.createNode('FRAME', editor.state.currentPageId, {
+          layoutMode: 'HORIZONTAL',
+          primaryAxisSizing: 'HUG',
+          counterAxisSizing: 'HUG',
+          itemSpacing: 10
+        })
+        const first = editor.graph.createNode('RECTANGLE', parent.id, { width: 40, height: 20 })
+        const sibling = editor.graph.createNode('RECTANGLE', parent.id, { width: 50, height: 20 })
+        const untouched = editor.graph.createNode('RECTANGLE', editor.state.currentPageId)
+        editor.runLayoutForNode(parent.id)
+        const nodes = [first, parent, sibling, untouched]
+        for (const node of nodes) {
+          node.source.fig.rawSize = { x: node.width, y: node.height }
+          node.source.fig.rawTransform = {
+            m00: 1,
+            m01: 0,
+            m02: node.x,
+            m10: 0,
+            m11: 1,
+            m12: node.y
+          }
+        }
+        const snapshot = () =>
+          nodes.map(({ x, y, width, height, source }) =>
+            structuredClone({ x, y, width, height, source })
+          )
+        const before = snapshot()
+        const updates: Array<{ id: string; layout: boolean }> = []
+        editor.onEditorEvent('node:updated', (id) => {
+          updates.push({ id, layout: editor.graph.isApplyingLayout })
+        })
+        const preview = editor.beginNodePreview('Resize', { preserveSourceMetadata: true })
+        preview.update(first.id, { width: 70 }, { deferLayout: true })
+        preview.update(first.id, {})
+        preview.update(untouched.id, { width: untouched.width }, { deferLayout: true })
+        expect([parent.width, sibling.x]).toEqual([130, 80])
+        expect(nodes.map((node) => node.source)).toEqual(before.map((node) => node.source))
+        expect(updates).toEqual([])
+
+        if (terminal === 'cancel') {
+          preview.cancel()
+          expect(snapshot()).toEqual(before)
+          expect(updates).toEqual([])
+          expect(editor.undo.canUndo).toBe(false)
+        } else {
+          const finalized: string[] = []
+          preview.commit((node, original) => {
+            finalized.push(node.id)
+            const source = structuredClone(node.source)
+            if (
+              (['width', 'height'] as const).some(
+                (key) => original[key] !== undefined && original[key] !== node[key]
+              )
+            )
+              source.fig.rawSize = null
+            if (
+              (['x', 'y'] as const).some(
+                (key) => original[key] !== undefined && original[key] !== node[key]
+              )
+            )
+              source.fig.rawTransform = null
+            return { source }
+          })
+          expect(new Set(finalized)).toEqual(new Set([first.id, parent.id, sibling.id]))
+          expect(first.source.fig.rawSize).toBeNull()
+          expect(parent.source.fig.rawSize).toBeNull()
+          expect(sibling.source.fig.rawTransform).toBeNull()
+          expect(sibling.source.fig.rawSize).toEqual({ x: 50, y: 20 })
+          const after = snapshot()
+          editor.undoAction()
+          expect(snapshot()).toEqual(before)
+          expect(editor.undo.canUndo).toBe(false)
+          editor.redoAction()
+          expect(snapshot()).toEqual(after)
+          expect(updates).toHaveLength(9)
+          expect(
+            updates.filter((update) => update.id !== first.id).every((update) => update.layout)
+          ).toBe(true)
+          expect(
+            updates.filter((update) => update.id === first.id).every((update) => !update.layout)
+          ).toBe(true)
+        }
+      } finally {
+        editor.dispose()
+      }
+    })
+  }
+
+  test('a failed finalizer atomically cancels geometry and earlier metadata patches', () => {
+    const editor = createEditor()
+    try {
+      const first = editor.graph.createNode('RECTANGLE', editor.state.currentPageId, { width: 100 })
+      const second = editor.graph.createNode('RECTANGLE', editor.state.currentPageId, { x: 20 })
+      first.source.fig.rawSize = { x: first.width, y: first.height }
+      const before = structuredClone([first, second])
+      const updates: string[] = []
+      editor.onEditorEvent('node:updated', (id) => updates.push(id))
+      const preview = editor.beginNodePreview('Resize', { preserveSourceMetadata: true })
+      preview.update(first.id, { width: 200 }, { deferLayout: true })
+      preview.update(second.id, { x: 40 }, { deferLayout: true })
+      expect(() =>
+        preview.commit((node) => {
+          if (node.id === second.id) throw new Error('Finalize failed')
+          const source = structuredClone(node.source)
+          source.fig.rawSize = null
+          return { source }
+        })
+      ).toThrow('Finalize failed')
+      expect([first, second]).toEqual(before)
+      expect(updates).toEqual([])
+      expect(preview.closed).toBe(true)
+      expect(editor.undo.canUndo).toBe(false)
+      expect(editor.isInteractiveEditing()).toBe(false)
+    } finally {
+      editor.dispose()
+    }
+  })
+
+  test('keeps deferred drag frames preview-only and publishes one committed rectangle update', () => {
+    const editor = createEditor()
+    const node = editor.graph.createNode('RECTANGLE', editor.state.currentPageId, {
+      width: 100,
+      height: 50
+    })
+    const update = spyOn(editor.graph, 'updateNode')
+    try {
+      const preview = editor.beginNodePreview('Resize')
+      for (let width = 110; width <= 250; width += 10) {
+        preview.update(node.id, { width }, { deferLayout: true })
+        preview.update(node.id, {})
+      }
+      expect(node.width).toBe(250)
+      expect(update).not.toHaveBeenCalled()
+      preview.commit()
+      expect(update).toHaveBeenCalledTimes(1)
+      editor.undoAction()
+      expect(node.width).toBe(100)
+      expect(update).toHaveBeenCalledTimes(2)
+      editor.redoAction()
+      expect(node.width).toBe(250)
+      expect(update).toHaveBeenCalledTimes(3)
+    } finally {
+      update.mockRestore()
+      editor.dispose()
+    }
+  })
+
+  for (const terminal of ['cancel', 'commit'] as const) {
+    test(`deferred multi-node edits preserve layout geometry through ${terminal}`, () => {
+      const editor = createEditor()
+      try {
+        const parent = editor.graph.createNode('FRAME', editor.state.currentPageId, {
+          width: 200,
+          height: 100,
+          layoutMode: 'HORIZONTAL',
+          primaryAxisSizing: 'FIXED',
+          counterAxisSizing: 'FIXED',
+          itemSpacing: 10
+        })
+        const first = editor.graph.createNode('RECTANGLE', parent.id, { width: 80, height: 20 })
+        const second = editor.graph.createNode('RECTANGLE', parent.id, {
+          layoutGrow: 1,
+          height: 20
+        })
+        editor.runLayoutForNode(parent.id)
+        const geometry = () => [parent.width, first.width, second.x, second.width]
+        const before = geometry()
+        expect(before).toEqual([200, 80, 90, 110])
+        const updates: string[] = []
+        editor.onEditorEvent('node:updated', (id) => updates.push(id))
+
+        const preview = editor.beginNodePreview('Resize')
+        preview.update(parent.id, { width: 320 }, { deferLayout: true })
+        preview.update(first.id, { width: 100 }, { deferLayout: true })
+        expect(geometry()).toEqual([320, 100, 90, 110])
+        preview.update(parent.id, {})
+        const after = geometry()
+        expect(after).toEqual([320, 100, 110, 210])
+        expect(updates).toEqual([])
+
+        if (terminal === 'cancel') {
+          preview.cancel()
+          expect(geometry()).toEqual(before)
+          expect(updates).toEqual([])
+          expect(editor.undo.canUndo).toBe(false)
+        } else {
+          preview.commit()
+          expect(geometry()).toEqual(after)
+          expect(updates).toContain(second.id)
+          editor.undoAction()
+          expect(geometry()).toEqual(before)
+          expect(editor.undo.canUndo).toBe(false)
+          editor.redoAction()
+          expect(geometry()).toEqual(after)
+        }
+        expect(editor.isInteractiveEditing()).toBe(false)
+      } finally {
+        editor.dispose()
+      }
+    })
+  }
+
+  test('preserves imported path metadata across geometric commit, undo and redo only when opted in', () => {
+    const editor = createEditor()
+    try {
+      const node = editor.graph.createNode('TEXT', editor.state.currentPageId, {
+        width: 100,
+        height: 100,
+        textAutoResize: 'NONE'
+      })
+      node.source.fig.rawNodeFields = {
+        vectorData: { vectorNetworkBlob: 0 },
+        textPathStart: { tValue: 0.25, forward: true }
+      }
+      const beforeSource = structuredClone(node.source)
+      const options = { preserveSourceMetadata: true }
+      const preview = editor.beginNodePreview('Resize', options)
+      options.preserveSourceMetadata = false
+      preview.update(node.id, { width: 200, strokeGeometry: [] }, { deferLayout: true })
+      preview.commit()
+      expect(node.width).toBe(200)
+      expect(node.source).toEqual(beforeSource)
+      expect(effectiveFigmaRawNodeFields(node)).toEqual(beforeSource.fig.rawNodeFields)
+      editor.undoAction()
+      expect(node.width).toBe(100)
+      expect(node.source).toEqual(beforeSource)
+      expect(effectiveFigmaRawNodeFields(node)).toEqual(beforeSource.fig.rawNodeFields)
+      editor.redoAction()
+      expect(node.width).toBe(200)
+      expect(node.source).toEqual(beforeSource)
+      expect(effectiveFigmaRawNodeFields(node)).toEqual(beforeSource.fig.rawNodeFields)
+
+      const authored = editor.beginNodePreview('Update')
+      authored.update(node.id, { width: 240, strokeGeometry: [] })
+      authored.commit()
+      expect(node.source.editedFields).toContain('width')
+      expect(node.source.editedFields).toContain('strokeGeometry')
+      expect(effectiveFigmaRawNodeFields(node).vectorData).toBeUndefined()
+    } finally {
+      editor.dispose()
+    }
+  })
+
   test('publishes layout children with their layout provenance and preserves one-step undo', () => {
     const editor = createEditor()
     try {

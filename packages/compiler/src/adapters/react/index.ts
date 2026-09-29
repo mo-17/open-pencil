@@ -27,12 +27,20 @@ import type {
 
 import { compactLowcodeHeadMetadata } from '@open-pencil/lowcode'
 
+import { hasInputSuggestions } from '../autocomplete/emit'
+import { autocompleteRuntimeSource } from '../autocomplete/runtime'
+import { hasInputControls } from '../input-control/emit'
+import { inputControlRuntimeSource } from '../input-control/runtime'
 import { scopeMicrofrontendCSS } from '../microfrontend-css'
 import { buildPreviewBridge } from '../preview-bridge'
+import { selectRuntimeSource } from '../select/runtime'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
+import { projectUsesMountedValidationSummary } from '../validation-summary'
+import { reactAutocompleteSource } from './autocomplete/runtime'
 import { buildComponentModule } from './emit/component'
 import { OVERLAY_RUNTIME_CLASSES } from './emit/element'
 import { buildGeneratedEffectPlan } from './generated-effect/scan'
+import { reactInputControlSource } from './input-control/runtime'
 import {
   pageUsesAnalytics,
   pageUsesConfirm,
@@ -78,7 +86,9 @@ import type { ReactMotionPlan } from './motion/types'
 import { buildPrototypePlan } from './prototype/scan'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import { buildAppTsx, buildPageModule, buildRouterApp, PAGE_WRAPPER_CLASSES } from './scaffold'
-import { collectUsedKitComponents, resolveUIKit } from './ui-kit/registry'
+import { hasEnhancedSelect } from './select/emit'
+import { reactSelectSource } from './select/runtime'
+import { collectKitWarnings, collectUsedKitComponents, resolveUIKit } from './ui-kit/registry'
 import type { UIKitAdapter } from './ui-kit/types'
 
 /**
@@ -152,9 +162,43 @@ export const reactAdapter: FrameworkAdapter = {
     options: CompilerOptions,
     components: readonly ComponentDef[] = []
   ): AdapterEmission {
-    return irs.length > 1
-      ? emitMultiPage(irs, options, components)
-      : emitSinglePage(irs[0], options, components)
+    const output =
+      irs.length > 1
+        ? emitMultiPage(irs, options, components)
+        : emitSinglePage(irs[0], options, components)
+    const selectNodes = [
+      ...irs.flatMap((ir) => ir.children),
+      ...components
+        .filter((definition) => output.files.has(`src/components/${definition.name}.tsx`))
+        .flatMap(componentBodyNodes)
+    ]
+    if (hasEnhancedSelect(selectNodes)) {
+      output.files.set('src/lib/open-pencil-select.ts', selectRuntimeSource())
+      output.files.set(
+        'src/components/_open-pencil-select.tsx',
+        reactSelectSource(options.packaging?.kind === 'microfrontend')
+      )
+    }
+    if (hasInputSuggestions(selectNodes)) {
+      output.files.set('src/lib/open-pencil-autocomplete.ts', autocompleteRuntimeSource())
+      output.files.set(
+        'src/components/_open-pencil-autocomplete.tsx',
+        reactAutocompleteSource(options.packaging?.kind === 'microfrontend')
+      )
+    }
+    if (hasInputControls(selectNodes)) {
+      output.files.set('src/lib/open-pencil-input-control.ts', inputControlRuntimeSource())
+      output.files.set('src/components/_open-pencil-input-control.tsx', reactInputControlSource())
+    }
+    const kit = resolveUIKit(options)
+    if (kit)
+      output.warnings.push(
+        ...collectKitWarnings(
+          [...irs.flatMap((ir) => ir.children), ...components.flatMap(componentBodyNodes)],
+          kit
+        )
+      )
+    return output
   }
 }
 
@@ -202,17 +246,27 @@ function applyUIKit(
   components: readonly ComponentDef[],
   uiKit: UIKitAdapter | null,
   microfrontend = false
-): { deps: Record<string, string>; themeCss: string; active: boolean } {
-  if (!uiKit) return { deps: {}, themeCss: '', active: false }
+): {
+  deps: Record<string, string>
+  themeCss: string
+  active: boolean
+  classNames: readonly string[]
+} {
+  if (!uiKit) return { deps: {}, themeCss: '', active: false, classNames: [] }
   const used = new Set<string>()
   for (const ir of irs) collectUsedKitComponents(ir.children, uiKit, used)
   for (const def of components) collectUsedKitComponents(componentBodyNodes(def), uiKit, used)
-  if (used.size === 0) return { deps: {}, themeCss: '', active: false }
+  if (used.size === 0) return { deps: {}, themeCss: '', active: false, classNames: [] }
   for (const [path, content] of uiKit.sharedFiles()) files.set(path, content)
   for (const [path, content] of uiKit.componentFiles(used, { microfrontend })) {
     files.set(path, content)
   }
-  return { deps: uiKit.deps(used), themeCss: uiKit.themeCSS(), active: true }
+  return {
+    deps: uiKit.deps(used),
+    themeCss: uiKit.themeCSS(),
+    active: true,
+    classNames: uiKit.classNames?.(used) ?? []
+  }
 }
 
 /** Phase 3 §8 v10 — all body nodes of a component def. A COMPONENT_SET's body
@@ -359,6 +413,7 @@ function emitSinglePage(
     toastActive,
     confirmActive,
     validationActive,
+    mountedValidationSummary: projectUsesMountedValidationSummary([cleaned], components),
     analyticsActive,
     analyticsConfig: cleaned.analyticsConfig,
     analyticsConsentBanner,
@@ -476,6 +531,7 @@ function emitMultiPage(
     toastActive,
     confirmActive,
     validationActive,
+    mountedValidationSummary: projectUsesMountedValidationSummary(irs, components),
     analyticsActive,
     analyticsConfig,
     analyticsRouteTracking,
@@ -614,6 +670,7 @@ interface LowcodeRuntimeEmit {
   toastActive: boolean
   confirmActive: boolean
   validationActive: boolean
+  mountedValidationSummary: boolean
   analyticsActive: boolean
   analyticsConfig: IRTree['analyticsConfig']
   analyticsRouteTracking?: boolean
@@ -640,7 +697,7 @@ function emitLowcodeRuntimes(files: Map<string, string | Uint8Array>, e: Lowcode
   maybeEmitI18n(files, e.i18nActive, e.messages, e.sourceLocale, e.targetLocales, e.translations)
   maybeEmitLowcodeToastRuntime(files, e.toastActive)
   maybeEmitLowcodeConfirmRuntime(files, e.confirmActive)
-  maybeEmitLowcodeValidationRuntime(files, e.validationActive)
+  maybeEmitLowcodeValidationRuntime(files, e.validationActive, e.mountedValidationSummary)
   maybeEmitLowcodeAnalyticsRuntime(
     files,
     e.analyticsActive,
@@ -782,10 +839,11 @@ function maybeEmitLowcodeConfirmRuntime(
  *  it from each field's validator closure. */
 function maybeEmitLowcodeValidationRuntime(
   files: Map<string, string | Uint8Array>,
-  validationActive: boolean
+  validationActive: boolean,
+  mountedSummary: boolean
 ): void {
   if (!validationActive) return
-  files.set(LOWCODE_VALIDATION_FILE, buildLowcodeValidationRuntime())
+  files.set(LOWCODE_VALIDATION_FILE, buildLowcodeValidationRuntime(mountedSummary))
 }
 
 function maybeEmitLowcodeSupabaseRuntime(
@@ -831,7 +889,7 @@ function setSharedProjectFiles(
   analyticsConsentBanner: boolean,
   motion: ReactMotionPlan,
   generatedEffectRuntime: boolean,
-  kit: { themeCss: string; active: boolean },
+  kit: { themeCss: string; active: boolean; classNames: readonly string[] },
   metadata?: HTMLMetadata
 ): void {
   const themeActive = !!options.themeCss?.trim()
@@ -845,7 +903,9 @@ function setSharedProjectFiles(
     ...(validation ? [...VALIDATION_ERROR_CLASSES, ...VALIDATION_INVALID_FIELD_CLASSES] : [])
   ]
   const safelist =
-    runtimeClasses.length > 0 ? [...new Set([...classNames, ...runtimeClasses])].sort() : classNames
+    runtimeClasses.length > 0 || kit.classNames.length > 0
+      ? [...new Set([...classNames, ...runtimeClasses, ...kit.classNames])].sort()
+      : classNames
   const needsRuntimeThemeCSS =
     runtimeClasses.length > 0 ||
     classNames.some((className) => LOWCODE_RUNTIME_THEME_UTILITY_RE.test(className))

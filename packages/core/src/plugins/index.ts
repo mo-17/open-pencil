@@ -1,3 +1,24 @@
+export * from './popover'
+export * from './tree'
+export * from './date-range'
+export * from './descriptions'
+export * from './pagination'
+export * from './org-chart'
+export * from './walktour'
+export * from './cascader'
+export * from './tooltip'
+export * from './skeleton'
+export * from './empty-state'
+export * from './alert'
+export * from './progress'
+export * from './chip'
+export * from './avatar'
+export * from './badge'
+export * from './timeline'
+export * from './slider'
+export * from './rating'
+export * from './stepper'
+export * from './breadcrumb'
 export * from '@open-pencil/plugin-contracts'
 
 export { BUILTIN_PLUGIN_REGISTRY } from './builtin'
@@ -15,6 +36,12 @@ export {
   CHART_MODULE_TYPE,
   CHART_PLUGIN,
   CHART_PLUGIN_ID,
+  buildChartLayout,
+  type ChartLayout,
+  type ChartText,
+  type ChartPath,
+  type ChartRect,
+  type ChartCircle,
   createChartModuleFrameOverrides,
   createChartModuleInstance,
   resolveChartModule,
@@ -163,3 +190,5 @@ export type {
   ModuleResolution,
   PluginDefinition
 } from './types'
+
+export { moduleValueFields, type ModuleValueField } from './value-controls'

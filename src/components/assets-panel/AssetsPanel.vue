@@ -1,57 +1,46 @@
 <script setup lang="ts">
-import { useObjectUrl } from '@vueuse/core'
 import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuPortal,
   ContextMenuRoot,
-  ContextMenuTrigger,
-  DialogClose,
-  DialogTitle
+  ContextMenuTrigger
 } from 'reka-ui'
-import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
-import { useI18n } from '@open-pencil/vue'
+import { usePanelMessages, useCommandMessages, useDialogMessages } from '@open-pencil/vue'
 
+import { componentAssetKey, matchesAssetQuery } from '@/app/assets/catalog'
+import { captureAssetTarget } from '@/app/assets/target'
+import type { LocalAsset } from '@/app/assets/types'
+import { useAssetWorkbench } from '@/app/assets/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import { nodeIcon } from '@/app/editor/icons'
 import { useLibraryService } from '@/app/libraries'
+import type { ComponentTemplateId } from '@/app/lowcode/component-templates'
+import { openSettingsDialog } from '@/app/settings/dialog'
 import { openExternalLink } from '@/app/shell/ui'
+import AssetDetailsDialog from '@/components/assets-panel/AssetDetailsDialog.vue'
 import AssetThumbnail from '@/components/assets-panel/AssetThumbnail.vue'
+import ComponentTemplateAssets from '@/components/assets-panel/ComponentTemplateAssets.vue'
 import { findAssetPage } from '@/components/assets-panel/page'
+import PluginModuleAssets from '@/components/assets-panel/PluginModuleAssets.vue'
+import DesignBriefLauncher from '@/components/design-brief/DesignBriefLauncher.vue'
 import LibraryManagerDialog from '@/components/libraries/LibraryManagerDialog.vue'
 import { useLibraryEntry } from '@/components/libraries/useLibraryEntry'
 import AppButton from '@/components/ui/button/AppButton.vue'
-import { AppDialogRoot, useDialogUI } from '@/components/ui/dialog'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppPlaceholder from '@/components/ui/feedback/AppPlaceholder.vue'
 import AppInput from '@/components/ui/input/AppInput.vue'
 import { useMenuUI } from '@/components/ui/menu/menu'
 import Tip from '@/components/ui/overlay/Tip.vue'
+import AppSelect from '@/components/ui/select/AppSelect.vue'
 import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 import { ASSET_GRID_THUMBNAIL_SIZE, ASSET_LIST_THUMBNAIL_SIZE } from '@/constants'
 
 type AssetView = 'grid' | 'list'
-
-type LocalAsset = {
-  id: string
-  name: string
-  node: SceneNode
-  componentId: string | null
-  variants: Array<{ name: string; values: string[] }>
-  variantCount: number
-  hasConflicts: boolean
-  sourceLibraryKey: string | null
-  description: string
-  docsURL: string | null
-  libraryId: string | null
-  revisionId: string | null
-  assetKey: string | null
-  libraryName: string | null
-  pageId: string
-  pageName: string
-}
 
 type AssetGroup = {
   pageId: string
@@ -62,8 +51,30 @@ type AssetGroup = {
 const editor = useEditorStore()
 const libraryService = useLibraryService()
 const remoteAssets = libraryService.enabledAssets
-const { panels, commands } = useI18n()
-const query = ref('')
+const panels = usePanelMessages()
+const commands = useCommandMessages()
+const dialogs = useDialogMessages()
+const {
+  query,
+  source,
+  category,
+  favoritesOnly,
+  favorites,
+  toggleFavorite,
+  filteredModules,
+  filteredTemplates,
+  templateKind,
+  templateKindOptions,
+  sourceOptions,
+  categoryOptions,
+  insertModule,
+  busyModule,
+  busyTemplate,
+  insertTemplate,
+  clearFilters,
+  error,
+  notice
+} = useAssetWorkbench()
 const assetView = ref<AssetView>('grid')
 const detailsOpen = ref(false)
 const {
@@ -73,19 +84,13 @@ const {
   openManager: openLibraries
 } = useLibraryEntry(editor, libraryService)
 const selectedAssetId = ref<string | null>(null)
-const previewBlob = shallowRef<Blob | null>(null)
-const previewURL = useObjectUrl(previewBlob)
-const previewLoading = ref(false)
 const insertingAssetId = ref<string | null>(null)
-let previewRequestId = 0
 const insertButton = {
   color: 'neutral' as const,
   variant: 'ghost' as const,
   size: 'sm' as const,
   shape: 'square' as const
 }
-const primaryButton = { color: 'primary' as const, variant: 'solid' as const, size: 'md' as const }
-const dialog = useDialogUI()
 const contextMenu = useMenuUI({ content: 'min-w-44' })
 const viewOptions = computed(() => [
   { value: 'grid', label: panels.value.gridView },
@@ -180,11 +185,30 @@ const assets = computed<LocalAsset[]>(() => {
   return [...local, ...remote]
 })
 
-const filteredAssets = computed(() => {
-  const normalized = query.value.trim().toLowerCase()
-  if (!normalized) return assets.value
-  return assets.value.filter((asset) => asset.name.toLowerCase().includes(normalized))
-})
+function favoriteKey(asset: LocalAsset): string {
+  const binding = editor.getStorageBinding()
+  const documentKey = binding
+    ? JSON.stringify([binding.providerId, binding.profileId, binding.documentId])
+    : (editor.getDocumentPath() ?? editor.getRecoveryId())
+  return componentAssetKey(documentKey, asset.id, asset.libraryId, asset.assetKey)
+}
+
+const filteredAssets = computed(() =>
+  assets.value.filter((asset) => {
+    if (source.value === 'plugin' || source.value === 'template') return false
+    if (source.value === 'local' && asset.libraryId) return false
+    if (source.value === 'library' && !asset.libraryId) return false
+    if (category.value !== 'all' && category.value !== 'components') return false
+    if (favoritesOnly.value && !favorites.value.keys.has(favoriteKey(asset))) return false
+    return matchesAssetQuery(
+      query.value,
+      asset.name,
+      asset.description,
+      asset.libraryName,
+      asset.pageName
+    )
+  })
+)
 
 const assetGroups = computed<AssetGroup[]>(() => {
   const groups = new Map<string, AssetGroup>()
@@ -203,46 +227,11 @@ const assetGroups = computed<AssetGroup[]>(() => {
 const selectedAsset = computed(
   () => assets.value.find((asset) => asset.id === selectedAssetId.value) ?? null
 )
-const selectedPreviewNodeId = computed(() => selectedAsset.value?.componentId ?? null)
 
 onMounted(() => {
-  void libraryService.refresh(editor)
-})
-
-function clearPreview() {
-  previewBlob.value = null
-}
-
-async function updatePreview() {
-  const requestId = ++previewRequestId
-  const nodeId = selectedPreviewNodeId.value
-  if (!detailsOpen.value || !nodeId) {
-    clearPreview()
-    return
-  }
-
-  const node = editor.getNode(nodeId)
-  if (!node) {
-    clearPreview()
-    return
-  }
-
-  previewLoading.value = true
-  try {
-    const maxSize = Math.max(node.width, node.height, 1)
-    const scale = Math.min(176 / maxSize, 2)
-    const data = await editor.renderExportImage([nodeId], scale, 'PNG', selectedAsset.value?.pageId)
-    if (requestId !== previewRequestId) return
-    previewBlob.value = data ? new Blob([data], { type: 'image/png' }) : null
-  } catch {
-    if (requestId === previewRequestId) clearPreview()
-  } finally {
-    if (requestId === previewRequestId) previewLoading.value = false
-  }
-}
-
-watch([detailsOpen, selectedPreviewNodeId, () => editor.state.sceneVersion], updatePreview, {
-  flush: 'post'
+  void libraryService.refresh(editor).catch(() => {
+    error.value = panels.value.assetLibraryLoadFailed
+  })
 })
 
 function openDetails(asset: LocalAsset) {
@@ -263,32 +252,49 @@ function insertionPoint(component: SceneNode, parentId: string) {
   }
 }
 
-async function resolveAssetComponent(asset: LocalAsset): Promise<string | null> {
-  if (asset.componentId) return asset.componentId
-  if (!asset.libraryId || !asset.revisionId || !asset.assetKey) return null
+async function insertAsset(asset: LocalAsset): Promise<boolean> {
+  if (insertingAssetId.value || busyModule.value || busyTemplate.value) return false
+  const isCurrent = captureAssetTarget(() => ({
+    graph: editor.graph,
+    pageId: editor.state.currentPageId,
+    parentId: editor.state.enteredContainerId,
+    sourceIdentity: editor.getSourceIdentity()
+  }))
   insertingAssetId.value = asset.id
+  error.value = ''
+  notice.value = ''
   try {
-    const result = await libraryService.materialize(
-      editor,
-      asset.libraryId,
-      asset.revisionId,
-      asset.assetKey
-    )
-    return result.componentId
+    let componentId = asset.componentId
+    if (!componentId && asset.libraryId && asset.revisionId && asset.assetKey) {
+      const libraryId = asset.libraryId
+      const current = () =>
+        isCurrent() && editor.graph.enabledLibraries.get(libraryId)?.enabled === true
+      const result = await libraryService.materialize(
+        editor,
+        libraryId,
+        asset.revisionId,
+        asset.assetKey,
+        () => {
+          if (!current()) throw new Error(panels.value.assetTargetChanged)
+        }
+      )
+      componentId = result.componentId
+    }
+    if (!isCurrent()) throw new Error(panels.value.assetTargetChanged)
+    const component = componentId ? editor.graph.getNode(componentId) : null
+    if (!component) throw new Error(panels.value.assetTargetChanged)
+    const parentId = editor.state.enteredContainerId ?? editor.state.currentPageId
+    const point = insertionPoint(component, parentId)
+    editor.createInstanceFromComponent(component.id, point.x, point.y, parentId)
+    editor.requestRender()
+    notice.value = panels.value.assetInsertedHint
+    return true
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : String(cause)
+    return false
   } finally {
     insertingAssetId.value = null
   }
-}
-
-async function insertAsset(asset: LocalAsset) {
-  const componentId = await resolveAssetComponent(asset)
-  if (!componentId) return
-  const component = editor.graph.getNode(componentId)
-  if (!component) return
-  const parentId = editor.state.enteredContainerId ?? editor.state.currentPageId
-  const point = insertionPoint(component, parentId)
-  editor.createInstanceFromComponent(componentId, point.x, point.y, parentId)
-  editor.requestRender()
 }
 
 function onDragStart(event: DragEvent, asset: LocalAsset) {
@@ -316,13 +322,26 @@ function onAssetKeydown(event: KeyboardEvent, asset: LocalAsset) {
 
 async function insertSelectedAsset() {
   if (!selectedAsset.value) return
-  await insertAsset(selectedAsset.value)
-  detailsOpen.value = false
+  if (await insertAsset(selectedAsset.value)) detailsOpen.value = false
 }
+
+function insertTemplateAsset(id: ComponentTemplateId) {
+  if (insertingAssetId.value) return
+  insertTemplate(id)
+}
+
+const hasNoResults = computed(
+  () =>
+    !filteredAssets.value.length && !filteredModules.value.length && !filteredTemplates.value.length
+)
 </script>
 
 <template>
   <section data-test-id="assets-panel" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div class="flex shrink-0 items-center justify-between gap-2 px-2 pt-2">
+      <h2 class="text-xs font-medium text-surface">{{ panels.assetWorkbench }}</h2>
+      <DesignBriefLauncher />
+    </div>
     <div class="flex shrink-0 items-center gap-2 px-2 py-2">
       <AppInput
         v-model="query"
@@ -330,8 +349,11 @@ async function insertSelectedAsset() {
         data-test-id="assets-search"
         size="sm"
         class="min-w-0 flex-1"
-        :placeholder="panels.searchLocalComponents"
+        :placeholder="panels.assetSearch"
+        :aria-label="panels.assetSearch"
       />
+    </div>
+    <div class="flex shrink-0 items-center justify-between gap-2 px-2 pb-2">
       <AppButton
         v-bind="insertButton"
         class="relative"
@@ -360,6 +382,45 @@ async function insertSelectedAsset() {
       </SegmentedControl>
     </div>
 
+    <div class="flex shrink-0 flex-col gap-2 px-2 pb-2">
+      <AppSelect
+        v-model="source"
+        :options="sourceOptions"
+        :label="panels.assetSource"
+        class="w-full min-w-0"
+      />
+      <AppSelect
+        v-if="source === 'template'"
+        v-model="templateKind"
+        :options="templateKindOptions"
+        :label="panels.assetTemplateKind"
+        class="w-full min-w-0"
+      />
+      <div class="flex min-w-0 gap-1">
+        <AppSelect
+          v-model="category"
+          :options="categoryOptions"
+          :label="panels.assetCategory"
+          class="min-w-0 flex-1"
+        />
+        <AppButton
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          shape="square"
+          :aria-label="panels.assetFavoritesOnly"
+          :aria-pressed="favoritesOnly"
+          @click="favoritesOnly = !favoritesOnly"
+        >
+          <icon-lucide-star class="size-3.5" :fill="favoritesOnly ? 'currentColor' : 'none'" />
+        </AppButton>
+      </div>
+      <p v-if="favorites.persistenceFailed" role="alert" class="text-[11px] text-warning">
+        {{ panels.assetFavoritesStorageFailed }}
+      </p>
+      <AppAlert v-if="error" tone="error" :heading="error" />
+      <p v-else-if="notice" role="status" class="text-[11px] text-muted">{{ notice }}</p>
+    </div>
     <div class="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2">
       <section v-for="group in assetGroups" :key="group.pageId" class="mb-3">
         <h2 class="mb-1 px-1 text-[10px] font-medium tracking-wide text-muted uppercase">
@@ -373,92 +434,123 @@ async function insertSelectedAsset() {
                 tabindex="0"
                 data-test-id="asset-item"
                 :data-asset-id="asset.id"
+                :data-asset-view="assetView"
                 :draggable="!!asset.componentId"
                 :aria-busy="insertingAssetId === asset.id"
                 :class="[
                   'group/asset rounded text-left text-xs text-surface outline-none hover:bg-hover focus-visible:ring-1 focus-visible:ring-accent',
                   assetView === 'grid'
                     ? 'flex min-w-0 flex-col items-center gap-1 p-1.5'
-                    : 'flex w-full items-center gap-2 px-1.5 py-1'
+                    : 'flex w-full flex-col items-stretch gap-1 px-1.5 py-1'
                 ]"
                 @click="openDetails(asset)"
                 @keydown="onAssetKeydown($event, asset)"
                 @dragstart="onDragStart($event, asset)"
               >
-                <AssetThumbnail
-                  v-if="asset.componentId"
-                  :node-id="asset.componentId"
-                  :alt="`${asset.name} preview`"
-                  :size="
-                    assetView === 'grid' ? ASSET_GRID_THUMBNAIL_SIZE : ASSET_LIST_THUMBNAIL_SIZE
-                  "
-                />
-                <component
-                  :is="nodeIcon(asset.node)"
-                  v-else
-                  class="size-4 shrink-0 text-component"
-                  aria-hidden="true"
-                />
-                <span :class="assetView === 'grid' ? 'w-full min-w-0' : 'min-w-0 flex-1'">
-                  <span class="flex min-w-0 items-center gap-1">
-                    <span data-test-id="asset-name" class="truncate">{{ asset.name }}</span>
+                <div
+                  class="flex w-full min-w-0 items-center gap-2 group-data-[asset-view=grid]/asset:flex-col"
+                >
+                  <AssetThumbnail
+                    v-if="asset.componentId"
+                    :node-id="asset.componentId"
+                    :alt="`${asset.name} preview`"
+                    :size="
+                      assetView === 'grid' ? ASSET_GRID_THUMBNAIL_SIZE : ASSET_LIST_THUMBNAIL_SIZE
+                    "
+                  />
+                  <component
+                    :is="nodeIcon(asset.node)"
+                    v-else
+                    class="size-4 shrink-0 text-component"
+                    aria-hidden="true"
+                  />
+                  <span :class="assetView === 'grid' ? 'w-full min-w-0' : 'min-w-0 flex-1'">
+                    <span class="flex min-w-0 items-center gap-1">
+                      <span data-test-id="asset-name" class="truncate">{{ asset.name }}</span>
+                      <span
+                        v-if="asset.sourceLibraryKey"
+                        data-test-id="asset-library-badge"
+                        class="shrink-0 rounded bg-component/15 px-1 py-px text-[9px] font-medium text-component uppercase"
+                      >
+                        {{ panels.assetLibraryBadge }}
+                      </span>
+                    </span>
                     <span
-                      v-if="asset.sourceLibraryKey"
-                      data-test-id="asset-library-badge"
-                      class="shrink-0 rounded bg-component/15 px-1 py-px text-[9px] font-medium text-component uppercase"
+                      v-if="assetView === 'list' && asset.variants.length > 0"
+                      data-test-id="asset-variant-summary"
+                      class="mt-0.5 block truncate text-[10px] text-muted"
                     >
-                      {{ panels.assetLibraryBadge }}
+                      {{
+                        panels.assetVariantSummary({
+                          count: asset.variantCount,
+                          names: asset.variants.map((variant) => variant.name).join(', ')
+                        })
+                      }}
+                    </span>
+                    <span
+                      v-if="assetView === 'list' && asset.description"
+                      data-test-id="asset-description"
+                      class="mt-0.5 block truncate text-[10px] text-muted"
+                    >
+                      {{ asset.description }}
+                    </span>
+                    <span
+                      v-if="assetView === 'list' && asset.hasConflicts"
+                      data-test-id="asset-variant-conflict"
+                      class="mt-0.5 block truncate text-[10px] text-[var(--color-warning-text)]"
+                    >
+                      {{ panels.duplicateVariantValues }}
                     </span>
                   </span>
-                  <span
-                    v-if="assetView === 'list' && asset.variants.length > 0"
-                    data-test-id="asset-variant-summary"
-                    class="mt-0.5 block truncate text-[10px] text-muted"
+                </div>
+                <div class="flex w-full items-center justify-end gap-1">
+                  <AppButton
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    shape="square"
+                    :aria-label="
+                      favorites.keys.has(favoriteKey(asset))
+                        ? panels.assetRemoveFavorite
+                        : panels.assetAddFavorite
+                    "
+                    :aria-pressed="favorites.keys.has(favoriteKey(asset))"
+                    @pointerdown.stop
+                    @click.stop="toggleFavorite(favoriteKey(asset))"
+                    @keydown.stop
                   >
-                    {{
-                      panels.assetVariantSummary({
-                        count: asset.variantCount,
-                        names: asset.variants.map((variant) => variant.name).join(', ')
-                      })
-                    }}
-                  </span>
-                  <span
-                    v-if="assetView === 'list' && asset.description"
-                    data-test-id="asset-description"
-                    class="mt-0.5 block truncate text-[10px] text-muted"
-                  >
-                    {{ asset.description }}
-                  </span>
-                  <span
-                    v-if="assetView === 'list' && asset.hasConflicts"
-                    data-test-id="asset-variant-conflict"
-                    class="mt-0.5 block truncate text-[10px] text-[var(--color-warning-text)]"
-                  >
-                    {{ panels.duplicateVariantValues }}
-                  </span>
-                </span>
-                <div v-if="assetView === 'list'" class="flex shrink-0 items-center">
-                  <Tip v-if="asset.docsURL" :label="panels.openDocumentation">
-                    <AppButton
-                      v-bind="insertButton"
-                      data-test-id="asset-docs"
-                      @pointerdown.stop
-                      @click.stop="asset.docsURL ? openExternalLink(asset.docsURL) : undefined"
-                    >
-                      <icon-lucide-book-open class="size-3" />
-                    </AppButton>
-                  </Tip>
-                  <Tip :label="commands.createInstance">
-                    <AppButton
-                      v-bind="insertButton"
-                      data-test-id="asset-insert"
-                      :disabled="insertingAssetId === asset.id"
-                      @pointerdown.stop
-                      @click.stop="insertAsset(asset)"
-                    >
-                      <icon-lucide-plus class="size-3" />
-                    </AppButton>
-                  </Tip>
+                    <icon-lucide-star
+                      class="size-3.5"
+                      :fill="favorites.keys.has(favoriteKey(asset)) ? 'currentColor' : 'none'"
+                    />
+                  </AppButton>
+                  <div v-if="assetView === 'list'" class="flex shrink-0 items-center">
+                    <Tip v-if="asset.docsURL" :label="panels.openDocumentation">
+                      <AppButton
+                        v-bind="insertButton"
+                        data-test-id="asset-docs"
+                        :aria-label="panels.openDocumentation"
+                        @keydown.stop
+                        @pointerdown.stop
+                        @click.stop="asset.docsURL ? openExternalLink(asset.docsURL) : undefined"
+                      >
+                        <icon-lucide-book-open class="size-3" />
+                      </AppButton>
+                    </Tip>
+                    <Tip :label="commands.createInstance">
+                      <AppButton
+                        v-bind="insertButton"
+                        data-test-id="asset-insert"
+                        :aria-label="commands.createInstance"
+                        @keydown.stop
+                        :disabled="insertingAssetId === asset.id"
+                        @pointerdown.stop
+                        @click.stop="insertAsset(asset)"
+                      >
+                        <icon-lucide-plus class="size-3" />
+                      </AppButton>
+                    </Tip>
+                  </div>
                 </div>
               </div>
             </ContextMenuTrigger>
@@ -485,143 +577,61 @@ async function insertSelectedAsset() {
         </div>
       </section>
 
+      <ComponentTemplateAssets
+        :items="filteredTemplates"
+        :favorites="favorites.keys"
+        :busy="!!busyModule || !!busyTemplate || !!insertingAssetId"
+        @favorite="toggleFavorite"
+        @insert="insertTemplateAsset"
+        @plugins="openSettingsDialog('plugins')"
+      />
+      <PluginModuleAssets
+        :items="filteredModules"
+        :favorites="favorites.keys"
+        :busy="!!busyModule || !!busyTemplate || !!insertingAssetId"
+        @favorite="toggleFavorite"
+        @insert="insertModule"
+      />
       <AppPlaceholder
-        v-if="filteredAssets.length === 0"
+        v-if="hasNoResults"
         data-test-id="assets-empty"
-        :label="panels.noLocalComponents"
+        :label="favoritesOnly ? panels.assetNoFavorites : panels.assetNoResults"
         size="compact"
       >
         <template #icon>
           <icon-lucide-component class="size-4" />
         </template>
       </AppPlaceholder>
+      <div v-if="hasNoResults" class="flex flex-col gap-2 pb-2">
+        <p class="text-center text-[11px] text-muted">
+          {{ favoritesOnly ? panels.assetFavoritesHint : panels.assetEmptyHint }}
+        </p>
+        <AppButton color="neutral" variant="outline" size="sm" @click="clearFilters">{{
+          panels.assetClearFilters
+        }}</AppButton>
+      </div>
+      <div class="mt-auto flex flex-wrap gap-1 border-t border-border pt-2">
+        <AppButton color="neutral" variant="ghost" size="sm" @click="openLibraries">{{
+          panels.manageLibraries
+        }}</AppButton>
+        <AppButton
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          @click="openSettingsDialog('plugins')"
+          >{{ dialogs.settingsPlugins }}</AppButton
+        >
+      </div>
     </div>
 
     <LibraryManagerDialog v-model="librariesOpen" :initial-section="libraryInitialSection" />
 
-    <AppDialogRoot
-      v-if="selectedAsset"
+    <AssetDetailsDialog
       v-model:open="detailsOpen"
-      size="lg"
-      data-test-id="asset-details-dialog"
-    >
-      <div class="flex items-center justify-between border-b border-border px-4 py-3">
-        <div class="flex min-w-0 items-center gap-2">
-          <component :is="nodeIcon(selectedAsset.node)" class="size-4 shrink-0 text-component" />
-          <div class="min-w-0">
-            <DialogTitle :class="dialog.title" class="truncate">{{
-              selectedAsset.name
-            }}</DialogTitle>
-            <p class="mt-0.5 text-[11px] text-muted">
-              {{
-                selectedAsset.node.type === 'COMPONENT_SET' ? panels.componentSet : panels.component
-              }}
-              <span v-if="selectedAsset.variantCount > 0">
-                · {{ selectedAsset.variantCount }} variants</span
-              >
-            </p>
-          </div>
-        </div>
-        <DialogClose
-          data-test-id="asset-details-close"
-          class="flex size-7 cursor-pointer items-center justify-center rounded border-none bg-transparent text-muted hover:bg-hover hover:text-surface"
-        >
-          <icon-lucide-x class="size-4" />
-        </DialogClose>
-      </div>
-
-      <div class="grid min-h-0 grid-cols-[260px_1fr] gap-0">
-        <div class="border-r border-border p-4">
-          <div
-            data-test-id="asset-details-preview"
-            class="flex h-36 items-center justify-center overflow-hidden rounded-lg border border-border bg-canvas/60"
-          >
-            <img
-              v-if="previewURL"
-              data-test-id="asset-details-preview-image"
-              :src="previewURL"
-              :alt="`${selectedAsset.name} preview`"
-              class="max-h-[120px] max-w-[210px] object-contain"
-            />
-            <div v-else class="text-center">
-              <icon-lucide-loader-2
-                v-if="previewLoading"
-                class="mx-auto size-5 animate-spin motion-reduce:animate-none text-muted"
-              />
-              <component
-                v-else
-                :is="nodeIcon(selectedAsset.node)"
-                class="mx-auto size-8 text-component"
-              />
-              <p class="mt-2 max-w-44 truncate text-xs font-medium text-surface">
-                {{ selectedAsset.name }}
-              </p>
-            </div>
-          </div>
-          <AppButton
-            v-bind="primaryButton"
-            data-test-id="asset-details-insert"
-            class="mt-3 w-full"
-            @click="insertSelectedAsset"
-          >
-            {{ panels.insertInstance }}
-          </AppButton>
-        </div>
-
-        <div class="min-w-0 p-4">
-          <section v-if="selectedAsset.description" class="mb-4">
-            <h3 class="text-[11px] font-medium tracking-wider text-muted uppercase">
-              {{ panels.description }}
-            </h3>
-            <p data-test-id="asset-details-description" class="mt-1 text-xs leading-5 text-surface">
-              {{ selectedAsset.description }}
-            </p>
-          </section>
-
-          <section v-if="selectedAsset.sourceLibraryKey" class="mb-4">
-            <h3 class="text-[11px] font-medium tracking-wider text-muted uppercase">
-              {{ panels.assetLibraryBadge }}
-            </h3>
-            <p data-test-id="asset-details-library" class="mt-1 break-all text-xs text-muted">
-              {{ selectedAsset.sourceLibraryKey }}
-            </p>
-          </section>
-
-          <section v-if="selectedAsset.docsURL" class="mb-4">
-            <h3 class="text-[11px] font-medium tracking-wider text-muted uppercase">
-              {{ panels.documentation }}
-            </h3>
-            <AppButton
-              color="primary"
-              variant="link"
-              size="xs"
-              data-test-id="asset-details-docs"
-              class="mt-1"
-              @click="selectedAsset.docsURL ? openExternalLink(selectedAsset.docsURL) : undefined"
-            >
-              <icon-lucide-book-open class="size-3" />
-              {{ panels.openDocs }}
-            </AppButton>
-          </section>
-
-          <section v-if="selectedAsset.variants.length > 0">
-            <h3 class="text-[11px] font-medium tracking-wider text-muted uppercase">
-              {{ panels.properties }}
-            </h3>
-            <div class="mt-2 flex flex-col gap-2">
-              <div
-                v-for="variant in selectedAsset.variants"
-                :key="variant.name"
-                data-test-id="asset-details-property"
-                class="rounded border border-border bg-input/40 px-2 py-1.5"
-              >
-                <div class="text-xs font-medium text-surface">{{ variant.name }}</div>
-                <div class="mt-1 text-[11px] text-muted">{{ variant.values.join(', ') }}</div>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
-    </AppDialogRoot>
+      :asset="selectedAsset"
+      :busy="!!insertingAssetId"
+      :error="error"
+      @insert="insertSelectedAsset"
+    />
   </section>
 </template>

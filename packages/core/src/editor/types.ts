@@ -127,6 +127,14 @@ export interface EditorSharedState {
 }
 
 export interface EditorViewState {
+  /** View-only Tabs choice; never persisted in the SceneGraph. */
+  tabsPreview: { nodeId: string; tabId: string } | null
+  /** Ephemeral isolated editing of an existing Modal content subtree. */
+  contentEdit: {
+    rootId: string
+    hostId: string
+    previousViewport: { panX: number; panY: number; zoom: number }
+  } | null
   currentPageId: string
   selectedIds: Set<string>
   marquee: Rect | null

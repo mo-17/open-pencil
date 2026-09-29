@@ -1,11 +1,24 @@
 import type { IRNode } from '#compiler/ir/types'
-import type { CompilerOptions } from '#compiler/types'
+import type { CompilerOptions, CompileWarning } from '#compiler/types'
 
 import { shadcnAdapter } from './shadcn'
 import type { UIKitAdapter, UIKitMapping } from './types'
 
 const ADAPTERS: Partial<Record<string, UIKitAdapter>> = {
   shadcn: shadcnAdapter
+}
+
+/** Predeclare dependencies only from the trusted, generated UI-kit file registry. */
+export function reactUIKitOptimizeDepsForFiles(
+  files: ReadonlyMap<string, string | Uint8Array>
+): string[] {
+  const dependencies = new Set<string>()
+  for (const adapter of Object.values(ADAPTERS)) {
+    for (const dependency of adapter?.optimizeDepsForFiles?.(files) ?? []) {
+      dependencies.add(dependency)
+    }
+  }
+  return [...dependencies].sort()
 }
 
 /** Phase 3 §15 — resolve the configured UI kit, or null when unset/unknown
@@ -60,6 +73,8 @@ function walkForKit(
     return
   }
   if (node.kind !== 'element') return
+  // The enhanced INPUT owns the real native control; no kit wrapper is emitted.
+  if (node.inputSuggestions || node.inputControl) return
   collectContainerMapping(node, kit, imports, names)
   collectDisplayMapping(node, kit, imports, names)
   // Phase 3 §15 Phase B: a marked form control resolves via `mapControl`
@@ -69,7 +84,7 @@ function walkForKit(
   // subsumed by the composed component — don't also collect them.
   const mapping =
     node.controlKind && kit.mapControl
-      ? kit.mapControl(node.controlKind)
+      ? kit.mapControl(node.controlKind, node)
       : kit.mapTag(node.tag, node.attrs)
   if (mapping) {
     imports?.set(mapping.component, mapping)
@@ -113,4 +128,19 @@ function addMapping(
   if (!mapping) return
   imports?.set(mapping.component, mapping)
   names?.add(mapping.component)
+}
+
+/** Collect stable diagnostics using the same per-control decision as imports and emit. */
+export function collectKitWarnings(nodes: readonly IRNode[], kit: UIKitAdapter): CompileWarning[] {
+  const warnings = new Map<string, CompileWarning>()
+  function visit(node: IRNode): void {
+    if (node.kind === 'conditional') return visit(node.consequent)
+    if (node.kind === 'list') return visit(node.template)
+    if (node.kind !== 'element') return
+    const warning = kit.controlWarning?.(node)
+    if (warning) warnings.set(warning.code + ':' + warning.nodeId, warning)
+    node.children.forEach(visit)
+  }
+  nodes.forEach(visit)
+  return [...warnings.values()]
 }

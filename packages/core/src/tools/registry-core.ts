@@ -2,6 +2,7 @@ import { evalCode } from './analyze'
 import { calc } from './calc'
 import { createModule, render } from './create'
 import { describe } from './describe'
+import { getDesignBrief } from './describe/brief'
 import {
   applyMotionPreset,
   applyMotionRecipe,
@@ -80,6 +81,7 @@ import { exportMotionAnimation, viewportZoomToFit } from './vector'
 export const CORE_TOOLS: ToolDef[] = [
   // Read
   getSelection,
+  getDesignBrief,
   getNode,
   findNodes,
   getJSX,

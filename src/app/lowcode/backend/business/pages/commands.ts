@@ -1,5 +1,6 @@
 import type { ActionDef, ActionPayloadEntry } from '@open-pencil/scene-graph'
 
+import { templateToast } from '@/app/lowcode/backend/feedback/actions'
 import { templateCommandRecoveryActions } from '@/app/lowcode/backend/template-command-recovery'
 
 import type { BusinessActionDefinition } from '../types'
@@ -34,6 +35,7 @@ export function createBusinessCommand(
     errorTarget: screen.error,
     busy,
     started,
+    succeeded: [templateToast(label + ' · ' + copy.submitted)],
     confirmation: copy.acknowledgeHint,
     acknowledged: [
       businessVariable(screen.error, '""'),
@@ -50,7 +52,11 @@ export function createBusinessCommand(
     recovery: 'browser',
     resultTarget: result,
     errorTarget: screen.error,
-    onSuccess: [screen.clearSelection, recovery.inspect()],
+    onSuccess: [
+      templateToast(label + ' · ' + copy.submitted),
+      screen.clearSelection,
+      recovery.inspect()
+    ],
     onError: [recovery.inspect()]
   }
   const allowed = `($currentUser.signedIn && ${screen.current} && ${condition} && !${locked})`

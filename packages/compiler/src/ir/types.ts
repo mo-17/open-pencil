@@ -19,7 +19,7 @@ export type {
  * `adapters/**`; the data flow is one-way (SceneGraph → IR → adapter).
  */
 
-import type { ExprAst } from '@open-pencil/lowcode'
+import type { ExprAst, InputControlConfig } from '@open-pencil/lowcode'
 
 import type { IRMotionDriverSpec } from './drivers'
 import type { IRGeneratedEffect } from './generated-effect'
@@ -258,6 +258,23 @@ export interface IRElement extends IRPrototypeDecoration {
    *  component, so the adapter emits N `<Checkbox>` rows + manual array toggle).
    *  Phase 4 §17.4 adds dynamic data-bound option lists via `optionsSource`. */
   controlKind?: 'select' | 'checkbox' | 'switch' | 'radio-group' | 'checkbox-group'
+  /** Dynamic option values may be empty; UI kits must retain native SELECT semantics. */
+  selectOptionsSource?: true
+  /** Opt-in web combobox features; plain SELECT output remains native by default. */
+  selectFeatures?: { showSearch: boolean; virtual: boolean }
+  /** Validated local suggestions for a free-text INPUT; the field value stays scalar. */
+  inputSuggestions?: string[]
+  /** Authored number steppers or password reveal controls; never a different value binding. */
+  inputControl?: InputControlConfig
+  /** Authored array data, kept outside the scalar expression language. */
+  selectDefaultValues?: string[]
+  /** Compiler-owned guard on a synthetic option; never hides authored business options. */
+  selectEmptyOptionGuard?: {
+    arrayName: string
+    itemName: string
+    indexName: string
+    value: ExprAst
+  }
   /** Phase 4 §15.1 — semantic hint identifying a card-like container FRAME whose
    *  plain `<div>` emit a UI-kit adapter may replace with a `<Card>` wrapper.
    *  Set on the element by collect via a heuristic (FRAME + visible background
@@ -301,12 +318,16 @@ export interface IRElement extends IRPrototypeDecoration {
    *  the field's doc-state at validate time); a validation config on an
    *  uncontrolled input is skipped with a warning. */
   validation?: IRFieldValidation
+  /** A module-owning form uses this fixed DOM marker for mounted-field validation. */
+  validationScopeMarker?: true
   /** Phase 4 §19 — set on a `<form>` element with ≥1 validated descendant
    *  field. The adapter wraps the form's `onSubmit` so it `preventDefault()`s,
    *  validates every listed field key, and aborts (skipping the user's submit
    *  actions) when any field is invalid. The keys are the descendant fields'
    *  SceneNode ids. */
   formValidationKeys?: string[]
+  /** Module panels/portals validate only fields mounted in this actual DOM form. */
+  formValidationMountedOnly?: true
   /** Phase 4 §19 follow-up — opt-in FORM-level summary for the field errors
    *  listed in `formValidationKeys`. Disabled by default for byte stability. */
   formValidationSummary?: IRFormValidationSummary
@@ -346,6 +367,8 @@ export interface IRElement extends IRPrototypeDecoration {
  *  Per-node-type targetType constraint lives in `resolveValueBinding`. */
 export interface IRControlledInput {
   read: string
+  /** Option leaves validate their parent group's next value without duplicating error markup. */
+  validationKey?: string
   write: {
     kind: 'docState' | 'state'
     name: string
@@ -380,19 +403,45 @@ export interface IRImageSource {
   sizes?: string
 }
 
+/** Reviewed Pagination reads retain presence on invalid bindings; only an explicitly
+ * writable number state receives page changes. No projection writes state. */
+export interface IRPaginationBindings {
+  currentPage?: ExprAst
+  total?: ExprAst
+  pageSize?: ExprAst
+  write?: IRControlledInput['write']
+}
+
 /** Framework-neutral trusted-module invocation. The payload is produced by a
  * registered lowerer and therefore contains only the module's bounded data. */
+export interface IRModuleValueField {
+  key: 'value' | 'endValue'
+  type: 'string' | 'number' | 'array'
+  read: ExprAst
+  write?: IRControlledInput['write']
+  defaultValue?: unknown
+  name?: string
+  validation?: IRFieldValidation
+  validationScopeMarker?: true
+}
+
 export interface IRModule {
   pluginId: string
   moduleType: string
   configVersion: number
   payload: Record<string, unknown>
+  /** Compiler-owned mapping to existing direct children; presence disables legacy child fallback. */
+  contentSlots?: { name: string; sourceId: string | null; childIndex?: number }[]
   /** Reviewed VR-only read binding. Present invalid bindings lower to undefined,
    * so a selected listing never silently loads an authored fallback panorama. */
   panoramaUrlExpr?: ExprAst
   /** Presence keeps failed video bindings distinct from static authored media. */
   videoSrcExpr?: ExprAst
   videoPosterExpr?: ExprAst
+  /** Reviewed Upload-only boolean read; invalid authored bindings lower to true. */
+  uploadDisabledExpr?: ExprAst
+  pagination?: IRPaginationBindings
+  valueFields?: IRModuleValueField[]
 }
 
 /** Phase 4 §24 v2: binary asset emitted by the compiler project. */
@@ -615,6 +664,8 @@ export interface IRConditional {
  *  one visible child (which becomes the template). */
 export interface IRList {
   kind: 'list'
+  /** Compiler-owned Backend LIST status; not an authored or persisted setting. */
+  backendResourceId?: string
   arrayName: string
   itemName: string
   indexName: string

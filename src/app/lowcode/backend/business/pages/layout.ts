@@ -11,8 +11,22 @@ export const BUSINESS_PAGE_WIDTH = 1200
 
 export type BusinessRect = Readonly<Rect>
 
-export function createBusinessLayout(editor: BusinessTemplateEditor) {
-  const shape = backendTemplateShape(editor)
+export function createBusinessLayout(
+  editor: BusinessTemplateEditor,
+  style?: (type: SceneNode['type'], properties: Partial<SceneNode>) => Partial<SceneNode>
+) {
+  const baseShape = backendTemplateShape(editor)
+  const shape: typeof baseShape = (type, name, parent, x, y, width, height, properties) =>
+    baseShape(
+      type,
+      name,
+      parent,
+      x,
+      y,
+      width,
+      height,
+      style ? style(type, properties ?? {}) : properties
+    )
   const text = (
     parent: string,
     label: string,
@@ -32,9 +46,9 @@ export function createBusinessLayout(editor: BusinessTemplateEditor) {
     properties: Partial<SceneNode> = {}
   ) =>
     shape('BUTTON', label, parent, rect.x, rect.y, rect.width, rect.height, {
-      interactiveProps: { text: label },
       events: { onClick: actions },
-      ...properties
+      ...properties,
+      interactiveProps: { text: label, ...properties.interactiveProps }
     })
   return { shape, text, button }
 }

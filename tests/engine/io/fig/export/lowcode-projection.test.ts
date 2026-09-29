@@ -111,6 +111,56 @@ function expectCompleteCJKGlyphCache(parsed: ParsedFig, node: RawNodeChange, tex
 }
 
 describe('Figma-compatible lowcode visual projection', () => {
+  test.each(['roundtrip', 'figma-compatible'] as const)(
+    'select placeholder, clear policy and empty option survive %s readback',
+    async (profile) => {
+      const props = {
+        placeholder: '请选择',
+        allowClear: true,
+        textColor: '#111827',
+        placeholderColor: '#6B7280',
+        options: [
+          { label: '团队', value: 'team' },
+          { label: '停用', value: 'disabled', disabled: true }
+        ]
+      }
+      const { graph, node, plan } = projected('SELECT', { interactiveProps: props })
+      expect(plan.syntheticNodes[0].text).toBe('请选择')
+      expect(marker(plan.syntheticNodes[0])).toMatchObject({ role: 'placeholder' })
+      const bytes = await exportFigFileWithOptions(graph, { profile })
+      const imported = await parseFigFile(bytes)
+      const restored = [...imported.nodes.values()].find((entry) => entry.type === 'SELECT')
+      expect(restored?.interactiveProps).toEqual(props)
+      expect(node.interactiveProps).toEqual(props)
+      const empty = projected('SELECT', {
+        interactiveProps: { ...props, value: '', options: [{ label: '全部', value: '' }] }
+      }).plan
+      expect(empty.syntheticNodes[0].text).toBe('全部')
+      expect(marker(empty.syntheticNodes[0])).toMatchObject({ role: 'option' })
+    }
+  )
+
+  test('keeps select display labels distinct from submitted values through compatible export', async () => {
+    const props = {
+      ariaLabel: 'Delivery',
+      disabled: true,
+      value: 'express',
+      options: ['Legacy', { label: 'Express delivery', value: 'express', disabled: true }]
+    }
+    const { graph, node, plan } = projected('SELECT', {
+      name: 'Structured select',
+      interactiveProps: props
+    })
+    expect(plan.syntheticNodes[0].text).toBe('Express delivery')
+    expect(marker(plan.syntheticNodes[0])).toMatchObject({ role: 'option' })
+    expect(marker(plan.syntheticNodes[0])?.field).toBeUndefined()
+    const bytes = await exportFigFileWithOptions(graph, { profile: 'figma-compatible' })
+    const imported = await parseFigFile(bytes)
+    const restored = [...imported.nodes.values()].find((entry) => entry.name === node.name)
+    expect(restored?.type).toBe('SELECT')
+    expect(restored?.interactiveProps).toEqual(props)
+  })
+
   test('covers every lowcode control with a native FRAME root and stable side-channel', () => {
     expect(FIGMA_PROJECTABLE_LOWCODE_TYPES).toEqual([
       'BUTTON',

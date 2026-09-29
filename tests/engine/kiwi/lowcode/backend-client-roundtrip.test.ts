@@ -113,7 +113,7 @@ describe('Backend browser flow .fig persistence', () => {
       expect(list).toMatchObject({
         layoutMode: 'GRID',
         gridTemplateColumns: [{ sizing: 'FR', value: 1 }],
-        gridTemplateRows: [{ sizing: 'FIXED', value: 150 }],
+        gridTemplateRows: [{ sizing: 'FIXED', value: 252 }],
         gridRowGap: 12,
         clipsContent: false,
         interactiveProps: { layout: { overflowX: 'hidden', overflowY: 'auto' } }
@@ -121,7 +121,7 @@ describe('Backend browser flow .fig persistence', () => {
       expect(imported.getChildren(list.id)[0]).toMatchObject({
         name: 'Note',
         layoutPositioning: 'AUTO',
-        height: 150
+        height: 252
       })
       expect(nodes.find((node) => node.type === 'FORM')?.layoutMode).toBe('NONE')
       expect(nodes.find((node) => node.type === 'TEXTAREA')?.height).toBe(126)
@@ -145,12 +145,14 @@ describe('Backend browser flow .fig persistence', () => {
       const classes = [...source.matchAll(/class(?:Name)?="([^"]+)"/g)].map((match) =>
         match[1].split(/\s+/)
       )
-      const listClasses = classes.find((items) => items.includes('overflow-y-auto'))
+      const listClasses = classes.find(
+        (items) => items.includes('grid') && items.includes('overflow-y-auto')
+      )
       expect(listClasses).toContain('grid')
       expect(listClasses).toContain('grid-cols-1')
-      expect(listClasses).toContain('grid-rows-[150px]')
+      expect(listClasses).toContain('grid-rows-[252px]')
       expect(listClasses).toContain('gap-y-3')
-      const cardClasses = classes.find((items) => items.includes('h-[150px]'))
+      const cardClasses = classes.find((items) => items.includes('h-63'))
       expect(cardClasses).toContain('relative')
       expect(cardClasses).not.toContain('absolute')
       const form = source.match(/<form\b[^>]*\bclass(?:Name)?="([^"]+)"/)?.[1]

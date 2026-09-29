@@ -15,6 +15,7 @@ export const DEFAULT_DESIGN_PANEL_WORKSPACE: DesignPanelWorkspace = 'classic'
 export const DEFAULT_DESIGN_PANEL_SECTION_ORDER = Object.freeze({
   single: Object.freeze([
     'component',
+    'lowcode-control',
     'interaction-states',
     'module',
     'position',
@@ -41,6 +42,7 @@ export const DEFAULT_DESIGN_PANEL_SECTION_ORDER = Object.freeze({
 const FOCUSED_DESIGN_PANEL_SECTIONS = Object.freeze({
   single: Object.freeze([
     'component',
+    'lowcode-control',
     'interaction-states',
     'module',
     'position',

@@ -5,9 +5,9 @@ import type { EditorContext } from '#core/editor/types'
 export function resolvePasteTarget(ctx: EditorContext): string {
   if (ctx.state.enteredContainerId) return ctx.state.enteredContainerId
   const ids = [...ctx.state.selectedIds]
-  if (ids.length !== 1) return ctx.state.currentPageId
+  if (ids.length !== 1) return ctx.state.contentEdit?.rootId ?? ctx.state.currentPageId
   const node = ctx.graph.getNode(ids[0])
-  if (!node) return ctx.state.currentPageId
+  if (!node) return ctx.state.contentEdit?.rootId ?? ctx.state.currentPageId
   if (CONTAINER_TYPES.has(node.type) && node.type !== 'CANVAS') return node.id
-  return node.parentId ?? ctx.state.currentPageId
+  return node.parentId ?? ctx.state.contentEdit?.rootId ?? ctx.state.currentPageId
 }

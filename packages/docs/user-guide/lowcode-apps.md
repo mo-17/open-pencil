@@ -9,6 +9,11 @@ OpenPencil can turn design pages into runnable React + TypeScript + Tailwind app
 
 Lowcode apps build on normal OpenPencil documents. You still draw frames, text, buttons, inputs, images, components, and auto-layout as usual; the lowcode panels add behavior on top of those nodes.
 
+The Layers panel uses the same control icons as the toolbar for inputs, buttons and other lowcode
+nodes. Plugin modules such as Tabs have their own icons; ordinary wrapping frames retain their
+layout icons. These editor indicators do not change the node type or `.fig` export format, and do
+not make OpenPencil lowcode behavior executable in Figma.
+
 ## What You Can Build
 
 - Marketing pages, product pages, dashboards, forms, and data views.
@@ -46,6 +51,53 @@ For browser-only use, keep editing in the web app and run `openpencil compile`, 
 3. Open the lowcode preview pane in the desktop app.
 4. Choose preview options such as UI kit or i18n target locales.
 5. Build or deploy when the preview behaves correctly.
+
+Select a `FRAME`, `FORM`, or `LIST` container to configure **Auto layout** in the Layout section.
+The switch turns automatic child arrangement on or off; the flow choices have text labels:
+**Freeform**, **Vertical**, **Horizontal**, and **Grid**. Select the container whose children you
+want to arrange.
+
+Switching to **Freeform** and back to the same flow keeps the existing spacing, padding, alignment,
+and sizing settings. With no intervening edits, the same configuration restores the arrangement.
+Enabling auto layout on an existing fixed-size frame keeps its dimensions; choose **Hug** explicitly
+to fit its contents. **Grid** keeps existing tracks and gaps, initializes only missing row or column
+tracks, and does not enlarge the frame. Shift+A keeps its existing wrap-in-auto-layout behavior.
+
+If you move children in **Freeform**, enabling auto layout arranges them again using their layer
+order and the container's settings; it does not preserve those manual positions. Undo restores the
+freeform positions. Each flow change is one undo step, restoring the container, children, and any
+affected enclosing or neighboring layers together. Saving and reopening a `.fig` retains the
+resulting layout and geometry, including a result restored with Undo.
+The retained settings also survive saving in Freeform and reopening before enabling auto layout
+again. Explicitly changing an imported frame's flow recalculates its layout instead of reusing
+geometry cached for the old flow.
+
+An input or another leaf control does not arrange child nodes. When its parent uses auto layout,
+the inspector identifies that parent and offers **Select parent** to reach the container's layout
+controls. Width and height keep their current **Fixed**, **Hug**, or **Fill** mode visible next to
+the value. Open each mode menu to change it; available modes still depend on the selected node and
+its parent layout. For child layers, the displayed modes follow the parent container's flow
+direction. Sizing-menu changes are undoable: Undo restores the mode together with the layout
+geometry, including dimensions.
+
+When resizing with the mouse, the canvas preview and released result use the same layout for the
+selected layer, enclosing containers, and neighboring layers. Resizing only width or height changes
+that axis from **Hug** or **Fill** to **Fixed**, preserving the other axis's existing flex sizing.
+Minimum and maximum dimensions remain active. Hold Shift to preserve the aspect ratio when a size
+satisfying both the ratio and those limits exists.
+
+Grid children share one stretch setting across both axes. If resizing releases that setting, the
+other axis keeps its current pixel size; it does not continue to **Fill** as the grid changes.
+
+Press Escape to cancel a resize. A cancelled pointer gesture, window losing focus, canvas becoming
+inactive, or changing the selection, page, or document also restores the preview. Subsequent mouse
+movement or release from that cancelled drag does not apply changes. A completed resize is one
+undo step: Undo and Redo restore sizing modes and all affected layer sizes and positions together.
+
+For imported `.fig` layers, resizing updates the adjusted axis while retaining the imported layout
+on the other axis. Saving includes the updated sizes and positions of affected enclosing containers
+and neighboring layers, and retains text-on-path data. Undo also restores the previous sizes and
+positions for later saves.
 
 ## First Successful Path
 
@@ -138,6 +190,305 @@ are missing, so narrow the scope and retry. Page/form sweeps skip reusable `COMP
 `COMPONENT_SET` master subtrees. A field authored inside a component master cannot bind to page
 state; use document state instead. Put navigation or submission actions on the FORM `onSubmit`
 event when validation must run before those actions.
+
+### Configure field behavior
+
+The Interactive properties section exposes input type, keyboard input mode, autofill, an accessible
+name, disabled/read-only state, and applicable text-length or numeric constraints. Inputs accept
+text, email, password, number, telephone, URL, and search types. Choosing the numeric input type does
+not change the existing bound state type; string bindings preserve an empty string instead of zero.
+
+Input and Textarea canvas text reads supported page/document initial-value bindings. Password inputs
+show a mask, single-line inputs stay on one line, and text remains clipped to the authored bounds.
+Checkboxes display their initial check mark; checkbox groups also show option labels and selected
+array values, including supported initial-state option sources. This is a design-time projection,
+not a running form: computed expressions, remote requests and business events still require preview.
+
+Table cells and menu/upload trigger labels use the same font fallback path as other canvas text.
+When a required font finishes loading, tiled canvas previews refresh without requiring another edit.
+The appearance still depends on fonts available on that computer; no additional fonts are bundled by
+these lowcode modules.
+
+On an invalid form submission, React/Vue focus the first editable invalid field in that form, even
+without an error summary. Disabled, read-only, hidden or removed fields are skipped. A late validation
+response cannot focus a replacement field after its original panel is unmounted. Required semantics
+and associated error text remain accessible; no failed business submission is replayed automatically.
+Radio/checkbox groups validate when a child loses focus, and numeric bounds reject non-numeric values.
+Group changes also update validation immediately. Repeated list fields and reusable component
+instances keep separate error-description IDs even when they share the same bound value.
+
+Static Select options can have separate labels and values and can be individually disabled. Existing
+string options still use the same string for both; a configured dynamic options source takes precedence.
+Give controls an accessible name in addition to any visual placeholder.
+
+Select settings now appear near the top of the inspector. Edit labels and submitted values separately,
+reorder or disable individual options, and choose the default from the list. Renaming a selected value
+or removing its option updates its literal default in the same undo step; bound business state is never
+rewritten. Duplicate values, empty labels and missing defaults produce inline guidance. A value binding
+disables the literal-default editor, and a dynamic options source takes precedence over preserved static options.
+
+Set a **Placeholder** and enable **Allow clearing from the menu** to let users return to an empty string
+by selecting the placeholder option. Without clearing enabled, the generated placeholder option is disabled.
+An explicitly authored empty-value option keeps its own label and disabled state. With neither setting,
+existing native first-option behavior remains. Text and placeholder colors are configurable. React and Vue
+preserve native selection, keyboard, focus/change/blur and form behavior; shadcn uses a diagnosed native
+fallback for dynamic options or generated empty-value choices. Vue also applies literal defaults correctly.
+
+Plain solid native selectors inset the preview arrow by at least 12px and reserve label space,
+preserving larger authored right padding. Image, gradient, layered or bound backgrounds, responsive
+right padding, right-to-left layouts, and system forced-color mode retain the system arrow to preserve authored styling.
+With both enhancement switches off, the browser still owns the open menu.
+
+The canvas shows a closed selector with its initial selected label, placeholder, arrow, padding, clipping
+and disabled content. Static page/document state defaults can provide values and simple dynamic option
+paths; computed expressions, remote data and live preview selection are not evaluated on the canvas.
+Reopening an existing template `.fig` uses the new drawing without regenerating it. Local `.fig` readback
+preserves the options and new settings; Figma-compatible export includes the static label/placeholder,
+while actual Figma application acceptance remains a separate check.
+
+Enable **Search when expanded** to filter the open menu by displayed label (case-insensitive, including
+Chinese text); typing a search never changes the submitted value. Enable **Virtual scrolling** for large
+local option lists: the React/Vue preview and export mount only visible, fixed-height rows plus a small
+buffer. Both switches are independent and off by default. They also work with dynamic options sources
+and React shadcn output. Search runs on options already supplied to the control; it does not request remote
+pages. Filtering still scans that data, and virtualization does not reduce the data stored in the document.
+
+Use arrow keys and Page Up/Down to move through enabled options, Enter to select, and Escape to cancel.
+Closing the menu clears its search. The current selection is brought into view when reopened. Clearing,
+explicit empty values, disabled items, value bindings and field validation keep their existing meaning.
+The canvas remains a closed design representation; test the open menu in the compiled preview. The
+fixed-height virtual rows truncate long labels with their full text available as a tooltip. These web
+features do not add native/mobile target support. Multiple/tags modes, option groups and remote loading
+are not provided.
+
+Selecting a radio group exposes **Radio** near the top of both Classic and Focused inspectors.
+Add, remove or rename options, choose a default, and configure the group name, accessible name,
+disabled state and value binding there. Option text is also its value. Renaming the selected option
+updates its static default in the same undo step; removing or clearing it clears the default.
+A value binding takes precedence and disables the static default selector. Change the bound initial
+value in page or document state; option edits do not rewrite shared state.
+
+The canvas paints authored options, circles, the initial selection and disabled appearance, using
+font fallback and clipping to the control bounds. Initial selection reads the static default or a
+valid page/document string-state default. Test actual selection changes in the React/Vue preview;
+the design canvas does not execute business events, dynamic option sources or runtime expressions.
+Existing RADIO nodes benefit from this display fix without reinsertion or changes to the `.fig`
+node type or persistence format.
+
+SWITCH and DATEPICKER also show their static initial appearance on the canvas. Valid page/document
+state defaults take precedence over the authored `checked` or `value`; disabled content is dimmed.
+A switch uses its entire authored width and height as a capsule track; the thumb scales with the
+available space and stays inside padding and the border. Canvas, React, Vue and React's shadcn path
+share blue-on, gray-off and white-thumb defaults. The switch owns its base track colors and rounded
+shape instead of using generic fills or corner radii; those authored values remain stored. Generated
+controls keep keyboard focus rings, respect reduced-motion preferences and render only one thumb.
+The canvas shows the initial state, not live hover/focus, responsive or custom web-theme styling.
+Dates retain the exact valid ISO `YYYY-MM-DD` value without timezone conversion. Empty or invalid
+values show the format placeholder `YYYY-MM-DD`, and read-only dates hide the calendar button.
+Text and symbols respect padding and clipping.
+
+These display changes do not resize nodes or modify templates, and existing `.fig` files need no
+regeneration. The canvas does not toggle values, open calendars or run business events; verify
+interactions in React/Vue preview. Native date-control styling and localized date formatting may
+differ between browsers and operating systems.
+
+The Events section lets fields select **On change**, **On focus**, or **On blur**. Buttons offer click,
+focus, and blur; forms keep **On submit**. Each event has its own action list, supports undo, and keeps
+the other events intact. Expressions in field events may read the native value through `$value` and
+the event through `$event`. For checkboxes and switches, the boolean state is available through the
+binding or `$event.target.checked`; `$value` retains the native value semantics.
+
+In shadcn mode, composite fields with authored click/change/focus/blur actions use native controls to
+retain the real DOM event, controlled writes, and validation. Selects with static empty-value
+options also use native controls. The compiler reports `ui-kit-native-control-fallback`; these
+fields may look different from Radix controls. Other supported fields retain shadcn styling,
+accessible names, disabled state, and disabled options.
+Generated styles include the utilities used by emitted kit components, including icon sizes
+and popup states; preview does not depend on scanning files outside the generated project.
+
+### Insert a basic component or common composition
+
+Open **Assets**, choose **Component templates** as the source, then filter by **Basic components**
+or **Common compositions**. Search accepts English names, Chinese names and stable template IDs.
+Favorites are stored on this computer. Insert creates editable layers with applicable bindings,
+events and validation; one Undo removes the whole insertion, including any added state.
+Copies have independent example state; module-only examples keep their state inside each running component.
+
+Saving and reopening a `.fig` preserves control font family, size, weight, line height, letter
+spacing, alignment and padding. Earlier template exports may already have lost those values;
+upgrading cannot infer the original styling. Use the regenerated template file or adjust existing
+copies manually. Before reopening an updated `all-templates.fig` from disk, save any other edits
+and close its old tab.
+
+Input and textarea recipes share readable text insets, closely grouped labels and visible focus
+feedback. Their layers and appearance remain editable. Recipe updates apply to new insertions;
+they do not automatically restyle copies already placed in a document.
+
+| Basic components (54)               | Common compositions (8)                             |
+| ----------------------------------- | --------------------------------------------------- |
+| Button, Input, Textarea, Select     | Exact-name search with results and reset            |
+| Checkbox, Switch, Radio, Date field | Validated name/email form                           |
+| Content card, Section divider       | Preferences card                                    |
+| Local file picker, Local data grid  | Editable dialog form, Details tabs, Table workbench |
+| Slider, Range slider, Rating        | Frequently asked questions with expandable answers |
+| Stepper, Breadcrumb                 |                                                     |
+| Alert, linear/circular Progress, Chip | |
+| Avatar, count/dot Badge, Timeline | |
+| Tooltip, Skeleton, Empty content/search | |
+| Bar, Line, Area, Pie and Donut charts | |
+| Markdown note/checklist, Code example | |
+| Multiple select, Date range, Tree, Tree select | |
+| Popover, Local confirmation | |
+| Autocomplete, Time picker | |
+| Date-time picker, Number input, Password input | |
+| Color picker, Descriptions | |
+| Pagination | Paginated list |
+| Org Chart | |
+| Walktour | |
+
+**Org Chart** is available as an opt-in plugin and the `org-chart` template. The visual editor accepts 1–64 plain-text cards across at most eight levels, with editable labels, descriptions and parent relationships. Choose vertical/horizontal layout, initial folded branches and card/connector colors. Narrow containers automatically use an indented vertical layout to keep cards readable; widen the container to display the full horizontal or vertical tree. Changes apply atomically with undo. The canvas shows the authored state; React/Vue supports local branch folding and keyboard navigation. Runtime folding resets when the component configuration changes or it is recreated. It does not connect to a directory, persist runtime folds, submit forms or grant workflow authority. The normal FRAME and module metadata survive `.fig` readback; Figma does not execute the Org Chart runtime.
+
+**Walktour** is an opt-in module available through the `walktour` template. Add, remove or reorder 1–12 steps in the design panel, edit titles and descriptions, and choose placement and a uniquely named direct child layer as the target. A blank target means a centered overview. Target layers remain editable with ordinary canvas tools, and all child content remains rendered. Apply the step list atomically with undo.
+
+Click the start button to show highlights and instructions in React/Vue. Previous, next, finish, skip and Escape are available; a missing or hidden target shows a clear notice and centers that step without automatically skipping it or clicking anything. Closing restores appropriate focus; config changes or remounting end the old tour. Walktour never submits forms, searches outside its own children, navigates routes, stores completion history or starts automatically. Browsers unable to open the guide show a local message and leave the page usable; microfrontend packaging rejects this overlay capability.
+
+The library contains **62 recipes: 54 basic components and 8 common compositions**. The six input and popup recipes are `multi-select`, `date-range`, `tree`, `tree-select`, `popover` and `popconfirm`. Multiple select binds a `string[]` to independent page state; review that reference before moving the template to another page. Date range now supports state/FORM bindings; tree selection remains instance-local. Tree supports at most 128 authored items and 6 levels, with independent selection rather than cascading parent/child checks. Popover and confirmation share one plugin; confirmation only shows local feedback and never saves, deletes or submits a business operation. Native date appearance follows the browser and operating system.
+
+Autocomplete and Time picker are native **INPUT variants**, available directly from Assets without enabling a plugin. Their `value` binds to string page or document state and participates in the existing FORM validation/submission flow. The canvas shows the closed field and its initial bound value; use the React/Vue preview to interact.
+
+- **Autocomplete:** select an Input (Text or Search), then edit **Suggestions** in the design panel. Apply up to 100 unique single-line values, at most 200 characters each. Suggestions filter locally; Arrow Up/Down and Enter select, Escape dismisses, and Tab leaves the field without selecting. Users may keep their own text, including unmatched values. Clearing uses the same field binding. These suggestions are separate from browser autofill and do not query a server.
+- **Time picker:** choose Input type **time**. Configure `HH:mm` or `HH:mm:ss` values and bounds, and a step in seconds. A minimum later than the maximum defines a range across midnight. Values contain no date or timezone. Browser/OS controls determine the runtime picker and localized display; the canvas shows a neutral clock and the authored precision. Invalid drafts stay editable in the panel; out-of-range values remain visible so native form validation can reject them.
+- Multiple Select lists **array** state variables in the binding panel; autocomplete and time inputs list **string** variables. Changing modes keeps the existing binding visible for manual repair instead of converting application data.
+
+React/Vue export these input variants. Saving/reopening `.fig` preserves their ordinary INPUT metadata; Figma does not run their low-code behavior.
+
+The `date-time-picker`, `number-input` and `password-input` recipes add three more editable INPUT examples. They reuse existing value bindings and FORM validation/events without installing a plugin. Their canvas previews show authored values and control affordances; interaction belongs to the React/Vue runtime.
+
+- **Date-time picker:** choose `datetime-local` and bind a string. Use `YYYY-MM-DDTHH:mm` or `YYYY-MM-DDTHH:mm:ss` for a real Gregorian date and time, `min`/`max` in the same format, and a positive whole-number step in seconds or `any`. Values have no timezone or UTC conversion. Unlike a time-only range, `min` cannot be after `max`. Native browser/OS formatting can differ from the neutral canvas preview; invalid drafts remain editable, while out-of-range values remain visible for native validity to reject.
+- **Number input:** leaving the step-control setting at its native default preserves the existing browser control. Choose custom controls for buttons at the end or on both sides; choose hidden to suppress spinner buttons. Custom buttons call native `stepUp`/`stepDown`, respecting fractional steps, bounds, disabled and readonly state. Empty string drafts stay empty until the user types or deliberately steps; the template uses string state for this reason. With `step=any`, custom stepping is disabled because no step increment is defined; free numeric input remains available. The existing number-binding rules are unchanged.
+- **Password input:** enable the reveal control explicitly. It starts masked, changes visibility only for that instance, and restores masking on reset, relevant type/config changes or remount. Readonly passwords may be revealed; disabled controls cannot toggle. Reveal does not dispatch value edits or submit the form. The template starts empty, has no plaintext value feedback, and does not save credentials. Avoid putting real passwords into authored defaults, example state or design files.
+
+Expo, Flutter, native WeChat Mini Program, Taro, uni-app and Mpx source exports omit unsupported `time`/`datetime-local` INPUT variants and enhanced input controls with node-specific warnings. Unconfigured native number/password inputs keep their existing target behavior. Browser/OS picker UI, actual assistive technology and other devices require their own acceptance; a generated control does not establish backend validation or credential storage.
+
+**Pagination** is opt-in. Enable it in plugin settings, then insert Pagination or Paginated list from Assets. Configure total items, page size, initial page, first/last controls, density, typography and colors. Narrow containers reduce visible page buttons or show a current/total summary with first/last controls hidden. Button count stays bounded independently of total.
+
+Under Pagination bindings, connect current page to numeric page or document state; total and page size can read numeric state or expressions. User navigation updates that same state. Configure list visibility or a business query to consume it. The module does not fetch data, submit a FORM or retry requests. Unbound page state is instance-local. Empty data shows `0 / 0` and disables navigation. Shrinking totals clamp the displayed page without rewriting business state: use the same effective page in the list or explicitly reset it on filter changes. Invalid bindings do not silently fall back to authored values.
+
+The Paginated list composition demonstrates real list navigation with editable local records and independent page state, not remote pagination or large-data virtualization. Canvas shows static authored configuration; React/Vue preview exercises live state linkage. The `.fig` metadata preserves configuration and bindings; Figma does not execute these interactions.
+
+The **Color picker** recipe uses `INPUT` with type `color`, a string binding and the existing FORM flow. In the design panel, set the initial value with the swatch or an exact `#RRGGBB` value; empty means no selection. In React/Vue, the hex field accepts direct typing and an adjacent swatch opens the native browser/OS chooser. Choosing a color updates the same binding. Readonly prevents choosing while preserving the value in form submission; disabled fields are omitted. Required fields reject empty values, and invalid hex values remain visible for correction instead of silently becoming black. Alpha, named CSS colors and wide-gamut formats are not supported. The canvas shows the authored swatch and hex value; it does not open the system chooser.
+
+**Descriptions** is an opt-in built-in plugin for read-only label/value content. Install and enable it in plugin settings, then insert its template or module. Edit 1–24 pairs together in the design panel and Apply once; Cancel discards the draft. Configure 1–3 columns, labels beside or above values, density, borders, colors and typography. Narrow frames automatically use fewer columns; long runtime content scrolls inside the frame. Text is literal, without HTML execution, FORM bindings or remote data. Canvas and React/Vue share layout rules; React/Vue output semantic description lists. Other source targets report unsupported behavior and omit the module. Both new templates preserve ordinary node metadata through `.fig`; this does not make their runtime behavior available in Figma.
+
+Five Chart recipes provide paired editable data and shared Canvas/React/Vue rendering. They use one static series with at most 64 points, not a live data source. Circular charts require nonnegative values. Install and enable Chart before insertion.
+
+Tooltip, Skeleton, Empty content and No search results are configurable templates. Placeholders do not automatically detect business state; connect visibility expressions to your data. Tooltip paints its trigger on the canvas and opens its hint on hover or focus in the runtime preview.
+
+These are local examples for React and Vue. Search matches complete sample names (`Alpha`, `Beta`,
+`Gamma`) and is case-sensitive. Form and preferences feedback concerns the current running app;
+it does not mean data reached a server or survived a reload. The file picker never uploads files.
+Templates do not configure authentication, a database, backend APIs or global design tokens.
+
+Alert, linear Progress, circular Progress and Chip add four basic templates. Dismissal and label selection/removal only affect the running instance. Progress is an authored example; use indeterminate mode when no percentage is known. It never fabricates live task completion. Configuration changes/remounting reset local interactions.
+
+Slider/Range and Rating support optional writable page/document state and FORM bindings; unbound instances retain local state. Binding does not configure persistence or backend submission.
+Stepper optionally changes its current step without running a workflow. Breadcrumb validates safe
+links and leaves its final item non-clickable. Canvas shows authored initial settings; generated
+React/Vue pages supply interaction. These modules retain ordinary `.fig` FRAME metadata, which does
+not make the runtime interactive in Figma.
+
+Upload, DataGrid, Modal, Tabs, FAQ, Slider/Range, Rating, Stepper, Breadcrumb, Alert, Progress, Chip, Avatar, Badge, Timeline, Tooltip, Skeleton, Empty State, Chart, Markdown, Code Block, Date Range, Tree/TreeSelect, Popover/Confirmation and Descriptions entries require the corresponding installed and enabled built-in
+plugin. An unavailable card links to plugin settings; inserting or favoriting it never installs or
+enables a plugin. Existing documents are unchanged until you insert. Template text uses the language
+selected at insertion time and remains ordinary editable content afterward. Search drafts and
+preference choices use page state; review those references before converting a block to a reusable
+component master or moving it to another page.
+Insert into an ordinary page or editable frame, outside component masters and instances. Templates
+containing a form also reject an existing form ancestor, preserving valid submission behavior.
+
+### Place editable content inside dialogs and tabs
+
+Create a named direct child frame inside a Modal or Tabs module and place ordinary fields, forms,
+buttons, or lists inside it. In Module properties, select that frame as **Content child layer** for
+the modal body or the corresponding tab. Each selected direct child must have a unique layer name;
+renaming or removing it requires updating the selection. Copying or `.fig` round-tripping keeps the
+name-based mapping. The mapping resolves the name when compiling: replacing a child with another
+direct child of the same name also replaces the mapped content.
+
+Mapped content replaces the configured text. Once content mapping is enabled, unmapped children are
+not rendered as a trigger or shared tab content. Missing, ambiguous, or duplicate mappings produce
+diagnostics rather than placing content in a different slot. Documents without mappings retain their
+previous behavior. Tabs mount only the active panel; bind drafts to page/document state when values
+must survive switching panels. Modal's built-in footer buttons still close the dialog: use an authored
+FORM and BUTTON inside the content for business submission and its feedback.
+
+On the design canvas, mapped Tabs show only the **Initial tab** configured in Module properties.
+Change that setting to inspect or edit another panel; interactive tab switching belongs to the web
+preview. The active child starts below a horizontal header (or beside a vertical header), with 16 px
+body padding. Fill-sized content follows the available panel size. Inactive and unassigned children
+remain in the layer tree and saved document, but are excluded from canvas painting and pointer hits.
+Existing `.fig` files receive the same layout when reopened in the updated editor; turning the
+outer frame's auto layout off and on is not needed to repair overlapping panels.
+
+When a form contains mapped module content, submission and its error summary consider only mounted
+fields belonging to that actual form. Inactive tabs, closed dialogs, omitted children, and a nested
+form's fields do not block the outer form. The active panel's required fields still block submission.
+If the active field set changes while asynchronous validation is pending, submit again after the
+new panel is ready; the old result cannot submit it.
+
+React and Vue exports both support these content mappings and the Table, local DataGrid, and Tabs
+runtimes. DataGrid keeps its bounded local data, sorting, filtering, selection, pagination, and CSV
+operations; it is separate from Backend LIST and does not fetch server pages or save edited records.
+Selected rows stay selected across pages and temporary column filters. The status shows the total
+selected and how many are outside the current page; **Clear selection** clears both. **Clear column
+filters** removes only user-entered queries and returns to page one, preserving authored data
+filters, sorting, selection, and locally imported rows. Empty pages disable select-all. Feedback
+uses English or Chinese according to the grid or document language.
+Vue remote asynchronous validation remains explicitly unsupported.
+
+For acceptance, insert two independent controls/modules, edit each event, undo once, and switch
+selection or documents while a draft is open. In both generated targets, check field changes and
+validation, a form inside a modal, keyboard tab switching, retained bound drafts, and an invalidated
+content mapping. Browser coverage does not establish native WebView, physical keyboard/IME, or
+screen-reader coverage.
+
+### Review a form before previewing
+
+Select a form or one of its fields to review the form configuration overview in the inspector.
+It connects four checks: field value bindings, validation rules, the form's submit event, and
+failure handling. Use a row's navigation action to select the relevant field or form and open its
+existing Bindings, Validation, or Events section. Reviewing or navigating does not change the
+document.
+
+An optional field does not need a validation rule. A configured failure branch or error-state
+destination also does not prove that a draft will survive: custom actions can clear values or
+navigate away. Keep resets in the successful submission branch and test a failed request before
+shipping. Actions on a button's click event can bypass form submission validation; place validated
+submission actions on the form's `onSubmit`. Vue exports continue to reject remote asynchronous
+validation rather than silently submitting an unvalidated form.
+
+### Backend list feedback
+
+Lists bound to a Backend resource display their request state in generated React and Vue apps:
+
+| State      | Behavior                                                                           |
+| ---------- | ---------------------------------------------------------------------------------- |
+| Loading    | The first request is pending; this is not an empty result.                         |
+| Refreshing | A successful result remains visible while the same query and session refresh.      |
+| Empty      | A successful request returned no records.                                          |
+| Failed     | A local message offers **Retry**. A failed refresh may retain the previous result. |
+
+Changing the query, page subscription, or account invalidates the old result. Authentication and
+permission failures clear retained records. Retry repeats only the list read; it does not repeat a
+previous create, update, delete, or business command. Existing cursor and error document-state
+bindings continue to work. These states describe the generated app's request, not a database
+migration, remote synchronization, or production-readiness check.
+
+For a repeatable check, preview a search list with an add/edit form. Test a delayed first request,
+refresh with existing records, an empty response, a failed read followed by Retry, a failed form
+submission with retained input, and a quick query/page change while an older request is pending.
+Run the same sequence in both React and Vue; verify real identity and database integration
+separately from mocked browser tests.
 
 ## Preview
 
@@ -703,3 +1054,26 @@ Use this checklist when validating a lowcode document before sharing it:
 - A deployed route returns 404 after refresh: configure the host as an SPA and route unknown paths to `index.html`.
 - Cloudflare deploy fails before upload: pass `--account-id`, set `CLOUDFLARE_ACCOUNT_ID`, or use `--site <account>/<project>`.
 - i18n output has missing translations: inspect the emitted `src/locales/_coverage.json` and fill the target locale catalog.
+
+
+### Multi-select and local selection modules
+
+Select's visual inspector now has **Allow multiple selections** and per-option defaults. Multiple mode binds `value` to an array of strings; single mode keeps its string contract. Unbind the existing value before changing modes, then bind a state of the matching type. Search and virtual scrolling work with either mode. Selecting a result keeps a multiple menu open; Clear removes every selection and Backspace on the closed trigger removes the last enabled choice. An authored empty-string option is a real value, distinct from an empty selection. Existing `$value` event shorthand remains the first native selected value; use the bound array state for all selected values.
+
+Enable **Date Range**, **Tree / TreeSelect**, or **Popover** in Plugins, then insert them from the module tool or Assets templates. Date Range uses native date inputs, ISO initial values and min/max bounds; an inverted or incomplete runtime range shows an error without silently rearranging dates. Tree supports editable hierarchy, search, single/multiple independent selection, disabled branches, initial expansion and keyboard navigation. TreeSelect expands within its authored container; leave enough height for the list. Date Range supports optional page/document state bindings and independent FORM endpoints. Tree selection remains instance-local. Neither configures backend data access.
+
+Popover has content and confirmation modes, trigger/panel styling and preferred placement. Its content layer is an ordinary editable direct child selected by a unique name. The plain-text body is used only when no content mapping is configured. A missing, ambiguous or unrenderable mapped child produces `module-content-child-invalid` and leaves the content empty. Escape, outside click and focus leaving dismiss it. Confirmation/cancellation only show local status. Add explicit business actions to ordinary content buttons when needed. Modern browsers use the Popover top layer; the local fallback may be clipped by an overflow ancestor. Canvas shows the trigger; use Edit content for child layers and compiled preview for the open floating panel.
+
+React and Vue are the verified web targets. Native/mobile targets report unsupported behavior. Expo, Flutter, WeChat Mini Program, Taro, uni-app and Mpx omit multiple SELECT controls with the stable `{target}-select-multiple-unsupported` diagnostic; other nodes continue to export. `.fig` preserves the configuration in ordinary OpenPencil module metadata; Figma does not gain these runtime interactions.
+
+### Form module bindings and Cascader
+
+Slider/Range, Rating, Date Range and Cascader expose Value bindings and Validation rules in the design panel. Create writable page/document state first: number for sliders/ratings, separate ISO date strings for start/end dates, and a string[] root-to-leaf path for Cascader. Computed states cannot be write targets. Range endpoints bind and validate independently; clearing a binding restores instance-local initial values.
+
+Bound fields participate in FORM validation and reset. Required Rating treats zero as unselected; zero can be valid for Slider. Missing, mistyped or invalid bound values remain visibly unavailable instead of falling back to examples. Reset restores declared state defaults and invalidates late validation; cancelled reset and unmounted fields preserve the actual form boundary. Canvas displays authored state defaults, not live preview state.
+
+Enable **Cascader** in Settings → Plugins, then insert its module or `cascader` template. Edit hierarchical items, parents, disabled entries and the initial leaf, plus colors, radius, row height, search and clearing. React/Vue supports progressive columns, full-path search, keyboard navigation, disabled branches and clearing; only a leaf selection commits a path. Limits are 128 local items and six levels. Remote loading, multi-select and cascading checkboxes are outside this version. Unbound values stay instance-local. Binding does not configure network requests, database access or persistence.
+
+Ordinary FRAME geometry and versioned metadata remain portable in `.fig`; this does not make the interactions executable in Figma. Real Tauri, another computer's fonts and screen-reader behavior require separate acceptance.
+
+Readonly controls retain their values for serialization but do not block constraint validation. Module fields belong to their surrounding FORM; explicit `interactiveProps.form` reassignment is unsupported and disables the control with a compiler warning.
