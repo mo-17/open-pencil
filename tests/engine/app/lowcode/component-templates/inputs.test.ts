@@ -8,6 +8,7 @@ import {
   resolvePopoverModule,
   resolveTreeModule
 } from '@open-pencil/core/plugins'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { getComponentTemplates } from '@/app/lowcode/component-templates'
 
@@ -19,11 +20,30 @@ import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
 
 const ids = ['multi-select', 'date-range', 'tree', 'tree-select', 'popover', 'popconfirm'] as const
 
+function expectTreeTemplateBindings(graph: SceneGraph, envelopes: SceneNode[]): SceneNode[] {
+  const trees = envelopes
+    .map((node) => resolveTreeModule(node.interactiveProps?.module))
+    .filter((result) => result?.ok)
+  expect(trees.map((result) => (result && result.ok ? result.config.presentation : ''))).toEqual([
+    'tree',
+    'select'
+  ])
+  const treeNodes = envelopes.filter((node) => resolveTreeModule(node.interactiveProps?.module)?.ok)
+  for (const [index, node] of treeNodes.entries()) {
+    const binding = node.bindings?.value
+    if (binding?.kind !== 'ref') throw new Error('Tree template needs a page value binding')
+    const declaration = graph.getPages()[0].state?.find((state) => state.id === binding.stateId)
+    expect(declaration?.type).toBe(index === 0 ? 'array' : 'string')
+    expect(declaration?.defaultValue).toEqual(index === 0 ? ['design'] : 'design')
+  }
+  return treeNodes
+}
+
 test('six input and popup recipes declare exact dependencies and local behavior boundaries', () => {
   const catalog = getComponentTemplates('en')
-  expect(catalog).toHaveLength(62)
+  expect(catalog).toHaveLength(66)
   expect(catalog.filter((item) => item.kind === 'basic')).toHaveLength(54)
-  expect(catalog.filter((item) => item.kind === 'combination')).toHaveLength(8)
+  expect(catalog.filter((item) => item.kind === 'combination')).toHaveLength(12)
   for (const id of ids) {
     const item = catalog.find((entry) => entry.id === id)
     const groupedModules: Partial<Record<(typeof ids)[number], string>> = {
@@ -37,6 +57,7 @@ test('six input and popup recipes declare exact dependencies and local behavior 
     expect(item?.kind).toBe('basic')
     let boundary = 'FORM'
     if (id === 'multi-select') boundary = 'page-state'
+    if (id === 'tree' || id === 'tree-select') boundary = 'remote loading'
     if (id === 'popover' || id === 'popconfirm') boundary = 'business form'
     expect(item?.limitations.some((text) => text.includes(boundary))).toBe(true)
   }
@@ -70,7 +91,7 @@ for (const locale of ['en', 'zh-CN'])
         envelopes
           .map((node) => Object.keys(node.bindings ?? {}).sort())
           .filter((keys) => keys.length)
-      ).toEqual([['endValue', 'value']])
+      ).toEqual([['endValue', 'value'], ['value'], ['value']])
       const date = envelopes
         .map((node) => resolveDateRangeModule(node.interactiveProps?.module))
         .find((result) => result?.ok)
@@ -78,12 +99,7 @@ for (const locale of ['en', 'zh-CN'])
         initialStart: '2026-09-01',
         initialEnd: '2026-09-05'
       })
-      const trees = envelopes
-        .map((node) => resolveTreeModule(node.interactiveProps?.module))
-        .filter((result) => result?.ok)
-      expect(
-        trees.map((result) => (result && result.ok ? result.config.presentation : ''))
-      ).toEqual(['tree', 'select'])
+      const treeNodes = expectTreeTemplateBindings(fixture.graph, envelopes)
       const popovers = envelopes
         .map((node) => resolvePopoverModule(node.interactiveProps?.module))
         .filter((result) => result?.ok)
@@ -99,6 +115,11 @@ for (const locale of ['en', 'zh-CN'])
           .sort()
       expect(moduleRows(restored)).toEqual(moduleRows(fixture.graph))
       expect(restored.getPages()[0].state).toEqual(fixture.graph.getPages()[0].state)
+      expect(
+        [...restored.getAllNodes()]
+          .filter((node) => resolveTreeModule(node.interactiveProps?.module)?.ok)
+          .map((node) => node.bindings)
+      ).toEqual(treeNodes.map((node) => node.bindings))
       expect([...restored.getAllNodes()].find((node) => node.type === 'SELECT')?.bindings).toEqual(
         select?.bindings
       )

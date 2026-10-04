@@ -236,15 +236,24 @@ function declarativeModule(definition: ModuleDefinition, adapterId: string) {
     configVersion: definition.configVersion,
     defaultSize: structuredClone(definition.defaultSize),
     defaultConfig: structuredClone(definition.defaultConfig),
-    fields: definition.fields.map((field) => ({
-      path: [...field.path],
-      kind: field.kind,
-      label: field.label,
-      ...(field.min === undefined ? {} : { min: field.min }),
-      ...(field.max === undefined ? {} : { max: field.max }),
-      ...(field.step === undefined ? {} : { step: field.step }),
-      ...(field.options === undefined ? {} : { options: [...field.options] })
-    }))
+    // Manifest v1 fields require a default value. The host editor owns this optional
+    // Slide Menu mapping; omitting its portable field preserves legacy trigger children.
+    fields: definition.fields
+      .filter(
+        (field) =>
+          definition !== SLIDE_MENU_MODULE_DEFINITION ||
+          field.path.length !== 1 ||
+          field.path[0] !== 'contentChildName'
+      )
+      .map((field) => ({
+        path: [...field.path],
+        kind: field.kind,
+        label: field.label,
+        ...(field.min === undefined ? {} : { min: field.min }),
+        ...(field.max === undefined ? {} : { max: field.max }),
+        ...(field.step === undefined ? {} : { step: field.step }),
+        ...(field.options === undefined ? {} : { options: [...field.options] })
+      }))
   }
 }
 

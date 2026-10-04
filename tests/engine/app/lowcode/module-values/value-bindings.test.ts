@@ -4,17 +4,22 @@ import { effectScope, ref, shallowRef } from 'vue'
 
 import { createEditor } from '@open-pencil/core/editor'
 import {
+  createCascaderModuleFrameOverrides,
   createDateRangeModuleFrameOverrides,
   createRatingModuleFrameOverrides,
   createSliderModuleFrameOverrides,
-  moduleValueFields
+  createTreeModuleFrameOverrides,
+  moduleValueFields,
+  resolveModuleFieldName,
+  validModuleFieldName
 } from '@open-pencil/core/plugins'
 
 import { inspectFormOverview } from '@/app/lowcode/form-overview'
 import {
   moduleBindingFromSelection,
   moduleBindingOptions,
-  moduleBindingSelection
+  moduleBindingSelection,
+  moduleValueReadOnly
 } from '@/app/lowcode/value-controls/form/fields'
 import { useModuleValueSession } from '@/app/lowcode/value-controls/form/session'
 
@@ -79,7 +84,97 @@ test('module binding choices accept exact writable endpoint types and preserve i
   }
 })
 
-for (const boundary of ['owner', 'same-id', 'config', 'binding', 'retained', 'dispose'] as const)
+test('module form field names are optional, bounded and fail closed when authored metadata is invalid', () => {
+  const editor = createEditor()
+  try {
+    const frame = createRatingModuleFrameOverrides()
+    const node = editor.graph.createNode('FRAME', editor.state.currentPageId, frame)
+    expect(resolveModuleFieldName(node, 'value', 'ratingState')).toBe('ratingState')
+    expect(validModuleFieldName('category_ids')).toBe(true)
+    expect(validModuleFieldName('a'.repeat(65))).toBe(false)
+    for (const value of ['', '1start', 'has space', '__proto__', 'constructor']) {
+      editor.graph.updateNode(node.id, {
+        interactiveProps: { ...frame.interactiveProps, moduleFieldNames: { value } }
+      })
+      expect(resolveModuleFieldName(node, 'value', 'ratingState')).toBeUndefined()
+    }
+    editor.graph.updateNode(node.id, {
+      interactiveProps: { ...frame.interactiveProps, moduleFieldNames: { value: 'score' } }
+    })
+    expect(resolveModuleFieldName(node, 'value', 'ratingState')).toBe('score')
+  } finally {
+    editor.dispose()
+  }
+})
+
+test('outer readOnly is exposed once for reviewed FRAME value modules without config-level readOnly', () => {
+  const editor = createEditor()
+  try {
+    for (const overrides of [
+      createTreeModuleFrameOverrides(),
+      createTreeModuleFrameOverrides({ presentation: 'select' }),
+      createDateRangeModuleFrameOverrides(),
+      createCascaderModuleFrameOverrides()
+    ]) {
+      const node = editor.graph.createNode('FRAME', editor.state.currentPageId, overrides)
+      const module = structuredClone(node.interactiveProps?.module)
+      expect(moduleValueReadOnly(node)).toBe(false)
+      editor.graph.updateNode(node.id, {
+        interactiveProps: { ...node.interactiveProps, readOnly: true }
+      })
+      expect(moduleValueReadOnly(node)).toBe(true)
+      expect(node.interactiveProps?.module).toEqual(module)
+    }
+  } finally {
+    editor.dispose()
+  }
+})
+
+test('outer readOnly rejects unrelated nodes and incomplete or forged module identities', () => {
+  const editor = createEditor(),
+    graph = editor.graph,
+    page = editor.state.currentPageId
+  try {
+    for (const overrides of [
+      {},
+      createSliderModuleFrameOverrides(),
+      createRatingModuleFrameOverrides()
+    ])
+      expect(moduleValueReadOnly(graph.createNode('FRAME', page, overrides))).toBeUndefined()
+    for (const type of ['COMPONENT', 'INSTANCE'] as const)
+      expect(
+        moduleValueReadOnly(graph.createNode(type, page, createTreeModuleFrameOverrides()))
+      ).toBeUndefined()
+    const frame = createTreeModuleFrameOverrides(),
+      module = frame.interactiveProps?.module
+    if (!module) throw new Error('Tree module unavailable')
+    for (const invalid of [
+      { ...module, pluginId: 'unreviewed.tree' },
+      { ...module, moduleType: 'unknown' },
+      { ...module, configVersion: 2 },
+      { ...module, config: { ...module.config, selectionMode: 'unknown' } },
+      { ...module, config: { ...module.config, unexpected: true } }
+    ]) {
+      const node = graph.createNode('FRAME', page, {
+        ...frame,
+        interactiveProps: { ...frame.interactiveProps, module: invalid, readOnly: true }
+      })
+      expect(moduleValueReadOnly(node)).toBeUndefined()
+    }
+  } finally {
+    editor.dispose()
+  }
+})
+
+for (const boundary of [
+  'owner',
+  'same-id',
+  'config',
+  'binding',
+  'readOnly',
+  'retained',
+  'dispose'
+] as const)
   test(`module field callbacks lose authority across ${boundary}`, () => {
     const editor = createEditor()
     const node = editor.graph.createNode(
@@ -114,6 +209,11 @@ for (const boundary of ['owner', 'same-id', 'config', 'binding', 'retained', 'di
         source.value = {
           ...source.value,
           bindings: { value: { kind: 'ref', stateId: 'different' } }
+        }
+      if (boundary === 'readOnly')
+        source.value = {
+          ...source.value,
+          props: { ...node.interactiveProps, readOnly: true }
         }
       if (boundary === 'retained') {
         active.value = false
@@ -161,6 +261,7 @@ test('FORM overview distinguishes both module endpoints and their own binding an
         id: slider.id,
         name: slider.name,
         valueKey: 'value',
+        submissionName: 'start',
         binding: 'valid',
         validation: 'configured',
         asynchronous: false
@@ -169,12 +270,50 @@ test('FORM overview distinguishes both module endpoints and their own binding an
         id: slider.id,
         name: slider.name,
         valueKey: 'endValue',
+        submissionName: undefined,
         binding: 'invalid',
         validation: 'configured',
         asynchronous: false
       }
     ])
     expect(editor.documentSnapshotChanged(before)).toBe(false)
+  } finally {
+    editor.dispose()
+  }
+})
+
+test('FORM overview hides submission names for invalid Tree bindings even with a custom name', () => {
+  const editor = createEditor(),
+    graph = editor.graph,
+    page = editor.state.currentPageId
+  try {
+    graph.updateNode(page, {
+      state: [
+        { id: 'category', name: 'category', type: 'string', defaultValue: 'design' },
+        { id: 'categories', name: 'categories', type: 'array', defaultValue: ['design'] }
+      ]
+    })
+    const form = graph.createNode('FORM', page),
+      frame = createTreeModuleFrameOverrides({ selectionMode: 'multiple' }),
+      tree = graph.createNode('FRAME', form.id, {
+        ...frame,
+        bindings: { value: { kind: 'ref', stateId: 'category' } },
+        interactiveProps: {
+          ...frame.interactiveProps,
+          moduleFieldNames: { value: 'selectedCategories' }
+        }
+      })
+    expect(inspectFormOverview(graph, tree.id)?.fields[0]).toMatchObject({
+      binding: 'invalid',
+      submissionName: undefined
+    })
+    graph.updateNode(tree.id, {
+      bindings: { value: { kind: 'ref', stateId: 'categories' } }
+    })
+    expect(inspectFormOverview(graph, tree.id)?.fields[0]).toMatchObject({
+      binding: 'valid',
+      submissionName: 'selectedCategories'
+    })
   } finally {
     editor.dispose()
   }

@@ -6,7 +6,11 @@ import { emitExpression } from '@open-pencil/lowcode'
  * Emit a single `useState` declaration. The setter is conventionally named
  * `set<Capitalized>`.
  */
-export function emitStateDecl(state: IRStateDecl, indent: number): string {
+export function emitStateDecl(
+  state: IRStateDecl,
+  indent: number,
+  applicationPageId?: string
+): string {
   const pad = '  '.repeat(indent)
   if (state.computed) {
     const deps = computedDeps(state.computed.references)
@@ -20,6 +24,8 @@ export function emitStateDecl(state: IRStateDecl, indent: number): string {
   // Empty authored arrays have no element samples for TypeScript to infer.
   // Keep the declared array writable without inventing a string-only schema.
   const type = state.type === 'array' && initial === '[]' ? '<unknown[]>' : ''
+  if (applicationPageId !== undefined)
+    return `${pad}const [${state.name}, ${setter}] = __opUseApplicationPageState${type}(${JSON.stringify(applicationPageId)}, ${JSON.stringify(state.name)}, ${initial})`
   return `${pad}const [${state.name}, ${setter}] = useState${type}(${initial})`
 }
 

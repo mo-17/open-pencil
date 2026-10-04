@@ -9,7 +9,12 @@ import { installedMarkdownDependency } from '#compiler/markdown-dependencies'
 /** Type-check generated source against locally installed dependencies without installing or building. */
 export function typeCheckCompilerFiles(
   files: ReadonlyMap<string, string>,
-  target: 'react' | 'vue'
+  target: 'react' | 'vue',
+  options: {
+    preserveSymlinks?: boolean
+    extraDependencies?: readonly string[]
+    dependencyDirectories?: Readonly<Record<string, string>>
+  } = {}
 ): void {
   const directory = mkdtempSync(join(tmpdir(), 'openpencil-control-types-'))
   try {
@@ -19,12 +24,16 @@ export function typeCheckCompilerFiles(
     for (const dependency of [
       ...Object.keys(manifest.dependencies),
       ...(target === 'react' ? ['@types/react', '@types/react-dom'] : []),
+      ...(options.extraDependencies ?? []),
       'vite'
     ]) {
       const installed =
+        options.dependencyDirectories?.[dependency] ??
         ['packages/compiler', '.']
           .map((workspace) => resolve(workspace, 'node_modules', dependency))
-          .find(existsSync) ?? installedMarkdownDependency(dependency, process.cwd())
+          .find(existsSync) ??
+        installedMarkdownDependency(dependency, process.cwd()) ??
+        resolveInstalledDependency(dependency)
       if (!installed) throw new Error('Missing workspace test dependency: ' + dependency)
       const destination = join(directory, 'node_modules', dependency)
       mkdirSync(dirname(destination), { recursive: true })
@@ -42,12 +51,30 @@ export function typeCheckCompilerFiles(
             'bin/vue-tsc.js'
           )
         : join(dirname(fileURLToPath(import.meta.resolve('typescript/package.json'))), 'bin/tsc')
-    execFileSync('node', [tool, '--noEmit', '-p', join(directory, 'tsconfig.json')], {
-      cwd: directory,
-      timeout: 30000,
-      stdio: 'inherit'
-    })
+    execFileSync(
+      'node',
+      [
+        tool,
+        '--noEmit',
+        ...(options.preserveSymlinks ? ['--preserveSymlinks'] : []),
+        '-p',
+        join(directory, 'tsconfig.json')
+      ],
+      {
+        cwd: directory,
+        timeout: 30000,
+        stdio: 'inherit'
+      }
+    )
   } finally {
     rmSync(directory, { recursive: true, force: true })
+  }
+}
+
+function resolveInstalledDependency(dependency: string): string | undefined {
+  try {
+    return dirname(fileURLToPath(import.meta.resolve(dependency + '/package.json')))
+  } catch {
+    return undefined
   }
 }

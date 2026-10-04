@@ -1,10 +1,19 @@
 import { vueAutocompleteImports } from '#compiler/adapters/autocomplete/emit'
-import { vueInputControlImports } from '#compiler/adapters/input-control/emit'
+import {
+  vueInputControlImports,
+  vueNumberInputImports,
+  vueNumberParserImports
+} from '#compiler/adapters/input-control/emit'
+import {
+  pageViewportNodes,
+  pageViewportStyleOptions
+} from '#compiler/adapters/page-viewport/project'
 import type { ComponentDef, IRElement, IRNode, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions } from '#compiler/types'
 
 import { emitVueBackendListStatus } from '../backend-client/list-status'
 import { emitVueBackendPageRuntime } from '../backend-client/lists'
+import { nodesHaveBackHandler } from '../react/ir-walk'
 import {
   emitVueElementAttributes,
   emitVueStyleExpression,
@@ -19,7 +28,11 @@ import {
   nodesUseVueRequestGate
 } from './lowcode/request-gate'
 import { emitVueListQueryRuntime } from './lowcode/supabase'
-import { collectVueComponentLowcodeUsage, collectVueTreeLowcodeUsage } from './lowcode/usage'
+import {
+  collectVueComponentLowcodeUsage,
+  collectVueTreeLowcodeUsage,
+  type VueLowcodeUsage
+} from './lowcode/usage'
 import {
   buildVueValidationGlue,
   vueValidationErrorExpression,
@@ -72,12 +85,46 @@ function appendVueContextRuntime(
   scriptLines.push(...context.eventFunctions)
 }
 
+function vueControlImports(
+  nodes: readonly IRNode[],
+  componentDirectory: string,
+  libraryDirectory: string
+): string[] {
+  return [
+    ...vueSelectImports(nodes, componentDirectory),
+    ...vueAutocompleteImports(nodes, componentDirectory),
+    ...vueInputControlImports(nodes, componentDirectory),
+    ...vueNumberInputImports(nodes, componentDirectory),
+    ...vueNumberParserImports(nodes, libraryDirectory)
+  ]
+}
+
+function appendVueFeatureImports(
+  scriptLines: string[],
+  nodes: readonly IRNode[],
+  componentDirectory: string,
+  libraryDirectory: string,
+  moduleImports: string,
+  lowcode: VueLowcodeUsage
+): void {
+  scriptLines.push(...vueControlImports(nodes, componentDirectory, libraryDirectory))
+  if (moduleImports) scriptLines.push(moduleImports)
+  if (lowcode.toast) scriptLines.push(`import { __opToast } from '../lowcode-toast'`)
+  if (lowcode.confirm) scriptLines.push(`import { __opConfirm } from '../lowcode-confirm'`)
+  if (lowcode.validation) scriptLines.push(buildVueValidationImport(nodes))
+}
+
 // oxlint-disable-next-line complexity -- Page emission assembles independent router, state, asset, and event capabilities.
 export function buildVuePageModule(
   ir: IRTree,
   options: CompilerOptions,
   routerAvailable: boolean,
-  runtime: { supabase?: boolean; serverWorkflow?: boolean; backend?: boolean } = {}
+  runtime: {
+    supabase?: boolean
+    serverWorkflow?: boolean
+    backend?: boolean
+    applicationGuards?: boolean
+  } = {}
 ): VueSourceEmission {
   const backendAvailable = ir.backendClient !== undefined
   const lowcode = collectVueTreeLowcodeUsage(ir)
@@ -111,6 +158,10 @@ export function buildVuePageModule(
     supabaseAvailable || backendAvailable
   )
   const refNames = new Set([...identAliases.values(), ...listAliases.values()])
+  if (routerAvailable) {
+    refNames.add(ROUTE_PARAMS_IDENT)
+    refNames.add(QUERY_PARAMS_IDENT)
+  }
   const context = createContext(
     options.devMode,
     routerAvailable,
@@ -133,7 +184,9 @@ export function buildVuePageModule(
       context.warnings.push(identifierShadowWarning(query.rowsName, 'list rows', 'page state'))
     }
   }
-  const body = emitNodes(ir.children, context, ir.requiresAuth ? 3 : 1, [])
+  context.applicationGuards = ir.applicationGuardsEnabled
+  context.hoistStyles = ir.pageViewport?.mode === 'responsive'
+  const body = emitNodes(pageViewportNodes(ir), context, ir.requiresAuth ? 3 : 1, [])
   const currentUser = identAliases.get('$currentUser')
   const template = wrapVueAuthGuard(body, ir.requiresAuth === true, currentUser)
   const vueNames = ['computed as __vueComputed', 'ref as __vueRef']
@@ -156,17 +209,37 @@ export function buildVuePageModule(
     ? `import { getDocState as __getDocState, setDocState as __setDocState, useDocState as __useDocState } from '../lowcode-state'`
     : ''
   const scriptLines: string[] = [vueImports + routerImports]
+  if (ir.applicationGuardsEnabled)
+    scriptLines.push(
+      "import { useApplicationGuardNavigationOwner as __opUseNavigationOwner } from '../lib/open-pencil-application-guards-vue'",
+      'const __opCanNavigate = __opUseNavigationOwner()'
+    )
+  if (routerAvailable && nodesHaveBackHandler(ir.children))
+    scriptLines.push(
+      "import { createApplicationBack as __opCreateApplicationBack } from '../_application_navigation'"
+    )
+  if (ir.applicationStateRetention !== undefined)
+    scriptLines.push(
+      "import { useApplicationPageState as __opUseApplicationPageState, useApplicationPageScroll as __opUseApplicationPageScroll } from '../lib/open-pencil-application-session-vue'"
+    )
+  if (ir.applicationLeaveConfirm)
+    scriptLines.push(
+      "import { useApplicationLeave as __opUseApplicationLeave } from '../lib/open-pencil-application-guards-vue'"
+    )
+  const pageViewport = ir.pageViewport?.mode !== 'fixed' ? ir.pageViewport : undefined
+  if (pageViewport) {
+    scriptLines.push("import OPPageViewport from '../components/_open-pencil-page-viewport.vue'")
+  }
   if (backendAvailable) scriptLines.push("import * as __opBackend from '../lowcode-backend'")
   if (componentImports) scriptLines.push(componentImports)
-  scriptLines.push(...vueSelectImports(ir.children, '../components'))
-  scriptLines.push(...vueAutocompleteImports(ir.children, '../components'))
-  scriptLines.push(...vueInputControlImports(ir.children, '../components'))
-  if (moduleImports) scriptLines.push(moduleImports)
-  if (lowcode.toast) scriptLines.push(`import { __opToast } from '../lowcode-toast'`)
-  if (lowcode.confirm) scriptLines.push(`import { __opConfirm } from '../lowcode-confirm'`)
-  if (lowcode.validation) {
-    scriptLines.push(buildVueValidationImport(ir.children))
-  }
+  appendVueFeatureImports(
+    scriptLines,
+    ir.children,
+    '../components',
+    '../lib',
+    moduleImports,
+    lowcode
+  )
   if ((lowcode.supabase || currentUser) && supabaseAvailable) {
     scriptLines.push(
       `import { getSupabaseClient as __opGetSupabaseClient } from '../lowcode-supabase'`
@@ -181,7 +254,12 @@ export function buildVuePageModule(
   if (docImport) scriptLines.push(docImport)
   if (routerAvailable) {
     scriptLines.push('const __opRouter = __useRouter()', 'const __opRoute = __useRoute()')
-    scriptLines.push('const $params = __opRoute.params', 'const $query = __opRoute.query')
+    if (nodesHaveBackHandler(ir.children))
+      scriptLines.push('const __opBack = __opCreateApplicationBack(__opRouter)')
+    scriptLines.push(
+      'const $params = __vueComputed(() => __opRoute.params)',
+      'const $query = __vueComputed(() => __opRoute.query)'
+    )
   } else if (ir.usesRouteParams || ir.usesQueryParams) {
     scriptLines.push('const $params: Record<string, string> = {}')
     scriptLines.push('const $query: Record<string, string> = {}')
@@ -190,13 +268,24 @@ export function buildVuePageModule(
   for (const query of ir.listQueries ?? []) {
     scriptLines.push(`const ${listAliases.get(query.rowsName)} = __vueRef<unknown[]>([])`)
   }
-  for (const state of ir.states) scriptLines.push(emitState(state, context))
+  for (const state of ir.states)
+    scriptLines.push(
+      emitState(state, context, ir.applicationStateRetention === 'preserve' ? ir.pageId : undefined)
+    )
+  if (ir.applicationStateRetention !== undefined)
+    scriptLines.push(
+      `__opUseApplicationPageScroll(${scriptJSON(ir.pageId)}, ${scriptJSON(ir.applicationStateRetention)})`
+    )
   for (const name of docStateReads) {
     if (pageStateNames.has(name)) continue
     scriptLines.push(
       `const ${identAliases.get(name)} = __useDocState<${docStateTypeScript(docStateTypes.get(name))}>(${scriptJSON(name)})`
     )
   }
+  if (ir.applicationLeaveConfirm)
+    scriptLines.push(
+      `__opUseApplicationLeave(${scriptJSON(ir.pageId)}, () => ({ ${ir.states.map((state) => `${scriptJSON(state.name)}: ${identAliases.get(state.name)}.value`).join(', ')} }))`
+    )
   if (requestGateActive) {
     scriptLines.push(...buildVueRequestGateRuntime(requestDebounceActive))
   }
@@ -208,14 +297,24 @@ export function buildVuePageModule(
   }
   scriptLines.push(...emitVueBackendPageRuntime(ir, context, routerAvailable, currentUser))
   appendVueContextRuntime(scriptLines, validatedFields, context)
+  if (pageViewport)
+    scriptLines.push(`const __opPageViewport = ${scriptJSON(pageViewport)} as const`)
+  if (pageViewport)
+    scriptLines.push(
+      `const __opPageViewportStyles = ${scriptJSON(pageViewportStyleOptions(ir))} as const`
+    )
+  const wrapperTag = pageViewport ? 'OPPageViewport' : 'main'
+  const viewportAttr = pageViewport
+    ? ' :config="__opPageViewport" v-bind="__opPageViewportStyles"'
+    : ''
   return {
     source: `<script setup lang="ts">
 ${scriptLines.filter(Boolean).join('\n')}
 </script>
 
 <template>
-  <main${pageRootAttrs(ir, options.devMode, requestGateActive)}>
-${template}  </main>
+  <${wrapperTag}${viewportAttr}${pageRootAttrs(ir, options.devMode, requestGateActive)}>
+${template}  </${wrapperTag}>
 </template>
 `,
     warnings: context.warnings
@@ -228,7 +327,12 @@ export function buildVueComponentModule(
   options: CompilerOptions,
   routerAvailable: boolean,
   docStateTypes: ReadonlyMap<string, IRTree['docStates'][number]['type']> = new Map(),
-  runtime: { supabase?: boolean; serverWorkflow?: boolean; backend?: boolean } = {}
+  runtime: {
+    supabase?: boolean
+    serverWorkflow?: boolean
+    backend?: boolean
+    applicationGuards?: boolean
+  } = {}
 ): VueSourceEmission {
   const backendAvailable = definition.backendClient !== undefined
   const lowcode = collectVueComponentLowcodeUsage(definition)
@@ -275,6 +379,10 @@ export function buildVueComponentModule(
     if (!identAliases.has(name)) identAliases.set(name, generatedAlias('Doc', name))
   }
   const refNames = new Set(identAliases.values())
+  if (routerAvailable) {
+    if (usesRouteParams) refNames.add(ROUTE_PARAMS_IDENT)
+    if (usesQueryParams) refNames.add(QUERY_PARAMS_IDENT)
+  }
   const context = createContext(
     options.devMode,
     routerAvailable,
@@ -286,6 +394,7 @@ export function buildVueComponentModule(
     componentAliases,
     requestRuntime
   )
+  context.applicationGuards = runtime.applicationGuards
   if (currentUserUnsupported) context.warnings.push(currentUserBindingWarning())
   for (const name of docStateReads) {
     if (propNames.has(name)) {
@@ -298,6 +407,15 @@ export function buildVueComponentModule(
   if (requestDebounceActive) vueNames.push('onBeforeUnmount as __vueOnBeforeUnmount')
   const vueImports = `import { ${vueNames.join(', ')} } from 'vue'`
   const scriptLines = [vueImports]
+  if (runtime.applicationGuards)
+    scriptLines.push(
+      "import { useApplicationGuardNavigationOwner as __opUseNavigationOwner } from '../lib/open-pencil-application-guards-vue'",
+      'const __opCanNavigate = __opUseNavigationOwner()'
+    )
+  if (routerAvailable && nodesHaveBackHandler(bodyNodes))
+    scriptLines.push(
+      "import { createApplicationBack as __opCreateApplicationBack } from '../_application_navigation'"
+    )
   if (backendAvailable) scriptLines.push("import * as __opBackend from '../lowcode-backend'")
   if (routerAvailable) {
     const imports = [
@@ -308,10 +426,14 @@ export function buildVueComponentModule(
       `import { ${imports.join(', ')} } from 'vue-router'`,
       'const __opRouter = __useRouter()'
     )
+    if (nodesHaveBackHandler(bodyNodes))
+      scriptLines.push('const __opBack = __opCreateApplicationBack(__opRouter)')
     if (usesRouteParams || usesQueryParams) {
       scriptLines.push('const __opRoute = __useRoute()')
-      if (usesRouteParams) scriptLines.push('const $params = __opRoute.params')
-      if (usesQueryParams) scriptLines.push('const $query = __opRoute.query')
+      if (usesRouteParams) {
+        scriptLines.push('const $params = __vueComputed(() => __opRoute.params)')
+      }
+      if (usesQueryParams) scriptLines.push('const $query = __vueComputed(() => __opRoute.query)')
     }
   } else {
     if (usesRouteParams) scriptLines.push('const $params: Record<string, string> = {}')
@@ -320,15 +442,7 @@ export function buildVueComponentModule(
   for (const name of componentNames) {
     scriptLines.push(`import ${componentAliases.get(name)} from './${name}.vue'`)
   }
-  scriptLines.push(...vueSelectImports(bodyNodes, '.'))
-  scriptLines.push(...vueAutocompleteImports(bodyNodes, '.'))
-  scriptLines.push(...vueInputControlImports(bodyNodes, '.'))
-  if (moduleImports) scriptLines.push(moduleImports)
-  if (lowcode.toast) scriptLines.push(`import { __opToast } from '../lowcode-toast'`)
-  if (lowcode.confirm) scriptLines.push(`import { __opConfirm } from '../lowcode-confirm'`)
-  if (lowcode.validation) {
-    scriptLines.push(buildVueValidationImport(bodyNodes))
-  }
+  appendVueFeatureImports(scriptLines, bodyNodes, '.', '../lib', moduleImports, lowcode)
   if ((lowcode.supabase || rawDocStateReads.includes('$currentUser')) && supabaseAvailable) {
     scriptLines.push(
       `import { getSupabaseClient as __opGetSupabaseClient } from '../lowcode-supabase'`
@@ -415,7 +529,11 @@ ${template}  </div>
   }
 }
 
-function emitState(state: IRTree['states'][number], context: VueEmitContext): string {
+function emitState(
+  state: IRTree['states'][number],
+  context: VueEmitContext,
+  applicationPageId?: string
+): string {
   const name = context.identAliases.get(state.name) ?? state.name
   const value = serializeVueStateDefault(state.defaultValue, state.type)
   const type = docStateTypeScript(state.type)
@@ -423,6 +541,8 @@ function emitState(state: IRTree['states'][number], context: VueEmitContext): st
     return `const ${name} = __vueComputed<${type}>(() => ${scriptExpression(state.computed.ast, context.refNames, context.identAliases)})`
   }
   if (state.computedInvalid) return `const ${name} = __vueComputed<${type}>(() => ${value})`
+  if (applicationPageId !== undefined)
+    return `const ${name} = __opUseApplicationPageState<${type}>(${scriptJSON(applicationPageId)}, ${scriptJSON(state.name)}, ${value})`
   return `const ${name} = __vueRef<${type}>(${value})`
 }
 
@@ -549,18 +669,8 @@ function emitElementCore(
   if (node.link) tagName = 'a'
   const tag = safeVueTag(tagName)
   const attrs = emitVueElementAttributes(node, context, locals)
-  if (node.tag === 'input' && node.inputControl) {
-    const binding = `__opInputControl_${++context.expressionIndex}`
-    context.templateBindings.push(`const ${binding} = ${scriptJSON(node.inputControl)} as const`)
-    attrs.push(`:config="${binding}"`)
-    return `${pad}<OpInputControl${attrs.length ? ` ${attrs.join(' ')}` : ''} />\n`
-  }
-  if (node.tag === 'input' && node.inputSuggestions) {
-    const binding = `__opSuggestions_${++context.expressionIndex}`
-    context.templateBindings.push(`const ${binding} = ${scriptJSON(node.inputSuggestions)}`)
-    attrs.push(`:suggestions="${binding}"`)
-    return `${pad}<OpAutocomplete${attrs.length ? ` ${attrs.join(' ')}` : ''} />\n`
-  }
+  const enhancedInput = emitVueEnhancedInput(node, context, pad, attrs)
+  if (enhancedInput !== null) return enhancedInput
   if (node.tag === 'select' && node.selectFeatures) {
     attrs.push(
       `:options="${escapeAttr(vueSelectOptionsBinding(node, context, locals))}"`,
@@ -584,6 +694,42 @@ function emitElementCore(
         )
       : ''
   return `${open}>\n${summary}${children}${pad}</${tag}>\n`
+}
+
+function emitVueEnhancedInput(
+  node: IRElement,
+  context: VueEmitContext,
+  pad: string,
+  attrs: string[]
+): string | null {
+  if (node.tag !== 'input') return null
+  let component: string
+  if (node.inputControl) {
+    const binding = `__opInputControl_${++context.expressionIndex}`
+    context.templateBindings.push(`const ${binding} = ${scriptJSON(node.inputControl)} as const`)
+    attrs.push(`:config="${binding}"`)
+    component = 'OpInputControl'
+  } else if (node.inputSuggestions) {
+    const binding = `__opSuggestions_${++context.expressionIndex}`
+    context.templateBindings.push(`const ${binding} = ${scriptJSON(node.inputSuggestions)}`)
+    attrs.push(`:suggestions="${binding}"`)
+    component = 'OpAutocomplete'
+  } else if (node.controlled?.write.targetType === 'number') {
+    component = 'OpNumberInput'
+  } else return null
+  appendVueInputResetProps(node, attrs)
+  return `${pad}<${component}${attrs.length ? ` ${attrs.join(' ')}` : ''} />\n`
+}
+
+function appendVueInputResetProps(node: IRElement, attrs: string[]): void {
+  if (node.controlled)
+    attrs.push(
+      `form-reset-field-key="${escapeAttr(`${node.controlled.write.kind}:${node.controlled.write.name}`)}"`
+    )
+  if (node.validation)
+    attrs.push(
+      `@external-rebase="${escapeAttr(`__resetFieldValidation(${scriptJSON(node.validation.key)})`)}"`
+    )
 }
 
 function emitValidationError(

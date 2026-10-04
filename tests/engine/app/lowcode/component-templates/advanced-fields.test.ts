@@ -15,9 +15,9 @@ for (const locale of ['en', 'zh-CN']) {
     const fixture = componentTemplateFixture([...IDS], locale)
     try {
       const catalog = getComponentTemplates(locale)
-      expect(catalog).toHaveLength(62)
+      expect(catalog).toHaveLength(66)
       expect(catalog.filter((item) => item.kind === 'basic')).toHaveLength(54)
-      expect(catalog.filter((item) => item.kind === 'combination')).toHaveLength(8)
+      expect(catalog.filter((item) => item.kind === 'combination')).toHaveLength(12)
       expect(catalog.slice(45, 48).map((item) => item.id)).toEqual([...IDS])
       for (const id of IDS)
         expect(catalog.find((item) => item.id === id)?.requiredModules).toEqual([])

@@ -77,12 +77,16 @@ function emitNavigate(handler: IRNavigateHandler, context: ExpoEventContext): st
   const suffix = handler.to.slice(authoredPathname.length)
   const pathname = `${context.routeRewrites.get(authoredPathname) ?? expoRoutePath(authoredPathname)}${suffix}`
   if (!handler.params || handler.params.length === 0) {
-    return [`router.push(${JSON.stringify(pathname)});`]
+    return [
+      `router.${handler.history === 'replace' ? 'replace' : 'push'}(${JSON.stringify(pathname)});`
+    ]
   }
   const params = handler.params
     .map((param) => `${JSON.stringify(param.name)}: String(${emitExpression(param.ast)})`)
     .join(', ')
-  return [`router.push({ pathname: ${JSON.stringify(pathname)}, params: { ${params} } });`]
+  return [
+    `router.${handler.history === 'replace' ? 'replace' : 'push'}({ pathname: ${JSON.stringify(pathname)}, params: { ${params} } });`
+  ]
 }
 
 export function expoRoutePath(route: string): string {

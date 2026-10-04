@@ -307,7 +307,7 @@ export function createPageActions(ctx: EditorContext) {
       // faces are ready, while hundreds of reactive graph writes stall the editor shell.
       if (page.source.format !== 'fig') await computeAllLayoutsAsync(switchGraph, pageId, signal)
       if (!isCurrentSwitch()) return
-      ctx.requestRender()
+      ctx.requestRender('page-navigation')
 
       backgroundOwnsSwitch = true
       void (async () => {
@@ -495,7 +495,7 @@ export function createPageActions(ctx: EditorContext) {
     if (previousPageId !== prepared.pageId) {
       ctx.emitEditorEvent('page:changed', prepared.pageId, previousPageId)
     }
-    ctx.requestRender()
+    ctx.requestRender('page-navigation')
     return true
   }
 

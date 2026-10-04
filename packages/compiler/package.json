@@ -53,6 +53,11 @@
       "bun": "./src/managed-preview/protocol.ts",
       "default": "./dist/managed-preview/protocol.mjs"
     },
+    "./flutter-preview": {
+      "types": "./src/flutter-preview/index.ts",
+      "bun": "./src/flutter-preview/index.ts",
+      "default": "./dist/flutter-preview/index.mjs"
+    },
     "./preview-local-backend": {
       "types": "./src/local-backend-preview/connection.ts",
       "bun": "./src/local-backend-preview/connection.ts",

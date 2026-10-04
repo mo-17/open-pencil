@@ -23,6 +23,7 @@ import type { ExprAst, InputControlConfig } from '@open-pencil/lowcode'
 
 import type { IRMotionDriverSpec } from './drivers'
 import type { IRGeneratedEffect } from './generated-effect'
+import type { IRLayout, IRPageViewport, IRResponsiveLayout } from './layout'
 import type { IRMotion, IRMotionScene } from './motion'
 import type { IRPrototypeDecoration, IRPrototypeNode } from './prototype'
 
@@ -33,6 +34,7 @@ export type {
   IRMotionDriverSpec
 } from './drivers'
 export type { IRGeneratedEffect } from './generated-effect'
+export type { IRLayout, IRPageViewport, IRResponsiveLayout } from './layout'
 export type {
   IRMotion,
   IRMotionDirection,
@@ -74,6 +76,8 @@ export type IRNode = IRElement | IRText | IRExpression | IRConditional | IRList 
  */
 export interface IRComponentRef extends IRPrototypeDecoration {
   kind: 'componentRef'
+  layout?: IRLayout
+  responsiveLayout?: IRResponsiveLayout[]
   /** SceneNode id of the master/instance this ref was derived from. */
   sourceId: string
   /** PascalCase component name (matches the emitted `src/components/<name>.tsx`). */
@@ -192,6 +196,9 @@ export interface VariantCase {
 
 export interface IRElement extends IRPrototypeDecoration {
   kind: 'element'
+  /** Measured, framework-neutral layout; native adapters need no CSS prefix parsing. */
+  layout?: IRLayout
+  responsiveLayout?: IRResponsiveLayout[]
   /** SceneNode id this IR node was derived from. Adapters may emit this as a
    *  `data-node-id` attribute later for canvas↔preview highlighting. */
   sourceId: string
@@ -326,6 +333,8 @@ export interface IRElement extends IRPrototypeDecoration {
    *  actions) when any field is invalid. The keys are the descendant fields'
    *  SceneNode ids. */
   formValidationKeys?: string[]
+  /** Writable, mounted descendant fields restored by this FORM's reset. */
+  formResetFields?: IRFormResetField[]
   /** Module panels/portals validate only fields mounted in this actual DOM form. */
   formValidationMountedOnly?: true
   /** Phase 4 §19 follow-up — opt-in FORM-level summary for the field errors
@@ -357,7 +366,8 @@ export interface IRElement extends IRPrototypeDecoration {
  *  identifies the writer the synthesized `onChange` calls; `targetType`
  *  selects the read attr + coercion + onChange source:
  *   - string  → `value={read}` + `e.target.value` (pass-through)
- *   - number  → `value={read}` + `Number(e.target.value)` + `type="number"`
+ *   - number  → finite, complete number drafts write business state; empty or
+ *     incomplete DOM text stays local to that input until resolved or reset
  *   - boolean → `checked={read}` + `e.target.checked` (no coerce; §3.v4
  *     CHECKBOX / SWITCH, single mode)
  *   - array   → per-child `checked={read.includes(<opt>)}` + onChange that
@@ -375,6 +385,17 @@ export interface IRControlledInput {
     targetType: 'string' | 'number' | 'boolean' | 'array'
   }
 }
+
+/** A FORM restores each writable business state once even when several mounted
+ * controls display it. Source ids keep conditional or removed fields out of a
+ * reset without depending on translated names or validation rules. */
+export interface IRFormResetField {
+  write: IRControlledInput['write']
+  defaultValue: string | number | boolean | string[]
+  sourceIds: string[]
+}
+
+export const FORM_RESET_FIELD_ATTRIBUTE = 'data-openpencil-form-reset-node'
 
 /** Phase 4 §24.1: a node rendered as an `<img>` (from `interactiveProps.image`).
  *  Exactly one of `srcExpr` / `srcLiteral` is set; `alt` defaults to '' (a valid
@@ -412,6 +433,12 @@ export interface IRPaginationBindings {
   write?: IRControlledInput['write']
 }
 
+/** Stepper currentIndex is workflow display state, never a FORM submission field. */
+export interface IRStepperBindings {
+  currentIndex: ExprAst
+  write?: IRControlledInput['write']
+}
+
 /** Framework-neutral trusted-module invocation. The payload is produced by a
  * registered lowerer and therefore contains only the module's bounded data. */
 export interface IRModuleValueField {
@@ -420,6 +447,8 @@ export interface IRModuleValueField {
   read: ExprAst
   write?: IRControlledInput['write']
   defaultValue?: unknown
+  /** The owning compiled FORM restores this business state on accepted reset. */
+  formResetManaged?: true
   name?: string
   validation?: IRFieldValidation
   validationScopeMarker?: true
@@ -440,7 +469,11 @@ export interface IRModule {
   videoPosterExpr?: ExprAst
   /** Reviewed Upload-only boolean read; invalid authored bindings lower to true. */
   uploadDisabledExpr?: ExprAst
+  /** Reviewed read-only data sources; presence preserves failed/empty bound values. */
+  dataGridRowsExpr?: ExprAst
+  chartDataExpr?: ExprAst
   pagination?: IRPaginationBindings
+  stepper?: IRStepperBindings
   valueFields?: IRModuleValueField[]
 }
 
@@ -742,6 +775,7 @@ export type IREventHandler =
   | IRBackendCommandRecoveryHandler
   | IRSetStateHandler
   | IRNavigateHandler
+  | IRBackHandler
   | IRSetVariableHandler
   | IRAPICallHandler
   | IRSupabaseQueryHandler
@@ -790,9 +824,18 @@ export interface IRNavigateHandler {
   kind: 'navigate'
   /** Route path, e.g. `/about` or `/product/:id`. Already validated non-empty. */
   to: string
+  /** Omitted history retains the existing push behavior. */
+  history?: 'push' | 'replace'
   /** Phase 4 §16.2: resolved values for a dynamic target's route params. Empty /
    *  absent → plain `navigate(to)`; non-empty → `navigate(generatePath(to, {…}))`. */
   params?: IRNavigateParam[]
+}
+
+/** Back only traverses history entries established by this application session. */
+export interface IRBackHandler {
+  kind: 'back'
+  /** Concrete internal route used when no trusted application entry precedes this page. */
+  fallback: string
 }
 
 /** Phase 4 §16.2: one resolved `navigate` route param — its name (the `:id`
@@ -1128,6 +1171,16 @@ export interface IRStateDecl {
 export type IRDocStateDecl = IRStateDecl
 
 export interface IRTree {
+  /** Present only in an enabled application with an authored navigation policy. */
+  applicationGuardsEnabled?: true
+  applicationEnterGuard?: { ast: ExprAst; references: string[]; fallback: string }
+  applicationLeaveConfirm?: { ast: ExprAst; references: string[]; message: string }
+  /** Authored application page recovery only; absent preserves legacy source output. */
+  applicationStateRetention?: 'reset' | 'preserve'
+  /** Present only in explicit application mode; the first selected page owns the landing route. */
+  applicationStart?: true
+  /** Explicit sizing policy only; absent preserves legacy page wrappers. */
+  pageViewport?: IRPageViewport
   backendClient?: IRBackendClientConfig
   backendQueries?: IRBackendResourceQuery[]
   /** SceneNode id of the page (CANVAS) this tree was derived from. */

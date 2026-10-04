@@ -1,17 +1,13 @@
 import type { Canvas } from 'canvaskit-wasm'
 
-import type { SceneNode } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
-import {
-  buildChartLayout,
-  CHART_MODULE_TYPE,
-  CHART_PLUGIN_ID,
-  resolveChartModule
-} from '#core/plugins/chart'
+import { CHART_MODULE_TYPE, CHART_PLUGIN_ID, resolveChartModule } from '#core/plugins/chart'
 
+import { chartDataProjection } from './chart/data'
 import { drawChartGeometry } from './chart/draw'
-import { drawChartText } from './chart/text'
+import { chartEmptyLabel, drawChartText } from './chart/text'
 import { resolveModulePreviewFrame, withModulePreviewSurface } from './preview'
 import type { ModuleCanvasAdapter } from './types'
 
@@ -19,15 +15,18 @@ import type { ModuleCanvasAdapter } from './types'
 export function renderChartModulePreview(
   renderer: SkiaRenderer,
   canvas: Canvas,
-  node: SceneNode
+  node: SceneNode,
+  graph?: SceneGraph
 ): boolean {
   const frame = resolveModulePreviewFrame(node, resolveChartModule)
   if (!frame) return false
   if (frame.empty) return true
-  const model = buildChartLayout(frame.config, frame.width, frame.height)
+  const projection = chartDataProjection(node, graph, frame.config, frame.width, frame.height)
+  const model = projection.layout
+  const emptyCopy = chartEmptyLabel(node, projection.invalid, projection.emptyData)
   withModulePreviewSurface(renderer, canvas, frame, model.backgroundColor, () => {
     drawChartGeometry(renderer, canvas, model)
-    for (const item of model.texts) drawChartText(renderer, canvas, node, item)
+    for (const item of model.texts) drawChartText(renderer, canvas, node, item, emptyCopy)
   })
   return true
 }

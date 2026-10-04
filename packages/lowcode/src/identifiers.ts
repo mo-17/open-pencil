@@ -82,6 +82,7 @@ export const LOWCODE_GENERATED_RUNTIME_IDENTIFIERS = [
   'intl',
   'invokeServerWorkflow',
   'navigate',
+  '__opBack',
   'router',
   'setDocState',
   'styles',

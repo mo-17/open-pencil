@@ -9,7 +9,11 @@ import {
   withModulePreviewSurface
 } from '#core/canvas/modules/preview'
 import type { ModuleCanvasAdapter } from '#core/canvas/modules/types'
-import { readModuleInitialValue, moduleNumericValue } from '#core/canvas/modules/value-controls'
+import {
+  readModuleInitialValue,
+  moduleNumericValue,
+  moduleControlState
+} from '#core/canvas/modules/value-controls'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { withTextParagraph } from '#core/canvas/text'
 import { parseColor } from '#core/color'
@@ -78,6 +82,7 @@ export function renderSliderModulePreview(
       (frame.config.range && (!valid(rawEnd) || Number(rawStart) > Number(rawEnd)))
     const config = {
       ...frame.config,
+      ...moduleControlState(node, frame.config),
       initialValue: valid(rawStart) ? rawStart : frame.config.min,
       initialEndValue: valid(rawEnd) ? rawEnd : frame.config.min
     }
@@ -94,77 +99,84 @@ export function renderSliderModulePreview(
       values,
       boundsY
     } = geometry
-    const opacity = config.disabled ? 0.5 : 1
-    withModulePreviewSurface(renderer, canvas, frame, config.backgroundColor, () => {
-      const valueWidth = config.showValue ? innerWidth * 0.5 : 0
-      drawLabel(renderer, canvas, node, {
-        text: config.label,
-        x: inset,
-        y: 16,
-        width: Math.max(0, innerWidth - valueWidth - (config.showValue ? 8 : 0)),
-        fontSize: config.fontSize,
-        color: config.textColor,
-        weight: 600,
-        opacity
-      })
-      if (config.showValue)
+    const opacity = 1
+    withModulePreviewSurface(
+      renderer,
+      canvas,
+      frame,
+      config.backgroundColor,
+      () => {
+        const valueWidth = config.showValue ? innerWidth * 0.5 : 0
         drawLabel(renderer, canvas, node, {
-          text: invalid ? '—' : values.slice(0, config.range ? 2 : 1).join(' – '),
-          x: inset + innerWidth - valueWidth,
+          text: config.label,
+          x: inset,
           y: 16,
-          width: valueWidth,
+          width: Math.max(0, innerWidth - valueWidth - (config.showValue ? 8 : 0)),
           fontSize: config.fontSize,
-          color: config.accentColor,
-          align: 'RIGHT',
+          color: config.textColor,
           weight: 600,
           opacity
         })
-      const pill = (left: number, right: number, color: string) => {
-        configureModulePreviewPaint(renderer, color)
-        renderer.fillPaint.setAlphaf(opacity)
-        canvas.drawRRect(
-          renderer.ck.RRectXY(renderer.ck.LTRBRect(left, trackY - 3, right, trackY + 3), 3, 3),
-          renderer.fillPaint
-        )
-      }
-      pill(trackLeft, trackLeft + trackWidth, config.trackColor)
-      if (!invalid) pill(startX, endX, config.accentColor)
-      const thumb = (x: number) => {
-        configureModulePreviewPaint(renderer, config.accentColor)
-        renderer.fillPaint.setAlphaf(opacity)
-        canvas.drawCircle(x, trackY, thumbRadius, renderer.fillPaint)
-        configureModulePreviewPaint(renderer, config.backgroundColor)
-        canvas.drawCircle(x, trackY, Math.max(0, thumbRadius - 1), renderer.fillPaint)
-        configureModulePreviewPaint(renderer, config.accentColor)
-        renderer.fillPaint.setAlphaf(opacity)
-        canvas.drawCircle(x, trackY, Math.max(0, thumbRadius - 3), renderer.fillPaint)
-      }
-      if (!invalid) {
-        if (config.range) thumb(startX)
-        thumb(endX)
-      }
-      if (config.showBounds) {
-        drawLabel(renderer, canvas, node, {
-          text: String(config.min),
-          x: inset,
-          y: boundsY,
-          width: innerWidth / 2,
-          fontSize: config.fontSize * 0.85,
-          color: config.textColor,
-          opacity: opacity * 0.7
-        })
-        drawLabel(renderer, canvas, node, {
-          text: String(config.max),
-          x: inset + innerWidth / 2,
-          y: boundsY,
-          width: innerWidth / 2,
-          fontSize: config.fontSize * 0.85,
-          color: config.textColor,
-          align: 'RIGHT',
-          opacity: opacity * 0.7
-        })
-      }
-    })
+        if (config.showValue)
+          drawLabel(renderer, canvas, node, {
+            text: invalid ? '—' : values.slice(0, config.range ? 2 : 1).join(' – '),
+            x: inset + innerWidth - valueWidth,
+            y: 16,
+            width: valueWidth,
+            fontSize: config.fontSize,
+            color: config.accentColor,
+            align: 'RIGHT',
+            weight: 600,
+            opacity
+          })
+        const pill = (left: number, right: number, color: string) => {
+          configureModulePreviewPaint(renderer, color)
+          renderer.fillPaint.setAlphaf(opacity)
+          canvas.drawRRect(
+            renderer.ck.RRectXY(renderer.ck.LTRBRect(left, trackY - 3, right, trackY + 3), 3, 3),
+            renderer.fillPaint
+          )
+        }
+        pill(trackLeft, trackLeft + trackWidth, config.trackColor)
+        if (!invalid) pill(startX, endX, config.accentColor)
+        const thumb = (x: number) => {
+          configureModulePreviewPaint(renderer, config.accentColor)
+          renderer.fillPaint.setAlphaf(opacity)
+          canvas.drawCircle(x, trackY, thumbRadius, renderer.fillPaint)
+          configureModulePreviewPaint(renderer, config.backgroundColor)
+          canvas.drawCircle(x, trackY, Math.max(0, thumbRadius - 1), renderer.fillPaint)
+          configureModulePreviewPaint(renderer, config.accentColor)
+          renderer.fillPaint.setAlphaf(opacity)
+          canvas.drawCircle(x, trackY, Math.max(0, thumbRadius - 3), renderer.fillPaint)
+        }
+        if (!invalid) {
+          if (config.range) thumb(startX)
+          thumb(endX)
+        }
+        if (config.showBounds) {
+          drawLabel(renderer, canvas, node, {
+            text: String(config.min),
+            x: inset,
+            y: boundsY,
+            width: innerWidth / 2,
+            fontSize: config.fontSize * 0.85,
+            color: config.textColor,
+            opacity: opacity * 0.7
+          })
+          drawLabel(renderer, canvas, node, {
+            text: String(config.max),
+            x: inset + innerWidth / 2,
+            y: boundsY,
+            width: innerWidth / 2,
+            fontSize: config.fontSize * 0.85,
+            color: config.textColor,
+            align: 'RIGHT',
+            opacity: opacity * 0.7
+          })
+        }
+      },
+      config.disabled ? 0.5 : 1
+    )
   })
 }
 

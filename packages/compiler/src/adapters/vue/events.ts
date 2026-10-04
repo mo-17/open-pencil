@@ -45,6 +45,7 @@ const SUPPORTED_EVENT_KINDS = new Set<IREventHandler['kind']>([
   'setState',
   'setVariable',
   'navigate',
+  'back',
   'apiCall',
   'condition',
   'delay',
@@ -109,18 +110,32 @@ function controlledWritePrelude(
   context: VueEmitContext
 ): string[] {
   const validationKey = fieldValidationKey ?? controlled.validationKey
+  const numeric = controlled.write.targetType === 'number'
   // Group toggles read the current array; evaluate before the synchronous Vue
   // write so validation does not append/remove the option a second time.
-  const nextValue = controlled.validationKey ? '__opNextValue' : raw
-  const prelude = [
-    ...(controlled.validationKey ? [`const __opNextValue = ${raw}`] : []),
-    controlledWriteStatement(controlled, context, nextValue)
-  ]
+  let nextValue = raw
+  const prelude: string[] = []
+  if (numeric) {
+    nextValue = '__opNextNumber'
+    prelude.push(`const __opNextNumber = ${raw}`)
+  } else if (controlled.validationKey) {
+    nextValue = '__opNextValue'
+    prelude.push(`const __opNextValue = ${raw}`)
+  }
+  const write = controlledWriteStatement(controlled, context, nextValue)
+  prelude.push(numeric ? `if (__opNextNumber !== undefined) ${write}` : write)
   if (validationKey) {
     const key = vueValidationKeyBinding(context, validationKey)
-    prelude.push(`__validateFieldValue(${key}, ${nextValue})`)
+    prelude.push(
+      numeric ? vueNumericDraftValidation(key) : `__validateFieldValue(${key}, ${nextValue})`
+    )
   }
   return prelude
+}
+
+function vueNumericDraftValidation(key: string): string {
+  const input = '(__opEvent.target as HTMLInputElement)'
+  return `if (${input}.validity.badInput || ${input}.validity.customError) { __fieldErrors.value = { ...__fieldErrors.value, [${key}]: ${input}.validationMessage || 'Invalid number' } } else { __validateFieldValue(${key}, ${input}.value) }`
 }
 
 function controlledWriteStatement(
@@ -180,7 +195,8 @@ export function emitEventAttributes(
   sourceId: string,
   locals: readonly VueLocalBinding[],
   skip?: string | ReadonlySet<string>,
-  targetTag?: IRElement['tag']
+  targetTag?: IRElement['tag'],
+  changeEvent?: 'stepschange'
 ): string[] {
   const attrs: string[] = []
   for (const [eventName, rawHandlers] of Object.entries(events ?? {}) as [
@@ -189,7 +205,8 @@ export function emitEventAttributes(
   ][]) {
     if (eventSkipped(eventName, skip) || !rawHandlers) continue
     const handlers = supportedHandlers(rawHandlers, context)
-    const directive = EVENT_DIRECTIVES[eventName]
+    const directive =
+      eventName === 'onChange' && changeEvent ? changeEvent : EVENT_DIRECTIVES[eventName]
     if (handlers.length === 0) {
       if (eventName === 'onSubmit') attrs.push('@submit.prevent')
       continue
@@ -198,7 +215,8 @@ export function emitEventAttributes(
     registerEventFunction(context, functionName, handlers, locals, [], {
       eventName,
       requestKey: vueRequestKey(sourceId, eventName),
-      targetTag
+      targetTag,
+      stepperChange: directive === 'stepschange'
     })
     const args = ['$event', ...locals.map((local) => local.alias)].join(', ')
     const modifier = eventName === 'onSubmit' ? '.prevent' : ''
@@ -227,7 +245,10 @@ export function emitValidationEventAttributes(
   } else if (node.controlled?.write.targetType === 'array') {
     validationCall = `__validateFieldValue(${key}, Array.from((__opEvent.target as HTMLSelectElement).selectedOptions, option => option.value))`
   } else if (node.controlled) {
-    validationCall = `__validateFieldValue(${key}, (__opEvent.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value)`
+    validationCall =
+      node.controlled.write.targetType === 'number'
+        ? vueNumericDraftValidation(key)
+        : `__validateFieldValue(${key}, (__opEvent.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value)`
   }
   const functionName = eventFunctionName(context, node.sourceId, 'blur')
   registerEventFunction(
@@ -270,8 +291,16 @@ export function emitValidatedSubmitAttribute(
     handlers,
     locals,
     [
-      ...(mountedOnly ? ['if (!(__opSubmitForm instanceof HTMLFormElement) || !__opSubmitForm.checkValidity()) return'] : []),
-      ...(keys.length > 0 ? [`if (!__validateFields(${mountedOnly ? '__opValidationKeys' : `[${keySource}]`}, __opSubmitForm)) return`] : []),
+      ...(mountedOnly
+        ? [
+            'if (!(__opSubmitForm instanceof HTMLFormElement) || !__opSubmitForm.checkValidity()) return'
+          ]
+        : []),
+      ...(keys.length > 0
+        ? [
+            `if (!__validateFields(${mountedOnly ? '__opValidationKeys' : `[${keySource}]`}, __opSubmitForm)) return`
+          ]
+        : []),
       ...(mountedOnly ? [MOUNTED_VALIDATION_COMPLETION_GUARD] : [])
     ],
     {
@@ -291,6 +320,7 @@ interface VueEventRequestOptions {
   eventName: IREventName
   requestKey: string
   targetTag?: IRElement['tag']
+  stepperChange?: boolean
 }
 
 function registerEventFunction(
@@ -310,8 +340,18 @@ function registerEventFunction(
   const params = ['__opEvent: Event', ...localParams].join(', ')
   const statements = emitHandlerList(handlers, context, handlerAliases)
   const eventLocals = [
-    ...vueFieldEventLocals(request?.targetTag),
-    `const $value = (__opEvent.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value ?? ''`,
+    ...(context.applicationGuards
+      ? ['const __opNavigationOrigin = __opRouter.currentRoute.value.fullPath']
+      : []),
+    ...(request?.stepperChange
+      ? [
+          'const $event = __opEvent as CustomEvent<{currentIndex:number;previousIndex:number}>',
+          'const $value = $event.detail.currentIndex'
+        ]
+      : [
+          ...vueFieldEventLocals(request?.targetTag),
+          `const $value = (__opEvent.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value ?? ''`
+        ]),
     ...capture
   ]
   let body = [...eventLocals, ...prelude, ...statements]
@@ -386,6 +426,13 @@ function emitHandler(
     }
     case 'navigate':
       return emitNavigate(handler, context, aliases)
+    case 'back':
+      return [
+        ...(context.applicationGuards
+          ? ['if (!__opCanNavigate(__opNavigationOrigin)) return']
+          : []),
+        `await __opBack(${scriptJSON(handler.fallback)})`
+      ]
     case 'apiCall': {
       const url = scriptExpression(handler.url, context.refNames, aliases)
       const init =
@@ -580,7 +627,11 @@ function emitNavigate(
     })
     return []
   }
-  if (inspected.parameters.length === 0) return [`await __opRouter.push(${scriptJSON(route)})`]
+  if (inspected.parameters.length === 0)
+    return [
+      ...(context.applicationGuards ? ['if (!__opCanNavigate(__opNavigationOrigin)) return'] : []),
+      `await __opRouter.${handler.history === 'replace' ? 'replace' : 'push'}(${scriptJSON(route)})`
+    ]
   const values = [...new Set(inspected.parameters.map(({ name }) => name))]
     .filter((name) => params.has(name))
     .map((name) => {
@@ -590,7 +641,8 @@ function emitNavigate(
     })
     .join(', ')
   return [
-    `{ const __opRouteValues: Record<string, string> = { ${values} }; const __opPath = ${scriptJSON(pathname)}.split('/').flatMap((__opSegment) => { const __opMatch = /^:([A-Za-z_][A-Za-z0-9_]*)(\\?)?$/.exec(__opSegment); if (!__opMatch) return [__opSegment]; if (Object.prototype.hasOwnProperty.call(__opRouteValues, __opMatch[1])) return [__opRouteValues[__opMatch[1]]]; return __opMatch[2] ? [] : [__opSegment] }).join('/'); await __opRouter.push(__opPath + ${scriptJSON(suffix)}) }`
+    ...(context.applicationGuards ? ['if (!__opCanNavigate(__opNavigationOrigin)) return'] : []),
+    `{ const __opRouteValues: Record<string, string> = { ${values} }; const __opPath = ${scriptJSON(pathname)}.split('/').flatMap((__opSegment) => { const __opMatch = /^:([A-Za-z_][A-Za-z0-9_]*)(\\?)?$/.exec(__opSegment); if (!__opMatch) return [__opSegment]; if (Object.prototype.hasOwnProperty.call(__opRouteValues, __opMatch[1])) return [__opRouteValues[__opMatch[1]]]; return __opMatch[2] ? [] : [__opSegment] }).join('/'); await __opRouter.${handler.history === 'replace' ? 'replace' : 'push'}(__opPath + ${scriptJSON(suffix)}) }`
   ]
 }
 
@@ -600,7 +652,7 @@ function supportedHandlers(
 ): IREventHandler[] {
   return handlers.filter((handler) => {
     if (!SUPPORTED_EVENT_KINDS.has(handler.kind)) return false
-    if (handler.kind === 'navigate') return context.routerAvailable
+    if (handler.kind === 'navigate' || handler.kind === 'back') return context.routerAvailable
     if (
       handler.kind === 'supabaseQuery' ||
       handler.kind === 'supabaseMutation' ||

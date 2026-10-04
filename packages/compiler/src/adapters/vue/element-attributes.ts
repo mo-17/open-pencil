@@ -1,5 +1,6 @@
 import type { IRElement, IRStyleAttr } from '#compiler/ir/types'
 
+import { vueFormResetAttribute } from '../form-reset'
 import {
   emitControlledAttribute,
   emitEventAttributes,
@@ -8,16 +9,23 @@ import {
   emitValidationEventAttributes
 } from './events'
 import { buildVueRequestStateAttributes } from './lowcode/request-gate'
-import { vueSelectDefaultValue, vueSelectEmptyOptionGuard, vueSelectOptionValue } from './select'
+import {
+  selectTemplateBinding,
+  vueSelectDefaultValue,
+  vueSelectEmptyOptionGuard,
+  vueSelectOptionValue
+} from './select'
 import {
   attrName,
   escapeAttr,
   generatedAlias,
   sanitizeVueHrefLiteral,
   scopedIdentifier,
+  scriptExpression,
   scriptJSON,
   templateExpression,
   vueAssetURL,
+  withLocalAliases,
   type VueEmitContext,
   type VueLocalBinding
 } from './shared'
@@ -83,10 +91,22 @@ export function emitVueElementAttributes(
     } else if (typeof value === 'number' || typeof value === 'string') {
       attrs.push(`${name}="${escapeAttr(String(value))}"`)
     } else if (value.kind === 'exprAttr') {
+      const buttonDisabled =
+        node.tag === 'button' && rawName === 'disabled'
+          ? selectTemplateBinding(
+              scriptExpression(
+                value.ast,
+                context.refNames,
+                withLocalAliases(context.identAliases, locals)
+              ),
+              context,
+              locals
+            )
+          : undefined
       const optionValue =
         rawName === 'value' ? vueSelectOptionValue(node, context, locals) : undefined
       attrs.push(
-        `:${name}="${escapeAttr(optionValue ?? templateExpression(value.ast, context.identAliases, locals))}"`
+        `:${name}="${escapeAttr(buttonDisabled ?? optionValue ?? templateExpression(value.ast, context.identAliases, locals))}"`
       )
     } else if (value.kind === 'intlMessage') {
       attrs.push(`${name}="${escapeAttr(value.defaultMessage)}"`)
@@ -144,8 +164,25 @@ export function emitVueElementAttributes(
     attrs.push(emitValidatedSubmitAttribute(node, context, locals))
     skippedEvents.add('onSubmit')
   }
+  if (
+    node.tag === 'form' &&
+    ((node.formResetFields?.length ?? 0) > 0 || (node.formValidationKeys?.length ?? 0) > 0)
+  )
+    attrs.push(
+      vueFormResetAttribute(node.formResetFields ?? [], node.formValidationKeys ?? [], context)
+    )
   attrs.push(
-    ...emitEventAttributes(node.events, context, node.sourceId, locals, skippedEvents, node.tag)
+    ...emitEventAttributes(
+      node.events,
+      context,
+      node.sourceId,
+      locals,
+      skippedEvents,
+      node.tag,
+      node.module?.pluginId === 'open-pencil.stepper' && node.module.moduleType === 'stepper'
+        ? 'stepschange'
+        : undefined
+    )
   )
   return attrs
 }
@@ -159,10 +196,13 @@ export function emitVueStyleExpression(style: IRStyleAttr, context: VueEmitConte
     }
   })
   const source = `{ ${declarations.map((declaration) => declaration.source).join(', ')} }`
-  if (!declarations.some((declaration) => declaration.usesAsset)) return source
+  if (!context.hoistStyles && !declarations.some((declaration) => declaration.usesAsset))
+    return source
   context.expressionIndex += 1
   const name = `__opStyle_${context.expressionIndex}`
-  context.templateBindings.push(`const ${name} = ${source}`)
+  context.templateBindings.push(
+    `const ${name} = ${source}${context.hoistStyles ? ' as const' : ''}`
+  )
   return name
 }
 

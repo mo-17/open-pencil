@@ -3,6 +3,7 @@
 // runtime suite next to this file.
 
 import { describe, expect, test } from 'bun:test'
+import { Script, createContext } from 'node:vm'
 
 import { buildPreviewBridge } from '@open-pencil/compiler/adapters/react/preview-bridge'
 
@@ -34,7 +35,8 @@ describe('preview-bridge — channel sources (regression of Phase 0 §5.4)', () 
     expect(bridge).toContain('if (event.origin !== frameContext.parentOrigin) return')
     expect(bridge).toContain('value.channel !== channel')
     expect(bridge).toContain("hasExactKeys(value, ['source', 'channel', 'type', 'id'])")
-    expect(bridge).toContain("hasExactKeys(value, ['source', 'channel', 'type', 'route'])")
+    expect(bridge).toContain("['source', 'channel', 'type', 'route', 'replace']")
+    expect(bridge).toContain('if (!hasExactKeys(descriptors, keys)) return null')
   })
 
   test('adds the channel to every outbound message and avoids wildcard targets', () => {
@@ -145,6 +147,54 @@ describe('preview-bridge — select channel (regression)', () => {
 })
 
 describe('preview-bridge — navigate channel (Phase 2 §7)', () => {
+  test('generated parser accepts only exact data navigation messages and boolean replace', () => {
+    const source = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+      bridge.replaceAll('import.meta.env.DEV', 'false').replace('export {}', '')
+    )
+    const parser = new Script(source + '\nparseInbound').runInContext(
+      createContext({ Object, Number })
+    ) as (value: unknown, channel: string) => unknown
+    const channel = 'preview_channel_0123456789'
+    const valid = {
+      source: 'op-lowcode-editor',
+      channel,
+      type: 'navigate',
+      route: '/details/1?tab=one#part'
+    }
+    expect(parser(valid, channel)).toEqual(valid)
+    for (const replace of [true, false])
+      expect(parser({ ...valid, replace }, channel)).toEqual({ ...valid, replace })
+    for (const replace of [undefined, null, 0, 1, 'true', {}, []])
+      expect(parser({ ...valid, replace }, channel)).toBeNull()
+    for (const patch of [
+      { extra: true },
+      { source: 'attacker' },
+      { channel: channel + 'wrong' },
+      { route: '//attacker.example' },
+      { route: '/bad\\path' },
+      { route: '/bad\npath' },
+      { route: '/' + 'a'.repeat(2048) }
+    ])
+      expect(parser({ ...valid, ...patch }, channel)).toBeNull()
+    let reads = 0
+    const getter = () => {
+      reads += 1
+      return true
+    }
+    for (const name of ['type', 'source', 'channel', 'route', 'replace']) {
+      const accessor = { ...valid, replace: true }
+      Object.defineProperty(accessor, name, {
+        enumerable: true,
+        get: getter
+      })
+      expect(parser(accessor, channel)).toBeNull()
+    }
+    expect(reads).toBe(0)
+    expect(parser(Object.assign(Object.create({ inherited: true }), valid), channel)).toBeNull()
+    expect(parser({ ...valid, [Symbol('hidden')]: true }, channel)).toBeNull()
+    expect(parser({ ...valid, __proto__: null }, channel)).toEqual(valid)
+  })
+
   test('inbound message type is widened to a select | navigate union', () => {
     expect(bridge).toContain('interface InboundSelect')
     expect(bridge).toContain('interface InboundNavigate')
@@ -156,13 +206,15 @@ describe('preview-bridge — navigate channel (Phase 2 §7)', () => {
     // The replay uses the aliased nativePushState so the patched pushState
     // does not re-enter itself.
     expect(bridge).toContain('nativePushState(null, ')
-    expect(bridge).toContain("window.dispatchEvent(new PopStateEvent('popstate'))")
+    expect(bridge).toContain(
+      "window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }))"
+    )
   })
 
   test('inbound navigate no-ops when iframe is already at the target route', () => {
     // Without this guard, initial-load navigate or duplicate watcher fires
     // would echo back outbound traffic on every reload.
-    expect(bridge).toContain('location.pathname === route')
+    expect(bridge).toContain('currentPreviewRoute() === route')
   })
 
   test('outbound navigate fires from a pushState monkeypatch', () => {
@@ -171,7 +223,16 @@ describe('preview-bridge — navigate channel (Phase 2 §7)', () => {
     // outside React.
     expect(bridge).toContain('const nativePushState = history.pushState.bind(history)')
     expect(bridge).toContain('history.pushState = function')
-    expect(bridge).toContain('postOutboundNavigate(location.pathname)')
+    expect(bridge).toContain('postOutboundNavigate(currentPreviewRoute())')
+  })
+
+  test('observes complete query/fragment routes and native replacements', () => {
+    expect(bridge).toContain('return location.pathname + location.search + location.hash')
+    expect(bridge).toContain('const nativeReplaceState = history.replaceState.bind(history)')
+    expect(bridge).toContain('history.replaceState = function')
+    expect(bridge).toContain("nativeReplaceState(history.state, '', route)")
+    expect(bridge).toContain('data.replace === true')
+    expect(bridge).toContain("new PopStateEvent('popstate', { state: history.state })")
   })
 
   test('outbound navigate also fires on popstate (back/forward)', () => {

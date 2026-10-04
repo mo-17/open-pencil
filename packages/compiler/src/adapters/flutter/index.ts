@@ -9,13 +9,14 @@ import {
 } from '../native-shared'
 import { derivePagePaths } from '../react/route-paths'
 import { emitVRTourHybridProject, vrTourHybridKey } from '../vr-tour/hybrid'
-import { emitFlutterComponent, emitFlutterPage } from './emit'
+import { emitFlutterComponent, emitFlutterPage, needsFlutterWidthFill } from './emit'
 import {
   allocateDartIdentifier,
   dartClassName,
   portableDartFileName,
   portableFileKey
 } from './names'
+import { buildFlutterPageViewport } from './page-viewport'
 import {
   buildFlutterAnalysisOptions,
   buildFlutterGitignore,
@@ -88,6 +89,7 @@ function emitFlutterProject(
     if (entry.authoredRoute !== entry.route) routeRewrites.set(entry.authoredRoute, entry.route)
   }
   const environment = {
+    adaptiveComponents: selected.some((ir) => ir.pageViewport?.mode === 'responsive'),
     componentPlans,
     devMode: options.devMode,
     nativeAssetAliases: assets.aliases,
@@ -112,12 +114,15 @@ function emitFlutterProject(
   files.set('test/widget_test.dart', buildFlutterWidgetTest(options, hasVRTours))
   if (hasVRTours) files.set('lib/openpencil_vr_tour.dart', buildFlutterVRTourWidget())
   files.set('lib/openpencil_runtime.dart', buildFlutterRuntime(selected[0]?.docStates ?? []))
+  if (needsFlutterViewport(selected, components))
+    files.set('lib/openpencil_page_viewport.dart', buildFlutterPageViewport())
   files.set(
     'lib/main.dart',
     buildFlutterMain(
       options,
       pageEntries.map(({ authoredRoute: _, ir: __, ...entry }) => entry),
-      router
+      router,
+      selected[0]?.applicationStart ? pageEntries[0]?.route : undefined
     )
   )
   for (const page of pageEntries) {
@@ -134,6 +139,19 @@ function emitFlutterProject(
   }
   for (const asset of assets.assets) files.set(outputAssetPath(asset), asset.bytes)
   return { files, warnings }
+}
+
+function needsFlutterViewport(
+  irs: readonly IRTree[],
+  components: readonly ComponentDef[]
+): boolean {
+  return (
+    irs.some((ir) => ir.pageViewport && ir.pageViewport.mode !== 'fixed') ||
+    irs.some((ir) => needsFlutterWidthFill(ir.children)) ||
+    components.some((definition) =>
+      needsFlutterWidthFill(definition.variants?.[0]?.children ?? definition.children)
+    )
+  )
 }
 
 function resolveFlutterRouter(options: CompilerOptions, warn: FlutterWarningSink): boolean {

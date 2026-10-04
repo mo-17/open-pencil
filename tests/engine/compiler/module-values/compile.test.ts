@@ -51,6 +51,30 @@ test('invalid and expression module value bindings retain absence, never acquire
     tree.warnings.filter((warning) => warning.code === 'module-value-binding-invalid')
   ).toHaveLength(2)
 })
+test('generic module field name becomes the FORM serialization key and invalid names never fall back', () => {
+  const { graph, page, slider } = moduleValuesGraph()
+  graph.updateNode(slider.id, {
+    interactiveProps: {
+      ...slider.interactiveProps,
+      moduleFieldNames: { value: 'amount_due' }
+    }
+  })
+  let tree = collectTree(graph, page.id)
+  let form = tree.children[0] as IRElement
+  let module = (form.children[0] as IRElement).module
+  expect(module?.valueFields?.find((field) => field.key === 'value')?.name).toBe('amount_due')
+  graph.updateNode(slider.id, {
+    interactiveProps: {
+      ...slider.interactiveProps,
+      moduleFieldNames: { value: 'bad name' }
+    }
+  })
+  tree = collectTree(graph, page.id)
+  form = tree.children[0] as IRElement
+  module = (form.children[0] as IRElement).module
+  expect(module?.valueFields?.find((field) => field.key === 'value')?.name).toBeUndefined()
+  expect(tree.warnings.some((warning) => warning.code === 'module-field-name-invalid')).toBe(true)
+})
 test('module audits and repairs preserve both endpoints, independent types and unrelated bindings', () => {
   const { graph, page, form, slider } = moduleValuesGraph()
   graph.updateNode(slider.id, { bindings: { text: { kind: 'literal', value: 'keep' } } })

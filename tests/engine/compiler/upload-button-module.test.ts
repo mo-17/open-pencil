@@ -112,7 +112,7 @@ describe('compiler trusted Upload Button module adapter', () => {
     expect(runtime).toContain('aria-live="assertive"')
     expect(runtime).toContain('Folders are not supported.')
     expect(runtime).toContain('data-openpencil-upload-trigger-authored=""')
-    expect(runtime).toContain('id={authoredLabelId} inert')
+    expect(runtime).toContain("ref={(element) => element?.setAttribute('inert', '')}")
     expect(runtime).toContain("aria-labelledby={authoredLabelId + ' ' + authoredFallbackId}")
     expect(runtime).toContain('data-openpencil-upload-owner={baseId}')
     expect(runtime).toContain('const MAX_INCOMING_FILES = 100')

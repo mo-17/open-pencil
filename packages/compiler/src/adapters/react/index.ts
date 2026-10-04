@@ -27,11 +27,39 @@ import type {
 
 import { compactLowcodeHeadMetadata } from '@open-pencil/lowcode'
 
+import {
+  hasApplicationGuards,
+  APPLICATION_GUARDS_FILE,
+  REACT_APPLICATION_GUARDS_FILE
+} from '../application-guards/emit'
+import { reactApplicationGuardsSource } from '../application-guards/react'
+import { applicationGuardsRuntimeSource } from '../application-guards/runtime'
+import {
+  applicationNavigationFile,
+  buildReactApplicationNavigation
+} from '../application-navigation/source'
+import { hasApplicationPageSessions } from '../application-session/emit'
+import {
+  REACT_APPLICATION_SESSION_FILE,
+  reactApplicationSessionSource
+} from '../application-session/react'
+import {
+  APPLICATION_SESSION_FILE,
+  applicationSessionRuntimeSource
+} from '../application-session/runtime'
 import { hasInputSuggestions } from '../autocomplete/emit'
 import { autocompleteRuntimeSource } from '../autocomplete/runtime'
-import { hasInputControls } from '../input-control/emit'
+import {
+  hasInputControls,
+  hasNativeNumericInputBindings,
+  hasNumericInputBindings
+} from '../input-control/emit'
+import { numberDraftRuntimeSource } from '../input-control/number-draft'
 import { inputControlRuntimeSource } from '../input-control/runtime'
 import { scopeMicrofrontendCSS } from '../microfrontend-css'
+import { hasPageViewport } from '../page-viewport/project'
+import { PAGE_VIEWPORT_RUNTIME_FILE, pageViewportRuntimeSource } from '../page-viewport/runtime'
+import { REACT_PAGE_VIEWPORT_FILE, reactPageViewportSource } from '../page-viewport/source'
 import { buildPreviewBridge } from '../preview-bridge'
 import { selectRuntimeSource } from '../select/runtime'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
@@ -40,8 +68,10 @@ import { reactAutocompleteSource } from './autocomplete/runtime'
 import { buildComponentModule } from './emit/component'
 import { OVERLAY_RUNTIME_CLASSES } from './emit/element'
 import { buildGeneratedEffectPlan } from './generated-effect/scan'
+import { reactNumberInputSource } from './input-control/number-runtime'
 import { reactInputControlSource } from './input-control/runtime'
 import {
+  nodesHaveBackHandler,
   pageUsesAnalytics,
   pageUsesConfirm,
   pageUsesToast,
@@ -163,9 +193,16 @@ export const reactAdapter: FrameworkAdapter = {
     components: readonly ComponentDef[] = []
   ): AdapterEmission {
     const output =
-      irs.length > 1
+      irs.length > 1 || irs[0]?.applicationStart
         ? emitMultiPage(irs, options, components)
         : emitSinglePage(irs[0], options, components)
+    emitApplicationRuntimeFiles(output.files, irs, components, options)
+    if (hasPageViewport(irs)) {
+      output.files.set(PAGE_VIEWPORT_RUNTIME_FILE, pageViewportRuntimeSource())
+      output.files.set(REACT_PAGE_VIEWPORT_FILE, reactPageViewportSource())
+      if (options.devMode)
+        output.files.set('src/vite-env.d.ts', '/// <reference types="vite/client" />\n')
+    }
     const selectNodes = [
       ...irs.flatMap((ir) => ir.children),
       ...components
@@ -190,6 +227,12 @@ export const reactAdapter: FrameworkAdapter = {
       output.files.set('src/lib/open-pencil-input-control.ts', inputControlRuntimeSource())
       output.files.set('src/components/_open-pencil-input-control.tsx', reactInputControlSource())
     }
+    if (hasInputControls(selectNodes) || hasNumericInputBindings(selectNodes)) {
+      output.files.set('src/lib/open-pencil-number-draft.ts', numberDraftRuntimeSource())
+    }
+    if (hasNativeNumericInputBindings(selectNodes)) {
+      output.files.set('src/components/_open-pencil-number-input.tsx', reactNumberInputSource())
+    }
     const kit = resolveUIKit(options)
     if (kit)
       output.warnings.push(
@@ -199,6 +242,52 @@ export const reactAdapter: FrameworkAdapter = {
         )
       )
     return output
+  }
+}
+
+function projectHasBack(irs: readonly IRTree[], components: readonly ComponentDef[]): boolean {
+  return (
+    irs.some((ir) => nodesHaveBackHandler(ir.children)) ||
+    components.some((component) => nodesHaveBackHandler(componentBodyNodes(component)))
+  )
+}
+
+function emitApplicationRuntimeFiles(
+  files: Map<string, string | Uint8Array>,
+  irs: readonly IRTree[],
+  components: readonly ComponentDef[],
+  options: CompilerOptions
+): void {
+  if (projectHasBack(irs, components))
+    files.set(applicationNavigationFile, buildReactApplicationNavigation(hasApplicationGuards(irs)))
+  if (hasApplicationGuards(irs)) {
+    if (options.devMode)
+      files.set(
+        'src/__preview-bridge.ts',
+        buildPreviewBridge({ documentState: !options.backendPreview, applicationGuards: true })
+      )
+    files.set(APPLICATION_GUARDS_FILE, applicationGuardsRuntimeSource(irs))
+    const analytics =
+      files.has('src/_lowcode_analytics.ts') &&
+      String(files.get('src/_lowcode_analytics.ts')).includes(
+        'export function LowcodeAnalyticsRouteTracker'
+      )
+    files.set(
+      REACT_APPLICATION_GUARDS_FILE,
+      reactApplicationGuardsSource(irs, projectHasBack(irs, components), analytics)
+    )
+  }
+  if (hasApplicationPageSessions(irs)) {
+    files.set(
+      APPLICATION_SESSION_FILE,
+      applicationSessionRuntimeSource(
+        irs,
+        options.devMode && !options.backendPreview,
+        hasApplicationGuards(irs)
+      )
+    )
+    files.set(REACT_APPLICATION_SESSION_FILE, reactApplicationSessionSource())
+    if (options.devMode) files.set('src/vite-env.d.ts', '/// <reference types="vite/client" />\n')
   }
 }
 
@@ -214,7 +303,8 @@ function emitComponentFiles(
   eventComponentNames: ReadonlySet<string>,
   motionScopeComponentNames: ReadonlySet<string>,
   prototypeComponentNames: ReadonlySet<string>,
-  routerAvailable: boolean
+  routerAvailable: boolean,
+  applicationGuards: boolean
 ): void {
   for (const def of components) {
     files.set(
@@ -227,7 +317,8 @@ function emitComponentFiles(
         eventComponentNames.has(def.name),
         motionScopeComponentNames.has(def.name),
         prototypeComponentNames.has(def.name),
-        routerAvailable
+        routerAvailable,
+        applicationGuards
       )
     )
   }
@@ -554,6 +645,7 @@ function emitMultiPage(
     buildRouterApp(infos, {
       devMode: options.devMode,
       analyticsRouteTracking,
+      applicationNavigation: projectHasBack(irs, components),
       prototypeRuntime: prototype.runtime !== undefined,
       microfrontend: options.packaging?.kind === 'microfrontend'
     })
@@ -743,7 +835,8 @@ function emitRuntimeAndComponentFiles(
     e.motion.eventComponentNames,
     e.motion.motionScopeComponentNames,
     e.prototype.prototypeComponentNames,
-    e.routerAvailable
+    e.routerAvailable,
+    files.has(APPLICATION_GUARDS_FILE)
   )
 }
 

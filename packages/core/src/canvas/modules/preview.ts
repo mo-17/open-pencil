@@ -109,13 +109,39 @@ export function withModulePreviewSurface(
   canvas: Canvas,
   frame: ModulePreviewFrame,
   backgroundColor: string,
+  draw: () => void,
+  opacity = 1
+): void {
+  withModulePreviewOpacity(renderer, canvas, opacity, () =>
+    withModulePreviewClip(renderer, canvas, frame.node, () => {
+      configureModulePreviewPaint(renderer, backgroundColor)
+      canvas.drawRect(renderer.ck.LTRBRect(0, 0, frame.width, frame.height), renderer.fillPaint)
+      draw()
+    })
+  )
+}
+
+/** Composite a disabled surface once, preserving relative foreground and background contrast. */
+export function withModulePreviewOpacity(
+  renderer: SkiaRenderer,
+  canvas: Canvas,
+  opacity: number,
   draw: () => void
 ): void {
-  withModulePreviewClip(renderer, canvas, frame.node, () => {
-    configureModulePreviewPaint(renderer, backgroundColor)
-    canvas.drawRect(renderer.ck.LTRBRect(0, 0, frame.width, frame.height), renderer.fillPaint)
+  if (opacity === 1) {
     draw()
-  })
+    return
+  }
+  renderer.opacityPaint.setAlphaf(opacity)
+  renderer.opacityPaint.setBlendMode(renderer.ck.BlendMode.SrcOver)
+  canvas.saveLayer(renderer.opacityPaint)
+  try {
+    draw()
+  } finally {
+    canvas.restore()
+    renderer.opacityPaint.setAlphaf(1)
+    renderer.opacityPaint.setBlendMode(renderer.ck.BlendMode.SrcOver)
+  }
 }
 
 export function withModulePreviewFont(

@@ -1,8 +1,21 @@
 import { reactAutocompleteImport } from '#compiler/adapters/autocomplete/emit'
-import { reactInputControlImport } from '#compiler/adapters/input-control/emit'
+import {
+  reactInputControlImport,
+  reactNumberInputImport,
+  reactNumberParserImport
+} from '#compiler/adapters/input-control/emit'
+import { pageViewportNodes } from '#compiler/adapters/page-viewport/project'
+import { reactPageViewportBoundary } from '#compiler/adapters/page-viewport/source'
 import { nodesUseMountedValidationSummary } from '#compiler/adapters/validation-summary'
 import type { IRNode, IRTree } from '#compiler/ir/types'
 
+import { reactGuardPageImports, reactGuardLeaveHook } from '../application-guards/emit'
+import { buildGuardedReactRouterApp } from '../application-guards/project'
+import {
+  reactApplicationPageImports,
+  reactApplicationPageHooks,
+  reactApplicationStateDeclarations
+} from '../application-session/react'
 import {
   reactBackendQueryLines,
   backendClientImport,
@@ -12,7 +25,6 @@ import { buildComponentImports, buildLucideIconImport } from './emit/component'
 import { emitElement } from './emit/element'
 import { emitListQueryHook } from './emit/list-query'
 import { buildRequestGateHookLines, buildRequestGatePageAttrs } from './emit/request-gate'
-import { emitStateDecl } from './emit/state'
 import {
   hasIntlAttr,
   hasTranslatableText,
@@ -153,6 +165,7 @@ interface BuildAppOptions {
   prototypeRuntime?: boolean
   /** Read the orchestrator-provided basename in explicit microfrontend output. */
   microfrontend?: boolean
+  applicationNavigation?: boolean
 }
 
 /**
@@ -211,12 +224,20 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
  * the v6-compatible declarative API provided by the pinned React Router v7 release.
  */
 export function buildRouterApp(infos: readonly PagePathInfo[], options: BuildAppOptions): string {
+  if (infos.some((info) => info.ir.applicationGuardsEnabled))
+    return buildGuardedReactRouterApp(infos, options.devMode, options.prototypeRuntime === true)
+  return buildLegacyRouterApp(infos, options)
+}
+function buildLegacyRouterApp(infos: readonly PagePathInfo[], options: BuildAppOptions): string {
+  const startRedirect =
+    infos[0]?.ir.applicationStart && infos[0].route !== '/' ? infos[0].route : undefined
+  const redirectImport = startRedirect ? ', Navigate' : ''
   const bridgeImport = options.devMode ? `import './__preview-bridge'\n` : ''
   const prototypeImport = options.prototypeRuntime ? `import './__prototype-runtime'\n` : ''
   const reactImport = options.microfrontend ? `import { useEffect } from 'react'\n` : ''
   const routerImport = options.microfrontend
-    ? `import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'\n`
-    : `import { BrowserRouter, Route, Routes } from 'react-router-dom'\n`
+    ? `import { BrowserRouter, Route, Routes, useLocation, useNavigate${redirectImport} } from 'react-router-dom'\n`
+    : `import { BrowserRouter, Route, Routes${redirectImport} } from 'react-router-dom'\n`
   const microfrontendImport = options.microfrontend
     ? `import { useMicrofrontendRouting } from './__microfrontend-context'\n`
     : ''
@@ -226,9 +247,30 @@ export function buildRouterApp(infos: readonly PagePathInfo[], options: BuildApp
   const pageImports = infos
     .map((info) => `import ${info.component} from './pages/${info.slug}'`)
     .join('\n')
-  const importBlock = `${bridgeImport}${prototypeImport}${reactImport}${routerImport}${microfrontendImport}${analyticsImport}${pageImports}\n\n`
-  const routes = infos
-    .map((info) => `        <Route path="${info.route}" element={<${info.component} />} />`)
+  const sessionImport = infos.some((info) => info.ir.applicationStateRetention !== undefined)
+    ? `import { OpenPencilApplicationPage } from './components/_open-pencil-application-session'\n`
+    : ''
+  const navigationImport = options.applicationNavigation
+    ? `import { ApplicationNavigationTracker } from './_application_navigation'\n`
+    : ''
+  const importBlock = `${bridgeImport}${prototypeImport}${sessionImport}${navigationImport}${reactImport}${routerImport}${microfrontendImport}${analyticsImport}${pageImports}\n\n`
+  const routes = (
+    startRedirect
+      ? [
+          `        <Route path="/" element={<Navigate to=${JSON.stringify(startRedirect)} replace />} />`
+        ]
+      : []
+  )
+    .concat(
+      infos.map((info) => {
+        const page = `<${info.component} />`
+        const element =
+          info.ir.applicationStateRetention !== undefined
+            ? `<OpenPencilApplicationPage pageId=${JSON.stringify(info.ir.pageId)} retention=${JSON.stringify(info.ir.applicationStateRetention)}>${page}</OpenPencilApplicationPage>`
+            : page
+        return `        <Route path="${info.route}" element={${element}} />`
+      })
+    )
     .join('\n')
   const analyticsTracker = options.analyticsRouteTracking
     ? `      <LowcodeAnalyticsRouteTracker />\n`
@@ -251,13 +293,16 @@ export function buildRouterApp(infos: readonly PagePathInfo[], options: BuildApp
     ? `  const { basePath, location } = useMicrofrontendRouting()\n`
     : ''
   const browserRouterProps = options.microfrontend ? ' basename={basePath}' : ''
+  const navigationTracker = options.applicationNavigation
+    ? '      <ApplicationNavigationTracker />\n'
+    : ''
   const locationSync = options.microfrontend
     ? `      <HostLocationSynchronizer hostLocation={location} />\n`
     : ''
   return `${importBlock}${locationSynchronizer}export default function App() {
 ${microfrontendRouting}  return (
     <BrowserRouter${browserRouterProps}>
-${locationSync}${analyticsTracker}
+${locationSync}${analyticsTracker}${navigationTracker}
       <Routes>
 ${routes}
       </Routes>
@@ -288,7 +333,7 @@ interface RouterUsage {
  *  under the complexity limit. */
 function buildRouterImport(ir: IRTree, u: RouterUsage): string {
   const routerNames: string[] = []
-  if (u.needsNavigate) routerNames.push('useNavigate')
+  if (u.needsNavigate && !ir.applicationGuardsEnabled) routerNames.push('useNavigate')
   if (u.needsNavigate && pageHasNavigateParams(ir)) routerNames.push('generatePath')
   if (u.usesRouteParams) routerNames.push('useParams')
   if (u.usesQueryParams) routerNames.push('useSearchParams')
@@ -369,13 +414,22 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     formattedMessage: hasTranslatableText(ir.children),
     intl: usesIntlAttr
   })
+  const requestGateActive = pageUsesRequestGate(ir)
+  const viewport = reactPageViewportBoundary(
+    ir,
+    componentImportPrefix,
+    ` className="${WRAPPER_CLASS_ATTR}"${buildRequestGatePageAttrs(requestGateActive)}${pageMotionAttrs(ir, devMode)}${pagePrototypeAttrs(ir, prototypeRuntime)}`
+  )
   const importBlock =
+    viewport.import +
     backendClientImport(ir, lowcodeSupabaseImportPath) +
     bridgeImport +
     prototypeImport +
     reactImport +
     routerImport +
     lowcodeStateImport +
+    reactApplicationPageImports(ir, componentImportPrefix, routerAvailable) +
+    reactGuardPageImports(ir, componentImportPrefix, usage.needsNavigate) +
     lowcodeRuntimeImports +
     componentImportBlock +
     lucideImport +
@@ -383,10 +437,15 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     enhancedSelectImport(ir.children, componentImportPrefix) +
     reactAutocompleteImport(ir.children, componentImportPrefix) +
     reactInputControlImport(ir.children, componentImportPrefix) +
+    reactNumberInputImport(ir.children, componentImportPrefix) +
+    reactNumberParserImport(
+      ir.children,
+      componentImportPrefix === './components/' ? './lib/' : '../lib/'
+    ) +
     kitImportBlock +
     i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
-  const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
+  const stateLines = reactApplicationStateDeclarations(ir)
   const motionDriverStateLines = buildMotionDriverStateHooks(ir)
   // Phase 4 §16.1/§16.2/§16.4: useNavigate / $params / $query hook lines.
   const routerHookLines = buildRouterHookLines(usage).join('\n')
@@ -408,7 +467,6 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   // helpers. After the doc-state hoists (custom-rule exprs reference them).
   const validationGlue =
     (ir.validatedFields?.length ?? 0) > 0 ? buildValidationGlue(ir.validatedFields ?? []) : ''
-  const requestGateActive = pageUsesRequestGate(ir)
   const requestGateLines = buildRequestGateHookLines(requestGateActive, pageUsesRequestDebounce(ir))
   // Phase 4 §16.3: redirect-if-unauthenticated guard. Comes after the hooks (it
   // reads the `$currentUser` doc-state declared above) and short-circuits the
@@ -418,7 +476,9 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const hookLines = [
     docStateReadLines,
     routerHookLines,
+    reactApplicationPageHooks(ir, routerAvailable),
     stateLines,
+    reactGuardLeaveHook(ir),
     motionDriverStateLines,
     listQueryLines,
     requestGateLines,
@@ -429,30 +489,32 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     .filter((l) => l !== '')
     .join('\n')
 
-  const requestStateAttrs = buildRequestGatePageAttrs(requestGateActive)
-  const wrapperOpen = `<div className="${WRAPPER_CLASS_ATTR}"${requestStateAttrs}${pageMotionAttrs(ir, devMode)}${pagePrototypeAttrs(ir, prototypeRuntime)}>`
+  const wrapperOpen = viewport.open,
+    wrapperClose = viewport.close
 
   if (ir.children.length === 0) {
     if (hookLines === '') {
       return `${importPrefix}export default function ${exportName}() {
-  return ${wrapperOpen}</div>
+  return ${wrapperOpen}${wrapperClose}
 }
 `
     }
     return `${importPrefix}export default function ${exportName}() {
 ${hookLines}
-  return ${wrapperOpen}</div>
+  return ${wrapperOpen}${wrapperClose}
 }
 `
   }
 
-  const body = ir.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
+  const body = pageViewportNodes(ir)
+    .map((c) => emitElement(c, 3, devMode, uiKit))
+    .join('\n')
   const hookPrefix = hookLines !== '' ? `${hookLines}\n` : ''
   return `${importPrefix}export default function ${exportName}() {
 ${hookPrefix}  return (
     ${wrapperOpen}
 ${body}
-    </div>
+    ${wrapperClose}
   )
 }
 `

@@ -13,6 +13,8 @@ import { ref, watch, type ComponentPublicInstance } from 'vue'
 import type { SceneNode } from '@open-pencil/scene-graph'
 import { PageListRoot, useFlatReorderDrag, useI18n, useInlineRename } from '@open-pencil/vue'
 
+import { useApplicationMode } from '@/app/lowcode/application-mode/use'
+import ApplicationModePanel from '@/components/ApplicationModePanel/ApplicationModePanel.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
 import { useMenuUI } from '@/components/ui/menu/menu'
 import pageListTheme from '@/theme/page-list'
@@ -28,6 +30,7 @@ interface PageActions {
 const pageInput = templateRef<HTMLInputElement>('pageInput')
 const rename = useInlineRename((id, name) => pageActions.value?.rename(id, name))
 const { panels, pages: pageMessages } = useI18n()
+const { panel: applicationPanel } = useApplicationMode()
 const menuCls = useMenuUI({
   content: 'min-w-36 shadow-[0_8px_30px_rgb(0_0_0/0.4)]',
   item: 'justify-start gap-2'
@@ -171,6 +174,7 @@ function setupPageRowRef(
               </ContextMenuContent>
             </ContextMenuPortal>
           </ContextMenuRoot>
+          <ApplicationModePanel :model="applicationPanel" />
         </div>
       </div>
     </div>

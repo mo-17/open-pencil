@@ -2,11 +2,22 @@ import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { boundControlInitialValue } from '#core/canvas/control-state'
 
+/** Host control flags augment reviewed module flags; Canvas never evaluates bindings. */
+export function moduleControlState(
+  node: SceneNode,
+  config: Partial<Pick<NonNullable<SceneNode['interactiveProps']>, 'disabled' | 'readOnly'>> = {}
+) {
+  return {
+    disabled: config.disabled === true || node.interactiveProps?.disabled === true,
+    readOnly: config.readOnly === true || node.interactiveProps?.readOnly === true
+  }
+}
+
 /** Canvas shows declared state defaults; it never evaluates or writes running preview state. */
 export function readModuleInitialValue(
   graph: SceneGraph | undefined,
   node: SceneNode,
-  key: 'value' | 'endValue',
+  key: 'value' | 'endValue' | 'currentIndex',
   type: 'number' | 'string' | 'array'
 ): { bound: boolean; value: unknown } {
   const bound = !!node.bindings && Object.hasOwn(node.bindings, key)

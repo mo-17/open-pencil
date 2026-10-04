@@ -11,6 +11,7 @@ export interface FormOverviewField {
   id: string
   name: string
   valueKey?: 'value' | 'endValue'
+  submissionName?: string
   binding: FormControlBindingStatus
   validation: 'none' | 'configured' | 'invalid'
   asynchronous: boolean

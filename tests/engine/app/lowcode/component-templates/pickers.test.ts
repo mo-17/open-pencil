@@ -14,7 +14,7 @@ for (const locale of ['en', 'zh-CN'])
     const fixture = componentTemplateFixture(['color-picker', 'descriptions'], locale)
     try {
       const catalog = getComponentTemplates(locale)
-      expect(catalog).toHaveLength(62)
+      expect(catalog).toHaveLength(66)
       expect(catalog.filter((item) => item.kind === 'basic')).toHaveLength(54)
       expect(catalog.slice(48, 50).map((item) => item.id)).toEqual(['color-picker', 'descriptions'])
       const input = [...fixture.graph.getAllNodes()].find((node) => node.type === 'INPUT')

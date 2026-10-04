@@ -1,9 +1,12 @@
 import { emitReactBackendListStatus } from '#compiler/adapters/backend-client/list-status'
+import { reactFormResetAttribute } from '#compiler/adapters/form-reset'
 import {
   nodeHasFieldValidation,
   validationErrorExpression
 } from '#compiler/adapters/form-validation'
+import { reactModuleDataBinding } from '#compiler/adapters/module-data'
 import { reactModuleValueBindings } from '#compiler/adapters/module-values'
+import { reactStepperBindings } from '#compiler/adapters/navigation/stepper/bindings'
 import { reactPaginationBindings } from '#compiler/adapters/pagination/bindings'
 import type {
   IRAttrValue,
@@ -135,13 +138,22 @@ function emitListTemplate(
 /** Enhanced fields reuse the native field attributes, binding and validation events. */
 function emitEnhancedField(node: IRElement, indent: number, devMode: boolean): string | null {
   const pad = '  '.repeat(indent)
+  const resetKey = node.controlled
+    ? ` formResetFieldKey=${JSON.stringify(`${node.controlled.write.kind}:${node.controlled.write.name}`)}`
+    : ''
   if (node.inputControl) {
     const { attrsStr } = tagOpenParts(node, devMode, null)
-    return `${pad}<__OpenPencilInputControl ${attrsStr} config={${JSON.stringify(node.inputControl)}} />`
+    const externalRebase = node.validation
+      ? ` onExternalRebase={() => __resetFieldValidation(${JSON.stringify(node.validation.key)})}`
+      : ''
+    return `${pad}<__OpenPencilInputControl ${attrsStr} config={${JSON.stringify(node.inputControl)}}${resetKey}${externalRebase} />`
   }
   if (node.inputSuggestions) {
     const { attrsStr } = tagOpenParts(node, devMode, null)
-    return `${pad}<__OpenPencilAutocomplete ${attrsStr} suggestions={${JSON.stringify(node.inputSuggestions)}} />`
+    const externalRebase = node.validation
+      ? ` onExternalRebase={() => __resetFieldValidation(${JSON.stringify(node.validation.key)})}`
+      : ''
+    return `${pad}<__OpenPencilAutocomplete ${attrsStr} suggestions={${JSON.stringify(node.inputSuggestions)}}${resetKey}${externalRebase} />`
   }
 
   if (node.selectFeatures)
@@ -213,7 +225,10 @@ function emitTagElementCore(
   if (kitDisplay !== null) return kitDisplay
 
   const { attrsStr, tagName } = tagOpenParts(node, devMode, uiKit)
-  const opening = attrsStr ? `<${tagName} ${attrsStr}` : `<${tagName}`
+  const { emittedTag, nativeNumberProps } = nativeNumberTag(node, tagName)
+  const opening = attrsStr
+    ? `<${emittedTag} ${attrsStr}${nativeNumberProps}`
+    : `<${emittedTag}${nativeNumberProps}`
 
   // Vector-shape nodes carry their geometry as inline SVG via
   // dangerouslySetInnerHTML (React forbids combining it with children, so the
@@ -234,7 +249,7 @@ function emitTagElementCore(
   }
 
   // Inline single-child text/expression for compactness: <p>{count}</p>.
-  const inlined = tryInlineSingleChild(node.children, opening, pad, tagName)
+  const inlined = tryInlineSingleChild(node.children, opening, pad, emittedTag)
   if (inlined !== undefined) return inlined
 
   const lines = [`${pad}${opening}>`]
@@ -249,8 +264,26 @@ function emitTagElementCore(
     )
   }
   for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode, uiKit))
-  lines.push(`${pad}</${tagName}>`)
+  lines.push(`${pad}</${emittedTag}>`)
   return lines.join('\n')
+}
+
+function nativeNumberTag(
+  node: IRElement,
+  tagName: string
+): { emittedTag: string; nativeNumberProps: string } {
+  if (node.tag !== 'input' || node.controlled?.write.targetType !== 'number')
+    return { emittedTag: tagName, nativeNumberProps: '' }
+  if (node.inputControl !== undefined) return { emittedTag: tagName, nativeNumberProps: '' }
+  const as = tagName === 'input' ? '' : ` as={${tagName}}`
+  const resetKey = `${node.controlled.write.kind}:${node.controlled.write.name}`
+  const externalRebase = node.validation
+    ? ` onExternalRebase={() => __resetFieldValidation(${JSON.stringify(node.validation.key)})}`
+    : ''
+  return {
+    emittedTag: '__OpenPencilNumberInput',
+    nativeNumberProps: `${as} formResetFieldKey=${JSON.stringify(resetKey)}${externalRebase}`
+  }
 }
 
 /** Emit a validated trusted module through its generated local React component.
@@ -263,8 +296,22 @@ function emitModuleElement(
   uiKit: UIKitAdapter | null
 ): string {
   const pad = '  '.repeat(indent)
-  const { attrsStr } = tagOpenParts(node, devMode, null)
+  const stepper = adapter.pluginId === 'open-pencil.stepper' && adapter.moduleType === 'stepper'
+  const hostNode = stepper ? { ...node, events: { ...node.events } } : node
+  if (stepper && hostNode.events) delete hostNode.events.onChange
+  const { attrsStr } = tagOpenParts(hostNode, devMode, null)
   const attrs = attrsStr === '' ? '' : ` ${attrsStr}`
+  const stepperChange =
+    stepper && node.events?.onChange?.length
+      ? ` onStepsChange={${emitEventHandler(node.events.onChange, {
+          ...eventHandlerOptions(
+            'onChange',
+            eventRequestTiming(node.sourceId, 'onChange', node.events.onChange)
+          ),
+          eventLocals: false,
+          prelude: ['const $event = e', 'const $value = e.detail.currentIndex']
+        })}}`
+      : ''
   const panorama =
     node.module?.panoramaUrlExpr && adapter.pluginId === 'open-pencil.vr-tour'
       ? ` panoramaBound panoramaUrl={(() => { try { return ${emitExpression(node.module.panoramaUrlExpr)} } catch { return undefined } })()}`
@@ -279,8 +326,8 @@ function emitModuleElement(
     name: slot.name,
     source: `<>${slot.nodes.map((child) => emitElement(child, indent + 2, devMode, uiKit)).join('\n')}</>`
   }))
-  const slotProps = moduleContentProps(content, adapter.moduleType)
-  const opening = `${pad}<${adapter.componentName} config={${JSON.stringify(node.module?.payload)}}${panorama}${video}${uploadDisabled}${reactPaginationBindings(node.module)}${reactModuleValueBindings(node.module)}${attrs}${slotProps}`
+  const slotProps = moduleContentProps(content, adapter.moduleType, adapter.pluginId)
+  const opening = `${pad}<${adapter.componentName} config={${JSON.stringify(node.module?.payload)}}${panorama}${video}${uploadDisabled}${reactModuleDataBinding(node.module)}${reactPaginationBindings(node.module)}${reactStepperBindings(node.module)}${reactModuleValueBindings(node.module)}${attrs}${stepperChange}${slotProps}`
   if (slots || node.children.length === 0) return `${opening} />`
   return [
     `${opening}>`,
@@ -291,10 +338,15 @@ function emitModuleElement(
 
 function moduleContentProps(
   content: { name: string; source: string }[] | undefined,
-  moduleType: string
+  moduleType: string,
+  pluginId: string
 ): string {
   if (!content) return ''
-  if (moduleType === 'modal' || moduleType === 'popover')
+  if (
+    moduleType === 'modal' ||
+    moduleType === 'popover' ||
+    (pluginId === 'open-pencil.slide-menu' && moduleType === 'slide-menu')
+  )
     return content[0] ? ` content={${content[0].source}}` : ''
   return ` panels={{${content.map((slot) => `${JSON.stringify(slot.name)}: (${slot.source})`).join(',')}}}`
 }
@@ -372,6 +424,7 @@ function tagOpenParts(
   )
   const baseAttrsStr = joinAttrs(
     standardAttrs,
+    formResetAttribute(node),
     requestState.attrs,
     prototypeAttrs(node),
     motionSceneOwnerAttrs(node),
@@ -381,6 +434,14 @@ function tagOpenParts(
   const displayMapping = node.displayKind ? uiKit?.mapDisplay?.(node.displayKind) : undefined
   const attrsStr = displayMapping ? displayAttrs(baseAttrsStr, node) : baseAttrsStr
   return { attrsStr, tagName: kitTagName(node, uiKit, displayMapping) }
+}
+
+function formResetAttribute(node: IRElement): string {
+  if (node.tag !== 'form') return ''
+  const fields = node.formResetFields ?? []
+  const validationKeys = node.formValidationKeys ?? []
+  if (fields.length === 0 && validationKeys.length === 0) return ''
+  return reactFormResetAttribute(fields, validationKeys)
 }
 
 function motionSceneOwnerAttrs(node: IRElement): string {
@@ -949,9 +1010,10 @@ function validationFieldParts(
   } else if (controlled) {
     eventValue = '(e.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value'
   }
-  const validate = eventValue
+  let validate = eventValue
     ? `await __validateFieldValue(${k}, ${eventValue}, true)`
     : `await __validateField(${k})`
+  if (controlled?.write.targetType === 'number') validate = numericDraftValidation(k, true)
   const onBlur =
     handlers && handlers.length > 0
       ? `onBlur={${emitEventHandler(handlers, { eventLocals: true, prelude: [validate], forceAsync: true })}}`
@@ -963,6 +1025,11 @@ function validationFieldParts(
     `aria-describedby={__fieldErrors[${k}] ? ${validationErrorExpression(key)} : undefined}`,
     onBlur
   ]
+}
+
+function numericDraftValidation(key: string, includeAsync: boolean): string {
+  const input = '(e.target as HTMLInputElement)'
+  return `if (${input}.validity.badInput || ${input}.validity.customError) { __resetFieldValidation(${key}); __setFieldErrors((prev) => ({ ...prev, [${key}]: ${input}.validationMessage || 'Invalid number' })); } else { await __validateFieldValue(${key}, ${input}.value${includeAsync ? ', true' : ''}); }`
 }
 
 /** The event-handler attrs. Phase 4 §19: when `formValidationKeys` is set (a
@@ -1200,15 +1267,22 @@ function controlledOnChangeAttr(
   validationKey: string | undefined,
   requestSourceId: string | undefined
 ): string {
-  const write = controlledWriteCall(c, valueExpr)
-  const prelude = [write]
+  const numeric = c.write.targetType === 'number'
+  const write = controlledWriteCall(c, numeric ? '__opNextNumber' : valueExpr)
+  const prelude = numeric
+    ? [`const __opNextNumber = ${valueExpr}`, `if (__opNextNumber !== undefined) ${write}`]
+    : [write]
   const changeValidationKey = validationKey ?? c.validationKey
   if (changeValidationKey !== undefined) {
-    prelude.push(`await __validateFieldValue(${JSON.stringify(changeValidationKey)}, ${valueExpr})`)
+    prelude.push(
+      numeric
+        ? numericDraftValidation(JSON.stringify(changeValidationKey), false)
+        : `await __validateFieldValue(${JSON.stringify(changeValidationKey)}, ${valueExpr})`
+    )
   }
   if (!handlers || handlers.length === 0) {
     if (prelude.length === 1) return `onChange={(e) => ${write}}`
-    return `onChange={${emitEventHandler([], { prelude, forceAsync: true })}}`
+    return `onChange={${emitEventHandler([], { prelude, forceAsync: changeValidationKey !== undefined })}}`
   }
   return `onChange={${emitEventHandler(handlers, {
     ...eventHandlerOptions('onChange', eventRequestTiming(requestSourceId, 'onChange', handlers)),
@@ -1231,7 +1305,8 @@ export function controlledWriteCall(c: IRControlledInput, valueExpr: string): st
 
 function controlledEventValue(targetType: IRControlledInput['write']['targetType']): string {
   if (targetType === 'boolean') return 'e.target.checked'
-  if (targetType === 'number') return 'Number(e.target.value)'
+  if (targetType === 'number')
+    return '__opParseNumericDraft(e.target.value, e.target, e.nativeEvent)'
   if (targetType === 'array')
     return 'Array.from(e.currentTarget.selectedOptions, option => option.value)'
   return 'e.target.value'

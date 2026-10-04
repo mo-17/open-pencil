@@ -1,3 +1,5 @@
+import { CHART_DATA_SOURCE } from '#compiler/adapters/chart/data'
+import { CHART_MATH_SOURCE } from '#compiler/adapters/chart/math'
 import * as chartSource from '#compiler/adapters/chart/source'
 
 import { CHART_MODULE_TYPE, CHART_PLUGIN_ID } from '@open-pencil/core/plugins'
@@ -9,31 +11,33 @@ export function buildOpenPencilVueChart(): string {
 <script setup lang="ts">
 import {computed,normalizeClass,normalizeStyle,useAttrs,useId,ref,onMounted,onBeforeUnmount} from 'vue'
 ${chartSource.CHART_CONFIG_SOURCE}
+${CHART_MATH_SOURCE}
+${CHART_DATA_SOURCE}
 ${chartSource.CHART_PRESENTATION_SOURCE}
 defineOptions({inheritAttrs:false})
-const props=defineProps<{config:OpenPencilChartConfig}>(),attrs=useAttrs(),id=useId(),root=ref<HTMLElement|null>(null),language=ref(typeof attrs.lang==='string'?attrs.lang:'en')
+const props=defineProps<{config:OpenPencilChartConfig;data?:unknown;dataBound?:boolean}>(),attrs=useAttrs(),id=useId(),root=ref<HTMLElement|null>(null),language=ref(typeof attrs.lang==='string'?attrs.lang:'en')
 let stopLanguage:(()=>void)|undefined
 onMounted(()=>{if(root.value)stopLanguage=observeChartLanguage(root.value,value=>{language.value=value})})
 onBeforeUnmount(()=>stopLanguage?.())
-const copy=computed(()=>chartCopy(language.value)),layout=computed(()=>props.config.layout)
+const snapshot=computed(()=>chartSnapshot(props.config,props.data,props.dataBound===true)),config=computed(()=>snapshot.value.config),copy=computed(()=>chartCopy(language.value)),layout=computed(()=>config.value.layout)
 const hostStyle=computed(()=>{
  const inline=normalizeStyle([attrs.style]),position=typeof inline==='object'?inline.position:undefined
  const positioned=position!==undefined&&position!=='static'||normalizeClass(attrs.class).split(/\\s+/).some(token=>['absolute','fixed','relative','sticky'].includes(token))
  return {...(!positioned?{position:'relative' as const}:{}),background:layout.value.backgroundColor}
 })
 </script>
-<template><div v-bind="attrs" ref="root" data-openpencil-chart="" :data-chart-type="config.chartType" :data-chart-empty="layout.empty" :style="hostStyle">
+<template><div v-bind="attrs" ref="root" data-openpencil-chart="" :data-chart-type="config.chartType" :data-chart-empty="layout.empty" :data-chart-invalid="snapshot.invalid" :style="hostStyle">
  <svg data-chart-svg="" role="img" :aria-labelledby="id+'-title'" :aria-describedby="id+'-description'" :viewBox="'0 0 '+layout.width+' '+layout.height" preserveAspectRatio="xMidYMid meet">
- <title :id="id+'-title'">{{copy.types[config.chartType]}}</title><desc :id="id+'-description'">{{chartDescription(config,copy)}}</desc>
+ <title :id="id+'-title'">{{copy.types[config.chartType]}}</title><desc :id="id+'-description'">{{chartDescription(config,copy,snapshot.invalid,snapshot.emptyData)}}</desc>
  <defs><clipPath v-for="(text,index) in layout.texts" :id="id+'-label-'+index" :key="index"><rect :x="text.x" :y="text.y" :width="text.width" :height="text.height"/></clipPath></defs>
  <path v-for="(path,index) in layout.paths" :key="index" data-chart-path="" :d="path.d" :fill="path.fill" :stroke="path.stroke" :stroke-width="path.strokeWidth" :opacity="path.opacity"/>
  <rect v-for="(rect,index) in layout.rects" :key="index" data-chart-bar="" :x="rect.x" :y="rect.y" :width="rect.width" :height="rect.height" :rx="rect.radius" :fill="rect.fill" :opacity="rect.opacity"/>
  <circle v-for="(circle,index) in layout.circles" :key="index" data-chart-circle="" :cx="circle.x" :cy="circle.y" :r="circle.radius" :fill="circle.fill" :stroke="circle.stroke" :stroke-width="circle.strokeWidth" :opacity="circle.opacity"/>
- <text v-for="(text,index) in layout.texts" :key="index" :data-chart-text="text.kind" :x="chartTextX(text)" :y="text.y+text.height/2" dominant-baseline="middle" :text-anchor="chartTextAnchor(text)" :font-size="text.fontSize" :font-weight="text.fontWeight" :fill="text.color" :clip-path="'url(#'+id+'-label-'+index+')'">{{chartTextValue(text,copy)}}</text>
+ <text v-for="(text,index) in layout.texts" :key="index" :data-chart-text="text.kind" :x="chartTextX(text)" :y="text.y+text.height/2" dominant-baseline="middle" :text-anchor="chartTextAnchor(text)" :font-size="text.fontSize" :font-weight="text.fontWeight" :fill="text.color" :clip-path="'url(#'+id+'-label-'+index+')'">{{chartTextValue(text,copy,snapshot.invalid,snapshot.emptyData)}}</text>
  </svg>
  <table data-chart-table=""><caption>{{copy.data}}</caption><thead><tr><th scope="col">{{copy.category}}</th><th scope="col">{{copy.value}}</th></tr></thead><tbody>
  <tr v-for="(value,index) in config.values" :key="index"><th scope="row">{{config.labels[index]||String(index+1)}}</th><td>{{String(value)}}</td></tr>
- </tbody></table><slot/></div></template>
+ </tbody></table><p v-if="snapshot.invalid||snapshot.emptyData" data-chart-status="" role="status">{{snapshot.invalid?copy.invalid:copy.noData}}</p><slot/></div></template>
 <style>${chartSource.CHART_STYLE_SOURCE}</style>`
 }
 

@@ -8,6 +8,7 @@ import { avatarTextNode } from '#core/canvas/modules/avatar/text'
 import { badgeTextNode } from '#core/canvas/modules/badge/text'
 import { breadcrumbTextNode } from '#core/canvas/modules/breadcrumb/text'
 import { carouselTextNode } from '#core/canvas/modules/carousel/text'
+import { cascaderTextNode } from '#core/canvas/modules/cascader/text'
 import { chartTextNode } from '#core/canvas/modules/chart/text'
 import { chipTextNode } from '#core/canvas/modules/chip/text'
 import { codeBlockTextNode } from '#core/canvas/modules/code-block/text'
@@ -22,6 +23,7 @@ import { paginationTextNode } from '#core/canvas/modules/pagination/text'
 import { popoverTriggerTextNode } from '#core/canvas/modules/popover/text'
 import { progressTextNode } from '#core/canvas/modules/progress/text'
 import { ratingTextNode } from '#core/canvas/modules/rating/text'
+import { richTextTextNode } from '#core/canvas/modules/rich-text/text'
 import { skeletonTextNode } from '#core/canvas/modules/skeleton/text'
 import { sliderTextNode } from '#core/canvas/modules/slider/text'
 import { stepperTextNode } from '#core/canvas/modules/stepper/text'
@@ -31,7 +33,6 @@ import { timelineTextNode } from '#core/canvas/modules/timeline/text'
 import { tooltipTextNode } from '#core/canvas/modules/tooltip/text'
 import { treeTextNode } from '#core/canvas/modules/tree/text'
 import { triggerTextNode } from '#core/canvas/modules/trigger/text'
-import { cascaderTextNode } from '#core/canvas/modules/cascader/text'
 import { walktourTextNode } from '#core/canvas/modules/walktour/text'
 import { selectDesignContent } from '#core/canvas/select-state'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
@@ -91,10 +92,10 @@ function graphTextNode(graph: SceneGraph, node: SceneNode): SceneNode {
   if (node.type === 'CHECKBOX') return checkboxTextNode(graph, node) ?? node
   if (node.type === 'SELECT')
     return selectTextProjection(node, selectDesignContent(graph, node))?.node ?? node
-  return lowcodeTextNode(node) ?? moduleTextNode(node)
+  return lowcodeTextNode(node) ?? moduleTextNode(node, graph)
 }
 
-function moduleTextNode(node: SceneNode): SceneNode {
+function moduleTextNode(node: SceneNode, graph: SceneGraph): SceneNode {
   return (
     descriptionsTextNode(node) ??
     paginationTextNode(node) ??
@@ -103,14 +104,14 @@ function moduleTextNode(node: SceneNode): SceneNode {
     cascaderTextNode(node) ??
     codeBlockTextNode(node) ??
     markdownTextNode(node) ??
-    feedbackTextNode(node) ??
+    feedbackTextNode(node, graph) ??
     sliderTextNode(node) ??
     ratingTextNode(node) ??
     stepperTextNode(node) ??
     breadcrumbTextNode(node) ??
     accordionTextNode(node) ??
     carouselTextNode(node) ??
-    dataGridTextNode(node) ??
+    dataGridTextNode(node, graph) ??
     modalTriggerTextNode(node) ??
     tabsTextNode(node) ??
     tableTextNode(node) ??
@@ -197,8 +198,9 @@ export function collectGraphFontRequirements(
   return { characters: Array.from(characters).join(''), nodes, scripts: Array.from(scripts) }
 }
 
-function displayTextNode(node: SceneNode): SceneNode | null {
+function displayTextNode(node: SceneNode, graph: SceneGraph): SceneNode | null {
   return (
+    richTextTextNode(node) ??
     dateRangeTextNode(node) ??
     treeTextNode(node) ??
     popoverTriggerTextNode(node) ??
@@ -208,12 +210,15 @@ function displayTextNode(node: SceneNode): SceneNode | null {
     tooltipTextNode(node) ??
     skeletonTextNode(node) ??
     emptyStateTextNode(node) ??
-    chartTextNode(node)
+    chartTextNode(node, graph)
   )
 }
 
-function feedbackTextNode(node: SceneNode): SceneNode | null {
+function feedbackTextNode(node: SceneNode, graph: SceneGraph): SceneNode | null {
   return (
-    alertTextNode(node) ?? progressTextNode(node) ?? chipTextNode(node) ?? displayTextNode(node)
+    alertTextNode(node) ??
+    progressTextNode(node) ??
+    chipTextNode(node) ??
+    displayTextNode(node, graph)
   )
 }

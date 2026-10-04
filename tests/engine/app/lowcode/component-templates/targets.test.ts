@@ -25,7 +25,7 @@ describe('component template insertion target boundaries', () => {
     }
   )
 
-  test.each(['validated-form', 'dialog-form', 'tabs-details'])(
+  test.each(['validated-form', 'dialog-form', 'tabs-details', 'stepper-form', 'drawer-details'])(
     'rejects %s below an existing form before creating nested form markup',
     (id) => {
       const editor = createEditor()

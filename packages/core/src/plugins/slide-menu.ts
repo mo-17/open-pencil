@@ -59,6 +59,8 @@ export interface SlideMenuModuleConfigV1 extends JSONObject {
 export interface SlideMenuModuleConfigV2 extends SlideMenuModuleConfigV1 {
   showTriggerIcon: boolean
   showTriggerLabel: boolean
+  /** Optional unique direct-child layer name; absent preserves authored trigger children. */
+  contentChildName?: string
 }
 
 export type SlideMenuModuleConfig = SlideMenuModuleConfigV2
@@ -103,6 +105,7 @@ const LEGACY_CONFIG_KEYS = new Set([
   'overlayOpacity'
 ])
 const CONFIG_KEYS = new Set([...LEGACY_CONFIG_KEYS, 'showTriggerIcon', 'showTriggerLabel'])
+const CONTENT_CONFIG_KEYS = new Set([...CONFIG_KEYS, 'contentChildName'])
 const ITEM_KEYS = new Set(['label', 'href'])
 const PRESENTATIONS = new Set<SlideMenuPresentationV1>(['menu', 'dialog'])
 const DIRECTIONS = new Set<SlideMenuDirectionV1>(['left', 'right', 'top', 'bottom'])
@@ -149,8 +152,15 @@ function parseItems(value: unknown): SlideMenuItemV1[] {
   return items
 }
 
+function slideMenuConfigKeys(value: unknown, configVersion: SupportedConfigVersion): Set<string> {
+  if (configVersion === 1) return LEGACY_CONFIG_KEYS
+  return isPlainJSONObject(value) && Object.hasOwn(value, 'contentChildName')
+    ? CONTENT_CONFIG_KEYS
+    : CONFIG_KEYS
+}
+
 function parseSlideMenuConfig(value: unknown, configVersion: SupportedConfigVersion): ParseResult {
-  const keys = configVersion === 1 ? LEGACY_CONFIG_KEYS : CONFIG_KEYS
+  const keys = slideMenuConfigKeys(value, configVersion)
   if (!isPlainJSONObject(value) || !hasExactPluginKeys(value, keys)) {
     return {
       ok: false,
@@ -231,6 +241,16 @@ function parseSlideMenuConfig(value: unknown, configVersion: SupportedConfigVers
         triggerLabel,
         showTriggerIcon,
         showTriggerLabel,
+        ...(Object.hasOwn(value, 'contentChildName')
+          ? {
+              contentChildName: boundedText(
+                value.contentChildName,
+                'slide menu config contentChildName',
+                0,
+                120
+              )
+            }
+          : {}),
         title,
         description,
         items,
@@ -348,6 +368,12 @@ const SLIDE_MENU_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
     kind: 'text',
     label: 'Description',
     i18nLabelKey: 'lowcodeModuleFieldSlideMenuDescription'
+  },
+  {
+    path: ['contentChildName'],
+    kind: 'text',
+    label: 'Content child layer',
+    i18nLabelKey: 'lowcodeModuleFieldModalContentChild'
   },
   {
     path: ['items'],

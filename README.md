@@ -33,6 +33,7 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
 - **Components and variants** — create reusable components, group variants into component sets, insert local assets as instances, and switch variants from the inspector
 - **Design workbench** — find components and enabled plugin modules by source, category or description, keep favorites, and insert them into the canvas. Import optional variable presets without changing existing designs; review a generated design brief and add it to AI input when ready. See [components](packages/docs/user-guide/components.md), [variables](packages/docs/user-guide/variables.md) and [AI handoff](packages/docs/programmable/ai-chat.md#review-a-design-brief).
 - **Image vectorization** — convert image layers into editable vector layers with Recraft or fal.ai
+- **Canvas origin navigation** — move origin `(0, 0)` to the active canvas view's top-left beside the zoom control, keeping the current zoom and selection.
 - **Adaptive canvas performance** — use Automatic mode or choose resource saving, balanced, or
   smoothness-first rendering. Ordinary pointer, drag, pan, and zoom interaction stays on the native
   display cadence; the selected level dynamically budgets generated effects, collaboration cursors,
@@ -47,7 +48,7 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   deterministic PNG sequences or GIF plus capability-gated WebM/MP4; embed the public SSR-safe
   Motion Runtime SDK; and generate a fail-closed Figma Motion Plugin API adapter for the verified
   native subset
-- **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase schema inspection and RLS guidance, authenticated client/server workflows, environment-scoped runtime configuration, i18n, shadcn/ui output, preview diagnostics, build, and deploy flows. Switch Compiler Preview and the `compile`/`build`/`deploy` CLI between the full React target and the bounded Vue 3 target; preview refresh supports Real-time, Auto, and Manual policies with single-flight latest-change scheduling
+- **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase schema inspection and RLS guidance, authenticated client/server workflows, environment-scoped runtime configuration, i18n, shadcn/ui output, preview diagnostics, build, and deploy flows. Optional Application mode selects business pages and an entry Frame per page while keeping reference designs and component pages editable. An optional shared shell reuses a desktop sidebar/header or mobile navigation layout with an empty content region, without moving authored entries. Application pages can opt into session-only recovery of bound page state and window scroll in React/Vue; navigation supports push, replace and safe back with an internal fallback. Optional entry conditions and unsaved-change confirmation protect Web navigation while business workflows remain responsible for saving and server permissions. Design mode remains the default and retains the existing export range. Switch Compiler Preview and the `compile`/`build`/`deploy` CLI between the full React target and the bounded Vue 3 target; preview refresh supports Auto (default), On save, Manual and Real-time policies with single-flight latest-change scheduling
 - **Backend Provider boundary** — normalize data, auth, workflow, capability, and migration intent into
   provider-neutral IR; resolve only data-only declarations backed by trusted static adapters; emit
   deterministic local artifacts; and keep Inspect/Review/Confirm/Apply/Verify plus strict production
@@ -55,7 +56,8 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   Desktop review supports React and Vue, with the chosen framework retained through staging
   Apply, capability verification, and migration export. Compilation and preview never modify a
   remote database or deploy a server runtime
-- **Business application templates** — create and combine CRM, commerce, booking, publishing and collaboration workflows. Add procurement/inventory, two-stage enterprise approvals, fixed-question surveys, text courses with instructor grading, moderated communities, asset custody, quote/contract fulfillment, or recruitment and employee transitions; export editable React/Vue pages and a NestJS backend. All 25 starters include compact web layouts with mobile navigation, single-column cards and grouped form fields. The embedded preview offers phone, landscape, tablet and desktop sizes without resetting the current page. See [the template guide](packages/docs/development/backend-business-templates.md).
+- **Business application templates** — create and combine CRM, commerce, booking, publishing and collaboration workflows. Add procurement/inventory, two-stage enterprise approvals, fixed-question surveys, text courses with instructor grading, moderated communities, asset custody, quote/contract fulfillment, or recruitment and employee transitions; export editable React/Vue pages and a NestJS backend. All 25 starters include compact web layouts with mobile navigation, single-column cards and grouped form fields. The embedded preview offers device presets, custom dimensions, continuous width adjustment, larger-text and keyboard-obstruction simulations without resetting form state. Opt-in adaptation diagnostics locate overflow and text-clipping risks on the canvas. See [the template guide](packages/docs/development/backend-business-templates.md).
+- **Responsive editing** — edit one breakpoint at a time, inspect inherited branch values, pin or restore individual overrides and preview the matching Web width. Preserve base canvas geometry and undoable `.fig` settings; overlapping compact rules take precedence below 1280px.
 - **Optional Prisma CRM export** — install the experimental NestJS + Prisma 8 CRM provider, select it for an existing CRM application, and export React/Vue sources with Prisma customer queries and retained `pg` transactions. The default NestJS provider and its desktop preview remain separate. See [the CRM guide](packages/docs/development/backend-nestjs.md#experimental-prisma-8-crm-export).
 - **Editable dialog content** — create a custom Modal body, edit its original nodes on a focused canvas, and return to a trigger that shows its configured icon and label. Content creation and edits support Undo.
 - **Built-in plugin marketplace** — manage 92 reviewed plugins with 97 module, command, exporter,
@@ -280,7 +282,9 @@ npm run dev
 
 Single-select controls show labels and placeholders on the canvas, expose option ordering and default selection in the inspector, and support optional clearing through the menu in React/Vue exports. Plain native selectors keep their arrow inset from the right edge and reserve space for the label. Optional inspector switches add in-menu label search and bounded virtual scrolling for large option lists in React/Vue. [Configure Select behavior](packages/docs/user-guide/lowcode-apps.md#configure-field-behavior).
 
-Autocomplete adds editable local suggestions while preserving free text and string form bindings. Time picker adds native time input with bounds and step in seconds; both can be configured in the visual inspector and exported to React/Vue. Date-time picker uses a local date/time string without timezone conversion. Number inputs offer native, custom or hidden step controls, with custom controls at the end or on both sides. Password inputs can opt into a local reveal button; the template starts empty and never echoes the password as feedback. These are INPUT variants, not additional plugins, and retain the existing React/Vue binding and FORM paths.
+Autocomplete adds editable local suggestions while preserving free text and string form bindings. Time picker adds native time input with bounds and step in seconds; both can be configured in the visual inspector and exported to React/Vue. Date-time picker uses a local date/time string without timezone conversion. Number inputs offer native, custom or hidden step controls, with custom controls at the end or on both sides. Numeric state bindings keep incomplete text as an input draft and write only complete finite numbers, including zero. Password inputs can opt into a local reveal button; the template starts empty and never echoes the password as feedback. These are INPUT variants, not additional plugins, and retain the existing React/Vue binding and FORM paths.
+
+Tree and TreeSelect can bind a single node ID or an array of node IDs to matching page or document state, with FORM validation and reset. Their two editable templates create independent state; unbound selection stays local to each instance. Invalid or disabled bound choices remain visible as unavailable instead of rewriting business state.
 
 Color picker adds a hexadecimal color field with string bindings, a native picker, and read-only/disabled states. The opt-in Descriptions module displays editable label/value rows with responsive columns, horizontal or vertical labels, borders and density controls. Both include canvas previews and React/Vue output; Descriptions displays authored text without fetching business data.
 
@@ -339,6 +343,33 @@ to the canvas, echo-suppressed two-way page navigation, collaborative document-s
 instant Light/Dark theme synchronization. That bridge is generated only for editor Preview and is
 absent from source/static delivery. Vue still has no Motion runtime; Motion Debug reports unavailable
 immediately instead of waiting indefinitely.
+
+Preview settings offer **Auto** (default, after a 400–1,000 ms input pause), **On save** (after a
+successful current-document save), **Manual** (Reload only), and **Real-time**. The setting is remembered
+on this device. Cancelled or failed saves and local recovery snapshots never trigger On save;
+connected NestJS previews retain automatic synchronization.
+
+Clear the selection and use **Page → Device adaptation** to choose **Fixed size**, **Scale to width**,
+or **Responsive layout** for that page. The choice is saved in `.fig`; changing the preview device
+size alone does not change it. React/Vue and Flutter consume the same page setting. Scale to width
+preserves the design proportions, including content placed before the canvas origin. Responsive
+layout fills the available width and uses Auto layout plus authored responsive overrides to rearrange
+content; absolute freeform children retain their authored positions. Existing pages keep fixed sizing.
+Flutter responsive wrapping preserves main-axis and within-run alignment; invalid projected size
+limits are normalized with diagnostics before native widget construction.
+See [page device adaptation](packages/docs/user-guide/lowcode-apps.md#page-device-adaptation) for native layout limits.
+
+The **Flutter simulator preview** section starts a separate native session in checkout-based Tauri
+development. Discover an already running iOS or Android simulator, select it and press **Start**.
+The active page supplies the native snapshot; switching pages stops its session. The same sync
+setting controls serialized native hot reload; **Stop** ends only the session started by this editor. Use an existing Flutter SDK, Bun, platform tools and offline dependency/engine caches.
+Bun must be available on the launcher PATH; Tauri preserves those directories alongside its login-shell lookup.
+Preparation does not install or upgrade these tools; missing caches fail with a local error. The
+browser app cannot start Flutter, and the runner is not yet bundled into distributed installers.
+Projects requiring third-party native runtime plugins are rejected; compiler warnings describe
+other unsupported native behavior. Hot reload preserves app state; native
+platform changes require Stop and Start. Flutter remains separate from the React/Vue iframe,
+CLI web build/deploy targets and their collaboration bridge.
 
 Desktop NestJS applications offer two Compiler Preview modes. **External backend** connects to an
 already-running local service; model changes disconnect it until you synchronize the backend and
@@ -528,10 +559,10 @@ Alert supports semantic tones and dismissal; Chip supports selection and removal
 Avatar supports local image fills with readable fallback text; Badge adds a count or decorative dot to a text host; Timeline offers editable ordered events with time text and status. All three include visual properties and React/Vue exports.
 The Assets library includes 54 basic component templates and 8 editable compositions. Install and
 enable Slider, Rating, Stepper, Breadcrumb, Alert, Progress, Chip, Avatar, Badge or Timeline in **Settings → Plugins**, then insert them from
-**Assets → Component templates** or the module menu. Slider/Range, Rating, Date Range and Cascader support optional page/document state and FORM bindings. Stepper changes only its local current step. State bindings do not configure a backend workflow. Breadcrumb uses validated links and a non-clickable current
+**Assets → Component templates** or the module menu. Slider/Range, Rating, Date Range and Cascader support optional page/document state and FORM bindings. Stepper optionally binds its current index to writable numeric page/document state, emits step-change events and includes previous/next/reset controls in its template. Step changes do not validate or submit a form. State bindings do not configure a backend workflow. Breadcrumb uses validated links and a non-clickable current
 item. Canvas displays authored initial settings; React and Vue provide the interactive behavior.
 These modules retain normal `.fig` FRAME geometry and metadata, without promising that their
-interactions run in Figma. Vue currently implements 35 of the 42 bundled modules; unsupported
+interactions run in Figma. Vue implements all 42 bundled module runtimes; unregistered
 modules remain static with explicit export warnings. Accordion
 offers visual initial-open and section-order controls, wrapped canvas content, and React/Vue
 keyboard-accessible output; the FAQ composition reuses this existing module. See the

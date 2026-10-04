@@ -14,6 +14,7 @@ import { fontManager } from '@open-pencil/core/text'
 import { createPluginExportAbortError } from '@/app/plugins/host/exporter-abort'
 import { tauriFetch } from '@/app/tauri/http'
 
+import { capturePreviewPageSessionSource } from './application-session'
 import {
   preparePreviewBackendProvider,
   previewHasBackendProvider,
@@ -180,8 +181,13 @@ export async function createTauriPreviewHost(
       if (afterFonts) return afterFonts
       const compileStartedAt = now()
       const backend = preparePreviewBackendProvider(request.graph, request.options, backendStore)
+      const sourceGraph = request.graph
+      const pageSessionSource =
+        request.options.backendPreview === undefined
+          ? capturePreviewPageSessionSource(sourceGraph)
+          : undefined
       const output = compileProject({
-        graph: request.graph,
+        graph: sourceGraph,
         pageIds: request.pageIds,
         options: backend.options,
         fontManifest
@@ -222,7 +228,9 @@ export async function createTauriPreviewHost(
           expectedMessageOrigin: origin,
           postMessageTargetOrigin: origin,
           sandbox: null,
-          channelId
+          // Session-enabled builds retire the pre-ACK runtime until a fresh iframe is ready.
+          channelId: pageSessionSource ? createChannelId() : channelId,
+          ...(pageSessionSource ? { pageSessionSource } : {})
         }
       }
     } catch (cause) {

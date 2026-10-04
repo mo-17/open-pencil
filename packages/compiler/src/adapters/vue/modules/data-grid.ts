@@ -1,5 +1,6 @@
 import { DATA_GRID_CSV_RUNTIME } from '#compiler/adapters/data-grid/csv'
 import { DATA_GRID_FEEDBACK_RUNTIME } from '#compiler/adapters/data-grid/feedback'
+import { DATA_GRID_ROWS_RUNTIME } from '#compiler/adapters/data-grid/rows'
 import {
   DATA_GRID_TYPES,
   DATA_GRID_CELL_RUNTIME,
@@ -15,17 +16,21 @@ export function buildOpenPencilVueDataGrid(): string {
 ${DATA_GRID_TYPES}
 ${DATA_GRID_CSV_RUNTIME}
 ${DATA_GRID_CELL_RUNTIME}
+${DATA_GRID_ROWS_RUNTIME}
 ${DATA_GRID_FEEDBACK_RUNTIME}
 ${DATA_GRID_LAYOUT_RUNTIME}
 </script>
 <script setup lang="ts">
 import { computed, normalizeClass, normalizeStyle, ref, useAttrs, useId, watch, type CSSProperties } from 'vue'
 defineOptions({ inheritAttrs: false })
-const props = defineProps<{ config: OpenPencilDataGridConfig; lang?: string }>()
+const props = defineProps<{ config: OpenPencilDataGridConfig; lang?: string; rowsBound?: boolean; rows?: unknown }>()
 const attrs = useAttrs()
 const chinese = computed(() => (props.lang ?? (typeof document === 'undefined' ? 'en' : document.documentElement.lang)).toLowerCase().startsWith('zh'))
 const copy = computed(() => dataGridCopy(chinese.value))
-const rows = ref<readonly OpenPencilDataGridRow[]>(props.config.data.rows)
+const localRows = ref<readonly OpenPencilDataGridRow[]>(props.config.data.rows)
+const boundRows = computed(() => props.rowsBound ? resolveBoundDataGridRows(props.rows, props.config.data.columns) : { ok: true, rows: [] })
+const rows = computed(() => props.rowsBound ? boundRows.value.rows : localRows.value)
+const rowsUnavailable = computed(() => props.rowsBound === true && !boundRows.value.ok)
 const sort = ref<OpenPencilDataGridSort | null>(props.config.initialSort)
 const queries = ref<Record<string, string>>({})
 const page = ref(0)
@@ -48,8 +53,8 @@ watch([scrollArea, tableHeader, () => props.config.showHeader, () => props.confi
   }
 }, { flush: 'post' })
 // Value equality keeps local edits on unrelated host rerenders; changed data resets the session.
-watch(() => JSON.stringify({ data: props.config.data, filters: props.config.filters, initialSort: props.config.initialSort, pageSize: props.config.pageSize, selectionMode: props.config.selectionMode }), () => {
-  rows.value = props.config.data.rows
+watch(() => JSON.stringify({ data: { columns: props.config.data.columns, rows: props.rowsBound ? boundRows.value.rows : props.config.data.rows }, rowsBound: props.rowsBound === true, rowsUnavailable: rowsUnavailable.value, filters: props.config.filters, initialSort: props.config.initialSort, pageSize: props.config.pageSize, selectionMode: props.config.selectionMode }), () => {
+  localRows.value = props.config.data.rows
   sort.value = props.config.initialSort
   queries.value = {}
   page.value = 0
@@ -133,9 +138,10 @@ function togglePageRows() {
   }
 }
 function importPastedCsv() {
+  if (props.rowsBound) return
   try {
     const imported = importCsvRows(csvSource.value, props.config.data.columns)
-    rows.value = imported
+    localRows.value = imported
     sort.value = props.config.initialSort
     queries.value = {}
     page.value = 0
@@ -152,7 +158,7 @@ function importPastedCsv() {
 }
 function prepareCsvText() {
   try {
-    const prepared = exportCsvRows(props.config.data.columns, rows.value)
+    const prepared = exportCsvRows(props.config.data.columns, props.rowsBound ? sortedRows.value : rows.value)
     csvOutput.value = prepared.text
     sanitizedCount.value = prepared.sanitizedCount
     csvError.value = ''
@@ -185,15 +191,16 @@ const headerStyle = computed<CSSProperties>(() => props.config.showHeader ? {
 } : visuallyHiddenStyle)
 </script>
 <template>
-  <div v-bind="$attrs" :lang="lang" data-openpencil-data-grid="" :style="hostStyle">
+  <div v-bind="$attrs" :lang="lang" data-openpencil-data-grid="" :data-openpencil-data-grid-unavailable="rowsUnavailable || undefined" :style="hostStyle">
     <div v-if="config.showCsvTools === true" :aria-label="copy.tools" data-openpencil-data-grid-csv-tools="" role="region" :style="{ borderBottom: '1px solid ' + config.borderColor, padding: '8px', flexShrink: 0 }">
       <div style="display:flex;flex-wrap:wrap;gap:6px">
-        <button type="button" :style="buttonStyle" @click="csvOpen = !csvOpen">{{ csvOpen ? copy.close : copy.paste }}</button>
-        <button type="button" :style="buttonStyle" @click="prepareCsvText">{{ copy.prepare }}</button>
+        <button type="button" :disabled="rowsBound" :style="buttonStyle" @click="csvOpen = !csvOpen">{{ csvOpen ? copy.close : copy.paste }}</button>
+        <button type="button" :disabled="rowsUnavailable" :style="buttonStyle" @click="prepareCsvText">{{ copy.prepare }}</button>
       </div>
-      <div v-if="csvOpen" style="margin-top:6px">
+      <p v-if="rowsBound">{{ copy.boundReadOnly }}</p>
+      <div v-if="csvOpen && !rowsBound" style="margin-top:6px">
         <label>{{ copy.source }}<textarea v-model="csvSource" :maxlength="CSV_MAX_BYTES" rows="5" :spellcheck="false" :style="inputStyle" /></label>
-        <button type="button" :style="buttonStyle" @click="importPastedCsv">{{ copy.import }}</button><p>{{ copy.local }}</p>
+        <button type="button" :disabled="rowsBound" :style="buttonStyle" @click="importPastedCsv">{{ copy.import }}</button><p>{{ copy.local }}</p>
       </div>
       <div v-if="csvOutput" style="margin-top:6px">
         <label>{{ copy.output }}<textarea :value="csvOutput" readonly rows="5" :spellcheck="false" :style="inputStyle" /></label>
@@ -237,7 +244,7 @@ const headerStyle = computed<CSSProperties>(() => props.config.showHeader ? {
             </td>
             <td v-for="(column, index) in config.data.columns" :key="column.id" :style="cellStyle(column)">{{ cellText(row.cells[index] ?? null) }}</td>
           </tr>
-          <tr v-if="pageRows.length === 0"><td :colspan="config.data.columns.length + (selectionColumn ? 1 : 0)" style="padding:16px;text-align:center">{{ copy.empty }}</td></tr>
+          <tr v-if="pageRows.length === 0"><td :colspan="config.data.columns.length + (selectionColumn ? 1 : 0)" style="padding:16px;text-align:center"><span v-if="rowsUnavailable" role="alert">{{ copy.boundUnavailable }}</span><template v-else>{{ copy.empty }}</template></td></tr>
         </tbody>
       </table>
     </div>

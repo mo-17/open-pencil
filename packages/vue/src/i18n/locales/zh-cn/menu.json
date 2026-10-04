@@ -29,6 +29,7 @@
   "paste": "粘贴",
   "zoomIn": "放大",
   "zoomOut": "缩小",
+  "resetToOrigin": "将原点 (0, 0) 定位到画布左上角",
   "profiler": "性能分析器",
   "theme": "主题",
   "themeLight": "浅色",

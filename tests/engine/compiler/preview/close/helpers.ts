@@ -2,14 +2,19 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
 
+import { checkCSSIsolation } from './css-isolation/helpers'
+
 const directory = process.argv[2]
 const mode = process.argv[3]
-if (!directory || !['react', 'vue', 'parallel'].includes(mode))
+if (
+  !directory ||
+  !['react', 'vue', 'parallel', 'same-target', 'css-react', 'css-vue'].includes(mode)
+)
   throw new Error('Invalid fixture arguments')
 
 // The nearest package and physical node_modules isolate Vite's optimizer cache.
@@ -65,11 +70,25 @@ async function checkPortReleased(preview: PreviewServer): Promise<void> {
 
 async function loadDependencies(preview: PreviewServer, code: string): Promise<string[]> {
   const urls = [
-    ...code.matchAll(/(?:from\s*|import\s*)["']([^"']*\.vite\/deps\/[^"']+)["']/gu)
+    ...code.matchAll(/(?:from\s*|import\s*)["']([^"']*\.vite\/server-[^/]+\/deps\/[^"']+)["']/gu)
   ].map((match) => new URL(match[1], preview.url).href)
   assert.ok(urls.length > 0, 'The transformed entry must use real optimized dependencies')
   await checkDependencyURLs(urls)
   return urls
+}
+
+function dependencyMetadata(url: string, target: 'react' | 'vue'): string {
+  const path = decodeURIComponent(new URL(url).pathname)
+  const file = path.startsWith('/@fs/')
+    ? path.slice('/@fs'.length)
+    : join(
+        directory,
+        'packages/compiler/.preview-root',
+        target,
+        path.match(/\.vite\/(server-[^/]+)\//u)?.[1] ?? '',
+        path.slice(1)
+      )
+  return join(dirname(file), '_metadata.json')
 }
 
 async function checkDependencyURLs(urls: string[]): Promise<void> {
@@ -83,7 +102,12 @@ async function checkDependencyURLs(urls: string[]): Promise<void> {
   )
 }
 
-if (mode === 'react' || mode === 'vue') {
+if (mode === 'css-react' || mode === 'css-vue') {
+  await checkCSSIsolation(directory, mode === 'css-react' ? 'react' : 'vue')
+  process.stdout.write(
+    mode + ': virtual roots isolated; peer HMR absent; CSS retained; owned roots cleaned\n'
+  )
+} else if (mode === 'react' || mode === 'vue') {
   const preview = await createPreviewServer({
     target: mode,
     fsRoot: directory,
@@ -106,34 +130,47 @@ if (mode === 'react' || mode === 'vue') {
     fsRoot: directory,
     initialFiles: previewFiles('react')
   })
-  let vue: PreviewServer | undefined
+  let second: PreviewServer | undefined
   try {
     const oldReactURLs = await loadDependencies(react, await serveEntry(react, 'react'))
-    const cache = (target: string) =>
-      join(directory, 'packages/compiler/.preview-root', target, '.vite/deps/_metadata.json')
-    const reactMetadata = readFileSync(cache('react'), 'utf8')
-    vue = await createPreviewServer({
-      target: 'vue',
+    const reactCache = dependencyMetadata(oldReactURLs[0], 'react')
+    const reactMetadata = readFileSync(reactCache, 'utf8')
+    const secondTarget = mode === 'same-target' ? 'react' : 'vue'
+    const secondFiles = previewFiles(secondTarget)
+    if (mode === 'same-target')
+      secondFiles.set('src/components/ui/select.tsx', 'export const fixture = true')
+    second = await createPreviewServer({
+      target: secondTarget,
       fsRoot: directory,
-      initialFiles: previewFiles('vue')
+      initialFiles: secondFiles
     })
-    assert.notEqual(react.port, vue.port)
+    assert.notEqual(react.port, second.port)
     const [reactEntry, vueEntry] = await Promise.all([
       serveEntry(react, 'react'),
-      serveEntry(vue, 'vue')
+      serveEntry(second, secondTarget)
     ])
-    await Promise.all([loadDependencies(react, reactEntry), loadDependencies(vue, vueEntry)])
-    assert.equal(readFileSync(cache('react'), 'utf8'), reactMetadata)
-    assert.ok(readFileSync(cache('vue'), 'utf8').includes('"vue"'))
+    const [, secondURLs] = await Promise.all([
+      loadDependencies(react, reactEntry),
+      loadDependencies(second, vueEntry)
+    ])
+    const secondCache = dependencyMetadata(secondURLs[0], secondTarget)
+    assert.notEqual(reactCache, secondCache)
+    assert.equal(readFileSync(reactCache, 'utf8'), reactMetadata)
+    assert.ok(
+      readFileSync(secondCache, 'utf8').includes(
+        mode === 'same-target' ? '"@radix-ui/react-select"' : '"vue"'
+      )
+    )
     // Keep the original versioned React URLs: starting Vue must neither delete
     // their files nor require the existing React client to reload.
     await checkDependencyURLs(oldReactURLs)
+    await second.close()
+    assert.equal(existsSync(dirname(dirname(secondCache))), false)
+    await checkDependencyURLs(oldReactURLs)
   } finally {
-    await Promise.all([react.close(), react.close(), vue?.close(), vue?.close()])
+    await Promise.all([react.close(), react.close(), second?.close(), second?.close()])
   }
   await checkPortReleased(react)
-  if (vue) await checkPortReleased(vue)
-  process.stdout.write(
-    'parallel: caches isolated; original modules retained; both ports released\n'
-  )
+  if (second) await checkPortReleased(second)
+  process.stdout.write(mode + ': caches isolated; original modules retained; both ports released\n')
 }

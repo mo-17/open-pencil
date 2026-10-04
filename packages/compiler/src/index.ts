@@ -26,6 +26,12 @@ import {
   applyFlutterCompilerFontManifest,
   applyMiniProgramCompilerFontManifest
 } from './font-manifest'
+import {
+  applicationGuardTargetWarnings,
+  projectCompilerApplicationGuards
+} from './ir/application/guards'
+import { resolveCompilerApplicationScope } from './ir/application/projection'
+import { applicationReferenceWarnings } from './ir/application/references'
 import { resolveServerWorkflowAuthority } from './ir/collect/backend-server-workflows'
 import { buildComponentRegistry } from './ir/collect/components'
 import type { MotionLoweringCache } from './ir/collect/motion'
@@ -33,7 +39,7 @@ import { collectServerWorkflows } from './ir/collect/server-workflows'
 import { collectComponents, collectTree } from './ir/collect/tree'
 import { emitVRTourSampleSources } from './ir/collect/vr-tour-assets'
 import type { IRMotion } from './ir/motion'
-import type { IRServerWorkflow } from './ir/types'
+import type { IRServerWorkflow, IRTree } from './ir/types'
 import {
   parseOpenPencilMicrofrontendRuntimeApp,
   parseOpenPencilMicrofrontendRuntimeRoutes
@@ -42,6 +48,7 @@ import {
   assertMicrofrontendFeaturePolicy,
   parseCompilerMicrofrontendPackaging
 } from './microfrontend/policy'
+import { pageViewportTargetWarnings } from './page-viewport-policy'
 import { selectAdapter } from './select-adapter'
 import { buildDesignTokenThemeCSS } from './theme-css'
 import type {
@@ -145,9 +152,12 @@ export function compile(input: CompilerInput): CompilerOutput {
     }
   }
 
+  const scope = resolveCompilerApplicationScope(input.graph, input.pageIds)
+  if (scope.blocked) return { files: new Map(), warnings: scope.warnings }
+  const { graph, pageIds } = scope
   const options = withPersistedThemeCSS(
     input.graph,
-    withPersistedMetadata(input.graph, input.pageIds, input.options)
+    withPersistedMetadata(input.graph, pageIds, input.options)
   )
   const { adapter, warnings: selectionWarnings } = selectAdapter(options)
   if (!adapter) {
@@ -181,18 +191,39 @@ export function compile(input: CompilerInput): CompilerOutput {
     serverWorkflows ?? null,
     backendApplication
   )
-  const irs = input.pageIds.map((id) =>
-    collectTree(
-      input.graph,
+  const collectedPages = pageIds.map((id, index) => {
+    const collected = collectTree(
+      scope.getPageGraph?.(id) ?? graph,
       id,
       registry,
       i18n,
       styleOptions,
       motionCache,
       serverWorkflows ?? null,
-      backendApplication
+      backendApplication,
+      scope.shellNodeIds
     )
+    const ir = scope.projectTree?.(id, collected) ?? collected
+    const retention = scope.application
+      ? input.graph.getNode(id)?.lowcodeApplicationPage?.stateRetention
+      : undefined
+    const page = retention === undefined ? ir : { ...ir, applicationStateRetention: retention }
+    return scope.application && index === 0 ? { ...page, applicationStart: true as const } : page
+  })
+  const guarded = projectCompilerApplicationGuards(
+    input.graph,
+    collectedPages,
+    scope.application,
+    options
   )
+  const irs = guarded.trees
+  const applicationWarnings = [
+    ...guarded.warnings,
+    ...(scope.application
+      ? applicationReferenceWarnings(graph, irs, components, scope.shellNodeIds, componentWarnings)
+      : [])
+  ]
+  if (applicationWarnings.length > 0) return { files: new Map(), warnings: applicationWarnings }
   assertMicrofrontendFeaturePolicy(options, irs, components)
   const {
     files,
@@ -202,20 +233,13 @@ export function compile(input: CompilerInput): CompilerOutput {
   emitVRTourSampleSources(files)
   let fontWarnings: CompileWarning[] = []
   if (input.fontManifest) {
+    const fontNodeIds = scope.application
+      ? [...(scope.fontNodeIds ?? pageIds), ...components.map((component) => component.componentId)]
+      : pageIds
     if (options.target === 'expo') {
-      fontWarnings = applyExpoCompilerFontManifest(
-        files,
-        input.graph,
-        input.pageIds,
-        input.fontManifest
-      )
+      fontWarnings = applyExpoCompilerFontManifest(files, graph, fontNodeIds, input.fontManifest)
     } else if (options.target === 'flutter') {
-      fontWarnings = applyFlutterCompilerFontManifest(
-        files,
-        input.graph,
-        input.pageIds,
-        input.fontManifest
-      )
+      fontWarnings = applyFlutterCompilerFontManifest(files, graph, fontNodeIds, input.fontManifest)
     } else if (
       options.target === 'wechat-miniprogram' ||
       options.target === 'taro' ||
@@ -224,18 +248,13 @@ export function compile(input: CompilerInput): CompilerOutput {
     ) {
       fontWarnings = applyMiniProgramCompilerFontManifest(
         files,
-        input.graph,
-        input.pageIds,
+        graph,
+        fontNodeIds,
         input.fontManifest,
         options.target
       )
     } else {
-      fontWarnings = applyCompilerFontManifest(
-        files,
-        input.graph,
-        input.pageIds,
-        input.fontManifest
-      )
+      fontWarnings = applyCompilerFontManifest(files, graph, fontNodeIds, input.fontManifest)
     }
   }
   const backend = integrateBackend(
@@ -252,8 +271,8 @@ export function compile(input: CompilerInput): CompilerOutput {
     input.graph.getNode(input.graph.rootId)?.lowcodeAuthRedirect,
     irs
   )
-  const navigationWarnings = auditLowcodeNavigation(input.graph, {
-    pageIds: input.pageIds
+  const navigationWarnings = auditLowcodeNavigation(graph, {
+    pageIds
   })
     .issues
     // collectTree already reports the route-pattern fallback with the same source node.
@@ -271,6 +290,9 @@ export function compile(input: CompilerInput): CompilerOutput {
       ...serverWorkflowWarnings,
       ...componentWarnings,
       ...irs.flatMap((ir) => ir.warnings),
+      ...pageViewportTargetWarnings(irs, options.target),
+      ...applicationStateRetentionWarnings(irs, options.target),
+      ...applicationGuardTargetWarnings(irs, options.target),
       ...adapterWarnings,
       ...backend.warnings,
       ...navigationWarnings,
@@ -279,6 +301,20 @@ export function compile(input: CompilerInput): CompilerOutput {
     backend.artifactOwnership,
     microfrontend
   )
+}
+
+function applicationStateRetentionWarnings(
+  pages: readonly IRTree[],
+  target: CompilerOptions['target']
+): CompileWarning[] {
+  if (target === 'react' || target === 'vue') return []
+  return pages
+    .filter((page) => page.applicationStateRetention === 'preserve')
+    .map((page) => ({
+      code: 'application-page-state-retention-unsupported',
+      nodeId: page.pageId,
+      message: 'Page session recovery is supported by React and Vue exports only.'
+    }))
 }
 
 function resolveCompileServerWorkflows(

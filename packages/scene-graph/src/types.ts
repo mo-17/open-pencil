@@ -156,6 +156,54 @@ export interface LowcodeHeadMetadata {
   styles?: string[]
 }
 
+export type LowcodePageViewportMode = 'responsive' | 'fit-width' | 'fixed'
+
+/** Explicit generated-page sizing policy. Absence preserves legacy fixed-size output. */
+export interface LowcodePageViewportV1 {
+  version: 1
+  mode: LowcodePageViewportMode
+}
+
+/** Optional document-root application policy. Absence or disabled preserves design exports. */
+/** Optional shared layout and its empty flow content region. Source design stays editable. */
+export interface LowcodeApplicationShellV1 {
+  frameNodeId: string
+  slotNodeId: string
+}
+
+export interface LowcodeApplicationV1 {
+  version: 1
+  enabled: boolean
+  startPageId?: string
+  shell?: LowcodeApplicationShellV1
+}
+
+export type LowcodeApplicationPageRole = 'application' | 'reference' | 'components'
+export type LowcodeApplicationStateRetention = 'reset' | 'preserve'
+
+/** Side-effect-free destination condition; only a strict true permits entry. */
+export interface LowcodeApplicationEnterGuardV1 {
+  conditionExpr: string
+  fallback: string
+}
+
+/** Author-defined dirty state. Leaving confirmation never performs a business save. */
+export interface LowcodeApplicationLeaveConfirmV1 {
+  dirtyExpr: string
+  message: string
+}
+
+/** Optional CANVAS page classification; application pages select one direct FRAME entry. */
+export interface LowcodeApplicationPageV1 {
+  version: 1
+  role: LowcodeApplicationPageRole
+  entryNodeId?: string
+  /** Session-only route state. Absence preserves legacy routing behavior and exports. */
+  stateRetention?: LowcodeApplicationStateRetention
+  enterGuard?: LowcodeApplicationEnterGuardV1
+  leaveConfirm?: LowcodeApplicationLeaveConfirmV1
+}
+
 export type AnalyticsProvider = 'ga4' | 'plausible' | 'posthog'
 export type AnalyticsConsentRegionPreset = 'eea'
 
@@ -871,6 +919,12 @@ export interface SceneNode {
   // Absent ≡ slug-derived route (`/` first page, `/<slug>` others). Persisted
   // via §12 pluginData under `lowcode/routePattern`.
   lowcodeRoutePattern?: string
+  /** Page CANVAS only. Persisted under `lowcode/pageViewport`; absent keeps legacy output. */
+  lowcodePageViewport?: LowcodePageViewportV1
+  /** Document-root only; never inferred from existing design nodes. */
+  lowcodeApplication?: LowcodeApplicationV1
+  /** Direct CANVAS page only; absence keeps the page in legacy design mode. */
+  lowcodeApplicationPage?: LowcodeApplicationPageV1
   // ── Lowcode (Phase 4 §16.3) — auth guard ──
   // Page-level (CANVAS node) flag: when true the multi-page compile emits a
   // redirect-if-unauthenticated guard (`if (!$currentUser.signedIn) return
@@ -1102,6 +1156,15 @@ export interface NavigateAction {
    *  docState / `$params` / in-scope). Emitted as
    *  `navigate(generatePath(to, { id: <expr> }))`; absent / empty → `navigate(to)`. */
   params?: Record<string, string>
+  /** Omission keeps the existing push navigation behavior. */
+  history?: 'push' | 'replace'
+}
+
+/** Return to a previous application route, or replace with a concrete internal fallback. */
+export interface BackAction {
+  id: string
+  kind: 'back'
+  fallback: string
 }
 
 /** Reserved stub for runtime variable writes. The compiler currently emits
@@ -1472,6 +1535,7 @@ export interface AwaitMotionAction {
 export type ActionDef =
   | SetStateAction
   | NavigateAction
+  | BackAction
   | SetVariableAction
   | APICallAction
   | SupabaseQueryAction

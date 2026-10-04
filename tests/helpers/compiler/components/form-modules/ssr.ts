@@ -6,9 +6,11 @@ import { pathToFileURL } from 'node:url'
 import { buildOpenPencilDateRangeComponent } from '#compiler/adapters/react/modules/date-range'
 import { buildOpenPencilRatingComponent } from '#compiler/adapters/react/modules/rating'
 import { buildOpenPencilSliderComponent } from '#compiler/adapters/react/modules/slider'
+import { buildOpenPencilTreeComponent } from '#compiler/adapters/react/modules/tree'
 import { buildOpenPencilVueDateRange } from '#compiler/adapters/vue/modules/date-range'
 import { buildOpenPencilVueRating } from '#compiler/adapters/vue/modules/rating'
 import { buildOpenPencilVueSlider } from '#compiler/adapters/vue/modules/slider'
+import { buildOpenPencilVueTree } from '#compiler/adapters/vue/modules/tree'
 import type * as React from 'react'
 import type * as ReactDOMServer from 'react-dom/server'
 import { createSSRApp, h, type Component } from 'vue'
@@ -18,12 +20,13 @@ import { renderToString } from 'vue/server-renderer'
 import {
   SLIDER_MODULE_DEFAULT_CONFIG,
   RATING_MODULE_DEFAULT_CONFIG,
-  DATE_RANGE_MODULE_DEFAULT_CONFIG
+  DATE_RANGE_MODULE_DEFAULT_CONFIG,
+  TREE_MODULE_DEFAULT_CONFIG
 } from '@open-pencil/core/plugins'
 
 export async function renderFormModuleSSR(
   target: 'react' | 'vue',
-  kind: 'slider' | 'rating' | 'date',
+  kind: 'slider' | 'rating' | 'date' | 'tree',
   invalid: boolean,
   mode: 'editable' | 'readonly' | 'disabled' = 'editable'
 ) {
@@ -39,18 +42,20 @@ export async function renderFormModuleSSR(
     const builders = {
       slider: [buildOpenPencilSliderComponent, buildOpenPencilVueSlider],
       rating: [buildOpenPencilRatingComponent, buildOpenPencilVueRating],
-      date: [buildOpenPencilDateRangeComponent, buildOpenPencilVueDateRange]
+      date: [buildOpenPencilDateRangeComponent, buildOpenPencilVueDateRange],
+      tree: [buildOpenPencilTreeComponent, buildOpenPencilVueTree]
     }
     const config = {
       ...{
         slider: SLIDER_MODULE_DEFAULT_CONFIG,
         rating: RATING_MODULE_DEFAULT_CONFIG,
-        date: DATE_RANGE_MODULE_DEFAULT_CONFIG
+        date: DATE_RANGE_MODULE_DEFAULT_CONFIG,
+        tree: TREE_MODULE_DEFAULT_CONFIG
       }[kind],
       label: 'Field <script>',
       range: true
     }
-    const validValue = kind === 'date' ? '2026-09-01' : 2
+    const validValue = { slider: 2, rating: 2, date: '2026-09-01', tree: 'design' }[kind]
     const validEnd = kind === 'date' ? '2026-09-05' : 4
     const props = {
       config,
@@ -59,7 +64,7 @@ export async function renderFormModuleSSR(
       valueBound: true,
       value: invalid ? undefined : validValue,
       field: { name: 'first', required: true },
-      ...(kind === 'rating'
+      ...(kind === 'rating' || kind === 'tree'
         ? {}
         : {
             endValueBound: true,

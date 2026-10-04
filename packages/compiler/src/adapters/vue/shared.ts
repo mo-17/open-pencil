@@ -17,8 +17,11 @@ export const CURRENT_USER_FALLBACK =
   'const $currentUser = Object.freeze({ id: null, email: null, signedIn: false })'
 
 export interface VueEmitContext {
+  /** Page viewport projection uses script constants for styles accepted by vue-tsc. */
+  hoistStyles?: boolean
   devMode: boolean
   routerAvailable: boolean
+  applicationGuards?: boolean
   backendAvailable?: boolean
   supabaseAvailable: boolean
   serverWorkflowAvailable: boolean

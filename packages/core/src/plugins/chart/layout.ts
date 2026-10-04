@@ -2,6 +2,7 @@ import type { ChartModuleConfigV1 } from '#core/plugins/chart'
 
 import { buildCartesianChart } from './cartesian'
 import { buildCircularChart } from './circular'
+import { createChartLayout } from './model'
 import type { ChartLayout } from './types'
 
 /** Static authored geometry shared verbatim by CanvasKit and generated SVG; no fonts or IO. */
@@ -10,21 +11,8 @@ export function buildChartLayout(
   width: number,
   height: number
 ): ChartLayout {
-  const safeWidth = Number.isFinite(width) ? Math.max(0, width) : 0
-  const safeHeight = Number.isFinite(height) ? Math.max(0, height) : 0
-  const model: ChartLayout = {
-    width: safeWidth,
-    height: safeHeight,
-    backgroundColor: '#FFFFFF',
-    empty: false,
-    compact: safeWidth < 80 || safeHeight < 80,
-    paths: [],
-    rects: [],
-    circles: [],
-    texts: [],
-    hiddenLabelCount: 0
-  }
-  if (!safeWidth || !safeHeight) {
+  const model = createChartLayout(width, height)
+  if (!model.width || !model.height) {
     model.compact = true
     model.hiddenLabelCount = config.labels.length
     return model

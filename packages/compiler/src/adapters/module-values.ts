@@ -15,6 +15,11 @@ import {
 function typeName(field: IRModuleValueField): string {
   return field.type === 'array' ? 'string[]' : field.type
 }
+function treeValueGuard(field: IRModuleValueField, treeValue: boolean): string {
+  if (!treeValue) return ''
+  if (field.type === 'string') return `if(typeof value!=='string')return;`
+  return `if(!Array.isArray(value)||!value.every(item=>typeof item==='string'))return;`
+}
 function writeReact(field: IRModuleValueField, value: string): string {
   const target = field.write
   if (!target) return ''
@@ -27,8 +32,11 @@ function reactField(field: IRModuleValueField): string {
   const validation = field.validation
   const key = JSON.stringify(validation?.key),
     error = `__fieldErrors[${key}]`
-  const reset = `${writeReact(field, field.defaultValue === undefined ? 'undefined' : JSON.stringify(field.defaultValue))};${validation ? `__resetFieldValidation(${key})` : ''}`
-  const parts = [`name:${JSON.stringify(field.name)}`, `onReset:()=>{${reset}}`]
+  const parts = [`name:${JSON.stringify(field.name)}`]
+  if (!field.formResetManaged) {
+    const reset = `${writeReact(field, field.defaultValue === undefined ? 'undefined' : JSON.stringify(field.defaultValue))};${validation ? `__resetFieldValidation(${key})` : ''}`
+    parts.push(`onReset:()=>{${reset}}`)
+  }
   if (validation)
     parts.push(
       `required:${validation.rules.required === true}`,
@@ -49,7 +57,9 @@ export function reactModuleValueBindings(module: IRModule | undefined): string {
         return read + ` ${field.key === 'value' ? 'field' : 'endField'}={{invalid:true}}`
       const key = JSON.stringify(field.validation?.key)
       const validate = field.validation ? `;void __validateFieldValue(${key},value)` : ''
-      const change = ` on${field.key === 'value' ? 'Value' : 'EndValue'}Change={(value:${typeName(field)})=>{${writeReact(field, 'value')}${validate}}}`
+      const treeValue = module?.moduleType === 'tree' && field.key === 'value'
+      const guard = treeValueGuard(field, treeValue)
+      const change = ` on${field.key === 'value' ? 'Value' : 'EndValue'}Change={(value:${treeValue ? 'string|string[]' : typeName(field)})=>{${guard}${writeReact(field, 'value')}${validate}}}`
       return read + change + reactField(field)
     })
     .join('')
@@ -72,10 +82,13 @@ function vueField(
     key = scriptJSON(validation?.key),
     error = `__fieldErrors.value[${key}]`
   const clear = validation ? `;__fieldErrors.value={...__fieldErrors.value,[${key}]:null}` : ''
-  context.eventFunctions.push(
-    `function ${reset}():void {${writeVue(field, scriptJSON(field.defaultValue), context)}${clear}}`
-  )
-  const parts = [`name:${scriptJSON(field.name)}`, `onReset:${reset}`]
+  const parts = [`name:${scriptJSON(field.name)}`]
+  if (!field.formResetManaged) {
+    context.eventFunctions.push(
+      `function ${reset}():void {${writeVue(field, scriptJSON(field.defaultValue), context)}${clear}}`
+    )
+    parts.push(`onReset:${reset}`)
+  }
   if (validation)
     parts.push(
       `required:${validation.rules.required === true}`,
@@ -111,11 +124,13 @@ export function vueModuleValueBindings(
     if (field.write.kind === 'state' && !context.writableStateNames.has(field.write.name))
       return attrs
     const handler = `__opModuleValue_${++context.eventIndex}`
+    const treeValue = module?.moduleType === 'tree' && field.key === 'value'
+    const guard = treeValueGuard(field, treeValue)
     const validate = field.validation
       ? `;__validateFieldValue(${scriptJSON(field.validation.key)},value)`
       : ''
     context.eventFunctions.push(
-      `function ${handler}(value:${typeName(field)}):void {${writeVue(field, 'value', context)}${validate}}`
+      `function ${handler}(value:${treeValue ? 'string|string[]' : typeName(field)}):void {${guard}${writeVue(field, 'value', context)}${validate}}`
     )
     return [...attrs, `@${name}-change="${handler}"`, vueField(field, context, locals)]
   })

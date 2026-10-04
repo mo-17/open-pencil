@@ -12,7 +12,8 @@ interface ContentRequest {
 function contentRequests(module: IRModule): ContentRequest[] | undefined {
   if (
     (module.pluginId === 'open-pencil.modal' && module.moduleType === 'modal') ||
-    (module.pluginId === 'open-pencil.popover' && module.moduleType === 'popover')
+    (module.pluginId === 'open-pencil.popover' && module.moduleType === 'popover') ||
+    (module.pluginId === 'open-pencil.slide-menu' && module.moduleType === 'slide-menu')
   ) {
     const childName = module.payload.contentChildName
     if (typeof childName !== 'string') return undefined
@@ -135,7 +136,11 @@ export function containsModuleContent(nodes: readonly IRNode[]): boolean {
     if (node.kind === 'conditional') return containsModuleContent([node.consequent])
     if (node.kind === 'list') return containsModuleContent([node.template])
     if (node.kind !== 'element' || node.tag === 'form') return false
-    return node.module?.contentSlots !== undefined || (node.module?.valueFields?.length ?? 0) > 0 || containsModuleContent(node.children)
+    return (
+      node.module?.contentSlots !== undefined ||
+      (node.module?.valueFields?.length ?? 0) > 0 ||
+      containsModuleContent(node.children)
+    )
   })
 }
 
@@ -146,7 +151,8 @@ export function markModuleFormValidationScope(nodes: readonly IRNode[]): void {
     else if (node.kind === 'list') markModuleFormValidationScope([node.template])
     else if (node.kind === 'element' && node.tag !== 'form') {
       if (node.validation) node.validationScopeMarker = true
-      for (const field of node.module?.valueFields ?? []) if (field.validation) field.validationScopeMarker = true
+      for (const field of node.module?.valueFields ?? [])
+        if (field.validation) field.validationScopeMarker = true
       const slots = isWalktourModule(node.module) ? undefined : node.module?.contentSlots
       const ids = slots ? new Set(slots.map((slot) => slot.sourceId)) : undefined
       markModuleFormValidationScope(

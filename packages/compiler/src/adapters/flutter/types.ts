@@ -1,8 +1,10 @@
+import type { IRLayout } from '#compiler/ir/types'
 import type { CompileWarning } from '#compiler/types'
 
 export type FlutterWarningSink = (warning: CompileWarning) => void
 
 export interface FlutterStyle {
+  layout?: IRLayout
   width?: number
   height?: number
   minWidth?: number

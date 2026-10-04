@@ -64,6 +64,7 @@
   "closeTab": "タブを閉じる",
   "zoomIn": "拡大",
   "zoomOut": "縮小",
+  "resetToOrigin": "キャンバスの原点 (0, 0) を左上に移動",
   "arrangeAlignLeft": "左揃え",
   "arrangeAlignCenter": "中央揃え",
   "arrangeAlignRight": "右揃え",

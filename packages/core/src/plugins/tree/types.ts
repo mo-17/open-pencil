@@ -90,3 +90,21 @@ export function treeItemDisabled(items: readonly TreeItem[], id: string): boolea
   }
   return false
 }
+
+/** A selected node ID is the business value; bad bound values stay unavailable. */
+export function treeSelectedIds(config: TreeModuleConfigV1, value: unknown): string[] | null {
+  let selected: string[] | null = null
+  if (config.selectionMode === 'single') {
+    if (typeof value === 'string') selected = value === '' ? [] : [value]
+  } else if (Array.isArray(value) && value.every((id) => typeof id === 'string')) {
+    selected = value
+  }
+  if (!selected || new Set(selected).size !== selected.length) return null
+  if (
+    selected.some(
+      (id) => !config.items.some((item) => item.id === id) || treeItemDisabled(config.items, id)
+    )
+  )
+    return null
+  return [...selected]
+}

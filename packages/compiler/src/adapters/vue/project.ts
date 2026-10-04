@@ -146,15 +146,31 @@ export function buildVueApp(
     validation: false,
     supabase: false,
     serverWorkflow: false
-  }
+  },
+  applicationSessionRoutes: readonly string[] = [],
+  guardPages: Readonly<Record<string, string>> = {}
 ): string {
   const imports = router
     ? [`import { RouterView } from 'vue-router'`]
     : [`import ${firstPageComponent} from './pages/index.vue'`]
+  if (applicationSessionRoutes.length)
+    imports.push(`const __opSessionRoutes = ${JSON.stringify(applicationSessionRoutes)}`)
+  if (Object.keys(guardPages).length)
+    imports.push(
+      "import OpenPencilApplicationGuard from './components/_open-pencil-application-guard.vue'",
+      `const __opGuardPages: Record<string, string> = ${JSON.stringify(guardPages)}`
+    )
   if (lowcode.toast) imports.push(`import LowcodeToastHost from './LowcodeToastHost.vue'`)
   if (lowcode.confirm) imports.push(`import LowcodeConfirmHost from './LowcodeConfirmHost.vue'`)
+  let pageContent = `  <${firstPageComponent} />`
+  if (router)
+    pageContent = applicationSessionRoutes.length
+      ? `  <RouterView v-slot="{ Component, route }"><component :is="Component" :key="__opSessionRoutes.includes(String(route.name)) ? route.fullPath.split('#')[0] : undefined" /></RouterView>`
+      : '  <RouterView />'
+  if (Object.keys(guardPages).length)
+    pageContent = `  <RouterView v-slot="{ Component, route }"><OpenPencilApplicationGuard :page-id="__opGuardPages[String(route.name)] ?? ''"><component :is="Component" :key="${applicationSessionRoutes.length ? "__opSessionRoutes.includes(String(route.name)) ? route.fullPath.split('#')[0] : undefined" : 'undefined'}" /></OpenPencilApplicationGuard></RouterView>`
   const content = [
-    router ? '  <RouterView />' : `  <${firstPageComponent} />`,
+    pageContent,
     ...(lowcode.toast ? ['  <LowcodeToastHost />'] : []),
     ...(lowcode.confirm ? ['  <LowcodeConfirmHost />'] : [])
   ].join('\n')
@@ -168,19 +184,38 @@ ${content}
 `
 }
 
-export function buildVueRouter(infos: readonly PagePathInfo[], microfrontend = false): string {
+export function buildVueRouter(
+  infos: readonly PagePathInfo[],
+  microfrontend = false,
+  applicationStartRoute?: string,
+  applicationNavigation = false,
+  applicationGuards = false
+): string {
   const imports = infos
     .map((info) => `import ${info.component} from './pages/${info.slug}.vue'`)
     .join('\n')
-  const routes = infos
-    .map(
-      (info) =>
-        `  { path: ${JSON.stringify(info.route)}, component: ${info.component}, name: ${JSON.stringify(info.slug)} }`
+  const routes = (
+    applicationStartRoute && applicationStartRoute !== '/'
+      ? [`  { path: '/', redirect: ${JSON.stringify(applicationStartRoute)} }`]
+      : []
+  )
+    .concat(
+      infos.map(
+        (info) =>
+          `  { path: ${JSON.stringify(info.route)}, component: ${info.component}, name: ${JSON.stringify(info.slug)} }`
+      )
     )
     .join(',\n')
+  const navigationImport = applicationNavigation
+    ? `import { installApplicationNavigation } from './_application_navigation'\n`
+    : ''
+  const guardImport = applicationGuards
+    ? "import { installApplicationGuards } from './lib/open-pencil-application-guards-vue'\n"
+    : ''
+  const navigationInstall = applicationNavigation ? '  installApplicationNavigation(router)\n' : ''
   if (microfrontend) {
     return `import { createRouter, createWebHistory } from 'vue-router'
-
+${navigationImport}${guardImport}
 ${imports}
 
 const routes = [
@@ -190,12 +225,12 @@ ${routes}
 export function createMicrofrontendRouter(basePath: string) {
   const history = createWebHistory(basePath)
   const router = createRouter({ history, routes })
-  return { router, dispose: () => history.destroy() }
+${navigationInstall}${applicationGuards ? '  installApplicationGuards(router)\n' : ''}  return { router, dispose: () => history.destroy() }
 }
 `
   }
   return `import { createRouter, createWebHistory } from 'vue-router'
-
+${navigationImport}${guardImport}
 ${imports}
 
 export const router = createRouter({
@@ -204,7 +239,7 @@ export const router = createRouter({
 ${routes}
   ]
 })
-`
+${applicationNavigation ? 'installApplicationNavigation(router)\n' : ''}${applicationGuards ? 'installApplicationGuards(router)\n' : ''}`
 }
 
 export function buildVueMicrofrontendContext(): string {

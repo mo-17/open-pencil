@@ -11,6 +11,7 @@ interface TaroEventEnvironment {
 }
 
 const UNSUPPORTED_ACTION_KIND = new Set<IREventHandler['kind']>([
+  'back',
   'apiCall',
   'supabaseQuery',
   'supabaseMutation',
@@ -144,7 +145,9 @@ function emitHandlerStatements(
           )
           .join('&')
         const url = query ? `\`/${route}?${query}\`` : JSON.stringify(`/${route}`)
-        statements.push(`void Taro.navigateTo({ url: ${url} });`)
+        statements.push(
+          `void Taro.${handler.history === 'replace' ? 'redirectTo' : 'navigateTo'}({ url: ${url} });`
+        )
         break
       }
       case 'condition': {

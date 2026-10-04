@@ -15,7 +15,9 @@ export function buildReactPageImport(ir: IRTree, hasMotionDriver: boolean): stri
   const hasValidation = (ir.validatedFields?.length ?? 0) > 0
   const hasRemoteValidation = validationUsesRemote(ir.validatedFields ?? [])
   const hasComputedState = ir.states.some((s) => s.computed)
-  const hasWritableState = ir.states.some((s) => !s.computed && s.computedInvalid !== true)
+  const hasWritableState =
+    ir.applicationStateRetention !== 'preserve' &&
+    ir.states.some((s) => !s.computed && s.computedInvalid !== true)
   const hasRequestGate = pageUsesRequestGate(ir)
   const hasRequestDebounce = pageUsesRequestDebounce(ir)
   const hooks: string[] = []

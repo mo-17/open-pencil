@@ -14,7 +14,7 @@ describe('built-in component template catalogue', () => {
     const english = getComponentTemplates('en')
     const chinese = getComponentTemplates('zh-CN')
     expect(english.filter((entry) => entry.kind === 'basic')).toHaveLength(54)
-    expect(english.filter((entry) => entry.kind === 'combination')).toHaveLength(8)
+    expect(english.filter((entry) => entry.kind === 'combination')).toHaveLength(12)
     expect(new Set(english.map((entry) => entry.id)).size).toBe(english.length)
     expect(chinese.map((entry) => entry.id)).toEqual(english.map((entry) => entry.id))
     for (let index = 0; index < english.length; index++) {

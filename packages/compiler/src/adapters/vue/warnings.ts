@@ -250,7 +250,7 @@ function scanHandler(
   nodeId: string,
   router: boolean
 ): void {
-  if (handler.kind === 'navigate' && !router) {
+  if (['navigate', 'back'].includes(handler.kind) && !router) {
     warn(
       'vue-navigation-no-router',
       'Vue single-page output omitted an internal navigate action because no router is present.',
@@ -305,6 +305,7 @@ const SUPPORTED_HANDLER_KINDS = new Set<IREventHandler['kind']>([
   'setState',
   'setVariable',
   'navigate',
+  'back',
   'apiCall',
   'condition',
   'delay',

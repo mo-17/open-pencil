@@ -1,3 +1,4 @@
+import { COMPOSITION_DEFINITIONS } from './combinations/metadata'
 import { componentTemplateLimitations } from './limitations'
 
 export const COMPONENT_TEMPLATE_IDS = [
@@ -62,7 +63,11 @@ export const COMPONENT_TEMPLATE_IDS = [
   'tabs-details',
   'filterable-table',
   'accordion-faq',
-  'paginated-list'
+  'paginated-list',
+  'stepper-form',
+  'tree-details',
+  'drawer-details',
+  'admin-shell'
 ] as const
 
 export type ComponentTemplateId = (typeof COMPONENT_TEMPLATE_IDS)[number]
@@ -92,6 +97,7 @@ type Definition = readonly [
   string?
 ]
 const DEFINITIONS: Record<ComponentTemplateId, Definition> = {
+  ...COMPOSITION_DEFINITIONS,
   walktour: [
     'navigation',
     'Guided Tour',
@@ -238,8 +244,8 @@ const DEFINITIONS: Record<ComponentTemplateId, Definition> = {
     'navigation',
     'Stepper',
     '步骤条',
-    'Local step selection with titles and descriptions; no workflow is executed.',
-    '带标题与说明的本地步骤切换，不执行工作流。',
+    'A bound current step with previous, next and reset buttons.',
+    '当前步骤绑定页面状态，包含上一步、下一步与重置按钮。',
     'stepper'
   ],
   breadcrumb: [
@@ -443,8 +449,8 @@ const DEFINITIONS: Record<ComponentTemplateId, Definition> = {
     'navigation',
     'Tree',
     '树形列表',
-    'Search, expand and select local hierarchical items.',
-    '搜索、展开与选择本地层级条目。',
+    'Search, expand and select local items with a page array state.',
+    '搜索、展开和多选本地条目，绑定页面数组状态。',
     'tree'
   ],
   cascader: [
@@ -459,8 +465,8 @@ const DEFINITIONS: Record<ComponentTemplateId, Definition> = {
     'input',
     'Tree select',
     '树形选择',
-    'Choose from a searchable local hierarchy.',
-    '从可搜索的本地层级中选择条目。',
+    'Choose from a searchable local hierarchy with a page string state.',
+    '从可搜索的本地层级单选条目，绑定页面字符串状态。',
     'tree'
   ],
   popover: [

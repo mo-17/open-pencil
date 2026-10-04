@@ -1,17 +1,25 @@
 import { guidToString, OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import {
+  LOWCODE_APPLICATION_PLUGIN_KEY,
+  LOWCODE_APPLICATION_PAGE_PLUGIN_KEY,
+  validateLowcodeApplication,
+  validateLowcodeApplicationPage
+} from '@open-pencil/lowcode'
+import {
   motionDriverNodeReferences,
   prototypeNodeReferences,
   remapLowcodeMotionActionTargets,
   remapMotionDriverNodeReferences,
   remapMotionSceneNodeReferences,
+  remapNodeApplicationReferences,
   remapNodeLowcodeMotionActionTargets,
   remapPrototypeNodeReferences,
   validateMotionDriverSpec,
   validateMotionSceneSpec,
   validatePrototypeSpec,
   type LowcodeNodeIdResolver,
-  type SceneGraph
+  type SceneGraph,
+  type SceneNode
 } from '@open-pencil/scene-graph'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
@@ -28,6 +36,7 @@ export { remapLowcodeMotionActionTargets }
 export type { LowcodeNodeIdResolver }
 
 interface SerializedLowcodeNode {
+  type?: string
   pluginData?: Array<{ pluginID?: string; key: string; value: string }>
 }
 
@@ -37,7 +46,9 @@ const SERIALIZED_REFERENCE_KEYS = new Set([
   LOWCODE_MOTION_SCENE_KEY,
   LOWCODE_MOTION_DRIVERS_KEY,
   LOWCODE_PROTOTYPE_KEY,
-  LOWCODE_OVERRIDES_KEY
+  LOWCODE_OVERRIDES_KEY,
+  LOWCODE_APPLICATION_PLUGIN_KEY,
+  LOWCODE_APPLICATION_PAGE_PLUGIN_KEY
 ])
 
 type SerializedRemapResult = { changed: false } | { changed: true; value: unknown }
@@ -129,6 +140,29 @@ function remapSerializedPluginValue(
   value: unknown,
   resolveNodeId: LowcodeNodeIdResolver
 ): SerializedRemapResult {
+  if (key === LOWCODE_APPLICATION_PLUGIN_KEY) {
+    const validated = validateLowcodeApplication(value)
+    if (!validated.ok) return { changed: false }
+    const updates: Partial<Pick<SceneNode, 'lowcodeApplication' | 'pluginData'>> | null =
+      remapNodeApplicationReferences(
+        { lowcodeApplication: validated.value, pluginData: [] },
+        resolveNodeId
+      )
+    if (updates?.lowcodeApplication) return { changed: true, value: updates.lowcodeApplication }
+    const inert = updates?.pluginData?.find(
+      (entry) => entry.pluginId === OPEN_PENCIL_PLUGIN_ID && entry.key === key
+    )
+    if (inert) return { changed: true, value: JSON.parse(inert.value) as unknown }
+    return { changed: false }
+  }
+  if (key === LOWCODE_APPLICATION_PAGE_PLUGIN_KEY) {
+    const validated = validateLowcodeApplicationPage(value)
+    const id = validated.ok ? validated.value.entryNodeId : undefined
+    const next = id === undefined ? undefined : resolveNodeId(id)
+    if (validated.ok && next !== undefined && next !== id)
+      return { changed: true, value: { ...validated.value, entryNodeId: next } }
+    return { changed: false }
+  }
   if (key === LOWCODE_EVENTS_KEY || key === LOWCODE_WORKFLOWS_KEY) {
     return remapLowcodeMotionActionTargets(value, resolveNodeId)
       ? { changed: true, value }
@@ -149,6 +183,19 @@ export function remapSerializedLowcodeMotionActionReferences(
     for (const entry of node.pluginData ?? []) {
       if (entry.pluginID !== OPEN_PENCIL_PLUGIN_ID || !SERIALIZED_REFERENCE_KEYS.has(entry.key)) {
         continue
+      }
+      if (
+        entry.key === LOWCODE_APPLICATION_PLUGIN_KEY ||
+        entry.key === LOWCODE_APPLICATION_PAGE_PLUGIN_KEY
+      ) {
+        const expectedType = entry.key === LOWCODE_APPLICATION_PLUGIN_KEY ? 'DOCUMENT' : 'CANVAS'
+        if (
+          node.type !== expectedType ||
+          (node.pluginData ?? []).filter(
+            (item) => item.pluginID === OPEN_PENCIL_PLUGIN_ID && item.key === entry.key
+          ).length !== 1
+        )
+          continue
       }
       try {
         const value = JSON.parse(entry.value) as unknown
@@ -179,6 +226,16 @@ export function remapImportedLowcodeMotionActionReferences(
     : graph.getAllNodes()
   for (const node of nodes) {
     const updates = remapNodeLowcodeMotionActionTargets(node, resolve)
-    if (updates) graph.updateNode(node.id, updates)
+    const applicationUpdates = remapNodeApplicationReferences(node, resolve)
+    if (updates || applicationUpdates) {
+      const changes = { ...updates, ...applicationUpdates }
+      if (
+        applicationUpdates &&
+        Object.hasOwn(applicationUpdates, 'lowcodeApplication') &&
+        applicationUpdates.lowcodeApplication === undefined
+      )
+        graph.restoreNodeProperties(node.id, changes, ['lowcodeApplication'])
+      else graph.updateNode(node.id, changes)
+    }
   }
 }

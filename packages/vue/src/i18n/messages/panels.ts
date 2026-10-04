@@ -5,6 +5,25 @@ import { i18n } from '#vue/i18n/create'
 import { lowcodeDocumentPanelMessageDefaults } from './panels-lowcode-document'
 
 export const panelMessageDefaults = {
+  lowcodeNavigationOperation: 'Navigation operation',
+  lowcodeNavigationJump: 'Jump to page',
+  lowcodeNavigationReplace: 'Replace current page',
+  lowcodeNavigationBack: 'Go back',
+  lowcodeNavigationFallback: 'Fallback route',
+  lowcodeNavigationRoute: 'Route path',
+  lowcodeNavigationFallbackHint:
+    'If there is no previous page in this application session, open this fallback route.',
+  lowcodePageViewport: 'Device adaptation',
+  lowcodePageViewportResponsive: 'Responsive layout',
+  lowcodePageViewportFitWidth: 'Scale to width',
+  lowcodePageViewportFixed: 'Fixed size',
+  lowcodePageViewportResponsiveHint:
+    'Auto Layout uses the available device width. Absolute layers keep their authored positions.',
+  lowcodePageViewportFitWidthHint:
+    'Scale the design proportionally to device width and allow vertical scrolling.',
+  lowcodePageViewportFixedHint: 'Keep the authored page dimensions.',
+  lowcodePageViewportInvalid:
+    'Unknown or invalid adaptation data is preserved. Choose a mode to replace it.',
   lowcodeModuleCascaderLabel: 'Accessible label',
   lowcodeModuleCascaderPlaceholder: 'Placeholder',
   lowcodeModuleCascaderSearchable: 'Search when expanded',
@@ -1463,6 +1482,39 @@ export const panelMessageDefaults = {
   lowcodeResponsiveClear: 'Clear',
   lowcodeResponsiveWrap: 'Wrap',
   lowcodeResponsiveSizing: 'Sizing',
+  lowcodeResponsiveBreakpoint: 'Breakpoint',
+  lowcodeResponsiveBase: 'Base design',
+  lowcodeResponsiveOverride: 'Override',
+  lowcodeResponsiveRestore: 'Restore inheritance',
+  lowcodeResponsiveSetOverride: 'Use this value as an override',
+  lowcodeResponsivePreview: 'Preview this width',
+  lowcodeResponsiveHint: 'Overrides affect generated layouts. The canvas keeps the base design.',
+  lowcodeResponsiveCascadeHint:
+    'Minimum-width breakpoints inherit smaller minimum-width overrides. Compact applies independently below 1280px and may overlap them.',
+  lowcodeResponsivePreviewHint:
+    'Preview widths change only the Web viewport. Keep the current route and form values.',
+  lowcodeResponsivePreviewUnavailable: 'Switch to a supported Web preview to use this width.',
+  lowcodeResponsivePreviewApplied: 'Preview width applied',
+  lowcodeResponsivePreviewPending: 'Waiting for the Web preview',
+  lowcodeResponsiveNoLimit: 'No limit',
+  lowcodeResponsiveAuto: 'Automatic',
+  lowcodeResponsiveEqualColumnsHint: 'Editing the column count creates equal-width columns.',
+  lowcodeResponsiveGridColumnGap: 'Column gap',
+  lowcodeResponsiveGridRowGap: 'Row gap',
+  lowcodeResponsiveGrow: 'Layout growth',
+  lowcodeResponsiveMinWidth: 'Minimum width',
+  lowcodeResponsiveMaxWidth: 'Maximum width',
+  lowcodeResponsiveMinHeight: 'Minimum height',
+  lowcodeResponsiveMaxHeight: 'Maximum height',
+  lowcodeResponsiveCounterSizing: 'Cross-axis sizing',
+  lowcodeResponsiveMainAlign: 'Main-axis alignment',
+  lowcodeResponsiveCrossAlign: 'Cross-axis alignment',
+  lowcodeResponsiveBranchValue: 'Branch value',
+  lowcodeResponsivePaddingTop: 'Top padding',
+  lowcodeResponsivePaddingRight: 'Right padding',
+  lowcodeResponsivePaddingBottom: 'Bottom padding',
+  lowcodeResponsivePaddingLeft: 'Left padding',
+  lowcodeResponsiveCounterSpacing: 'Cross-axis gap',
   lowcodeInteractionStates: 'Interaction states',
   lowcodeInteractionHint:
     'Override appearance for hover, focus, active, and disabled. Empty values inherit the base style.',
@@ -1527,6 +1579,11 @@ export const panelMessageDefaults = {
   lowcodeValueBindingArrayHint: 'Bind to an array state for a multi-select checkbox group',
   lowcodeValueBindingNoStates: 'No matching state type available',
   lowcodeValueBindingInvalid: 'Invalid binding — choose Uncontrolled or another state',
+  lowcodeStepperBindings: 'Step binding',
+  lowcodeStepperBindingHint:
+    'Bind the current step (from 0) to writable number state. Changing steps does not validate or submit a form.',
+  lowcodeStepperConfiguredValue: 'Configured step',
+  lowcodeStepperCurrentIndex: 'Current step (from 0)',
   lowcodeValueBindingCreate: 'Create page state and bind',
   lowcodeValueBindingComponentUnsupported:
     'Page state is unavailable inside reusable component masters; bind to document state instead',

@@ -21,7 +21,16 @@ import {
 } from '@open-pencil/fig'
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
-import { compactLowcodeHeadMetadata, validateServerWorkflows } from '@open-pencil/lowcode'
+import {
+  compactLowcodeHeadMetadata,
+  LOWCODE_APPLICATION_PLUGIN_KEY,
+  LOWCODE_APPLICATION_PAGE_PLUGIN_KEY,
+  LOWCODE_PAGE_VIEWPORT_PLUGIN_KEY,
+  validateLowcodeApplication,
+  validateLowcodeApplicationPage,
+  validateLowcodePageViewport,
+  validateServerWorkflows
+} from '@open-pencil/lowcode'
 import {
   remapMotionDriverNodeReferences,
   remapMotionSceneNodeReferences,
@@ -42,6 +51,9 @@ import type {
   GeneratedEffectSpecV1,
   GridPosition,
   LowcodeHeadMetadata,
+  LowcodeApplicationV1,
+  LowcodeApplicationPageV1,
+  LowcodePageViewportV1,
   LibraryRef,
   LowcodeTranslations,
   MotionDriverSpecV1,
@@ -184,6 +196,7 @@ const LOWCODE_LIBRARY_PLUGIN_KEYS: ReadonlySet<string> = new Set([
 /** Phase 4 §16.1: page-level (CANVAS) route pattern, e.g. `/product/:id`. A
  *  non-empty string on a page node; absent → slug-derived route. */
 export const LOWCODE_ROUTE_PATTERN_KEY = 'lowcode/routePattern'
+export const LOWCODE_PAGE_VIEWPORT_KEY = LOWCODE_PAGE_VIEWPORT_PLUGIN_KEY
 
 /** Phase 4 §16.3: page-level (CANVAS) auth-guard flag. `true` on a page node
  *  emits a redirect-if-unauthenticated guard; absent ≡ public page. */
@@ -265,6 +278,9 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_LIBRARIES_KEY,
   LOWCODE_LIBRARY_CACHE_KEY,
   LOWCODE_ROUTE_PATTERN_KEY,
+  LOWCODE_PAGE_VIEWPORT_KEY,
+  LOWCODE_APPLICATION_PLUGIN_KEY,
+  LOWCODE_APPLICATION_PAGE_PLUGIN_KEY,
   LOWCODE_REQUIRES_AUTH_KEY,
   LOWCODE_AUTH_REDIRECT_KEY,
   LOWCODE_MOTION_KEY,
@@ -364,7 +380,55 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   entries.push(...serializeTransitionKeyField(node))
   entries.push(...serializeGeneratedEffectField(node))
   if (LOWCODE_NODE_TYPES.has(node.type)) entries.push(...serializeControlTypography(node))
+  entries.push(...serializePageViewport(node))
+  entries.push(...serializeApplicationFields(node))
   return entries
+}
+
+function serializeApplicationFields(node: SceneNode): PluginDataEntry[] {
+  const entries: PluginDataEntry[] = []
+  for (const [key, value, ownerValid] of [
+    [LOWCODE_APPLICATION_PLUGIN_KEY, node.lowcodeApplication, node.parentId === null],
+    [
+      LOWCODE_APPLICATION_PAGE_PLUGIN_KEY,
+      node.lowcodeApplicationPage,
+      node.type === 'CANVAS' && node.parentId !== null
+    ]
+  ] as const) {
+    if (value === undefined) continue
+    if (
+      !ownerValid ||
+      node.pluginData.some((entry) => entry.pluginId === OPEN_PENCIL_PLUGIN_ID && entry.key === key)
+    ) {
+      console.warn(
+        '[lowcode] application policy has invalid ownership or inert data; preserving the raw payload'
+      )
+      continue
+    }
+    const result =
+      key === LOWCODE_APPLICATION_PLUGIN_KEY
+        ? validateLowcodeApplication(value)
+        : validateLowcodeApplicationPage(value)
+    if (result.ok) entries.push(makeEntry(key, result.value))
+    else console.warn('[lowcode] invalid application policy was not serialized')
+  }
+  return entries
+}
+
+function serializePageViewport(node: SceneNode): PluginDataEntry[] {
+  if (node.type !== 'CANVAS' || node.lowcodePageViewport === undefined) return []
+  if (
+    node.pluginData.some(
+      (entry) => entry.pluginId === OPEN_PENCIL_PLUGIN_ID && entry.key === LOWCODE_PAGE_VIEWPORT_KEY
+    )
+  ) {
+    console.warn('[lowcode] page viewport conflicts with inert data; preserving the raw payload')
+    return []
+  }
+  const validated = validateLowcodePageViewport(node.lowcodePageViewport)
+  if (validated.ok) return [makeEntry(LOWCODE_PAGE_VIEWPORT_KEY, validated.value)]
+  console.warn('[lowcode] invalid page viewport was not serialized')
+  return []
 }
 
 type ContractValidationResult<T> =
@@ -986,6 +1050,10 @@ function isNonEmpty(value: unknown): boolean {
  */
 export interface ExtractedLowcodeAndPluginData {
   pluginData: PluginDataEntry[]
+  /** Strict page sizing policy. Invalid/future values remain inert plugin data. */
+  lowcodePageViewport?: LowcodePageViewportV1
+  lowcodeApplication?: LowcodeApplicationV1
+  lowcodeApplicationPage?: LowcodeApplicationPageV1
   /** Strictly validated MotionSpec v1/v2/v3. Invalid or unsupported future versions
    *  are intentionally left in pluginData instead of being executed. */
   motion?: MotionSpec
@@ -1088,7 +1156,7 @@ export interface ExtractedLowcodeAndPluginData {
 }
 
 export function extractLowcodeAndPluginData(
-  nc: Pick<NodeChange, 'pluginData'>
+  nc: Pick<NodeChange, 'pluginData'> & Partial<Pick<NodeChange, 'type'>>
 ): ExtractedLowcodeAndPluginData {
   const pluginData: PluginDataEntry[] = []
   const result: ExtractedLowcodeAndPluginData = { pluginData }
@@ -1096,6 +1164,7 @@ export function extractLowcodeAndPluginData(
   const controlTypographyEntries: PluginDataEntry[] = []
   let inertPrivateMotion = false
   let sharedMotionCleared = false
+  const applicationCounts = countApplicationContracts(nc.pluginData)
   for (const entry of nc.pluginData ?? []) {
     const preservedEntry = { pluginId: entry.pluginID, key: entry.key, value: entry.value }
     if (isSharedMotionNodeChangeEntry(entry)) {
@@ -1119,16 +1188,16 @@ export function extractLowcodeAndPluginData(
       pluginData.push(preservedEntry)
       continue
     }
-    if (entry.key === LOWCODE_GRID_LAYOUT_KEY) {
-      const layout = parseGridLayout(entry.value)
-      if (layout) result.gridLayoutOverride = layout
-      else pluginData.push(preservedEntry)
+    if (applicationCounts.has(entry.key)) {
+      extractApplicationContract(
+        result,
+        preservedEntry,
+        nc.type,
+        applicationCounts.get(entry.key) === 1
+      )
       continue
     }
-    if (entry.key === LOWCODE_CONTROL_TYPOGRAPHY_KEY) {
-      controlTypographyEntries.push(preservedEntry)
-      continue
-    }
+    if (extractSpecialLowcodeEntry(result, preservedEntry, controlTypographyEntries)) continue
     let parsed: unknown
     try {
       parsed = JSON.parse(entry.value)
@@ -1164,6 +1233,95 @@ export function extractLowcodeAndPluginData(
     sharedMotionCleared
   )
   return result
+}
+
+function countApplicationContracts(entries: NodeChange['pluginData']): Map<string, number> {
+  const applicationCounts = new Map<string, number>()
+  for (const entry of entries ?? []) {
+    if (
+      entry.pluginID === OPEN_PENCIL_PLUGIN_ID &&
+      (entry.key === LOWCODE_APPLICATION_PLUGIN_KEY ||
+        entry.key === LOWCODE_APPLICATION_PAGE_PLUGIN_KEY)
+    )
+      applicationCounts.set(entry.key, (applicationCounts.get(entry.key) ?? 0) + 1)
+  }
+  return applicationCounts
+}
+
+function extractApplicationContract(
+  result: ExtractedLowcodeAndPluginData,
+  entry: PluginDataEntry,
+  type: NodeChange['type'],
+  unique: boolean
+): void {
+  try {
+    if (unique) {
+      const parsed: unknown = JSON.parse(entry.value)
+      if (entry.key === LOWCODE_APPLICATION_PLUGIN_KEY && type === 'DOCUMENT') {
+        const policy = validateLowcodeApplication(parsed)
+        if (policy.ok) {
+          result.lowcodeApplication = policy.value
+          return
+        }
+      }
+      if (entry.key === LOWCODE_APPLICATION_PAGE_PLUGIN_KEY && type === 'CANVAS') {
+        const policy = validateLowcodeApplicationPage(parsed)
+        if (policy.ok) {
+          result.lowcodeApplicationPage = policy.value
+          return
+        }
+      }
+    }
+  } catch {
+    console.warn('[lowcode] malformed application JSON preserved as inert plugin data')
+  }
+  result.pluginData.push(entry)
+  console.warn(
+    '[lowcode] invalid, misplaced or duplicate application policy preserved as inert plugin data'
+  )
+}
+
+function extractSpecialLowcodeEntry(
+  result: ExtractedLowcodeAndPluginData,
+  entry: PluginDataEntry,
+  controlTypographyEntries: PluginDataEntry[]
+): boolean {
+  switch (entry.key) {
+    case LOWCODE_GRID_LAYOUT_KEY: {
+      const layout = parseGridLayout(entry.value)
+      if (layout) result.gridLayoutOverride = layout
+      else result.pluginData.push(entry)
+      return true
+    }
+    case LOWCODE_CONTROL_TYPOGRAPHY_KEY:
+      controlTypographyEntries.push(entry)
+      return true
+    case LOWCODE_PAGE_VIEWPORT_KEY:
+      extractPageViewportContract(result, entry)
+      return true
+    default:
+      return false
+  }
+}
+
+function extractPageViewportContract(
+  result: ExtractedLowcodeAndPluginData,
+  entry: PluginDataEntry
+): void {
+  try {
+    const parsed: unknown = JSON.parse(entry.value)
+    const validated = validateLowcodePageViewport(parsed)
+    if (validated.ok) {
+      result.lowcodePageViewport = validated.value
+      return
+    }
+  } catch {
+    result.pluginData.push(entry)
+    console.warn('[lowcode] malformed page viewport JSON preserved as inert plugin data')
+    return
+  }
+  result.pluginData.push(entry)
+  console.warn('[lowcode] invalid page viewport preserved as inert plugin data')
 }
 
 function isSharedMotionNodeChangeEntry(
@@ -1252,7 +1410,9 @@ function resolveSharedMotionCandidates(
 }
 
 /** Convert lowcode plugin data into fields safe to spread onto a SceneNode. */
-export function extractImportedLowcodeProps(nc: Pick<NodeChange, 'pluginData'>): {
+export function extractImportedLowcodeProps(
+  nc: Pick<NodeChange, 'pluginData'> & Partial<Pick<NodeChange, 'type'>>
+): {
   nodeTypeOverride?: SceneNode['type']
   props: Partial<SceneNode>
 } {

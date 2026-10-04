@@ -41,7 +41,7 @@ test('new control templates declare their required modules and bilingual local-s
   for (const locale of ['en', 'zh-CN']) {
     const catalog = getComponentTemplates(locale)
     expect(catalog.filter((item) => item.kind === 'basic')).toHaveLength(54)
-    expect(catalog.filter((item) => item.kind === 'combination')).toHaveLength(8)
+    expect(catalog.filter((item) => item.kind === 'combination')).toHaveLength(12)
     for (const id of ids) {
       const item = catalog.find((candidate) => candidate.id === id)
       const moduleType = id === 'range-slider' ? 'slider' : id
@@ -79,11 +79,17 @@ for (const locale of ['en', 'zh-CN']) {
           slider: 1,
           'range-slider': 2,
           rating: 1,
-          stepper: 0,
+          stepper: 1,
           breadcrumb: 0
         }
         expect(result.stateNames).toHaveLength(expectedStates[id])
-        expect(nodes.every((node) => !node?.events?.length)).toBe(true)
+        if (id === 'stepper') {
+          expect(modules[0]?.bindings?.currentIndex).toEqual({
+            kind: 'ref',
+            stateId: result.stateNames[0]
+          })
+          expect(nodes.filter((node) => node?.type === 'BUTTON')).toHaveLength(3)
+        }
         assertInitialConfig(id, module?.config, locale)
         expect(graph.getNode(preserved.id)).toEqual(before)
         editor.undo.undo()

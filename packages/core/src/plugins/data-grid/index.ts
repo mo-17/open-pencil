@@ -23,30 +23,17 @@ import {
 } from './csv'
 import { DEFAULT_DATA_GRID_COLUMNS, DEFAULT_DATA_GRID_ROWS } from './defaults'
 import { dataGridModuleFields } from './fields'
+import { DATA_GRID_MODULE_LIMITS } from './limits'
+
+export { DATA_GRID_MODULE_LIMITS } from './limits'
 
 export type { DataGridCsvExportResult, DataGridCsvImportResult } from './csv'
+export { resolveDataGridRows, type DataGridRowsResolution } from './rows'
 
 export const DATA_GRID_PLUGIN_ID = 'open-pencil.data-grid'
 export const DATA_GRID_MODULE_TYPE = 'data-grid'
 export const DATA_GRID_MODULE_CONFIG_VERSION = 1
 export const DATA_GRID_MODULE_DEFAULT_SIZE = Object.freeze({ width: 800, height: 420 })
-export const DATA_GRID_MODULE_LIMITS = Object.freeze({
-  columns: 16,
-  rows: 200,
-  cells: 2_000,
-  filters: 8,
-  id: 64,
-  label: 120,
-  cellText: 2_000,
-  totalText: 40_000,
-  columnWidthMin: 64,
-  columnWidthMax: 640,
-  pageSizeMin: 10,
-  pageSizeMax: 100,
-  fontSizeMin: 8,
-  fontSizeMax: 32,
-  configBytes: 48 * 1024
-})
 export const DATA_GRID_CSV_LIMITS = Object.freeze({
   bytes: 192 * 1024,
   records: DATA_GRID_MODULE_LIMITS.rows + 1,

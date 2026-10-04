@@ -10,6 +10,10 @@ const BASE: readonly LocalizedLimitation[] = [
   ]
 ]
 const MODULE_LIMITATIONS: Readonly<Record<string, LocalizedLimitation>> = {
+  stepper: [
+    'Current step is writable numeric page state, starting from 0. Step changes do not validate, submit, navigate or run a workflow; review state references before moving across pages.',
+    '当前步骤为可写数字页面状态，从 0 开始。切换不校验、提交、跳转或执行工作流；跨页移动前请检查状态引用。'
+  ],
   cascader: [
     'Up to 128 local items and 6 levels. Selecting a leaf writes a complete path array; no remote loading, multiple selection or automatic submission.',
     '最多 128 个本地条目、6 层；选择叶节点后写入完整路径数组，不远程加载、不支持多选、不自动提交。'
@@ -44,8 +48,8 @@ const MODULE_LIMITATIONS: Readonly<Record<string, LocalizedLimitation>> = {
   ],
   'upload-button': ['Selects files; does not upload.', '只选择文件，不自动上传。'],
   tree: [
-    'Static local hierarchy, up to 128 items and 6 levels; selection is independent without parent-child cascading or FORM binding.',
-    '固定本地层级，最多 128 项、6 层；多选彼此独立，不级联选中父子节点，未绑定 FORM。'
+    'Static local hierarchy, up to 128 items and 6 levels; selection is independent without parent-child cascading or remote loading.',
+    '固定本地层级，最多 128 项、6 层；多选彼此独立，不级联选中父子节点，也不远程加载。'
   ],
   popover: [
     'Confirmation only changes the local status; it does not delete, save, request the network or submit a business form.',
@@ -78,6 +82,20 @@ const INPUT_LIMITATIONS: Readonly<Partial<Record<string, LocalizedLimitation>>> 
     '初值为空，不展示明文值摘要。普通表单字段不是凭据保险库，请勿在设计文档中保存真实密码。'
   ]
 }
+const COMPOSITION_LIMITATIONS: Readonly<Partial<Record<string, LocalizedLimitation>>> = {
+  'stepper-form': [
+    'Each visible form validates before advancing. Back preserves the draft; Start again explicitly clears it. Completion does not revalidate hidden steps or save to a server.',
+    '可见步骤由自己的表单校验后推进；返回保留草稿，开始重填明确清空草稿。完成时不重新校验隐藏步骤，也不保存到服务器。'
+  ],
+  'drawer-details': [
+    'The editable drawer form changes local draft state. Reset restores authored defaults; closing preserves the draft and does not save it. Submission stays open.',
+    '可编辑抽屉表单只修改本地草稿；重置恢复编写的初值，关闭保留草稿且不保存。提交后抽屉保持打开。'
+  ],
+  'admin-shell': [
+    'Local section switching and sample members only; configure real routes, access control and data services separately.',
+    '仅切换本地区域并展示示例成员；真实路由、权限与数据服务需另外配置。'
+  ]
+}
 export function componentTemplateLimitations(
   id: string,
   moduleType: string | undefined,
@@ -87,13 +105,17 @@ export function componentTemplateLimitations(
   const result = BASE.map(localized)
   const module = moduleType ? MODULE_LIMITATIONS[moduleType] : undefined
   if (module) result.push(localized(module))
-  if (['validated-form', 'dialog-form', 'tabs-details'].includes(id))
+  if (
+    ['validated-form', 'dialog-form', 'tabs-details', 'stepper-form', 'drawer-details'].includes(id)
+  )
     result.push(
       localized([
         'Contains a form; cannot be nested inside an existing form.',
         '含表单，不能嵌入已有表单内部。'
       ])
     )
+  const composition = COMPOSITION_LIMITATIONS[id]
+  if (composition) result.push(localized(composition))
   const input = INPUT_LIMITATIONS[id]
   if (input) result.push(localized(input))
   if (id === 'multi-select')

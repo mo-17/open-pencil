@@ -27,17 +27,253 @@ not make OpenPencil lowcode behavior executable in Figma.
 - shadcn/ui-based output for supported interactive controls.
 - Static bundles deployable to Netlify, Vercel, Cloudflare Pages, or any SPA host.
 
+## Optional Application mode
+
+Enable **Application mode** in the Pages panel, mark business pages as **Application pages**, select
+one top-level **Entry Frame** per page, and choose routes and a starting page. Reference and component
+pages remain editable and saved; they do not become runtime routes. Application instances can still
+use shared component masters. Unclassified pages are not added automatically.
+
+An entry can sit anywhere on the canvas. Generated content starts at its local origin, leaving
+surrounding reference material in the design. Device adaptation applies to the selected entry, or to the outer shared layout when configured.
+Navigation continues to use existing internal routes and parameter configuration; callers must supply
+required dynamic route parameters.
+The starting page requires a concrete static route without query or hash suffixes. Dynamic and
+wildcard pages remain valid navigation destinations, but cannot be selected as the starting page;
+existing invalid starting routes show a repair hint instead of silently choosing another page.
+
+The mode is off by default and old documents need no migration. Turning it off restores the existing
+design and code-export range. Settings support undo and `.fig` persistence. SVG, raster and ordinary
+design-file exports retain their existing selection rules.
+
+In Application mode, the Web preview keeps declared document-state values and the current business
+route, including concrete parameters, query and hash, across automatic recompiles of the same document.
+Selecting nodes on that page keeps the URL; selecting another static application page changes the
+destination. Editor synchronization replaces the current browser history entry so ordinary app
+navigation and browser Back/Forward do not acquire extra synchronization steps.
+Selecting reference material does not
+redirect the app. Opening another document, changing document-state declarations, turning the mode
+off or restarting the preview clears this temporary state; it is never saved into the design file.
+Automatic recompilation replaces the preview frame; its earlier navigation stack and undeclared
+page-local state are not restored.
+
+Save application configuration as `.fig`. Source-preserving writes of imported `.pen` documents
+continue to support Motion edits only; save as `.fig` after adding application configuration.
+
+Missing, deleted or foreign-page entries produce application diagnostics. Review diagnostics for
+prototype, Motion and behavior targets outside the entry rather than assuming they were copied into
+the app. Nested routing and arbitrary component-local state restoration remain future work;
+existing target runtime limitations still apply.
+
+### Page sessions and navigation
+
+For an Application page with no saved policy, **Page state on return** shows **Not set (original behavior)**.
+Choose **Reset on each visit** to explicitly enable resetting, or
+**Preserve during this session** to recover bound, declared writable page state and the window's
+scroll position in React/Vue. An explicitly saved Reset policy also reinitializes a reused route when
+its parameters or query change. Older pages with no saved policy retain their existing route-component
+reuse behavior. A filtered list can keep its filter and pagination while the user opens
+an editable detail page and returns. Computed state is recalculated from the restored inputs.
+
+Sessions are separated by page ID, concrete pathname and query string. Different product IDs or
+queries have independent drafts; changing only the hash keeps the same session. Same-document
+automatic preview recompilation restores these values. Opening a document, manually reloading the
+preview, changing framework, page declarations/defaults, routes or entry configuration clears the
+cache. Only the preference is saved to `.fig`; runtime values are never written to the design.
+With Preserve enabled, Tauri rebuilds the preview iframe and restores declared values after the
+new runtime is ready. It does not rely on the server's HMR acknowledgement or retain unbound widget
+internals. Previews without this opt-in policy keep their existing HMR behavior.
+
+The cache uses local runtime memory, up to 64 page instances, 4,096 portable values and 256 KiB per
+snapshot, with protocol overhead reserved. Oldest updated instances are removed when the aggregate
+budget is exceeded. Files, DOM values, credentials and backend stores are not collected; unbound
+component values and nested scroll containers are outside this recovery contract. Ordinary authored
+strings or objects placed in page state are included, so this feature does not identify sensitive
+content by inspection. Flutter and other source targets emit a warning for the unsupported preserve
+policy. A reload still starts a new session in an exported Web app.
+
+Navigation actions offer **Open page**, **Replace current page** and **Back**. Replace avoids adding
+an extra browser history entry. Back traverses only history recorded inside this application; when
+no such entry is available, it replaces the current route with the authored internal **Fallback
+route**. Supply a concrete path, including any required parameters; query and hash are allowed.
+Automatic preview recompilation retains the current URL but starts a fresh navigation history, so
+Back uses its fallback there. Flutter emits native push, replacement and back/fallback actions;
+unsupported source targets report explicit diagnostics.
+
+### Entry conditions and leaving confirmation
+
+An Application page can optionally configure **Enter condition** and **Confirm leaving**. Both
+fields in each section remain drafts until **Apply rule** saves them together; **Cancel** restores
+the saved rule, and **Remove rule** removes it. These edits support Undo/Redo and `.fig` save/reopen.
+Disabled Application mode leaves these rules inactive and preserves existing design exports.
+
+For entry, write an expression using document-state names and destination `$params` or `$query`
+values, such as `hasAccess && $params.productId !== "blocked"`. Only a strict boolean `true` allows
+entry. Supply a concrete internal fallback to another active Application page, for example
+`/home?reason=denied`. An authored rule with an empty or invalid expression or a non-true result
+does not admit the target page; pages without a rule retain their original behavior. Invalid targets,
+self redirects and fallback cycles are rejected. Existing authentication remains in front of the
+business condition; these controls govern navigation and display, not server-side data permissions.
+
+For leaving, write an expression using current page or document state, such as
+`detailDraft !== ""`, and a plain-text confirmation message. **Stay** keeps the current page and
+draft; **Leave page** continues the requested navigation. Confirming does not save or clear data.
+Your submit/save workflow must update the dirty state after a successful business save, and the
+page's reset/preserve policy continues to determine whether runtime state is retained.
+
+React/Vue apply these rules to generated navigation, shared-shell navigation and preview route
+requests. Parameter and query changes can leave a dirty page; changing only the fragment does not.
+Cancellation of browser Back/Forward is supported for history created by the running router.
+Unknown history entries, manual history manipulation and navigation out of the document have
+browser-dependent limits; reload/close prompts use the browser's native before-unload behavior.
+Flutter and other native/source targets report these optional guard policies as unsupported.
+Guarded microfrontend exports are also explicitly rejected until their host owns this navigation
+contract; existing microfrontend exports without guard policies retain their previous behavior.
+Changing guard rules or their input declarations retires old preview recovery authority; guarded
+non-backend Tauri previews rebuild their iframe instead of relying on an old runtime's HMR ACK.
+
+### Optional shared shell
+
+Design a desktop sidebar and header, or a phone header and bottom navigation, as an ordinary
+editable Frame on a Reference or Components page. Add an empty vertical or horizontal auto-layout
+Frame inside it for the page content. This region can be nested inside ordinary Frames.
+
+In the Application mode panel, choose **Shared shell frame** and **Content slot**, then select
+**Apply shell** to save both references together. Selection changes stay as drafts until applied;
+**Cancel** restores the saved pair. **Remove shell** restores each application's original entry
+layout. Applying and removing support undo. The configuration survives `.fig` save and reopen.
+
+Each generated route places its entry inside this content region, using the region's available
+width while retaining the entry's authored height. The compiler keeps the source Frame, empty
+region and business entries unchanged. Shared navigation can use the existing navigation actions.
+Use document state for shared counters or other cross-page values; the shell cannot read a business
+page's local state, and its source page must have no page-local state, events or workflows.
+
+Missing references, a non-empty region, protected ancestors or unsupported shell behavior produce
+diagnostics. The configuration stays available for repair; it never silently picks another layout.
+React and Vue generated apps and Flutter source generation use the same projection. This does not
+add nested routes or guarantee retention of every local widget or form value when changing pages.
+
 ## Desktop vs Browser
 
-| Capability                              | Desktop app             | Browser app                         |
-| --------------------------------------- | ----------------------- | ----------------------------------- |
-| Edit design and lowcode properties      | Yes                     | Yes                                 |
-| Live lowcode preview pane               | Yes                     | No, preview sidecar is desktop-only |
-| Deploy controls in the preview pane     | Yes                     | No                                  |
-| CLI compile/build/deploy                | Yes, from your terminal | Yes, from your terminal             |
-| MCP/agent control of a running document | Yes                     | Limited by the connected tool       |
+| Capability                              | Desktop app             | Browser app                                       |
+| --------------------------------------- | ----------------------- | ------------------------------------------------- |
+| Edit design and lowcode properties      | Yes                     | Yes                                               |
+| Live lowcode preview pane               | React and Vue           | React through the browser Worker; Vue unavailable |
+| Deploy controls in the preview pane     | Yes                     | No                                                |
+| CLI compile/build/deploy                | Yes, from your terminal | Yes, from your terminal                           |
+| MCP/agent control of a running document | Yes                     | Limited by the connected tool                     |
 
-For browser-only use, keep editing in the web app and run `openpencil compile`, `openpencil build`, or `openpencil deploy` against the saved `.fig` / `.pen` file from your terminal.
+React preview works directly in the Web editor; Vue preview uses the desktop sidecar. For builds
+and deployments from a browser workflow, save the `.fig` or `.pen` file and run `openpencil build`
+or `openpencil deploy` from your terminal.
+
+## Preview synchronization
+
+Choose the synchronization mode in Preview settings. **Auto** is the default and waits for a
+400–1,000 ms input pause. **On save** synchronizes after this document saves successfully; it uses the
+latest editor content when the queued compile starts. Failed or cancelled saves and recovery
+snapshots do not trigger it. **Manual** updates only through Reload. **Real-time** requests an update
+for every change. All modes serialize work and merge queued changes; the preference stays on this
+device. Connected NestJS previews always synchronize automatically.
+
+In checkout-based Tauri development, expand **Flutter simulator preview**, find an already running
+iOS or Android simulator, select it and press **Start**. Flutter opens a separate native window and
+uses the same mode; Hot reload preserves runtime state. In Design mode, the snapshot uses the active page and switching pages stops its session.
+Application mode captures the complete application so page navigation keeps the same session. Stop ends only the editor-owned session.
+Use an existing Flutter SDK, Bun, platform tools and offline engine/dependency caches.
+Bun must be available on the launcher PATH; Tauri preserves those directories alongside its login-shell lookup. Missing
+prerequisites and third-party native runtime plugins fail without installing or upgrading tools. Browser-only Flutter sessions and a
+bundled runner for distributed installers are not available yet. Unsupported features retain
+compiler warnings; native platform changes need Stop and Start. React/Vue web builds, deployment,
+iframe selection and collaboration remain their own targets.
+
+## Page device adaptation
+
+Clear the selection to show **Page** in the Design panel, then choose **Device adaptation**.
+This is a page layout setting saved in `.fig`, with undo/redo support. Changing the preview's
+phone, tablet or desktop size only changes the viewing area; it does not author this setting or
+resize the editor canvas.
+
+| Setting               | Generated page behavior                                                                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fixed size**        | Retain authored geometry and the existing output behavior. Pages without a setting use this mode.                                                                                  |
+| **Scale to width**    | Scale the whole visible design uniformly to the available content width, normalize negative page coordinates, and preserve scaled height for scrolling and interaction.            |
+| **Responsive layout** | Fill the available width with at least one viewport of height. Top-level design frames enter page flow; their content height follows the effective Auto layout at each breakpoint. |
+
+Use **Auto layout**, child **Hug**/**Fill** sizing and **Responsive** overrides to author the
+rearrangement within a responsive page. Freeform absolute children keep their positions; arbitrary
+canvas artwork does not automatically become a responsive layout. Use Scale to width when you
+want to preserve that composition. Resizing the generated page keeps its mounted controls and
+local runtime state. Empty or invalid design bounds produce a warning and keep fixed output.
+
+For larger system text or labels that may wrap, use **Hug** height and a suitable minimum height
+for the control, alongside Auto layout and Fill width. Fixed-height controls retain their authored
+height in responsive mode; leave enough space for the expected text size, wrapping and padding,
+or supply a breakpoint-specific height. The page policy does not automatically enlarge them.
+
+React and Vue use the same measured content-width runtime for proportional scaling; current
+browser CSS `zoom` support is required. Flutter applies the same page bounds and layout policy to
+native widgets. Its reviewed grid subset places children in source order with fixed or fractional
+columns; auto tracks, explicit grid placements and row tracks warn. Per-child alignment overrides,
+unbounded stretch and vertical wrapping without a fixed height also retain explicit native limits
+and compiler warnings. Other source-only mobile targets warn when the page policy is unsupported.
+Use the generated target's diagnostics and verify the actual browser or device before delivery.
+
+Flutter responsive **Wrap** supports start, end, center and space-between alignment along the
+main axis, and start, end and center alignment between children within each run. Authored run-group
+distribution uses start for **Auto** and space-between for **Space between**, sharing any remaining
+cross-axis space between runs while retaining the minimum run gap. Single runs and content-sized
+cross axes gain no extra spacing. Wrap stretch, baseline and per-child alignment overrides report
+unsupported behavior. Vertical wrapping still requires a fixed height. Size limits are checked after responsive
+projection: negative limits become zero, non-finite limits are omitted, and a maximum below its
+minimum is raised to that minimum, with compiler warnings. These adjustments affect generated
+widgets; the authored scene remains unchanged. Clearing a limit to `null` removes it in that branch.
+
+## Inspect adaptation in Web preview
+
+Use the preview size controls to choose a device preset or **Custom**, then enter dimensions from
+240 to 2560 pixels. Drag the width slider to inspect the widths between presets. These changes
+retain the iframe, current route and unsaved form values. Preview settings stay in this session.
+
+Choose a text scale from 100% to 200% to enlarge rendered HTML text without scaling the whole page.
+Enable **Keyboard obstruction** to cover up to 300 pixels or 45% of the preview height. This overlay
+checks whether important controls are covered; it does not emulate a native keyboard, viewport
+resize, automatic focus scrolling or Flutter accessibility settings.
+
+Enable **Adaptation diagnostics** to inspect the currently rendered Web preview. The list reports
+horizontal overflow, clipped text and fixed-height text risks. Select a result to locate its node on
+the canvas. Review the suggested Hug height, minimum size or Fill width changes before editing.
+Intentional horizontal scrolling and ellipsis or line-clamp text are excluded. Inspection is bounded
+to 4096 elements and 128 results; a limit notice means the report is incomplete. An empty list only
+means no supported issue was detected in this viewport, not that every device passed.
+
+The simulations and inspection are available through the generated Web preview bridge. Connected
+backend previews do not expose that bridge. Use actual iOS/Android font, keyboard, rotation and
+safe-area behavior as separate acceptance checks for Flutter. Text drawn inside SVG, canvas or
+embedded third-party views also needs separate inspection.
+
+## Edit responsive branches
+
+Select a layer and open **Responsive**. Choose one breakpoint; its label shows the range and the
+number of authored fields. Each field displays its branch value and inheritance source. The
+`sm`, `md`, `lg`, and `xl` branches inherit preceding minimum-width overrides at 640, 768, 1024,
+and 1280 CSS pixels. `compact` inherits the base design and applies independently below 1280 pixels.
+Where they overlap, an authored compact field takes priority in generated React, Vue and Flutter
+layouts. Fields not authored in compact retain the minimum-width cascade.
+
+Edit a value to override it, or use its pin action to author the current inherited value explicitly.
+Use the restore action to remove that field's override. **No limit** and **Automatic** author explicit
+null resets for size bounds and line height; restoring inheritance removes the reset. **Clear**
+removes only the selected branch in one undo step. Other branches and authored grid tracks stay
+intact. Changing the column count intentionally creates equal-width columns. Changes persist in
+`.fig`, support undo/redo, and preserve the base canvas geometry.
+
+**Preview this width** opens the Web preview at 390, 640, 768, 1024 or 1280 pixels for the selected
+branch. An already mounted preview retains its height, route and unsaved form values. This action
+changes the viewport only; it follows the existing synchronization mode and does not force a build.
+Manual/On-save previews can therefore still show older source until you refresh/save. Unsupported
+Web previews show an unavailable hint. This control does not change a Flutter simulator's device.
 
 ## Authoring Flow
 
@@ -196,7 +432,7 @@ event when validation must run before those actions.
 The Interactive properties section exposes input type, keyboard input mode, autofill, an accessible
 name, disabled/read-only state, and applicable text-length or numeric constraints. Inputs accept
 text, email, password, number, telephone, URL, and search types. Choosing the numeric input type does
-not change the existing bound state type; string bindings preserve an empty string instead of zero.
+not change the existing bound state type. String bindings preserve an empty string; number bindings keep incomplete text as an input draft instead of writing zero or NaN to business state.
 
 Input and Textarea canvas text reads supported page/document initial-value bindings. Password inputs
 show a mask, single-line inputs stay on one line, and text remains clipped to the authored bounds.
@@ -216,6 +452,12 @@ and associated error text remain accessible; no failed business submission is re
 Radio/checkbox groups validate when a child loses focus, and numeric bounds reject non-numeric values.
 Group changes also update validation immediately. Repeated list fields and reusable component
 instances keep separate error-description IDs even when they share the same bound value.
+
+An accepted compiled FORM reset restores the declared page and document state defaults for its fields,
+including mixed INPUT and module fields, then clears validation errors. A cancelled reset leaves state,
+displayed values and errors intact. Conditional fields belonging to the FORM reset even while hidden;
+content portaled from Modal, Popover or Walktour keeps its own form ownership. An independently
+controlled input outside a compiled FORM still follows its controlled-value reset contract.
 
 Static Select options can have separate labels and values and can be individually disabled. Existing
 string options still use the same string for both; a configured dynamic options source takes precedence.
@@ -324,27 +566,46 @@ Input and textarea recipes share readable text insets, closely grouped labels an
 feedback. Their layers and appearance remain editable. Recipe updates apply to new insertions;
 they do not automatically restyle copies already placed in a document.
 
-| Basic components (54)               | Common compositions (8)                             |
-| ----------------------------------- | --------------------------------------------------- |
-| Button, Input, Textarea, Select     | Exact-name search with results and reset            |
-| Checkbox, Switch, Radio, Date field | Validated name/email form                           |
-| Content card, Section divider       | Preferences card                                    |
-| Local file picker, Local data grid  | Editable dialog form, Details tabs, Table workbench |
-| Slider, Range slider, Rating        | Frequently asked questions with expandable answers |
-| Stepper, Breadcrumb                 |                                                     |
-| Alert, linear/circular Progress, Chip | |
-| Avatar, count/dot Badge, Timeline | |
-| Tooltip, Skeleton, Empty content/search | |
-| Bar, Line, Area, Pie and Donut charts | |
-| Markdown note/checklist, Code example | |
-| Multiple select, Date range, Tree, Tree select | |
-| Popover, Local confirmation | |
-| Autocomplete, Time picker | |
-| Date-time picker, Number input, Password input | |
-| Color picker, Descriptions | |
-| Pagination | Paginated list |
-| Org Chart | |
-| Walktour | |
+The four application compositions are `stepper-form`, `tree-details`, `drawer-details` and
+`admin-shell`. The step-by-step form validates its visible stage before advancing; returning
+preserves the draft, and **Start again** explicitly clears all draft values. The final summary
+does not revalidate hidden stages. Tree selection projects local details and supports an empty
+state. The admin shell switches local sections and rearranges navigation on compact screens;
+configure real routes, permissions and data services separately.
+
+The drawer recipe contains an ordinary validated FORM. **Reset draft** restores its authored
+defaults; closing and reopening preserves changes. **Save locally** only changes local feedback
+and leaves the drawer open. To author different drawer content, select a Slide Menu frame,
+choose a uniquely named direct child in **Content layer**, or create a content layer and open
+it for isolated Canvas editing. Unassigned or ambiguous children do not become drawer content.
+Existing Slide Menu configurations keep their authored trigger layers until you explicitly
+configure the content mapping. React/Vue support editable bodies; source-only native targets
+continue to show an unsupported-content warning.
+
+**Last submit** records the previous local submission and stays unchanged when draft fields reset.
+**Start again** clears draft values; existing validation messages update on the next validation.
+
+| Basic components (54)                          | Common compositions (12)                            |
+| ---------------------------------------------- | --------------------------------------------------- |
+| Button, Input, Textarea, Select                | Exact-name search with results and reset            |
+| Checkbox, Switch, Radio, Date field            | Validated name/email form                           |
+| Content card, Section divider                  | Preferences card                                    |
+| Local file picker, Local data grid             | Editable dialog form, Details tabs, Table workbench |
+| Slider, Range slider, Rating                   | Frequently asked questions with expandable answers  |
+| Stepper, Breadcrumb                            | Step-by-step form, Tree categories with details     |
+| Alert, linear/circular Progress, Chip          | Drawer editing, Admin page shell                    |
+| Avatar, count/dot Badge, Timeline              |                                                     |
+| Tooltip, Skeleton, Empty content/search        |                                                     |
+| Bar, Line, Area, Pie and Donut charts          |                                                     |
+| Markdown note/checklist, Code example          |                                                     |
+| Multiple select, Date range, Tree, Tree select |                                                     |
+| Popover, Local confirmation                    |                                                     |
+| Autocomplete, Time picker                      |                                                     |
+| Date-time picker, Number input, Password input |                                                     |
+| Color picker, Descriptions                     |                                                     |
+| Pagination                                     | Paginated list                                      |
+| Org Chart                                      |                                                     |
+| Walktour                                       |                                                     |
 
 **Org Chart** is available as an opt-in plugin and the `org-chart` template. The visual editor accepts 1–64 plain-text cards across at most eight levels, with editable labels, descriptions and parent relationships. Choose vertical/horizontal layout, initial folded branches and card/connector colors. Narrow containers automatically use an indented vertical layout to keep cards readable; widen the container to display the full horizontal or vertical tree. Changes apply atomically with undo. The canvas shows the authored state; React/Vue supports local branch folding and keyboard navigation. Runtime folding resets when the component configuration changes or it is recreated. It does not connect to a directory, persist runtime folds, submit forms or grant workflow authority. The normal FRAME and module metadata survive `.fig` readback; Figma does not execute the Org Chart runtime.
 
@@ -352,7 +613,7 @@ they do not automatically restyle copies already placed in a document.
 
 Click the start button to show highlights and instructions in React/Vue. Previous, next, finish, skip and Escape are available; a missing or hidden target shows a clear notice and centers that step without automatically skipping it or clicking anything. Closing restores appropriate focus; config changes or remounting end the old tour. Walktour never submits forms, searches outside its own children, navigates routes, stores completion history or starts automatically. Browsers unable to open the guide show a local message and leave the page usable; microfrontend packaging rejects this overlay capability.
 
-The library contains **62 recipes: 54 basic components and 8 common compositions**. The six input and popup recipes are `multi-select`, `date-range`, `tree`, `tree-select`, `popover` and `popconfirm`. Multiple select binds a `string[]` to independent page state; review that reference before moving the template to another page. Date range now supports state/FORM bindings; tree selection remains instance-local. Tree supports at most 128 authored items and 6 levels, with independent selection rather than cascading parent/child checks. Popover and confirmation share one plugin; confirmation only shows local feedback and never saves, deletes or submits a business operation. Native date appearance follows the browser and operating system.
+The library contains **66 recipes: 54 basic components and 12 common compositions**. The six input and popup recipes are `multi-select`, `date-range`, `tree`, `tree-select`, `popover` and `popconfirm`. Multiple select binds a `string[]` to independent page state; review that reference before moving the template to another page. Date Range and Tree support typed state and FORM bindings; the two Tree templates each create their own page state. Tree supports at most 128 authored items and 6 levels, with independent selection rather than cascading parent/child checks. Popover and confirmation share one plugin; confirmation only shows local feedback and never saves, deletes or submits a business operation. Native date appearance follows the browser and operating system.
 
 Autocomplete and Time picker are native **INPUT variants**, available directly from Assets without enabling a plugin. Their `value` binds to string page or document state and participates in the existing FORM validation/submission flow. The canvas shows the closed field and its initial bound value; use the React/Vue preview to interact.
 
@@ -365,7 +626,7 @@ React/Vue export these input variants. Saving/reopening `.fig` preserves their o
 The `date-time-picker`, `number-input` and `password-input` recipes add three more editable INPUT examples. They reuse existing value bindings and FORM validation/events without installing a plugin. Their canvas previews show authored values and control affordances; interaction belongs to the React/Vue runtime.
 
 - **Date-time picker:** choose `datetime-local` and bind a string. Use `YYYY-MM-DDTHH:mm` or `YYYY-MM-DDTHH:mm:ss` for a real Gregorian date and time, `min`/`max` in the same format, and a positive whole-number step in seconds or `any`. Values have no timezone or UTC conversion. Unlike a time-only range, `min` cannot be after `max`. Native browser/OS formatting can differ from the neutral canvas preview; invalid drafts remain editable, while out-of-range values remain visible for native validity to reject.
-- **Number input:** leaving the step-control setting at its native default preserves the existing browser control. Choose custom controls for buttons at the end or on both sides; choose hidden to suppress spinner buttons. Custom buttons call native `stepUp`/`stepDown`, respecting fractional steps, bounds, disabled and readonly state. Empty string drafts stay empty until the user types or deliberately steps; the template uses string state for this reason. With `step=any`, custom stepping is disabled because no step increment is defined; free numeric input remains available. The existing number-binding rules are unchanged.
+- **Number input:** leaving the step-control setting at its native default preserves the existing browser control. Choose custom controls for buttons at the end or on both sides; choose hidden to suppress spinner buttons. Custom buttons call native `stepUp`/`stepDown`, respecting fractional steps, bounds, disabled and readonly state. The template uses string state so it can keep an empty value. A number state remains numeric: incomplete drafts do not write zero or NaN, while valid zero does write back. Required incomplete drafts block submission; optional incomplete drafts return to the current business number on blur or submit. An accepted FORM reset restores the declared initial number. Native intermediate text may look different between browsers. With `step=any`, custom stepping is disabled because no step increment is defined; free numeric input remains available.
 - **Password input:** enable the reveal control explicitly. It starts masked, changes visibility only for that instance, and restores masking on reset, relevant type/config changes or remount. Readonly passwords may be revealed; disabled controls cannot toggle. Reveal does not dispatch value edits or submit the form. The template starts empty, has no plaintext value feedback, and does not save credentials. Avoid putting real passwords into authored defaults, example state or design files.
 
 Expo, Flutter, native WeChat Mini Program, Taro, uni-app and Mpx source exports omit unsupported `time`/`datetime-local` INPUT variants and enhanced input controls with node-specific warnings. Unconfigured native number/password inputs keep their existing target behavior. Browser/OS picker UI, actual assistive technology and other devices require their own acceptance; a generated control does not establish backend validation or credential storage.
@@ -392,7 +653,7 @@ Templates do not configure authentication, a database, backend APIs or global de
 Alert, linear Progress, circular Progress and Chip add four basic templates. Dismissal and label selection/removal only affect the running instance. Progress is an authored example; use indeterminate mode when no percentage is known. It never fabricates live task completion. Configuration changes/remounting reset local interactions.
 
 Slider/Range and Rating support optional writable page/document state and FORM bindings; unbound instances retain local state. Binding does not configure persistence or backend submission.
-Stepper optionally changes its current step without running a workflow. Breadcrumb validates safe
+Stepper binds `currentIndex` (starting from 0) to writable numeric page/document state through **Step binding** in the design panel. Reusable component and instance bodies accept document state only. Unbound steps remain local. Only user selections write the bound state and emit a `stepschange` event with `detail.currentIndex` and `detail.previousIndex`; the lowcode change handler reads the selected index as `$value`. Invalid, fractional, missing or disabled indexes show an unavailable state without falling back to the configured step. Disabled/read-only controls cannot change steps. Its basic template includes previous, next and reset buttons sharing the same state. An accepted containing FORM reset restores declared defaults without emitting a step-change event; cancellation preserves the current step. Stepper is not a submitted FORM field. Switching steps does not validate, submit, navigate or run a workflow; a multi-step form must configure those operations explicitly. Breadcrumb validates safe
 links and leaves its final item non-clickable. Canvas shows authored initial settings; generated
 React/Vue pages supply interaction. These modules retain ordinary `.fig` FRAME metadata, which does
 not make the runtime interactive in Figma.
@@ -1055,22 +1316,25 @@ Use this checklist when validating a lowcode document before sharing it:
 - Cloudflare deploy fails before upload: pass `--account-id`, set `CLOUDFLARE_ACCOUNT_ID`, or use `--site <account>/<project>`.
 - i18n output has missing translations: inspect the emitted `src/locales/_coverage.json` and fill the target locale catalog.
 
-
 ### Multi-select and local selection modules
 
 Select's visual inspector now has **Allow multiple selections** and per-option defaults. Multiple mode binds `value` to an array of strings; single mode keeps its string contract. Unbind the existing value before changing modes, then bind a state of the matching type. Search and virtual scrolling work with either mode. Selecting a result keeps a multiple menu open; Clear removes every selection and Backspace on the closed trigger removes the last enabled choice. An authored empty-string option is a real value, distinct from an empty selection. Existing `$value` event shorthand remains the first native selected value; use the bound array state for all selected values.
 
-Enable **Date Range**, **Tree / TreeSelect**, or **Popover** in Plugins, then insert them from the module tool or Assets templates. Date Range uses native date inputs, ISO initial values and min/max bounds; an inverted or incomplete runtime range shows an error without silently rearranging dates. Tree supports editable hierarchy, search, single/multiple independent selection, disabled branches, initial expansion and keyboard navigation. TreeSelect expands within its authored container; leave enough height for the list. Date Range supports optional page/document state bindings and independent FORM endpoints. Tree selection remains instance-local. Neither configures backend data access.
+Enable **Date Range**, **Tree / TreeSelect**, or **Popover** in Plugins, then insert them from the module tool or Assets templates. Date Range uses native date inputs, ISO initial values and min/max bounds; an inverted or incomplete runtime range shows an error without silently rearranging dates. Tree supports editable hierarchy, search, single/multiple independent selection, disabled branches, initial expansion and keyboard navigation. TreeSelect expands within its authored container; leave enough height for the list. Date Range and Tree support optional typed page/document state bindings and FORM fields; unbound Tree selection remains instance-local. Neither configures backend data access.
 
 Popover has content and confirmation modes, trigger/panel styling and preferred placement. Its content layer is an ordinary editable direct child selected by a unique name. The plain-text body is used only when no content mapping is configured. A missing, ambiguous or unrenderable mapped child produces `module-content-child-invalid` and leaves the content empty. Escape, outside click and focus leaving dismiss it. Confirmation/cancellation only show local status. Add explicit business actions to ordinary content buttons when needed. Modern browsers use the Popover top layer; the local fallback may be clipped by an overflow ancestor. Canvas shows the trigger; use Edit content for child layers and compiled preview for the open floating panel.
 
 React and Vue are the verified web targets. Native/mobile targets report unsupported behavior. Expo, Flutter, WeChat Mini Program, Taro, uni-app and Mpx omit multiple SELECT controls with the stable `{target}-select-multiple-unsupported` diagnostic; other nodes continue to export. `.fig` preserves the configuration in ordinary OpenPencil module metadata; Figma does not gain these runtime interactions.
 
-### Form module bindings and Cascader
+### Form module bindings, Tree and Cascader
 
-Slider/Range, Rating, Date Range and Cascader expose Value bindings and Validation rules in the design panel. Create writable page/document state first: number for sliders/ratings, separate ISO date strings for start/end dates, and a string[] root-to-leaf path for Cascader. Computed states cannot be write targets. Range endpoints bind and validate independently; clearing a binding restores instance-local initial values.
+Slider/Range, Rating, Date Range, Tree/TreeSelect and Cascader expose Value bindings and Validation rules in the design panel. Create writable page/document state first: number for sliders/ratings, separate ISO date strings for start/end dates, a node ID string for single-select Tree, a string[] of node IDs for multi-select Tree, and a string[] root-to-leaf path for Cascader. An empty string or array clears Tree selection. Computed states cannot be write targets. Range endpoints bind and validate independently; clearing a binding restores instance-local initial values.
 
-Bound fields participate in FORM validation and reset. Required Rating treats zero as unselected; zero can be valid for Slider. Missing, mistyped or invalid bound values remain visibly unavailable instead of falling back to examples. Reset restores declared state defaults and invalidates late validation; cancelled reset and unmounted fields preserve the actual form boundary. Canvas displays authored state defaults, not live preview state.
+The Field name option sets the FormData key without renaming the bound state. Leave it blank to use the state name. An explicit name starts with a letter or underscore and has at most 64 letters, digits, underscores or hyphens; `__proto__`, `prototype` and `constructor` are reserved. The inspector rejects invalid names; an invalid name imported from a file receives a compiler warning and is omitted from FormData.
+
+Bound fields participate in FORM validation and reset. Required Rating treats zero as unselected; zero can be valid for Slider. Missing, mistyped or invalid bound values remain visibly unavailable instead of falling back to examples. Disabled Tree branches and missing node IDs are invalid bound values; changing a Tree's selection mode does not convert the business value. Readonly fields retain their serializable value, while disabled fields are omitted from submission. Reset restores declared state defaults and invalidates late validation; cancelled reset and unmounted fields preserve the actual form boundary. Canvas displays authored state defaults, not live preview state.
+
+Tree/TreeSelect, Date Range and Cascader also expose **Read only** in Value bindings. Read-only fields keep their values readable and serializable; Tree can still expand and navigate without changing selection. Disabled controls block editing and Tree expansion, omit submitted values and close any open TreeSelect panel. Canvas combines authored module and node flags; it shows initial values, while focus and validation remain runtime states. Stepper dims disabled steps and keeps read-only text fully readable. RichText Canvas uses configured font size and line height with the shared font fallback; its offline logical-line preview remains distinct from full browser rich formatting.
 
 Enable **Cascader** in Settings → Plugins, then insert its module or `cascader` template. Edit hierarchical items, parents, disabled entries and the initial leaf, plus colors, radius, row height, search and clearing. React/Vue supports progressive columns, full-path search, keyboard navigation, disabled branches and clearing; only a leaf selection commits a path. Limits are 128 local items and six levels. Remote loading, multi-select and cascading checkboxes are outside this version. Unbound values stay instance-local. Binding does not configure network requests, database access or persistence.
 

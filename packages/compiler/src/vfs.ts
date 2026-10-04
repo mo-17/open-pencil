@@ -73,17 +73,13 @@ export function prepareVfsRoot(
   // Keep framework roots isolated: plugin-vue and plugin-react maintain
   // transform caches keyed by absolute ids and must never share one id space.
   const requestedScanRoot = join(workspaceRoot, `packages/compiler/.preview-root/${target}`)
-  mkdirSync(requestedScanRoot, { recursive: true })
-  // Vite/Rolldown may canonicalize loaded module IDs. Keep the configured root
-  // on that same path so aliases such as macOS /var -> /private/var cannot turn
-  // the emitted HTML asset name into a root-escaping ../../ path.
-  const scanRoot = realpathSync(requestedScanRoot)
+  const root = prepareVfsRootAtDirectory(requestedScanRoot)
   // Idempotent write: this tsconfig lives inside the host app's Vite root, so
   // rewriting it (even with identical content, since mtime changes) trips
   // Vite's tsconfig watcher into a forced full reload. That reload re-creates
   // the preview dev server, which calls prepareVfsRoot again — an infinite
   // reload loop. Only touch the file when its content actually differs.
-  const tsconfigPath = join(scanRoot, 'tsconfig.json')
+  const tsconfigPath = join(root.scanRoot, 'tsconfig.json')
   let current: string | null = null
   try {
     current = readFileSync(tsconfigPath, 'utf8')
@@ -92,6 +88,21 @@ export function prepareVfsRoot(
   }
   const expected = previewTsconfig(target)
   if (current !== expected) writeFileSync(tsconfigPath, expected)
+  return root
+}
+
+/** Canonicalize a host-owned child root that inherits its target's tsconfig. */
+export function prepareVfsRootAtDirectory(requestedScanRoot: string): {
+  scanRoot: string
+  vfsPrefix: string
+} {
+  mkdirSync(requestedScanRoot, { recursive: true })
+  // Vite/Rolldown may canonicalize loaded module IDs. Keep the configured root
+  // on that same path so aliases such as macOS /var -> /private/var cannot turn
+  // the emitted HTML asset name into a root-escaping ../../ path.
+  const scanRoot = realpathSync(requestedScanRoot)
+  // Do not plant another tsconfig: its addition/removal triggers peer and editor
+  // watchers. OXC walks up to the immutable shared target config instead.
   return { scanRoot, vfsPrefix: `${scanRoot}/` }
 }
 
@@ -180,15 +191,21 @@ export function inMemoryVFS(
     inlineBinaryCSSAssets?: boolean
     spaFallback?: boolean
   },
-  vfsPrefix: string
+  vfsPrefix: string,
+  workspaceRoot?: string
 ): Plugin {
   return {
     name: 'openpencil-lowcode-vfs',
     enforce: 'pre',
 
     config() {
-      // vfsPrefix is <workspace>/packages/compiler/.preview-root/<target>/.
-      return { resolve: { alias: markdownDependencyAliases(resolve(vfsPrefix, '../../../../')) } }
+      // Shared static roots retain the original layout; live roots have a
+      // server-owned child directory and pass their workspace explicitly.
+      return {
+        resolve: {
+          alias: markdownDependencyAliases(workspaceRoot ?? resolve(vfsPrefix, '../../../../'))
+        }
+      }
     },
 
     resolveId(source, importer) {

@@ -146,8 +146,9 @@ export function useModulePropsPanelController() {
   function addContent() {
     const node = selectedNode.value
     if (!node) return
-    const popover =
-      readModuleInstance(node.interactiveProps?.module)?.pluginId === 'open-pencil.popover'
+    const popover = ['open-pencil.popover', 'open-pencil.slide-menu'].includes(
+      readModuleInstance(node.interactiveProps?.module)?.pluginId ?? ''
+    )
     const id = createModalContent(
       editor,
       node.id,

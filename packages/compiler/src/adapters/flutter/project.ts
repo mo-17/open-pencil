@@ -47,7 +47,8 @@ flutter:
 export function buildFlutterMain(
   options: CompilerOptions,
   pages: readonly FlutterPageEntry[],
-  router: boolean
+  router: boolean,
+  applicationStartRoute?: string
 ): string {
   const imports = pages
     .map((page) => `import 'pages/${page.fileName}' as ${page.importAlias};`)
@@ -123,11 +124,16 @@ class OpenPencilApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: ${dartString(productName)},
-      home: ${
+${
+  applicationStartRoute
+    ? `      initialRoute: ${dartString(applicationStartRoute)},
+      onGenerateInitialRoutes: (route) => [_openPencilRouteFactory(RouteSettings(name: route))],`
+    : `      home: ${
         landing
           ? `const ${landing.importAlias}.${landing.className}()`
           : "const Scaffold(body: SafeArea(child: Center(child: Text('Open a concrete application route'))))"
-      },
+      },`
+}
       onGenerateRoute: _openPencilRouteFactory,
     );
   }

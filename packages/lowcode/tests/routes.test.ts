@@ -6,6 +6,7 @@ import {
   lowcodeNavigationPathname,
   lowcodeRouteCollisionKey,
   lowcodeRouteMatches,
+  validateLowcodeApplicationStartRoute,
   validateLowcodeRoutePattern
 } from '@open-pencil/lowcode'
 
@@ -81,5 +82,43 @@ describe('lowcode route helpers', () => {
     expect(lowcodeNavigationPathname('/product/:id?/edit?tab=details#top')).toBe(
       '/product/:id?/edit'
     )
+  })
+})
+
+describe('application start route validation', () => {
+  test('accepts concrete internal paths, including the root and encoded literal segments', () => {
+    for (const route of ['/', '/home', '/catalog/products', '/products/42', '/%3Aname', '/产品']) {
+      expect(validateLowcodeApplicationStartRoute(route)).toEqual({ ok: true })
+    }
+  })
+
+  test('keeps dynamic page patterns valid while refusing to guess startup parameters', () => {
+    for (const route of ['/products/:id', '/:locale?/home', '/files/*', '/static*', '/items/:']) {
+      expect(validateLowcodeRoutePattern(route).ok).toBe(true)
+      const result = validateLowcodeApplicationStartRoute(route)
+      expect(result.ok).toBe(false)
+      expect(result.reason).toBeTruthy()
+    }
+  })
+
+  test('does not turn a query or fragment into a concrete start route', () => {
+    for (const route of ['/home?tab=details', '/home#top', '/home?', '/home#']) {
+      expect(validateLowcodeApplicationStartRoute(route).ok).toBe(false)
+    }
+  })
+
+  test('reuses internal navigation authority and separator validation', () => {
+    for (const route of [
+      '',
+      'home',
+      'https://example.test/home',
+      '//example.test/home',
+      '/bad\\path',
+      '/bad\npath'
+    ]) {
+      const result = validateLowcodeApplicationStartRoute(route)
+      expect(result.ok).toBe(false)
+      expect(result.reason).toBeTruthy()
+    }
   })
 })

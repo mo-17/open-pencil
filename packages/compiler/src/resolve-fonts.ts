@@ -24,6 +24,7 @@ import {
 import { normalizeFontFamily, parseFontStyle, type SceneGraph } from '@open-pencil/scene-graph'
 
 import { exactArrayBuffer } from './bytes'
+import { resolveCompilerApplicationScope } from './ir/application/projection'
 import type {
   CompilerFontFaceAsset,
   CompilerFontLicenseEvidence,
@@ -134,7 +135,8 @@ function requestKey(request: WebFontFaceRequest): string {
 }
 
 function buildRequirements(graph: SceneGraph, pageIds: readonly string[]): FontPlanRequirements {
-  const requirements = collectGraphFontRequirements(graph, pageIds)
+  const scope = resolveCompilerApplicationScope(graph, pageIds)
+  const requirements = collectGraphFontRequirements(scope.graph, scope.pageIds)
   const subsets = webFontSubsetsForText(requirements.characters)
   const requests = new Map<string, WebFontFaceRequest>()
   const authoredFaces: WebFontFaceRequest[] = []

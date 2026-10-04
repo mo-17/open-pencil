@@ -90,6 +90,7 @@ export const menuMessageDefaults = {
   arrangeAlignBottom: 'Align bottom',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
+  resetToOrigin: 'Move canvas origin (0, 0) to the top-left',
   splitRight: 'Split right',
   splitDown: 'Split down',
   closeView: 'Close view',

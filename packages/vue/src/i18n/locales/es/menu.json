@@ -64,6 +64,7 @@
   "closeTab": "Cerrar pestaña",
   "zoomIn": "Ampliar",
   "zoomOut": "Reducir",
+  "resetToOrigin": "Situar el origen del lienzo (0, 0) en la esquina superior izquierda",
   "arrangeAlignLeft": "Alinear a la izquierda",
   "arrangeAlignCenter": "Alinear al centro",
   "arrangeAlignRight": "Alinear a la derecha",

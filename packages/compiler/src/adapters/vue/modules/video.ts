@@ -2,6 +2,7 @@ import { VIDEO_DEPENDENCIES, VIDEO_RUNTIME_SOURCE } from '#compiler/adapters/vid
 
 import { VIDEO_MODULE_TYPE, VIDEO_PLUGIN_ID } from '@open-pencil/core/plugins'
 
+import { VUE_MEDIA_HOST_SOURCE } from './media-host'
 import type { VueModuleAdapter, VueModuleRuntimeOptions } from './types'
 
 export const VIDEO_VUE_MODULE_ADAPTER: VueModuleAdapter = Object.freeze({
@@ -19,13 +20,8 @@ export const VIDEO_VUE_MODULE_ADAPTER: VueModuleAdapter = Object.freeze({
 import { computed, normalizeClass, normalizeStyle, onBeforeUnmount, onMounted, ref, useAttrs, watch } from 'vue'
 defineOptions({ inheritAttrs: false })
 const props = defineProps<{ config: OpenPencilVideoConfig; videoSrc?: unknown; videoPoster?: unknown; srcBound?: boolean; posterBound?: boolean; lang?: string }>()
-const attrs = useAttrs()
+${VUE_MEDIA_HOST_SOURCE}
 const host = ref<HTMLDivElement | null>(null)
-const hostStyle = computed(() => {
-  const style = normalizeStyle(attrs.style)
-  const positioned = normalizeClass(attrs.class).split(' ').some(token => ['absolute', 'fixed', 'relative', 'sticky'].includes(token))
-  return positioned || (style?.position && style.position !== 'static') ? style : { ...style, position: 'relative' }
-})
 let cleanup: (() => void) | undefined
 const refresh = () => {
   cleanup?.()

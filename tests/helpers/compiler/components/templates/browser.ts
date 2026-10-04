@@ -6,6 +6,7 @@ import { expect, type Page } from '@playwright/test'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
 
+import { withModuleFormCleanup } from '../form-module/lifecycle'
 import type { TemplateId, TemplateTarget } from './fixture'
 
 export async function withComponentTemplate(
@@ -41,15 +42,18 @@ export async function withComponentTemplateFiles(
   const capture = (error: Error) => errors.push(error.message)
   page.on('pageerror', capture)
   try {
-    await page.goto(server.url, { waitUntil: 'networkidle' })
-    await run()
-    expect(errors).toEqual([])
+    await withModuleFormCleanup(
+      async () => {
+        await page.goto(server.url, { waitUntil: 'networkidle' })
+        await run()
+        expect(errors).toEqual([])
+      },
+      async () => {
+        if (!page.isClosed()) await page.goto('about:blank')
+      },
+      () => server.close()
+    )
   } finally {
     page.off('pageerror', capture)
-    try {
-      if (!page.isClosed()) await page.goto('about:blank')
-    } finally {
-      await server.close()
-    }
   }
 }

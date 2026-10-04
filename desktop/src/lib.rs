@@ -186,9 +186,15 @@ fn augment_path(path: &str, candidates: &[PathBuf]) -> String {
 }
 
 /// Make globally installed CLIs visible to `which` and to spawned children.
-fn augment_mcp_path() {
+fn augment_startup_path(login_path: &str, inherited_path: &str, candidates: &[PathBuf]) -> String {
+    let mut inherited_dirs: Vec<PathBuf> = std::env::split_paths(inherited_path).collect();
+    inherited_dirs.extend_from_slice(candidates);
+    augment_path(login_path, &inherited_dirs)
+}
+
+fn augment_mcp_path(inherited_path: &str) {
     let current = std::env::var("PATH").unwrap_or_default();
-    let next = augment_path(&current, &mcp_candidate_dirs());
+    let next = augment_startup_path(&current, inherited_path, &mcp_candidate_dirs());
     if next != current {
         std::env::set_var("PATH", next);
     }
@@ -322,8 +328,11 @@ fn startup_open_paths() -> Vec<PathBuf> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // A launcher may select an installed runtime (for example an NVM bin) that
+    // is absent from the login shell. Retain it after fixing the shell PATH.
+    let inherited_path = std::env::var("PATH").unwrap_or_default();
     let _ = fix_path_env::fix();
-    augment_mcp_path();
+    augment_mcp_path(&inherited_path);
 
     let mut builder = tauri::Builder::default();
 
@@ -570,5 +579,46 @@ mod tests {
         let current = std::env::var("PATH").unwrap_or_default();
         let augmented = augment_path(&current, &[]);
         assert_eq!(augmented, current);
+    }
+
+    #[test]
+    fn augment_startup_path_keeps_login_and_inherited_dirs_without_duplicates() {
+        let fixture = tempfile::tempdir().expect("create path fixture");
+        let login_dir = fixture.path().join("login-bin");
+        let inherited_dir = fixture.path().join("caller-selected-bin");
+        let candidate_dir = fixture.path().join("candidate-bin");
+        for directory in [&login_dir, &inherited_dir, &candidate_dir] {
+            std::fs::create_dir(directory).expect("create existing bin directory");
+        }
+        let login = std::env::join_paths([&login_dir]).expect("join login path");
+        let inherited = std::env::join_paths([&inherited_dir, &login_dir, &inherited_dir])
+            .expect("join inherited path");
+        let next = augment_startup_path(
+            &login.to_string_lossy(),
+            &inherited.to_string_lossy(),
+            &[
+                inherited_dir.clone(),
+                candidate_dir.clone(),
+                candidate_dir.clone(),
+            ],
+        );
+        let entries: Vec<PathBuf> = std::env::split_paths(&next).collect();
+        assert_eq!(entries, vec![login_dir, inherited_dir, candidate_dir]);
+    }
+
+    #[test]
+    fn augment_startup_path_does_not_append_missing_or_empty_inherited_dirs() {
+        let fixture = tempfile::tempdir().expect("create path fixture");
+        let login = std::env::join_paths([fixture.path()]).expect("join login path");
+        let inherited = std::env::join_paths([fixture.path().join("not-installed")])
+            .expect("join missing inherited path");
+        assert_eq!(
+            augment_startup_path(&login.to_string_lossy(), &inherited.to_string_lossy(), &[]),
+            login.to_string_lossy()
+        );
+        assert_eq!(
+            augment_startup_path(&login.to_string_lossy(), "", &[]),
+            login.to_string_lossy()
+        );
     }
 }

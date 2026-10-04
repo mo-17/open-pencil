@@ -1,22 +1,28 @@
-import type { ModuleValueField } from '@open-pencil/core/plugins'
-import { findComponentMasterAncestor, type LowcodeSelectOption } from '@open-pencil/lowcode'
-import type { BindingExpr, SceneGraph, SceneNode, StateDef } from '@open-pencil/scene-graph'
+import {
+  moduleValueFields,
+  resolveCascaderModule,
+  resolveDateRangeModule,
+  resolveTreeModule,
+  type ModuleValueField
+} from '@open-pencil/core/plugins'
+import type { LowcodeSelectOption } from '@open-pencil/lowcode'
+import type { BindingExpr, SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
-import { stateBindingSelection } from '../state-bindings'
+import { stateBindingSelection, writableStateBindingOptions } from '../state-bindings'
 
 export type ModuleValueKey = ModuleValueField['key']
 
-function writableStates(states: readonly StateDef[]): StateDef[] {
-  const ids = new Map<string, number>(),
-    names = new Map<string, number>()
-  for (const state of states) {
-    ids.set(state.id, (ids.get(state.id) ?? 0) + 1)
-    names.set(state.name, (names.get(state.name) ?? 0) + 1)
-  }
-  return states.filter(
-    (state) =>
-      state.computedExpr === undefined && ids.get(state.id) === 1 && names.get(state.name) === 1
+/** Only reviewed value modules without a config-level readOnly expose the outer control. */
+export function moduleValueReadOnly(node: SceneNode): boolean | undefined {
+  if (node.type !== 'FRAME' || moduleValueFields(node).length === 0) return undefined
+  const module = node.interactiveProps?.module
+  if (
+    !resolveTreeModule(module)?.ok &&
+    !resolveDateRangeModule(module)?.ok &&
+    !resolveCascaderModule(module)?.ok
   )
+    return undefined
+  return node.interactiveProps?.readOnly === true
 }
 
 export function moduleBindingOptions(
@@ -27,15 +33,7 @@ export function moduleBindingOptions(
   pageLabel: string,
   documentLabel: string
 ): LowcodeSelectOption[] {
-  const page = findComponentMasterAncestor(graph, node) ? undefined : graph.getNode(pageId)
-  return [
-    ...writableStates(page?.state ?? [])
-      .filter((state) => state.type === field.type)
-      .map((state) => ({ value: `state:${state.id}`, label: `${pageLabel}: ${state.name}` })),
-    ...writableStates(graph.getNode(graph.rootId)?.lowcodeDocumentState ?? [])
-      .filter((state) => state.type === field.type)
-      .map((state) => ({ value: `doc:${state.name}`, label: `${documentLabel}: ${state.name}` }))
-  ]
+  return writableStateBindingOptions(graph, node, pageId, field.type, pageLabel, documentLabel)
 }
 
 export function moduleBindingSelection(

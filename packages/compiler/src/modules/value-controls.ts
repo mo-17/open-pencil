@@ -6,8 +6,10 @@ import type {
   IRWarning
 } from '#compiler/ir/types'
 
-import { moduleValueFields } from '@open-pencil/core/plugins'
-import type { SceneGraph, SceneNode, StateDef } from '@open-pencil/scene-graph'
+import { moduleValueFields, resolveModuleFieldName } from '@open-pencil/core/plugins'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+
+import { moduleStateTarget, writableModuleState } from './state-targets'
 
 interface Context {
   graph: SceneGraph
@@ -49,30 +51,14 @@ export function collectModuleValueFields(
       read: { kind: 'ident', name: 'undefined' }
     }
     const binding: unknown = Object.getOwnPropertyDescriptor(node.bindings, descriptor.key)?.value
-    const own = (key: string): unknown =>
-      binding && typeof binding === 'object'
-        ? Object.getOwnPropertyDescriptor(binding, key)?.value
-        : undefined
-    const kind = own('kind'),
-      id = own('stateId'),
-      name = own('docStateName')
-    let state: IRStateDecl | undefined
-    if (kind === 'ref' && typeof id === 'string') state = ctx.states.get(id)
-    if (kind === 'docState' && typeof name === 'string') state = ctx.docStates.get(name)
-    const declarations =
-      kind === 'docState'
-        ? (ctx.graph.getNode(ctx.graph.rootId)?.lowcodeDocumentState ?? [])
-        : pageDeclarations(ctx.graph, node)
-    if (
-      unsupportedOwner ||
-      !state ||
-      declarations.filter((candidate) => candidate.name === state.name || candidate.id === state.id)
-        .length !== 1 ||
-      state.type !== descriptor.type ||
-      state.computed ||
-      state.computedExpr !== undefined ||
-      state.computedInvalid
-    ) {
+    const { state, document, declarations } = moduleStateTarget(
+      ctx.graph,
+      node,
+      binding,
+      ctx.states,
+      ctx.docStates
+    )
+    if (unsupportedOwner || !writableModuleState(state, declarations, descriptor.type)) {
       ctx.warnings.push({
         code: 'module-value-binding-invalid',
         nodeId: node.id,
@@ -82,28 +68,23 @@ export function collectModuleValueFields(
     }
     field.read = { kind: 'ident', name: state.name }
     field.write = {
-      kind: kind === 'docState' ? 'docState' : 'state',
+      kind: document ? 'docState' : 'state',
       name: state.name,
       targetType: descriptor.type
     }
     field.defaultValue = state.defaultValue
-    field.name = state.name
-    if (kind === 'docState') {
+    field.name = resolveModuleFieldName(node, descriptor.key, state.name)
+    if (field.name === undefined)
+      ctx.warnings.push({
+        code: 'module-field-name-invalid',
+        nodeId: node.id,
+        message: `${module.moduleType}.${descriptor.key} has an invalid form field name; FormData serialization is unavailable.`
+      })
+    if (document) {
       ctx.docStateReads.add(state.name)
       ctx.docStateWrites.add(state.name)
     }
     return [field]
   })
   if (fields.length) module.valueFields = fields
-}
-
-function pageDeclarations(graph: SceneGraph, node: SceneNode): readonly StateDef[] {
-  const seen = new Set<string>()
-  let current: SceneNode | undefined = node
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id)
-    if (current.type === 'CANVAS') return current.state ?? []
-    current = graph.getNode(current.parentId ?? '')
-  }
-  return []
 }

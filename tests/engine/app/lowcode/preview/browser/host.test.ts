@@ -1,13 +1,18 @@
 import { describe, expect, test } from 'bun:test'
 
+import { ref } from 'vue'
+
 import { withDefaults } from '@open-pencil/compiler'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { applicationPageSessionSignature } from '@/app/lowcode/preview-pane/application-session/cache'
 import type {
   BrowserPreviewWorkerBuildResult,
   CreateBrowserPreviewWorkerRequestInput
 } from '@/app/lowcode/preview-pane/browser-worker/protocol'
 import { createBrowserPreviewHost } from '@/app/lowcode/preview-pane/host/browser'
+
+import { applicationSessionFixture } from '#tests/helpers/compiler/application-session/fixture'
 
 interface Deferred<T> {
   promise: Promise<T>
@@ -79,6 +84,8 @@ describe('browser preview Host', () => {
         sandbox: 'allow-scripts'
       }
     })
+    if (first.status !== 'ready') throw new Error('Expected ready browser preview')
+    expect(first.frame).not.toHaveProperty('pageSessionSource')
     const second = await host.build(request(2))
     expect(second).toMatchObject({ status: 'ready', frame: { src: 'blob:preview-2' } })
     expect(revoked).toEqual(['blob:preview-1'])
@@ -122,6 +129,59 @@ describe('browser preview Host', () => {
       refreshFonts: true
     })
     await host.dispose()
+  })
+
+  test('attests the declaration and graph captured before an asynchronous Worker build', async () => {
+    const { graph, products } = applicationSessionFixture()
+    const before = applicationPageSessionSignature(graph)
+    expect(before).not.toBeNull()
+    const pending = deferred<BrowserPreviewWorkerBuildResult>()
+    let posted = false
+    const host = createBrowserPreviewHost('react', {
+      client: {
+        build(input) {
+          expect(input.graph).toBe(graph)
+          expect(input).not.toHaveProperty('pageSessionSource')
+          posted = true
+          return pending.promise
+        },
+        dispose: () => undefined
+      },
+      getFontProviders: () => [],
+      createObjectURL: () => 'blob:attested-preview',
+      revokeObjectURL: () => undefined
+    })
+    try {
+      const build = host.build({
+        ...request(1),
+        graph,
+        pageIds: graph.getPages().map(({ id }) => id)
+      })
+      expect(posted).toBe(true)
+      graph.updateNode(products.id, {
+        state: [
+          { id: 'detailDraft', name: 'detailDraft', type: 'string', defaultValue: 'New draft' }
+        ]
+      })
+      const after = applicationPageSessionSignature(graph)
+      expect(after).not.toBe(before)
+      pending.resolve({
+        status: 'ready',
+        html: '<main>snapshot</main>',
+        diagnostics: [],
+        metrics: metrics()
+      })
+      const result = await build
+      if (result.status !== 'ready') throw new Error('Expected captured browser result')
+      expect(result.frame.pageSessionSource?.signature).toBe(before)
+      expect(result.frame.pageSessionSource?.signature).not.toBe(after)
+      expect(result.frame.pageSessionSource?.graph).toBe(graph)
+      expect(Object.isFrozen(result.frame.pageSessionSource)).toBe(true)
+      // Preview status uses Vue refs. It must preserve the original graph identity.
+      expect(ref(result.frame).value.pageSessionSource?.graph).toBe(graph)
+    } finally {
+      await host.dispose()
+    }
   })
 
   test('drops a late result and never lets it replace the latest artifact', async () => {

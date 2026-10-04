@@ -14,6 +14,8 @@ import {
   lowcodeNavigationPathname,
   lowcodeRouteCollisionKey,
   lowcodeRouteMatches,
+  validateLowcodeBackFallback,
+  validateLowcodeNavigationHistory,
   validateLowcodeNavigationTarget,
   type LowcodePageRouteInfo,
   type LowcodeRouteParameter
@@ -310,6 +312,16 @@ function collectActions(
   actions.forEach((action, index) => {
     const actionPath = `${path}[${index}]`
     if (action.kind === 'navigate') collectNavigate(action, source, actionPath, state)
+    if (action.kind === 'back') {
+      const fallback = typeof action.fallback === 'string' ? action.fallback : ''
+      collectNavigate(
+        { id: action.id, kind: 'navigate', to: fallback },
+        source,
+        actionPath,
+        state,
+        true
+      )
+    }
     if (action.kind === 'callWorkflow' && state.includeWorkflows) {
       collectWorkflow(action.workflowId, action, source, actionPath, state, workflowStack)
     }
@@ -386,7 +398,8 @@ function collectNavigate(
   action: NavigateAction,
   source: ActionSource,
   actionPath: string,
-  state: AuditState
+  state: AuditState,
+  backFallback = false
 ): void {
   const to = typeof action.to === 'string' ? action.to.trim() : ''
   const edge: NavigationEdge = {
@@ -406,7 +419,18 @@ function collectNavigate(
     addEdgeIssue(state, edge, 'navigate-target-invalid', 'navigate action has no target route')
     return
   }
-  const targetValidation = validateLowcodeNavigationTarget(to)
+  if (!validateLowcodeNavigationHistory(action.history).ok) {
+    addEdgeIssue(
+      state,
+      edge,
+      'navigate-target-invalid',
+      'navigate action has an unknown history mode'
+    )
+    return
+  }
+  const targetValidation = backFallback
+    ? validateLowcodeBackFallback(typeof action.to === 'string' ? action.to : '')
+    : validateLowcodeNavigationTarget(to)
   if (!targetValidation.ok) {
     addEdgeIssue(
       state,

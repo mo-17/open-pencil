@@ -28,6 +28,9 @@ export const SLIDE_MENU_COMPILER_MODULE_LOWERER: CompilerModuleLowerer = Object.
         triggerLabel: config.triggerLabel,
         showTriggerIcon: config.showTriggerIcon,
         showTriggerLabel: config.showTriggerLabel,
+        ...(Object.hasOwn(config, 'contentChildName')
+          ? { contentChildName: config.contentChildName }
+          : {}),
         title: config.title,
         description: config.description,
         items: config.items.map((item) => ({ label: item.label, href: item.href })),

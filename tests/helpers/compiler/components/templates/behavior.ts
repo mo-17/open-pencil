@@ -3,6 +3,7 @@ import { expect, type Page } from '@playwright/test'
 import { exerciseAdvancedFieldTemplate } from './advanced-fields-behavior'
 import { exerciseCascaderTemplate } from './cascader-behavior'
 import { exerciseChartTemplate } from './charts-behavior'
+import { exerciseCompositionTemplate } from './compositions-behavior'
 import { exerciseContentTemplate } from './content-behavior'
 import { exerciseControlTemplate } from './controls-behavior'
 import { exerciseDisplayTemplate } from './display-behavior'
@@ -33,6 +34,7 @@ async function submitLocalForm(page: Page) {
 }
 
 export async function exerciseTemplate(page: Page, id: TemplateId): Promise<void> {
+  if (await exerciseCompositionTemplate(page, id)) return
   if (await exerciseCascaderTemplate(page, id)) return
   if (await exerciseWalktourTemplate(page, id)) return
   if (await exerciseOrgChartTemplate(page, id)) return

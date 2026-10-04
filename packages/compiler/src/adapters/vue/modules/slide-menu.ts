@@ -25,6 +25,7 @@ interface SlideMenuConfig {
   showTriggerLabel: boolean
   title: string
   description: string
+  contentChildName?: string
   items: readonly SlideMenuItem[]
   closeOnBackdrop: boolean
   showCloseButton: boolean
@@ -37,6 +38,7 @@ interface SlideMenuConfig {
 defineOptions({ inheritAttrs: false })
 const props = defineProps<{ config: SlideMenuConfig }>()
 const attrs = useAttrs()
+const authoredTrigger = computed(() => !Object.hasOwn(props.config, 'contentChildName'))
 const open = ref(false)
 const panel = ref<HTMLElement | null>(null)
 const token = Symbol('open-pencil-slide-menu')
@@ -178,7 +180,7 @@ onBeforeUnmount(() => releaseLayer?.())
 <template>
   <div v-bind="$attrs" data-openpencil-slide-menu-host="" :style="hostStyle">
     <div
-      v-if="$slots.default"
+      v-if="authoredTrigger && $slots.default"
       :id="authoredTriggerId"
       aria-hidden="true"
       data-openpencil-slide-menu-authored-trigger=""
@@ -192,18 +194,18 @@ onBeforeUnmount(() => releaseLayer?.())
       :aria-controls="baseId + '-panel'"
       :aria-expanded="open"
       aria-haspopup="dialog"
-      :aria-label="$slots.default ? undefined : config.triggerLabel"
-      :aria-labelledby="$slots.default ? authoredTriggerLabelledBy : undefined"
+      :aria-label="authoredTrigger && $slots.default ? undefined : config.triggerLabel"
+      :aria-labelledby="authoredTrigger && $slots.default ? authoredTriggerLabelledBy : undefined"
       :disabled="disabled"
-      :style="$slots.default ? overlayTriggerStyle : triggerStyle"
+      :style="authoredTrigger && $slots.default ? overlayTriggerStyle : triggerStyle"
       @click="show"
     >
       <span
-        v-if="$slots.default"
+        v-if="authoredTrigger && $slots.default"
         :id="triggerFallbackId"
         class="openpencil-trigger-fallback"
       >{{ config.triggerLabel }}</span>
-      <template v-if="!$slots.default">
+      <template v-if="!authoredTrigger || !$slots.default">
         <span v-if="config.showTriggerIcon" aria-hidden="true" class="openpencil-slide-icon">
           <i /><i /><i />
         </span>
@@ -251,7 +253,10 @@ onBeforeUnmount(() => releaseLayer?.())
               </svg>
             </button>
           </header>
-          <nav aria-label="Menu links">
+          <div v-if="config.contentChildName" data-openpencil-slide-menu-content="">
+            <slot name="content" />
+          </div>
+          <nav v-else aria-label="Menu links">
             <ul class="openpencil-slide-list">
               <li v-for="(item, index) in items" :key="index">
                 <a v-if="item.safeHref" :href="item.safeHref" @click="close">{{ item.label }}</a>

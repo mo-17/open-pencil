@@ -56,6 +56,22 @@ export interface StepperModuleConfigV1 extends NavigationAppearance {
 }
 export type StepperModuleConfig = StepperModuleConfigV1
 
+/** Project a current step without clamping, repairing state, or entering disabled steps. */
+export function stepperCurrentIndex(
+  config: StepperModuleConfigV1,
+  value: unknown,
+  bound: boolean
+): number | null {
+  const index = bound ? value : config.currentIndex
+  return typeof index === 'number' &&
+    Number.isInteger(index) &&
+    index >= 0 &&
+    index < config.items.length &&
+    !config.items[index]?.disabled
+    ? index
+    : null
+}
+
 const items: StepperItemV1[] = [
   { title: 'Details', description: 'Add your information', status: 'auto', disabled: false },
   { title: 'Review', description: 'Check the details', status: 'auto', disabled: false },

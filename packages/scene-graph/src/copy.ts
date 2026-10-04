@@ -19,6 +19,8 @@ import type {
   GradientStop,
   LayoutGrid,
   LibraryRef,
+  LowcodeApplicationPageV1,
+  LowcodeApplicationV1,
   SceneNode,
   Stroke,
   StyleRun
@@ -344,6 +346,198 @@ function copyArcData(a: ArcData): ArcData {
 
 export type LowcodeNodeIdResolver = (nodeId: string) => string | undefined
 
+interface ApplicationReferenceData {
+  [key: string]: PropertyDescriptor | undefined
+}
+
+function applicationReferenceData(
+  value: unknown,
+  keys: readonly string[]
+): ApplicationReferenceData | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  try {
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== null && prototype !== Object.prototype) return undefined
+    const data = Object.getOwnPropertyDescriptors(value)
+    if (Reflect.ownKeys(data).some((key) => typeof key !== 'string' || !keys.includes(key)))
+      return undefined
+    if (Reflect.ownKeys(data).some((key) => !Object.hasOwn(data[key as string], 'value')))
+      return undefined
+    return data
+  } catch {
+    return undefined
+  }
+}
+
+function applicationReferenceId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 512 &&
+    value.trim() === value &&
+    !Array.from(value).some((character) => {
+      const code = character.charCodeAt(0)
+      return code <= 31 || (code >= 127 && code <= 159)
+    })
+  )
+}
+
+function applicationReferencePolicy(value: unknown): LowcodeApplicationV1 | undefined {
+  const data = applicationReferenceData(value, ['version', 'enabled', 'startPageId', 'shell'])
+  if (data?.version?.value !== 1 || typeof data.enabled?.value !== 'boolean') return undefined
+  const policy: LowcodeApplicationV1 = { version: 1, enabled: data.enabled.value }
+  if (Object.hasOwn(data, 'startPageId')) {
+    const start = data.startPageId?.value
+    if (!applicationReferenceId(start)) return undefined
+    policy.startPageId = start
+  }
+  if (Object.hasOwn(data, 'shell')) {
+    const shell = applicationReferenceData(data.shell?.value, ['frameNodeId', 'slotNodeId'])
+    if (
+      !shell ||
+      !applicationReferenceId(shell.frameNodeId?.value) ||
+      !applicationReferenceId(shell.slotNodeId?.value)
+    )
+      return undefined
+    policy.shell = { frameNodeId: shell.frameNodeId.value, slotNodeId: shell.slotNodeId.value }
+  }
+  return policy
+}
+
+function applicationPageReferencePolicy(value: unknown): LowcodeApplicationPageV1 | undefined {
+  const data = applicationReferenceData(value, [
+    'version',
+    'role',
+    'entryNodeId',
+    'stateRetention',
+    'enterGuard',
+    'leaveConfirm'
+  ])
+  const role = data?.role?.value
+  const entry = data?.entryNodeId?.value
+  if (
+    data?.version?.value !== 1 ||
+    !['application', 'reference', 'components'].includes(role) ||
+    !applicationReferenceId(entry)
+  )
+    return undefined
+  const stateRetention = data.stateRetention?.value
+  if (data.stateRetention && stateRetention !== 'reset' && stateRetention !== 'preserve')
+    return undefined
+  const guards = applicationPageGuardReferencePolicy(data)
+  if (!guards) return undefined
+  return {
+    version: 1,
+    role,
+    entryNodeId: entry,
+    ...(stateRetention !== undefined ? { stateRetention } : {}),
+    ...guards
+  }
+}
+
+function applicationPageGuardReferencePolicy(
+  data: ApplicationReferenceData
+): Pick<LowcodeApplicationPageV1, 'enterGuard' | 'leaveConfirm'> | undefined {
+  const enter = data.enterGuard
+    ? applicationGuardReferencePolicy(data.enterGuard.value, 'conditionExpr', 'fallback', 2048)
+    : undefined
+  const leave = data.leaveConfirm
+    ? applicationGuardReferencePolicy(data.leaveConfirm.value, 'dirtyExpr', 'message', 1024)
+    : undefined
+  if ((data.enterGuard && !enter) || (data.leaveConfirm && !leave)) return undefined
+  return {
+    ...(enter ? { enterGuard: { conditionExpr: enter.expression, fallback: enter.detail } } : {}),
+    ...(leave ? { leaveConfirm: { dirtyExpr: leave.expression, message: leave.detail } } : {})
+  }
+}
+
+function applicationGuardReferencePolicy(
+  value: unknown,
+  expressionKey: string,
+  detailKey: string,
+  detailLimit: number
+): { expression: string; detail: string } | undefined {
+  const data = applicationReferenceData(value, [expressionKey, detailKey])
+  const expression = data?.[expressionKey]?.value
+  const detail = data?.[detailKey]?.value
+  return applicationGuardReferenceText(expression, 2048) &&
+    applicationGuardReferenceText(detail, detailLimit)
+    ? { expression, detail }
+    : undefined
+}
+
+function applicationGuardReferenceText(value: unknown, limit: number): value is string {
+  return typeof value === 'string' && !!value.trim() && value.length <= limit
+}
+
+type ApplicationReferenceUpdates = Partial<
+  Pick<SceneNode, 'lowcodeApplication' | 'lowcodeApplicationPage' | 'pluginData'>
+>
+
+function remapApplicationPolicy(
+  policy: LowcodeApplicationV1,
+  pluginData: SceneNode['pluginData'],
+  resolveNodeId: LowcodeNodeIdResolver
+): ApplicationReferenceUpdates | null {
+  const ids: string[] = []
+  if (policy.startPageId !== undefined) ids.push(policy.startPageId)
+  if (policy.shell) ids.push(policy.shell.frameNodeId, policy.shell.slotNodeId)
+  const mapped = new Map([...new Set(ids)].map((id) => [id, resolveNodeId(id)]))
+  if (!ids.some((id) => mapped.get(id) !== undefined && mapped.get(id) !== id)) return null
+  if (ids.some((id) => !applicationReferenceId(mapped.get(id)))) {
+    return {
+      lowcodeApplication: undefined,
+      pluginData: [
+        ...pluginData.map((entry) => ({ ...entry })),
+        {
+          pluginId: 'open-pencil',
+          key: 'lowcode/application',
+          value: JSON.stringify({
+            version: 1,
+            unsupportedReason: 'incomplete-reference-remap',
+            policy
+          })
+        }
+      ]
+    }
+  }
+  if (policy.startPageId !== undefined) policy.startPageId = mapped.get(policy.startPageId)
+  if (policy.shell) {
+    policy.shell.frameNodeId = mapped.get(policy.shell.frameNodeId) ?? policy.shell.frameNodeId
+    policy.shell.slotNodeId = mapped.get(policy.shell.slotNodeId) ?? policy.shell.slotNodeId
+  }
+  return { lowcodeApplication: policy }
+}
+
+/** Application references remap together; incomplete imports retain the whole policy as inert data. */
+export function remapNodeApplicationReferences(
+  node: Pick<SceneNode, 'lowcodeApplication' | 'lowcodeApplicationPage' | 'pluginData'>,
+  resolveNodeId: LowcodeNodeIdResolver
+): ApplicationReferenceUpdates | null {
+  let updates: ApplicationReferenceUpdates = {}
+  if (
+    !node.pluginData.some(
+      (item) => item.pluginId === 'open-pencil' && item.key === 'lowcode/application'
+    )
+  ) {
+    const policy = applicationReferencePolicy(node.lowcodeApplication)
+    if (policy) updates = remapApplicationPolicy(policy, node.pluginData, resolveNodeId) ?? updates
+  }
+  const page = applicationPageReferencePolicy(node.lowcodeApplicationPage)
+  const entry = page?.entryNodeId
+  const entryNext = entry === undefined ? undefined : resolveNodeId(entry)
+  if (
+    applicationReferenceId(entryNext) &&
+    entryNext !== entry &&
+    page &&
+    !node.pluginData.some(
+      (item) => item.pluginId === 'open-pencil' && item.key === 'lowcode/applicationPage'
+    )
+  )
+    updates.lowcodeApplicationPage = { ...page, entryNodeId: entryNext }
+  return Object.keys(updates).length > 0 ? updates : null
+}
+
 interface LowcodeActionReference {
   [key: string]: unknown
   kind?: unknown
@@ -647,6 +841,10 @@ export type NodeCloneMode = 'deep' | 'fig-import'
 
 function cloneMotionAndActionProps(src: SceneNode): Partial<SceneNode> {
   const props: Partial<SceneNode> = {}
+  if (src.lowcodeApplication !== undefined)
+    props.lowcodeApplication = structuredClone(src.lowcodeApplication)
+  if (src.lowcodeApplicationPage !== undefined)
+    props.lowcodeApplicationPage = structuredClone(src.lowcodeApplicationPage)
   if (src.motion) props.motion = cloneMotionSpec(src.motion)
   if (src.motionScene) props.motionScene = cloneMotionSceneSpec(src.motionScene)
   if (src.motionDrivers) props.motionDrivers = cloneMotionDriverSpec(src.motionDrivers)

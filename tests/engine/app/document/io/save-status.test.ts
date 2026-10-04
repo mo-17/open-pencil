@@ -1,9 +1,12 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+
+import { nextTick } from 'vue'
 
 import { createDefaultEditorState } from '@open-pencil/core/editor'
 
 import { createSaveActions } from '@/app/document/io/save'
 import { createDocumentSourceState } from '@/app/document/io/source-state'
+import { watchPreviewSaveSync } from '@/app/lowcode/preview-pane/save-sync'
 
 function harness(write: () => Promise<void>) {
   const source = createDocumentSourceState()
@@ -23,6 +26,69 @@ function harness(write: () => Promise<void>) {
 }
 
 describe('document save status', () => {
+  test('preview observes the first successful write after each source revision changes', async () => {
+    const { actions, source } = harness(async () => undefined)
+    const onSaved = mock(() => undefined)
+    const stop = watchPreviewSaveSync(actions.getSaveStatus, onSaved)
+    try {
+      for (let saves = 1; saves <= 2; saves++) {
+        source.markSourceChanged()
+        await nextTick()
+        expect(actions.getSaveStatus()).toMatchObject({ phase: 'idle', updatedAt: null })
+        expect(onSaved).toHaveBeenCalledTimes(saves - 1)
+        expect(await actions.saveFigFile()).toBe(true)
+        await nextTick()
+        expect(actions.getSaveStatus().phase).toBe('saved')
+        expect(onSaved).toHaveBeenCalledTimes(saves)
+      }
+    } finally {
+      stop()
+      actions.disposeSaveActions()
+    }
+  })
+
+  test('cancelled and failed writes never replay the previous successful save sync', async () => {
+    let outcome: 'saved' | 'cancelled' | 'failed' = 'saved'
+    const { actions, source } = harness(async () => {
+      if (outcome === 'failed') throw new Error('disk full')
+      if (outcome === 'cancelled') source.setFileHandle(null)
+    })
+    const handle = source.getFileHandle()
+    const onSaved = mock(() => undefined)
+    const stop = watchPreviewSaveSync(actions.getSaveStatus, onSaved)
+    try {
+      expect(await actions.saveFigFile()).toBe(true)
+      await nextTick()
+      const previous = actions.getSaveStatus()
+      expect(onSaved).toHaveBeenCalledTimes(1)
+
+      outcome = 'cancelled'
+      expect(await actions.saveFigFile()).toBe(false)
+      await nextTick()
+      expect(actions.getSaveStatus()).toBe(previous)
+      expect(onSaved).toHaveBeenCalledTimes(1)
+
+      source.setFileHandle(handle)
+      outcome = 'failed'
+      await expect(actions.saveFigFile()).rejects.toThrow('disk full')
+      await nextTick()
+      expect(actions.getSaveStatus().phase).toBe('failed')
+      expect(onSaved).toHaveBeenCalledTimes(1)
+
+      source.markSourceChanged()
+      await nextTick()
+      expect(actions.getSaveStatus()).toMatchObject({ phase: 'idle', updatedAt: null })
+      expect(onSaved).toHaveBeenCalledTimes(1)
+      outcome = 'saved'
+      expect(await actions.saveFigFile()).toBe(true)
+      await nextTick()
+      expect(onSaved).toHaveBeenCalledTimes(2)
+    } finally {
+      stop()
+      actions.disposeSaveActions()
+    }
+  })
+
   test('publishes a successful file timestamp only after the write completes and allows failure retry', async () => {
     let reject = true
     const { actions } = harness(async () => {

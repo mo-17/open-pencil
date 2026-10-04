@@ -9,7 +9,12 @@ import { parseTreeConfig } from './tree/parse'
 import type { TreeModuleConfigV1 } from './tree/types'
 import type { ModuleResolution } from './types'
 export { parseTreeItems } from './tree/parse'
-export { TREE_MODULE_LIMITS, treeVisibleRows, treeItemDisabled } from './tree/types'
+export {
+  TREE_MODULE_LIMITS,
+  treeVisibleRows,
+  treeItemDisabled,
+  treeSelectedIds
+} from './tree/types'
 export type { TreeItem, TreeModuleConfigV1, TreeRow } from './tree/types'
 export const TREE_PLUGIN_ID = 'open-pencil.tree'
 export const TREE_MODULE_TYPE = 'tree'
@@ -69,7 +74,7 @@ export function createTreeModuleFrameOverrides(config?: unknown): Partial<SceneN
 export const TREE_MODULE_DEFINITION = contract.createContractModuleDefinition(CONTRACT, {
   name: 'Tree / TreeSelect',
   description:
-    'Bounded local tree search, independent selection, and expandable branches. No form or remote binding.',
+    'Bounded local tree search, independent selection, and expandable branches. Typed state and FORM binding; no remote loading.',
   i18nNameKey: 'lowcodeModuleTreeName',
   i18nDescriptionKey: 'lowcodeModuleTreeDescription',
   defaultSize: TREE_MODULE_DEFAULT_SIZE,

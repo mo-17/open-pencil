@@ -8,7 +8,9 @@ import {
   markModuleFormValidationScope,
   moduleContentNodes
 } from '#compiler/modules/content-slots'
+import { collectModuleDataBinding } from '#compiler/modules/data-bindings'
 import { collectPaginationModuleBindings } from '#compiler/modules/pagination'
+import { collectStepperModuleBindings } from '#compiler/modules/stepper'
 import { collectUploadButtonDisabledBinding } from '#compiler/modules/upload-button'
 import { collectModuleValueFields } from '#compiler/modules/value-controls'
 import { collectVideoModuleBindings } from '#compiler/modules/video'
@@ -74,6 +76,7 @@ import {
   selectFeatures
 } from '../select'
 import { tailwindClassName, type CompilerStyleOptions } from '../style'
+import { FORM_RESET_FIELD_ATTRIBUTE } from '../types'
 import type {
   ComponentDef,
   ComponentProp,
@@ -89,6 +92,7 @@ import type {
   IRElement,
   IRExpression,
   IRFieldValidation,
+  IRFormResetField,
   IRValidationAsync,
   IRFormValidationSummary,
   IRImage,
@@ -127,6 +131,7 @@ import {
   ROUTE_PARAMS_IDENT,
   unknownIdentifiers
 } from './bindings'
+import { collectNativeButtonDisabledBinding } from './button-disabled'
 import {
   COMPONENT_FIXED_PROP_NAMES,
   type ComponentMeta,
@@ -136,8 +141,10 @@ import {
   overrideKind
 } from './components'
 import { collectMotionDriverNodeIds, collectNodeMotionDrivers } from './drivers'
+import { collectLayoutFields } from './layout'
 import { collectNodeMotion, type MotionLoweringCache } from './motion'
 import { collectMotionScene } from './motion-scene'
+import { collectPageViewport } from './page-viewport'
 import {
   buildPrototypeCollectIndex,
   collectPrototypeDecoration,
@@ -200,7 +207,8 @@ export function collectTree(
   styleOptions: CompilerStyleOptions = {},
   motionCache: MotionLoweringCache = new Map(),
   prevalidatedServerWorkflows?: readonly IRServerWorkflow[] | null,
-  backendApplication?: BackendApplicationSpecV1
+  backendApplication?: BackendApplicationSpecV1,
+  applicationShellNodeIds?: ReadonlySet<string>
 ): IRTree {
   const page = graph.getNode(pageId)
   const warnings: IRWarning[] = []
@@ -270,6 +278,9 @@ export function collectTree(
   const ctx: WalkCtx = {
     graph,
     states: stateById,
+    ...(applicationShellNodeIds
+      ? { applicationPageStates: stateById, applicationShellNodeIds }
+      : {}),
     docStates: docStatesByName,
     docStateReads,
     docStateWrites,
@@ -330,10 +341,12 @@ export function collectTree(
     motionCache,
     motionDriverNodeIds
   )
+  const pageViewport = collectPageViewport(page, graph, warnings)
 
   return {
     pageId,
     pageName: page.name || 'Page',
+    ...(pageViewport ? { pageViewport } : {}),
     ...backendTreeFields(backendApplication, backendQueries),
     ...pageMotionFields,
     motionScene,
@@ -761,7 +774,7 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   if (node.type === 'COMPONENT') {
     const meta = ctx.components.get(node.id)
     if (!meta) return null
-    if (shouldInlineImplicitSubmitComponent(node, node, ctx)) return null
+    if (shouldInlineFormComponent(node, node, ctx)) return null
     return refOf(node, meta.name, [], meta.prototypeBody, ctx)
   }
   if (node.type !== 'INSTANCE' || !node.componentId) return null
@@ -772,7 +785,7 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   const meta = ctx.components.get(node.componentId)
   if (meta) {
     const source = ctx.graph.getNode(node.componentId)
-    if (source && shouldInlineImplicitSubmitComponent(node, source, ctx)) return null
+    if (shouldInlineFormComponent(node, source, ctx)) return null
     return refOf(
       node,
       meta.name,
@@ -786,7 +799,7 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   const variantChild = ctx.graph.getNode(node.componentId)
   const setMeta = variantChild?.parentId ? ctx.components.get(variantChild.parentId) : undefined
   if (!variantChild || !setMeta?.variants) return null
-  if (shouldInlineImplicitSubmitComponent(node, variantChild, ctx)) return null
+  if (shouldInlineFormComponent(node, variantChild, ctx)) return null
   // Phase 3 §8 v5/v6: a variant instance composes its variant prop with any
   // text/className override props.
   const props = [
@@ -794,6 +807,107 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
     ...resolveInstanceProps(node, setMeta.propSlots, ctx)
   ]
   return refOf(node, setMeta.name, props, setMeta.prototypeBody, ctx)
+}
+
+function shouldInlineFormComponent(
+  node: SceneNode,
+  source: SceneNode | undefined,
+  ctx: WalkCtx
+): boolean {
+  if (!ctx.inForm) return false
+  return (
+    hasFormOwnedFieldCandidate(node, ctx) ||
+    (source !== undefined && shouldInlineImplicitSubmitComponent(node, source, ctx))
+  )
+}
+
+/** A reusable body outside a FORM cannot know which FORM owns a control. Inline
+ * only usages with an actual bound field in their cloned subtree so the normal
+ * binding, validation and reset collection runs with the owning FORM context. */
+function hasFormOwnedFieldCandidate(
+  node: SceneNode,
+  ctx: WalkCtx,
+  referencePath: ReadonlySet<string> = new Set()
+): boolean {
+  if (referencePath.has(node.id) || referencePath.size >= 128) return false
+  const nextPath = new Set([...referencePath, node.id])
+  const children = ctx.graph.getChildren(node.id)
+  if (node.type === 'INSTANCE' && children.length === 0) {
+    warnUnexpandedFormComponent(node, ctx, nextPath)
+    return false
+  }
+  const pending = children.map((child) => ({ child, depth: 1 }))
+  const visited = new Set<string>()
+  let found = false
+  while (pending.length > 0) {
+    const entry = pending.pop()
+    if (!entry || visited.has(entry.child.id)) continue
+    visited.add(entry.child.id)
+    if (entry.depth > 128) {
+      ctx.warnings.push({
+        code: 'form-component-depth-limit',
+        nodeId: node.id,
+        message: `FORM component ${node.id} exceeds the supported 128-level field scan depth.`
+      })
+      return false
+    }
+    const child = entry.child
+    if (child.type === 'FORM') continue
+    if (isFormOwnedFieldCandidate(child)) found = true
+    if (hasPortaledModuleContent(child)) continue
+    const descendants = ctx.graph.getChildren(child.id)
+    if (child.type === 'INSTANCE' && descendants.length === 0) {
+      warnUnexpandedFormComponent(child, ctx, nextPath)
+      continue
+    }
+    pending.push(
+      ...descendants.map((descendant) => ({ child: descendant, depth: entry.depth + 1 }))
+    )
+  }
+  return found
+}
+
+function warnUnexpandedFormComponent(
+  node: SceneNode,
+  ctx: WalkCtx,
+  referencePath: ReadonlySet<string>
+): void {
+  const source = node.componentId ? ctx.graph.getNode(node.componentId) : undefined
+  if (!source || !hasFormOwnedFieldCandidate(source, ctx, referencePath)) return
+  if (
+    ctx.warnings.some(
+      (warning) => warning.code === 'form-reset-component-unexpanded' && warning.nodeId === node.id
+    )
+  )
+    return
+  ctx.warnings.push({
+    code: 'form-reset-component-unexpanded',
+    nodeId: node.id,
+    message: `FORM component instance ${node.id} has no cloned children; its bound fields cannot join this FORM reset owner.`
+  })
+}
+
+function isFormOwnedFieldCandidate(node: SceneNode): boolean {
+  if (isStepperResetCandidate(node)) return true
+  if (!node.bindings?.value && !node.bindings?.endValue) return false
+  return CONTROLLED_NODE_TYPES.has(node.type) || node.type === 'FRAME'
+}
+
+function isStepperResetCandidate(node: SceneNode): boolean {
+  if (node.type !== 'FRAME' || !node.bindings || !Object.hasOwn(node.bindings, 'currentIndex'))
+    return false
+  const module = collectCompilerModule(node, [], BUILTIN_COMPILER_MODULE_REGISTRY)
+  return module?.pluginId === 'open-pencil.stepper' && module.moduleType === 'stepper'
+}
+
+function hasPortaledModuleContent(node: SceneNode): boolean {
+  const module = collectCompilerModule(node, [], BUILTIN_COMPILER_MODULE_REGISTRY)
+  return (
+    module?.moduleType === 'modal' ||
+    module?.moduleType === 'popover' ||
+    (module?.pluginId === 'open-pencil.slide-menu' && module.moduleType === 'slide-menu') ||
+    module?.moduleType === 'walktour'
+  )
 }
 
 /** A clean component ref hides its descendants behind one reusable module.
@@ -886,6 +1000,7 @@ function refOf(
   return {
     kind: 'componentRef',
     sourceId: node.id,
+    ...collectLayoutFields(node, ctx.graph, ctx.styleOptions),
     ...prototype,
     name,
     className: tailwindClassName(node, ctx.graph, ctx.styleOptions),
@@ -992,6 +1107,8 @@ interface WalkCtx {
   backendQueries?: IRBackendResourceQuery[]
   graph: SceneGraph
   states: Map<string, IRStateDecl>
+  applicationPageStates?: Map<string, IRStateDecl>
+  applicationShellNodeIds?: ReadonlySet<string>
   /** Phase 2 §2: document-level state decls keyed by name (the same map for
    *  every page in a compile). */
   docStates: Map<string, IRDocStateDecl>
@@ -1590,7 +1707,16 @@ function collectElementChildren(
   collectChildNodes(node, ctx, children)
 }
 
+function applicationShellContext(node: SceneNode, ctx: WalkCtx): WalkCtx {
+  if (!ctx.applicationPageStates || !ctx.applicationShellNodeIds) return ctx
+  return {
+    ...ctx,
+    states: ctx.applicationShellNodeIds.has(node.id) ? new Map() : ctx.applicationPageStates
+  }
+}
+
 function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
+  ctx = applicationShellContext(node, ctx)
   // Phase 3 §8 — a registered COMPONENT master, or a clean INSTANCE of one,
   // renders as `<Name className="..." />` (the shared subtree lives in the
   // emitted component file). Dirty instances (with overrides) and unregistered
@@ -1631,6 +1757,13 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const children: IRNode[] = []
 
   applyInteractiveProps(node, attrs, children, ctx)
+  collectNativeButtonDisabledBinding(
+    node,
+    module,
+    attrs,
+    ctx.warnings,
+    (source) => resolveReactiveExpr(node, source, 'button-disabled-binding', ctx)?.ast
+  )
   collectContentModuleLanguage(node, module, attrs)
   applyBoundVariableStyles(node, ctx, attrs)
   collectAvatarImage(node, module, (fill) => registerImageFillAsset(fill, node, ctx), ctx.warnings)
@@ -1652,7 +1785,15 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx,
     (source) => resolveReactiveExpr(node, source, 'pagination-binding', ctx)?.ast
   )
+  collectModuleDataBinding(
+    node,
+    module,
+    ctx,
+    (source) => resolveReactiveExpr(node, source, 'module-data-binding', ctx)?.ast
+  )
   collectModuleValueFields(node, module, ctx, attrs)
+  collectStepperModuleBindings(node, module, attrs, ctx)
+  markFormManagedModuleFields(module, ctx.inForm)
   applyModuleFieldValidation(node, module, ctx)
   collectVideoModuleBindings(
     node,
@@ -1724,6 +1865,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const element: IRElement = {
     kind: 'element',
     sourceId: node.id,
+    ...collectLayoutFields(visualNode, ctx.graph, ctx.styleOptions),
     ...prototype,
     ...(motion ? { motion } : {}),
     ...motionSceneFields,
@@ -1746,7 +1888,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ...semantics,
     ...vector.extra
   }
-  applyFormValidation(node, element)
+  applyFormValidation(node, element, ctx)
   return wrapConditional(node, element, ctx)
 }
 
@@ -3188,6 +3330,7 @@ function buildImageElement(
   return {
     kind: 'element',
     sourceId: node.id,
+    ...collectLayoutFields(node, ctx.graph, ctx.styleOptions),
     ...prototype,
     ...(motion ? { motion } : {}),
     ...(motionDrivers ? { motionDrivers } : {}),
@@ -3697,8 +3840,10 @@ function isValidRegex(src: string): boolean {
 }
 
 /** Forms own validation separately; module content additionally follows DOM mount/portal scope. */
-function applyFormValidation(node: SceneNode, element: IRElement): void {
+function applyFormValidation(node: SceneNode, element: IRElement, ctx: WalkCtx): void {
   if (node.type !== 'FORM') return
+  const resetFields = collectFormResetFields(element.children, ctx)
+  if (resetFields.length > 0) element.formResetFields = resetFields
   const keys = collectValidationKeys(element.children)
   if (keys.length === 0 && !containsModuleContent(element.children)) return
   element.formValidationKeys = keys
@@ -3708,6 +3853,91 @@ function applyFormValidation(node: SceneNode, element: IRElement): void {
   }
   const summary = resolveFormValidationSummary(node)
   if (summary) element.formValidationSummary = summary
+}
+
+function markFormManagedModuleFields(module: IRModule | null, inForm: boolean): void {
+  if (!inForm) return
+  for (const field of module?.valueFields ?? []) field.formResetManaged = true
+}
+
+/** Match native controlled fields and reviewed module fields to their actual
+ * state declarations. One declaration receives one reset write even if several
+ * controls display it; only controls mounted in this FORM receive the marker. */
+function collectFormResetFields(nodes: readonly IRNode[], ctx: WalkCtx): IRFormResetField[] {
+  const fields = new Map<string, IRFormResetField>()
+  const pageStates = new Map([...ctx.states.values()].map((state) => [state.name, state]))
+  const visit = (children: readonly IRNode[]): void => {
+    for (const child of children) {
+      if (child.kind === 'conditional') {
+        visit([child.consequent])
+        continue
+      }
+      if (child.kind === 'list') {
+        visit([child.template])
+        continue
+      }
+      if (child.kind !== 'element' || child.tag === 'form') continue
+      const writes = formResetWrites(child)
+      for (const write of writes) {
+        const declaration =
+          write.kind === 'docState' ? ctx.docStates.get(write.name) : pageStates.get(write.name)
+        if (!declaration) continue
+        const defaultValue = formResetDefault(write.targetType, declaration.defaultValue)
+        if (defaultValue === undefined) {
+          ctx.warnings.push({
+            code: 'form-reset-invalid-default',
+            nodeId: child.sourceId,
+            message: `FORM cannot reset ${write.kind} ${write.name}: its declared default is not a valid ${write.targetType} value.`
+          })
+          continue
+        }
+        const key = `${write.kind}:${write.name}`
+        const field = fields.get(key)
+        if (field) {
+          if (!field.sourceIds.includes(child.sourceId)) field.sourceIds.push(child.sourceId)
+        } else {
+          fields.set(key, {
+            write,
+            defaultValue,
+            sourceIds: [child.sourceId]
+          })
+        }
+        child.attrs[FORM_RESET_FIELD_ATTRIBUTE] = child.sourceId
+      }
+      const slots = moduleContentNodes(child)
+      // Tabs panels stay in the DOM under their host. Modal, Popover and
+      // Walktour slots render through portals and have no enclosing FORM owner.
+      if (slots && child.module?.moduleType !== 'tabs') continue
+      visit(slots ? slots.flatMap((slot) => slot.nodes) : child.children)
+    }
+  }
+  visit(nodes)
+  return [...fields.values()]
+}
+
+function formResetWrites(child: IRElement): IRControlledInput['write'][] {
+  const stepper =
+    child.module?.pluginId === 'open-pencil.stepper' && child.module.moduleType === 'stepper'
+      ? child.module.stepper?.write
+      : undefined
+  return [
+    child.controlled?.write,
+    stepper,
+    ...(child.module?.valueFields ?? []).map((field) => field.write)
+  ].filter((write): write is IRControlledInput['write'] => write !== undefined)
+}
+
+function formResetDefault(
+  type: IRControlledInput['write']['targetType'],
+  value: unknown
+): IRFormResetField['defaultValue'] | undefined {
+  if (type === 'number')
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  if (type === 'string') return typeof value === 'string' ? value : undefined
+  if (type === 'boolean') return typeof value === 'boolean' ? value : undefined
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+    ? [...value]
+    : undefined
 }
 
 /** §19: collect the validation keys of every validated field in an IR subtree,
@@ -3723,6 +3953,7 @@ function collectValidationKeys(nodes: readonly IRNode[]): string[] {
       for (const field of n.module?.valueFields ?? [])
         if (field.validation) keys.push(field.validation.key)
       const slots = moduleContentNodes(n)
+      if (slots && n.module?.moduleType !== 'tabs') continue
       keys.push(...collectValidationKeys(slots ? slots.flatMap((slot) => slot.nodes) : n.children))
     } else if (n.kind === 'conditional') {
       keys.push(...collectValidationKeys([n.consequent]))
@@ -4079,7 +4310,7 @@ function resolveReactiveExpr(
   if (!parsed.ok) {
     ctx.warnings.push({
       code: `${code}-invalid`,
-      message: `LIST ${node.id} ${code} "${src}" → ${parsed.error}`,
+      message: `${node.type} ${node.id} ${code} "${src}" → ${parsed.error}`,
       nodeId: node.id
     })
     return null
@@ -4087,7 +4318,7 @@ function resolveReactiveExpr(
   if (parsed.references.has(PREV_IDENT)) {
     ctx.warnings.push({
       code: `${code}-prev`,
-      message: `LIST ${node.id} ${code} references ${PREV_IDENT}, which is only valid inside setState/setVariable`,
+      message: `${node.type} ${node.id} ${code} references ${PREV_IDENT}, which is only valid inside setState/setVariable`,
       nodeId: node.id
     })
     return null
@@ -4096,7 +4327,7 @@ function resolveReactiveExpr(
   if (unknown.length > 0) {
     ctx.warnings.push({
       code: `${code}-unknown`,
-      message: `LIST ${node.id} ${code} references unknown identifier(s): ${unknown.join(', ')}`,
+      message: `${node.type} ${node.id} ${code} references unknown identifier(s): ${unknown.join(', ')}`,
       nodeId: node.id
     })
     return null
@@ -4349,8 +4580,8 @@ function applyDatePickerProps(
   if (typeof ip.max === 'string' && ip.max !== '' && !badFormat.has('max')) attrs.max = ip.max
 }
 
-/** BUTTON — an eventless FORM descendant is an implicit submit control;
- *  configured buttons and buttons outside a FORM remain `type="button"`. */
+/** BUTTON — explicit native types take precedence; otherwise an eventless FORM
+ *  descendant submits and configured/outside buttons remain `type="button"`. */
 function applyButtonProps(
   node: SceneNode,
   ip: InteractiveProps,
@@ -4358,7 +4589,9 @@ function applyButtonProps(
   children: IRNode[],
   ctx: WalkCtx
 ): void {
-  attrs.type = ctx.inForm && !hasConfiguredButtonInteraction(node) ? 'submit' : 'button'
+  const fallbackType = ctx.inForm && !hasConfiguredButtonInteraction(node) ? 'submit' : 'button'
+  attrs.type =
+    ip.type === 'button' || ip.type === 'submit' || ip.type === 'reset' ? ip.type : fallbackType
   const binding = resolveTextBinding(
     node,
     ctx.states,

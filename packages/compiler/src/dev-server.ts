@@ -1,11 +1,9 @@
 #!/usr/bin/env bun
 // Bun-only. Imports Vite, its React/Vue framework plugins, and Tailwind — none
 // safe to load in a browser bundle. The Vue editor talks to this over stdio
-// after spawning it via @tauri-apps/plugin-shell.
-//
-// Two entrypoints in one file:
-//   - Library: `createPreviewServer({ initialFiles, port })`
-//   - CLI/sidecar: `bun packages/compiler/src/dev-server.ts [--port N]`
+// after spawning it via @tauri-apps/plugin-shell. Entrypoints:
+// Library: `createPreviewServer({ initialFiles, port })`
+// CLI/sidecar: `bun packages/compiler/src/dev-server.ts [--port N]`
 //     stdin reads newline-delimited JSON commands; stdout emits NDJSON events.
 
 import { realpathSync } from 'node:fs'
@@ -18,10 +16,12 @@ import react from '@vitejs/plugin-react'
 import vue from '@vitejs/plugin-vue'
 import { createServer, type Plugin, type PluginOption, type Update, type ViteDevServer } from 'vite'
 
+import { APPLICATION_SESSION_FILE } from './adapters/application-session/runtime'
 import { reactModuleOptimizeDepsForFiles } from './adapters/react/modules/registry'
 import { reactUIKitOptimizeDepsForFiles } from './adapters/react/ui-kit/registry'
 import { vueModuleOptimizeDepsForFiles } from './adapters/vue/modules/registry'
 import { createSupabaseBuildDefines } from './build'
+import { startPreviewCacheServer } from './dev-server/cache'
 import { createLocalBackendPreviewServices } from './local-backend-preview/auth-relay'
 import {
   parsePreviewLocalBackendConnection,
@@ -36,6 +36,7 @@ import {
 import {
   inMemoryVFS,
   prepareVfsRoot,
+  prepareVfsRootAtDirectory,
   reactViteOptions,
   type PreviewFiles,
   type WebVfsTarget
@@ -314,77 +315,83 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
   )
     throw new Error('NestJS preview port must match the explicitly configured callback origin.')
   const { backendGuard, authRelay } = await createLocalBackendPreviewServices(localBackend)
-  const state = { files: opts.initialFiles ?? new Map(), spaFallback: localBackend !== undefined }
+  const state = {
+    files: opts.initialFiles ?? new Map(),
+    get spaFallback(): boolean {
+      return localBackend !== undefined || state.files.has(APPLICATION_SESSION_FILE)
+    }
+  }
   const workspaceRoot = opts.fsRoot ?? process.cwd()
   const target = opts.target ?? 'react'
   // Use a quiet sub-directory as Vite's root so its default `**/*.html`
   // scan and dep discovery don't crawl the editor's source tree. Node
   // module resolution still walks up from this dir to the workspace's
   // hoisted `node_modules`, so framework and Tailwind imports resolve cleanly.
-  // Shared with the static build: scanRoot for dep resolution + the planted
-  // JSX-mode tsconfig (the VFS prefix sits inside scanRoot so npm resolution
-  // walks up to the workspace's hoisted node_modules).
-  const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot, target)
-  const fileSystemAllowlist = previewFileSystemAllowlist(workspaceRoot, scanRoot)
-  const vfs = inMemoryVFS(state, vfsPrefix)
-  const frameworkPlugins: PluginOption[] =
-    target === 'vue' ? [vue() as PluginOption] : (react() as PluginOption[])
+  // Static builds retain the shared target root. Live previews allocate below
+  // it so virtual absolute IDs and Tailwind watchers also belong to one server.
+  const sharedRoot = prepareVfsRoot(workspaceRoot, target).scanRoot
   // Pre-pick a free port instead of letting Vite scan 5173 → 5174 → … when
   // its defaults clash with zombie preview servers from prior sessions.
   const chosenPort =
     localBackend?.previewPort ?? (opts.port && opts.port > 0 ? opts.port : await pickFreePort())
-  trace(`createServer: workspaceRoot=${workspaceRoot} scanRoot=${scanRoot} port=${chosenPort}`)
-
-  const server = await createServer({
-    root: scanRoot,
-    // Vite otherwise chooses the shared compiler package's node_modules/.vite.
-    // A Vue optimization must not replace files still served by a React preview.
-    cacheDir: join(scanRoot, '.vite'),
-    configFile: false,
-    envFile: false,
-    appType: 'spa',
-    // Preview must use the document-authored fallback in the generated runtime,
-    // never an unrelated VITE_SUPABASE_* value inherited from the editor shell.
-    define: createSupabaseBuildDefines(undefined),
-    server: {
-      port: chosenPort,
-      host: '127.0.0.1',
-      strictPort: localBackend !== undefined,
-      cors: localBackend ? false : undefined,
-      fs: { strict: true, allow: fileSystemAllowlist }
+  const { server, close } = await startPreviewCacheServer(
+    sharedRoot,
+    async (ownedDirectory) => {
+      const { scanRoot, vfsPrefix } = prepareVfsRootAtDirectory(ownedDirectory)
+      const fileSystemAllowlist = previewFileSystemAllowlist(workspaceRoot, scanRoot)
+      const vfs = inMemoryVFS(state, vfsPrefix, workspaceRoot)
+      const frameworkPlugins: PluginOption[] =
+        target === 'vue' ? [vue() as PluginOption] : (react() as PluginOption[])
+      trace(`createServer: workspaceRoot=${workspaceRoot} scanRoot=${scanRoot} port=${chosenPort}`)
+      const server = await createServer({
+        root: scanRoot,
+        // Each live optimizer owns a directory: even two React previews can have
+        // different dependency configurations and must retain their existing URLs.
+        cacheDir: join(scanRoot, '.vite', basename(scanRoot)),
+        configFile: false,
+        envFile: false,
+        appType: 'spa',
+        // Preview must use the document-authored fallback in the generated runtime,
+        // never an unrelated VITE_SUPABASE_* value inherited from the editor shell.
+        define: createSupabaseBuildDefines(undefined),
+        server: {
+          port: chosenPort,
+          host: '127.0.0.1',
+          strictPort: localBackend !== undefined,
+          cors: localBackend ? false : undefined,
+          fs: { strict: true, allow: fileSystemAllowlist }
+        },
+        optimizeDeps: {
+          // Skip Vite's html crawler; we pre-declare the npm deps the emitted
+          // app needs so the depscan has nothing to do. Optional module runtimes
+          // and UI kits are included only when their generated VFS file is present.
+          entries: [],
+          // Vite 8 cancels its crawl when closing. Holding cold optimization
+          // results until that crawl ends can strand pending transforms forever
+          // if a preview closes immediately after loading its entry module.
+          // Publish the predeclared dependencies eagerly so close can drain them.
+          holdUntilCrawlEnd: false,
+          include: previewOptimizeDeps(state.files, target)
+        },
+        // Keep React's in-memory TSX on Vite 8's OXC path and collapse linked
+        // workspace dependencies to the same React instance as react-dom.
+        ...(target === 'react' ? reactViteOptions() : {}),
+        plugins: [
+          ...(authRelay ? [authRelay.plugin] : []),
+          ...(backendGuard ? [backendGuard.plugin] : []),
+          previewFileBoundaryPlugin(fileSystemAllowlist),
+          vfs,
+          ...frameworkPlugins,
+          ...tailwindcss()
+        ]
+      })
+      trace('listen…')
+      return server
     },
-    optimizeDeps: {
-      // Skip Vite's html crawler; we pre-declare the npm deps the emitted
-      // app needs so the depscan has nothing to do. Optional module runtimes
-      // and UI kits are included only when their generated VFS file is present.
-      entries: [],
-      // Vite 8 cancels its crawl when closing. Holding cold optimization
-      // results until that crawl ends can strand pending transforms forever
-      // if a preview closes immediately after loading its entry module.
-      // Publish the predeclared dependencies eagerly so close can drain them.
-      holdUntilCrawlEnd: false,
-      include: previewOptimizeDeps(state.files, target)
-    },
-    // Keep React's in-memory TSX on Vite 8's OXC path and collapse linked
-    // workspace dependencies to the same React instance as react-dom.
-    ...(target === 'react' ? reactViteOptions() : {}),
-    plugins: [
-      ...(authRelay ? [authRelay.plugin] : []),
-      ...(backendGuard ? [backendGuard.plugin] : []),
-      previewFileBoundaryPlugin(fileSystemAllowlist),
-      vfs,
-      ...frameworkPlugins,
-      ...tailwindcss()
-    ]
-  })
-
-  trace('listen…')
-  try {
-    await server.listen()
-  } catch (error) {
-    await server.close()
-    throw error
-  }
+    () => authRelay?.dispose(),
+    'vfs'
+  )
+  const vfsPrefix = `${server.config.root}/`
   const port = server.config.server.port
   // Keep the advertised origin identical to the loopback interface Vite binds.
   // The desktop preview window validates this exact host before navigating.
@@ -440,13 +447,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       if (backendGuard) return backendGuard.check().then(() => updateFiles(files))
       updateFiles(files)
     },
-    async close() {
-      authRelay?.dispose()
-      const closed = server.close()
-      server.httpServer?.closeIdleConnections?.()
-      server.httpServer?.closeAllConnections?.()
-      await closed
-    }
+    close
   }
 }
 

@@ -8,6 +8,7 @@ import { createDevServerOptions } from '#vite-config/server'
 import { createServer, type ViteDevServer } from 'vite'
 
 const WATCH_TIMEOUT_MS = 5000
+const POLL_INTERVAL_MS = 20
 
 async function waitFor(check: () => boolean | Promise<boolean>, description: string) {
   const deadline = Date.now() + WATCH_TIMEOUT_MS
@@ -20,6 +21,7 @@ async function waitFor(check: () => boolean | Promise<boolean>, description: str
 test('Vite invalidates source inside an active worktree while excluding nested checkouts', async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'open-pencil-watch-')))
   let server: ViteDevServer | undefined
+  let watchReady: Promise<unknown[]> | undefined
   try {
     const root = join(directory, '.worktrees', 'active')
     const sourceDir = join(root, 'src')
@@ -29,14 +31,33 @@ test('Vite invalidates source inside an active worktree while excluding nested c
     await mkdir(nestedSourceDir, { recursive: true })
     await writeFile(source, 'export const version = 1\n')
     await writeFile(join(nestedSourceDir, 'entry.ts'), 'export const nested = true\n')
+    const options = createDevServerOptions(undefined, root)
     const activeServer = await createServer({
       configFile: false,
       root,
       logLevel: 'silent',
-      server: { ...createDevServerOptions(undefined, root), middlewareMode: true },
-      optimizeDeps: { noDiscovery: true }
+      server: {
+        ...options,
+        middlewareMode: true,
+        // Vite's bundled chokidar selects macOS FSEvents before reading the polling env.
+        watch: { ...options.watch, usePolling: true, interval: POLL_INTERVAL_MS }
+      },
+      optimizeDeps: { noDiscovery: true },
+      plugins: [
+        {
+          name: 'await-initial-watch-scan',
+          configureServer(current) {
+            watchReady = once(current.watcher, 'ready', {
+              signal: AbortSignal.timeout(WATCH_TIMEOUT_MS)
+            })
+          }
+        }
+      ]
     })
     server = activeServer
+    if (!watchReady) throw new Error('Initial watcher readiness was not registered')
+    // getWatched() is populated while the initial scan is still registering listeners.
+    await watchReady
     expect((await activeServer.transformRequest('/src/entry.ts'))?.code).toContain('version = 1')
     await waitFor(
       () => activeServer.watcher.getWatched()[sourceDir]?.includes('entry.ts') ?? false,

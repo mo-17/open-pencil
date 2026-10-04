@@ -28,10 +28,12 @@ interface UploadButtonConfig {
 ${UPLOAD_LOCAL_FILES_RUNTIME}
 
 defineOptions({ inheritAttrs: false })
-const props = defineProps<{ config: UploadButtonConfig; disabled?: boolean }>()
+const props = defineProps<{ config: UploadButtonConfig; disabled?: boolean; files?: unknown; filesBound?: boolean; 'onUpdate:files'?: (files: readonly File[]) => void }>()
+const emit = defineEmits<{ 'update:files': [files: readonly File[]] }>()
 const input = ref<HTMLInputElement | null>(null)
 const trigger = ref<HTMLButtonElement | null>(null)
-const selected = ref<SelectedLocalFile[]>([])
+const localSelected = ref<SelectedLocalFile[]>([])
+let previousProjection: SelectedLocalFile[] = []
 const removeRefs = new Map<number, HTMLButtonElement>()
 let selectionRevision = 0
 const error = ref('')
@@ -46,7 +48,16 @@ const authoredTriggerId = baseId + '-authored-trigger'
 const triggerFallbackId = baseId + '-trigger-fallback'
 const authoredTriggerLabelledBy = authoredTriggerId + ' ' + triggerFallbackId
 
-const disabled = computed(() => props.disabled === true)
+const controlled = computed(() => props.filesBound === true || props.files !== undefined)
+const projection = computed(() => {
+  if (!controlled.value) return localSelected.value
+  const next = projectLocalFiles(props.files, props.config, previousProjection, () => nextId++)
+  previousProjection = next ?? []
+  return next
+})
+const unavailable = computed(() => controlled.value && projection.value === null)
+const selected = computed(() => projection.value ?? [])
+const disabled = computed(() => props.disabled === true || unavailable.value || (controlled.value && typeof props['onUpdate:files'] !== 'function'))
 watch([disabled, () => props.config.allowDrop], () => {
   if (disabled.value || !props.config.allowDrop) {
     dragDepth.value = 0
@@ -106,7 +117,9 @@ function selectFiles(files: ArrayLike<File>, messages: readonly string[] = [], u
   if (disabled.value || (files.length === 0 && messages.length === 0 && unchecked === 0)) return
   const result = selectLocalFiles(selected.value, files, props.config, () => nextId++, messages, unchecked)
   selectionRevision += 1
-  selected.value = result.selected
+  if (controlled.value) {
+    if (result.selected.length !== selected.value.length || result.selected.some((entry, index) => entry.file !== selected.value[index]?.file)) emit('update:files', result.selected.map((entry) => entry.file))
+  } else localSelected.value = result.selected
   error.value = result.error
 }
 
@@ -180,7 +193,9 @@ function removeFile(id: number): void {
   if (disabled.value) return
   const index = selected.value.findIndex((entry) => entry.id === id)
   if (index < 0) return
-  selected.value = selected.value.filter((entry) => entry.id !== id)
+  const next = selected.value.filter((entry) => entry.id !== id)
+  if (controlled.value) emit('update:files', next.map((entry) => entry.file))
+  else localSelected.value = next
   selectionRevision += 1
   error.value = ''
   void focusAfterChange(selected.value[Math.min(index, Math.max(0, selected.value.length - 1))]?.id)
@@ -188,7 +203,8 @@ function removeFile(id: number): void {
 
 function clearLocalSelection(): void {
   if (disabled.value) return
-  selected.value = []
+  if (controlled.value) emit('update:files', [])
+  else localSelected.value = []
   selectionRevision += 1
   error.value = ''
   void focusAfterChange()
@@ -201,6 +217,7 @@ function clearLocalSelection(): void {
     data-openpencil-upload-button-host=""
     data-openpencil-upload-root=""
     :data-dragging="dragging ? 'true' : 'false'"
+    :data-openpencil-upload-unavailable="unavailable ? 'true' : undefined"
     :style="hostStyle"
     @dragenter="onDragEnter"
     @dragover="onDragOver"
@@ -262,7 +279,7 @@ function clearLocalSelection(): void {
     </button>
 
     <div
-      v-if="config.helperText || selected.length || error"
+      v-if="config.helperText || selected.length || error || unavailable"
       class="openpencil-upload-details"
       data-openpencil-upload-details=""
       :style="detailsStyle"
@@ -273,6 +290,7 @@ function clearLocalSelection(): void {
       <p v-if="selected.length" :id="statusId" class="openpencil-upload-status" role="status" aria-live="polite" aria-atomic="true">
         {{ selected.length }} local file{{ selected.length === 1 ? '' : 's' }} selected. Files have not been uploaded.
       </p>
+      <p v-if="unavailable" role="alert" data-openpencil-upload-unavailable-message="">Local file selection unavailable.</p>
       <p v-if="error" :id="errorId" class="openpencil-upload-error" role="alert" aria-live="assertive" aria-atomic="true" :style="{ color: config.errorColor }">
         {{ error }}
       </p>

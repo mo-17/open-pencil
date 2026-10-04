@@ -147,6 +147,7 @@ function trustedNativeModuleTrigger(
 /** Return only the registered lowerer's validated trigger; authored children remain authoritative. */
 export function trustedNativeSlideMenuTrigger(node: IRElement): NativeSlideMenuTrigger | undefined {
   return trustedNativeModuleTrigger(node, {
+    allowChildren: node.module?.contentSlots !== undefined,
     pluginId: SLIDE_MENU_PLUGIN_ID,
     moduleType: SLIDE_MENU_MODULE_TYPE,
     versions: [1, SLIDE_MENU_MODULE_CONFIG_VERSION],

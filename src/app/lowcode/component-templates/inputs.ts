@@ -119,11 +119,20 @@ export function addInputTemplate(ctx: TemplateContext, parent: string, id: Input
   const start =
     id === 'date-range' ? ctx.localState('startDate', 'string', '2026-09-01') : undefined
   const end = id === 'date-range' ? ctx.localState('endDate', 'string', '2026-09-05') : undefined
+  const treeValue =
+    id === 'tree' || id === 'tree-select'
+      ? ctx.localState(
+          'treeSelection',
+          id === 'tree' ? 'array' : 'string',
+          id === 'tree' ? ['design'] : 'design'
+        )
+      : undefined
   if (start && end)
     frame.bindings = {
       value: { kind: 'ref', stateId: start },
       endValue: { kind: 'ref', stateId: end }
     }
+  if (treeValue) frame.bindings = { value: { kind: 'ref', stateId: treeValue } }
   ctx.node('FRAME', parent, frame.name ?? id, {
     ...frame,
     counterAxisSizing: 'FILL',
@@ -132,4 +141,5 @@ export function addInputTemplate(ctx: TemplateContext, parent: string, id: Input
   })
   if (start) ctx.feedback(parent, start, ctx.copy('Start date', '开始日期'))
   if (end) ctx.feedback(parent, end, ctx.copy('End date', '结束日期'))
+  if (treeValue) ctx.feedback(parent, treeValue, ctx.copy('Selected node IDs', '已选节点 ID'))
 }

@@ -148,6 +148,9 @@ export {
   lowcodeNavigationPathname,
   lowcodeRouteCollisionKey,
   lowcodeRouteMatches,
+  validateLowcodeBackFallback,
+  validateLowcodeApplicationStartRoute,
+  validateLowcodeNavigationHistory,
   validateLowcodeNavigationTarget,
   validateLowcodeRoutePattern
 } from './routes'
@@ -206,3 +209,9 @@ export {
   parseInputSuggestions,
   validateInputSuggestions
 } from './input-suggestions'
+export {
+  LOWCODE_PAGE_VIEWPORT_PLUGIN_KEY,
+  validateLowcodePageViewport,
+  type LowcodePageViewportValidation
+} from './page-viewport'
+export * from './application-mode'

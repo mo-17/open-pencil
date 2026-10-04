@@ -105,10 +105,10 @@ describe('Vue compiler routing', () => {
       "import { useRoute as __useRoute, useRouter as __useRouter } from 'vue-router'"
     )
     expect(component).toContain('const __opRoute = __useRoute()')
-    expect(component).toContain('const $params = __opRoute.params')
-    expect(component).toContain('const $query = __opRoute.query')
-    expect(component).toContain('$params.id')
-    expect(component).toContain('$query.tab')
+    expect(component).toContain('const $params = __vueComputed(() => __opRoute.params)')
+    expect(component).toContain('const $query = __vueComputed(() => __opRoute.query)')
+    expect(component).toContain('$params.value.id')
+    expect(component).toContain('$query.value.tab')
     expect(component).not.toContain('__useDocState<unknown>("$params")')
     expect(component).not.toContain('__useDocState<unknown>("$query")')
     expect(

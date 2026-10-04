@@ -79,7 +79,10 @@ describe('compiler module registry boundaries', () => {
 
     expect(neutralIdentities).toHaveLength(42)
     expect(reactIdentities).toEqual(neutralIdentities)
-    expect(BUILTIN_VUE_MODULE_REGISTRY.listBundles()).toHaveLength(35)
+    const vueIdentities = BUILTIN_VUE_MODULE_REGISTRY.listBundles()
+      .map(({ lowerer }) => `${lowerer.pluginId}/${lowerer.moduleType}`)
+      .sort()
+    expect(vueIdentities).toEqual(neutralIdentities)
     for (const identity of [
       'popover',
       'tree',

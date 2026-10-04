@@ -99,7 +99,7 @@ export function createEditor(options?: EditorOptions) {
     return events.on(event, handler)
   }
 
-  function requestRender() {
+  function requestRender(reason?: 'page-navigation') {
     state.renderVersion++
     state.sceneVersion++
     emitNavigationTrace('render:requested', {
@@ -109,7 +109,8 @@ export function createEditor(options?: EditorOptions) {
     })
     emitEditorEvent('render:requested', {
       renderVersion: state.renderVersion,
-      sceneVersion: state.sceneVersion
+      sceneVersion: state.sceneVersion,
+      ...(reason ? { reason } : {})
     })
   }
 

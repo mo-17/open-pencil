@@ -1,13 +1,17 @@
 import { expect, test } from 'bun:test'
 
+import { SceneGraph } from '@open-pencil/scene-graph'
+
 import {
   createTreeModuleInstance,
   createTreeModuleFrameOverrides,
   resolveTreeModule,
   parseTreeItems,
   treeVisibleRows,
-  TREE_MODULE_DEFAULT_CONFIG
+  TREE_MODULE_DEFAULT_CONFIG,
+  treeSelectedIds
 } from '#core/plugins/tree'
+import { moduleValueFields } from '#core/plugins/value-controls'
 const node = (id: string, parentId = '', disabled = false) => ({
   id,
   parentId,
@@ -87,4 +91,46 @@ test('Tree search reveals matching descendants with ancestors without mutating e
   ])
   expect(treeVisibleRows(config, [], 'not found')).toEqual([])
   expect(config.initialExpandedIds).toEqual([])
+})
+
+test('Tree exposes one typed value field and rejects bad business IDs without changing its source', () => {
+  const graph = new SceneGraph(),
+    page = graph.getPages()[0],
+    single = graph.createNode(
+      'FRAME',
+      page.id,
+      createTreeModuleFrameOverrides({
+        initialSelectedIds: ['design']
+      })
+    ),
+    multiple = graph.createNode(
+      'FRAME',
+      page.id,
+      createTreeModuleFrameOverrides({
+        selectionMode: 'multiple',
+        initialSelectedIds: ['design', 'development']
+      })
+    )
+  expect(moduleValueFields(single)).toMatchObject([
+    { key: 'value', type: 'string', initialValue: 'design' }
+  ])
+  expect(moduleValueFields(multiple)).toMatchObject([
+    { key: 'value', type: 'array', initialValue: ['design', 'development'] }
+  ])
+  const singleConfig = resolveTreeModule(single.interactiveProps?.module),
+    multipleConfig = resolveTreeModule(multiple.interactiveProps?.module)
+  if (!singleConfig?.ok || !multipleConfig?.ok) throw new Error('Tree config unavailable')
+  expect(treeSelectedIds(singleConfig.config, '')).toEqual([])
+  expect(treeSelectedIds(singleConfig.config, 'design')).toEqual(['design'])
+  expect(treeSelectedIds(singleConfig.config, ['design'])).toBeNull()
+  expect(treeSelectedIds(singleConfig.config, 'missing')).toBeNull()
+  expect(treeSelectedIds(singleConfig.config, 'archive')).toBeNull()
+  expect(treeSelectedIds(multipleConfig.config, [])).toEqual([])
+  expect(treeSelectedIds(multipleConfig.config, ['design', 'development'])).toEqual([
+    'design',
+    'development'
+  ])
+  expect(treeSelectedIds(multipleConfig.config, ['design', 'design'])).toBeNull()
+  expect(treeSelectedIds(multipleConfig.config, ['design', 'archive'])).toBeNull()
+  expect(treeSelectedIds(multipleConfig.config, 'design')).toBeNull()
 })

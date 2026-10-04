@@ -152,6 +152,7 @@ type ImmutableHandler = Extract<
   IREventHandler,
   {
     kind:
+      | 'back'
       | 'backendAuth'
       | 'delay'
       | 'stop'
@@ -164,6 +165,7 @@ type ImmutableHandler = Extract<
 
 function isImmutableHandler(handler: IREventHandler): handler is ImmutableHandler {
   return (
+    handler.kind === 'back' ||
     handler.kind === 'backendAuth' ||
     handler.kind === 'delay' ||
     handler.kind === 'stop' ||

@@ -6,6 +6,7 @@ import { useI18n } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import ColorPicker from '@/components/ColorPicker/ColorPicker.vue'
+import PageViewportSection from '@/components/properties/Lowcode/PageViewportSection.vue'
 import PaintField from '@/components/properties/paint/PaintField.vue'
 import PaintValue from '@/components/properties/paint/PaintValue.vue'
 import FillSwatch from '@/components/ui/paint/FillSwatch.vue'
@@ -54,5 +55,6 @@ function updatePageColor(color: Color) {
         <PaintValue :color="pageColor" :label="panels.pageBackground" @update="updatePageColor" />
       </template>
     </PaintField>
+    <PageViewportSection />
   </PanelSection>
 </template>

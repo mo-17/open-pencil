@@ -12,7 +12,40 @@
 
 ### Added
 
+- Add optional application-page entry conditions and unsaved-change confirmation for React/Vue. Apply paired expression/fallback or expression/message drafts atomically with undo and `.fig` persistence. Reject unsafe destinations and fallback cycles, block denied pages before mounting, and route confirmation through framework navigation guards. Keep saving in authored business workflows, retain default design/export behavior, and report unsupported native guard targets explicitly.
+
+- Add opt-in React/Vue application page sessions for declared writable page state and window scroll, isolated by concrete route and query. Restore these sessions across same-document automatic preview recompilation without changing design defaults. Bound portable snapshots, retire old-frame writes when declarations change, and preserve legacy behavior when no policy is authored. Explicit policies support undo and `.fig` persistence. Add authored push/replace navigation and safe Back with an internal fallback; Flutter supports native navigation while page-session recovery remains explicitly unsupported there.
+
+- Add an optional shared application shell with an editable Frame and empty flow content region. Project each business entry into the shared layout for React, Vue and Flutter source generation without changing authored nodes. Save both references atomically with undo, retain invalid references for repair, isolate shell bindings from page-local state, and preserve closed `.fig` and copy reference remapping. Include editable desktop sidebar/header and phone navigation examples.
+
+- Add optional document Application mode with application/reference/component page roles, an entry Frame per business page, route authoring and an initial page. Scope generated applications to these entries while preserving shared component dependencies, original canvas geometry, undo and `.fig` metadata. Absent or disabled mode retains the existing design and code-export behavior; invalid application configuration reports diagnostics rather than exporting unrelated design content.
+
+- Preserve concrete application preview URLs through selection and automatic recompilation, including route parameters, query and hash. Keep editor restoration out of browser Back/Forward history and synchronize replacement navigation. Reject unsupported starting routes in the page picker with a repair hint; dynamic application pages remain available for parameterized navigation. Correct React parameter interpolation with URL suffixes and Vue route bindings when reusing a detail page.
+
+- Preserve Auto and Space between run-group distribution in Flutter responsive Wrap layouts through shared layout IR. Keep minimum run gaps, content-sized and single-run behavior, and existing fixed page output.
+
+- Preserve authored main-axis and within-run cross-axis alignment in Flutter responsive Wrap layouts. Report unsupported wrap stretch, baseline and per-child alignment, and normalize projected size limits before native widget construction without changing scene data.
+
+- Add focused responsive branch editing with inherited-value sources, explicit override/reset actions, nullable size and line-height resets, undo and `.fig` persistence. Preview a branch's width without replacing a mounted Web frame. Resolve overlapping compact/min-width layouts consistently and restore larger-screen values at 1280px.
+
+- Add custom preview dimensions, continuous width adjustment, larger-text and keyboard-obstruction simulations while retaining the iframe and unsaved form values. Add opt-in, bounded Web adaptation diagnostics for horizontal overflow, clipped text and fixed-height text risks, with canvas node navigation and stale-result guards. These session-only tools leave authored geometry and production exports unchanged; native accessibility and keyboard behavior require device testing.
+
+- Add per-page Device adaptation with Fixed size, Scale to width and Responsive layout for React/Vue and Flutter. Preserve legacy output by default, normalize negative design origins for proportional scaling, and follow effective breakpoint layouts for responsive frame height. Persist the setting in `.fig` with undo/redo; unsupported native layout features retain explicit compiler warnings.
+
+- Add a `(0, 0)` button beside the zoom control to move the active canvas origin to its top-left without changing zoom or selection.
+
+- Add selectable Auto (default), On save, Manual and Real-time preview synchronization. Successful current-document saves can trigger synchronization; cancelled saves, failed saves and recovery snapshots do not. Add an opt-in Flutter simulator session to checkout-based Tauri development, with device selection, bounded offline preparation, serialized hot reload and owned-session cleanup. Fix absolute Flutter controls with accessibility labels so `Positioned` receives valid Stack parent data. Preserve launcher PATH directories when resolving desktop CLIs.
+
+- Complete all 42 bundled Vue module adapters with RichText, Audio Player, Lottie, Map, PDF Viewer, QR/Barcode and isolated HTML. Add caller-controlled Vue RichText AST updates and preserve explicit loading, cancellation and iframe security boundaries; ordinary raw HTML remains unsupported.
+
+- Add read-only DataGrid row and single-series Chart data bindings for React/Vue, with reactive runtime validation, explicit empty/unavailable states, matching Canvas defaults and inspector choices. Keep bound CSV imports disabled. Add caller-controlled local File selection APIs and a controlled React RichText AST without document persistence or raw HTML.
+
+- Add four editable compositions: step-by-step form, tree categories with details, drawer editing and an admin page shell. Each uses independent local state and ordinary editable nodes; stage forms own validation and preserve drafts on return.
+- Allow Slide Menu v2 to map an optional uniquely named direct child as editable drawer content, with isolated Canvas editing and React/Vue form rendering. Existing configurations without the field retain authored trigger children. Invalid mappings fail closed; native source targets keep an explicit unsupported warning and static trigger.
+
 - Add typed page/document state bindings, independent FORM validation and reset for Slider/Range, Rating and Date Range. Add opt-in Cascader with visual hierarchy editing, canvas path previews, accessible React/Vue selection and a bound basic template; invalid bindings never silently use example values.
+- Bind Tree and TreeSelect selections to typed page or document state, with FORM validation and reset, configurable field names, and matching canvas defaults. Keep invalid values visible without rewriting business state, and give the two existing templates independent state.
+- Bind Stepper to writable numeric page or document state, emit step-change events, and provide previous, next and reset controls in its editable template. Show invalid steps without changing state; step changes do not validate or submit forms.
 
 - Add opt-in Walktour with editable steps and named child-layer targets, shared canvas trigger styling, and manually started React/Vue guidance with target highlights, previous/next navigation and clear unavailable-target feedback. Include a reusable local guide template without automatic business actions.
 
@@ -26,7 +59,7 @@
 
 - Add Autocomplete and Time picker input variants with visual properties, string value bindings and React/Vue form behavior. Include editable templates, local keyboard-searchable suggestions, time bounds and second-based steps, and readable canvas previews. Show array state choices for multiple Select bindings.
 
-- Add array-valued multi-select with search, virtualized options, clear actions and React/Vue form binding; preserve authored empty values and multiple defaults. Add opt-in Date Range, Tree/TreeSelect and Popover/Popconfirm modules with visual properties, canvas renderers, keyboard interactions and six editable templates. Date-range/tree values remain instance-local; popover confirmation provides local feedback, without executing a business action.
+- Add array-valued multi-select with search, virtualized options, clear actions and React/Vue form binding; preserve authored empty values and multiple defaults. Add opt-in Date Range, Tree/TreeSelect and Popover/Popconfirm modules with visual properties, canvas renderers, keyboard interactions and six editable templates. Unbound date-range/tree values remain instance-local; popover confirmation provides local feedback, without executing a business action.
 
 - Complete Markdown and Code Block Vue runtimes, multilingual canvas text and three editable content recipes. Align wrapped code line numbers, expose localized copy outcomes, and invalidate stale clipboard results. Keep Markdown HTML inert and images unloaded, isolate footnote return links per instance, and preserve authored runtime language. Cancel multiline inspector drafts before late events can target another node.
 
@@ -156,6 +189,10 @@
 
 ### Fixed
 
+- Align authored disabled and read-only control states across Canvas and React/Vue. Prevent disabled Tree branches and TreeSelect panels from remaining interactive, expose reviewed read-only module controls in the inspector, and respect RichText canvas font size and fallback.
+
+- Give each compiler preview its own virtual source root and dependency cache so simultaneous previews cannot reload one another or replace files still used by another instance. Clean up its directory after the server finishes closing; retain it when closing fails.
+- Keep incomplete number-state input as an editing draft instead of writing zero or NaN; preserve valid zero, and restore declared state defaults after an accepted compiled FORM reset. Coordinate mixed native inputs and module fields so state, displayed values, FormData and validation errors recover together without changing independently controlled component reset behavior.
 - Preserve Vite URL-module handling for imported local images in compiler previews so image-backed components do not prevent the page from loading.
 - Exclude root-level generated output from development watching so exported project configurations do not reload the editor; retain normal source and worktree invalidation.
 

@@ -1,12 +1,17 @@
 /* oxlint-disable eslint/max-lines -- One browser lifecycle exercises the complete cross-origin bridge. */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { chromium, expect as playwrightExpect, type Browser, type Page } from '@playwright/test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildPreviewBridge } from '@open-pencil/compiler/adapters/react/preview-bridge'
+import { buildBrowserPreview } from '@open-pencil/compiler/browser-preview'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
 import { SceneGraph } from '@open-pencil/scene-graph'
+
+import { browserPreviewInput } from '../browser-preview/helpers'
 
 type WebTarget = 'react' | 'vue'
 const WEB_TARGETS = ['react', 'vue'] as const
@@ -34,15 +39,31 @@ interface PreviewMessage {
 interface BridgeFixture {
   files: Map<string, string | Uint8Array>
   inputId: string
+  parameterId: string
+  queryId: string
 }
 
 interface LoadedBridge {
   page: Page
   server: PreviewServer
   inputId: string
+  parameterId: string
+  queryId: string
   channel: string
   parentOrigin: string
   previewOrigin: string
+}
+
+interface PreviewRouterHistoryState {
+  idx?: number
+  key?: string
+  position?: number
+}
+
+interface BlobBridgeHostWindow extends Window {
+  __OP_PREVIEW_MESSAGES__?: PreviewMessage[]
+  __OP_PREVIEW_PORT__?: MessagePort
+  __OP_PREVIEW_URL__?: string
 }
 
 function buildBridgeFixture(target: WebTarget, documentState = true): BridgeFixture {
@@ -77,9 +98,40 @@ function buildBridgeFixture(target: WebTarget, documentState = true): BridgeFixt
     width: 240,
     height: 40
   })
+  graph.createNode('BUTTON', home.id, {
+    text: 'Open parameter details',
+    interactiveProps: { text: 'Open parameter details' },
+    x: 24,
+    y: 80,
+    width: 240,
+    height: 44,
+    events: {
+      onClick: [
+        { id: 'open-details', kind: 'navigate', to: '/details/item%201?tab=initial#details' }
+      ]
+    }
+  })
+  const details = graph.addPage('Details')
+  graph.updateNode(details.id, { lowcodeRoutePattern: '/details/:id' })
+  const parameter = graph.createNode('TEXT', details.id, {
+    text: 'Parameter',
+    x: 24,
+    y: 24,
+    width: 240,
+    height: 40,
+    bindings: { text: { kind: 'expr', expr: '$params.id' } }
+  })
+  const query = graph.createNode('TEXT', details.id, {
+    text: 'Query',
+    x: 24,
+    y: 80,
+    width: 240,
+    height: 40,
+    bindings: { text: { kind: 'expr', expr: '$query.tab' } }
+  })
   const files = compile({
     graph,
-    pageIds: [home.id, about.id],
+    pageIds: [home.id, about.id, details.id],
     options: withDefaults({
       packageName: `${target}-preview-bridge`,
       target,
@@ -89,7 +141,7 @@ function buildBridgeFixture(target: WebTarget, documentState = true): BridgeFixt
   }).files
   if (!documentState)
     files.set('src/__preview-bridge.ts', buildPreviewBridge({ documentState: false }))
-  return { files, inputId: input.id }
+  return { files, inputId: input.id, parameterId: parameter.id, queryId: query.id }
 }
 
 async function loadBridge(
@@ -185,7 +237,16 @@ async function loadBridge(
   if (!bridgeBoot.mounted) {
     throw new Error(`Preview bridge did not mount: ${JSON.stringify(bridgeBoot)}`)
   }
-  return { page, server, inputId: fixture.inputId, channel, parentOrigin, previewOrigin }
+  return {
+    page,
+    server,
+    inputId: fixture.inputId,
+    parameterId: fixture.parameterId,
+    queryId: fixture.queryId,
+    channel,
+    parentOrigin,
+    previewOrigin
+  }
 }
 
 async function postToPreview(
@@ -247,6 +308,219 @@ async function clearMessages(page: Page): Promise<void> {
     const host = window as Window & { __OP_PREVIEW_MESSAGES__?: PreviewMessage[] }
     host.__OP_PREVIEW_MESSAGES__ = []
   })
+}
+
+async function historySnapshot(loaded: LoadedBridge) {
+  return loaded.page
+    .frameLocator('#preview')
+    .locator('html')
+    .evaluate(() => ({
+      route: location.pathname + location.search + location.hash,
+      length: history.length,
+      state: history.state as PreviewRouterHistoryState | null
+    }))
+}
+
+async function expectNavigation(loaded: LoadedBridge, route: string): Promise<void> {
+  await playwrightExpect
+    .poll(async () =>
+      (await messages(loaded.page)).some(
+        (message) =>
+          message.type === 'navigate' &&
+          message.route === route &&
+          message.channel === loaded.channel
+      )
+    )
+    .toBe(true)
+}
+
+async function loadBlobBridge(page: Page) {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+  const fixture = buildBridgeFixture('react')
+  const input = await browserPreviewInput(fixture.files, { bundleReact: true })
+  // Bundle the pinned router into the same React module graph; an external CDN
+  // router would import a second React instance in this deliberately offline fixture.
+  const routerPaths = Array.from(
+    new Bun.Glob(
+      'node_modules/.bun/react-router-dom@7.18.3*/node_modules/react-router-dom/dist/index.mjs'
+    ).scanSync({ cwd: process.cwd(), dot: true })
+  )
+  expect(routerPaths).toHaveLength(1)
+  const routerPath = resolve(routerPaths[0] ?? '')
+  const esbuild = input.esbuild
+  if (!esbuild) throw new Error('Expected local esbuild fixture implementation')
+  input.esbuild = {
+    build(options) {
+      return esbuild.build({
+        ...options,
+        plugins: [
+          {
+            name: 'preview-bridge-test-local-router',
+            setup(builder) {
+              builder.onResolve({ filter: /^[^./]/ }, (args) => {
+                if (args.path === 'react-router-dom') return { path: routerPath }
+                if (args.importer.includes('/node_modules/') && !args.path.startsWith('node:'))
+                  return { path: Bun.resolveSync(args.path, dirname(args.importer)) }
+                if (/^zustand(?:\/|$)/.test(args.path))
+                  return { path: fileURLToPath(import.meta.resolve(args.path)) }
+                return undefined
+              })
+            }
+          },
+          ...options.plugins
+        ]
+      })
+    }
+  }
+  const built = await buildBrowserPreview(input)
+  expect(built.status).toBe('ready')
+  if (built.status !== 'ready') throw new Error('Expected ready Blob preview')
+  await page.route('https://bridge-preview.test/host', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: '<!doctype html><html><body></body></html>'
+    })
+  )
+  await page.goto('https://bridge-preview.test/host')
+  await page.evaluate(
+    ({ channel, html }) => {
+      const host = window as BlobBridgeHostWindow
+      host.__OP_PREVIEW_MESSAGES__ = []
+      const iframe = document.createElement('iframe')
+      iframe.id = 'preview'
+      iframe.sandbox.add('allow-scripts')
+      iframe.name = JSON.stringify({
+        protocol: 'open-pencil-preview-v2',
+        channel,
+        parentOrigin: location.origin,
+        transport: 'message-port',
+        automation: false
+      })
+      window.addEventListener('message', (event) => {
+        if (
+          event.source !== iframe.contentWindow ||
+          event.origin !== 'null' ||
+          event.data?.channel !== channel ||
+          event.data?.type !== 'ready' ||
+          event.ports.length !== 1
+        )
+          return
+        host.__OP_PREVIEW_PORT__ = event.ports[0]
+        event.ports[0].addEventListener('message', (message) => {
+          host.__OP_PREVIEW_MESSAGES__?.push(message.data)
+        })
+        event.ports[0].start()
+      })
+      host.__OP_PREVIEW_URL__ = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+      iframe.src = host.__OP_PREVIEW_URL__ + '#/'
+      document.body.append(iframe)
+    },
+    { channel: input.channel, html: built.html }
+  )
+  try {
+    await playwrightExpect(
+      page.frameLocator('#preview').getByPlaceholder('Shared preview value')
+    ).toBeVisible()
+  } catch (error) {
+    throw new Error(
+      `Blob bridge fixture failed: ${JSON.stringify(errors)}; messages=${JSON.stringify(await messages(page))}`,
+      { cause: error }
+    )
+  }
+  await page.waitForFunction(() => Boolean((window as BlobBridgeHostWindow).__OP_PREVIEW_PORT__))
+  return { channel: input.channel, parameterId: fixture.parameterId, queryId: fixture.queryId }
+}
+
+async function postToBlob(
+  page: Page,
+  channel: string,
+  route: string,
+  replace?: boolean
+): Promise<void> {
+  await page.evaluate(
+    (value) => {
+      const host = window as BlobBridgeHostWindow
+      host.__OP_PREVIEW_PORT__?.postMessage({
+        source: 'op-lowcode-editor',
+        channel: value.channel,
+        type: 'navigate',
+        route: value.route,
+        ...(typeof value.replace === 'boolean' ? { replace: value.replace } : {})
+      })
+    },
+    { channel, route, replace }
+  )
+}
+
+async function blobHistorySnapshot(page: Page) {
+  return page
+    .frameLocator('#preview')
+    .locator('html')
+    .evaluate(() => ({
+      route: location.hash.slice(1),
+      search: location.search,
+      length: history.length,
+      state: history.state as PreviewRouterHistoryState | null
+    }))
+}
+
+async function exerciseRouteHistory(target: WebTarget, loaded: LoadedBridge): Promise<void> {
+  const { page, parameterId, queryId } = loaded
+  const frame = page.frameLocator('#preview')
+  const parameter = frame.locator(`[data-node-id="${parameterId}"]`)
+  const query = frame.locator(`[data-node-id="${queryId}"]`)
+  await clearMessages(page)
+  await frame.getByRole('button', { name: 'Open parameter details' }).click({ timeout: 5_000 })
+  await playwrightExpect(parameter).toHaveText('item 1')
+  await playwrightExpect(query).toHaveText('initial')
+  await expectNavigation(loaded, '/details/item%201?tab=initial#details')
+  const pushed = await historySnapshot(loaded)
+  expect(typeof pushed.state?.[target === 'react' ? 'idx' : 'position']).toBe('number')
+
+  // Observe a native replace and update the actual router from its popstate listener.
+  await clearMessages(page)
+  await frame.locator('html').evaluate(() => {
+    history.replaceState(history.state, '', '/details/item%201?tab=changed#review')
+    window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }))
+  })
+  await playwrightExpect(query).toHaveText('changed')
+  await expectNavigation(loaded, '/details/item%201?tab=changed#review')
+  const replaced = await historySnapshot(loaded)
+  expect(replaced.length).toBe(pushed.length)
+  expect(replaced.state).toEqual(pushed.state)
+
+  // Back skips the replaced query/fragment entry and returns to the original home.
+  await clearMessages(page)
+  await frame.locator('html').evaluate(() => history.back())
+  await playwrightExpect(frame.getByPlaceholder('Shared preview value')).toBeVisible()
+  await expectNavigation(loaded, '/')
+  const home = await historySnapshot(loaded)
+
+  // Editor recovery replaces this entry, retaining router metadata and never echoing.
+  await clearMessages(page)
+  const restoredRoute = '/details/restored%20item?tab=restored#summary'
+  await postToPreview(loaded, { type: 'navigate', route: restoredRoute, replace: true })
+  await playwrightExpect(parameter).toHaveText('restored item')
+  await playwrightExpect(query).toHaveText('restored')
+  const restored = await historySnapshot(loaded)
+  expect(restored.route).toBe(restoredRoute)
+  expect(restored.length).toBe(home.length)
+  expect(restored.state).toEqual(home.state)
+  expect((await messages(page)).filter((message) => message.type === 'navigate')).toEqual([])
+  await postToPreview(loaded, { type: 'navigate', route: restoredRoute, replace: true })
+  expect(await historySnapshot(loaded)).toEqual(restored)
+
+  // Legacy absent replace still pushes; browser Back returns to the full restored route.
+  await postToPreview(loaded, { type: 'navigate', route: '/about?tab=legacy#old' })
+  await playwrightExpect(frame.getByText(`${target} about route`)).toBeVisible()
+  await clearMessages(page)
+  await frame.locator('html').evaluate(() => history.back())
+  await playwrightExpect(query).toHaveText('restored')
+  await expectNavigation(loaded, restoredRoute)
 }
 
 async function expectTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
@@ -758,7 +1032,75 @@ describe('generated web preview bridge in a real parent/iframe channel', () => {
     await browser?.close()
   }, 30_000)
 
+  test('React Blob MessagePort navigation preserves its internal query/hash and replace history', async () => {
+    if (!browser) throw new Error('Browser did not start')
+    const page = await browser.newPage()
+    try {
+      const loaded = await loadBlobBridge(page)
+      const frame = page.frameLocator('#preview')
+      const query = frame.locator(`[data-node-id="${loaded.queryId}"]`)
+      await clearMessages(page)
+      await frame.getByRole('button', { name: 'Open parameter details' }).click({ timeout: 5_000 })
+      await playwrightExpect(query).toHaveText('initial')
+      const initialRoute = '/details/item%201?tab=initial#details'
+      await playwrightExpect
+        .poll(async () =>
+          (await messages(page)).some(
+            (message) => message.type === 'navigate' && message.route === initialRoute
+          )
+        )
+        .toBe(true)
+      const pushed = await blobHistorySnapshot(page)
+      expect(pushed.route).toBe(initialRoute)
+      expect(pushed.search).toBe('')
+      const restoredRoute = '/details/recovered%20item?tab=recovered#summary'
+      await clearMessages(page)
+      await postToBlob(page, loaded.channel, restoredRoute, true)
+      await playwrightExpect(query).toHaveText('recovered')
+      await playwrightExpect(frame.locator(`[data-node-id="${loaded.parameterId}"]`)).toHaveText(
+        'recovered item'
+      )
+      const replaced = await blobHistorySnapshot(page)
+      expect(replaced.route).toBe(restoredRoute)
+      expect(replaced.length).toBe(pushed.length)
+      expect(replaced.state).toEqual(pushed.state)
+      expect((await messages(page)).filter((message) => message.type === 'navigate')).toEqual([])
+      await postToBlob(page, loaded.channel, '/about?tab=legacy#end')
+      await playwrightExpect(frame.getByText('react about route')).toBeVisible()
+      await clearMessages(page)
+      await frame.locator('html').evaluate(() => history.back())
+      await playwrightExpect(query).toHaveText('recovered')
+      await playwrightExpect
+        .poll(async () =>
+          (await messages(page)).some(
+            (message) => message.type === 'navigate' && message.route === restoredRoute
+          )
+        )
+        .toBe(true)
+    } finally {
+      await page.evaluate(() => {
+        const host = window as BlobBridgeHostWindow
+        host.__OP_PREVIEW_PORT__?.close()
+        if (host.__OP_PREVIEW_URL__) URL.revokeObjectURL(host.__OP_PREVIEW_URL__)
+      })
+      await page.close()
+    }
+  }, 30_000)
+
   WEB_TARGETS.forEach((target) => {
+    test(`${target} preserves concrete parameter/query/fragment routes across replace and Back`, async () => {
+      if (!browser) throw new Error('Browser did not start')
+      const page = await browser.newPage()
+      let loaded: LoadedBridge | null = null
+      try {
+        loaded = await loadBridge(page, target)
+        await exerciseRouteHistory(target, loaded)
+      } finally {
+        await page.close()
+        await loaded?.server.close()
+      }
+    }, 30_000)
+
     test(`${target} keeps connected Backend data outside the document bridge`, async () => {
       if (!browser) throw new Error('Browser did not start')
       const page = await browser.newPage()

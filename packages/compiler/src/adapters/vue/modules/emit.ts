@@ -1,4 +1,6 @@
+import { vueModuleDataBinding } from '#compiler/adapters/module-data'
 import { vueModuleValueBindings } from '#compiler/adapters/module-values'
+import { vueStepperBindings } from '#compiler/adapters/navigation/stepper/bindings'
 import { vuePaginationBindings } from '#compiler/adapters/pagination/bindings'
 import type { IRElement, IRNode } from '#compiler/ir/types'
 import { moduleContentNodes } from '#compiler/modules/content-slots'
@@ -31,7 +33,8 @@ export function emitVueModuleElement(
   context.templateBindings.push(
     `const ${configName} = ${scriptJSON(node.module?.payload ?? {})} as const`
   )
-  const attrs = [`:config="${configName}"`, ...parts.attrs]
+  // HTML's `readonly` spelling is not Vue's `readOnly` component prop spelling.
+  const attrs = [`:config="${configName}"`, ...parts.attrs.map(modulePropAttribute)]
   if (node.module?.panoramaUrlExpr && adapter.pluginId === 'open-pencil.vr-tour') {
     const read = templateExpression(node.module.panoramaUrlExpr, context.identAliases, parts.locals)
     const expression = `(() => { try { return ${read} } catch { return undefined } })()`
@@ -42,7 +45,9 @@ export function emitVueModuleElement(
   }
   attrs.push(...videoModuleBindings(node, context, parts.locals))
   attrs.push(...vuePaginationBindings(node.module, context, parts.locals))
+  attrs.push(...vueStepperBindings(node.module, context, parts.locals))
   attrs.push(...vueModuleValueBindings(node.module, context, parts.locals))
+  attrs.push(...vueModuleDataBinding(node.module, context, parts.locals))
   if (node.module?.uploadDisabledExpr && adapter.pluginId === 'open-pencil.upload-button') {
     const read = scriptExpression(
       node.module.uploadDisabledExpr,
@@ -68,6 +73,12 @@ export function emitVueModuleElement(
   }
   if (node.children.length === 0) return `${opening} />\n`
   return `${opening}>\n${parts.renderChildren(node.children, indent + 1)}${pad}</${adapter.componentName}>\n`
+}
+
+function modulePropAttribute(attr: string): string {
+  if (attr === 'readonly') return ':read-only="true"'
+  if (attr.startsWith(':readonly=')) return ':read-only=' + attr.slice(':readonly='.length)
+  return attr
 }
 
 function videoModuleBindings(

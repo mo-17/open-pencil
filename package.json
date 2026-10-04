@@ -32,7 +32,8 @@
     "tools/lint",
     "tools/authoring-reference",
     "tools/brand",
-    "tools/tauri-menu"
+    "tools/tauri-menu",
+    "tools/flutter-preview"
   ],
   "type": "module",
   "scripts": {
@@ -63,7 +64,7 @@
     "check:i18n": "bun tools/i18n/src/check-locales.ts",
     "check:packages": "bun tools/package-quality/src/cli.ts check",
     "check:figma-motion-plugin": "bun --filter @open-pencil/figma-motion-plugin check",
-    "check:arch": "steiger .",
+    "check:arch": "CHOKIDAR_USEPOLLING=1 steiger .",
     "check:vue": "vue-tsc --noEmit -p tsconfig.json && vue-tsc --noEmit -p packages/vue/tsconfig.json",
     "test": "OPENPENCIL_TEST_SERVER=app playwright test --project=openpencil --grep-invert @real-llm",
     "test:real-llm": "OPENPENCIL_TEST_SERVER=app playwright test --project=openpencil --grep @real-llm",

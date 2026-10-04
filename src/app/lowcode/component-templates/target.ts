@@ -3,7 +3,13 @@ import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import type { ComponentTemplateId } from './catalog'
 import { ComponentTemplateError } from './types'
 
-const FORM_RECIPES = new Set<ComponentTemplateId>(['validated-form', 'dialog-form', 'tabs-details'])
+const FORM_RECIPES = new Set<ComponentTemplateId>([
+  'validated-form',
+  'dialog-form',
+  'tabs-details',
+  'stepper-form',
+  'drawer-details'
+])
 const PARENTS = new Set(['CANVAS', 'FRAME', 'GROUP', 'SECTION', 'FORM'])
 const COMPONENT_SCOPES = new Set(['COMPONENT', 'COMPONENT_SET', 'INSTANCE'])
 

@@ -652,6 +652,14 @@
     "tools/docs": {
       "name": "@open-pencil/docs-tools",
     },
+    "tools/flutter-preview": {
+      "name": "@open-pencil/flutter-preview-tool",
+      "version": "0.0.0",
+      "dependencies": {
+        "@open-pencil/compiler": "workspace:*",
+        "valibot": "^1.4.2",
+      },
+    },
     "tools/lint": {
       "name": "@open-pencil/lint-tools",
       "devDependencies": {
@@ -1612,6 +1620,8 @@
     "@open-pencil/fig": ["@open-pencil/fig@workspace:packages/fig"],
 
     "@open-pencil/figma-motion-plugin": ["@open-pencil/figma-motion-plugin@workspace:packages/figma-motion-plugin"],
+
+    "@open-pencil/flutter-preview-tool": ["@open-pencil/flutter-preview-tool@workspace:tools/flutter-preview"],
 
     "@open-pencil/harness": ["@open-pencil/harness@workspace:packages/harness"],
 

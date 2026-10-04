@@ -29,6 +29,7 @@
   "paste": "Coller",
   "zoomIn": "Zoom avant",
   "zoomOut": "Zoom arrière",
+  "resetToOrigin": "Placer l’origine du canevas (0, 0) en haut à gauche",
   "profiler": "Profileur de performance",
   "theme": "Thème",
   "themeLight": "Clair",

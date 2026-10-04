@@ -1,6 +1,6 @@
 import type { Canvas } from 'canvaskit-wasm'
 
-import type { SceneNode } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import type { Rect } from '@open-pencil/scene-graph/primitives'
 
 import { drawModuleLabel } from '#core/canvas/modules/label'
@@ -20,6 +20,8 @@ import {
 
 import {
   dataGridCellText,
+  dataGridCanvasData,
+  dataGridUnavailableText,
   dataGridHeaderText,
   dataGridSummaryText,
   visibleDataGridRows
@@ -53,7 +55,8 @@ function drawDataGridCellText(
 export function renderDataGridModulePreview(
   renderer: SkiaRenderer,
   canvas: Canvas,
-  node: SceneNode
+  node: SceneNode,
+  graph?: SceneGraph
 ): boolean {
   const frame = modulePreviewFrame(node)
   if (!frame) return false
@@ -62,7 +65,7 @@ export function renderDataGridModulePreview(
   if (frame.empty) return true
 
   const { width, height } = frame
-  const config = resolved.config
+  const { config, unavailable } = dataGridCanvasData(node, resolved.config, graph)
   const visible = visibleDataGridRows(config, height)
   const bodyHeight = Math.max(0, height - visible.footerHeight)
   const totalColumnWidth = config.data.columns.reduce((total, column) => total + column.width, 0)
@@ -142,6 +145,22 @@ export function renderDataGridModulePreview(
         left += columnWidths[columnIndex]
       })
     })
+
+    if (unavailable) {
+      drawDataGridCellText(
+        renderer,
+        canvas,
+        node,
+        dataGridUnavailableText(node),
+        {
+          x: 0,
+          y: visible.headerRows * visible.rowHeight,
+          width,
+          height: visible.rowHeight
+        },
+        config.textColor
+      )
+    }
 
     if (visible.footerHeight > 0 && font) {
       configureModulePreviewPaint(renderer, config.headerBackground)

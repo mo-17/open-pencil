@@ -1,6 +1,11 @@
 import { hasInputSuggestions } from '#compiler/adapters/autocomplete/emit'
 import { autocompleteRuntimeSource } from '#compiler/adapters/autocomplete/runtime'
-import { hasInputControls } from '#compiler/adapters/input-control/emit'
+import {
+  hasInputControls,
+  hasNativeNumericInputBindings,
+  hasNumericInputBindings
+} from '#compiler/adapters/input-control/emit'
+import { numberDraftRuntimeSource } from '#compiler/adapters/input-control/number-draft'
 import { inputControlRuntimeSource } from '#compiler/adapters/input-control/runtime'
 import { buildPreviewBridge } from '#compiler/adapters/preview-bridge'
 import { buildServerArtifacts } from '#compiler/adapters/react/lowcode/server-edge'
@@ -14,6 +19,31 @@ import { buildOpenPencilMicrofrontendTypes } from '#compiler/microfrontend/runti
 import type { CompileWarning, CompilerOptions, HTMLMetadata } from '#compiler/types'
 
 import {
+  hasApplicationGuards,
+  APPLICATION_GUARDS_FILE,
+  VUE_APPLICATION_GUARDS_FILE,
+  VUE_APPLICATION_GUARD_COMPONENT
+} from '../application-guards/emit'
+import { applicationGuardsRuntimeSource } from '../application-guards/runtime'
+import { vueApplicationGuardsSource, vueApplicationGuardComponent } from '../application-guards/vue'
+import {
+  applicationNavigationFile,
+  buildVueApplicationNavigation
+} from '../application-navigation/source'
+import { hasApplicationPageSessions } from '../application-session/emit'
+import {
+  APPLICATION_SESSION_FILE,
+  applicationSessionRuntimeSource
+} from '../application-session/runtime'
+import {
+  VUE_APPLICATION_SESSION_FILE,
+  vueApplicationSessionSource
+} from '../application-session/vue'
+import { hasPageViewport } from '../page-viewport/project'
+import { PAGE_VIEWPORT_RUNTIME_FILE, pageViewportRuntimeSource } from '../page-viewport/runtime'
+import { VUE_PAGE_VIEWPORT_FILE, vuePageViewportSource } from '../page-viewport/source'
+import { nodesHaveBackHandler } from '../react/ir-walk'
+import {
   buildVueAutocompleteComponent,
   VUE_AUTOCOMPLETE_COMPONENT_FILE
 } from './autocomplete/component'
@@ -22,6 +52,10 @@ import {
   VUE_INPUT_CONTROL_COMPONENT_FILE,
   buildVueInputControlComponent
 } from './input-control/component'
+import {
+  VUE_NUMBER_INPUT_COMPONENT_FILE,
+  buildVueNumberInputComponent
+} from './input-control/number-component'
 import {
   buildVueConfirmHost,
   buildVueConfirmRuntime,
@@ -84,8 +118,38 @@ function emitVueProject(
 ): AdapterEmission {
   const warnings = collectVueWarnings(irs, components, options)
   const files = new Map<string, string | Uint8Array>()
+  if (hasApplicationPageSessions(irs)) {
+    files.set(
+      APPLICATION_SESSION_FILE,
+      applicationSessionRuntimeSource(
+        irs,
+        options.devMode && !options.backendPreview,
+        hasApplicationGuards(irs)
+      )
+    )
+    files.set(VUE_APPLICATION_SESSION_FILE, vueApplicationSessionSource())
+  }
+  if (hasPageViewport(irs)) {
+    files.set(PAGE_VIEWPORT_RUNTIME_FILE, pageViewportRuntimeSource())
+    files.set(VUE_PAGE_VIEWPORT_FILE, vuePageViewportSource())
+  }
+  const applicationNavigation =
+    irs.some((ir) => nodesHaveBackHandler(ir.children)) ||
+    components.some((component) =>
+      nodesHaveBackHandler([
+        ...component.children,
+        ...(component.variants?.flatMap((variant) => variant.children) ?? [])
+      ])
+    )
+  if (applicationNavigation)
+    files.set(applicationNavigationFile, buildVueApplicationNavigation(hasApplicationGuards(irs)))
+  if (hasApplicationGuards(irs)) {
+    files.set(APPLICATION_GUARDS_FILE, applicationGuardsRuntimeSource(irs))
+    files.set(VUE_APPLICATION_GUARDS_FILE, vueApplicationGuardsSource(irs, applicationNavigation))
+    files.set(VUE_APPLICATION_GUARD_COMPONENT, vueApplicationGuardComponent())
+  }
   const infos = derivePagePaths(irs)
-  const router = irs.length > 1
+  const router = irs.length > 1 || irs[0]?.applicationStart === true
   const lowcode = collectVueProjectLowcodeUsage(irs, components)
   const supabaseConfig = irs.find((ir) => ir.supabaseConfig)?.supabaseConfig
   const serverWorkflows =
@@ -128,6 +192,12 @@ function emitVueProject(
     files.set('src/lib/open-pencil-input-control.ts', inputControlRuntimeSource())
     files.set(VUE_INPUT_CONTROL_COMPONENT_FILE, buildVueInputControlComponent())
   }
+  if (hasInputControls(selectNodes) || hasNumericInputBindings(selectNodes)) {
+    files.set('src/lib/open-pencil-number-draft.ts', numberDraftRuntimeSource())
+  }
+  if (hasNativeNumericInputBindings(selectNodes)) {
+    files.set(VUE_NUMBER_INPUT_COMPONENT_FILE, buildVueNumberInputComponent())
+  }
   emitVueLowcodeRuntimes(files, lowcode, projectUsesMountedValidationSummary(irs, components))
   if (supabaseConfig) {
     files.set('src/lowcode-supabase.ts', buildVueSupabaseClientRuntime(supabaseConfig))
@@ -138,6 +208,7 @@ function emitVueProject(
     : []
   for (const definition of components) {
     const emitted = buildVueComponentModule(definition, options, router, docStateTypes, {
+      applicationGuards: hasApplicationGuards(irs),
       backend: irs.some((ir) => ir.backendClient !== undefined),
       supabase: supabaseConfig !== undefined,
       serverWorkflow: supabaseConfig !== undefined && serverWorkflows.length > 0
@@ -175,7 +246,20 @@ function emitVueProject(
     'src/main.ts',
     buildVueMain(router, lowcode, options.devMode, options.packaging?.kind === 'microfrontend')
   )
-  files.set('src/App.vue', buildVueApp(router, firstComponent, lowcode))
+  files.set(
+    'src/App.vue',
+    buildVueApp(
+      router,
+      firstComponent,
+      lowcode,
+      infos
+        .filter((info) => info.ir.applicationStateRetention !== undefined)
+        .map((info) => info.slug),
+      hasApplicationGuards(irs)
+        ? Object.fromEntries(infos.map((info) => [info.slug, info.ir.pageId]))
+        : {}
+    )
+  )
   files.set('src/index.css', buildVueIndexCSSFile(collectClassNames(irs, components), options))
   files.set(
     'src/lowcode-state.ts',
@@ -184,10 +268,22 @@ function emitVueProject(
   if (options.devMode)
     files.set(
       'src/__preview-bridge.ts',
-      buildPreviewBridge({ documentState: !options.backendPreview })
+      buildPreviewBridge({
+        documentState: !options.backendPreview,
+        applicationGuards: hasApplicationGuards(irs)
+      })
     )
   if (router) {
-    files.set('src/router.ts', buildVueRouter(infos, options.packaging?.kind === 'microfrontend'))
+    files.set(
+      'src/router.ts',
+      buildVueRouter(
+        infos,
+        options.packaging?.kind === 'microfrontend',
+        irs[0]?.applicationStart ? infos[0].route : undefined,
+        applicationNavigation,
+        hasApplicationGuards(irs)
+      )
+    )
   }
   if (options.packaging?.kind === 'microfrontend') {
     files.set('src/__microfrontend-abi.ts', buildOpenPencilMicrofrontendTypes())

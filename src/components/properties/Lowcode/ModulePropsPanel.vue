@@ -6,8 +6,10 @@ import { feedbackControlHint } from '@/app/lowcode/feedback-controls/properties'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useModulePropsPanelController } from './module-props-panel-controller'
+import ModuleDataBindingPanel from './ModuleDataBindingPanel.vue'
 import ModulePropertyFieldEditor from './ModulePropertyFieldEditor.vue'
 import PaginationBindingPanel from './PaginationBindingPanel.vue'
+import StepperBindingPanel from './StepperBindingPanel.vue'
 import VRTourSamplesPanel from './VRTourSamplesPanel.vue'
 
 const { locale } = useI18n()
@@ -98,6 +100,15 @@ const {
     />
 
     <PaginationBindingPanel v-if="definition?.moduleType === 'pagination' && !statusMessage" />
+    <StepperBindingPanel
+      v-if="
+        definition?.pluginId === 'open-pencil.stepper' &&
+        definition.moduleType === 'stepper' &&
+        !statusMessage
+      "
+    />
+
+    <ModuleDataBindingPanel v-if="!statusMessage" />
 
     <ModulePropertyFieldEditor
       v-for="field in fields"

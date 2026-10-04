@@ -7,6 +7,7 @@ import {
 } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
+import { CHART_MODULE_LIMITS } from './chart/limits'
 import { createModuleFrameOverrides } from './module-frame'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
@@ -14,11 +15,7 @@ export const CHART_PLUGIN_ID = 'open-pencil.chart'
 export const CHART_MODULE_TYPE = 'chart'
 export const CHART_MODULE_CONFIG_VERSION = 1
 export const CHART_MODULE_DEFAULT_SIZE = Object.freeze({ width: 360, height: 240 })
-export const CHART_MODULE_LIMITS = Object.freeze({
-  values: 64,
-  label: 80,
-  value: 1_000_000
-})
+export { CHART_MODULE_LIMITS } from './chart/limits'
 
 export interface ChartModuleConfigV1 extends JSONObject {
   chartType: 'bar' | 'line' | 'area' | 'pie' | 'donut'
@@ -229,3 +226,5 @@ export const CHART_PLUGIN = Object.freeze({
 
 export { buildChartLayout } from './chart/layout'
 export type { ChartLayout, ChartText, ChartPath, ChartRect, ChartCircle } from './chart/types'
+export { parseChartData, buildChartDataLayout } from './chart/data'
+export type { ChartData } from './chart/data'

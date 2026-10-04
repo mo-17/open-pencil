@@ -168,6 +168,9 @@ function revealSubmission(failure = false): void {
                 : ''
             }}</span
           >
+          <span v-if="field.valueKey" :class="styles.hint()" data-form-submission-name>
+            {{ panels.lowcodeBackendFieldName }}: {{ field.submissionName ?? '—' }}
+          </span>
           <div :class="styles.fieldActions()">
             <AppButton
               type="button"

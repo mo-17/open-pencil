@@ -1,5 +1,9 @@
 import { reactAutocompleteImport } from '#compiler/adapters/autocomplete/emit'
-import { reactInputControlImport } from '#compiler/adapters/input-control/emit'
+import {
+  reactInputControlImport,
+  reactNumberInputImport,
+  reactNumberParserImport
+} from '#compiler/adapters/input-control/emit'
 import { nodesUseMountedValidationSummary } from '#compiler/adapters/validation-summary'
 import type { ComponentDef, ComponentProp, IRNode, VariantCase } from '#compiler/ir/types'
 
@@ -8,6 +12,7 @@ import {
   hasTranslatableText,
   nodesUseServerWorkflow,
   nodesHaveNavigateHandler,
+  nodesHaveBackHandler,
   nodesHaveNavigateParams,
   referencedLucideIconNames
 } from '../ir-walk'
@@ -45,10 +50,12 @@ export function buildComponentModule(
   rootEventsBoundary = false,
   motionScopeBoundary = false,
   prototypeBoundary = false,
-  routerAvailable = false
+  routerAvailable = false,
+  applicationGuards = false
 ): string {
   const bodyNodes = componentBodyNodes(def)
   const needsNavigate = routerAvailable && nodesHaveNavigateHandler(bodyNodes)
+  const needsBack = routerAvailable && nodesHaveBackHandler(bodyNodes)
   const usesRequestGate = nodesUseRequestGate(bodyNodes)
   const usesRequestDebounce = nodesUseRequestDebounce(bodyNodes)
   // Phase 3 §9: a component body with i18n-tagged visible text needs
@@ -75,13 +82,18 @@ export function buildComponentModule(
     usesRequestGate,
     usesRequestDebounce
   )
-  const routerImport = buildComponentRouterImport(needsNavigate, nodesHaveNavigateParams(bodyNodes))
+  const routerImport = buildComponentRouterImport(
+    needsNavigate,
+    nodesHaveNavigateParams(bodyNodes),
+    applicationGuards
+  )
   const lowcodeStateImport = buildComponentLowcodeStateImport(def)
   const validationImport = buildComponentValidationImport(def)
   const imports = [
     def.backendClient ? "import * as __opBackend from '../lowcode-backend'\n" : '',
     reactImport,
     routerImport,
+    needsBack ? "import { useApplicationBack } from '../_application_navigation'\n" : '',
     lowcodeStateImport,
     validationImport,
     i18nImport,
@@ -91,6 +103,8 @@ export function buildComponentModule(
     enhancedSelectImport(bodyNodes, './'),
     reactAutocompleteImport(bodyNodes, './'),
     reactInputControlImport(bodyNodes, './'),
+    reactNumberInputImport(bodyNodes, './'),
+    reactNumberParserImport(bodyNodes, '../lib/'),
     serverImport
   ].join('')
   const importBlock = imports ? `${imports}\n` : ''
@@ -106,6 +120,7 @@ export function buildComponentModule(
       motionScopeBoundary,
       prototypeBoundary,
       needsNavigate,
+      needsBack,
       usesRequestGate,
       usesRequestDebounce
     )
@@ -142,6 +157,7 @@ function buildComponentBody(
   motionScopeBoundary: boolean,
   prototypeBoundary: boolean,
   needsNavigate: boolean,
+  needsBack: boolean,
   usesRequestGate: boolean,
   usesRequestDebounce: boolean
 ): string {
@@ -151,6 +167,7 @@ function buildComponentBody(
     def,
     usesIntl,
     needsNavigate,
+    needsBack,
     usesRequestGate,
     usesRequestDebounce
   )
@@ -393,8 +410,14 @@ function buildComponentReactImport(
   return `${valueImport}import type { ${typeNames.join(', ')} } from 'react'\n`
 }
 
-function buildComponentRouterImport(needsNavigate: boolean, hasNavigateParams: boolean): string {
+function buildComponentRouterImport(
+  needsNavigate: boolean,
+  hasNavigateParams: boolean,
+  guarded = false
+): string {
   if (!needsNavigate) return ''
+  if (guarded)
+    return `import { useApplicationGuardNavigate as useNavigate } from './_open-pencil-application-guards'\n${hasNavigateParams ? "import { generatePath } from 'react-router-dom'\n" : ''}`
   const names = ['useNavigate', ...(hasNavigateParams ? ['generatePath'] : [])]
   return `import { ${names.join(', ')} } from 'react-router-dom'\n`
 }
@@ -422,11 +445,13 @@ function buildComponentHookBlock(
   def: ComponentDef,
   usesIntl: boolean,
   needsNavigate: boolean,
+  needsBack: boolean,
   usesRequestGate: boolean,
   usesRequestDebounce: boolean
 ): string {
   const lines = [
     needsNavigate ? '  const navigate = useNavigate()' : '',
+    needsBack ? '  const __opBack = useApplicationBack()' : '',
     ...(def.docStateReads ?? []).map(
       (name) => `  const ${name} = useDocState(${JSON.stringify(name)})`
     ),

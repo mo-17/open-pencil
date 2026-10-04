@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { generatePath } from 'react-router-dom'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
@@ -242,6 +244,34 @@ describe('Phase 4 §16.2 — collect: navigate route params', () => {
 })
 
 describe('Phase 4 §16.2 — emit: navigate(generatePath(...))', () => {
+  test.each(['?tab=details&filter=a%2Fb#reviews', '#reviews', '?tab=details'])(
+    'interpolates route parameters before preserving the navigation suffix %s',
+    (suffix) => {
+      const { graph, pages } = buildMultiPageGraph('Home', 'Product')
+      const [home, product] = pages
+      graph.updateNode(product.id, { lowcodeRoutePattern: '/product/:id' })
+      graph.createNode('BUTTON', home.id, {
+        interactiveProps: { text: 'Product' },
+        events: {
+          onClick: [{ kind: 'navigate', to: `/product/:id${suffix}`, params: { id: '"42"' } }]
+        }
+      })
+      const output = compile({
+        graph,
+        pageIds: pages.map((page) => page.id),
+        options: withDefaults({ packageName: 'nav-params-suffix' })
+      })
+      const page = output.files.get('src/pages/index.tsx') as string
+      const destination = page.match(/navigate\((generatePath\([^\n]+?\}\)(?: \+ "[^"]*")?)\)/)?.[1]
+      expect(destination).toBeDefined()
+      // Execute the actual generated destination with the installed router.
+      expect(new Function('generatePath', `return ${destination}`)(generatePath)).toBe(
+        `/product/42${suffix}`
+      )
+      expect(output.warnings).toEqual([])
+    }
+  )
+
   test('navigate with params emits generatePath + the merged react-router-dom import', () => {
     const { graph, pages } = buildMultiPageGraph('Home', 'Product')
     const [home, product] = pages

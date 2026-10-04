@@ -16,9 +16,9 @@ test('pagination recipes keep independent page state and list references through
   const fixture = componentTemplateFixture(['pagination', 'paginated-list'], 'zh-CN')
   try {
     const catalog = getComponentTemplates('en')
-    expect(catalog).toHaveLength(62)
+    expect(catalog).toHaveLength(66)
     expect(catalog.filter((item) => item.kind === 'basic')).toHaveLength(54)
-    expect(catalog.filter((item) => item.kind === 'combination')).toHaveLength(8)
+    expect(catalog.filter((item) => item.kind === 'combination')).toHaveLength(12)
     const nodes = [...fixture.graph.getAllNodes()]
     const pagers = nodes.filter(
       (node) => node.interactiveProps?.module?.moduleType === 'pagination'

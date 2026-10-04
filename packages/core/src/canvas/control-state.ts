@@ -1,13 +1,18 @@
 import { lowcodeInputRequiresString } from '@open-pencil/lowcode'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
+import { moduleDataField } from '#core/plugins/bindings/data'
+import { resolveStepperModule } from '#core/plugins/stepper'
 import { moduleValueFields } from '#core/plugins/value-controls'
 
 export function containingStatePage(graph: SceneGraph, node: SceneNode): SceneNode | undefined {
+  const seen = new Set<string>([node.id])
   let parent = node.parentId ? graph.getNode(node.parentId) : undefined
   while (parent && parent.type !== 'CANVAS') {
+    if (seen.has(parent.id)) return undefined
+    seen.add(parent.id)
     // Reusable component bodies do not inherit the containing page's runtime state scope.
-    if (parent.type === 'COMPONENT' || parent.type === 'INSTANCE') return undefined
+    if (['COMPONENT', 'COMPONENT_SET', 'INSTANCE'].includes(parent.type)) return undefined
     parent = parent.parentId ? graph.getNode(parent.parentId) : undefined
   }
   return parent
@@ -87,12 +92,14 @@ export function controlDesignDependencies(graph: SceneGraph, node: SceneNode): s
     !['RADIO', 'SWITCH', 'DATEPICKER', 'SELECT', 'CHECKBOX', 'INPUT', 'TEXTAREA'].includes(
       node.type
     ) &&
-    moduleValueFields(node).length === 0
+    moduleValueFields(node).length === 0 &&
+    !resolveStepperModule(node.interactiveProps?.module)?.ok &&
+    !moduleDataField(node)
   )
     return []
   const dependencies = new Set<string>()
   const page = containingStatePage(graph, node)
-  for (const key of ['value', 'endValue']) {
+  for (const key of ['value', 'endValue', 'currentIndex', 'rows', 'data']) {
     const binding = node.bindings?.[key]
     if (binding?.kind === 'docState') dependencies.add(graph.rootId)
     if (binding?.kind === 'ref') dependencies.add(page?.id ?? graph.rootId)

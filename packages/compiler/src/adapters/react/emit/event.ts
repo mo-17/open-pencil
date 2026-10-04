@@ -19,7 +19,7 @@ import type {
   IRToastHandler
 } from '#compiler/ir/types'
 
-import { emitExpression } from '@open-pencil/lowcode'
+import { emitExpression, lowcodeNavigationPathname } from '@open-pencil/lowcode'
 import type { ExprAst } from '@open-pencil/lowcode'
 
 import { handlersUseRequestGate } from '../request-timing'
@@ -57,6 +57,7 @@ const ASYNC_KINDS = new Set<IREventHandler['kind']>([
   'delay',
   'confirm',
   'navigate',
+  'back',
   'awaitMotion'
 ])
 
@@ -66,6 +67,7 @@ const ASYNC_KINDS = new Set<IREventHandler['kind']>([
 const NEEDS_SEMICOLON = new Set<IREventHandler['kind']>([
   'setState',
   'navigate',
+  'back',
   'setVariable',
   'delay',
   'stop',
@@ -228,7 +230,11 @@ export function emitFormSubmitHandler(
     `const __opSubmitForm = e.currentTarget; ` +
     (mountedOnly ? `${emitMountedValidationCapture('e', `[${ids}]`).join('; ')}; ` : '')
   const nativeGuard = mountedOnly ? 'if (!__opSubmitForm.checkValidity()) return;' : ''
-  const validationGuard = nativeGuard + (validationKeys.length > 0 ? `if (!(await __validateFields(${mountedOnly ? '__opValidationKeys' : `[${ids}]`}, __opSubmitForm))) return;` : '')
+  const validationGuard =
+    nativeGuard +
+    (validationKeys.length > 0
+      ? `if (!(await __validateFields(${mountedOnly ? '__opValidationKeys' : `[${ids}]`}, __opSubmitForm))) return;`
+      : '')
   const motionScope = handlersContainMotion(handlers) ? '__opMotionScope' : undefined
   const scopeCapture = motionScope ? 'const __opMotionScope = e.currentTarget; ' : ''
   const body = `${scopeCapture}${validationGuard}${mountedOnly ? MOUNTED_VALIDATION_COMPLETION_GUARD : ''}${
@@ -421,23 +427,26 @@ function emitInvokeServerWorkflow(h: IRInvokeServerWorkflowHandler, motionScope?
  *  `navigate("/about")`; with params it uses react-router's `generatePath`. */
 function emitNavigate(h: IRNavigateHandler): string {
   const to = JSON.stringify(h.to)
+  const pathname = lowcodeNavigationPathname(h.to)
+  const suffix = h.to.slice(pathname.length)
   const destination =
     !h.params || h.params.length === 0
       ? to
-      : `generatePath(${to}, { ${h.params
+      : `generatePath(${JSON.stringify(pathname)}, { ${h.params
           .map((p) => `${p.name}: ${emitExpression(p.ast)}`)
-          .join(', ')} })`
-  return `await (window as Window & { __OPENPENCIL_MOTION_RUNTIME__?: { pageExit?: () => Promise<void> } }).__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate(${destination})`
+          .join(', ')} })${suffix ? ` + ${JSON.stringify(suffix)}` : ''}`
+  return `await (window as Window & { __OPENPENCIL_MOTION_RUNTIME__?: { pageExit?: () => Promise<void> } }).__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate(${destination}${h.history === 'replace' ? ', { replace: true }' : ''})`
 }
 
 type IRImmediateHandler = Extract<
   IREventHandler,
-  { kind: 'setState' | 'navigate' | 'setVariable' | 'toast' | 'clipboard' | 'trackEvent' }
+  { kind: 'setState' | 'navigate' | 'back' | 'setVariable' | 'toast' | 'clipboard' | 'trackEvent' }
 >
 
 const IMMEDIATE_HANDLER_KINDS = new Set<IREventHandler['kind']>([
   'setState',
   'navigate',
+  'back',
   'setVariable',
   'toast',
   'clipboard',
@@ -458,6 +467,8 @@ function emitImmediateHandler(h: IRImmediateHandler): string {
     }
     case 'navigate':
       return emitNavigate(h)
+    case 'back':
+      return `await __opBack(${JSON.stringify(h.fallback)})`
     case 'setVariable': {
       const inner = emitExpression(h.ast)
       return h.mode === 'functional'

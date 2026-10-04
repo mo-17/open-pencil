@@ -14,7 +14,15 @@ import { compileComponentTemplates, componentTemplateFixture } from './fixture'
 
 const directory = resolve(process.argv[2] ?? 'output/lowcode-template-library-20260922/gallery')
 const locale = process.argv[3] ?? 'zh-CN'
-const entries = getComponentTemplates(locale)
+const selected = process.argv[4]?.split(',')
+const entries = getComponentTemplates(locale).filter(
+  (entry) => !selected || selected.includes(entry.id)
+)
+if (
+  !entries.length ||
+  (selected && selected.some((id) => !entries.some((entry) => entry.id === id)))
+)
+  throw new Error('Unknown or empty template selection')
 const generatedAt = new Date().toISOString()
 const htmlEntities: Record<string, string> = {
   '&': '&amp;',
@@ -33,7 +41,16 @@ function validateFigRoundTrip(source: SceneGraph, restored: SceneGraph, filename
     `${filename}: document state changed during FIG round trip`
   )
   const visit = (before: SceneNode, after: SceneNode, path: string) => {
-    for (const key of ['name', 'type', 'state', 'bindings', 'events', 'interactiveProps'] as const)
+    for (const key of [
+      'name',
+      'type',
+      'state',
+      'bindings',
+      'events',
+      'interactiveProps',
+      'renderCondition',
+      'responsiveOverrides'
+    ] as const)
       assert.deepEqual(after[key], before[key], `${filename}: ${path}.${key} changed`)
     if (before.type === 'INPUT' || before.type === 'TEXTAREA') {
       for (const key of [
@@ -88,6 +105,8 @@ for (const entry of entries) {
     const englishViews = ['']
     if (entry.id === 'dialog-form') englishViews.push('dialog')
     if (entry.id === 'tabs-details') englishViews.push('details')
+    if (['stepper-form', 'tree-details', 'drawer-details', 'admin-shell'].includes(entry.id))
+      englishViews.push('active')
     writeFileSync(join(directory, fig), bytes)
     for (const target of entry.targets) {
       const output = compileComponentTemplates(target, [entry.id], locale)
@@ -103,12 +122,12 @@ for (const entry of entries) {
       fig,
       figArtifact: figArtifact(bytes),
       screenshots: entry.targets.flatMap((target) =>
-        [375, 1440].map((width) => ({
-          target,
-          width,
-          path: `${entry.id}-${target}-${width}.png`,
-          available: existsSync(join(directory, `${entry.id}-${target}-${width}.png`))
-        }))
+        [375, 1440].flatMap((width) =>
+          (englishViews.includes('active') ? ['', 'active'] : ['']).map((view) => {
+            const path = `${entry.id}-${target}-${width}${view ? '-' + view : ''}.png`
+            return { target, width, view, path, available: existsSync(join(directory, path)) }
+          })
+        )
       ),
       englishScreenshots: entry.targets.flatMap((target) =>
         [375, 1440].flatMap((width) =>
@@ -124,14 +143,18 @@ for (const entry of entries) {
   }
 }
 
-const collection = componentTemplateFixture(undefined, locale)
+const collection = componentTemplateFixture(
+  entries.map((entry) => entry.id),
+  locale
+)
 let collectionArtifact: ReturnType<typeof figArtifact>
 try {
   computeAllLayouts(collection.graph)
   let rowY = 0
   for (let index = 0; index < collection.results.length; index += 3) {
     let rowHeight = 0
-    for (const [column, result] of collection.results.slice(index, index + 3).entries()) {
+    let columnX = 0
+    for (const result of collection.results.slice(index, index + 3)) {
       const origin = collection.graph.getAbsolutePosition(result.rootId)
       for (const id of result.nodeIds) {
         const node = collection.graph.getNode(id)
@@ -139,7 +162,8 @@ try {
         const position = collection.graph.getAbsolutePosition(id)
         rowHeight = Math.max(rowHeight, position.y - origin.y + node.height)
       }
-      collection.graph.updateNode(result.rootId, { x: column * 440, y: rowY })
+      collection.graph.updateNode(result.rootId, { x: columnX, y: rowY })
+      columnX += (collection.graph.getNode(result.rootId)?.width ?? 360) + 80
     }
     rowY += rowHeight + 100
   }
@@ -163,8 +187,8 @@ const cards = artifacts
 <a class="download" href="${entry.fig}" download>下载可编辑 .fig</a><span class="id">${entry.id} · ${entry.figArtifact.byteLength} bytes · SHA-256 ${entry.figArtifact.sha256.slice(0, 12)}</span>
 ${entry.screenshots[0]?.available ? `<a href="${entry.screenshots[0].path}"><img class="thumbnail" loading="lazy" src="${entry.screenshots[0].path}" alt="${escapeHTML(entry.name)} React 紧凑预览"></a>` : ''}
 <ul>${entry.limitations.map((limit) => `<li>${escapeHTML(limit)}</li>`).join('')}</ul>
-<details><summary>React / Vue · 375 / 1440 预览</summary><div class="previews">${entry.screenshots.map((shot) => `<figure><figcaption>${shot.target} · ${shot.width}px</figcaption>${shot.available ? `<a href="${shot.path}"><img loading="lazy" src="${shot.path}" alt="${escapeHTML(entry.name)} ${shot.target} ${shot.width}px"></a>` : '<p class="missing">尚未生成浏览器截图</p>'}</figure>`).join('')}</div></details>
-<details><summary>English · 仅布局证据</summary><p>${
+<details><summary>React / Vue · 375 / 1440 预览</summary><div class="previews">${entry.screenshots.map((shot) => `<figure><figcaption>${shot.target} · ${shot.width}px${shot.view ? ' · ' + shot.view : ''}</figcaption>${shot.available ? `<a href="${shot.path}"><img loading="lazy" src="${shot.path}" alt="${escapeHTML(entry.name)} ${shot.target} ${shot.width}px"></a>` : '<p class="missing">尚未生成浏览器截图</p>'}</figure>`).join('')}</div></details>
+<details><summary>English · 预览</summary><p>${
       entry.englishScreenshots
         .filter((shot) => shot.available)
         .map(

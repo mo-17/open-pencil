@@ -1,4 +1,8 @@
 /* oxlint-disable eslint/max-lines -- Preview protocol parsers intentionally share one exact-shape boundary. */
+import * as v from 'valibot'
+
+import type { Vector } from '@open-pencil/scene-graph/primitives'
+
 export const PREVIEW_FRAME_PROTOCOL = 'open-pencil-preview-v2'
 export type PreviewFrameTransport = 'window' | 'message-port'
 export const PREVIEW_WEBDRIVER_AUTOMATION_STORAGE_KEY = 'open-pencil:webdriver-preview-automation'
@@ -12,6 +16,7 @@ export const PREVIEW_MESSAGE_LIMITS = Object.freeze({
   stateValues: 4096,
   motionEntries: 256,
   motionTimingFields: 64,
+  adaptationItems: 128,
   runtimeErrorLength: 2_048,
   automationRequestIdLength: 128,
   automationLocatorLength: 512,
@@ -46,6 +51,26 @@ interface PreviewDocStateMessage {
   value: unknown
 }
 
+export interface PreviewPageSessionEntry {
+  pageId: string
+  pathname: string
+  search: string
+  values: Record<string, unknown>
+  scroll: Vector
+}
+
+export interface PreviewPageSessionSnapshot {
+  version: 1
+  entries: PreviewPageSessionEntry[]
+}
+
+interface PreviewPageSessionMessage {
+  source: typeof PREVIEW_SOURCE
+  channel: string
+  type: 'pageSession'
+  snapshot: PreviewPageSessionSnapshot
+}
+
 interface PreviewMotionDebugMessage {
   source: typeof PREVIEW_SOURCE
   channel: string
@@ -66,6 +91,26 @@ interface PreviewRuntimeErrorMessage {
   channel: string
   type: 'runtimeError'
   message: string
+}
+
+export type PreviewTextScale = 1 | 1.3 | 1.6 | 2
+export type PreviewAdaptationDiagnosticKind =
+  | 'horizontal-overflow'
+  | 'text-clipping'
+  | 'fixed-height-risk'
+
+export interface PreviewAdaptationDiagnosticItem {
+  nodeId: string
+  kind: PreviewAdaptationDiagnosticKind
+}
+
+export interface PreviewAdaptationMessage {
+  source: typeof PREVIEW_SOURCE
+  channel: string
+  type: 'adaptation'
+  revision: number
+  items: PreviewAdaptationDiagnosticItem[]
+  truncated: boolean
 }
 
 export type PreviewAutomationLocator = 'testId' | 'buttonText' | 'placeholder' | 'body'
@@ -102,9 +147,11 @@ export type PreviewInboundMessage =
   | PreviewSelectMessage
   | PreviewNavigateMessage
   | PreviewDocStateMessage
+  | PreviewPageSessionMessage
   | PreviewMotionDebugMessage
   | PreviewReadyMessage
   | PreviewRuntimeErrorMessage
+  | PreviewAdaptationMessage
   | PreviewAutomationResultMessage
 
 export type PreviewAutomationPayload =
@@ -142,10 +189,12 @@ export type PreviewAutomationPayload =
 
 export type PreviewEditorPayload =
   | { type: 'select'; id: string | null }
-  | { type: 'navigate'; route: string }
+  | { type: 'navigate'; route: string; replace?: boolean }
   | { type: 'theme'; theme: 'light' | 'dark' }
   | { type: 'motionDebug'; enabled: boolean }
   | { type: 'docState'; name: string; value: unknown }
+  | { type: 'pageSession'; snapshot: PreviewPageSessionSnapshot }
+  | { type: 'adaptation'; revision: number; textScale: PreviewTextScale; diagnostics: boolean }
   | PreviewAutomationPayload
 
 export type PreviewEditorMessage = PreviewEditorPayload & {
@@ -358,6 +407,72 @@ function estimatePortableValue(value: unknown): number | null {
   return bytes
 }
 
+const pageSessionEntrySchema = v.strictObject({
+  pageId: v.pipe(
+    v.string(),
+    v.check((value: string) => isNodeId(value))
+  ),
+  pathname: v.pipe(
+    v.string(),
+    v.check((value) => isRoute(value) && !/[?#]/.test(value))
+  ),
+  search: v.pipe(
+    v.string(),
+    v.maxLength(PREVIEW_MESSAGE_LIMITS.routeLength),
+    v.check(
+      (value) =>
+        (!value || value.startsWith('?')) && !value.includes('#') && !hasASCIIControl(value)
+    )
+  ),
+  values: v.record(
+    v.pipe(
+      v.string(),
+      v.check((value: string) => isStateName(value))
+    ),
+    v.unknown()
+  ),
+  scroll: v.strictObject({
+    x: v.pipe(v.number(), v.finite(), v.minValue(0)),
+    y: v.pipe(v.number(), v.finite(), v.minValue(0))
+  })
+})
+
+const pageSessionSnapshotSchema = v.strictObject({
+  version: v.literal(1),
+  entries: v.pipe(v.array(pageSessionEntrySchema), v.maxLength(64))
+})
+
+/** Data-only preflight precedes schema access, including nested descriptors. */
+export function parsePreviewPageSessionSnapshot(value: unknown): PreviewPageSessionSnapshot | null {
+  const bytes = estimatePortableValue(value)
+  if (bytes === null || bytes + 1024 > PREVIEW_MESSAGE_LIMITS.messageBytes) return null
+  if (
+    new TextEncoder().encode(JSON.stringify(value)).byteLength + 1024 >
+    PREVIEW_MESSAGE_LIMITS.messageBytes
+  )
+    return null
+  const parsed = v.safeParse(pageSessionSnapshotSchema, value)
+  if (!parsed.success) return null
+  const keys = new Set<string>()
+  for (const entry of parsed.output.entries) {
+    if (entry.pathname.length + entry.search.length > PREVIEW_MESSAGE_LIMITS.routeLength)
+      return null
+    const key = JSON.stringify([entry.pageId, entry.pathname, entry.search])
+    if (keys.has(key)) return null
+    keys.add(key)
+  }
+  return structuredClone(parsed.output)
+}
+
+function parsePageSessionMessage(
+  data: Record<string, unknown>,
+  channel: string
+): PreviewPageSessionMessage | null {
+  if (!hasExactKeys(data, ['source', 'channel', 'type', 'snapshot'])) return null
+  const snapshot = parsePreviewPageSessionSnapshot(data.snapshot)
+  return snapshot ? { source: PREVIEW_SOURCE, channel, type: 'pageSession', snapshot } : null
+}
+
 function isNullableFiniteNumber(value: unknown): boolean {
   return value === null || (typeof value === 'number' && Number.isFinite(value))
 }
@@ -521,6 +636,72 @@ function parseRuntimeErrorMessage(
   return { source: PREVIEW_SOURCE, channel, type: 'runtimeError', message: data.message }
 }
 
+function isAdaptationRevision(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+function isPreviewTextScale(value: unknown): value is PreviewTextScale {
+  return value === 1 || value === 1.3 || value === 1.6 || value === 2
+}
+
+function isAdaptationDiagnosticKind(value: unknown): value is PreviewAdaptationDiagnosticKind {
+  return (
+    value === 'horizontal-overflow' || value === 'text-clipping' || value === 'fixed-height-risk'
+  )
+}
+
+function isAdaptationNodeId(value: unknown): value is string {
+  if (!isNodeId(value)) return false
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code >= 0x80 && code <= 0x9f) return false
+  }
+  return true
+}
+
+function parseAdaptationItems(value: unknown): PreviewAdaptationDiagnosticItem[] | null {
+  if (!Array.isArray(value) || value.length > PREVIEW_MESSAGE_LIMITS.adaptationItems) return null
+  const entries = readDenseArray(value)
+  if (!entries) return null
+  const items: PreviewAdaptationDiagnosticItem[] = []
+  for (const entry of entries) {
+    const data = parsePreviewRecord(entry)
+    if (
+      !data ||
+      !hasExactKeys(data, ['nodeId', 'kind']) ||
+      !isAdaptationNodeId(data.nodeId) ||
+      !isAdaptationDiagnosticKind(data.kind)
+    ) {
+      return null
+    }
+    items.push({ nodeId: data.nodeId, kind: data.kind })
+  }
+  return items
+}
+
+function parseAdaptationMessage(
+  data: Record<string, unknown>,
+  channel: string
+): PreviewAdaptationMessage | null {
+  if (
+    !hasExactKeys(data, ['source', 'channel', 'type', 'revision', 'items', 'truncated']) ||
+    !isAdaptationRevision(data.revision) ||
+    typeof data.truncated !== 'boolean'
+  ) {
+    return null
+  }
+  const items = parseAdaptationItems(data.items)
+  if (!items) return null
+  return {
+    source: PREVIEW_SOURCE,
+    channel,
+    type: 'adaptation',
+    revision: data.revision,
+    items,
+    truncated: data.truncated
+  }
+}
+
 function isAutomationStatus(value: unknown): value is PreviewAutomationStatus {
   return (
     value === 'clicked' ||
@@ -616,9 +797,11 @@ export function parsePreviewInboundMessage(
   if (data.type === 'select') return parseSelectMessage(data, expectedChannel)
   if (data.type === 'navigate') return parseNavigateMessage(data, expectedChannel)
   if (data.type === 'docState') return parseDocStateMessage(data, expectedChannel)
+  if (data.type === 'pageSession') return parsePageSessionMessage(data, expectedChannel)
   if (data.type === 'motionDebug') return parseMotionDebugMessage(data, expectedChannel)
   if (data.type === 'ready') return parseReadyMessage(data, expectedChannel)
   if (data.type === 'runtimeError') return parseRuntimeErrorMessage(data, expectedChannel)
+  if (data.type === 'adaptation') return parseAdaptationMessage(data, expectedChannel)
   if (data.type === 'automationResult') {
     return parseAutomationResultMessage(data, expectedChannel)
   }
@@ -648,8 +831,20 @@ function createEditorNavigateMessage(
   data: Record<string, unknown>,
   channel: string
 ): PreviewEditorMessage | null {
-  if (!hasExactKeys(data, ['type', 'route']) || !isRoute(data.route)) return null
-  return { source: EDITOR_SOURCE, channel, type: 'navigate', route: data.route }
+  const hasReplace = Object.hasOwn(data, 'replace')
+  if (
+    !hasExactKeys(data, hasReplace ? ['type', 'route', 'replace'] : ['type', 'route']) ||
+    !isRoute(data.route) ||
+    (hasReplace && typeof data.replace !== 'boolean')
+  )
+    return null
+  return {
+    source: EDITOR_SOURCE,
+    channel,
+    type: 'navigate',
+    route: data.route,
+    ...(hasReplace ? { replace: data.replace as boolean } : {})
+  }
 }
 
 function createEditorThemeMessage(
@@ -688,6 +883,37 @@ function createEditorDocStateMessage(
     type: 'docState',
     name: data.name,
     value: data.value
+  }
+}
+
+function createEditorPageSessionMessage(
+  data: Record<string, unknown>,
+  channel: string
+): PreviewEditorMessage | null {
+  if (!hasExactKeys(data, ['type', 'snapshot'])) return null
+  const snapshot = parsePreviewPageSessionSnapshot(data.snapshot)
+  return snapshot ? { source: EDITOR_SOURCE, channel, type: 'pageSession', snapshot } : null
+}
+
+function createEditorAdaptationMessage(
+  data: Record<string, unknown>,
+  channel: string
+): PreviewEditorMessage | null {
+  if (
+    !hasExactKeys(data, ['type', 'revision', 'textScale', 'diagnostics']) ||
+    !isAdaptationRevision(data.revision) ||
+    !isPreviewTextScale(data.textScale) ||
+    typeof data.diagnostics !== 'boolean'
+  ) {
+    return null
+  }
+  return {
+    source: EDITOR_SOURCE,
+    channel,
+    type: 'adaptation',
+    revision: data.revision,
+    textScale: data.textScale,
+    diagnostics: data.diagnostics
   }
 }
 
@@ -773,6 +999,8 @@ export function createPreviewEditorMessage(
   if (data.type === 'theme') return createEditorThemeMessage(data, channel)
   if (data.type === 'motionDebug') return createEditorMotionMessage(data, channel)
   if (data.type === 'docState') return createEditorDocStateMessage(data, channel)
+  if (data.type === 'pageSession') return createEditorPageSessionMessage(data, channel)
+  if (data.type === 'adaptation') return createEditorAdaptationMessage(data, channel)
   if (data.type === 'automation') return createEditorAutomationMessage(data, channel)
   return null
 }

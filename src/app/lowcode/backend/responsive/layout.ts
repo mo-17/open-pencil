@@ -1,6 +1,7 @@
 import type { ResponsiveOverride, SceneNode } from '@open-pencil/scene-graph'
 
 import type { NotesTemplateEditor } from '../notes-template'
+import { markNewMobileTemplateViewport } from './page-viewport'
 import { orderTemplateChildren } from './structure'
 
 interface TemplateMobileOptions {
@@ -89,6 +90,7 @@ export function applyTemplateMobileLayout(
   rootId: string,
   options: TemplateMobileOptions = {}
 ): void {
+  markNewMobileTemplateViewport(editor, rootId)
   const visit = (id: string) => {
     const node = editor.graph.getNode(id)
     if (!node || options.preserve?.has(id)) return

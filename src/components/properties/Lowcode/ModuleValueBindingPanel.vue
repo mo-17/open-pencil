@@ -1,13 +1,27 @@
 <script setup lang="ts">
 import { useModuleValueBindings } from '@/app/lowcode/value-controls/form/use'
+import AppButton from '@/components/ui/button/AppButton.vue'
 import { useSectionUI } from '@/components/ui/section'
 import AppSelect from '@/components/ui/select/AppSelect.vue'
+import AppSwitch from '@/components/ui/toggle/AppSwitch.vue'
 
+import InteractiveTextField from './InteractiveTextField.vue'
 import ValidationFieldEditor from './ValidationFieldEditor.vue'
 
 const section = useSectionUI()
 const { mode = 'binding' } = defineProps<{ mode?: 'binding' | 'validation' }>()
-const { owner, rows, panels, bind, validate, version } = useModuleValueBindings()
+const {
+  owner,
+  rows,
+  panels,
+  bind,
+  readOnly,
+  controlReadOnly,
+  validate,
+  fieldName,
+  fieldNameError,
+  version
+} = useModuleValueBindings()
 </script>
 
 <template>
@@ -35,6 +49,29 @@ const { owner, rows, panels, bind, validate, version } = useModuleValueBindings(
         <p v-if="row.options.length === 1" class="text-[10px] text-muted">
           {{ panels.lowcodeValueBindingNoStates }}
         </p>
+        <span class="block text-[10px] text-muted">{{ panels.lowcodeBackendFieldName }}</span>
+        <InteractiveTextField
+          :model-value="row.fieldName"
+          :owner="owner"
+          :reset-key="row.version"
+          :label="panels.lowcodeBackendFieldName"
+          :placeholder="row.defaultFieldName"
+          :validate-value="fieldNameError"
+          :data-module-field-name="row.key"
+          @commit="fieldName(row.key, $event, row.version)"
+        />
+        <AppButton
+          v-if="row.fieldName || row.fieldNameInvalid"
+          type="button"
+          variant="outline"
+          size="xs"
+          :data-module-field-name-clear="row.key"
+          @click="fieldName(row.key, '', row.version)"
+          >{{ panels.lowcodeResponsiveClear }}</AppButton
+        >
+        <p v-if="row.fieldNameInvalid" class="text-[10px] text-danger" role="alert">
+          {{ panels.lowcodeWorkflowParamInvalidIdentifier }}
+        </p>
       </template>
       <template v-else>
         <ValidationFieldEditor
@@ -52,6 +89,17 @@ const { owner, rows, panels, bind, validate, version } = useModuleValueBindings(
         </p>
       </template>
     </fieldset>
+    <div
+      v-if="mode === 'binding' && readOnly !== undefined"
+      class="flex items-center justify-between gap-2 text-[11px] text-muted"
+    >
+      <span>{{ panels.lowcodeControlReadOnly }}</span>
+      <AppSwitch
+        :label="panels.lowcodeControlReadOnly"
+        :model-value="readOnly"
+        @update:model-value="controlReadOnly($event, version)"
+      />
+    </div>
     <p class="text-[10px] leading-relaxed text-muted">{{ panels.lowcodeModuleBindingHint }}</p>
   </div>
 </template>

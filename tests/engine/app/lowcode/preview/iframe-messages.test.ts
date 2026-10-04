@@ -277,6 +277,48 @@ describe('preview iframe message protocol', () => {
     expect(createPreviewEditorMessage(CHANNEL, { type: 'theme', theme: 'system' })).toBeNull()
   })
 
+  test('accepts an optional boolean replace without weakening the navigation boundary', () => {
+    const payload = { type: 'navigate', route: '/details/item%201?tab=one#section' }
+    const envelope = { source: 'op-lowcode-editor', channel: CHANNEL, ...payload }
+    expect(createPreviewEditorMessage(CHANNEL, payload)).toEqual(envelope)
+    for (const replace of [true, false]) {
+      expect(createPreviewEditorMessage(CHANNEL, { ...payload, replace })).toEqual({
+        ...envelope,
+        replace
+      })
+    }
+    for (const replace of [undefined, null, 0, 1, 'true', {}, []]) {
+      expect(createPreviewEditorMessage(CHANNEL, { ...payload, replace })).toBeNull()
+    }
+    expect(createPreviewEditorMessage(CHANNEL, { ...payload, replace: true, extra: 1 })).toBeNull()
+    expect(createPreviewEditorMessage(CHANNEL, Object.create(payload))).toBeNull()
+    let reads = 0
+    const accessor = Object.defineProperty({ ...payload }, 'replace', {
+      enumerable: true,
+      get() {
+        reads += 1
+        return true
+      }
+    })
+    expect(createPreviewEditorMessage(CHANNEL, accessor)).toBeNull()
+    expect(reads).toBe(0)
+    for (const route of [
+      '//attacker.example',
+      '/bad\\path',
+      '/bad\npath',
+      `/${'a'.repeat(PREVIEW_MESSAGE_LIMITS.routeLength)}`
+    ]) {
+      expect(createPreviewEditorMessage(CHANNEL, { ...payload, route, replace: true })).toBeNull()
+    }
+    // Outbound observation remains one concrete route; replace is editor-only intent.
+    expect(
+      parsePreviewInboundMessage(
+        { ...envelope, source: 'op-lowcode-preview', replace: true },
+        CHANNEL
+      )
+    ).toBeNull()
+  })
+
   test('creates only bounded WebDriver automation requests and safe correlated results', () => {
     const requestId = 'webdriver_request_0001'
     expect(

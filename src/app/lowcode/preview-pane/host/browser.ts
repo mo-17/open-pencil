@@ -6,6 +6,7 @@ import type {
   BrowserPreviewWorkerBuildResult,
   CreateBrowserPreviewWorkerRequestInput
 } from '../browser-worker/protocol'
+import { capturePreviewPageSessionSource } from './application-session'
 import {
   preparePreviewBackendProvider,
   previewHasBackendProvider,
@@ -176,6 +177,7 @@ export function createBrowserPreviewHost(
     if (request.signal?.aborted) controller.abort()
     const channelId = createChannelId()
     let workerResult: BrowserPreviewWorkerBuildResult
+    let pageSessionSource: PreviewFrameDescriptor['pageSessionSource']
     try {
       const backendStore = previewHasBackendProvider(request.graph)
         ? await resolveBackendProviderStore()
@@ -183,10 +185,12 @@ export function createBrowserPreviewHost(
       if (requestIsStale(request, serial)) return staleResult(request.generation)
       throwIfBuildAborted(controller.signal)
       const backend = preparePreviewBackendProvider(request.graph, request.options, backendStore)
+      const sourceGraph = request.graph
+      pageSessionSource = capturePreviewPageSessionSource(sourceGraph)
       workerResult = await client.build(
         {
           generation: request.generation,
-          graph: request.graph,
+          graph: sourceGraph,
           pageIds: request.pageIds,
           options: backend.options,
           fontProviders: [...getFontProviders()],
@@ -256,7 +260,8 @@ export function createBrowserPreviewHost(
         expectedMessageOrigin: 'null',
         postMessageTargetOrigin: '*',
         sandbox: 'allow-scripts',
-        channelId
+        channelId,
+        ...(pageSessionSource ? { pageSessionSource } : {})
       }
     }
   }

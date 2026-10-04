@@ -35,6 +35,7 @@ export function createComponentTemplate(
   if (!item) throw new ComponentTemplateError('unknown-template')
   const ctx = createTemplateContext(editor, locale, instancePrefix(editor))
   let rootId = ''
+  const width = id === 'admin-shell' ? 860 : 360
   editor.undo.runBatch(
     ctx.copy('Insert component template', '插入组件模板') + ': ' + item.name,
     () => {
@@ -46,7 +47,7 @@ export function createComponentTemplate(
       })
       rootId = ctx.stack(parent.id, item.name, {
         ...templateSurface(TEMPLATE_COLORS.paper, true),
-        width: 360,
+        width,
         height: 200,
         x: placement.x ?? 0,
         y: placement.y ?? 0,
@@ -58,7 +59,12 @@ export function createComponentTemplate(
         itemSpacing: 14,
         cornerRadius: 14,
         responsiveOverrides: {
-          compact: { minWidth: 0, maxWidth: 360, primaryAxisSizing: 'HUG' },
+          compact: {
+            minWidth: 0,
+            maxWidth: width,
+            primaryAxisSizing: 'HUG',
+            ...(id === 'admin-shell' ? { counterAxisSizing: 'FILL' as const } : {})
+          },
           xl: { primaryAxisSizing: 'HUG' }
         }
       })

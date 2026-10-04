@@ -49,6 +49,7 @@ import {
   remapClonedInstanceOverrides,
   remapPendingInstanceOverrideReferences,
   remapNodeComponentPropertyReferences,
+  remapNodeApplicationReferences,
   remapNodeLowcodeMotionActionTargets,
   remapNodeMotionDriverReferences,
   remapNodeMotionSceneTargets,
@@ -843,6 +844,7 @@ export class SceneGraph {
       const node = this.nodes.get(cloneId)
       if (!node) continue
       const lowcodeUpdates = remapNodeLowcodeMotionActionTargets(node, resolveNodeId)
+      const applicationUpdates = remapNodeApplicationReferences(node, resolveNodeId)
       const sceneUpdates = remapNodeMotionSceneTargets(node, resolveNodeId)
       const driverUpdates = remapNodeMotionDriverReferences(node, resolveNodeId)
       const prototypeUpdates = remapNodePrototypeTargets(node, resolveNodeId)
@@ -856,6 +858,7 @@ export class SceneGraph {
       const pendingOverrideUpdates = remapPendingInstanceOverrideReferences(node, idMap)
       if (
         lowcodeUpdates ||
+        applicationUpdates ||
         sceneUpdates ||
         driverUpdates ||
         prototypeUpdates ||
@@ -864,8 +867,9 @@ export class SceneGraph {
         overrideUpdates ||
         pendingOverrideUpdates
       ) {
-        this.updateNode(cloneId, {
+        const changes = {
           ...lowcodeUpdates,
+          ...applicationUpdates,
           ...sceneUpdates,
           ...driverUpdates,
           ...prototypeUpdates,
@@ -873,7 +877,14 @@ export class SceneGraph {
           ...componentPropertyUpdates,
           ...overrideUpdates,
           ...pendingOverrideUpdates
-        })
+        }
+        if (
+          applicationUpdates &&
+          Object.hasOwn(applicationUpdates, 'lowcodeApplication') &&
+          applicationUpdates.lowcodeApplication === undefined
+        )
+          this.restoreNodeProperties(cloneId, changes, ['lowcodeApplication'])
+        else this.updateNode(cloneId, changes)
       }
     }
   }

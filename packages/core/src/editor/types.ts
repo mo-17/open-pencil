@@ -216,7 +216,11 @@ export type FigmaClipboardImageResolver = (
 ) => Promise<ReadonlyMap<string, Uint8Array>>
 
 export interface EditorEvents extends SceneGraphEvents {
-  'render:requested': (versions: { renderVersion: number; sceneVersion: number }) => void
+  'render:requested': (versions: {
+    renderVersion: number
+    sceneVersion: number
+    reason?: 'page-navigation'
+  }) => void
   'repaint:requested': (versions: { renderVersion: number; sceneVersion: number }) => void
   'overlay:requested': (versions: { renderVersion: number; sceneVersion: number }) => void
   'graph:replaced': (graph: SceneGraph) => void
@@ -272,7 +276,7 @@ export interface EditorContext {
   getRenderer: () => SkiaRenderer | null
   getRenderers: () => ReadonlySet<SkiaRenderer>
   getTextEditor: () => TextEditor | null
-  requestRender: () => void
+  requestRender: (reason?: 'page-navigation') => void
   requestRepaint: () => void
   requestOverlayRepaint: () => void
   beginLoading: (options?: { releaseDocumentCaches?: boolean }) => () => void

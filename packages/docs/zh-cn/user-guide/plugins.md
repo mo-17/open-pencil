@@ -74,7 +74,7 @@ Google Drive Storage、OneDrive Storage、Aliyun Drive Storage、Baidu Netdisk S
   在 **AI** 标签页点击弹出按钮，即可把当前对话放到独立窗口。AI transport、ACP 进程、
   凭据、文档上下文与工具执行仍只由主编辑器持有；独立窗只接收经过裁剪和脱敏的消息投影，
   并通过封闭动作集合请求宿主操作。禁用插件会移除入口并关闭独立窗口；该命令不会暴露给 MCP。
-- **图表（Chart）**：支持柱状、折线、面积、饼图和环形图，画布与 React/Vue 使用同一套几何布局。在 **设计 → 模块 → 图表数据** 中成对编辑标签与数值，再应用或取消草稿。最多 64 项单序列本地数据；柱／线／面积允许负数，饼／环只接受非负数，总和为零时显示空态。支持颜色与数值标签。生成 SVG 保持比例，并提供完整的无障碍数据表；过密的可见标签会省略并标记数量。目前是静态数据，不支持远程数据、实时绑定、悬停详情或多序列坐标轴。兼容原有版本 1 柱状图。
+- **图表（Chart）**：支持柱状、折线、面积、饼图和环形图，画布与 React/Vue 使用同一套几何布局。在 **设计 → 模块 → 图表数据** 中成对编辑标签与数值，再应用或取消草稿。最多 64 项单序列本地数据；柱／线／面积允许负数，饼／环只接受非负数，总和为零时显示空态。支持颜色与数值标签。生成 SVG 保持比例，并提供完整的无障碍数据表；过密的可见标签会省略并标记数量。可在模块面板的“图表数据”绑定对象状态，内容为成对的 `values` 与 `labels` 数组。React/Vue 随页面／文档状态及页面计算读取更新；空数据或非法数据不会恢复配置示例。Canvas 只显示非计算状态的设计初值。悬停详情和多序列坐标轴仍未支持。兼容原有版本 1 柱状图。
 - **Rich Text**：可安装、可编辑的富文本内容模块，提供经过审查的画布与编译器适配器。
 - **</> HTML**：可选择安装的 HTML 内容模块。经过审查的适配器最多接受 65,536 个字符，
   并使用严格内容安全策略在无脚本沙箱中渲染；插件清单自身不能注入标记或可执行代码。
@@ -103,6 +103,9 @@ Google Drive Storage、OneDrive Storage、Aliyun Drive Storage、Baidu Netdisk S
   布尔数据，以及初始排序/筛选、分页、单选/多选、密度与外观设置。最多接受 16 列、200 行、
   2,000 个单元格，不会自行获取远程数据。
   React 与 Vue 均提供有界本地操作及 CSV 导入/导出。
+
+高级数据网格可在模块面板的“行数据”绑定数组状态：每行包含唯一 `id` 和与配置列类型一致的 `cells`。外部数据变化重置实例的排序、筛选、选择和分页；内容相同的数组保持这些状态。绑定后关闭 CSV 导入，仍可导出当前筛选／排序结果。空数据和不可用数据明确区分，交互不会写回业务状态或执行远程分页。
+
 - **Tabs（标签页）**：可安装的无障碍标签页，支持 2–12 个有界纯文本面板、横向/纵向布局、
   自动/手动激活、初始标签页和外观设置。
   React/Vue 每个面板也可映射唯一的直接子框架，只挂载当前面板；缺失或重复映射会给出诊断。
@@ -154,9 +157,9 @@ Google Drive Storage、OneDrive Storage、Aliyun Drive Storage、Baidu Netdisk S
   运行时在 catch-all 路由中以客户端方式挂载，不代表已经转换为 Server Component 或 SSR。
 - **Vue Exporter**：生成 source-only 的 Vite + Vue 3 + TypeScript + Tailwind 工程，包括可编辑
   `.vue` SFC、多页面 Vue Router v4、本地 `src/assets/**` 图片，以及基础响应式状态、绑定和
-  事件、路由/查询参数、Toast/Confirm 反馈、本地表单校验，以及 35 个模块运行时：Table、
+  事件、路由/查询参数、Toast/Confirm 反馈、本地表单校验，以及 42 个模块运行时：Table、
   DataGrid、Tabs、Accordion、Carousel、Chart、Code Block、Markdown、Date Range、Tree/TreeSelect、Popover/Confirmation、Descriptions、Pagination、Org Chart、Walktour、Cascader、Video、VR Tour、Modal、Dropdown Menu、Slide Menu、
-  Slider/Range、Rating、Stepper、Breadcrumb、Alert、Progress、Chip、Avatar、Badge、Timeline、Tooltip、Skeleton、Empty State 和仅限本地的 Upload Button。Vue v1 会把高级运行时缺口写入
+  Slider/Range、Rating、Stepper、Breadcrumb、Alert、Progress、Chip、Avatar、Badge、Timeline、Tooltip、Skeleton、Empty State、仅限本地的 Upload Button、RichText、Audio Player、Lottie、Map、PDF Viewer、QR/Barcode 和隔离 HTML。Vue v1 会把高级运行时缺口写入
   `EXPORT_WARNINGS.md`，不会宣称与
   React 完全等价。UI 与 MCP 共用一次性编译与 ZIP Worker；取消会终止当前 Worker，同时不会
   detach 编辑器仍在使用的图片缓冲区。插件导出器只会在精确摘要与再分发许可证审查通过后复用
@@ -266,11 +269,11 @@ Rich Text 插入后会自动选中。在右侧 **设计 → 模块** 面板中�
 标题、引用、代码块与列表，并用格式按钮设置粗体、斜体、下划线、删除线、行内代码和安全
 链接，不需要手写 JSON。插件设置页中的操作按钮继续保留，作为管理与诊断入口。
 
-在 Compiler 预览以及导出的 React/Tauri 项目中，同一个模块会变成可直接输入、符合无障碍
+在 Compiler 预览以及导出的 React/Vue/Tauri 项目中，同一个模块会变成可直接输入、符合无障碍
 语义的富文本编辑器，并显示格式工具栏。当前 v1 支持正文、H1–H3、引用、代码块、粗体、
 斜体、下划线、删除线、行内代码、有序/无序列表、左/中/右对齐、安全链接、清除格式以及
 撤销/重做。粘贴和拖放只接受纯文本，复制进来的 HTML 不会注入图片或脚本。编辑器通过隐藏
-表单字段和 `openpencil:rich-text-change` DOM 事件提供有界 JSON 值，并能在普通父级 React
+表单字段和 `openpencil:rich-text-change` DOM 事件提供有界 JSON 值，并能在普通父级
 重渲染后保留内容。运行时编辑不会自动回写 `.fig`，页面刷新后也不会自动持久化；生成应用
 需要接收并保存该值，才能实现业务数据持久化。
 
@@ -279,7 +282,7 @@ Rich Text 插入后会自动选中。在右侧 **设计 → 模块** 面板中�
 **Cmd/Ctrl+Enter** 时，才会把有界内容提交到文档。外部文档值变化会同步回编辑器，无效值
 会显示错误，不会替换最后一份有效模块配置。
 
-Compiler 预览与导出的 React/Tauri 项目会把同一份有界源码和严格 CSP 放进 iframe，既不
+Compiler 预览与导出的 React/Vue/Tauri 项目会把同一份有界源码和严格 CSP 放进 iframe，既不
 授予脚本权限，也不授予同源权限。编辑器预览还会禁用指针事件并使用 `no-referrer`。这是
 用于文档内容的、经过审查的主机适配器，不允许插件清单向 OpenPencil 主 WebView 注入
 HTML、JavaScript、CSS、权限或新的运行时。
@@ -316,6 +319,8 @@ React/Vue/Tauri 项目会在点击画布中的触发器后，
 React/Vue/Tauri 项目会生成真实菜单运行时，支持方向键、Escape/Tab/外部点击关闭，以及安全的
 本地或公开链接。
 
+生成的 React/Vue Upload Button 支持调用方受控的 `files`、显式 `filesBound` 与 `onFilesChange`／`update:files` 接口；值保留为调用方内存中的真实 File，继续检查类型、数量、大小与目录。编辑器不将文件或 metadata 绑定到页面／文档状态，不持久化、传输或发送 MCP 文件事件。React/Vue RichText 的 `value`／`valueBound` 与 `onDocumentChange`／`update:value` 接受有界结构化 AST；外部回显不发变更事件，非法值和没有监听器的受控值保持只读，不接受 raw HTML。值保留在调用方内存中，不增加页面／文档绑定或持久化。
+
 安装 **Upload Button（上传按钮）** 后，可在 **设计 → 模块** 中编辑触发器、允许的文件类型、
 单选/多选、数量与单文件大小限制、拖放、已选文件列表、帮助文字和颜色。文件类型按 token 逐项编辑，
 例如 `.png`、`image/*` 或 `application/pdf`；重复项和无效项不会写入文档。浏览器的 `accept`
@@ -351,7 +356,7 @@ React 和 Vue 只在弹窗打开后显示映射的内容。
 
 安装 **Lottie** 后，在 **设计 → 模块** 中选择 `url` 或 `json`，并配置循环、自动播放、速度、
 方向与填充方式。Canvas 占位预览绝不请求网络。有界内嵌 JSON 会在本地加载；Compiler 预览与
-生成的 Web/React 输出只有在点击 **Load Lottie animation** 后才执行公开 HTTPS 请求，重试也必须由用户发起；
+生成的 Web/React/Vue 输出只有在点击 **Load Lottie animation** 后才执行公开 HTTPS 请求，重试也必须由用户发起；
 系统开启减少动态效果时会禁止自动播放。校验器只接受有界矢量子集，外部资源、表达式、音频
 和外部字体会安全拒绝，不会继续交给渲染器。
 
@@ -449,12 +454,12 @@ React 和 Vue 只在弹窗打开后显示映射的内容。
 **资产 → 组件模板**中选择示例。模板库包含 62 项：54 个基础组件、8 个常用组合；
 单值滑块和范围滑块是同一模块的两种模板。插入或收藏不会自动安装、启用插件。
 
-| 组件 | 在设计 → 模块中配置 | React/Vue 运行行为 |
-| --- | --- | --- |
-| 滑块／范围滑块 | 上下限、小数步长、初值、标签、外观、只读和禁用 | 原生范围语义、方向键／Home／End／Page 键，双端值不能互相越过 |
-| 评分 | 最大星数、半星、初值、清空及外观 | 键盘和指针选择、可选清空，以及当前组件的数值反馈 |
-| 步骤条 | 添加／排序步骤、标题、说明、状态、方向和初始步骤 | 可选点击未禁用步骤，仅改变当前步骤 |
-| 面包屑 | 添加／排序文字与链接、分隔符、换行和外观 | 通过校验的链接可跳转；末项表示当前页面，不跳转 |
+| 组件           | 在设计 → 模块中配置                              | React/Vue 运行行为                                           |
+| -------------- | ------------------------------------------------ | ------------------------------------------------------------ |
+| 滑块／范围滑块 | 上下限、小数步长、初值、标签、外观、只读和禁用   | 原生范围语义、方向键／Home／End／Page 键，双端值不能互相越过 |
+| 评分           | 最大星数、半星、初值、清空及外观                 | 键盘和指针选择、可选清空，以及当前组件的数值反馈             |
+| 步骤条         | 添加／排序步骤、标题、说明、状态、方向和初始步骤 | 可选点击未禁用步骤，仅改变当前步骤                           |
+| 面包屑         | 添加／排序文字与链接、分隔符、换行和外观         | 通过校验的链接可跳转；末项表示当前页面，不跳转               |
 
 修改滑块上下限或步长时，面板会将初值限制到有效刻度；减少星数或关闭半星时也会同步调整初始评分。
 切换选中节点或配置被其他操作更新后，旧输入草稿会取消，避免失焦时覆盖较新的设置。
@@ -486,12 +491,12 @@ OpenPencil 的交互能在 Figma 中运行。React 与 Vue 均有对应适配器
 
 安装 **PDF Viewer** 后，可配置安全根相对路径或规范公开 HTTPS 来源，以及标题、初始页/页数
 提示、适配方式、工具栏、下载和颜色。画布只显示不加载网络的纸张与元数据占位。Compiler
-预览只有在点击 **Load PDF preview** 后才挂载 URL；导出的 Web/React 项目通过沙箱 iframe
+预览只有在点击 **Load PDF preview** 后才挂载 URL；导出的 Web/React/Vue 项目通过沙箱 iframe
 交给浏览器显示 PDF，因此页码控制和格式支持取决于具体浏览器。URL 中不得包含凭据或秘密。
 
 安装 **Audio Player** 后，可配置安全根相对路径或规范公开 HTTPS 来源，以及标题/作者、
 控件、循环、静音、预加载、音量、播放速度和颜色。画布只显示惰性波形占位。Compiler 预览
-只有在点击 **Load audio preview** 后才挂载 URL；导出的 Web/React 项目使用浏览器原生音频
+只有在点击 **Load audio preview** 后才挂载 URL；导出的 Web/React/Vue 项目使用浏览器原生音频
 元素。浏览器自动播放策略仍然有效，模块校验器还要求自动播放必须同时静音。
 
 **静态设计系统审计**引擎会生成可取消、结果有界的报告，覆盖 token 集合/模式一致性、缺失或
@@ -516,15 +521,15 @@ Unreleased 的 **Next.js**、**Capacitor** 和 **Electron** 导出器只生成�
 
 **Vue Exporter** 同样只创建源码 ZIP，不安装依赖、不运行生成应用，也不启动 Vite。Vue v1
 输出可移植图片、可编辑组件、Vue Router v4 页面、路由/查询读取和安全的参数化导航、基础响应式
-状态/绑定/事件、Toast/Confirm 反馈、本地表单校验，以及上述 35 个经过审查的模块运行时。
-其余 7 个内置模块保留明确的 Vue 不支持诊断。Toast 支持 info/success/error、六个位置、持续时间、
+状态/绑定/事件、Toast/Confirm 反馈、本地表单校验，以及全部 42 个经过审查的内置模块运行时。
+Toast 支持 info/success/error、六个位置、持续时间、
 去重、关闭和具有无障碍语义的有界消息栈；Confirm 保留自定义按钮文字与两个结果分支，支持点击
 遮罩或 Escape 取消、键盘焦点约束及关闭后的焦点恢复。本地校验支持 required、pattern、长度与
 数值上下限和自定义表达式，提供行内/汇总错误与 `aria-invalid`、`aria-describedby`，无效提交不会
 执行已编写的 submit handler。远程异步校验不会请求配置的 URL，而是显示通用不可用错误、阻止
 提交，并在 `EXPORT_WARNINGS.md` 中加入 `vue-validation-async-unsupported`。无路由的单页面
 导出会把路由/查询上下文保持为空并给出警告。作者提供的原始 HTML 会被替换为空静态外壳，并
-生成 `vue-raw-html-unsupported`；导出器不会把这段内容写入 `v-html`。其他插件模块、Motion、
+生成 `vue-raw-html-unsupported`；导出器不会把这段内容写入 `v-html`。经过审查的 HTML 模块使用 CSP 优先的 `srcdoc` iframe、空 sandbox 和 `no-referrer`，不授予脚本或同源权限。其他插件模块、Motion、
 Prototype 与 Overlay、Supabase/Auth/服务端工作流、Stripe、i18n、Analytics、React UI Kit、
 主题切换和文档状态持久化仍会被省略或降级，并生成确定性的 `vue-*-unsupported` 警告。
 

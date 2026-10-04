@@ -1,4 +1,11 @@
-import { PAYLOAD_ENTRY_KEY_RE, validateExpression, validateURLTemplate } from '@open-pencil/lowcode'
+import {
+  PAYLOAD_ENTRY_KEY_RE,
+  validateExpression,
+  validateURLTemplate,
+  validateLowcodeBackFallback,
+  validateLowcodeNavigationHistory,
+  validateLowcodeNavigationTarget
+} from '@open-pencil/lowcode'
 import type {
   ActionDef,
   SupabaseFilter,
@@ -370,13 +377,26 @@ function referenceActionErrors(action: ActionDef, ctx: ActionValidationCtx): Act
   return {}
 }
 
+function navigationActionErrors(
+  action: Extract<ActionDef, { kind: 'navigate' | 'back' }>
+): ActionErrors {
+  if (action.kind === 'back') {
+    const fallback = typeof action.fallback === 'string' ? action.fallback : ''
+    const validation = validateLowcodeBackFallback(fallback)
+    return validation.ok ? {} : { to: validation.reason }
+  }
+  const validation = validateLowcodeNavigationTarget(action.to?.trim() ?? '')
+  if (!validation.ok) return { to: validation.reason }
+  return validateLowcodeNavigationHistory(action.history).ok
+    ? {}
+    : { to: 'unknown navigation history mode' }
+}
+
 /** Compute the validation errors for one action (leaf-level only — branch
  *  children validate via their own rows). Mirrors `errorsFor` in IR collect. */
 export function computeActionErrors(action: ActionDef, ctx: ActionValidationCtx): ActionErrors {
   if (action.kind === 'setState') return setStateErrors(action, ctx)
-  if (action.kind === 'navigate') {
-    return !action.to || action.to.trim() === '' ? { to: 'path required' } : {}
-  }
+  if (action.kind === 'navigate' || action.kind === 'back') return navigationActionErrors(action)
   if (action.kind === 'setVariable') return setVariableErrors(action, ctx)
   if (action.kind === 'apiCall') return apiCallErrors(action, ctx)
   if (action.kind === 'supabaseQuery') return supabaseQueryErrors(action, ctx)

@@ -9,16 +9,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from 'reka-ui'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 
-import { derivePagePaths, type PagePathInfo } from '@open-pencil/compiler'
-import type { IRTree } from '@open-pencil/compiler/ir/types'
 import { IS_TAURI } from '@open-pencil/core/constants'
-import { useI18n } from '@open-pencil/vue'
+import {
+  lowcodeNavigationPathname,
+  lowcodeRouteMatches,
+  resolveLowcodeApplicationPages
+} from '@open-pencil/lowcode'
+import { useCodeMessages, useI18n } from '@open-pencil/vue'
 
 import { useCollabInjected } from '@/app/collab/use'
 import type { PreviewDocStatePayload } from '@/app/collab/use'
-import { useEditorStore } from '@/app/editor/active-store'
+import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
+import {
+  applicationPreviewFrameURL,
+  applicationPreviewInitialRoute,
+  applicationPreviewNavigationRoute,
+  applicationPreviewRoutes
+} from '@/app/lowcode/application-mode/runtime'
 import { appPluginStore, appPluginStoreSnapshot } from '@/app/plugins/app'
 import { runInstalledPluginCommand } from '@/app/plugins/host'
 import { readAppBackendProviderDocumentRequest } from '@/app/plugins/host/backend-provider'
@@ -33,6 +42,10 @@ import { openExternalLink, toast } from '@/app/shell/ui'
 import { menuItem, useMenuUI } from '@/components/ui/menu/menu'
 import Tip from '@/components/ui/overlay/Tip.vue'
 
+import AdaptationDiagnostics from './adaptation/Diagnostics.vue'
+import { usePreviewAdaptation } from './adaptation/session'
+import { createApplicationPageSessionCache } from './application-session/cache'
+import { createApplicationPreviewStateCache } from './application-state'
 import BackendPreviewStatus from './backend-controls/BackendPreviewStatus.vue'
 import CodePenShowcaseControls from './CodePenShowcaseControls.vue'
 import {
@@ -46,6 +59,7 @@ import {
   type PreviewRefreshPolicy
 } from './compile-scheduler'
 import DeployControls from './DeployControls.vue'
+import FlutterNativeControls from './flutter-native/Controls.vue'
 import { localBackendSignInURL, parseLocalBackendSignInRequest } from './iframe/local-backend-auth'
 import {
   createPreviewEditorMessage,
@@ -67,13 +81,22 @@ import {
   syncActiveCompilerPreviewPopout
 } from './popout/session'
 import PreviewSettingsPopover from './PreviewSettingsPopover.vue'
+import { previewSyncDescription, previewSyncLabel } from './sync-copy'
+import SyncModeSelect from './SyncModeSelect.vue'
 import { resolvePreviewToolbarBand } from './toolbar-layout'
 import { useCompileOnChange, type PreviewTarget, type PreviewUIKit } from './use-compile-on-change'
 import PreviewViewportControls from './viewport/Controls.vue'
+import {
+  applyWebPreviewWidthRequest,
+  expireWebPreviewWidthRequest,
+  setWebPreviewWidthAvailability,
+  useWebPreviewWidthRequest
+} from './viewport/request'
 import { usePreviewViewport } from './viewport/use'
 
 const emit = defineEmits<{ close: []; 'request-expand': [complete: () => void] }>()
 const { locale } = useI18n()
+const codeMessages = useCodeMessages()
 const { embeddedVisible = true } = defineProps<{ embeddedVisible?: boolean }>()
 
 // docs/lowcode-phase-0.md §5.4 + Phase 2 §7 — bridge protocol over postMessage.
@@ -86,7 +109,15 @@ const previewUIKit = ref<PreviewUIKit>('none')
 const previewI18nEnabled = ref(false)
 const previewLocalesInput = ref('')
 const previewTheme = ref<'light' | 'dark'>('light')
-const { viewport: previewViewport, frameStyle: previewFrameStyle } = usePreviewViewport()
+const {
+  viewport: previewViewport,
+  width: previewWidth,
+  height: previewHeight,
+  textScale: previewTextScale,
+  keyboard: previewKeyboard,
+  diagnostics: previewAdaptationEnabled,
+  frameStyle: previewFrameStyle
+} = usePreviewViewport()
 const toolbarEl = ref<HTMLElement | null>(null)
 const { width: toolbarWidth } = useElementSize(toolbarEl)
 const toolbarBand = computed(() => resolvePreviewToolbarBand(toolbarWidth.value))
@@ -193,6 +224,10 @@ async function openLocalBackendPreview(): Promise<void> {
   }
 }
 const store = useEditorStore()
+const widthRequestOwner = getActiveEditorStore()
+const widthRequests = useWebPreviewWidthRequest(getActiveEditorStore)
+const widthRequestMounted = ref(false)
+let openingWidthRequest = 0
 const collab = useCollabInjected()
 const compilerPreviewPopoutCommand = computed(() => {
   // The snapshot makes the store's imperative lookup reactive across plugin
@@ -287,10 +322,9 @@ const previewStatusTone = computed(() => {
 const previewSettingsSummary = computed(() => {
   const uiKit = previewUIKit.value === 'shadcn' ? 'shadcn/ui' : 'Tailwind'
   const theme = previewTheme.value === 'dark' ? 'Dark' : 'Light'
-  let refresh = 'Auto'
-  if (localBackendActive.value) refresh = 'Auto (local backend)'
-  else if (previewRefreshPolicy.value === 'realtime') refresh = 'Real-time'
-  else if (previewRefreshPolicy.value === 'manual') refresh = 'Manual'
+  const refresh = localBackendActive.value
+    ? codeMessages.value.previewSyncAutoBackend
+    : previewSyncLabel(codeMessages.value, previewRefreshPolicy.value)
   return [uiKit, theme, refresh, previewI18nEnabled.value ? 'i18n' : null]
     .filter(Boolean)
     .join(' · ')
@@ -352,8 +386,40 @@ const motionDebugSnapshot = ref<MotionDebugSnapshot | null>(null)
 // flag the iframe → editor → iframe echo would loop until one side missed
 // a frame.
 let suppressOutboundNavigate = false
+const lastPreviewRoute = ref<string | null>(null)
+let retainedNavigationPage: string | null = null
+const applicationState = createApplicationPreviewStateCache()
+const applicationPages = createApplicationPageSessionCache()
+watch(
+  () => store.graph,
+  () => {
+    lastPreviewRoute.value = null
+    retainedNavigationPage = null
+    applicationState.clear()
+    applicationPages.clear()
+  },
+  { flush: 'sync' }
+)
+watch(
+  [() => store.state.sceneVersion, previewTarget],
+  () => {
+    applicationState.synchronize(store.graph, previewTarget.value)
+    applicationPages.synchronize(store.graph, previewTarget.value)
+  },
+  { flush: 'sync' }
+)
+watch(
+  [localBackendActive, backendMode],
+  () => {
+    applicationState.clear()
+    applicationPages.clear()
+  },
+  { flush: 'sync' }
+)
 
 function reload(): void {
+  applicationState.clear()
+  applicationPages.clear()
   resetMotionDebugForReload()
   const nextIframeKey = iframeKey.value + 1
   webdriverAutomationIframeKey.value = consumeWebdriverAutomationForReload() ? nextIframeKey : null
@@ -379,12 +445,41 @@ const activeFrame = computed(() => {
   if (status.value.kind === 'starting') return status.value.frame ?? null
   return null
 })
+const url = ref<string | null>(null)
+let initialURLChannel: string | null = null
+watch(
+  activeFrame,
+  (frame) => {
+    if (frame?.channelId === initialURLChannel) return
+    initialURLChannel = frame?.channelId ?? null
+    const route = frame
+      ? applicationPreviewInitialRoute(
+          store.graph,
+          store.state.currentPageId,
+          lastPreviewRoute.value ?? undefined
+        )
+      : undefined
+    if (route) {
+      lastPreviewRoute.value = route
+      retainedNavigationPage =
+        findPageIdForRoute(route) === store.state.currentPageId ? null : store.state.currentPageId
+    }
+    url.value = frame ? applicationPreviewFrameURL(frame.src, route) : null
+  },
+  { immediate: true, flush: 'sync' }
+)
 watch(activeFrame, (frame) => {
+  if (
+    frame?.channelId !== browserMessagePortChannel &&
+    resolveLowcodeApplicationPages(store.graph).mode !== 'application'
+  ) {
+    lastPreviewRoute.value = null
+    retainedNavigationPage = null
+  }
   if (browserMessagePortChannel && frame?.channelId !== browserMessagePortChannel) {
     closeBrowserMessagePort()
   }
 })
-const url = computed(() => activeFrame.value?.src ?? null)
 const embeddedURL = computed(() =>
   localBackendActive.value ? localBackendBrowserURL.value : url.value
 )
@@ -444,7 +539,11 @@ const statusLabel = computed(() => {
     case 'starting':
       return status.value.host === 'tauri-sidecar' ? 'Starting dev server…' : 'Compiling…'
     case 'ready': {
-      const route = findRouteForPageId(store.state.currentPageId) ?? '/'
+      const route =
+        lastPreviewRoute.value ??
+        findRouteForPageId(store.state.currentPageId) ??
+        applicationPreviewRoutes(store.graph)[0]?.route ??
+        '/'
       return formatPreviewURL(status.value.frame.displayURL, route)
     }
     case 'error':
@@ -455,33 +554,16 @@ const statusLabel = computed(() => {
   return ''
 })
 
-// §7 decision #g: pageId↔slug round-trip uses the compiler's single source
-// of truth (`derivePagePaths`). `derivePagePaths` only reads `ir.pageId`
-// and `ir.pageName`, so we hand it minimal IR stubs built from the
-// SceneGraph and skip the full `collectTree` pass on every nav.
-function getPagePathInfos(): readonly PagePathInfo[] {
-  const stubs: IRTree[] = store.graph.getPages().map((p) => ({
-    pageId: p.id,
-    pageName: p.name,
-    // §16.1: route params are irrelevant to slug derivation; dynamic-route
-    // preview navigation is a real-machine follow-up, so the stub stays minimal.
-    usesRouteParams: false,
-    children: [],
-    states: [],
-    docStates: [],
-    docStateReads: [],
-    docStateWrites: [],
-    warnings: []
-  }))
-  return derivePagePaths(stubs)
-}
-
 function findRouteForPageId(pageId: string): string | null {
-  return getPagePathInfos().find((info) => info.pageId === pageId)?.route ?? null
+  return applicationPreviewRoutes(store.graph).find((info) => info.pageId === pageId)?.route ?? null
 }
 
 function findPageIdForRoute(route: string): string | null {
-  return getPagePathInfos().find((info) => info.route === route)?.pageId ?? null
+  const pathname = lowcodeNavigationPathname(route)
+  return (
+    applicationPreviewRoutes(store.graph).find((info) => lowcodeRouteMatches(info.route, pathname))
+      ?.pageId ?? null
+  )
 }
 
 async function openCompilerPreviewPopout(): Promise<void> {
@@ -589,10 +671,22 @@ function postTheme(): void {
   postIframe({ type: 'theme', theme: previewTheme.value })
 }
 
+function postPreviewNavigate(route: string): void {
+  const application = resolveLowcodeApplicationPages(store.graph).mode === 'application'
+  postIframe({ type: 'navigate', route, ...(application ? { replace: true } : {}) })
+}
+
 function postNavigateToCurrent(): void {
-  const route = findRouteForPageId(store.state.currentPageId)
+  const route = applicationPreviewNavigationRoute(
+    store.graph,
+    store.state.currentPageId,
+    lastPreviewRoute.value ?? undefined
+  )
   if (!route) return
-  postIframe({ type: 'navigate', route })
+  retainedNavigationPage =
+    findPageIdForRoute(route) === store.state.currentPageId ? null : store.state.currentPageId
+  lastPreviewRoute.value = route
+  postPreviewNavigate(route)
 }
 
 function postSelection(): void {
@@ -600,10 +694,16 @@ function postSelection(): void {
   if (id) {
     const nodePageId = findPageIdOfNode(id)
     if (nodePageId) {
-      const route = findRouteForPageId(nodePageId)
-      // The bridge's inbound navigate handler no-ops on same-route, so
-      // always sending is safe and saves a comparison branch here.
-      if (route) postIframe({ type: 'navigate', route })
+      const route = applicationPreviewNavigationRoute(
+        store.graph,
+        nodePageId,
+        lastPreviewRoute.value ?? undefined
+      )
+      // A reference selection or unresolved parameter must not navigate another application page.
+      if (route && findPageIdForRoute(route) === nodePageId) {
+        lastPreviewRoute.value = route
+        postPreviewNavigate(route)
+      }
     }
   }
   postIframe({ type: 'select', id })
@@ -712,9 +812,19 @@ const visibleMotionDebugEntries = computed(
 function replayPreviewState(): void {
   resetMotionDebugForReload()
   if (status.value.kind !== 'ready') return
+  if (!localBackendActive.value) {
+    postIframe({
+      type: 'pageSession',
+      snapshot: applicationPages.snapshot(store.graph, previewTarget.value)
+    })
+  }
+  for (const state of applicationState.entries(store.graph, previewTarget.value)) {
+    postIframe({ type: 'docState', ...state })
+  }
   postNavigateToCurrent()
   postTheme()
   postSelection()
+  adaptation.request()
   if (motionDebugEnabled.value) postIframe({ type: 'motionDebug', enabled: true })
 }
 
@@ -746,6 +856,7 @@ function onIframeLoad(event: Event): void {
 }
 
 let unsubscribeSelection: (() => void) | null = null
+let unsubscribeAdaptationGraph: (() => void) | null = null
 let unregisterPopoutSession: (() => void) | null = null
 
 function handleMotionDebugMessage(
@@ -780,18 +891,56 @@ function handlePreviewSelectMessage(
 function handlePreviewNavigateMessage(
   data: Extract<PreviewInboundMessage, { type: 'navigate' }>
 ): void {
+  if (
+    adaptationFrameGraph.value !== store.graph ||
+    (store.state.preparation && store.state.preparation.kind !== 'page-switch')
+  )
+    return
   const targetPageId = findPageIdForRoute(data.route)
+  // Restoring the runtime location must not pull an author away from a reference page.
+  if (
+    targetPageId &&
+    retainedNavigationPage === store.state.currentPageId &&
+    data.route === lastPreviewRoute.value
+  )
+    return
+  retainedNavigationPage = null
+  if (targetPageId) lastPreviewRoute.value = data.route
   if (!targetPageId || targetPageId === store.state.currentPageId) return
+  // Keep the latest location without superseding an author or in-flight page preparation.
+  if (store.state.preparation) return
+  const graph = store.graph
+  const channelId = activeFrame.value?.channelId
+  let completed = false
   suppressOutboundNavigate = true
-  void store.switchPage(targetPageId).finally(() => {
-    suppressOutboundNavigate = false
-  })
+  void store
+    .switchPage(targetPageId)
+    .then(() => {
+      completed = true
+      return true
+    })
+    .catch((error: unknown) => {
+      // Opening another document or an author page switch may retire this navigation.
+      if (!(error instanceof DOMException && error.name === 'AbortError')) throw error
+    })
+    .finally(() => {
+      suppressOutboundNavigate = false
+      if (
+        completed &&
+        store.graph === graph &&
+        activeFrame.value?.channelId === channelId &&
+        lastPreviewRoute.value &&
+        lastPreviewRoute.value !== data.route
+      )
+        handlePreviewNavigateMessage({ ...data, route: lastPreviewRoute.value })
+    })
 }
 
 function handlePreviewDocStateMessage(
   data: Extract<PreviewInboundMessage, { type: 'docState' }>
 ): void {
-  if (localBackendActive.value) return
+  if (localBackendActive.value || adaptationFrameGraph.value !== store.graph) return
+  applicationState.accept(store.graph, previewTarget.value, data.name, data.value)
   collab?.sendPreviewDocState({
     name: data.name,
     value: data.value as PreviewDocStatePayload['value']
@@ -805,11 +954,132 @@ function handlePreviewContentMessage(
   if (data.type === 'select') handlePreviewSelectMessage(data)
   else if (data.type === 'navigate') handlePreviewNavigateMessage(data)
   else if (data.type === 'docState') handlePreviewDocStateMessage(data)
-  else if (data.type === 'motionDebug') handleMotionDebugMessage(data)
+  else if (data.type === 'pageSession' && adaptationFrameGraph.value === store.graph) {
+    applicationPages.accept(
+      store.graph,
+      previewTarget.value,
+      data.snapshot,
+      pageSessionFrameAuthority
+    )
+  } else if (data.type === 'motionDebug') handleMotionDebugMessage(data)
+  else if (data.type === 'adaptation') adaptation.accept(data)
   // A WebDriver caller installs its own correlated listener before posting
   // an automation request. The application listener validates but deliberately
   // does not retain or surface these test-only results.
 }
+
+let pageSessionFrameAuthority: object | null = null
+const adaptationCurrentGraph = shallowRef(store.graph)
+const adaptationFrameGraph = shallowRef(store.graph)
+watch(
+  activeFrame,
+  (frame, previous) => {
+    // A sidecar ACK confirms emitted files, not HMR application in the old runtime.
+    // Retained sessions use a fresh channel and iframe, then replay declared values on ready.
+    if (
+      !localBackendActive.value &&
+      hostKind.value === 'tauri-sidecar' &&
+      previous &&
+      frame?.pageSessionSource &&
+      frame.channelId !== previous.channelId
+    )
+      iframeKey.value++
+    const source = frame?.pageSessionSource
+    pageSessionFrameAuthority =
+      source?.graph === store.graph && !localBackendActive.value
+        ? applicationPages.authority(store.graph, previewTarget.value, source.signature)
+        : null
+    if (frame?.channelId) adaptationFrameGraph.value = store.graph
+  },
+  { flush: 'sync' }
+)
+const adaptationAvailable = computed(
+  () =>
+    status.value.kind === 'ready' &&
+    embeddedVisible &&
+    !localBackendActive.value &&
+    adaptationCurrentGraph.value === adaptationFrameGraph.value
+)
+const adaptation = usePreviewAdaptation({
+  enabled: previewAdaptationEnabled,
+  textScale: previewTextScale,
+  context: computed(() =>
+    adaptationAvailable.value && activeFrame.value
+      ? `${activeFrame.value.channelId}:${store.state.currentPageId}`
+      : null
+  ),
+  viewport: computed(() => JSON.stringify(previewFrameStyle.value)),
+  post: postIframe
+})
+const adaptationItems = computed(() =>
+  !adaptationAvailable.value
+    ? []
+    : adaptation.items.value.flatMap((item) => {
+        const node = store.graph.getNode(item.nodeId)
+        return node && findPageIdOfNode(node.id) === store.state.currentPageId
+          ? [{ ...item, nodeName: node.name }]
+          : []
+      })
+)
+
+function jumpToAdaptation(nodeId: string): void {
+  if (!adaptationItems.value.some((item) => item.nodeId === nodeId)) return
+  store.select([nodeId])
+  store.zoomToSelection()
+}
+
+function consumeRequestedPreviewWidth(): void {
+  const request = widthRequests.pending.value
+  if (!widthRequestMounted.value || !request || getActiveEditorStore() !== widthRequestOwner) return
+  const phase = status.value.kind
+  updatePreviewWidthAvailability()
+  if (widthRequests.pending.value !== request) return
+  if (!embeddedVisible) {
+    if (openingWidthRequest !== request.serial) {
+      openingWidthRequest = request.serial
+      emit('request-expand', consumeRequestedPreviewWidth)
+    }
+    return
+  }
+  applyWebPreviewWidthRequest(
+    widthRequestOwner,
+    request,
+    { target: previewTarget.value, phase, graph: adaptationFrameGraph.value },
+    (width) => {
+      previewWidth.value = width
+    }
+  )
+}
+
+function updatePreviewWidthAvailability(): void {
+  if (getActiveEditorStore() !== widthRequestOwner) return
+  const phase = status.value.kind
+  let available: boolean | null = null
+  if (phase === 'ready') available = true
+  else if (phase === 'unsupported' || phase === 'error') available = false
+  setWebPreviewWidthAvailability(widthRequestOwner, available)
+}
+
+watch(
+  () => [
+    widthRequests.pending.value,
+    widthRequestMounted.value,
+    embeddedVisible,
+    status.value.kind,
+    previewTarget.value,
+    adaptationFrameGraph.value
+  ],
+  consumeRequestedPreviewWidth,
+  { flush: 'post' }
+)
+watch(() => status.value.kind, updatePreviewWidthAvailability, { flush: 'sync' })
+onMounted(() => {
+  widthRequestMounted.value = true
+})
+onBeforeUnmount(() => {
+  expireWebPreviewWidthRequest(widthRequestOwner)
+  setWebPreviewWidthAvailability(widthRequestOwner, null)
+})
 
 function installBrowserMessagePort(port: MessagePort, channelId: string): void {
   closeBrowserMessagePort()
@@ -1032,7 +1302,11 @@ onMounted(() => {
     getRequest() {
       if (localBackendActive.value || status.value.kind !== 'ready' || status.value.port === null)
         return null
-      const path = findRouteForPageId(store.state.currentPageId)
+      const path = applicationPreviewNavigationRoute(
+        store.graph,
+        store.state.currentPageId,
+        lastPreviewRoute.value ?? undefined
+      )
       return path
         ? {
             url: status.value.url,
@@ -1047,16 +1321,32 @@ onMounted(() => {
   unsubscribeSelection = store.onEditorEvent('selection:changed', () => {
     postSelection()
   })
+  unsubscribeAdaptationGraph = store.onEditorEvent('graph:replaced', (graph) => {
+    lastPreviewRoute.value = null
+    retainedNavigationPage = null
+    applicationState.clear()
+    applicationPages.clear()
+    adaptationCurrentGraph.value = graph
+  })
   // §4.6: a remote peer's runtime docState change → push it into this iframe.
   // The bridge applies it with its own suppress flag so it doesn't echo back.
-  collab?.onPreviewDocState((payload) => postIframe({ type: 'docState', ...payload }))
+  collab?.onPreviewDocState((payload) => {
+    if (!localBackendActive.value) {
+      applicationState.accept(store.graph, previewTarget.value, payload.name, payload.value)
+    }
+    postIframe({ type: 'docState', ...payload })
+  })
 })
 
 onBeforeUnmount(() => {
+  applicationState.clear()
+  applicationPages.clear()
   unregisterPopoutSession?.()
   unregisterPopoutSession = null
   if (motionDebugEnabled.value) postIframe({ type: 'motionDebug', enabled: false })
   unsubscribeSelection?.()
+  unsubscribeAdaptationGraph?.()
+  unsubscribeAdaptationGraph = null
   unsubscribeSelection = null
   collab?.onPreviewDocState(null)
   closeBrowserMessagePort()
@@ -1419,19 +1709,10 @@ onBeforeUnmount(() => {
             placeholder="ar, fr"
             class="h-6 w-20 rounded border border-border bg-input px-1 text-xs text-surface"
           />
-          <Tip label="Preview refresh policy">
+          <Tip :label="previewSyncDescription(codeMessages, displayedRefreshPolicy)">
             <label class="flex items-center gap-1 text-xs text-muted">
-              <span>Refresh</span>
-              <select
-                v-model="displayedRefreshPolicy"
-                :disabled="localBackendActive"
-                data-test-id="lowcode-preview-refresh-policy"
-                class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
-              >
-                <option value="realtime">Real-time</option>
-                <option value="auto">Auto</option>
-                <option value="manual">Manual</option>
-              </select>
+              <span>{{ codeMessages.previewSyncMode }}</span>
+              <SyncModeSelect v-model="displayedRefreshPolicy" :disabled="localBackendActive" />
             </label>
           </Tip>
           <Tip :label="compileActivityDetail">
@@ -1549,6 +1830,7 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </div>
+    <FlutterNativeControls v-model="previewRefreshPolicy" />
     <div class="flex min-h-0 flex-1 flex-col bg-white">
       <p
         v-if="requiresDesktopBackend"
@@ -1564,22 +1846,38 @@ onBeforeUnmount(() => {
         :url="localBackendBrowserURL"
         @open="openLocalBackendPreview"
       />
-      <PreviewViewportControls v-if="embeddedURL" v-model="previewViewport" />
+      <PreviewViewportControls
+        v-if="embeddedURL"
+        v-model="previewViewport"
+        v-model:width="previewWidth"
+        v-model:height="previewHeight"
+        v-model:text-scale="previewTextScale"
+        v-model:keyboard="previewKeyboard"
+        v-model:diagnostics="previewAdaptationEnabled"
+        :simulation-available="adaptationAvailable"
+      />
       <div class="relative min-h-0 flex-1 overflow-auto">
-        <iframe
-          v-if="embeddedURL && embeddedVisible"
-          :key="iframeKey"
-          ref="iframeEl"
-          :name="frameName"
-          :sandbox="embeddedSandbox"
-          :src="embeddedURL"
-          referrerpolicy="no-referrer"
-          class="block border-0"
-          :style="previewFrameStyle"
-          :class="{ invisible: status.kind !== 'ready' }"
-          aria-label="lowcode preview"
-          @load="onIframeLoad"
-        />
+        <div v-if="embeddedURL && embeddedVisible" class="relative" :style="previewFrameStyle">
+          <iframe
+            :key="iframeKey"
+            ref="iframeEl"
+            :name="frameName"
+            :sandbox="embeddedSandbox"
+            :src="embeddedURL"
+            referrerpolicy="no-referrer"
+            class="block size-full border-0"
+            :class="{ invisible: status.kind !== 'ready' }"
+            aria-label="lowcode preview"
+            @load="onIframeLoad"
+          />
+          <div
+            v-if="previewKeyboard && status.kind === 'ready'"
+            data-test-id="lowcode-preview-keyboard-overlay"
+            class="absolute inset-x-0 bottom-0 flex h-[300px] max-h-[45%] items-center justify-center border-t border-border bg-panel/95 px-4 text-center text-xs text-muted"
+          >
+            {{ codeMessages.previewKeyboardOverlay }}
+          </div>
+        </div>
         <div
           v-if="localBackendActive && !localBackendBrowserURL"
           data-test-id="lowcode-preview-local-status"
@@ -1608,6 +1906,13 @@ onBeforeUnmount(() => {
           {{ statusLabel }}
         </div>
       </div>
+      <AdaptationDiagnostics
+        v-if="previewAdaptationEnabled && adaptationAvailable"
+        :items="adaptationItems"
+        :waiting="adaptation.waiting.value"
+        :truncated="adaptation.truncated.value"
+        @jump="jumpToAdaptation"
+      />
       <section
         v-if="diagnosticsOpen"
         id="lowcode-preview-diagnostics"

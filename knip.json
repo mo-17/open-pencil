@@ -13,5 +13,9 @@
     "/src/app/tabs/index.ts",
     "#core/*"
   ],
-  "ignoreBinaries": ["figma-use", "identify", "magick", "open", "osascript", "tauri-wd"]
+  "ignoreBinaries": [
+    "open",
+    "tauri-wd",
+    "tests/helpers/compiler/components/templates/compile-fig.ts"
+  ]
 }

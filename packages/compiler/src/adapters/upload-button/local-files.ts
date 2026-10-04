@@ -5,6 +5,8 @@ interface SelectedLocalFile {
   file: File
 }
 
+const EMPTY_LOCAL_FILES: SelectedLocalFile[] = []
+
 interface DropFiles {
   files: File[]
   ignoredItems: number
@@ -172,5 +174,31 @@ function selectLocalFiles(
     const unchecked = Math.max(0, files.length - candidateCount) + additionalUnchecked
     if (unchecked > 0) summaries.push(unchecked + ' additional files were not checked.')
     return { selected: next, error: [...messages, ...summaries].join(' ') }
+}
+
+/** External files remain browser-local objects. Invalid projections never notify
+ * the owner or fall back to local state; no file content is read here. */
+function projectLocalFiles(
+  value: unknown,
+  config: LocalSelectionConfig,
+  current: readonly SelectedLocalFile[],
+  createId: () => number
+): SelectedLocalFile[] | null {
+  try {
+    if (!Array.isArray(value) || value.length > Math.min(MAX_INCOMING_FILES, config.maxFiles) || (!config.multiple && value.length > 1)) return null
+    if (Reflect.ownKeys(value).length !== value.length + 1) return null
+    const result: SelectedLocalFile[] = []
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+      if (!descriptor || !Object.hasOwn(descriptor, 'value')) return null
+      const file: unknown = descriptor.value
+      if (!(file instanceof File) || !Number.isSafeInteger(file.size) || file.size < 0 || file.size > config.maxFileBytes || (file.webkitRelativePath !== undefined && file.webkitRelativePath !== '') || !matchesAccept(file, config.accept)) return null
+      if (result.some((entry) => sameLocalFile(entry.file, file))) return null
+      result.push(current.find((entry) => entry.file === file) ?? { id: createId(), file })
+    }
+    return result
+  } catch {
+    return null
+  }
 }
 `

@@ -29,6 +29,15 @@ export const TREE_STYLE_SOURCE = `[data-openpencil-tree]{box-sizing:border-box;m
 `
 export const TREE_STATE_SOURCE = `function treeKey(config:OpenPencilTreeConfig):string{return JSON.stringify([config.items,config.selectionMode,config.initialSelectedIds,config.initialExpandedIds,config.presentation,config.searchable])}
 function initialTree(config:OpenPencilTreeConfig):TreeState{return {selected:[...config.initialSelectedIds],expanded:[...config.initialExpandedIds],query:'',activeId:'',open:false}}
+function treeSelectedIds(config:OpenPencilTreeConfig,value:unknown):string[]|null{
+ const selected=config.selectionMode==='single'?typeof value==='string'?(value===''?[]:[value]):null:Array.isArray(value)&&value.every(id=>typeof id==='string')?value:null
+ if(!selected||new Set(selected).size!==selected.length)return null
+ const byId=new Map(config.items.map(item=>[item.id,item]))
+ for(const id of selected){let item=byId.get(id);if(!item)return null;for(let depth=0;item&&depth<6;depth++){if(item.disabled)return null;item=byId.get(item.parentId)}}
+ return [...selected]
+}
+function treeSelectionValue(config:OpenPencilTreeConfig,selected:readonly string[]):string|string[]{return config.selectionMode==='single'?selected[0]??'':[...selected]}
+function sameTreeSelection(left:readonly string[],right:readonly string[]):boolean{return left.length===right.length&&left.every((id,index)=>id===right[index])}
 function treeCopy(language:string){return language.toLowerCase().startsWith('zh')?{search:'搜索树节点',empty:'没有匹配节点',none:'未选择',selected:'已选',clear:'清除选择',expand:'展开',collapse:'收起'}:{search:'Search tree items',empty:'No matching items',none:'None selected',selected:'Selected',clear:'Clear selection',expand:'Expand',collapse:'Collapse'}}
 function visibleRows(config:OpenPencilTreeConfig,state:TreeState):TreeRow[]{
  const needle=state.query.trim().toLocaleLowerCase(),matches=new Set<string>(),byId=new Map(config.items.map(item=>[item.id,item]))
@@ -40,7 +49,7 @@ function visibleRows(config:OpenPencilTreeConfig,state:TreeState):TreeRow[]{
  }
  visit('',1,false);return rows
 }
-function treeSummary(config:OpenPencilTreeConfig,state:TreeState):string{return state.selected.map(id=>config.items.find(item=>item.id===id)?.label??id).join(', ')}
+function treeSummary(config:OpenPencilTreeConfig,selected:readonly string[]|null):string{return selected===null?'—':selected.map(id=>config.items.find(item=>item.id===id)?.label??id).join(', ')}
 function toggleBranch(config:OpenPencilTreeConfig,state:TreeState,id:string):TreeState{
  const row=visibleRows(config,state).find(row=>row.item.id===id)
  if(!row||row.disabled||!row.hasChildren||state.query.trim())return state
@@ -68,5 +77,14 @@ function treeKeyboard(config:OpenPencilTreeConfig,state:TreeState,key:string):{s
  return {state:{...next,activeId:focus},handled,focus:handled?focus:''}
 }
 function activeTreeId(rows:TreeRow[],state:TreeState):string{return rows.find(row=>row.item.id===state.activeId&&!row.disabled)?.item.id??rows.find(row=>!row.disabled)?.item.id??''}
+function treeKeyboardSource(event:{target:EventTarget|null;currentTarget:EventTarget|null},rows:readonly TreeRow[],active:string):string|null{
+ const list=event.currentTarget,target=event.target
+ if(!(list instanceof Element)||!list.matches('[data-tree-list]')||!(target instanceof Element)||!list.contains(target)||target.closest('[data-tree-list]')!==list)return null
+ if(target===list)return active
+ const source=target.closest('[data-tree-row]')
+ if(!source||source.closest('[data-tree-list]')!==list||source.closest('[hidden],[inert]'))return null
+ const id=source.getAttribute('data-tree-id')
+ return rows.find(row=>row.item.id===id&&!row.disabled)?.item.id??null
+}
 function focusTreeRow(host:HTMLElement|null,id:string):void{host?.querySelector<HTMLElement>('[data-tree-id="'+id+'"]')?.focus()}
 `

@@ -38,6 +38,9 @@ export interface PreviewFrameDescriptor {
   sandbox: 'allow-scripts' | null
   /** Per-build capability echoed by the generated preview bridge. */
   channelId: string
+  /** Local-only session/navigation policy authority from this build's graph snapshot boundary.
+   * Never serialized into a Worker request, sidecar update or iframe boot context. */
+  pageSessionSource?: { readonly graph: SceneGraph; readonly signature: string }
 }
 
 export interface PreviewHostBuildRequest {

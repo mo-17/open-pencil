@@ -1,12 +1,10 @@
 import { execFileSync } from 'node:child_process'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
 
-import type { PreviewServer } from '@open-pencil/compiler/dev-server'
-
+import { moduleFormDiagnostics } from './diagnostics'
 import { withModuleFormCleanup } from './lifecycle'
+import { startFormPreviewSidecar } from './sidecar'
 
 export async function withModuleForm(
   page: Page,
@@ -24,20 +22,26 @@ export async function withModuleForm(
       maxBuffer: 8 * 1024 * 1024
     })
   ) as [string, string][]
-  const { createPreviewServer } = await import(
-    pathToFileURL(join(process.cwd(), 'packages/compiler/dist/dev-server.mjs')).href
-  )
-  const server: PreviewServer = await createPreviewServer({ target, initialFiles: new Map(files) })
+  const server = await startFormPreviewSidecar(target, files)
+  const diagnostics = moduleFormDiagnostics(page, new URL(server.url).origin)
   const errors: string[] = []
   const capture = (error: Error) => errors.push(error.message)
   page.on('pageerror', capture)
   await withModuleFormCleanup(
     async () => {
-      await page.goto(server.url, { waitUntil: 'networkidle' })
-      await run()
-      expect(errors).toEqual([])
+      try {
+        await page.goto(server.url, { waitUntil: 'networkidle' })
+        await run()
+        expect(errors).toEqual([])
+      } catch (error) {
+        const attached = await Promise.allSettled([diagnostics.attach()])
+        if (attached[0].status === 'rejected')
+          console.warn('Controlled preview failure diagnostics were unavailable.')
+        throw error
+      }
     },
     async () => {
+      diagnostics.dispose()
       page.off('pageerror', capture)
       if (!page.isClosed()) await page.goto('about:blank')
     },

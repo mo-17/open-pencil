@@ -62,21 +62,29 @@ async function packAndInstall(bunTarget: string, files = ['dist']) {
   const packageDirectory = await createPackageFixture(root, bunTarget, files)
   const artifacts = join(root, 'artifacts')
   const consumer = join(root, 'consumer')
+  // This dependency-free local fixture must not write the user's npm cache or fetch packages.
+  const env = {
+    ...process.env,
+    npm_config_cache: join(root, 'npm-cache'),
+    npm_config_offline: 'true'
+  }
   await mkdir(artifacts)
   await mkdir(consumer)
   const packed = await runCommand({
     command: 'npm',
     args: ['pack', '--json', '--pack-destination', artifacts],
-    cwd: packageDirectory
+    cwd: packageDirectory,
+    env
   })
   const filename = (JSON.parse(packed.stdout) as Array<{ filename: string }>)[0]?.filename
   if (!filename) throw new Error('Fixture pack did not produce a tarball')
   const tarball = join(artifacts, filename)
-  await runCommand({ command: 'npm', args: ['init', '-y'], cwd: consumer })
+  await runCommand({ command: 'npm', args: ['init', '-y'], cwd: consumer, env })
   await runCommand({
     command: 'npm',
     args: ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball],
-    cwd: consumer
+    cwd: consumer,
+    env
   })
   return { consumer, tarball }
 }

@@ -121,6 +121,11 @@
         { "name": "openpencil-harness", "cmd": "openpencil-harness", "args": false },
         { "name": "cmd", "cmd": "cmd", "args": true },
         { "name": "lowcode-preview", "cmd": "bun", "args": true },
+        {
+          "name": "flutter-preview",
+          "cmd": "bun",
+          "args": ["tools/flutter-preview/src/index.ts"]
+        },
         { "name": "binaries/openpencil-codepen-sidecar", "sidecar": true }
       ]
     },

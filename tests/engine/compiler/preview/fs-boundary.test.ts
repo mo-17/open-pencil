@@ -40,16 +40,22 @@ describe('preview dev-server filesystem boundary', () => {
 
   test('serves Vite dependencies while rejecting direct and symlinked workspace access', async () => {
     const workspaceRoot = process.cwd()
-    server = await createPreviewServer({ fsRoot: workspaceRoot })
+    server = await createPreviewServer({
+      fsRoot: workspaceRoot,
+      initialFiles: new Map([['src/main.tsx', "import React from 'react'; export default React"]])
+    })
     const workspacePackage = join(workspaceRoot, 'package.json')
-    const optimizedReact = join(
-      workspaceRoot,
-      'packages/compiler/.preview-root/react/.vite/deps/react.js'
-    )
     const serverURL = server.url
     const viteFileURL = (path: string): string =>
       new URL(`/@fs${pathToFileURL(path).pathname}`, serverURL).href
-    const dependencyResponse = await fetch(viteFileURL(optimizedReact))
+    const entryResponse = await fetch(new URL('src/main.tsx', serverURL))
+    expect(entryResponse.status).toBe(200)
+    const optimizedReact = (await entryResponse.text()).match(
+      /["']([^"']*\.vite\/server-[^/]+\/deps\/react\.js[^"']*)["']/u
+    )?.[1]
+    expect(optimizedReact).toBeDefined()
+    if (!optimizedReact) throw new Error('Preview entry did not resolve optimized React')
+    const dependencyResponse = await fetch(new URL(optimizedReact, serverURL))
     const directResponse = await fetch(viteFileURL(workspacePackage))
     const binSymlinkResponse = await fetch(
       `${server.url}@fs${workspaceRoot}/node_modules/.bin/openpencil?raw`

@@ -86,7 +86,7 @@ plugin is opt-in.
   document context, and tool execution; the window receives only a bounded, redacted message
   projection and sends a closed set of actions back to the host. Disable the plugin to remove the
   entry and close its window. This UI command is not exposed to MCP.
-- **Chart** supports bar, line, area, pie and donut views in Canvas, React and Vue. Edit paired labels and values in **Design → Module → Values**, then apply or cancel the draft. Up to 64 local points form one series; bar/line/area support negative values, while pie/donut require nonnegative values and display an empty state for a zero total. Colors and value labels are configurable. The generated SVG preserves proportions and includes a complete accessible data table; crowded visual labels may be omitted with a count. These are authored static datasets, without remote data, live bindings, tooltips or multi-series axes. Existing version-1 bar charts remain readable.
+- **Chart** supports bar, line, area, pie and donut views in Canvas, React and Vue. Edit paired labels and values in **Design → Module → Values**, then apply or cancel the draft. Up to 64 local points form one series; bar/line/area support negative values, while pie/donut require nonnegative values and display an empty state for a zero total. Colors and value labels are configurable. The generated SVG preserves proportions and includes a complete accessible data table; crowded visual labels may be omitted with a count. Choose **Chart data** in the module inspector to read an object state containing paired `values` and `labels` arrays. Page/document state and page computed reads update the React/Vue chart; empty or invalid bound data never restores the configured example. Canvas renders non-computed design defaults. Tooltips and multi-series axes remain unsupported. Existing version-1 bar charts remain readable.
 - **Rich Text** is an installable editable content module with reviewed Canvas and Compiler
   adapters.
 - **</> HTML** is an installable, opt-in HTML content module. Its reviewed adapter accepts at most
@@ -186,8 +186,8 @@ plugin is opt-in.
 - **Vue Exporter** packages a source-only Vite + Vue 3 + TypeScript + Tailwind project. It emits
   editable `.vue` SFCs, Vue Router v4 for multiple pages, local images under `src/assets/**`, and
   basic reactive state, bindings, events, route/query parameters, Toast/Confirm feedback, local form
-  validation, and 35 reviewed module runtimes: Table, DataGrid, Tabs, Accordion, Carousel, Chart, Code Block, Markdown, Date Range, Tree/TreeSelect, Popover/Confirmation, Descriptions, Pagination, Org Chart, Walktour, Cascader, Video,
-  VR Tour, Modal, Dropdown Menu, Slide Menu, Slider/Range, Rating, Stepper, Breadcrumb, Alert, Progress, Chip, Avatar, Badge, Timeline, Tooltip, Skeleton, Empty State and local-only Upload Button. Vue
+  validation, and 42 reviewed module runtimes: Table, DataGrid, Tabs, Accordion, Carousel, Chart, Code Block, Markdown, Date Range, Tree/TreeSelect, Popover/Confirmation, Descriptions, Pagination, Org Chart, Walktour, Cascader, Video,
+  VR Tour, Modal, Dropdown Menu, Slide Menu, Slider/Range, Rating, Stepper, Breadcrumb, Alert, Progress, Chip, Avatar, Badge, Timeline, Tooltip, Skeleton, Empty State, local-only Upload Button, RichText, Audio Player, Lottie, Map, PDF Viewer, QR/Barcode and isolated HTML. Vue
   v1 records unsupported
   advanced runtimes in `EXPORT_WARNINGS.md` instead of claiming React feature parity. Its UI and MCP
   paths share disposable compiler and ZIP Workers; cancellation terminates the active Worker without
@@ -313,15 +313,17 @@ reorder, or convert paragraphs, headings, quotes, code blocks, and lists, and ap
 underline, strike, inline-code, or safe-link marks without editing JSON. The settings-card actions
 remain available as management and diagnostic fallbacks.
 
-In Compiler Preview and exported React/Tauri projects, the same module becomes an accessible,
+In Compiler Preview and exported React/Vue/Tauri projects, the same module becomes an accessible,
 directly editable rich-text field with a formatting toolbar. The current v1 toolbar covers normal
 text, H1–H3, quotes, code blocks, bold, italic, underline, strike, inline code, ordered and bullet
 lists, left/center/right alignment, safe links, clear formatting, undo, and redo. Paste and drop
 accept plain text only, so copied HTML cannot inject images or scripts. The editor exposes its
 bounded JSON value through a hidden form field and an `openpencil:rich-text-change` DOM event, and
-keeps edits across ordinary parent React re-renders. Runtime edits are not written back into the
+keeps edits across ordinary parent re-renders. Runtime edits are not written back into the
 `.fig` document or persisted across a page reload unless the generated application handles and
 stores that value.
+
+Caller-controlled local data APIs: generated React/Vue Upload Button components accept `files`, an explicit `filesBound` flag, and `onFilesChange` / `update:files`. Values remain real browser File objects in caller memory and retain type/count/size/directory validation. The editor does not bind files or metadata into page/document state, storage, uploads or MCP. React/Vue RichText accepts `value` / `valueBound` and `onDocumentChange` / `update:value` for its bounded structured AST. External projection does not emit changes; invalid values and controlled values without a listener remain read-only. Values stay in caller memory without page/document bindings or persistence. No raw HTML input is accepted.
 
 After installing and enabling **</> HTML**, insert it from the canvas **Plugins** menu and edit the
 `HTML` field under **Design → Module**. The code textarea updates a non-interactive sandboxed preview
@@ -329,7 +331,7 @@ as you type. Blur the textarea or press **Cmd/Ctrl+Enter** to commit the bounded
 document. External document changes are reflected back into the editor, and invalid values remain
 visible as an error instead of replacing the last valid module configuration.
 
-Compiler Preview and exported React/Tauri projects use the same bounded source and strict CSP in an
+Compiler Preview and exported React/Vue/Tauri projects use the same bounded source and strict CSP in an
 iframe without script or same-origin privileges. The editor preview also disables pointer events
 and sends no referrer. This is a reviewed host adapter for document content, not a way for a plugin
 manifest to inject HTML, JavaScript, CSS, permissions, or a new runtime into OpenPencil's main
@@ -481,7 +483,7 @@ After installing **Advanced Data Grid**, edit its typed `Grid data`, optional in
 page size, selection mode, density, headers, stripes, and colors under **Design → Module**. Row and
 column IDs are stable bounded identifiers; every cell must match its declared text, number, date, or
 boolean column. The generated Web/React table supports accessible sorting, filtering, pagination,
-and row selection over this authored static data. It is not a remote database connector.
+and row selection over local data. Choose **Row data** in the module inspector to read an array state of `{ id, cells }` rows against the configured columns. State updates replace the data and reset local view state; equivalent data preserves it. Empty and unavailable data are explicit. Bound grids disable CSV import and export the current filtered/sorted data. Sorting, filtering, paging and selection stay local to the preview; the module does not implement remote database pagination or record writes.
 Property labels and selection/density choices follow the editor language; changing language does
 not change their saved values. Initial sort and filter rules still use bounded JSON configuration.
 
@@ -548,12 +550,12 @@ templates**. The library has 62 templates: 54 basic components and eight composi
 Range slider are separate recipes for the same module. Missing plugins stay unavailable until you
 explicitly install and enable them.
 
-| Component | Configure in Design → Module | Generated React/Vue behavior |
-| --- | --- | --- |
-| Slider / Range | Bounds, decimal step, initial value(s), labels, appearance, read-only and disabled state | Native range semantics, arrow/Home/End/Page keys and two handles that cannot cross |
-| Rating | Maximum stars, half steps, initial value, clearing and appearance | Keyboard and pointer selection, optional clear action and local value feedback |
-| Stepper | Add/reorder steps, title, description, state, direction and initial step | Optional selection of enabled steps; selection changes the current step only |
-| Breadcrumb | Add/reorder labels and links, separator, wrapping and appearance | Validated navigation links; the last item identifies the current page without navigating |
+| Component      | Configure in Design → Module                                                             | Generated React/Vue behavior                                                             |
+| -------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Slider / Range | Bounds, decimal step, initial value(s), labels, appearance, read-only and disabled state | Native range semantics, arrow/Home/End/Page keys and two handles that cannot cross       |
+| Rating         | Maximum stars, half steps, initial value, clearing and appearance                        | Keyboard and pointer selection, optional clear action and local value feedback           |
+| Stepper        | Add/reorder steps, title, description, state, direction and initial step                 | Optional selection of enabled steps; selection changes the current step only             |
+| Breadcrumb     | Add/reorder labels and links, separator, wrapping and appearance                         | Validated navigation links; the last item identifies the current page without navigating |
 
 Changing slider bounds or step size clamps and snaps the initial values. Reducing the star count
 or disabling half steps also adjusts the initial rating. Changing selection or receiving an external
@@ -591,14 +593,14 @@ Assets includes **Markdown note**, **Markdown checklist** and **Code example** r
 After installing **PDF Viewer**, configure either a safe root-relative path or a canonical public
 HTTPS source, plus title, initial-page/page-count hints, fit, toolbar, download, and colors. Canvas is
 an inert paper/metadata placeholder. Compiler Preview does not attach the URL until **Load PDF
-preview** is pressed; exported Web/React output delegates rendering to the browser's sandboxed PDF
+preview** is pressed; exported Web/React/Vue output delegates rendering to the browser's sandboxed PDF
 iframe, so page controls and format support vary by browser. Never place credentials or secrets in
 the URL.
 
 After installing **Audio Player**, configure either a safe root-relative path or a canonical public
 HTTPS source, title/artist, controls, loop, mute, preload, volume, playback rate, and colors. Canvas is
 an inert waveform placeholder. Compiler Preview does not attach the URL until **Load audio preview**
-is pressed; exported Web/React output uses the browser's native audio element. Browser autoplay rules
+is pressed; exported Web/React/Vue output uses the browser's native audio element. Browser autoplay rules
 still apply, and the module validator requires autoplay to be muted.
 
 The **Static Design System Audit** engine produces a cancellable, bounded report across token
@@ -629,8 +631,7 @@ dependencies, runs their build tools, opens an IDE, signs a package, or claims d
 The **Vue Exporter** also creates a source ZIP only and never installs packages, runs the generated
 application, or starts Vite. Vue v1 emits portable image assets, editable components, Vue Router v4
 pages, route/query reads and safe parameterized navigation, basic reactive state/bindings/events,
-Toast/Confirm feedback, local form validation, and real Modal, Dropdown Menu, Slide Menu, and
-local-only Upload Button runtimes. Toast supports info/success/error feedback, six positions,
+Toast/Confirm feedback, local form validation, and all 42 bundled module runtimes. Toast supports info/success/error feedback, six positions,
 duration, duplicate suppression, dismissal, and an accessible bounded stack. Confirm uses authored
 button labels and both branches, supports backdrop/Escape cancellation, traps keyboard focus, and
 restores focus after closing. Local validation covers required, pattern, minimum/maximum length or
@@ -639,7 +640,7 @@ value, and custom-expression rules; it exposes inline/summary errors, updates `a
 does not contact its configured URL: it blocks submission with a generic unavailable error and adds
 `vue-validation-async-unsupported` to `EXPORT_WARNINGS.md`. Routerless single-page exports leave
 route/query context empty and warn. Authored raw HTML is replaced by an empty static shell with
-`vue-raw-html-unsupported`; the exporter never places that payload in a `v-html` binding. Other
+`vue-raw-html-unsupported`; the exporter never places that payload in a `v-html` binding. The reviewed HTML module instead uses a CSP-first `srcdoc` iframe with an empty sandbox, no same-origin or script permission, and `no-referrer`. Other
 plugin modules, Motion, prototypes and overlays, Supabase/auth/server workflows, Stripe, i18n,
 analytics, React UI kits, theme switching, and persisted document state remain omitted or reduced
 with deterministic `vue-*-unsupported` warnings.

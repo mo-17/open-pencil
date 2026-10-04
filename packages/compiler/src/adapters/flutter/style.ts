@@ -496,11 +496,25 @@ function nonNegative(
   return 0
 }
 
-function normalizeConstraints(
+export function normalizeConstraints(
   style: FlutterStyle,
   sourceId: string,
   warn: FlutterWarningSink
 ): void {
+  for (const field of ['minWidth', 'maxWidth', 'minHeight', 'maxHeight'] as const) {
+    const value = style[field]
+    if (value === undefined || (Number.isFinite(value) && value >= 0)) continue
+    style[field] = Number.isFinite(value) ? 0 : undefined
+    warn({
+      code: 'flutter-style-constraint-normalized',
+      message:
+        'Flutter ' +
+        (Number.isFinite(value) ? 'clamped negative ' : 'omitted nonfinite ') +
+        field +
+        ' to preserve valid BoxConstraints',
+      nodeId: sourceId
+    })
+  }
   if (
     style.minWidth !== undefined &&
     style.maxWidth !== undefined &&

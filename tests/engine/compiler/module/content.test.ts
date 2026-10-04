@@ -121,7 +121,7 @@ describe('explicit module child content', () => {
     const ir = collectTree(graph, pageId)
     expect(findElement(ir.children, outer.id).formValidationKeys ?? []).toEqual([])
   })
-  test('marks projected fields when an outer form needs mounted-only validation', () => {
+  test('keeps portaled projected fields outside outer form validation', () => {
     const { graph, pageId, modal } = compositionGraph()
     const outer = graph.createNode('FORM', pageId)
     graph.reparentNode(modal.id, outer.id)
@@ -136,7 +136,7 @@ describe('explicit module child content', () => {
     const ir = collectTree(graph, pageId)
     const form = findElement(ir.children, outer.id)
     expect(form.formValidationMountedOnly).toBe(true)
-    expect(form.formValidationKeys).toEqual([field.id])
+    expect(form.formValidationKeys).toEqual([])
     const module = findElement(form.children, modal.id)
     expect(findElement(module.children, field.id).validationScopeMarker).toBe(true)
     const projection = moduleContentNodes(module)?.[0].nodes[0]

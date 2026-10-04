@@ -6,12 +6,29 @@ export function reactAutocompleteSource(microfrontend = false): string {
   return `import * as React from "react"
 import { mountAutocomplete, type AutocompleteConfig } from "../lib/open-pencil-autocomplete"
 ${portalImport}
-type Props = React.InputHTMLAttributes<HTMLInputElement> & { suggestions: string[] }
-export function OpenPencilAutocomplete({ suggestions, ...attributes }: Props) {
+type Props = React.InputHTMLAttributes<HTMLInputElement> & { suggestions: string[]; formResetFieldKey?: string; onExternalRebase?: () => void }
+export function OpenPencilAutocomplete({ suggestions, formResetFieldKey, onExternalRebase, ...attributes }: Props) {
   const input = React.useRef<HTMLInputElement>(null)
   const controller = React.useRef<ReturnType<typeof mountAutocomplete> | null>(null)
   const attributesRef = React.useRef(attributes)
   attributesRef.current = attributes
+  const resetKey = React.useRef(formResetFieldKey)
+  resetKey.current = formResetFieldKey
+  const previousValue = React.useRef(attributes.value)
+  const ownValue = React.useRef<string | undefined>(undefined)
+  const acceptedValue = React.useRef<string | undefined>(undefined)
+  React.useLayoutEffect(() => {
+    if (previousValue.current === attributes.value) return
+    previousValue.current = attributes.value
+    const next = String(attributes.value ?? '')
+    const own = ownValue.current === next || acceptedValue.current === next
+    ownValue.current = undefined; acceptedValue.current = undefined
+    if (!own) onExternalRebase?.()
+  }, [attributes.value, onExternalRebase])
+  function remember(event: React.ChangeEvent<HTMLInputElement>) {
+    ownValue.current = event.currentTarget.value
+    attributes.onChange?.(event)
+  }
   const config: AutocompleteConfig = {
     suggestions,
     ${microfrontend ? 'portalRoot: microfrontendPortalTarget() ?? undefined,' : ''}
@@ -33,17 +50,33 @@ export function OpenPencilAutocomplete({ suggestions, ...attributes }: Props) {
     if (!element) return
     controller.current = mountAutocomplete(element, latest.current)
     const form = element.form
-    const reset = (event: Event) => queueMicrotask(() => {
-      if (event.defaultPrevented || !element.isConnected) return
-      const value = attributesRef.current.value
-      if (value !== undefined) element.value = String(value)
+    let accepted = false
+    const reset = (event: Event) => {
+      accepted = false
+      queueMicrotask(() => {
+        if (accepted || event.defaultPrevented || !element.isConnected) return
+        const value = attributesRef.current.value
+        if (value !== undefined) element.value = String(value)
+        controller.current?.update(latest.current)
+      })
+    }
+    const acceptedReset = (event: Event) => {
+      const key = resetKey.current
+      const values = (event as CustomEvent<{ values?: Record<string, unknown> }>).detail?.values
+      if (!key || !values || !Object.prototype.hasOwnProperty.call(values,key)) return
+      const next = values[key]
+      if (typeof next !== 'string') return
+      accepted = true
+      acceptedValue.current = next
+      element.value = next
       controller.current?.update(latest.current)
-    })
+    }
     form?.addEventListener("reset", reset)
-    return () => { form?.removeEventListener("reset", reset); controller.current?.destroy(); controller.current = null }
+    form?.addEventListener('__openPencilFormResetAccepted', acceptedReset)
+    return () => { form?.removeEventListener("reset", reset); form?.removeEventListener('__openPencilFormResetAccepted', acceptedReset);controller.current?.destroy(); controller.current = null }
   }, [attributes.form])
   React.useEffect(() => { controller.current?.update(latest.current) })
-  return <input {...attributes} ref={input} role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" autoComplete="off" />
+  return <input {...attributes} ref={input} onChange={remember} role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" autoComplete="off" />
 }
 `
 }

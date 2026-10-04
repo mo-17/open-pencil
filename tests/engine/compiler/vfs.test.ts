@@ -1,18 +1,98 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+import { installedMarkdownDependency } from '#compiler/markdown-dependencies'
 
 import {
   contentTypeForPath,
   inMemoryVFS,
   lookupFile,
   prepareVfsRoot,
+  prepareVfsRootAtDirectory,
   reactViteOptions,
   resolveRelative,
   stripQuery,
   type PreviewFiles
 } from '@open-pencil/compiler/vfs'
+
+type MarkdownAlias = { find: RegExp; replacement: string }
+type VfsConfiguration = { resolve: { alias: MarkdownAlias[] } }
+
+function vfsMarkdownAliases(prefix: string, workspaceRoot?: string): MarkdownAlias[] {
+  const plugin = inMemoryVFS({ files: new Map() }, prefix, workspaceRoot)
+  const configure = plugin.config as () => VfsConfiguration
+  return configure().resolve.alias
+}
+
+async function withMarkdownWorkspace(
+  inspect: (root: string, installed: string) => Promise<void>
+): Promise<void> {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'open-pencil-vfs-markdown-')))
+  try {
+    const installed = join(root, 'node_modules/.bun/react-markdown-fixture/node_modules')
+    await mkdir(join(installed, 'react-markdown'), { recursive: true })
+    for (const name of ['unified', 'remark-parse', 'remark-rehype', 'unreviewed-parser']) {
+      await mkdir(join(installed, name))
+      await writeFile(join(installed, name, 'index.js'), 'export default {}\n')
+    }
+    await symlink(
+      join(installed, 'react-markdown'),
+      join(root, 'node_modules/react-markdown'),
+      process.platform === 'win32' ? 'junction' : 'dir'
+    )
+    await inspect(root, installed)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+}
+
+describe('inMemoryVFS Markdown dependency topology', () => {
+  test('owned preview roots resolve reviewed parsers from the explicit workspace and preserve shared roots', async () => {
+    await withMarkdownWorkspace(async (root, installed) => {
+      const sharedPrefix = `${prepareVfsRoot(root, 'vue').scanRoot}/`
+      const ownedPrefix = `${prepareVfsRootAtDirectory(join(sharedPrefix, 'server-fixture')).scanRoot}/`
+      const aliases = vfsMarkdownAliases(ownedPrefix, root)
+      expect(aliases).toEqual(vfsMarkdownAliases(sharedPrefix))
+      expect(aliases.map((alias) => alias.replacement)).toEqual(
+        ['unified', 'remark-parse', 'remark-rehype'].map((name) =>
+          join(installed, name, 'index.js')
+        )
+      )
+      for (const [index, name] of ['unified', 'remark-parse', 'remark-rehype'].entries()) {
+        expect(aliases[index]?.find.test(name)).toBe(true)
+        expect(aliases[index]?.find.test(`${name}/internal`)).toBe(false)
+      }
+    })
+  })
+
+  test('a direct workspace installation takes priority over the react-markdown sibling', async () => {
+    await withMarkdownWorkspace(async (root, installed) => {
+      await mkdir(join(root, 'node_modules/unified'))
+      await writeFile(join(root, 'node_modules/unified/index.js'), 'export default {}\n')
+      const prefix = `${prepareVfsRootAtDirectory(join(root, 'private/preview/deep/server')).scanRoot}/`
+      const aliases = vfsMarkdownAliases(prefix, root)
+      expect(aliases.map((alias) => alias.replacement)).toEqual(
+        ['remark-parse', 'remark-rehype'].map((name) => join(installed, name, 'index.js'))
+      )
+      expect(aliases.some((alias) => alias.find.test('unified'))).toBe(false)
+    })
+  })
+
+  test('does not alias unreviewed packages or missing parser installations', async () => {
+    await withMarkdownWorkspace(async (root, installed) => {
+      expect(installedMarkdownDependency('unreviewed-parser', root)).toBeUndefined()
+      await rm(join(installed, 'remark-parse'), { recursive: true })
+      const prefix = `${prepareVfsRootAtDirectory(join(root, 'private/server')).scanRoot}/`
+      expect(vfsMarkdownAliases(prefix, root).map((alias) => alias.replacement)).toEqual(
+        ['unified', 'remark-rehype'].map((name) => join(installed, name, 'index.js'))
+      )
+      expect(vfsMarkdownAliases(prefix, join(root, 'missing-workspace'))).toEqual([])
+    })
+  })
+})
 
 test('prepareVfsRoot canonicalizes a symlinked workspace before forming virtual IDs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'open-pencil-vfs-root-'))
@@ -38,6 +118,25 @@ test('reactViteOptions fixes production JSX while leaving dev mode dynamic', () 
     resolve: { dedupe: ['react', 'react-dom'] }
   })
   expect(reactViteOptions().oxc.jsx).not.toHaveProperty('development')
+})
+
+test('host-allocated VFS roots inherit target JSX configuration without adding watched tsconfigs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'open-pencil-vfs-owned-'))
+  try {
+    for (const target of ['react', 'vue'] as const) {
+      const sharedRoot = prepareVfsRoot(root, target).scanRoot
+      const directory = join(sharedRoot, 'server-fixture')
+      const { scanRoot, vfsPrefix } = prepareVfsRootAtDirectory(directory)
+      expect(scanRoot).toBe(await realpath(directory))
+      expect(vfsPrefix).toBe(`${scanRoot}/`)
+      expect(existsSync(join(scanRoot, 'tsconfig.json'))).toBe(false)
+      const config = JSON.parse(await readFile(join(sharedRoot, 'tsconfig.json'), 'utf8'))
+      if (target === 'react') expect(config.compilerOptions.jsx).toBe('react-jsx')
+      else expect(config.compilerOptions).not.toHaveProperty('jsx')
+    }
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
 })
 
 /**

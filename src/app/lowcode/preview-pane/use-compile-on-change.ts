@@ -1,14 +1,8 @@
-// Wires SceneGraph changes into the environment-specific preview host:
-//
-//   SceneGraph --(Auto | Real-time | Manual)--> PreviewHost
-//        Tauri: compiler + Bun/Vite sidecar ACK/HMR
-//        Browser: bounded snapshot + disposable Worker + WASM bundle + Blob iframe
-//
-// Page switches remain bridge-only navigation. The scheduler still coalesces
-// scene revisions, while generation and AbortSignal gates prevent a late build
-// from publishing an obsolete iframe artifact.
+// Serializes SceneGraph updates and successful saves using the selected sync policy.
+// Tauri uses its Bun/Vite sidecar; browsers use a bounded Worker and Blob iframe.
+// Page switches use bridge navigation. Generation/abort guards discard obsolete artifacts.
 
-import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
 
 import { withDefaults, type CompilerOptions, type CompileWarning } from '@open-pencil/compiler'
 
@@ -43,6 +37,8 @@ import {
 import { captureManagedBackendSnapshot } from './managed-backend/capture'
 import { createManagedBackendPreviewController } from './managed-backend/controller'
 import { createManagedBackendPreviewHost } from './managed-backend/host'
+import { watchPreviewSaveSync } from './save-sync'
+import { watchPreviewSourceChanges } from './source-invalidations'
 
 export { parsePreviewSidecarReady, type PreviewSidecarReady } from './sidecar-ready'
 
@@ -158,7 +154,7 @@ function normalizedDiagnostics(
  * Unmount/target change: terminate Workers/sidecars and revoke host artifacts.
  */
 export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompileOnChangeResult {
-  const status = ref<PreviewStatus>({ kind: 'idle' })
+  const status = shallowRef<PreviewStatus>({ kind: 'idle' })
   const hostKind = ref<PreviewHost['kind'] | null>(null)
   const compileState = ref(
     createPreviewCompileSchedulerState(
@@ -511,18 +507,23 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
 
   void launchPreviewHost(settings?.target?.value ?? 'react')
 
-  const stopSceneWatch = watch(
-    () => [store.state.sceneVersion, importedFontRevision.value] as const,
-    (current, previous) => {
-      if (!host) return
-      enqueueChange(current[1] !== previous[1])
-    }
+  const stopSceneWatch = watchPreviewSourceChanges(
+    store,
+    importedFontRevision,
+    () => host !== null,
+    enqueueChange
   )
   const stopPolicyWatch = settings?.refreshPolicy
     ? watch(settings.refreshPolicy, (policy) =>
         scheduler.setPolicy(localBackend.connection.value ? 'auto' : policy)
       )
     : NOOP
+  const stopSaveWatch = watchPreviewSaveSync(
+    () => store.getSaveStatus(),
+    () => {
+      if (host?.isAlive()) scheduler.requestSave()
+    }
+  )
   const stopBackendProviderWatch = watchPreviewBackendProvider({
     graph: () => store.graph,
     sceneVersion: () => store.state.sceneVersion,
@@ -567,6 +568,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     void managedBackend.dispose()
     stopSceneWatch()
     stopPolicyWatch()
+    stopSaveWatch()
     stopBackendProviderWatch()
     stopTargetWatch()
     stopLoginRouteWatch()

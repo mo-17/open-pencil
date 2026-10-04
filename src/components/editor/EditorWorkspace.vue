@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 import { tv } from 'tailwind-variants'
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 
 import { formatShortcut, useI18n, useViewportKind } from '@open-pencil/vue'
 
-import { useEditorStore } from '@/app/editor/active-store'
+import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
 import { compilerPreviewPopoutOpen } from '@/app/lowcode/preview-pane/popout/session'
 import PreviewPane from '@/app/lowcode/preview-pane/PreviewPane.vue'
+import {
+  expireWebPreviewWidthRequest,
+  setWebPreviewWidthAvailability,
+  useWebPreviewWidthRequest
+} from '@/app/lowcode/preview-pane/viewport/request'
 import { appRuntimeConfig } from '@/app/runtime/config'
 import {
   editorPanelDefaultSizes,
@@ -34,6 +39,17 @@ const showChrome = appRuntimeConfig.showChrome
 const store = useEditorStore()
 const { editor } = useI18n()
 const { isMobile } = useViewportKind()
+const widthRequests = useWebPreviewWidthRequest(getActiveEditorStore)
+watch(
+  () => [getActiveEditorStore(), isMobile.value, store.state.showUI] as const,
+  ([owner, mobile, showUI], previous) => {
+    if (previous && previous[0] !== owner) setWebPreviewWidthAvailability(owner, null)
+    if (mobile || !showChrome || !showUI) setWebPreviewWidthAvailability(owner, false)
+    else if (previous && (previous[1] || !previous[2])) setWebPreviewWidthAvailability(owner, null)
+  },
+  { immediate: true, flush: 'sync' }
+)
+onScopeDispose(() => expireWebPreviewWidthRequest(getActiveEditorStore()))
 const showPreviewPane = true
 const editorLayout = ref(loadEditorLayout())
 const previewSize = computed(() => previewPanelDefaultSize(editorLayout.value))
@@ -126,7 +142,7 @@ function expandPreviewForAction(expand: () => void, complete: () => void): void 
             </IconButton>
           </div>
           <PreviewPane
-            v-if="!isCollapsed || compilerPreviewPopoutOpen"
+            v-if="!isCollapsed || compilerPreviewPopoutOpen || widthRequests.pending.value"
             :embedded-visible="!isCollapsed"
             @close="collapse"
             @request-expand="expandPreviewForAction(expand, $event)"

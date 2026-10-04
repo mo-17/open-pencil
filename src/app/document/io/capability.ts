@@ -2,8 +2,10 @@
  * File System Access is Chromium-only today; other browsers download instead. This module is
  * the one place that touches the API, so callers cannot drift on the availability check.
  */
+import { IS_BROWSER } from '@open-pencil/core/constants'
+
 export function supportsFileSystemAccess(): boolean {
-  return typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function'
+  return IS_BROWSER && typeof window.showSaveFilePicker === 'function'
 }
 
 /**
@@ -14,6 +16,6 @@ export async function pickBrowserSaveFile(
   options: FilePickerOptions
 ): Promise<FileSystemFileHandle | null> {
   // Checked inline rather than through the predicate so TypeScript narrows the method.
-  if (typeof window === 'undefined' || typeof window.showSaveFilePicker !== 'function') return null
+  if (!IS_BROWSER || typeof window.showSaveFilePicker !== 'function') return null
   return window.showSaveFilePicker(options)
 }

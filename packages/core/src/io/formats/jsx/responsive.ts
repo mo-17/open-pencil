@@ -47,6 +47,7 @@ function effectiveOverride(node: SceneNode, breakpoint: ResponsiveBreakpoint): R
     Object.assign(result, overrideAt(node, current))
     if (current === breakpoint) break
   }
+  if (breakpoint !== 'xl') Object.assign(result, overrideAt(node, 'compact'))
   return result
 }
 
@@ -100,6 +101,20 @@ function relevantBreakpoints(node: SceneNode, graph: JSXStyleGraph): Set<string>
   return new Set(nodes.flatMap((current) => Object.keys(current?.responsiveOverrides ?? {})))
 }
 
+/** Track emitted min-width deltas when max-xl is absent at the desktop boundary. */
+function applyStyleDelta(base: Style, previous: Style, style: Style): Style {
+  let result = { ...base }
+  for (const key of new Set([...Object.keys(previous), ...Object.keys(style)])) {
+    if (previous[key] === style[key]) continue
+    if (Object.hasOwn(style, key)) result[key] = style[key]
+    else {
+      const { [key]: _removed, ...remaining } = result
+      result = remaining
+    }
+  }
+  return result
+}
+
 /** A read-only graph view lets a child's positioning follow its breakpoint-effective parent. */
 export function responsiveStyleVariants(
   node: SceneNode,
@@ -110,26 +125,30 @@ export function responsiveStyleVariants(
   if (relevant.size === 0) return []
   const base = layoutStyle(node, resolveStyle(node, graph))
   const variants: ResponsiveStyleVariant[] = []
-  let previous = base
+  const compact = relevant.has('compact') ? effectiveContext(node, graph, 'compact') : undefined
+  const compactStyle = compact
+    ? layoutStyle(compact.node, resolveStyle(compact.node, compact.graph, compact), compact)
+    : undefined
+  let previous = compactStyle ?? base
+  let desktopPrevious = base
   for (const breakpoint of MIN_WIDTH_BREAKPOINTS) {
-    if (!relevant.has(breakpoint)) continue
+    if (!relevant.has(breakpoint) && !(breakpoint === 'xl' && compactStyle)) continue
     const effective = effectiveContext(node, graph, breakpoint)
     const style = layoutStyle(
       effective.node,
       resolveStyle(effective.node, effective.graph, effective),
       effective
     )
-    variants.push({ prefix: breakpoint, previous, style })
+    variants.push({
+      prefix: breakpoint,
+      previous: breakpoint === 'xl' && compactStyle ? desktopPrevious : previous,
+      style
+    })
+    if (compactStyle && breakpoint !== 'xl')
+      desktopPrevious = applyStyleDelta(desktopPrevious, previous, style)
     previous = style
   }
-  if (!relevant.has('compact')) return variants
-  const compact = effectiveContext(node, graph, 'compact')
-  const compactStyle = layoutStyle(
-    compact.node,
-    resolveStyle(compact.node, compact.graph, compact),
-    compact
-  )
-  variants.push({ prefix: 'max-xl', previous: base, style: compactStyle })
+  if (compactStyle) variants.push({ prefix: 'max-xl', previous: base, style: compactStyle })
   return variants
 }
 

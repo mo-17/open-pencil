@@ -10,7 +10,11 @@ import {
   withModulePreviewSurface
 } from '#core/canvas/modules/preview'
 import type { ModuleCanvasAdapter } from '#core/canvas/modules/types'
-import { readModuleInitialValue, moduleNumericValue } from '#core/canvas/modules/value-controls'
+import {
+  readModuleInitialValue,
+  moduleNumericValue,
+  moduleControlState
+} from '#core/canvas/modules/value-controls'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { withTextParagraph } from '#core/canvas/text'
 import { parseColor } from '#core/color'
@@ -89,7 +93,11 @@ export function renderRatingModulePreview(
     const binding = readModuleInitialValue(graph, node, 'value', 'number')
     const raw = binding.bound ? binding.value : frame.config.initialValue
     const invalid = !moduleNumericValue(raw, 0, frame.config.max, frame.config.allowHalf ? 0.5 : 1)
-    const config = { ...frame.config, initialValue: invalid ? 0 : raw }
+    const config = {
+      ...frame.config,
+      ...moduleControlState(node, frame.config),
+      initialValue: invalid ? 0 : raw
+    }
     const innerWidth = Math.max(0, frame.width - 24)
     const starsTop = 12 + config.fontSize * 1.4 + 8
     const rowHeight = Math.max(44, config.starSize)

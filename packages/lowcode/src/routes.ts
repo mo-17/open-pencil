@@ -77,6 +77,42 @@ export function validateLowcodeNavigationTarget(target: string): ValidationResul
   return { ok: true }
 }
 
+/** Untrusted action history remains a closed enum; omission keeps the legacy push default. */
+export function validateLowcodeNavigationHistory(value: unknown): ValidationResult {
+  return value === undefined || value === 'push' || value === 'replace'
+    ? { ok: true }
+    : { ok: false, reason: 'Navigation history must be push or replace.' }
+}
+
+/** Back fallbacks have no parameter-expression contract, but preserve authored query/fragment. */
+export function validateLowcodeBackFallback(route: string): ValidationResult {
+  const validation = validateLowcodeNavigationTarget(route)
+  if (!validation.ok) return validation
+  const pathname = lowcodeNavigationPathname(route)
+  if (pathname.includes('*') || pathname.split('/').some((segment) => segment.startsWith(':'))) {
+    return { ok: false, reason: 'Back fallback requires a concrete internal route.' }
+  }
+  return { ok: true }
+}
+
+/** Application startup has no parameter/query input contract. Keep dynamic page
+ * patterns editable, but require a concrete internal path for the first route. */
+export function validateLowcodeApplicationStartRoute(route: string): ValidationResult {
+  const target = validateLowcodeNavigationTarget(route)
+  if (!target.ok) return target
+  if (route.includes('*') || route.split('/').some((segment) => segment.startsWith(':'))) {
+    return {
+      ok: false,
+      reason:
+        'Application start route requires a concrete path without route parameters or wildcards.'
+    }
+  }
+  if (route.includes('?') || route.includes('#')) {
+    return { ok: false, reason: 'Application start route cannot contain a query or fragment.' }
+  }
+  return { ok: true }
+}
+
 /** Derive exactly the slug and effective-route fields consumed by the React
  * compiler. Invalid explicit patterns fall back to the derived route and carry
  * a diagnostic for route-management and audit consumers. */

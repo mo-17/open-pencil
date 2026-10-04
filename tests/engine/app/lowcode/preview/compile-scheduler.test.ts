@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   createPreviewCompileScheduler,
+  createPreviewCompileSchedulerState,
   nextPreviewAutoDelayMs,
   normalizePreviewRefreshPolicy,
   type PreviewCompileOutcome,
@@ -62,8 +63,122 @@ describe('preview compile scheduler', () => {
   test('normalizes persisted refresh policies fail-safe to Auto', () => {
     expect(normalizePreviewRefreshPolicy('realtime')).toBe('realtime')
     expect(normalizePreviewRefreshPolicy('manual')).toBe('manual')
+    expect(normalizePreviewRefreshPolicy('save')).toBe('save')
     expect(normalizePreviewRefreshPolicy('unknown')).toBe('auto')
     expect(normalizePreviewRefreshPolicy(null)).toBe('auto')
+    expect(createPreviewCompileSchedulerState()).toMatchObject({ policy: 'auto', autoDelayMs: 400 })
+  })
+
+  for (const policy of ['auto', 'save', 'manual', 'realtime'] as const) {
+    test(`${policy} starts the initial preview immediately`, () => {
+      const clock = new FakeClock()
+      const runner = deferredRunner()
+      const scheduler = createPreviewCompileScheduler({ policy, clock, run: runner.run })
+
+      scheduler.requestInitial()
+      expect(runner.runs).toHaveLength(1)
+      expect(runner.runs[0].request.reason).toBe('initial')
+      expect(runner.runs[0].request.isCurrent()).toBe(true)
+      scheduler.dispose()
+      expect(runner.runs[0].request.isCurrent()).toBe(false)
+    })
+  }
+
+  test('Save waits for a successful-save signal and retains active explicit runs through edits', async () => {
+    const clock = new FakeClock()
+    const runner = deferredRunner()
+    const scheduler = createPreviewCompileScheduler({ policy: 'save', clock, run: runner.run })
+
+    scheduler.requestInitial()
+    scheduler.requestChange(true)
+    expect(runner.runs[0].request.isCurrent()).toBe(true)
+    runner.runs[0].resolve('pushed')
+    await settleScheduler()
+    clock.advance(10_000)
+    expect(runner.runs).toHaveLength(1)
+
+    scheduler.requestSave()
+    expect(runner.runs.map(({ request }) => request.revision)).toEqual([1, 3])
+    expect(runner.runs[1].request).toMatchObject({ reason: 'save', refreshFonts: true })
+    scheduler.requestChange()
+    expect(runner.runs[1].request.isCurrent()).toBe(true)
+    runner.runs[1].resolve('pushed')
+    await settleScheduler()
+    clock.advance(10_000)
+    expect(runner.runs).toHaveLength(2)
+    expect(scheduler.getState()).toMatchObject({ pending: true, pendingRevision: 4 })
+  })
+
+  test('Auto immediately flushes pending changes after a successful-save signal', () => {
+    const clock = new FakeClock()
+    const runner = deferredRunner()
+    const scheduler = createPreviewCompileScheduler({ clock, run: runner.run })
+
+    scheduler.requestChange(true)
+    clock.advance(100)
+    expect(runner.runs).toHaveLength(0)
+    scheduler.requestSave()
+    expect(runner.runs.map(({ request }) => request.revision)).toEqual([2])
+    expect(runner.runs[0].request).toMatchObject({ reason: 'save', refreshFonts: true })
+  })
+
+  test('Manual ignores successful-save signals and only runs an explicit manual flush', () => {
+    const clock = new FakeClock()
+    const runner = deferredRunner()
+    const scheduler = createPreviewCompileScheduler({ policy: 'manual', clock, run: runner.run })
+
+    scheduler.requestChange(true)
+    expect(scheduler.requestSave()).toBe(1)
+    clock.advance(10_000)
+    expect(runner.runs).toHaveLength(0)
+    scheduler.flush()
+    expect(runner.runs.map(({ request }) => request.revision)).toEqual([2])
+    expect(runner.runs[0].request).toMatchObject({ reason: 'manual', refreshFonts: true })
+  })
+
+  for (const policy of ['manual', 'save'] as const) {
+    test(`${policy} preserves a queued explicit trigger while coalescing later edits`, async () => {
+      const clock = new FakeClock()
+      const runner = deferredRunner()
+      const scheduler = createPreviewCompileScheduler({ policy, clock, run: runner.run })
+
+      scheduler.requestInitial()
+      if (policy === 'manual') scheduler.flush()
+      else scheduler.requestSave()
+      scheduler.requestChange(true)
+      expect(runner.runs).toHaveLength(1)
+
+      runner.runs[0].resolve('pushed')
+      await settleScheduler()
+      expect(runner.runs.map(({ request }) => request.revision)).toEqual([1, 3])
+      expect(runner.runs[1].request).toMatchObject({
+        reason: policy === 'manual' ? 'manual' : 'save',
+        refreshFonts: true
+      })
+      scheduler.requestChange()
+      expect(runner.runs[1].request.isCurrent()).toBe(true)
+      runner.runs[1].resolve('pushed')
+      await settleScheduler()
+      clock.advance(10_000)
+      expect(runner.runs).toHaveLength(2)
+    })
+  }
+
+  test('switching to Manual pauses a queued successful-save trigger', async () => {
+    const clock = new FakeClock()
+    const runner = deferredRunner()
+    const scheduler = createPreviewCompileScheduler({ policy: 'auto', clock, run: runner.run })
+
+    scheduler.requestInitial()
+    scheduler.requestSave()
+    scheduler.setPolicy('manual')
+    runner.runs[0].resolve('superseded')
+    await settleScheduler()
+    clock.advance(10_000)
+    expect(runner.runs).toHaveLength(1)
+    scheduler.flush()
+    expect(runner.runs.map(({ request }) => request.revision)).toEqual([1, 3])
+    expect(runner.runs[1].request.reason).toBe('manual')
   })
 
   test('keeps one compile in flight and coalesces pending changes to the latest revision', async () => {
@@ -108,7 +223,7 @@ describe('preview compile scheduler', () => {
     })
   })
 
-  test('Auto uses trailing debounce and adapts within the 200-1000ms bounds', async () => {
+  test('Auto uses trailing debounce and adapts within the 400-1000ms bounds', async () => {
     const clock = new FakeClock()
     const runner = deferredRunner()
     const scheduler = createPreviewCompileScheduler({ policy: 'auto', clock, run: runner.run })
@@ -116,7 +231,7 @@ describe('preview compile scheduler', () => {
     scheduler.requestChange()
     clock.advance(100)
     scheduler.requestChange()
-    clock.advance(199)
+    clock.advance(399)
     expect(runner.runs).toHaveLength(0)
     clock.advance(1)
     expect(runner.runs.map(({ request }) => request.revision)).toEqual([2])
@@ -146,7 +261,7 @@ describe('preview compile scheduler', () => {
     runner.runs[0].resolve('superseded')
     await settleScheduler()
 
-    clock.advance(199)
+    clock.advance(399)
     expect(runner.runs.map(({ request }) => request.revision)).toEqual([1])
     clock.advance(1)
     expect(runner.runs.map(({ request }) => request.revision)).toEqual([1, 3])
@@ -195,7 +310,7 @@ describe('preview compile scheduler', () => {
 
 describe('preview Auto delay', () => {
   test('smooths recent successful compile+ACK durations and enforces bounds', () => {
-    expect(nextPreviewAutoDelayMs(null, 50)).toEqual({ delayMs: 200, recentDurationMs: 50 })
+    expect(nextPreviewAutoDelayMs(null, 50)).toEqual({ delayMs: 400, recentDurationMs: 50 })
     expect(nextPreviewAutoDelayMs(null, 2_000)).toEqual({
       delayMs: 1_000,
       recentDurationMs: 2_000

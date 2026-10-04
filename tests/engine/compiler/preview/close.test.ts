@@ -3,7 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-async function runProbe(mode: 'react' | 'vue' | 'parallel'): Promise<string> {
+async function runProbe(
+  mode: 'react' | 'vue' | 'parallel' | 'same-target' | 'css-react' | 'css-vue'
+): Promise<string> {
   const parent = join(process.cwd(), 'packages/compiler/.preview-root')
   mkdirSync(parent, { recursive: true })
   const directory = mkdtempSync(join(parent, 'close-test-'))
@@ -62,3 +64,20 @@ test('concurrent React and Vue previews preserve each other’s optimized module
     'parallel: caches isolated; original modules retained; both ports released'
   )
 }, 25_000)
+
+test('concurrent React previews with different dependencies retain live modules after peer close', async () => {
+  expect(await runProbe('same-target')).toBe(
+    'same-target: caches isolated; original modules retained; both ports released'
+  )
+}, 25_000)
+
+test.each(['react', 'vue'] as const)(
+  '%s isolates physical CSS IDs and receives no peer startup or shutdown HMR',
+  async (target) => {
+    const mode = `css-${target}` as const
+    expect(await runProbe(mode)).toBe(
+      mode + ': virtual roots isolated; peer HMR absent; CSS retained; owned roots cleaned'
+    )
+  },
+  25_000
+)

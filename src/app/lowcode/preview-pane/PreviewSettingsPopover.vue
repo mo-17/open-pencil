@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 
+import { useCodeMessages } from '@open-pencil/vue'
+
 import { usePopoverUI } from '@/components/ui/overlay/popover'
 
 import type { PreviewRefreshPolicy } from './compile-scheduler'
+import { previewSyncDescription } from './sync-copy'
+import SyncModeSelect from './SyncModeSelect.vue'
 import type { PreviewTarget, PreviewUIKit } from './use-compile-on-change'
 
 const {
@@ -24,6 +28,7 @@ const theme = defineModel<'light' | 'dark'>('theme', { required: true })
 const i18nEnabled = defineModel<boolean>('i18nEnabled', { required: true })
 const localesInput = defineModel<string>('localesInput', { required: true })
 const refreshPolicy = defineModel<PreviewRefreshPolicy>('refreshPolicy', { required: true })
+const messages = useCodeMessages()
 
 const popoverUI = usePopoverUI({
   content: 'z-[120] w-72 rounded-lg border border-border p-3'
@@ -36,7 +41,7 @@ const popoverUI = usePopoverUI({
       <button
         type="button"
         data-test-id="lowcode-preview-settings-toggle"
-        aria-label="Preview settings"
+        :aria-label="messages.previewSettings"
         class="flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded border border-border bg-input px-2 text-xs text-surface outline-none transition-colors hover:bg-hover focus-visible:ring-1 focus-visible:ring-accent"
       >
         <icon-lucide-sliders-horizontal class="size-3.5 shrink-0 text-muted" />
@@ -54,7 +59,7 @@ const popoverUI = usePopoverUI({
         align="end"
       >
         <div class="mb-3 flex items-center justify-between">
-          <h2 class="text-xs font-medium text-surface">Preview settings</h2>
+          <h2 class="text-xs font-medium text-surface">{{ messages.previewSettings }}</h2>
           <span class="text-[10px] text-muted"
             >Target · {{ target === 'vue' ? 'Vue 3' : 'React' }}</span
           >
@@ -100,21 +105,19 @@ const popoverUI = usePopoverUI({
           </select>
 
           <label for="lowcode-preview-refresh-policy" class="text-[11px] text-muted">
-            Refresh policy
+            {{ messages.previewSyncMode }}
           </label>
-          <select
+          <SyncModeSelect
             id="lowcode-preview-refresh-policy"
             v-model="refreshPolicy"
             :disabled="automaticRefresh"
-            data-test-id="lowcode-preview-refresh-policy"
-            class="h-7 rounded border border-border bg-input px-2 text-xs text-surface outline-none focus-visible:ring-1 focus-visible:ring-accent"
-          >
-            <option value="realtime">Real-time</option>
-            <option value="auto">Auto</option>
-            <option value="manual">Manual</option>
-          </select>
-          <p v-if="automaticRefresh" class="col-span-2 text-[11px] text-muted">
-            Connected NestJS previews always refresh automatically.
+          />
+          <p class="col-span-2 text-[11px] text-muted" data-test-id="preview-sync-description">
+            {{
+              automaticRefresh
+                ? messages.previewSyncBackendAutomatic
+                : previewSyncDescription(messages, refreshPolicy)
+            }}
           </p>
 
           <span class="text-[11px] text-muted">i18n</span>

@@ -180,7 +180,7 @@ describe('emitElement (React adapter)', () => {
     )
   })
 
-  test('controlled INPUT (docState number) emits type=number + Number() coercion', () => {
+  test('controlled INPUT (docState number) emits a guarded numeric draft writer', () => {
     const out = emitElement(
       element({
         tag: 'input',
@@ -193,11 +193,11 @@ describe('emitElement (React adapter)', () => {
       0
     )
     expect(out).toBe(
-      `<input type="number" value={age} onChange={(e) => setDocState("age", Number(e.target.value))} />`
+      `<__OpenPencilNumberInput type="number" value={age} onChange={(e) => { const __opNextNumber = __opParseNumericDraft(e.target.value, e.target, e.nativeEvent); if (__opNextNumber !== undefined) setDocState("age", __opNextNumber); }} formResetFieldKey="docState:age" />`
     )
   })
 
-  test('controlled INPUT (page-state ref number) emits type=number + Number() coercion', () => {
+  test('controlled INPUT (page-state ref number) emits a guarded numeric draft writer', () => {
     const out = emitElement(
       element({
         tag: 'input',
@@ -210,7 +210,7 @@ describe('emitElement (React adapter)', () => {
       0
     )
     expect(out).toBe(
-      `<input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))} />`
+      `<__OpenPencilNumberInput type="number" value={qty} onChange={(e) => { const __opNextNumber = __opParseNumericDraft(e.target.value, e.target, e.nativeEvent); if (__opNextNumber !== undefined) setQty(__opNextNumber); }} formResetFieldKey="state:qty" />`
     )
   })
 

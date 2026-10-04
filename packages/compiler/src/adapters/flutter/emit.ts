@@ -25,13 +25,24 @@ import {
   walkNativeNodes as walkNodes
 } from '../native-shared'
 import { dartLiteral, emitDartCondition, emitDartExpression } from './expression'
+import {
+  emitAdaptiveFlutterChildren,
+  emitResponsiveFlutterBody,
+  fitWidthFlutterNodes,
+  flutterNodeLayout,
+  prepareFlutterPageFrames,
+  projectFlutterLayout,
+  wrapAdaptiveFlutterStyle
+} from './layout'
 import { allocateDartIdentifier, dartIdentifier, dartString } from './names'
+import { emitFlutterViewport } from './page-viewport'
 import {
   boxConstraints,
   boxDecoration,
   boxFit,
   edgeInsets,
   flutterColor,
+  normalizeConstraints,
   textAlign,
   textStyle,
   translateFlutterStyle
@@ -40,6 +51,7 @@ import type { FlutterComponentPlan, FlutterStyle, FlutterWarningSink } from './t
 import { emitFlutterVRTour, flutterVRTourImport, isFlutterVRTour } from './vr-tour'
 
 export interface FlutterEmitEnvironment {
+  adaptiveComponents?: boolean
   componentBody?: boolean
   componentPlans: ReadonlyMap<string, FlutterComponentPlan>
   devMode: boolean
@@ -52,6 +64,7 @@ export interface FlutterEmitEnvironment {
 }
 
 interface NodeEnvironment extends FlutterEmitEnvironment {
+  responsive?: boolean
   listDepth?: number
   names: ReadonlyMap<string, string>
   sourceId: string
@@ -61,6 +74,18 @@ interface NodeEnvironment extends FlutterEmitEnvironment {
 }
 
 const TEXT_TAGS = new Set(['p', 'span', 'label', 'option', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+
+export function needsFlutterWidthFill(nodes: readonly IRNode[]): boolean {
+  let fill = false
+  walkNodes(nodes, (node) => {
+    if (
+      (node.kind === 'element' || node.kind === 'componentRef') &&
+      node.layout?.widthSizing === 'FILL'
+    )
+      fill = true
+  })
+  return fill
+}
 
 export function emitFlutterPage(
   ir: IRTree,
@@ -83,7 +108,25 @@ export function emitFlutterPage(
     supportsLocalState: true,
     unsupportedListArrays: new Set((ir.listQueries ?? []).map((query) => query.rowsName))
   }
-  const body = emitChildrenLayout(ir.children, nodeEnvironment)
+  const viewport = ir.pageViewport?.mode !== 'fixed' ? ir.pageViewport : undefined
+  const body =
+    viewport?.mode === 'responsive'
+      ? emitResponsiveFlutterBody(ir.children, (nodes) =>
+          emitChildrenLayout(prepareFlutterPageFrames(nodes), {
+            ...nodeEnvironment,
+            responsive: true
+          })
+        )
+      : emitChildrenLayout(
+          viewport ? fitWidthFlutterNodes(ir.children, viewport) : ir.children,
+          nodeEnvironment
+        )
+  const pageBody = viewport
+    ? emitFlutterViewport(viewport, body)
+    : `SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: ${indent(body, 7).trimStart()},
+            )`
   const constructor = environment.router
     ? `  const ${className}({
     super.key,
@@ -97,7 +140,7 @@ export function emitFlutterPage(
   return `import 'package:flutter/material.dart';
 
 import '../openpencil_runtime.dart';
-${flutterVRTourImport(ir.children, environment.vrTourIds)}
+${viewport || needsFlutterWidthFill(ir.children) ? "import '../openpencil_page_viewport.dart';\n" : ''}${flutterVRTourImport(ir.children, environment.vrTourIds)}
 ${componentImports(ir.children, environment.componentPlans)}
 
 class ${className} extends StatefulWidget {
@@ -114,15 +157,12 @@ ${indent(stateFields.join('\n'), 1)}
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      body: SafeArea(
+${viewport?.backgroundColor ? `      backgroundColor: ${flutterColor(viewport.backgroundColor)},\n` : ''}      body: SafeArea(
         child: AnimatedBuilder(
           animation: OpenPencilDocumentState.instance,
           builder: (context, _) {
 ${indent(docReads.join('\n'), 6)}
-            return SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              child: ${indent(body, 7).trimStart()},
-            );
+            return ${pageBody};
           },
         ),
       ),
@@ -153,14 +193,20 @@ export function emitFlutterComponent(
     }
   }
   const children = definition.variants?.[0]?.children ?? definition.children
-  const body = emitChildrenLayout(children, {
+  const nodeEnvironment: NodeEnvironment = {
     ...environment,
     names,
     sourceId: definition.componentId,
     componentBody: true,
     supportsLocalState: false,
     unsupportedListArrays: new Set()
-  })
+  }
+  const legacyBody = emitChildrenLayout(children, nodeEnvironment)
+  const body = environment.adaptiveComponents
+    ? `(opViewportWidth == null ? ${legacyBody} : ${emitResponsiveFlutterBody(children, (nodes) =>
+        emitChildrenLayout(nodes, { ...nodeEnvironment, responsive: true })
+      )})`
+    : legacyBody
   const fields = props.map((prop) => `  final String ${names.get(prop.name)};`).join('\n')
   const parameters = props
     .map((prop) => {
@@ -174,7 +220,7 @@ export function emitFlutterComponent(
   return `import 'package:flutter/material.dart';
 
 import '../openpencil_runtime.dart';
-${flutterVRTourImport(children, environment.vrTourIds)}
+${environment.adaptiveComponents || needsFlutterWidthFill(children) ? "import '../openpencil_page_viewport.dart';\n" : ''}${flutterVRTourImport(children, environment.vrTourIds)}
 
 class ${plan.className} extends StatelessWidget {
   const ${plan.className}({
@@ -190,7 +236,7 @@ ${fields}
       animation: OpenPencilDocumentState.instance,
       builder: (context, _) {
 ${indent(docReads.join('\n'), 4)}
-        return ${indent(body, 4).trimStart()};
+${environment.adaptiveComponents ? '        final opViewportWidth = OpenPencilViewportScope.maybeWidthOf(context);\n' : ''}        return ${indent(body, 4).trimStart()};
       },
     );
   }
@@ -240,6 +286,12 @@ function emitStateField(
 }
 
 function emitNode(node: IRNode, environment: NodeEnvironment): string {
+  if (
+    environment.responsive &&
+    (node.kind === 'element' || node.kind === 'componentRef') &&
+    node.layout?.visible === false
+  )
+    return 'const SizedBox.shrink()'
   if (node.kind === 'text') {
     return textWidget(dartString(node.value), environment.inheritedTextStyle)
   }
@@ -340,8 +392,8 @@ function emitComponentRef(node: IRComponentRef, environment: NodeEnvironment): s
     return [`${emittedName}: ${dartString(prop.value)}`]
   })
   let widget = `${plan.importAlias}.${plan.className}(${props.join(', ')})`
-  const style = translateFlutterStyle(node.className, node.sourceId, environment.warn)
-  widget = wrapStyle(widget, style)
+  const style = nodeStyle(node, environment)
+  widget = wrapStyle(widget, style, undefined, fixedWidthFallback(node, environment))
   return widget
 }
 
@@ -349,7 +401,7 @@ function emitElement(node: IRElement, environment: NodeEnvironment): string {
   if (omitUnsupportedMultipleSelect(node, 'flutter', environment.warn))
     return 'const SizedBox.shrink()'
   warnElementFeatures(node, environment.warn)
-  const style = translateFlutterStyle(node.className, node.sourceId, environment.warn)
+  const style = nodeStyle(node, environment)
   if (style.backgroundAsset) {
     const resolved = environment.nativeAssetAliases.get(style.backgroundAsset)
     if (resolved) style.backgroundAsset = resolved
@@ -383,9 +435,8 @@ function emitElement(node: IRElement, environment: NodeEnvironment): string {
   else if (node.tag === 'button') widget = emitButton(node, style, environment)
   else if (TEXT_TAGS.has(node.tag)) widget = emitTextElement(node, style, environment)
   else widget = emitContainer(node, style, environment)
-  widget = wrapStyle(widget, style)
   const label = staticAttr(node.attrs['aria-label'])
-  if (label) widget = `Semantics(label: ${dartString(label)}, child: ${widget})`
+  widget = wrapStyle(widget, style, label, fixedWidthFallback(node, environment))
   if (environment.devMode) {
     widget = `KeyedSubtree(key: ValueKey(${dartString(`openpencil-node-${node.sourceId}`)}), child: ${widget})`
   }
@@ -644,17 +695,38 @@ function emitTextElement(
 }
 
 function emitContainer(node: IRElement, style: FlutterStyle, environment: NodeEnvironment): string {
-  const child = emitChildrenLayout(node.children, environment, style)
+  const child = emitChildrenLayout(node.children, environment, style, node.sourceId)
   const click = emitEventBody(node.events?.onClick ?? [], node.sourceId, environment)
   if (click) return `InkWell(onTap: () { ${click} }, child: ${child})`
   return child
 }
 
+function emitFixedHorizontalFill(
+  nodes: readonly IRNode[],
+  children: readonly string[],
+  style: FlutterStyle
+): string {
+  const items = nodes.map((node, index) => {
+    const fill = flutterNodeLayout(node)?.widthSizing === 'FILL'
+    return `OpenPencilFlexItem(flex: ${fill ? 1000 : 0}, child: ${children[index]})`
+  })
+  return `OpenPencilFlex(axis: Axis.horizontal, gap: ${style.gap ?? 0}, mainAxisAlignment: MainAxisAlignment.${style.mainAxisAlignment ?? 'start'}, crossAxisAlignment: CrossAxisAlignment.${style.crossAxisAlignment ?? 'center'}, children: [${items.join(', ')}])`
+}
+
 function emitChildrenLayout(
   nodes: readonly IRNode[],
   environment: NodeEnvironment,
-  style: FlutterStyle = {}
+  style: FlutterStyle = {},
+  sourceId = environment.sourceId
 ): string {
+  if (environment.responsive)
+    return emitAdaptiveFlutterChildren(
+      nodes,
+      style,
+      (node) => emitNode(node, environment),
+      environment.warn,
+      sourceId
+    )
   if (nodes.length === 0) return 'const SizedBox.shrink()'
   const absolute = nodes.some(nodeIsPositioned)
   const children = nodes.map((node) => emitNode(node, environment))
@@ -667,6 +739,12 @@ function emitChildrenLayout(
 ${indent(children.map((child) => `${child},`).join('\n'), 2)}
   ]),
 )`
+  }
+  if (
+    style.flexDirection === 'row' &&
+    nodes.some((node) => flutterNodeLayout(node)?.widthSizing === 'FILL')
+  ) {
+    return emitFixedHorizontalFill(nodes, children, style)
   }
   const gap = style.gap ?? 0
   const separated =
@@ -696,7 +774,25 @@ ${indent(separated.map((child) => (child.endsWith(',') ? child : `${child},`)).j
 )`
 }
 
-function wrapStyle(child: string, style: FlutterStyle): string {
+function fixedWidthFallback(
+  node: IRElement | IRComponentRef,
+  environment: NodeEnvironment
+): number | undefined {
+  if (environment.responsive || node.layout?.widthSizing !== 'FILL') return undefined
+  return node.layout.width
+}
+
+function constrainFixedWidth(value: string, width: number | undefined): string {
+  if (width === undefined) return value
+  return `LayoutBuilder(builder: (context, constraints) => ConstrainedBox(constraints: constraints.hasBoundedWidth ? const BoxConstraints() : const BoxConstraints.tightFor(width: ${width}), child: ${value}))`
+}
+
+function wrapStyle(
+  child: string,
+  style: FlutterStyle,
+  semanticLabel?: string,
+  fallbackWidth?: number
+): string {
   const args = [
     style.width !== undefined ? `width: ${style.width}` : '',
     style.height !== undefined ? `height: ${style.height}` : '',
@@ -708,7 +804,10 @@ function wrapStyle(child: string, style: FlutterStyle): string {
       : ''
   ].filter(Boolean)
   let value = args.length > 0 ? `Container(${args.join(', ')}, child: ${child})` : child
+  value = wrapAdaptiveFlutterStyle(value, style.layout)
+  value = constrainFixedWidth(value, fallbackWidth)
   if (style.opacity !== undefined) value = `Opacity(opacity: ${style.opacity}, child: ${value})`
+  if (semanticLabel) value = `Semantics(label: ${dartString(semanticLabel)}, child: ${value})`
   if (style.position === 'absolute') {
     const position = [
       style.left !== undefined ? `left: ${style.left}` : '',
@@ -721,6 +820,35 @@ function wrapStyle(child: string, style: FlutterStyle): string {
     value = `Positioned(${position ? `${position}, ` : ''}child: ${value})`
   }
   return value
+}
+
+function nodeStyle(node: IRElement | IRComponentRef, environment: NodeEnvironment): FlutterStyle {
+  const semanticUtility =
+    /^(?:-?(?:left|top|right|bottom)-.+|w-(?:full|auto)|h-(?:full|auto)|flex-(?:1|auto|none|wrap|nowrap|\[.+\])|shrink(?:-.+)?|grow(?:-.+)?|grid|grid-cols-.+|grid-rows-.+|col-span-.+|row-span-.+|gap-[xy]-.+)$/
+  let classes = node.className
+  if (environment.responsive && node.layout) {
+    classes = classes
+      .split(/\s+/)
+      .filter((utility) => !semanticUtility.test(utility))
+      .join(' ')
+  } else if (node.layout?.widthSizing === 'FILL') {
+    classes = classes
+      .split(/\s+/)
+      .filter((utility) => utility !== 'w-full')
+      .join(' ')
+  }
+  const style = translateFlutterStyle(classes, node.sourceId, environment.warn)
+  if (!environment.responsive)
+    return node.layout?.widthSizing === 'FILL'
+      ? {
+          ...style,
+          width: undefined,
+          layout: { ...node.layout, heightSizing: 'FIXED', clipsContent: false }
+        }
+      : style
+  const projected = projectFlutterLayout(style, node.layout)
+  normalizeConstraints(projected, node.sourceId, environment.warn)
+  return projected
 }
 
 function emitEventBody(
@@ -739,6 +867,21 @@ function emitHandler(
   const context = { names: environment.names, sourceId, warn: environment.warn }
   if (handler.kind === 'setState') return emitStateHandler(handler, sourceId, environment, context)
   if (handler.kind === 'setVariable') return emitVariableHandler(handler, context)
+  if (handler.kind === 'back') {
+    if (!environment.router) {
+      environment.warn({
+        code: 'flutter-back-router-required',
+        message: 'Flutter omitted Back because the router is disabled.',
+        nodeId: sourceId
+      })
+      return []
+    }
+    const pathname = lowcodeNavigationPathname(handler.fallback)
+    const route = `${environment.routeRewrites.get(pathname) ?? pathname}${handler.fallback.slice(pathname.length)}`
+    return [
+      `if (Navigator.of(context).canPop()) { Navigator.of(context).pop(); } else { Navigator.of(context).pushReplacementNamed(${dartString(route)}); }`
+    ]
+  }
   if (handler.kind === 'navigate') {
     if (!environment.router) {
       environment.warn({
@@ -757,7 +900,9 @@ function emitHandler(
     const destination = params?.length
       ? `OpenPencilRuntime.route(${dartString(route)}, <String, dynamic>{${params.join(', ')}})`
       : dartString(route)
-    return [`Navigator.of(context).pushNamed(${destination});`]
+    return [
+      `Navigator.of(context).${handler.history === 'replace' ? 'pushReplacementNamed' : 'pushNamed'}(${destination});`
+    ]
   }
   if (handler.kind === 'condition') {
     const consequent = handler.consequent.flatMap((item) =>

@@ -13,7 +13,7 @@ for (const locale of ['en', 'zh-CN'])
     const fixture = componentTemplateFixture(['autocomplete', 'time-picker'], locale)
     try {
       const catalog = getComponentTemplates(locale)
-      expect(catalog).toHaveLength(62)
+      expect(catalog).toHaveLength(66)
       for (const id of ['autocomplete', 'time-picker']) {
         expect(catalog.find((item) => item.id === id)?.requiredModules).toEqual([])
       }

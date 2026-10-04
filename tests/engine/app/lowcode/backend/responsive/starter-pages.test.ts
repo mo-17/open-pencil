@@ -108,6 +108,10 @@ describe('notes and commerce compact page contracts', () => {
       const { editor, pageIds } = await fixture(kind)
       expect(pageIds).toHaveLength(count)
       for (const pageId of pageIds) {
+        expect(editor.graph.getNode(pageId)?.lowcodePageViewport).toEqual({
+          version: 1,
+          mode: 'responsive'
+        })
         const frame = editor.graph.getChildren(pageId)[0]
         expect(frame.responsiveOverrides?.compact?.layoutMode).toBe('VERTICAL')
         expect(frame.responsiveOverrides?.compact?.primaryAxisSizing).toBe('HUG')

@@ -12,7 +12,8 @@ import {
   type ButtonHTMLAttributes,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode
 } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -29,6 +30,7 @@ export interface OpenPencilSlideMenuConfig {
   showTriggerLabel?: boolean
   title: string
   description: string
+  contentChildName?: string
   items: readonly OpenPencilSlideMenuItem[]
   closeOnBackdrop: boolean
   showCloseButton: boolean
@@ -41,9 +43,10 @@ export interface OpenPencilSlideMenuConfig {
 export interface OpenPencilSlideMenuProps
   extends Omit<
     ButtonHTMLAttributes<HTMLButtonElement>,
-    'onClick' | 'onKeyDown' | 'type'
+    'onClick' | 'onKeyDown' | 'type' | 'content'
   > {
   config: OpenPencilSlideMenuConfig
+  content?: ReactNode
   onClick?: (event: ReactMouseEvent<HTMLButtonElement>) => void
   onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void
 }
@@ -259,6 +262,7 @@ function panelStyle(
 
 export default function OpenPencilSlideMenu({
   config,
+  content,
   className,
   children,
   onClick,
@@ -417,7 +421,7 @@ export default function OpenPencilSlideMenu({
     positionedByClass || positionedByStyle
       ? style
       : { ...style, position: 'relative' as const }
-  const hasAuthoredTrigger = children !== undefined && children !== null
+  const hasAuthoredTrigger = !Object.hasOwn(config, 'contentChildName') && children !== undefined && children !== null
   const showTriggerIcon = config.showTriggerIcon !== false
   const showTriggerLabel = config.showTriggerLabel !== false
   const triggerStyle: CSSProperties = {
@@ -500,15 +504,19 @@ export default function OpenPencilSlideMenu({
                   ) : null}
                 </header>
               ) : null}
-              <nav aria-label={config.title || accessibleLabel}>
-                <ul>
-                  {config.items.map((item, index) => (
-                    <li key={item.href + '-' + index}>
-                      <a href={item.href} onClick={closePanel}>{item.label}</a>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
+              {config.contentChildName ? (
+                <div data-openpencil-slide-menu-content="">{content}</div>
+              ) : (
+                <nav aria-label={config.title || accessibleLabel}>
+                  <ul>
+                    {config.items.map((item, index) => (
+                      <li key={item.href + '-' + index}>
+                        <a href={item.href} onClick={closePanel}>{item.label}</a>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              )}
             </section>
           </div>,
           document.body

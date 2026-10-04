@@ -1,5 +1,6 @@
 import { DATA_GRID_CSV_RUNTIME } from '#compiler/adapters/data-grid/csv'
 import { DATA_GRID_FEEDBACK_RUNTIME } from '#compiler/adapters/data-grid/feedback'
+import { DATA_GRID_ROWS_RUNTIME } from '#compiler/adapters/data-grid/rows'
 import {
   DATA_GRID_TYPES,
   DATA_GRID_CELL_RUNTIME,
@@ -16,14 +17,19 @@ import { useEffect, useId, useMemo, useRef, useState, type HTMLAttributes } from
 ${DATA_GRID_TYPES}
 export interface OpenPencilDataGridProps extends HTMLAttributes<HTMLDivElement> {
   config: OpenPencilDataGridConfig
+  rowsBound?: boolean
+  rows?: unknown
 }
 
 ${DATA_GRID_CSV_RUNTIME}
 ${DATA_GRID_CELL_RUNTIME}
+${DATA_GRID_ROWS_RUNTIME}
 ${DATA_GRID_FEEDBACK_RUNTIME}
 ${DATA_GRID_LAYOUT_RUNTIME}
 export default function OpenPencilDataGrid({
   config,
+  rowsBound = false,
+  rows: boundSource,
   children,
   className,
   style,
@@ -32,7 +38,11 @@ export default function OpenPencilDataGrid({
 }: OpenPencilDataGridProps) {
   const chinese = (lang ?? (typeof document === 'undefined' ? 'en' : document.documentElement.lang)).toLowerCase().startsWith('zh')
   const copy = dataGridCopy(chinese)
-  const [rows, setRows] = useState<readonly OpenPencilDataGridRow[]>(() => config.data.rows)
+  const [localRows, setRows] = useState<readonly OpenPencilDataGridRow[]>(() => config.data.rows)
+  const boundRows = rowsBound ? resolveBoundDataGridRows(boundSource, config.data.columns) : { ok: true, rows: [] }
+  const rows = rowsBound ? boundRows.rows : localRows
+  const rowsUnavailable = rowsBound && !boundRows.ok
+  const boundFingerprint = JSON.stringify({ columns: config.data.columns, boundRows })
   const [sort, setSort] = useState<OpenPencilDataGridSort | null>(config.initialSort)
   const [queries, setQueries] = useState<Record<string, string>>({})
   const [page, setPage] = useState(0)
@@ -61,13 +71,15 @@ export default function OpenPencilDataGrid({
   const resetFingerprint = useMemo(
     () =>
       JSON.stringify({
-        data: config.data,
+        data: { columns: config.data.columns, rows: rowsBound ? boundRows.rows : config.data.rows },
+        rowsBound,
+        rowsUnavailable,
         filters: config.filters,
         initialSort: config.initialSort,
         pageSize: config.pageSize,
         selectionMode: config.selectionMode
       }),
-    [config.data, config.filters, config.initialSort, config.pageSize, config.selectionMode]
+    [config.data, config.filters, config.initialSort, config.pageSize, config.selectionMode, rowsBound, rowsUnavailable, boundFingerprint]
   )
 
   useEffect(() => {
@@ -114,6 +126,7 @@ export default function OpenPencilDataGrid({
   )
 
   const importPastedCsv = () => {
+    if (rowsBound) return
     try {
       const importedRows = importCsvRows(csvSource, config.data.columns)
       setRows(importedRows)
@@ -134,7 +147,7 @@ export default function OpenPencilDataGrid({
 
   const prepareCsvText = () => {
     try {
-      const prepared = exportCsvRows(config.data.columns, rows)
+      const prepared = exportCsvRows(config.data.columns, rowsBound ? sortedRows : rows)
       setCsvOutput(prepared.text)
       setSanitizedCount(prepared.sanitizedCount)
       setCsvError('')
@@ -277,6 +290,7 @@ export default function OpenPencilDataGrid({
       className={className}
       lang={lang}
       data-openpencil-data-grid=""
+      data-openpencil-data-grid-unavailable={rowsUnavailable || undefined}
       style={hostStyle}
     >
       {config.showCsvTools === true ? <div
@@ -286,12 +300,13 @@ export default function OpenPencilDataGrid({
         style={{ borderBottom: '1px solid ' + config.borderColor, padding: 8, flexShrink: 0 }}
       >
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          <button style={buttonStyle} onClick={() => setCsvOpen((value) => !value)} type="button">
+          <button disabled={rowsBound} style={buttonStyle} onClick={() => setCsvOpen((value) => !value)} type="button">
             {csvOpen ? copy.close : copy.paste}
           </button>
-          <button style={buttonStyle} onClick={prepareCsvText} type="button">{copy.prepare}</button>
+          <button disabled={rowsUnavailable} style={buttonStyle} onClick={prepareCsvText} type="button">{copy.prepare}</button>
         </div>
-        {csvOpen ? (
+        {rowsBound ? <p>{copy.boundReadOnly}</p> : null}
+        {csvOpen && !rowsBound ? (
           <div style={{ marginTop: 6 }}>
             <label>
               {copy.source}
@@ -304,7 +319,7 @@ export default function OpenPencilDataGrid({
                 value={csvSource}
               />
             </label>
-            <button style={buttonStyle} onClick={importPastedCsv} type="button">{copy.import}</button>
+            <button disabled={rowsBound} style={buttonStyle} onClick={importPastedCsv} type="button">{copy.import}</button>
             <p>
               {copy.local}
             </p>
@@ -476,7 +491,7 @@ export default function OpenPencilDataGrid({
                   colSpan={config.data.columns.length + (selectionColumn ? 1 : 0)}
                   style={{ padding: 16, textAlign: 'center' }}
                 >
-                  {copy.empty}
+                  {rowsUnavailable ? <span role="alert">{copy.boundUnavailable}</span> : copy.empty}
                 </td>
               </tr>
             ) : null}

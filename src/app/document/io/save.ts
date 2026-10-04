@@ -69,7 +69,8 @@ export function createSaveActions({
   const status = shallowRef<DocumentSaveStatus>(INITIAL_SAVE_STATUS)
 
   function getSaveStatus(): DocumentSaveStatus {
-    return statusRevision === getSourceRevision() ? status.value : INITIAL_SAVE_STATUS
+    const current = status.value
+    return statusRevision === getSourceRevision() ? current : INITIAL_SAVE_STATUS
   }
 
   function saved(destination: DocumentSaveStatus['destination']): void {

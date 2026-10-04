@@ -40,6 +40,6 @@ export function vueControlledEventValue(
 ): string {
   if (type === 'boolean') return '(__opEvent.target as HTMLInputElement).checked'
   if (type === 'number')
-    return 'Number((__opEvent.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value)'
+    return '__opParseNumericDraft((__opEvent.target as HTMLInputElement).value, __opEvent.target as HTMLInputElement, __opEvent)'
   return '(__opEvent.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value'
 }

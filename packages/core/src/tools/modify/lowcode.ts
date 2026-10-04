@@ -9,6 +9,9 @@ import {
   validateInteractiveProps,
   validateInvokeServerWorkflowAction,
   validateLowcodeCustomCSS,
+  validateLowcodeBackFallback,
+  validateLowcodeNavigationHistory,
+  validateLowcodeNavigationTarget,
   validateLowcodeHeadMeta,
   validateStateName,
   validateSupabaseConfig,
@@ -83,6 +86,7 @@ type ModifyResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: 
 const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   'setState',
   'navigate',
+  'back',
   'setVariable',
   'apiCall',
   'backendAuth',
@@ -408,6 +412,7 @@ function validatePerKindFields(
 ): { ok: true } | { ok: false; error: string } {
   if (kind === 'setState' || kind === 'setVariable') return validateValueExpr(where, value)
   if (kind === 'navigate') return validateNavigateAction(where, value)
+  if (kind === 'back') return validateBackAction(where, value)
   if (kind === 'apiCall') return validateAPICallAction(where, value)
   if (kind === 'supabaseQuery' || kind === 'supabaseMutation') {
     const r = validateSupabaseAction(where, kind, value)
@@ -483,10 +488,25 @@ function validateWorkflowInvocationAction(
  *  expression in the same sub-language as `setState.valueExpr`. Identifier +
  *  parse checks happen here; identifier resolution against state / docState /
  *  `$params` happens at IR collect. */
+function validateBackAction(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (typeof value.fallback !== 'string')
+    return failAt(where, '.fallback must be a concrete internal route')
+  const validation = validateLowcodeBackFallback(value.fallback)
+  return validation.ok ? { ok: true } : failAt(where, `.fallback — ${validation.reason}`)
+}
+
 function validateNavigateAction(
   where: string,
   value: Record<string, unknown>
 ): { ok: true } | { ok: false; error: string } {
+  if (typeof value.to !== 'string') return failAt(where, '.to must be an internal route')
+  const target = validateLowcodeNavigationTarget(value.to)
+  if (!target.ok) return failAt(where, `.to — ${target.reason}`)
+  if (!validateLowcodeNavigationHistory(value.history).ok)
+    return failAt(where, '.history must be push or replace')
   if (value.params === undefined) return { ok: true }
   if (!isPlainObject(value.params)) {
     return failAt(`${where}.params`, 'must be an object of { paramName: expressionString }')
@@ -833,6 +853,7 @@ function buildActionFromValidated(
   raw: Record<string, unknown>
 ): ActionDef {
   if (isMotionActionKind(kind)) return buildMotionActionFromValidated(id, kind, raw)
+  if (isNavigationActionKind(kind)) return buildNavigationAction(id, kind, raw)
   switch (kind) {
     case 'setState':
       return {
@@ -840,13 +861,6 @@ function buildActionFromValidated(
         kind,
         targetStateId: raw.targetStateId as string | undefined,
         valueExpr: raw.valueExpr as string | undefined
-      }
-    case 'navigate':
-      return {
-        id,
-        kind,
-        to: raw.to as string | undefined,
-        params: raw.params as Record<string, string> | undefined
       }
     case 'setVariable':
       return {
@@ -984,6 +998,25 @@ function buildActionFromValidated(
       const _exhaustive: never = kind
       throw new Error(`unreachable action kind: ${String(_exhaustive)}`)
     }
+  }
+}
+
+function isNavigationActionKind(kind: ActionKind): kind is 'navigate' | 'back' {
+  return kind === 'navigate' || kind === 'back'
+}
+
+function buildNavigationAction(
+  id: string,
+  kind: 'navigate' | 'back',
+  raw: Record<string, unknown>
+): ActionDef {
+  if (kind === 'back') return { id, kind, fallback: raw.fallback as string }
+  return {
+    id,
+    kind,
+    to: raw.to as string,
+    params: raw.params as Record<string, string> | undefined,
+    ...(raw.history !== undefined ? { history: raw.history as 'push' | 'replace' } : {})
   }
 }
 

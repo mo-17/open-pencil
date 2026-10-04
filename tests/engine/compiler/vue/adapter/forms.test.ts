@@ -54,7 +54,7 @@ function expectValidSfc(source: string): void {
 }
 
 describe('Vue compiler form fail-closed behavior', () => {
-  test('retains native numeric inputs and numeric state coercion without replacing explicit types', () => {
+  test('retains authored numeric input types and accepts only parsed numeric drafts', () => {
     const controls = [
       element({ sourceId: 'quantity', tag: 'input' }),
       element({ sourceId: 'explicit-text', tag: 'input', attrs: { type: 'text' } }),
@@ -77,14 +77,12 @@ describe('Vue compiler form fail-closed behavior', () => {
     )
     const page = textFile(output.files, 'src/pages/index.vue')
     expect(page.match(/type="number"/g)).toHaveLength(1)
-    expect(page).toMatch(/<input type="number"[^>]+@input=/)
-    expect(page).toMatch(/<input type="text"[^>]+@input=/)
+    expect(page).toMatch(/<OpNumberInput type="number"[^>]+@input=/)
+    expect(page).toMatch(/<OpNumberInput type="text"[^>]+@input=/)
     expect(page).toMatch(/<select :value=[^>]+@change=/)
-    expect(
-      page.match(
-        /Number\(\(__opEvent.target as HTMLInputElement \| HTMLTextAreaElement \| HTMLSelectElement\).value\)/g
-      )
-    ).toHaveLength(3)
+    expect(page.match(/__opParseNumericDraft\(/g)).toHaveLength(3)
+    expect(page.match(/if \(__opNextNumber !== undefined\)/g)).toHaveLength(3)
+    expect(output.files.has('src/components/open-pencil/OpenPencilNumberInput.vue')).toBe(true)
     expect(output.warnings).toEqual([])
     expectValidSfc(page)
   })
@@ -134,7 +132,10 @@ describe('Vue compiler form fail-closed behavior', () => {
 
     expect(page).toContain('<form @submit.prevent>')
     expect(page.match(/<form @submit\.prevent>/g)).toHaveLength(1)
-    expect(page).toMatch(/<form @submit\.prevent="__op_validation_form_submit_[0-9]+\(\$event\)">/)
+    expect(page).toMatch(
+      /<form @submit\.prevent="__op_validation_form_submit_[0-9]+\(\$event\)"[^>]*>/
+    )
+    expect(page).toMatch(/@reset="__opFormReset_[0-9]+\(\$event\)"/)
     expect(page).toContain('const __opSubmitForm = __opEvent.currentTarget')
     expect(page).toContain('if (!__validateFields(["field"], __opSubmitForm)) return')
     expect(page).toContain('__opState_count_')

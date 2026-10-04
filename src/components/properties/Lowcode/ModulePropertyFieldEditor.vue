@@ -115,7 +115,8 @@ function textValue(): string {
     <template
       v-if="
         (definition?.pluginId === 'open-pencil.modal' ||
-          definition?.pluginId === 'open-pencil.popover') &&
+          definition?.pluginId === 'open-pencil.popover' ||
+          definition?.pluginId === 'open-pencil.slide-menu') &&
         field.path[0] === 'contentChildName'
       "
     >

@@ -1,4 +1,8 @@
-import { moduleValueFields, type ModuleValueField } from '@open-pencil/core/plugins'
+import {
+  moduleValueFields,
+  resolveModuleFieldName,
+  type ModuleValueField
+} from '@open-pencil/core/plugins'
 import {
   auditValidatedFormControls,
   findComponentMasterAncestor,
@@ -101,6 +105,19 @@ function validationStatus(
   return { validation: invalid ? 'invalid' : validation, asynchronous }
 }
 
+function moduleSubmissionName(
+  node: SceneNode,
+  field: ModuleValueField,
+  pageStates: readonly StateDef[]
+): string | undefined {
+  const binding = node.bindings?.[field.key]
+  let defaultName = ''
+  if (binding?.kind === 'docState') defaultName = binding.docStateName ?? ''
+  else if (binding?.kind === 'ref')
+    defaultName = pageStates.find((state) => state.id === binding.stateId)?.name ?? ''
+  return resolveModuleFieldName(node, field.key, defaultName) || undefined
+}
+
 /** A bounded, read-only configuration view; compilation and validation remain with their owners. */
 export function inspectFormOverview(graph: SceneGraph, selectedId: string): FormOverview | null {
   const selected = graph.getNode(selectedId)
@@ -120,15 +137,20 @@ export function inspectFormOverview(graph: SceneGraph, selectedId: string): Form
   const descendants = inspectDescendants(graph, form, (node) => {
     const endpoints = moduleValueFields(node)
     if (endpoints.length)
-      return endpoints.map((field) => ({
-        id: node.id,
-        name: node.name,
-        valueKey: field.key,
-        binding:
+      return endpoints.map((field) => {
+        const binding =
           validated.get(node.id + field.key) ??
-          bindingStatus(graph, node, pageStates, documentStates, field),
-        ...validationStatus(node, field)
-      }))
+          bindingStatus(graph, node, pageStates, documentStates, field)
+        return {
+          id: node.id,
+          name: node.name,
+          valueKey: field.key,
+          submissionName:
+            binding === 'valid' ? moduleSubmissionName(node, field, pageStates) : undefined,
+          binding,
+          ...validationStatus(node, field)
+        }
+      })
     return [
       {
         id: node.id,

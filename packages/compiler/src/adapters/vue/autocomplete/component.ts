@@ -6,28 +6,55 @@ export function buildVueAutocompleteComponent(microfrontend = false): string {
     ? "import { microfrontendPortalTarget } from '../../__microfrontend-context'\n"
     : ''
   return `<script setup lang="ts">
-import { onBeforeUnmount, onMounted, onUpdated, ref, useAttrs } from 'vue'
+import { onBeforeUnmount, onMounted, onUpdated, ref, useAttrs, watch } from 'vue'
 import { mountAutocomplete, type AutocompleteConfig } from '../../lib/open-pencil-autocomplete'
 ${portalImport}
 defineOptions({ inheritAttrs: false })
-const props = withDefaults(defineProps<{ suggestions: string[]; value?: string; defaultValue?: string }>(), { value: undefined, defaultValue: undefined })
+const props = withDefaults(defineProps<{ suggestions: string[]; value?: string; defaultValue?: string; formResetFieldKey?: string }>(), { value: undefined, defaultValue: undefined })
+const emit = defineEmits<{(event:'external-rebase'):void}>()
 const attrs = useAttrs()
 const input = ref<HTMLInputElement | null>(null)
 let controller: ReturnType<typeof mountAutocomplete> | undefined
 const internal = ref(props.defaultValue ?? '')
 let owner: HTMLFormElement | null = null
 let disposed = false
-function remember(event: Event) { if (props.value === undefined) internal.value = (event.target as HTMLInputElement).value }
-function reset(event: Event) { queueMicrotask(() => {
-  if (disposed || event.defaultPrevented || !input.value) return
+let accepted = false
+let ownValue: string | undefined, acceptedValue: string | undefined
+watch(() => props.value, (value, previous) => {
+  if (value === previous) return
+  const next = String(value ?? props.defaultValue ?? '')
+  const own = ownValue === next || acceptedValue === next
+  ownValue = undefined; acceptedValue = undefined
+  if (!own) emit('external-rebase')
+})
+function remember(event: Event) {
+  ownValue = (event.target as HTMLInputElement).value
+  if (props.value === undefined) internal.value = ownValue
+}
+function reset(event: Event) { accepted = false; queueMicrotask(() => {
+  if (disposed || accepted || event.defaultPrevented || !input.value) return
   if (props.value === undefined) internal.value = props.defaultValue ?? ''
   input.value.value = props.value ?? internal.value
   controller?.update(config())
 }) }
+function acceptedReset(event: Event) {
+  const key = props.formResetFieldKey
+  const values = (event as CustomEvent<{values?:Record<string,unknown>}>).detail?.values
+  if (!key || !values || !Object.prototype.hasOwnProperty.call(values,key) || !input.value) return
+  const next = values[key]
+  if (typeof next !== 'string') return
+  accepted = true
+  acceptedValue = next
+  input.value.value = next
+  controller?.update(config())
+}
 function refresh() {
   if (!input.value) return
   input.value.defaultValue = props.defaultValue ?? ''
-  if (owner !== input.value.form) { owner?.removeEventListener('reset', reset); owner = input.value.form; owner?.addEventListener('reset', reset) }
+  if (owner !== input.value.form) {
+    owner?.removeEventListener('reset', reset); owner?.removeEventListener('__openPencilFormResetAccepted',acceptedReset)
+    owner = input.value.form; owner?.addEventListener('reset', reset); owner?.addEventListener('__openPencilFormResetAccepted',acceptedReset)
+  }
   controller?.update(config())
 }
 function config(): AutocompleteConfig {
@@ -46,7 +73,7 @@ function config(): AutocompleteConfig {
 }
 onMounted(() => { if (input.value) controller = mountAutocomplete(input.value, config()); refresh() })
 onUpdated(refresh)
-onBeforeUnmount(() => { disposed = true; owner?.removeEventListener('reset', reset); controller?.destroy() })
+onBeforeUnmount(() => { disposed = true; owner?.removeEventListener('reset', reset); owner?.removeEventListener('__openPencilFormResetAccepted',acceptedReset);controller?.destroy() })
 </script>
 <template>
   <input v-bind="attrs" ref="input" :value="value ?? internal" @input="remember" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" autocomplete="off" />

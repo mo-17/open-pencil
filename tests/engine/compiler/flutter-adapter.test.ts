@@ -112,6 +112,43 @@ function maybeWriteVerificationProject(files: ReadonlyMap<string, string | Uint8
 }
 
 describe('Flutter compiler adapter', () => {
+  for (const devMode of [false, true]) {
+    test(`positions ARIA semantics below parent-data wrappers without changing node keys (devMode=${devMode})`, () => {
+      const ir = minimalIr({
+        children: [
+          element({
+            sourceId: 'absolute-button',
+            tag: 'button',
+            className: 'absolute left-6 top-10 w-48 h-12 opacity-80',
+            attrs: { 'aria-label': 'Increment count' },
+            children: [{ kind: 'text', value: 'Increment' }]
+          }),
+          element({
+            sourceId: 'flow-button',
+            tag: 'button',
+            className: 'w-48 h-12 opacity-80',
+            attrs: { 'aria-label': 'In flow' },
+            children: [{ kind: 'text', value: 'Flow' }]
+          })
+        ]
+      })
+      const output = flutterAdapter.emit([ir], { ...flutterOptions(), devMode })
+      const page = pageFile(output.files)
+      expect(page).toContain('child: Stack(')
+      expect(page).toContain(
+        'Positioned(left: 24, top: 40, child: Semantics(label: "Increment count", child: Opacity('
+      )
+      expect(page).toContain('Semantics(label: "In flow", child: Opacity(')
+      if (devMode) {
+        expect(page).toContain(
+          'KeyedSubtree(key: ValueKey("openpencil-node-absolute-button"), child: Positioned('
+        )
+        expect(page.match(/ValueKey\("openpencil-node-absolute-button"\)/g)).toHaveLength(1)
+      } else expect(page).not.toContain('KeyedSubtree(')
+      expectDartFormats(output.files)
+    })
+  }
+
   test('emits a source-only native Widget project with state, lists, inputs, and raster assets', () => {
     const graph = makeSceneGraph('Home')
     const pageId = firstPageId(graph)

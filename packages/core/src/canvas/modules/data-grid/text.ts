@@ -1,12 +1,13 @@
-import type { SceneNode } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
+import { readModuleDataInitial } from '#core/canvas/module-data'
+import { moduleLabelTextNode } from '#core/canvas/modules/label'
 import {
   resolveDataGridModule,
+  resolveDataGridRows,
   type DataGridCellV1,
   type DataGridModuleConfigV1
 } from '#core/plugins/data-grid'
-
-import { moduleLabelTextNode } from '#core/canvas/modules/label'
 
 interface VisibleDataGridRows {
   rows: DataGridModuleConfigV1['data']['rows']
@@ -52,16 +53,17 @@ export function dataGridSummaryText(config: DataGridModuleConfigV1): string {
 }
 
 /** Read only the bounded canvas summary, not every record in the runtime data source. */
-export function dataGridTextNode(node: SceneNode): SceneNode | null {
+export function dataGridTextNode(node: SceneNode, graph?: SceneGraph): SceneNode | null {
   if (node.type !== 'FRAME' || node.width <= 0 || node.height <= 0) return null
   const resolved = resolveDataGridModule(node.interactiveProps?.module)
   if (!resolved?.ok) return null
-  const config = resolved.config
+  const { config, unavailable } = dataGridCanvasData(node, resolved.config, graph)
   const visible = visibleDataGridRows(config, node.height)
   const labels = visible.headerRows
     ? config.data.columns.map((_, index) => dataGridHeaderText(config, index))
     : []
   for (const row of visible.rows) labels.push(...row.cells.map(dataGridCellText))
+  if (unavailable) labels.push(dataGridUnavailableText(node))
   if (visible.footerHeight > 0) labels.push(dataGridSummaryText(config))
   return moduleLabelTextNode(
     node,
@@ -70,4 +72,27 @@ export function dataGridTextNode(node: SceneNode): SceneNode | null {
     config.fontSize,
     node.textLanguage ?? 'en'
   )
+}
+
+/** Canvas reads authored initial rows only; present unresolved bindings stay unavailable. */
+export function dataGridCanvasData(
+  node: SceneNode,
+  config: DataGridModuleConfigV1,
+  graph?: SceneGraph
+): { config: DataGridModuleConfigV1; unavailable: boolean } {
+  const source = graph
+    ? readModuleDataInitial(node, graph, 'rows')
+    : { bound: Boolean(node.bindings && Object.hasOwn(node.bindings, 'rows')), value: undefined }
+  if (!source.bound) return { config, unavailable: false }
+  const parsed = resolveDataGridRows(source.value, config.data.columns)
+  return {
+    config: { ...config, data: { ...config.data, rows: parsed.rows } },
+    unavailable: !parsed.ok
+  }
+}
+
+export function dataGridUnavailableText(node: SceneNode): string {
+  return node.textLanguage?.toLowerCase().startsWith('zh')
+    ? '绑定的表格数据不可用。'
+    : 'Bound data grid rows are unavailable.'
 }

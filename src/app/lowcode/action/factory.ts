@@ -27,6 +27,7 @@ export interface ActionFactoryCtx {
 export const ACTION_KINDS: ActionKind[] = [
   'setState',
   'navigate',
+  'back',
   'setVariable',
   'apiCall',
   'backendRequest',
@@ -74,6 +75,7 @@ const FACTORIES: Record<ActionKind, (id: string, ctx: ActionFactoryCtx) => Actio
     }
   },
   navigate: (id) => ({ id, kind: 'navigate', to: '/' }),
+  back: (id) => ({ id, kind: 'back', fallback: '/' }),
   setVariable: (id, ctx) => {
     const docTarget = first(ctx.docStates)
     return {

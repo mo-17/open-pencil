@@ -12,7 +12,6 @@ import { compileScript, compileTemplate, parse as parseVueSfc } from 'vue/compil
 import { compile, withDefaults } from '@open-pencil/compiler'
 import {
   createDataGridModuleFrameOverrides,
-  createLottieModuleInstance,
   createTableModuleFrameOverrides,
   createDropdownMenuModuleFrameOverrides,
   createModalModuleFrameOverrides,
@@ -203,13 +202,21 @@ describe('Vue trusted module runtimes', () => {
         "const authoredTriggerLabelledBy = authoredTriggerId + ' ' + triggerFallbackId"
       )
       expect(runtime).toContain('class="openpencil-trigger-fallback"')
+      expect(runtime).not.toContain('innerHTML')
+      expect(runtime).not.toContain('textContent')
+    }
+    for (const runtime of [modal, dropdown, upload]) {
       expect(runtime).toContain(':aria-label="$slots.default ? undefined : config.triggerLabel"')
       expect(runtime).toContain(
         ':aria-labelledby="$slots.default ? authoredTriggerLabelledBy : undefined"'
       )
-      expect(runtime).not.toContain('innerHTML')
-      expect(runtime).not.toContain('textContent')
     }
+    expect(slide).toContain(
+      ':aria-label="authoredTrigger && $slots.default ? undefined : config.triggerLabel"'
+    )
+    expect(slide).toContain(
+      ':aria-labelledby="authoredTrigger && $slots.default ? authoredTriggerLabelledBy : undefined"'
+    )
     expect(upload).toContain('Files have not been uploaded.')
     expect(upload).toContain('matchesAccept')
     expect(upload).toContain('Folders are not supported by this local file control.')
@@ -222,30 +229,34 @@ describe('Vue trusted module runtimes', () => {
     expect(upload).not.toContain('indexedDB')
   })
 
-  test('keeps unimplemented trusted modules fail-closed as static shells', () => {
+  test('keeps unregistered module identities fail-closed as static shells', () => {
     const unsupported: IRElement = {
       kind: 'element',
-      sourceId: 'lottie-module',
+      sourceId: 'unregistered-module',
       tag: 'div',
       className: 'w-40',
       attrs: {},
-      children: [{ kind: 'text', sourceId: 'fallback-copy', value: 'Static Lottie fallback' }],
+      children: [
+        { kind: 'text', sourceId: 'fallback-copy', value: 'Static future-module fallback' }
+      ],
       module: {
-        pluginId: 'open-pencil.lottie',
-        moduleType: 'lottie',
+        pluginId: 'open-pencil.future-module',
+        moduleType: 'future-module',
         configVersion: 1,
-        payload: createLottieModuleInstance().config
+        payload: {}
       }
     }
     const output = vueAdapter.emit([minimalIr([unsupported])], vueOptions())
     const page = textFile(output.files, 'src/pages/index.vue')
 
     expect(output.warnings).toContainEqual(
-      expect.objectContaining({ code: 'vue-module-unsupported', nodeId: 'lottie-module' })
+      expect.objectContaining({ code: 'vue-module-unsupported', nodeId: 'unregistered-module' })
     )
     expect(page).toContain('<div class="w-40"')
-    expect(page).toContain('Static Lottie fallback')
-    expect([...output.files.keys()].some((path) => path.includes('lottie'))).toBe(false)
+    expect(page).toContain('Static future-module fallback')
+    expect([...output.files.keys()].some((path) => path.startsWith('src/__openpencil_'))).toBe(
+      false
+    )
   })
 
   test('deduplicates runtimes while keeping instance state inside each SFC setup', () => {

@@ -1,12 +1,13 @@
-export type PreviewRefreshPolicy = 'realtime' | 'auto' | 'manual'
+export type PreviewRefreshPolicy = 'realtime' | 'auto' | 'save' | 'manual'
 
 export const DEFAULT_PREVIEW_REFRESH_POLICY: PreviewRefreshPolicy = 'auto'
 export const PREVIEW_REFRESH_POLICIES: readonly PreviewRefreshPolicy[] = [
   'realtime',
   'auto',
+  'save',
   'manual'
 ]
-export const MIN_PREVIEW_AUTO_DELAY_MS = 200
+export const MIN_PREVIEW_AUTO_DELAY_MS = 400
 export const MAX_PREVIEW_AUTO_DELAY_MS = 1_000
 
 export function normalizePreviewRefreshPolicy(value: unknown): PreviewRefreshPolicy {
@@ -16,7 +17,7 @@ export function normalizePreviewRefreshPolicy(value: unknown): PreviewRefreshPol
     : DEFAULT_PREVIEW_REFRESH_POLICY
 }
 
-export type PreviewCompileReason = 'initial' | 'change' | 'manual'
+export type PreviewCompileReason = 'initial' | 'change' | 'save' | 'manual'
 export type PreviewCompileOutcome = 'pushed' | 'superseded' | 'failed'
 
 export interface PreviewCompileRun {
@@ -128,20 +129,24 @@ export function createPreviewCompileScheduler(options: PreviewCompileSchedulerOp
     cancelScheduledRun = null
   }
 
-  function shouldKeepExplicitManualRunCurrent(request: PendingCompile): boolean {
+  function shouldKeepExplicitRunCurrent(request: PendingCompile): boolean {
     return (
-      state.policy === 'manual' && (request.reason === 'initial' || request.reason === 'manual')
+      (state.policy === 'manual' || state.policy === 'save') &&
+      (request.reason === 'initial' ||
+        request.reason === 'manual' ||
+        (state.policy === 'save' && request.reason === 'save'))
     )
   }
 
   function isCurrent(request: PendingCompile): boolean {
     if (disposed || active?.revision !== request.revision) return false
-    return request.revision === state.latestRevision || shouldKeepExplicitManualRunCurrent(request)
+    return request.revision === state.latestRevision || shouldKeepExplicitRunCurrent(request)
   }
 
   function delayFor(request: PendingCompile): number | null {
+    if (request.reason === 'save') return state.policy === 'manual' ? null : 0
     if (request.reason !== 'change' || state.policy === 'realtime') return 0
-    if (state.policy === 'manual') return null
+    if (state.policy === 'manual' || state.policy === 'save') return null
     const elapsed = Math.max(0, clock.now() - request.requestedAt)
     return Math.max(0, state.autoDelayMs - elapsed)
   }
@@ -211,7 +216,10 @@ export function createPreviewCompileScheduler(options: PreviewCompileSchedulerOp
     pending = {
       revision,
       refreshFonts: refreshFonts || (pending?.refreshFonts ?? false),
-      reason,
+      reason:
+        reason === 'change' && pending && shouldKeepExplicitRunCurrent(pending)
+          ? pending.reason
+          : reason,
       requestedAt: clock.now()
     }
     schedulePending()
@@ -224,6 +232,9 @@ export function createPreviewCompileScheduler(options: PreviewCompileSchedulerOp
     getState: (): PreviewCompileSchedulerState => ({ ...state }),
     requestInitial: (): number => enqueue('initial', false),
     requestChange: (refreshFonts = false): number => enqueue('change', refreshFonts),
+    /** Call only after a document save has succeeded; cancelled/failed saves must not signal. */
+    requestSave: (refreshFonts = false): number =>
+      state.policy === 'manual' ? state.latestRevision : enqueue('save', refreshFonts),
     flush: (refreshFonts = false): number => enqueue('manual', refreshFonts),
     setPolicy(policy: PreviewRefreshPolicy): void {
       if (disposed || state.policy === policy) return

@@ -37,6 +37,9 @@ export {
   CHART_PLUGIN,
   CHART_PLUGIN_ID,
   buildChartLayout,
+  parseChartData,
+  buildChartDataLayout,
+  type ChartData,
   type ChartLayout,
   type ChartText,
   type ChartPath,
@@ -49,6 +52,7 @@ export {
   type ChartModuleConfigV1
 } from './chart'
 export * from './data-grid'
+export * from './bindings/data'
 export * from './dropdown-menu'
 export {
   HTML_MODULE_CONFIG_VERSION,
@@ -191,4 +195,9 @@ export type {
   PluginDefinition
 } from './types'
 
-export { moduleValueFields, type ModuleValueField } from './value-controls'
+export {
+  moduleValueFields,
+  resolveModuleFieldName,
+  validModuleFieldName,
+  type ModuleValueField
+} from './value-controls'

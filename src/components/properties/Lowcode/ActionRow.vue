@@ -33,6 +33,7 @@ import { lowcodeEventsTheme } from '@/theme/lowcode-events'
 import ActionList from './ActionList.vue'
 import BackendActionEditor from './BackendActionEditor.vue'
 import BackendCommandActionEditor from './BackendCommandActionEditor.vue'
+import NavigationActionEditor from './NavigationActionEditor.vue'
 
 /**
  * Phase 3 §10 v10 — one row of the recursive workflow editor. Renders a single
@@ -114,31 +115,33 @@ const errors = computed<ActionErrors>(() =>
 // editor-facing labels differ. condition / confirm use hardcoded labels
 // (avoids messages.ts + 7-locale churn, per panel convention).
 function actionKindLabel(kind: ActionKind): string {
-  if (kind === 'setVariable') return panels.value.lowcodeActionSetDocument
-  if (kind === 'backendRequest') return panels.value.lowcodeBackendRequest
-  const commandLabels: Partial<Record<ActionKind, string>> = {
-    backendCommand: commerceCopy(locale.value).command,
-    backendCommandRecovery: commerceCopy(locale.value).recoveryAction
+  const copy = panels.value
+  const commands = commerceCopy(locale.value)
+  const labels: Partial<Record<ActionKind, string>> = {
+    navigate: copy.lowcodeNavigationJump,
+    back: copy.lowcodeNavigationBack,
+    setVariable: copy.lowcodeActionSetDocument,
+    backendRequest: copy.lowcodeBackendRequest,
+    backendCommand: commands.command,
+    backendCommandRecovery: commands.recoveryAction,
+    backendAuth: copy.lowcodeBackendAuth,
+    apiCall: copy.lowcodeActionCallApi,
+    supabaseQuery: copy.lowcodeActionSupabaseQuery,
+    supabaseMutation: copy.lowcodeActionSupabaseMutation,
+    supabaseAuth: copy.lowcodeActionSupabaseAuth,
+    condition: 'If (condition)',
+    confirm: 'Confirm',
+    callWorkflow: 'Call workflow',
+    invokeServerWorkflow: 'Invoke server workflow',
+    trackEvent: 'Track event',
+    stripeCheckout: 'Stripe checkout',
+    stripeCustomerPortal: 'Stripe customer portal',
+    playMotion: copy.lowcodeActionPlayMotion,
+    stopMotion: copy.lowcodeActionStopMotion,
+    toggleMotion: copy.lowcodeActionToggleMotion,
+    awaitMotion: copy.lowcodeActionAwaitMotion
   }
-  const commandLabel = commandLabels[kind]
-  if (commandLabel) return commandLabel
-  if (kind === 'backendAuth') return panels.value.lowcodeBackendAuth
-  if (kind === 'apiCall') return panels.value.lowcodeActionCallApi
-  if (kind === 'supabaseQuery') return panels.value.lowcodeActionSupabaseQuery
-  if (kind === 'supabaseMutation') return panels.value.lowcodeActionSupabaseMutation
-  if (kind === 'supabaseAuth') return panels.value.lowcodeActionSupabaseAuth
-  if (kind === 'condition') return 'If (condition)'
-  if (kind === 'confirm') return 'Confirm'
-  if (kind === 'callWorkflow') return 'Call workflow'
-  if (kind === 'invokeServerWorkflow') return 'Invoke server workflow'
-  if (kind === 'trackEvent') return 'Track event'
-  if (kind === 'stripeCheckout') return 'Stripe checkout'
-  if (kind === 'stripeCustomerPortal') return 'Stripe customer portal'
-  if (kind === 'playMotion') return panels.value.lowcodeActionPlayMotion
-  if (kind === 'stopMotion') return panels.value.lowcodeActionStopMotion
-  if (kind === 'toggleMotion') return panels.value.lowcodeActionToggleMotion
-  if (kind === 'awaitMotion') return panels.value.lowcodeActionAwaitMotion
-  return kind
+  return labels[kind] ?? kind
 }
 
 function patch(p: Partial<ActionDef>): void {
@@ -447,22 +450,12 @@ function changeServerWorkflow(id: string): void {
         />
       </template>
 
-      <template v-else-if="action.kind === 'navigate'">
-        <span class="text-[11px] text-muted">to</span>
-        <input
-          :value="action.to ?? ''"
-          aria-label="Route path"
-          :aria-invalid="errors.to ? 'true' : undefined"
-          data-test-id="lowcode-action-to"
-          spellcheck="false"
-          placeholder="/about"
-          :class="[
-            'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            errors.to ? 'border-red-500' : 'border-border'
-          ]"
-          @change="patch({ to: ($event.target as HTMLInputElement).value })"
-        />
-      </template>
+      <NavigationActionEditor
+        v-else-if="action.kind === 'navigate' || action.kind === 'back'"
+        :action="action"
+        :error="errors.to"
+        @update:action="emit('update:action', $event)"
+      />
 
       <template v-else-if="action.kind === 'setVariable'">
         <select

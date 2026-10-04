@@ -133,7 +133,10 @@ function emitNavigate(handler: IRNavigateHandler, context: WechatEventContext): 
     })
   }
   const params = handler.params ?? []
-  if (params.length === 0) return [`wx.navigateTo({ url: ${JSON.stringify(`/${route}`)} });`]
+  if (params.length === 0)
+    return [
+      `wx.${handler.history === 'replace' ? 'redirectTo' : 'navigateTo'}({ url: ${JSON.stringify(`/${route}`)} });`
+    ]
   const query = params
     .map(
       (parameter) =>
@@ -142,7 +145,7 @@ function emitNavigate(handler: IRNavigateHandler, context: WechatEventContext): 
     .join(` + '&' + `)
   return [
     `const query = ${query};`,
-    `wx.navigateTo({ url: ${JSON.stringify(`/${route}?`)} + query });`
+    `wx.${handler.history === 'replace' ? 'redirectTo' : 'navigateTo'}({ url: ${JSON.stringify(`/${route}?`)} + query });`
   ]
 }
 

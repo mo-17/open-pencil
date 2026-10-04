@@ -34,7 +34,15 @@ function treeHasHandler(node: IRNode, pred: (h: IREventHandler) => boolean): boo
 
 /** Whether any node in an arbitrary page/component body contains navigate. */
 export function nodesHaveNavigateHandler(nodes: readonly IRNode[]): boolean {
-  return nodes.some((node) => treeHasHandler(node, (h) => handlerTreeHasKind(h, 'navigate')))
+  return nodes.some((node) =>
+    treeHasHandler(node, (h) => handlerTreeHasKind(h, 'navigate') || handlerTreeHasKind(h, 'back'))
+  )
+}
+
+export function nodesHaveBackHandler(nodes: readonly IRNode[]): boolean {
+  return nodes.some((node) =>
+    treeHasHandler(node, (handler) => handlerTreeHasKind(handler, 'back'))
+  )
 }
 
 export function pageHasNavigateHandler(ir: IRTree): boolean {
@@ -415,6 +423,14 @@ function stripNavigateHandler(
   eventName: string,
   warnings: CompileWarning[]
 ): IREventHandler | undefined {
+  if (handler.kind === 'back') {
+    warnings.push({
+      code: 'action-back-no-router',
+      message: 'Back requires a multi-page router and was omitted.',
+      nodeId
+    })
+    return undefined
+  }
   if (handler.kind === 'navigate') {
     warnings.push({
       code: 'action-navigate-no-router',

@@ -10,6 +10,7 @@ import {
   type ModulePreviewResolution
 } from '#core/canvas/modules/preview'
 import type { SkiaRenderer } from '#core/canvas/renderer'
+import { modalHidesContent } from '#core/plugins/content/modal'
 
 export interface ModulePreviewTriggerOptions {
   width: number
@@ -184,7 +185,7 @@ export function createModulePreviewTriggerRenderer<TConfig extends ModulePreview
 ): (renderer: SkiaRenderer, canvas: Canvas, node: SceneNode) => boolean {
   return (renderer, canvas, node) =>
     renderResolvedModulePreview(node, resolve, (frame) => {
-      if (frame.node.childIds.length > 0) return
+      if (frame.node.childIds.length > 0 && !modalHidesContent(frame.node)) return
       const showAccessory =
         accessory.visibility === 'icon'
           ? frame.config.showTriggerIcon === true

@@ -16,6 +16,8 @@ import {
   PREV_IDENT,
   substitutePrev,
   validateInvokeServerWorkflowAction,
+  validateLowcodeBackFallback,
+  validateLowcodeNavigationHistory,
   validateLowcodeNavigationTarget
 } from '@open-pencil/lowcode'
 import type { BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
@@ -781,6 +783,8 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
         ctx.docStateReads,
         ctx.warnings
       )
+    case 'back':
+      return resolveBack(action, ctx)
     case 'navigate':
       return resolveNavigate(
         ctx.node,
@@ -1547,6 +1551,25 @@ function resolveStripeRedirect(
   } as IRStripeRedirectHandler
 }
 
+function resolveBack(
+  action: Extract<ActionDef, { kind: 'back' }>,
+  ctx: ResolveCtx
+): IREventHandler | null {
+  const fallback = typeof action.fallback === 'string' ? action.fallback.trim() : ''
+  const validation = validateLowcodeBackFallback(
+    typeof action.fallback === 'string' ? action.fallback : ''
+  )
+  if (!validation.ok) {
+    ctx.warnings.push({
+      code: 'action-back-invalid-fallback',
+      message: `Back fallback is invalid: ${validation.reason ?? 'unsupported target'}`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  return { kind: 'back', fallback }
+}
+
 function resolveNavigate(
   node: SceneNode,
   eventName: EventName,
@@ -1571,6 +1594,14 @@ function resolveNavigate(
     warnings.push({
       code: 'action-navigate-invalid-to',
       message: `node ${node.id} ${eventName} navigate target is invalid: ${targetValidation.reason ?? 'unsupported target'}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (!validateLowcodeNavigationHistory(action.history).ok) {
+    warnings.push({
+      code: 'action-navigate-invalid-history',
+      message: 'Unknown navigation history mode was omitted.',
       nodeId: node.id
     })
     return null
@@ -1615,7 +1646,12 @@ function resolveNavigate(
     registerDocStateReads(parsed.references, docStates, docStateReads)
     params.push({ name, ast: parsed.ast, references: [...parsed.references] })
   }
-  return params.length > 0 ? { kind: 'navigate', to, params } : { kind: 'navigate', to }
+  return {
+    kind: 'navigate',
+    to,
+    ...(params.length > 0 ? { params } : {}),
+    ...(action.history !== undefined ? { history: action.history } : {})
+  }
 }
 
 /** Phase 3 §10: lower a `condition` action. Parses the condition expression
