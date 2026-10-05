@@ -69,7 +69,10 @@ function serializeAttributes(node: DesignElement): string {
 
 function serializeNode(node: DesignNode): string {
   if (node.type === 'text') return escapeText(node.text)
-  const tagName = node.tagName.toLowerCase()
+  // Shared projection emits native buttons; this outlet retains their artwork
+  // through the existing passive div serializer and safe-attribute filter.
+  const sourceTagName = node.tagName.toLowerCase()
+  const tagName = sourceTagName === 'button' ? 'div' : sourceTagName
   if (!SAFE_ELEMENTS.has(tagName))
     throw new TypeError('Static HTML contains an unsupported element')
   const attrs = serializeAttributes(node)

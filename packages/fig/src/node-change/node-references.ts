@@ -1,4 +1,6 @@
+import { figmaSchema } from '@open-pencil/kiwi/fig'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import type { Schema } from '@open-pencil/kiwi/schema-runtime'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 type MutableRecord = Record<string, unknown>
@@ -206,37 +208,50 @@ function remapBehaviors(nodeChange: MutableRecord, resolve: ResolveFigmaNodeRefe
  */
 export function remapFigmaNodeReferences(
   nodeChange: NodeChange & MutableRecord,
-  resolve: ResolveFigmaNodeReference
+  resolve: ResolveFigmaNodeReference,
+  schema: Schema = figmaSchema
 ): void {
   remapGuidField(nodeChange, 'transitionNodeID', 'transitionNodeID', resolve)
   remapGuidField(nodeChange, 'prototypeStartNodeID', 'prototypeStartNodeID', resolve)
   remapInteractionArray(nodeChange, 'prototypeInteractions', resolve)
   remapInteractionArray(nodeChange, 'objectAnimations', resolve)
   remapBehaviors(nodeChange, resolve)
-  remapPaintSources(nodeChange, resolve)
+  remapPaintSources(nodeChange, resolve, schema)
 }
 
-/** Only declared paint arrays carry paint source GUIDs; other GUID-shaped data stays opaque. */
-function remapPaintSources(value: unknown, resolve: ResolveFigmaNodeReference): void {
-  if (Array.isArray(value)) {
-    for (const item of value) remapPaintSources(item, resolve)
-    return
+const paintSchemaDefinitions = new WeakMap<
+  Schema,
+  ReadonlyMap<string, Schema['definitions'][number]>
+>()
+
+/** Follow Paint types in the archive schema, including overrides; matching opaque keys stay opaque. */
+function remapPaintSources(
+  value: unknown,
+  resolve: ResolveFigmaNodeReference,
+  schema: Schema
+): void {
+  let definitions = paintSchemaDefinitions.get(schema)
+  if (!definitions) {
+    definitions = new Map(schema.definitions.map((definition) => [definition.name, definition]))
+    paintSchemaDefinitions.set(schema, definitions)
   }
-  const record = asRecord(value)
-  if (!record) return
-  for (const [key, child] of Object.entries(record)) {
-    if (
-      (key === 'fillPaints' || key === 'strokePaints' || key === 'textDecorationFillPaints') &&
-      Array.isArray(child)
-    ) {
-      for (const candidate of child) {
-        const paint = asRecord(candidate)
-        if (!paint || !isGuid(paint.sourceNodeId)) continue
-        const target = resolve(paint.sourceNodeId, 'paint.sourceNodeId')
-        if (target) paint.sourceNodeId = target
-      }
-    } else remapPaintSources(child, resolve)
+  const visit = (candidate: unknown, type: string): void => {
+    const record = asRecord(candidate),
+      definition = definitions.get(type)
+    if (!record || !definition || definition.kind === 'ENUM') return
+    if (type === 'Paint' && isGuid(record.sourceNodeId)) {
+      const target = resolve(record.sourceNodeId, 'paint.sourceNodeId')
+      if (target) record.sourceNodeId = target
+    }
+    for (const field of definition.fields) {
+      if (!field.type || field.isDeprecated) continue
+      const child = record[field.name]
+      if (field.isArray && Array.isArray(child)) {
+        for (const item of child) visit(item, field.type)
+      } else visit(child, field.type)
+    }
   }
+  visit(value, 'NodeChange')
 }
 
 /**

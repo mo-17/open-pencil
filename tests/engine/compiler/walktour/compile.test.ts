@@ -7,7 +7,11 @@ import { exportFigFile } from '@open-pencil/core/io/formats/fig'
 import { initCodec, parseFigFile } from '@open-pencil/core/kiwi'
 import { createWalktourModuleInstance } from '@open-pencil/core/plugins'
 
-import { walktourFixture, walktourGraph } from '#tests/helpers/compiler/components/walktour/fixture'
+import {
+  walktourFixture,
+  walktourFormFixture,
+  walktourGraph
+} from '#tests/helpers/compiler/components/walktour/fixture'
 import { walktourRuntimeFixture } from '#tests/helpers/compiler/components/walktour/runtime'
 import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
 
@@ -20,8 +24,17 @@ for (const target of ['react', 'vue'] as const)
     )
     expect(runtime).toContain('showModal')
     expect(runtime).not.toMatch(/fetch\(|localStorage|sessionStorage/)
-    typeCheckCompilerFiles(result.files, target)
-    typeCheckCompilerFiles(walktourRuntimeFixture(target).files, target)
+    const form = walktourFormFixture(target)
+    expect(form.warnings).toEqual([])
+    for (const project of [result, walktourRuntimeFixture(target), form])
+      typeCheckCompilerFiles(
+        new Map(
+          [...project.files].filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string'
+          )
+        ),
+        target
+      )
   }, 35000)
 for (const target of ['react', 'vue'] as const)
   test(`${target} microfrontends refuse Walktour overlays before emitting`, () => {

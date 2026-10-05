@@ -215,7 +215,8 @@ function remapExportedFigmaNodeReferences(
   graph: SceneGraph,
   nodeChanges: KiwiNodeChange[],
   nodeIdToGuid: ReadonlyMap<string, GUID>,
-  documentGuid: GUID
+  documentGuid: GUID,
+  schema: Schema
 ): unknown {
   const emittedGuidToNodeId = new Map<string, string>()
   for (const [nodeId, guid] of nodeIdToGuid) emittedGuidToNodeId.set(guidToString(guid), nodeId)
@@ -243,22 +244,28 @@ function remapExportedFigmaNodeReferences(
     const ownerNodeId = emittedGuidToNodeId.get(guidToString(nodeChange.guid))
     if (!ownerNodeId) continue
 
-    remapFigmaNodeReferences(nodeChange, (sourceGuid, path) => {
-      if (path === 'paint.sourceNodeId') {
-        const runtimeGuid = nodeIdToGuid.get(guidToString(sourceGuid))
-        if (runtimeGuid) return runtimeGuid
-      }
-      const candidates = sourceGuidToNodeIds.get(guidToString(sourceGuid)) ?? []
-      if (candidates.length === 0) return null
-      if (candidates.length === 1) return nodeIdToGuid.get(candidates[0]) ?? null
-      if (candidates.includes(ownerNodeId)) return nodeIdToGuid.get(ownerNodeId) ?? null
+    remapFigmaNodeReferences(
+      nodeChange,
+      (sourceGuid, path) => {
+        if (path === 'paint.sourceNodeId') {
+          const runtimeGuid = nodeIdToGuid.get(guidToString(sourceGuid))
+          if (runtimeGuid) return runtimeGuid
+        }
+        const candidates = sourceGuidToNodeIds.get(guidToString(sourceGuid)) ?? []
+        if (candidates.length === 0) return null
+        if (candidates.length === 1) return nodeIdToGuid.get(candidates[0]) ?? null
+        if (candidates.includes(ownerNodeId)) return nodeIdToGuid.get(ownerNodeId) ?? null
 
-      const ownerCanvasId = getCanvasId(ownerNodeId)
-      const scopedCandidates = candidates.filter(
-        (candidateId) => getCanvasId(candidateId) === ownerCanvasId
-      )
-      return scopedCandidates.length === 1 ? (nodeIdToGuid.get(scopedCandidates[0]) ?? null) : null
-    })
+        const ownerCanvasId = getCanvasId(ownerNodeId)
+        const scopedCandidates = candidates.filter(
+          (candidateId) => getCanvasId(candidateId) === ownerCanvasId
+        )
+        return scopedCandidates.length === 1
+          ? (nodeIdToGuid.get(scopedCandidates[0]) ?? null)
+          : null
+      },
+      schema
+    )
   }
 
   if (graph.figMessageObjectAnimations === null) return null
@@ -750,7 +757,8 @@ export async function exportFigFileWithOptions(
     graph,
     nodeChanges,
     nodeIdToGuid,
-    docGuid
+    docGuid,
+    schema
   )
 
   const msg: Record<string, unknown> = {

@@ -9,12 +9,16 @@ interface ContentRequest {
   childName: string
 }
 
+export function isPortaledContentModule(module: IRModule | null | undefined): boolean {
+  return (
+    (module?.pluginId === 'open-pencil.modal' && module.moduleType === 'modal') ||
+    (module?.pluginId === 'open-pencil.popover' && module.moduleType === 'popover') ||
+    (module?.pluginId === 'open-pencil.slide-menu' && module.moduleType === 'slide-menu')
+  )
+}
+
 function contentRequests(module: IRModule): ContentRequest[] | undefined {
-  if (
-    (module.pluginId === 'open-pencil.modal' && module.moduleType === 'modal') ||
-    (module.pluginId === 'open-pencil.popover' && module.moduleType === 'popover') ||
-    (module.pluginId === 'open-pencil.slide-menu' && module.moduleType === 'slide-menu')
-  ) {
+  if (isPortaledContentModule(module)) {
     const childName = module.payload.contentChildName
     if (typeof childName !== 'string') return undefined
     return childName ? [{ name: 'content', childName }] : []
@@ -106,7 +110,7 @@ function contentRoot(node: IRNode): IRNode {
   }
 }
 
-export function moduleContentNodes(node: { module?: IRModule; children: readonly IRNode[] }) {
+function authoredModuleContentNodes(node: { module?: IRModule; children: readonly IRNode[] }) {
   if (isWalktourModule(node.module)) {
     return node.module?.contentSlots?.map((slot) => ({
       name: slot.name,
@@ -124,10 +128,23 @@ export function moduleContentNodes(node: { module?: IRModule; children: readonly
     nodes:
       slot.sourceId === null
         ? []
-        : node.children
-            .filter((child) => moduleChildSourceId(child) === slot.sourceId)
-            .map(contentRoot)
+        : node.children.filter((child) => moduleChildSourceId(child) === slot.sourceId)
   }))
+}
+
+export function moduleContentNodes(node: { module?: IRModule; children: readonly IRNode[] }) {
+  const slots = authoredModuleContentNodes(node)
+  if (isWalktourModule(node.module)) return slots
+  return slots?.map((slot) => ({ ...slot, nodes: slot.nodes.map(contentRoot) }))
+}
+
+/** Fields follow the emitted native DOM: Tabs panels and Walktour targets/extras
+ * stay under their host, while dialog content portals out. Legacy dialog children
+ * are inert trigger artwork, not live fields. Return original IR nodes so reset
+ * and validation markers also reach slotted roots before layout projection. */
+export function formOwnedChildren(node: { module?: IRModule; children: readonly IRNode[] }) {
+  if (isPortaledContentModule(node.module)) return []
+  return authoredModuleContentNodes(node)?.flatMap((slot) => slot.nodes) ?? node.children
 }
 
 /** Nested forms own their own validation and are not part of the caller's scope. */
@@ -139,7 +156,7 @@ export function containsModuleContent(nodes: readonly IRNode[]): boolean {
     return (
       node.module?.contentSlots !== undefined ||
       (node.module?.valueFields?.length ?? 0) > 0 ||
-      containsModuleContent(node.children)
+      containsModuleContent(formOwnedChildren(node))
     )
   })
 }
@@ -153,13 +170,7 @@ export function markModuleFormValidationScope(nodes: readonly IRNode[]): void {
       if (node.validation) node.validationScopeMarker = true
       for (const field of node.module?.valueFields ?? [])
         if (field.validation) field.validationScopeMarker = true
-      const slots = isWalktourModule(node.module) ? undefined : node.module?.contentSlots
-      const ids = slots ? new Set(slots.map((slot) => slot.sourceId)) : undefined
-      markModuleFormValidationScope(
-        ids
-          ? node.children.filter((child) => ids.has(moduleChildSourceId(child) ?? null))
-          : node.children
-      )
+      markModuleFormValidationScope(formOwnedChildren(node))
     }
   }
 }

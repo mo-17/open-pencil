@@ -1,6 +1,8 @@
 import {
   BACKEND_COMPILATION_MODES,
   createBuiltinBackendProviderRegistry,
+  NESTJS_BACKEND_PROVIDER_ADAPTER_ID,
+  NESTJS_PRISMA_CRM_BACKEND_PROVIDER_ADAPTER_ID,
   SUPABASE_BACKEND_PROVIDER_ADAPTER_ID
 } from '../dist/backend/index.mjs'
 import { BackendProviderCompilationError } from '../dist/index.mjs'
@@ -13,11 +15,19 @@ if (BACKEND_COMPILATION_MODES.join(',') !== 'preview,source-only-prototype,produ
 }
 
 const descriptors = createBuiltinBackendProviderRegistry().list()
+const expectedAdapterIds = [
+  SUPABASE_BACKEND_PROVIDER_ADAPTER_ID,
+  NESTJS_BACKEND_PROVIDER_ADAPTER_ID,
+  NESTJS_PRISMA_CRM_BACKEND_PROVIDER_ADAPTER_ID
+].sort()
+const actualAdapterIds = descriptors.map((descriptor) => descriptor.adapterId).sort()
 if (
-  descriptors.length !== 1 ||
-  descriptors[0]?.adapterId !== SUPABASE_BACKEND_PROVIDER_ADAPTER_ID
+  actualAdapterIds.length !== expectedAdapterIds.length ||
+  actualAdapterIds.some((adapterId, index) => adapterId !== expectedAdapterIds[index])
 ) {
-  throw new Error('Built Compiler Backend registry does not expose the reviewed Supabase adapter')
+  throw new Error(
+    'Built Compiler Backend registry does not expose exactly the reviewed Supabase, NestJS and Prisma CRM adapters'
+  )
 }
 if (new BackendProviderCompilationError([]).name !== 'BackendProviderCompilationError') {
   throw new Error('Built Compiler root does not expose the fail-closed Backend compile error')

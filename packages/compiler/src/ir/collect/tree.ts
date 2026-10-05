@@ -5,8 +5,9 @@ import { collectContentModuleLanguage } from '#compiler/modules/content-language
 import {
   collectModuleContentSlots,
   containsModuleContent,
-  markModuleFormValidationScope,
-  moduleContentNodes
+  formOwnedChildren,
+  isPortaledContentModule,
+  markModuleFormValidationScope
 } from '#compiler/modules/content-slots'
 import { collectModuleDataBinding } from '#compiler/modules/data-bindings'
 import { collectPaginationModuleBindings } from '#compiler/modules/pagination'
@@ -854,7 +855,8 @@ function hasFormOwnedFieldCandidate(
     const child = entry.child
     if (child.type === 'FORM') continue
     if (isFormOwnedFieldCandidate(child)) found = true
-    if (hasPortaledModuleContent(child)) continue
+    if (isPortaledContentModule(collectCompilerModule(child, [], BUILTIN_COMPILER_MODULE_REGISTRY)))
+      continue
     const descendants = ctx.graph.getChildren(child.id)
     if (child.type === 'INSTANCE' && descendants.length === 0) {
       warnUnexpandedFormComponent(child, ctx, nextPath)
@@ -898,16 +900,6 @@ function isStepperResetCandidate(node: SceneNode): boolean {
     return false
   const module = collectCompilerModule(node, [], BUILTIN_COMPILER_MODULE_REGISTRY)
   return module?.pluginId === 'open-pencil.stepper' && module.moduleType === 'stepper'
-}
-
-function hasPortaledModuleContent(node: SceneNode): boolean {
-  const module = collectCompilerModule(node, [], BUILTIN_COMPILER_MODULE_REGISTRY)
-  return (
-    module?.moduleType === 'modal' ||
-    module?.moduleType === 'popover' ||
-    (module?.pluginId === 'open-pencil.slide-menu' && module.moduleType === 'slide-menu') ||
-    module?.moduleType === 'walktour'
-  )
 }
 
 /** A clean component ref hides its descendants behind one reusable module.
@@ -3904,11 +3896,7 @@ function collectFormResetFields(nodes: readonly IRNode[], ctx: WalkCtx): IRFormR
         }
         child.attrs[FORM_RESET_FIELD_ATTRIBUTE] = child.sourceId
       }
-      const slots = moduleContentNodes(child)
-      // Tabs panels stay in the DOM under their host. Modal, Popover and
-      // Walktour slots render through portals and have no enclosing FORM owner.
-      if (slots && child.module?.moduleType !== 'tabs') continue
-      visit(slots ? slots.flatMap((slot) => slot.nodes) : child.children)
+      visit(formOwnedChildren(child))
     }
   }
   visit(nodes)
@@ -3952,9 +3940,7 @@ function collectValidationKeys(nodes: readonly IRNode[]): string[] {
       if (n.validation) keys.push(n.validation.key)
       for (const field of n.module?.valueFields ?? [])
         if (field.validation) keys.push(field.validation.key)
-      const slots = moduleContentNodes(n)
-      if (slots && n.module?.moduleType !== 'tabs') continue
-      keys.push(...collectValidationKeys(slots ? slots.flatMap((slot) => slot.nodes) : n.children))
+      keys.push(...collectValidationKeys(formOwnedChildren(n)))
     } else if (n.kind === 'conditional') {
       keys.push(...collectValidationKeys([n.consequent]))
     } else if (n.kind === 'list') {

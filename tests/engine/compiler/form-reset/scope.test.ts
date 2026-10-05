@@ -2,10 +2,77 @@ import { expect, test } from 'bun:test'
 
 import { buildComponentRegistry } from '#compiler/ir/collect/components'
 import { collectTree } from '#compiler/ir/collect/tree'
-import type { IRElement } from '#compiler/ir/types'
+import { FORM_RESET_FIELD_ATTRIBUTE, type IRElement } from '#compiler/ir/types'
 
-import { createModalModuleFrameOverrides } from '@open-pencil/core/plugins'
-import { SceneGraph } from '@open-pencil/scene-graph'
+import {
+  createModalModuleFrameOverrides,
+  createPopoverModuleFrameOverrides,
+  createSlideMenuModuleFrameOverrides
+} from '@open-pencil/core/plugins'
+import { SceneGraph, validateModuleInstance } from '@open-pencil/scene-graph'
+
+for (const [name, create, legacy] of [
+  ['Modal', createModalModuleFrameOverrides, false],
+  ['Popover', createPopoverModuleFrameOverrides, false],
+  ['Slide Menu', createSlideMenuModuleFrameOverrides, false],
+  ['Legacy Modal inert trigger', createModalModuleFrameOverrides, true]
+] as const)
+  test(`${name} content has neither validation nor reset markers from the enclosing FORM`, () => {
+    const graph = new SceneGraph(),
+      page = graph.getPages()[0]
+    graph.updateNode(page.id, {
+      state: ['owned', 'portal'].map((name) => ({
+        id: name,
+        name,
+        type: 'string' as const,
+        defaultValue: name + '-default'
+      }))
+    })
+    const overrides = create({ contentChildName: 'Body' })
+    if (legacy) {
+      const module = validateModuleInstance(overrides.interactiveProps?.module)
+      if (!module.ok) throw new Error('Missing legacy module')
+      Reflect.deleteProperty(module.value.config, 'contentChildName')
+      overrides.interactiveProps = { ...overrides.interactiveProps, module: module.value }
+    }
+    const form = graph.createNode('FORM', page.id),
+      owned = graph.createNode('INPUT', form.id, {
+        bindings: { value: { kind: 'ref', stateId: 'owned' } },
+        interactiveProps: { validation: { required: true } }
+      }),
+      module = graph.createNode('FRAME', form.id, overrides),
+      body = graph.createNode('FRAME', module.id, { name: 'Body' }),
+      portal = graph.createNode('INPUT', body.id, {
+        bindings: { value: { kind: 'ref', stateId: 'portal' } },
+        interactiveProps: { validation: { required: true } }
+      })
+    const ir = collectTree(graph, page.id),
+      owner = ir.children.find((node) => node.kind === 'element' && node.sourceId === form.id)
+    if (owner?.kind !== 'element') throw new Error('Missing owner')
+    const host = owner.children.find(
+      (node) => node.kind === 'element' && node.sourceId === module.id
+    )
+    if (host?.kind !== 'element' || host.children[0]?.kind !== 'element')
+      throw new Error('Missing portal body')
+    const portaledInput = host.children[0].children.find(
+      (node) => node.kind === 'element' && node.sourceId === portal.id
+    )
+    const ownedInput = owner.children.find(
+      (node) => node.kind === 'element' && node.sourceId === owned.id
+    )
+    if (portaledInput?.kind !== 'element' || ownedInput?.kind !== 'element')
+      throw new Error('Missing fields')
+    expect(owner.formValidationKeys).toEqual([owned.id])
+    expect(owner.formResetFields?.map((field) => [field.write.name, field.sourceIds])).toEqual([
+      ['owned', [owned.id]]
+    ])
+    expect(owner.formValidationMountedOnly).toBe(legacy ? undefined : true)
+    expect(ownedInput.validationScopeMarker).toBe(legacy ? undefined : true)
+    expect(ownedInput.attrs[FORM_RESET_FIELD_ATTRIBUTE]).toBe(owned.id)
+    expect(portaledInput.validationScopeMarker).toBeUndefined()
+    expect(portaledInput.attrs[FORM_RESET_FIELD_ATTRIBUTE]).toBeUndefined()
+    expect(ir.warnings).toEqual([])
+  })
 
 test('FORM reset deduplicates its declarations and excludes portaled Modal content', () => {
   const graph = new SceneGraph()

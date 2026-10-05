@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
 import { collectTree } from '#compiler/ir/collect/tree'
-import type { IRElement, IRNode } from '#compiler/ir/types'
+import { FORM_RESET_FIELD_ATTRIBUTE, type IRElement, type IRNode } from '#compiler/ir/types'
 import { moduleContentNodes } from '#compiler/modules/content-slots'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 
@@ -138,9 +138,18 @@ describe('explicit module child content', () => {
     expect(form.formValidationMountedOnly).toBe(true)
     expect(form.formValidationKeys).toEqual([])
     const module = findElement(form.children, modal.id)
-    expect(findElement(module.children, field.id).validationScopeMarker).toBe(true)
+    const original = findElement(module.children, field.id)
+    expect(original.validationScopeMarker).toBeUndefined()
+    expect(original.attrs[FORM_RESET_FIELD_ATTRIBUTE]).toBeUndefined()
+    expect(form.formResetFields).toBeUndefined()
+    expect(ir.validatedFields?.some((validation) => validation.key === field.id)).toBe(true)
     const projection = moduleContentNodes(module)?.[0].nodes[0]
-    expect(projection?.kind === 'element' && projection.validationScopeMarker).toBe(true)
+    expect(projection?.kind).toBe('element')
+    if (projection?.kind !== 'element') throw new Error('Missing portaled field')
+    expect(projection.sourceId).toBe(field.id)
+    expect(projection.validation).toEqual(original.validation)
+    expect(projection.validationScopeMarker).toBeUndefined()
+    expect(projection.attrs[FORM_RESET_FIELD_ATTRIBUTE]).toBeUndefined()
   })
   test('preserves names and mappings through .fig export/import and an editor undo', async () => {
     const { graph, pageId, modal, modalBody } = compositionGraph()

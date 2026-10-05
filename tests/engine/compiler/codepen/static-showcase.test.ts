@@ -52,6 +52,131 @@ function addImageFill(
 }
 
 describe('CodePen static visual adapter', () => {
+  for (const imageScaleMode of ['FIT', 'FILL'] as const)
+    test.each([false, true])(
+      `retains IMAGE ${imageScaleMode} button artwork and accurate compatibility (disabled=%p)`,
+      (disabled) => {
+        const graph = makeSceneGraph('Image button'),
+          pageId = firstPageId(graph)
+        graph.images.set('button-image', VALID_PNG)
+        graph.createNode('BUTTON', pageId, {
+          width: 140,
+          height: 40,
+          interactiveProps: { text: 'Image <action> & {total}', disabled },
+          fills: [
+            {
+              type: 'IMAGE',
+              imageHash: 'button-image',
+              imageScaleMode,
+              color: { r: 0, g: 0, b: 0, a: 1 },
+              opacity: 1,
+              visible: true
+            }
+          ]
+        })
+        const before = structuredClone([...graph.nodes]),
+          imagesBefore = structuredClone([...graph.images])
+        const result = createCodePenStaticShowcase({ graph, pageId })
+        expect(result.compatible).toBe(true)
+        expect(result.js).toBe('')
+        expect(result.html).toContain('data:image/png;base64,')
+        expect(result.html).toContain('Image &lt;action&gt; &amp; {total}')
+        expect(result.html).toContain('width: 140px; height: 40px')
+        expect(result.html).toContain(
+          `object-fit: ${imageScaleMode === 'FIT' ? 'contain' : 'cover'}`
+        )
+        expect(result.html).not.toMatch(
+          /<button|<script|\s(?:type|disabled|onclick|tabindex|form)=/i
+        )
+        expect(result.diagnostics).toContainEqual(
+          expect.objectContaining({ code: 'codepen-static-controls-inert', severity: 'warning' })
+        )
+        expect(
+          result.diagnostics.some((item) => item.code === 'codepen-static-visual-degraded')
+        ).toBe(false)
+        expect([...graph.nodes]).toEqual(before)
+        expect([...graph.images]).toEqual(imagesBefore)
+      }
+    )
+
+  test.each(['missing', 'invalid'] as const)(
+    'rejects a %s button image before claiming compatibility',
+    (kind) => {
+      const graph = makeSceneGraph('Rejected image button'),
+        pageId = firstPageId(graph)
+      if (kind === 'invalid')
+        graph.images.set('button-image', new Uint8Array([60, 115, 118, 103, 62]))
+      graph.createNode('BUTTON', pageId, {
+        interactiveProps: { text: 'Image action' },
+        fills: [
+          {
+            type: 'IMAGE',
+            imageHash: 'button-image',
+            imageScaleMode: 'FIT',
+            color: { r: 0, g: 0, b: 0, a: 1 },
+            opacity: 1,
+            visible: true
+          }
+        ]
+      })
+      try {
+        createCodePenStaticShowcase({ graph, pageId })
+        throw new Error('Expected rejection before a compatible result')
+      } catch (error) {
+        expect(error).toBeInstanceOf(CodePenShowcaseError)
+        expect((error as CodePenShowcaseError).diagnostics).toContainEqual(
+          expect.objectContaining({ code: 'codepen-static-image-rejected', severity: 'error' })
+        )
+      }
+    }
+  )
+  test('missing child references follow the shared projection without losing valid button artwork', () => {
+    const graph = makeSceneGraph('Static child references'),
+      pageId = firstPageId(graph),
+      page = graph.getNode(pageId)
+    if (!page) throw new Error('Missing page')
+    graph.createNode('BUTTON', pageId, { interactiveProps: { text: 'Keep valid artwork' } })
+    graph.updateNode(pageId, { childIds: [...page.childIds, 'missing-child'] })
+    const before = structuredClone([...graph.nodes]),
+      result = createCodePenStaticShowcase({ graph, pageId })
+    expect(result.compatible).toBe(true)
+    expect(result.html).toContain('Keep valid artwork')
+    expect(result.html).not.toContain('missing-child')
+    expect(result.html).not.toContain('<button')
+    expect([...graph.nodes]).toEqual(before)
+  })
+
+  test.each([false, true])(
+    'exports enabled and disabled button artwork without activating controls (disabled=%p)',
+    (disabled) => {
+      const graph = makeSceneGraph('Static buttons'),
+        pageId = firstPageId(graph)
+      graph.createNode('BUTTON', pageId, {
+        width: 140,
+        height: 40,
+        interactiveProps: { text: 'Continue <review> & save', disabled },
+        events: { onClick: [{ id: 'next', kind: 'navigate', to: '/saved' }] }
+      })
+      graph.createNode('BUTTON', pageId, {
+        x: 160,
+        width: 140,
+        height: 40,
+        interactiveProps: { text: ' \t ' }
+      })
+      const before = structuredClone([...graph.nodes]),
+        result = createCodePenStaticShowcase({ graph, pageId })
+      expect(result.compatible).toBe(true)
+      expect(result.js).toBe('')
+      expect(result.html).toContain('Continue &lt;review&gt; &amp; save')
+      expect(result.html).toContain('>Button</div>')
+      expect(result.html).not.toMatch(/<button|<script|\s(?:type|disabled|onclick|tabindex|form)=/i)
+      expect(result.diagnostics).toContainEqual(
+        expect.objectContaining({ code: 'codepen-static-controls-inert', severity: 'warning' })
+      )
+      expect([...graph.nodes]).toEqual(before)
+    }
+  )
+
   test('emits deterministic script-free HTML/CSS without a framework compiler', () => {
     const graph = makeSceneGraph('Static CodePen')
     const pageId = firstPageId(graph)
@@ -128,28 +253,31 @@ describe('CodePen static visual adapter', () => {
     expect(codes).toContain('codepen-static-visual-degraded')
   })
 
-  test('rejects active image schemes without echoing the source', () => {
-    const graph = makeSceneGraph('Unsafe image')
-    const pageId = firstPageId(graph)
-    const source = ['java', 'script:alert(12345)'].join('')
-    graph.createNode('RECTANGLE', pageId, {
-      name: 'Remote image',
-      width: 100,
-      height: 100,
-      pluginData: [{ pluginId: 'open-pencil-dom-css', key: 'image-source-url', value: source }]
-    })
+  test.each(['RECTANGLE', 'BUTTON'] as const)(
+    'rejects active image schemes on %s without echoing the source',
+    (nodeType) => {
+      const graph = makeSceneGraph('Unsafe image')
+      const pageId = firstPageId(graph)
+      const source = ['java', 'script:alert(12345)'].join('')
+      graph.createNode(nodeType, pageId, {
+        name: 'Remote image',
+        width: 100,
+        height: 100,
+        pluginData: [{ pluginId: 'open-pencil-dom-css', key: 'image-source-url', value: source }]
+      })
 
-    try {
-      createCodePenStaticShowcase({ graph, pageId })
-      throw new Error('Expected unsafe image rejection')
-    } catch (error) {
-      expect(error).toBeInstanceOf(CodePenShowcaseError)
-      expect(error instanceof Error ? error.message : '').not.toContain(source)
-      expect((error as CodePenShowcaseError).diagnostics).toContainEqual(
-        expect.objectContaining({ code: 'codepen-static-export-rejected', severity: 'error' })
-      )
+      try {
+        createCodePenStaticShowcase({ graph, pageId })
+        throw new Error('Expected unsafe image rejection')
+      } catch (error) {
+        expect(error).toBeInstanceOf(CodePenShowcaseError)
+        expect(error instanceof Error ? error.message : '').not.toContain(source)
+        expect((error as CodePenShowcaseError).diagnostics).toContainEqual(
+          expect.objectContaining({ code: 'codepen-static-export-rejected', severity: 'error' })
+        )
+      }
     }
-  })
+  )
 
   test('applies the shared secret scan to visible static content', () => {
     const graph = makeSceneGraph('Secret text')

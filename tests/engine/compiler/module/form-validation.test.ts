@@ -7,9 +7,17 @@ import { fileURLToPath } from 'node:url'
 
 import { emitFormSubmitHandler } from '#compiler/adapters/react/emit/event'
 import { collectTree } from '#compiler/ir/collect/tree'
-import type { IRElement } from '#compiler/ir/types'
+import { FORM_RESET_FIELD_ATTRIBUTE, type IRElement, type IRNode } from '#compiler/ir/types'
 
 import { moduleFormFixture } from '#tests/helpers/compiler/components/form-module/fixtures'
+
+function elements(nodes: readonly IRNode[]): IRElement[] {
+  return nodes.flatMap((node) => {
+    if (node.kind === 'conditional') return elements([node.consequent])
+    if (node.kind === 'list') return elements([node.template])
+    return node.kind === 'element' ? [node, ...elements(node.children)] : []
+  })
+}
 
 test.each(['react', 'vue'] as const)(
   '%s marks only fields owned by a projected module form',
@@ -18,22 +26,44 @@ test.each(['react', 'vue'] as const)(
     const ir = collectTree(fixture.graph, fixture.pageId)
     const form = ir.children.find(
       (node) => node.kind === 'element' && node.sourceId === fixture.outer.id
-    ) as IRElement
+    )
     const normal = ir.children.find(
       (node) => node.kind === 'element' && node.sourceId === fixture.normal.id
-    ) as IRElement
+    )
+    if (form?.kind !== 'element' || normal?.kind !== 'element') throw new Error('Missing form')
     expect(form.formValidationMountedOnly).toBe(true)
     expect(normal.formValidationMountedOnly).toBeUndefined()
     const keys = form.formValidationKeys ?? []
-    expect(keys.length).toBe(3)
+    expect(keys.length).toBe(2)
     const fields = ir.validatedFields ?? []
     expect(
       fields
         .filter((field) => keys.includes(field.key))
         .map((field) => field.stateName)
         .sort()
-    ).toEqual(['first', 'portal', 'second'])
+    ).toEqual(['first', 'second'])
+    expect(form.formResetFields?.map((field) => field.write.name)).toEqual(['first', 'second'])
+    const descendants = elements(ir.children)
+    for (const name of ['first', 'second', 'discarded', 'portal', 'nested', 'normal']) {
+      const field = descendants.find((node) => node.validation?.stateName === name)
+      if (!field) throw new Error('Missing field: ' + name)
+      const owned = name === 'first' || name === 'second'
+      expect(keys.includes(field.sourceId)).toBe(owned)
+      expect(field.validationScopeMarker === true).toBe(owned)
+      if (name === 'discarded' || name === 'portal')
+        expect(field.attrs[FORM_RESET_FIELD_ATTRIBUTE]).toBeUndefined()
+      else expect(field.attrs[FORM_RESET_FIELD_ATTRIBUTE]).toBe(field.sourceId)
+      if (name === 'nested') {
+        const nested = descendants.find(
+          (node) => node.tag === 'form' && node.formValidationKeys?.includes(field.sourceId)
+        )
+        expect(nested?.formValidationKeys).toEqual([field.sourceId])
+        expect(nested?.formResetFields?.map((reset) => reset.write.name)).toEqual(['nested'])
+        expect(nested?.formValidationMountedOnly).toBeUndefined()
+      }
+    }
     expect(normal.formValidationKeys).toHaveLength(1)
+    expect(normal.formResetFields?.map((field) => field.write.name)).toEqual(['normal'])
     expect(fixture.warnings.map((warning) => warning.code)).toEqual([
       'module-content-child-unassigned'
     ])

@@ -314,7 +314,10 @@ function compatibilityDiagnostics(graph: SceneGraph, pageId: string): CodePenSho
           'This static showcase references a remote HTTPS image; CodePen does not host or guarantee that external asset.'
       })
     }
-    for (const childId of node.childIds) pending.push(graph.getNode(childId))
+    for (const childId of node.childIds) {
+      const child = graph.getNode(childId)
+      if (child) pending.push(child)
+    }
   }
   return diagnostics
 }

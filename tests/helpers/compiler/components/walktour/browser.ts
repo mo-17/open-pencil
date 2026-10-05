@@ -7,11 +7,13 @@ import { withComponentTemplateFiles } from '../templates/browser'
 export async function withWalktour(
   page: Page,
   target: 'react' | 'vue',
-  runtime: boolean,
+  runtime: boolean | 'form',
   run: () => Promise<void>
 ) {
-  const method = runtime ? 'walktourRuntimeFixture' : 'walktourFixture',
-    file = runtime ? 'runtime' : 'fixture'
+  let method = 'walktourFixture'
+  if (runtime === 'form') method = 'walktourFormFixture'
+  else if (runtime) method = 'walktourRuntimeFixture'
+  const file = runtime === true ? 'runtime' : 'fixture'
   const source = `import {${method}} from './tests/helpers/compiler/components/walktour/${file}';const result=${method}(${JSON.stringify(target)});if(result.warnings.length)throw new Error(JSON.stringify(result.warnings));process.stdout.write(JSON.stringify([...result.files]));`
   const files = JSON.parse(
     execFileSync('bun', ['-e', source], {

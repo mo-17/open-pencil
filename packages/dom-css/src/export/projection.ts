@@ -4,7 +4,7 @@ import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { BLACK } from '@open-pencil/scene-graph/constants'
 import { resolveNodeTextDirection } from '@open-pencil/scene-graph/text-direction'
 
-import type { DesignDocument, DesignNode, DesignStyleDeclaration } from '../types'
+import type { DesignDocument, DesignElement, DesignNode, DesignStyleDeclaration } from '../types'
 import {
   cssColor,
   dropShadowToCSS,
@@ -242,6 +242,40 @@ function imageSourceURL(node: SceneNode): string | undefined {
   )?.value
 }
 
+function imageSourceForNode(graph: SceneGraph, node: SceneNode): string | undefined {
+  const fill = node.fills.at(0)
+  const bytes =
+    fill?.type === 'IMAGE' && fill.imageHash ? graph.images.get(fill.imageHash) : undefined
+  return bytes ? `data:image/png;base64,${fromUint8Array(bytes)}` : imageSourceURL(node)
+}
+
+/** A button keeps its native content while its image fill sits behind it. */
+function buttonImage(graph: SceneGraph, node: SceneNode): DesignElement | undefined {
+  const fill = node.fills.at(0)
+  if (fill?.type === 'IMAGE' && !fill.visible) return undefined
+  const src = imageSourceForNode(graph, node)
+  if (!src) return undefined
+  const inlineStyle: DesignStyleDeclaration = {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    width: '100%',
+    height: '100%',
+    'pointer-events': 'none',
+    'border-radius': 'inherit',
+    'z-index': '-1'
+  }
+  addImageStyle(inlineStyle, node)
+  if (fill?.type === 'IMAGE' && fill.opacity < 1) inlineStyle.opacity = String(fill.opacity)
+  return {
+    type: 'element',
+    tagName: 'img',
+    attrs: { src, alt: '', 'aria-hidden': 'true' },
+    inlineStyle,
+    children: []
+  }
+}
+
 function attrsForNode(
   graph: SceneGraph,
   node: SceneNode,
@@ -250,16 +284,18 @@ function attrsForNode(
   const attrs: Record<string, string> = includeSourceIds
     ? { 'data-open-pencil-node-id': node.id }
     : {}
-  const sourceURL = imageSourceURL(node)
-  if (sourceURL) attrs.src = sourceURL
-  const fill = node.fills.at(0)
-  if (fill?.type !== 'IMAGE' || !fill.imageHash) return attrs
-  const bytes = graph.images.get(fill.imageHash)
-  if (!bytes) return attrs
-  return { ...attrs, src: `data:image/png;base64,${fromUint8Array(bytes)}` }
+  if (node.type === 'BUTTON') {
+    attrs.type = 'button'
+    if (node.interactiveProps?.disabled === true) attrs.disabled = 'disabled'
+    return attrs
+  }
+  const src = imageSourceForNode(graph, node)
+  if (src) attrs.src = src
+  return attrs
 }
 
 function tagNameForNode(node: SceneNode): string {
+  if (node.type === 'BUTTON') return 'button'
   if (node.type === 'SECTION') return 'section'
   const fill = node.fills.at(0)
   if ((fill?.type === 'IMAGE' || imageSourceURL(node)) && node.childIds.length === 0) return 'img'
@@ -290,6 +326,23 @@ function sceneNodeToDesignNode(
     .map((child) => sceneNodeToDesignNode(graph, child, options))
     .filter((child): child is DesignNode => child !== null)
 
+  if (node.type === 'BUTTON' && children.length === 0) {
+    const label = node.interactiveProps?.text
+    children.push({
+      type: 'text',
+      text: typeof label === 'string' && label.trim() ? label : 'Button'
+    })
+  }
+
+  const inlineStyle = styleFromSceneNode(node, parent)
+  const image = node.type === 'BUTTON' ? buttonImage(graph, node) : undefined
+  if (image) {
+    children.unshift(image)
+    // Contain the decorative image without placing it above text or other layers.
+    if (!('position' in inlineStyle)) inlineStyle.position = 'relative'
+    inlineStyle.isolation = 'isolate'
+  }
+
   if (node.type === 'CANVAS') {
     return {
       type: 'element',
@@ -305,7 +358,7 @@ function sceneNodeToDesignNode(
     type: 'element',
     tagName: tagNameForNode(node),
     attrs: attrsForNode(graph, node, options.includeSourceIds),
-    inlineStyle: styleFromSceneNode(node, parent),
+    inlineStyle,
     sourceSceneNodeId: node.id,
     sourceSceneNode: node,
     children

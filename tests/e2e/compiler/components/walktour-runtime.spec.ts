@@ -19,6 +19,60 @@ async function panelInViewport(panel: Locator) {
 }
 test.use({ viewport: { width: 375, height: 900 } })
 for (const target of ['react', 'vue'] as const) {
+  test(`${target} Walktour mapped and unmapped fields validate and reset in their native FORM`, async ({
+    page
+  }) => {
+    await withWalktour(page, target, 'form', async () => {
+      const mapped = page.getByPlaceholder('Mapped guide field', { exact: true }),
+        unmapped = page.getByPlaceholder('Unmapped guide field', { exact: true }),
+        separate = page.getByPlaceholder('Separate field', { exact: true }),
+        submit = page.getByRole('button', { name: 'Submit guide', exact: true }),
+        reset = page.getByRole('button', { name: 'Reset guide', exact: true }),
+        count = (value: number) => page.getByText(`Guide submits ${value}`, { exact: true })
+      for (const input of [mapped, unmapped]) {
+        await expect(input).toHaveAttribute('data-openpencil-validation-key')
+        expect(
+          await input.evaluate((element) => {
+            const submit = element.closest('form')?.querySelector('button[type="submit"]')
+            return (
+              element instanceof HTMLInputElement &&
+              submit instanceof HTMLButtonElement &&
+              element.form === submit.form &&
+              submit.textContent?.trim() === 'Submit guide'
+            )
+          })
+        ).toBe(true)
+      }
+      await separate.fill('Independent draft')
+      await submit.click()
+      await expect(count(0)).toBeVisible()
+      await expect(page.getByText('Mapped guide field required', { exact: true })).toBeVisible()
+      await expect(page.getByText('Unmapped guide field required', { exact: true })).toBeVisible()
+      await mapped.fill('Mapped value')
+      await submit.click()
+      await expect(count(0)).toBeVisible()
+      await expect(page.getByText('Unmapped guide field required', { exact: true })).toBeVisible()
+      await unmapped.fill('Unmapped value')
+      await submit.click()
+      await expect(count(1)).toBeVisible()
+      await page.getByRole('button', { name: 'Start guide', exact: true }).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+      await expect(count(1)).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(mapped).toHaveValue('Mapped value')
+      await expect(unmapped).toHaveValue('Unmapped value')
+      await reset.click()
+      await expect(mapped).toHaveValue('')
+      await expect(unmapped).toHaveValue('')
+      await expect(separate).toHaveValue('Independent draft')
+      await expect(page.getByText(/guide field required/)).toHaveCount(0)
+      await submit.click()
+      await expect(count(1)).toBeVisible()
+      await expect(page.getByText('Mapped guide field required', { exact: true })).toBeVisible()
+      await expect(page.getByText('Unmapped guide field required', { exact: true })).toBeVisible()
+    })
+  })
+
   test(`${target} Walktour compiled child targets retain geometry, conditional/list content and manual steps`, async ({
     page
   }) => {

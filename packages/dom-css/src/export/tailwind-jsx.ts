@@ -24,7 +24,12 @@ function attributes(node: DesignElement): SyntaxNode[] {
   return entries.flatMap(([key, value]) =>
     value === undefined
       ? []
-      : [jsx.attribute(JSX_ATTRIBUTE_NAMES[key] ?? key, jsx.stringValue(value))]
+      : [
+          jsx.attribute(
+            JSX_ATTRIBUTE_NAMES[key] ?? key,
+            key === 'disabled' ? null : jsx.stringValue(value)
+          )
+        ]
   )
 }
 

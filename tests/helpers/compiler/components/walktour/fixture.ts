@@ -111,3 +111,72 @@ export function walktourFixture(target: 'react' | 'vue') {
     options: withDefaults({ target, router: 'none', devMode: false, sourceLocale: 'en' })
   })
 }
+
+export function walktourFormFixture(target: 'react' | 'vue') {
+  const { graph, page, main, profile, extra } = walktourGraph()
+  graph.updateNode(graph.rootId, {
+    lowcodeDocumentState: [
+      ...(graph.getNode(graph.rootId)?.lowcodeDocumentState ?? []),
+      ...['mappedDraft', 'unmappedDraft', 'otherDraft'].map((name) => ({
+        id: name,
+        name,
+        type: 'string' as const,
+        defaultValue: ''
+      })),
+      { id: 'guideSubmits', name: 'guideSubmits', type: 'number', defaultValue: 0 }
+    ]
+  })
+  const form = graph.createNode('FORM', page.id, {
+    width: 340,
+    height: 540,
+    layoutMode: 'VERTICAL',
+    itemSpacing: 12,
+    events: {
+      onSubmit: [
+        {
+          id: 'submit-guide',
+          kind: 'setVariable',
+          targetName: 'guideSubmits',
+          valueExpr: '$prev + 1'
+        }
+      ]
+    }
+  })
+  graph.reparentNode(main.id, form.id)
+  graph.updateNode(main.id, { x: 0, y: 0 })
+  graph.updateNode(profile.id, { type: 'FRAME' })
+  graph.updateNode(extra.id, { visible: false })
+  const field = (parent: string, name: string, label: string, y = 0) =>
+    graph.createNode('INPUT', parent, {
+      width: 288,
+      height: 44,
+      y,
+      bindings: { value: { kind: 'docState', docStateName: name } },
+      interactiveProps: {
+        placeholder: label,
+        validation: { required: true, messages: { required: label + ' required' } }
+      }
+    })
+  field(profile.id, 'mappedDraft', 'Mapped guide field')
+  field(main.id, 'unmappedDraft', 'Unmapped guide field', 360)
+  for (const type of ['submit', 'reset'] as const)
+    graph.createNode('BUTTON', form.id, {
+      width: 200,
+      height: 44,
+      interactiveProps: { text: type === 'submit' ? 'Submit guide' : 'Reset guide', type }
+    })
+  const other = graph.createNode('FORM', page.id, { x: 0, y: 560, width: 340, height: 60 })
+  field(other.id, 'otherDraft', 'Separate field')
+  graph.createNode('TEXT', page.id, {
+    x: 0,
+    y: 640,
+    width: 340,
+    height: 32,
+    text: `Guide submits \${guideSubmits}`
+  })
+  return compile({
+    graph,
+    pageIds: [page.id],
+    options: withDefaults({ target, router: 'none', devMode: false, sourceLocale: 'en' })
+  })
+}
