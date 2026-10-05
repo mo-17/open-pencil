@@ -51,5 +51,9 @@
   "applicationStateRetentionUnset": "未設定（従来の動作）",
   "applicationStateRetentionReset": "訪問するたびにリセット",
   "applicationStateRetentionPreserve": "このセッション中は保持",
-  "applicationStateRetentionHint": "ウェブ出力はこの実行セッション中、具体的なパスとクエリごとにバインド済みのページ状態とスクロール位置を保持します。再読み込みで新しいセッションが始まります。"
+  "applicationStateRetentionHint": "ウェブ出力はこの実行セッション中、具体的なパスとクエリごとにバインド済みのページ状態とスクロール位置を保持します。再読み込みで新しいセッションが始まります。",
+  "pages": "ページ",
+  "goToPage": "ページへ移動…",
+  "recentPage": "最近",
+  "currentPage": "現在のページ"
 }

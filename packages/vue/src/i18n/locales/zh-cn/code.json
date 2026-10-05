@@ -94,5 +94,11 @@
   "previewAdaptationHorizontalOverflow": "内容超出可用宽度，可检查填充宽度或断点设置。",
   "previewAdaptationTextClipping": "文字可能被裁切，可检查适应内容高度和合适的最小高度。",
   "previewAdaptationFixedHeightRisk": "固定高度可能容不下放大或换行的文字，可检查适应内容高度或最小高度。",
-  "previewAdaptationLocateNode": "定位节点"
+  "previewAdaptationLocateNode": "定位节点",
+  "noSelection": "选择图层以查看其代码",
+  "noSelectionDesignJSX": "也可以编写 Design JSX，向页面添加新图层。",
+  "noSelectionTailwindJSX": "Tailwind JSX 会为所选图层生成。",
+  "writeJSX": "编写 JSX",
+  "canvasChangedExpression": "画布上现在是 {value}；表达式保持原样。",
+  "canvasChangedOrder": "画布上这些图层的顺序已改变；代码保持原样。"
 }

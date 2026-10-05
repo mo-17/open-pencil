@@ -39,7 +39,12 @@ export function renderSelectContent(
       configureControlPaint(r, textColor, opacity)
       r.renderText(canvas, { ...projection.node, width: textWidth, height: content.height })
     }
-    configureControlPaint(r, DEFAULT_LOWCODE_PLACEHOLDER_COLOR, opacity, Math.min(1.5, iconSize / 5))
+    configureControlPaint(
+      r,
+      DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
+      opacity,
+      Math.min(1.5, iconSize / 5)
+    )
     const left = content.width - iconSize
     const centerY = content.height / 2
     canvas.drawLine(

@@ -89,9 +89,11 @@ export function createMotionPreviewActions(ctx: EditorContext) {
     )
     return {
       plan,
-      targets: plan.nodes.map(
-        (node): MotionPreviewTarget => ({ nodeId: node.nodeId, spec: node.spec, plan: node.plan })
-      )
+      targets: plan.nodes.map((node): MotionPreviewTarget => ({
+        nodeId: node.nodeId,
+        spec: node.spec,
+        plan: node.plan
+      }))
     }
   }
 

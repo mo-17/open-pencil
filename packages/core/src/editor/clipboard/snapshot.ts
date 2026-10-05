@@ -1,4 +1,5 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import { createPaintNodeIdResolver, remapNodePaintReferences } from '@open-pencil/scene-graph/copy'
 
 import { collectClipboardNodeImageHashes } from '#core/clipboard/image-references'
 
@@ -8,11 +9,57 @@ export type ClipboardNodeTree = SceneNode & { children?: ClipboardNodeTree[] }
 
 export interface ClipboardSnapshot {
   sourceRootId: string
+  sourceDocumentId?: string
   componentDependencies: ClipboardNodeTree[]
   styleDefinitions: SceneNode[]
   variableDependencies: ClipboardVariables
   nodes: ClipboardNodeTree[]
   images: Map<string, Uint8Array>
+}
+
+const documentIds = new WeakMap<SceneGraph, string>()
+
+/** Runtime node/root IDs can repeat in another process; clipboard provenance must not. */
+function clipboardDocumentId(graph: SceneGraph): string {
+  let id = documentIds.get(graph)
+  if (!id) {
+    id = crypto.randomUUID()
+    documentIds.set(graph, id)
+  }
+  return id
+}
+
+/** Reject incomplete cross-document paint fragments before any destination mutation. */
+export function validateClipboardPaintReferences(
+  graph: SceneGraph,
+  roots: readonly ClipboardNodeTree[],
+  dependencies: readonly ClipboardNodeTree[],
+  sourceDocumentId?: string
+): void {
+  const nodes = new Map<string, SceneNode>()
+  const visit = (node: ClipboardNodeTree) => {
+    nodes.set(node.id, node)
+    for (const child of node.children ?? []) visit(child)
+  }
+  for (const node of [...roots, ...dependencies]) visit(node)
+  const identities = new Map([...nodes.keys()].map((id) => [id, id]))
+  const copied = createPaintNodeIdResolver(nodes, identities)
+  const local =
+    sourceDocumentId === clipboardDocumentId(graph)
+      ? createPaintNodeIdResolver(
+          graph.nodes,
+          new Map([...graph.nodes.keys()].map((id) => [id, id]))
+        )
+      : undefined
+  for (const node of nodes.values())
+    remapNodePaintReferences(node, (id) => {
+      const resolved = copied(id) ?? local?.(id)
+      if (!resolved)
+        throw new Error(
+          `Paint target is outside the copied document fragment: ${id}. Copy its source layer together with the painted layer.`
+        )
+      return resolved
+    })
 }
 
 function referencedStyleIds(nodes: SceneNode[]): Set<string> {
@@ -39,6 +86,10 @@ export function captureClipboardSnapshot(
   const roots = selectedNodes.filter((node) => !node.parentId || !selectedIds.has(node.parentId))
   const images = new Map<string, Uint8Array>()
   const capturedNodes: SceneNode[] = []
+  const resolvePaintNodeId = createPaintNodeIdResolver(
+    graph.nodes,
+    new Map([...graph.nodes.keys()].map((id) => [id, id]))
+  )
   function capture(node: SceneNode): ClipboardNodeTree {
     capturedNodes.push(node)
     const hashes = new Set<string>()
@@ -47,7 +98,9 @@ export function captureClipboardSnapshot(
       const bytes = graph.images.get(hash)
       if (bytes) images.set(hash, bytes.slice())
     }
-    return { ...structuredClone(node), children: graph.getChildren(node.id).map(capture) }
+    const snapshot = structuredClone(node)
+    Object.assign(snapshot, remapNodePaintReferences(snapshot, resolvePaintNodeId))
+    return { ...snapshot, children: graph.getChildren(node.id).map(capture) }
   }
   const nodes = roots.map(capture)
   const componentDependencies = new Map<string, ClipboardNodeTree>()
@@ -71,6 +124,7 @@ export function captureClipboardSnapshot(
   }
   return {
     sourceRootId: graph.rootId,
+    sourceDocumentId: clipboardDocumentId(graph),
     componentDependencies: [...componentDependencies.values()],
     styleDefinitions,
     variableDependencies: captureClipboardVariables(graph, capturedNodes),

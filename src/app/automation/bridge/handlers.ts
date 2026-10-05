@@ -17,7 +17,9 @@ import {
   listAutomationDocuments,
   resolveAutomationTarget,
   responseWithTarget,
-  stripAutomationTargetArgs
+  stripAutomationTargetArgs,
+  type AutomationTarget,
+  type UnknownRecord
 } from '@/app/automation/bridge/target'
 import { createAutomationToolHandler } from '@/app/automation/bridge/tool-handlers'
 import type { EditorStore } from '@/app/editor/active-store'
@@ -51,6 +53,22 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     open_file: handleOpenFile
   }
 
+  /** Runs a command on a resolved document page, loading the page first if it was never shown. */
+  async function handleTargetCommand(
+    target: AutomationTarget,
+    command: string,
+    args: UnknownRecord
+  ): Promise<unknown> {
+    if (!(await target.store.preparePageNodes(target.pageId))) {
+      throw new Error(`Page "${target.pageId}" was closed before it finished loading`)
+    }
+    const handler = commandHandlers[command]
+    const result = handler
+      ? await handler(target, args)
+      : await handleRPCFallback(target, command, args)
+    return responseWithTarget(result, target)
+  }
+
   async function handleRequest(
     store: EditorStore,
     command: string,
@@ -80,5 +98,5 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     return responseWithTarget(result, target)
   }
 
-  return { handleRequest }
+  return { handleRequest, handleTargetCommand }
 }

@@ -38,3 +38,4 @@ Throughout this guide, keyboard shortcuts use Mac notation: <kbd>⌘</kbd> = <kb
 - [Microfrontend Composition](./microfrontends) — combine independently built React and Vue exports in a verified route-and-slot shell
 - [Plugin Marketplace](./plugins) — install reviewed modules such as HTML, Video, Table, and Slide Menu, and verify, audit, update, or roll back signed plugins
 - [Application Runtime](./application-runtime) — configure Supabase, review RLS, deploy authenticated server workflows, and operate production environments
+- [Checking Designs](./checking-designs) — the Check panel, canvas issue markers, and lint rules

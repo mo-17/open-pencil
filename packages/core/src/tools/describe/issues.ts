@@ -1,6 +1,5 @@
 import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
-
-import { colorDistance, colorToHex } from '#core/color'
+import { colorDistance, colorToHex } from '@open-pencil/scene-graph/color'
 
 import { lowTextContrastIssue } from './contrast'
 import { detectLayoutIssues } from './layout-issues'
@@ -395,6 +394,7 @@ const ERROR_PATTERNS = [
   /collapses/i,
   /no fill and no stroke/i,
   /low contrast/i,
+  /below WCAG AA/i,
   /Touch target too small/i,
   /Nested Text/i
 ]

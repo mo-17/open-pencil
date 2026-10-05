@@ -60,7 +60,8 @@ export function createContentLayoutGraph(graph: LayoutGraph) {
         const writer = graph as LayoutGraph & {
           preserveSourceMetadataDuring?: <T>(operation: () => T) => T
         }
-        const update = () => graph.updateNode(id, geometry)
+        const update = () =>
+          graph.updateNode(id, { ...geometry, derivedLayout: original.derivedLayout })
         if (writer.preserveSourceMetadataDuring) writer.preserveSourceMetadataDuring(update)
         else update()
       }

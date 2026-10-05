@@ -4,6 +4,8 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { fromUint8Array } from 'js-base64'
+
 import {
   canonicalMarketplaceRequest,
   createFileMarketplaceArtifactStore,
@@ -244,13 +246,16 @@ describe('publisher request authentication', () => {
       nonce: 'legacynonce000001',
       body: new Uint8Array()
     }
-    const legacySignature = Buffer.from(
-      await crypto.subtle.sign(
-        'Ed25519',
-        pair.privateKey,
-        encoder.encode(legacyCanonicalMarketplaceRequest(input))
-      )
-    ).toString('base64url')
+    const legacySignature = fromUint8Array(
+      new Uint8Array(
+        await crypto.subtle.sign(
+          'Ed25519',
+          pair.privateKey,
+          encoder.encode(legacyCanonicalMarketplaceRequest(input))
+        )
+      ),
+      true
+    )
     const legacyHeaders = {
       audience: input.audience,
       publisherId: input.publisherId,

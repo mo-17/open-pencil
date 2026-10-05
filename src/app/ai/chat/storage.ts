@@ -108,8 +108,7 @@ export function registerAIChatEffects(markTransportDirty: () => void) {
     const profile = designModelProfile.value
     if (!profile) return null
     return [
-      profile.reasoningEffort,
-      profile.harnessThinkingLevel,
+      profile.thinkingLevel,
       profile.harnessPermissionMode,
       ...profile.capabilities,
       profile.featurePolicy.webSearch.enabled,

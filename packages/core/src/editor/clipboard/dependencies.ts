@@ -2,7 +2,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 
 import type { EditorContext } from '#core/editor/types'
 
-import type { ClipboardSnapshot } from './snapshot'
+import { validateClipboardPaintReferences, type ClipboardSnapshot } from './snapshot'
 import { importClipboardVariables, remapClipboardVariableBindings } from './variables'
 
 export interface ClipboardDependencyImport {
@@ -17,6 +17,12 @@ export function importClipboardDependencies(
   ctx: EditorContext,
   snapshot: ClipboardSnapshot
 ): ClipboardDependencyImport {
+  validateClipboardPaintReferences(
+    ctx.graph,
+    snapshot.nodes,
+    snapshot.componentDependencies,
+    snapshot.sourceDocumentId
+  )
   const nodes = structuredClone(snapshot.nodes)
   const componentDependencies = structuredClone(snapshot.componentDependencies)
   if (snapshot.sourceRootId === ctx.graph.rootId) {

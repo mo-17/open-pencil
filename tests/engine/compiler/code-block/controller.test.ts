@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 
 import { CODE_BLOCK_CONTROLLER_SOURCE } from '#compiler/adapters/code-block/controller'
+import { encode } from 'js-base64'
 
 interface CopyOwner {
   key: string
@@ -22,7 +23,7 @@ const javascript = new Bun.Transpiler({ loader: 'ts' }).transformSync(
   CODE_BLOCK_CONTROLLER_SOURCE + '\nexport {createCodeCopyController}'
 )
 const { createCodeCopyController } = (await import(
-  'data:text/javascript;base64,' + Buffer.from(javascript).toString('base64')
+  'data:text/javascript;base64,' + encode(javascript)
 )) as { createCodeCopyController: CopyControllerFactory }
 
 test('Copy is explicit, preserves exact source, deduplicates pending clicks and reports only bounded status', async () => {

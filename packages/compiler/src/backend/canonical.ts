@@ -1,4 +1,5 @@
 import { sha256 } from '@noble/hashes/sha2'
+import { fromUint8Array } from 'js-base64'
 
 import { BACKEND_LIMITS } from '@open-pencil/lowcode/backend'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
@@ -28,9 +29,7 @@ function canonicalBackendData(value: JSONValue): JSONValue {
 }
 
 function encodeBackendBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/gu, '')
+  return fromUint8Array(bytes, true)
 }
 
 function assertJSONArray(

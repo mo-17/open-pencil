@@ -1,0 +1,74 @@
+import type { InstanceOccurrence } from '@open-pencil/fig/instance-overrides'
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import { guidToString } from '@open-pencil/kiwi/fig/guid'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+
+import { collapseFigmaProjectionChildren } from '#core/kiwi/fig/node-change/figma-projection'
+import { reapplyInstanceOverrides } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+
+/** Restore host semantics only after the format reader has established occurrence identity. */
+export function restoreReaderMetadata(
+  graph: SceneGraph,
+  sources: ReadonlyMap<string, string>,
+  records: readonly NodeChange[]
+): void {
+  reapplyInstanceOverrides(graph)
+  graph.remapClonedNodeReferences(sources)
+  const byId = new Map(
+    records.flatMap((record) => (record.guid ? [[guidToString(record.guid), record] as const] : []))
+  )
+  const children = new Map<string, string[]>()
+  for (const [id, record] of byId) {
+    if (!record.parentIndex) continue
+    const parent = guidToString(record.parentIndex.guid)
+    const siblings = children.get(parent)
+    if (siblings) siblings.push(id)
+    else children.set(parent, [id])
+  }
+  for (const [sourceId, nodeId] of sources) {
+    const node = graph.getNode(nodeId)
+    if (!node) continue
+    const projection = collapseFigmaProjectionChildren(
+      node.type,
+      children.get(sourceId) ?? [],
+      {
+        getNode: (id) => byId.get(id),
+        getChildren: (id) => children.get(id) ?? []
+      },
+      node.interactiveProps
+    )
+    if (Object.keys(projection.interactivePropsPatch).length)
+      graph.updateNode(node.id, {
+        interactiveProps: { ...node.interactiveProps, ...projection.interactivePropsPatch }
+      })
+    for (const id of projection.collapsedChildIds) {
+      const child = sources.get(id)
+      if (child) graph.deleteNode(child)
+    }
+  }
+}
+
+/** Repeated instances remap their own Motion targets without retargeting a sibling occurrence. */
+export function restoreOccurrenceReferences(
+  graph: SceneGraph,
+  nodes: ReadonlyMap<InstanceOccurrence, SceneNode>
+): void {
+  for (const [occurrence, root] of nodes) {
+    if (root.type !== 'INSTANCE') continue
+    const mapping = new Map<string, string>()
+    const visit = (current: InstanceOccurrence): void => {
+      const node = nodes.get(current)
+      if (!node) return
+      const source = current.properties.guid
+        ? guidToString(current.properties.guid)
+        : current.sourceId
+      if (mapping.has(source) && mapping.get(source) !== node.id)
+        throw new Error(`Ambiguous Motion occurrence reference ${source}`)
+      mapping.set(source, node.id)
+      if (current !== occurrence && node.type === 'INSTANCE') return
+      for (const child of current.children) visit(child)
+    }
+    visit(occurrence)
+    graph.remapClonedNodeReferences(mapping, 'instance')
+  }
+}

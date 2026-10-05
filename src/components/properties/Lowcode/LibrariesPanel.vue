@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { useSectionUI } from '@/components/ui/section'
+import { useLibrariesPanel } from '@/app/lowcode/use-libraries-panel'
 import LibrariesCandidate from '@/components/properties/Lowcode/LibrariesCandidate.vue'
 import LibrariesImportedList from '@/components/properties/Lowcode/LibrariesImportedList.vue'
 import LibrariesSourceControls from '@/components/properties/Lowcode/LibrariesSourceControls.vue'
-
-import { useLibrariesPanel } from '@/app/lowcode/use-libraries-panel'
+import { useSectionUI } from '@/components/ui/section'
 
 const sectionCls = useSectionUI()
 const controller = useLibrariesPanel()

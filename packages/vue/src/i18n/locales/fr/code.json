@@ -94,5 +94,11 @@
   "previewAdaptationHorizontalOverflow": "Le contenu dépasse la largeur disponible. Vérifiez la largeur de remplissage ou une règle de point de rupture.",
   "previewAdaptationTextClipping": "Le texte peut être rogné. Vérifiez une hauteur adaptée au contenu et une hauteur minimale appropriée.",
   "previewAdaptationFixedHeightRisk": "Une hauteur fixe peut ne pas contenir un texte plus grand ou sur plusieurs lignes. Vérifiez la hauteur adaptée au contenu ou la hauteur minimale.",
-  "previewAdaptationLocateNode": "Localiser le nœud"
+  "previewAdaptationLocateNode": "Localiser le nœud",
+  "noSelection": "Sélectionnez un calque pour voir son code",
+  "noSelectionDesignJSX": "Ou écrivez du Design JSX pour ajouter de nouveaux calques à la page.",
+  "noSelectionTailwindJSX": "Le Tailwind JSX est généré pour les calques sélectionnés.",
+  "writeJSX": "Écrire du JSX",
+  "canvasChangedExpression": "Le canevas indique maintenant {value} ; l’expression reste telle qu’écrite.",
+  "canvasChangedOrder": "Le canevas ordonne maintenant ces calques autrement ; le code reste tel qu’écrit."
 }

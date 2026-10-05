@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { readdirSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname } from 'node:path'
 
 import { APPLICATION_GUARDS_FILE } from '#compiler/adapters/application-guards/emit'
 import { BrowserPreviewBuildError } from '#compiler/browser-preview/error'
@@ -14,15 +13,10 @@ import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
 import { browserPreviewInput } from '../browser-preview/helpers'
 
 function routerDirectories(): Record<string, string> {
-  const registry = resolve('node_modules/.bun')
-  const packages = readdirSync(registry)
-  return Object.fromEntries(
-    ['react-router-dom', 'react-router'].map((name) => {
-      const packageName = packages.find((item) => item.startsWith(name + '@7.18.3+'))
-      if (!packageName) throw new Error('Missing pinned router dependency')
-      return [name, resolve(registry, packageName, 'node_modules', name)]
-    })
-  )
+  const compiler = new URL('../../../../packages/compiler/', import.meta.url).pathname
+  const dom = Bun.resolveSync('react-router-dom/package.json', compiler)
+  const router = Bun.resolveSync('react-router/package.json', dirname(dom))
+  return { 'react-router-dom': dirname(dom), 'react-router': dirname(router) }
 }
 
 function project(target: 'react' | 'vue', rootStart = false) {

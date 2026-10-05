@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   discoverPublishPackages,
   publishPackageJSON
-} from '#tools/release-packages/src/publish-dirs'
+} from '@open-pencil/release-packages-tools/publish-dirs'
 
 interface CorePackageJSON extends Record<string, unknown> {
   name: string
@@ -39,7 +39,7 @@ const {
 
 describe('published core Worker URLs', () => {
   test('keeps Vite source URLs while rewriting published modules to emitted JavaScript', async () => {
-    expect(CORE_PUBLISHED_WORKER_URLS).toHaveLength(4)
+    expect(CORE_PUBLISHED_WORKER_URLS).toHaveLength(3)
 
     for (const target of CORE_PUBLISHED_WORKER_URLS) {
       const ownerPath = join(CORE_ROOT, target.ownerEntry)
@@ -92,18 +92,18 @@ describe('published core Worker URLs', () => {
     }
   })
 
-  test('prepares fork packages with built exports and excludes source directories from copying', async () => {
+  test('prepares fork packages with built exports and retains source for Bun conditions and built exports for production', async () => {
     const packageJSON = JSON.parse(
       await readFile(join(CORE_ROOT, 'package.json'), 'utf8')
     ) as CorePackageJSON
     const prepared = publishPackageJSON(packageJSON, packageJSON.version)
     expect(prepared.name).toBe('@open-pencil-lowcode/core')
-    expect(prepared.imports).toBeUndefined()
+    expect(prepared.imports).toEqual(packageJSON.imports)
     const preparedExports = prepared.exports as CorePackageJSON['exports']
     expect(Object.keys(preparedExports)).toEqual(Object.keys(packageJSON.exports))
     for (const [subpath, entry] of Object.entries(preparedExports)) {
       if (typeof entry === 'string') continue
-      expect(entry.bun).toBeUndefined()
+      expect(entry.bun).toBe((packageJSON.exports[subpath] as Record<string, string>).bun)
       expect(entry.import).toMatch(/^\.\/dist\/.*\.js$/)
       expect(entry.default).toBe(entry.import)
       expect(entry.import).toBe((packageJSON.exports[subpath] as Record<string, string>).import)
@@ -113,9 +113,7 @@ describe('published core Worker URLs', () => {
     const core = packages.find((entry) => entry.dir === 'packages/core')
     expect(core).toBeDefined()
     expect(core?.include).toContain('dist')
-    for (const copiedPath of [...(core?.include ?? []), ...(core?.extraFiles ?? [])]) {
-      expect(copiedPath).not.toMatch(/^(?:\.\/)?src(?:\/|$)/)
-    }
+    expect(core?.include).toContain('src')
   })
 
   test('rejects a missing or duplicated known Worker URL instead of publishing a broken path', () => {

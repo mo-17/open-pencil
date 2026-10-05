@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- Private control-plane DTOs, strict parsers, and cursor cryptography form one wire boundary. */
 import { Buffer } from 'node:buffer'
 
+import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
+
 import {
   parseBoundedManifestArray,
   parseExactManifestRecord,
@@ -1564,11 +1566,11 @@ function canonicalCursorPayload(value: MarketplaceControlCursorPayloadV1): strin
 }
 
 function base64URLBytes(value: string, path: string, maximumBytes: number): Uint8Array {
-  if (value.length === 0 || !/^[A-Za-z0-9_-]+$/.test(value)) {
+  if (value.length === 0 || !/^[A-Za-z0-9_-]+$/.test(value) || !isValid(value)) {
     throw new TypeError(`${path} must be canonical base64url without padding`)
   }
-  const bytes = new Uint8Array(Buffer.from(value, 'base64url'))
-  if (bytes.byteLength > maximumBytes || Buffer.from(bytes).toString('base64url') !== value) {
+  const bytes = toUint8Array(value)
+  if (bytes.byteLength > maximumBytes || fromUint8Array(bytes, true) !== value) {
     throw new TypeError(`${path} must be canonical bounded base64url`)
   }
   return bytes
@@ -1645,7 +1647,7 @@ export async function encodeMarketplaceControlCursor(
     throw new TypeError('Marketplace control cursor payload exceeds the byte limit')
   }
   const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, webCryptoBuffer(payload)))
-  const cursor = `${Buffer.from(payload).toString('base64url')}.${Buffer.from(signature).toString('base64url')}`
+  const cursor = `${fromUint8Array(payload, true)}.${fromUint8Array(signature, true)}`
   return parseMarketplaceControlCursorText(cursor, 'marketplace control cursor')
 }
 

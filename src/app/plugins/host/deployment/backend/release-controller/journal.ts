@@ -141,7 +141,7 @@ export function settlementForAppliedDispatch(
   result: BackendHostReleaseApplyResult,
   settledAt: string
 ): BackendHostReleaseDispatchSettlementInput {
-  if (!result.ok) {
+  if (!exactApplySucceeded(result)) {
     throw new TypeError('Backend Release dispatch result is not an exact positive result.')
   }
   return {
@@ -285,4 +285,11 @@ export function unknownSettlement(
     code,
     remoteOperationIds: claim.remoteOperationIds
   }
+}
+
+/** A transport result crosses an untrusted boundary even when its TypeScript signature is strict. */
+export function exactApplySucceeded(
+  value: unknown
+): value is Extract<BackendHostReleaseApplyResult, { readonly ok: true }> {
+  return typeof value === 'object' && value !== null && Reflect.get(value, 'ok') === true
 }

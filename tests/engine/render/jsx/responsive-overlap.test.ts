@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
+import { responsiveStyleVariants } from '#design-jsx/export/responsive'
+
 import {
   collectResponsiveTailwindClasses,
   collectTailwindClasses
 } from '@open-pencil/core/io/formats/jsx'
 import { compileTailwindCSS } from '@open-pencil/dom-css'
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
-
-import { responsiveStyleVariants } from '#core/io/formats/jsx/responsive'
 
 function fixture(properties: Partial<SceneNode>) {
   const graph = new SceneGraph()

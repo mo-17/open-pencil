@@ -89,3 +89,8 @@ regexes = [
 description = "Exact public Figma fixture identifiers"
 regexTarget = "secret"
 regexes = ['''^26164e029c485511adfa634522024c7c23e7bb8[1]$''', '''^jSxlQDCrjsvqEQq17IWEc[C]$''']
+
+[[allowlists]]
+description = "Exact public upstream Figma file identifier in gold-input-layout fixture"
+regexTarget = "secret"
+regexes = ['''^NmoHzskYNiSKOaRX14bMd[w]$''']

@@ -266,12 +266,25 @@ export function createCanvasSurfaceManager({
     // A retained build may have flushed only the page-color placeholder. Keep preparing the
     // page until the complete backing is installed; the pending-build timer keeps working.
     // A null build also allows the live-render fallback when backing allocation is unavailable.
+    const canvas = canvasRef.value
+    if (options?.layer === 'scene' && canvas) {
+      canvas.dataset.renderPending = renderer.sceneBackingBuild === null ? '0' : '1'
+    }
     if (options?.layer !== 'scene' || renderer.sceneBackingBuild === null) {
+      if (canvas) {
+        canvas.dataset.renderVersion = String(renderState.renderVersion)
+        canvas.dataset.sceneVersion = String(renderState.sceneVersion)
+      }
       options?.onPresented?.({
         renderVersion: renderState.renderVersion,
         sceneVersion: renderState.sceneVersion
       })
     }
+  }
+
+  /** UI floating over the canvas this frame, which edge-pinned overlays avoid. */
+  function overlayObstacles() {
+    return options?.getOverlayObstacles?.() ?? []
   }
 
   function renderNow(): boolean {
@@ -290,6 +303,7 @@ export function createCanvasSurfaceManager({
       return false
     }
     try {
+      renderer.overlayObstacles = overlayObstacles()
       renderer.renderFromEditorState(
         renderState,
         editor.graph,

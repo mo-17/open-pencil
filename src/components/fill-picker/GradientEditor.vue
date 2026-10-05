@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { tv } from 'tailwind-variants'
 
-import { colorToCSS, colorToHexRaw } from '@open-pencil/core/color'
 import type { Fill, GradientStop } from '@open-pencil/scene-graph'
+import { colorToCSS, colorToHexRaw } from '@open-pencil/scene-graph/color'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 import {
   BindableValueRoot,

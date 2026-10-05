@@ -37,13 +37,16 @@ export interface MotionTimelinePresence {
   playheadMs: number
   playing: boolean
 }
+import type { AgentPresence, PersonPoint } from '@/app/presence/types'
 
 export interface RemotePeer {
   clientId: number
   name: string
   color: Color
-  cursor?: { x: number; y: number; pageId: string }
+  cursor?: PersonPoint
   selection?: string[]
+  /** Agents this person runs, as they publish them. */
+  agents: AgentPresence[]
   /** Phase 3 §4.4 — the lowcode panel this peer is editing, if any. */
   editing?: PresenceEditingTarget
   /** Ephemeral timeline selection/playhead; never persisted into the document. */

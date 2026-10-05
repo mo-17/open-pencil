@@ -346,7 +346,7 @@ async function loadBlobBridge(page: Page) {
   // router would import a second React instance in this deliberately offline fixture.
   const routerPaths = Array.from(
     new Bun.Glob(
-      'node_modules/.bun/react-router-dom@7.18.3*/node_modules/react-router-dom/dist/index.mjs'
+      'node_modules/.bun/react-router-dom@7.18.*/node_modules/react-router-dom/dist/index.mjs'
     ).scanSync({ cwd: process.cwd(), dot: true })
   )
   expect(routerPaths).toHaveLength(1)

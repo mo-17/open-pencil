@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
 import { useI18n } from '@open-pencil/vue'
 
 import type { StorageDocument } from '@/app/integrations/storage'

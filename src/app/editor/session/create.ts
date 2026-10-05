@@ -4,7 +4,6 @@ import { createEditor } from '@open-pencil/core/editor'
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
-import { recordPreparationOutcome } from '@/app/diagnostics'
 import {
   getActiveEditorStore,
   setActiveEditorStore,
@@ -13,8 +12,10 @@ import {
 import { resolveFigmaClipboardImages } from '@/app/editor/clipboard/figma-images'
 import { bindClipboardNotifications } from '@/app/editor/clipboard/notifications'
 import { loadFont } from '@/app/editor/fonts'
+import { createRecentPages } from '@/app/editor/pages/recent'
 import { createCanvasPaneRegistry } from '@/app/editor/panes/registry'
 import { createEditorPreparationController } from '@/app/editor/preparation/controller'
+import { bindPreparationDiagnostics } from '@/app/editor/preparation/diagnostics'
 import {
   createEditorPreparationEvents,
   type EditorPreparationEventName,
@@ -28,6 +29,7 @@ import {
 } from '@/app/editor/session/modules'
 import { createInitialAppEditorState, type AppEditorState } from '@/app/editor/session/types'
 import { notificationMessages } from '@/app/i18n/notifications'
+import { createDeferred } from '@/app/runtime/deferred'
 import { toast } from '@/app/shell/ui'
 import { IS_BROWSER, IS_TAURI } from '@/constants'
 
@@ -60,7 +62,7 @@ export function createEditorStore(initialGraph?: SceneGraph) {
           }
     }
   })
-  const canvasReadiness = Promise.withResolvers<undefined>()
+  const canvasReadiness = createDeferred<undefined>()
   const io = new IORegistry(BUILTIN_IO_FORMATS)
   bindClipboardNotifications(editor)
 
@@ -82,53 +84,10 @@ export function createEditorStore(initialGraph?: SceneGraph) {
     syncDocumentColorSpace
   )
   editor.onEditorEvent('graph:replaced', syncDocumentColorSpace)
+  const recentPages = createRecentPages(editor)
 
   const preparationEvents = createEditorPreparationEvents()
-  const preparationLifecycle = new Map<
-    number,
-    {
-      kind: NonNullable<AppEditorState['preparation']>['kind']
-      phase: NonNullable<AppEditorState['preparation']>['phase']
-      startedAt: number
-    }
-  >()
-  preparationEvents.on('preparation:started', (preparation) => {
-    preparationLifecycle.set(preparation.id, {
-      kind: preparation.kind,
-      phase: preparation.phase,
-      startedAt: preparation.startedAt
-    })
-  })
-  preparationEvents.on('preparation:updated', (preparation) => {
-    const lifecycle = preparationLifecycle.get(preparation.id)
-    if (lifecycle) lifecycle.phase = preparation.phase
-  })
-  preparationEvents.on('preparation:finished', (result) => {
-    const lifecycle = preparationLifecycle.get(result.id)
-    if (!lifecycle) return
-    recordPreparationOutcome({
-      kind: result.kind,
-      outcome: result.status,
-      cancellationReason: result.status === 'cancelled' ? result.reason : null,
-      failureCode: null,
-      terminalPhase: lifecycle.phase,
-      durationMs: performance.now() - lifecycle.startedAt
-    })
-    preparationLifecycle.delete(result.id)
-  })
-  preparationEvents.on('preparation:failed', (failure) => {
-    const lifecycle = preparationLifecycle.get(failure.id)
-    if (!lifecycle) return
-    recordPreparationOutcome({
-      kind: failure.kind,
-      outcome: 'failed',
-      cancellationReason: null,
-      failureCode: failure.code,
-      terminalPhase: lifecycle.phase,
-      durationMs: performance.now() - lifecycle.startedAt
-    })
-    preparationLifecycle.delete(failure.id)
-  })
+  bindPreparationDiagnostics(preparationEvents)
   const preparationController = createEditorPreparationController(state, preparationEvents)
   const modules = createEditorStoreModules(editor, state, io, viewportSize, preparationController)
 
@@ -182,7 +141,12 @@ export function createEditorStore(initialGraph?: SceneGraph) {
       }
       succeeded = true
     } catch (error) {
-      if (preparation.signal.aborted) throw error
+      if (preparation.signal.aborted) {
+        // Another switch took over; its page is the one to show, so this one ends quietly.
+        // A caller's own preparation reports its cancellation itself.
+        if (ownsPreparation) return
+        throw error
+      }
       if (ownsPreparation) {
         const presentationTimedOut =
           error instanceof Error && error.message === 'The operation was timed out'
@@ -227,6 +191,7 @@ export function createEditorStore(initialGraph?: SceneGraph) {
     getPaneRenderState: panes.getPaneRenderState,
     setActivePane: panes.setActivePane,
     switchPage,
+    recentPages: recentPages.ids,
     splitPane: panes.splitPane,
     closePane: panes.closePane,
     resizePane: panes.resizePane,
@@ -236,6 +201,7 @@ export function createEditorStore(initialGraph?: SceneGraph) {
     ...modules,
     dispose() {
       stopColorSpaceSync()
+      recentPages.dispose()
       disposeSelection()
       modules.dispose()
     }

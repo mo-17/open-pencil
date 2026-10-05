@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-
 import { Buffer } from 'node:buffer'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -8,6 +7,7 @@ import process from 'node:process'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import vue from '@vitejs/plugin-vue'
+import { fromUint8Array } from 'js-base64'
 import { build, type PluginOption } from 'vite'
 
 import {
@@ -108,7 +108,7 @@ function inlineBinaryCSSReferences(files: PreviewFiles): PreviewFiles {
     for (const [assetPath, bytes] of files) {
       if (!(bytes instanceof Uint8Array)) continue
       const relative = `./assets/${assetPath.replace(/^src\/assets\//, '')}`
-      const dataURL = `data:${contentTypeForPath(assetPath)};base64,${Buffer.from(bytes).toString('base64')}`
+      const dataURL = `data:${contentTypeForPath(assetPath)};base64,${fromUint8Array(bytes)}`
       css = css.replaceAll(relative, dataURL)
     }
     rewritten.set(path, css)

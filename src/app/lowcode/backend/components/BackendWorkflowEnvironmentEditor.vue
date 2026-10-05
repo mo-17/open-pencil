@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+
 import { BACKEND_LIMITS, type BackendApplicationSpecV1 } from '@open-pencil/lowcode/backend'
 import { useI18n } from '@open-pencil/vue'
 

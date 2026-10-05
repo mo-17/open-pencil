@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { expect, test } from '@playwright/test'
+import { toUint8Array } from 'js-base64'
 
 import type { PreviewServer } from '@open-pencil/compiler/dev-server'
 
@@ -84,7 +85,7 @@ for (const target of ['react', 'vue'] as const) {
             }
             return canvas.toDataURL('image/png').split(',')[1]
           })
-      image = Buffer.from(data, 'base64')
+      image = Buffer.from(toUint8Array(data))
       expect(requests).toEqual([])
       const probe = await installTourResourceProbe(page)
       try {

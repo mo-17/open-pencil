@@ -16,6 +16,7 @@ interface ValidationHarness {
 function validationHarness(remote: boolean) {
   let errors: Record<string, string | null> = {}
   const pending: PendingValidation[] = []
+  const started = new Map<number, () => void>()
   const fields: IRFieldValidation[] = ['first', 'second', 'other'].map((key) => ({
     key,
     stateName: key,
@@ -51,6 +52,7 @@ function validationHarness(remote: boolean) {
     validateRemote: (_value: unknown, _config: unknown, signal?: AbortSignal) =>
       new Promise<string | null>((finish) => {
         pending.push({ signal, finish })
+        started.get(pending.length - 1)?.()
       })
   }
   const source = buildValidationGlue(fields)
@@ -59,7 +61,13 @@ function validationHarness(remote: boolean) {
       '\n({reset:__resetFieldValidation,field:(id,value)=>__validateFieldValue(id,value),submit:__validateFields})',
     context
   ) as ValidationHarness
-  return { runtime, pending, errors: () => errors }
+  const waitForPending = (index: number) =>
+    pending[index]
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => {
+          started.set(index, resolve)
+        })
+  return { runtime, pending, waitForPending, errors: () => errors }
 }
 test('reset drops local promise results while leaving a separate field validation current', async () => {
   const { runtime, errors } = validationHarness(false)
@@ -82,12 +90,10 @@ test('reset aborts the pending remote field and cannot restore its old error', a
   expect(errors()).toEqual({ first: null })
 })
 test('reset invalidates an entire owning submit including previously evaluated sibling fields', async () => {
-  const { runtime, pending, errors } = validationHarness(true)
+  const { runtime, pending, waitForPending, errors } = validationHarness(true)
   const submit = runtime.submit(['first', 'second'])
   pending[0].finish('First old error')
-  await Promise.resolve()
-  await Promise.resolve()
-  await Promise.resolve()
+  await waitForPending(1)
   expect(pending).toHaveLength(2)
   runtime.reset('first')
   // Resetting another key in the same submit must also block a late success.

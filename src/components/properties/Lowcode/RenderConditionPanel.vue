@@ -3,10 +3,10 @@ import { computed } from 'vue'
 
 import { validateExpression } from '@open-pencil/lowcode'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
+import { useSectionUI } from '@/components/ui/section'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()

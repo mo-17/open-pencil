@@ -1,71 +1,13 @@
 import { isInteractivePropsObject, validateInteractiveProps } from '@open-pencil/lowcode'
-import type { NodeType } from '@open-pencil/scene-graph'
 
-export type LowcodeNodeType = Extract<
-  NodeType,
-  | 'BUTTON'
-  | 'INPUT'
-  | 'SELECT'
-  | 'CHECKBOX'
-  | 'FORM'
-  | 'LIST'
-  | 'RADIO'
-  | 'TEXTAREA'
-  | 'DATEPICKER'
-  | 'SWITCH'
->
-
-export const LOWCODE_TYPE_MAP: Readonly<Record<string, LowcodeNodeType>> = {
-  button: 'BUTTON',
-  input: 'INPUT',
-  select: 'SELECT',
-  checkbox: 'CHECKBOX',
-  form: 'FORM',
-  list: 'LIST',
-  radio: 'RADIO',
-  textarea: 'TEXTAREA',
-  datepicker: 'DATEPICKER',
-  'date-picker': 'DATEPICKER',
-  switch: 'SWITCH'
-}
-
-const LOWCODE_NODE_TYPES = new Set<LowcodeNodeType>(Object.values(LOWCODE_TYPE_MAP))
-
-export function isLowcodeNodeType(nodeType: NodeType): nodeType is LowcodeNodeType {
-  return LOWCODE_NODE_TYPES.has(nodeType as LowcodeNodeType)
-}
-
-export const LOWCODE_INTRINSIC_ELEMENTS = [
-  'button',
-  'input',
-  'select',
-  'checkbox',
-  'form',
-  'list',
-  'radio',
-  'textarea',
-  'datepicker',
-  'date-picker',
-  'switch'
-] as const
-
-const INTERACTIVE_PROP_NAMES: Record<LowcodeNodeType, readonly string[]> = {
-  BUTTON: ['text', 'textColor'],
-  INPUT: ['placeholder', 'value', 'textColor', 'placeholderColor'],
-  SELECT: ['options', 'value'],
-  CHECKBOX: ['options', 'checked'],
-  FORM: [],
-  LIST: [],
-  RADIO: ['options', 'value', 'groupName'],
-  TEXTAREA: ['placeholder', 'value', 'textColor', 'placeholderColor'],
-  DATEPICKER: ['value', 'min', 'max'],
-  SWITCH: ['checked']
-}
-
-export const LOWCODE_SUPPORTED_PROP_NAMES: readonly string[] = [
-  'interactiveProps',
-  ...new Set(Object.values(INTERACTIVE_PROP_NAMES).flat())
-]
+export { LOWCODE_INTRINSIC_ELEMENTS, type LowcodeNodeType } from '@open-pencil/design-jsx'
+import {
+  INTERACTIVE_PROP_NAMES,
+  LOWCODE_TYPE_MAP,
+  isLowcodeNodeType,
+  type LowcodeNodeType,
+  type TreeNode
+} from '@open-pencil/design-jsx'
 
 export interface PreparedLowcodeProps {
   interactiveProps?: Record<string, unknown>
@@ -132,5 +74,55 @@ export function prepareLowcodeProps(
     warnings: issues
       .filter((issue) => issue.severity === 'warning')
       .map((issue) => `<${elementName}> ${issue.reason}`)
+  }
+}
+
+/** Validate all lowcode controls before rendering any root. */
+export async function validateTreeForRenderAsync(
+  tree: TreeNode,
+  signal?: AbortSignal
+): Promise<void> {
+  const pending = [tree]
+  let work = 0
+  while (pending.length) {
+    signal?.throwIfAborted()
+    const node = pending.pop()
+    if (!node) continue
+    prepareTreeNodeLowcodeProps(node)
+    for (const child of node.children) if (typeof child !== 'string') pending.push(child)
+    if (++work % 32 === 0)
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0)
+      })
+  }
+  signal?.throwIfAborted()
+}
+
+export function prepareTreeNodeLowcodeProps(tree: TreeNode) {
+  const type = LOWCODE_TYPE_MAP[tree.type.toLowerCase()]
+  if (!isLowcodeNodeType(type)) {
+    const value = tree.props.interactiveProps
+    if (value === undefined) return { props: {}, warnings: [] }
+    // Non-control layers also carry compiler layout namespaces through editable JSX.
+    if (!isInteractivePropsObject(value))
+      throw new TypeError(`<${tree.type}> interactiveProps must be an object`)
+    const issues = validateInteractiveProps('FRAME', value)
+    const invalid = issues.find((issue) => issue.severity === 'error')
+    if (invalid) throw new Error(`<${tree.type}> ${invalid.reason}`)
+    return {
+      props: { interactiveProps: value },
+      warnings: issues.map((issue) => `<${tree.type}> ${issue.reason}`)
+    }
+  }
+  const buttonText =
+    type === 'BUTTON' &&
+    tree.children.length > 0 &&
+    tree.children.every((child) => typeof child === 'string')
+      ? tree.children.join('')
+      : undefined
+  const prepared = prepareLowcodeProps(type, tree.type, tree.props, buttonText)
+  return {
+    props: prepared.interactiveProps ? { interactiveProps: prepared.interactiveProps } : {},
+    warnings: prepared.warnings
   }
 }

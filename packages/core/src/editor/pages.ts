@@ -1,13 +1,15 @@
 import { limitAsync } from 'es-toolkit/promise'
 
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
-import { populateLazyFigImportRoots } from '#core/kiwi/fig/lazy-import'
+import { getPageColor, setPageBackgrounds } from '#core/figma-api/page-backgrounds'
 import {
   canUseFigPopulationWorker,
   createFigPopulationWorker
 } from '#core/kiwi/fig/population/client'
-import { computeAllLayoutsAsync } from '#core/layout'
+import { isReaderPagePending, recoverReaderPage } from '#core/kiwi/fig/session/document-state'
+import { computeAllLayouts, computeAllLayoutsAsync } from '#core/layout'
 import { fontManager } from '#core/text/fonts'
 import { collectGraphFontRequirements } from '#core/text/requirements'
 import { missingGraphFontScripts } from '#core/text/resolved-requirements'
@@ -176,9 +178,20 @@ export function createPageActions(ctx: EditorContext) {
   let activeSwitch: AbortController | null = null
   let activeFontProgress: ActiveFontLoadProgress | null = null
   let nextFontOperationId = 0
+  function syncPageColor() {
+    ctx.state.pageColor = getPageColor(ctx.graph.getNode(ctx.state.currentPageId))
+  }
+  syncPageColor()
+  ctx.onEditorEvent('graph:replaced', syncPageColor)
+  ctx.onEditorEvent('node:updated', (id, changes) => {
+    if (id === ctx.state.currentPageId && changes.source) syncPageColor()
+  })
   let populationWorkerInstance: ReturnType<typeof createFigPopulationWorker> | undefined
   let populationWorkerGeneration = 0
   let pageSwitchGeneration = 0
+  // Off-screen preparations per document, shared by concurrent callers and kept once they
+  // succeed. Later edits lay out their own scope, as they do on the page on screen.
+  const offscreenPreparations = new WeakMap<SceneGraph, Map<string, Promise<boolean>>>()
 
   function emitFontProgress(progress: ActiveFontLoadProgress): void {
     const { operationId, pageId, completed, total, failed, status } = progress
@@ -293,7 +306,7 @@ export function createPageActions(ctx: EditorContext) {
       if (workerResult === null) {
         worker?.terminate()
         populationWorkerInstance = undefined
-        populateLazyFigImportRoots(switchGraph, [pageId])
+        if (isReaderPagePending(switchGraph, pageId)) recoverReaderPage(switchGraph, pageId)
       }
 
       const childIds = switchGraph.getChildren(pageId).map((node) => node.id)
@@ -354,7 +367,7 @@ export function createPageActions(ctx: EditorContext) {
 
   async function populatePage(
     pageId: string,
-    switchGeneration: number,
+    switchGeneration: number | null,
     signal?: AbortSignal
   ): Promise<boolean | null> {
     throwIfAborted(signal)
@@ -364,14 +377,17 @@ export function createPageActions(ctx: EditorContext) {
     throwIfAborted(signal)
     if (
       workerGeneration !== populationWorkerGeneration ||
-      switchGeneration !== pageSwitchGeneration
+      (switchGeneration !== null && switchGeneration !== pageSwitchGeneration)
     ) {
       return null
     }
     if (workerResult !== null) return workerResult
     worker?.terminate()
     populationWorkerInstance = undefined
-    return populateLazyFigImportRoots(ctx.graph, [pageId])
+    if (isReaderPagePending(ctx.graph, pageId)) {
+      return recoverReaderPage(ctx.graph, pageId)
+    }
+    return false
   }
 
   async function resolvePageFonts(
@@ -499,6 +515,56 @@ export function createPageActions(ctx: EditorContext) {
     return true
   }
 
+  /**
+   * Loads a page's layers so they can be searched, without fonts, layout, or switching to
+   * it — and without superseding a page switch the user has in progress.
+   */
+  async function loadPageNodes(pageId: string): Promise<void> {
+    if (ctx.graph.getNode(pageId)?.type === 'CANVAS') await populatePage(pageId, null)
+  }
+
+  async function prepareOffscreenPage(graph: SceneGraph, page: SceneNode): Promise<boolean> {
+    const populated = await populatePage(page.id, null)
+    if (populated === null || graph !== ctx.graph) return false
+    await resolvePageFonts(page.id, page.name, {})
+    if (graph !== ctx.graph) return false
+    computeAllLayouts(graph, page.id)
+    return true
+  }
+
+  /**
+   * Loads a page's layers with their fonts and layout, ready to render, without switching to
+   * it or superseding a page switch in progress. False when the document was closed or
+   * replaced first. The page on screen already was prepared, when it was shown.
+   */
+  function preparePageNodes(pageId: string): Promise<boolean> {
+    const graph = ctx.graph
+    const page = graph.getNode(pageId)
+    if (page?.type !== 'CANVAS') return Promise.resolve(false)
+    if (pageId === ctx.state.currentPageId) return Promise.resolve(true)
+    let preparations = offscreenPreparations.get(graph)
+    if (!preparations) {
+      preparations = new Map()
+      offscreenPreparations.set(graph, preparations)
+    }
+    const pending = preparations.get(pageId)
+    if (pending) return pending
+    // A failed or superseded preparation is retried by the next caller.
+    const forget = () => preparations.delete(pageId)
+    const preparation = prepareOffscreenPage(graph, page).then(
+      (ready) => {
+        if (!ready) forget()
+        return ready
+      },
+      (error: unknown) => {
+        forget()
+        throw error
+      }
+    )
+    preparations.set(pageId, preparation)
+    return preparation
+  }
+
   async function switchPage(pageId: string, options: SwitchPageOptions = {}): Promise<void> {
     if (!options.signal && !options.onProgress) return switchPageLegacy(pageId)
     const prepared = await preparePage(pageId, options)
@@ -551,11 +617,24 @@ export function createPageActions(ctx: EditorContext) {
   }
 
   function setPageColor(color: Color) {
-    ctx.state.pageColor = color
+    const page = ctx.graph.getNode(ctx.state.currentPageId)
+    if (!page) return
+    setPageBackgrounds(ctx.graph, page, [
+      { type: 'SOLID', color: { ...color }, opacity: 1, visible: true, blendMode: 'NORMAL' }
+    ])
+    syncPageColor()
     ctx.requestRender()
   }
 
+  /** Advances whenever a page switch starts, so a caller can tell it was overtaken. */
+  function pageSwitchCount(): number {
+    return pageSwitchGeneration
+  }
+
   return {
+    loadPageNodes,
+    preparePageNodes,
+    pageSwitchCount,
     preparePage,
     commitPageSwitch,
     switchPage,

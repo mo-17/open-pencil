@@ -5,6 +5,7 @@ import { unzlibSync } from 'fflate'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
+import type { RGBAImage as PNGImage } from '@open-pencil/core/io/formats/raster'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
@@ -330,12 +331,6 @@ function nodeSelector(nodeId: string): string {
 
 function cssEscape(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-}
-
-interface PNGImage {
-  width: number
-  height: number
-  data: Uint8Array
 }
 
 function colorAt(image: PNGImage, x: number, y: number): [number, number, number, number] {

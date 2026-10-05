@@ -3,6 +3,8 @@ import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
+import { encode, toUint8Array } from 'js-base64'
+
 import { canonicalManifestJSON as canonicalJSON } from '@open-pencil/scene-graph'
 
 type JSONPrimitive = boolean | null | number | string
@@ -53,7 +55,7 @@ function digestCanonical(value: JSONValue): string {
 }
 
 function decodeCanonicalBase64(value: string): JSONObject {
-  const decoded = Buffer.from(value, 'base64').toString('utf8')
+  const decoded = Buffer.from(toUint8Array(value)).toString('utf8')
   const parsed = JSON.parse(decoded) as JSONObject
   expect(decoded).toBe(canonicalJSON(parsed))
   return parsed
@@ -512,12 +514,8 @@ describe('native Receipt-zero initializer canonical fixture', () => {
 
     const scope = decodeCanonicalBase64(requiredString(parameters, 'canonicalScopeBase64'))
     const receipt = decodeCanonicalBase64(requiredString(parameters, 'canonicalReceiptBase64'))
-    expect(Buffer.from(canonicalJSON(scope), 'utf8').toString('base64')).toBe(
-      parameters.canonicalScopeBase64
-    )
-    expect(Buffer.from(canonicalJSON(receipt), 'utf8').toString('base64')).toBe(
-      parameters.canonicalReceiptBase64
-    )
+    expect(encode(canonicalJSON(scope))).toBe(parameters.canonicalScopeBase64)
+    expect(encode(canonicalJSON(receipt))).toBe(parameters.canonicalReceiptBase64)
     expect(parameters.scopeDigest).toBe(digestCanonical(scope))
     expect(parameters.receiptDigest).toBe(digestCanonical(receipt))
     expect(receipt.scope).toEqual(scope)

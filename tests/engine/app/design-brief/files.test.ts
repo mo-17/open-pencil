@@ -1,7 +1,8 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test, vi } from 'bun:test'
 
 import { saveDesignBrief } from '@/app/design-brief/files'
 import { saveExportedFile } from '@/app/document/export/files'
+import * as capability from '@/app/document/io/capability'
 
 async function withWindow<T>(browser: object, action: () => Promise<T>): Promise<T> {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'window')
@@ -10,9 +11,19 @@ async function withWindow<T>(browser: object, action: () => Promise<T>): Promise
     writable: true,
     value: browser
   })
+  const picker = Reflect.get(browser, 'showSaveFilePicker')
+  const supports = vi
+    .spyOn(capability, 'supportsFileSystemAccess')
+    .mockImplementation(() => typeof picker === 'function')
+  const pick = vi.spyOn(capability, 'pickBrowserSaveFile').mockImplementation(async (options) => {
+    if (typeof picker !== 'function') return null
+    return picker(options)
+  })
   try {
     return await action()
   } finally {
+    supports.mockRestore()
+    pick.mockRestore()
     if (previous) Object.defineProperty(globalThis, 'window', previous)
     else Reflect.deleteProperty(globalThis, 'window')
   }

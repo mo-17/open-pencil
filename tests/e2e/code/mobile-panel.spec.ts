@@ -1,5 +1,5 @@
 import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
-import { getMobileDrawerSnap } from '#tests/helpers/code-panel'
+import { getMobileDrawerSnap } from '#tests/helpers/code/panel'
 
 const editor = useEditorSetup()
 

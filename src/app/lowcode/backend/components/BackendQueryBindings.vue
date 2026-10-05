@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
 import type { BackendHttpAPIResourceIRV1 } from '@open-pencil/lowcode/backend'
 import type { BackendListQueryBinding } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'

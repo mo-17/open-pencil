@@ -1,3 +1,4 @@
+import { fromUint8Array } from 'js-base64'
 /* oxlint-disable eslint(max-lines) -- Keep the complete CAS-ledger install-preparation boundary together for auditability. */
 
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
@@ -7,6 +8,7 @@ import {
   parseSupabaseStagingTargetBinding,
   type SupabaseStagingTargetBindingV1
 } from '@/app/lowcode/supabase/staging-target'
+import type { SupabaseBackfillLiveCatalogAuthorityV1 } from '@/app/plugins/host/deployment/supabase/backfill/live-inspector'
 
 import {
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_ARTIFACT_PATH,
@@ -20,7 +22,6 @@ import {
   trustedSupabaseBackfillDatabaseCASLedgerVerificationV1,
   type SupabaseBackfillDatabaseCASLedgerVerificationV1
 } from './verifier'
-import type { SupabaseBackfillLiveCatalogAuthorityV1 } from '@/app/plugins/host/deployment/supabase/backfill/live-inspector'
 
 export const SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_INSTALL_REVIEW_FORMAT =
   'openpencil.supabase-backfill-database-cas-ledger-install-review.v1' as const
@@ -382,9 +383,7 @@ function projectRef(value: unknown): string {
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes, true)
 }
 
 async function digestSql(value: string): Promise<string> {

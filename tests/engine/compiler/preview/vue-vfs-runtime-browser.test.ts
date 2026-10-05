@@ -206,7 +206,7 @@ describe('Vue target in-memory compiler preview', () => {
     await page.getByRole('button', { name: 'Submit form' }).click()
     await playwrightExpect(email).toHaveAttribute('aria-invalid', 'true')
     const fieldErrorId = await email.getAttribute('aria-describedby')
-    expect(fieldErrorId).toMatch(/^openpencil-validation-error-/)
+    expect(fieldErrorId).toMatch(/^v-\d+-openpencil-validation-error-/)
     const fieldError = page.locator(`#${fieldErrorId}`)
     await playwrightExpect(fieldError).toHaveText('Email required')
     await playwrightExpect(fieldError).toBeVisible()

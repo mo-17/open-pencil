@@ -23,7 +23,21 @@ export class CanvasHelper {
   }
 
   async waitForRender() {
-    await this.page.evaluate(() => new Promise(requestAnimationFrame))
+    await this.page.waitForFunction(() => {
+      const store = window.openPencil?.getStore?.()
+      const canvas = document.querySelector<HTMLCanvasElement>(
+        '[data-test-id="scene-canvas-element"]'
+      )
+      if (!store || !canvas) return false
+      const state = canvas.dataset.paneId
+        ? store.getPaneRenderState(canvas.dataset.paneId)
+        : store.state
+      return (
+        canvas.dataset.renderPending === '0' &&
+        canvas.dataset.renderVersion === String(state.renderVersion) &&
+        canvas.dataset.sceneVersion === String(state.sceneVersion)
+      )
+    })
   }
 
   async waitForInit() {

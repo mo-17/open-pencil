@@ -1,23 +1,33 @@
-import { ref } from 'vue'
-import type * as awarenessProtocol from 'y-protocols/awareness'
-
 import { randomIndex } from '@open-pencil/core/random'
-import type { Color } from '@open-pencil/scene-graph/primitives'
 
-import type { EditorStore } from '@/app/editor/active-store'
-import { PEER_COLORS, ROOM_ID_CHARS, ROOM_ID_LENGTH, ROOM_KEY_LENGTH } from '@/constants'
+import { parsePeer } from '@/app/presence/schema'
+import { ROOM_ID_CHARS, ROOM_ID_LENGTH, ROOM_KEY_LENGTH } from '@/constants'
 
 import type { MotionTimelinePresence, RemotePeer } from './types'
 
 type PeerEditing = RemotePeer['editing']
-
-type Awareness = awarenessProtocol.Awareness
-
-type CursorState = {
-  x: number
-  y: number
-  pageId: string
-  zoom?: number
+const EDITING_KINDS = new Set([
+  'textBinding',
+  'valueBinding',
+  'interactiveProps',
+  'state',
+  'events',
+  'list',
+  'componentProps',
+  'responsiveOverrides',
+  'stateOverrides',
+  'renderCondition',
+  'docState',
+  'supabaseConfig'
+])
+function parseEditingTarget(value: unknown): PeerEditing {
+  if (!value || typeof value !== 'object') return undefined
+  const kind = Reflect.get(value, 'kind')
+  const nodeId = Reflect.get(value, 'nodeId')
+  if (typeof kind !== 'string' || !EDITING_KINDS.has(kind)) return undefined
+  if (nodeId !== undefined && (typeof nodeId !== 'string' || !SAFE_PRESENCE_ID.test(nodeId)))
+    return undefined
+  return { kind: kind as NonNullable<PeerEditing>['kind'], ...(nodeId ? { nodeId } : {}) }
 }
 
 const MAX_TIMELINE_PRESENCE_IDS = 32
@@ -64,83 +74,23 @@ export function parseMotionTimelinePresence(value: unknown): MotionTimelinePrese
   }
 }
 
+/** People in the room other than us, validated: awareness comes from other browsers. */
 export function buildRemotePeers(
   states: Map<number, Record<string, unknown>>,
   localClientId: number
 ): RemotePeer[] {
-  const peers: RemotePeer[] = []
-
-  states.forEach((peerState, clientId) => {
-    if (clientId === localClientId) return
-    const user = peerState.user as { name?: string; color?: Color } | undefined
-    if (!user) return
-    peers.push({
-      clientId,
-      name: user.name || 'Anonymous',
-      color: user.color || PEER_COLORS[clientId % PEER_COLORS.length],
-      cursor: peerState.cursor as RemotePeer['cursor'],
-      selection: peerState.selection as string[],
-      editing: peerState.editing as PeerEditing,
-      motionTimeline: parseMotionTimelinePresence(peerState.motionTimeline)
-    })
-  })
-
-  return peers
-}
-
-export function remotePeersToCursors(peers: RemotePeer[], currentPageId: string) {
-  return peers
-    .filter((p) => p.cursor && p.cursor.pageId === currentPageId)
-    .map((p) => {
-      const cursor = p.cursor as NonNullable<RemotePeer['cursor']>
-      return {
-        name: p.name,
-        color: p.color,
-        x: cursor.x,
-        y: cursor.y,
-        selection: p.selection
+  return [...states].flatMap(([clientId, state]) => {
+    if (clientId === localClientId) return []
+    const peer = parsePeer(clientId, state)
+    if (!peer) return []
+    return [
+      {
+        ...peer,
+        editing: parseEditingTarget(state.editing),
+        motionTimeline: parseMotionTimelinePresence(state.motionTimeline)
       }
-    })
-}
-
-export function createFollowActions(
-  getStore: () => EditorStore,
-  getAwareness: () => Awareness | null
-) {
-  const followingPeer = ref<number | null>(null)
-
-  function followPeer(clientId: number | null) {
-    followingPeer.value = clientId
-  }
-
-  function resetFollow() {
-    followingPeer.value = null
-  }
-
-  function tickFollow() {
-    const store = getStore()
-    const awareness = getAwareness()
-    if (!followingPeer.value || !awareness) return
-    const peerState = awareness.getStates().get(followingPeer.value)
-    if (!peerState?.cursor) {
-      followingPeer.value = null
-      return
-    }
-    const cursor = peerState.cursor as CursorState
-    if (cursor.pageId !== store.state.currentPageId) {
-      void store.switchPage(cursor.pageId)
-    }
-    const canvas = document.querySelector('canvas')
-    if (!canvas) return
-    if (cursor.zoom) store.state.zoom = cursor.zoom
-    const cw = canvas.width / devicePixelRatio
-    const ch = canvas.height / devicePixelRatio
-    store.state.panX = cw / 2 - cursor.x * store.state.zoom
-    store.state.panY = ch / 2 - cursor.y * store.state.zoom
-    store.requestRender()
-  }
-
-  return { followingPeer, followPeer, resetFollow, tickFollow }
+    ]
+  })
 }
 
 export function generateRoomId(): string {

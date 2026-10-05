@@ -277,7 +277,7 @@ The configurable tool catalog covers these categories; the tools offered to a mo
 - **Components** — create components, instances, component sets. Manage overrides.
 - **Variables** — create/edit variables, collections, modes. Bind to fills.
 - **Query** — find nodes, XPath selectors, read properties, list pages, fonts, selection.
-- **Inspect** — `get_jsx` for JSX roundtrip view, `diff_jsx` for structural diffs, `describe` for semantic role and design issue detection.
+- **Inspect** — `get_jsx` for JSX roundtrip view, `diff_create` and `diff_jsx` for structural diffs, `diff_visual` for pixel diffs, `describe` for semantic role and design issue detection.
 - **Analyze** — color palette, typography audit, spacing consistency, cluster detection.
 - **Export** — PNG, SVG, JSX with Tailwind classes.
 - **Vector** — boolean operations, path manipulation.
@@ -300,6 +300,8 @@ interactions, or responsive behavior that cannot be observed.
 When `export_image` is enabled in Tool access, the assistant can also request a rendered image for
 visual checks. Enabling this capability does not guarantee an automatic screenshot after every edit.
 
+`diff_visual` compares two rendered nodes and returns changed pixels and regions when enabled.
+
 ## Example Prompts
 
 - "Create a card with a title, description, and a blue button"
@@ -316,5 +318,6 @@ visual checks. Enabling this capability does not guarantee an automatic screensh
 - Select nodes before asking — the assistant knows what's selected.
 - Be specific about colors, sizes, and positions for precise results.
 - The assistant can modify multiple nodes in one message.
+- You can browse other pages while a reply runs: the assistant keeps working on the page where the message started, and its previews show when you return. While you're away, the chat says which page it is working on, with **Go to page** to return. If the assistant switches pages itself, your view follows.
 - Use "undo" in the editor if you don't like the result — AI mutations support full undo.
 - All layout is recomputed automatically after each tool execution.

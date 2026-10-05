@@ -1,3 +1,5 @@
+import { isValid, decode } from 'js-base64'
+
 import type {
   AuthAccessOperation,
   AuthPrincipalIntent,
@@ -423,7 +425,8 @@ function serviceRoleJWT(value: string): boolean {
   if (parts.length !== 3) return false
   try {
     const payload = parts[1].replaceAll('-', '+').replaceAll('_', '/')
-    const decoded = atob(payload + '='.repeat((4 - (payload.length % 4)) % 4))
+    if (!isValid(payload)) return false
+    const decoded = decode(payload)
     const parsed = JSON.parse(decoded) as { role?: unknown }
     return parsed.role === 'service_role'
   } catch {

@@ -1,3 +1,5 @@
+import { fromUint8Array } from 'js-base64'
+
 import { digestSupabaseInspectedMigrationReviewManifest } from '@open-pencil/compiler/backend'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
@@ -179,9 +181,7 @@ function utf8Bytes(value: unknown): Uint8Array {
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes, true)
 }
 
 async function digestBytes(bytes: Uint8Array): Promise<string> {

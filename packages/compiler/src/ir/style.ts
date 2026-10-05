@@ -4,7 +4,7 @@ import {
   collectStateTailwindClasses,
   collectTailwindClasses,
   type TailwindClassOptions
-} from '@open-pencil/core/io/formats/jsx'
+} from '@open-pencil/core/io'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { inputControlClassName } from './input-control-style'

@@ -9,6 +9,7 @@ function clearGlyphSilhouetteCache(r: SkiaRenderer): void {
 export function destroyRenderer(r: SkiaRenderer): void {
   if (r.destroyed) return
   r.destroyed = true
+  r.transientPreviews.clear()
 
   clearDocumentCaches(r)
   clearGlyphSilhouetteCache(r)

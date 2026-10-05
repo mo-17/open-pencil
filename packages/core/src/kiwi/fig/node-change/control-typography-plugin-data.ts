@@ -1,4 +1,5 @@
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
+import { isPlainJSONObject, isNonnegativeFiniteNumber } from '@open-pencil/scene-graph'
 import type { PluginDataEntry, SceneNode } from '@open-pencil/scene-graph'
 
 /** Controls use non-TEXT Figma nodes, which cannot carry native text typography. */
@@ -43,14 +44,6 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isNonnegativeNumber(value: unknown): value is number {
-  return isFiniteNumber(value) && value >= 0
-}
-
 function isHorizontalAlignment(value: unknown): value is SceneNode['textAlignHorizontal'] {
   return value === 'LEFT' || value === 'CENTER' || value === 'RIGHT' || value === 'JUSTIFIED'
 }
@@ -61,15 +54,15 @@ function isVerticalAlignment(value: unknown): value is SceneNode['textAlignVerti
 
 function isControlTypography(value: unknown): value is ControlTypography {
   return (
-    isRecord(value) &&
+    isPlainJSONObject(value) &&
     typeof value.fontFamily === 'string' &&
     value.fontFamily.length > 0 &&
     value.fontFamily.length <= 4096 &&
-    isNonnegativeNumber(value.fontSize) &&
+    isNonnegativeFiniteNumber(value.fontSize) &&
     isFiniteNumber(value.fontWeight) &&
     value.fontWeight > 0 &&
     typeof value.italic === 'boolean' &&
-    (value.lineHeight === null || isNonnegativeNumber(value.lineHeight)) &&
+    (value.lineHeight === null || isNonnegativeFiniteNumber(value.lineHeight)) &&
     isFiniteNumber(value.letterSpacing) &&
     isHorizontalAlignment(value.textAlignHorizontal) &&
     isVerticalAlignment(value.textAlignVertical)
@@ -85,7 +78,7 @@ export function parseControlTypography(raw: string): ControlTypography | undefin
   } catch {
     return undefined
   }
-  if (!isRecord(value)) return undefined
+  if (!isPlainJSONObject(value)) return undefined
   const data = value
   if (data.version !== 1 || Object.keys(data).some((key) => !PAYLOAD_KEYS.has(key)))
     return undefined

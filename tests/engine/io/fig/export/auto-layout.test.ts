@@ -59,7 +59,7 @@ describe('.fig auto-layout export', () => {
     )
     const importedNodes = reimported.getAllNodes()
     expect(importedNodes.find((node) => node.name === 'Stretch frame')?.counterAxisAlign).toBe(
-      'MIN'
+      'STRETCH'
     )
     expect(importedNodes.find((node) => node.name === 'Inherited stretch')?.layoutAlignSelf).toBe(
       'STRETCH'

@@ -8,12 +8,34 @@ import { createEditorPreparationController } from '@/app/editor/preparation/cont
 import { createInitialAppEditorState } from '@/app/editor/session/types'
 
 import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
+import type { FigSessionRequest, FigSessionResponse } from '#core/kiwi/fig/session/protocol'
 
 import { createOwnershipWorker } from '#tests/helpers/worker'
 
 function trackGraphResource(graph: SceneGraph) {
   const terminate = mock(() => undefined)
-  registerFigPopulationWorker(graph, createOwnershipWorker(terminate))
+  const worker = createOwnershipWorker(terminate)
+  // The document lifecycle now prepares the page before transferring ownership.
+  // This already materialized graph must acknowledge population, just as its real
+  // session worker does; an ownership-only silent double would never settle.
+  worker.postMessage = (request: FigSessionRequest) => {
+    if (request.type !== 'populate') return
+    const result: FigSessionResponse = {
+      type: 'population-result',
+      requestId: request.requestId,
+      baseRevision: request.baseRevision,
+      populated: false,
+      delta: {
+        created: [],
+        updated: [],
+        deleted: [],
+        instanceIndex: [],
+        populatedRootIds: [request.pageId]
+      }
+    }
+    queueMicrotask(() => worker.onmessage?.(new MessageEvent('message', { data: result })))
+  }
+  registerFigPopulationWorker(graph, worker)
   return terminate
 }
 

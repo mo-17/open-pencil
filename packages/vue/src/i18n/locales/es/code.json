@@ -94,5 +94,11 @@
   "previewAdaptationHorizontalOverflow": "El contenido supera el ancho disponible. Revisa el ancho de relleno o un ajuste de punto de interrupción.",
   "previewAdaptationTextClipping": "El texto puede estar recortado. Revisa la altura según el contenido y una altura mínima adecuada.",
   "previewAdaptationFixedHeightRisk": "Una altura fija puede no admitir texto más grande o en varias líneas. Revisa la altura según el contenido o la altura mínima.",
-  "previewAdaptationLocateNode": "Localizar nodo"
+  "previewAdaptationLocateNode": "Localizar nodo",
+  "noSelection": "Selecciona una capa para ver su código",
+  "noSelectionDesignJSX": "O escribe Design JSX para añadir capas nuevas a la página.",
+  "noSelectionTailwindJSX": "Tailwind JSX se genera para las capas seleccionadas.",
+  "writeJSX": "Escribir JSX",
+  "canvasChangedExpression": "El lienzo tiene ahora {value}; la expresión se mantiene tal como está escrita.",
+  "canvasChangedOrder": "El lienzo ordena ahora estas capas de otra forma; el código se mantiene tal como está escrito."
 }

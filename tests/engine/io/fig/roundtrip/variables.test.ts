@@ -17,7 +17,7 @@ import {
 } from '@open-pencil/fig/node-change'
 
 import { expectDefined } from '#tests/helpers/assert'
-import { parseFixture } from '#tests/helpers/fig-fixtures'
+import { parseFixture } from '#tests/helpers/fig/fixtures'
 import { runsHeavyTests } from '#tests/helpers/test-utils'
 
 import { canvas, doc, node } from '../import/legacy/helpers'

@@ -129,19 +129,21 @@ export function buildFigPopulationDelta(
 
 export function applyFigPopulationDelta(graph: SceneGraph, delta: FigPopulationDelta): void {
   graph.withNodeMutationOrigin('source-hydration', () => {
-    graph.preserveSourceMetadataDuring(() => {
-      for (const [, node] of delta.created) {
-        graph.createNodeWithId(node.id, node.type, node.parentId, node)
-      }
-      for (const [id, changes] of delta.updated) {
-        graph.updateNode(id, changes)
-        const cleared = (Object.keys(changes) as (keyof SceneNode)[]).filter(
-          (key) => changes[key] === undefined
-        )
-        if (cleared.length > 0) graph.clearNodeFields(id, cleared)
-      }
-      for (const id of delta.deleted) graph.deleteNode(id)
-    })
+    graph.applyImportedStateDuring(() =>
+      graph.preserveSourceMetadataDuring(() => {
+        for (const [, node] of delta.created) {
+          graph.createNodeWithId(node.id, node.type, node.parentId, node)
+        }
+        for (const [id, changes] of delta.updated) {
+          graph.updateNode(id, changes)
+          const cleared = (Object.keys(changes) as (keyof SceneNode)[]).filter(
+            (key) => changes[key] === undefined
+          )
+          if (cleared.length > 0) graph.clearNodeFields(id, cleared)
+        }
+        for (const id of delta.deleted) graph.deleteNode(id)
+      })
+    )
   })
-  graph.instanceIndex = new Map(delta.instanceIndex.map(([id, ids]) => [id, new Set(ids)]))
+  graph.rebuildInstanceIndex()
 }

@@ -1,5 +1,7 @@
 import { Buffer } from 'node:buffer'
 
+import { encode } from 'js-base64'
+
 export interface CodePenSecretFixture {
   label: string
   source: string
@@ -13,9 +15,7 @@ function assigned(value: string): string {
 
 /** Shared contract corpus for compiler export and static AI evidence scanners. */
 export function codePenSecretFixtures(): readonly CodePenSecretFixture[] {
-  const serviceRolePayload = Buffer.from(JSON.stringify({ role: 'service_role' })).toString(
-    'base64url'
-  )
+  const serviceRolePayload = encode(JSON.stringify({ role: 'service_role' }), true)
   const privateMaterial = 'unit-test-private-material'
   const sensitiveValue = 'unit-test-database-password'
   const objectSecretValue = 'unit-test-object-client-secret'

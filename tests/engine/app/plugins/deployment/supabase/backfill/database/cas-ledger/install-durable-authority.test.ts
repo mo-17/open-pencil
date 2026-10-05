@@ -72,7 +72,9 @@ const WRONG_INSTALL_MARKER =
 
 type MutableRecord = Record<string, unknown>
 type MutableTransportBinding = {
-  -readonly [Key in keyof SupabaseBackfillDatabaseCASLedgerInstallTransportBindingV1]: SupabaseBackfillDatabaseCASLedgerInstallTransportBindingV1[Key]
+  -readonly [
+    Key in keyof SupabaseBackfillDatabaseCASLedgerInstallTransportBindingV1
+  ]: SupabaseBackfillDatabaseCASLedgerInstallTransportBindingV1[Key]
 }
 
 interface CredentialHarness {

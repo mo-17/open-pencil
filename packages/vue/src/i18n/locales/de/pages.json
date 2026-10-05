@@ -51,5 +51,9 @@
   "applicationStateRetentionUnset": "Nicht festgelegt (bisheriges Verhalten)",
   "applicationStateRetentionReset": "Bei jedem Besuch zurücksetzen",
   "applicationStateRetentionPreserve": "Während dieser Sitzung beibehalten",
-  "applicationStateRetentionHint": "React/Vue behalten in dieser Laufzeitsitzung den gebundenen Seitenzustand und die Scrollposition je konkretem Pfad und Abfrage bei. Neuladen startet eine neue Sitzung."
+  "applicationStateRetentionHint": "React/Vue behalten in dieser Laufzeitsitzung den gebundenen Seitenzustand und die Scrollposition je konkretem Pfad und Abfrage bei. Neuladen startet eine neue Sitzung.",
+  "pages": "Seiten",
+  "goToPage": "Zu Seite wechseln…",
+  "recentPage": "Zuletzt besucht",
+  "currentPage": "Aktuelle Seite"
 }

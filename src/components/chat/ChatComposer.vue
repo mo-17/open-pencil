@@ -8,7 +8,19 @@ import { useI18n } from '@open-pencil/vue'
 
 import IconButton from '@/components/ui/button/IconButton.vue'
 import InputGroup from '@/components/ui/input/InputGroup.vue'
-const { status, disabled = false } = defineProps<{ status: ChatStatus; disabled?: boolean }>()
+const {
+  status,
+  disabled = false,
+  stopping = false,
+  stopRetryAvailable = false,
+  allowEmpty = false
+} = defineProps<{
+  status: ChatStatus
+  disabled?: boolean
+  stopping?: boolean
+  stopRetryAvailable?: boolean
+  allowEmpty?: boolean
+}>()
 const emit = defineEmits<{
   submit: [text: string]
   stop: []
@@ -17,9 +29,10 @@ const emit = defineEmits<{
 }>()
 const { ai } = useI18n()
 const textarea = ref<HTMLTextAreaElement>()
-const input = ref('')
+const input = defineModel<string>({ default: '' })
 const { triggerResize } = useTextareaAutosize({ element: textarea, input, maxHeight: 160 })
-const isStreaming = computed(() => disabled || status === 'streaming' || status === 'submitted')
+const isStreaming = computed(() => status === 'streaming' || status === 'submitted')
+const inputDisabled = computed(() => disabled || isStreaming.value)
 function handleInputKeydown(event: KeyboardEvent) {
   if (event.code !== 'Enter' || event.shiftKey || event.isComposing) return
   event.preventDefault()
@@ -28,11 +41,11 @@ function handleInputKeydown(event: KeyboardEvent) {
 }
 function handleSubmit(event: Event) {
   event.preventDefault()
-  if (isStreaming.value) return
+  if (inputDisabled.value) return
   const text = input.value.trim()
-  if (!text) return
-  emit('submit', text)
+  if (!text && !allowEmpty) return
   input.value = ''
+  emit('submit', text)
   triggerResize()
 }
 </script>
@@ -40,7 +53,7 @@ function handleSubmit(event: Event) {
   <TooltipProvider>
     <div class="shrink-0 border-t border-border p-2.5">
       <form @submit="handleSubmit" @paste.stop="emit('paste', $event)">
-        <InputGroup :disabled="isStreaming">
+        <InputGroup :disabled="inputDisabled">
           <template v-if="$slots.attachment" #attachment><slot name="attachment" /></template>
 
           <textarea
@@ -48,7 +61,7 @@ function handleSubmit(event: Event) {
             v-model="input"
             data-test-id="chat-input"
             :placeholder="ai.describeChange"
-            :disabled="isStreaming"
+            :disabled="inputDisabled"
             rows="2"
             :aria-label="ai.describeChange"
             class="block min-h-12 w-full resize-none overflow-y-auto bg-transparent px-3 pt-2.5 pb-1 text-xs leading-relaxed text-surface outline-none placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-60"
@@ -72,13 +85,22 @@ function handleSubmit(event: Event) {
             </IconButton>
             <IconButton
               v-if="isStreaming"
-              :label="ai.stopGenerating"
+              :label="
+                stopRetryAvailable ? 'Force stop' : stopping ? 'Stopping…' : ai.stopGenerating
+              "
+              :disabled="stopping"
+              :aria-busy="stopping || undefined"
               size="sm"
               data-test-id="chat-stop-button"
               class="border border-border"
               @click="emit('stop')"
             >
-              <icon-lucide-square class="size-3" />
+              <icon-lucide-loader-circle
+                v-if="stopping"
+                class="size-3 animate-spin motion-reduce:animate-none"
+              />
+              <icon-lucide-octagon-alert v-else-if="stopRetryAvailable" class="size-3" />
+              <icon-lucide-square v-else class="size-3" />
             </IconButton>
             <IconButton
               v-else
@@ -87,7 +109,7 @@ function handleSubmit(event: Event) {
               type="submit"
               data-test-id="chat-send-button"
               class="bg-accent text-white hover:bg-accent/90 hover:text-white"
-              :disabled="!input.trim()"
+              :disabled="inputDisabled || (!input.trim() && !allowEmpty)"
             >
               <icon-lucide-send class="size-3.5" />
             </IconButton>

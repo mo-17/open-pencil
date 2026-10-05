@@ -109,9 +109,7 @@ describe('Aliyun Drive OAuth encrypted envelope and public metadata', () => {
       accessExpiresAt: 2_000_000_000_000
     })
     expect(
-      parseAliyunDriveAuthorizationEnvelopeJSON(
-        serializeAliyunDriveAuthorizationEnvelope(refresh)
-      )
+      parseAliyunDriveAuthorizationEnvelopeJSON(serializeAliyunDriveAuthorizationEnvelope(refresh))
     ).toEqual(refresh)
 
     const publicClient = {

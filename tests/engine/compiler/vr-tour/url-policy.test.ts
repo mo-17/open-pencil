@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test'
 
+import { encode } from 'js-base64'
+
 import { parseVRTourPanoramaURL } from '@open-pencil/core/plugins'
 
 test('the generated URL guard agrees with the strict authoring URL contract', async () => {
@@ -9,9 +11,7 @@ test('the generated URL guard agrees with the strict authoring URL contract', as
   const source = new Bun.Transpiler({ loader: 'ts' }).transformSync(
     VR_TOUR_RUNTIME_SOURCE.slice(start, end)
   )
-  const { safePanoramaURL } = await import(
-    'data:text/javascript;base64,' + Buffer.from(source).toString('base64')
-  )
+  const { safePanoramaURL } = await import('data:text/javascript;base64,' + encode(source))
   for (const value of [
     '',
     '/assets/vr-tour/room.png',

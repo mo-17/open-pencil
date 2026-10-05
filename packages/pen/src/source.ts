@@ -217,6 +217,22 @@ function hasDerivedInstanceMotionOverride(node: SceneNode, mayWriteMotion: boole
   })
 }
 
+function hasDerivedInstanceMotionState(node: SceneNode, mayWriteDerivedOverride: boolean): boolean {
+  if (!mayWriteDerivedOverride || node.instanceOverrides.descendants.size > 0) return false
+  const fields = [...node.instanceOverrides.self]
+  return (
+    fields.length > 0 &&
+    fields.every(([field, value]) => {
+      if (!PEN_MOTION_CONTRACT_FIELDS.includes(field as PenMotionContractField)) return false
+      if (!node.source.editedFields.includes(field) || !Object.hasOwn(node.overrides, field))
+        return false
+      // SceneGraph's authored override state uses `true` as a presence marker. The
+      // legacy override payload above still proves that the value matches Motion.
+      return value === true || equalJSONValue(value, node[field as PenMotionContractField])
+    })
+  )
+}
+
 function assertSameStructure(graph: SceneGraph, context: PenSourceContext): void {
   const currentIds = currentSerializableIds(graph, context)
   if (
@@ -248,12 +264,14 @@ function assertOnlyMotionFieldsEdited(graph: SceneGraph, context: PenSourceConte
   for (const node of graph.getAllNodes()) {
     const mayWriteMotion = context.mappedEntityIds.has(node.id)
     const mayWriteDerivedOverride = hasDerivedInstanceMotionOverride(node, mayWriteMotion)
+    const mayWriteDerivedState = hasDerivedInstanceMotionState(node, mayWriteDerivedOverride)
     const unsupported = node.source.editedFields.filter(
       (field) =>
         !(
           mayWriteMotion &&
           (PEN_MOTION_CONTRACT_FIELDS.includes(field as PenMotionContractField) ||
-            (field === 'overrides' && mayWriteDerivedOverride))
+            (field === 'overrides' && mayWriteDerivedOverride) ||
+            (field === 'instanceOverrides' && mayWriteDerivedState))
         )
     )
     if (unsupported.length > 0) {

@@ -214,9 +214,9 @@ for (const renderer of ['retained', 'tiled'] as const) {
         'aria-valuenow',
         String(updatedValue)
       )
-      expect(
-        await page.evaluate(() => window.openPencil.getStore().state.numberFieldFocused)
-      ).toBe(false)
+      expect(await page.evaluate(() => window.openPencil.getStore().state.numberFieldFocused)).toBe(
+        false
+      )
     }
     canvas.assertNoErrors()
   })

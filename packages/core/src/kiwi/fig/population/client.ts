@@ -1,20 +1,14 @@
 import type { NodeMutationOrigin, SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
-import { getLazyFigImportContext, setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
+import { updateReaderRecovery, releaseReaderRecovery } from '#core/kiwi/fig/session/document-state'
 import type { FigSessionResponse } from '#core/kiwi/fig/session/protocol'
 import { randomHex } from '#core/random'
 
-import { applyFigPopulationDelta, type FigPopulationDelta } from './delta'
+import { applyFigPopulationDelta } from './delta'
 import { persistentGraphLevelSignature } from './state-signature'
 
-interface PopulationResult {
-  type: 'population-result'
-  requestId: string
-  baseRevision: number
-  populated: boolean
-  delta: FigPopulationDelta
-}
-type WorkerResult = PopulationResult | { type: 'population-error'; error: string }
+/** The two responses this client acts on, taken from the session protocol itself. */
+type WorkerResult = Extract<FigSessionResponse, { type: 'population-result' | 'population-error' }>
 
 const MAX_FIG_POPULATION_WORKER_NODES = 200_000
 const FIG_POPULATION_WORKER_TIMEOUT_MS = 30_000
@@ -117,17 +111,8 @@ export function registerFigPopulationWorker(
   emitTelemetry({ event: 'registered' })
 }
 
-function isDevelopmentBuild(env?: { DEV?: boolean }): boolean {
-  return env?.DEV ?? false
-}
-
 export function canUseFigPopulationWorker(graph: SceneGraph): boolean {
-  const registration = populationWorkers.get(graph)
-  return (
-    isDevelopmentBuild(import.meta.env) &&
-    registration?.populationCapable === true &&
-    getLazyFigImportContext(graph) !== undefined
-  )
+  return populationWorkers.get(graph)?.populationCapable === true
 }
 
 export function registerOriginalArchiveRequest(
@@ -179,8 +164,10 @@ export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Ar
   const isEntryValid = () => entry.valid
   const rejectEntry = () => {
     if (originalArchiveRequests.get(graph) === entry) {
-      entry.valid = false
-      releaseFigPopulationWorker(graph)
+      // Close a stale transport while retaining recovery for unloaded-page export.
+      populationWorkers.get(graph)?.client.terminate()
+      populationWorkers.delete(graph)
+      invalidateOriginalArchiveRequest(graph)
     }
     return null
   }
@@ -217,6 +204,7 @@ export async function requestOriginalArchive(graph: SceneGraph): Promise<Uint8Ar
 }
 
 export function releaseFigPopulationWorker(graph: SceneGraph): void {
+  releaseReaderRecovery(graph)
   populationWorkers.get(graph)?.client.terminate()
   populationWorkers.delete(graph)
   const originalArchive = originalArchiveRequests.get(graph)
@@ -293,10 +281,10 @@ export function createFigPopulationWorker(graph: SceneGraph): FigPopulationWorke
   return populationWorkers.get(graph)?.client ?? null
 }
 
-function createPopulationWorkerClient(
+export function createPopulationWorkerClient(
   graph: SceneGraph,
-  worker: Worker,
-  port?: MessagePort
+  worker: Pick<Worker, 'postMessage' | 'terminate' | 'onerror' | 'onmessage' | 'onmessageerror'>,
+  port?: Pick<MessagePort, 'postMessage' | 'start' | 'close' | 'onmessage' | 'onmessageerror'>
 ): FigPopulationWorker {
   const pending = new Map<
     string,
@@ -384,11 +372,7 @@ function createPopulationWorkerClient(
     const applyStartedAt = performance.now()
     try {
       applyFigPopulationDelta(graph, result.delta)
-      const context = getLazyFigImportContext(graph)
-      if (context) {
-        context.populatedRootIds = new Set(result.delta.populatedRootIds)
-        setLazyFigImportContext(graph, context)
-      }
+      if (result.checkpoint) updateReaderRecovery(graph, result.checkpoint)
     } catch {
       fail()
       return request.resolve(null)
@@ -405,13 +389,12 @@ function createPopulationWorkerClient(
     })
   }
   if (port) {
-    port.onmessage = (event: MessageEvent<FigSessionResponse>) =>
-      receive(event.data as WorkerResult)
-    port.onmessageerror = () => fail()
+    port.onmessage = (event: MessageEvent<WorkerResult>) => receive(event.data)
     port.start()
   } else {
     worker.onmessage = (event: MessageEvent<WorkerResult>) => receive(event.data)
   }
+  if (port) port.onmessageerror = () => fail()
   worker.onerror = () => fail()
   worker.onmessageerror = () => fail()
   return {

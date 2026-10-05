@@ -94,5 +94,11 @@
   "previewAdaptationHorizontalOverflow": "コンテンツが利用可能な幅を超えています。幅のFILL設定やブレークポイントの設定を確認してください。",
   "previewAdaptationTextClipping": "文字が切れている可能性があります。内容に合わせるHUGの高さと適切な最小高さを確認してください。",
   "previewAdaptationFixedHeightRisk": "固定の高さでは、大きい文字や折り返し文字が収まらない場合があります。HUGの高さや最小高さを確認してください。",
-  "previewAdaptationLocateNode": "ノードを表示"
+  "previewAdaptationLocateNode": "ノードを表示",
+  "noSelection": "レイヤーを選択するとコードが表示されます",
+  "noSelectionDesignJSX": "または Design JSX を書いて、ページに新しいレイヤーを追加できます。",
+  "noSelectionTailwindJSX": "Tailwind JSX は選択したレイヤーから生成されます。",
+  "writeJSX": "JSX を書く",
+  "canvasChangedExpression": "キャンバスでは {value} になりました。式は書かれたまま残しています。",
+  "canvasChangedOrder": "キャンバスではこれらのレイヤーの順序が変わりました。コードは書かれたまま残しています。"
 }

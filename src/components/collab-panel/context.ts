@@ -1,0 +1,208 @@
+import { useClipboard } from '@vueuse/core'
+import { computed, inject, provide, proxyRefs, ref, watch } from 'vue'
+import type { InjectionKey, ShallowUnwrapRef } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+import { useDialogMessages, useI18n } from '@open-pencil/vue'
+
+import { buildCollabNetworkConfig, describeCollabSignaling } from '@/app/collab/network-config'
+import { presenceEditingLabel } from '@/app/collab/presence-label'
+import { DEFAULT_COLLAB_STATE, useCollabInjected } from '@/app/collab/use'
+import type { RemotePeer } from '@/app/collab/use'
+import { useEditorStore, useActiveEditorStoreRef } from '@/app/editor/active-store'
+import { useNotificationMessages } from '@/app/i18n/notifications'
+import { presenceOf, renameAgent } from '@/app/presence/registry'
+import type { FollowTarget } from '@/app/presence/types'
+import { toast } from '@/app/shell/ui'
+import { getShareURL } from '@/constants'
+
+import { presenceRows as buildPresenceRows } from './presence'
+
+function createCollabPanelContext() {
+  const route = useRoute()
+  const router = useRouter()
+  const collab = useCollabInjected()
+  const editor = useEditorStore()
+  const { copy, copied } = useClipboard({ copiedDuring: 2000 })
+  const { common, collaboration } = useI18n()
+  const dialogs = useDialogMessages()
+  const notifications = useNotificationMessages()
+
+  const joinInput = ref('')
+  const nameDraft = ref(collab?.state.value.localName ?? '')
+  const pendingRoomId = computed(() =>
+    typeof route.params.roomId === 'string' ? route.params.roomId : null
+  )
+  const popoverOpen = ref(!!pendingRoomId.value)
+  const state = computed(() => collab?.state.value ?? DEFAULT_COLLAB_STATE)
+  const peers = computed(() => collab?.remotePeers.value ?? [])
+  const following = computed(() => collab?.following.value ?? null)
+  const storeRef = useActiveEditorStoreRef()
+  const presenceRows = computed(() => {
+    const store = storeRef.value
+    return buildPresenceRows(
+      {
+        name: state.value.localName,
+        color: state.value.localColor,
+        agents: store ? presenceOf(store).agents.value : []
+      },
+      peers.value,
+      (pageId) => store?.graph.getNode(pageId)?.name
+    )
+  })
+  const shareURL = computed(() => {
+    if (!state.value.roomId) return ''
+    return getShareURL(state.value.roomId, state.value.roomKey || undefined)
+  })
+  const isJoining = computed(() => !!pendingRoomId.value && !state.value.connected)
+
+  watch(
+    pendingRoomId,
+    (roomId) => {
+      if (!state.value.connected) popoverOpen.value = !!roomId
+    },
+    { immediate: true }
+  )
+
+  function copyLink() {
+    if (!shareURL.value) return
+    void copy(shareURL.value)
+    toast.info(notifications.value.linkCopied)
+  }
+
+  function share() {
+    if (!collab || !nameDraft.value.trim()) return
+    collab.setLocalName(nameDraft.value.trim())
+    const { roomId, key } = collab.shareCurrentDoc()
+    void router.push(`/share/${roomId}`)
+    void copy(getShareURL(roomId, key))
+    toast.info(notifications.value.linkCopied)
+    popoverOpen.value = false
+  }
+
+  // Pull the room id + key out of a pasted invite (full URL, `/share/<id>#k=<key>`,
+  // or bare id) or, for a deep-linked join, the route param + hash fragment.
+  function parseInvite(): { roomId: string; key: string } {
+    if (pendingRoomId.value) {
+      const hash = route.hash // e.g. "#k=abc123"
+      return { roomId: pendingRoomId.value, key: hash.startsWith('#k=') ? hash.slice(3) : '' }
+    }
+    const raw = joinInput.value.trim()
+    const hashIdx = raw.indexOf('#k=')
+    const key = hashIdx !== -1 ? raw.slice(hashIdx + 3) : ''
+    const beforeHash = hashIdx !== -1 ? raw.slice(0, hashIdx) : raw
+    const roomId = beforeHash.replace(/.*\/share\//, '').replace(/[#?].*$/, '')
+    return { roomId, key }
+  }
+
+  function join() {
+    if (!collab) return
+    const { roomId, key } = parseInvite()
+    if (!roomId || !nameDraft.value.trim()) return
+    // §4.2 — the room key is mandatory (overturns the legacy empty-password
+    // fallback): a bare roomId with no key must not open any room. Without it
+    // we'd silently join the unauthenticated empty-password variant.
+    if (!key) {
+      toast.error(dialogs.value.roomKeyError)
+      return
+    }
+    collab.setLocalName(nameDraft.value.trim())
+    collab.connect(roomId, key, () => toast.error(dialogs.value.roomKeyError))
+    void router.push(`/share/${roomId}#k=${key}`)
+    popoverOpen.value = false
+  }
+
+  function disconnect() {
+    if (!collab) return
+    collab.disconnect()
+    popoverOpen.value = false
+    void router.push('/')
+  }
+
+  function follow(target: FollowTarget | null) {
+    collab?.follow(target)
+  }
+
+  function renameLocalAgent(agentId: string, name: string) {
+    if (storeRef.value) renameAgent(storeRef.value, agentId, name)
+  }
+
+  // §4.4 — "Editing events of Button1" / "Editing document state", or null when
+  // the peer isn't editing a lowcode panel.
+  function peerEditingLabel(peer: RemotePeer): string | null {
+    const lowcode = presenceEditingLabel(
+      peer,
+      dialogs.value,
+      (id) => editor.graph.getNode(id)?.name
+    )
+    if (lowcode) return lowcode
+    const timeline = peer.motionTimeline
+    if (!timeline) return null
+    const node =
+      editor.graph.getNode(timeline.ownerId)?.name ?? dialogs.value.presenceEditingNodeFallback
+    return timeline.scope === 'scene'
+      ? dialogs.value.presenceEditingMotionSceneTimeline({ node })
+      : dialogs.value.presenceEditingMotionTimeline({ node })
+  }
+
+  const motionConflictCount = computed(() => state.value.motionConflicts.length)
+  const motionConflicts = computed(() => state.value.motionConflicts)
+
+  function clearMotionConflicts() {
+    collab?.clearMotionTimelineConflicts()
+  }
+
+  // §4.3 — signaling path is fixed at editor build time (VITE_COLLAB_*), so
+  // resolve it once. Surface a label only while connected and only when it's
+  // not the default public broker.
+  const signalingKind = describeCollabSignaling(buildCollabNetworkConfig(import.meta.env))
+  const signalingLabel = computed(() => {
+    if (!state.value.connected || signalingKind === 'public') return null
+    return signalingKind === 'supabase'
+      ? dialogs.value.collabSignalingSupabase
+      : dialogs.value.collabSignalingSelfHosted
+  })
+
+  return {
+    common,
+    messages: collaboration,
+    dialogs,
+    copied,
+    joinInput,
+    nameDraft,
+    popoverOpen,
+    state,
+    following,
+    presenceRows,
+    shareURL,
+    isJoining,
+    peers,
+    copyLink,
+    share,
+    join,
+    disconnect,
+    peerEditingLabel,
+    motionConflictCount,
+    motionConflicts,
+    clearMotionConflicts,
+    signalingLabel,
+    follow,
+    renameLocalAgent
+  }
+}
+
+export type CollabPanelContext = ShallowUnwrapRef<ReturnType<typeof createCollabPanelContext>>
+
+const COLLAB_PANEL_KEY: InjectionKey<CollabPanelContext> = Symbol('CollabPanelContext')
+
+export function provideCollabPanel() {
+  const ctx = proxyRefs(createCollabPanelContext())
+  provide(COLLAB_PANEL_KEY, ctx)
+  return ctx
+}
+
+export function useCollabPanelContext(): CollabPanelContext {
+  const ctx = inject(COLLAB_PANEL_KEY)
+  if (!ctx) throw new Error('Collab panel controls must be used within CollabPanel')
+  return ctx
+}

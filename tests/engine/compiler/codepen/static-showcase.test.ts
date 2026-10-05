@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { Buffer } from 'node:buffer'
 
+import { toUint8Array } from 'js-base64'
+
 import {
   CodePenShowcaseError,
   createCodePenStaticShowcase
@@ -10,8 +12,9 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 const VALID_PNG = new Uint8Array(
   Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-    'base64'
+    toUint8Array(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    )
   )
 )
 

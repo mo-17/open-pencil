@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { chromium, type Browser, type Locator, type Page } from '@playwright/test'
+import { fromUint8Array } from 'js-base64'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
@@ -876,7 +877,7 @@ async function screenshotPixelSnapshot(
     animations: 'allow',
     omitBackground: true
   })
-  const source = `data:image/png;base64,${Buffer.from(png).toString('base64')}`
+  const source = `data:image/png;base64,${fromUint8Array(png)}`
   return page.evaluate(async (url) => {
     const image = new Image()
     image.src = url

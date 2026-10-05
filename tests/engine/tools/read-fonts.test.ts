@@ -7,6 +7,8 @@ import { fontFaceDemand, fontResolver } from '#core/text/resolver'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
+const registeredFontBytes = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+
 type Readiness = 'ready' | 'substituted' | 'pending' | 'exhausted'
 
 interface FontCheckResult {
@@ -51,7 +53,7 @@ describe('check_font', () => {
       fontFamily: family,
       fontWeight: 400
     })
-    fontManager.markLoaded(family, 'Regular', new ArrayBuffer(1))
+    fontManager.markLoaded(family, 'Regular', registeredFontBytes.slice(0))
     attachReadiness(figma, 'ready')
 
     const result = getTool('check_font').execute(figma, {
@@ -91,8 +93,8 @@ describe('check_font', () => {
         }
       ]
     })
-    fontManager.markLoaded(baseFamily, 'Regular', new ArrayBuffer(1))
-    fontManager.markLoaded(rangeFamily, 'Bold', new ArrayBuffer(1))
+    fontManager.markLoaded(baseFamily, 'Regular', registeredFontBytes.slice(0))
+    fontManager.markLoaded(rangeFamily, 'Bold', registeredFontBytes.slice(0))
     attachReadiness(figma, 'ready')
 
     const result = getTool('check_font').execute(figma, {
@@ -140,7 +142,7 @@ describe('check_font', () => {
       fontFamily: family,
       fontWeight: 700
     })
-    fontManager.markLoaded(family, 'Regular', new ArrayBuffer(1))
+    fontManager.markLoaded(family, 'Regular', registeredFontBytes.slice(0))
     attachReadiness(figma, 'ready')
 
     const result = getTool('check_font').execute(figma, {
@@ -233,7 +235,7 @@ describe('check_font', () => {
       text: 'Initializing',
       fontFamily: family
     })
-    fontManager.markLoaded(family, 'Regular', new ArrayBuffer(1))
+    fontManager.markLoaded(family, 'Regular', registeredFontBytes.slice(0))
     figma.setRenderer({
       canObserveFontReadiness: () => false,
       nodeFontReadiness: () => 'ready'
@@ -254,7 +256,7 @@ describe('check_font', () => {
       fontFamily: family,
       interactiveProps: { text: 'Continue' }
     })
-    fontManager.markLoaded(family, 'Regular', new ArrayBuffer(1))
+    fontManager.markLoaded(family, 'Regular', registeredFontBytes.slice(0))
     attachReadiness(figma, 'ready')
 
     const result = getTool('check_font').execute(figma, { id: button.id }) as FontCheckResult & {
@@ -293,7 +295,7 @@ describe('check_font', () => {
         fontWeight: 700,
         interactiveProps: { ...interactiveProps }
       })
-      fontManager.markLoaded(family, 'Bold', new ArrayBuffer(1))
+      fontManager.markLoaded(family, 'Bold', registeredFontBytes.slice(0))
       attachReadiness(figma, 'ready')
 
       const result = getTool('check_font').execute(figma, {

@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { open } from 'node:fs/promises'
 
+import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
+
 import { parseExactManifestRecord } from '@open-pencil/scene-graph'
 
 import {
@@ -105,12 +107,17 @@ function operation(value: unknown): MarketplacePublisherRequestOperation {
 }
 
 function canonicalBase64URL(value: unknown, path: string, expectedBytes?: number): Uint8Array {
-  if (typeof value !== 'string' || value.length === 0 || !/^[A-Za-z0-9_-]+$/.test(value)) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    !/^[A-Za-z0-9_-]+$/.test(value) ||
+    !isValid(value)
+  ) {
     throw new TypeError(`${path} must be canonical base64url text`)
   }
-  const bytes = new Uint8Array(Buffer.from(value, 'base64url'))
+  const bytes = toUint8Array(value)
   if (
-    Buffer.from(bytes).toString('base64url') !== value ||
+    fromUint8Array(bytes, true) !== value ||
     (expectedBytes !== undefined && bytes.byteLength !== expectedBytes)
   ) {
     throw new TypeError(`${path} must be canonical base64url text`)
@@ -376,7 +383,7 @@ export async function createMarketplacePublisherSignedEnvelope(
     input.timestamp ?? new Date().toISOString(),
     'Publisher request timestamp'
   )
-  const nonce = input.nonce ?? randomBytes(24).toString('base64url')
+  const nonce = input.nonce ?? fromUint8Array(randomBytes(24), true)
   const headers = await signMarketplaceRequest(
     {
       audience: parseMarketplaceIdentity(input.audience, 'Publisher request audience'),
@@ -397,7 +404,7 @@ export async function createMarketplacePublisherSignedEnvelope(
     method: 'POST',
     target,
     bodyEncoding: 'base64url',
-    body: Buffer.from(input.body).toString('base64url'),
+    body: fromUint8Array(input.body, true),
     headers
   })
 }

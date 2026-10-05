@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useI18n } from '@open-pencil/vue'
+
 import { validateBackendClientAction } from '@open-pencil/lowcode/backend'
 import type {
   BackendCommandAction,
   BackendCommandRecoveryAction,
   DocumentStateDef
 } from '@open-pencil/scene-graph'
+import { useI18n } from '@open-pencil/vue'
+
 import { useBackendBindingApplication } from '@/app/lowcode/backend/bindings/context'
 import { commerceCopy } from '@/app/lowcode/backend/commerce/copy'
 type CommandAction = BackendCommandAction | BackendCommandRecoveryAction

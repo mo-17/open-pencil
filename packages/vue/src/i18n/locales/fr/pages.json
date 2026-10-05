@@ -51,5 +51,9 @@
   "applicationStateRetentionUnset": "Non défini (comportement initial)",
   "applicationStateRetentionReset": "Réinitialiser à chaque visite",
   "applicationStateRetentionPreserve": "Conserver pendant cette session",
-  "applicationStateRetentionHint": "React/Vue conservent l’état lié de la page et la position de défilement pour chaque chemin concret et requête pendant cette session d’exécution. Le rechargement ouvre une nouvelle session."
+  "applicationStateRetentionHint": "React/Vue conservent l’état lié de la page et la position de défilement pour chaque chemin concret et requête pendant cette session d’exécution. Le rechargement ouvre une nouvelle session.",
+  "pages": "Pages",
+  "goToPage": "Aller à la page…",
+  "recentPage": "Récente",
+  "currentPage": "Page actuelle"
 }

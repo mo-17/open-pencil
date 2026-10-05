@@ -1,3 +1,5 @@
+import { isValid, toUint8Array } from 'js-base64'
+
 import { parseAIPopoutControls, type AIPopoutControls } from '@/app/ai/popout/controls'
 import { parseAIPopoutProjection, type AIPopoutProjection } from '@/app/ai/popout/protocol'
 
@@ -22,18 +24,13 @@ function decodeEnvelope(envelope: string): unknown {
     envelope.length === 0 ||
     envelope.length > MAX_ENVELOPE_BYTES ||
     envelope.length % 4 !== 0 ||
-    !CANONICAL_BASE64.test(envelope)
+    !CANONICAL_BASE64.test(envelope) ||
+    !isValid(envelope)
   ) {
     throw new TypeError('AI window payload envelope is invalid.')
   }
 
-  let binary: string
-  try {
-    binary = atob(envelope)
-  } catch {
-    throw new TypeError('AI window payload envelope is invalid.')
-  }
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+  const bytes = toUint8Array(envelope)
   let json: string
   try {
     json = new TextDecoder('utf-8', { fatal: true }).decode(bytes)

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 
 import { expect, type Page } from '@playwright/test'
+import { toUint8Array } from 'js-base64'
 
 import type { FontManager } from '@open-pencil/core/text'
 
@@ -22,12 +23,13 @@ export async function openComponentStateCanvas(
       : `componentStateGraph(${JSON.stringify(family)},${JSON.stringify(locale)})`
   const source = `import {componentStateGraph,richTextTypographyGraph} from './tests/helpers/compiler/components/states/fixture';import {initCodec} from '@open-pencil/core/kiwi';import {exportFigFile} from '@open-pencil/core/io/formats/fig';await initCodec();const {graph}=${makeGraph};process.stdout.write(Buffer.from(await exportFigFile(graph)).toString('base64'));`
   const bytes = Buffer.from(
-    execFileSync('bun', ['-e', source], {
-      cwd: process.cwd(),
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024
-    }),
-    'base64'
+    toUint8Array(
+      execFileSync('bun', ['-e', source], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        maxBuffer: 16 * 1024 * 1024
+      })
+    )
   )
   await trackFontModuleResources(page)
   await mockFontsource(page, [])

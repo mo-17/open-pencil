@@ -104,7 +104,10 @@ function requiredString(value: unknown, field: string, max = MAX_IDENTIFIER_LENG
 }
 
 function optionalString(value: unknown, max = MAX_IDENTIFIER_LENGTH): string | null {
-  return typeof value === 'string' && value.length > 0 && value.length <= max && !/[\r\n]/.test(value)
+  return typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= max &&
+    !/[\r\n]/.test(value)
     ? value
     : null
 }
@@ -577,9 +580,13 @@ export class AliyunDriveClient {
     try {
       url = new URL(raw)
     } catch (error) {
-      throw new AliyunDriveError('invalid-response', 'Aliyun Drive returned an invalid signed URL', {
-        cause: error
-      })
+      throw new AliyunDriveError(
+        'invalid-response',
+        'Aliyun Drive returned an invalid signed URL',
+        {
+          cause: error
+        }
+      )
     }
     if (
       url.protocol !== 'https:' ||
@@ -737,11 +744,7 @@ export class AliyunDriveClient {
     parentFileId: string,
     kind: 'file' | 'folder'
   ): void {
-    if (
-      item.type !== kind ||
-      item.driveId !== driveId ||
-      item.parentFileId !== parentFileId
-    ) {
+    if (item.type !== kind || item.driveId !== driveId || item.parentFileId !== parentFileId) {
       throw new AliyunDriveError(
         'foreign-file',
         'Aliyun Drive item is outside the OpenPencil folder'
@@ -910,12 +913,7 @@ export class AliyunDriveClient {
     for (const folder of children) {
       if (!DOCUMENT_ID_PATTERN.test(folder.name)) continue
       try {
-        this.#validateDirectChild(
-          folder,
-          namespace.driveId,
-          namespace.documentsFolderId,
-          'folder'
-        )
+        this.#validateDirectChild(folder, namespace.driveId, namespace.documentsFolderId, 'folder')
         const file = await this.#fileInFolder(namespace, folder, { signal }, false)
         if (file) documents.push({ documentId: folder.name, folder, file })
       } catch (error) {
@@ -961,7 +959,10 @@ export class AliyunDriveClient {
     await this.#expect(response, [200])
     const value = await this.#readJson(response)
     if (!isRecord(value)) {
-      throw new AliyunDriveError('invalid-response', 'Aliyun Drive returned an invalid download URL')
+      throw new AliyunDriveError(
+        'invalid-response',
+        'Aliyun Drive returned an invalid download URL'
+      )
     }
     const downloadURL = this.#registerCapabilityURL(value.url, 'download')
     let download: Response
@@ -1010,7 +1011,10 @@ export class AliyunDriveClient {
     const urls = new Map<number, string>()
     for (const raw of value) {
       if (!isRecord(raw)) {
-        throw new AliyunDriveError('invalid-response', 'Aliyun Drive returned an invalid upload part')
+        throw new AliyunDriveError(
+          'invalid-response',
+          'Aliyun Drive returned an invalid upload part'
+        )
       }
       const partNumber = Number(raw.part_number)
       if (!Number.isSafeInteger(partNumber) || !expected.has(partNumber) || urls.has(partNumber)) {
@@ -1077,9 +1081,12 @@ export class AliyunDriveClient {
     if (!isRecord(value)) {
       throw new AliyunDriveError('invalid-response', 'Aliyun Drive returned invalid upload URLs')
     }
-    return this.#parsePartURLs(value.part_info_list, [partNumber]).get(partNumber) ?? (() => {
-      throw new AliyunDriveError('invalid-response', 'Aliyun Drive omitted an upload URL')
-    })()
+    return (
+      this.#parsePartURLs(value.part_info_list, [partNumber]).get(partNumber) ??
+      (() => {
+        throw new AliyunDriveError('invalid-response', 'Aliyun Drive omitted an upload URL')
+      })()
+    )
   }
 
   async #putPart(
@@ -1145,13 +1152,7 @@ export class AliyunDriveClient {
       if (!url) {
         throw new AliyunDriveError('invalid-response', 'Aliyun Drive omitted an upload part URL')
       }
-      await this.#putPart(
-        url,
-        options.bytes.slice(offset, end),
-        session,
-        partNumber,
-        options
-      )
+      await this.#putPart(url, options.bytes.slice(offset, end), session, partNumber, options)
       offset = end
       options.onProgress?.({ transferredBytes: offset, totalBytes: total })
     }
@@ -1221,7 +1222,10 @@ export class AliyunDriveClient {
         )
     const before = await this.#listChildren(namespace.driveId, folder.fileId, options)
     if (before.length !== 0) {
-      throw new AliyunDriveError('conflict', 'Aliyun Drive document folder already contains content')
+      throw new AliyunDriveError(
+        'conflict',
+        'Aliyun Drive document folder already contains content'
+      )
     }
     const item = await this.#uploadNewFile(namespace, folder.fileId, options, 'refuse')
     const after = await this.#listChildren(namespace.driveId, folder.fileId, options)
@@ -1232,10 +1236,7 @@ export class AliyunDriveClient {
     return { item, remoteRevision: aliyunDriveRemoteRevisionFor(item) }
   }
 
-  async #pollAsyncTask(
-    asyncTaskId: string,
-    options: DocumentLookupOptions
-  ): Promise<void> {
+  async #pollAsyncTask(asyncTaskId: string, options: DocumentLookupOptions): Promise<void> {
     for (let poll = 0; poll < this.#limits.maxAsyncTaskPolls; poll++) {
       const response = await this.#apiRequest(
         API_PATHS.asyncTask,
@@ -1253,7 +1254,10 @@ export class AliyunDriveClient {
         throw new AliyunDriveError('server', 'Aliyun Drive move task failed')
       }
       if (state !== 'Running' && state !== 'Wait') {
-        throw new AliyunDriveError('invalid-response', 'Aliyun Drive returned an unknown task state')
+        throw new AliyunDriveError(
+          'invalid-response',
+          'Aliyun Drive returned an unknown task state'
+        )
       }
       await this.#sleep(Math.min(250 * 2 ** Math.min(poll, 5), 5_000), options.signal)
     }

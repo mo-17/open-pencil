@@ -27,14 +27,14 @@ describe('component template asset discovery', () => {
       kind: 'combination'
     })
     expect(basic).toHaveLength(54)
-    expect(combinations).toHaveLength(8)
+    expect(combinations).toHaveLength(12)
     expect(basic.every((item) => item.kind === 'basic')).toBe(true)
     expect(combinations.every((item) => item.kind === 'combination')).toBe(true)
     for (const source of ['local', 'library', 'plugin'] as const)
       expect(filterComponentTemplateAssets(templates, { ...filter, source })).toEqual([])
     expect(
       filterComponentTemplateAssets(templates, { ...filter, source: 'all', kind: 'basic' })
-    ).toHaveLength(62)
+    ).toHaveLength(66)
   })
 
   test('combines category, localized search terms and favorites without changing the catalog', () => {

@@ -1,5 +1,7 @@
 import 'fake-indexeddb/auto'
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
+
+import { IDBFactory } from 'fake-indexeddb'
 
 import {
   createMemoryLocalCanvasStore,
@@ -167,6 +169,10 @@ describe('local canvas store (memory)', () => {
 })
 
 describe('local canvas store (IndexedDB)', () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+  })
+
   test('migrates v1 S3 metadata and blobs to the default profile key', async () => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase('open-pencil-cloud-local')

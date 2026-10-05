@@ -243,21 +243,27 @@ OpenPencil currently registers 100+ shared design tools, plus MCP-only document 
 
 ### Read
 
-| Tool                        | Description                                                                      |
-| --------------------------- | -------------------------------------------------------------------------------- |
-| `get_selection`             | Get currently selected nodes                                                     |
+| Tool | Description |
+|------|-------------|
+| `get_selection` | Get currently selected nodes |
+| `get_page_tree` | Get the full node tree of the current page |
+| `get_current_page` | Get the current page name and ID |
+| `get_node` | Get detailed properties of a node by ID |
+| `find_nodes` | Find nodes by name pattern and/or type |
+| `get_components` | List all components in the document |
+| `list_pages` | List all pages |
+| `list_variables` | List design variables |
+| `list_collections` | List variable collections |
+| `list_fonts` | List fonts used in the current page |
+| `list_available_fonts` | List font families the current host can render |
+| `get_font_status` | Report requested faces, loaded sources, active substitutions, why an installed face could not be loaded, and affected nodes Report requested faces, loaded sources, active substitutions, and affected nodes |
+| `page_bounds` | Get bounding box of all objects on the current page |
+| `node_bounds` | Get bounding box of a node |
+| `node_ancestors` | Get ancestor chain of a node |
+| `node_children` | Get direct children of a node |
+| `node_tree` | Get the subtree rooted at a node |
+| `node_bindings` | Get variable bindings on a node |
 | `get_design_brief`          | Read bounded design facts and referenced backend operations as Markdown; up to 300 nodes and 64 hierarchy levels, with explicit truncation warnings |
-| `get_page_tree`             | Get the full node tree of the current page                                       |
-| `get_current_page`          | Get the current page name and ID                                                 |
-| `get_node`                  | Get detailed properties of a node by ID                                          |
-| `find_nodes`                | Find nodes by name pattern and/or type                                           |
-| `get_components`            | List all components in the document                                              |
-| `list_pages`                | List all pages                                                                   |
-| `list_variables`            | List design variables                                                            |
-| `list_collections`          | List variable collections                                                        |
-| `list_fonts`                | List fonts used in the current page                                              |
-| `list_available_fonts`      | List font families the current host can render                                   |
-| `get_font_status`           | Report requested faces, loaded sources, active substitutions, and affected nodes |
 | `check_font`                | Verify assignment, exact face loading, fallback readiness, and glyph state       |
 | `audit_font_rendering`      | Audit bounded live font effectiveness across subtrees, pages, or a document      |
 | `audit_form_controls`       | Audit validated controls with bounded results (50 default, 200 max)              |
@@ -266,12 +272,6 @@ OpenPencil currently registers 100+ shared design tools, plus MCP-only document 
 | `read_server_workflows`     | Read validated document-level authenticated server workflows                     |
 | `read_motions`              | Read compact or complete Motion metadata for multiple nodes                      |
 | `read_page_route`           | Read the compiler-effective route and collision metadata for one page            |
-| `page_bounds`               | Get bounding box of all objects on the current page                              |
-| `node_bounds`               | Get bounding box of a node                                                       |
-| `node_ancestors`            | Get ancestor chain of a node                                                     |
-| `node_children`             | Get direct children of a node                                                    |
-| `node_tree`                 | Get the subtree rooted at a node                                                 |
-| `node_bindings`             | Get variable bindings on a node                                                  |
 
 ### Create
 
@@ -442,23 +442,25 @@ progress token, the server emits bounded
 
 ### Analyze
 
-| Tool                   | Description                                                      |
-| ---------------------- | ---------------------------------------------------------------- |
-| `analyze_colors`       | Analyze color palette usage across the document                  |
-| `analyze_typography`   | Analyze font/size/weight distribution                            |
+| Tool | Description |
+|------|-------------|
+| `analyze_colors` | Analyze color palette usage across the document |
+| `analyze_typography` | Analyze font/size/weight distribution |
+| `analyze_spacing` | Analyze gap and padding values |
+| `analyze_clusters` | Detect repeated patterns (potential components) |
+| `lint` | Check accessibility and consistency issues, with fixes and suggestions |
+| `lint_fix` | Apply safe lint fixes, and optionally the first suggestion of each finding |
+| Tool | Description |
+|------|-------------|
+| `diff_create` | Patch that turns one node tree into another, as JSX attribute changes Create a snapshot of the current document state |
+| `diff_jsx` | Structural diff between two nodes as design JSX |
+| `diff_show` | Preview the patch that setting JSX attributes on a node would produce Show differences between the current state and a snapshot |
+| `diff_apply` | Apply a patch after checking the nodes still match its old values |
+| `diff_visual` | Pixel diff between two rendered nodes, returned as an image |
 | `audit_font_licenses`  | Audit exact font artifacts and license evidence                  |
 | `audit_font_rendering` | Audit live CanvasKit font effectiveness with bounded retry       |
 | `audit_image_assets`   | Audit stored/referenced image integrity with bounded output      |
 | `audit_navigation`     | Audit compiler-effective routes and reachable navigation actions |
-| `analyze_spacing`      | Analyze gap and padding values                                   |
-| `analyze_clusters`     | Detect repeated patterns (potential components)                  |
-
-### Diff
-
-| Tool          | Description                                               |
-| ------------- | --------------------------------------------------------- |
-| `diff_create` | Create a snapshot of the current document state           |
-| `diff_show`   | Show differences between the current state and a snapshot |
 
 ### Navigation
 

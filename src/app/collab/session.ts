@@ -1,4 +1,4 @@
-import type { Ref } from 'vue'
+import { shallowRef, type Ref, type ShallowRef } from 'vue'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import type { Awareness } from 'y-protocols/awareness'
@@ -6,6 +6,7 @@ import * as Y from 'yjs'
 
 import { randomIndex } from '@open-pencil/core/random'
 
+import { publishLocalAgents } from '@/app/collab/local-awareness'
 import {
   createMotionTimelineUndoManager,
   MOTION_TIMELINES_DOC_KEY
@@ -15,6 +16,7 @@ import type { CollabRoomTransport } from '@/app/collab/transport'
 import type { CollabState, PreviewDocStatePayload } from '@/app/collab/types'
 import { bindCollabGraphEvents, registerYjsObservers } from '@/app/collab/yjs-sync'
 import type { EditorStore } from '@/app/editor/active-store'
+import { setPeers } from '@/app/presence/registry'
 import { PEER_COLORS } from '@/constants'
 
 export type CollabRuntime = {
@@ -26,7 +28,8 @@ export type CollabRuntime = {
   motionUndoManager: Y.UndoManager | null
   room: CollabRoomTransport | null
   persistence: IndexeddbPersistence | null
-  connectedStore: EditorStore | null
+  /** Reactive, so what depends on the room's document follows connects and disconnects. */
+  connectedStore: ShallowRef<EditorStore | null>
   suppressGraphSync: boolean
   suppressYjsEvents: boolean
   unbindGraphEvents: (() => void) | null
@@ -36,13 +39,13 @@ export type CollabRuntime = {
   // registered after connect and resolved lazily by the room.
   sendPreviewDocState: ((payload: PreviewDocStatePayload) => void) | null
   previewDocStateHandler: ((payload: PreviewDocStatePayload) => void) | null
+  stopAgentSync: (() => void) | null
 }
 
 interface CollabSessionSyncOptions {
   runtime: CollabRuntime
   state: Ref<CollabState>
   updatePeersList: () => void
-  tickFollow: () => void
   broadcastAwareness: () => void
   applyYjsToGraph: (events: Y.YEvent<Y.Map<unknown>>[]) => void
   applyYjsMotionToGraph: (events: Y.YEvent<Y.Map<unknown>>[]) => void
@@ -60,7 +63,6 @@ interface ConnectCollabSessionOptions extends CollabSessionSyncOptions {
 
 interface CollabConnectionActionsOptions extends CollabSessionSyncOptions {
   getStore: () => EditorStore
-  resetFollow: () => void
   flushCursor: () => void
   clearCursorBroadcast: () => void
 }
@@ -74,7 +76,7 @@ type CollabSessionResources = {
   motionUndoManager: Y.UndoManager | null
   unbindGraphEvents: (() => void) | null
   stopZoomWatch: (() => void) | null
-  resetFollow: () => void
+  stopAgentSync: (() => void) | null
 }
 
 type AwarenessChange = {
@@ -99,13 +101,14 @@ export function createCollabRuntime(): CollabRuntime {
     motionUndoManager: null,
     room: null,
     persistence: null,
-    connectedStore: null,
+    connectedStore: shallowRef<EditorStore | null>(null),
     suppressGraphSync: false,
     suppressYjsEvents: false,
     unbindGraphEvents: null,
     stopZoomWatch: null,
     sendPreviewDocState: null,
-    previewDocStateHandler: null
+    previewDocStateHandler: null,
+    stopAgentSync: null
   }
 }
 
@@ -126,12 +129,10 @@ export function createCollabConnectionActions({
   state,
   getStore,
   updatePeersList,
-  tickFollow,
   broadcastAwareness,
   applyYjsToGraph,
   applyYjsMotionToGraph,
   syncNodeToYjs,
-  resetFollow,
   flushCursor,
   clearCursorBroadcast
 }: CollabConnectionActionsOptions) {
@@ -143,7 +144,6 @@ export function createCollabConnectionActions({
       store: getStore(),
       disconnect,
       updatePeersList,
-      tickFollow,
       broadcastAwareness,
       applyYjsToGraph,
       applyYjsMotionToGraph,
@@ -155,7 +155,7 @@ export function createCollabConnectionActions({
 
   function disconnect() {
     flushCursor()
-    const store = runtime.connectedStore ?? getStore()
+    const store = runtime.connectedStore.value ?? getStore()
     disposeCollabSessionResources({
       store,
       room: runtime.room,
@@ -165,7 +165,7 @@ export function createCollabConnectionActions({
       motionUndoManager: runtime.motionUndoManager,
       unbindGraphEvents: runtime.unbindGraphEvents,
       stopZoomWatch: runtime.stopZoomWatch,
-      resetFollow
+      stopAgentSync: runtime.stopAgentSync
     })
     clearCursorBroadcast()
     resetCollabRuntime(runtime)
@@ -197,7 +197,6 @@ export function connectCollabSession({
   store,
   disconnect,
   updatePeersList,
-  tickFollow,
   broadcastAwareness,
   applyYjsToGraph,
   applyYjsMotionToGraph,
@@ -207,7 +206,7 @@ export function connectCollabSession({
 }: ConnectCollabSessionOptions) {
   if (runtime.room) disconnect()
 
-  runtime.connectedStore = store
+  runtime.connectedStore.value = store
   state.value.roomId = roomId
   state.value.roomKey = key ?? null
   runtime.ydoc = new Y.Doc()
@@ -225,7 +224,6 @@ export function connectCollabSession({
     // overlay repaint cadence.
     if (!awarenessChangeHasRemoteClient(change, localAwarenessClientId)) return
     updatePeersList()
-    tickFollow()
   })
 
   registerYjsObservers({
@@ -259,6 +257,7 @@ export function connectCollabSession({
   broadcastAwareness()
 
   runtime.stopZoomWatch = watchAwarenessZoom(store, () => runtime.awareness)
+  runtime.stopAgentSync = publishLocalAgents(store, () => runtime.awareness, state.value.localColor)
 
   runtime.unbindGraphEvents = bindCollabGraphEvents({
     store,
@@ -276,6 +275,7 @@ export function connectCollabSession({
 export function resetCollabRuntime(runtime: CollabRuntime) {
   runtime.unbindGraphEvents = null
   runtime.stopZoomWatch = null
+  runtime.stopAgentSync = null
   runtime.room = null
   runtime.awareness = null
   runtime.persistence = null
@@ -284,7 +284,7 @@ export function resetCollabRuntime(runtime: CollabRuntime) {
   runtime.yimages = null
   runtime.ymotions = null
   runtime.motionUndoManager = null
-  runtime.connectedStore = null
+  runtime.connectedStore.value = null
   runtime.sendPreviewDocState = null
   // Keep previewDocStateHandler — the PreviewPane registers it once and it is
   // valid across reconnects; only the room-bound sender is per-connection.
@@ -308,7 +308,6 @@ export function disposeCollabSessionResources(resources: CollabSessionResources)
   }
   resources.motionUndoManager?.destroy()
   resources.ydoc?.destroy()
-  resources.resetFollow()
-  resources.store.state.remoteCursors = []
-  resources.store.requestOverlayRepaint()
+  resources.stopAgentSync?.()
+  setPeers(resources.store, [])
 }

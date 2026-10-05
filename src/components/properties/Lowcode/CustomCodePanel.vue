@@ -9,7 +9,6 @@ import type {
   LowcodeHeadMetadata
 } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import {
@@ -24,6 +23,7 @@ import {
   LOWCODE_HEAD_META_KINDS,
   type CustomCodeCspRisk
 } from '@/app/lowcode/custom-code-panel-state'
+import { useSectionUI } from '@/components/ui/section'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
@@ -338,8 +338,7 @@ function clearAll(): void {
           @change="
             updateLink(index, {
               crossorigin: (($event.target as HTMLSelectElement).value || undefined) as
-                | LowcodeHeadLinkCrossOrigin
-                | undefined
+                LowcodeHeadLinkCrossOrigin | undefined
             })
           "
         >

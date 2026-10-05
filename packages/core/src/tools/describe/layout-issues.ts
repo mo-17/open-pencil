@@ -195,8 +195,7 @@ function checkTextVisibility(ctx: LayoutContext): void {
   for (const childId of node.childIds) {
     const child = graph.getNode(childId)
     if (!child?.visible || child.type !== 'TEXT') continue
-    const textFill = child.fills.find((f) => f.visible && f.type === 'SOLID')
-    if (!textFill) {
+    if (!child.fills.some((fill) => fill.visible && fill.type === 'SOLID')) {
       issues.push({
         message: `"${child.name || child.text.slice(0, 20) || 'Text'}" has no color — invisible`,
         suggestion: 'Add color="#hex"'

@@ -1,15 +1,18 @@
 export { IORegistry } from './registry'
 export * from './design-tokens'
-export { extractExportGraph } from './subgraph'
+export { extractExportGraph, findPageId } from './subgraph'
 export {
   BUILTIN_IO_FORMATS,
+  type BuiltinIOFormatId,
   figFormat,
   penFormat,
   pngFormat,
   jpgFormat,
   webpFormat,
   svgFormat,
-  jsxFormat
+  jsxFormat,
+  htmlFormat,
+  tailwindJSXFormat
 } from './formats'
 export {
   exportFigFile,
@@ -24,7 +27,17 @@ export {
   type ReloadableFigSource
 } from './formats/fig'
 export { parsePenFile, readPenFile, serializePenFile, writePenFile } from '@open-pencil/pen'
-export { sceneNodeToJSX, selectionToJSX, type JSXFormat } from './formats/jsx'
+export {
+  sceneNodeToJSX,
+  selectionToJSX,
+  collectLayoutPrimitiveClasses,
+  collectResponsiveTailwindClasses,
+  collectStateTailwindClasses,
+  collectTailwindClasses,
+  gradientFillCSS,
+  type TailwindClassOptions,
+  type JSXFormat
+} from './formats/jsx'
 export {
   computeContentBounds,
   renderNodesToImage,
@@ -66,13 +79,14 @@ export type {
   ReadDocumentResult,
   ExportTarget,
   ExportRequest,
+  ExportAsset,
   ExportResult,
+  HTMLExportOptions,
   IOContext,
   FigExportProfile,
   FigWriteOptions,
   RasterExportOptions,
   SVGExportOptions,
-  JSXExportOptions,
   IOFormatSupport,
   IOFormatExportOptions,
   IOFormatAdapter

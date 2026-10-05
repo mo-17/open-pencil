@@ -9,13 +9,13 @@ import {
 import { auditApplicationRuntime } from '@open-pencil/lowcode/application-runtime'
 import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceConflictBanner } from '@/app/editor/presence/use-presence-conflict-banner'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import { toast } from '@/app/shell/ui'
 import SupabaseSchemaInspector from '@/components/properties/Lowcode/SupabaseSchemaInspector.vue'
+import { useSectionUI } from '@/components/ui/section'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
@@ -325,8 +325,7 @@ async function testConnection(): Promise<void> {
         <pre
           data-test-id="lowcode-supabase-rls-sql"
           class="overflow-x-auto rounded border border-border bg-input px-2 py-1 font-mono text-[10px] text-surface"
-          >{{ buildRlsPolicySql(req) }}</pre
-        >
+          >{{ buildRlsPolicySql(req) }}</pre>
         <button
           type="button"
           data-test-id="lowcode-supabase-rls-copy"

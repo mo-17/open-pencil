@@ -9,7 +9,8 @@
     "node"
   ],
   "jsPlugins": [
-    "./lint/plugin.js"
+    "./lint/plugin.js",
+    "eslint-plugin-compat"
   ],
   "env": {
     "browser": true,
@@ -417,19 +418,22 @@
     "typescript/no-dynamic-delete": "error",
     "open-pencil/no-module-mocking": "error",
     "open-pencil/no-reduce-accumulator-copy": "error",
-    "open-pencil/no-widen-then-assert": "error"
+    "open-pencil/no-widen-then-assert": "error",
+    "open-pencil/no-hand-rolled-base64": "error"
   },
   "overrides": [
     {
-      "files": ["tools/lint/src/rules/quality/widen-then-assert.ts"],
+      "files": [
+        "tools/checks/lint/src/rules/quality/widen-then-assert.ts"
+      ],
       "rules": {
         "complexity": "off"
       }
     },
     {
       "files": [
-        "tools/lint/src/**/*.ts",
-        "tools/lint/tests/**/*.ts"
+        "tools/checks/lint/src/**/*.ts",
+        "tools/checks/lint/tests/**/*.ts"
       ],
       "rules": {
         "open-pencil/no-generated-test-id-literals": "off",
@@ -558,5 +562,14 @@
   ],
   "categories": {
     "correctness": "error"
+  },
+  "settings": {
+    "browsers": [
+      "chrome 111",
+      "edge 111",
+      "firefox 128",
+      "safari 16.4",
+      "ios_saf 16.4"
+    ]
   }
 }

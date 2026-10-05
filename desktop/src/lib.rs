@@ -112,6 +112,15 @@ fn take_pending_open(state: tauri::State<PendingOpen>) -> Vec<PendingOpenFile> {
         .unwrap_or_default()
 }
 
+/// Version of the system WebView engine the app is rendering in, so the
+/// startup support gate can name it when the engine is too old. Uses the
+/// WebKit bundle version on macOS, the WebKitGTK version on Linux, and the
+/// WebView2 runtime version on Windows; `None` when the runtime cannot report it.
+#[tauri::command]
+fn webview_version() -> Option<String> {
+    tauri::webview_version().ok()
+}
+
 #[tauri::command]
 fn set_recent_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
     install_app_menu(&app, &paths).map_err(|error| error.to_string())
@@ -428,6 +437,8 @@ pub fn run() {
             update_preview_window,
             write_motion_export_noclobber,
             set_native_menu_checked
+,
+            webview_version
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -436,6 +447,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_os::init())
         .on_menu_event(|app, event| {
             handle_menu_event(app, event.id().0.as_str());
         })

@@ -1,6 +1,17 @@
 import { twirl } from 'twirlwind'
 
 import {
+  formatColor,
+  formatTrack,
+  getNodeContext,
+  solidFillColor,
+  solidStroke,
+  type JSXStyleGraph,
+  applyResponsiveSizing,
+  responsiveStyleVariants,
+  type ResponsiveStyleContext
+} from '@open-pencil/design-jsx'
+import {
   DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
   DEFAULT_LOWCODE_TEXT_COLOR,
   normalizeLowcodeTextColor
@@ -21,20 +32,6 @@ import { colorToCSSCompact, colorToFill } from '#core/color'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import { resolveNodeTextDirection } from '#core/text/direction'
 import { lowcodeTextNode } from '#core/text/lowcode'
-
-import {
-  formatColor,
-  formatTrack,
-  getNodeContext,
-  solidFillColor,
-  solidStroke,
-  type JSXStyleGraph
-} from './helpers'
-import {
-  applyResponsiveSizing,
-  responsiveStyleVariants,
-  type ResponsiveStyleContext
-} from './responsive'
 
 function px(v: number): string {
   return `${v}px`
@@ -680,6 +677,7 @@ function normalizeLegacyStateStroke(stroke: Stroke): Stroke {
   if (typeof visible !== 'boolean') return stroke
   if (!validLegacyStrokeAlign(align)) return stroke
   return {
+    type: 'SOLID',
     color: colorToFill(color).color,
     weight,
     opacity,

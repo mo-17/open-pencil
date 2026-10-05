@@ -132,9 +132,7 @@ describe('Aliyun Drive native OAuth bridge', () => {
 describe('Aliyun Drive native transfer bridge', () => {
   test('shares the integration client 10 MiB chunk ceiling', () => {
     expect(ALIYUN_DRIVE_NATIVE_MAX_TRANSFER_CHUNK_BYTES).toBe(10 * 1024 * 1024)
-    expect(ALIYUN_DRIVE_NATIVE_MAX_TRANSFER_CHUNK_BYTES).toBe(
-      ALIYUN_DRIVE_MAX_UPLOAD_CHUNK_BYTES
-    )
+    expect(ALIYUN_DRIVE_NATIVE_MAX_TRANSFER_CHUNK_BYTES).toBe(ALIYUN_DRIVE_MAX_UPLOAD_CHUNK_BYTES)
   })
 
   test('invokes the dedicated command and maps static native errors', async () => {
@@ -263,9 +261,9 @@ describe('Aliyun Drive native transfer bridge', () => {
         redirect: 'error'
       })
     ).rejects.toMatchObject({ code: 'invalid-request' })
-    await expect(
-      transport(UPLOAD_URL, { method: 'GET', redirect: 'error' })
-    ).rejects.toMatchObject({ code: 'invalid-request' })
+    await expect(transport(UPLOAD_URL, { method: 'GET', redirect: 'error' })).rejects.toMatchObject(
+      { code: 'invalid-request' }
+    )
   })
 
   test('bounds API request bodies before invoking native code', async () => {

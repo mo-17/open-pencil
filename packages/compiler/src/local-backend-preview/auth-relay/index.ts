@@ -1,6 +1,9 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { setTimeout, clearTimeout } from 'node:timers'
 
+import { unrefTimer } from '#compiler/node-runtime/timers'
+import { fromUint8Array } from 'js-base64'
 import type { Plugin } from 'vite'
 
 import type { PreviewLocalBackendConnection } from '../connection'
@@ -122,10 +125,10 @@ export function createPreviewAuthRelay(options: {
     if (pending.size >= MAX_PENDING) throw new PreviewAuthRequestError(429)
     if ([...pending.values()].some((record) => record.state === authorization.state))
       throw new PreviewAuthRequestError(409)
-    const requestId = randomBytes(32).toString('base64url')
-    const pollToken = randomBytes(32).toString('base64url')
+    const requestId = fromUint8Array(randomBytes(32), true)
+    const pollToken = fromUint8Array(randomBytes(32), true)
     const expiry = setTimeout(() => remove(requestId), TTL_MS)
-    expiry.unref()
+    unrefTimer(expiry)
     pending.set(requestId, {
       ...authorization,
       pollToken,

@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import { classifyToolState, isMCPToolName } from '@/components/chat/tool-state'
+import type { ToolCallPart } from '@/app/ai/chat/tool-calls/display'
+import { toolState } from '@/app/ai/chat/tool-presentation'
+import { classifyToolState, isMCPToolName } from '@/components/chat/tool/state'
 
 describe('classifyToolState', () => {
   test('recognizes MCP tools by their names', () => {
@@ -59,6 +61,18 @@ describe('classifyToolState', () => {
         state: 'output-error',
         output: { content: [] }
       })
+    ).toBe('error')
+  })
+})
+
+describe('toolState', () => {
+  test('classifies a chat part by its tool name, state, and output', () => {
+    const part = (fields: Partial<ToolCallPart>) =>
+      ({ type: 'tool-diff_apply', toolCallId: 'call', input: {}, ...fields }) as ToolCallPart
+    expect(toolState(part({ state: 'input-streaming' }))).toBe('pending')
+    expect(toolState(part({ state: 'output-available', output: { applied: 1 } }))).toBe('done')
+    expect(
+      toolState(part({ state: 'output-available', output: { error: 'Patch does not apply' } }))
     ).toBe('error')
   })
 })

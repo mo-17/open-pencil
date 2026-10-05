@@ -132,7 +132,8 @@ describe('AliyunDriveClient', () => {
       if (path.endsWith('/openFile/list')) {
         const parent = body.parent_file_id
         if (parent === 'authorized-root') return Promise.resolve(json({ items: [documentsFolder] }))
-        if (parent === documentsFolder.fileId) return Promise.resolve(json({ items: [documentFolder] }))
+        if (parent === documentsFolder.fileId)
+          return Promise.resolve(json({ items: [documentFolder] }))
         if (parent === documentFolder.fileId) return Promise.resolve(json({ items: [oldFile] }))
       }
       if (path.endsWith('/openFile/get')) return Promise.resolve(json(oldFile))
@@ -362,7 +363,9 @@ describe('AliyunDriveClient', () => {
         }
         if (body.parent_file_id === documentFolder.fileId) {
           if (!completed) return Promise.resolve(json({ items: [oldFile] }))
-          return Promise.resolve(json({ items: moved ? [oldFile, intruder] : [oldFile, newFile, intruder] }))
+          return Promise.resolve(
+            json({ items: moved ? [oldFile, intruder] : [oldFile, newFile, intruder] })
+          )
         }
         if (body.parent_file_id === conflictFolder.fileId) {
           return Promise.resolve(json({ items: [] }))

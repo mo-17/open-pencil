@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- CSS parsing and asset validation form one fail-closed boundary. */
-import { Buffer } from 'node:buffer'
 import { posix } from 'node:path'
+
+import { fromUint8Array } from 'js-base64'
 
 import { inspectImageBytes } from '@open-pencil/scene-graph'
 
@@ -294,7 +295,7 @@ export function codePenAssetDataURL(path: string, bytes: Uint8Array): string {
       'CodePen export blocked: encoded browser assets exceed the CSS pane limit'
     )
   }
-  return `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}`
+  return `data:${mimeType};base64,${fromUint8Array(bytes)}`
 }
 
 export function assertCodePenBinaryAssetBudget(

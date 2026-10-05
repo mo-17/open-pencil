@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
 
+import { toUint8Array } from 'js-base64'
+
 export interface VRTourSampleFixture {
   files: Map<string, string | Uint8Array>
   samples: Array<{ path: string; fileName: string; sha256: string; byteLength: number }>
@@ -52,7 +54,7 @@ process.stdout.write(JSON.stringify({ files: [...output.files].map(([path, conte
       throw new Error('Invalid generated project file')
     files.set(
       item[0],
-      item[1] === 'text' ? item[2] : new Uint8Array(Buffer.from(item[2], 'base64'))
+      item[1] === 'text' ? item[2] : new Uint8Array(Buffer.from(toUint8Array(item[2])))
     )
   }
   const samples: VRTourSampleFixture['samples'] = []

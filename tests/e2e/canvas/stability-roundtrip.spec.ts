@@ -1,13 +1,15 @@
 import { Buffer } from 'node:buffer'
 import { writeFile } from 'node:fs/promises'
 
-import { computeNavigationMetrics } from '#tools/navigation-benchmark/src/metrics'
-import { readRecording } from '#tools/navigation-benchmark/src/recording'
-import { replay } from '#tools/navigation-benchmark/src/replay'
-import { setupScenario, type NavigationScenario } from '#tools/navigation-benchmark/src/scenario'
-import type { NavigationRecordingFile } from '#tools/navigation-benchmark/src/types'
-
 import type { FontManager } from '@open-pencil/core/text'
+import { computeNavigationMetrics } from '@open-pencil/navigation-benchmark-tools/metrics'
+import { readRecording } from '@open-pencil/navigation-benchmark-tools/recording'
+import { replay } from '@open-pencil/navigation-benchmark-tools/replay'
+import {
+  setupScenario,
+  type NavigationScenario
+} from '@open-pencil/navigation-benchmark-tools/scenario'
+import type { NavigationRecordingFile } from '@open-pencil/navigation-benchmark-tools/types'
 
 import { expect, test } from '#tests/e2e/fixtures'
 import { CanvasHelper } from '#tests/helpers/canvas'

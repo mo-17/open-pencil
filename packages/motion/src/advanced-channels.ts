@@ -335,36 +335,30 @@ export function inspectMotionNodeCapabilities(
 
 function paintTemplates(node: SceneNode): MotionPaintTarget[] {
   return [
-    ...node.fills.map(
-      (fill, index): MotionPaintTarget => ({
-        kind: 'fill',
-        index,
-        ...(fill.type === 'SOLID' ? { color: { ...fill.color } } : {}),
-        opacity: fill.opacity
-      })
-    ),
-    ...node.strokes.map(
-      (stroke, index): MotionPaintTarget => ({
-        kind: 'stroke',
-        index,
-        color: { ...stroke.color },
-        opacity: stroke.opacity
-      })
-    )
+    ...node.fills.map((fill, index): MotionPaintTarget => ({
+      kind: 'fill',
+      index,
+      ...(fill.type === 'SOLID' ? { color: { ...fill.color } } : {}),
+      opacity: fill.opacity
+    })),
+    ...node.strokes.map((stroke, index): MotionPaintTarget => ({
+      kind: 'stroke',
+      index,
+      color: { ...stroke.color },
+      opacity: stroke.opacity
+    }))
   ]
 }
 
 function gradientStopTemplates(node: SceneNode): MotionGradientStopTarget[] {
   return node.fills.flatMap((fill, paintIndex) =>
-    (fill.gradientStops ?? []).map(
-      (stop, stopIndex): MotionGradientStopTarget => ({
-        kind: 'fill',
-        paintIndex,
-        stopIndex,
-        position: stop.position,
-        color: { ...stop.color }
-      })
-    )
+    (fill.gradientStops ?? []).map((stop, stopIndex): MotionGradientStopTarget => ({
+      kind: 'fill',
+      paintIndex,
+      stopIndex,
+      position: stop.position,
+      color: { ...stop.color }
+    }))
   )
 }
 

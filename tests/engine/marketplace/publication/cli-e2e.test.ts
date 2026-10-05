@@ -5,6 +5,8 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { fromUint8Array } from 'js-base64'
+
 import { createSqliteMarketplaceRepository } from '@open-pencil/marketplace'
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
@@ -16,7 +18,7 @@ const temporaryDirectories: string[] = []
 const CLI = join(process.cwd(), 'packages/marketplace/src/cli.ts')
 
 function privateKeyPem(bytes: ArrayBuffer): string {
-  const encoded = Buffer.from(bytes).toString('base64')
+  const encoded = fromUint8Array(new Uint8Array(bytes))
   const body = encoded.match(/.{1,64}/gu)?.join('\n') ?? encoded
   return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`
 }

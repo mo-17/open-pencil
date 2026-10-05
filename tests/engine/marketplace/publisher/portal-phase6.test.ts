@@ -3,6 +3,8 @@ import { chmod, link, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { encode, fromUint8Array } from 'js-base64'
+
 import {
   MARKETPLACE_PUBLISHER_REQUEST_OPERATIONS,
   appendMarketplaceAuditEvent,
@@ -48,7 +50,7 @@ const encoder = new TextEncoder()
 const temporaryDirectories: string[] = []
 
 async function privateKeyPem(key: CryptoKey): Promise<string> {
-  const base64 = Buffer.from(await crypto.subtle.exportKey('pkcs8', key)).toString('base64')
+  const base64 = fromUint8Array(new Uint8Array(await crypto.subtle.exportKey('pkcs8', key)))
   return `-----BEGIN PRIVATE KEY-----\n${base64.match(/.{1,64}/g)?.join('\n')}\n-----END PRIVATE KEY-----\n`
 }
 
@@ -476,7 +478,7 @@ describe('Phase 6 local Publisher signed-envelope hand-off', () => {
     )
     const parsedTampered = parseMarketplacePublisherSignedEnvelope({
       ...envelope,
-      body: Buffer.from(tamperedBody).toString('base64url')
+      body: fromUint8Array(tamperedBody, true)
     })
     expect(parsedTampered.body).toEqual(tamperedBody)
     await expect(verification(parsedTampered.body)).rejects.toThrow('signature')

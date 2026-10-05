@@ -85,7 +85,7 @@ function resolveColorVar(paint: Pick<Paint, 'colorVar'>): Color | undefined {
   return variableColorResolver(alias) ?? undefined
 }
 
-function resolvedPaintColor(paint: Paint): { color: Color; opacity: number } {
+function resolvedPaintColor(paint: Partial<Paint>): { color: Color; opacity: number } {
   const resolved = resolveColorVar(paint)
   if (!resolved) return { color: convertColor(paint.color), opacity: paint.opacity ?? 1 }
   return {
@@ -94,10 +94,10 @@ function resolvedPaintColor(paint: Paint): { color: Color; opacity: number } {
   }
 }
 
-function convertBaseFill(p: Paint): Fill {
+function convertBaseFill(p: Partial<Paint>): Fill {
   const { color, opacity } = resolvedPaintColor(p)
   return {
-    type: p.type as FillType,
+    type: (p.type ?? 'SOLID') as FillType,
     color,
     opacity,
     visible: p.visible ?? true,
@@ -105,9 +105,9 @@ function convertBaseFill(p: Paint): Fill {
   }
 }
 
-function applyGradientPaintFields(fill: Fill, p: Paint): void {
+function applyGradientPaintFields(fill: Fill, p: Partial<Paint>): void {
   const stops = p.stopsVar ?? p.stops
-  if (!p.type.startsWith('GRADIENT') || !stops) return
+  if (!(p.type ?? 'SOLID').startsWith('GRADIENT') || !stops) return
   fill.gradientStops = stops.map((s) => {
     const variableColor = 'colorVar' in s ? resolveColorVar(s) : undefined
     return {
@@ -147,15 +147,18 @@ function applySchemaPaintFields(fill: Fill, p: Paint): void {
   if (p.customEffectId?.guid) fill.customEffectId = guidToString(p.customEffectId.guid)
 }
 
+/** One Figma paint as a Scene Graph paint, whether it ends up a fill or a stroke. */
+function convertPaint(p: Paint): Fill {
+  const fill = convertBaseFill(p)
+  applyGradientPaintFields(fill, p)
+  applyImagePaintFields(fill, p)
+  applySchemaPaintFields(fill, p)
+  return fill
+}
+
 export function convertFills(paints?: Paint[]): Fill[] {
   if (!paints) return []
-  return paints.map((p) => {
-    const fill = convertBaseFill(p)
-    applyGradientPaintFields(fill, p)
-    applyImagePaintFields(fill, p)
-    applySchemaPaintFields(fill, p)
-    return fill
-  })
+  return paints.map(convertPaint)
 }
 
 export function convertStrokes(
@@ -171,19 +174,14 @@ export function convertStrokes(
   if (align === 'INSIDE') strokeAlign = 'INSIDE'
   else if (align === 'OUTSIDE') strokeAlign = 'OUTSIDE'
 
-  return paints.map((p) => {
-    const { color, opacity } = resolvedPaintColor(p)
-    return {
-      color,
-      weight: weight ?? 1,
-      opacity,
-      visible: p.visible ?? true,
-      align: strokeAlign,
-      cap: cap ?? 'NONE',
-      join: join ?? 'MITER',
-      dashPattern: dashPattern ?? []
-    }
-  })
+  return paints.map((p) => ({
+    ...convertPaint(p),
+    weight: weight ?? 1,
+    align: strokeAlign,
+    cap: cap ?? 'NONE',
+    join: join ?? 'MITER',
+    dashPattern: dashPattern ?? []
+  }))
 }
 
 export function convertEffects(effects?: KiwiEffect[]): Effect[] {

@@ -2,8 +2,6 @@ import { describe, expect, test } from 'bun:test'
 
 import { encodeBase64URL } from '@open-pencil/scene-graph'
 
-import CAS_LEDGER_SCHEMA_SQL_SOURCE from '@/app/plugins/host/deployment/supabase/backfill/database/cas-ledger/schema-v1.sql?raw'
-
 import {
   createSupabaseBackfillDatabaseCASLedgerReviewV1,
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_ARTIFACT_PATH,
@@ -16,6 +14,7 @@ import {
   trustedSupabaseBackfillDatabaseCASLedgerReviewContextV1,
   type SupabaseBackfillDatabaseCASLedgerReviewErrorCode
 } from '@/app/plugins/host/deployment/supabase/backfill/database/cas-ledger/review'
+import CAS_LEDGER_SCHEMA_SQL_SOURCE from '@/app/plugins/host/deployment/supabase/backfill/database/cas-ledger/schema-v1.sql?raw'
 import { consumeTrustedSupabaseBackfillLockedHighWaterCaptureV1 } from '@/app/plugins/host/deployment/supabase/backfill/locked-high-water-capture'
 import { createSupabaseBackfillReceiptV2ReviewV1 } from '@/app/plugins/host/deployment/supabase/backfill/receipt/v2/review'
 

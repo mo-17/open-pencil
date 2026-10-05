@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import { fromUint8Array } from 'js-base64'
+
 import { parsePluginTrustTimestamp } from '@open-pencil/plugin-contracts'
 import { validateModuleIdentity, webCryptoBuffer } from '@open-pencil/scene-graph'
 
@@ -156,9 +158,10 @@ export async function signMarketplaceRequest(
   const keyId = identity(input.keyId, 'marketplace request key id')
   const audience = identity(input.audience, 'marketplace request audience')
   const canonical = canonicalMarketplaceRequest({ ...input, audience, publisherId, keyId })
-  const signature = Buffer.from(
-    await crypto.subtle.sign('Ed25519', privateKey, encoder.encode(canonical))
-  ).toString('base64url')
+  const signature = fromUint8Array(
+    new Uint8Array(await crypto.subtle.sign('Ed25519', privateKey, encoder.encode(canonical))),
+    true
+  )
   return { audience, publisherId, keyId, timestamp: input.timestamp, nonce: input.nonce, signature }
 }
 

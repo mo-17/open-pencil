@@ -10,9 +10,17 @@ export function collectContentModuleLanguage(
 ): void {
   if (
     !module ||
-    !['markdown', 'code-block', 'date-range', 'tree', 'popover', 'walktour', 'slider', 'rating', 'cascader'].includes(
-      module.moduleType
-    ) ||
+    ![
+      'markdown',
+      'code-block',
+      'date-range',
+      'tree',
+      'popover',
+      'walktour',
+      'slider',
+      'rating',
+      'cascader'
+    ].includes(module.moduleType) ||
     module.pluginId !== 'open-pencil.' + module.moduleType
   )
     return

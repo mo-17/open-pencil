@@ -1,11 +1,9 @@
+import { CommittedGraphEventError } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
-import {
-  importClipboardNodes,
-  parseFigmaClipboard,
-  parseOpenPencilClipboard
-} from '#core/clipboard'
+import { parseFigmaClipboard, parseOpenPencilClipboard } from '#core/clipboard'
+import { prepareClipboardImport } from '#core/clipboard/fig-import'
 import { computeAllLayouts } from '#core/layout'
 
 import { createClipboardAssetActions } from './clipboard/assets'
@@ -15,9 +13,11 @@ import { importClipboardDependencies } from './clipboard/dependencies'
 import { createClipboardExportActions } from './clipboard/export'
 import { createClipboardFontActions } from './clipboard/fonts'
 import { deleteIds, recreateSnapshots, restoreDeletedEntries } from './clipboard/history'
+import type { PasteHistoryOperation } from './clipboard/paste-replace'
 import { replaceTargetsWithCreated, selectedReplacementTargets } from './clipboard/paste-replace'
 import { resolvePasteTarget } from './clipboard/paste-target'
 import { createClipboardPlacementActions } from './clipboard/placement'
+import { validateClipboardPaintReferences } from './clipboard/snapshot'
 import { collectSubtrees, restoreSubtree, snapshotSubtree } from './clipboard/subtree-history'
 import { captureContentEditInsertion, contentEditInsertionParent } from './content-edit'
 import type { EditorContext } from './types'
@@ -79,18 +79,26 @@ export function createClipboardActions(ctx: EditorContext) {
     }
   }
 
-  function pushCreatedNodesUndo(created: string[], prevSelection: Set<string>, label = 'Paste') {
+  function pushCreatedNodesUndo(
+    created: string[],
+    prevSelection: Set<string>,
+    label = 'Paste',
+    operation?: PasteHistoryOperation
+  ) {
     const allNodes = collectSubtrees(ctx.graph, created)
     const pageId = ctx.state.currentPageId
+    operation?.capture()
     ctx.undo.push({
       label,
       forward: () => {
-        recreateSnapshots(ctx, allNodes, pageId)
+        if (operation) operation.redo()
+        else recreateSnapshots(ctx, allNodes, pageId)
         computeAllLayouts(ctx.graph, pageId)
         ctx.setSelectedIds(new Set(created))
       },
       inverse: () => {
-        deleteIds(ctx, created)
+        if (operation) operation.undo()
+        else deleteIds(ctx, created)
         computeAllLayouts(ctx.graph, pageId)
         ctx.setSelectedIds(prevSelection)
       }
@@ -144,6 +152,7 @@ export function createClipboardActions(ctx: EditorContext) {
     const canInsert = captureContentEditInsertion(ctx)
     const openPencil = parseOpenPencilClipboard(html)
     if (openPencil) {
+      validateClipboardPaintReferences(ctx.graph, openPencil.nodes, [], openPencil.sourceDocumentId)
       const created = pasteOpenPencilNodes(
         openPencil.nodes,
         openPencil.images,
@@ -161,7 +170,15 @@ export function createClipboardActions(ctx: EditorContext) {
       const prevSelection = new Set(ctx.state.selectedIds)
       const replacementTargets = options.replaceSelection ? selectedReplacementTargets(ctx) : []
       const pasteTarget = replacementTargets[0]?.parentId ?? resolvePasteTarget(ctx)
-      const created = importClipboardNodes(figma.nodes, ctx.graph, pasteTarget, 0, 0, figma.blobs)
+      const operation = prepareClipboardImport(figma.nodes, ctx.graph, pasteTarget, figma.blobs)
+      let deliveryError: CommittedGraphEventError | undefined
+      try {
+        operation.commit()
+      } catch (error) {
+        if (!(error instanceof CommittedGraphEventError)) throw error
+        deliveryError = error
+      }
+      const created = operation.plan.rootIds
       if (created.length === 0) return
 
       if (replacementTargets.length > 0) {
@@ -170,7 +187,8 @@ export function createClipboardActions(ctx: EditorContext) {
           placementActions.centerNodesAt,
           created,
           replacementTargets,
-          prevSelection
+          prevSelection,
+          operation
         )
       } else {
         const { width: viewW, height: viewH } = ctx.getViewportSize()
@@ -179,9 +197,10 @@ export function createClipboardActions(ctx: EditorContext) {
         placementActions.centerNodesAt(created, cx, cy)
         computeAllLayouts(ctx.graph, ctx.state.currentPageId)
         ctx.setSelectedIds(new Set(created))
-        pushCreatedNodesUndo(created, prevSelection)
+        pushCreatedNodesUndo(created, prevSelection, 'Paste', operation)
       }
 
+      if (deliveryError) throw deliveryError
       await Promise.all([
         hydrateFigmaClipboardImages(figma.meta.fileKey, created),
         fontActions.loadFontsForNodes(created)
@@ -310,14 +329,18 @@ export function createClipboardActions(ctx: EditorContext) {
     return missingImageHashes(nodeIds).length > 0
   }
 
-  function deleteSelected() {
+  /**
+   * Deletes layers with their children as one undo step, skipping locked ones. Deleted layers
+   * leave the selection, and undo restores the selection from before.
+   */
+  function deleteNodes(nodeIds: Iterable<string>, nextSelection?: ReadonlySet<string>) {
     const entries: Array<{
       id: string
       parentId: string
       index: number
       subtree: Map<string, SceneNode>
     }> = []
-    for (const id of ctx.state.selectedIds) {
+    for (const id of nodeIds) {
       const node = ctx.graph.getNode(id)
       if (!node || node.locked) continue
       const parentId = node.parentId ?? ctx.state.currentPageId
@@ -336,13 +359,15 @@ export function createClipboardActions(ctx: EditorContext) {
     const prevSelection = new Set(ctx.state.selectedIds)
     for (const { id } of entries) ctx.graph.deleteNode(id)
     relayoutParents()
+    const selectionAfter =
+      nextSelection ?? new Set([...prevSelection].filter((id) => ctx.graph.getNode(id)))
 
     ctx.undo.push({
       label: 'Delete',
       forward: () => {
         for (const { id } of entries) ctx.graph.deleteNode(id)
         relayoutParents()
-        ctx.setSelectedIds(new Set())
+        ctx.setSelectedIds(new Set(selectionAfter))
       },
       inverse: () => {
         restoreDeletedEntries(ctx, entries)
@@ -350,7 +375,11 @@ export function createClipboardActions(ctx: EditorContext) {
         ctx.setSelectedIds(prevSelection)
       }
     })
-    ctx.setSelectedIds(new Set())
+    ctx.setSelectedIds(new Set(selectionAfter))
+  }
+
+  function deleteSelected() {
+    deleteNodes(ctx.state.selectedIds, new Set())
   }
 
   const copyActions = createClipboardCopyActions(ctx)
@@ -368,6 +397,7 @@ export function createClipboardActions(ctx: EditorContext) {
     pasteSnapshot,
     pasteFromHTML,
     warnMissingImages,
+    deleteNodes,
     deleteSelected,
     ...assetActions,
     ...exportActions

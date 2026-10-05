@@ -7,7 +7,12 @@ const INVALID_KNOWN_FIELDS = [
   ['BUTTON', 'textColor', 'black', 'a #RRGGBB color'],
   ['INPUT', 'placeholder', false, 'a string'],
   ['INPUT', 'value', 42, 'a string'],
-  ['INPUT', 'inputType', 'file', 'text, email, password, number, tel, url, search'],
+  [
+    'INPUT',
+    'inputType',
+    'file',
+    'text, email, password, number, tel, url, search, time, datetime-local, color'
+  ],
   ['INPUT', 'textColor', 'white', 'a #RRGGBB color'],
   ['INPUT', 'placeholderColor', '#12345G', 'a #RRGGBB color'],
   ['TEXTAREA', 'placeholder', [], 'a string'],

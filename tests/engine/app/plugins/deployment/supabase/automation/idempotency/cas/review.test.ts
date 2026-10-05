@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- one focused suite covers the full immutable review boundary */
 import { describe, expect, test } from 'bun:test'
 
+import { fromUint8Array, toUint8Array } from 'js-base64'
+
 import {
   BACKEND_AUTOMATION_IDEMPOTENCY_RECORD_FORMAT,
   canonicalBackendAutomationIdempotencyCASProposalBytes,
@@ -75,15 +77,13 @@ async function successorRecord(
 }
 
 function decodeBase64(value: string): Uint8Array {
-  return Uint8Array.from(atob(value), (character) => character.charCodeAt(0))
+  return toUint8Array(value)
 }
 
 async function rawTextDigest(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value)
   const digestBytes = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
-  let binary = ''
-  for (const byte of digestBytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(digestBytes, true)
 }
 
 function expectDeepFrozen(value: unknown, seen = new Set<object>()): void {

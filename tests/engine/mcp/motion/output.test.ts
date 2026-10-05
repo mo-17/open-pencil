@@ -4,6 +4,8 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { encode, fromUint8Array } from 'js-base64'
+
 import { MotionExportCancelledError } from '@open-pencil/core/io/motion-export'
 
 import { writeToolOutput } from '#mcp/tool/output'
@@ -11,7 +13,7 @@ import { writeToolOutput } from '#mcp/tool/output'
 const root = join(tmpdir(), `open-pencil-motion-output-${randomUUID()}`)
 const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
 
-function result(base64 = png.toString('base64')) {
+function result(base64 = fromUint8Array(png)) {
   return {
     format: 'png-sequence',
     manifest: { version: 1, format: 'png-sequence', frameCount: 1 },
@@ -47,7 +49,7 @@ describe('MCP Motion output adapter', () => {
     expect(await readFile(join(destination, 'keep.txt'), 'utf8')).toBe('keep')
 
     await rm(destination, { recursive: true, force: true })
-    const invalid = Buffer.from('not png').toString('base64')
+    const invalid = encode('not png')
     await expect(
       writeToolOutput('export_motion_animation', result(invalid), destination, root)
     ).rejects.toThrow('not valid PNG')
@@ -75,7 +77,7 @@ describe('MCP Motion output adapter', () => {
       'export_motion_animation',
       {
         format: 'gif',
-        base64: gif.toString('base64'),
+        base64: fromUint8Array(gif),
         encoder: 'test GIF encoder'
       },
       'animation.gif',
@@ -94,7 +96,7 @@ describe('MCP Motion output adapter', () => {
     const write = (bytes: Buffer) =>
       writeToolOutput(
         'export_motion_animation',
-        { format: 'gif', base64: bytes.toString('base64'), encoder: 'race encoder' },
+        { format: 'gif', base64: fromUint8Array(bytes), encoder: 'race encoder' },
         'animation.gif',
         root
       )
@@ -118,7 +120,7 @@ describe('MCP Motion output adapter', () => {
       manifest: { version: 1, format: 'png-sequence', frameCount },
       frames: Array.from({ length: frameCount }, (_, index) => ({
         file: `frame-${String(index).padStart(4, '0')}.png`,
-        base64: png.toString('base64'),
+        base64: fromUint8Array(png),
         byteLength: png.length
       }))
     }

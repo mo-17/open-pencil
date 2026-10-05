@@ -1,3 +1,5 @@
+import { fromUint8Array } from 'js-base64'
+
 /* oxlint-disable eslint(max-lines) -- Keep the complete lock-bound installer and its capability boundary together for auditability. */
 import {
   createSupabaseBackfillInspectionSubjectV1,
@@ -613,9 +615,7 @@ function installSql(
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes, true)
 }
 
 async function digestSql(value: string): Promise<string> {

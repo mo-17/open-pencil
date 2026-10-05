@@ -1,4 +1,4 @@
-import { Buffer } from 'node:buffer'
+import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
 
 import {
   CODEPEN_SIDECAR_LIMITS,
@@ -111,17 +111,18 @@ function strictBase64(value: unknown): Uint8Array {
   )
   if (
     encoded.length % 4 !== 0 ||
-    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded) ||
+    !isValid(encoded)
   ) {
     throw new CodePenSidecarProtocolError(
       'invalid-base64',
       'Binary source content is not canonical base64'
     )
   }
-  const bytes = new Uint8Array(Buffer.from(encoded, 'base64'))
+  const bytes = toUint8Array(encoded)
   if (
     bytes.byteLength > CODEPEN_SIDECAR_LIMITS.maxBinaryFileBytes ||
-    Buffer.from(bytes).toString('base64') !== encoded
+    fromUint8Array(bytes) !== encoded
   ) {
     throw new CodePenSidecarProtocolError(
       'request-limit',

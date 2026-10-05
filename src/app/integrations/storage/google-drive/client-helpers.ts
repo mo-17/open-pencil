@@ -1,3 +1,5 @@
+import { isValid, toUint8Array } from 'js-base64'
+
 import type {
   StorageDocumentAuthority,
   StorageDocumentMetadata,
@@ -174,13 +176,11 @@ function parseMd5FromGoogleHash(value: string | null): string | undefined {
     .map((part) => part.trim())
     .find((part) => part.startsWith('md5='))
     ?.slice(4)
-  if (!encoded || encoded.length > 64) return undefined
+  if (!encoded || encoded.length > 64 || !isValid(encoded)) return undefined
   try {
-    const binary = atob(encoded)
-    if (binary.length !== 16) return undefined
-    return Array.from(binary, (character) =>
-      character.charCodeAt(0).toString(16).padStart(2, '0')
-    ).join('')
+    const bytes = toUint8Array(encoded)
+    if (bytes.length !== 16) return undefined
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
   } catch {
     return undefined
   }

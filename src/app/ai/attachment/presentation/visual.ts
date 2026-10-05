@@ -1,3 +1,5 @@
+import { isValid, toUint8Array } from 'js-base64'
+
 import type { VisualChatAttachment } from '@/app/ai/chat/attachments'
 
 import type { ImagePresentation } from './types'
@@ -10,8 +12,9 @@ export function visualAttachmentPresentation(
   const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]*={0,2})$/.exec(
     attachment.thumbnail.url
   )
-  if (!match || match[2].length > 131_072) throw new Error('Attachment preview is invalid')
-  const bytes = Uint8Array.from(atob(match[2]), (character) => character.charCodeAt(0))
+  if (!match || match[2].length > 131_072 || !isValid(match[2]))
+    throw new Error('Attachment preview is invalid')
+  const bytes = new Uint8Array(toUint8Array(match[2]))
   return {
     id: attachment.id,
     messageId,

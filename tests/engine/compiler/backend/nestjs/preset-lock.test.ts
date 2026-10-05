@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { fromUint8Array, toUint8Array } from 'js-base64'
+
 import {
   NESTJS_BACKEND_PROVIDER_BUNDLE,
   NESTJS_BACKEND_PROVIDER_DESCRIPTOR,
@@ -219,9 +221,9 @@ describe('exact reviewed NestJS preset lock artifact', () => {
       expect(url.origin).toBe('https://registry.npmjs.org')
       expect(url.username + url.password + url.search + url.hash).toBe('')
       expect(integrity).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/u)
-      const bytes = Buffer.from(integrity.slice(7), 'base64')
+      const bytes = Buffer.from(toUint8Array(integrity.slice(7)))
       expect(bytes.byteLength).toBe(64)
-      expect(bytes.toString('base64')).toBe(integrity.slice(7))
+      expect(fromUint8Array(bytes)).toBe(integrity.slice(7))
     }
   })
 })

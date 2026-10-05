@@ -1,4 +1,4 @@
-import type { FigArchiveLimits } from '@open-pencil/fig'
+import type { FigSessionCheckpoint, FigArchiveLimits } from '@open-pencil/fig'
 import type { FigPageManifestEntry } from '@open-pencil/kiwi/fig'
 
 import type { SerializedSceneGraph } from '#core/kiwi/fig/parse/transfer'
@@ -13,8 +13,10 @@ export interface FigSessionOpenOptions {
 
 export interface FigSessionOpenRequest {
   type: 'open'
-  buffer: ArrayBuffer
+  originalBuffer: ArrayBuffer
   options?: FigSessionOpenOptions
+  /** Transfer the sole compressed archive back with the graph for synchronous recovery. */
+  returnOriginalBuffer?: boolean
   port: MessagePort
 }
 
@@ -47,13 +49,19 @@ export type FigSessionRequest =
 
 export type FigSessionResponse =
   | { type: 'page-manifest'; pages: FigPageManifestEntry[] }
-  | { type: 'graph'; graph: SerializedSceneGraph }
+  | {
+      type: 'graph'
+      graph: SerializedSceneGraph
+      checkpoint: FigSessionCheckpoint
+      originalBuffer?: ArrayBuffer
+    }
   | { type: 'graph'; error: string; phase: FigSessionWorkerPhase }
   | {
       type: 'population-result'
       requestId: string
       baseRevision: number
       populated: boolean
+      checkpoint?: FigSessionCheckpoint
       delta: FigPopulationDelta
     }
   | { type: 'population-error'; requestId?: string; error: string }

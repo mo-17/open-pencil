@@ -24,9 +24,13 @@ export async function startFlutterNativeProcess(
   projectRoot = __OPENPENCIL_PROJECT_ROOT__,
   timing: { closeTimeoutMs?: number; requestTimeoutMs?: number; readyTimeoutMs?: number } = {}
 ): Promise<FlutterNativeProcess> {
-  const command = await createCommand('flutter-preview', ['tools/flutter-preview/src/index.ts'], {
-    cwd: projectRoot
-  })
+  const command = await createCommand(
+    'flutter-preview',
+    ['tools/dev/flutter-preview/src/index.ts'],
+    {
+      cwd: projectRoot
+    }
+  )
   const pending = new Map<
     string,
     {

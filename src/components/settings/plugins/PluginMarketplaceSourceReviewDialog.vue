@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'reka-ui'
+
 import { useI18n } from '@open-pencil/vue'
 
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+
 import type { PluginMarketplaceSourceReviewView } from './PluginMarketplaceSourceControls.vue'
 
 const { review, busy, error, installedPublisherCount } = defineProps<{

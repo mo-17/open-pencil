@@ -76,20 +76,12 @@ function nativeRetryAfterMs(error: unknown): number | undefined {
 }
 
 const NATIVE_ERROR_MAPPING: Readonly<
-  Partial<
-    Record<
-      AliyunDriveNativeErrorCode,
-      readonly [AliyunDriveOAuthErrorCode, string]
-    >
-  >
+  Partial<Record<AliyunDriveNativeErrorCode, readonly [AliyunDriveOAuthErrorCode, string]>>
 > = Object.freeze({
   unsupported: ['setup-required', 'This build does not provide Aliyun Drive OAuth setup'],
   'oauth-denied': ['authorization-denied', 'Aliyun Drive authorization was denied'],
   timeout: ['authorization-timeout', 'Aliyun Drive authorization timed out'],
-  'browser-open-failed': [
-    'browser-open-failed',
-    'The system browser could not be opened'
-  ],
+  'browser-open-failed': ['browser-open-failed', 'The system browser could not be opened'],
   'oauth-client-invalid': ['oauth-client-invalid', 'Aliyun Drive OAuth client is invalid'],
   'authorization-grant-invalid': [
     'authorization-grant-invalid',
@@ -99,22 +91,13 @@ const NATIVE_ERROR_MAPPING: Readonly<
     'redirect-uri-mismatch',
     'Aliyun Drive rejected the authorization callback'
   ],
-  'token-request-invalid': [
-    'token-request-invalid',
-    'Aliyun Drive token request is invalid'
-  ],
-  'token-exchange-failed': [
-    'token-exchange-failed',
-    'Aliyun Drive token exchange failed'
-  ],
+  'token-request-invalid': ['token-request-invalid', 'Aliyun Drive token request is invalid'],
+  'token-exchange-failed': ['token-exchange-failed', 'Aliyun Drive token exchange failed'],
   'token-response-invalid': [
     'token-response-invalid',
     'Aliyun Drive returned an invalid token response'
   ],
-  'userinfo-failed': [
-    'userinfo-failed',
-    'Aliyun Drive account information could not be verified'
-  ],
+  'userinfo-failed': ['userinfo-failed', 'Aliyun Drive account information could not be verified'],
   'scope-mismatch': ['scope-mismatch', 'Aliyun Drive did not grant the required scopes'],
   'subject-mismatch': [
     'subject-mismatch',
@@ -134,20 +117,16 @@ export function aliyunDriveOAuthNativeFailure(error: unknown): AliyunDriveOAuthE
     (error instanceof Error && error.name === 'AbortError') ||
     nativeCode(error) === 'cancelled'
   ) {
-    return new AliyunDriveOAuthError(
-      'cancelled',
-      'Aliyun Drive authorization was cancelled',
-      { cause: error }
-    )
+    return new AliyunDriveOAuthError('cancelled', 'Aliyun Drive authorization was cancelled', {
+      cause: error
+    })
   }
   const code = nativeCode(error)
   const mapped = code ? NATIVE_ERROR_MAPPING[code] : undefined
   if (!mapped) {
-    return new AliyunDriveOAuthError(
-      'native-failed',
-      'Aliyun Drive native authorization failed',
-      { cause: error }
-    )
+    return new AliyunDriveOAuthError('native-failed', 'Aliyun Drive native authorization failed', {
+      cause: error
+    })
   }
   const retryAfterMs = mapped[0] === 'rate-limited' ? nativeRetryAfterMs(error) : undefined
   return new AliyunDriveOAuthError(

@@ -35,7 +35,9 @@ import {
   setRememberCredentials
 } from '@/app/settings/credentials/media'
 
-const activeTab = ref<'design' | 'code' | 'ai'>('design')
+export type PropertiesTab = 'design' | 'code' | 'ai' | 'lint'
+
+const activeTab = ref<PropertiesTab>('design')
 
 function resolveACPConfigurationContext(role: NonNullable<ReturnType<typeof resolveAIModelRole>>) {
   const selected = new Set(role.profile.featurePolicy.mcpServerIds)

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { useTextareaAutosize } from '@vueuse/core'
-import { TooltipProvider } from 'reka-ui'
 import { computed, ref } from 'vue'
 
 import { ACP_AGENTS } from '@open-pencil/core/constants'
@@ -15,10 +13,11 @@ import { openSettingsDialog } from '@/app/settings/dialog'
 import { activeTab } from '@/app/tabs'
 import AcpConfigSelect from '@/components/chat/AcpConfigSelect.vue'
 import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.vue'
+import ChatComposer from '@/components/chat/ChatComposer.vue'
 import ChatNodePreview from '@/components/chat/ChatNodePreview.vue'
 import ChatProfileSelect from '@/components/chat/ChatProfileSelect.vue'
+import ChatThinkingSelect from '@/components/chat/ChatThinkingSelect.vue'
 import ProviderModelSelect from '@/components/chat/ProviderModelSelect.vue'
-import { useButtonUI } from '@/components/ui/button/button'
 import Tip from '@/components/ui/overlay/Tip.vue'
 
 const { providerID, providerDef, modelID, customModelID } = useAIChat()
@@ -77,9 +76,6 @@ function toggleContextSelection() {
     : resolveReferencedNodes(store.graph, [...nodeIds.value, ...selected]).map((node) => node.id)
 }
 const fileInput = ref<HTMLInputElement>()
-const textarea = ref<HTMLTextAreaElement>()
-useTextareaAutosize({ element: textarea, input, maxHeight: 160 })
-
 const isStreaming = computed(() => status === 'streaming' || status === 'submitted')
 const isBusy = computed(() => initializing || isStreaming.value)
 const isACPProvider = computed(() => providerID.value.startsWith('acp:'))
@@ -94,18 +90,6 @@ const agentName = computed(() => {
 const isCustomProvider = computed(
   () => providerID.value === 'openai-compatible' || providerID.value === 'anthropic-compatible'
 )
-const stopButton = useButtonUI({
-  tone: 'ghost',
-  shape: 'rounded',
-  size: 'sm',
-  ui: { base: 'shrink-0 border border-border px-2 py-1.5' }
-})
-const sendButton = useButtonUI({
-  tone: 'accent',
-  shape: 'rounded',
-  size: 'sm',
-  ui: { base: 'shrink-0 px-2.5 py-1.5 font-medium' }
-})
 const customModelName = computed(() => customModelID.value.trim())
 const usesCustomModel = computed(
   () => !!providerDef.value.supportsCustomModel && !!customModelName.value
@@ -148,13 +132,6 @@ function handlePaste(event: ClipboardEvent) {
   emit('select-files', allowMultipleAttachments ? files : files.slice(0, 1))
 }
 
-function handleInputKeydown(event: KeyboardEvent) {
-  if (event.code !== 'Enter' || event.shiftKey || event.isComposing) return
-  event.preventDefault()
-  const target = event.currentTarget
-  if (target instanceof HTMLElement) target.closest('form')?.requestSubmit()
-}
-
 // Switching between saved profiles only makes sense once more than one can drive the design agent.
 const switchableProfiles = computed(designModelProfiles)
 const canSwitchProfile = computed(() => switchableProfiles.value.length > 1)
@@ -162,11 +139,10 @@ const selectedProfileName = computed(
   () => designModelProfile.value?.name ?? selectedModelName.value
 )
 
-function handleSubmit(event: Event) {
-  event.preventDefault()
+function handleSubmit(submittedText: string) {
   if (attachmentActionsDisabled.value) return
   const requestedInput = useChatDraft(activeTab.value?.store)
-  const text = requestedInput.value.trim()
+  const text = submittedText.trim()
   if (!text && attachments.length === 0 && contextNodes.value.length === 0) return
   const submissionText = text || dialogs.value.recreateVisualReference
   requestedInput.value = ''
@@ -177,9 +153,20 @@ function handleSubmit(event: Event) {
 </script>
 
 <template>
-  <TooltipProvider>
-    <div class="shrink-0 border-t border-border px-3 py-2">
-      <div class="mb-1.5 flex items-center gap-1">
+  <ChatComposer
+    v-model="input"
+    :status="status"
+    :disabled="attachmentActionsDisabled"
+    :stopping="stopping"
+    :stop-retry-available="stopRetryAvailable"
+    :allow-empty="attachments.length > 0 || contextNodes.length > 0"
+    @submit="handleSubmit"
+    @stop="emit('stop')"
+    @paste="handlePaste"
+    @settings="openSettingsDialog('ai')"
+  >
+    <template #model>
+      <div class="@container flex min-w-0 items-center gap-1">
         <template v-if="isAgentProvider">
           <div
             class="flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted"
@@ -211,21 +198,10 @@ function handleSubmit(event: Event) {
           <template #value>{{ selectedModelName }}</template>
         </ProviderModelSelect>
 
-        <div class="ml-auto">
-          <Tip :label="ai.providerSettings">
-            <button
-              type="button"
-              data-test-id="provider-settings-trigger"
-              :aria-label="ai.providerSettings"
-              class="rounded p-0.5 text-muted hover:bg-hover hover:text-surface"
-              @click="openSettingsDialog('ai')"
-            >
-              <icon-lucide-settings class="size-3" />
-            </button>
-          </Tip>
-        </div>
+        <ChatThinkingSelect v-if="!isAgentProvider" />
       </div>
-
+    </template>
+    <template v-if="visualAttachmentsEnabled" #attachment>
       <div v-if="visualAttachmentsEnabled" class="mb-1.5 flex flex-col gap-1.5">
         <div class="flex min-w-0 items-center gap-1">
           <input
@@ -340,55 +316,6 @@ function handleSubmit(event: Event) {
           />
         </div>
       </div>
-
-      <form class="flex gap-1.5" @submit="handleSubmit">
-        <textarea
-          ref="textarea"
-          :aria-label="ai.describeChange"
-          v-model="input"
-          data-test-id="chat-input"
-          :placeholder="ai.describeChange"
-          :disabled="attachmentActionsDisabled"
-          rows="2"
-          class="min-h-8 min-w-0 flex-1 resize-none rounded border border-border bg-transparent px-2 py-1.5 text-xs leading-relaxed text-surface outline-none placeholder:text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
-          @keydown="handleInputKeydown"
-          @paste.stop="handlePaste"
-          @copy.stop
-          @cut.stop
-        />
-        <Tip
-          v-if="isStreaming"
-          :label="stopRetryAvailable ? 'Force stop' : stopping ? 'Stopping…' : ai.stopGenerating"
-        >
-          <button
-            type="button"
-            data-test-id="chat-stop-button"
-            :aria-label="ai.stopGenerating"
-            :class="stopButton.base"
-            :disabled="stopping"
-            :aria-busy="stopping || undefined"
-            @click="emit('stop')"
-          >
-            <icon-lucide-loader-circle v-if="stopping" class="size-3 animate-spin" />
-            <icon-lucide-octagon-alert v-else-if="stopRetryAvailable" class="size-3" />
-            <icon-lucide-square v-else class="size-3" />
-          </button>
-        </Tip>
-        <Tip v-else :label="ai.sendMessage">
-          <button
-            type="submit"
-            data-test-id="chat-send-button"
-            :aria-label="ai.sendMessage"
-            :class="sendButton.base"
-            :disabled="
-              attachmentActionsDisabled ||
-              (!input.trim() && attachments.length === 0 && contextNodes.length === 0)
-            "
-          >
-            <icon-lucide-send class="size-3" />
-          </button>
-        </Tip>
-      </form>
-    </div>
-  </TooltipProvider>
+    </template>
+  </ChatComposer>
 </template>

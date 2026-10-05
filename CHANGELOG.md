@@ -4,72 +4,69 @@
 
 ### Breaking changes
 
-- **Fork npm namespace:** Starting with 0.15.0, release tooling maps this fork's workspace
-  `@open-pencil/*` package names to `@open-pencil-lowcode/*` npm artifacts. Workspace manifests
-  and source imports retain the upstream scope; fork consumers use the mapped scope for package
-  installation, imports, peer dependencies, and compatibility subpaths. The external Yoga fork
-  remains `npm:@open-pencil/yoga-layout` and is not remapped.
+- `@open-pencil/fig/instance-overrides` replaces `populateAndApplyOverrides` with the occurrence-scoped `interpretInstance` and `materializeInstance` APIs. Consumers must interpret source records, resolve component IDs, and materialize the resulting occurrence tree; Core's document reader handles this lifecycle for ordinary imports.
+- The editor state's `remoteCursors` is now `presenceCursors`, typed `PresenceCursor[]` from `@open-pencil/core/canvas`, and each cursor has a `kind` of `'person'` or `'agent'`.
+- `encodeNodeChangeWithVariables`, `encodePaintWithVariableBinding`, and `encodeVarint` are removed from `@open-pencil/core` and `@open-pencil/core/kiwi`. They spliced a colour-variable binding into encoded bytes because the field had no schema entry; exports now write `colorVar`, which `fig.kiwi` defines, so nothing needs them. `parseVariableId` is unchanged.
+- The desktop app now requires macOS 13 or later; the web app supports Chrome 111, Edge 111, Firefox 128, and Safari 16.4 or later.
+- Design JSX ownership moves from `@open-pencil/core` to `@open-pencil/design-jsx`, which depends on the format-neutral scene graph and emit packages. New consumers should import elements, paint/effect helpers, variables, `JSX_REFERENCE`, `buildComponent`, `sceneNodeToJSX`, and `selectionToJSX` from that package. This lowcode fork retains Core helper exports and the `renderTreeNode` alias for compatibility; Core owns icon/layout rendering and its Tailwind adapter. The old public `@open-pencil/core/io/formats/jsx` subpath is removed; Compiler uses the helpers exported by `@open-pencil/core/io`.
+- `diff_create` and `diff_show` patches list changed JSX attributes per node, such as `-rounded={8}` and `+rounded={12}`, instead of `key: value` property lines, so they cover every property the JSX export writes and report reordered children as moves. `diff_show` takes JSX attributes in `attributes`, such as `w={200} bg="#FF0000"`, instead of a JSON `props` object, and patches in the old format no longer apply.
 
 ### Added
 
+- Import `flattenNodesToVectorProps`, `outlineStrokeNodesToVectorProps`, and the `VectorFlattenProps` type from `@open-pencil/core/canvas` to compute Flatten and Outline stroke geometry in an embedding app without going through the editor's own write path.
+- Check designs from the new Lint tab in the right panel: issues on the page, in the selection, or across the document are grouped by rule, hovering one highlights its layer on the canvas, clicking selects it and brings it into view, and one-click fixes bind colors to the variable they match and round subpixel geometry for a row or a whole group, and snap radius, spacing, and small text to the scale, convert groups to frames, and delete hidden layers one row at a time. Rules can be turned off individually or switched between the Recommended, Strict, and Accessibility presets.
+- See which layer the code is about in the Code tab's Design JSX and Tailwind JSX: the element around the cursor marks its opening and closing tag and shows its layer on the canvas as a tinted box, apart from canvas hover, and design issues are underlined on the property that causes them, including while you edit Design JSX live.
+- Fix lint issues outside the app: `openpencil lint --fix -o fixed.fig` binds colors to the variable they match and rounds subpixel geometry, and the `lint` and `lint_fix` tools let MCP clients and AI chat check a page and apply those fixes, plus radius, spacing, text size, group-to-frame, and hidden-layer suggestions on request. Lint messages carry each fix as data in `fix` and `suggestions`.
+- Mark layers with errors and warnings on the canvas while you work, and pin those outside the view to the canvas edge in their direction, with matching marks in the Layers panel and error and warning counts in the page list; hover a marker or pin for its issues or click it to open them in Lint, and turn markers on or off with View → Design issues.
+- Follow collaborators and their AI agents from the avatars in the toolbar: an avatar counts that person's agents, hovering lists what each is doing and on which page, and clicking follows. A frame in their color and a “Following …” bar show whom you follow; Escape, clicking, scrolling, zooming, or switching pages stops it. Your own avatar renames your agents and leaves the room.
+- See where the built-in AI chat is working: while it replies, a cursor whose outlined label shows a sparkle and a callsign such as _Fern_ marks the layers it edits. In a shared room, collaborators see each other's agents in the color of the person running them.
+- See which pages people and AI agents are working on: the Pages panel marks those pages in their colors, the command palette names who is there, and the chat offers **Go to page** while its reply works on a page you're not viewing.
+- Hide, lock, and constrain layers in design JSX with `visible={false}`, `locked`, and `constraints={{ horizontal, vertical }}`, set italic text with `italic`, and describe solid, gradient, and image strokes fully with `strokes`, `strokeWeights`, `strokeCap`, `strokeJoin`, and the node-level `dashPattern`. JSX export now writes these together with stacked, gradient, and image fills, every effect, absolutely positioned children, size limits, vertical text alignment, masks, and variable bindings, so rendering exported JSX reproduces them and `diff_jsx` reports changes to them. Code edits retain metadata that JSX does not express, including matched children when a parent is replaced.
+- Jump between pages from the command palette: it lists the pages you visited recently in the tab, **Go to page…** lists every page, and typing a page name finds it.
+- Choose how much an AI model thinks for each message from the chat composer, from Off to Extra high or the provider default. Anthropic, Google, DeepSeek, OpenAI, OpenRouter, and compatible models apply it, where reasoning effort previously reached only OpenAI and OpenRouter models. A model profile's thinking level, which replaces its free-text reasoning effort, sets the starting choice, and finished reasoning shows how long the model thought.
+- Read AI tool calls at a glance: each call shows a one-line summary and buttons that bring the layers it touched into view, even on another page. Expanded, it shows highlighted JSX, scripts, and JSON input and output, and exported images inline. A render call's JSX streams in as the model writes it, and a long run folds its earlier steps into one row.
+- Review what each AI edit changed from its tool call in the chat: a before and after image with a comparison slider or highlighted changed pixels, and a diff of the layers' JSX. Both are saved with the conversation. Settings → Chat → Change previews sets the image size (240, 480, or 960 px) or turns images off to keep only the JSX diff. The chat AI can check its own work the same way with `diff_changes`, which compares the page or a layer with its state before the run edited it as a patch that `diff_apply` can replay.
+- Preview designs progressively on the canvas as direct AI providers stream JSX, without saving partial designs or adding intermediate undo steps. A preview stays with its page: it hides while you view another page and returns when you come back.
+- Write design trees as TSX with `@open-pencil/design-jsx` as the JSX import source, and render them with `renderTree`.
+- Swap the component behind an instance with `instance.swapComponent(component)` in the plugin API, as in Figma.
+- Detach an instance from its component with `detachInstance()` in the plugin API, as in Figma, from scripts run through `eval`.
+- Run scripts written for Figma's dynamic-page mode that call `figma.getNodeByIdAsync()` or `getMainComponentAsync()`; both resolve to the same nodes as their synchronous forms.
+- Export components to Storybook with `openpencil export -f storybook`: one CSF3 story file per component set or component for React, Vue, or HTML, with a story and `select` controls per variant, a design image per variant, and an `openpencil://` link that opens the variant in OpenPencil. `--watch` re-exports on every save and removes stories of deleted components, and `--beside` writes each document's stories next to it, for many documents at once (#727).
+- Export HTML and Tailwind JSX from the app's export options and through the IO registry, and export Tailwind JSX from the CLI with `-f tailwind-jsx` (`-f jsx --style tailwind` still works). HTML export of a single layer now includes the layer itself, as other formats do.
+- Choose PPTX in the Export panel's format list, alongside PNG, JPG, WEBP, SVG, and PDF.
+- Let AI and MCP agents verify and replay their edits with diff tools: `diff_visual` returns a pixel diff of two rendered nodes with the changed region, and `diff_apply` applies a `diff_create` or `diff_show` patch, including moved, added, and removed children, only when every node still matches it. The built-in AI chat enables `diff_create`, `diff_jsx`, and `diff_visual` by default.
+- Compare designs from the terminal with `openpencil diff`: `create`, `jsx`, `show`, `apply`, and `visual` work on a file or the running app, and `diff files` compares two documents page by page and exits with status 1 when they differ.
 - Add optional application-page entry conditions and unsaved-change confirmation for React/Vue. Apply paired expression/fallback or expression/message drafts atomically with undo and `.fig` persistence. Reject unsafe destinations and fallback cycles, block denied pages before mounting, and route confirmation through framework navigation guards. Keep saving in authored business workflows, retain default design/export behavior, and report unsupported native guard targets explicitly.
-
 - Add opt-in React/Vue application page sessions for declared writable page state and window scroll, isolated by concrete route and query. Restore these sessions across same-document automatic preview recompilation without changing design defaults. Bound portable snapshots, retire old-frame writes when declarations change, and preserve legacy behavior when no policy is authored. Explicit policies support undo and `.fig` persistence. Add authored push/replace navigation and safe Back with an internal fallback; Flutter supports native navigation while page-session recovery remains explicitly unsupported there.
-
 - Add an optional shared application shell with an editable Frame and empty flow content region. Project each business entry into the shared layout for React, Vue and Flutter source generation without changing authored nodes. Save both references atomically with undo, retain invalid references for repair, isolate shell bindings from page-local state, and preserve closed `.fig` and copy reference remapping. Include editable desktop sidebar/header and phone navigation examples.
-
 - Add optional document Application mode with application/reference/component page roles, an entry Frame per business page, route authoring and an initial page. Scope generated applications to these entries while preserving shared component dependencies, original canvas geometry, undo and `.fig` metadata. Absent or disabled mode retains the existing design and code-export behavior; invalid application configuration reports diagnostics rather than exporting unrelated design content.
-
 - Preserve concrete application preview URLs through selection and automatic recompilation, including route parameters, query and hash. Keep editor restoration out of browser Back/Forward history and synchronize replacement navigation. Reject unsupported starting routes in the page picker with a repair hint; dynamic application pages remain available for parameterized navigation. Correct React parameter interpolation with URL suffixes and Vue route bindings when reusing a detail page.
-
 - Preserve Auto and Space between run-group distribution in Flutter responsive Wrap layouts through shared layout IR. Keep minimum run gaps, content-sized and single-run behavior, and existing fixed page output.
-
 - Preserve authored main-axis and within-run cross-axis alignment in Flutter responsive Wrap layouts. Report unsupported wrap stretch, baseline and per-child alignment, and normalize projected size limits before native widget construction without changing scene data.
-
 - Add focused responsive branch editing with inherited-value sources, explicit override/reset actions, nullable size and line-height resets, undo and `.fig` persistence. Preview a branch's width without replacing a mounted Web frame. Resolve overlapping compact/min-width layouts consistently and restore larger-screen values at 1280px.
-
 - Add custom preview dimensions, continuous width adjustment, larger-text and keyboard-obstruction simulations while retaining the iframe and unsaved form values. Add opt-in, bounded Web adaptation diagnostics for horizontal overflow, clipped text and fixed-height text risks, with canvas node navigation and stale-result guards. These session-only tools leave authored geometry and production exports unchanged; native accessibility and keyboard behavior require device testing.
-
 - Add per-page Device adaptation with Fixed size, Scale to width and Responsive layout for React/Vue and Flutter. Preserve legacy output by default, normalize negative design origins for proportional scaling, and follow effective breakpoint layouts for responsive frame height. Persist the setting in `.fig` with undo/redo; unsupported native layout features retain explicit compiler warnings.
-
 - Add a `(0, 0)` button beside the zoom control to move the active canvas origin to its top-left without changing zoom or selection.
-
 - Add selectable Auto (default), On save, Manual and Real-time preview synchronization. Successful current-document saves can trigger synchronization; cancelled saves, failed saves and recovery snapshots do not. Add an opt-in Flutter simulator session to checkout-based Tauri development, with device selection, bounded offline preparation, serialized hot reload and owned-session cleanup. Fix absolute Flutter controls with accessibility labels so `Positioned` receives valid Stack parent data. Preserve launcher PATH directories when resolving desktop CLIs.
-
 - Complete all 42 bundled Vue module adapters with RichText, Audio Player, Lottie, Map, PDF Viewer, QR/Barcode and isolated HTML. Add caller-controlled Vue RichText AST updates and preserve explicit loading, cancellation and iframe security boundaries; ordinary raw HTML remains unsupported.
-
 - Add read-only DataGrid row and single-series Chart data bindings for React/Vue, with reactive runtime validation, explicit empty/unavailable states, matching Canvas defaults and inspector choices. Keep bound CSV imports disabled. Add caller-controlled local File selection APIs and a controlled React RichText AST without document persistence or raw HTML.
-
 - Add four editable compositions: step-by-step form, tree categories with details, drawer editing and an admin page shell. Each uses independent local state and ordinary editable nodes; stage forms own validation and preserve drafts on return.
 - Allow Slide Menu v2 to map an optional uniquely named direct child as editable drawer content, with isolated Canvas editing and React/Vue form rendering. Existing configurations without the field retain authored trigger children. Invalid mappings fail closed; native source targets keep an explicit unsupported warning and static trigger.
-
 - Add typed page/document state bindings, independent FORM validation and reset for Slider/Range, Rating and Date Range. Add opt-in Cascader with visual hierarchy editing, canvas path previews, accessible React/Vue selection and a bound basic template; invalid bindings never silently use example values.
 - Bind Tree and TreeSelect selections to typed page or document state, with FORM validation and reset, configurable field names, and matching canvas defaults. Keep invalid values visible without rewriting business state, and give the two existing templates independent state.
 - Bind Stepper to writable numeric page or document state, emit step-change events, and provide previous, next and reset controls in its editable template. Show invalid steps without changing state; step changes do not validate or submit forms.
-
 - Add opt-in Walktour with editable steps and named child-layer targets, shared canvas trigger styling, and manually started React/Vue guidance with target highlights, previous/next navigation and clear unavailable-target feedback. Include a reusable local guide template without automatic business actions.
-
 - Add opt-in Org Chart with bounded editable hierarchies, visual parent and card editing, horizontal/vertical layouts and branch folding. Share offline canvas geometry with React/Vue output and include a reusable local organization template; no directory service or business-state authority is added.
-
 - Add opt-in Pagination with responsive canvas and React/Vue navigation, bounded page buttons and numeric page/document state bindings. Include editable pagination and paginated-list templates; empty data, disabled controls and projected out-of-range pages never silently write state or fetch data.
-
 - Add a Color picker INPUT variant with hexadecimal string bindings, native selection, form validation and read-only handling. Add opt-in Descriptions with editable label/value rows, responsive columns, layout and density settings, matching canvas and React/Vue presentation, and two reusable templates.
-
 - Add Date-time picker, Number input and Password input templates, alongside the existing component library. Extend existing INPUT nodes with strict local date/time bounds and step validation, configurable native/custom/hidden number controls, and opt-in instance-local password reveal. Keep native form semantics, React/Vue bindings, canvas previews and explicit warnings for unsupported source-only targets.
-
 - Add Autocomplete and Time picker input variants with visual properties, string value bindings and React/Vue form behavior. Include editable templates, local keyboard-searchable suggestions, time bounds and second-based steps, and readable canvas previews. Show array state choices for multiple Select bindings.
-
 - Add array-valued multi-select with search, virtualized options, clear actions and React/Vue form binding; preserve authored empty values and multiple defaults. Add opt-in Date Range, Tree/TreeSelect and Popover/Popconfirm modules with visual properties, canvas renderers, keyboard interactions and six editable templates. Unbound date-range/tree values remain instance-local; popover confirmation provides local feedback, without executing a business action.
-
 - Complete Markdown and Code Block Vue runtimes, multilingual canvas text and three editable content recipes. Align wrapped code line numbers, expose localized copy outcomes, and invalidate stale clipboard results. Keep Markdown HTML inert and images unloaded, isolate footnote return links per instance, and preserve authored runtime language. Cancel multiline inspector drafts before late events can target another node.
-
 - Extend Chart with line, area, pie and donut views, shared canvas/React/Vue geometry, multilingual canvas labels, proportion-preserving SVG and an accessible data table. Add paired data editing with atomic undo and five templates; preserve v1 bar documents and reject negative circular data.
-
 - Add opt-in Tooltip, Skeleton and Empty State modules with bilingual visual properties, offline canvas rendering and React/Vue runtimes, plus four templates. Tooltips support hover/focus/touch and Escape dismissal; skeleton animation respects reduced motion. Keep loading and empty presentation separate from automatic business-state detection.
-
 - Add opt-in Avatar, count/dot Badge and Timeline modules with visual properties, matching canvas and React/Vue presentation, local-image avatar fallbacks, editable event lists and four reusable templates.
 - Add opt-in Alert, linear/circular Progress and interactive Chip modules with bilingual visual properties, shared canvas/React/Vue appearance and four editable templates. Keep dismiss/select state instance-local, distinguish indeterminate progress from percentages, and support keyboard focus and reduced-motion preferences.
-
 - Add opt-in Slider/Range, Rating, Stepper and Breadcrumb modules with visual configuration, offline canvas previews and React/Vue output. Support bounded local value selection, keyboard controls, editable step lists and safe breadcrumb links; retain explicit limits for form binding and business workflows.
 - Expand Assets to 44 component templates: 37 basic components and seven compositions, including single-value and range sliders, star ratings, progress steps and breadcrumbs.
 - Show checkbox and checkbox-group initial values on the canvas, with multilingual labels and disabled states. Resolve bound Input/Textarea initial text, mask password content, and clip single-line inputs correctly.
@@ -78,23 +75,16 @@
 - Localize the remaining DataGrid inspector labels and selection/density choices without changing version-1 configuration values.
 - Use paragraph font fallback for Table cells and Slide Menu, Dropdown Menu and Upload Button canvas labels, retaining clipping and existing trigger geometry. Keep repeated form error descriptions unique across nested lists and component instances in React/Vue exports.
 - Refresh tiled canvas images when a font finishes loading, even when the document has not changed, so newly inserted controls do not retain blank text tiles.
-
 - Complete the opt-in Carousel plugin with visual slide editing, atomic initial-slide ordering, offline multilingual canvas previews, and React/Vue playback controls that remain within the authored bounds. Add configurable split/overlay layouts, image fit, caption placement/alignment, overlay opacity, and dots/numbers/fraction pagination. Position or hide navigation arrows and enable mouse dragging/touch swiping alongside autoplay and loop controls. Preserve explicit remote-image loading in previews and version-1/2 playback behavior; save edited settings with version 3.
-
 - Align Tabs canvas headers with the compact rounded React/Vue controls, including CJK font loading. Distinguish inline text from mapped child content in the inspector; preview each tab without changing its initial selection and edit the corresponding original child layers with undo.
-
 - Create custom Modal content and edit its original layers in a focused canvas with undo and a return-to-trigger action. Keep mapped content off the canvas trigger and display its configured icon and multilingual label. Resolve the body's fill layout within its own bounds so inputs and buttons remain visible in new templates and existing `.fig` files, without changing the trigger size or authored sizing modes.
-
 - Make DataGrid CSV tools opt-in through the inspector in React/Vue previews and exports; hide empty selection/filter reset actions while preserving accessible status and local data. Resolve missing Chinese grid labels through canvas font fallback, including existing `.fig` documents.
 - Keep short DataGrid viewports usable by scrolling oversized headers with their rows and restoring configured sticky headers when space is available.
-
 - Add opt-in Select search and virtual scrolling to React/Vue previews and exports, with inspector switches, label filtering, keyboard navigation and bounded option DOM for large local lists. Preserve selected values while searching.
 - Show Select labels, placeholders and bound initial options on the canvas. Add primary inspector option ordering, atomic default edits, duplicate-value guidance, localized clearing controls and text colors; fix Vue literal selection and guard dynamic empty values through native shadcn fallbacks. Inset plain native selector arrows with space for the label. Preserve settings through `.fig` readback.
-
 - Paint radio-group options and initial selection on the canvas, including CJK fallback, disabled appearance and bound-state cache refresh. Expose Radio settings in Classic and Focused inspectors with undoable option edits and explicit binding precedence; prevent blank draft options from becoming selected defaults.
 - Match switch canvas geometry and blue/gray colors with React, Vue and shadcn output using full authored bounds, scaled thumbs, padding and disabled opacity. Remove conflicting corner classes, undefined theme-color dependencies and duplicate shadcn thumbs; retain keyboard focus and reduced-motion behavior.
 - Paint date-picker values on the canvas, respecting bound initial state, disabled/read-only appearance, padding and clipping. Show a date-format placeholder for empty or invalid dates without changing existing node sizes or requiring `.fig` regeneration.
-
 - Browse basic component templates and common compositions in Assets, with bilingual search, local favorites, plugin availability, independent editable state and one-step insertion undo.
 - Connect the reviewed Upload module's disabled state to bounded page/document expressions in React and Vue, keeping invalid or non-boolean results disabled.
 - Configure native lowcode input types, bounded constraints, accessible names, disabled/read-only states and Select labels/values; edit independent field change/focus/blur actions with undo and stale-target protection.
@@ -102,23 +92,17 @@
 - Generate Vue Table, DataGrid and Tabs runtimes with bounded local operations and interactive content, alongside their React counterparts; show cross-page selection counts and provide explicit selection and column-filter reset actions.
 - Preserve local Upload Button selections after cancellation or rejected files, deduplicate matching file metadata, and keep clear, removal focus, and disabled behavior consistent in React and Vue.
 - Preserve native field event semantics in shadcn exports through diagnosed native-control fallbacks, and retain disabled options and accessible control names.
-
 - Review field bindings, validation, submission and failure handling together in the form inspector, with direct navigation to the existing controls.
 - Show Backend list loading, refresh, empty and failure states in React/Vue apps, retain same-query results during refresh, and retry reads without repeating writes.
-
 - Show separate file-save and recovery-snapshot status with success times, persistent failure feedback and retry actions; keep cloud synchronization status separate.
 - Check the managed preview's local dependencies, certificate, ports, database and identity metadata from the editor, with actionable diagnostics and a redacted copyable report.
 - Show session-scoped ACP context capacity and latest token reports in chat, with explicit unavailable, invalid and expired states.
 - Explain preview sign-in cancellation, timeouts and session expiry, and return to the previous business page after explicit sign-in without repeating failed writes.
-
 - Run connected NestJS previews inside the editor, with system-browser sign-in authorization and authenticated data operations back in the embedded page.
 - Remember trusted CA file paths on the current computer for each preview identity service, with separate configuration when a design is opened on another computer.
-
 - Confirm template saves, deletes and business commands with editable React/Vue Toast actions; retain inline errors, drafts and saved-request recovery. Add note-deletion confirmation and keep command buttons visible while processing. Reject HTTP 202 as an unconfirmed command result instead of showing success.
-
 - Adapt all 25 Backend starters to compact React/Vue web layouts with mobile page navigation, single-column records, grouped fields and preserved confirmation/recovery actions. Keep the desktop canvas editable and expose compact overrides in Responsive settings.
 - Add phone, landscape, tablet and desktop sizes to embedded compiler preview without reloading the iframe or clearing unsaved inputs.
-
 - Discover components and enabled plugin modules in the Assets workbench with source/category filters, description search, persistent favorites and direct access to insertion and configuration.
 - Review a design brief from Assets or Code, preserve author notes while regenerating it, download or copy Markdown, and place it in AI input for review before sending.
 - Import optional Business, Soft or Contrast variable presets with light/dark modes into independent collections, then bind selected properties and undo the import in one step.
@@ -179,29 +163,91 @@
 
 ### Changed
 
+- Recommend the latest models in the AI model picker: Claude Sonnet 5.5 (the new Anthropic and OpenRouter default), Claude Opus 5.5, GPT-6.1 Sol (the new OpenAI default), GPT-6 Astra, and GPT-6 Luna, and replace the free OpenRouter models OpenRouter retired with Qwen3.8 27B and Gemma 4 31B. Saved profiles keep the model they chose.
+- The Linux AppImage no longer bundles `xdg-open`; opening links relies on the system's `xdg-utils`, as most desktop distributions provide.
+- With nothing selected, the Code tab explains that it shows the selection's code and offers Write JSX for new layers, instead of showing a template frame that looked like a real layer.
+- Design lint reports far fewer false positives in `openpencil lint` and the app: `no-hardcoded-colors` flags only colors that match a color variable and names it, `no-deeply-nested` flags only the layer that crosses the depth limit, `touch-target-size` checks the WCAG 2.2 AA minimum of 24 × 24 in the Recommended preset (Strict and Accessibility keep 44 × 44), matches control names as whole words (a layer named "Rectangle" is no longer a call to action) and ignores icons and controls inside other controls, `consistent-spacing` accepts multiples of 4, `color-contrast` checks text bound to color variables, and layers inside instances are checked once through their main component. The Recommended preset reports unbound colors, deep nesting, mixed text styles, and off-scale spacing as suggestions instead of warnings. Lint messages carry the measured values in `data`.
+- Keep the Share button labeled Share while you are in a room, instead of turning it into a Connected status; a green dot on your avatar shows the room is live.
+- Show Flatten, Outline text, and Outline stroke in the canvas context menu without icons, like every other item there.
+- Keep an AI chat working on the page where it started when you switch to another page, instead of sending its next edits to whichever page is on screen. When the AI switches pages itself, your view follows.
+- `openpencil://` and web `?node=` links select the layer on another page when the current page has none, switching to that page.
+- Generate Tailwind JSX with the same class mapping as Tailwind HTML export, so both describe a design the same way, and write opaque colors as hex in HTML, CSS, and Tailwind output. `openpencil export -f jsx --style tailwind` now exports a whole page when no `--node` is given.
+- Show download progress with a percentage and transferred size while installing a desktop update, instead of an indeterminate message that lasted until the restart.
+- **Fork npm namespace:** Starting with 0.15.0, release tooling maps this fork's workspace
+  `@open-pencil/*` package names to `@open-pencil-lowcode/*` npm artifacts. Workspace manifests
+  and source imports retain the upstream scope; fork consumers use the mapped scope for package
+  installation, imports, peer dependencies, and compatibility subpaths. The external Yoga fork
+  remains `npm:@open-pencil/yoga-layout` and is not remapped.
 - Make container auto-layout controls explicit with an on/off switch and labeled flow choices, show parent-layout guidance for leaf controls, and keep width/height sizing modes visible. Sizing-menu undo restores layout geometry together with the mode.
 - Refresh all built-in Backend application starters with editable, domain-specific navigation, sign-in pages, record cards and compact forms; preserve existing document designs and business actions.
-
 - Give newly created restaurant templates a warm visual style, grouped customer and staff navigation, dish photos, readable CNY prices and compact forms while preserving the ordering workflow in React and Vue exports.
-
 - Improve the single-SKU shop template with title search, ascending prices, sold-out indicators, stock-aware quantity checks, price estimates, checkout and cancellation confirmations, and recent orders showing saved product titles, creation times and localized status. Existing documents require a new template or an explicit migration; the server still confirms stock and final prices.
 - Extend the shop's manager page with searchable, paginated products, validated creation, title and price editing, availability controls, and a separate stock-addition command with saved-request recovery. Product edits preserve inventory; deletion and absolute stock replacement remain unavailable, and existing templates require explicit migration.
+- `Stroke` supports fill paint fields, including gradients and images, and `copyStroke` deep-copies them. Copies retain stroke image bytes and point pattern paints at copied layers, including after save and reopen. Cross-document paste rejects paint references whose source layers were not copied, instead of binding to unrelated destination layers; same-document copies can retain their original external targets. Legacy strokes that omit `type` continue to use solid paint.
+- `.fig` paint bindings use native `colorVar`; legacy `colorVariableBinding` archives remain readable and retain bindings when edited copies use their embedded schema. Explicit unbinding removes both native and legacy aliases.
+- One `.fig` document reader serves archive import, page population, worker recovery, clipboard and export. Core compatibility facades delegate to it, while low-level component interpretation lives in `@open-pencil/fig`.
+- Design JSX rendering and native source emission move to `@open-pencil/design-jsx`, with Core binding editor services and retaining its legacy JSX/Tailwind export contracts. DOM and HTML export use `@open-pencil/dom-css`.
+- Scene Graph owns color conversion and text/layout direction. Core retains compatibility subpaths, and `@open-pencil/dom-css` receives font resolution through injected services instead of depending on Core.
 
 ### Fixed
 
+- Save a `.fig` file that was opened and not edited yet. In the app the save never finished, and MCP `save_file` timed out without writing the file.
+- Show `.fig` thumbnails in the desktop app's recent files, which the app was not permitted to read.
+- Give paints set through the plugin API, `eval`, and AI and MCP scripts an opacity of 1 and make them visible when the script leaves those out, as Figma does. Such paints were stored without them, which the Design panel could not show.
+- Show variable-bound colours and numbers correctly when a `.fig` exported from OpenPencil opens in Figma. Figma draws the value a bound field stores until something makes it resolve the variable again, and exports stored the colour from before the binding, so a bound fill appeared in its old colour. Each bound field is now written as it resolves in its layer's mode, or in the collection's default mode when the layer sets none.
+- Give strokes the same paints fills have. A `.fig` file's gradient or image stroke imported as opaque black, because a stroke could hold only one color; it now keeps its stops, transform, and image, and renders and saves the way the same paint does as a fill. The stroke panel opens the fill picker, so you can give a stroke a gradient or an image and its weight, align, cap, join, and dashes stay as they were ([#797](https://github.com/open-pencil/open-pencil/issues/797)).
+- Open Figma files that use slots with each instance's own slot content instead of its component's default, keep slot properties, their settings, and instance content when saving back to `.fig`, and keep an instance's slot content when you switch its variant.
+- Stop showing a “signal is aborted without reason” error when you switch pages again before the previous page has finished loading.
+- Export layers with two shadows as one `effects` prop instead of repeating the `shadow` attribute, background blurs as `backgroundBlur` instead of a layer blur, hidden children with `visible={false}` instead of leaving them out, and per-corner radii even when the uniform radius is 0.
+- Apply `strokeAlign`, `strokeDash`, `minH`, and `maxH` in design JSX, which were accepted but ignored, and make `minW` and `maxW` set the layer's minimum and maximum width rather than only clamping its initial width.
+- Keep the text, visibility, or swapped component an instance sets through a component property when a page it appears on loads on its own, instead of resetting it to the component's default.
+- Render the canvas with the Vue SDK's `CanvasRoot` and `CanvasSurface`; CanvasKit never started there and the canvas stayed blank.
+- Keep the view centered on what you were looking at when zooming to 100% or another fixed level, instead of jumping elsewhere whenever the zoom changes.
+- Draw collaborators' names on their cursors with proper letter spacing and fallback fonts, and end long names with an ellipsis.
+- Keep line breaks in multi-line text when exporting OpenPencil JSX, so `get_jsx` output and `openpencil export -f jsx` render back to the same text instead of joining the lines with spaces.
+- Announce unavailable commands in the command palette as disabled to screen readers.
+- Show an imported Figma page's background, and keep a background you change when you switch pages or save the document.
+- Keep fixed-size text from collapsing and clipping beside smaller siblings in a Hug auto-layout container.
+- Keep the text and icon an instance was given when a page loads on its own, instead of resynchronising it back to the component's defaults.
+- Keep the ordering keys a `.fig` gave its layers when saving one again, instead of renumbering every sibling, and give every layer on a canvas its own key. Shared styles, variables and the canvas's own layers were numbered in separate passes that each restarted, so Figma saw siblings claiming the same position and ordered them arbitrarily.
+- Keep a `.fig` variable's description, scopes, code syntax, publishing visibility, and plugin data when saving the file, and a collection's plugin data and default mode. Saving previously wrote every variable as published to all scopes with no description or code names, and made the first mode the default.
+- Clear a `.fig` fill or stroke's colour-variable binding when you unbind it, instead of exporting the variable the layer was imported with and rebinding it on reopen. An emptied binding record is no longer written into the file either.
+- Keep an AI reply running in the chat panel, with its Stop button, when you switch pages, instead of detaching the panel from the reply in progress.
+- Undo an AI edit while another page is on screen; undo previously did nothing until you returned to the page the AI changed.
+- Type `parameterConsumptionMap`, `propRefValue`, and `expressionValue` in the Kiwi `NodeChange` codec, which `fig.kiwi` declares but the TypeScript definitions omitted, so reading them no longer needs a cast.
+- Read `.fig` text bound to a string variable, in a component and through an instance override, and keep the bound value where Figma does instead of applying a literal override the layer's binding retires. Text bindings also survive export.
+- Draw a `.fig` fill or stroke bound to a colour variable at the variable's own transparency, which was previously ignored in favour of the paint's own opacity — so a translucent token drew opaque, and an opacity left over from an override the binding supersedes drew in its place.
+- Export the instance overrides you make in OpenPencil to `.fig` beyond text and fill colour — strokes, size, padding and spacing, sizing modes, text styles, visibility, name, opacity, and variable bindings, including the variable bound to an overridden fill — addressed through nested instances so Figma applies each one to the right layer.
+- Reject malformed effects assigned to `node.effects` in the plugin API with an error naming the invalid field, as Figma does, instead of storing them. `node.effects` now reads back in Figma's shape: layer blurs are `LAYER_BLUR` with `blurType`, and blurs no longer carry shadow fields (#786).
+- Render fragments (`<>…</>`) nested inside other elements in JSX from the AI and MCP `render` tool, which previously failed with `Unknown element: <>`.
+- Judge text contrast in the AI and MCP `describe` tool by its WCAG 2 ratio (4.5:1, or 3:1 for large text), the same ratio the `color-contrast` lint rule computes. It no longer reports passing dark text on mid-tone backgrounds as "dark on dark", now reports low-contrast light text, measures translucent and faded text as it is drawn, skips text whose color is bound to a variable, and says the ratio and the threshold it missed (#735).
+- Keep the Code tab and the canvas in sync while you edit Design JSX. Canvas edits patch only the values, text, layers, and layer order that changed, under the property names you wrote (such as `width` for `w`), keeping your comments, formatting, and expressions; an expression or loop the canvas has changed is marked instead of overwritten. Code edits update the existing layers instead of recreating them, and each edit is one undo step. Before, canvas changes did not reach edited code until the tab was reopened.
+- Warn about options the paint and effect helpers ignore when rendering JSX instead of dropping them silently, and point `blur` in effect helpers at `radius`, the name Figma uses (#736).
+- Size groups and boolean operations made through the AI and MCP `group_nodes` and `boolean_*` tools to what they contain, as the editor's commands already do, instead of a default 100 × 100 box or the first operand's box (#738).
+- Keep a layer where it is drawn when it moves into or out of a rotated or flipped parent, instead of shifting it and leaving it at its old angle (#737).
+- Size auto-width text from `.pen` files to its content in CLI exports, instead of a 10000px placeholder that stretched hugging frames in HTML and Storybook output, and keep narrow widths a `.pen` file sets explicitly instead of widening multi-character text.
+- Keep grid layouts, rotation, inner shadows, every shadow of a layer, layer and background blur, flex grow, right-to-left direction, and sections in HTML export, which previously turned grids into columns and dropped the rest.
+- Show what to update instead of a blank window when the browser or system WebView is too old, naming the detected macOS, Safari, Chrome, Edge, Firefox, WebKitGTK, or WebView2 version and linking a prefilled bug report, and explain a failed start the same way (#744).
+- Start on macOS 13 with WebKit older than Safari 17.4, which previously failed with `Promise.withResolvers is not a function` (#744).
+- Evaluate the `**` operator in the AI and MCP `calc` tool, which its own description advertised but which the tool rejected. `calc` now accepts exactly the arithmetic it documents — `+ - * / % **`, parentheses and `min max floor ceil round abs sqrt pow` — and no longer evaluates undocumented expressions such as `random()`, factorials, trigonometry, strings, arrays, or property access.
+- Show Chinese, Japanese, Korean, and Arabic characters in a fallback font when the text's own font is unavailable and another font substitutes for it, instead of drawing missing-glyph boxes (#746).
+- Explain in the font issues banner when an installed font, such as PingFang on macOS 15 and later, stores outlines in a format OpenPencil cannot draw yet, instead of spending over a second trying to load each of its styles (#746).
+- Render the Medium, Semibold, Bold, and other styles of variable fonts at their named weights instead of drawing Regular or a synthetic bold.
+- Load the Bold, Medium, and other styles of macOS system fonts packaged as font collections, such as Menlo, Helvetica Neue, and Avenir Next, instead of reporting them as substituted or drawing a different style (#746).
+- Load the Medium, Semibold, Bold, and other styles of installed variable fonts such as SF Pro on macOS instead of reporting them as substituted (#752).
+- Ship the MIT license text in every published npm package, and add READMEs for `@open-pencil/core`, `@open-pencil/cli`, and `@open-pencil/mcp` on npm.
+- Work with pages other than the one on screen through MCP, `eval`, and the CLI against the running app without switching to them: `openpencil export --page` and `--page-id` export that page instead of the selection, `export_image` and `openpencil export --node` export layers from any page instead of failing with "Raster export selection must stay on a single page", and a `.fig` page that has not been shown yet gets its layers, fonts, and layout before a command reads or changes it.
+- Fill the open subpaths of filled, unstroked SVG paths as if they were closed, as SVG does, in icons from `insert_icon` and Design JSX `<Icon>`, inline Design JSX `<svg>`, SVG from `import_svg` or dropped and pasted files, and SVG clip paths. Icons that cut holes with open subpaths, such as some Font Awesome icons, no longer render with those holes filled in, and filled `<polyline>` elements render filled instead of not at all.
+- Keep round and other stroke caps and joins after saving and reopening the file on icons from `insert_icon` and Design JSX `<Icon>`, and on vectors from inline Design JSX `<svg>`, `import_svg`, and dropped or pasted SVG files. They were set only on the stroke paint, which `.fig` does not store, so outline icons such as Lucide's reopened with butt caps and miter joins and showed gaps where their strokes meet.
 - Align authored disabled and read-only control states across Canvas and React/Vue. Prevent disabled Tree branches and TreeSelect panels from remaining interactive, expose reviewed read-only module controls in the inspector, and respect RichText canvas font size and fallback.
-
 - Give each compiler preview its own virtual source root and dependency cache so simultaneous previews cannot reload one another or replace files still used by another instance. Clean up its directory after the server finishes closing; retain it when closing fails.
 - Keep incomplete number-state input as an editing draft instead of writing zero or NaN; preserve valid zero, and restore declared state defaults after an accepted compiled FORM reset. Coordinate mixed native inputs and module fields so state, displayed values, FormData and validation errors recover together without changing independently controlled component reset behavior.
 - Preserve Vite URL-module handling for imported local images in compiler previews so image-backed components do not prevent the page from loading.
 - Exclude root-level generated output from development watching so exported project configurations do not reload the editor; retain normal source and worktree invalidation.
-
 - Discard stale module property drafts after selection or configuration changes, and synchronously release numeric editing focus when a field is replaced so editor shortcuts remain available.
-
 - Show lowcode control and plugin-module icons in the layer tree, matching the toolbar; update module icons on replacement, removal and undo while preserving ordinary container layout icons and the existing `.fig` format.
 - Keep Tabs, Accordion, and Table configuration text readable in dark and light themes, including focused table cells.
 - Align mapped Tabs content with its canvas panel, exclude inactive layers from painting and pointer selection, preserve editable document data, and shape Chinese tab labels through the existing font fallback.
-
 - Retain lowcode control typography and edited padding, including zero values, through `.fig` save and reopen; verify template field styles against the actual exported archives before publishing the local gallery.
 - Preserve existing spacing, padding, alignment and sizing when switching through Freeform and back to auto layout, including settings saved while Freeform is active. Initialize only missing Grid tracks without resetting authored tracks or enlarging the frame, recalculate imported geometry when explicitly changing flow, and restore all affected layer geometry in one undo step, including saved `.fig` results.
 - Keep mouse-resize previews and released geometry consistent across parent layouts, convert only the resized Hug/Fill axis to Fixed, and show child sizing modes against the parent's direction. Preserve min/max limits and Shift aspect ratios when jointly feasible; releasing Grid's shared stretch keeps the other axis at its current pixel size rather than future Fill.
@@ -210,7 +256,6 @@
 - Keep the bundled plugin catalog loadable when Modal exposes its optional content-layer field, while retaining older saved Modal configurations without that field.
 - Include used shadcn component utilities in generated styles so preview icons keep their intended size and do not block neighboring controls.
 - Keep conditional list templates valid in generated React expressions, including nested Backend lists.
-
 - Connect embedded ACP agents to the current editor even when a global `open-pencil` MCP server is configured, and retain the correct connection when resuming sessions.
 - Keep local ACP editor connections working behind system HTTP proxies while preserving existing proxy exceptions and external proxy settings.
 - Allow managed NestJS preview to prepare and connect applications created from the Backend library while preserving their original application IDs and saved preview sessions.
@@ -241,6 +286,19 @@
   caching, retry, fallback, and diagnostics.
 - Let image-heavy browser previews use their separately reviewed asset budget without weakening the
   ordinary document-content limit or the 32 MiB sandbox hard limit.
+
+### Performance
+
+- Open multi-page `.fig` documents faster: the archive is indexed once rather than once for every page, each page resolves only the layers it adds instead of rescanning the whole document, placing an instance no longer re-synchronises every other instance of its component, and archive records are copied directly rather than through `structuredClone`. A 33-page file loads about a fifth quicker, and a page of repeated components opens three to four times faster once a document is already open.
+
+### Security
+
+- Update the desktop app to Tauri 2.12, which binds large IPC channel responses to the webview that requested them instead of letting another webview fetch them (GHSA-w28w-mhc8-qvjv).
+- Install a desktop update only when its signature names the version the update server announces, so a tampered update manifest cannot pair a newer version number with an older signed build.
+- Update `@xmldom/xmldom` to 0.9.12, which fixes quadratic-time and quadratic-memory parsing of crafted SVG and XML and reports malformed end tags instead of accepting them.
+- Validate cursors, selections, and names that collaborators send before drawing them, and cap their size, so a broken or hostile peer cannot crash or flood the canvas.
+- Evaluate `calc` expressions through `jsep` and an arithmetic allowlist that never compiles input into JavaScript, replacing the `expr-eval` dependency and its unpatched critical code-execution advisory (GHSA-q9v2-7m5w-4693).
+- Escape layer names and other text properties in JSX and Tailwind JSX export, so text from a document can no longer add attributes or JavaScript expressions that the AI and MCP `render` and `replace` tools would execute, and names containing `&` no longer change when the JSX is rendered back.
 
 ## 0.15.1 — 2026-09-18
 

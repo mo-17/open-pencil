@@ -1,3 +1,5 @@
+import { fromUint8Array } from 'js-base64'
+
 /* oxlint-disable eslint(complexity), eslint(max-lines), open-pencil(no-mixed-case-acronym-identifiers), typescript-eslint(no-unnecessary-condition), typescript-eslint(no-unnecessary-boolean-literal-compare), typescript-eslint(prefer-optional-chain) -- This host boundary keeps artifact, authority, transport, receipt, and state invariants together. */
 import {
   containsBackendSecretLikeMaterial,
@@ -339,9 +341,7 @@ function pathIsSafe(value: string): void {
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes, true)
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {

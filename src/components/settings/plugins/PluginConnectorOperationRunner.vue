@@ -335,8 +335,7 @@ onBeforeUnmount(() => {
         <p class="font-medium text-surface">{{ copy.example }}</p>
         <pre
           class="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-input p-1 font-mono text-[8px] text-surface"
-          >{{ operation.help.exampleJson }}</pre
-        >
+          >{{ operation.help.exampleJson }}</pre>
         <button
           type="button"
           class="mt-1 rounded border border-border px-2 py-1 text-surface disabled:opacity-50"
@@ -443,8 +442,7 @@ onBeforeUnmount(() => {
       <p class="font-medium text-surface">{{ copy.result }}</p>
       <pre
         class="mt-0.5 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-input p-1 font-mono text-[8px] text-surface"
-        >{{ resultText }}</pre
-      >
+        >{{ resultText }}</pre>
     </div>
   </div>
 </template>

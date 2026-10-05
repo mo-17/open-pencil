@@ -1,0 +1,11 @@
+{
+  "name": "@open-pencil/secret-scan-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test tests"
+  },
+  "devDependencies": {
+    "@open-pencil/package-artifacts-tools": "workspace:*"
+  }
+}

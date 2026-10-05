@@ -1,5 +1,10 @@
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
-import type { GridTrack, SceneNode } from '@open-pencil/scene-graph'
+import {
+  isGridTrackList,
+  isNonnegativeFiniteNumber,
+  isPlainJSONObject
+} from '@open-pencil/scene-graph'
+import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { getOpenPencilPluginValue, OPEN_PENCIL_PLUGIN_ID, upsertPluginData } from './plugin-data'
 
@@ -33,29 +38,6 @@ export function hasNativeLayoutPreferences(node: SceneNode): boolean {
   )
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isNonnegativeNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-}
-
-function isTracks(value: unknown): value is GridTrack[] {
-  return (
-    Array.isArray(value) &&
-    value.length <= 4096 &&
-    value.every(
-      (track: unknown) =>
-        isRecord(track) &&
-        Object.keys(track).length === 2 &&
-        typeof track.sizing === 'string' &&
-        ['FIXED', 'FR', 'AUTO'].includes(track.sizing) &&
-        isNonnegativeNumber(track.value)
-    )
-  )
-}
-
 function parsePreferences(raw: string): Preferences | null {
   if (raw.length > 524288) return null
   let value: unknown
@@ -64,7 +46,7 @@ function parsePreferences(raw: string): Preferences | null {
   } catch {
     return null
   }
-  if (!isRecord(value) || value.version !== 1) return null
+  if (!isPlainJSONObject(value) || value.version !== 1) return null
   if (Object.keys(value).some((key) => !KEYS.has(key))) return null
   const preferences: Preferences = {}
   if ('counterAxisAlign' in value) {
@@ -73,10 +55,10 @@ function parsePreferences(raw: string): Preferences | null {
   }
   if (GRID_KEYS.some((key) => key in value)) {
     if (
-      !isTracks(value.gridTemplateColumns) ||
-      !isTracks(value.gridTemplateRows) ||
-      !isNonnegativeNumber(value.gridColumnGap) ||
-      !isNonnegativeNumber(value.gridRowGap)
+      !isGridTrackList(value.gridTemplateColumns) ||
+      !isGridTrackList(value.gridTemplateRows) ||
+      !isNonnegativeFiniteNumber(value.gridColumnGap) ||
+      !isNonnegativeFiniteNumber(value.gridRowGap)
     )
       return null
     Object.assign(preferences, {

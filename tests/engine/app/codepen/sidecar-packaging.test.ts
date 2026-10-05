@@ -211,10 +211,10 @@ describe('CodePen sidecar packaging contract', () => {
     )
     expect(workflow.match(new RegExp(`bunVersion: ${bunVersion}`, 'g'))).toHaveLength(2)
     expect(workflow).toContain(
-      'bunExecutableSha256: a26e4e47c3b1d59e7cff711795778d95531457eac2a7104ba25a17fcb0225774'
+      'bunExecutableSha256: 15277c59ccd6c6c20f8dc9716c2b59c1776320d606b6a8658f70be8799519ca4'
     )
     expect(workflow).toContain(
-      'bunExecutableSha256: 96db0e1941cb923cd9f776647fad9571f9e6041d6454ea8ca1d18d7d38697274'
+      'bunExecutableSha256: 3d7e98d3201c55c3bde6c069a5dfa0d34da9edc9145187c76594f685f8aa54c6'
     )
     expect(workflow).toContain('name: Verify native Windows Bun runtime')
     expect(workflow).toContain('test "$(bun -p \'process.platform\')" = "win32"')
@@ -267,10 +267,10 @@ describe('CodePen sidecar packaging contract', () => {
       expect(sidecarPackageJSON.scripts.lint).toContain(path)
     }
     expect(packageJSON.scripts['build:packages']).toContain('@open-pencil/codepen-sidecar')
-    expect(packageJSON.scripts['test:unit']).toContain('tools/unit-tests/src/run.ts')
-    const unitTestGroups = readFileSync('tools/unit-tests/src/shards.ts', 'utf8')
+    expect(packageJSON.scripts['test:unit']).toContain('tools/dev/unit-tests/src/run.ts')
+    const unitTestGroups = readFileSync('tools/dev/unit-tests/src/shards.ts', 'utf8')
     expect(unitTestGroups).toContain("'packages/codepen-sidecar/tests'")
-    expect(packageJSON.scripts['test:coverage']).toContain('tools/unit-tests/src/run.ts')
+    expect(packageJSON.scripts['test:coverage']).toContain('tools/dev/unit-tests/src/run.ts')
     expect(packageJSON.scripts['test:coverage']).toContain('--coverage')
   })
 })

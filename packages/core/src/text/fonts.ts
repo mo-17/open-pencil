@@ -2,7 +2,7 @@
 
 import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 
-import type { SceneGraph } from '@open-pencil/scene-graph'
+import type { FontVariation, SceneGraph } from '@open-pencil/scene-graph'
 
 import { DynamicConcurrencyLimiter, type ConcurrencyLimiterState } from '#core/async-work'
 import { DEFAULT_FONT_FAMILY, IS_BROWSER } from '#core/constants'
@@ -11,22 +11,25 @@ import { BUNDLED_FONT_URLS } from '#core/text/bundled-fonts'
 import { fontFamilyLicenseDisplayForCatalog } from '#core/text/font/license-display'
 import {
   chooseLocalFontMatch,
-  isVariableFont,
   normalizeFontFamily,
   styleToWeight,
   weightToStyle
 } from '#core/text/font/style'
+import { isVariableFont, namedInstanceVariations } from '#core/text/font/variation'
 
 export * from '#core/text/font/sources'
 export * from '#core/text/font/style'
+export * from '#core/text/font/variation'
 import { fontFallbackEntry } from '#core/text/fallbacks'
 import type { FontFallbackScript } from '#core/text/fallbacks'
+import { UnsupportedFontFormatError } from '#core/text/font/sources'
 import type {
   DownloadedFontCache,
   FontFamilyOption,
   FontFamilySource,
   FontInfo,
   FontLoadedSource,
+  FontUnavailableReason,
   HostFontLoader,
   LocalFontAccessState
 } from '#core/text/font/sources'
@@ -156,6 +159,7 @@ export class FontManager {
   private readonly fontLoadLimiter: DynamicConcurrencyLimiter
   private loadedFamilies = new Map<string, ArrayBuffer>()
   private loadedFamilySources = new Map<string, FontLoadedSource>()
+  private unavailableFaces = new Map<string, FontUnavailableReason>()
   private supplementalFamilyData = new Map<string, ArrayBuffer[]>()
   /**
    * CanvasKit cannot unregister an earlier same-named system/remote face. Imported full faces are
@@ -163,6 +167,7 @@ export class FontManager {
    */
   private importedRenderFamilies = new Map<string, string>()
   private remoteCoverage = new Map<string, Set<string>>()
+  private instanceVariations = new WeakMap<ArrayBuffer, Map<string, FontVariation[] | null>>()
   private blockedNodeIds = new Set<string>()
   private fontProvider: TypefaceFontProvider | null = null
   private fontProviders = new Set<TypefaceFontProvider>()
@@ -603,6 +608,11 @@ export class FontManager {
     return true
   }
 
+  /** Why the host could not load an installed face, when it reported a reason. */
+  unavailableReason(family: string, style: string): FontUnavailableReason | null {
+    return this.unavailableFaces.get(`${family}|${style}`) ?? null
+  }
+
   isLoaded(family: string): boolean {
     for (const [key, data] of this.loadedFamilies) {
       if (!key.startsWith(`${family}|`)) continue
@@ -660,6 +670,19 @@ export class FontManager {
       if (!this.providerRegistrations.get(provider)?.get(family)?.has(data)) return false
     }
     return true
+  }
+
+  /** Axis coordinates for `style` when the loaded face is a variable font, otherwise `null`. */
+  namedInstanceVariations(family: string, style: string): FontVariation[] | null {
+    const data = this.loadedData(family, style)
+    if (!data) return null
+    let byStyle = this.instanceVariations.get(data)
+    if (!byStyle) {
+      byStyle = new Map()
+      this.instanceVariations.set(data, byStyle)
+    }
+    if (!byStyle.has(style)) byStyle.set(style, namedInstanceVariations(data, style))
+    return byStyle.get(style) ?? null
   }
 
   renderFamily(family: string, style: string): string {
@@ -848,11 +871,18 @@ export class FontManager {
     const loader = this.hostFontLoader
     const pending = loader(family, style)
       .catch((e: unknown) => {
+        if (e instanceof UnsupportedFontFormatError) {
+          this.unavailableFaces.set(key, e.reason)
+          return null
+        }
         console.warn(`Host fallback font load failed for "${family}" ${style}:`, e)
         return null
       })
       .then((data) => {
-        if (this.hostFontLoader === loader && data) this.hostFontResults.set(key, data)
+        if (this.hostFontLoader === loader && data) {
+          this.hostFontResults.set(key, data)
+          this.unavailableFaces.delete(key)
+        }
         return data
       })
     this.hostFontLoadPromises.set(key, pending)

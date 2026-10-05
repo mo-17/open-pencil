@@ -18,7 +18,7 @@ import { designTokenCSSVariableName } from '#compiler/theme-css'
 import lucideIcons from '@iconify-json/lucide/icons.json' with { type: 'json' }
 
 import { colorToHex8 } from '@open-pencil/core/color'
-import { gradientFillCSS } from '@open-pencil/core/io/formats/jsx'
+import { gradientFillCSS } from '@open-pencil/core/io'
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
   DEFAULT_LOWCODE_SELECT_PLACEHOLDER,

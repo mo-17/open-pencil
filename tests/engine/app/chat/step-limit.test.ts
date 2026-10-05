@@ -10,11 +10,13 @@ import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { maxAgentSteps, reasoningDisplay } from '@/app/ai/chat/preferences'
 import { DEFAULT_AGENT_STEPS, resolveAgentStepLimit } from '@/app/ai/chat/step-limit'
 import { createToolLoopTransport } from '@/app/ai/chat/transports'
-import { didHitStepLimit } from '@/app/ai/tools'
 import { aiToolOverrides } from '@/app/ai/tools/preferences'
+import { didHitStepLimit } from '@/app/ai/tools/run'
 import * as figmaFactory from '@/app/automation/bridge/figma-factory'
 import { createEditorStore } from '@/app/editor/session/create'
 import { appPreferences } from '@/app/settings/preferences/store'
+
+import { MOCK_USAGE } from '#tests/helpers/chat/usage'
 
 test.each([undefined, null, '100', 0, -1, 1.5, 1001, Number.NaN, Infinity])(
   'invalid stored step limit %p falls back to the default',
@@ -67,10 +69,7 @@ test('stop condition, warnings and limit detection share the budget captured per
             {
               type: 'finish',
               finishReason: { unified: 'tool-calls', raw: undefined },
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
-                outputTokens: { total: 1, text: 1, reasoning: undefined }
-              }
+              usage: MOCK_USAGE
             }
           ]
         })
@@ -86,7 +85,7 @@ test('stop condition, warnings and limit detection share the budget captured per
       model,
       effectiveModelID: 'test',
       maxOutputTokens: 100,
-      reasoningEffort: ''
+      thinkingLevel: () => 'default'
     })
     async function send() {
       const stream = await transport.sendMessages({

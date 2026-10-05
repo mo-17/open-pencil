@@ -187,6 +187,7 @@ export class FontResolver {
           error
         })
       }
+      this.emit('progressed', entry.snapshot)
     }
 
     return this.settle(entry, { key: entry.demand.key, state: 'exhausted' })

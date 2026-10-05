@@ -18,9 +18,9 @@ import type {
 import MotionPresetBrowser from '@/components/properties/motion-presets/MotionPresetBrowser.vue'
 import MotionPresetDeleteDialog from '@/components/properties/motion-presets/MotionPresetDeleteDialog.vue'
 import MotionPresetNameDialog from '@/components/properties/motion-presets/MotionPresetNameDialog.vue'
-import MotionSharedPresetLibraries from '@/components/properties/motion-presets/MotionSharedPresetLibraries.vue'
 import MotionPresetStaggerControls from '@/components/properties/motion-presets/MotionPresetStaggerControls.vue'
 import MotionPresetTransfer from '@/components/properties/motion-presets/MotionPresetTransfer.vue'
+import MotionSharedPresetLibraries from '@/components/properties/motion-presets/MotionSharedPresetLibraries.vue'
 
 const {
   items,

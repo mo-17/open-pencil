@@ -101,6 +101,8 @@ function resolveSolidFillStack(node: SceneNode, graph: SceneGraph): Premultiplie
     const fill = node.fills[index]
     if (!fill.visible || fill.opacity <= 0) continue
     if (fill.type !== 'SOLID' || !isSourceOverFill(fill)) return null
+    const binding = node.boundVariables[`fills/${index}/color`]
+    if (binding && graph.resolveColorVariableForNode(node.id, binding) === undefined) return null
     const color = resolveFillColor(fill, index, node, graph, 'srgb')
     painted = sourceOver(premultiply(color, fill.opacity), painted)
   }
@@ -426,7 +428,7 @@ export function lowTextContrastIssue(node: SceneNode, graph: SceneGraph): TextCo
   if (!contrast || contrast.ratio >= contrast.threshold) return null
   const label = node.name || node.text.slice(0, 20) || 'Text'
   return {
-    message: `Low contrast: "${label}" ${colorToHex(contrast.foreground)} on ${colorToHex(contrast.background)} — ${contrast.ratio.toFixed(2)}:1 < ${contrast.threshold.toFixed(2)}:1 (WCAG AA)`,
+    message: `Low contrast: "${label}" ${colorToHex(contrast.foreground)} on ${colorToHex(contrast.background)} — ${(Math.floor(contrast.ratio * 100) / 100).toFixed(2)}:1 < ${contrast.threshold.toFixed(2)}:1 (WCAG AA)`,
     suggestion: `Increase text contrast to ≥${contrast.threshold.toFixed(2)}:1`
   }
 }

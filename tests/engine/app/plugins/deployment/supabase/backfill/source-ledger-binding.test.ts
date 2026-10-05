@@ -1,6 +1,8 @@
 /* oxlint-disable eslint(max-lines) -- Promotion, inspected-ledger, CI, and capability fixtures exercise one fail-closed Host boundary. */
 import { describe, expect, test } from 'bun:test'
 
+import { decode, fromUint8Array } from 'js-base64'
+
 import {
   canonicalSupabaseInspectedSourceMigrationLedgerJSON,
   verifySupabaseInspectedSourceMigrationLedgerIntegrity,
@@ -845,22 +847,9 @@ async function receiptV2ChainPageCollectionError(
   throw new TypeError(`Expected Receipt V2 chain page collection error ${expected}`)
 }
 
-function decodeBase64Text(value: string): string {
-  const binary = atob(value)
-  const bytes = new Uint8Array(binary.length)
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
-  return new TextDecoder().decode(bytes)
-}
-
 function encodeBase64Text(value: string): string {
   const bytes = new TextEncoder().encode(value)
-  return encodeBase64Bytes(bytes)
-}
-
-function encodeBase64Bytes(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary)
+  return fromUint8Array(bytes)
 }
 
 async function digestRawText(value: string): Promise<string> {
@@ -1384,7 +1373,7 @@ async function databaseReceiptRow(
     previousEventId: previous?.databaseEventId ?? null,
     previousReceiptDigest: receipt.previousReceiptDigest,
     checkpointKind: receipt.checkpointKind,
-    canonicalReceiptBase64: encodeBase64Bytes(canonicalBytes),
+    canonicalReceiptBase64: fromUint8Array(canonicalBytes),
     canonicalReceiptByteLength: canonicalBytes.byteLength,
     committedAt: postgresMicrosecondTimestamp(receipt.committedAt)
   })
@@ -2252,10 +2241,10 @@ describe('Supabase backfill Receipt-zero CAS transaction review', () => {
       pgType: 'text',
       encoding: 'rfc3339'
     })
-    expect(decodeBase64Text(String(values[11]))).toBe(
+    expect(decode(String(values[11]))).toBe(
       trustedSupabaseBackfillReceiptZeroReviewContextV1(receiptZero)?.canonicalScopeJSON
     )
-    expect(decodeBase64Text(String(values[26]))).toBe(
+    expect(decode(String(values[26]))).toBe(
       trustedSupabaseBackfillReceiptZeroReviewContextV1(receiptZero)?.canonicalReceiptJSON
     )
     expect(first.review.bindings.parameterValuesDigest).toBe(
@@ -4871,7 +4860,7 @@ describe('Supabase backfill Receipt V2 chain first-page response parser', () => 
       receiptError
     )
 
-    const canonicalText = decodeBase64Text(String(receiptRow.canonicalReceiptBase64))
+    const canonicalText = decode(String(receiptRow.canonicalReceiptBase64))
     const nonCanonicalText = canonicalText.replace('{', '{ ')
     await receiptV2ChainPageResponseError(
       parseSupabaseBackfillReceiptV2ChainFirstPageResponseForTestingV1({
@@ -5820,7 +5809,7 @@ describe('Supabase backfill Receipt V2 chain page collector', () => {
     const publicJSON = JSON.stringify(collection)
     for (const receipt of fixture.chain.receipts) {
       expect(publicJSON).not.toContain(
-        encodeBase64Bytes(canonicalBackendBackfillExecutionReceiptV2Bytes(receipt))
+        fromUint8Array(canonicalBackendBackfillExecutionReceiptV2Bytes(receipt))
       )
     }
 

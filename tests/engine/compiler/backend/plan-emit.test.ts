@@ -101,11 +101,7 @@ describe('Compiler Backend Provider plan and emission', () => {
   test('rejects credential material masquerading as a credential reference before planning', () => {
     const bundle = createFakeBackendProviderBundle()
     const registry = createBackendProviderRegistry([bundle])
-    const secretCanary = [
-      'credential.sk',
-      'live',
-      '0123456789abcdefghijklmnopqrstuvwxyz'
-    ].join('_')
+    const secretCanary = ['credential.sk', 'live', '0123456789abcdefghijklmnopqrstuvwxyz'].join('_')
     const application = fakeBackendApplication()
     Reflect.set(application, 'secrets', [
       {

@@ -4,12 +4,14 @@ import {
   type SceneGraph,
   type SceneNode
 } from '@open-pencil/scene-graph'
+import { colorToHex } from '@open-pencil/scene-graph/color'
 
 import { presets } from './presets'
 import { allRules } from './rules'
 import type {
   LinterOptions,
   LintLimits,
+  LintVariables,
   LintMessage,
   LintNode,
   LintResult,
@@ -31,6 +33,10 @@ export class Linter {
   private capturedBoundVariables = 0
   private capturedStructuredPayloadNodes = 0
   private readonly limits: LintLimits
+  private variables: LintVariables = {
+    counts: { COLOR: 0, FLOAT: 0, STRING: 0, BOOLEAN: 0 },
+    colorsByHex: new Map()
+  }
 
   constructor(options: LinterOptions = {}) {
     this.limits = normalizeLimits(options.limits)
@@ -66,6 +72,7 @@ export class Linter {
     this.capturedTextCodePoints = 0
     this.capturedBoundVariables = 0
     this.capturedStructuredPayloadNodes = 0
+    this.variables = describeVariables(graph)
     const roots = rootIds && rootIds.length > 0 ? rootIds : graph.getPages().map((p) => p.id)
     this.capture(graph, roots)
     this.lintNodes()
@@ -94,7 +101,7 @@ export class Linter {
       }
       const raw = graph.getNode(current.id)
       if (!raw) continue
-      const node = this.toLintNode(raw)
+      const node = this.toLintNode(graph, raw)
       node.parent = current.parent
       this.nodes.set(current.id, node)
       this.traversalOrder.push(current.id)
@@ -106,7 +113,16 @@ export class Linter {
     }
   }
 
-  private toLintNode(raw: SceneNode): LintNode {
+  private toLintNode(graph: SceneGraph, raw: SceneNode): LintNode {
+    // Rules see the color a paint renders with, including a bound variable in this node's mode.
+    const paintColor = (
+      field: 'fills' | 'strokes',
+      index: number,
+      color: SceneNode['fills'][number]['color']
+    ) => {
+      const variableId = raw.boundVariables[`${field}/${index}/color`]
+      return (variableId && graph.resolveColorVariableForNode(raw.id, variableId)) || color
+    }
     return {
       id: raw.id,
       name: raw.name,
@@ -119,6 +135,12 @@ export class Linter {
       visible: raw.visible,
       locked: raw.locked,
       layoutMode: raw.layoutMode,
+      layoutPositioning: raw.layoutPositioning,
+      layoutGrow: raw.layoutGrow,
+      layoutAlignSelf: raw.layoutAlignSelf,
+      primaryAxisSizing: raw.primaryAxisSizing,
+      counterAxisSizing: raw.counterAxisSizing,
+      textAutoResize: raw.textAutoResize,
       itemSpacing: raw.itemSpacing,
       paddingTop: raw.paddingTop,
       paddingRight: raw.paddingRight,
@@ -134,16 +156,16 @@ export class Linter {
       boundVariables: this.boundedVariables(raw.boundVariables),
       motion: this.boundedMotion(raw.motion),
       generatedEffect: this.boundedGeneratedEffect(raw.generatedEffect),
-      fills: this.boundedStyleEntries(raw.fills, (f) => ({
+      fills: this.boundedStyleEntries(raw.fills, (f, index) => ({
         type: f.type,
         visible: f.visible,
         opacity: f.opacity,
-        color: f.type === 'SOLID' ? f.color : undefined
+        color: f.type === 'SOLID' ? paintColor('fills', index, f.color) : undefined
       })),
-      strokes: this.boundedStyleEntries(raw.strokes, (stroke) => ({
+      strokes: this.boundedStyleEntries(raw.strokes, (stroke, index) => ({
         visible: stroke.visible,
         opacity: stroke.opacity,
-        color: stroke.color
+        color: paintColor('strokes', index, stroke.color)
       })),
       effects: this.boundedStyleEntries(raw.effects, (effect) => ({
         type: effect.type,
@@ -155,14 +177,14 @@ export class Linter {
 
   private boundedStyleEntries<T, TResult>(
     entries: readonly T[],
-    project: (entry: T) => TResult
+    project: (entry: T, index: number) => TResult
   ): TResult[] {
     const remaining = Math.max(0, this.limits.maxTotalStyleEntries - this.capturedStyleEntries)
     const count = Math.min(entries.length, this.limits.maxStyleEntriesPerNode, remaining)
     if (count < entries.length) this.truncated = true
     this.capturedStyleEntries += count
     const result: TResult[] = []
-    for (let index = 0; index < count; index++) result.push(project(entries[index]))
+    for (let index = 0; index < count; index++) result.push(project(entries[index], index))
     return result
   }
 
@@ -249,6 +271,17 @@ export class Linter {
     return inspected.bounded
   }
 
+  private hasInstanceAncestor(node: LintNode): boolean {
+    let parent = node.parent
+    const seen = new Set<string>()
+    while (parent && !seen.has(parent.id)) {
+      if (parent.type === 'INSTANCE') return true
+      seen.add(parent.id)
+      parent = parent.parent
+    }
+    return false
+  }
+
   private lintNodes(): void {
     for (const id of this.traversalOrder) {
       if (this.messages.length >= this.limits.maxMessages) {
@@ -258,11 +291,13 @@ export class Linter {
       const node = this.nodes.get(id)
       if (!node) continue
       for (const [ruleId, rule] of this.rules) {
+        if (!ruleId.startsWith('motion-') && this.hasInstanceAncestor(node)) continue
         if (rule.match && !rule.match.includes(node.type)) continue
         const config = this.ruleConfigs.get(ruleId)
         if (!config || config.severity === 'off') continue
         const context: RuleContext = {
-          report: ({ node, message, suggest }) => {
+          variables: this.variables,
+          report: ({ node, message, suggest, data, fix, suggestions }) => {
             if (this.messages.length >= this.limits.maxMessages) {
               this.truncated = true
               return
@@ -274,7 +309,10 @@ export class Linter {
               nodeId: node.id,
               nodeName: node.name,
               nodePath: getNodePath(this.nodes.get(node.id) ?? node),
-              suggest
+              suggest,
+              data,
+              fix,
+              suggestions
             })
           },
           getConfig: () => config.options,
@@ -395,6 +433,20 @@ function boundedCodePoints(
     end += codePoint.length
   }
   return { value, count, truncated: false }
+}
+
+function describeVariables(graph: SceneGraph): LintVariables {
+  const counts = { COLOR: 0, FLOAT: 0, STRING: 0, BOOLEAN: 0 }
+  const colorsByHex = new Map<string, { id: string; name: string }>()
+  for (const variable of graph.variables.values()) {
+    counts[variable.type]++
+    if (variable.type !== 'COLOR') continue
+    const color = graph.resolveColorVariable(variable.id)
+    if (!color || color.a < 1) continue
+    const hex = colorToHex(color)
+    if (!colorsByHex.has(hex)) colorsByHex.set(hex, { id: variable.id, name: variable.name })
+  }
+  return { counts, colorsByHex }
 }
 
 export function createLinter(options?: LinterOptions) {

@@ -63,7 +63,7 @@ export function createDefaultNode(
     width: 100,
     height: 100,
     rotation: 0,
-    source: createDefaultSourceMetadata(),
+    source: overrides.source ?? createDefaultSourceMetadata(),
     derivedLayout: null,
     fills:
       type === 'TEXT' ? [{ type: 'SOLID' as const, color: BLACK, opacity: 1, visible: true }] : [],
@@ -189,6 +189,9 @@ export function createDefaultNode(
     symbolLinks: [],
     variantPropSpecs: [],
     boundVariables: {},
+    variableBindingScales: {},
+    variableAssignmentScales: {},
+    componentScale: 1,
     variableModes: {},
     exportSettings: [],
     pluginData: [],

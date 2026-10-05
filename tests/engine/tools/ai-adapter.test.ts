@@ -5,14 +5,21 @@ import * as v from 'valibot'
 
 import { ALL_TOOLS, FigmaAPI, SceneGraph, toolsToAI } from '@open-pencil/core'
 
-import { defineTool } from '#core/tools/schema'
+import { defineTool, isToolExposed } from '#core/tools/schema'
 
 import { expectDefined } from '#tests/helpers/assert'
 
 type AdapterTool = {
+  description: string
   execute(
     args: Record<string, unknown>,
-    execution?: { abortSignal?: AbortSignal }
+    execution?: { abortSignal?: AbortSignal; toolCallId?: string }
+  ): Promise<unknown>
+}
+type SDKTool = {
+  execute(
+    args: Record<string, unknown>,
+    call: { toolCallId: string; abortSignal?: AbortSignal }
   ): Promise<unknown>
   description: string
 }
@@ -22,8 +29,14 @@ interface PageTreeToolResult {
   children: unknown[]
 }
 
+/** Calls a tool as the AI SDK does, with the call's options. */
 function adapterTool(tools: Record<string, unknown>, name: string): AdapterTool {
-  return tools[name] as AdapterTool
+  const sdkTool = tools[name] as SDKTool
+  return {
+    description: sdkTool.description,
+    execute: (args, execution) =>
+      sdkTool.execute(args, { ...execution, toolCallId: execution?.toolCallId ?? `${name}-call` })
+  }
 }
 
 function setup() {
@@ -90,10 +103,11 @@ describe('AI adapter', () => {
 
   test('generates tool for every definition', () => {
     const { tools } = setup()
-    for (const def of ALL_TOOLS) {
+    const exposed = ALL_TOOLS.filter((def) => isToolExposed(def, 'ai'))
+    for (const def of exposed) {
       expect(tools[def.name]).toBeDefined()
     }
-    expect(Object.keys(tools).length).toBe(ALL_TOOLS.length)
+    expect(Object.keys(tools).length).toBe(exposed.length)
   })
 
   test('each tool has description and execute', () => {

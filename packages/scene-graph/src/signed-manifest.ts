@@ -1,3 +1,4 @@
+import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
 export interface StableSemver {
   major: number
   minor: number
@@ -251,22 +252,13 @@ export function webCryptoBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 export function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
+  return fromUint8Array(bytes, true)
 }
 
 export function decodeBase64URL(value: string): Uint8Array {
   if (!BASE64URL.test(value)) throw new TypeError('Expected non-empty base64url data')
-  const padded =
-    value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4)
-  let binary: string
-  try {
-    binary = atob(padded)
-  } catch {
-    throw new TypeError('Expected valid base64url data')
-  }
-  const decoded = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+  if (!isValid(value)) throw new TypeError('Expected valid base64url data')
+  const decoded = toUint8Array(value)
   if (encodeBase64URL(decoded) !== value) throw new TypeError('Expected canonical base64url data')
   return decoded
 }
@@ -362,22 +354,16 @@ function pemBuffer(value: string, label: 'PRIVATE KEY' | 'PUBLIC KEY'): ArrayBuf
   )
   if (!match) throw new TypeError(`Expected ${label} PEM data`)
   const encoded = match[1].replaceAll(/\s/g, '')
-  let binary: string
-  try {
-    binary = atob(encoded)
-  } catch (cause) {
-    throw new TypeError(`Invalid ${label} PEM encoding`, { cause })
-  }
-  if (btoa(binary) !== encoded) throw new TypeError(`Expected canonical ${label} PEM encoding`)
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+  if (!isValid(encoded)) throw new TypeError(`Invalid ${label} PEM encoding`)
+  const bytes = toUint8Array(encoded)
+  if (fromUint8Array(bytes) !== encoded)
+    throw new TypeError(`Expected canonical ${label} PEM encoding`)
   return webCryptoBuffer(bytes)
 }
 
 function publicKeyPem(value: ArrayBuffer): string {
-  let binary = ''
-  for (const byte of new Uint8Array(value)) binary += String.fromCharCode(byte)
   const lines =
-    btoa(binary)
+    fromUint8Array(new Uint8Array(value))
       .match(/.{1,64}/g)
       ?.join('\n') ?? ''
   return `-----BEGIN PUBLIC KEY-----\n${lines}\n-----END PUBLIC KEY-----\n`

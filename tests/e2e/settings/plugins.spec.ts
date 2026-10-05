@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 /* eslint-disable max-lines -- Plugin settings lifecycle, marketplace trust badges, and runtime grants share one end-to-end surface. */
 import { expect, test, type Page } from '@playwright/test'
 import { unzipSync } from 'fflate'
+import { fromUint8Array } from 'js-base64'
 
 import {
   MARKETPLACE_SNAPSHOT_FORMAT,
@@ -126,7 +127,7 @@ async function marketplaceSourceFixture(): Promise<MarketplaceSourceFixture> {
 async function pageIndependentRootFingerprint(key: CryptoKey): Promise<string> {
   const spki = await crypto.subtle.exportKey('spki', key)
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', spki))
-  return `sha256-${Buffer.from(digest).toString('base64url')}`
+  return `sha256-${fromUint8Array(new Uint8Array(digest), true)}`
 }
 
 async function routeMarketplaceSource(

@@ -1,7 +1,9 @@
-import { createTwoFilesPatch } from 'diff'
+import * as v from 'valibot'
 
-import { sceneNodeToJSX } from '#core/io/formats/jsx'
-import { nodeComparisonInput } from '#core/tools/input'
+import { sceneNodeToJSX } from '@open-pencil/design-jsx'
+
+import { jsxPatch } from '#core/tools/analyze/diff/jsx'
+import { nodeIdInput, nodeComparisonInput } from '#core/tools/input'
 import { defineTool } from '#core/tools/schema'
 
 const MAX_JSX_LENGTH = 12_000
@@ -11,13 +13,17 @@ export const getJSX = defineTool({
   description:
     'Get a structural JSX projection of a node and its children using the render tool syntax. It preserves visible hierarchy, layout, appearance, real lowcode control tags, and interactiveProps, but intentionally omits lowcode behavior fields such as bindings, events, stateOverrides, and renderCondition. Use read_lowcode_node to inspect those fields and update_lowcode_node to write them; use .fig for full semantic persistence.',
   execution: { kind: 'sync', mutation: 'none' },
-  params: {
-    id: { type: 'string', description: 'Node ID', required: true },
-    path: {
-      type: 'string',
-      description: 'Write JSX to this path instead of returning it (requires OPENPENCIL_MCP_ROOT)'
-    }
-  },
+  input: v.object({
+    id: nodeIdInput,
+    path: v.optional(
+      v.pipe(
+        v.string(),
+        v.description(
+          'Write JSX to this path instead of returning it (requires OPENPENCIL_MCP_ROOT)'
+        )
+      )
+    )
+  }),
   execute: (figma, { id }) => {
     const node = figma.getNodeById(id)
     if (!node) return { error: `Node "${id}" not found` }
@@ -40,7 +46,6 @@ export const diffJSX = defineTool({
   description:
     'Structural diff between two nodes in JSX format. Shows added/removed children, changed props.',
   execution: { kind: 'sync', mutation: 'none' },
-  exposure: { webmcp: false },
   input: nodeComparisonInput,
   execute: (figma, { from, to }) => {
     const fromNode = figma.getNodeById(from)
@@ -48,20 +53,12 @@ export const diffJSX = defineTool({
     const toNode = figma.getNodeById(to)
     if (!toNode) return { error: `Node "${to}" not found` }
 
-    const fromJSX = sceneNodeToJSX(from, figma.graph)
-    const toJSX = sceneNodeToJSX(to, figma.graph)
-
-    if (fromJSX === toJSX) return { diff: null, message: 'No differences' }
-
-    const patch = createTwoFilesPatch(
+    const patch = jsxPatch(
       fromNode.name,
       toNode.name,
-      fromJSX,
-      toJSX,
-      'source',
-      'target',
-      { context: 3 }
+      sceneNodeToJSX(from, figma.graph),
+      sceneNodeToJSX(to, figma.graph)
     )
-    return { diff: patch }
+    return patch === null ? { diff: null, message: 'No differences' } : { diff: patch }
   }
 })

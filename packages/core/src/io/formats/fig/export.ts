@@ -1,10 +1,16 @@
 /* eslint-disable max-lines -- FIG export orchestration keeps shared GUID state in one pipeline */
 import type { CanvasKit } from 'canvaskit-wasm'
 import { deflateSync, inflateSync } from 'fflate'
+import { toUint8Array } from 'js-base64'
 
 import { compressFigDataSync } from '@open-pencil/fig'
 import {
+  adaptPaintBindingsToSchema,
   buildComponentPropIndex,
+  createFigNodeExportCaches,
+  type FigNodeExportCaches,
+  placeSlotContent,
+  orderKeyBetween,
   exportCanvasGuides,
   guidToString,
   importCanvasGuides,
@@ -17,11 +23,15 @@ import {
 } from '@open-pencil/fig/node-change'
 import { initCodec, getCompiledSchema, getSchemaBytes } from '@open-pencil/kiwi/fig/codec'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
-import { decodeBinarySchema, compileSchema, ByteBuffer } from '@open-pencil/kiwi/schema-runtime'
-import type { SceneGraph, SceneNode, VariableValue } from '@open-pencil/scene-graph'
+import {
+  decodeBinarySchema,
+  compileSchema,
+  ByteBuffer,
+  type Schema
+} from '@open-pencil/kiwi/schema-runtime'
+import { ownsSlotContent, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
-import { decodeBase64 } from '#core/bytes'
 import type { SkiaRenderer } from '#core/canvas'
 import { CANVAS_BG_COLOR, IS_BROWSER, IS_TAURI } from '#core/constants'
 import { applyEnabledLibrariesPluginData } from '#core/io/formats/fig/library-metadata'
@@ -31,7 +41,6 @@ import { prepareFigmaProjectionFonts } from '#core/io/formats/fig/projection-fon
 import { findFigThumbnailPageId } from '#core/io/formats/fig/thumbnail-page'
 import { renderThumbnail } from '#core/io/formats/raster'
 import type { FigWriteOptions, IOContext } from '#core/io/types'
-import { populateAllLazyFigImportRoots } from '#core/kiwi/fig/lazy-import'
 import {
   remapSerializedLowcodeMotionActionReferences,
   resolveSerializedGraphNodeReference
@@ -42,7 +51,6 @@ import {
   sceneNodeToKiwi,
   fractionalPosition,
   buildFontDigestMap,
-  safeColor,
   makeDocumentNodeChange,
   makeCanvasNodeChange
 } from '#core/kiwi/fig/node-change/serialize'
@@ -51,6 +59,7 @@ import {
   FIGMA_CANVAS_METADATA_FIELD_KEYS,
   FIGMA_DOCUMENT_METADATA_FIELD_KEYS
 } from '#core/kiwi/fig/root-metadata'
+import { populateReaderExport } from '#core/kiwi/fig/session/document-state'
 import { originalFigArchive } from '#core/kiwi/fig/session/original-archive'
 
 interface CompatibleFigProjection {
@@ -90,7 +99,14 @@ function createCompatibleFigProjection(graph: SceneGraph): CompatibleFigProjecti
   }
 }
 
-const THUMBNAIL_1X1 = decodeBase64(
+import {
+  appendVariableNodeChanges,
+  assignSharedStyleGuids,
+  assignVariableGuid,
+  assignVariableGuids
+} from './variable-export'
+
+const THUMBNAIL_1X1 = toUint8Array(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
 )
 
@@ -100,20 +116,23 @@ type FigExportPage = ReturnType<SceneGraph['getPages']>[number]
 interface FigSchemaContext {
   compiled: ReturnType<typeof getCompiledSchema>
   schemaDeflated: Uint8Array
+  schema: Schema
 }
 
 function resolveFigSchema(graph: SceneGraph): FigSchemaContext {
   if (!graph.figSchemaDeflated) {
     return {
       compiled: getCompiledSchema(),
-      schemaDeflated: deflateSync(getSchemaBytes())
+      schemaDeflated: deflateSync(getSchemaBytes()),
+      schema: decodeBinarySchema(getSchemaBytes())
     }
   }
   const schemaBytes = inflateSync(graph.figSchemaDeflated)
   const figSchema = decodeBinarySchema(new ByteBuffer(schemaBytes))
   return {
     compiled: compileSchema(figSchema) as ReturnType<typeof getCompiledSchema>,
-    schemaDeflated: graph.figSchemaDeflated
+    schemaDeflated: graph.figSchemaDeflated,
+    schema: figSchema
   }
 }
 
@@ -224,7 +243,11 @@ function remapExportedFigmaNodeReferences(
     const ownerNodeId = emittedGuidToNodeId.get(guidToString(nodeChange.guid))
     if (!ownerNodeId) continue
 
-    remapFigmaNodeReferences(nodeChange, (sourceGuid) => {
+    remapFigmaNodeReferences(nodeChange, (sourceGuid, path) => {
+      if (path === 'paint.sourceNodeId') {
+        const runtimeGuid = nodeIdToGuid.get(guidToString(sourceGuid))
+        if (runtimeGuid) return runtimeGuid
+      }
       const candidates = sourceGuidToNodeIds.get(guidToString(sourceGuid)) ?? []
       if (candidates.length === 0) return null
       if (candidates.length === 1) return nodeIdToGuid.get(candidates[0]) ?? null
@@ -254,39 +277,6 @@ interface CanvasExportEntry {
   page: FigExportPage
   canvasGuid: GUID
   canvasNc: KiwiNodeChange
-}
-
-function variableValueToKiwi(
-  value: VariableValue,
-  type: string,
-  varIdToGuid: Map<string, GUID>
-): { value: Record<string, unknown>; dataType: string; resolvedDataType: string } {
-  if (value && typeof value === 'object' && 'aliasId' in value) {
-    const aliasGuid = varIdToGuid.get(value.aliasId) ?? stringToGuid(value.aliasId)
-    return {
-      value: { alias: { guid: aliasGuid } },
-      dataType: 'ALIAS',
-      resolvedDataType: { COLOR: 'COLOR', BOOLEAN: 'BOOLEAN', STRING: 'STRING' }[type] ?? 'FLOAT'
-    }
-  }
-  if (type === 'COLOR' && typeof value === 'object' && 'r' in value) {
-    return {
-      value: { colorValue: safeColor(value) },
-      dataType: 'COLOR',
-      resolvedDataType: 'COLOR'
-    }
-  }
-  if (type === 'BOOLEAN') {
-    return { value: { boolValue: !!value }, dataType: 'BOOLEAN', resolvedDataType: 'BOOLEAN' }
-  }
-  if (type === 'STRING') {
-    return {
-      value: { textValue: typeof value === 'string' ? value : JSON.stringify(value) },
-      dataType: 'STRING',
-      resolvedDataType: 'STRING'
-    }
-  }
-  return { value: { floatValue: Number(value) }, dataType: 'FLOAT', resolvedDataType: 'FLOAT' }
 }
 
 function collectImageEntries(graph: SceneGraph): Array<{ name: string; data: Uint8Array }> {
@@ -320,59 +310,6 @@ async function renderFigThumbnail(
     (await headlessRenderThumbnail(graph, pageId, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)) ??
     THUMBNAIL_1X1
   )
-}
-
-function assignVariableGuid(
-  id: string,
-  localIdCounter: { value: number },
-  assignedGuidValues: Set<string>,
-  nodeSourceGuidValues: Set<string>
-): GUID {
-  if (/^\d+:\d+$/.test(id) && !assignedGuidValues.has(id) && !nodeSourceGuidValues.has(id)) {
-    const guid = stringToGuid(id)
-    assignedGuidValues.add(id)
-    return guid
-  }
-  const guid = { sessionID: 0, localID: localIdCounter.value++ }
-  assignedGuidValues.add(`${guid.sessionID}:${guid.localID}`)
-  return guid
-}
-
-function assignVariableGuids(
-  graph: SceneGraph,
-  localIdCounter: { value: number },
-  varIdToGuid: Map<string, GUID>,
-  modeIdToGuid: Map<string, GUID>,
-  assignedGuidValues: Set<string>,
-  nodeSourceGuidValues: Set<string>
-): void {
-  for (const [colId, col] of graph.variableCollections) {
-    const colGuid = assignVariableGuid(
-      colId,
-      localIdCounter,
-      assignedGuidValues,
-      nodeSourceGuidValues
-    )
-    varIdToGuid.set(colId, colGuid)
-    for (const mode of col.modes) {
-      const modeGuid = assignVariableGuid(
-        mode.modeId,
-        localIdCounter,
-        assignedGuidValues,
-        nodeSourceGuidValues
-      )
-      modeIdToGuid.set(mode.modeId, modeGuid)
-    }
-    for (const varId of col.variableIds) {
-      const varGuid = assignVariableGuid(
-        varId,
-        localIdCounter,
-        assignedGuidValues,
-        nodeSourceGuidValues
-      )
-      varIdToGuid.set(varId, varGuid)
-    }
-  }
 }
 
 interface ComponentPropertyGuidState {
@@ -420,97 +357,13 @@ function assignComponentPropertyGuids(
   }
 }
 
-function appendVariableNodeChanges(
-  graph: SceneGraph,
-  nodeChanges: KiwiNodeChange[],
-  internalCanvasGuid: GUID,
-  varIdToGuid: Map<string, GUID>,
-  modeIdToGuid: Map<string, GUID>
-): void {
-  let collIdx = 0
-  for (const [colId, col] of graph.variableCollections) {
-    const colGuid = varIdToGuid.get(colId) ?? stringToGuid(colId)
-    nodeChanges.push({
-      guid: colGuid,
-      parentIndex: { guid: internalCanvasGuid, position: fractionalPosition(collIdx++) },
-      type: 'VARIABLE_SET',
-      name: col.name,
-      phase: 'CREATED',
-      strokeAlign: 'CENTER',
-      strokeJoin: 'BEVEL',
-      variableSetModes: col.modes.map((m, i) => {
-        const mGuid = modeIdToGuid.get(m.modeId) ?? stringToGuid(m.modeId)
-        return { id: mGuid, name: m.name, sortPosition: fractionalPosition(i) }
-      })
-    })
-
-    appendVariablesForCollection(
-      graph,
-      nodeChanges,
-      colGuid,
-      internalCanvasGuid,
-      col.variableIds,
-      varIdToGuid,
-      modeIdToGuid
-    )
-  }
-}
-
-function appendVariablesForCollection(
-  graph: SceneGraph,
-  nodeChanges: KiwiNodeChange[],
-  colGuid: GUID,
-  parentGuid: GUID,
-  variableIds: string[],
-  varIdToGuid: Map<string, GUID>,
-  modeIdToGuid: Map<string, GUID>
-): void {
-  let varIdx = 0
-  for (const varId of variableIds) {
-    const variable = graph.variables.get(varId)
-    if (!variable) continue
-
-    const varGuid = varIdToGuid.get(varId) ?? stringToGuid(varId)
-    const typeMap: Record<string, string> = {
-      COLOR: 'COLOR',
-      BOOLEAN: 'BOOLEAN',
-      STRING: 'STRING'
-    }
-    const resolvedType = typeMap[variable.type] ?? 'FLOAT'
-
-    const entries = Object.entries(variable.valuesByMode).map(([modeId, value]) => ({
-      modeID: modeIdToGuid.get(modeId) ?? stringToGuid(modeId),
-      variableData: variableValueToKiwi(value, variable.type, varIdToGuid)
-    }))
-
-    const nc: KiwiNodeChange = {
-      guid: varGuid,
-      parentIndex: { guid: parentGuid, position: fractionalPosition(varIdx++) },
-      type: 'VARIABLE',
-      name: variable.name,
-      phase: 'CREATED',
-      strokeAlign: 'CENTER',
-      strokeJoin: 'BEVEL',
-      variableSetID: { guid: colGuid },
-      variableResolvedType: resolvedType,
-      variableDataValues: { entries },
-      variableScopes: ['ALL_SCOPES']
-    }
-    // Preserve library key/version on VARIABLE NodeChanges so that
-    // buildAssetRefMap can resolve assetRef to guid on reimport.
-    if (variable.key) nc.key = variable.key
-    if (variable.version) nc.version = variable.version
-    nodeChanges.push(nc)
-  }
-}
-
 function applyImportedCanvasFields(
   page: FigExportPage,
   canvasNc: KiwiNodeChange,
   blobs: Uint8Array[],
   blobIndexByHex: Map<string, number>
 ): void {
-  if (!page.source.id) return
+  if (!page.source.id && Object.keys(page.source.fig.rawNodeFields).length === 0) return
   if (!('pageType' in page.source.fig.rawNodeFields)) delete canvasNc.pageType
   applyPreservedRootMetadata(
     page.source.fig.rawNodeFields,
@@ -583,7 +436,11 @@ function buildCanvasEntries(
   }
 
   const hasSharedStyles = [...graph.nodes.values()].some((node) => node.sharedStyleType !== null)
-  if ((graph.variableCollections.size > 0 || hasSharedStyles) && internalCanvasGuid === null) {
+  const hasSlotContent = [...graph.nodes.values()].some((node) => ownsSlotContent(graph, node))
+  if (
+    (graph.variableCollections.size > 0 || hasSharedStyles || hasSlotContent) &&
+    internalCanvasGuid === null
+  ) {
     internalCanvasGuid = { sessionID: 0, localID: localIdCounter.value++ }
     assignedGuidValues.add(`${internalCanvasGuid.sessionID}:${internalCanvasGuid.localID}`)
     canvasEntries.push({
@@ -603,6 +460,7 @@ function buildCanvasEntries(
 }
 
 interface InternalResourceContext {
+  caches: FigNodeExportCaches
   graph: SceneGraph
   nodeChanges: KiwiNodeChange[]
   internalCanvasGuid: GUID | null
@@ -620,31 +478,68 @@ interface InternalResourceContext {
   propertyIdToGuid: Map<string, GUID>
 }
 
+/** Allocate resource keys after the canvas layers, including retained imported keys. */
+function positionsAfterCanvasChildren(changes: readonly NodeChange[], canvas: GUID): () => string {
+  let previous: string | null = null
+  for (const change of changes) {
+    const parent = change.parentIndex?.guid
+    const position = change.parentIndex?.position
+    if (parent?.sessionID !== canvas.sessionID || parent.localID !== canvas.localID || !position)
+      continue
+    if (previous === null || position > previous) previous = position
+  }
+  return () => {
+    const position = orderKeyBetween(previous, null)
+    if (position === null) throw new Error('Cannot allocate a canvas resource order key')
+    previous = position
+    return position
+  }
+}
+
 function appendInternalResources(context: InternalResourceContext): void {
   const { graph, internalCanvasGuid, nodeChanges } = context
   if (!internalCanvasGuid) return
+  const relocatedStyles: KiwiNodeChange[][] = []
   const sharedStyleNodes = [...graph.nodes.values()].filter((node) => node.sharedStyleType !== null)
   for (let index = 0; index < sharedStyleNodes.length; index++) {
-    nodeChanges.push(
-      ...sceneNodeToKiwi(
-        sharedStyleNodes[index],
-        internalCanvasGuid,
-        index,
-        context.localIdCounter,
-        graph,
-        context.blobs,
-        context.nodeIdToGuid,
-        context.fontDigestMap,
-        context.varIdToGuid,
-        context.glyphBlobMap,
-        context.blobIndexByHex,
-        context.assignedGuidValues,
-        context.componentPropertyDefinitionsById,
-        context.modeIdToGuid,
-        context.runtime,
-        context.propertyIdToGuid
-      )
+    const records = sceneNodeToKiwi(
+      sharedStyleNodes[index],
+      internalCanvasGuid,
+      index,
+      context.localIdCounter,
+      graph,
+      context.blobs,
+      {
+        caches: context.caches,
+        nodeIdToGuid: context.nodeIdToGuid,
+        fontDigestMap: context.fontDigestMap,
+        varIdToGuid: context.varIdToGuid,
+        glyphBlobMap: context.glyphBlobMap,
+        blobIndexByHex: context.blobIndexByHex,
+        assignedGuidValues: context.assignedGuidValues,
+        componentPropertyDefinitionsById: context.componentPropertyDefinitionsById,
+        modeIdToGuid: context.modeIdToGuid,
+        runtime: context.runtime,
+        propertyIdToGuid: context.propertyIdToGuid
+      }
     )
+    const node = sharedStyleNodes[index]
+    const sourceParent = context.nodeIdToGuid.get(node.parentId ?? '')
+    if (
+      node.source.format === 'fig' &&
+      sourceParent?.sessionID === internalCanvasGuid.sessionID &&
+      sourceParent.localID === internalCanvasGuid.localID
+    ) {
+      // Authored styles share the canvas's native layer order, including interleaved keys.
+      nodeChanges.push(...records)
+    } else {
+      relocatedStyles.push(records)
+    }
+  }
+  const nextPosition = positionsAfterCanvasChildren(nodeChanges, internalCanvasGuid)
+  for (const records of relocatedStyles) {
+    if (records[0]?.parentIndex) records[0].parentIndex.position = nextPosition()
+    nodeChanges.push(...records)
   }
   if (graph.variableCollections.size > 0) {
     appendVariableNodeChanges(
@@ -652,7 +547,8 @@ function appendInternalResources(context: InternalResourceContext): void {
       nodeChanges,
       internalCanvasGuid,
       context.varIdToGuid,
-      context.modeIdToGuid
+      context.modeIdToGuid,
+      nextPosition
     )
   }
 }
@@ -705,7 +601,7 @@ export async function exportFigFileWithOptions(
   // Lazy population synchronizes component trees and therefore mutates its graph. Saving must not
   // rewrite the live editor document or restore component values over edits made by the user.
   const graph = cloneSceneGraphForFigExport(sourceGraph)
-  populateAllLazyFigImportRoots(graph)
+  populateReaderExport(sourceGraph, graph)
   await initCodec()
 
   // When the document was imported from a .fig file, preserve the original
@@ -714,7 +610,7 @@ export async function exportFigFileWithOptions(
   // subset, and using our schema to encode would produce field IDs that don't
   // align with the embedded schema. By compiling and using the original
   // schema, we improve the roundtrip-ability... This requires further work.
-  const { compiled, schemaDeflated } = resolveFigSchema(graph)
+  const { compiled, schemaDeflated, schema } = resolveFigSchema(graph)
 
   const docGuid = { sessionID: 0, localID: 0 }
   const localIdCounter = { value: 2 }
@@ -741,6 +637,7 @@ export async function exportFigFileWithOptions(
   const fontDigestMap = await buildFontDigestMap(graph, compatibleProjection?.nodes)
   const glyphBlobMap = new Map<string, number>()
   const componentPropertyDefinitionsById = buildComponentPropIndex(graph)
+  const caches = createFigNodeExportCaches(graph)
 
   // Scan ALL imported source.ids BEFORE any new GUID assignment to find
   // max sessionID:0 and sessionID:1 localID values. This guarantees the
@@ -786,21 +683,26 @@ export async function exportFigFileWithOptions(
 
   for (const entry of canvasEntries) nodeChanges.push(entry.canvasNc)
 
+  assignSharedStyleGuids(
+    [...graph.nodes.values()].filter((node) => node.sharedStyleType !== null),
+    localIdCounter,
+    nodeIdToGuid,
+    assignedGuidValues
+  )
+
   const orderedCanvasEntries = [
     ...canvasEntries.filter((entry) => entry.page.internalOnly),
     ...canvasEntries.filter((entry) => !entry.page.internalOnly)
   ]
+  const slotContentRecords: KiwiNodeChange[] = []
   for (const { page, canvasGuid } of orderedCanvasEntries) {
-    const children = graph.getChildren(page.id).filter((child) => !child.internalOnly)
+    const children = graph
+      .getChildren(page.id)
+      .filter((child) => !child.internalOnly && child.sharedStyleType === null)
     for (let i = 0; i < children.length; i++) {
       nodeChanges.push(
-        ...sceneNodeToKiwi(
-          children[i],
-          canvasGuid,
-          i,
-          localIdCounter,
-          graph,
-          blobs,
+        ...sceneNodeToKiwi(children[i], canvasGuid, i, localIdCounter, graph, blobs, {
+          caches,
           nodeIdToGuid,
           fontDigestMap,
           varIdToGuid,
@@ -809,14 +711,15 @@ export async function exportFigFileWithOptions(
           assignedGuidValues,
           componentPropertyDefinitionsById,
           modeIdToGuid,
-          runtime,
-          propertyIdToGuid
-        )
+          propertyIdToGuid,
+          slotContentRecords,
+          runtime
+        })
       )
     }
   }
-
   appendInternalResources({
+    caches,
     graph,
     nodeChanges,
     internalCanvasGuid,
@@ -833,6 +736,11 @@ export async function exportFigFileWithOptions(
     runtime,
     propertyIdToGuid
   })
+  if (internalCanvasGuid) {
+    const nextPosition = positionsAfterCanvasChildren(nodeChanges, internalCanvasGuid)
+    placeSlotContent(slotContentRecords, internalCanvasGuid, 0, nextPosition)
+    nodeChanges.push(...slotContentRecords)
+  }
 
   remapSerializedLowcodeMotionActionReferences(nodeChanges, (nodeId) => {
     return resolveSerializedGraphNodeReference(graph, nodeIdToGuid, nodeId)
@@ -857,6 +765,7 @@ export async function exportFigFileWithOptions(
   }
   if (messageObjectAnimations !== null) msg.objectAnimations = messageObjectAnimations
 
+  adaptPaintBindingsToSchema(nodeChanges, schema)
   const kiwiData = compiled.encodeMessage(msg)
 
   const currentPageId = pageId ?? findFigThumbnailPageId(pages)

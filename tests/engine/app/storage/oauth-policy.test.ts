@@ -115,9 +115,7 @@ describe('storage OAuth retry policy', () => {
       retryScope: 'provider'
     })
     expect(
-      storageSyncErrorPolicy(
-        new AliyunDriveOAuthError('authorization-grant-invalid', 'reconnect')
-      )
+      storageSyncErrorPolicy(new AliyunDriveOAuthError('authorization-grant-invalid', 'reconnect'))
     ).toEqual({ permanent: true, retryBeyondAttemptLimit: false })
 
     expect(

@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<{config:InputControlConfig;value?:string 
 const emit = defineEmits<{(event:'external-rebase'):void}>()
 const attrs = useAttrs(), input = ref<HTMLInputElement | null>(null), wrapper = ref<HTMLSpanElement | null>(null), internal = ref(String(props.defaultValue ?? ''))
 let controller: ReturnType<typeof mountInputControl> | undefined, owner: HTMLFormElement | null = null, unbindReset: (() => void) | undefined
+const initialNumber = String(props.value ?? props.defaultValue ?? '')
 let ownNumber: number | undefined, uncommitted = false, accepted = false
 let ownValue: string | undefined, acceptedValue: string | undefined
 function inputAttrs() { return Object.fromEntries(Object.entries(attrs).filter(([key]) => key !== 'class' && key !== 'style' && key !== 'type' && key !== 'data-node-id')) }
@@ -23,8 +24,8 @@ function nativeInputProps() {
     pattern: props.config.kind === 'color' ? '#[0-9a-fA-F]{6}' : typeof attrs.pattern === 'string' ? attrs.pattern : undefined,
     placeholder: placeholder()
   }
-  // Vue must never patch a numeric draft's DOM value during an unrelated render.
-  return props.config.kind === 'number' ? common : { ...common, value: props.value ?? internal.value }
+  // The constant initial value serves SSR without patching a live numeric draft on unrelated renders.
+  return props.config.kind === 'number' ? { ...common, value: initialNumber } : { ...common, value: props.value ?? internal.value }
 }
 function numberRequired(element: HTMLInputElement) { return element.required || element.getAttribute('aria-required') === 'true' }
 watch(() => props.value, (value, previous) => {

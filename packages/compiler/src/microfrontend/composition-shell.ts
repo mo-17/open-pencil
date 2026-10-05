@@ -1,6 +1,4 @@
 #!/usr/bin/env bun
-/* eslint-disable max-lines -- emitted composition runtime stays self-contained beside its strict loader contract */
-
 import {
   existsSync,
   lstatSync,
@@ -9,6 +7,7 @@ import {
   realpathSync,
   writeFileSync
 } from 'node:fs'
+/* eslint-disable max-lines -- emitted composition runtime stays self-contained beside its strict loader contract */
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
@@ -277,6 +276,7 @@ function escapeHTML(value: string): string {
 }
 
 const COMPOSITION_RUNTIME = String.raw`
+import { fromUint8Array } from 'js-base64'
 type JSONObject = { readonly [key: string]: unknown }
 type Coordinate =
   | { readonly kind: 'local'; readonly path: string }
@@ -555,9 +555,7 @@ function parseRuntimeManifest(value: unknown, expectedAppId: string): RuntimeMan
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
+  return fromUint8Array(bytes, true)
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {

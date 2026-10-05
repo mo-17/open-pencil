@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { encode } from 'js-base64'
 
 import type { AIPopoutControls } from '@/app/ai/popout/controls'
 import type { CompilerPreviewPopoutControls } from '@/app/lowcode/preview-pane/popout/controls'
@@ -63,7 +64,7 @@ async function installAIWindowMock(page: Page): Promise<void> {
       messages: []
     }
     const payload = {
-      envelope: btoa(JSON.stringify(projection)),
+      envelope: encode(JSON.stringify(projection)),
       controls,
       revision: 1
     }

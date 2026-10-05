@@ -78,9 +78,7 @@ export async function retryDocumentFontIssues(
   if (issues.length === 0) return
   signal?.throwIfAborted()
   actions.resetWebFontFetchSession()
-  await Promise.all(
-    issues.map((issue) => retryDocumentFontIssue(graph, issue, actions, signal))
-  )
+  await Promise.all(issues.map((issue) => retryDocumentFontIssue(graph, issue, actions, signal)))
 }
 
 export function useDocumentFontStatus() {

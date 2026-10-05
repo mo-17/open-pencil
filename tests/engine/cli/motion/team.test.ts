@@ -4,6 +4,8 @@ import { mkdir, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { fromUint8Array } from 'js-base64'
+
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import {
   TEAM_MOTION_LIBRARY_FORMAT,
@@ -101,10 +103,8 @@ function payload(version: string, durationMs: number): TeamMotionLibraryPayload 
 }
 
 function pem(label: string, buffer: ArrayBuffer): string {
-  let binary = ''
-  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte)
   const encoded =
-    btoa(binary)
+    fromUint8Array(new Uint8Array(buffer))
       .match(/.{1,64}/g)
       ?.join('\n') ?? ''
   return `-----BEGIN ${label}-----\n${encoded}\n-----END ${label}-----\n`

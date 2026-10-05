@@ -1,0 +1,202 @@
+{
+  "version": 3,
+  "reducedMotion": "reduce",
+  "preset": {
+    "id": "advanced-visuals",
+    "version": 1,
+    "parameters": {}
+  },
+  "tracks": [
+    {
+      "id": "advanced-visuals",
+      "name": "Advanced visuals",
+      "trigger": "mount",
+      "keyframes": [
+        {
+          "id": "advanced-start",
+          "offset": 0,
+          "paints": [
+            {
+              "kind": "fill",
+              "index": 0,
+              "color": {
+                "r": 1,
+                "g": 0.2,
+                "b": 0,
+                "a": 1
+              },
+              "opacity": 0.2
+            },
+            {
+              "kind": "stroke",
+              "index": 1,
+              "opacity": 0.4
+            }
+          ],
+          "gradientStops": [
+            {
+              "kind": "fill",
+              "paintIndex": 2,
+              "stopIndex": 0,
+              "position": 0.1,
+              "color": {
+                "r": 1,
+                "g": 0.2,
+                "b": 0,
+                "a": 1
+              }
+            }
+          ],
+          "effects": [
+            {
+              "kind": "blur",
+              "index": 0,
+              "radius": 0
+            },
+            {
+              "kind": "shadow",
+              "index": 1,
+              "x": 0,
+              "y": 2,
+              "blur": 4,
+              "spread": 0,
+              "color": {
+                "r": 1,
+                "g": 0.2,
+                "b": 0,
+                "a": 1
+              }
+            }
+          ],
+          "cornerRadii": {
+            "topLeft": 0,
+            "topRight": 2,
+            "bottomRight": 4,
+            "bottomLeft": 6
+          },
+          "textReveal": 0,
+          "fontAxes": [
+            {
+              "tag": "wght",
+              "value": 100
+            },
+            {
+              "tag": "wdth",
+              "value": 50
+            }
+          ],
+          "vectorMorph": {
+            "topologyId": "glyph:triangle-v1",
+            "points": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 10,
+                "y": 10
+              }
+            ]
+          }
+        },
+        {
+          "id": "advanced-end",
+          "offset": 1,
+          "paints": [
+            {
+              "kind": "fill",
+              "index": 0,
+              "color": {
+                "r": 0,
+                "g": 0.4,
+                "b": 1,
+                "a": 0.5
+              },
+              "opacity": 0.8
+            },
+            {
+              "kind": "stroke",
+              "index": 1,
+              "opacity": 1
+            }
+          ],
+          "gradientStops": [
+            {
+              "kind": "fill",
+              "paintIndex": 2,
+              "stopIndex": 0,
+              "position": 0.4,
+              "color": {
+                "r": 0,
+                "g": 0.4,
+                "b": 1,
+                "a": 0.5
+              }
+            }
+          ],
+          "effects": [
+            {
+              "kind": "blur",
+              "index": 0,
+              "radius": 12
+            },
+            {
+              "kind": "shadow",
+              "index": 1,
+              "x": 10,
+              "y": 12,
+              "blur": 20,
+              "spread": 4,
+              "color": {
+                "r": 0,
+                "g": 0.4,
+                "b": 1,
+                "a": 0.5
+              }
+            }
+          ],
+          "cornerRadii": {
+            "topLeft": 10,
+            "topRight": 12,
+            "bottomRight": 14,
+            "bottomLeft": 16
+          },
+          "textReveal": 1,
+          "fontAxes": [
+            {
+              "tag": "wght",
+              "value": 900
+            },
+            {
+              "tag": "wdth",
+              "value": 100
+            }
+          ],
+          "vectorMorph": {
+            "topologyId": "glyph:triangle-v1",
+            "points": [
+              {
+                "x": 20,
+                "y": 10
+              },
+              {
+                "x": 30,
+                "y": 50
+              }
+            ]
+          }
+        }
+      ],
+      "timing": {
+        "durationMs": 1000,
+        "easing": "linear",
+        "fill": "both"
+      },
+      "composition": {
+        "mode": "replace",
+        "weight": 1,
+        "priority": 4
+      }
+    }
+  ]
+}

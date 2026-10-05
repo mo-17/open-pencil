@@ -28,6 +28,10 @@ export interface DocumentSnapshot {
 
 const STRUCTURAL_NODE_FIELDS = new Set<keyof SceneNode>(['id', 'type', 'parentId', 'childIds'])
 
+export function pageSnapshotPageId(snapshot: PageSnapshot): string | undefined {
+  return Array.from(snapshot.values()).find((node) => node.type === 'CANVAS')?.id
+}
+
 export function snapshotPage(graph: SceneGraph, pageId: string): PageSnapshot {
   const snapshot = new Map<string, SceneNode>() as PageSnapshot
   snapshot.images = new Map(graph.images)
@@ -82,8 +86,10 @@ export function documentSnapshotChanged(graph: SceneGraph, snapshot: DocumentSna
 export function restorePageFromSnapshot(
   ctx: EditorContext,
   snapshot: PageSnapshot,
-  pageId: string = ctx.state.currentPageId
+  pageId: string | undefined = Array.from(snapshot.values()).find((node) => node.type === 'CANVAS')
+    ?.id
 ): void {
+  if (!pageId) return
   const page = ctx.graph.getNode(pageId)
   const pageSnap = snapshot.get(pageId)
   if (!page || !pageSnap) return
@@ -93,7 +99,7 @@ export function restorePageFromSnapshot(
   if (snapshot.images) replaceMapReferences(ctx.graph.images, snapshot.images)
   restoreNodeFields(ctx.graph, pageId, pageSnap)
   for (const childId of page.childIds.slice()) ctx.graph.deleteNode(childId)
-  restoreChildren(ctx.graph, snapshot, pageId, pageSnap.childIds)
+  restoreChildren(ctx.graph, snapshot, page.id, pageSnap.childIds)
 
   ctx.graph.clearAbsPosCache()
   computeAllLayouts(ctx.graph, pageId)

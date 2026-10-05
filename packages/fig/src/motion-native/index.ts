@@ -1,4 +1,5 @@
 import {
+  isPlainJSONObject,
   type MotionEasing,
   type MotionKeyframe,
   type MotionSpec,
@@ -140,7 +141,7 @@ export function decodeFigmaMotionSharedPayload(raw: string): FigmaMotionSharedPa
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
-  if (!isPlainRecord(parsed)) return { ok: false, error: 'Expected an object envelope' }
+  if (!isPlainJSONObject(parsed)) return { ok: false, error: 'Expected an object envelope' }
   if (parsed.schema !== 'openpencil.motion' || parsed.version !== 1) {
     return { ok: false, error: 'Unsupported shared Motion envelope version' }
   }
@@ -481,12 +482,6 @@ function roundSeconds(value: number): number {
 
 function assertNever(value: never): never {
   throw new Error(`Unsupported Motion easing: ${String(value)}`)
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
 }
 
 export { buildFigmaMotionPluginScript, type FigmaNativeMotionScriptOptions } from './script'

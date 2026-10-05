@@ -116,9 +116,7 @@ describe('SELECT placeholder and clear contracts', () => {
     const classes = generated.match(/className=\{("(?:[^"\\]|\\.)*") \+ \(__fieldErrors/)
     expect(classes).not.toBeNull()
     if (!classes) throw new Error('Expected the generated validated class expression')
-    expect(JSON.parse(classes[1])).toContain(
-      '[&:has(>option[data-op-select-placeholder]:checked)]'
-    )
+    expect(JSON.parse(classes[1])).toContain('[&:has(>option[data-op-select-placeholder]:checked)]')
     expect(JSON.parse(classes[1])).not.toContain('&amp;')
   })
 

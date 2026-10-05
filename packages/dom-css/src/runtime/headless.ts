@@ -1,8 +1,8 @@
-import { computeHeadlessStyles } from '../headless-css'
+import { serializeHTML } from '../export/html'
+import { parseStyleAttribute } from '../import/style-attribute'
 import { assertInertCSSText, parseInertHTML, sanitizeDesignDocument } from '../inert-markup'
-import { serializeHTML } from '../serialize'
-import { parseStyleAttribute } from '../style-attribute'
 import type { CSSRuntime, DesignDocument } from '../types'
+import { computeHeadlessStyles } from './headless-css'
 
 export function createHeadlessCSSRuntime(): CSSRuntime {
   return {

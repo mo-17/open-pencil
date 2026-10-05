@@ -1,11 +1,10 @@
 import { expect, test } from 'bun:test'
 
+import { importNodeChanges } from '@open-pencil/core/kiwi/fig/import'
 import { parseFigBuffer } from '@open-pencil/fig'
 
-import { importNodeChanges } from '#core/kiwi'
-
 import { expectDefined } from '#tests/helpers/assert'
-import { readFixtureArrayBuffer } from '#tests/helpers/fig-fixtures'
+import { readFixtureArrayBuffer } from '#tests/helpers/fig/fixtures'
 import { heavy } from '#tests/helpers/test-utils'
 
 function importFixture(name: string) {
@@ -22,9 +21,9 @@ heavy('fig component metadata import', () => {
     () => {
       const graph = importFixture('gold-preview.fig')
       const component = expectDefined(
-        graph
-          .getAllNodes()
-          .find((node) => node.componentKey === '26164e029c485511adfa634522024c7c23e7bb81'),
+        Array.from(graph.getAllNodes()).find(
+          (node) => node.componentKey === '26164e029c485511adfa634522024c7c23e7bb81'
+        ),
         'remote component'
       )
 
@@ -42,7 +41,9 @@ heavy('fig component metadata import', () => {
     () => {
       const graph = importFixture('material3.fig')
       const buttonSet = expectDefined(
-        graph.getAllNodes().find((node) => node.type === 'COMPONENT_SET' && node.name === 'Button'),
+        Array.from(graph.getAllNodes()).find(
+          (node) => node.type === 'COMPONENT_SET' && node.name === 'Button'
+        ),
         'Button component set'
       )
 
@@ -69,3 +70,27 @@ heavy('fig component metadata import', () => {
     METADATA_TEST_TIMEOUT_MS
   )
 })
+
+test(
+  'visible Buttons metadata remains distinct from the authored internal copy',
+  async () => {
+    const { parseFigFile } = await import('@open-pencil/core')
+    const { populateFigPage } = await import('@open-pencil/core/io/formats/fig')
+    const graph = await parseFigFile(readFixtureArrayBuffer('material3.fig'), { populate: 'none' })
+    const page = graph.getPages().find((page) => page.name === 'Buttons')
+    if (!page) throw new Error('Missing visible Buttons page')
+    populateFigPage(graph, page.id)
+    const buttons = Array.from(graph.getAllNodes()).find((node) => node.source.id === '57994:2227')
+    if (!buttons) throw new Error('Missing visible Buttons component set')
+    expect(buttons.symbolLinks.map((link) => link.uri)).toContain(
+      'https://m3.material.io/components/buttons/overview'
+    )
+    const variant = graph
+      .getChildren(buttons.id)
+      .find((node) => node.type === 'COMPONENT' && node.name.includes('State=Disabled'))
+    if (!variant) throw new Error('Missing visible disabled Button variant')
+    expect(variant.componentPropertyValues.State).toBe('Disabled')
+    expect(Object.keys(variant.componentPropertyValues).sort()).toEqual(['Size', 'State', 'Type'])
+  },
+  METADATA_TEST_TIMEOUT_MS
+)

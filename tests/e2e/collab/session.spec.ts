@@ -1,46 +1,12 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-import { CanvasHelper } from '#tests/helpers/canvas'
-import { startRelay } from '#tests/helpers/collab/test-relay'
-
-const ROOM_ID = 'e2e-collaboration-room'
-
-type Peer = {
-  context: BrowserContext
-  page: Page
-  canvas: CanvasHelper
-}
-
-async function createPeer(browser: Browser, name: string, relayURL: string): Promise<Peer> {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
-  try {
-    const page = await context.newPage()
-    await page.goto(`/?test&collabTransport=test&collabRelay=${encodeURIComponent(relayURL)}`)
-    await page.evaluate(
-      (localName) => window.openPencil?.test?.collab?.setLocalName(localName),
-      name
-    )
-    const canvas = new CanvasHelper(page)
-    await canvas.waitForInit()
-    canvas.errors.length = 0
-    return { context, page, canvas }
-  } catch (error) {
-    await context.close()
-    throw error
-  }
-}
-
-function collaborationErrors(peer: Peer): string[] {
-  return peer.canvas.errors.filter((error) => !error.includes('127.0.0.1:7600'))
-}
-
-async function connect(peer: Peer) {
-  await peer.page.evaluate((roomId) => {
-    const collab = window.openPencil?.test?.collab
-    if (!collab) throw new Error('Collaboration bridge unavailable')
-    collab.connect(roomId)
-  }, ROOM_ID)
-}
+import {
+  collaborationErrors,
+  connect,
+  createPeer,
+  startRelay,
+  type Peer
+} from '#tests/helpers/collab/room'
 
 test('mobile presence popover returns focus and disconnects the peer', async ({ browser }) => {
   const relay = await startRelay()
@@ -154,7 +120,7 @@ test('two browser peers synchronize editing, awareness, departure, and reconnect
     })
     await expect
       .poll(() =>
-        host.page.evaluate(() => window.openPencil?.getStore?.().state.remoteCursors.length)
+        host.page.evaluate(() => window.openPencil?.getStore?.().state.presenceCursors.length)
       )
       .toBe(1)
 
@@ -166,7 +132,7 @@ test('two browser peers synchronize editing, awareness, departure, and reconnect
       .toBe(0)
     await expect
       .poll(() =>
-        host.page.evaluate(() => window.openPencil?.getStore?.().state.remoteCursors.length)
+        host.page.evaluate(() => window.openPencil?.getStore?.().state.presenceCursors.length)
       )
       .toBe(0)
 

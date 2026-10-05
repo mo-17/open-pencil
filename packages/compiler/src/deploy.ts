@@ -1,3 +1,4 @@
+import { blake3 } from '@noble/hashes/blake3'
 // Deploy a built static bundle to a hosting provider. Phase 3 §5: the
 // "dist → live URL" hop after `buildPreviewProject` produces the static SPA.
 // Provider-agnostic surface with a per-provider dispatch — Netlify (§5.2) and
@@ -6,8 +7,7 @@
 // Browser-safe: only `fetch` + Web Crypto `crypto.subtle` — no vite / node
 // built-ins — so the editor could call this directly in future (the first
 // editor surface shells out to the CLI instead, keeping one deploy pipeline).
-
-import { blake3 } from '@noble/hashes/blake3'
+import { fromUint8Array } from 'js-base64'
 
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
@@ -75,16 +75,6 @@ function bytesToHex(bytes: Uint8Array): string {
   return hex
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64')
-  let binary = ''
-  const chunk = 0x8000
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
-  }
-  return btoa(binary)
-}
-
 function fileExtension(rel: string): string {
   const name = rel.split('/').pop() ?? rel
   const dot = name.lastIndexOf('.')
@@ -97,7 +87,7 @@ function fileExtension(rel: string): string {
  * upload asset manifest.
  */
 function cloudflareHash(rel: string, bytes: Uint8Array): string {
-  return bytesToHex(blake3(bytesToBase64(bytes) + fileExtension(rel))).slice(0, 32)
+  return bytesToHex(blake3(fromUint8Array(bytes) + fileExtension(rel))).slice(0, 32)
 }
 
 /** `/index.html` → `/index.html`, `/a b/x.js` → `/a%20b/x.js` (leading slash kept). */
@@ -478,7 +468,7 @@ async function uploadCloudflareAssets(
       jsonBody: [
         {
           key: asset.cfHash,
-          value: bytesToBase64(asset.bytes),
+          value: fromUint8Array(asset.bytes),
           metadata: { contentType: asset.contentType },
           base64: true
         }

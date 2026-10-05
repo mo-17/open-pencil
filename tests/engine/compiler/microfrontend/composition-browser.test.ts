@@ -308,7 +308,10 @@ describe('microfrontend composition browser runtime', () => {
   test('mounts longest-prefix slots from a deep base route and reconciles navigation', async () => {
     if (!page) throw new Error('Browser fixture did not start')
     const errors: string[] = []
-    page.on('pageerror', (error) => errors.push(error.message))
+    page.on('pageerror', (error) => {
+      errors.push(error.message)
+      console.error('[browser-error]', error.message)
+    })
 
     await page.goto('https://shell.example/suite/orders/detail?tab=open', {
       waitUntil: 'networkidle'

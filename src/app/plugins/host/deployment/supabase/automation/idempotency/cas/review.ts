@@ -1,3 +1,4 @@
+import { fromUint8Array } from 'js-base64'
 /* oxlint-disable eslint(max-lines), eslint(complexity) -- The fixed CAS SQL, strict snapshot boundary, and review metadata form one audit unit. */
 
 import {
@@ -1901,14 +1902,8 @@ function applicationSchemaName(value: unknown): string {
   return `op_automation_${value}`
 }
 
-function encodeBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary)
-}
-
 function encodeBase64URL(bytes: Uint8Array): string {
-  return encodeBase64(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
 }
 
 async function digest(value: unknown): Promise<string> {
@@ -2081,8 +2076,8 @@ export async function createSupabaseAutomationIdempotencyCASReviewForTestingV1(
   const values = parameterValues(
     candidate,
     proposalDigest,
-    encodeBase64(canonicalProposalBytes),
-    encodeBase64(canonicalRecordBytes)
+    fromUint8Array(canonicalProposalBytes),
+    fromUint8Array(canonicalRecordBytes)
   )
   if (values.length !== SUPABASE_AUTOMATION_IDEMPOTENCY_CAS_PARAMETER_ORDER.length) {
     return fail('supabase-automation-idempotency-cas-input-invalid')

@@ -4,10 +4,13 @@ import { join } from 'node:path'
 interface CacheServer {
   listen(): Promise<unknown>
   close(): Promise<void>
-  httpServer?: {
-    closeIdleConnections?(): void
-    closeAllConnections?(): void
-  } | null
+  httpServer?: object | null
+}
+
+function closeConnections(server: object | null | undefined, method: string): void {
+  if (!server) return
+  const close = Reflect.get(server, method)
+  if (typeof close === 'function') Reflect.apply(close, server, [])
 }
 
 /** A running optimizer owns its cache until close has drained its pending work. */
@@ -41,7 +44,7 @@ export async function startPreviewCacheServer<T extends CacheServer>(
         }
         for (const method of ['closeIdleConnections', 'closeAllConnections'] as const) {
           try {
-            server.httpServer?.[method]?.()
+            closeConnections(server.httpServer, method)
           } catch (error) {
             errors.push(error)
           }

@@ -1,3 +1,5 @@
+import { isValid, decode } from 'js-base64'
+
 /**
  * Phase 3 §3 — shared Supabase config validators.
  *
@@ -26,7 +28,8 @@ export function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   if (parts.length !== 3) return null
   try {
     const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const json = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4))
+    if (!isValid(padded)) return null
+    const json = decode(padded)
     return JSON.parse(json) as JSONObject
   } catch {
     return null

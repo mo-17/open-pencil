@@ -9,11 +9,11 @@ import {
   type AIVisualViewportId
 } from '@open-pencil/core/ai-draft'
 
-import { getCodePenAIManager } from '@/app/codepen/ai/tools'
 import type {
   CodePenAIEvidenceSummary,
   CodePenAISealedDraftSummary
 } from '@/app/codepen/ai/contracts'
+import { getCodePenAIManager } from '@/app/codepen/ai/tools'
 import { createCodePenStaticEvidenceFromExportZip } from '@/app/codepen/export-zip'
 import {
   codePenPixelComparator,

@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash, createHmac } from 'node:crypto'
 
+import { toUint8Array } from 'js-base64'
+
 import {
   MARKETPLACE_ADMIN_ASSERTION_AUDIENCE,
   MARKETPLACE_ADMIN_ASSERTION_HEADER,
@@ -58,7 +60,7 @@ describe('marketplace Phase 5 Portal service assertion', () => {
         .update(`OPENPENCIL-MARKETPLACE-ADMIN-ASSERTION-V1\n${payload}`)
         .digest('base64url')
     )
-    expect(JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))).toEqual({
+    expect(JSON.parse(Buffer.from(toUint8Array(payload)).toString('utf8'))).toEqual({
       version: 1,
       audience: 'openpencil-marketplace-admin',
       actor: ACTOR,

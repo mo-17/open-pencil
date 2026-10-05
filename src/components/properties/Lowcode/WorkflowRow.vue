@@ -4,9 +4,10 @@ import { computed, nextTick, ref } from 'vue'
 import type { ActionDef, DocumentStateDef, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
-import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
 import type { ServerWorkflowOption } from '@/app/lowcode/action/server-workflow-options'
+import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
 import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
+
 import ActionList from './ActionList.vue'
 
 /**

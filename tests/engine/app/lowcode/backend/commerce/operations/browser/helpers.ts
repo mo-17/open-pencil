@@ -21,6 +21,7 @@ export const getSnapshot = getSession;
 export function subscribe(){return()=>{}}
 export async function initialize(){}
 export async function getAccessToken(){return 'test-session-only'}
+export function cancelSignIn(){}
 export async function signIn(){throw new Error('Real OIDC is outside this UI fixture')}
 export async function signOut(){throw new Error('Real OIDC is outside this UI fixture')}
 `

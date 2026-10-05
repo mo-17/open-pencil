@@ -7,11 +7,10 @@ import { applyFill } from '#core/canvas/fills'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 
 function createRenderer() {
-  const shader = {
-    delete: mock(() => undefined)
-  }
+  // A real CanvasKit shader is a WASM handle the caller deletes once the paint holds it.
+  const patternShader = { id: 'pattern-shader', delete: mock(() => undefined) }
   const picture = {
-    makeShader: mock(() => shader),
+    makeShader: mock(() => patternShader),
     delete: mock(() => undefined)
   }
   const recorder = {
@@ -44,8 +43,8 @@ function createRenderer() {
     },
     resolveFillColor: mock((fill: Fill) => fill.color),
     makeRRect: mock(() => 'rrect'),
-    testShader: shader
-  } as SkiaRenderer & { testShader: typeof shader }
+    testShader: patternShader
+  } as SkiaRenderer & { testShader: typeof patternShader }
 }
 
 const node = { id: '1:2', source: { id: '' }, width: 100, height: 100 } as SceneNode

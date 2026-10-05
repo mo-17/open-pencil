@@ -69,7 +69,9 @@ const appConnectorAuditSink = new ConnectorAuditFanout([
 export interface AppConnectorFetchEnvironment {
   readonly isDesktop: () => boolean
   readonly desktopFetch: typeof tauriFetch
-  readonly browserFetch: typeof globalThis.fetch
+  readonly browserFetch: (
+    ...args: Parameters<typeof globalThis.fetch>
+  ) => ReturnType<typeof globalThis.fetch>
 }
 
 export function createAppConnectorFetch(environment: AppConnectorFetchEnvironment): ConnectorFetch {

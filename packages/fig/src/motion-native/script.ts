@@ -1,3 +1,5 @@
+import { isPlainJSONObject } from '@open-pencil/scene-graph'
+
 import {
   createFigmaNativeMotionApplyRequest,
   getFigmaNativeMotionTransactionSource,
@@ -71,7 +73,7 @@ export function buildFigmaMotionPluginScript(
 }
 
 function assertSafeScriptOptions(value: unknown): asserts value is FigmaNativeMotionScriptOptions {
-  if (!isPlainRecord(value)) {
+  if (!isPlainJSONObject(value)) {
     throw new TypeError('Figma Motion script options must be an object')
   }
   const unknownKeys = Object.keys(value).filter(
@@ -91,10 +93,4 @@ function indent(value: string, spaces: number): string {
     .split('\n')
     .map((line) => `${prefix}${line}`)
     .join('\n')
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
 }

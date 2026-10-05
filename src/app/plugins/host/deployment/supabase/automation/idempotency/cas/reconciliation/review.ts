@@ -1,3 +1,4 @@
+import { fromUint8Array } from 'js-base64'
 /* oxlint-disable eslint(max-lines), eslint(complexity) -- Fixed SQL, immutable CAS snapshot, and authority boundary form one contract. */
 
 import {
@@ -320,12 +321,6 @@ function schemaBinding(
   return Object.freeze({ applicationObjectKey: match[1], schemaName })
 }
 
-function encodeBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary)
-}
-
 function immutableParameterSnapshot(parameters: ParameterValues): ParameterValues {
   const values: ParameterValue[] = []
   for (const value of parameters) {
@@ -591,10 +586,10 @@ export async function createSupabaseAutomationIdempotencyCASReconciliationReview
     verifiedCandidate.recordDigest !== casContext.candidate.recordDigest ||
     currentProposalDigest !== proposalDigest ||
     currentRecordDigest !== recordDigest ||
-    encodeBase64(
+    fromUint8Array(
       canonicalBackendAutomationIdempotencyCASProposalBytes(verifiedCandidate.proposal)
     ) !== canonicalProposalBase64 ||
-    encodeBase64(canonicalBackendAutomationIdempotencyRecordBytes(verifiedCandidate.record)) !==
+    fromUint8Array(canonicalBackendAutomationIdempotencyRecordBytes(verifiedCandidate.record)) !==
       canonicalRecordBase64 ||
     casReviewDigest !== casContext.envelope.reviewDigest ||
     casRenderedSqlDigest !== casContext.envelope.review.bindings.renderedSqlDigest ||

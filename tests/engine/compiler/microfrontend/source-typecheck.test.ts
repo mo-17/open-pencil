@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path'
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { typeCheckCompilerFiles } from '#tests/helpers/compiler/typecheck'
+
 setDefaultTimeout(30_000)
 
 const directories: string[] = []
@@ -48,21 +50,15 @@ function generatedProject(target: 'react' | 'vue'): string {
 
 async function typecheck(target: 'react' | 'vue'): Promise<void> {
   const directory = generatedProject(target)
-  const executable = target === 'vue' ? 'vue-tsc' : 'tsc'
-  const child = Bun.spawn(
-    ['bunx', executable, '--noEmit', '-p', join(directory, 'tsconfig.json')],
-    {
-      cwd: process.cwd(),
-      stdout: 'pipe',
-      stderr: 'pipe'
-    }
-  )
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text()
-  ])
-  expect(exitCode, `${stdout}\n${stderr}`).toBe(0)
+  const { readdirSync, readFileSync } = await import('node:fs')
+  const files = new Map<string, string>()
+  for (const path of readdirSync(directory, { recursive: true })) {
+    if (typeof path !== 'string') continue
+    const fullPath = join(directory, path)
+    const { statSync } = await import('node:fs')
+    if (statSync(fullPath).isFile()) files.set(path, readFileSync(fullPath, 'utf8'))
+  }
+  typeCheckCompilerFiles(files, target)
 }
 
 describe('generated microfrontend source projects', () => {

@@ -7,6 +7,7 @@ import collaboration from './collaboration.json'
 import commands from './commands.json'
 import common from './common.json'
 import credentials from './credentials.json'
+import designCheck from './design-check.json'
 import diagnostics from './diagnostics.json'
 import dialogs from './dialogs.json'
 import editor from './editor.json'
@@ -34,6 +35,7 @@ export default {
   commands,
   common,
   credentials,
+  designCheck,
   diagnostics,
   dialogs,
   editor,

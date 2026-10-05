@@ -8,10 +8,10 @@ import { UndoManager } from '@open-pencil/scene-graph/undo'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { prefetchFigmaSchema } from '#core/clipboard'
 import { IS_BROWSER } from '#core/constants'
-import { clearLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
 import { releaseFigPopulationWorker } from '#core/kiwi/fig/population/client'
 import { releaseOriginalFigArchive } from '#core/kiwi/fig/session/original-archive'
 import { setTextMeasurer } from '#core/layout'
+import { createLayoutRunner } from '#core/layout/mutations'
 import { emitNavigationTrace } from '#core/profiler'
 import { TextEditor } from '#core/text/editor'
 import { fontManager } from '#core/text/fonts'
@@ -20,6 +20,7 @@ import { fontResolver } from '#core/text/resolver'
 import { createAlignmentActions } from './alignment'
 import { createClipboardBridge } from './bridges/clipboard'
 import { createComponentBridge } from './bridges/components'
+import { createLintFixBridge } from './bridges/lint'
 import { createStructureBridge } from './bridges/structure'
 import { createUndoBridge } from './bridges/undo'
 import { createClipboardActions } from './clipboard'
@@ -30,7 +31,7 @@ import { createContentEditActions } from './content-edit'
 import { createGraphEventSubscription } from './graph-events'
 import { createGraphReadActions } from './graph-reads'
 import { createGuideActions } from './guides'
-import { createLayoutRunner } from './layout-runner'
+import { createDesignIssueActions } from './issues'
 import { createMotionPreviewActions } from './motion-preview'
 import { createNodeActions } from './nodes'
 import { createPageActions } from './pages'
@@ -281,6 +282,7 @@ export function createEditor(options?: EditorOptions) {
 
   // Assemble domain modules
   const viewport = createViewportActions(ctx)
+  const designIssues = createDesignIssueActions(ctx)
   const shapes = createShapeActions(ctx)
   const text = createTextActions(ctx)
   const contentEdit = createContentEditActions(ctx, (preserveDrafts) => {
@@ -323,6 +325,7 @@ export function createEditor(options?: EditorOptions) {
   const componentBridge = createComponentBridge(components, selection, structure, pages)
   const structureBridge = createStructureBridge(structure, selection)
   const undoBridge = createUndoBridge(undoActions, selection)
+  const lintFixBridge = createLintFixBridge(ctx, nodes, structure, clipboard)
 
   function setCanvasKit(ck: CanvasKit, renderer: SkiaRenderer) {
     _ck = ck
@@ -382,7 +385,6 @@ export function createEditor(options?: EditorOptions) {
   function releaseGraphResources(graph: SceneGraph = _graph) {
     releaseFigPopulationWorker(graph)
     releaseOriginalFigArchive(graph)
-    clearLazyFigImportContext(graph)
   }
 
   return {
@@ -433,6 +435,7 @@ export function createEditor(options?: EditorOptions) {
 
     // Canvas and frame guides
     ...guides,
+    ...designIssues,
 
     // Shapes & tools
     ...shapes,
@@ -473,7 +476,10 @@ export function createEditor(options?: EditorOptions) {
     ...componentBridge,
 
     // Structure — bridge functions that need selectedNodes
-    ...structureBridge
+    ...structureBridge,
+
+    // Lint fixes, which touch nodes, structure and deletion in one undo step
+    ...lintFixBridge
   }
 }
 

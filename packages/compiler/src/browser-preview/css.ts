@@ -93,7 +93,7 @@ function readIdentifier(source: string, start: number): { value: string; end: nu
 function readString(source: string, start: number): { value: string; end: number } {
   const quote = source[start]
   let value = ''
-  for (let index = start + 1; index < source.length; ) {
+  for (let index = start + 1; index < source.length;) {
     const character = source[index]
     if (character === quote) return { value, end: index + 1 }
     if (character === '\\') {

@@ -96,10 +96,12 @@ export function selectMultipleMode(props: SelectProperties, multiple: boolean): 
   if (multiple) {
     if (Array.isArray(current)) value = current
     else if (typeof current === 'string') {
-      const isPlaceholder = current === '' && !props.optionsSource && !lowcodeSelectOptions(props.options).some(option => option.value === '')
+      const isPlaceholder =
+        current === '' &&
+        !props.optionsSource &&
+        !lowcodeSelectOptions(props.options).some((option) => option.value === '')
       value = isPlaceholder ? [] : [current]
-    }
-    else value = []
+    } else value = []
   } else if (Array.isArray(current)) {
     value = current.find((item) => typeof item === 'string') ?? ''
   }

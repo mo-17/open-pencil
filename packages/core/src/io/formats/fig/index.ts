@@ -20,3 +20,9 @@ export {
 } from './write'
 export type { PortableSceneGraphData } from '#core/kiwi/fig/parse/portable-data'
 export { findFigThumbnailPageId } from './thumbnail-page'
+export {
+  isReaderPagePending as isFigPagePending,
+  populateFigPage,
+  populateAllFigPages,
+  readerDiagnostics
+} from '#core/kiwi/fig/session/document-state'

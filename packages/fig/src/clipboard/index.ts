@@ -1,8 +1,3 @@
-export {
-  parseFigmaClipboard,
-  importClipboardNodes,
-  figmaNodesBounds,
-  type ClipboardImportOptions
-} from './import'
+export { parseFigmaClipboard, figmaNodesBounds } from './import'
 export { encodeFigmaClipboard } from './encode'
 export { embedClipboardImages } from './images'

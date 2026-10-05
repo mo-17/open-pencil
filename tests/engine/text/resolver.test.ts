@@ -170,6 +170,24 @@ describe('FontResolver', () => {
     expect(events).toEqual(['started:loading', 'settled:loaded', 'reset:idle'])
   })
 
+  test('notifies subscribers after each candidate that does not load', async () => {
+    const resolver = new FontResolver(async (item) => item.source === 'cache')
+    const events: string[] = []
+    resolver.subscribe((event, snapshot) => {
+      events.push(`${event}:${snapshot.state}:${snapshot.candidate?.source ?? ''}`)
+    })
+
+    await resolver.demand(faceDemand())
+
+    expect(events).toEqual([
+      'started:loading:',
+      'progressed:loading:registered',
+      'progressed:loading:imported',
+      'progressed:loading:local',
+      'settled:loaded:cache'
+    ])
+  })
+
   test('exhausts after every candidate is unavailable', async () => {
     const resolver = new FontResolver(async () => false)
     const demand = faceDemand()

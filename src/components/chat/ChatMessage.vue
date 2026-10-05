@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { refAutoReset, useClipboard } from '@vueuse/core'
-import { getToolName, isReasoningUIPart, isFileUIPart, isTextUIPart, isToolUIPart } from 'ai'
-import type { FileUIPart, UIDataTypes, UIMessage, UIMessagePart, UITools } from 'ai'
-import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
+import { isReasoningUIPart, isFileUIPart, isTextUIPart } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
 import { computed } from 'vue'
 
 import { useI18n, vTestId } from '@open-pencil/vue'
@@ -16,15 +15,14 @@ import {
   collectChatSources,
   type AssistantFilePresentation
 } from '@/app/ai/chat/sources'
-import { hasErrorOutput, toolErrorText, toolState } from '@/app/ai/chat/tool-presentation'
-import { remoteMCPToolServerDisplayInfo } from '@/app/ai/mcp'
+import { groupMessageParts, type MessagePartGroup } from '@/app/ai/chat/tool-calls/display'
 import { openExternalLink } from '@/app/shell/ui'
 import AttachmentList from '@/components/chat/attachment/AttachmentList.vue'
 import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.vue'
 import ChatMarkdown from '@/components/chat/ChatMarkdown.vue'
 import ReasoningBlock from '@/components/chat/ReasoningBlock.vue'
+import ToolCallGroup from '@/components/chat/tool/ToolCallGroup.vue'
 import IconButton from '@/components/ui/button/IconButton.vue'
-import { collapsibleContentMotion } from '@/theme/collapsible/collapsible'
 
 const {
   message,
@@ -44,8 +42,6 @@ const emit = defineEmits<{
 }>()
 const { ai, dialogs } = useI18n()
 const markdownMode = computed(() => (streaming ? 'streaming' : 'static'))
-
-type ToolPart = Extract<UIMessagePart<UIDataTypes, UITools>, { toolCallId: string }>
 
 const userText = computed(
   () =>
@@ -89,37 +85,12 @@ const assistantFiles = computed(() =>
   collectAssistantFiles(message.parts, message.metadata, assistantPresentationLabels.value)
 )
 
-function toolDisplayName(part: ToolPart): string {
-  return getToolName(part)
-    .replace(/^mcp__[^_]+__/, '')
-    .replace(/^mcp\.[^.]+\./, '')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-}
+// The AI SDK updates parts in place and replaces only the message, so copy each part for
+// the cards' computed state to see the new values.
+const groups = computed(() => groupMessageParts(message.parts.map((part) => ({ ...part }))))
 
-function remoteToolServer(part: ToolPart) {
-  return remoteMCPToolServerDisplayInfo(getToolName(part))
-}
-
-function approvalId(part: ToolPart): string | null {
-  return part.state === 'approval-requested' ? part.approval.id : null
-}
-
-function respondToApproval(part: ToolPart, approved: boolean): void {
-  const id = approvalId(part)
-  if (approvalEnabled && id && !pendingApprovalIds.includes(id)) {
-    emit('toolApproval', message.id, id, approved)
-  }
-}
-
-function approvalPending(part: ToolPart): boolean {
-  const id = approvalId(part)
-  return id !== null && pendingApprovalIds.includes(id)
-}
-
-function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): string {
-  if ('toolCallId' in part) return part.toolCallId
-  return `part-${index}`
+function groupKey(group: MessagePartGroup): string {
+  return group.kind === 'tools' ? `tools-${group.parts[0]?.index}` : `part-${group.index}`
 }
 
 function fileName(part: FileUIPart, index: number): string {
@@ -165,131 +136,35 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
       "
     >
       <template v-if="message.role === 'assistant'">
-        <template v-for="(part, i) in message.parts" :key="partKey(part, i)">
+        <template v-for="group in groups" :key="groupKey(group)">
+          <ToolCallGroup
+            v-if="group.kind === 'tools'"
+            :parts="group.parts.map(({ part }) => part)"
+            :pending-approval-ids="pendingApprovalIds"
+            :approval-enabled="approvalEnabled"
+            @tool-approval="(id, approved) => emit('toolApproval', message.id, id, approved)"
+          />
           <ReasoningBlock
-            v-if="isReasoningUIPart(part) && part.text"
-            :text="part.text"
+            v-else-if="isReasoningUIPart(group.part) && group.part.text"
+            :text="group.part.text"
             :display="reasoningDisplay"
-            :streaming="part.state === 'streaming'"
+            :streaming="group.part.state === 'streaming'"
             :thinking-label="ai.thinking"
             :reasoning-label="ai.reasoning"
+            :duration-label="(seconds) => ai.thoughtFor({ seconds })"
           />
-          <!-- Tool call -->
-          <div
-            v-if="isToolUIPart(part)"
-            data-test-id="chat-tool-call"
-            class="rounded-lg border border-border bg-canvas p-2"
-          >
-            <CollapsibleRoot>
-              <CollapsibleTrigger
-                class="flex w-full items-center gap-2 rounded px-1 py-0.5 hover:bg-hover"
-              >
-                <div
-                  class="flex size-4 items-center justify-center rounded-full"
-                  :class="{
-                    'bg-accent/20 text-accent': toolState(part) === 'pending',
-                    'bg-amber-500/20 text-amber-400':
-                      toolState(part) === 'approval' || toolState(part) === 'denied',
-                    'bg-green-500/20 text-green-400': toolState(part) === 'done',
-                    'bg-muted/20 text-muted': toolState(part) === 'cancelled',
-                    'bg-red-500/20 text-red-400': toolState(part) === 'error'
-                  }"
-                >
-                  <icon-lucide-loader-circle
-                    v-if="toolState(part) === 'pending'"
-                    class="size-3 animate-spin"
-                  />
-                  <icon-lucide-shield-alert
-                    v-else-if="toolState(part) === 'approval'"
-                    class="size-3"
-                  />
-                  <icon-lucide-check v-else-if="toolState(part) === 'done'" class="size-3" />
-                  <icon-lucide-circle-slash
-                    v-else-if="toolState(part) === 'cancelled'"
-                    class="size-3"
-                  />
-                  <icon-lucide-shield-x v-else-if="toolState(part) === 'denied'" class="size-3" />
-                  <icon-lucide-triangle-alert v-else class="size-3" />
-                </div>
-                <span class="text-[11px] text-surface">
-                  {{ toolDisplayName(part) }}
-                </span>
-                <span class="text-[10px] text-muted">
-                  {{
-                    toolState(part) === 'pending'
-                      ? ai.toolRunning
-                      : toolState(part) === 'approval'
-                        ? dialogs.toolApprovalRequired
-                        : toolState(part) === 'done'
-                          ? ai.toolFinished
-                          : toolState(part) === 'cancelled'
-                            ? dialogs.toolCancelled
-                            : toolState(part) === 'denied'
-                              ? dialogs.denied
-                              : ai.toolError
-                  }}
-                </span>
-                <icon-lucide-chevron-down
-                  v-if="toolState(part) !== 'pending' && toolState(part) !== 'approval'"
-                  class="ml-auto size-3 text-muted transition-transform [[data-state=open]>&]:rotate-180"
-                />
-              </CollapsibleTrigger>
-              <div
-                v-if="toolState(part) === 'approval'"
-                data-test-id="chat-tool-approval"
-                class="mt-2 rounded border border-amber-500/30 bg-amber-500/5 p-2"
-              >
-                <p v-if="remoteToolServer(part)" class="mb-1 text-[9px] text-muted">
-                  MCP · {{ remoteToolServer(part)?.name }} · {{ remoteToolServer(part)?.origin }}
-                </p>
-                <pre class="max-h-40 overflow-auto rounded bg-input p-2 text-[10px] text-muted">{{
-                  JSON.stringify(part.input, null, 2)
-                }}</pre>
-                <div class="mt-2 flex justify-end gap-1.5">
-                  <button
-                    type="button"
-                    class="rounded px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:cursor-wait disabled:opacity-50"
-                    data-test-id="chat-tool-deny"
-                    :disabled="!approvalEnabled || approvalPending(part)"
-                    @click="respondToApproval(part, false)"
-                  >
-                    {{ dialogs.toolDeny }}
-                  </button>
-                  <button
-                    type="button"
-                    class="rounded bg-accent px-2 py-1 text-[10px] font-medium text-white hover:bg-accent/90 disabled:cursor-wait disabled:opacity-50"
-                    data-test-id="chat-tool-approve"
-                    :disabled="!approvalEnabled || approvalPending(part)"
-                    @click="respondToApproval(part, true)"
-                  >
-                    {{ dialogs.toolApprove }}
-                  </button>
-                </div>
-              </div>
-              <CollapsibleContent
-                v-if="toolState(part) !== 'pending' && toolState(part) !== 'approval'"
-                :class="[collapsibleContentMotion, 'text-[10px]']"
-              >
-                <pre class="mt-1 overflow-x-auto rounded bg-input p-2 text-muted">{{
-                  part.state === 'output-error'
-                    ? toolErrorText(part)
-                    : hasErrorOutput(part)
-                      ? toolErrorText(part)
-                      : JSON.stringify(part.output, null, 2)
-                }}</pre>
-              </CollapsibleContent>
-            </CollapsibleRoot>
-          </div>
 
           <!-- Text -->
           <div
-            v-else-if="isTextUIPart(part) && part.text"
+            v-else-if="isTextUIPart(group.part) && group.part.text"
             data-test-id="chat-text-bubble"
             class="rounded-xl rounded-tl-md bg-hover px-3 py-2 text-xs leading-relaxed text-surface"
           >
-            <ChatMarkdown :content="part.text" :mode="markdownMode" />
+            <ChatMarkdown :content="group.part.text" :mode="markdownMode" />
             <IconButton
-              v-if="i === firstAssistantTextPartIndex && assistantText && clipboardSupported"
+              v-if="
+                group.index === firstAssistantTextPartIndex && assistantText && clipboardSupported
+              "
               :label="copied ? ai.responseCopied : ai.copyResponse"
               size="xs"
               data-slot="chat-copy-response"
@@ -436,7 +311,7 @@ function assistantFileDetail(file: AssistantFilePresentation): string {
         >
           <ChatAttachmentThumbnail
             v-for="(part, index) in userFiles"
-            :key="partKey(part, index)"
+            :key="`${index}:${part.url}`"
             compact
             :url="filePreviewURL(part, index)"
             :name="fileName(part, index)"

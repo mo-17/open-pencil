@@ -96,5 +96,5 @@ export function createStaticHTMLShowcaseFragment(
   }
 }
 
-export { sceneGraphToDesignDocument } from './from-scene-graph'
-export type { ToDesignDocumentOptions } from './from-scene-graph'
+export { sceneGraphToDesignDocument } from './export/projection'
+export type { ToDesignDocumentOptions } from './export/projection'

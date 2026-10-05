@@ -82,7 +82,9 @@ export class PluginMCPRequestRevocationRegistry {
     request.publisherAuthority = publisherAuthority(descriptor, publisherGrantId)
   }
 
-  reconcilePublisherGrants(grants: readonly ThirdPartyPluginAIContributionGrant[]): readonly string[] {
+  reconcilePublisherGrants(
+    grants: readonly ThirdPartyPluginAIContributionGrant[]
+  ): readonly string[] {
     const revoked: string[] = []
     for (const [id, request] of this.#requests) {
       if (request.controller.signal.aborted) continue

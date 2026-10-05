@@ -8,9 +8,9 @@ export interface EditorMutationScope {
 export function resolveEditorMutationScope(
   store: Editor,
   args: Record<string, unknown>,
-  options: { forceDocument?: boolean } = {}
+  options: { forceDocument?: boolean; defaultPageId?: string } = {}
 ): EditorMutationScope {
-  const currentPageId = store.state.currentPageId
+  const currentPageId = options.defaultPageId ?? store.state.currentPageId
   const structuralTargetId = resolveStructuralTargetId(args)
   const structuralTarget = structuralTargetId ? store.graph.getNode(structuralTargetId) : undefined
   if (

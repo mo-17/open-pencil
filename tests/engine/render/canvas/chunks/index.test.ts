@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { RenderChunkIndex } from '#core/canvas/renderer/chunks'
+
 import { generatedEffect } from '#tests/helpers/generated-effect'
 
 function graphWithNodes(count: number): { graph: SceneGraph; pageId: string } {

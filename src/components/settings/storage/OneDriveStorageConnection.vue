@@ -1,10 +1,9 @@
 <script setup lang="ts">
 /* eslint-disable max-lines -- OAuth, durable grant repair, and connection UI share one lifecycle boundary. */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
 import { useI18n } from '@open-pencil/vue'
 
-import type { StorageDocumentAuthority } from '@/app/integrations/storage/types'
-import { activeStorageProfileID } from '@/app/integrations/storage/preferences'
 import {
   ONEDRIVE_STORAGE_PROVIDER_ID,
   resolveOneDriveClientId
@@ -20,6 +19,8 @@ import {
   disposeOneDriveRuntimeProfile,
   getOneDriveRuntimeServices
 } from '@/app/integrations/storage/onedrive/runtime'
+import { activeStorageProfileID } from '@/app/integrations/storage/preferences'
+import type { StorageDocumentAuthority } from '@/app/integrations/storage/types'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import { credentialRef } from '@/app/settings/credentials/reference'
 import {

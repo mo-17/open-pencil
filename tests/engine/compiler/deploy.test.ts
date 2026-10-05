@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
+import { encode } from 'js-base64'
+
 import { deployFiles, type DeployProgress } from '@open-pencil/compiler/deploy'
 
 /**
@@ -378,7 +380,7 @@ describe('deployFiles — Cloudflare Pages (Phase 4 §5)', () => {
     expect(calls.some((c) => c.url.includes('vercel.com'))).toBe(false)
     expect(uploadPayload).toHaveLength(1)
     expect(uploadPayload[0]?.key).toBe(CSS_CF_HASH)
-    expect(uploadPayload[0]?.value).toBe(Buffer.from(CSS).toString('base64'))
+    expect(uploadPayload[0]?.value).toBe(encode(CSS))
     expect(uploadPayload[0]?.metadata.contentType).toBe('text/css; charset=utf-8')
     expect(manifest['/index.html']).toBe(HTML_CF_HASH)
     expect(manifest['/assets/app.css']).toBe(CSS_CF_HASH)

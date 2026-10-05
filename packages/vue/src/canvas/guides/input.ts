@@ -30,7 +30,7 @@ function isEditableTarget(target: EventTarget): boolean {
 
 function comesFromEditableTarget(event: GuideDeleteEvent): boolean {
   const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target]
-  return path.some((target): target is EventTarget => target !== null && isEditableTarget(target))
+  return path.some((target): target is EventTarget => target != null && isEditableTarget(target))
 }
 
 export function selectedTopLevelGuideFrameId(editor: Editor): string | null {

@@ -156,7 +156,8 @@ describe('Backend browser flow .fig persistence', () => {
       expect(cardClasses).toContain('relative')
       expect(cardClasses).not.toContain('absolute')
       const form = source.match(/<form\b[^>]*\bclass(?:Name)?="([^"]+)"/)?.[1]
-      expect(form).not.toContain('flex')
+      expect(form?.split(/\s+/)).not.toContain('flex')
+      expect(form?.split(/\s+/)).toContain('max-xl:flex')
       const textarea = source.match(/<textarea\b[^>]*\bclass(?:Name)?="([^"]+)"/)?.[1]
       expect(textarea).toContain('h-[126px]')
     }

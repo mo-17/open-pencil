@@ -1,3 +1,4 @@
+import { fromUint8Array } from 'js-base64'
 /* oxlint-disable eslint(max-lines), eslint(complexity), open-pencil(no-mixed-case-acronym-identifiers) -- Keep the fixed-origin CAS-ledger mutation boundary in one auditable module. */
 
 import {
@@ -247,9 +248,7 @@ function utf8ByteLength(value: string): number {
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes, true)
 }
 
 async function digestSql(value: string): Promise<string> {

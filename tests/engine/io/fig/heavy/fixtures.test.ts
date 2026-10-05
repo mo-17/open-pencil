@@ -1,10 +1,17 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/core'
+import { importNodeChanges } from '@open-pencil/core/kiwi/fig/import'
+import { parseFigBuffer } from '@open-pencil/fig'
 
-import { parseFixture, VALID_NODE_TYPES } from '#tests/helpers/fig-fixtures'
-import { collectAllNodes } from '#tests/helpers/fig-traversal'
+import { readFixtureArrayBuffer, VALID_NODE_TYPES } from '#tests/helpers/fig/fixtures'
+import { collectAllNodes } from '#tests/helpers/fig/traversal'
 import { heavy } from '#tests/helpers/test-utils'
+
+function parseAuthored(name: string): SceneGraph {
+  const { nodeChanges, blobs, images } = parseFigBuffer(readFixtureArrayBuffer(name))
+  return importNodeChanges(nodeChanges, blobs, new Map(images), { populate: 'none' })
+}
 
 const HEAVY_FIXTURE_TIMEOUT_MS = 180_000
 
@@ -17,7 +24,7 @@ heavy.serial('parse heavy .fig files', () => {
 
     beforeAll(
       async () => {
-        graph = await parseFixture('material3.fig', { populate: 'none' })
+        graph = parseAuthored('material3.fig')
         nodes = collectAllNodes(graph)
       },
       { timeout: HEAVY_FIXTURE_TIMEOUT_MS }
@@ -72,7 +79,7 @@ heavy.serial('parse heavy .fig files', () => {
 
     beforeAll(
       async () => {
-        graph = await parseFixture('nuxtui.fig', { populate: 'none' })
+        graph = parseAuthored('nuxtui.fig')
         nodes = collectAllNodes(graph)
       },
       { timeout: HEAVY_FIXTURE_TIMEOUT_MS }

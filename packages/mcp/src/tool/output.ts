@@ -1,6 +1,8 @@
 import { lstat, mkdir, mkdtemp, readlink, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, basename, isAbsolute, join, parse, resolve, sep as osSep } from 'node:path'
 
+import { toUint8Array } from 'js-base64'
+
 import { decodeBase64 } from '@open-pencil/core/bytes'
 import { MotionExportCancelledError } from '@open-pencil/core/io/motion-export'
 
@@ -298,7 +300,7 @@ async function writeMotionPNGSequence(
     let byteLength = 0
     for (const frame of frames) {
       throwIfCancelled(signal)
-      const buffer = Buffer.from(frame.base64, 'base64')
+      const buffer = Buffer.from(toUint8Array(frame.base64))
       if (
         buffer.length < 8 ||
         !buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
@@ -349,7 +351,7 @@ async function writeEncodedMotionAtomic(
   signal?: AbortSignal
 ): Promise<MCPResult | null> {
   if (typeof result.base64 !== 'string') return null
-  const buffer = Buffer.from(result.base64, 'base64')
+  const buffer = Buffer.from(toUint8Array(result.base64))
   if (!hasEncodedMotionSignature(result.format, buffer)) {
     throw new Error(`Motion ${String(result.format)} output has an invalid file signature`)
   }

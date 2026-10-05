@@ -29,6 +29,8 @@ import {
   LOWCODE_MOTION_SCENE_KEY,
   LOWCODE_OVERRIDES_KEY,
   LOWCODE_PROTOTYPE_KEY,
+  LOWCODE_STATE_OVERRIDES_KEY,
+  LOWCODE_RESPONSIVE_OVERRIDES_KEY,
   LOWCODE_WORKFLOWS_KEY
 } from './lowcode-plugin-data'
 
@@ -47,6 +49,8 @@ const SERIALIZED_REFERENCE_KEYS = new Set([
   LOWCODE_MOTION_DRIVERS_KEY,
   LOWCODE_PROTOTYPE_KEY,
   LOWCODE_OVERRIDES_KEY,
+  LOWCODE_STATE_OVERRIDES_KEY,
+  LOWCODE_RESPONSIVE_OVERRIDES_KEY,
   LOWCODE_APPLICATION_PLUGIN_KEY,
   LOWCODE_APPLICATION_PAGE_PLUGIN_KEY
 ])
@@ -140,6 +144,8 @@ function remapSerializedPluginValue(
   value: unknown,
   resolveNodeId: LowcodeNodeIdResolver
 ): SerializedRemapResult {
+  if (key === LOWCODE_STATE_OVERRIDES_KEY || key === LOWCODE_RESPONSIVE_OVERRIDES_KEY)
+    return remapSerializedPaintOverrides(value, resolveNodeId)
   if (key === LOWCODE_APPLICATION_PLUGIN_KEY) {
     const validated = validateLowcodeApplication(value)
     if (!validated.ok) return { changed: false }
@@ -172,6 +178,30 @@ function remapSerializedPluginValue(
     return remapSerializedInstanceOverrides(value, resolveNodeId)
   }
   return remapSerializedMotionContract(key, value, resolveNodeId)
+}
+
+/** Reuse the owned override carrier without interpreting arbitrary plugin JSON as references. */
+function remapSerializedPaintOverrides(
+  value: unknown,
+  resolveNodeId: LowcodeNodeIdResolver
+): SerializedRemapResult {
+  if (!isSerializedOverrideTable(value)) return { changed: false }
+  let changed = false
+  for (const override of Object.values(value)) {
+    if (!isSerializedOverrideTable(override)) continue
+    for (const field of ['fills', 'strokes']) {
+      const paints = override[field]
+      if (!Array.isArray(paints)) continue
+      for (const paint of paints) {
+        if (!isSerializedOverrideTable(paint) || typeof paint.sourceNodeId !== 'string') continue
+        const next = resolveNodeId(paint.sourceNodeId)
+        if (next === undefined || next === paint.sourceNodeId) continue
+        paint.sourceNodeId = next
+        changed = true
+      }
+    }
+  }
+  return changed ? { changed: true, value } : { changed: false }
 }
 
 /** Rewrite every supported node reference inside serialized OpenPencil plugin data. */

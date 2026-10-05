@@ -5,8 +5,6 @@
 //   return t.execute(figma, args)
 // (lowcode mutate tools intentionally hit the no-undo fallback path here
 // because the editor is not injected outside `src/app/ai/**` — §3.v2.2 #b.)
-import { writeFile } from 'node:fs/promises'
-import { extname } from 'node:path'
 
 import { defineCommand } from 'citty'
 
@@ -15,7 +13,12 @@ import { FigmaAPI } from '@open-pencil/core/figma-api'
 import { isAppMode, requireFile, rpc } from '#cli/app-client'
 import { appTargetOptions, appTargetRPCArgs } from '#cli/app-target'
 import { printError } from '#cli/format'
-import { loadDocument, populateWholeDocument } from '#cli/headless'
+import {
+  documentWriteOptions,
+  loadDocument,
+  populateWholeDocument,
+  writeDocumentForPath
+} from '#cli/headless'
 
 function printResult(value: unknown, json: boolean) {
   if (json || !process.stdout.isTTY) {
@@ -44,13 +47,7 @@ export default defineCommand({
     },
     code: { type: 'string', alias: 'c', description: 'JavaScript code to execute' },
     stdin: { type: 'boolean', description: 'Read code from stdin' },
-    write: { type: 'boolean', alias: 'w', description: 'Write changes back to the input file' },
-    output: {
-      type: 'string',
-      alias: 'o',
-      description: 'Write to a different file',
-      required: false
-    },
+    ...documentWriteOptions,
     ...appTargetOptions,
     json: { type: 'boolean', description: 'Output as JSON' },
     quiet: { type: 'boolean', alias: 'q', description: 'Suppress output' }
@@ -105,15 +102,8 @@ export default defineCommand({
     }
 
     if (args.write || args.output) {
-      const { BUILTIN_IO_FORMATS, IORegistry } = await import('@open-pencil/core/io')
-      const io = new IORegistry(BUILTIN_IO_FORMATS)
       const outPath = args.output ? args.output : file
-      const extension = extname(outPath).slice(1).toLowerCase()
-      const format =
-        io.listWritableFormats().find((candidate) => candidate.extensions.includes(extension))
-          ?.id ?? 'fig'
-      const result = await io.writeDocument(format, graph)
-      await writeFile(outPath, result.data)
+      await writeDocumentForPath(graph, outPath)
       if (!args.quiet) {
         console.error(`Written to ${outPath}`)
       }

@@ -3,10 +3,9 @@ import type { CanvasKit } from 'canvaskit-wasm'
 import type { FigArchiveLimits } from '@open-pencil/fig'
 import type { PenParseLimits } from '@open-pencil/pen'
 import type { SceneGraph } from '@open-pencil/scene-graph'
+import type { RenderColorSpace } from '@open-pencil/scene-graph/color'
 
 import type { SkiaRenderer } from '#core/canvas'
-import type { RenderColorSpace } from '#core/color/management'
-import type { JSXFormat } from '#core/design-jsx'
 
 import type { RasterExportFormat } from './formats/raster'
 
@@ -100,8 +99,10 @@ export interface SVGExportOptions {
   colorSpace?: RenderColorSpace
 }
 
-export interface JSXExportOptions {
-  format?: JSXFormat
+/** A file written next to an export's main file, at a path relative to it. */
+export interface ExportAsset {
+  path: string
+  content: IOData
 }
 
 export interface ExportResult {
@@ -110,6 +111,16 @@ export interface ExportResult {
   extension: string
   data: IOData
   encoding?: IOTextEncoding
+  /** Extra files the main file refers to, such as external images and fonts. */
+  assets?: ExportAsset[]
+}
+
+export interface HTMLExportOptions {
+  html?: 'fragment' | 'standalone'
+  style?: 'inline' | 'tailwind'
+  assets?: 'inline' | 'external'
+  /** `assets` ships web fonts with external assets. */
+  fonts?: 'assets' | 'none'
 }
 
 export interface IOFormatSupport {
@@ -127,8 +138,8 @@ export interface IOFormatExportOptions {
   colorSpace?: boolean
 }
 
-export interface IOFormatAdapter {
-  id: string
+export interface IOFormatAdapter<Id extends string = string> {
+  id: Id
   label: string
   role: IOFormatRole
   category: IOFormatCategory

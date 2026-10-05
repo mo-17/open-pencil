@@ -9,7 +9,7 @@ OpenPencil's design JSX creates scene nodes, not browser DOM. You can use readab
 
 ## Creating Designs
 
-The `render` tool accepts JSX strings in AI chat and MCP. In application or headless library code, import `Frame`, `Text`, `renderTree`, and other authoring exports from `@open-pencil/core/design-jsx`. The scripting environment determines which APIs are exposed to `eval`; package exports are not automatically globals there.
+The `render` tool accepts JSX strings in AI chat and MCP. In application or headless library code, import `Frame`, `Text`, and other authoring exports from `@open-pencil/design-jsx`, then create nodes with `renderTree` or `renderJSX` from `@open-pencil/core/design-jsx`, which add icons, SVG conversion, and layout. To write the trees as TSX, set `"jsxImportSource": "@open-pencil/design-jsx"` with `"jsx": "react-jsx"` in `tsconfig.json`, or add a `/** @jsxImportSource @open-pencil/design-jsx */` comment to the file. The scripting environment determines which APIs are exposed to `eval`; package exports are not automatically globals there.
 
 The [shared design-authoring reference](../reference/design-authoring) contains executable examples, layout guidance, and the supported syntax inventory. It is generated from the same source used by chat, ACP, codegen prompts, and the installable agent skill.
 
@@ -30,7 +30,8 @@ openpencil export design.fig -f jsx --style tailwind  # Tailwind classes
 
 OpenPencil JSX export is a **structural projection**, not a full document-persistence format. It preserves visible hierarchy, layout and appearance, real lowcode control types, and `interactiveProps`, so those parts can be modified and rendered back. It intentionally omits lowcode behavior fields such as `bindings`, `events`, `stateOverrides`, and `renderCondition`. Use `read_lowcode_node` to inspect those fields and `update_lowcode_node` to write them after rendering. Use `.fig` when the complete lowcode semantics must persist.
 
-See [CLI exports](./cli/exporting).
+
+Exported OpenPencil JSX can be edited and rendered back into the document. The export writes hidden and locked layers, constraints, size limits, stacked, gradient, and image fills, strokes, effects, masks, and variable bindings, so rendering an export reproduces them and `diff_jsx` shows changes to any of them. Rich text with mixed styles, vector paths, layout grids, shared styles, and component property definitions are not written yet. Instances are written as frames with their content, so exported JSX stands on its own. See [CLI exports](./cli/exporting).
 
 ## Visual Diffing
 

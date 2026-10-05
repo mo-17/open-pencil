@@ -1,8 +1,0 @@
-{
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "types": ["node"]
-  },
-  "include": ["src/**/*.ts", "../../src/env.d.ts", "../../packages/core/src/global.d.ts"],
-  "references": []
-}

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { fromUint8Array } from 'js-base64'
+
 import type { BackendProviderEmission } from '@open-pencil/compiler/backend'
 
 import { createSupabaseEdgeFunctionArtifactFromEmission } from '@/app/plugins/host/deployment/supabase/edge-function-artifact'
@@ -11,9 +13,7 @@ function asFixture<T>(value: object): T {
 async function sha256(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value)
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
-  let binary = ''
-  for (const byte of digest) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(digest, true)
 }
 
 describe('Supabase Edge Function compiler artifact bridge', () => {

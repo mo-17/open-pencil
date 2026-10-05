@@ -7,6 +7,7 @@ import type { ComponentDef, IRElement, IRTree } from '#compiler/ir/types'
 import { chromium, expect as playwrightExpect, type Browser, type Page } from '@playwright/test'
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
+import { toUint8Array } from 'js-base64'
 import { build as viteBuild, preview, type PreviewServer } from 'vite'
 
 import { withDefaults } from '@open-pencil/compiler'
@@ -19,8 +20,9 @@ import {
 
 const PNG_BYTES = Uint8Array.from(
   Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-    'base64'
+    toUint8Array(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    )
   )
 )
 
@@ -510,8 +512,8 @@ describe('Vue compiler preview browser', () => {
     ])
     await playwrightExpect(uploadHost.getByRole('status')).toContainText('1 local file selected')
     await playwrightExpect(uploadHost.getByRole('status')).toContainText('not been uploaded')
-    await playwrightExpect(uploadHost.getByRole('alert')).toContainText('larger than')
-    await playwrightExpect(uploadHost.getByRole('alert')).toContainText('accepted file types')
+    await playwrightExpect(uploadHost.getByRole('alert')).toContainText('exceeds the 5 B limit')
+    await playwrightExpect(uploadHost.getByRole('alert')).toContainText('not an accepted file type')
     await uploadHost.getByRole('button', { name: 'Remove valid.png' }).click()
     await playwrightExpect(uploadHost.getByRole('status')).toBeHidden()
 

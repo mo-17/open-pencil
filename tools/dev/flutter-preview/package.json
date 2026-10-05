@@ -1,0 +1,19 @@
+{
+  "name": "@open-pencil/flutter-preview-tools",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "imports": {
+    "#flutter-preview/*": "./src/*.ts",
+    "#flutter-preview-tests/*": "./tests/*.ts"
+  },
+  "scripts": {
+    "test": "bun test ./tests",
+    "check": "tsgo --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@open-pencil/compiler": "workspace:*",
+    "valibot": "^1.5.0"
+  }
+}

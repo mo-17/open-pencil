@@ -137,12 +137,15 @@ export function createAutomationToolHandler(
     if (targetPage?.type !== 'CANVAS') throw new Error('Automation target page is no longer open')
     const sceneVersionBefore = store.state.sceneVersion
     const tree = toolArgs.tree as Parameters<typeof renderTreeNode>[1]
-    const placement = resolveRenderPlacement(store.graph, {
-      defaultParentId: target.pageId,
-      parentId: toolArgs.parent_id as string | undefined,
-      replaceId: toolArgs.replace_id as string | undefined,
-      insertIndex: toolArgs.insert_index as number | undefined
-    })
+    const placement = resolveRenderPlacement(
+      store.graph,
+      {
+        parent_id: toolArgs.parent_id as string | undefined,
+        replace_id: toolArgs.replace_id as string | undefined,
+        insert_index: toolArgs.insert_index as number | undefined
+      },
+      target.pageId
+    )
     const parentId = placement.parentId
     if (!store.graph.getNode(parentId)) throw new Error(`Automation parent "${parentId}" not found`)
     const parentPageId = pageIdForNode(store, parentId)

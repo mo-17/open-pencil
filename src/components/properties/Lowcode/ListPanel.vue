@@ -9,13 +9,13 @@ import type {
 } from '@open-pencil/scene-graph'
 import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
-import BackendListSourceEditor from './BackendListSourceEditor.vue'
-import { useBackendBindingApplication } from '@/app/lowcode/backend/bindings/context'
-
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
+import { useBackendBindingApplication } from '@/app/lowcode/backend/bindings/context'
+import { useSectionUI } from '@/components/ui/section'
+
+import BackendListSourceEditor from './BackendListSourceEditor.vue'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()

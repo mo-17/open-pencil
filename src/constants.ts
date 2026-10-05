@@ -72,7 +72,7 @@ export const ROOM_ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
 // Trystero `password` (encrypts the WebRTC signaling SDP), so a peer without
 // it can't connect even with the right appId + roomId. 26 chars over the
 // 36-symbol alphabet ≈ 134 bits, far beyond the 8-char roomId.
-export const ROOM_KEY_LENGTH = 26
+export const ROOM_KEY_LENGTH = 48
 
 export const WEB_APP_ORIGIN = 'https://app.openpencil.dev'
 

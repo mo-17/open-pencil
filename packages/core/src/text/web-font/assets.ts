@@ -1,11 +1,15 @@
 import type { RemoteFontSource, ResolveFontResult } from 'unifont'
 
+import type { WebFontFaceAsset, WebFontFaceRequest } from '@open-pencil/dom-css/export'
+
 import { WEB_FONT_LICENSE_POLICIES } from '#core/text/font/license-display'
 import {
   coordinatedWebFontFetch,
   retryableCachedPromise,
   withWebFontFetchProxy
 } from '#core/text/web-font/fetch-proxy'
+export type { WebFontFaceAsset, WebFontFaceRequest } from '@open-pencil/dom-css/export'
+
 import {
   createProviderUnifont,
   isRemoteFontSource,
@@ -20,36 +24,6 @@ import {
   type WebFontFetch,
   type WebFontProviderId
 } from '#core/text/web-fonts'
-
-export interface WebFontFaceRequest {
-  family: string
-  weight: number
-  style?: 'normal' | 'italic'
-  /** Characters used locally to derive script subsets; never sent as a glyph payload. */
-  characters?: string
-  /** Provider subset labels; unlike `characters`, these do not disclose document text. */
-  subsets?: string[]
-}
-
-export interface WebFontFaceAsset {
-  family: string
-  weight: string | number | [number, number]
-  style: string
-  display?: string
-  stretch?: string
-  unicodeRange?: string[]
-  format: 'woff2' | 'woff' | 'opentype' | 'truetype'
-  path: string
-  content: Uint8Array
-  /** Catalog that supplied the downloaded bytes. */
-  sourceProvider?: WebFontProviderId
-  /** Catalog-wide policy only; this is not proof of the exact artifact's license. */
-  licenseEvidence?: {
-    kind: 'provider_policy'
-    policyUrl: string
-    policyCheckedAt: string
-  }
-}
 
 export interface ExportWebFontFaceAssetsOptions {
   fonts: WebFontFaceRequest[]

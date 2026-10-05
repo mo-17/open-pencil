@@ -1,5 +1,6 @@
 import { digestCanonicalBackendValue, freezeBackendValue } from '#compiler/backend/canonical'
 import { sha256 } from '@noble/hashes/sha2'
+import { fromUint8Array } from 'js-base64'
 
 import {
   parseBackendApplicationSpecV1,
@@ -78,9 +79,7 @@ function normalizeApplication(
 
 /** Hashes the exact submitted SQL bytes, not a JSON wrapper around them. */
 export function nestJSLocalPreviewMigrationSQLDigest(sql: string): string {
-  let binary = ''
-  for (const byte of sha256(new TextEncoder().encode(sql))) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(sha256(new TextEncoder().encode(sql)), true)
 }
 
 function buildPlan(

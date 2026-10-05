@@ -38,6 +38,9 @@ export async function renderInputControlSSR(
       'dir'
     )
     await symlink(resolve('node_modules/vue'), join(directory, 'node_modules/vue'), 'dir')
+    const numericDraft = files.find(([name]) => name === 'src/lib/open-pencil-number-draft.ts')?.[1]
+    if (typeof numericDraft !== 'string') throw new Error('Missing generated numeric-draft runtime')
+    await writeFile(join(directory, 'src/lib/open-pencil-number-draft.ts'), numericDraft)
     const runtime = files.find(([name]) => name === 'src/lib/open-pencil-input-control.ts')?.[1]
     if (typeof runtime !== 'string') throw new Error('Missing generated native-input runtime')
     await writeFile(join(directory, 'src/lib/open-pencil-input-control.ts'), runtime)

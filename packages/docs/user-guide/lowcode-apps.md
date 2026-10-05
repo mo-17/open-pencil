@@ -1268,7 +1268,7 @@ The repository includes a user-facing onboarding fixture at
 `packages/demos/lowcode/lowcode-onboarding-demo.fig`. Rebuild it from the repo root with:
 
 ```sh
-bun tools/lowcode/src/make/onboarding-demo.ts
+bun tools/dev/lowcode/src/make/onboarding-demo.ts
 ```
 
 The fixture is intentionally safe to share: it uses an example Supabase URL/anon key, a Plausible

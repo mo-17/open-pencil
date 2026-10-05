@@ -3,8 +3,8 @@ import { expect, test } from 'bun:test'
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import { createEditor } from '#core/editor/create'
-import { createLayoutRunner } from '#core/editor/layout-runner'
 import { computeAllLayouts, computeAllLayoutsAsync, computeLayout } from '#core/layout'
+import { createLayoutRunner } from '#core/layout/mutations'
 import { createTabsModuleFrameOverrides } from '#core/plugins/tabs'
 
 function fixture(parentId?: string, existingGraph?: SceneGraph) {

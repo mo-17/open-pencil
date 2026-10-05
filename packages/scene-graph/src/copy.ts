@@ -48,8 +48,9 @@ import { cloneVectorNetwork } from './vector-network'
 
 // --- Individual copy functions ---
 
-export function copyFill(f: Fill): Fill {
-  const copy: Fill = { ...f, color: { ...f.color } }
+/** Generic over the paint shape so a stroke keeps its own fields while the paint deep-copies. */
+export function copyFill<T extends Omit<Fill, 'type'>>(f: T): T {
+  const copy: T = { ...f, color: { ...f.color } }
   if (f.gradientStops) copy.gradientStops = f.gradientStops.map(copyGradientStop)
   if (f.gradientTransform) copy.gradientTransform = { ...f.gradientTransform }
   if (f.imageTransform) copy.imageTransform = { ...f.imageTransform }
@@ -59,7 +60,7 @@ export function copyFill(f: Fill): Fill {
 }
 
 export function copyStroke(s: Stroke): Stroke {
-  const copy: Stroke = { ...s, color: { ...s.color } }
+  const copy = copyFill(s)
   if (s.dashPattern) {
     copy.dashPattern = [...s.dashPattern]
   }
@@ -140,10 +141,10 @@ export function copyGeometryPaths(paths: GeometryPath[]): GeometryPath[] {
   return paths.map((path) => withPathPaintMeta(path, path.commandsBlob.slice()))
 }
 
-function remapFillNodeReferences(
-  fills: readonly Fill[] | undefined,
+function remapFillNodeReferences<T extends Omit<Fill, 'type'>>(
+  fills: readonly T[] | undefined,
   resolveNodeId: LowcodeNodeIdResolver
-): Fill[] | undefined {
+): T[] | undefined {
   const remapped = fills?.map((fill) => {
     if (!fill.sourceNodeId) return fill
     const nodeId = resolveNodeId(fill.sourceNodeId)
@@ -151,6 +152,43 @@ function remapFillNodeReferences(
     return { ...fill, sourceNodeId: nodeId }
   })
   return remapped?.some((fill, index) => fill !== fills?.[index]) ? remapped : undefined
+}
+
+/**
+ * Match the canvas's runtime-id-first lookup. Build source aliases only for a GUID lookup,
+ * and share that index within this read operation; create a new resolver after identities change.
+ */
+export function createPaintNodeIdResolver(
+  nodes: ReadonlyMap<string, SceneNode>,
+  idMap: ReadonlyMap<string, string>
+): LowcodeNodeIdResolver {
+  let sourceIds: Map<string, string> | undefined
+  return (id) => {
+    const mapped = idMap.get(id)
+    if (mapped !== undefined || nodes.has(id)) return mapped
+    if (!sourceIds) {
+      sourceIds = new Map<string, string>()
+      for (const node of nodes.values())
+        if (node.source.id && !sourceIds.has(node.source.id)) sourceIds.set(node.source.id, node.id)
+    }
+    const sourceId = sourceIds.get(id)
+    return sourceId ? idMap.get(sourceId) : undefined
+  }
+}
+
+function remapPaintOverrides<T extends Partial<Pick<SceneNode, 'fills' | 'strokes'>>>(
+  overrides: Partial<Record<string, T>> | undefined,
+  resolveNodeId: LowcodeNodeIdResolver
+): Partial<Record<string, T>> | undefined {
+  const updates: Partial<Record<string, T>> = {}
+  for (const [key, override] of Object.entries(overrides ?? {})) {
+    if (!override) continue
+    const fills = remapFillNodeReferences(override.fills, resolveNodeId)
+    const strokes = remapFillNodeReferences(override.strokes, resolveNodeId)
+    if (!fills && !strokes) continue
+    updates[key] = { ...override, ...(fills ? { fills } : {}), ...(strokes ? { strokes } : {}) }
+  }
+  return Object.keys(updates).length > 0 ? { ...overrides, ...updates } : undefined
 }
 
 /** Remap PATTERN paint targets whose source nodes were cloned in the same operation. */
@@ -161,6 +199,8 @@ export function remapNodePaintReferences(
   const updates: Partial<SceneNode> = {}
   const fills = remapFillNodeReferences(node.fills, resolveNodeId)
   if (fills) updates.fills = fills
+  const strokes = remapFillNodeReferences(node.strokes, resolveNodeId)
+  if (strokes) updates.strokes = strokes
   const textDecorationFills = remapFillNodeReferences(node.textDecorationFills, resolveNodeId)
   if (textDecorationFills) updates.textDecorationFills = textDecorationFills
 
@@ -191,15 +231,10 @@ export function remapNodePaintReferences(
     if (paths.some((path, index) => path !== geometry[index])) updates[field] = paths
   }
 
-  const overrideEntries = Object.entries(node.stateOverrides ?? {})
-  const stateOverrideEntries = overrideEntries.map(([state, override]) => {
-    const overrideFills = remapFillNodeReferences(override.fills, resolveNodeId)
-    if (!overrideFills) return [state, override]
-    return [state, { ...override, fills: overrideFills }]
-  })
-  if (stateOverrideEntries.some((entry, index) => entry[1] !== overrideEntries[index]?.[1])) {
-    updates.stateOverrides = Object.fromEntries(stateOverrideEntries)
-  }
+  const stateOverrides = remapPaintOverrides(node.stateOverrides, resolveNodeId)
+  if (stateOverrides) updates.stateOverrides = stateOverrides
+  const responsiveOverrides = remapPaintOverrides(node.responsiveOverrides, resolveNodeId)
+  if (responsiveOverrides) updates.responsiveOverrides = responsiveOverrides
   return Object.keys(updates).length > 0 ? updates : null
 }
 
@@ -315,8 +350,9 @@ function copyPropertyDefs(
   defs: ComponentPropertyDefinition[] | undefined
 ): ComponentPropertyDefinition[] {
   return (
-    defs?.map(({ variantOptions, preferredValues, ...definition }) => ({
+    defs?.map(({ variantOptions, preferredValues, slotSettings, ...definition }) => ({
       ...definition,
+      ...(slotSettings !== undefined ? { slotSettings: { ...slotSettings } } : {}),
       ...(variantOptions ? { variantOptions: [...variantOptions] } : {}),
       ...(preferredValues ? { preferredValues: [...preferredValues] } : {})
     })) ?? []
@@ -693,10 +729,15 @@ export function remapNodePrototypeTargets(
 function remapInstanceOverrideValue(
   field: string,
   value: unknown,
-  resolveNodeId: LowcodeNodeIdResolver
+  resolveNodeId: LowcodeNodeIdResolver,
+  remapDefinitions = true
 ): { changed: boolean; value: unknown } {
   if (value === null) return { changed: false, value }
-  if ((field === 'componentId' || field === 'sourceComponentId') && typeof value === 'string') {
+  if (
+    remapDefinitions &&
+    (field === 'componentId' || field === 'sourceComponentId') &&
+    typeof value === 'string'
+  ) {
     const nodeId = resolveNodeId(value)
     return nodeId ? { changed: nodeId !== value, value: nodeId } : { changed: false, value }
   }
@@ -756,7 +797,8 @@ function remapInstanceOverrideKey(
  * descendants. Null values remain explicit tombstones and external references stay intact. */
 export function remapClonedInstanceOverrides(
   node: Pick<SceneNode, 'overrides' | 'instanceOverrides'>,
-  idMap: ReadonlyMap<string, string>
+  idMap: ReadonlyMap<string, string>,
+  remapDefinitions = true
 ): Pick<SceneNode, 'overrides' | 'instanceOverrides'> | null {
   const resolveNodeId = (nodeId: string) => idMap.get(nodeId)
   const overrides: Record<string, unknown> = {}
@@ -764,12 +806,17 @@ export function remapClonedInstanceOverrides(
   let changed = false
   for (const [key, value] of Object.entries(node.overrides)) {
     const remappedKey = remapInstanceOverrideKey(key, idMap)
-    const remappedValue = remapInstanceOverrideValue(remappedKey.field, value, resolveNodeId)
+    const remappedValue = remapInstanceOverrideValue(
+      remappedKey.field,
+      value,
+      resolveNodeId,
+      remapDefinitions
+    )
     overrides[remappedKey.key] = remappedValue.value
     changed ||= remappedKey.changed || remappedValue.changed
   }
   for (const [field, value] of node.instanceOverrides.self) {
-    const remappedValue = remapInstanceOverrideValue(field, value, resolveNodeId)
+    const remappedValue = remapInstanceOverrideValue(field, value, resolveNodeId, remapDefinitions)
     instanceOverrides.self.set(field, remappedValue.value)
     changed ||= remappedValue.changed
   }
@@ -777,7 +824,12 @@ export function remapClonedInstanceOverrides(
     const cloneId = idMap.get(sourceId) ?? sourceId
     const remappedFields = new Map<string, unknown>()
     for (const [field, value] of fields) {
-      const remappedValue = remapInstanceOverrideValue(field, value, resolveNodeId)
+      const remappedValue = remapInstanceOverrideValue(
+        field,
+        value,
+        resolveNodeId,
+        remapDefinitions
+      )
       remappedFields.set(field, remappedValue.value)
       changed ||= remappedValue.changed
     }
@@ -790,7 +842,8 @@ export function remapClonedInstanceOverrides(
 /** Remap references inside the load-time, path-keyed instance override carrier. */
 export function remapPendingInstanceOverrideReferences(
   node: Pick<SceneNode, 'pendingInstanceOverrides'>,
-  idMap: ReadonlyMap<string, string>
+  idMap: ReadonlyMap<string, string>,
+  remapDefinitions = true
 ): Pick<SceneNode, 'pendingInstanceOverrides'> | null {
   if (!node.pendingInstanceOverrides) return null
   const resolveNodeId = (nodeId: string) => idMap.get(nodeId)
@@ -798,7 +851,7 @@ export function remapPendingInstanceOverrideReferences(
   let changed = false
   for (const [key, value] of Object.entries(node.pendingInstanceOverrides)) {
     const field = key.slice(key.lastIndexOf(':') + 1)
-    const remappedValue = remapInstanceOverrideValue(field, value, resolveNodeId)
+    const remappedValue = remapInstanceOverrideValue(field, value, resolveNodeId, remapDefinitions)
     pendingInstanceOverrides[key] = remappedValue.value
     changed ||= remappedValue.changed
   }
@@ -871,6 +924,8 @@ export function cloneNodeProps(
     ...(componentId !== null ? { componentId } : {}),
     ...cloneMotionAndActionProps(src),
     boundVariables: { ...src.boundVariables },
+    variableBindingScales: { ...src.variableBindingScales },
+    variableAssignmentScales: { ...src.variableAssignmentScales },
     variableModes: { ...src.variableModes },
     overrides: Object.keys(src.overrides).length > 0 ? structuredClone(src.overrides) : {},
     instanceOverrides: cloneInstanceOverrideState(src.instanceOverrides),

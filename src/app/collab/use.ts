@@ -1,7 +1,7 @@
 import { tryOnScopeDispose, useLocalStorage } from '@vueuse/core'
 import { computed, ref } from 'vue'
 
-import { createFollowActions, generateRoomId, generateRoomKey } from '@/app/collab/awareness'
+import { generateRoomId, generateRoomKey } from '@/app/collab/awareness'
 import type { DocStateConflictKind } from '@/app/collab/conflict'
 import { createLocalAwarenessActions } from '@/app/collab/local-awareness'
 import {
@@ -24,6 +24,8 @@ import {
 } from '@/app/collab/types'
 import { createYjsGraphSync } from '@/app/collab/yjs-sync'
 import type { EditorStore } from '@/app/editor/active-store'
+import { follow, presenceOf } from '@/app/presence/registry'
+import type { FollowTarget } from '@/app/presence/types'
 
 export { COLLAB_KEY, useCollabInjected } from '@/app/collab/context'
 export { DEFAULT_COLLAB_STATE }
@@ -43,11 +45,11 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
   const state = ref<CollabState>(createInitialCollabState(storedName.value))
   const runtime = createCollabRuntime()
   const remotePeers = computed(() => state.value.peers)
-  const getActiveStore = () => runtime.connectedStore ?? getStore()
+  const getActiveStore = () => runtime.connectedStore.value ?? getStore()
 
-  const { followingPeer, followPeer, resetFollow, tickFollow } = createFollowActions(
-    getActiveStore,
-    () => runtime.awareness
+  const following = computed(() => presenceOf(getActiveStore()).following.value)
+  const followingPeer = computed(() =>
+    following.value?.kind === 'person' ? following.value.clientId : null
   )
   const {
     broadcastAwareness,
@@ -118,12 +120,10 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     state,
     getStore,
     updatePeersList,
-    tickFollow,
     broadcastAwareness,
     applyYjsToGraph,
     applyYjsMotionToGraph,
     syncNodeToYjs,
-    resetFollow,
     flushCursor,
     clearCursorBroadcast
   })
@@ -170,7 +170,9 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     sendPreviewDocState,
     onPreviewDocState,
     setLocalName,
-    followPeer,
-    tickFollow
+    following,
+    follow: (target: FollowTarget | null) => follow(getActiveStore(), target),
+    followPeer: (clientId: number | null) =>
+      follow(getActiveStore(), clientId === null ? null : { kind: 'person', clientId })
   }
 }

@@ -146,7 +146,7 @@ function applyTextProps(node: SceneNode, pen: PenNode, ctx: VarContext): void {
 function resolveSizing(pen: PenNode, ctx: VarContext) {
   const isTextLike = pen.type === 'text' || pen.type === 'icon_font'
   const defaultSize = isTextLike ? 20 : 100
-  const defaultW = isTextLike && pen.width === undefined ? 10_000 : defaultSize
+  const defaultW = isTextLike && pen.width === undefined ? 0 : defaultSize
   const w = parseSize(pen.width, defaultW, ctx)
   const h = parseSize(pen.height, defaultSize, ctx)
   const layout = mapLayoutMode(pen)
@@ -276,8 +276,11 @@ function createSceneNode(
     applyTextProps(node, pen, ctx)
     if (parentLayout === 'NONE' && pen.width === undefined && !pen.textGrowth) {
       node.textAutoResize = 'NONE'
-      node.width = node.text.length * node.fontSize * 0.65
+      node.width = estimateTextWidth(node)
       node.height = node.fontSize * (node.lineHeight ? node.lineHeight / node.fontSize : 1.2)
+    } else if (pen.width === undefined) {
+      // Headless layout keeps stored sizes, so an omitted width starts from the content.
+      node.width = estimateTextWidth(node)
     }
   }
 
@@ -478,12 +481,8 @@ function fixInstanceWidths(graph: SceneGraph): void {
   }
 }
 
-function fixTextWidths(graph: SceneGraph): void {
-  for (const node of graph.getAllNodes()) {
-    if (node.type !== 'TEXT' || !node.text || node.text.length <= 1) continue
-    if (node.width >= node.fontSize * 2) continue
-    node.width = node.text.length * node.fontSize * 0.65
-  }
+function estimateTextWidth(node: SceneNode): number {
+  return node.text.length * node.fontSize * 0.65
 }
 
 export interface ParsePenFileOptions {
@@ -494,6 +493,8 @@ export function parsePenFile(json: string, options: ParsePenFileOptions = {}): S
   const limits = options.limits ? resolvePenParseLimits(options.limits) : undefined
   const doc = parsePenDocument(json, limits)
   const graph = new SceneGraph(limits ? { maxNodes: limits.maxExpandedNodes } : {})
+  // PEN has no color-space discriminator; preserve the BASE/official sRGB interpretation.
+  graph.documentColorSpace = 'srgb'
 
   for (const page of graph.getPages(true)) {
     graph.deleteNode(page.id)
@@ -524,7 +525,6 @@ export function parsePenFile(json: string, options: ParsePenFileOptions = {}): S
   assertExpandedGraphShape(graph, limits)
   resolveThemeVariables(doc.children, graph, ctx)
   fixInstanceWidths(graph)
-  fixTextWidths(graph)
   registerPenSource(graph, doc, json)
 
   if (graph.getPages(true).length === 0) {

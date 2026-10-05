@@ -51,5 +51,9 @@
   "applicationStateRetentionUnset": "Nie ustawiono (dotychczasowe zachowanie)",
   "applicationStateRetentionReset": "Resetuj przy każdej wizycie",
   "applicationStateRetentionPreserve": "Zachowaj podczas tej sesji",
-  "applicationStateRetentionHint": "React/Vue zachowują powiązany stan strony i pozycję przewijania dla każdej konkretnej ścieżki i zapytania podczas tej sesji działania. Ponowne wczytanie rozpoczyna nową sesję."
+  "applicationStateRetentionHint": "React/Vue zachowują powiązany stan strony i pozycję przewijania dla każdej konkretnej ścieżki i zapytania podczas tej sesji działania. Ponowne wczytanie rozpoczyna nową sesję.",
+  "pages": "Strony",
+  "goToPage": "Przejdź do strony…",
+  "recentPage": "Ostatnio otwarta",
+  "currentPage": "Bieżąca strona"
 }

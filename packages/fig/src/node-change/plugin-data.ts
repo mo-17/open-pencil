@@ -1,18 +1,26 @@
+import { omit } from 'es-toolkit/object'
+
 import type { NodeChange, PluginData, PluginRelaunchData } from '@open-pencil/kiwi/fig/codec'
 import { guidToString } from '@open-pencil/kiwi/fig/guid'
 import {
   clampExportScale,
+  isExportFormatId,
   type ExportFormatId,
   type ExportSetting,
   type PluginDataEntry,
   type PluginRelaunchDataEntry,
   type SceneNode
 } from '@open-pencil/scene-graph'
-import type { Rect } from '@open-pencil/scene-graph/primitives'
+import type { GUID, Rect } from '@open-pencil/scene-graph/primitives'
 
 import { FIGMA_MOTION_SHARED_KEY, FIGMA_MOTION_SHARED_NAMESPACE } from '../motion-native'
 import { readEffectiveFigmaRawField } from '../source-metadata'
-import { resolveVariableConsumptionEntry } from './variable-bindings'
+import {
+  resolveVariableConsumptionEntry,
+  variableConsumptionEntries,
+  VARIABLE_BINDING_FIELDS_INVERSE,
+  referencesVariable
+} from './variable/bindings'
 
 export const OPEN_PENCIL_PLUGIN_ID = 'open-pencil'
 export const TEXT_DIRECTION_PLUGIN_KEY = 'textDirection'
@@ -41,6 +49,12 @@ export function upsertPluginData(
   )
   pluginData.push({ pluginId: OPEN_PENCIL_PLUGIN_ID, key, value })
   node.pluginData = pluginData
+}
+
+export function removePluginData(node: { pluginData: PluginDataEntry[] }, key: string): void {
+  node.pluginData = node.pluginData.filter(
+    (entry) => !(entry.pluginId === OPEN_PENCIL_PLUGIN_ID && entry.key === key)
+  )
 }
 
 export function applyExportSettingsPluginData(
@@ -116,34 +130,58 @@ function parseBoundVariablesPluginValue(value: string | null): Record<string, st
 }
 
 export function extractBoundVariables(nc: NodeChange): Record<string, string> {
-  const bindings = parseBoundVariablesPluginValue(
+  let bindings = parseBoundVariablesPluginValue(
     getOpenPencilPluginValue(nc, BOUND_VARIABLES_PLUGIN_KEY)
   )
-  for (const entry of nc.variableConsumptionMap?.entries ?? []) {
+  for (const entry of variableConsumptionEntries(nc)) {
     const binding = resolveVariableConsumptionEntry(entry)
     if (binding) bindings[binding.field] = binding.variableId
+    else if (entry.variableField && !referencesVariable(entry.variableData?.dataType)) {
+      const field = VARIABLE_BINDING_FIELDS_INVERSE[entry.variableField]
+      if (field) bindings = omit(bindings, [field])
+    }
   }
-  nc.fillPaints?.forEach((paint, i) => {
-    const variableGuid =
-      paint.colorVariableBinding?.variableID ?? paint.colorVar?.value?.alias?.guid
-    if (variableGuid) bindings[`fills/${i}/color`] = guidToString(variableGuid)
-    paint.stopsVar?.forEach((stop, stopIndex) => {
-      const guid = stop.colorVar?.value?.alias?.guid
-      if (guid) bindings[`fills/${i}/gradientStops/${stopIndex}/color`] = guidToString(guid)
-    })
-  })
-  nc.strokePaints?.forEach((paint, i) => {
-    const variableGuid =
-      paint.colorVariableBinding?.variableID ?? paint.colorVar?.value?.alias?.guid
-    if (variableGuid) bindings[`strokes/${i}/color`] = guidToString(variableGuid)
-  })
+  extractPaintBindings(nc, bindings)
   return bindings
 }
 
-function isExportFormatId(value: unknown): value is ExportFormatId {
-  return (
-    value === 'png' || value === 'jpg' || value === 'webp' || value === 'svg' || value === 'pdf'
+function extractPaintBindings(nc: NodeChange, bindings: Record<string, string>): void {
+  for (const [arrayKey, paints] of [
+    ['fills', nc.fillPaints],
+    ['strokes', nc.strokePaints]
+  ] as const) {
+    for (const [i, paint] of (paints ?? []).entries()) {
+      const variableGuid =
+        validPaintGuid(paint.colorVar?.value?.alias?.guid) ?? legacyPaintGuid(paint)
+      if (variableGuid) bindings[`${arrayKey}/${i}/color`] = guidToString(variableGuid)
+      for (const [stopIndex, stop] of (paint.stopsVar ?? []).entries()) {
+        const guid = stop.colorVar?.value?.alias?.guid
+        if (guid) bindings[`${arrayKey}/${i}/gradientStops/${stopIndex}/color`] = guidToString(guid)
+      }
+    }
+  }
+}
+
+function validPaintGuid(value: unknown): GUID | undefined {
+  if (!value || typeof value !== 'object' || !('sessionID' in value) || !('localID' in value))
+    return undefined
+  const { sessionID, localID } = value
+  if (typeof sessionID !== 'number' || typeof localID !== 'number') return undefined
+  if (
+    !Number.isSafeInteger(sessionID) ||
+    !Number.isSafeInteger(localID) ||
+    sessionID < 0 ||
+    localID < 0
   )
+    return undefined
+  return { sessionID, localID }
+}
+
+function legacyPaintGuid(paint: object): GUID | undefined {
+  if (!('colorVariableBinding' in paint)) return undefined
+  const binding = paint.colorVariableBinding
+  if (!binding || typeof binding !== 'object' || !('variableID' in binding)) return undefined
+  return validPaintGuid(binding.variableID)
 }
 
 function parseExportSettingsPluginValue(value: string | null): ExportSetting[] | null {

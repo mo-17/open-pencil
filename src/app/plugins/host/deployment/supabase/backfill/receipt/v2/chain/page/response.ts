@@ -1,3 +1,4 @@
+import { isValid, fromUint8Array, toUint8Array } from 'js-base64'
 /* oxlint-disable eslint(max-lines), eslint(complexity) -- Strict response decoding, canonical Receipt binding, and fail-closed page classification form one audit boundary. */
 
 import {
@@ -649,22 +650,14 @@ function decodeCanonicalBase64(value: unknown, expectedByteLength: number): Uint
     value.length > SUPABASE_BACKFILL_RECEIPT_V2_MAX_BASE64_CHARACTERS_PER_RECEIPT ||
     value.length !== 4 * Math.ceil(expectedByteLength / 3) ||
     value.length % 4 !== 0 ||
-    !STANDARD_BASE64.test(value)
+    !STANDARD_BASE64.test(value) ||
+    !isValid(value)
   ) {
     return fail('supabase-backfill-receipt-v2-chain-page-response-receipt-invalid')
   }
-  let binary: string
-  try {
-    binary = atob(value)
-  } catch {
+  const bytes = toUint8Array(value)
+  if (fromUint8Array(bytes) !== value || bytes.length !== expectedByteLength) {
     return fail('supabase-backfill-receipt-v2-chain-page-response-receipt-invalid')
-  }
-  if (btoa(binary) !== value || binary.length !== expectedByteLength) {
-    return fail('supabase-backfill-receipt-v2-chain-page-response-receipt-invalid')
-  }
-  const bytes = new Uint8Array(binary.length)
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index)
   }
   return bytes
 }

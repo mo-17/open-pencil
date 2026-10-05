@@ -99,7 +99,7 @@ describe('useFontSettings', () => {
     expect(calls).toEqual(['clear', 'summary'])
     expect(settings.cacheCount.value).toBe(0)
     expect(settings.cacheSize.value).toBe('0 MB')
-    expect(settings.status.value).toBe('Font cache cleared.')
+    expect(settings.status.value).toBe('Downloaded font cache cleared.')
   })
 
   test('imports a font file and refreshes the shared cache summary', async () => {

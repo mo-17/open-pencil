@@ -157,6 +157,18 @@ describe('Tauri font helpers', () => {
     expect(fontManager.retainedDataCount('Concurrent System UI')).toBe(1)
   })
 
+  test('records installed faces whose outlines cannot be drawn', async () => {
+    await mockTauriIPC((cmd) => {
+      expect(cmd).toBe('load_system_font')
+      throw { code: 'unsupported-format', message: 'Font outlines are in an unsupported format' }
+    })
+    await import('@/app/editor/fonts')
+
+    await expect(fontManager.loadLocalFont('Undrawable Sans', 'Regular')).resolves.toBeNull()
+    expect(fontManager.unavailableReason('Undrawable Sans', 'Regular')).toBe('unsupported-format')
+    expect(fontManager.unavailableReason('Undrawable Sans', 'Bold')).toBeNull()
+  })
+
   test('falls back to font manager loading when the system font command fails', async () => {
     await mockTauriIPC((cmd) => {
       expect(cmd).toBe('load_system_font')
@@ -168,7 +180,7 @@ describe('Tauri font helpers', () => {
     const { loadFont } = await import('@/app/editor/fonts')
 
     await expect(loadFont('Missing Family', 'Regular')).resolves.toBe(fallback)
-    expect(loadFontSpy).toHaveBeenCalledWith('Missing Family', 'Regular', '', undefined)
+    expect(loadFontSpy).toHaveBeenCalledWith('Missing Family', 'Regular', '', {})
   })
 
   test('rolls back a staged manifest when persistence commits before its acknowledgement fails', async () => {

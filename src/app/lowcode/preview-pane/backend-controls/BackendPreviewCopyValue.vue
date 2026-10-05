@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { useClipboard } from '@vueuse/core'
-import { useI18n } from '@open-pencil/vue'
 import { computed, ref } from 'vue'
+
+import { useI18n } from '@open-pencil/vue'
 
 import { backendPreviewCopy } from './copy'
 
@@ -46,8 +47,7 @@ async function copyValue() {
     <pre
       v-if="multiline"
       class="max-h-48 select-text overflow-auto rounded border border-border bg-input p-3 text-xs text-surface"
-      >{{ value }}</pre
-    >
+      >{{ value }}</pre>
     <code
       v-else
       class="block select-text break-all rounded border border-border bg-input px-3 py-2 leading-relaxed text-surface"

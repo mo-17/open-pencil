@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { DocumentStateDef, StateValueType } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceConflictBanner } from '@/app/editor/presence/use-presence-conflict-banner'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
+import { useSectionUI } from '@/components/ui/section'
+
 import { STATE_VALUE_TYPES, defaultAsString, useStateRowEditor } from './state-row-editor'
 
 const editor = useEditorStore()

@@ -1,3 +1,5 @@
+import { fromUint8Array } from 'js-base64'
+
 import { inspectImageBytes } from '@open-pencil/scene-graph'
 
 import { failBrowserPreview } from './error'
@@ -229,16 +231,6 @@ function mimeType(path: string): string | null {
   return IMAGE_MIME_TYPES[ext] ?? FONT_MIME_TYPES[ext] ?? null
 }
 
-function base64(bytes: Uint8Array): string {
-  let binary = ''
-  const chunkSize = 0x8000
-  for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
-    const chunk = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.byteLength))
-    for (const byte of chunk) binary += String.fromCharCode(byte)
-  }
-  return btoa(binary)
-}
-
 export class BrowserPreviewAssetRegistry {
   readonly #cache = new Map<string, string>()
   #encodedBytes = 0
@@ -312,7 +304,7 @@ export class BrowserPreviewAssetRegistry {
         path
       )
     }
-    const url = `data:${type};base64,${base64(bytes)}`
+    const url = `data:${type};base64,${fromUint8Array(bytes)}`
     this.#cache.set(path, url)
     return url
   }

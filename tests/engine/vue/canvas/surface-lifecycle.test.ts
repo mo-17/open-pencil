@@ -270,11 +270,16 @@ test('page presentation waits for retained content and accepts the live-render f
   renderer.sceneBackingNeedsCrispRender = true
   expect(manager.renderNow()).toBe(true)
   expect(onPresented).not.toHaveBeenCalled()
+  expect(canvas.dataset.renderPending).toBe('1')
+  expect(canvas.dataset.sceneVersion).toBeUndefined()
 
   renderer.sceneBackingBuild = null
   renderer.sceneBackingNeedsCrispRender = false
   expect(manager.renderNow()).toBe(true)
   expect(onPresented).toHaveBeenLastCalledWith({ renderVersion: 8, sceneVersion: 5 })
+  expect(canvas.dataset.renderPending).toBe('0')
+  expect(canvas.dataset.renderVersion).toBe('8')
+  expect(canvas.dataset.sceneVersion).toBe('5')
 
   onPresented.mockClear()
   renderer.sceneBackingAllocationFailed = true

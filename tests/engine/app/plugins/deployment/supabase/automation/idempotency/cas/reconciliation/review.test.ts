@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- focused suite audits the complete fixed review boundary */
 import { describe, expect, test } from 'bun:test'
 
+import { fromUint8Array } from 'js-base64'
+
 import {
   BACKEND_AUTOMATION_IDEMPOTENCY_RECORD_FORMAT,
   createBackendAutomationIdempotencyCASProposal,
@@ -77,10 +79,8 @@ async function rawDigest(value: string): Promise<{ base64url: string; hex: strin
   const bytes = new Uint8Array(
     await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
   )
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
   return {
-    base64url: btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, ''),
+    base64url: fromUint8Array(bytes, true),
     hex: [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
   }
 }

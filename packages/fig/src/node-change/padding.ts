@@ -1,6 +1,6 @@
 import type { SceneNode } from '@open-pencil/scene-graph'
 
-import type { KiwiNodeChange } from './export-node'
+import type { KiwiNodeChange } from './export/node'
 
 function preserveTrailingPadding(
   explicitValue: number | undefined,

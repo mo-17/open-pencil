@@ -21,8 +21,15 @@ export { toolsToAI, buildDebugLog, serializeToolMutation } from './ai-adapter'
 export type { ToolExecution, ToolCapability } from './schema'
 export { isAtomicTool, isToolExposed, type ToolInterface, type ToolExposure } from './schema'
 export { toolNumber } from './input'
-export type { ToolLogEntry, ToolDebugLog, AIAdapterOptions, StepBudget } from './ai-adapter'
-export { calcClusterConfidence, wrapEvalCode } from './analyze'
+export type {
+  ToolLogEntry,
+  ToolDebugLog,
+  AIAdapterOptions,
+  AIAdapterExecutionContext,
+  StepBudget
+} from './ai-adapter'
+export { calcClusterConfidence, diffDocuments, diffPageLayersJSX, wrapEvalCode } from './analyze'
+export type { DocumentDiff, DocumentDiffOptions, LayerJSXChange } from './analyze'
 export {
   VALID_OVERLAP_CATEGORIES,
   VALID_OVERLAP_SCOPES,

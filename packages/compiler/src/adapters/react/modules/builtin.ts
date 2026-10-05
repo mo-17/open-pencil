@@ -5,6 +5,7 @@ import { AVATAR_COMPILER_MODULE_LOWERER } from '#compiler/modules/avatar'
 import { BADGE_COMPILER_MODULE_LOWERER } from '#compiler/modules/badge'
 import { BREADCRUMB_COMPILER_MODULE_LOWERER } from '#compiler/modules/breadcrumb'
 import { CAROUSEL_COMPILER_MODULE_LOWERER } from '#compiler/modules/carousel'
+import { CASCADER_COMPILER_MODULE_LOWERER } from '#compiler/modules/cascader'
 import { CHART_COMPILER_MODULE_LOWERER } from '#compiler/modules/chart'
 import { CHIP_COMPILER_MODULE_LOWERER } from '#compiler/modules/chip'
 import { CODE_BLOCK_COMPILER_MODULE_LOWERER } from '#compiler/modules/code-block'
@@ -39,7 +40,6 @@ import { TREE_COMPILER_MODULE_LOWERER } from '#compiler/modules/tree'
 import { UPLOAD_BUTTON_COMPILER_MODULE_LOWERER } from '#compiler/modules/upload-button'
 import { VIDEO_COMPILER_MODULE_LOWERER } from '#compiler/modules/video'
 import { VR_TOUR_COMPILER_MODULE_LOWERER } from '#compiler/modules/vr-tour'
-import { CASCADER_COMPILER_MODULE_LOWERER } from '#compiler/modules/cascader'
 import { WALKTOUR_COMPILER_MODULE_LOWERER } from '#compiler/modules/walktour'
 
 import { ACCORDION_REACT_MODULE_ADAPTER } from './accordion'
@@ -49,6 +49,7 @@ import { AVATAR_REACT_MODULE_ADAPTER } from './avatar'
 import { BADGE_REACT_MODULE_ADAPTER } from './badge'
 import { BREADCRUMB_REACT_MODULE_ADAPTER } from './breadcrumb'
 import { CAROUSEL_REACT_MODULE_ADAPTER } from './carousel'
+import { CASCADER_REACT_MODULE_ADAPTER } from './cascader'
 import { CHART_REACT_MODULE_ADAPTER } from './chart'
 import { CHIP_REACT_MODULE_ADAPTER } from './chip'
 import { CODE_BLOCK_REACT_MODULE_ADAPTER } from './code-block'
@@ -82,7 +83,6 @@ import { TREE_REACT_MODULE_ADAPTER } from './tree'
 import { UPLOAD_BUTTON_REACT_MODULE_ADAPTER } from './upload-button'
 import { VIDEO_REACT_MODULE_ADAPTER } from './video'
 import { VR_TOUR_REACT_MODULE_ADAPTER } from './vr-tour'
-import { CASCADER_REACT_MODULE_ADAPTER } from './cascader'
 import { WALKTOUR_REACT_MODULE_ADAPTER } from './walktour'
 
 /** React-owned target registry. It deliberately mirrors the neutral lowerer
@@ -252,5 +252,8 @@ export const BUILTIN_REACT_MODULE_REGISTRY = new CompilerModuleRegistry()
     lowerer: WALKTOUR_COMPILER_MODULE_LOWERER,
     targets: { react: WALKTOUR_REACT_MODULE_ADAPTER }
   })
-  .register({ lowerer: CASCADER_COMPILER_MODULE_LOWERER, targets: { react: CASCADER_REACT_MODULE_ADAPTER } })
+  .register({
+    lowerer: CASCADER_COMPILER_MODULE_LOWERER,
+    targets: { react: CASCADER_REACT_MODULE_ADAPTER }
+  })
   .freeze()

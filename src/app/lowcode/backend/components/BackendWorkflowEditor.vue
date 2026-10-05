@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+
 import {
   BACKEND_LIMITS,
   type BackendApplicationSpecV1,
   type BackendWorkflowDefinitionIR
 } from '@open-pencil/lowcode/backend'
 import { useI18n } from '@open-pencil/vue'
+
 import { BackendDraftOperationError, addBackendWorkflow, removeBackendWorkflow } from '../draft'
-import BackendWorkflowStepsEditor from './BackendWorkflowStepsEditor.vue'
 import BackendWorkflowEnvironmentEditor from './BackendWorkflowEnvironmentEditor.vue'
+import BackendWorkflowStepsEditor from './BackendWorkflowStepsEditor.vue'
 
 const { application } = defineProps<{ application: BackendApplicationSpecV1 }>()
 const { panels } = useI18n()

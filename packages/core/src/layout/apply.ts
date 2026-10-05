@@ -7,6 +7,7 @@ import { resolveTabsContent } from '#core/plugins/content/tabs'
 
 import { usesDetachedDerivedLayout } from './derived'
 import type { LayoutGraph } from './graph'
+import { preservesImportedInstanceLayout } from './imported-instance'
 
 export type ComputeLayoutFn = (graph: LayoutGraph, frameId: string) => void
 export type LayoutApplyStep = 'work' | 'atomic'
@@ -147,10 +148,6 @@ function updateChildFromYoga(graph: LayoutGraph, child: SceneNode, yogaChild: Yo
   })
 }
 
-function preservesImportedInstanceInternals(child: SceneNode): boolean {
-  return child.type === 'INSTANCE' && child.source.format === 'fig'
-}
-
 function* recomputeGridChildSteps(
   graph: LayoutGraph,
   child: SceneNode,
@@ -205,7 +202,7 @@ export function* applyYogaLayoutSteps(
     yield 'work'
 
     if (!child.visible) continue
-    if (preservesImportedInstanceInternals(child)) continue
+    if (preservesImportedInstanceLayout(graph, child)) continue
     if (resolveTabsContent(graph, child) || resolveModalContent(graph, child)) {
       yield* computeLayoutSteps(graph, child.id)
       continue

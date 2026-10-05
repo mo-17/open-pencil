@@ -4,9 +4,10 @@ import { computed, useAttrs } from 'vue'
 import type { ActionDef, DocumentStateDef, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
-import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
 import { makeAction } from '@/app/lowcode/action/factory'
 import type { ServerWorkflowOption } from '@/app/lowcode/action/server-workflow-options'
+import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
+
 // Mutually recursive with ActionRow (a list renders rows, a row renders nested
 // branch lists) — intentional cycle, resolved lazily at render time.
 // eslint-disable-next-line import/no-cycle

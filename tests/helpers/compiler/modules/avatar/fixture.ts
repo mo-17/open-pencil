@@ -1,3 +1,5 @@
+import { toUint8Array } from 'js-base64'
+
 import { compile, withDefaults, type CompilerTarget } from '@open-pencil/compiler'
 import { SceneGraph, type Fill } from '@open-pencil/scene-graph'
 
@@ -6,8 +8,9 @@ import { createAvatarModuleFrameOverrides } from '#core/plugins/avatar'
 // Tiny local PNG fixture; no downloaded media or font dependency.
 export const AVATAR_PNG = Uint8Array.from(
   Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8Dwn4GBgYGJAQoAHhgCARZ1mJMAAAAASUVORK5CYII=',
-    'base64'
+    toUint8Array(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8Dwn4GBgYGJAQoAHhgCARZ1mJMAAAAASUVORK5CYII='
+    )
   )
 )
 export function avatarImageFill(imageHash = 'avatar-fixture'): Fill {

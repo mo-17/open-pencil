@@ -6,15 +6,11 @@ import {
 } from '@open-pencil/scene-graph'
 
 import {
-  clearLazyFigImportContext,
-  getLazyFigImportContext,
-  setLazyFigImportContext
-} from '#core/kiwi/fig/lazy-import'
-import {
   deserializeSceneGraph,
   serializeSceneGraph,
   type SerializedSceneGraph
 } from '#core/kiwi/fig/parse/transfer'
+import { copyReaderState } from '#core/kiwi/fig/session/document-state'
 
 import type { AIShadowDraftLimits } from './types'
 
@@ -59,7 +55,9 @@ export function resolveAIShadowDraftLimits(
 function totalBinaryBytes(data: SerializedSceneGraph): number {
   let total = data.figSchemaDeflated?.byteLength ?? 0
   for (const [, bytes] of data.images) total += bytes.byteLength
-  for (const bytes of data.lazyFigImport?.blobs ?? []) total += bytes.byteLength
+  const input = data.figReader?.input
+  if (input && 'bytes' in input) total += input.bytes.byteLength
+  else if (input) for (const bytes of input.blobs) total += bytes.byteLength
   return total
 }
 
@@ -142,9 +140,7 @@ export function adoptDetachedGraphSnapshot(
   target.figMessageObjectAnimations = source.figMessageObjectAnimations
   target.documentColorSpace = source.documentColorSpace
   target.positionPreviewVersion = source.positionPreviewVersion
-  const lazy = getLazyFigImportContext(source)
-  if (lazy) setLazyFigImportContext(target, lazy)
-  else clearLazyFigImportContext(target)
+  copyReaderState(source, target)
   target.clearAbsPosCache()
 }
 
@@ -171,7 +167,6 @@ async function binaryEntries(
 }
 
 async function digestPayload(data: SerializedSceneGraph): Promise<unknown> {
-  const lazy = data.lazyFigImport
   return {
     rootId: data.rootId,
     nodes: sortedEntries(data.nodes),
@@ -189,17 +184,26 @@ async function digestPayload(data: SerializedSceneGraph): Promise<unknown> {
       : null,
     figMessageObjectAnimations: data.figMessageObjectAnimations,
     documentColorSpace: data.documentColorSpace,
-    lazyFigImport: lazy
+    figReader: data.figReader
       ? {
-          changeMap: sortedEntries(lazy.changeMap),
-          guidToNodeId: sortedEntries(lazy.guidToNodeId),
-          blobs: await Promise.all(
-            lazy.blobs.map(async (bytes) => ({
-              byteLength: bytes.byteLength,
-              digest: await binaryDigest(bytes)
-            }))
-          ),
-          populatedRootIds: [...lazy.populatedRootIds].sort()
+          checkpoint: data.figReader.checkpoint,
+          diagnostics: data.figReader.diagnostics,
+          archiveLimits: data.figReader.archiveLimits,
+          input:
+            'bytes' in data.figReader.input
+              ? {
+                  digest: await binaryDigest(new Uint8Array(data.figReader.input.bytes)),
+                  byteLength: data.figReader.input.bytes.byteLength
+                }
+              : {
+                  records: data.figReader.input.records,
+                  blobs: await Promise.all(
+                    data.figReader.input.blobs.map(async (bytes) => ({
+                      byteLength: bytes.byteLength,
+                      digest: await binaryDigest(bytes)
+                    }))
+                  )
+                }
         }
       : null
   }

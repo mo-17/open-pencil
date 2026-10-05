@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { encode, fromUint8Array } from 'js-base64'
+
 import { createAIPopoutController, type AIPopoutView } from '@/app/ai-popout/controller'
 import {
   installAIPopoutReceiver,
@@ -38,9 +40,7 @@ function projection(overrides: Partial<AIPopoutProjection> = {}): AIPopoutProjec
 
 function base64(value: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(value))
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary)
+  return fromUint8Array(bytes)
 }
 
 function payload(revision: number, value = projection()) {
@@ -70,7 +70,7 @@ describe('AI popout native payload', () => {
       { ...valid, envelope: '' },
       { ...valid, envelope: 'e30' },
       { ...valid, envelope: base64([]) },
-      { ...valid, envelope: btoa('not json') },
+      { ...valid, envelope: encode('not json') },
       { ...valid, controls: { toolbar: true } },
       { ...valid, controls: { ...DEFAULT_AI_POPOUT_CONTROLS, extra: true } },
       payload(1, { ...projection(), messages: [], unexpected: true } as AIPopoutProjection)
@@ -83,7 +83,7 @@ describe('AI popout native payload', () => {
     expect(() =>
       parseAIPopoutPayload({
         ...payload(1),
-        envelope: btoa(String.fromCharCode(0xff, 0xfe, 0xfd))
+        envelope: fromUint8Array(Uint8Array.of(0xff, 0xfe, 0xfd))
       })
     ).toThrow()
   })

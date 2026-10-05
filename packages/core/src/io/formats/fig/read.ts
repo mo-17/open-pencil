@@ -1,22 +1,27 @@
-import { assertFigArchiveByteLength, parseFigBuffer, type FigArchiveLimits } from '@open-pencil/fig'
+import {
+  assertFigArchiveByteLength,
+  type FigArchiveLimits,
+  type FigSessionCheckpoint
+} from '@open-pencil/fig'
 import type { FigPageManifestEntry } from '@open-pencil/kiwi/fig'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { DynamicConcurrencyLimiter, type ConcurrencyLimiterState } from '#core/async-work'
 import { IS_BROWSER } from '#core/constants'
-import { importNodeChanges } from '#core/kiwi/fig/import'
-import { createFigParseWorker } from '#core/kiwi/fig/parse/client'
 import { deserializeSceneGraph, type SerializedSceneGraph } from '#core/kiwi/fig/parse/transfer'
 import {
   registerFigPopulationWorker,
   registerOriginalArchiveRequest,
   releaseFigPopulationWorker
 } from '#core/kiwi/fig/population/client'
+import { createFigSessionWorker } from '#core/kiwi/fig/session/client'
 import {
-  createFigSessionOriginalArchiveRequester,
-  createFigSessionWorker
-} from '#core/kiwi/fig/session/client'
+  registerReaderRecovery,
+  isReaderPagePending,
+  registerReaderSession
+} from '#core/kiwi/fig/session/document-state'
 import type { FigSessionResponse } from '#core/kiwi/fig/session/protocol'
+import { openReaderSession } from '#core/kiwi/fig/session/reader'
 
 export interface ParseFigFileOptions {
   populate?: 'all' | 'first-page' | 'none'
@@ -90,28 +95,14 @@ async function declaredFigSourceSize(source: ReloadableFigSource): Promise<numbe
 }
 
 function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}): SceneGraph {
-  const {
-    nodeChanges,
-    blobs,
-    images: imageEntries,
-    figKiwiVersion,
-    figSchemaDeflated,
-    objectAnimations
-  } = parseFigBuffer(buffer, {
-    limits: options.archiveLimits,
-    onPages: options.onPages
-  })
-  const graph = importNodeChanges(nodeChanges, blobs, new Map(imageEntries), {
-    populate: options.populate,
-    maxGraphNodes: options.archiveLimits?.maxGraphNodes,
-    maxTreeDepth: options.archiveLimits?.maxTreeDepth
-  })
-  graph.figKiwiVersion = figKiwiVersion
-  graph.figSchemaDeflated = figSchemaDeflated
-  graph.figMessageObjectAnimations = objectAnimations
-  const originalArchive = new Uint8Array(buffer.slice(0))
-  registerOriginalArchiveRequest(graph, async () => originalArchive.slice())
-  return graph
+  throwIfFigParseAborted(options.signal)
+  const reader = openReaderSession(buffer, options.populate, options.archiveLimits)
+  options.onPages?.(reader.pages)
+  throwIfFigParseAborted(options.signal)
+  const original = buffer.slice(0)
+  registerReaderSession(original, reader.session, reader.diagnostics, options.archiveLimits)
+  registerOriginalArchiveRequest(reader.graph, async () => new Uint8Array(original.slice(0)))
+  return reader.graph
 }
 
 interface WorkerGraphResult {
@@ -187,112 +178,15 @@ function transferableFigBuffer(data: FigSourceData): ArrayBuffer {
   return copy.buffer
 }
 
-interface WorkerPageManifestResult {
-  type: 'page-manifest'
-  pages: FigPageManifestEntry[]
-}
-
-type WorkerParseResult = WorkerGraphResult | WorkerPageManifestResult
-
-function parseViaWorker(buffer: ArrayBuffer, options: ParseFigFileOptions): Promise<SceneGraph> {
+export function parseFigFileViaWorker(
+  buffer: ArrayBuffer,
+  options: ParseFigFileOptions
+): Promise<SceneGraph> {
   const pending = figParseWorkerLimiter.run(() => {
     throwIfFigParseAborted(options.signal)
-    return parseViaStartedWorker(buffer, options)
+    return parseViaStartedSessionWorker(buffer, options)
   })
   return abortableFigParse(pending, options.signal)
-}
-
-function parseViaStartedWorker(
-  buffer: ArrayBuffer,
-  options: ParseFigFileOptions
-): Promise<SceneGraph> {
-  return options.populate === 'first-page'
-    ? parseViaStartedSessionWorker(buffer, options)
-    : parseViaStartedLegacyWorker(buffer, options)
-}
-
-function parseViaStartedLegacyWorker(
-  buffer: ArrayBuffer,
-  options: ParseFigFileOptions
-): Promise<SceneGraph> {
-  return new Promise((resolve, reject) => {
-    const originalArchive = new Uint8Array(buffer.slice(0))
-    const worker = createFigParseWorker()
-    let settled = false
-    const abort = () => fail(figParseAbortReason(options.signal))
-
-    const cleanup = () => {
-      options.signal?.removeEventListener('abort', abort)
-    }
-
-    const fail = (error: unknown) => {
-      if (settled) return
-      settled = true
-      cleanup()
-      worker.terminate()
-      reject(workerParseError(error))
-    }
-
-    const succeed = (graph: SceneGraph) => {
-      if (settled) return
-      registerOriginalArchiveRequest(graph, async () => originalArchive.slice())
-      worker.terminate()
-      settled = true
-      cleanup()
-      resolve(graph)
-    }
-
-    worker.onmessage = (e: MessageEvent<WorkerParseResult>) => {
-      if (e.data.type === 'page-manifest') {
-        try {
-          options.onPages?.(e.data.pages)
-        } catch (error) {
-          fail(error)
-        }
-        return
-      }
-      if (typeof e.data.error === 'string') {
-        fail(
-          isDeterministicWorkerPhase(e.data.phase)
-            ? new DeterministicFigWorkerError(e.data.error, e.data.phase)
-            : new Error(e.data.error)
-        )
-        return
-      }
-      if (!e.data.graph) {
-        fail(new Error('Worker failed to parse .fig file'))
-        return
-      }
-      try {
-        succeed(deserializeSceneGraph(e.data.graph))
-      } catch (error) {
-        fail(error)
-      }
-    }
-    worker.onerror = (err) => {
-      fail(new Error(err.message || 'Worker failed to parse .fig file'))
-    }
-
-    worker.onmessageerror = () => {
-      fail(new Error('Worker .fig parse response could not be deserialized'))
-    }
-
-    if (options.signal?.aborted) {
-      fail(figParseAbortReason(options.signal))
-      return
-    }
-    options.signal?.addEventListener('abort', abort, { once: true })
-
-    try {
-      const workerOptions = {
-        populate: options.populate,
-        archiveLimits: options.archiveLimits
-      }
-      worker.postMessage({ buffer, options: workerOptions }, [buffer])
-    } catch (error) {
-      fail(error)
-    }
-  })
 }
 
 function parseViaStartedSessionWorker(
@@ -329,20 +223,31 @@ function parseViaStartedSessionWorker(
       disposeSession()
       reject(workerParseError(error))
     }
-    const succeed = (serialized: SerializedSceneGraph) => {
+    const succeed = (
+      serialized: SerializedSceneGraph,
+      checkpoint?: FigSessionCheckpoint,
+      recoveryBuffer?: ArrayBuffer
+    ) => {
       if (settled) return
       let graph: SceneGraph | undefined
-      let archiveRequester: ReturnType<typeof createFigSessionOriginalArchiveRequester> | undefined
       // Remove the one-shot open handlers before the retained session clients
       // install their own worker/port failure handlers.
       cleanup()
       try {
         graph = deserializeSceneGraph(serialized)
-        archiveRequester = createFigSessionOriginalArchiveRequester(worker, port)
-        registerOriginalArchiveRequest(graph, archiveRequester.request, archiveRequester.dispose)
-        registerFigPopulationWorker(graph, worker, port)
+        if (!checkpoint) throw new Error('Missing reader checkpoint')
+        if (!recoveryBuffer) throw new Error('Missing reader source archive')
+        registerReaderRecovery(graph, recoveryBuffer, checkpoint, options.archiveLimits)
+        registerOriginalArchiveRequest(graph, async () => new Uint8Array(recoveryBuffer.slice(0)))
+        const recoveredGraph = graph
+        if (
+          recoveredGraph.getPages(true).some((page) => isReaderPagePending(recoveredGraph, page.id))
+        ) {
+          registerFigPopulationWorker(graph, worker, port)
+        } else {
+          disposeSession()
+        }
       } catch (error) {
-        archiveRequester?.dispose()
         if (graph) releaseFigPopulationWorker(graph)
         fail(error)
         return
@@ -369,7 +274,7 @@ function parseViaStartedSessionWorker(
         )
         return
       }
-      succeed(response.graph)
+      succeed(response.graph, response.checkpoint, response.originalBuffer)
     }
 
     port.addEventListener('message', receive)
@@ -394,8 +299,9 @@ function parseViaStartedSessionWorker(
       worker.postMessage(
         {
           type: 'open',
-          buffer,
-          options: { populate: 'first-page', archiveLimits: options.archiveLimits },
+          originalBuffer: buffer,
+          returnOriginalBuffer: true,
+          options: { populate: options.populate, archiveLimits: options.archiveLimits },
           port: channel.port2
         },
         [buffer, channel.port2]
@@ -412,7 +318,7 @@ async function parseFigFileWithFallback(
   reloadBuffer?: ReloadFigBuffer
 ): Promise<SceneGraph> {
   try {
-    return await parseViaWorker(buffer, options)
+    return await parseFigFileViaWorker(buffer, options)
   } catch (error) {
     const workerError = workerParseError(error)
     if (options.signal?.aborted) throw figParseAbortReason(options.signal)

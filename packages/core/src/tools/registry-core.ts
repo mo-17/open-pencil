@@ -1,4 +1,4 @@
-import { evalCode } from './analyze'
+import { diffChanges, diffCreate, diffVisual, evalCode } from './analyze'
 import { calc } from './calc'
 import { createModule, render } from './create'
 import { describe } from './describe'
@@ -45,6 +45,7 @@ import {
 import {
   auditApplicationRuntimeTool,
   auditFormControls,
+  diffJSX,
   findNodes,
   auditNavigation,
   getJSX,
@@ -85,6 +86,7 @@ export const CORE_TOOLS: ToolDef[] = [
   getNode,
   findNodes,
   getJSX,
+
   listModules,
   readModule,
   readPageRoute,
@@ -159,6 +161,10 @@ export const CORE_TOOLS: ToolDef[] = [
   stockPhoto,
   // Inspect & utility
   describe,
+  diffChanges,
+  diffCreate,
+  diffJSX,
+  diffVisual,
   calc,
   evalCode,
   exportMotionAnimation,

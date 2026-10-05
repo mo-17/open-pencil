@@ -1,4 +1,5 @@
-import type { MotionVisualState } from '@open-pencil/motion'
+import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
+
 import type {
   SceneGraph,
   SceneNode as CoreSceneNode,
@@ -8,21 +9,18 @@ import type {
   VariableType,
   VariableValue
 } from '@open-pencil/scene-graph'
+import { getAxisAlignedBoundsInParent } from '@open-pencil/scene-graph/coordinate'
 import { copyFills, copyStrokes, copyEffects } from '@open-pencil/scene-graph/copy'
 import { computeBounds } from '@open-pencil/scene-graph/geometry'
 import { computeImageHash } from '@open-pencil/scene-graph/images'
 import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
 
-import { decodeBase64, encodeBase64 } from '#core/bytes'
 import type { SkiaRenderer } from '#core/canvas'
 import { canMakeBooleanSourceNode } from '#core/canvas/boolean'
 import { flattenNodesToVectorProps } from '#core/canvas/flatten'
 import { IS_BROWSER } from '#core/constants'
-import type {
-  RasterExportFormat,
-  RasterRenderBounds,
-  RasterRenderOptions
-} from '#core/io/formats/raster'
+import type { RasterCodec } from '#core/io/formats/raster'
+import { reconcileVariableLayouts } from '#core/layout/variables'
 import { documentFontStatus, type DocumentFontStatus } from '#core/text/font/status'
 import { buttonLabelTextNode } from '#core/text/lowcode'
 
@@ -50,10 +48,13 @@ import {
   type FigmaFontName,
   type NodeProxyHost
 } from './proxy'
+import type { ExportImageOptions } from './types'
 
 const noop = () => undefined
 
 export { FigmaNodeProxy } from './proxy'
+export type { FigmaEffect } from './effects'
+export type { ExportImageOptions } from './types'
 export type {
   FigmaBooleanOperationNode,
   FigmaComponentNode,
@@ -73,16 +74,7 @@ export type { FigmaFont, FigmaFontName } from './proxy'
 
 export { computeImageHash }
 
-export interface FigmaExportImageOptions extends Pick<
-  RasterRenderOptions,
-  'generatedEffectTimeMs' | 'generatedEffectMode'
-> {
-  scale?: number
-  format?: RasterExportFormat
-  quality?: number
-  bounds?: RasterRenderBounds
-  motionVisualStates?: ReadonlyMap<string, MotionVisualState>
-}
+export type FigmaExportImageOptions = ExportImageOptions
 
 // TODO(figma-api): Implement the full official PluginAPI interface once our compatibility
 // layer covers all required node-specific return types and unsupported APIs are modeled explicitly.
@@ -173,6 +165,11 @@ export class FigmaAPI implements NodeProxyHost {
     return node ? this.wrapNode(id) : null
   }
 
+  /** The async lookup that Figma requires in dynamic-page mode; same result as getNodeById. */
+  async getNodeByIdAsync(id: string): Promise<FigmaNodeProxy | null> {
+    return this.getNodeById(id)
+  }
+
   // --- Node Creation ---
 
   private _createNode(type: NodeType): FigmaNodeProxy {
@@ -231,6 +228,13 @@ export class FigmaAPI implements NodeProxyHost {
     return (node as BaseNode & { [INTERNAL_ID]: string })[INTERNAL_ID]
   }
 
+  private _rawNode(node: BaseNode | FigmaNodeProxy): CoreSceneNode {
+    const id = this._nodeId(node)
+    const raw = this.graph.getNode(id)
+    if (!raw) throw new Error(`Node ${id} not found`)
+    return raw
+  }
+
   group(
     nodes: ReadonlyArray<FigmaNodeProxy>,
     parent: FigmaNodeProxy,
@@ -243,7 +247,12 @@ export class FigmaAPI implements NodeProxyHost {
     index?: number
   ): FigmaGroupNode {
     const parentId = this._nodeId(parent)
-    const groupNode = this.graph.createNode('GROUP', parentId)
+    const members = nodes.map((node) => this._rawNode(node))
+    const groupNode = this.graph.createNode(
+      'GROUP',
+      parentId,
+      members.length > 0 ? getAxisAlignedBoundsInParent(members, parentId, this.graph) : undefined
+    )
     for (const n of nodes) {
       this.graph.reparentNode(this._nodeId(n), groupNode.id)
     }
@@ -374,7 +383,8 @@ export class FigmaAPI implements NodeProxyHost {
   setVariableValue(variableId: string, modeId: string, value: VariableValue): void {
     const variable = this.graph.variables.get(variableId)
     if (!variable) throw new Error(`Variable "${variableId}" not found`)
-    variable.valuesByMode[modeId] = value
+    variable.valuesByMode[modeId] = structuredClone(value)
+    reconcileVariableLayouts(this.graph)
   }
 
   deleteVariable(id: string): void {
@@ -391,10 +401,12 @@ export class FigmaAPI implements NodeProxyHost {
 
   bindVariable(nodeId: string, field: string, variableId: string): void {
     this.graph.bindVariable(nodeId, field, variableId)
+    reconcileVariableLayouts(this.graph)
   }
 
   unbindVariable(nodeId: string, field: string): void {
     this.graph.unbindVariable(nodeId, field)
+    reconcileVariableLayouts(this.graph)
   }
 
   // --- Boolean Operations ---
@@ -407,14 +419,10 @@ export class FigmaAPI implements NodeProxyHost {
   ): FigmaBooleanOperationNode {
     if (nodes.length < 2) throw new Error('Need at least 2 nodes for boolean operation')
     const parentId = this._nodeId(parent)
-    const first = this.graph.getNode(this._nodeId(nodes[0]))
-    if (!first) throw new Error('Node not found')
+    const members = nodes.map((node) => this._rawNode(node))
     const group = this.graph.createNode('BOOLEAN_OPERATION', parentId, {
       name: `Boolean ${operation.toLowerCase()}`,
-      x: first.x,
-      y: first.y,
-      width: first.width,
-      height: first.height,
+      ...getAxisAlignedBoundsInParent(members, parentId, this.graph),
       booleanOperation: operation
     })
     for (const node of nodes) {
@@ -592,11 +600,12 @@ export class FigmaAPI implements NodeProxyHost {
   }
 
   base64Encode(data: Uint8Array): string {
-    return encodeBase64(data)
+    return fromUint8Array(data)
   }
 
   base64Decode(data: string): Uint8Array {
-    return decodeBase64(data)
+    if (!isValid(data)) throw new TypeError('Invalid Base64 string')
+    return toUint8Array(data)
   }
 
   notify(message: string): { cancel: () => void } {
@@ -612,5 +621,8 @@ export class FigmaAPI implements NodeProxyHost {
     return undefined
   }
 
-  exportImage?: (nodeIds: string[], options: FigmaExportImageOptions) => Promise<Uint8Array | null>
+  exportImage?: (nodeIds: string[], options: ExportImageOptions) => Promise<Uint8Array | null>
+  rasterCodec?: RasterCodec
+  /** The document as it was before the current AI run first edited `pageId`, or null if unedited. */
+  changeBaseline?: (pageId: string) => SceneGraph | null
 }

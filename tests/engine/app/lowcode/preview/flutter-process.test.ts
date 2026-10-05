@@ -48,7 +48,7 @@ function fixture() {
   }
   const createCommand: CreatePreviewNativeCommand = (program, args, options) => {
     expect(program).toBe('flutter-preview')
-    expect(args).toEqual(['tools/flutter-preview/src/index.ts'])
+    expect(args).toEqual(['tools/dev/flutter-preview/src/index.ts'])
     expect(options).toEqual({ cwd: '/reviewed/project' })
     return {
       stdout: {

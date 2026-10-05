@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { AckDeps, SpawnOutput } from '#tools/lowcode/src/tauri-lowcode-preview-ack'
-import { commandText, parseArgs, runCLI } from '#tools/lowcode/src/tauri-lowcode-preview-ack'
+import type { AckDeps, SpawnOutput } from '@open-pencil/lowcode-tools/ack'
+import { commandText, parseArgs, runCLI } from '@open-pencil/lowcode-tools/ack'
 
 function output(stdout = '', stderr = '', success = true): SpawnOutput {
   return {

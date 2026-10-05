@@ -1,7 +1,7 @@
 import type { Canvas, Paint, Shader } from 'canvaskit-wasm'
 
 import type { SceneNode, SceneGraph, Fill } from '@open-pencil/scene-graph'
-import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
+import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 
 import { figmaBlendModeToSkia } from './blend'
 import { makeDiamondGradient } from './gradients/diamond'
@@ -19,10 +19,14 @@ interface PaintFillsOptions {
   readonly patternStack?: Set<string>
 }
 
-function setOwnedFillShader(r: SkiaRenderer, shader: Shader | null): boolean {
+function setOwnedFillShader(
+  r: SkiaRenderer,
+  shader: Shader | null,
+  paint: Paint = r.fillPaint
+): boolean {
   if (!shader) return false
   try {
-    r.fillPaint.setShader(shader)
+    paint.setShader(shader)
   } finally {
     // SkPaint retains its own native reference. Release the temporary Embind
     // wrapper immediately so repeated fills do not accumulate WASM handles.
@@ -333,29 +337,28 @@ export function linearGradientEndpoints(
   }
 }
 
+/** Resolves one gradient stop's color, so a stroke resolves its own bindings, not a fill's. */
+export type ResolveGradientStop = (color: Color, stopIndex: number) => Color
+
 export function applyGradientFill(
   r: SkiaRenderer,
   fill: Fill,
   node: SceneNode,
-  graph: SceneGraph
+  graph: SceneGraph,
+  paint: Paint = r.fillPaint,
+  resolveStop: ResolveGradientStop = (color, stopIndex) =>
+    r.resolveFillColorInfo(
+      { ...fill, type: 'SOLID', color, opacity: color.a, visible: true },
+      stopIndex,
+      node,
+      graph
+    ).color
 ): boolean {
   const stops = fill.gradientStops
   const t = fill.gradientTransform
   if (!stops || !t) return false
   const colors = stops.map((s, index) => {
-    const resolved = r.resolveFillColorInfo(
-      {
-        ...fill,
-        type: 'SOLID',
-        color: s.color,
-        opacity: s.color.a,
-        visible: true
-      },
-      index,
-      node,
-      graph
-    )
-    const c = resolved.color
+    const c = resolveStop(s.color, index)
     return r.ck.Color4f(c.r, c.g, c.b, c.a)
   })
   const positions = stops.map((s) => s.position)
@@ -376,10 +379,10 @@ export function applyGradientFill(
       positions,
       r.ck.TileMode.Clamp
     )
-    return setOwnedFillShader(r, shader)
+    return setOwnedFillShader(r, shader, paint)
   } else if (fill.type === 'GRADIENT_DIAMOND') {
     const shader = makeDiamondGradient(r, colors, positions, makeGradientLocalMatrix(r, w, h, t))
-    return setOwnedFillShader(r, shader)
+    return setOwnedFillShader(r, shader, paint)
   } else if (fill.type === 'GRADIENT_RADIAL') {
     // Figma's gradientTransform maps gradient space (center 0.5,0.5, radius 0.5)
     // to the node's normalized [0,1] coordinate space. The full local matrix
@@ -393,7 +396,7 @@ export function applyGradientFill(
       r.ck.TileMode.Clamp,
       localMatrix
     )
-    return setOwnedFillShader(r, shader)
+    return setOwnedFillShader(r, shader, paint)
   } else if (fill.type === 'GRADIENT_ANGULAR') {
     const localMatrix = makeGradientLocalMatrix(r, w, h, t)
     const shader = r.ck.Shader.MakeSweepGradient(
@@ -404,7 +407,7 @@ export function applyGradientFill(
       r.ck.TileMode.Clamp,
       localMatrix
     )
-    return setOwnedFillShader(r, shader)
+    return setOwnedFillShader(r, shader, paint)
   }
   return false
 }
@@ -456,7 +459,8 @@ export function applyImageFill(
   r: SkiaRenderer,
   fill: Fill,
   node: SceneNode,
-  graph: SceneGraph
+  graph: SceneGraph,
+  paint: Paint = r.fillPaint
 ): boolean {
   const hash = fill.imageHash
   if (!hash) return false
@@ -490,7 +494,7 @@ export function applyImageFill(
       1 / 3,
       localMatrix
     )
-    return setOwnedFillShader(r, shader)
+    return setOwnedFillShader(r, shader, paint)
   }
 
   const tileMode = scaleMode === 'FIT' ? r.ck.TileMode.Decal : r.ck.TileMode.Clamp
@@ -501,7 +505,7 @@ export function applyImageFill(
     r.ck.MipmapMode.Linear,
     localMatrix
   )
-  return setOwnedFillShader(r, shader)
+  return setOwnedFillShader(r, shader, paint)
 }
 
 export function makeArcPath(r: SkiaRenderer, node: SceneNode) {

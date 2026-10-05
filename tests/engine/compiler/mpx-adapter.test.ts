@@ -333,14 +333,12 @@ describe('Mpx mini-program adapter', () => {
   })
 
   test('keeps normalized component tags and registrations unique', () => {
-    const components = ['Card A', 'Card-A'].map(
-      (name, index): ComponentDef => ({
-        componentId: `card-${index}`,
-        name,
-        props: [],
-        children: [{ kind: 'text', value: name }]
-      })
-    )
+    const components = ['Card A', 'Card-A'].map((name, index): ComponentDef => ({
+      componentId: `card-${index}`,
+      name,
+      props: [],
+      children: [{ kind: 'text', value: name }]
+    }))
     const output = mpxAdapter.emit(
       [
         minimalIr({

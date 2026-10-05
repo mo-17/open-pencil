@@ -1,4 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { setTimeout, clearTimeout } from 'node:timers'
+
+import { unrefTimer } from '#compiler/node-runtime/timers'
 
 const MAX_BODY_BYTES = 32 * 1024
 const HEADERS = {
@@ -95,7 +98,7 @@ export function readAuthBody(request: IncomingMessage): Promise<unknown> {
     }
     const onError = () => fail(400)
     const timer = setTimeout(() => fail(408), 5000)
-    timer.unref()
+    unrefTimer(timer)
     request.on('data', onData)
     request.once('end', onEnd)
     request.once('error', onError)

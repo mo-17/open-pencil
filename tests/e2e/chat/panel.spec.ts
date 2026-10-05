@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { toUint8Array } from 'js-base64'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 
@@ -255,8 +256,9 @@ test('attaches the current canvas selection as a visual reference', async () => 
 
 test('attaches a normalized image reference and sends it as a file part', async () => {
   const png = Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-    'base64'
+    toUint8Array(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    )
   )
   await page.getByTestId('chat-attachment-file-input').setInputFiles({
     name: 'reference.png',

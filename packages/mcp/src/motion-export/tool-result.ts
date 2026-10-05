@@ -1,5 +1,7 @@
 import { Buffer } from 'node:buffer'
 
+import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
+
 import {
   planMotionFrames,
   type MotionAnimationEncoder,
@@ -34,11 +36,16 @@ function positiveNumber(value: unknown, label: string): number {
 }
 
 function validBase64(value: unknown, label: string): Buffer {
-  if (typeof value !== 'string' || value.length === 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value) ||
+    !isValid(value)
+  ) {
     throw new Error(`Motion ${label} is malformed`)
   }
-  const bytes = Buffer.from(value, 'base64')
-  if (bytes.length === 0 || bytes.toString('base64') !== value) {
+  const bytes = Buffer.from(toUint8Array(value))
+  if (bytes.length === 0 || fromUint8Array(bytes) !== value) {
     throw new Error(`Motion ${label} is malformed`)
   }
   return bytes
@@ -166,7 +173,7 @@ export async function encodeMotionPNGSequenceToolResult(
     format: encoder.format,
     mimeType: encoder.mimeType,
     extension: encoder.extension,
-    base64: Buffer.from(bytes).toString('base64'),
+    base64: fromUint8Array(bytes),
     byteLength: bytes.length,
     encoder: encoder.capability,
     alpha: encoder.alpha ?? 'unknown',

@@ -57,9 +57,7 @@ test('browser Tailwind source directives remain bounded after sharing its string
   expect(result.preparedCSS).toContain('content: "@source"')
   for (const directive of ['@source "../**";', '@source inline("{hover:,}w-4");']) {
     await expect(inspectCandidates('"w-4"', directive)).rejects.toMatchObject({
-      diagnostics: [
-        expect.objectContaining({ code: 'browser-preview-tailwind-directive-unsafe' })
-      ]
+      diagnostics: [expect.objectContaining({ code: 'browser-preview-tailwind-directive-unsafe' })]
     })
   }
 })

@@ -27,11 +27,15 @@ function buildModalFiles(
       ...overrides,
       triggerLabel: `${overrides.triggerLabel ?? MODAL_MODULE_DEFAULT_CONFIG.triggerLabel} ${index + 1}`
     }
+    // Legacy authored triggers omit the explicit content-slot mapping.
+    if (authoredTrigger) delete config.contentChildName
+    const module = createModalModuleInstance(config)
+    if (authoredTrigger) delete module.config.contentChildName
     const frame = graph.createNode('FRAME', pageId, {
       ...createModalModuleFrameOverrides(config),
       x: 40,
       y: 40 + index * 72,
-      interactiveProps: { module: createModalModuleInstance(config) }
+      interactiveProps: { module }
     })
     if (authoredTrigger) {
       graph.createNode('BUTTON', frame.id, {
@@ -83,6 +87,7 @@ describe('preview browser — compiled Modal module', () => {
     server = await createPreviewServer({ initialFiles: buildModalFiles() })
     browser = await chromium.launch()
     page = await browser.newPage({ viewport: { width: 900, height: 700 }, deviceScaleFactor: 1 })
+    page.on('pageerror', (error) => console.error('[browser-error]', error.message))
   }, timeoutMs)
 
   afterEach(async () => {

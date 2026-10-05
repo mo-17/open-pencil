@@ -251,7 +251,8 @@ export const RATING_MODULE_DEFINITION = moduleContract.createContractModuleDefin
   RATING_MODULE_CONTRACT,
   {
     name: 'Rating',
-    description: 'Accessible whole-star or half-star rating with optional state binding and form validation.',
+    description:
+      'Accessible whole-star or half-star rating with optional state binding and form validation.',
     i18nNameKey: 'lowcodeModuleRatingName',
     i18nDescriptionKey: 'lowcodeModuleRatingDescription',
     defaultSize: RATING_MODULE_DEFAULT_SIZE,

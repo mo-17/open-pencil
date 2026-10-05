@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'bun:test'
+
 import { shallowRef } from 'vue'
 
 import type { SceneNode } from '@open-pencil/scene-graph'

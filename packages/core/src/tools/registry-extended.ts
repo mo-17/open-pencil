@@ -6,8 +6,10 @@ import {
   analyzeTypography,
   auditFontLicenses,
   auditImageAssets,
-  diffCreate,
-  diffShow
+  diffApply,
+  diffShow,
+  lint,
+  lintFix
 } from './analyze'
 import { designToComponentMap, designToTokens, getFigmaMotionAdapter } from './codegen'
 import {
@@ -43,7 +45,6 @@ import {
 import {
   checkFont,
   auditFontRendering,
-  diffJSX,
   getComponents,
   getCurrentPage,
   getFontStatus,
@@ -127,7 +128,6 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   listAvailableFonts,
   checkFont,
   auditFontRendering,
-  diffJSX,
   // Create (advanced)
   createShape,
   searchIconsTool,
@@ -204,11 +204,13 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   analyzeTypography,
   auditFontLicenses,
   auditImageAssets,
+  lint,
+  lintFix,
   analyzeSpacing,
   analyzeClusters,
   analyzeOverlaps,
-  diffCreate,
   diffShow,
+  diffApply,
   // Codegen
   designToTokens,
   designToComponentMap,

@@ -50,5 +50,8 @@
   },
   "peerDependencies": {
     "@open-pencil/scene-graph": "workspace:*"
+  },
+  "dependencies": {
+    "js-base64": "^3.9.3"
   }
 }

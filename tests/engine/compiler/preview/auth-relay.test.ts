@@ -4,6 +4,7 @@ import { createServer, type Server } from 'node:http'
 
 import { createPreviewAuthRelay } from '#compiler/local-backend-preview/auth-relay'
 import { previewAuthCallbackURL } from '#compiler/local-backend-preview/auth-relay/validation'
+import { fromUint8Array } from 'js-base64'
 
 const BASE = '/_openpencil/preview-auth'
 const CALLBACK = '/_openpencil/auth/callback'
@@ -50,7 +51,7 @@ async function fixture() {
     relay.dispose()
     await close(server)
   })
-  const authorization = (state = randomBytes(32).toString('base64url')) => {
+  const authorization = (state = fromUint8Array(randomBytes(32), true)) => {
     const url = new URL('https://identity.example.test/realms/preview/protocol/openid-connect/auth')
     for (const [key, value] of Object.entries({
       response_type: 'code',
@@ -58,8 +59,8 @@ async function fixture() {
       redirect_uri: origin + CALLBACK,
       scope: 'openid profile',
       state,
-      nonce: randomBytes(32).toString('base64url'),
-      code_challenge: randomBytes(32).toString('base64url'),
+      nonce: fromUint8Array(randomBytes(32), true),
+      code_challenge: fromUint8Array(randomBytes(32), true),
       code_challenge_method: 'S256'
     }))
       url.searchParams.set(key, value)

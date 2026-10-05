@@ -1,12 +1,20 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { replaceMCPConnectionSettings, setMCPConnectionCredential } from '@/app/integrations/mcp'
+import {
+  removeMCPConnection,
+  replaceMCPConnectionSettings,
+  setMCPConnectionCredential
+} from '@/app/integrations/mcp'
 import { buildPiMCPServers } from '@/app/integrations/mcp/pi'
 
 import { clearTauriMocks, installTauriMockWindow } from '#tests/helpers/tauri/mocks'
 
 beforeEach(installTauriMockWindow)
-afterEach(clearTauriMocks)
+afterEach(async () => {
+  await removeMCPConnection('mcp-example')
+  replaceMCPConnectionSettings({ version: 1, connections: [] })
+  await clearTauriMocks()
+})
 
 afterAll(async () => {
   await clearTauriMocks()

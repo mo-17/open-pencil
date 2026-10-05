@@ -1,18 +1,12 @@
-import { parseFigBuffer } from '@open-pencil/fig'
-import type { SceneGraph } from '@open-pencil/scene-graph'
-
-import { importNodeChanges } from '#core/kiwi/fig/import'
-import { getLazyFigImportContext, populateLazyFigImportRoots } from '#core/kiwi/fig/lazy-import'
 import { serializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
-import { buildFigPopulationDelta, installFigMutationJournal } from '#core/kiwi/fig/population/delta'
 import type {
   FigSessionOpenRequest,
   FigSessionRequest,
-  FigSessionResponse,
-  FigSessionWorkerPhase
+  FigSessionResponse
 } from '#core/kiwi/fig/session/protocol'
+import { openReaderSession } from '#core/kiwi/fig/session/reader'
 
-let graph: SceneGraph | undefined
+let session: ReturnType<typeof openReaderSession> | undefined
 let originalArchive: Uint8Array | undefined
 let port: MessagePort | undefined
 
@@ -20,35 +14,15 @@ function respond(message: FigSessionResponse): void {
   port?.postMessage(message)
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function respondGraphError(error: unknown, phase: FigSessionWorkerPhase): void {
-  respond({ type: 'graph', error: errorMessage(error), phase })
-}
-
-class FigSessionTransportError extends Error {
-  override name = 'FigSessionTransportError'
-}
-
 function populate(request: Extract<FigSessionRequest, { type: 'populate' }>): void {
-  if (!graph) throw new Error('FIG session has no retained graph')
-  const context = getLazyFigImportContext(graph)
-  if (!context) throw new Error('FIG session has no lazy import context')
-  const journal = installFigMutationJournal(graph)
-  try {
-    const populated = populateLazyFigImportRoots(graph, [request.pageId])
-    respond({
-      type: 'population-result',
-      requestId: request.requestId,
-      baseRevision: request.baseRevision,
-      populated,
-      delta: buildFigPopulationDelta(graph, journal, context.populatedRootIds)
-    })
-  } finally {
-    journal.stop()
-  }
+  if (!session) throw new Error('FIG session has no retained reader')
+  const result = session.populate(request.pageId)
+  respond({
+    type: 'population-result',
+    requestId: request.requestId,
+    baseRevision: request.baseRevision,
+    ...result
+  })
 }
 
 function handleRequest(request: FigSessionRequest): void {
@@ -62,7 +36,7 @@ function handleRequest(request: FigSessionRequest): void {
       return
     }
     if (request.type === 'dispose') {
-      graph = undefined
+      session = undefined
       originalArchive = undefined
       try {
         respond({ type: 'disposed' })
@@ -79,64 +53,50 @@ function handleRequest(request: FigSessionRequest): void {
     respond({
       type: 'population-error',
       requestId: 'requestId' in request ? request.requestId : undefined,
-      error: errorMessage(error)
+      error: error instanceof Error ? error.message : String(error)
     })
   }
 }
 
 self.onmessage = (event: MessageEvent<FigSessionOpenRequest>) => {
   const request = event.data
-  port = request.port
-  port.onmessage = (message: MessageEvent<FigSessionRequest>) => handleRequest(message.data)
-  port.start()
-  let parsed: ReturnType<typeof parseFigBuffer>
+  let phase: 'parse' | 'import' | 'transport' = 'transport'
   try {
-    parsed = parseFigBuffer(request.buffer, {
-      limits: request.options?.archiveLimits,
-      onPages: (pages) => {
-        try {
-          respond({ type: 'page-manifest', pages })
-        } catch (error) {
-          throw new FigSessionTransportError(errorMessage(error))
-        }
+    port = request.port
+    port.onmessage = (message: MessageEvent<FigSessionRequest>) => handleRequest(message.data)
+    port.start()
+    originalArchive = new Uint8Array(request.originalBuffer)
+    phase = 'parse'
+    const opened = openReaderSession(
+      request.originalBuffer,
+      request.options?.populate,
+      request.options?.archiveLimits,
+      () => {
+        phase = 'import'
       }
-    })
+    )
+    phase = 'transport'
+    respond({ type: 'page-manifest', pages: opened.pages })
+    session =
+      request.options?.populate === 'first-page' || request.options?.populate === 'none'
+        ? opened
+        : undefined
+    const result: FigSessionResponse = {
+      type: 'graph',
+      graph: serializeSceneGraph(opened.graph),
+      checkpoint: opened.checkpoint(),
+      ...(request.returnOriginalBuffer ? { originalBuffer: request.originalBuffer } : {})
+    }
+    // The reader retains decoded records, so transferring the compressed source back
+    // leaves one archive owner on the host and avoids import-sized backup copies.
+    if (request.returnOriginalBuffer) {
+      port.postMessage(result, [request.originalBuffer])
+      originalArchive = undefined
+    } else {
+      respond(result)
+    }
   } catch (error) {
-    respondGraphError(error, error instanceof FigSessionTransportError ? 'transport' : 'parse')
-    return
-  }
-  try {
-    originalArchive = new Uint8Array(request.buffer.slice(0))
-  } catch (error) {
-    respondGraphError(error, 'transport')
-    return
-  }
-
-  let parsedGraph: SceneGraph
-  try {
-    const { nodeChanges, blobs, images, figKiwiVersion, figSchemaDeflated, objectAnimations } =
-      parsed
-    parsedGraph = importNodeChanges(nodeChanges, blobs, new Map(images), {
-      populate: request.options?.populate,
-      maxGraphNodes: request.options?.archiveLimits?.maxGraphNodes,
-      maxTreeDepth: request.options?.archiveLimits?.maxTreeDepth
-    })
-    parsedGraph.figKiwiVersion = figKiwiVersion
-    parsedGraph.figSchemaDeflated = figSchemaDeflated
-    parsedGraph.figMessageObjectAnimations = objectAnimations
-    graph = request.options?.populate === 'first-page' ? parsedGraph : undefined
-  } catch (error) {
-    graph = undefined
-    respondGraphError(error, 'import')
-    return
-  }
-
-  try {
-    // Do not transfer serialized buffers: the retained graph remains the source
-    // for later lazy-population deltas in this per-document session.
-    respond({ type: 'graph', graph: serializeSceneGraph(parsedGraph) })
-  } catch (error) {
-    graph = undefined
-    respondGraphError(error, 'transport')
+    session = undefined
+    respond({ type: 'graph', error: error instanceof Error ? error.message : String(error), phase })
   }
 }

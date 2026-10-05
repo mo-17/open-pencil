@@ -2,7 +2,7 @@
 export const VIDEO_HLS_LOADER_SOURCE = String.raw`
 import Hls, { type Loader, type LoaderContext, type LoaderConfiguration, type LoaderCallbacks, type LoaderStats } from 'hls.js'
 
-type VideoLoad = { context: LoaderContext; callbacks: LoaderCallbacks<LoaderContext>; controller: AbortController; stats: LoaderStats; timer?: ReturnType<typeof setTimeout> }
+type VideoLoad = { context: LoaderContext; callbacks: LoaderCallbacks<LoaderContext>; controller: AbortController; stats: LoaderStats; timer?: ReturnType<typeof setTimeout>; reader?: ReadableStreamDefaultReader<Uint8Array> }
 function videoLoadStats(): LoaderStats {
   return { aborted: false, loaded: 0, retry: 0, total: 0, chunkCount: 0, bwEstimate: 0,
     loading: { start: performance.now(), first: 0, end: 0 }, parsing: { start: 0, end: 0 }, buffering: { start: 0, first: 0, end: 0 } }
@@ -48,6 +48,7 @@ export class PublicVideoLoader implements Loader<LoaderContext> {
     clearTimeout(state.timer)
     state.stats.aborted = true
     state.controller.abort()
+    void state.reader?.cancel().catch(() => {})
     state.callbacks.onAbort?.(state.stats, state.context, null)
   }
   destroy(): void { this.abort(); this.context = null; this.response = undefined }
@@ -63,6 +64,7 @@ export class PublicVideoLoader implements Loader<LoaderContext> {
       this.current = undefined
       state.stats.aborted = true
       state.controller.abort()
+      void state.reader?.cancel().catch(() => {})
       state.callbacks.onTimeout(state.stats, state.context, null)
     }, Math.max(1, milliseconds))
   }
@@ -71,7 +73,7 @@ export class PublicVideoLoader implements Loader<LoaderContext> {
     try {
       if (!safeVideoURL(context.url)) throw new Error('Unsafe media URL')
       const response = await fetch(context.url, { method: 'GET', mode: 'cors', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', headers: videoRequestHeaders(context), signal: state.controller.signal })
-      if (this.current !== state) return
+      if (this.current !== state) { await response.body?.cancel().catch(() => {}); return }
       if (!response.ok || response.redirected || (response.url && (!safeVideoURL(response.url) || response.url !== context.url))) throw new Error('Media response blocked')
       this.response = response
       stats.loading.first = performance.now()
@@ -102,6 +104,7 @@ export class PublicVideoLoader implements Loader<LoaderContext> {
     if (Number.isFinite(declared) && declared > maximum) throw new Error('Media response too large')
     const reader = response.body?.getReader()
     if (!reader) throw new Error('Missing media body')
+    state.reader = reader
     const parts: Uint8Array[] = []
     try {
       while (true) {
@@ -115,7 +118,7 @@ export class PublicVideoLoader implements Loader<LoaderContext> {
         parts.push(result.value)
       }
     } catch (error) { await reader.cancel().catch(() => {}); throw error }
-    finally { reader.releaseLock() }
+    finally { state.reader = undefined; reader.releaseLock() }
     const bytes = new Uint8Array(state.stats.loaded)
     let offset = 0
     for (const part of parts) { bytes.set(part, offset); offset += part.byteLength }

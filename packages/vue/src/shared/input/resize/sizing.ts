@@ -1,8 +1,8 @@
 import type { SceneNode } from '@open-pencil/scene-graph'
 import type { Rect } from '@open-pencil/scene-graph/primitives'
 
-import { axisSizingPatchForParent } from '#vue/shared/layout/sizing'
 import type { DragResize } from '#vue/shared/input/types'
+import { axisSizingPatchForParent } from '#vue/shared/layout/sizing'
 
 export function snapshotResizeSizing(node: SceneNode): NonNullable<DragResize['originalSizing']> {
   return {

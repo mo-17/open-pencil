@@ -172,18 +172,15 @@ function sampleScanlines(
   const { lines, thickness, color } = spec.params
   const phase = effectPhase(spec, effectiveTimeMs)
   const spacing = 1 / lines
-  return Array.from(
-    { length: lines },
-    (_, index): GeneratedEffectPrimitive => ({
-      kind: 'rect',
-      x: 0,
-      y: fract(index * spacing + phase * spacing),
-      width: 1,
-      height: Math.min(spacing, spacing * thickness),
-      color: { ...color },
-      opacity: 1
-    })
-  )
+  return Array.from({ length: lines }, (_, index): GeneratedEffectPrimitive => ({
+    kind: 'rect',
+    x: 0,
+    y: fract(index * spacing + phase * spacing),
+    width: 1,
+    height: Math.min(spacing, spacing * thickness),
+    color: { ...color },
+    opacity: 1
+  }))
 }
 
 function sampleParticles(

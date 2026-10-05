@@ -94,5 +94,11 @@
   "previewAdaptationHorizontalOverflow": "Содержимое превышает доступную ширину. Проверьте заполнение ширины или настройки точки адаптации.",
   "previewAdaptationTextClipping": "Текст может обрезаться. Проверьте высоту по содержимому и подходящую минимальную высоту.",
   "previewAdaptationFixedHeightRisk": "Фиксированной высоты может не хватить для крупного текста или текста с переносами строк. Проверьте высоту по содержимому или минимальную высоту.",
-  "previewAdaptationLocateNode": "Найти узел"
+  "previewAdaptationLocateNode": "Найти узел",
+  "noSelection": "Выделите слой, чтобы увидеть его код",
+  "noSelectionDesignJSX": "Или напишите Design JSX, чтобы добавить на страницу новые слои.",
+  "noSelectionTailwindJSX": "Tailwind JSX создаётся для выделенных слоёв.",
+  "writeJSX": "Написать JSX",
+  "canvasChangedExpression": "На холсте теперь {value}; выражение оставлено как написано.",
+  "canvasChangedOrder": "На холсте эти слои теперь в другом порядке; код оставлен как написан."
 }

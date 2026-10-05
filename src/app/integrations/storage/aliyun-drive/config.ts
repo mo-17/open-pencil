@@ -15,11 +15,7 @@ export const ALIYUN_DRIVE_MIN_UPLOAD_PART_BYTES = 100 * 1024
 export const ALIYUN_DRIVE_MAX_UPLOAD_CHUNK_BYTES = 10 * 1024 * 1024
 export const ALIYUN_DRIVE_MAX_UPLOAD_PARTS = 10_000
 
-export const ALIYUN_DRIVE_OAUTH_SCOPES = [
-  'user:base',
-  'file:all:read',
-  'file:all:write'
-] as const
+export const ALIYUN_DRIVE_OAUTH_SCOPES = ['user:base', 'file:all:read', 'file:all:write'] as const
 export const ALIYUN_DRIVE_OAUTH_SCOPE = ALIYUN_DRIVE_OAUTH_SCOPES.join(',')
 export const ALIYUN_DRIVE_OAUTH_STYLE = 'folder'
 export const ALIYUN_DRIVE_OAUTH_DRIVE = 'backup'
@@ -89,7 +85,5 @@ export function resolveAliyunDrivePublisherOAuthConfig(
   }
 ): AliyunDrivePublisherOAuthBuildConfig | null {
   const clientId = build.clientId?.trim()
-  return clientId && isAliyunDriveClientId(clientId)
-    ? Object.freeze({ clientId })
-    : null
+  return clientId && isAliyunDriveClientId(clientId) ? Object.freeze({ clientId }) : null
 }

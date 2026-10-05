@@ -1,13 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 
+import { toUint8Array } from 'js-base64'
+
 import { IMAGE_INSPECTION_LIMITS, inspectImageBytes, type Fill } from '@open-pencil/scene-graph'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
 const PNG_BYTES = new Uint8Array(
   Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
-    'base64'
+    toUint8Array(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+    )
   )
 )
 

@@ -6,7 +6,8 @@ import {
   exportFigFileWithOptions,
   initCodec,
   parseFigFile,
-  type SceneGraph
+  renderJSX,
+  SceneGraph
 } from '@open-pencil/core'
 import type { NodeType, SceneNode } from '@open-pencil/scene-graph'
 
@@ -319,7 +320,9 @@ describe('CORE_TOOLS render lowcode → compiler → Figma-compatible .fig', () 
     const inputJSX = getTool('get_jsx').execute(figma, { id: input.id }) as { jsx: string }
     expect(inputJSX.jsx).toContain('textColor="#F7F4EE"')
     expect(inputJSX.jsx).toContain('placeholderColor="#8B8B93"')
-    expect(inputJSX.jsx).toContain('interactiveProps={{"validation":{"required":true}}}')
+    const copy = new SceneGraph()
+    const [copied] = await renderJSX(copy, inputJSX.jsx)
+    expect(copy.getNode(copied.id)?.interactiveProps.validation).toEqual({ required: true })
     expect(inputJSX.jsx).not.toContain('bindings=')
 
     const textarea = getNodeByName(graph, 'E2E textarea')

@@ -1,3 +1,5 @@
+import { isValid, fromUint8Array, toUint8Array } from 'js-base64'
+
 import {
   parseBoundedManifestArray,
   parseExactManifestRecord,
@@ -112,7 +114,8 @@ export function marketplacePublicKeyPem(value: unknown, path: string): string {
   }
   const base64 = encoded.join('')
   try {
-    if (btoa(atob(base64)) !== base64) throw new Error('non-canonical')
+    if (!isValid(base64) || fromUint8Array(toUint8Array(base64)) !== base64)
+      throw new Error('non-canonical')
   } catch {
     throw new TypeError(`${path} must contain canonical base64 data`)
   }

@@ -16,6 +16,7 @@ import { dirname, join, resolve } from 'node:path'
 import { assertMiniProgramExportProjectBudget } from '#compiler/adapters/miniprogram-shared'
 import { emitVRTourHybridProject, vrTourHybridKey } from '#compiler/adapters/vr-tour/hybrid'
 import { VR_TOUR_HYBRID_OWNERSHIP_FILE } from '#compiler/adapters/vr-tour/hybrid/build'
+import { toUint8Array } from 'js-base64'
 
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import {
@@ -91,7 +92,7 @@ for (const target of ['expo', 'flutter', 'taro'] as const) {
     const data = JSON.parse(json ?? '{}')
     expect(data.config.locale).toBe('zh-CN')
     for (const sample of VR_TOUR_SAMPLE_ASSETS)
-      expect(Buffer.from(data.assets[sample.panoramaUrl].base64, 'base64')).toEqual(
+      expect(Buffer.from(toUint8Array(data.assets[sample.panoramaUrl].base64))).toEqual(
         readFileSync(resolve('packages/demos/vr-tour', sample.fileName))
       )
     if (target === 'expo')

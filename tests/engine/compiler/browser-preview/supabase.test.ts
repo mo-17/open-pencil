@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { encode } from 'js-base64'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildBrowserPreview } from '@open-pencil/compiler/browser-preview'
 import { findCodePenSecretKinds } from '@open-pencil/lowcode'
@@ -8,8 +10,8 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 import { browserPreviewInput } from './helpers'
 
 function fakeLegacyKey(role: 'anon' | 'service_role'): string {
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')
-  const payload = Buffer.from(JSON.stringify({ role })).toString('base64url')
+  const header = encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }), true)
+  const payload = encode(JSON.stringify({ role }), true)
   return `${header}.${payload}.fake_signature`
 }
 

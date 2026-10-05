@@ -242,10 +242,7 @@ function interpretDecode(
   return function (bb: ByteBuffer | Uint8Array): RuntimeMessage {
     const sourceBuffer = bb instanceof ByteBuffer ? bb : null
     let buffer: ByteBuffer
-    if (
-      bb instanceof self.ByteBuffer &&
-      (!limitedDecodeBuffers || limitedDecodeBuffers.has(bb))
-    ) {
+    if (bb instanceof self.ByteBuffer && (!limitedDecodeBuffers || limitedDecodeBuffers.has(bb))) {
       buffer = bb
     } else {
       const data = sourceBuffer ? sourceBuffer.toUint8Array() : (bb as Uint8Array)

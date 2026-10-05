@@ -23,6 +23,8 @@ export type { PresentationColorSpace } from '#vue/canvas/surface/color-space'
 export { useCanvas } from '#vue/canvas/surface/use'
 export type { CanvasActiveFrameSample, UseCanvasOptions } from '#vue/canvas/surface/use'
 export { useCanvasInput } from '#vue/canvas/useCanvasInput'
+export { useCanvasIssueMarkers } from '#vue/canvas/issues/use'
+export type { CanvasIssueMarkerOptions } from '#vue/canvas/issues/use'
 export type { CanvasLabelEdit, CanvasLabelKind } from '#vue/canvas/labels/edit'
 export { useCanvasVirtualReference } from '#vue/canvas/overlays/useCanvasVirtualReference'
 export { useTextEdit } from '#vue/canvas/text-edit/use'
@@ -42,7 +44,7 @@ export { useEditorEvent } from '#vue/editor/events/use'
 export { useSelectionCapabilities } from '#vue/editor/selection-capabilities/use'
 
 /** Command palette primitives and search state. */
-export { CommandPaletteRoot } from '#vue/primitives/CommandPalette'
+export { CommandPaletteRoot, useCommandPalette } from '#vue/primitives/CommandPalette'
 export type {
   CommandPaletteGroup,
   CommandPaletteItem,
@@ -107,7 +109,7 @@ export type {
   UseDocumentWorkspaceOptions
 } from '#vue/document/workspace/use'
 export { useExport } from '#vue/document/export/use'
-export type { ExportFormatId, ExportSetting } from '#vue/document/export/use'
+export type { ExportFormatId, ExportFormatOption, ExportSetting } from '#vue/document/export/use'
 export { useFillControls } from '#vue/controls/fill/use'
 export { useColorVariableBinding } from '#vue/controls/color-variable-binding/use'
 export { useNumberVariableBinding } from '#vue/controls/number-variable-binding/use'
@@ -124,6 +126,7 @@ export { isStrokeCapValue } from '#vue/controls/stroke/helpers'
 export {
   applySolidFillColor,
   applySolidStrokeColor,
+  applyStrokePaint,
   BUILT_IN_COLOR_FORMATS,
   fromPercent,
   toPercent,
@@ -257,7 +260,7 @@ export type {
   VariantDefinitionControl
 } from '#vue/controls/component-props'
 export type { CornerGeometryKey, CornerRadiusKey } from '#vue/controls/appearance/types'
-export { PageListRoot } from '#vue/primitives/PageList'
+export { isPageDivider, PageListRoot, PAGE_DIVIDER_PATTERN } from '#vue/primitives/PageList'
 export { PositionControlsRoot } from '#vue/primitives/PositionControls'
 export { useEditorPropertyList } from '#vue/controls/property-list'
 export {

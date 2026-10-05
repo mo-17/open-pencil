@@ -46,6 +46,7 @@ export const menuMessageDefaults = {
   settings: 'Settings…',
   rulers: 'Rulers',
   multiplayerCursors: 'Multiplayer cursors',
+  designIssues: 'Design issues',
   preferences: 'Preferences',
   snapToGeometry: 'Snap to geometry',
   snapToObjects: 'Snap to objects',

@@ -2,7 +2,7 @@
 
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
-import SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_SQL_SOURCE from './verification-v1.sql?raw'
+import type { SupabaseBackfillLiveCatalogAuthorityV1 } from '@/app/plugins/host/deployment/supabase/backfill/live-inspector'
 
 import {
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_SCHEMA,
@@ -11,7 +11,7 @@ import {
   type SupabaseBackfillDatabaseCASLedgerReviewEnvelopeV1,
   type TrustedSupabaseBackfillDatabaseCASLedgerReviewContextV1
 } from './review'
-import type { SupabaseBackfillLiveCatalogAuthorityV1 } from '@/app/plugins/host/deployment/supabase/backfill/live-inspector'
+import SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_SQL_SOURCE from './verification-v1.sql?raw'
 
 export const SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_QUERY_ID =
   'backfill-database-cas-ledger-verification' as const

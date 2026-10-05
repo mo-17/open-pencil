@@ -7,6 +7,7 @@ import {
 } from '#compiler/adapters/react/request-timing'
 import { substituteHandler } from '#compiler/ir/collect/substitute'
 import type { IRBackendCommandRecoveryHandler } from '#compiler/ir/types'
+import { encode } from 'js-base64'
 
 import { emitExpression, parseExpression } from '@open-pencil/lowcode'
 import type { BackendCommandRecoveryAction } from '@open-pencil/scene-graph'
@@ -125,7 +126,7 @@ describe('explicit command recovery compilation', () => {
       `export async function run(host, data) { ${code} }`
     )
     const { run } = (await import(
-      'data:text/javascript;base64,' + Buffer.from(javascript).toString('base64')
+      'data:text/javascript;base64,' + encode(javascript)
     )) as RecoveryEventModule
     const current = eventHost(false)
     await run(current, { key: 'saved-attempt-key' })

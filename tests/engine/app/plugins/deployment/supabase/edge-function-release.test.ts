@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { fromUint8Array } from 'js-base64'
+
 import type { BackendReleaseProviderAuthorityV1 } from '@open-pencil/lowcode/backend'
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
 
@@ -35,9 +37,7 @@ const provider: BackendReleaseProviderAuthorityV1 = {
 async function sha256(content: string): Promise<string> {
   const bytes = new TextEncoder().encode(content)
   const hash = await crypto.subtle.digest('SHA-256', bytes)
-  let binary = ''
-  for (const byte of new Uint8Array(hash)) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(new Uint8Array(hash), true)
 }
 
 async function runtimeSource(): Promise<{

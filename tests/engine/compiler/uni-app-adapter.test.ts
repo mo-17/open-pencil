@@ -317,14 +317,12 @@ describe('uni-app mini-program adapter', () => {
   })
 
   test('keeps normalized component symbols and files unique', () => {
-    const components = ['Card A', 'Card-A'].map(
-      (name, index): ComponentDef => ({
-        componentId: `card-${index}`,
-        name,
-        props: [],
-        children: [{ kind: 'text', value: name }]
-      })
-    )
+    const components = ['Card A', 'Card-A'].map((name, index): ComponentDef => ({
+      componentId: `card-${index}`,
+      name,
+      props: [],
+      children: [{ kind: 'text', value: name }]
+    }))
     const output = uniAppAdapter.emit(
       [
         minimalIr({

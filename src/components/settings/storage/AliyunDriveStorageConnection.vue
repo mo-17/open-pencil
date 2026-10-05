@@ -1,10 +1,9 @@
 <script setup lang="ts">
 /* eslint-disable max-lines -- OAuth, durable grant repair, and connection UI share one lifecycle boundary. */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
 import { useI18n } from '@open-pencil/vue'
 
-import type { StorageDocumentAuthority } from '@/app/integrations/storage/types'
-import { activeStorageProfileID } from '@/app/integrations/storage/preferences'
 import {
   ALIYUN_DRIVE_STORAGE_PROVIDER_ID,
   resolveAliyunDrivePublisherOAuthConfig
@@ -14,8 +13,8 @@ import {
   parseAliyunDriveOAuthCredentialsJSON,
   type AliyunDriveImportedOAuthClient
 } from '@/app/integrations/storage/aliyun-drive/oauth/credentials'
-import { LocalAliyunDriveOAuthMetadataStore } from '@/app/integrations/storage/aliyun-drive/oauth/metadata'
 import { AliyunDriveOAuthError } from '@/app/integrations/storage/aliyun-drive/oauth/errors'
+import { LocalAliyunDriveOAuthMetadataStore } from '@/app/integrations/storage/aliyun-drive/oauth/metadata'
 import { aliyunDriveAuthorizationCredentialRef } from '@/app/integrations/storage/aliyun-drive/oauth/runtime'
 import {
   type AliyunDriveOAuthConnection,
@@ -25,6 +24,8 @@ import {
   disposeAliyunDriveRuntimeProfile,
   getAliyunDriveRuntimeServices
 } from '@/app/integrations/storage/aliyun-drive/runtime'
+import { activeStorageProfileID } from '@/app/integrations/storage/preferences'
+import type { StorageDocumentAuthority } from '@/app/integrations/storage/types'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import { credentialRef } from '@/app/settings/credentials/reference'
 import {

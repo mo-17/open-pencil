@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { toUint8Array } from 'js-base64'
 
 import { withMapPDFModule } from '#tests/helpers/compiler/modules/map-pdf/browser'
 
@@ -12,8 +13,9 @@ test('Vue Map uses the local MapLibre runtime with mocked fixed-origin tiles and
     await route.fulfill({
       contentType: 'image/png',
       body: Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII=',
-        'base64'
+        toUint8Array(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII='
+        )
       )
     })
   })

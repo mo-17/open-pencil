@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 // Shared in-memory virtual filesystem for the lowcode preview/build pipeline.
 //
 // The compiler emits a project as a `Map<path, content>`; both the preview
@@ -11,11 +12,10 @@
 // identical resolution logic (经验 A — one source, no jscpd clone). The
 // `configureServer` hook is a dev-only Vite lifecycle hook; it's a no-op during
 // `vite build`, so the same plugin instance serves both paths.
-
-import { Buffer } from 'node:buffer'
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix, resolve } from 'node:path'
 
+import { fromUint8Array } from 'js-base64'
 import type { Plugin } from 'vite'
 
 import { markdownDependencyAliases } from './markdown-dependencies'
@@ -361,7 +361,7 @@ export function inMemoryVFS(
 }
 
 function binaryAssetDataURL(path: string, bytes: Uint8Array): string {
-  return `data:${contentTypeForPath(path)};base64,${Buffer.from(bytes).toString('base64')}`
+  return `data:${contentTypeForPath(path)};base64,${fromUint8Array(bytes)}`
 }
 
 function lookupBinaryAsset(

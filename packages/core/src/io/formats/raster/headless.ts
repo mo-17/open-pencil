@@ -55,21 +55,17 @@ export async function headlessRenderNodes(
 ): Promise<Uint8Array | null> {
   const { ck, renderer } = await getRenderer()
   renderer.invalidateAllPictures()
-  const restoreTextMeasurer = await renderer.prepareForExport(graph, pageId, nodeIds)
-  try {
-    return renderNodesToImage(ck, renderer, graph, pageId, nodeIds, {
-      scale: options.scale ?? 1,
-      format: options.format ?? 'PNG',
-      quality: options.quality,
-      trimTransparent: options.trimTransparent,
-      bounds: options.bounds,
-      motionVisualStates: options.motionVisualStates,
-      generatedEffectTimeMs: options.generatedEffectTimeMs,
-      generatedEffectMode: options.generatedEffectMode
-    })
-  } finally {
-    restoreTextMeasurer()
-  }
+  await renderer.prepareForExport(graph, pageId, nodeIds)
+  return renderNodesToImage(ck, renderer, graph, pageId, nodeIds, {
+    scale: options.scale ?? 1,
+    format: options.format ?? 'PNG',
+    quality: options.quality,
+    trimTransparent: options.trimTransparent,
+    bounds: options.bounds,
+    motionVisualStates: options.motionVisualStates,
+    generatedEffectTimeMs: options.generatedEffectTimeMs,
+    generatedEffectMode: options.generatedEffectMode
+  })
 }
 
 export async function headlessRenderThumbnail(

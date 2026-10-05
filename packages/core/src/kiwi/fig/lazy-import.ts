@@ -1,119 +1,15 @@
-import { populateAndApplyOverrides } from '@open-pencil/fig/instance-overrides'
-import type { InstanceNodeChange } from '@open-pencil/fig/instance-overrides'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
-import { reapplyInstanceOverrides } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+import {
+  populateAllFigPages,
+  populateFigPage,
+  releaseReaderRecovery
+} from '#core/kiwi/fig/session/document-state'
 
-export interface LazyFigImportContext {
-  changeMap: Map<string, InstanceNodeChange>
-  guidToNodeId: Map<string, string>
-  blobs: Uint8Array[]
-  populatedRootIds: Set<string>
-}
-
-const lazyFigImportContexts = new WeakMap<SceneGraph, LazyFigImportContext>()
-
-function hasPopulatedAllPageRoots(graph: SceneGraph, context: LazyFigImportContext): boolean {
-  return graph.getPages(true).every((page) => context.populatedRootIds.has(page.id))
-}
-
-function hasPopulatedAllAccessiblePageRoots(
-  graph: SceneGraph,
-  context: LazyFigImportContext,
-  pendingRootIds: ReadonlySet<string> = new Set()
-): boolean {
-  return graph
-    .getPages()
-    .every((page) => context.populatedRootIds.has(page.id) || pendingRootIds.has(page.id))
-}
-
-function releaseCompletedContext(graph: SceneGraph, context: LazyFigImportContext): boolean {
-  if (!hasPopulatedAllPageRoots(graph, context)) return false
-  if (lazyFigImportContexts.get(graph) === context) lazyFigImportContexts.delete(graph)
-  return true
-}
-
-export function setLazyFigImportContext(graph: SceneGraph, context: LazyFigImportContext): void {
-  if (hasPopulatedAllPageRoots(graph, context)) {
-    lazyFigImportContexts.delete(graph)
-    return
-  }
-  lazyFigImportContexts.set(graph, context)
-}
-
-export function getLazyFigImportContext(graph: SceneGraph): LazyFigImportContext | undefined {
-  return lazyFigImportContexts.get(graph)
-}
-
-/** Drop detached import state when a host atomically replaces every graph collection. */
-export function clearLazyFigImportContext(graph: SceneGraph): void {
-  lazyFigImportContexts.delete(graph)
-}
-
-function applyPopulation(
-  graph: SceneGraph,
-  context: LazyFigImportContext,
-  rootIds?: string[]
-): void {
-  graph.withNodeMutationOrigin('source-hydration', () => {
-    graph.preserveSourceMetadataDuring(() => {
-      populateAndApplyOverrides(
-        graph,
-        context.changeMap,
-        context.guidToNodeId,
-        context.blobs,
-        rootIds
-      )
-      reapplyInstanceOverrides(graph)
-    })
-  })
-  const populatedRootIds = rootIds ?? graph.getPages(true).map((page) => page.id)
-  for (const id of populatedRootIds) context.populatedRootIds.add(id)
-}
-
-function populateRoots(
-  graph: SceneGraph,
-  context: LazyFigImportContext,
-  rootIds: Iterable<string>
-): boolean {
-  const pending = [...new Set(rootIds)].filter((id) => id && !context.populatedRootIds.has(id))
-  if (pending.length === 0) {
-    if (!hasPopulatedAllAccessiblePageRoots(graph, context)) return false
-    applyPopulation(graph, context)
-    releaseCompletedContext(graph, context)
-    return true
-  }
-
-  const pendingSet = new Set(pending)
-  const completesAllAccessiblePages = hasPopulatedAllAccessiblePageRoots(graph, context, pendingSet)
-
-  // Finish with one unfiltered pass when the requested roots cover every
-  // remaining page. Cross-page component chains then stabilize before the
-  // large import maps and blob table are released.
-  applyPopulation(graph, context, completesAllAccessiblePages ? undefined : pending)
-  releaseCompletedContext(graph, context)
-  return true
-}
-
-/**
- * Populates roots that still need lazy instance expansion. Returns true only
- * when a population pass ran. The final pass releases the import context, so
- * later calls return false.
- */
 export function populateLazyFigImportRoots(graph: SceneGraph, rootIds: Iterable<string>): boolean {
-  const context = getLazyFigImportContext(graph)
-  return context ? populateRoots(graph, context, rootIds) : false
+  let changed = false
+  for (const id of new Set(rootIds)) if (populateFigPage(graph, id)) changed = true
+  return changed
 }
-
-/** Populates every remaining root once and releases the lazy import context. */
-export function populateAllLazyFigImportRoots(graph: SceneGraph): boolean {
-  const context = getLazyFigImportContext(graph)
-  if (!context) return false
-
-  // Revisit the initially populated page without an active-root filter.
-  // Cross-page component chains can only stabilize when global override
-  // resolution can see every source and target in the same pass.
-  applyPopulation(graph, context)
-  releaseCompletedContext(graph, context)
-  return true
-}
+export const populateAllLazyFigImportRoots = populateAllFigPages
+export const clearLazyFigImportContext = releaseReaderRecovery

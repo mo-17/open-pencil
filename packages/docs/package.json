@@ -14,7 +14,7 @@
     "build:partition": "vitepress build",
     "build:llms": "bun .vitepress/llms/build.ts",
     "build:production": "bun run build:site && bun run build:llms",
-    "check": "bun ../../tools/docs/src/check.ts",
+    "check": "bun ../../tools/checks/docs/src/check.ts",
     "preview": "vitepress preview",
     "test": "bun test tests"
   },
@@ -31,7 +31,7 @@
     "unist-util-remove": "^4.0.0",
     "vitepress": "^2.0.0-alpha.19",
     "vitepress-plugin-llms": "1.12.2",
-    "vue": "^3.5.41",
+    "vue": "^3.5.43",
     "vue-component-meta": "^3.3.10"
   }
 }

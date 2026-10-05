@@ -41,6 +41,8 @@ export interface ParamDef {
  *  / fixture call sites pass nothing and the tool falls back to the
  *  legacy `figma.graph.updateNode` path (no undo). */
 export interface ToolCtx {
+  /** AI SDK call identity for host lifecycle and preview ownership. */
+  toolCallId?: string
   editor?: Editor
   /** Host-visible module definitions. Existing nodes keep using this registry even
    *  when installation policy prevents new instances from being created. */

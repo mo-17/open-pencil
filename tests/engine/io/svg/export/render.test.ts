@@ -175,6 +175,7 @@ describe('renderNodesToSVG()', () => {
       height: 0,
       strokes: [
         {
+          type: 'SOLID',
           color: { r: 0, g: 0, b: 0, a: 1 },
           weight: 2,
           opacity: 1,
@@ -332,6 +333,7 @@ describe('renderNodesToSVG()', () => {
       height: 100,
       strokes: [
         {
+          type: 'SOLID',
           color: { r: 0, g: 0, b: 0, a: 1 },
           weight: 2,
           opacity: 1,
@@ -352,6 +354,7 @@ describe('renderNodesToSVG()', () => {
       height: 100,
       strokes: [
         {
+          type: 'SOLID',
           color: { r: 0, g: 0, b: 0, a: 1 },
           weight: 3,
           opacity: 1,
@@ -621,6 +624,7 @@ describe('renderNodesToSVG()', () => {
       height: 100,
       strokes: [
         {
+          type: 'SOLID',
           color: { r: 1, g: 0, b: 0, a: 1 },
           weight: 1,
           opacity: 0.5,

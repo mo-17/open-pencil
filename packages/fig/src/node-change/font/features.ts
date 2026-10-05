@@ -74,6 +74,7 @@ export function convertFontFeatures(nc: NodeChange): FontFeature[] {
     if (enabled !== undefined) addFeature(features, tag, enabled)
   }
   for (const [field, values] of ENUM_FEATURES) {
+    if (nc[field] === undefined) continue
     const tag = (values as Partial<Record<string, string | string[]>>)[String(nc[field])]
     if (Array.isArray(tag)) {
       for (const item of tag) addFeature(features, item, true)

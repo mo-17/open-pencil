@@ -3,7 +3,7 @@ import { VR_TOUR_SAMPLE_ASSETS, type VRTourSampleAsset } from '@open-pencil/core
 import { VRTourSampleAssetError } from './types'
 import { validateVRTourSampleBytes } from './validate'
 
-export type VRTourSampleFetch = typeof fetch
+export type VRTourSampleFetch = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>
 
 function isAborted(signal: AbortSignal): boolean {
   return signal.aborted

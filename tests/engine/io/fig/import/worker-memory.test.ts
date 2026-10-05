@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { fromUint8Array } from 'js-base64'
+
 import { exportFigFile, initCodec, SceneGraph } from '@open-pencil/core'
 
 const ROOT = resolve(import.meta.dir, '../../../../..')
@@ -20,7 +22,7 @@ test('worker parsing transfers one input buffer and reloads only when fallback i
       const NativeWorker = globalThis.Worker
       const { ORDINARY_FIG_ARCHIVE_LIMITS, parseFigFile, readFigSource } = await import(${JSON.stringify(READ_MODULE_URL)})
       const fixtureBlob = new Blob([
-        Buffer.from(${JSON.stringify(Buffer.from(fixture).toString('base64'))}, 'base64')
+        Buffer.from(${JSON.stringify(fromUint8Array(fixture))}, 'base64')
       ])
       assert(
         Object.values(ORDINARY_FIG_ARCHIVE_LIMITS).every(

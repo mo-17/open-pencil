@@ -14,7 +14,7 @@ import AppDialogRoot from '@/components/ui/dialog/AppDialogRoot.vue'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppTextarea from '@/components/ui/input/AppTextarea.vue'
 import AppSelect from '@/components/ui/select/AppSelect.vue'
-import { designBrief } from '@/theme/design-brief'
+import { designBrief } from '@/theme/design/brief'
 
 const open = defineModel<boolean>('open', { default: false })
 const code = useCodeMessages()

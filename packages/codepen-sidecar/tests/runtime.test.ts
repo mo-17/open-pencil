@@ -3,6 +3,8 @@ import { describe, expect, test } from 'bun:test'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 
+import { toUint8Array } from 'js-base64'
+
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { serializeCodePenSidecarRequest } from '@open-pencil/compiler/codepen/sidecar-wire'
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -64,8 +66,9 @@ function generatedAssetProject() {
   const pageId = graph.getPages()[0].id
   const imageBytes = new Uint8Array(
     Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-      'base64'
+      toUint8Array(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+      )
     )
   )
   const fontBytes = new Uint8Array([
@@ -177,8 +180,9 @@ describe('CodePen sidecar pure runtime', () => {
         'src/assets/hero.png',
         new Uint8Array(
           Buffer.from(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-            'base64'
+            toUint8Array(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+            )
           )
         )
       ]
@@ -438,8 +442,9 @@ document.body.dataset.client = typeof client
         'src/asset.png',
         new Uint8Array(
           Buffer.from(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-            'base64'
+            toUint8Array(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+            )
           )
         )
       ],
@@ -447,8 +452,9 @@ document.body.dataset.client = typeof client
         'src/theme/asset.png',
         new Uint8Array(
           Buffer.from(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-            'base64'
+            toUint8Array(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+            )
           )
         )
       ]
@@ -558,8 +564,9 @@ document.body.dataset.client = typeof client
   test('rejects untrusted binary formats, corrupt assets, and encoded asset overflow', async () => {
     const validPNG = new Uint8Array(
       Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-        'base64'
+        toUint8Array(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+        )
       )
     )
     const validJPEG = new Uint8Array([

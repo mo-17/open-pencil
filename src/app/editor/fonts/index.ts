@@ -19,7 +19,8 @@ import {
   type FontFamilyOption,
   type FontLoadOptions,
   type LocalFontAccessState,
-  type WebFontProviderId
+  type WebFontProviderId,
+  UnsupportedFontFormatError
 } from '@open-pencil/core/text'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
@@ -340,6 +341,8 @@ function clearTextPictures(graph: SceneGraph, nodeIds: string[]): void {
   for (const id of nodeIds) clear(id)
 }
 
+type NativeFontLoadError = { code?: 'not-found' | 'unsupported-format' | 'failed' }
+
 async function loadSystemFont(family: string, style = 'Regular'): Promise<ArrayBuffer | null> {
   if (!isTauri()) return null
   try {
@@ -355,7 +358,10 @@ async function loadSystemFont(family: string, style = 'Regular'): Promise<ArrayB
     }
     if (!data?.length) return null
     return Uint8Array.from(data).buffer
-  } catch {
+  } catch (error) {
+    if ((error as NativeFontLoadError | null)?.code === 'unsupported-format') {
+      throw new UnsupportedFontFormatError(family, style)
+    }
     return null
   }
 }

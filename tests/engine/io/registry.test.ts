@@ -3,6 +3,8 @@ import { describe, expect, test } from 'bun:test'
 import { BUILTIN_IO_FORMATS, exportFigFile, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { populateFigPage } from '#core/kiwi/fig/session/document-state'
+
 describe('IORegistry document readers', () => {
   test('reads an explicitly selected format and forwards fig population options', async () => {
     const source = new SceneGraph()
@@ -27,7 +29,12 @@ describe('IORegistry document readers', () => {
     )
 
     expect(unpopulated.sourceFormat).toBe('fig')
-    expect(unpopulatedInstance?.childIds).toEqual([])
+    expect(unpopulatedInstance).toBeUndefined()
+    expect(populateFigPage(unpopulated.graph, unpopulated.graph.getPages()[0].id)).toBe(true)
+    const explicitlyLoaded = unpopulated.graph
+      .getAllNodes()
+      .find((node) => node.name === 'Card instance')
+    expect(explicitlyLoaded?.childIds).toHaveLength(1)
     expect(populatedInstance?.childIds).toHaveLength(1)
   })
 

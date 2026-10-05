@@ -13,6 +13,7 @@ export type FigmaNodeReferencePath =
   | 'behavior.appear.otherLayer'
   | 'behavior.scrollTransform.otherLayer'
   | 'behavior.cursor.cursorGuid'
+  | 'paint.sourceNodeId'
 
 export type ResolveFigmaNodeReference = (source: GUID, path: FigmaNodeReferencePath) => GUID | null
 
@@ -212,6 +213,30 @@ export function remapFigmaNodeReferences(
   remapInteractionArray(nodeChange, 'prototypeInteractions', resolve)
   remapInteractionArray(nodeChange, 'objectAnimations', resolve)
   remapBehaviors(nodeChange, resolve)
+  remapPaintSources(nodeChange, resolve)
+}
+
+/** Only declared paint arrays carry paint source GUIDs; other GUID-shaped data stays opaque. */
+function remapPaintSources(value: unknown, resolve: ResolveFigmaNodeReference): void {
+  if (Array.isArray(value)) {
+    for (const item of value) remapPaintSources(item, resolve)
+    return
+  }
+  const record = asRecord(value)
+  if (!record) return
+  for (const [key, child] of Object.entries(record)) {
+    if (
+      (key === 'fillPaints' || key === 'strokePaints' || key === 'textDecorationFillPaints') &&
+      Array.isArray(child)
+    ) {
+      for (const candidate of child) {
+        const paint = asRecord(candidate)
+        if (!paint || !isGuid(paint.sourceNodeId)) continue
+        const target = resolve(paint.sourceNodeId, 'paint.sourceNodeId')
+        if (target) paint.sourceNodeId = target
+      }
+    } else remapPaintSources(child, resolve)
+  }
 }
 
 /**

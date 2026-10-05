@@ -1,11 +1,17 @@
 import { tool } from 'ai'
 import type { ToolExecutionOptions } from 'ai'
 
+import { graphFromPageSnapshot } from '@open-pencil/core/editor'
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
-import { registerComponentCatalog, isAtomicTool, toolsToAI } from '@open-pencil/core/tools'
-import type { StepBudget, ToolLogEntry } from '@open-pencil/core/tools'
+import {
+  registerComponentCatalog,
+  isAtomicTool,
+  toolChangesDocument,
+  toolsToAI
+} from '@open-pencil/core/tools'
+import type { ToolLogEntry, ToolDef, AIAdapterExecutionContext } from '@open-pencil/core/tools'
 
-import { DEFAULT_AGENT_STEPS, resolveAgentStepLimit } from '@/app/ai/chat/step-limit'
+import { DEFAULT_AGENT_STEPS } from '@/app/ai/chat/step-limit'
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { executeAtomicEditorTool } from '@/app/automation/execution/editor'
 import { createCodePenAITools, getCodePenAIManager } from '@/app/codepen/ai/tools'
@@ -25,6 +31,22 @@ import {
   type BusinessAIToolOptions
 } from './business'
 import { aiToolDefinitions } from './catalog'
+import { recordToolChange } from './changes/capture'
+import {
+  getRunState,
+  markRunWork,
+  moveRunToPage,
+  recordRunBaseline,
+  runBaseline,
+  runPageId,
+  stepBudget,
+  recordStep as recordRunStep,
+  startRun as startAgentRun,
+  resetRunState,
+  endRun,
+  runAgentId
+} from './run'
+export { endRun, runAgentId, runPageId }
 import {
   createCommerceAITools,
   COMMERCE_AI_TOOL_NAME,
@@ -43,7 +65,6 @@ import {
 import { createVisualInspectionTool } from './vision'
 
 export const MAX_AGENT_STEPS = DEFAULT_AGENT_STEPS
-const MAX_TOOL_LOG_ENTRIES = 200
 const DOCUMENT_SCOPE_TOOLS = new Set([
   'eval',
   BUSINESS_AI_TOOL_NAME,
@@ -129,69 +150,20 @@ const COMPONENT_CATALOG_TOOL_NAMES = new Set([
   'list_libraries',
   'insert_library_component'
 ])
-class RunState {
-  toolLog: ToolLogEntry[] = []
-  currentSteps = 0
-  maxSteps = DEFAULT_AGENT_STEPS
-  undoTurn = 0
-
-  get undoCoalesceKey(): string {
-    return `ai-turn:${this.undoTurn}`
-  }
-
-  recordTool(entry: ToolLogEntry): void {
-    this.toolLog.push(entry)
-    if (this.toolLog.length > MAX_TOOL_LOG_ENTRIES) {
-      this.toolLog.splice(0, this.toolLog.length - MAX_TOOL_LOG_ENTRIES)
-    }
-  }
-
-  resetSteps(maxSteps = DEFAULT_AGENT_STEPS): void {
-    this.currentSteps = 0
-    this.maxSteps = resolveAgentStepLimit(maxSteps)
-    this.undoTurn++
-  }
-
-  hitLimit(): boolean {
-    return this.currentSteps >= this.maxSteps
-  }
-
-  clear(): void {
-    this.toolLog = []
-    this.currentSteps = 0
-    this.undoTurn++
-  }
-}
-
-const runStates = new WeakMap<EditorStore, RunState>()
-
-function getRunState(store?: EditorStore): RunState {
-  const target = store ?? getActiveEditorStore()
-  const existing = runStates.get(target)
-  if (existing) return existing
-  const created = new RunState()
-  runStates.set(target, created)
-  return created
-}
-
 export function getToolLogEntries(store?: EditorStore): ToolLogEntry[] {
   return getRunState(store).toolLog
 }
 
 export function recordStep(store?: EditorStore): void {
-  getRunState(store).currentSteps++
+  recordRunStep(store)
 }
 
 export function resetRunSteps(store?: EditorStore, maxSteps = DEFAULT_AGENT_STEPS): void {
-  getRunState(store).resetSteps(maxSteps)
-}
-
-export function didHitStepLimit(store?: EditorStore): boolean {
-  return getRunState(store).hitLimit()
+  resetRunState(store ?? getActiveEditorStore(), maxSteps)
 }
 
 export function clearToolLogEntries(store?: EditorStore): void {
-  getRunState(store).clear()
+  getRunState(store).clearToolLog()
 }
 
 function yieldToHost(): Promise<void> {
@@ -304,10 +276,31 @@ export interface CreateAIToolsOptions {
   readonly singleSkuShop?: SingleSkuShopAIToolOptions
 }
 
+export function startRun(store: EditorStore, maxSteps: number, model?: string): void {
+  startAgentRun(store, maxSteps, model)
+}
+
 export function createAITools(store: EditorStore, options: CreateAIToolsOptions = {}) {
   let activeMutation: MutationTransaction | undefined
   let lastSuccessfulSnapshot: SuccessfulSnapshot | undefined
   const runState = getRunState(store)
+  const reviews = new Map<string, { before: PageHistorySnapshot; pageId: string }>()
+  const captureReview = (def: ToolDef, context: AIAdapterExecutionContext) => {
+    const id = context.toolCallId
+    const review = id ? reviews.get(id) : undefined
+    if (id) reviews.delete(id)
+    if (!review || context.status !== 'success' || !toolChangesDocument(def)) return
+    try {
+      if (!id) return
+      const after =
+        lastSuccessfulSnapshot?.scope === 'page' && lastSuccessfulSnapshot.pageId === review.pageId
+          ? lastSuccessfulSnapshot.snapshot
+          : store.snapshotPage(review.pageId)
+      recordToolChange(store, id, review.before, after)
+    } catch (error) {
+      console.warn('Could not record AI tool change', error)
+    }
+  }
   // CodePen shadow tools require the full app EditorStore lifecycle. Keeping
   // them out of deliberately minimal headless/test stores also prevents a
   // failed optional tool setup from blocking disposal of the model runtime.
@@ -327,15 +320,34 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
     toolDefinitions,
     {
       mutationKey: store,
-      executeTool: (def, figma, args, context) =>
-        isAtomicTool(def)
-          ? executeAtomicEditorTool(store, figma, def, args, {
+      executeTool: async (def, figma, args, context) => {
+        const pageId = figma.currentPageId
+        if (toolChangesDocument(def)) {
+          const before =
+            activeMutation?.scope === 'page' && activeMutation.pageId === pageId
+              ? activeMutation.before
+              : store.snapshotPage(pageId)
+          recordRunBaseline(store, before)
+          if (context?.toolCallId) reviews.set(context.toolCallId, { before, pageId })
+        }
+        const result = isAtomicTool(def)
+          ? await executeAtomicEditorTool(store, figma, def, args, {
               label: 'AI',
               signal: context?.signal,
               context
             })
-          : Promise.resolve(def.execute(figma, args, context)),
-      getFigma: () => makeFigmaFromStore(store),
+          : await def.execute(figma, args, context)
+        if (figma.currentPageId !== pageId) await moveRunToPage(store, figma.currentPageId)
+        return result
+      },
+      getFigma: () => {
+        const figma = makeFigmaFromStore(store, runPageId(store))
+        figma.changeBaseline = (pageId) => {
+          const baseline = runBaseline(store, pageId)
+          return baseline ? graphFromPageSnapshot(store.graph, baseline) : null
+        }
+        return figma
+      },
       getToolContext: (def) => {
         if (def.name === 'render') return { deferLayout: true }
         if (def.name === 'export_motion_animation') {
@@ -346,7 +358,7 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
         }
         return undefined
       },
-      onBeforeExecute: (def, { args, signal }) => {
+      onBeforeExecute: (def, { args, signal, toolCallId }) => {
         if (COMPONENT_CATALOG_TOOL_NAMES.has(def.name)) {
           const libraryService = useLibraryService()
           libraryService.bindEditor(store)
@@ -364,9 +376,10 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
           !signal?.aborted
         ) {
           const { pageId, scope } = resolveEditorMutationScope(store, args, {
-            forceDocument: DOCUMENT_SCOPE_TOOLS.has(def.name)
+            forceDocument: DOCUMENT_SCOPE_TOOLS.has(def.name),
+            defaultPageId: runPageId(store)
           })
-          const coalesceKey = `${runState.undoCoalesceKey}:${scope}:${pageId}`
+          const coalesceKey = `${runState.undoCoalesceKey}:${scope}:${pageId}${toolCallId ? `:${toolCallId}` : ''}`
           const reusableBefore =
             lastSuccessfulSnapshot?.scope === scope &&
             lastSuccessfulSnapshot.pageId === pageId &&
@@ -400,40 +413,50 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
         }
       },
       onAfterExecute: async (def, context) => {
-        if (!def.mutates || isAtomicTool(def)) return
-        const transaction = activeMutation
-        activeMutation = undefined
-        if (!transaction) return
-
-        const graphChanged = mutationChanged(store, transaction)
-        const historyChanged = undoHistoryChanged(store, transaction)
-        if (historyChanged) lastSuccessfulSnapshot = undefined
-        if (context.status !== 'success' || context.signal?.aborted) {
-          // The JSX renderer owns its creation transaction and removes every
-          // partial root on failure/abort. A page-wide restore here would also
-          // erase unrelated user edits made while a large tree was yielding.
-          if (!graphChanged) return
-          lastSuccessfulSnapshot = undefined
-          if (!historyChanged && def.name !== 'render') restoreMutation(store, transaction)
-          return
-        }
-        if (!graphChanged) return
-
+        let presentationFailed = false
         try {
-          const successfulSnapshot = await finalizeSuccessfulMutation(
-            store,
-            def.name,
-            transaction,
-            context.signal
-          )
-          lastSuccessfulSnapshot = successfulSnapshot
+          if (!def.mutates || isAtomicTool(def)) return
+          const transaction = activeMutation
+          activeMutation = undefined
+          if (!transaction) return
+
+          const graphChanged = mutationChanged(store, transaction)
+          const historyChanged = undoHistoryChanged(store, transaction)
+          if (historyChanged) lastSuccessfulSnapshot = undefined
+          if (context.status !== 'success' || context.signal?.aborted) {
+            // The JSX renderer owns its creation transaction and removes every
+            // partial root on failure/abort. A page-wide restore here would also
+            // erase unrelated user edits made while a large tree was yielding.
+            if (!graphChanged) return
+            lastSuccessfulSnapshot = undefined
+            if (!historyChanged && def.name !== 'render') restoreMutation(store, transaction)
+            return
+          }
+          if (!graphChanged) return
+
+          try {
+            const successfulSnapshot = await finalizeSuccessfulMutation(
+              store,
+              def.name,
+              transaction,
+              context.signal
+            )
+            lastSuccessfulSnapshot = successfulSnapshot
+          } catch (error) {
+            lastSuccessfulSnapshot = undefined
+            if (!undoHistoryChanged(store, transaction)) restoreMutation(store, transaction)
+            throw error
+          }
         } catch (error) {
-          lastSuccessfulSnapshot = undefined
-          if (!undoHistoryChanged(store, transaction)) restoreMutation(store, transaction)
+          presentationFailed = true
           throw error
+        } finally {
+          if (presentationFailed && context.toolCallId) reviews.delete(context.toolCallId)
+          else captureReview(def, context)
         }
       },
       onFlashNodes: (nodeIds) => {
+        markRunWork(store, nodeIds)
         store.renderer?.aiClearActive()
         if (nodeIds.length > 0) {
           store.aiFlashDone(nodeIds)
@@ -451,10 +474,7 @@ export function createAITools(store: EditorStore, options: CreateAIToolsOptions 
           options.diagnosticContext
         )
       },
-      getStepBudget: (): StepBudget => ({
-        current: runState.currentSteps,
-        max: runState.maxSteps
-      })
+      getStepBudget: () => stepBudget(store)
     },
     { tool }
   )

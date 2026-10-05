@@ -13,6 +13,10 @@ export interface ClipboardPayload {
   plainText: string
 }
 
+/**
+ * The Figma payload is encoded from the snapshot alone, so everything the encoder resolves
+ * by id — component dependencies, styles, variables — has to be indexed alongside the nodes.
+ */
 function graphForSnapshot(ctx: EditorContext, snapshot: ClipboardSnapshot): SceneGraph {
   const graph = new SceneGraph()
   graph.documentColorSpace = ctx.graph.documentColorSpace
@@ -21,7 +25,13 @@ function graphForSnapshot(ctx: EditorContext, snapshot: ClipboardSnapshot): Scen
     graph.nodes.set(node.id, node)
     for (const child of node.children ?? []) index(child)
   }
-  for (const node of [...snapshot.componentDependencies, ...snapshot.nodes]) index(node)
+  for (const node of snapshot.nodes) index(node)
+  for (const node of snapshot.componentDependencies) index(node)
+  for (const node of snapshot.styleDefinitions) index(node)
+  for (const collection of snapshot.variableDependencies.collections)
+    graph.variableCollections.set(collection.id, collection)
+  for (const variable of snapshot.variableDependencies.variables)
+    graph.variables.set(variable.id, variable)
   return graph
 }
 
@@ -31,7 +41,12 @@ export function createClipboardCopyActions(ctx: EditorContext) {
     const snapshot = captureClipboardSnapshot(ctx.graph, selectedNodes)
     const plainText = snapshot.nodes.map((node) => node.name).join('\n')
     const graph = graphForSnapshot(ctx, snapshot)
-    const openPencilHTML = buildOpenPencilClipboardHTML(snapshot.nodes, graph)
+    const openPencilHTML = buildOpenPencilClipboardHTML(
+      snapshot.nodes,
+      graph,
+      undefined,
+      snapshot.sourceDocumentId
+    )
     const figmaHTML = await buildFigmaClipboardHTML(snapshot.nodes, graph)
     // Keep the lossless carrier for another process; the memory snapshot is session-local.
     const html = figmaHTML ? `${openPencilHTML}${figmaHTML}` : openPencilHTML

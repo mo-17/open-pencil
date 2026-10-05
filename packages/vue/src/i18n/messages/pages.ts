@@ -67,7 +67,11 @@ export const pageMessageDefaults = {
   applicationShellRemove: 'Remove shell',
   applicationShellInvalid:
     'The saved shell or content slot is unavailable. Choose valid targets and apply, or remove the shell.',
-  applicationShellDraftHint: 'These selections are drafts. Apply to save them together.'
+  applicationShellDraftHint: 'These selections are drafts. Apply to save them together.',
+  pages: 'Pages',
+  goToPage: 'Go to page…',
+  recentPage: 'Recent',
+  currentPage: 'Current page'
 } as const
 
 export const pageMessages = i18n('pages', pageMessageDefaults)

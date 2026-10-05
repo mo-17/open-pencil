@@ -56,7 +56,7 @@ describe('calc', () => {
       results: [
         { expr: '1 + 2', result: 3 },
         { expr: 'sqrt(16)', result: 4 },
-        { expr: '1 / 0', error: 'Calculator expression is invalid: produced Infinity' }
+        { expr: '1 / 0', error: 'Produced Infinity' }
       ]
     })
     expect(calculate('[]')).toEqual({ results: [] })

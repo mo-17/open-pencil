@@ -1,10 +1,10 @@
+import { serializeHTML } from '../export/html'
 import {
   assertInertCSSText,
   parseInertHTML,
   sanitizeDesignDocument,
   sanitizeDesignDocumentForStyleComputation
 } from '../inert-markup'
-import { serializeHTML } from '../serialize'
 import type {
   CSSComputeOptions,
   CSSRuntime,

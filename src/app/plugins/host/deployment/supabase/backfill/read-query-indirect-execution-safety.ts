@@ -311,22 +311,24 @@ export interface SupabaseBackfillReadQueryIndirectExecutionSafetyCertificateV1 {
 }
 
 export type SupabaseBackfillReadQueryIndirectExecutionSafetyRuntimeViewV1 = {
-  readonly [Key in keyof Pick<
-    SupabaseBackfillReadQueryIndirectExecutionSafetyCertificateV1,
-    | 'profile'
-    | 'liveAuthenticated'
-    | 'staticConditionalOnly'
-    | 'staticScanPassed'
-    | 'indirectExecutionSafetyProven'
-    | 'requestDispatched'
-    | 'transportAuthorityCreated'
-    | 'databaseAuthorityCreated'
-    | 'mutationAuthorityCreated'
-    | 'executionAuthorityCreated'
-    | 'receiptAuthorityCreated'
-    | 'releaseAuthorityCreated'
-    | 'releaseReady'
-  >]: unknown
+  readonly [
+    Key in keyof Pick<
+      SupabaseBackfillReadQueryIndirectExecutionSafetyCertificateV1,
+      | 'profile'
+      | 'liveAuthenticated'
+      | 'staticConditionalOnly'
+      | 'staticScanPassed'
+      | 'indirectExecutionSafetyProven'
+      | 'requestDispatched'
+      | 'transportAuthorityCreated'
+      | 'databaseAuthorityCreated'
+      | 'mutationAuthorityCreated'
+      | 'executionAuthorityCreated'
+      | 'receiptAuthorityCreated'
+      | 'releaseAuthorityCreated'
+      | 'releaseReady'
+    >
+  ]: unknown
 }
 
 export interface SupabaseBackfillReadQueryIndirectExecutionSafetyCertificateEnvelopeV1 {
@@ -863,7 +865,7 @@ function verifyStatementBoundary(masked: string): void {
   let depth = 0
   const topLevelCommands: string[] = []
   const wordPattern = /[A-Za-z_][A-Za-z0-9_]*/uy
-  for (let index = 0; index < statement.length; ) {
+  for (let index = 0; index < statement.length;) {
     const character = statement[index] ?? ''
     if (character === '(') {
       depth += 1
@@ -921,7 +923,7 @@ function verifyOperatorAndTokenSyntax(masked: string): void {
   const wordOrNumberPattern = /(?:[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?)/uy
   const parameterPattern = /\$\d+/uy
   const operatorPattern = /[-+*/<>=~!@#%^&|`?]+/uy
-  for (let index = 0; index < syntax.length; ) {
+  for (let index = 0; index < syntax.length;) {
     const character = syntax[index] ?? ''
     if (/\s/u.test(character)) {
       index += 1
@@ -1146,7 +1148,7 @@ function verifyRelations(
   ])
   let depth = 0
   const wordPattern = /[A-Za-z_][A-Za-z0-9_]*/uy
-  for (let index = 0; index < masked.length; ) {
+  for (let index = 0; index < masked.length;) {
     const character = masked[index] ?? ''
     if (character === '"') {
       index += 1

@@ -18,6 +18,7 @@ import {
   updateSceneBackingPreviewState
 } from './retained-backing'
 import { withIsolatedDocumentCaches } from './state'
+import { hasTransientPreviews, renderPageWithPreviews } from './transient-previews'
 
 function renderChildrenWithMotionLayout(
   r: SkiaRenderer,
@@ -138,7 +139,9 @@ export function renderFromEditorState(
           } as RenderOverlays['penState'])
         : null,
       nodeEditState: state.nodeEditState ?? null,
-      remoteCursors: state.remoteCursors,
+      presenceCursors: state.presenceCursors,
+      designIssues: state.designIssues,
+      codeFocusNodeId: state.codeFocusNodeId,
       autoLayoutHover: state.autoLayoutHover
     },
     state.sceneVersion,
@@ -168,6 +171,7 @@ function scenePictureMissReason(
   hasPositionPreview: boolean
 ): string {
   if (hasPositionPreview) return 'position-preview'
+  if (hasTransientPreviews(r, graph)) return 'transient-preview'
   if (hasVolatileOverlay(overlays)) return 'volatile-overlay'
   if (!r.scenePicture) return 'missing-picture'
   if (graph.positionPreviewVersion !== r.scenePicturePositionPreviewVersion)
@@ -205,7 +209,10 @@ function getSceneRenderPolicy(
     graph.positionPreviewVersion !== r.scenePicturePositionPreviewVersion &&
     sceneVersion === r.scenePictureVersion
   const requiresUncachedSceneRender =
-    interactive || hasPositionPreview || hasVolatileOverlay(overlays)
+    interactive ||
+    hasPositionPreview ||
+    hasVolatileOverlay(overlays) ||
+    hasTransientPreviews(r, graph)
   return {
     requiresUncachedSceneRender,
     canUsePicture: canUseScenePicture(r, graph, sceneVersion, requiresUncachedSceneRender),
@@ -544,6 +551,7 @@ function renderPageChildren(
   overlays: RenderOverlays
 ): void {
   if (renderContentEditRoot(r, canvas, graph, overlays)) return
+  if (renderPageWithPreviews(r, canvas, graph, overlays)) return
   const pageNode = graph.getNode(r.pageId ?? graph.rootId)
   if (!pageNode) return
   renderChildrenWithMotionLayout(r, canvas, graph, pageNode.childIds, overlays)

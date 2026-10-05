@@ -27,6 +27,22 @@ function executable(tools: ReturnType<typeof createAITools>, name: string): Exec
   return tools[name] as ExecutableTool
 }
 
+async function switchPageWithPresentation(
+  store: ReturnType<typeof createEditorStore>,
+  pageId: string
+): Promise<void> {
+  const stop = store.onPreparationEvent('preparation:updated', (preparation) => {
+    if (preparation.phase === 'preparing-render') {
+      store.preparationController.acknowledgePresentation(store.state.sceneVersion)
+    }
+  })
+  try {
+    await store.switchPage(pageId)
+  } finally {
+    stop()
+  }
+}
+
 describe('AI tool history', () => {
   test('blocks live mutation tools while a CodePen shadow reconstruction is active', async () => {
     const store = createEditorStore()
@@ -101,7 +117,7 @@ describe('AI tool history', () => {
 
     await render.execute({ jsx: '<Rectangle name="First page AI" w={100} h={80} />' })
     const secondPageId = store.addPage('Second page')
-    await store.switchPage(secondPageId)
+    await switchPageWithPresentation(store, secondPageId)
     store.undo.undo()
 
     expect(store.state.currentPageId).toBe(secondPageId)
@@ -137,7 +153,7 @@ describe('AI tool history', () => {
     resetRunSteps(store)
     const pageId = store.state.currentPageId
     const target = store.graph.createNode('RECTANGLE', pageId, { name: 'Before' })
-    const update = executable(createAITools(store), 'update_node')
+    const update = executable(createAITools(store), 'eval')
     let manualNodeId = ''
     setTimeout(() => {
       const manual = store.graph.createNode('RECTANGLE', pageId, { name: 'Manual during AI' })
@@ -149,7 +165,7 @@ describe('AI tool history', () => {
       })
     }, 0)
 
-    await update.execute({ id: target.id, name: 'After' })
+    await update.execute({ code: `figma.getNodeById('${target.id}').name = 'After'` })
 
     expect(store.graph.getNode(target.id)?.name).toBe('After')
     expect(store.graph.getNode(manualNodeId)?.name).toBe('Manual during AI')
@@ -165,7 +181,7 @@ describe('AI tool history', () => {
     resetRunSteps(store)
     const pageId = store.state.currentPageId
     const target = store.graph.createNode('RECTANGLE', pageId, { name: 'Before' })
-    const update = executable(createAITools(store), 'update_node')
+    const update = executable(createAITools(store), 'eval')
     const controller = new AbortController()
     let manualNodeId = ''
     setTimeout(() => {
@@ -180,7 +196,10 @@ describe('AI tool history', () => {
     }, 0)
 
     const error = await update
-      .execute({ id: target.id, name: 'After' }, { abortSignal: controller.signal })
+      .execute(
+        { code: `figma.getNodeById('${target.id}').name = 'After'` },
+        { abortSignal: controller.signal }
+      )
       .catch((reason: Error) => reason)
 
     expect(error).toBeInstanceOf(Error)
@@ -334,7 +353,7 @@ describe('AI tool history', () => {
 
     await evaluate.execute({ code: 'figma.createPage(); return { ok: true }' })
     const createdPageId = store.graph.getPages().at(-1)?.id
-    await store.switchPage(secondPage.id)
+    await switchPageWithPresentation(store, secondPage.id)
     store.select([selected.id])
     store.undo.undo()
 

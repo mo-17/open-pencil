@@ -1,3 +1,4 @@
+import { fromUint8Array } from 'js-base64'
 /* oxlint-disable eslint(max-lines), eslint(complexity) -- The fixed transaction, parameter contract, state machine, and provenance checks form one audit boundary. */
 
 import {
@@ -309,15 +310,7 @@ async function digest(value: unknown): Promise<string> {
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
-}
-
-function encodeBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary)
+  return fromUint8Array(bytes, true)
 }
 
 async function digestSql(value: string): Promise<string> {
@@ -498,7 +491,7 @@ function parameters(
     review.review.bindings.scopeDigest,
     scope.resourceIdentityDigest,
     scope.catalogPreconditionDigest,
-    encodeBase64(scopeBytes),
+    fromUint8Array(scopeBytes),
     scope.captureDigest,
     scope.capturedHighWater === null ? null : String(scope.capturedHighWater),
     String(scope.initialRemainingEligibleRowCount),
@@ -513,7 +506,7 @@ function parameters(
     receipt.idempotencyKey,
     receipt.requestDigest,
     review.review.bindings.receiptDigest,
-    encodeBase64(receiptBytes),
+    fromUint8Array(receiptBytes),
     review.review.bindings.candidateOperationEvidenceDigest
   ])
 }

@@ -6,6 +6,8 @@ import { fontManager } from '#core/text/fonts'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
+const registeredFontBytes = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+
 interface FontAuditResult {
   error?: string
   summary?: {
@@ -145,8 +147,8 @@ describe('audit_font_rendering', () => {
       text: 'Missing',
       fontFamily: missingFamily
     })
-    fontManager.markLoaded(readyFamily, 'Regular', new ArrayBuffer(1))
-    fontManager.markLoaded(missingFamily, 'Regular', new ArrayBuffer(1))
+    fontManager.markLoaded(readyFamily, 'Regular', registeredFontBytes.slice(0))
+    fontManager.markLoaded(missingFamily, 'Regular', registeredFontBytes.slice(0))
     attachReadiness(figma, (id) => (id === ready.id ? 'ready' : 'exhausted'))
 
     const result = (await getTool('audit_font_rendering').execute(figma, {
@@ -210,8 +212,8 @@ describe('audit_font_rendering', () => {
       fontFamily: syntheticFamily,
       fontWeight: 700
     })
-    fontManager.markLoaded(exactFamily, 'Regular', new ArrayBuffer(1))
-    fontManager.markLoaded(syntheticFamily, 'Regular', new ArrayBuffer(1))
+    fontManager.markLoaded(exactFamily, 'Regular', registeredFontBytes.slice(0))
+    fontManager.markLoaded(syntheticFamily, 'Regular', registeredFontBytes.slice(0))
     attachReadiness(figma, () => 'ready')
 
     const result = (await getTool('audit_font_rendering').execute(figma, {})) as FontAuditResult
@@ -253,7 +255,7 @@ describe('audit_font_rendering', () => {
     const { figma, graph } = setupToolTest()
     const family = 'OpenPencil Render Audit Retry'
     graph.createNode('TEXT', graph.getPages()[0].id, { text: 'Retry', fontFamily: family })
-    fontManager.markLoaded(family, 'Regular', new ArrayBuffer(1))
+    fontManager.markLoaded(family, 'Regular', registeredFontBytes.slice(0))
     let readinessCalls = 0
     attachReadiness(figma, () => (++readinessCalls < 3 ? 'pending' : 'ready'))
 
@@ -271,7 +273,7 @@ describe('audit_font_rendering', () => {
     const { figma, graph } = setupToolTest()
     const family = 'OpenPencil Render Audit Timeout'
     graph.createNode('TEXT', graph.getPages()[0].id, { text: 'Pending', fontFamily: family })
-    fontManager.markLoaded(family, 'Regular', new ArrayBuffer(1))
+    fontManager.markLoaded(family, 'Regular', registeredFontBytes.slice(0))
     attachReadiness(figma, () => 'pending')
 
     const result = (await getTool('audit_font_rendering').execute(figma, {

@@ -1,13 +1,14 @@
+import { fromUint8Array } from 'js-base64'
 /* oxlint-disable eslint(max-lines) -- One review artifact keeps its contract, fixed DDL, and provenance checks co-located. */
 
 import { digestCanonicalManifest } from '@open-pencil/scene-graph'
-
-import SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_SCHEMA_SQL_SOURCE from './schema-v1.sql?raw'
 
 import {
   trustedSupabaseBackfillReceiptV2ReviewContextV1,
   type SupabaseBackfillReceiptV2ReviewEnvelopeV1
 } from '@/app/plugins/host/deployment/supabase/backfill/receipt/v2/review'
+
+import SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_SCHEMA_SQL_SOURCE from './schema-v1.sql?raw'
 
 export const SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_REVIEW_FORMAT =
   'openpencil.supabase-backfill-database-cas-ledger-review.v1' as const
@@ -258,9 +259,7 @@ async function digest(value: unknown): Promise<string> {
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes, true)
 }
 
 async function digestSql(value: string): Promise<string> {

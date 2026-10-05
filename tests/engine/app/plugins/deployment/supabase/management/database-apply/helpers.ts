@@ -1,3 +1,5 @@
+import { fromUint8Array } from 'js-base64'
+
 import {
   createSupabaseInspectedMigrationSnapshot,
   type CreateSupabaseInspectedMigrationSnapshotInputV1
@@ -326,9 +328,7 @@ export async function transportError(operation: Promise<unknown>) {
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes, true)
 }
 
 export async function sqlDigest(sql: string): Promise<string> {

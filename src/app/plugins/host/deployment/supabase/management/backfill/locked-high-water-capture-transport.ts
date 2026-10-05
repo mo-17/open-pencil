@@ -1,3 +1,5 @@
+import { fromUint8Array } from 'js-base64'
+
 /* oxlint-disable eslint(max-lines), open-pencil(no-mixed-case-acronym-identifiers) -- Keep the complete fixed-origin locked-read boundary in one auditable module. */
 import {
   consumeTrustedSupabaseBackfillLockedHighWaterCaptureRequestV1,
@@ -292,9 +294,7 @@ function wellFormedUTF8(value: string): boolean {
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes, true)
 }
 
 async function digestSQL(value: string): Promise<string> {

@@ -52,11 +52,13 @@ describe('bounded JSX layout whitespace', () => {
     }
   })
 
-  test('copying a paragraph to editable JSX retains its bounded layout configuration', () => {
+  test('copying a paragraph to editable JSX retains its bounded layout configuration', async () => {
     const layout = { position: 'sticky', top: 0, overflowY: 'auto', whiteSpace: 'pre-wrap' }
     const { graph, node } = paragraph({ layout })
     const jsx = selectionToJSX([node.id], graph)
-    expect(jsx).toContain('interactiveProps={{"layout":' + JSON.stringify(layout) + '}}')
+    const copy = new SceneGraph()
+    const [copied] = await renderJSX(copy, jsx)
+    expect(copy.getNode(copied.id)?.interactiveProps.layout).toEqual(layout)
     expect(jsx).toContain('Plain text body')
   })
 

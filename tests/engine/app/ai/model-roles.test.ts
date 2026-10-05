@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { UIMessage, UIMessageChunk } from 'ai'
+import { omit } from 'es-toolkit'
 import { computed, effectScope, nextTick, ref } from 'vue'
 
 import type { AIProviderID } from '@open-pencil/core/constants'
 
-import { buildReasoningProviderOptions } from '@/app/ai/chat/reasoning'
+import { buildReasoningProviderOptions, reasoningCallSettings } from '@/app/ai/chat/reasoning'
 import { registerAIChatEffects } from '@/app/ai/chat/storage'
 import { createChatSessionManager } from '@/app/ai/chat/transports'
 import {
@@ -58,6 +59,7 @@ function settingsFixture(): AIModelSettings {
         modelID: 'claude-sonnet-4-6-20260301',
         customModelID: '',
         maxOutputTokens: 16_384,
+        thinkingLevel: 'default',
         capabilities: ['tools', 'vision'],
         featurePolicy: {
           webSearch: { enabled: false },
@@ -72,6 +74,7 @@ function settingsFixture(): AIModelSettings {
         modelID: 'gemini-3-flash-preview',
         customModelID: '',
         maxOutputTokens: 8192,
+        thinkingLevel: 'default',
         capabilities: ['tools'],
         featurePolicy: {
           webSearch: { enabled: false },
@@ -178,7 +181,7 @@ describe('AI model profiles and role assignments', () => {
       providerID: 'harness:pi',
       modelID: '',
       customModelID: 'anthropic/claude-sonnet-4.6',
-      harnessThinkingLevel: 'medium',
+      thinkingLevel: 'medium',
       harnessPermissionMode: 'allow-edits'
     })
     const second = createModelProfileDraft()
@@ -187,7 +190,7 @@ describe('AI model profiles and role assignments', () => {
       providerID: 'harness:pi',
       modelID: '',
       customModelID: 'custom/provider-model',
-      harnessThinkingLevel: 'high',
+      thinkingLevel: 'high',
       harnessPermissionMode: 'allow-reads'
     })
 
@@ -195,8 +198,8 @@ describe('AI model profiles and role assignments', () => {
     const savedSecond = saveModelProfileDraft(second)
     expect(savedFirst.customModelID).toBe('anthropic/claude-sonnet-4.6')
     expect(savedSecond.customModelID).toBe('custom/provider-model')
-    expect(savedFirst.harnessThinkingLevel).toBe('medium')
-    expect(savedSecond.harnessThinkingLevel).toBe('high')
+    expect(savedFirst.thinkingLevel).toBe('medium')
+    expect(savedSecond.thinkingLevel).toBe('high')
     expect(savedFirst.harnessPermissionMode).toBe('allow-edits')
     expect(savedSecond.harnessPermissionMode).toBe('allow-reads')
   })
@@ -217,6 +220,7 @@ describe('AI model profiles and role assignments', () => {
       modelID: '',
       customModelID: '',
       maxOutputTokens: 16_384,
+      thinkingLevel: 'default',
       capabilities: ['tools'],
       featurePolicy: {
         webSearch: { enabled: false },
@@ -314,22 +318,39 @@ describe('AI model profiles and role assignments', () => {
     )
   })
 
-  test('persists provider-specific reasoning effort', () => {
+  test('persists the profile thinking level', () => {
     const draft = createModelProfileDraft('model-fast')
-    draft.reasoningEffort = 'none'
-    expect(saveModelProfileDraft(draft).reasoningEffort).toBe('none')
-    expect(createModelProfileDraft('model-fast').reasoningEffort).toBe('none')
+    expect(draft.thinkingLevel).toBe('default')
+    draft.thinkingLevel = 'off'
+    expect(saveModelProfileDraft(draft).thinkingLevel).toBe('off')
+    expect(createModelProfileDraft('model-fast').thinkingLevel).toBe('off')
   })
 
-  test('maps reasoning effort to supported provider options', () => {
-    expect(buildReasoningProviderOptions('openai-compatible', 'none')).toEqual({
-      openai: { reasoningEffort: 'none' }
+  test('migrates saved reasoning effort and Pi levels to thinking levels', () => {
+    const settings = settingsFixture()
+    const legacy = (profile: AIModelSettings['models'][number], fields: object) => ({
+      ...omit(profile, ['thinkingLevel']),
+      ...fields
     })
-    expect(buildReasoningProviderOptions('openrouter', 'high')).toEqual({
-      openrouter: { reasoning: { effort: 'high' } }
+    const [design, fast] = settings.models
+    const parsed = parseAIModelSettings({
+      ...settings,
+      models: [
+        legacy(design, { harnessThinkingLevel: 'high' }),
+        legacy(fast, { reasoningEffort: 'none' })
+      ]
     })
-    expect(buildReasoningProviderOptions('google', 'high')).toBeUndefined()
-    expect(buildReasoningProviderOptions('openai', '')).toBeUndefined()
+    expect(parsed?.models.map((profile) => profile.thinkingLevel)).toEqual(['high', 'off'])
+  })
+
+  test('maps thinking levels to the AI SDK reasoning option', () => {
+    expect(reasoningCallSettings('anthropic', 'high')).toEqual({ reasoning: 'high' })
+    expect(reasoningCallSettings('google', 'off')).toEqual({ reasoning: 'none' })
+    expect(reasoningCallSettings('openai-compatible', 'xhigh')).toEqual({ reasoning: 'xhigh' })
+    expect(reasoningCallSettings('openrouter', 'low')).toEqual({
+      providerOptions: { openrouter: { reasoning: { effort: 'low' } } }
+    })
+    expect(reasoningCallSettings('anthropic', 'default')).toEqual({})
   })
 
   test('repairs assignments when removing a model', () => {
@@ -383,7 +404,7 @@ describe('AI model profiles and role assignments', () => {
   test('invalidates chat when Harness runtime controls change', async () => {
     const settings = modelSettingsSnapshot()
     settings.connections[0].providerID = 'harness:pi'
-    settings.models[0].harnessThinkingLevel = 'medium'
+    settings.models[0].thinkingLevel = 'medium'
     settings.models[0].harnessPermissionMode = 'allow-edits'
     replaceAIModelSettings(settings)
 
@@ -397,7 +418,7 @@ describe('AI model profiles and role assignments', () => {
 
     try {
       const profile = aiModelSettings.value.models[0]
-      profile.harnessThinkingLevel = 'high'
+      profile.thinkingLevel = 'high'
       await nextTick()
       expect(invalidations).toBe(1)
 
@@ -405,7 +426,7 @@ describe('AI model profiles and role assignments', () => {
       await nextTick()
       expect(invalidations).toBe(2)
 
-      profile.reasoningEffort = 'high'
+      profile.thinkingLevel = 'low'
       await nextTick()
       expect(invalidations).toBe(3)
     } finally {

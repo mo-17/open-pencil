@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { unzipSync } from 'fflate'
+import { fromUint8Array } from 'js-base64'
 
 import { compile, type CompilerInput } from '@open-pencil/compiler'
 import { createEditor } from '@open-pencil/core/editor'
@@ -91,7 +92,7 @@ async function archiveUsingAppFunction(files: ReadonlyMap<string, string | Uint8
       [...files].map(([path, value]) => [
         path,
         typeof value === 'string',
-        typeof value === 'string' ? value : Buffer.from(value).toString('base64')
+        typeof value === 'string' ? value : fromUint8Array(value)
       ])
     )
   )

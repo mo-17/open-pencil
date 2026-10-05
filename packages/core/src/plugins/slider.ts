@@ -294,7 +294,8 @@ export const SLIDER_MODULE_DEFINITION = moduleContract.createContractModuleDefin
   SLIDER_MODULE_CONTRACT,
   {
     name: 'Slider',
-    description: 'Single-value or range selection with optional state binding, form validation and keyboard controls.',
+    description:
+      'Single-value or range selection with optional state binding, form validation and keyboard controls.',
     i18nNameKey: 'lowcodeModuleSliderName',
     i18nDescriptionKey: 'lowcodeModuleSliderDescription',
     defaultSize: SLIDER_MODULE_DEFAULT_SIZE,

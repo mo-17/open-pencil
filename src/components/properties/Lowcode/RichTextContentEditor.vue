@@ -10,7 +10,6 @@ import {
 } from '@open-pencil/core/plugins'
 import { useI18n } from '@open-pencil/vue'
 
-import RichTextInlineEditor from './RichTextInlineEditor.vue'
 import {
   RICH_TEXT_EDITOR_BLOCK_KINDS,
   convertRichTextBlock,
@@ -18,6 +17,8 @@ import {
   richTextEditorBlockKind,
   type RichTextEditorBlockKind
 } from '@/app/plugins/rich-text-editor-model'
+
+import RichTextInlineEditor from './RichTextInlineEditor.vue'
 
 const { modelValue } = defineProps<{ modelValue: RichTextDocumentV1 }>()
 const emit = defineEmits<{ commit: [value: RichTextDocumentV1] }>()

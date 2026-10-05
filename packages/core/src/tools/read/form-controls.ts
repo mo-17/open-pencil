@@ -1,4 +1,3 @@
-import { moduleValueFields } from '#core/plugins/value-controls'
 import {
   FORM_CONTROLS_AUDIT_DEFAULT_LIMIT,
   FORM_CONTROLS_AUDIT_MAX_LIMIT,
@@ -6,6 +5,7 @@ import {
 } from '@open-pencil/lowcode'
 
 import type { FigmaAPI } from '#core/figma-api'
+import { moduleValueFields } from '#core/plugins/value-controls'
 import { defineTool } from '#core/tools/schema'
 
 function scopeId(figma: FigmaAPI, requested?: string): string {
@@ -30,5 +30,8 @@ export const auditFormControls = defineTool({
     }
   },
   execute: (figma, { scope_id, limit }) =>
-    auditValidatedFormControls(figma.graph, scopeId(figma, scope_id), { limit, moduleFields: moduleValueFields })
+    auditValidatedFormControls(figma.graph, scopeId(figma, scope_id), {
+      limit,
+      moduleFields: moduleValueFields
+    })
 })

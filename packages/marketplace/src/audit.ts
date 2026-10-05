@@ -1,3 +1,5 @@
+import { fromUint8Array } from 'js-base64'
+
 import {
   canonicalManifestBytes,
   digestCanonicalManifest,
@@ -301,6 +303,6 @@ export async function verifyMarketplaceAuditEventHash(
 
 export async function rawSha256Base64URL(bytes: Uint8Array): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest('SHA-256', webCryptoBuffer(bytes))
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(digest)))
+  const base64 = fromUint8Array(new Uint8Array(digest))
   return base64.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
 }

@@ -341,7 +341,7 @@ shadcn、deploy 多条线完成,但用户入口分散在 phase docs 和内部实
 - 示例 app / demo checklist:展示 Supabase 列表、表单校验、workflow、deploy。**2026-06-25
   第一刀已在用户指南内加入 demo checklist。2026-07-01 第二刀已新增
   `packages/demos/lowcode/lowcode-onboarding-demo.fig` 和
-  `tools/lowcode/src/make/onboarding-demo.ts`,覆盖示例 Supabase query/mutation、表单校验、
+  `tools/dev/lowcode/src/make/onboarding-demo.ts`,覆盖示例 Supabase query/mutation、表单校验、
   workflow、analytics `trackEvent` / consent copy、i18n、shadcn/ui、custom head/CSS metadata,并由
   `tests/engine/app/lowcode/onboarding-demo.test.ts` 验证无真实外部凭据。**
   **2026-07-01 第三刀已把 Stripe checkout redirect trigger 纳入同一 onboarding fixture:
@@ -801,7 +801,7 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 **2026-06-26 第二十八刀已完成**:
 
 - 将真实 Tauri lowcode preview ACK 从手工 runbook 沉淀成 repo-local helper:
-  - 新增 `tools/lowcode/src/tauri-lowcode-preview-ack.ts`。
+  - 新增 `tools/dev/lowcode/src/tauri-lowcode-preview-ack.ts`。
   - 新增 root shim `scripts/tauri-mcp-lowcode-preview-ack.ts`。
   - 新增 root script `tauri:mcp:lowcode-preview-ack`。
   - `docs/tauri-gui-automation.md` 更新为优先使用 helper,手工命令保留作排障步骤。
@@ -826,7 +826,7 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 **2026-06-29 第二十九刀已完成**:
 
 - 将 repo-local Tauri lowcode preview ACK helper 拆成可测试的 CLI contract:
-  - `tools/lowcode/src/tauri-lowcode-preview-ack.ts` 导出参数解析、CLI runner 和 ACK runner。
+  - `tools/dev/lowcode/src/tauri-lowcode-preview-ack.ts` 导出参数解析、CLI runner 和 ACK runner。
   - `scripts/tauri-mcp-lowcode-preview-ack.ts` 作为 root shim 显式调用 `runCli()`。
   - 新增 `tests/engine/tauri/lowcode-preview-ack.test.ts` 覆盖:
     - `--help` 不触发 bridge 命令。
@@ -1758,7 +1758,7 @@ Auth + service role 查询 `billing_customers` 获取 server-side customer mappi
   - 传入 `customer` 和 `return_url`。
   - 返回 `{ url }`,与 `stripeCustomerPortal` action redirect contract 对齐。
 - Onboarding demo:
-  - `tools/lowcode/src/make/onboarding-demo.ts` 新增 `portalError` docState。
+  - `tools/dev/lowcode/src/make/onboarding-demo.ts` 新增 `portalError` docState。
   - 新增 `Open billing portal button`,其 onClick 包含:
     - `stripeCustomerPortal` → endpoint `/api/demo-customer-portal`,
       payload `{ returnPath:"/account" }`,`errorTarget:'portalError'`;

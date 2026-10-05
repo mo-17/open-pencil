@@ -7,10 +7,10 @@ import type {
   AnalyticsProvider
 } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
-import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { analyticsProviderHelp } from '@/app/lowcode/analytics-help'
+import { useSectionUI } from '@/components/ui/section'
 
 const PROVIDERS: AnalyticsProvider[] = ['ga4', 'plausible', 'posthog']
 type ConsentRegionPresetDraft = AnalyticsConsentRegionPreset | ''

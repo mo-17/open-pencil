@@ -94,5 +94,11 @@
   "previewAdaptationHorizontalOverflow": "Il contenuto supera la larghezza disponibile. Controlla la larghezza di riempimento o una regola di breakpoint.",
   "previewAdaptationTextClipping": "Il testo potrebbe essere tagliato. Controlla l’altezza adattata al contenuto e un’altezza minima adeguata.",
   "previewAdaptationFixedHeightRisk": "Un’altezza fissa potrebbe non contenere testo più grande o su più righe. Controlla l’altezza adattata al contenuto o l’altezza minima.",
-  "previewAdaptationLocateNode": "Individua nodo"
+  "previewAdaptationLocateNode": "Individua nodo",
+  "noSelection": "Seleziona un livello per vederne il codice",
+  "noSelectionDesignJSX": "Oppure scrivi Design JSX per aggiungere nuovi livelli alla pagina.",
+  "noSelectionTailwindJSX": "Il Tailwind JSX viene generato per i livelli selezionati.",
+  "writeJSX": "Scrivi JSX",
+  "canvasChangedExpression": "Sulla tela ora è {value}; l’espressione resta com’è scritta.",
+  "canvasChangedOrder": "Sulla tela questi livelli ora sono in un altro ordine; il codice resta com’è scritto."
 }

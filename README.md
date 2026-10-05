@@ -23,6 +23,8 @@ brew install --cask openpencil
 
 Or download from the [releases page](https://github.com/open-pencil/open-pencil/releases/latest), or [use the web app](https://app.openpencil.dev) — no install needed.
 
+Requires macOS 13 or later with current Safari updates, Windows 10 or later, or Linux with WebKitGTK 2.40+; the web app needs Chrome 111, Edge 111, Firefox 128, or Safari 16.4 or later. See [system requirements](https://openpencil.dev/getting-started#system-requirements).
+
 ## What it does
 
 - **Opens `.fig` and `.pen` files** — read and write native Figma files, open supported Pencil documents from the app or OS file browser, copy & paste nodes between apps
@@ -124,7 +126,7 @@ openpencil query design.fig "//SECTION//TEXT"                       # Text insid
 
 ### Export
 
-Render to PNG, JPG, WEBP, SVG, PDF, PPTX, HTML, JSX, or `.fig` — or export selections/pages as `.fig` and convert whole documents between supported formats:
+Render to PNG, JPG, WEBP, SVG, PDF, PPTX, HTML, JSX, Storybook stories, or `.fig` — or export selections/pages as `.fig` and convert whole documents between supported formats:
 
 ```sh
 openpencil export design.fig                           # PNG
@@ -139,6 +141,7 @@ openpencil convert animated.pen -f pen -o updated.pen # Source-preserving Motion
 openpencil motion export animated.fig --node 1:23 --fps 30 -o motion-frames # PNG sequence
 openpencil motion export animated.fig --node 1:23 --format gif -o motion.gif # Built-in GIF89a
 openpencil motion export animated.fig --node 1:23 --format webm -o motion.webm # FFmpeg capability
+openpencil export design.fig -f storybook --framework vue # Storybook stories per component
 openpencil import page.html --css styles.css -o page.fig # HTML/CSS → editable .fig
 ```
 
@@ -930,12 +933,9 @@ See the [roadmap](https://openpencil.dev/development/roadmap) for product direct
 
 ## Contributing
 
-### Setup
-
 ```sh
 bun install
 bun run dev:portless  # Web editor at https://open-pencil.localhost
-bun run dev           # Direct Vite server at http://localhost:1420
 bun run tauri dev     # Desktop app (requires Rust)
 ```
 
@@ -983,6 +983,8 @@ tools/            Repository tooling: CI, release, lint, and test infrastructure
 tests/            E2E, visual, and engine tests
 ```
 
+[CONTRIBUTING.md](CONTRIBUTING.md) covers setup, quality gates, pull requests, and commits. [AGENTS.md](AGENTS.md) maps the repository and links the guide inside each package. Desktop builds need [Rust](https://rustup.rs/) and the [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/); run `bun run tauri build`.
+
 ### Tech stack
 
 | Layer          | Tech                                                                              |
@@ -996,14 +998,6 @@ tests/            E2E, visual, and engine tests
 | Desktop        | Tauri v2                                                                          |
 | AI/MCP         | Vercel AI SDK (multi-provider BYOK), MCP SDK, Hono                                |
 | Lowcode output | Vite, React or Vue, TypeScript, Tailwind CSS                                      |
-
-### Desktop builds
-
-Requires [Rust](https://rustup.rs/) and platform-specific prerequisites ([Tauri v2 guide](https://v2.tauri.app/start/prerequisites/)).
-
-```sh
-bun run tauri build
-```
 
 ## Acknowledgments
 

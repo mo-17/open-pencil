@@ -1,0 +1,761 @@
+import { beforeAll, describe, expect, test } from 'bun:test'
+
+import { expectDefined } from '#core-tests/helpers/assert'
+import { uint8ArrayToArrayBuffer } from '#core-tests/helpers/fig/fixtures'
+
+import {
+  exportFigFile,
+  importNodeChanges,
+  initCodec,
+  parseFigFile,
+  SceneGraph
+} from '@open-pencil/core'
+import { effectiveFigmaRawNodeFields, parseFigBuffer } from '@open-pencil/fig'
+import {
+  FIGMA_OPAQUE_NODE_TYPES,
+  guidToString,
+  nodeChangeToProps
+} from '@open-pencil/fig/node-change'
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+
+function decodeExport(bytes: Uint8Array) {
+  return parseFigBuffer(uint8ArrayToArrayBuffer(bytes))
+}
+
+function isMetadataRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  if (!isMetadataRecord(value)) {
+    throw new Error('Expected decoded raw metadata record')
+  }
+  return value
+}
+
+describe('fig roundtrip source metadata', () => {
+  beforeAll(async () => {
+    await initCodec()
+  })
+
+  test('preserves imported document, canvas, and sibling ordering metadata', async () => {
+    const graph = new SceneGraph()
+    const root = graph.getNode(graph.rootId)
+    const page = graph.getPages()[0]
+
+    expect(root).toBeDefined()
+    if (!root) return
+
+    root.source.format = 'fig'
+    root.source.fig.rawNodeFields.strokeJoin = 'BEVEL'
+    root.source.fig.rawNodeFields.strokeWeight = 0
+
+    page.source.format = 'fig'
+    page.source.id = '4:463'
+    page.source.orderKey = '~"'
+    page.source.fig.rawNodeFields.backgroundColor = {
+      r: 0.9750000238418579,
+      g: 0.9750000238418579,
+      b: 0.9750000238418579,
+      a: 1
+    }
+    page.source.fig.rawNodeFields.backgroundPaints = [
+      {
+        type: 'SOLID',
+        color: { r: 0.5, g: 0.75, b: 1, a: 1 },
+        opacity: 1,
+        visible: true,
+        blendMode: 'NORMAL'
+      }
+    ]
+    page.guides = [
+      { id: 'x', axis: 'x', position: 42 },
+      { id: 'y', axis: 'y', position: 84 }
+    ]
+    page.source.fig.rawNodeFields.strokeJoin = 'BEVEL'
+    page.source.fig.rawNodeFields.strokeWeight = 0
+
+    const first = graph.createNode('COMPONENT', page.id, { name: 'icon/accessibility' })
+    first.source.format = 'fig'
+    first.source.id = '4:4812'
+    first.source.orderKey = '~~~~~~~~~~1'
+
+    const second = graph.createNode('COMPONENT', page.id, { name: 'icon/align-center' })
+    second.source.format = 'fig'
+    second.source.id = '4:4813'
+    second.source.orderKey = '~~~~~~~~~~3'
+
+    const decoded = decodeExport(await exportFigFile(graph))
+    const changes = new Map(
+      decoded.nodeChanges
+        .filter((nodeChange) => nodeChange.guid)
+        .map((nodeChange) => [
+          guidToString(expectDefined(nodeChange.guid, 'node guid')),
+          nodeChange
+        ])
+    )
+
+    expect(changes.get('0:0')?.strokeJoin).toBe('BEVEL')
+    expect(changes.get('0:0')?.strokeWeight).toBe(0)
+
+    const canvas = changes.get('4:463')
+    expect(canvas?.parentIndex?.position).toBe('~"')
+    expect(canvas?.strokeJoin).toBe('BEVEL')
+    expect(canvas?.strokeWeight).toBe(0)
+    expect(canvas?.backgroundColor).toEqual(page.source.fig.rawNodeFields.backgroundColor)
+    expect(page.source.fig.rawNodeFields.backgroundPaints).toEqual(canvas?.backgroundPaints)
+    expect(canvas?.guides).toEqual([
+      { axis: 'X', offset: 42 },
+      { axis: 'Y', offset: 84 }
+    ])
+
+    // Export generates a consistent sequence rather than mixing saved and generated keys.
+    const firstPosition = changes.get('4:4812')?.parentIndex?.position
+    const secondPosition = changes.get('4:4813')?.parentIndex?.position
+    expect(typeof firstPosition).toBe('string')
+    expect(typeof secondPosition).toBe('string')
+    if (firstPosition === undefined || secondPosition === undefined)
+      throw new Error('Missing exported sibling positions')
+    expect(firstPosition < secondPosition).toBe(true)
+  })
+
+  test('edited imported nodes export current geometry and paints', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const rect = graph.createNode('RECTANGLE', page.id, {
+      name: 'Edited imported rect',
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0, g: 0, b: 1, a: 1 },
+          opacity: 1,
+          visible: true,
+          blendMode: 'NORMAL'
+        }
+      ]
+    })
+    rect.source.format = 'fig'
+    rect.source.id = '4:500'
+    rect.source.fig.rawSize = { x: 80, y: 40 }
+    rect.source.fig.rawTransform = { m00: 1, m01: 0, m02: 1, m10: 0, m11: 1, m12: 2 }
+    rect.source.fig.rawNodeFields.fillPaints = [
+      {
+        type: 'SOLID',
+        color: { r: 1, g: 0, b: 0, a: 1 },
+        opacity: 1,
+        visible: true,
+        blendMode: 'NORMAL'
+      }
+    ]
+
+    graph.updateNode(rect.id, {
+      x: 30,
+      width: 120,
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0, g: 1, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          blendMode: 'NORMAL'
+        }
+      ]
+    })
+
+    const reimported = await parseFigFile((await exportFigFile(graph)).buffer as ArrayBuffer)
+    const exportedRect = [...reimported.getAllNodes()].find((node) => node.name === rect.name)
+
+    expect(exportedRect?.x).toBe(30)
+    expect(exportedRect?.width).toBe(120)
+    expect(exportedRect?.fills[0]?.type).toBe('SOLID')
+    if (exportedRect?.fills[0]?.type === 'SOLID') {
+      expect(exportedRect.fills[0].color).toEqual({ r: 0, g: 1, b: 0, a: 1 })
+    }
+  })
+
+  test('does not restore cleared imported size constraints from raw metadata', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const frame = graph.createNode('FRAME', page.id, { name: 'Cleared constraints' })
+    frame.source.format = 'fig'
+    frame.source.id = '4:501'
+    frame.source.fig.rawNodeFields.minSize = { value: { x: 120, y: 80 } }
+    frame.source.fig.rawNodeFields.maxSize = {
+      value: { x: 500, y: Number.POSITIVE_INFINITY }
+    }
+
+    const decoded = decodeExport(await exportFigFile(graph))
+    const exported = decoded.nodeChanges.find(
+      (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '4:501'
+    )
+
+    expect(exported).toBeDefined()
+    expect(exported?.minSize).toBeUndefined()
+    expect(exported?.maxSize).toBeUndefined()
+    expect(frame.source.fig.rawNodeFields.minSize).toBeDefined()
+    expect(frame.source.fig.rawNodeFields.maxSize).toBeDefined()
+  })
+
+  test('preserves imported rich text schema metadata for round-trip', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const text = graph.createNode('TEXT', page.id, {
+      name: 'Rich text metadata',
+      text: 'Decorated',
+      textDecoration: 'UNDERLINE'
+    })
+    text.source.format = 'fig'
+    text.source.id = '4:502'
+    text.source.fig.rawNodeFields.leadingTrim = 'CAP_HEIGHT'
+    text.source.fig.rawNodeFields.textDecorationStyle = 'WAVY'
+    text.source.fig.rawNodeFields.textDecorationFillPaints = [
+      {
+        type: 'PATTERN',
+        color: { r: 1, g: 0, b: 0, a: 1 },
+        opacity: 1,
+        sourceNodeId: { sessionID: 4, localID: 900 }
+      }
+    ]
+    text.source.fig.rawNodeFields.textUnderlineOffset = { value: 2, units: 'PIXELS' }
+    text.source.fig.rawNodeFields.textDecorationThickness = { value: 1.5, units: 'PIXELS' }
+    text.source.fig.rawNodeFields.toggledOnOTFeatures = ['DLIG']
+    text.source.fig.rawNodeFields.toggledOffOTFeatures = ['LIGA']
+    text.source.fig.rawNodeFields.semanticWeight = 'BOLD'
+    text.source.fig.rawNodeFields.semanticItalic = 'ITALIC'
+    text.source.fig.rawNodeFields.derivedTextData = {
+      layoutSize: { x: 80, y: 20 },
+      derivedLines: [{ directionality: 'LTR' }]
+    }
+
+    const decoded = decodeExport(await exportFigFile(graph))
+    const exported = decoded.nodeChanges.find(
+      (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '4:502'
+    )
+
+    expect(exported?.leadingTrim).toBe('CAP_HEIGHT')
+    expect(exported?.textDecorationStyle).toBe('WAVY')
+    expect(text.source.fig.rawNodeFields.textDecorationFillPaints).toEqual(
+      exported?.textDecorationFillPaints
+    )
+    expect(exported?.textUnderlineOffset).toEqual({ value: 2, units: 'PIXELS' })
+    expect(exported?.textDecorationThickness).toEqual({ value: 1.5, units: 'PIXELS' })
+    expect(exported?.toggledOnOTFeatures).toEqual(['DLIG'])
+    expect(exported?.toggledOffOTFeatures).toEqual(['LIGA'])
+    expect(exported?.semanticWeight).toBe('BOLD')
+    expect(exported?.semanticItalic).toBe('ITALIC')
+    expect(exported?.derivedTextData?.layoutSize).toEqual({ x: 80, y: 20 })
+  })
+
+  test('preserves imported grid, export, and prototype metadata for round-trip', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const frame = graph.createNode('FRAME', page.id, { name: 'Imported metadata frame' })
+    frame.source.format = 'fig'
+    frame.source.id = '4:505'
+    frame.source.fig.rawNodeFields.layoutGrids = [
+      {
+        type: 'MIN',
+        axis: 'X',
+        visible: true,
+        numSections: 12,
+        offset: 16,
+        sectionSize: 64,
+        gutterSize: 24,
+        color: { r: 1, g: 0, b: 0, a: 0.1 },
+        pattern: 'STRIPES'
+      }
+    ]
+    frame.source.fig.rawNodeFields.exportSettings = [
+      {
+        suffix: '@2x',
+        imageType: 'PNG',
+        constraint: { type: 'CONTENT_SCALE', value: 2 },
+        contentsOnly: true,
+        useAbsoluteBounds: false
+      }
+    ]
+    frame.source.fig.rawNodeFields.prototypeStartNodeID = { sessionID: 4, localID: 900 }
+    frame.source.fig.rawNodeFields.transitionInfo = { type: 'DISSOLVE', duration: 0.2 }
+    const prototypeStart = graph.createNode('FRAME', page.id, { name: 'Prototype start' })
+    prototypeStart.source.format = 'fig'
+    prototypeStart.source.id = '4:900'
+
+    const decoded = decodeExport(await exportFigFile(graph))
+    const exported = decoded.nodeChanges.find(
+      (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '4:505'
+    )
+
+    const grid = metadataRecord(exported?.layoutGrids?.[0])
+    expect(grid.type).toBe('MIN')
+    expect(grid.axis).toBe('X')
+    expect(metadataRecord(grid.color).a).toBeCloseTo(0.1)
+    expect(frame.source.fig.rawNodeFields.exportSettings).toEqual(exported?.exportSettings)
+    expect(exported?.prototypeStartNodeID).toEqual({ sessionID: 4, localID: 900 })
+    expect(metadataRecord(exported?.transitionInfo).type).toBe('DISSOLVE')
+  })
+
+  test('preserves imported motion metadata and nested keyframe blobs through G0 to G1 to G2', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const timelineId = { sessionID: 8, localID: 100 }
+    const containingTimelineId = { sessionID: 8, localID: 101 }
+    const presetId = { sessionID: 8, localID: 102 }
+    const trackId = { sessionID: 8, localID: 103 }
+    const animationStyleId = { sessionID: 8, localID: 104 }
+    const targetId = { sessionID: 8, localID: 105 }
+    const interactionId = { sessionID: 8, localID: 106 }
+    const glyphBlob = new Uint8Array([0x47, 0x4c, 0x59, 0x50, 0x48])
+    const imageBlob = new Uint8Array([0x49, 0x4d, 0x41, 0x47, 0x45])
+    const motionFields: Record<string, unknown> = {
+      styleAnimations: [{ animationPresetId: { guid: presetId } }],
+      objectAnimations: [
+        {
+          id: interactionId,
+          event: { interactionType: 'ON_CLICK' },
+          actions: [
+            {
+              connectionType: 'OBJECT_ANIMATION',
+              animationType: 'FADE',
+              animationTargetId: targetId,
+              animationPhase: 'OUT'
+            }
+          ]
+        }
+      ],
+      transitionShouldSmartAnimate: true,
+      motionTransform: {
+        translation: { x: 12, y: 24 },
+        rotation: 0.5,
+        scale: { x: 1.25, y: 0.75 },
+        shearX: 0.125
+      },
+      timelinePosition: 125_000n,
+      keyframeValue: {
+        value: {
+          textDataValue: {
+            characters: '动',
+            glyphs: [
+              {
+                commandsBlob: 0,
+                position: { x: 1, y: 2 },
+                fontSize: 16,
+                firstCharacter: 0,
+                advance: 8,
+                rotation: 0
+              }
+            ]
+          }
+        },
+        valueType: 'TEXT_DATA'
+      },
+      keyframeValueRef: {
+        value: {
+          imageValue: {
+            image: { hash: new Uint8Array([1, 2, 3]), name: 'keyframe.png', dataBlob: 1 }
+          }
+        },
+        dataType: 'IMAGE',
+        resolvedDataType: 'IMAGE'
+      },
+      interpolationType: 'BEZIER',
+      bezierHandles: { p1x: 0.25, p1y: 0.125, p2x: 0.75, p2y: 0.875 },
+      easingData: {
+        easingType: 'CUSTOM_CUBIC',
+        easingValue: {
+          bezierEasing: { p1x: 0.25, p1y: 0.125, p2x: 0.75, p2y: 0.875 }
+        }
+      },
+      keyframeOperation: 'OFFSET',
+      timelinePositionType: 'RELATIVE',
+      isClip: true,
+      clipId: trackId,
+      timelineDuration: 2_000_000n,
+      timelineOffset: 250_000n,
+      timelineDisabled: true,
+      playbackStyle: 'BOOMERANG',
+      timelineDefinitions: {
+        entries: [
+          {
+            id: timelineId,
+            data: { durationUs: 2_000_000n, defaultTimeline: true, playbackStyle: 'LOOP' }
+          }
+        ]
+      },
+      timelineAssignments: {
+        entries: [
+          {
+            key: { assignedTimelineId: timelineId, containingTimelineId },
+            value: { offsetUs: 250_000n, disabled: true }
+          }
+        ]
+      },
+      animationPresets: {
+        presets: [{ animationPresetId: { guid: presetId }, timelineDefId: timelineId }]
+      },
+      styleIdsForAnimation: [
+        {
+          id: trackId,
+          timelineDefId: timelineId,
+          animationStyleId: { guid: animationStyleId },
+          timelineOffset: 250_000n
+        }
+      ],
+      backingAnimationPresetId: { guid: presetId },
+      transitionOverrides: {
+        all: [
+          {
+            id: trackId,
+            duration: 0.5,
+            delay: 0.25,
+            easing: {
+              easingType: 'CUSTOM_CUBIC',
+              easingValue: {
+                bezierEasing: { p1x: 0.25, p1y: 0.125, p2x: 0.75, p2y: 0.875 }
+              }
+            },
+            createdAtMs: 1_024n,
+            interactionIDs: [interactionId],
+            disabled: true
+          }
+        ]
+      },
+      useLegacySmartAnimate: true
+    }
+    const g0 = {
+      guid: { sessionID: 8, localID: 200 },
+      phase: 'CREATED',
+      type: 'RECTANGLE',
+      name: 'Imported motion node',
+      ...motionFields
+    } as NodeChange
+
+    const imported = nodeChangeToProps(g0, [glyphBlob, imageBlob])
+    const rect = graph.createNode('RECTANGLE', page.id, { name: g0.name })
+    if (!imported.source) throw new Error('Expected imported Figma source metadata')
+    rect.source = imported.source
+    const animationTarget = graph.createNode('RECTANGLE', page.id, { name: 'Animation target' })
+    animationTarget.source.format = 'fig'
+    animationTarget.source.id = '8:105'
+
+    const expectMotionNode = (decoded: ReturnType<typeof decodeExport>) => {
+      const exported = decoded.nodeChanges.find(
+        (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '8:200'
+      )
+      expect(exported).toBeDefined()
+
+      for (const [field, value] of Object.entries(motionFields)) {
+        if (field === 'keyframeValue' || field === 'keyframeValueRef') continue
+        expect(exported?.[field]).toEqual(value)
+      }
+
+      const keyframeValue = exported?.keyframeValue as {
+        value?: {
+          textDataValue?: { characters?: string; glyphs?: Array<{ commandsBlob?: number }> }
+        }
+        valueType?: string
+      }
+      expect(keyframeValue.valueType).toBe('TEXT_DATA')
+      expect(keyframeValue.value?.textDataValue?.characters).toBe('动')
+      const blobIndex = keyframeValue.value?.textDataValue?.glyphs?.[0]?.commandsBlob
+      expect(typeof blobIndex).toBe('number')
+      expect(decoded.blobs[blobIndex as number]).toEqual(glyphBlob)
+
+      const keyframeValueRef = exported?.keyframeValueRef as {
+        value?: { imageValue?: { image?: { dataBlob?: number; name?: string } } }
+        dataType?: string
+        resolvedDataType?: string
+      }
+      expect(keyframeValueRef.dataType).toBe('IMAGE')
+      expect(keyframeValueRef.resolvedDataType).toBe('IMAGE')
+      expect(keyframeValueRef.value?.imageValue?.image?.name).toBe('keyframe.png')
+      const imageBlobIndex = keyframeValueRef.value?.imageValue?.image?.dataBlob
+      expect(typeof imageBlobIndex).toBe('number')
+      expect(decoded.blobs[imageBlobIndex as number]).toEqual(imageBlob)
+    }
+
+    const g1Bytes = await exportFigFile(graph)
+    expectMotionNode(decodeExport(g1Bytes))
+
+    const g2Graph = await parseFigFile(uint8ArrayToArrayBuffer(g1Bytes))
+    expectMotionNode(decodeExport(await exportFigFile(g2Graph)))
+  })
+
+  test('preserves opaque Figma node types and structural field presence through G0 to G1 to G2', async () => {
+    const opaqueTypes = FIGMA_OPAQUE_NODE_TYPES
+    const documentGuid = { sessionID: 0, localID: 0 }
+    const canvasGuid = { sessionID: 0, localID: 1 }
+    const graph = importNodeChanges(
+      [
+        {
+          guid: documentGuid,
+          phase: 'CREATED',
+          type: 'DOCUMENT',
+          name: 'Document'
+        },
+        {
+          guid: canvasGuid,
+          parentIndex: { guid: documentGuid, position: 'a' },
+          phase: 'CREATED',
+          type: 'CANVAS',
+          name: 'Opaque node page'
+        },
+        ...opaqueTypes.map((type, index): NodeChange => ({
+          guid: { sessionID: 8, localID: 300 + index },
+          parentIndex: { guid: canvasGuid, position: String.fromCharCode(97 + index) },
+          phase: 'CREATED',
+          type
+        })),
+        {
+          guid: { sessionID: 8, localID: 399 },
+          parentIndex: { guid: canvasGuid, position: 'z' },
+          phase: 'CREATED',
+          type: 'MEDIA',
+          name: 'Explicit media',
+          visible: false,
+          opacity: 0.5,
+          size: { x: 80, y: 40 },
+          transform: { m00: 1, m01: 0, m02: 12, m10: 0, m11: 1, m12: 24 },
+          frameMaskDisabled: false
+        }
+      ],
+      []
+    )
+
+    const expectOpaqueNodes = (decoded: ReturnType<typeof decodeExport>) => {
+      for (const [index, type] of opaqueTypes.entries()) {
+        const exported = decoded.nodeChanges.find(
+          (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === `8:${300 + index}`
+        )
+        expect(exported?.type).toBe(type)
+        if (!exported) throw new Error(`Expected exported ${type}`)
+        for (const field of [
+          'name',
+          'visible',
+          'opacity',
+          'size',
+          'transform',
+          'frameMaskDisabled'
+        ]) {
+          expect(field in exported).toBe(false)
+        }
+      }
+
+      const explicitMedia = decoded.nodeChanges.find(
+        (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '8:399'
+      )
+      expect(explicitMedia).toMatchObject({
+        type: 'MEDIA',
+        name: 'Explicit media',
+        visible: false,
+        opacity: 0.5,
+        size: { x: 80, y: 40 },
+        transform: { m00: 1, m01: 0, m02: 12, m10: 0, m11: 1, m12: 24 },
+        frameMaskDisabled: false
+      })
+    }
+
+    const g1Bytes = await exportFigFile(graph)
+    expectOpaqueNodes(decodeExport(g1Bytes))
+
+    const g2Graph = await parseFigFile(uint8ArrayToArrayBuffer(g1Bytes))
+    expectOpaqueNodes(decodeExport(await exportFigFile(g2Graph)))
+  })
+
+  test('preserves unrelated raw metadata when visual fields are edited', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const frame = graph.createNode('FRAME', page.id, { name: 'Edited metadata frame' })
+    frame.source.format = 'fig'
+    frame.source.id = '4:506'
+    frame.source.fig.rawNodeFields.fillPaints = [{ type: 'SOLID' }]
+    frame.source.fig.rawNodeFields.layoutGrids = [{ type: 'MIN', axis: 'X', visible: true }]
+    frame.source.fig.rawNodeFields.exportSettings = [{ suffix: '@2x' }]
+    frame.source.fig.rawNodeFields.prototypeInteractions = [{ trigger: 'ON_CLICK' }]
+
+    graph.updateNode(frame.id, {
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.2, g: 0.4, b: 0.8, a: 1 },
+          opacity: 1,
+          visible: true
+        }
+      ]
+    })
+
+    expect(effectiveFigmaRawNodeFields(frame)).toEqual({
+      layoutGrids: [{ type: 'MIN', axis: 'X', visible: true }],
+      exportSettings: [{ suffix: '@2x' }],
+      prototypeInteractions: [{ trigger: 'ON_CLICK' }]
+    })
+    expect(frame.source.fig.rawNodeFields.fillPaints).toEqual([{ type: 'SOLID' }])
+  })
+
+  test('preserves imported unsupported effect payloads for round-trip', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const rect = graph.createNode('RECTANGLE', page.id, {
+      name: 'Noise effect metadata',
+      effects: [
+        {
+          type: 'DROP_SHADOW',
+          color: { r: 0, g: 0, b: 0, a: 0.25 },
+          offset: { x: 0, y: 2 },
+          radius: 4,
+          spread: 0,
+          visible: true
+        }
+      ]
+    })
+    rect.source.format = 'fig'
+    rect.source.id = '4:503'
+    rect.source.fig.rawNodeFields.effects = [
+      {
+        type: 'NOISE',
+        visible: true,
+        offset: { x: 0, y: 0 },
+        radius: 0,
+        spread: 0,
+        noiseSize: { x: 0.5, y: 0.5 },
+        noiseType: 'MONOTONE',
+        color: { r: 0, g: 0, b: 0, a: 1 },
+        density: 0.4
+      }
+    ]
+
+    const decoded = decodeExport(await exportFigFile(graph))
+    const exported = decoded.nodeChanges.find(
+      (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '4:503'
+    )
+
+    const effect = metadataRecord(exported?.effects?.[0])
+    expect(effect.type).toBe('NOISE')
+    expect(effect.noiseType).toBe('MONOTONE')
+    expect(effect.noiseSize).toEqual({ x: 0.5, y: 0.5 })
+    expect(effect.density).toBeCloseTo(0.4)
+  })
+
+  test('ignores raw unsupported effects when normalized effects are edited', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const rect = graph.createNode('RECTANGLE', page.id, { name: 'Edited effect metadata' })
+    rect.source.format = 'fig'
+    rect.source.id = '4:504'
+    rect.source.fig.rawNodeFields.effects = [
+      {
+        type: 'NOISE',
+        visible: true,
+        offset: { x: 0, y: 0 },
+        radius: 0,
+        spread: 0,
+        noiseSize: { x: 0.5, y: 0.5 },
+        noiseType: 'MONOTONE',
+        color: { r: 0, g: 0, b: 0, a: 1 },
+        density: 0.4
+      }
+    ]
+
+    graph.updateNode(rect.id, {
+      effects: [
+        {
+          type: 'DROP_SHADOW',
+          color: { r: 0, g: 0, b: 0, a: 0.2 },
+          offset: { x: 0, y: 4 },
+          radius: 8,
+          spread: 0,
+          visible: true
+        }
+      ]
+    })
+
+    expect(effectiveFigmaRawNodeFields(rect).effects).toBeUndefined()
+    expect(rect.source.fig.rawNodeFields.effects).toBeDefined()
+  })
+
+  test('ignores raw geometry payloads when independent stroke weights are edited', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const rect = graph.createNode('RECTANGLE', page.id, { name: 'Independent stroke metadata' })
+    rect.source.format = 'fig'
+    rect.source.id = '4:507'
+    rect.source.fig.rawNodeFields.fillGeometry = [{ windingRule: 'NONZERO', commands: [] }]
+    rect.source.fig.rawNodeFields.strokeGeometry = [{ windingRule: 'NONZERO', commands: [] }]
+
+    graph.updateNode(rect.id, {
+      independentStrokeWeights: true,
+      borderTopWeight: 2,
+      borderRightWeight: 4,
+      borderBottomWeight: 6,
+      borderLeftWeight: 8
+    })
+
+    expect(effectiveFigmaRawNodeFields(rect)).toEqual({
+      fillGeometry: [{ windingRule: 'NONZERO', commands: [] }]
+    })
+    expect(rect.source.fig.rawNodeFields.strokeGeometry).toBeDefined()
+  })
+
+  test('ignores raw font variation payloads when normalized axes are edited', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const text = graph.createNode('TEXT', page.id, {
+      name: 'Variable font text',
+      text: 'Axis',
+      fontVariations: [{ axis: 'wght', value: 400 }]
+    })
+    text.source.format = 'fig'
+    text.source.id = '4:501'
+    text.source.fig.rawNodeFields.fontVariations = [{ axisName: 'wght', value: 900 }]
+
+    graph.updateNode(text.id, { fontVariations: [{ axis: 'wght', value: 650 }] })
+
+    const decoded = decodeExport(await exportFigFile(graph))
+    const exported = decoded.nodeChanges.find(
+      (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '4:501'
+    )
+
+    expect(effectiveFigmaRawNodeFields(text).fontVariations).toBeUndefined()
+    expect(text.source.fig.rawNodeFields.fontVariations).toBeDefined()
+    expect(exported?.fontVariations).toEqual([
+      { axisTag: 0x77676874, axisName: 'wght', value: 650 }
+    ])
+  })
+
+  test('exports imported raw vector payloads without regenerating vector data', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const rawVectorBlob = new Uint8Array([1, 2, 3, 4, 5])
+
+    const vector = graph.createNode('VECTOR', page.id, {
+      name: 'Imported vector',
+      vectorNetwork: {
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 }
+        ],
+        segments: [{ start: 0, end: 1, tangentStart: { x: 0, y: 0 }, tangentEnd: { x: 0, y: 0 } }],
+        regions: []
+      }
+    })
+    vector.source.format = 'fig'
+    vector.source.id = '4:465'
+    vector.source.fig.rawNodeFields.vectorData = {
+      normalizedSize: { x: 0, y: 0 },
+      vectorNetworkBlob: { __openPencilFigmaBlob: rawVectorBlob }
+    }
+
+    const decoded = decodeExport(await exportFigFile(graph))
+    const exported = decoded.nodeChanges.find(
+      (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '4:465'
+    )
+
+    expect(metadataRecord(exported?.vectorData).normalizedSize).toEqual({ x: 0, y: 0 })
+    const blobIndex = metadataRecord(exported?.vectorData).vectorNetworkBlob
+    expect(typeof blobIndex).toBe('number')
+    expect(decoded.blobs[blobIndex as number]).toEqual(rawVectorBlob)
+  })
+})

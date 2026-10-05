@@ -1,5 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 
+import { encode, fromUint8Array } from 'js-base64'
+
 import { MARKETPLACE_NONCE_NAMESPACES, type MarketplaceNonceStore } from './auth'
 import { canonicalBase64URLBytes } from './canonical-base64url'
 import {
@@ -394,10 +396,8 @@ export function signMarketplaceAdminAssertion(
   input: MarketplaceAdminAssertionInput,
   secret: string
 ): string {
-  const payload = Buffer.from(canonicalClaims(createClaims(input)), 'utf8').toString('base64url')
-  return `v${MARKETPLACE_ADMIN_ASSERTION_VERSION}.${payload}.${Buffer.from(
-    mac(payload, secret)
-  ).toString('base64url')}`
+  const payload = encode(canonicalClaims(createClaims(input)), true)
+  return `v${MARKETPLACE_ADMIN_ASSERTION_VERSION}.${payload}.${fromUint8Array(mac(payload, secret), true)}`
 }
 
 /**
@@ -408,13 +408,8 @@ export function signMarketplaceOperatorAssertion(
   input: MarketplaceOperatorAssertionInput,
   secret: string
 ): string {
-  const payload = Buffer.from(
-    canonicalOperatorClaims(createOperatorClaims(input)),
-    'utf8'
-  ).toString('base64url')
-  return `v${MARKETPLACE_OPERATOR_ASSERTION_VERSION}.${payload}.${Buffer.from(
-    mac(payload, secret, OPERATOR_ASSERTION_PREFIX)
-  ).toString('base64url')}`
+  const payload = encode(canonicalOperatorClaims(createOperatorClaims(input)), true)
+  return `v${MARKETPLACE_OPERATOR_ASSERTION_VERSION}.${payload}.${fromUint8Array(mac(payload, secret, OPERATOR_ASSERTION_PREFIX), true)}`
 }
 
 type ParsedMarketplaceAdminAssertion =
@@ -462,13 +457,13 @@ function parsedAssertion(assertion: string, secret: string): ParsedMarketplaceAd
   const value = decodedAssertionValue(payload)
   if (operator) {
     const claims = parseOperatorClaims(value)
-    if (Buffer.from(canonicalOperatorClaims(claims), 'utf8').toString('base64url') !== payload) {
+    if (encode(canonicalOperatorClaims(claims), true) !== payload) {
       throw new TypeError('Marketplace admin assertion payload is not canonical')
     }
     return Object.freeze({ operator: true, claims })
   }
   const claims = parseClaims(value)
-  if (Buffer.from(canonicalClaims(claims), 'utf8').toString('base64url') !== payload) {
+  if (encode(canonicalClaims(claims), true) !== payload) {
     throw new TypeError('Marketplace admin assertion payload is not canonical')
   }
   return Object.freeze({ operator: false, claims })

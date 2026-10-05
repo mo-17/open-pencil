@@ -5,8 +5,8 @@ import { BindableValueRoot, useI18n, useNumberBindingProvider } from '@open-penc
 import type { BindingTarget, NumberBindingPath } from '@open-pencil/vue'
 
 import NumberField from '@/components/inputs/NumberField.vue'
-import VariableBindingPicker from '@/components/variable-binding/VariableBindingPicker.vue'
 import { BindingPill, useBindingFieldUI } from '@/components/ui/binding'
+import VariableBindingPicker from '@/components/variable-binding/VariableBindingPicker.vue'
 
 const {
   modelValue,

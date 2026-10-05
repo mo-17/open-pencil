@@ -145,8 +145,8 @@ describe('.pen source-preserving write guard', () => {
     const graph = parsePenFile(autoLayoutComponentSource())
     const editor = createEditor({ graph })
 
-    expect(graph.documentColorSpace).toBe('display-p3')
-    editor.setDocumentColorSpace('srgb')
+    expect(graph.documentColorSpace).toBe('srgb')
+    editor.setDocumentColorSpace('display-p3')
 
     expect(() => serializePenFile(graph)).toThrow(/document metadata or variables changed/)
   })

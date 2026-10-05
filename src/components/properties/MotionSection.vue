@@ -3,17 +3,17 @@ import { computed } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
-import MotionPresetLibrary from '@/components/properties/MotionPresetLibrary.vue'
-import MotionGeneratedEffect from '@/components/properties/MotionGeneratedEffect.vue'
+import MotionDetailsControls from '@/components/properties/motion-presets/MotionDetailsControls.vue'
+import MotionPrototypeAuthoring from '@/components/properties/motion-presets/MotionPrototypeAuthoring.vue'
+import MotionTeamLibraries from '@/components/properties/motion-presets/MotionTeamLibraries.vue'
+import { useMotionPresetLibrary } from '@/components/properties/motion-presets/use/motion-preset-library'
 import {
   MotionRecipeLibrary,
   type MotionRecipeLibraryLabels
 } from '@/components/properties/motion-recipes'
-import MotionPrototypeAuthoring from '@/components/properties/motion-presets/MotionPrototypeAuthoring.vue'
+import MotionGeneratedEffect from '@/components/properties/MotionGeneratedEffect.vue'
+import MotionPresetLibrary from '@/components/properties/MotionPresetLibrary.vue'
 import MotionSceneTimeline from '@/components/properties/MotionSceneTimeline.vue'
-import MotionDetailsControls from '@/components/properties/motion-presets/MotionDetailsControls.vue'
-import MotionTeamLibraries from '@/components/properties/motion-presets/MotionTeamLibraries.vue'
-import { useMotionPresetLibrary } from '@/components/properties/motion-presets/use/motion-preset-library'
 import PanelSection from '@/components/ui/panel/PanelSection.vue'
 
 const { panels } = useI18n()

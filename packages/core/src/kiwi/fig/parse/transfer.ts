@@ -1,29 +1,26 @@
-import type { InstanceNodeChange } from '@open-pencil/fig/instance-overrides'
-import { SceneGraph } from '@open-pencil/scene-graph'
+import { SceneGraph, cloneNodeProps } from '@open-pencil/scene-graph'
 import type { EnabledLibraryBinding, SceneNode } from '@open-pencil/scene-graph'
 
-import { getLazyFigImportContext, setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
+import { cloneFigPayload } from '#core/kiwi/fig/copy'
 import type { PortableSceneGraphData } from '#core/kiwi/fig/parse/portable-data'
-
-export interface SerializedLazyFigImportContext {
-  changeMap: Array<[string, InstanceNodeChange]>
-  guidToNodeId: Array<[string, string]>
-  blobs: Uint8Array[]
-  populatedRootIds: string[]
-}
+import {
+  snapshotReaderState,
+  restoreReaderState,
+  type PortableReaderState
+} from '#core/kiwi/fig/session/document-state'
 
 export interface SerializedSceneGraph extends PortableSceneGraphData {
   instanceIndex: Array<[string, string[]]>
   figKiwiVersion: number | null
   figSchemaDeflated: Uint8Array | null
   figMessageObjectAnimations: unknown
+  figReader?: PortableReaderState
   enabledLibraries?: Array<[string, EnabledLibraryBinding]>
-  lazyFigImport?: SerializedLazyFigImportContext
 }
 
 export function serializeSceneGraph(graph: SceneGraph): SerializedSceneGraph {
-  const lazyFigImport = getLazyFigImportContext(graph)
   return {
+    figReader: snapshotReaderState(graph),
     rootId: graph.rootId,
     nodes: [...graph.nodes],
     images: [...graph.images],
@@ -35,15 +32,7 @@ export function serializeSceneGraph(graph: SceneGraph): SerializedSceneGraph {
     figSchemaDeflated: graph.figSchemaDeflated,
     figMessageObjectAnimations: graph.figMessageObjectAnimations,
     documentColorSpace: graph.documentColorSpace,
-    enabledLibraries: [...graph.enabledLibraries],
-    lazyFigImport: lazyFigImport
-      ? {
-          changeMap: [...lazyFigImport.changeMap],
-          guidToNodeId: [...lazyFigImport.guidToNodeId],
-          blobs: lazyFigImport.blobs,
-          populatedRootIds: [...lazyFigImport.populatedRootIds]
-        }
-      : undefined
+    enabledLibraries: [...graph.enabledLibraries]
   }
 }
 
@@ -58,15 +47,7 @@ export function serializedSceneGraphTransferList(data: SerializedSceneGraph): Tr
       buffers.add(image.buffer)
     }
   }
-  for (const blob of data.lazyFigImport?.blobs ?? []) {
-    if (
-      blob.buffer instanceof ArrayBuffer &&
-      blob.byteOffset === 0 &&
-      blob.byteLength === blob.buffer.byteLength
-    ) {
-      buffers.add(blob.buffer)
-    }
-  }
+
   if (data.figSchemaDeflated) {
     if (
       data.figSchemaDeflated.buffer instanceof ArrayBuffer &&
@@ -80,15 +61,27 @@ export function serializedSceneGraphTransferList(data: SerializedSceneGraph): Tr
 }
 
 /**
- * Clone the graph state that lazy FIG population may mutate while retaining immutable imported
+ * Clone the graph state that page population may mutate while retaining immutable imported
  * resources by reference. Population replaces node fields and mutates child ID arrays, but only
- * reads image bytes, variables, source changes, GUID mappings, blobs, and schema bytes.
+ * reads image bytes, variables, GUID mappings, blobs, and schema bytes. Node source metadata is
+ * copied independently because export preparation may change preserved fields.
  */
 export function cloneSceneGraphForFigExport(graph: SceneGraph): SceneGraph {
   const cloned = new SceneGraph()
   cloned.rootId = graph.rootId
   cloned.nodes = new Map(
-    [...graph.nodes].map(([id, node]) => [id, { ...node, childIds: [...node.childIds] }])
+    [...graph.nodes].map(([id, node]) => [
+      id,
+      {
+        ...node,
+        ...cloneNodeProps(node, null),
+        id: node.id,
+        parentId: node.parentId,
+        childIds: [...node.childIds],
+        source: cloneFigPayload(node.source),
+        textPicture: node.textPicture
+      }
+    ])
   )
   cloned.images = new Map(graph.images)
   cloned.variables = new Map(graph.variables)
@@ -103,26 +96,25 @@ export function cloneSceneGraphForFigExport(graph: SceneGraph): SceneGraph {
   cloned.documentColorSpace = graph.documentColorSpace
   cloned.enabledLibraries = new Map(graph.enabledLibraries)
 
-  const lazyFigImport = getLazyFigImportContext(graph)
-  if (lazyFigImport) {
-    setLazyFigImportContext(cloned, {
-      changeMap: lazyFigImport.changeMap,
-      guidToNodeId: lazyFigImport.guidToNodeId,
-      blobs: lazyFigImport.blobs,
-      populatedRootIds: new Set(lazyFigImport.populatedRootIds)
-    })
-  }
   return cloned
 }
 
-function normalizeNodeGuides(node: SceneNode): SceneNode {
-  return Array.isArray(node.guides) ? node : { ...node, guides: [] }
+function normalizeImportedNode(
+  node: Omit<SceneNode, 'componentScale'> & { componentScale?: number }
+): SceneNode {
+  return {
+    ...node,
+    guides: Array.isArray(node.guides) ? node.guides : [],
+    variableBindingScales: { ...node.variableBindingScales },
+    variableAssignmentScales: { ...node.variableAssignmentScales },
+    componentScale: node.componentScale ?? 1
+  }
 }
 
 export function deserializeSceneGraph(data: SerializedSceneGraph): SceneGraph {
   const graph = new SceneGraph()
   graph.rootId = data.rootId
-  graph.nodes = new Map(data.nodes.map(([id, node]) => [id, normalizeNodeGuides(node)]))
+  graph.nodes = new Map(data.nodes.map(([id, node]) => [id, normalizeImportedNode(node)]))
   graph.images = new Map(data.images)
   graph.variables = new Map(data.variables)
   graph.variableCollections = new Map(data.variableCollections)
@@ -133,13 +125,7 @@ export function deserializeSceneGraph(data: SerializedSceneGraph): SceneGraph {
   graph.figMessageObjectAnimations = data.figMessageObjectAnimations
   graph.documentColorSpace = data.documentColorSpace
   graph.enabledLibraries = data.enabledLibraries ? new Map(data.enabledLibraries) : new Map()
-  if (data.lazyFigImport) {
-    setLazyFigImportContext(graph, {
-      changeMap: new Map(data.lazyFigImport.changeMap),
-      guidToNodeId: new Map(data.lazyFigImport.guidToNodeId),
-      blobs: data.lazyFigImport.blobs,
-      populatedRootIds: new Set(data.lazyFigImport.populatedRootIds)
-    })
-  }
+
+  restoreReaderState(graph, data.figReader)
   return graph
 }

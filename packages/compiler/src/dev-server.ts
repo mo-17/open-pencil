@@ -1,16 +1,17 @@
 #!/usr/bin/env bun
+import { realpathSync } from 'node:fs'
 // Bun-only. Imports Vite, its React/Vue framework plugins, and Tailwind — none
 // safe to load in a browser bundle. The Vue editor talks to this over stdio
 // after spawning it via @tauri-apps/plugin-shell. Entrypoints:
 // Library: `createPreviewServer({ initialFiles, port })`
 // CLI/sidecar: `bun packages/compiler/src/dev-server.ts [--port N]`
 //     stdin reads newline-delimited JSON commands; stdout emits NDJSON events.
-
-import { realpathSync } from 'node:fs'
 import { createServer as createNetServer } from 'node:net'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
+import { setTimeout } from 'node:timers'
 
+import { unrefTimer } from '#compiler/node-runtime/timers'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import vue from '@vitejs/plugin-vue'
@@ -555,7 +556,8 @@ async function runCLI(): Promise<void> {
     // Hard-exit fallback: Vite's close() can hang on Bun if a watcher is
     // still holding a handle, leaving a zombie that holds the listening
     // port. 1s grace then SIGKILL ourselves.
-    setTimeout(() => process.exit(0), 1000).unref()
+    const exitTimer = setTimeout(() => process.exit(0), 1000)
+    unrefTimer(exitTimer)
     try {
       await server.close()
     } catch (e) {

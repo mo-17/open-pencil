@@ -1,5 +1,7 @@
 import 'fake-indexeddb/auto'
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
+
+import { IDBFactory } from 'fake-indexeddb'
 
 import {
   storageDocumentAuthorityMatches,
@@ -315,6 +317,10 @@ describe('outbox recovery', () => {
 })
 
 describe('IndexedDB outbox migration', () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+  })
+
   test('migrates v1 canvasId jobs to the legacy S3/default authority', async () => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase('open-pencil-cloud-outbox')

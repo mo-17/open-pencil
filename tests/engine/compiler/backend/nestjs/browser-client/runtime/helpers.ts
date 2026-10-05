@@ -133,6 +133,9 @@ export async function runtimeFixture(
     writeFileSync(join(directory, name + '.ts'), content)
   const read = async (name: string) => import(pathToFileURL(join(directory, name + '.ts')).href)
   try {
+    // Bun caches directory entries when importing the first fixture module.
+    // Create every module path before imports; the event's real source is written before its first load.
+    write('event', 'export {}')
     write(
       'lowcode-backend-api',
       commandAPIForTest(String(emitNestJSClient(application).content), commandTimeoutMs)

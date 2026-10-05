@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { fromUint8Array } from 'js-base64'
 
 import { CanvasHelper } from '#tests/helpers/canvas'
 
@@ -110,7 +111,7 @@ test('built-in AI catalog creates functional notes in the live editor', async ({
         blue++
     }
     return blue / (image.width * image.height)
-  }, buttonImage.toString('base64'))
+  }, fromUint8Array(buttonImage))
   expect(bluePixelRatio).toBeGreaterThan(0.6)
   canvas.assertNoErrors()
   await page.screenshot({ path: info.outputPath('ai-notes-editor.png'), fullPage: true })

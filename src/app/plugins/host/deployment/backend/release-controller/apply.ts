@@ -23,6 +23,7 @@ import {
   type BackendHostReleaseDispatchJournalRecord
 } from '../release-journal'
 import {
+  exactApplySucceeded,
   claimBackendReleaseDispatch,
   reconcileBackendReleaseDispatch,
   settlementForAppliedDispatch,
@@ -170,7 +171,7 @@ async function dispatchNewClaim(
   } catch (cause) {
     result = input.applyFailure(cause)
   }
-  if (!result.ok) {
+  if (!exactApplySucceeded(result)) {
     const occurredAt = input.now()
     const failure = safePostDispatchFailure(precommitted, result, occurredAt)
     return input.transition(

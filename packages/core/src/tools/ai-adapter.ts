@@ -8,10 +8,8 @@
 import type { valibotSchema as createValibotSchema } from '@ai-sdk/valibot'
 // eslint-disable-next-line open-pencil/no-mixed-case-acronym-identifiers -- Upstream export spelling.
 import { toStandardJsonSchema as toStandardJSONSchema } from '@valibot/to-json-schema'
-import type { ToolSet, tool as createTool } from 'ai'
+import type { JSONValue, ToolResultPart, ToolSet, tool as createTool } from 'ai'
 import type * as valibot from 'valibot'
-
-import type { JSONObject } from '@open-pencil/scene-graph/primitives'
 
 import { abortError, isAbortError } from '#core/async-work'
 import type { FigmaAPI } from '#core/figma-api'
@@ -54,6 +52,7 @@ export interface StepBudget {
 export type AIAdapterExecutionStatus = 'success' | 'error' | 'aborted'
 
 export interface AIAdapterExecutionContext {
+  toolCallId?: string
   args: Record<string, unknown>
   signal?: AbortSignal
   status: AIAdapterExecutionStatus
@@ -68,7 +67,7 @@ export interface AIAdapterOptions {
   getToolContext?: (def: ToolDef, args: Record<string, unknown>) => ToolCtx | undefined
   onBeforeExecute?: (
     def: ToolDef,
-    context: Pick<AIAdapterExecutionContext, 'args' | 'signal'>
+    context: Pick<AIAdapterExecutionContext, 'args' | 'signal' | 'toolCallId'>
   ) => void
   executeTool?: (
     def: ToolDef,
@@ -199,7 +198,7 @@ async function executeToolDefinition(
   signal: AbortSignal | undefined
 ): Promise<ToolExecutionOutcome> {
   try {
-    options.onBeforeExecute?.(def, { args, signal })
+    options.onBeforeExecute?.(def, { args, signal, toolCallId: hostContext?.toolCallId })
     if (signal?.aborted) throw abortError(TOOL_ABORT_MESSAGE)
     const toolContext = { ...hostContext, signal }
     const result = options.executeTool
@@ -210,6 +209,7 @@ async function executeToolDefinition(
       context: {
         args,
         signal,
+        toolCallId: hostContext?.toolCallId,
         status: isRejectedToolResult(result) ? 'error' : 'success',
         result
       },
@@ -220,6 +220,7 @@ async function executeToolDefinition(
       context: {
         args,
         signal,
+        toolCallId: hostContext?.toolCallId,
         status: isAbortError(error, signal) ? 'aborted' : 'error',
         error
       },
@@ -293,12 +294,12 @@ async function executeAdapterTool(
   def: ToolDef,
   options: AIAdapterOptions,
   args: Record<string, unknown>,
-  execution?: { abortSignal?: AbortSignal }
+  execution?: { abortSignal?: AbortSignal; toolCallId?: string }
 ): Promise<unknown> {
   const startTime = Date.now()
   const figma = options.getFigma()
-  const hostContext = options.getToolContext?.(def, args)
-  const signal = execution?.abortSignal ?? hostContext?.signal
+  const hostContext = { ...options.getToolContext?.(def, args), toolCallId: execution?.toolCallId }
+  const signal = execution?.abortSignal ?? hostContext.signal
   if (signal?.aborted) throw abortError(TOOL_ABORT_MESSAGE)
   const nodeBefore = def.mutates && options.onToolLog ? captureNodeSnapshot(figma, args) : undefined
   const outcome = await executeToolDefinition(def, options, figma, args, hostContext, signal)
@@ -309,6 +310,20 @@ async function executeAdapterTool(
   if (!isAtomicTool(def) || outcome.primaryError || afterError)
     throwIfToolCancelled(signal, outcome.primaryError, afterError)
   return finishToolExecution(def, options, args, startTime, figma, nodeBefore, outcome, afterError)
+}
+
+function isImageOutput(
+  output: unknown
+): output is { base64: string; mimeType: string; [key: string]: unknown } {
+  return (
+    typeof output === 'object' &&
+    output !== null &&
+    'base64' in output &&
+    typeof output.base64 === 'string' &&
+    'mimeType' in output &&
+    typeof output.mimeType === 'string' &&
+    output.mimeType.startsWith('image/')
+  )
 }
 
 export function toolsToAI(
@@ -334,24 +349,34 @@ export function toolsToAI(
     const toolOpts: Record<string, unknown> = {
       description: def.description,
       inputSchema: toStandardJSONSchema(def.input),
-      execute: (args: Record<string, unknown>, execution?: { abortSignal?: AbortSignal }) => {
+      execute: (
+        args: Record<string, unknown>,
+        execution?: { abortSignal?: AbortSignal; toolCallId?: string }
+      ) => {
         const run = () => executeAdapterTool(def, options, args, execution)
 
         return def.mutates ? serializeToolMutation(mutationKey, run) : run()
       }
     }
 
-    if (def.name === 'export_image') {
-      toolOpts.toModelOutput = ({ output }: { output: unknown }) => {
-        if (output && typeof output === 'object' && 'base64' in output && 'mimeType' in output) {
-          const r = output as { base64: string; mimeType: string }
-          return {
-            type: 'content' as const,
-            value: [{ type: 'media' as const, mediaType: r.mimeType, data: r.base64 }]
-          }
+    // Image results reach the model as files, with their metadata as text. Typed against the
+    // SDK, because a shape it does not know fails the next step's prompt validation.
+    toolOpts.toModelOutput = ({ output }: { output: unknown }): ToolResultPart['output'] => {
+      if (isImageOutput(output)) {
+        const { base64, mimeType, ...metadata } = output
+        const image = {
+          type: 'file' as const,
+          mediaType: mimeType,
+          data: { type: 'data' as const, data: base64 }
         }
-        return { type: 'json' as const, value: output as JSONObject }
+        return Object.keys(metadata).length > 0
+          ? {
+              type: 'content',
+              value: [{ type: 'text', text: JSON.stringify(metadata) }, image]
+            }
+          : { type: 'content', value: [image] }
       }
+      return { type: 'json', value: output as JSONValue }
     }
 
     result[def.name] = tool(toolOpts as never)

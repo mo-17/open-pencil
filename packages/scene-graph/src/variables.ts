@@ -1,10 +1,25 @@
+import { partition } from 'es-toolkit/array'
 import { omit, omitBy } from 'es-toolkit/object'
 
 import { BLACK } from './constants'
 import type { SceneGraph } from './index'
 import { setInstanceOverride } from './instance-overrides'
+import { findInstanceAncestor } from './instances'
 import type { Color } from './primitives'
-import type { SceneNode, Variable, VariableCollection, VariableType, VariableValue } from './types'
+import type {
+  SceneNode,
+  Variable,
+  VariableCollection,
+  VariableCollectionMode,
+  VariableType,
+  VariableValue
+} from './types'
+import {
+  isNumericVariableBindingField,
+  variableBindingOwner,
+  assignVariableBindingUnits
+} from './variables/bindings'
+import { BOOLEAN_BINDING_FIELDS, STRING_BINDING_FIELDS } from './variables/fields'
 
 export function addVariable(graph: SceneGraph, variable: Variable): void {
   graph.variables.set(variable.id, variable)
@@ -29,7 +44,14 @@ export function removeVariable(graph: SceneGraph, id: string): void {
       string,
       string
     >
-    graph.emitNodeUpdated(node.id, { boundVariables: { ...node.boundVariables } })
+    node.variableBindingScales = omitBy(
+      node.variableBindingScales,
+      (_, field) => !(field in node.boundVariables)
+    )
+    graph.emitNodeUpdated(node.id, {
+      boundVariables: { ...node.boundVariables },
+      variableBindingScales: { ...node.variableBindingScales }
+    })
     markBoundVariablesOverrideOnInstance(graph, node.id)
   }
 }
@@ -114,10 +136,17 @@ export function getActiveModeId(graph: SceneGraph, collectionId: string): string
   return collection?.defaultModeId ?? ''
 }
 
+/**
+ * What a node without an explicit mode falls back to: the mode the editor shows (`active`), or
+ * the collection's default (`default`), which is what a saved document means to other tools.
+ */
+export type VariableModeFallback = 'active' | 'default'
+
 export function getNodeVariableModeId(
   graph: SceneGraph,
   nodeId: string,
-  collectionId: string
+  collectionId: string,
+  fallback: VariableModeFallback = 'active'
 ): string {
   let node = graph.nodes.get(nodeId)
   while (node) {
@@ -125,6 +154,8 @@ export function getNodeVariableModeId(
     if (modeId) return modeId
     node = node.parentId ? graph.nodes.get(node.parentId) : undefined
   }
+  if (fallback === 'default')
+    return graph.variableCollections.get(collectionId)?.defaultModeId ?? ''
   return getActiveModeId(graph, collectionId)
 }
 
@@ -185,6 +216,13 @@ export function setDefaultMode(graph: SceneGraph, collectionId: string, modeId: 
   if (!collection) return
   if (!collection.modes.some((m) => m.modeId === modeId)) return
   collection.defaultModeId = modeId
+  collection.modes = modesDefaultFirst(collection)
+}
+
+/** Figma has no default-mode field: the first mode is the default. */
+export function modesDefaultFirst(collection: VariableCollection): VariableCollectionMode[] {
+  const [defaults, rest] = partition(collection.modes, (m) => m.modeId === collection.defaultModeId)
+  return [...defaults, ...rest]
 }
 
 export function resolveVariable(
@@ -234,17 +272,18 @@ export function resolveEffectiveVariableForNode(
   graph: SceneGraph,
   nodeId: string,
   variableId: string,
-  visited = new Set<string>()
+  visited = new Set<string>(),
+  fallback: VariableModeFallback = 'active'
 ): VariableValue | undefined {
   if (visited.has(variableId)) return undefined
   visited.add(variableId)
   const variable = graph.variables.get(variableId)
   if (!variable || !graph.variableCollections.has(variable.collectionId)) return undefined
-  const modeId = getNodeVariableModeId(graph, nodeId, variable.collectionId)
+  const modeId = getNodeVariableModeId(graph, nodeId, variable.collectionId, fallback)
   if (!Object.hasOwn(variable.valuesByMode, modeId)) return undefined
   const value = variable.valuesByMode[modeId]
   if (value && typeof value === 'object' && 'aliasId' in value) {
-    return resolveEffectiveVariableForNode(graph, nodeId, value.aliasId, visited)
+    return resolveEffectiveVariableForNode(graph, nodeId, value.aliasId, visited, fallback)
   }
   return value
 }
@@ -252,12 +291,10 @@ export function resolveEffectiveVariableForNode(
 export function resolveColorVariableForNode(
   graph: SceneGraph,
   nodeId: string,
-  variableId: string
+  variableId: string,
+  fallback: VariableModeFallback = 'active'
 ): Color | undefined {
-  const variable = graph.variables.get(variableId)
-  if (!variable) return undefined
-  const modeId = getNodeVariableModeId(graph, nodeId, variable.collectionId)
-  const value = resolveVariable(graph, variableId, modeId)
+  const value = resolveEffectiveVariableForNode(graph, nodeId, variableId, new Set(), fallback)
   if (value && typeof value === 'object' && 'r' in value) return value
   return undefined
 }
@@ -265,13 +302,20 @@ export function resolveColorVariableForNode(
 export function resolveNumberVariableForNode(
   graph: SceneGraph,
   nodeId: string,
-  variableId: string
+  variableId: string,
+  fallback: VariableModeFallback = 'active'
 ): number | undefined {
-  const variable = graph.variables.get(variableId)
-  if (!variable) return undefined
-  const modeId = getNodeVariableModeId(graph, nodeId, variable.collectionId)
-  const value = resolveVariable(graph, variableId, modeId)
+  const value = resolveEffectiveVariableForNode(graph, nodeId, variableId, new Set(), fallback)
   return typeof value === 'number' ? value : undefined
+}
+
+export function resolveStringVariableForNode(
+  graph: SceneGraph,
+  nodeId: string,
+  variableId: string
+): string | undefined {
+  const value = resolveEffectiveVariableForNode(graph, nodeId, variableId)
+  return typeof value === 'string' ? value : undefined
 }
 
 export function getVariablesForCollection(graph: SceneGraph, collectionId: string): Variable[] {
@@ -286,47 +330,7 @@ export function getVariablesByType(graph: SceneGraph, type: VariableType): Varia
   return [...graph.variables.values()].filter((v) => v.type === type)
 }
 
-const SCALAR_BINDING_FIELDS: ReadonlySet<string> = new Set([
-  'opacity',
-  'width',
-  'height',
-  'cornerRadius',
-  'fontSize',
-  'letterSpacing',
-  'lineHeight',
-  'itemSpacing',
-  'strokeWeight',
-  'paddingLeft',
-  'paddingRight',
-  'paddingTop',
-  'paddingBottom',
-  'counterAxisSpacing',
-  'topLeftRadius',
-  'topRightRadius',
-  'bottomLeftRadius',
-  'bottomRightRadius',
-  'rotation',
-  'x',
-  'y',
-  'minWidth',
-  'maxWidth',
-  'minHeight',
-  'maxHeight',
-  'borderTopWeight',
-  'borderBottomWeight',
-  'borderLeftWeight',
-  'borderRightWeight',
-  'gridRowGap',
-  'gridColumnGap'
-])
-
-export function isNumberVariableBindingField(field: string): boolean {
-  return SCALAR_BINDING_FIELDS.has(field)
-}
-
-const STRING_BINDING_FIELDS: ReadonlySet<string> = new Set(['fontFamily'])
-
-const BOOLEAN_BINDING_FIELDS: ReadonlySet<string> = new Set(['visible'])
+export { isNumericVariableBindingField as isNumberVariableBindingField } from './variables/fields'
 
 interface BindingFieldInfo {
   isKnown: boolean
@@ -353,7 +357,7 @@ export function bindVariable(
     node.boundVariables = omit(node.boundVariables, [fieldInfo.topLevelKey])
   }
 
-  if (SCALAR_BINDING_FIELDS.has(field) && variable.type !== 'FLOAT') {
+  if (isNumericVariableBindingField(field) && variable.type !== 'FLOAT') {
     throw new Error(`Cannot bind ${variable.type} variable to scalar field "${field}"`)
   }
 
@@ -370,8 +374,12 @@ export function bindVariable(
   }
 
   node.boundVariables = { ...node.boundVariables, [field]: variableId }
-  graph.emitNodeUpdated(nodeId, { boundVariables: { ...node.boundVariables } })
-  markBoundVariablesOverrideOnInstance(graph, nodeId)
+  assignVariableBindingUnits(graph, node, field)
+  markBoundVariablesOverrideOnInstance(graph, nodeId, field)
+  graph.emitNodeUpdated(nodeId, {
+    boundVariables: { ...node.boundVariables },
+    variableBindingScales: { ...node.variableBindingScales }
+  })
 }
 
 function validateBindingField(
@@ -383,7 +391,7 @@ function validateBindingField(
     validateIndexedColorBinding(node, field, variable) ??
     validateGradientStopColorBinding(node, field, variable) ?? {
       isKnown:
-        SCALAR_BINDING_FIELDS.has(field) ||
+        isNumericVariableBindingField(field) ||
         STRING_BINDING_FIELDS.has(field) ||
         BOOLEAN_BINDING_FIELDS.has(field)
     }
@@ -412,22 +420,25 @@ function validateGradientStopColorBinding(
   field: string,
   variable: Variable
 ): BindingFieldInfo | undefined {
-  const match = field.match(/^fills\/(\d+)\/gradientStops\/(\d+)\/color$/)
+  const match = field.match(/^(fills|strokes)\/(\d+)\/gradientStops\/(\d+)\/color$/)
   if (!match) return undefined
   assertColorVariable(variable, field)
-  const fillIndex = Number.parseInt(match[1], 10)
-  const stopIndex = Number.parseInt(match[2], 10)
-  if (fillIndex >= node.fills.length) {
-    throw new Error(`Index ${fillIndex} out of range for fills (length ${node.fills.length})`)
+  const arrayKey = match[1] as 'fills' | 'strokes'
+  const fillIndex = Number.parseInt(match[2], 10)
+  const stopIndex = Number.parseInt(match[3], 10)
+  if (fillIndex >= node[arrayKey].length) {
+    throw new Error(
+      `Index ${fillIndex} out of range for ${arrayKey} (length ${node[arrayKey].length})`
+    )
   }
-  const fill = node.fills[fillIndex]
+  const fill = node[arrayKey][fillIndex]
   const stopCount = fill.gradientStops?.length ?? 0
   if (stopIndex >= stopCount) {
     throw new Error(
-      `Index ${stopIndex} out of range for fills/${fillIndex}/gradientStops (length ${stopCount})`
+      `Index ${stopIndex} out of range for ${arrayKey}/${fillIndex}/gradientStops (length ${stopCount})`
     )
   }
-  return { isKnown: true, topLevelKey: 'fills' }
+  return { isKnown: true, topLevelKey: arrayKey }
 }
 
 function assertColorVariable(variable: Variable, field: string): void {
@@ -441,29 +452,33 @@ export function unbindVariable(graph: SceneGraph, nodeId: string, field: string)
   if (!node) return
   if (!(field in node.boundVariables)) return
   node.boundVariables = omit(node.boundVariables, [field])
-  graph.emitNodeUpdated(nodeId, { boundVariables: { ...node.boundVariables } })
-  markBoundVariablesOverrideOnInstance(graph, nodeId)
+  node.variableBindingScales = omit(node.variableBindingScales, [field])
+  markBoundVariablesOverrideOnInstance(graph, nodeId, field)
+  graph.emitNodeUpdated(nodeId, {
+    boundVariables: { ...node.boundVariables },
+    variableBindingScales: { ...node.variableBindingScales }
+  })
 }
 
-function markBoundVariablesOverrideOnInstance(graph: SceneGraph, nodeId: string): void {
+function markBoundVariablesOverrideOnInstance(
+  graph: SceneGraph,
+  nodeId: string,
+  field?: string
+): void {
   const node = graph.nodes.get(nodeId)
   if (!node) return
 
-  // Mark the field on the canonical structured state.
-  if (node.type === 'INSTANCE') {
-    setInstanceOverride(node.instanceOverrides, node.id, node.id, 'boundVariables')
-    return
-  }
-
-  // Walk up to the owning instance for descendant fields.
-  let current = node
-  while (current.parentId) {
-    const parent = graph.nodes.get(current.parentId)
-    if (!parent) break
-    if (parent.type === 'INSTANCE') {
-      setInstanceOverride(parent.instanceOverrides, parent.id, nodeId, 'boundVariables')
-      break
-    }
-    current = parent
-  }
+  const owner = variableBindingOwner(graph, node)
+  if (owner.type !== 'INSTANCE') return
+  const nearest = findInstanceAncestor(graph, nodeId)
+  if (nearest) setInstanceOverride(nearest.instanceOverrides, nearest.id, nodeId, 'boundVariables')
+  setInstanceOverride(owner.instanceOverrides, owner.id, nodeId, 'boundVariables')
+  if (field)
+    setInstanceOverride(
+      owner.instanceOverrides,
+      owner.id,
+      nodeId,
+      `boundVariables/${field}`,
+      node.boundVariables[field] ?? null
+    )
 }

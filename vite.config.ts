@@ -11,6 +11,7 @@ import { defineConfig } from 'vite'
 import { ensureBrandAssets } from '@open-pencil/brand-tools'
 
 import packageJson from './package.json'
+import { viteBuildTarget } from './src/app/shell/support/baseline'
 import { createOpenPencilAliases } from './vite/aliases'
 import {
   localAutomationRoute,
@@ -47,6 +48,8 @@ export default defineConfig(async ({ command }) => {
         automationRoute.browserURL.replace(/^ws/, 'http')
       )
     },
+    // Dynamic browser fixtures must not trigger a dependency-optimizer reload mid-test.
+    optimizeDeps: { include: ['ai/test'] },
     plugins: [
       rawMarkdownPlugin(),
       copyCanvasKitAssetsPlugin(),
@@ -59,6 +62,8 @@ export default defineConfig(async ({ command }) => {
     ],
     clearScreen: false,
     build: {
+      // Lower syntax to the supported browser baseline; APIs remain checked separately.
+      target: viteBuildTarget(),
       chunkSizeWarningLimit: 2500,
       rollupOptions: {
         input: {

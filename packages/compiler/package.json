@@ -110,7 +110,7 @@
     "smoke:dist": "bun scripts/smoke-dist.ts"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.123",
+    "@iconify-json/lucide": "^1.2.139",
     "@noble/hashes": "^1.8.0",
     "@open-pencil/core": "workspace:*",
     "@open-pencil/dom-css": "workspace:*",
@@ -120,21 +120,24 @@
     "@open-pencil/scene-graph": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.0.4",
-    "@vitejs/plugin-vue": "^6.0.8",
+    "@vitejs/plugin-vue": "^6.0.9",
     "esbuild-wasm": "0.27.4",
+    "js-base64": "^3.9.3",
     "openid-client": "6.8.8",
     "tailwindcss": "4.3.3",
-    "valibot": "^1.4.2",
+    "valibot": "^1.5.0",
     "vite": "8.1.4"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.100.0",
-    "@types/node": "^25.9.5",
+    "@types/node": "^25.9.9",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-intl": "^7.1.0",
+    "react-router": "^7.18.3",
+    "react-router-dom": "^7.18.3",
     "zustand": "^5.0.0"
   }
 }

@@ -70,16 +70,14 @@ interface RejectedResponseCase {
 }
 
 const REJECTED_RESPONSES: readonly RejectedResponseCase[] = [
-  ...INVALID_HEADERS.map(
-    (metadata): RejectedResponseCase => ({
-      name: metadata.name,
-      rawValue: metadata.rawHeader,
-      errorCode: 'invalid-response',
-      createResponse(body) {
-        return new Response(body, { status: 200, headers: metadata.headers })
-      }
-    })
-  ),
+  ...INVALID_HEADERS.map((metadata): RejectedResponseCase => ({
+    name: metadata.name,
+    rawValue: metadata.rawHeader,
+    errorCode: 'invalid-response',
+    createResponse(body) {
+      return new Response(body, { status: 200, headers: metadata.headers })
+    }
+  })),
   {
     name: 'unexpected status',
     rawValue: 'private-status-canary',

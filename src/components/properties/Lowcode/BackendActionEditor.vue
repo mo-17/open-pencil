@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
 import { validateBackendClientAction } from '@open-pencil/lowcode/backend'
 import type {
   ActionPayloadEntry,

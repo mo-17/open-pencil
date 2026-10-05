@@ -5,6 +5,7 @@ import { useI18n } from '@open-pencil/vue'
 
 import { useACPContextUsage } from '@/app/ai/acp/context-usage'
 import { chatDocumentId } from '@/app/ai/chat/history/document'
+import { useChatRunLocation } from '@/app/ai/chat/run-location'
 import { useAIChat } from '@/app/ai/chat/use'
 import { chatPanelController } from '@/app/ai/popout/chat-host-controller'
 import { getActiveEditorStore } from '@/app/editor/active-store'
@@ -15,6 +16,7 @@ import ACPPermissionDialog from '@/components/chat/ACPPermissionDialog.vue'
 import ACPSessionControl from '@/components/chat/AcpSessionControl.vue'
 import ChatHistory from '@/components/chat/ChatHistory.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
+import ChatRunLocation from '@/components/chat/ChatRunLocation.vue'
 import ChatTranscript from '@/components/chat/ChatTranscript.vue'
 import CodePenAIReview from '@/components/chat/CodePenAIReview.vue'
 import ProviderSetup from '@/components/chat/ProviderSetup.vue'
@@ -56,6 +58,7 @@ const {
 const { chatFailure, clearChatFailure } = useAIChat()
 const { ai, common, dialogs } = useI18n()
 const acpUsage = useACPContextUsage(() => acpSessionStatus.value.sessionId)
+const runLocation = useChatRunLocation()
 
 const historyOptions = computed(() => {
   const current = history.current.value
@@ -150,6 +153,7 @@ async function handleClearChat(): Promise<void> {
         :messages="messages"
         :status="status"
         :show-continue="showContinue"
+        :nodes-live="!historyReadOnly"
         :pending-approval-ids="pendingApprovalIds"
         :actionable-approval-message-id="actionableApprovalMessageId"
         @tool-approval="handleToolApproval"
@@ -199,6 +203,12 @@ async function handleClearChat(): Promise<void> {
 
       <ACPContextUsage v-if="isACPProvider" :usage="acpUsage" />
 
+      <ChatRunLocation
+        v-if="runLocation"
+        :agent="runLocation.agent"
+        :page="runLocation.page"
+        @open="runLocation.open"
+      />
       <ChatInput
         v-if="!historyReadOnly && isConfigured"
         :status="status"

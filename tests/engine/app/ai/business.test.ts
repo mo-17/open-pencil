@@ -71,16 +71,16 @@ describe('business template AI entry', () => {
       pluginStore: value.store,
       ready: async () => undefined
     })
-    await expect(
+    await expect(() =>
       tool.execute(figma, { kind: 'arbitrary-backend', authentication: 'local-keycloak' })
-    ).rejects.toThrow('Unknown business')
-    await expect(
+    ).toThrow('arbitrary-backend')
+    await expect(() =>
       tool.execute(figma, {
         kind: 'customer-crm',
         authentication: 'local-keycloak',
         locale: 'unsupported'
       })
-    ).rejects.toThrow('page language')
+    ).toThrow('unsupported')
     expect(value.editor.documentSnapshotChanged(before)).toBe(false)
   })
 
@@ -140,9 +140,7 @@ describe('business template AI entry', () => {
     await expect(
       tool.execute(figma, { kind: 'service-desk', authentication: 'local-keycloak' })
     ).rejects.toThrow('existing Backend')
-    await expect(tool.execute(figma, { kind: 'service-desk', mode: 'unknown' })).rejects.toThrow(
-      'mode'
-    )
+    expect(() => tool.execute(figma, { kind: 'service-desk', mode: 'unknown' })).toThrow('unknown')
     expect(value.editor.documentSnapshotChanged(before)).toBe(false)
   })
 

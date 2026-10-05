@@ -94,7 +94,7 @@ describe('describe text contrast', () => {
       candidate.message.startsWith('Low contrast:')
     )
     expect(issue?.message).toContain('#606060 on #BFBFBF')
-    expect(issue?.message).toContain('3.45:1 < 4.50:1')
+    expect(issue?.message).toContain('3.44:1 < 4.50:1')
   })
 
   test('uses the WCAG AA 3:1 threshold only when all text is large', () => {

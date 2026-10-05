@@ -2336,38 +2336,30 @@ function validateReplayedEnvironmentState(
   )
   const entryById = new Map(state.entries.map((entry) => [entry.migrationId, entry]))
   const history: EnvironmentHistoryEvent[] = [
-    ...state.driftRecords.map(
-      (record): EnvironmentHistoryEvent => ({
-        kind: 'drift',
-        at: record.checkedAt,
-        id: record.driftId,
-        record
-      })
-    ),
-    ...state.promotions.map(
-      (record): EnvironmentHistoryEvent => ({
-        kind: 'promotion',
-        at: record.promotedAt,
-        id: record.promotionId,
-        record
-      })
-    ),
-    ...state.recoveryRecords.map(
-      (record): EnvironmentHistoryEvent => ({
-        kind: 'recovery',
-        at: record.recordedAt,
-        id: record.recoveryId,
-        record
-      })
-    ),
-    ...state.authorityRebindings.map(
-      (record): EnvironmentHistoryEvent => ({
-        kind: 'authority-rebind',
-        at: record.reboundAt,
-        id: record.rebindId,
-        record
-      })
-    )
+    ...state.driftRecords.map((record): EnvironmentHistoryEvent => ({
+      kind: 'drift',
+      at: record.checkedAt,
+      id: record.driftId,
+      record
+    })),
+    ...state.promotions.map((record): EnvironmentHistoryEvent => ({
+      kind: 'promotion',
+      at: record.promotedAt,
+      id: record.promotionId,
+      record
+    })),
+    ...state.recoveryRecords.map((record): EnvironmentHistoryEvent => ({
+      kind: 'recovery',
+      at: record.recordedAt,
+      id: record.recoveryId,
+      record
+    })),
+    ...state.authorityRebindings.map((record): EnvironmentHistoryEvent => ({
+      kind: 'authority-rebind',
+      at: record.reboundAt,
+      id: record.rebindId,
+      record
+    }))
   ].sort(
     (left, right) => left.at.localeCompare(right.at, 'en') || left.id.localeCompare(right.id, 'en')
   )
@@ -3339,44 +3331,36 @@ function latestEnvironmentHistoryEvent(
   const events: EnvironmentHistoryEvent[] = [
     ...state.driftRecords
       .filter((record) => record.environment === environment)
-      .map(
-        (record): EnvironmentHistoryEvent => ({
-          kind: 'drift',
-          at: record.checkedAt,
-          id: record.driftId,
-          record
-        })
-      ),
+      .map((record): EnvironmentHistoryEvent => ({
+        kind: 'drift',
+        at: record.checkedAt,
+        id: record.driftId,
+        record
+      })),
     ...state.promotions
       .filter((record) => record.to === environment)
-      .map(
-        (record): EnvironmentHistoryEvent => ({
-          kind: 'promotion',
-          at: record.promotedAt,
-          id: record.promotionId,
-          record
-        })
-      ),
+      .map((record): EnvironmentHistoryEvent => ({
+        kind: 'promotion',
+        at: record.promotedAt,
+        id: record.promotionId,
+        record
+      })),
     ...state.recoveryRecords
       .filter((record) => record.environment === environment)
-      .map(
-        (record): EnvironmentHistoryEvent => ({
-          kind: 'recovery',
-          at: record.recordedAt,
-          id: record.recoveryId,
-          record
-        })
-      ),
+      .map((record): EnvironmentHistoryEvent => ({
+        kind: 'recovery',
+        at: record.recordedAt,
+        id: record.recoveryId,
+        record
+      })),
     ...state.authorityRebindings
       .filter((record) => record.environment === environment)
-      .map(
-        (record): EnvironmentHistoryEvent => ({
-          kind: 'authority-rebind',
-          at: record.reboundAt,
-          id: record.rebindId,
-          record
-        })
-      )
+      .map((record): EnvironmentHistoryEvent => ({
+        kind: 'authority-rebind',
+        at: record.reboundAt,
+        id: record.rebindId,
+        record
+      }))
   ]
   return events
     .sort(

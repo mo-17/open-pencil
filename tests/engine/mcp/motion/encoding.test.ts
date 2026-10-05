@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { McpServer } from '@modelcontextprotocol/server'
+import { fromUint8Array, toUint8Array } from 'js-base64'
 
 import {
   createMotionPNGSequenceManifest,
@@ -23,8 +24,9 @@ import { registerTools, type ToolRequestExtra } from '#mcp/tool/registration'
 
 const root = join(tmpdir(), `open-pencil-mcp-motion-encode-${randomUUID()}`)
 const PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
-  'base64'
+  toUint8Array(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+  )
 )
 
 function PNGSequenceResult(): Record<string, unknown> {
@@ -34,7 +36,7 @@ function PNGSequenceResult(): Record<string, unknown> {
     manifest: createMotionPNGSequenceManifest(plan, frames),
     frames: frames.map((frame) => ({
       file: frame.fileName,
-      base64: PNG.toString('base64'),
+      base64: fromUint8Array(PNG),
       byteLength: PNG.length
     })),
     issues: []

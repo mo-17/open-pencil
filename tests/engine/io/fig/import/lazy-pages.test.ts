@@ -1,170 +1,192 @@
-import { describe, expect, test } from 'bun:test'
+import { expect, test } from 'bun:test'
 
-import { populateAndApplyOverrides } from '@open-pencil/fig/instance-overrides'
-import {
-  getLazyFigImportContext,
-  populateAllLazyFigImportRoots,
-  populateLazyFigImportRoots,
-  setLazyFigImportContext
-} from '@open-pencil/core/kiwi/fig/lazy-import'
+import { exportFigFile, initCodec, parseFigFile } from '@open-pencil/core'
+import { populateAllFigPages, populateFigPage } from '@open-pencil/core/io/formats/fig'
+import { importNodeChanges } from '@open-pencil/core/kiwi/fig/import'
+import { populateLazyFigImportRoots } from '@open-pencil/core/kiwi/fig/lazy-import'
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { reapplyInstanceOverrides } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+import {
+  snapshotReaderState,
+  copyReaderState,
+  isReaderPagePending
+} from '#core/kiwi/fig/session/document-state'
 
-function createLazyGraph(pageCount: 2 | 3 = 2) {
-  const graph = new SceneGraph()
-  const [page1] = graph.getPages()
-  const page2 = graph.addPage('Page 2')
-  const page3 = pageCount === 3 ? graph.addPage('Page 3') : undefined
-  const component = graph.createNode('COMPONENT', page1.id, {
-    name: 'Button',
-    width: 100,
-    height: 40
-  })
-  graph.createNode('RECTANGLE', component.id, {
-    name: 'Background',
-    width: 100,
-    height: 40
-  })
-  const page1Instance = graph.createNode('INSTANCE', page1.id, {
-    name: 'Button instance 1',
-    componentId: component.id,
-    width: 100,
-    height: 40
-  })
-  const page2Instance = graph.createNode('INSTANCE', page2.id, {
-    name: 'Button instance 2',
-    componentId: component.id,
-    width: 100,
-    height: 40
-  })
-  const page3Instance = page3
-    ? graph.createNode('INSTANCE', page3.id, {
-        name: 'Button instance 3',
-        componentId: component.id,
-        width: 100,
-        height: 40
-      })
-    : undefined
-
-  setLazyFigImportContext(graph, {
-    changeMap: new Map(),
-    guidToNodeId: new Map(),
-    blobs: [],
-    populatedRootIds: new Set([page1.id])
-  })
-
-  return { graph, page1, page2, page3, page1Instance, page2Instance, page3Instance }
+async function createArchiveShells() {
+  await initCodec()
+  const source = new SceneGraph()
+  source.createNode('RECTANGLE', source.getPages()[0].id, { name: 'First' })
+  source.createNode('RECTANGLE', source.addPage('Page 2').id, { name: 'Second' })
+  const bytes = await exportFigFile(source)
+  return parseFigFile(bytes.slice().buffer as ArrayBuffer, { populate: 'none' })
 }
 
-describe('lazy .fig page population', () => {
-  test('populates pages incrementally and releases context after the final page', () => {
-    const { graph, page2, page3, page1Instance, page2Instance, page3Instance } = createLazyGraph(3)
-    if (!page3 || !page3Instance) throw new Error('Expected a third lazy page')
+function createAuthoredGraph(internal = false) {
+  const guid = (localID: number) => ({ sessionID: 1, localID })
+  const changes: NodeChange[] = [
+    { guid: guid(0), type: 'DOCUMENT' },
+    {
+      guid: guid(1),
+      type: 'CANVAS',
+      name: 'Page 1',
+      parentIndex: { guid: guid(0), position: '!' }
+    },
+    {
+      guid: guid(2),
+      type: 'CANVAS',
+      name: 'Page 2',
+      parentIndex: { guid: guid(0), position: '"' }
+    },
+    {
+      guid: guid(3),
+      type: 'SYMBOL',
+      name: 'Button',
+      parentIndex: { guid: guid(1), position: '!' },
+      size: { x: 100, y: 40 }
+    },
+    {
+      guid: guid(4),
+      type: 'RECTANGLE',
+      name: 'Background',
+      parentIndex: { guid: guid(3), position: '!' },
+      size: { x: 100, y: 40 }
+    },
+    {
+      guid: guid(5),
+      type: 'INSTANCE',
+      name: 'First instance',
+      parentIndex: { guid: guid(1), position: '"' },
+      symbolData: { symbolID: guid(3) }
+    },
+    {
+      guid: guid(6),
+      type: 'INSTANCE',
+      name: 'Second instance',
+      parentIndex: { guid: guid(2), position: '!' },
+      symbolData: { symbolID: guid(3) }
+    }
+  ]
+  if (internal)
+    changes.push(
+      {
+        guid: guid(7),
+        type: 'CANVAS',
+        name: 'Internal assets',
+        internalOnly: true,
+        parentIndex: { guid: guid(0), position: '#' }
+      },
+      {
+        guid: guid(8),
+        type: 'INSTANCE',
+        name: 'Internal instance',
+        parentIndex: { guid: guid(7), position: '!' },
+        symbolData: { symbolID: guid(3) }
+      }
+    )
+  const graph = importNodeChanges(changes, [], undefined, { populate: 'none' })
+  const find = (name: string) => {
+    const node = [...graph.getAllNodes()].find((node) => node.name === name)
+    if (!node) throw new Error(`Missing ${name}`)
+    return node
+  }
+  return { graph, find, changes }
+}
 
-    expect(graph.getChildren(page1Instance.id)).toHaveLength(0)
-    expect(graph.getChildren(page2Instance.id)).toHaveLength(0)
-    expect(graph.getChildren(page3Instance.id)).toHaveLength(0)
-    expect(getLazyFigImportContext(graph)).toBeDefined()
+test('archive session populates an unvisited page exactly once', async () => {
+  const graph = await createArchiveShells()
+  const [first, second] = graph.getPages()
+  expect(graph.getChildren(first.id)).toHaveLength(0)
+  expect(populateFigPage(graph, second.id)).toBe(true)
+  expect(graph.getChildren(first.id)).toHaveLength(0)
+  expect(graph.getChildren(second.id).map((node) => node.name)).toEqual(['Second'])
+  const count = graph.nodes.size
+  expect(populateFigPage(graph, second.id)).toBe(false)
+  expect(graph.nodes.size).toBe(count)
+})
 
-    expect(populateLazyFigImportRoots(graph, [page2.id])).toBe(true)
-    expect(graph.getChildren(page1Instance.id)).toHaveLength(0)
-    expect(graph.getChildren(page2Instance.id)).toHaveLength(1)
-    expect(graph.getChildren(page3Instance.id)).toHaveLength(0)
-    expect(getLazyFigImportContext(graph)).toBeDefined()
+test('archive session populates all remaining pages once', async () => {
+  const graph = await createArchiveShells()
+  expect(populateAllFigPages(graph)).toBe(true)
+  expect(graph.getPages().map((page) => graph.getChildren(page.id).length)).toEqual([1, 1])
+  expect(populateAllFigPages(graph)).toBe(false)
+})
 
-    const nodeCount = graph.nodes.size
-    expect(populateLazyFigImportRoots(graph, [page2.id])).toBe(false)
-    expect(graph.nodes.size).toBe(nodeCount)
+test('decoded records retain authored identities before scoped occurrence expansion', () => {
+  const { graph, find, changes } = createAuthoredGraph()
+  const first = find('First instance'),
+    second = find('Second instance')
+  const secondPage = find('Page 2')
+  expect(first.source.id).toBe('1:5')
+  expect(graph.getChildren(first.id)).toHaveLength(0)
+  expect(graph.getChildren(second.id)).toHaveLength(0)
+  expect(populateLazyFigImportRoots(graph, [secondPage.id])).toBe(true)
+  expect(find('Second instance')).toBe(second)
+  expect(graph.getChildren(second.id)).toHaveLength(1)
+  expect(graph.getChildren(first.id)).toHaveLength(0)
+  expect(isReaderPagePending(graph, find('Page 1').id)).toBe(true)
+  const ids = [...graph.nodes.keys()]
+  expect(populateLazyFigImportRoots(graph, [secondPage.id, secondPage.id])).toBe(false)
+  expect([...graph.nodes.keys()]).toEqual(ids)
+  expect(populateAllFigPages(graph)).toBe(true)
+  expect(graph.getChildren(first.id)).toHaveLength(1)
+  expect(populateAllFigPages(graph)).toBe(false)
+  expect(changes[5].symbolData?.symbolID).toEqual({ sessionID: 1, localID: 3 })
+})
 
-    expect(populateLazyFigImportRoots(graph, [page3.id])).toBe(true)
-    expect(graph.getChildren(page1Instance.id)).toHaveLength(1)
-    expect(graph.getChildren(page2Instance.id)).toHaveLength(1)
-    expect(graph.getChildren(page3Instance.id)).toHaveLength(1)
-    expect(getLazyFigImportContext(graph)).toBeUndefined()
+test('full-document population explicitly includes internal authored pages', () => {
+  const { graph, find } = createAuthoredGraph(true)
+  expect(graph.getPages()).toHaveLength(2)
+  expect(graph.getPages(true)).toHaveLength(3)
+  expect(populateAllFigPages(graph)).toBe(true)
+  expect(graph.getChildren(find('Internal instance').id)).toHaveLength(1)
+  expect(snapshotReaderState(graph)?.checkpoint.loadedPageIds).toHaveLength(3)
+  expect(populateAllFigPages(graph)).toBe(false)
+})
 
-    const completedNodeCount = graph.nodes.size
-    expect(populateLazyFigImportRoots(graph, [page3.id])).toBe(false)
-    expect(graph.nodes.size).toBe(completedNodeCount)
-  })
+test('graphs without reader state do not claim pending pages', () => {
+  const graph = new SceneGraph()
+  expect(snapshotReaderState(graph)).toBeUndefined()
+  expect(populateAllFigPages(graph)).toBe(false)
+})
 
-  test('can populate all remaining pages before full-document operations', () => {
-    const { graph, page1Instance, page2Instance } = createLazyGraph()
+test('later-page population replays legacy lowcode overrides and retains structured claims', () => {
+  const { graph, find } = createAuthoredGraph()
+  const first = find('First instance'),
+    second = find('Second instance')
+  graph.updateNode(first.id, { pendingInstanceOverrides: { '0:opacity': 0.7 } })
+  graph.updateNode(second.id, { pendingInstanceOverrides: { '0:opacity': 0.35 } })
+  expect(populateFigPage(graph, find('Page 1').id)).toBe(true)
+  reapplyInstanceOverrides(graph)
+  const child = graph.getChildren(first.id)[0]
+  expect(child.opacity).toBe(0.7)
+  expect(first.pendingInstanceOverrides).toBeUndefined()
+  expect(second.pendingInstanceOverrides).toEqual({ '0:opacity': 0.35 })
+  expect(graph.getChildren(second.id)).toHaveLength(0)
+  second.instanceOverrides.self.set('structured-sentinel', true)
+  expect(populateFigPage(graph, find('Page 2').id)).toBe(true)
+  const later = graph.getChildren(second.id)[0]
+  expect(later.opacity).toBe(0.35)
+  expect(second.overrides).toEqual({ [`${later.id}:opacity`]: 0.35 })
+  expect(second.pendingInstanceOverrides).toBeUndefined()
+  expect(second.instanceOverrides.self.get('structured-sentinel')).toBe(true)
+  expect(child.opacity).toBe(0.7)
+  expect(first.overrides).toEqual({ [`${child.id}:opacity`]: 0.7 })
+})
 
-    expect(populateAllLazyFigImportRoots(graph)).toBe(true)
-    expect(graph.getChildren(page1Instance.id)).toHaveLength(1)
-    expect(graph.getChildren(page2Instance.id)).toHaveLength(1)
-    expect(getLazyFigImportContext(graph)).toBeUndefined()
-    expect(populateAllLazyFigImportRoots(graph)).toBe(false)
-  })
-
-  test('finishes internal pages when the last accessible page is populated', () => {
-    const { graph, page2, page1Instance, page2Instance } = createLazyGraph()
-    const internalPage = graph.addPage('Internal assets')
-    graph.updateNode(internalPage.id, { internalOnly: true })
-    const internalInstance = graph.createNode('INSTANCE', internalPage.id, {
-      name: 'Internal button instance',
-      componentId: page1Instance.componentId,
-      width: 100,
-      height: 40
-    })
-
-    expect(graph.getPages()).toHaveLength(2)
-    expect(graph.getPages(true)).toHaveLength(3)
-    expect(populateLazyFigImportRoots(graph, [page2.id])).toBe(true)
-    expect(graph.getChildren(page1Instance.id)).toHaveLength(1)
-    expect(graph.getChildren(page2Instance.id)).toHaveLength(1)
-    expect(graph.getChildren(internalInstance.id)).toHaveLength(1)
-    expect(getLazyFigImportContext(graph)).toBeUndefined()
-  })
-
-  test('does not retain a context with no unpopulated pages', () => {
-    const graph = new SceneGraph()
-    const pageIds = graph.getPages(true).map((page) => page.id)
-
-    setLazyFigImportContext(graph, {
-      changeMap: new Map(),
-      guidToNodeId: new Map(),
-      blobs: [new Uint8Array(1024)],
-      populatedRootIds: new Set(pageIds)
-    })
-
-    expect(getLazyFigImportContext(graph)).toBeUndefined()
-    expect(populateAllLazyFigImportRoots(graph)).toBe(false)
-  })
-
-  test('retains and replays legacy overrides when a later page instance is populated', () => {
-    const { graph, page1, page2, page1Instance, page2Instance } = createLazyGraph()
-    graph.updateNode(page1Instance.id, {
-      pendingInstanceOverrides: { '0:opacity': 0.7 }
-    })
-    graph.updateNode(page2Instance.id, {
-      pendingInstanceOverrides: { '0:opacity': 0.35 }
-    })
-
-    // Match first-page import: only the visible page has real cloned descendants
-    // when the legacy snapshot is replayed for the first time.
-    populateAndApplyOverrides(graph, new Map(), new Map(), [], [page1.id])
-    reapplyInstanceOverrides(graph)
-
-    const populatedFirstChild = graph.getChildren(page1Instance.id)[0]
-    expect(populatedFirstChild?.opacity).toBe(0.7)
-    expect(page1Instance.pendingInstanceOverrides).toBeUndefined()
-    expect(graph.getChildren(page2Instance.id)).toHaveLength(0)
-    expect(page2Instance.pendingInstanceOverrides).toEqual({ '0:opacity': 0.35 })
-    expect(page2Instance.overrides).toEqual({})
-
-    page2Instance.instanceOverrides.self.set('structured-sentinel', true)
-    expect(populateLazyFigImportRoots(graph, [page2.id])).toBe(true)
-
-    const populatedLaterChild = graph.getChildren(page2Instance.id)[0]
-    expect(populatedLaterChild?.opacity).toBe(0.35)
-    expect(page2Instance.overrides).toEqual({ [`${populatedLaterChild.id}:opacity`]: 0.35 })
-    expect(page2Instance.pendingInstanceOverrides).toBeUndefined()
-    expect(page2Instance.instanceOverrides.self.get('structured-sentinel')).toBe(true)
-    const stillPopulatedFirstChild = graph.getChildren(page1Instance.id)[0]
-    expect(stillPopulatedFirstChild?.opacity).toBe(0.7)
-    expect(page1Instance.overrides).toEqual({ [`${stillPopulatedFirstChild.id}:opacity`]: 0.7 })
-    expect(getLazyFigImportContext(graph)).toBeUndefined()
-  })
+test('a copied decoded-record session resumes its pending page independently', () => {
+  const { graph, find } = createAuthoredGraph()
+  populateFigPage(graph, find('Page 1').id)
+  const copied = new SceneGraph()
+  copied.nodes.clear()
+  for (const [id, node] of graph.nodes) copied.nodes.set(id, structuredClone(node))
+  copied.rootId = graph.rootId
+  copied.instanceIndex.clear()
+  for (const [id, entries] of graph.instanceIndex) copied.instanceIndex.set(id, new Set(entries))
+  copyReaderState(graph, copied)
+  expect(populateFigPage(copied, find('Page 2').id)).toBe(true)
+  expect(graph.getChildren(find('Second instance').id)).toHaveLength(0)
+  expect(copied.getChildren(find('Second instance').id)).toHaveLength(1)
+  expect(isReaderPagePending(graph, find('Page 2').id)).toBe(true)
 })

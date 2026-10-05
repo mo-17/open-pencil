@@ -19,6 +19,7 @@ import { AVATAR_MODULE_CANVAS_ADAPTER } from './avatar'
 import { BADGE_MODULE_CANVAS_ADAPTER } from './badge'
 import { BREADCRUMB_MODULE_CANVAS_ADAPTER } from './breadcrumb'
 import { CAROUSEL_MODULE_CANVAS_ADAPTER, renderCarouselModulePreview } from './carousel'
+import { CASCADER_MODULE_CANVAS_ADAPTER } from './cascader'
 import { CHART_MODULE_CANVAS_ADAPTER, renderChartModulePreview } from './chart'
 import { CHIP_MODULE_CANVAS_ADAPTER } from './chip'
 import { CODE_BLOCK_MODULE_CANVAS_ADAPTER, renderCodeBlockModulePreview } from './code-block'
@@ -58,7 +59,6 @@ import {
 } from './upload-button'
 import { VIDEO_MODULE_CANVAS_ADAPTER, renderVideoModulePreview } from './video'
 import { VR_TOUR_MODULE_CANVAS_ADAPTER, renderVRTourModulePreview } from './vr-tour'
-import { CASCADER_MODULE_CANVAS_ADAPTER } from './cascader'
 import { WALKTOUR_MODULE_CANVAS_ADAPTER } from './walktour'
 
 const MAP_MODULE_CANVAS_ADAPTER: ModuleCanvasAdapter = Object.freeze({

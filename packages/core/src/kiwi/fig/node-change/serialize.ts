@@ -1,9 +1,10 @@
 import {
   sceneNodeToKiwi as sceneNodeToKiwiWithRuntime,
   type FigNodeChangeExportRuntime,
-  type KiwiNodeChange
+  type KiwiNodeChange,
+  type SceneNodeToKiwiOptions
 } from '@open-pencil/fig/node-change'
-import type { ComponentPropertyDefinition, SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 import {
@@ -61,37 +62,10 @@ export function sceneNodeToKiwi(
   localIdCounter: { value: number },
   graph: SceneGraph,
   blobs: Uint8Array[],
-  nodeIdToGuid?: Map<string, GUID>,
-  fontDigestMap?: Map<string, Uint8Array>,
-  varIdToGuid?: Map<string, GUID>,
-  glyphBlobMap = new Map<string, number>(),
-  blobIndexByHex?: Map<string, number>,
-  assignedGuidValues?: Set<string>,
-  componentPropertyDefinitionsById?: ReadonlyMap<string, ComponentPropertyDefinition>,
-  modeIdToGuid?: Map<string, GUID>,
-  runtimeOrPropertyIdToGuid: FigNodeChangeExportRuntime | Map<string, GUID> = coreFigExportRuntime,
-  propertyIdToGuid?: Map<string, GUID>
+  options: SceneNodeToKiwiOptions = {}
 ): KiwiNodeChange[] {
-  const runtime =
-    runtimeOrPropertyIdToGuid instanceof Map ? coreFigExportRuntime : runtimeOrPropertyIdToGuid
-  const componentPropertyGuids =
-    runtimeOrPropertyIdToGuid instanceof Map ? runtimeOrPropertyIdToGuid : propertyIdToGuid
-  return sceneNodeToKiwiWithRuntime(
-    node,
-    parentGuid,
-    childIndex,
-    localIdCounter,
-    graph,
-    blobs,
-    nodeIdToGuid,
-    fontDigestMap,
-    varIdToGuid,
-    glyphBlobMap,
-    blobIndexByHex,
-    assignedGuidValues,
-    runtime,
-    componentPropertyDefinitionsById,
-    modeIdToGuid,
-    componentPropertyGuids
-  )
+  return sceneNodeToKiwiWithRuntime(node, parentGuid, childIndex, localIdCounter, graph, blobs, {
+    ...options,
+    runtime: options.runtime ?? coreFigExportRuntime
+  })
 }

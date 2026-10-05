@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 
 import { vueAdapter } from '#compiler/adapters/vue'
 import type { ComponentDef, IRElement, IRTree } from '#compiler/ir/types'
+import { toUint8Array } from 'js-base64'
 import { compileTemplate, parse as parseVueSfc } from 'vue/compiler-sfc'
 
 import { compile, withDefaults, type CompilerFontManifest } from '@open-pencil/compiler'
@@ -129,8 +130,9 @@ describe('Vue compiler adapter', () => {
     }
     const imageBytes = Uint8Array.from(
       Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-        'base64'
+        toUint8Array(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+        )
       )
     )
     graph.images.set('vue-image', imageBytes)
@@ -228,8 +230,9 @@ describe('Vue compiler adapter', () => {
     })
     const imageBytes = Uint8Array.from(
       Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-        'base64'
+        toUint8Array(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+        )
       )
     )
     graph.images.set('bound-background', imageBytes)

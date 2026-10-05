@@ -1,3 +1,4 @@
+import { fromUint8Array } from 'js-base64'
 /* oxlint-disable eslint(max-lines), eslint/complexity -- Keep the complete lock-bound capture and strict proof decoder together for auditability. */
 
 import {
@@ -609,9 +610,7 @@ async function digest(value: unknown): Promise<string> {
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')
+  return fromUint8Array(bytes, true)
 }
 
 async function digestSql(value: string): Promise<string> {

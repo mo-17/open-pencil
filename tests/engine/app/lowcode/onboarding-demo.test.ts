@@ -1,12 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
+import { compile, withDefaults } from '@open-pencil/compiler'
+import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import {
   buildLowcodeOnboardingDemo,
   compileLowcodeOnboardingDemo
-} from '#tools/lowcode/src/make/onboarding-demo'
-
-import { compile, withDefaults } from '@open-pencil/compiler'
-import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
+} from '@open-pencil/lowcode-tools/onboarding-demo'
 
 const ONBOARDING_DEMO_FIG_PATH = 'packages/demos/lowcode/lowcode-onboarding-demo.fig'
 const CHECKOUT_FUNCTION_PATH = 'packages/demos/lowcode/supabase/functions/demo-checkout/index.ts'

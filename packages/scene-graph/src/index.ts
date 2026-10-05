@@ -1,14 +1,26 @@
 /* eslint-disable max-lines -- SceneGraph exposes a stable facade over domain modules */
 export * from './mutation-impact'
-export { isNumberVariableBindingField } from './variables'
+export { isNumericVariableBindingField as isNumberVariableBindingField } from './variables/fields'
 export * from './backend-client'
+export * from './variables/bindings'
+export type { VariableModeFallback } from './variables'
+export { modesDefaultFirst } from './variables'
+export * from './variables/token'
+export { rescaleNodeTree, scaleNodeChanges } from './scaling'
+import { TRANSFORM_FIELDS, SIZE_FIELDS } from './fields/geometry'
+export { TRANSFORM_FIELDS, SIZE_FIELDS } from './fields/geometry'
+export { TEXT_METRIC_FIELDS, TEXT_SHAPING_FIELDS, TEXT_LAYOUT_FIELDS } from './fields/text'
+export * from './transfer'
 export * from './instance-overrides'
 export * from './images'
 export * from './image-inspection'
 export * from './components/properties'
+export * from './components/slots'
 export * from './copy'
+export { createDefaultNode } from './node-defaults'
 export {
   copyInstanceComponentProps,
+  findInstanceAncestor,
   hasInstanceOverride,
   INSTANCE_SYNC_FIELDS,
   INSTANCE_SYNC_PROPS,
@@ -24,12 +36,14 @@ export {
   type InstanceOverrideState
 } from './instance-overrides'
 export * from './snap'
+export * from './export-format'
 export * from './export-scale'
 export * from './coordinate'
 export * from './constants'
 export * from './geometry'
 export * from './guides'
 export * from './layout-guides'
+export * from './grid'
 export * from './font-style'
 export * from './shared-styles'
 export * from './motion'
@@ -41,9 +55,9 @@ export { default as TransformMatrix } from './matrix'
 export type { Mat3 } from './matrix'
 export { UndoManager, type UndoEntry, type UndoManagerOptions } from './undo'
 
-import { createNanoEvents } from 'nanoevents'
-
 import { removeStaleBindings } from './bindings'
+export { CommittedGraphEventError } from './buffered-events'
+import { BufferedSceneEmitter } from './buffered-events'
 import {
   cloneNodeProps,
   remapClonedInstanceOverrides,
@@ -54,25 +68,32 @@ import {
   remapNodeMotionDriverReferences,
   remapNodeMotionSceneTargets,
   remapNodePaintReferences,
+  createPaintNodeIdResolver,
   remapNodePrototypeTargets
 } from './copy'
 import { bindNodeEvents } from './events'
 import * as HitTest from './hit-test'
 import * as Instances from './instances'
+import Matrix, { type Mat3 } from './matrix'
 import { CONTAINER_TYPES, createDefaultNode } from './node-defaults'
 import { updateNodePreview, type NodePreviewObserver } from './preview'
 import { styleDetachmentChanges } from './shared-styles'
 import { markSourceFieldsEdited } from './source-metadata'
 import { GLYPH_AFFECTING_KEYS, invalidateTextCaches, TEXT_PICTURE_KEYS } from './text-picture'
 import * as Variables from './variables'
+import type { VariableModeFallback } from './variables'
 import { normalizeVectorNetwork } from './vector-network'
 
 export type { GUID, Color, Size, Vector } from './primitives'
 export * from './types'
 
-import type { Emitter } from 'nanoevents'
-
-import { getAbsolutePosition } from './coordinate'
+import {
+  getAbsolutePosition,
+  getNodeLocalMatrix,
+  getParentWorldMatrix,
+  isTranslationOnly,
+  localTransformFromWorld
+} from './coordinate'
 import type { Color, Rect, Vector } from './primitives'
 import type {
   DocumentColorSpace,
@@ -80,7 +101,6 @@ import type {
   NodeMutationOrigin,
   NodeType,
   SceneGraphEventHandlers,
-  SceneGraphEvents,
   SceneNode,
   SourceMetadata,
   Variable,
@@ -182,17 +202,37 @@ export class SceneGraph {
   figMessageObjectAnimations: unknown = null
   documentColorSpace: DocumentColorSpace = 'srgb'
   enabledLibraries = new Map<string, EnabledLibraryBinding>()
-  readonly emitter: Emitter<SceneGraphEvents> = createNanoEvents()
+  readonly emitter = new BufferedSceneEmitter((publish) => {
+    const origin = this.nodeMutationOrigin
+    this.nodeMutationOrigin = undefined
+    try {
+      publish()
+    } finally {
+      this.nodeMutationOrigin = origin
+    }
+  })
   private absPosCache = new Map<string, Vector>()
   private previewMutationDepth = 0
   private previewObservers: NodePreviewObserver[] = []
   private sourceMetadataPreservationDepth = 0
+  private importedStateApplicationDepth = 0
   private layoutMutationDepth = 0
   private nodeMutationOrigin: NodeMutationOrigin | undefined
   private readonly maxNodes: number | null
   private readonly maxDepth: number | null
   positionPreviewVersion = 0
   instanceIndex = new Map<string, Set<string>>()
+
+  /** Rebuild after bulk snapshot/hydration updates that replace nodes directly. */
+  rebuildInstanceIndex(): void {
+    this.instanceIndex.clear()
+    for (const node of this.nodes.values()) {
+      if (node.type !== 'INSTANCE' || !node.componentId) continue
+      const ids = this.instanceIndex.get(node.componentId) ?? new Set<string>()
+      ids.add(node.id)
+      this.instanceIndex.set(node.componentId, ids)
+    }
+  }
 
   constructor(options: SceneGraphOptions = {}) {
     if (
@@ -329,12 +369,24 @@ export class SceneGraph {
     return Variables.resolveNumberVariable(this, variableId)
   }
 
-  resolveColorVariableForNode(nodeId: string, variableId: string): Color | undefined {
-    return Variables.resolveColorVariableForNode(this, nodeId, variableId)
+  resolveColorVariableForNode(
+    nodeId: string,
+    variableId: string,
+    fallback?: VariableModeFallback
+  ): Color | undefined {
+    return Variables.resolveColorVariableForNode(this, nodeId, variableId, fallback)
   }
 
-  resolveNumberVariableForNode(nodeId: string, variableId: string): number | undefined {
-    return Variables.resolveNumberVariableForNode(this, nodeId, variableId)
+  resolveNumberVariableForNode(
+    nodeId: string,
+    variableId: string,
+    fallback?: VariableModeFallback
+  ): number | undefined {
+    return Variables.resolveNumberVariableForNode(this, nodeId, variableId, fallback)
+  }
+
+  resolveStringVariableForNode(nodeId: string, variableId: string): string | undefined {
+    return Variables.resolveStringVariableForNode(this, nodeId, variableId)
   }
 
   resolveEffectiveVariableForNode(nodeId: string, variableId: string): VariableValue | undefined {
@@ -456,6 +508,11 @@ export class SceneGraph {
     this.emitNodeEvent((origin) => this.emitter.emit('node:created', node, origin))
     return node
   }
+  /** Publish synchronous graph events only after the supplied mutation succeeds. */
+  withBufferedEvents<T>(action: () => T): T {
+    return this.emitter.batch(action)
+  }
+
   createNode(type: NodeType, parentId: string, overrides: Partial<SceneNode> = {}): SceneNode {
     const node = createDefaultNode(() => this.generateNodeId(), type, overrides)
     this.assertNodeCapacity(node.id)
@@ -482,13 +539,8 @@ export class SceneGraph {
   static GLYPH_AFFECTING_KEYS: ReadonlySet<string> = GLYPH_AFFECTING_KEYS
 
   static LAYOUT_AFFECTING_KEYS: ReadonlySet<string> = new Set([
-    'x',
-    'y',
-    'width',
-    'height',
-    'rotation',
-    'flipX',
-    'flipY',
+    ...TRANSFORM_FIELDS,
+    ...SIZE_FIELDS,
     'layoutMode',
     'layoutDirection',
     'itemSpacing',
@@ -565,6 +617,23 @@ export class SceneGraph {
   emitNodeUpdated(id: string, changes: Partial<SceneNode>): void {
     this.emitNodeEvent((origin) => this.emitter.emit('node:updated', id, changes, origin))
   }
+  get isPreservingSourceMetadata(): boolean {
+    return this.sourceMetadataPreservationDepth > 0
+  }
+
+  applyImportedStateDuring(fn: () => void): void {
+    this.importedStateApplicationDepth++
+    try {
+      this.preserveSourceMetadataDuring(fn)
+    } finally {
+      this.importedStateApplicationDepth--
+    }
+  }
+
+  get isApplyingImportedState(): boolean {
+    return this.importedStateApplicationDepth > 0
+  }
+
   withLayoutMutations(fn: () => void): void {
     this.layoutMutationDepth++
     try {
@@ -598,7 +667,9 @@ export class SceneGraph {
 
     const node = this.nodes.get(id)
     if (!node) return
-    changes = stripUndefinedProps(styleDetachmentChanges(node, stripUndefinedProps(changes)))
+    changes = stripUndefinedProps(changes)
+    if (!this.isApplyingImportedState)
+      changes = stripUndefinedProps(styleDetachmentChanges(node, changes))
     this.applyNodeChanges(node, changes)
   }
 
@@ -610,6 +681,27 @@ export class SceneGraph {
   ): void {
     const node = this.nodes.get(id)
     if (node) this.applyNodeChanges(node, changes, absent)
+  }
+
+  private updateInstanceIndex(node: SceneNode, changes: Partial<SceneNode>): void {
+    const { id } = node
+    const previousIndexedComponentId = node.type === 'INSTANCE' ? node.componentId : null
+    const nextType = changes.type ?? node.type
+    const nextComponentId = 'componentId' in changes ? changes.componentId : node.componentId
+    const nextIndexedComponentId = nextType === 'INSTANCE' ? nextComponentId : null
+    if (previousIndexedComponentId !== nextIndexedComponentId) {
+      if (previousIndexedComponentId) {
+        this.instanceIndex.get(previousIndexedComponentId)?.delete(id)
+      }
+      if (nextIndexedComponentId) {
+        let set = this.instanceIndex.get(nextIndexedComponentId)
+        if (!set) {
+          set = new Set()
+          this.instanceIndex.set(nextIndexedComponentId, set)
+        }
+        set.add(id)
+      }
+    }
   }
 
   private applyNodeChanges(
@@ -628,25 +720,9 @@ export class SceneGraph {
     // Fills, strokes, effects, plugin data changes do NOT affect absolute position.
     const affectsLayout = Object.keys(changes).some((k) => SceneGraph.LAYOUT_AFFECTING_KEYS.has(k))
     if (affectsLayout) this.absPosCache.clear()
-    const previousIndexedComponentId = node.type === 'INSTANCE' ? node.componentId : null
-    const nextType = changes.type ?? node.type
-    const nextComponentId = 'componentId' in changes ? changes.componentId : node.componentId
-    const nextIndexedComponentId = nextType === 'INSTANCE' ? nextComponentId : null
-    if (previousIndexedComponentId !== nextIndexedComponentId) {
-      if (previousIndexedComponentId) {
-        this.instanceIndex.get(previousIndexedComponentId)?.delete(id)
-      }
-      if (nextIndexedComponentId) {
-        let set = this.instanceIndex.get(nextIndexedComponentId)
-        if (!set) {
-          set = new Set()
-          this.instanceIndex.set(nextIndexedComponentId, set)
-        }
-        set.add(id)
-      }
-    }
+    this.updateInstanceIndex(node, changes)
     if (node.type === 'TEXT') invalidateTextCaches(node, changes)
-    if (this.sourceMetadataPreservationDepth === 0) {
+    if (this.sourceMetadataPreservationDepth === 0 && !this.isApplyingLayout) {
       markSourceFieldsEdited(node, Object.keys(changes))
     }
     if (changes.vectorNetwork) {
@@ -697,12 +773,8 @@ export class SceneGraph {
     const oldParentId = node.parentId
     this.absPosCache.clear()
 
-    const absPos = this.getAbsolutePosition(nodeId)
-    const newParentNode = this.nodes.get(newParentId)
-    const newParentAbs =
-      newParentId === this.rootId || newParentNode?.type === 'CANVAS'
-        ? { x: 0, y: 0 }
-        : this.getAbsolutePosition(newParentId)
+    const oldParentWorld = this.parentWorldMatrix(oldParent)
+    const newParentWorld = this.parentWorldMatrix(newParent)
 
     if (oldParent) {
       oldParent.childIds = oldParent.childIds.filter((cid) => cid !== nodeId)
@@ -711,12 +783,22 @@ export class SceneGraph {
     node.parentId = newParentId
     newParent.childIds.push(nodeId)
 
-    node.x = absPos.x - newParentAbs.x
-    node.y = absPos.y - newParentAbs.y
+    if (isTranslationOnly(oldParentWorld) && isTranslationOnly(newParentWorld)) {
+      node.x += oldParentWorld[2] - newParentWorld[2]
+      node.y += oldParentWorld[5] - newParentWorld[5]
+    } else {
+      const world = Matrix.multiply(oldParentWorld, getNodeLocalMatrix(node))
+      const local = localTransformFromWorld(node, world, newParentWorld)
+      if (local) Object.assign(node, local)
+    }
 
     this.emitNodeEvent((origin) =>
       this.emitter.emit('node:reparented', nodeId, oldParentId, newParentId, origin)
     )
+  }
+
+  private parentWorldMatrix(parent: SceneNode | undefined): Mat3 {
+    return getParentWorldMatrix(parent, this)
   }
 
   reorderChild(nodeId: string, parentId: string, insertIndex: number): void {
@@ -838,8 +920,12 @@ export class SceneGraph {
   }
 
   /** Remap references whose targets were included in the same clone operation. */
-  remapClonedNodeReferences(idMap: ReadonlyMap<string, string>): void {
+  remapClonedNodeReferences(
+    idMap: ReadonlyMap<string, string>,
+    mode: 'copy' | 'instance' = 'copy'
+  ): void {
     const resolveNodeId = (nodeId: string) => idMap.get(nodeId)
+    const resolvePaintNodeId = createPaintNodeIdResolver(this.nodes, idMap)
     for (const cloneId of idMap.values()) {
       const node = this.nodes.get(cloneId)
       if (!node) continue
@@ -848,14 +934,18 @@ export class SceneGraph {
       const sceneUpdates = remapNodeMotionSceneTargets(node, resolveNodeId)
       const driverUpdates = remapNodeMotionDriverReferences(node, resolveNodeId)
       const prototypeUpdates = remapNodePrototypeTargets(node, resolveNodeId)
-      const paintUpdates = remapNodePaintReferences(node, resolveNodeId)
+      const paintUpdates = remapNodePaintReferences(node, resolvePaintNodeId)
       const componentPropertyUpdates = remapNodeComponentPropertyReferences(
         node,
         resolveNodeId,
         collectInstanceSwapPropertyIds(this.nodes, node)
       )
-      const overrideUpdates = remapClonedInstanceOverrides(node, idMap)
-      const pendingOverrideUpdates = remapPendingInstanceOverrideReferences(node, idMap)
+      const overrideUpdates = remapClonedInstanceOverrides(node, idMap, mode !== 'instance')
+      const pendingOverrideUpdates = remapPendingInstanceOverrideReferences(
+        node,
+        idMap,
+        mode !== 'instance'
+      )
       if (
         lowcodeUpdates ||
         applicationUpdates ||
@@ -909,8 +999,8 @@ export class SceneGraph {
     Instances.swapInstanceComponent(this, instanceId, componentId)
   }
 
-  syncInstances(componentId: string): void {
-    Instances.syncInstances(this, componentId)
+  syncInstances(componentId: string, targetIds?: ReadonlySet<string>): void {
+    Instances.syncInstances(this, componentId, targetIds)
   }
 
   detachInstance(instanceId: string): void {

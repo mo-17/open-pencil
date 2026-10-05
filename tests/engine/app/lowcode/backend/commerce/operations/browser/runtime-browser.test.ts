@@ -20,6 +20,7 @@ async function confirm(page: Page, label: string) {
 async function acknowledge(page: Page) {
   await page.getByRole('button', { name: 'Finish reviewed request', exact: true }).click()
   await page.getByRole('button', { name: /^(OK|Confirm)$/u }).click()
+  await page.clock.fastForward(350)
   await browserExpect(
     page.getByRole('button', { name: 'Finish reviewed request', exact: true })
   ).toHaveCount(0)
@@ -34,11 +35,14 @@ describe('compiled commerce pages with a test session and scripted API', () => {
       let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
       try {
         browser = await chromium.launch()
-        const page = await browser.newPage({ viewport: { width: 1200, height: 1000 } })
+        const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
         page.setDefaultTimeout(8_000)
         await page.clock.install()
         const errors: string[] = []
-        page.on('pageerror', (error) => errors.push(error.message))
+        page.on('pageerror', (error) => {
+          errors.push(error.message)
+          console.error('[browser-error]', error.message)
+        })
         const api = await installCommerceTransport(page, fixture.apiBasePath)
         // The unconnected VFS has no server history fallback. Serve its real entry at /shop.
         const startURL = new URL(fixture.paths.shop, server.url).href

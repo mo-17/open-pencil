@@ -51,5 +51,9 @@
   "applicationStateRetentionUnset": "Sin configurar (comportamiento original)",
   "applicationStateRetentionReset": "Restablecer en cada visita",
   "applicationStateRetentionPreserve": "Conservar durante esta sesión",
-  "applicationStateRetentionHint": "React/Vue conservan el estado vinculado de la página y la posición de desplazamiento por cada ruta concreta y consulta durante esta sesión de ejecución. Al recargar comienza una sesión nueva."
+  "applicationStateRetentionHint": "React/Vue conservan el estado vinculado de la página y la posición de desplazamiento por cada ruta concreta y consulta durante esta sesión de ejecución. Al recargar comienza una sesión nueva.",
+  "pages": "Páginas",
+  "goToPage": "Ir a la página…",
+  "recentPage": "Reciente",
+  "currentPage": "Página actual"
 }

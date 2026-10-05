@@ -20,7 +20,7 @@ import {
   AppDialogRoot
 } from '@/components/ui/dialog'
 import AppAlert from '@/components/ui/feedback/AppAlert.vue'
-import { designPresets } from '@/theme/design-presets'
+import { designPresets } from '@/theme/design/presets'
 
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{

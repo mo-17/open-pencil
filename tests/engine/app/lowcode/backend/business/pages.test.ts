@@ -249,7 +249,7 @@ describe('business template generated pages', () => {
         .flatMap((source) => source.split('\n'))
         .find(
           (line) =>
-            line.includes('<input') &&
+            line.includes(target === 'react' ? '<__OpenPencilNumberInput' : '<OpNumberInput') &&
             line.includes('placeholder=') &&
             line.includes('Number of places')
         )

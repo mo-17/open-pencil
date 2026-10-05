@@ -1,4 +1,4 @@
-import type { UIMessage } from 'ai'
+import { isToolUIPart, type UIMessage } from 'ai'
 import { toRaw } from 'vue'
 
 import {
@@ -10,6 +10,7 @@ import { archiveVisualChatMessages } from '@/app/ai/chat/attachments'
 import { finalizeInterruptedToolParts } from '@/app/ai/chat/interruption'
 import { visibleMessageText, setVisibleMessageText } from '@/app/ai/chat/presentation'
 import { archiveAssistantFileMessages } from '@/app/ai/chat/sources'
+import { readToolChange, setToolChange } from '@/app/ai/tools/changes/store'
 
 import type { ConversationMessage } from './types'
 
@@ -55,7 +56,11 @@ export function snapshotMessages(messages: UIMessage[]): ConversationMessage[] {
       displayText: visibleMessageText(message.id, text),
       attachments: attachmentsForMessage(message.id).value.map((attachment) =>
         snapshotValue(attachment)
-      )
+      ),
+      toolChanges: message.parts.flatMap((part) => {
+        const change = isToolUIPart(part) ? readToolChange(part.toolCallId) : null
+        return change ? [snapshotValue(change)] : []
+      })
     }
   })
 }
@@ -64,6 +69,7 @@ export function restoreMessages(messages: ConversationMessage[]): UIMessage[] {
   for (const row of messages) {
     if (row.displayText !== undefined) setVisibleMessageText(row.message.id, row.displayText)
     setMessageAttachments(row.message.id, row.attachments)
+    for (const change of row.toolChanges ?? []) setToolChange(change)
   }
   return finalizePendingToolApprovals(
     finalizeInterruptedToolParts(messages.map((row) => snapshotValue(row.message)))

@@ -1,4 +1,3 @@
-import { avatarOwnsFills } from './modules/avatar'
 /* eslint-disable max-lines -- scene dispatch stays together while shape domains live in sibling modules */
 import type { Canvas, Path } from 'canvaskit-wasm'
 
@@ -45,6 +44,7 @@ import { drawLayoutGrids } from './layout-grids'
 import { renderButtonLabel, renderTextInputContent } from './lowcode'
 import { renderMaskedChildIds } from './masks'
 import { renderModulePreview } from './modules'
+import { avatarOwnsFills } from './modules/avatar'
 import {
   hasMotionDynamicStroke,
   measurePathLength,
@@ -64,6 +64,7 @@ import { makeSmoothRRectPath, nodeHasRadius, nodeHasSmoothCorners } from './shap
 import {
   configureStrokePaint,
   drawArrowHeads,
+  applyStrokeShader,
   drawDashedRRectWithSolidCorners,
   drawStyledRRectStroke,
   getStrokeCapEntity,
@@ -73,6 +74,7 @@ import {
 import { renderSwitchContent, withSwitchSurface } from './switch'
 import { withTextParagraph } from './text'
 import {
+  canDrawSavedText,
   drawDerivedText,
   drawReflowedPathTextSilhouettes,
   isReflowedPathText
@@ -982,6 +984,10 @@ function makeNodeRRect(r: SkiaRenderer, node: SceneNode, radius: number): Float3
   return r.ck.RRectXY(rect, radius, radius)
 }
 
+/**
+ * Every stroke a node draws passes through here, so a gradient or image stroke gets its shader
+ * here rather than in each draw helper, and the shader is cleared before the next stroke.
+ */
 function forVisibleStrokes(
   r: SkiaRenderer,
   node: SceneNode,
@@ -991,7 +997,13 @@ function forVisibleStrokes(
   for (let index = 0; index < node.strokes.length; index++) {
     const stroke = node.strokes[index]
     if (!stroke.visible) continue
-    draw(stroke, r.resolveStrokeColor(stroke, index, node, graph))
+    applyStrokeShader(r, stroke, index, node, graph)
+    try {
+      draw(stroke, r.resolveStrokeColor(stroke, index, node, graph))
+    } finally {
+      r.strokePaint.setShader(null)
+      r.fillPaint.setShader(null)
+    }
   }
 }
 
@@ -1226,7 +1238,6 @@ function drawVectorStrokeGeometry(
 ): void {
   r.fillPaint.setColor(r.ck.Color4f(sc.r, sc.g, sc.b, sc.a))
   r.fillPaint.setAlphaf(opacity)
-  r.fillPaint.setShader(null)
   for (const p of sg) canvas.drawPath(p, r.fillPaint)
 }
 
@@ -1378,7 +1389,6 @@ function drawVectorStrokeOutlines(
   }
   r.fillPaint.setColor(r.ck.Color4f(color.r, color.g, color.b, color.a))
   r.fillPaint.setAlphaf(stroke.opacity)
-  r.fillPaint.setShader(null)
 
   let outlines = outlineCacheKey ? r.vectorStrokeOutlineCache.get(outlineCacheKey) : undefined
   if (!outlines) {
@@ -1650,7 +1660,8 @@ function drawShapeContent(
   }
   r.renderEffects(canvas, node, rect, hasRadius, 'front', shadowChild)
   if (node.type === 'BUTTON') renderButtonLabel(r, canvas, node)
-  if (node.type === 'INPUT' || node.type === 'TEXTAREA') renderTextInputContent(r, canvas, node, graph)
+  if (node.type === 'INPUT' || node.type === 'TEXTAREA')
+    renderTextInputContent(r, canvas, node, graph)
   if (node.type === 'RADIO') renderRadioContent(r, canvas, node, graph)
   if (node.type === 'CHECKBOX') renderCheckboxContent(r, canvas, node, graph)
   if (node.type === 'SWITCH') renderSwitchContent(r, canvas, node, graph)
@@ -1718,6 +1729,10 @@ function drawPathOrUnavailableText(r: SkiaRenderer, canvas: Canvas, node: SceneN
   return true
 }
 
+function drawSavedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fill?: Fill): boolean {
+  return canDrawSavedText(node, fill) && drawDerivedText(r, canvas, node)
+}
+
 export function renderText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fill?: Fill): void {
   const text = node.text
   if (!text) return
@@ -1727,7 +1742,7 @@ export function renderText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fil
     canvas.clipRect(r.ck.LTRBRect(0, 0, node.width, node.height), r.ck.ClipOp.Intersect, false)
   }
 
-  if (drawPathOrUnavailableText(r, canvas, node)) {
+  if (drawSavedText(r, canvas, node, fill) || drawPathOrUnavailableText(r, canvas, node)) {
     canvas.restore()
     return
   }

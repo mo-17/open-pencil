@@ -8,6 +8,7 @@ export {
   useCommandMessages,
   useCommonMessages,
   useCredentialMessages,
+  useDesignCheckMessages,
   useDiagnosticsMessages,
   useDialogMessages,
   useEditorMessages,

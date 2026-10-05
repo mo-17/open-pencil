@@ -58,7 +58,8 @@ import {
   type AIPopoutProjection,
   type AIPopoutToolState
 } from '@/app/ai/popout/protocol'
-import { clearToolLogEntries, didHitStepLimit } from '@/app/ai/tools'
+import { clearToolLogEntries } from '@/app/ai/tools'
+import { didHitStepLimit } from '@/app/ai/tools/run'
 import type { EditorStore } from '@/app/editor/active-store'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { toast } from '@/app/shell/ui'

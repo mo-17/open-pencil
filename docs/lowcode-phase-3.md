@@ -512,7 +512,7 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 | Step | 任务 | 验收 / commit message |
 |---|---|---|
 | 1 | shared validators 提取:`@open-pencil/core/lowcode-validation` subpath + 5 个 validator 文件 + barrel;`packages/core/src/lowcode-validation/validate.ts` 提供 `validateStateName`;`SupabaseConfigPanel.vue` 改 import 共享版;5 个 validator 单测 | `bun test ./tests/engine/lowcode-validation/` 全绿;`bun run check` 全绿;`feat(lowcode): step 1 — shared lowcode validators (§3 Phase 3)` |
-| 2 | `tools/read/lowcode.ts` 3 read tool + `tools/lowcode-shapes.ts` Read shape + 集成测试 | `bun test ./tests/engine/tools/lowcode/read.test.ts` 全绿;`bun run check` 全绿;`feat(lowcode): step 2 — lowcode read tools (§3 Phase 3)` |
+| 2 | `tools/read/lowcode.ts` 3 read tool + `tools/dev/lowcode-shapes.ts` Read shape + 集成测试 | `bun test ./tests/engine/tools/lowcode/read.test.ts` 全绿;`bun run check` 全绿;`feat(lowcode): step 2 — lowcode read tools (§3 Phase 3)` |
 | 3 | `tools/modify/lowcode.ts` 3 modify tool + Patch shape + 集成测试 + 进 ALL_TOOLS;tool description 各 ≥ 300 字 含示例 | `bun test ./tests/engine/tools/lowcode/modify.test.ts` 全绿;`bun run check` 全绿;`feat(lowcode): step 3 — lowcode modify tools (§3 Phase 3)` |
 | 4 | walker checklist round-2 + `tests/engine/tools/lowcode/cross-walker.test.ts`(updateLowcodeNode mega patch → collectTree → emit / Properties 反应全链路覆盖) | `bun test ./tests/engine/tools/lowcode/` 全绿;`bun run check` 全绿;`test(lowcode): step 4 — lowcode tool cross-walker (§3 Phase 3)` |
 | 5 | Tauri 实测 user-ACK 8 项 + §3.8 post-mortem 回填 + 关闭 §3 | 8 项全 ACK;`docs(lowcode): §3 Phase 3 Tauri verification` |
@@ -757,7 +757,7 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 | 4 | `d677c4f` | cross-walker:① mega patch under `editor.runBatch` → 1 undo entry + Cmd+Z 恢复 4 字段;② payloadEntries 端到端(tool → IR docStateReads + emit `.insert({"name": formName, ...})` + import 行 +/- 双向) |
 | 5 | _this commit_ | Tauri ACK 6 项 + §3.v2.8 回填 + memory 更新 |
 
-**测试**:`bun test ./tests/engine/{compiler,tools/lowcode,lowcode-validation,kiwi/lowcode}` 512 pass / 0 fail / 1367 expect。`bun run check` 0 error / 4 pre-existing max-lines warn(已记 prompt.md §max-lines warnings)。
+**测试**:`bun test ./tests/engine/{compiler,tools/dev/lowcode,lowcode-validation,kiwi/lowcode}` 512 pass / 0 fail / 1367 expect。`bun run check` 0 error / 4 pre-existing max-lines warn(已记 prompt.md §max-lines warnings)。
 
 #### Tauri ACK 结果(用户主导 2026-05-27)
 
@@ -931,7 +931,7 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 | Step | 任务 | 验收 / commit |
 |---|---|---|
 | 0 | §3.v3 设计 doc 写入 + commit | 本 commit `docs(lowcode): §3.v3 mini-scope detailed design (UI补全 + payloadEntries editor + CLI docs)` |
-| 1 | 上抬 `validateSupabasePayloadEntries` + `PAYLOAD_ENTRY_KEY_RE` 到 `@open-pencil/core/lowcode-validation`;tools/modify import 改;tests 迁移 | `bun test ./tests/engine/lowcode-validation/` + `tools/lowcode/` 全绿;`bun run check` 全绿;`refactor(lowcode): step 1 — lift validateSupabasePayloadEntries (§3.v3)` |
+| 1 | 上抬 `validateSupabasePayloadEntries` + `PAYLOAD_ENTRY_KEY_RE` 到 `@open-pencil/core/lowcode-validation`;tools/modify import 改;tests 迁移 | `bun test ./tests/engine/lowcode-validation/` + `tools/dev/lowcode/` 全绿;`bun run check` 全绿;`refactor(lowcode): step 1 — lift validateSupabasePayloadEntries (§3.v3)` |
 | 2 | `TextBindingPanel.vue` BUTTON-only literal input;2 i18n key × 7 locale;单测 | `bun run check` 全绿(`check:i18n` 钉);`feat(lowcode): step 2 — BUTTON interactiveProps.text editor (§3.v3)` |
 | 3 | `EventsPanel.vue` payloadEntries 行编辑器 + Add + both-present warn + delete v-if;6 i18n key × 7 locale | `bun run check` 全绿;`feat(lowcode): step 3 — EventsPanel payloadEntries editor + delete-hide + conflict-warn (§3.v3)` |
 | 4 | docs fix:`§3.v2.5` ACK #5 + `cli/commands/eval.ts` jsdoc | `bun run check` 全绿;`docs(lowcode): step 4 — CLI eval ALL_TOOLS example (§3.v3)` |
@@ -1212,7 +1212,7 @@ RADIO(`applyRadioOptions`)— 每 radio 当前 emit `defaultChecked` if `opt ===
 | 0 | §3.v4 设计 doc 写入 + commit | `docs(lowcode): §3.v4 mini-scope detailed design (filters hint + 6 controlled bindings)` |
 | 1 | filters valueExpr placeholder hint(#1)+ 1 i18n key × 7 locale | `bun run check` 全绿;`fix(lowcode): step 1 — filters valueExpr placeholder hint (§3.v4)` |
 | 2 | `IRControlledInput.write.targetType` 扩 boolean + `resolveValueBinding` per-type 规则 + IR collect 单测 6 case(每类型 1 + bool typecheck)| `bun test ./tests/engine/compiler/` + `bun run check` 全绿;`feat(lowcode): step 2 — IRControlledInput boolean + per-type validation (§3.v4)` |
-| 3 | emit:`formatAttrs` + `controlledOnChangeBody` 加 boolean 分支 + SELECT/RADIO 分支;6 emit 单测;cross-walker 6 用例 | `bun test ./tests/engine/compiler/` + `tools/lowcode/` 全绿;`feat(lowcode): step 3 — emit controlled CHECKBOX/SWITCH/TEXTAREA/SELECT/RADIO/DATEPICKER (§3.v4)` |
+| 3 | emit:`formatAttrs` + `controlledOnChangeBody` 加 boolean 分支 + SELECT/RADIO 分支;6 emit 单测;cross-walker 6 用例 | `bun test ./tests/engine/compiler/` + `tools/dev/lowcode/` 全绿;`feat(lowcode): step 3 — emit controlled CHECKBOX/SWITCH/TEXTAREA/SELECT/RADIO/DATEPICKER (§3.v4)` |
 | 4 | UI:`InputValueBindingPanel.vue` → `ValueBindingPanel.vue` rename + 7 类型 v-if + per-type candidate filter + 1 i18n key 加(boolean hint)+ 4 key 改名 × 7 locale + test-id 改名 | `bun run check` + `check:i18n` 全绿;`refactor(lowcode): step 4 — ValueBindingPanel 7 component types (§3.v4)` |
 | 5 | Tauri 实测 8 项 + §3.v4.8 post-mortem + 关闭 + memory | 8 ACK 全 ✅;`docs(lowcode): §3.v4 Tauri verification + close` |
 
@@ -1652,7 +1652,7 @@ import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vu
 ### 3.v6.5 成功标准 + Tauri ACK
 
 1. `bun run check` 全绿(check:i18n 钉新 key × 7 locale;Steiger 钉新 import + 删文件;jscpd 0 clone —— string-array 逻辑搬移非复制)
-2. `bun test ./tests/engine/compiler/` + `tools/lowcode/` 全绿(本期 0 compiler 改动 → 应纯零回归)
+2. `bun test ./tests/engine/compiler/` + `tools/dev/lowcode/` 全绿(本期 0 compiler 改动 → 应纯零回归)
 3. e2e 全绿(InteractiveOptionsPanel → InteractivePropsPanel 迁移 + 新字段用例)
 4. **Tauri 实测(用户主导)~8 项 ACK**(Q2/Q3 为主):
 
@@ -1891,7 +1891,7 @@ export const INTERACTIVE_PROP_VALIDATORS: Partial<Record<SceneNode['type'], (ip:
 ### 3.v7.5 成功标准 + Tauri ACK
 
 1. `bun run check` 全绿(check:i18n 钉 7 label+warning key × 8 文件;Steiger 钉新 import;jscpd 0 clone)
-2. `bun test ./tests/engine/compiler/` + `tools/lowcode/` 全绿;新增 `tests/engine/lowcode-validation/datepicker-props.test.ts`
+2. `bun test ./tests/engine/compiler/` + `tools/dev/lowcode/` 全绿;新增 `tests/engine/lowcode-validation/datepicker-props.test.ts`
 3. **Tauri 实测(用户主导)~7 项 ACK**:
 
 | # | ACK | Q1/Q2/Q3 |
@@ -1913,7 +1913,7 @@ export const INTERACTIVE_PROP_VALIDATORS: Partial<Record<SceneNode['type'], (ip:
 | 0 | §3.v7 设计 doc + commit | `docs(lowcode): §3.v7 mini-scope detailed design (DATEPICKER range + ISO validation)` |
 | 1 | `datepicker-props.ts` 共享校验器(`isIsoDate` + `validateDatePickerProps`)+ barrel + 单测 | `bun run check` + datepicker-props.test 全绿;`feat(lowcode): step 1 — shared validateDatePickerProps (§3.v7)` |
 | 2 | `applyDatePickerProps` 读 min/max + 校验 + emit attr + IR warning 码族;compiler/IR 测试 | compiler + IR 测试全绿;`feat(lowcode): step 2 — DATEPICKER min/max emit + IR warnings (§3.v7)` |
-| 3 | tool boundary DATEPICKER 校验;tools 测试 | tools/lowcode 测试全绿;`feat(lowcode): step 3 — tool-boundary DATEPICKER validation (§3.v7)` |
+| 3 | tool boundary DATEPICKER 校验;tools 测试 | tools/dev/lowcode 测试全绿;`feat(lowcode): step 3 — tool-boundary DATEPICKER validation (§3.v7)` |
 | 4 | schema 加 min/max + `INTERACTIVE_PROP_VALIDATORS` + panel 警告条 + i18n × 8 + Tauri ACK + §3.v7.8 + close | 7 ACK ✅;`docs(lowcode): §3.v7 Tauri verification + close` |
 
 ### 3.v7.7 风险
@@ -2302,7 +2302,7 @@ function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
 
 ### 2.v2.5 成功标准 + Tauri ACK
 
-1. `bun run check` 全绿;`bun test ./tests/engine/compiler/` + `tools/lowcode/` + kiwi 往返全绿;新增 emit/IR/tool/cross-walker 测试
+1. `bun run check` 全绿;`bun test ./tests/engine/compiler/` + `tools/dev/lowcode/` + kiwi 往返全绿;新增 emit/IR/tool/cross-walker 测试
 2. **Tauri 实测(用户主导)~7 项 ACK**:
 
 | # | ACK |
@@ -2474,7 +2474,7 @@ signOut 提前 return 不变;其余(signIn + signUp)统一 parse email/password,
 
 ### 2.v3.5 成功标准 + Tauri ACK
 
-1. `bun run check` 全绿;`bun test ./tests/engine/compiler/` + `tools/lowcode/` + kiwi 往返全绿;新增 emit/IR/tool/cross-walker 测试
+1. `bun run check` 全绿;`bun test ./tests/engine/compiler/` + `tools/dev/lowcode/` + kiwi 往返全绿;新增 emit/IR/tool/cross-walker 测试
 2. **Tauri 实测(用户主导)~6 项 ACK**:
 
 | # | ACK |

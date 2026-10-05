@@ -19,7 +19,7 @@ describe('third-party plugin package review settings', () => {
     )
     expect(panel).toContain('await appPluginStore.acceptUpdateReviewed(')
     expect(panel).toContain('void mutate(pluginIdValue, async () => {')
-    expect(panel).toContain('await appPluginStore.install(pluginIdValue)')
+    expect(panel).toContain('await installAppPlugin(pluginIdValue)')
   })
 
   test('rechecks the exact package and catalog authority before dispatch', async () => {

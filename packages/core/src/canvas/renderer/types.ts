@@ -4,6 +4,7 @@ import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
 import type { GuideOverlayState } from '#core/canvas/guides/types'
+import type { DesignIssueOverlay } from '#core/canvas/issues/types'
 import type { RotationPreview } from '#core/geometry'
 import type { MotionLayoutPreviewNode } from '#core/layout'
 import type { TabsTabPreview } from '#core/plugins/content/tabs-preview'
@@ -17,6 +18,17 @@ export interface RulerTheme {
 }
 
 export type MeasurementMode = 'off' | 'shallow' | 'deep'
+
+/** Where a collaborator or an agent is working, in world coordinates. */
+export interface PresenceCursor {
+  kind: 'person' | 'agent'
+  name: string
+  /** A person's color, or the color of the person who runs the agent. */
+  color: Color
+  x: number
+  y: number
+  selection?: string[]
+}
 
 export interface RenderOverlays {
   /** View-local Tabs choice, omitted from static exports. */
@@ -81,11 +93,7 @@ export interface RenderOverlays {
     selectedHandles?: Set<number>
     hoveredHandleInfo?: { segmentIndex: number; tangentField: 'tangentStart' | 'tangentEnd' } | null
   } | null
-  remoteCursors?: Array<{
-    name: string
-    color: Color
-    x: number
-    y: number
-    selection?: string[]
-  }>
+  presenceCursors?: PresenceCursor[]
+  designIssues?: DesignIssueOverlay | null
+  codeFocusNodeId?: string | null
 }

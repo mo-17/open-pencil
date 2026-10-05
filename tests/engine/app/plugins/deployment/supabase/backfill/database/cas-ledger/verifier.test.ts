@@ -4,13 +4,12 @@ import { describe, expect, test } from 'bun:test'
 
 import { digestCanonicalManifest, encodeBase64URL } from '@open-pencil/scene-graph'
 
-import CAS_LEDGER_VERIFICATION_SQL_SOURCE from '@/app/plugins/host/deployment/supabase/backfill/database/cas-ledger/verification-v1.sql?raw'
-
 import {
   createSupabaseBackfillDatabaseCASLedgerReviewV1,
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_SCHEMA,
   type SupabaseBackfillDatabaseCASLedgerReviewEnvelopeV1
 } from '@/app/plugins/host/deployment/supabase/backfill/database/cas-ledger/review'
+import CAS_LEDGER_VERIFICATION_SQL_SOURCE from '@/app/plugins/host/deployment/supabase/backfill/database/cas-ledger/verification-v1.sql?raw'
 import {
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_EXPECTED_COLUMNS_V1,
   SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_EXPECTED_CONSTRAINTS_V1,
@@ -339,9 +338,7 @@ describe('Supabase backfill database CAS ledger verifier', () => {
       'jBp_hzLNyeEUb-jQdctvOw5iSNYmDMduqskFu3Q-ph8'
     )
     expect(
-      await digestCanonicalManifest(
-        SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_FIXED_QUERY
-      )
+      await digestCanonicalManifest(SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_FIXED_QUERY)
     ).toBe('6FHGNIR1asygQOZJ47nQOISC3aB3RL0rDv5EioVhw4Q')
     expect(SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_SQL).toMatch(/^WITH\b/u)
     expect(SUPABASE_BACKFILL_DATABASE_CAS_LEDGER_VERIFICATION_SQL).not.toContain(';')

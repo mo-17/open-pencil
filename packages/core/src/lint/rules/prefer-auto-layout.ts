@@ -12,11 +12,13 @@ export default defineRule({
   check(node, context) {
     const config = context.getConfig() as { minChildren?: number } | undefined
     const minChildren = config?.minChildren ?? 2
-    if (isAutoLayoutMode(node.layoutMode) || context.getChildren(node).length < minChildren) return
+    const children = context.getChildren(node).length
+    if (isAutoLayoutMode(node.layoutMode) || children < minChildren) return
     context.report({
       node,
-      message: `Frame with ${context.getChildren(node).length} children doesn't use auto layout`,
-      suggest: 'Add horizontal or vertical auto layout'
+      message: `Frame with ${children} children doesn't use auto layout`,
+      suggest: 'Add horizontal or vertical auto layout',
+      data: { children }
     })
   }
 })

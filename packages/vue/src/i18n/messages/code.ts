@@ -1,3 +1,5 @@
+import { params } from '@nanostores/i18n'
+
 import { i18n } from '#vue/i18n/create'
 
 export const codeMessageDefaults = {
@@ -112,7 +114,13 @@ export const codeMessageDefaults = {
   briefSaveFailed: 'Download failed. Select the preview text to save it manually.',
   briefBuildFailed:
     'The brief could not be generated. Choose an available page or select valid nodes and try again.',
-  briefSaved: 'Markdown exported'
+  briefSaved: 'Markdown exported',
+  canvasChangedExpression: params('The canvas now has {value}; the expression stays as written.'),
+  canvasChangedOrder: 'The canvas now orders these layers differently; the code stays as written.',
+  noSelection: 'Select a layer to see its code',
+  noSelectionDesignJSX: 'Or write Design JSX to add new layers to the page.',
+  noSelectionTailwindJSX: 'Tailwind JSX is generated for the selected layers.',
+  writeJSX: 'Write JSX'
 } as const
 
 export const codeMessages = i18n('code', codeMessageDefaults)

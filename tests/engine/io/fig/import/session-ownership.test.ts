@@ -7,7 +7,6 @@ import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { createComponentSyncScheduler } from '#core/editor/component-sync'
 import { restoreDocumentFromSnapshot, snapshotDocument } from '#core/editor/history/snapshot'
 import { createDefaultEditorState } from '#core/editor/state'
-import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
 import {
   createFigPopulationWorker,
   registerFigPopulationWorker,
@@ -17,6 +16,7 @@ import {
 } from '#core/kiwi/fig/population/client'
 import { applyFigPopulationDelta, type FigPopulationDelta } from '#core/kiwi/fig/population/delta'
 import { createFigSessionOriginalArchiveRequester } from '#core/kiwi/fig/session/client'
+import { registerReaderRecovery } from '#core/kiwi/fig/session/document-state'
 import { computeAllLayouts } from '#core/layout'
 
 const ROOT = resolve(import.meta.dir, '../../../../..')
@@ -46,6 +46,16 @@ function hydrationDelta(graph: SceneGraph, options: { create?: boolean } = {}): 
     instanceIndex: [],
     populatedRootIds: [page.id]
   }
+}
+
+function registerEmptyReader(graph: SceneGraph): void {
+  registerReaderRecovery(graph, new ArrayBuffer(0), {
+    sources: graph.getPages(true).map((page) => [page.id, page.id]),
+    componentIds: [],
+    savedSizeNodeIds: [],
+    loadedPageIds: [],
+    components: []
+  })
 }
 
 describe('FIG session ownership', () => {
@@ -392,6 +402,9 @@ describe('FIG session ownership', () => {
       instanceIndex: [[component.id, [instance.id]]],
       populatedRootIds: [page.id]
     })
+    // Imported-state replay already carries its own component tree; schedule the
+    // separate editor synchronization after that replay has completed.
+    scheduler.scheduleComponentSync(component.id)
     await Promise.resolve()
     unbind()
 
@@ -461,6 +474,9 @@ describe('FIG session ownership', () => {
       instanceIndex: [[component.id, [instance.id]]],
       populatedRootIds: [page.id]
     })
+    // Imported-state replay already carries its own component tree; schedule the
+    // separate editor synchronization after that replay has completed.
+    scheduler.scheduleComponentSync(component.id)
     await Promise.resolve()
     unbind()
 
@@ -535,6 +551,9 @@ describe('FIG session ownership', () => {
       instanceIndex: [[component.id, [instance.id]]],
       populatedRootIds: [page.id]
     })
+    // Imported-state replay already carries its own component tree; schedule the
+    // separate editor synchronization after that replay has completed.
+    scheduler.scheduleComponentSync(component.id)
     await Promise.resolve()
     unbind()
 
@@ -661,12 +680,7 @@ describe('FIG session ownership', () => {
       close: () => (portClosed = true)
     } as MessagePort
     const archive = new Uint8Array([4, 5, 6])
-    setLazyFigImportContext(graph, {
-      changeMap: new Map(),
-      guidToNodeId: new Map(),
-      blobs: [],
-      populatedRootIds: new Set()
-    })
+    registerEmptyReader(graph)
     registerOriginalArchiveRequest(graph, async () => archive)
 
     try {
@@ -805,12 +819,7 @@ describe('FIG session ownership', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     if (!page) throw new Error('Expected page')
-    setLazyFigImportContext(graph, {
-      changeMap: new Map(),
-      guidToNodeId: new Map(),
-      blobs: [],
-      populatedRootIds: new Set()
-    })
+    registerEmptyReader(graph)
     const channel = new MessageChannel()
     let released = false
     let terminated = false
@@ -849,12 +858,7 @@ describe('FIG session ownership', () => {
 
   test('invalidates the shared archive immediately on a population protocol error', async () => {
     const graph = new SceneGraph()
-    setLazyFigImportContext(graph, {
-      changeMap: new Map(),
-      guidToNodeId: new Map(),
-      blobs: [],
-      populatedRootIds: new Set()
-    })
+    registerEmptyReader(graph)
     const channel = new MessageChannel()
     let released = false
     let terminated = false
@@ -892,12 +896,7 @@ describe('FIG session ownership', () => {
         const graph = new SceneGraph()
         const page = graph.getPages()[0]
         if (!page) throw new Error('Expected page')
-        setLazyFigImportContext(graph, {
-          changeMap: new Map(),
-          guidToNodeId: new Map(),
-          blobs: [],
-          populatedRootIds: new Set()
-        })
+        registerEmptyReader(graph)
         const channel = new MessageChannel()
         let released = false
         let terminated = false
@@ -975,8 +974,8 @@ describe('FIG session ownership', () => {
       const { createFigPopulationWorker, requestOriginalArchive, releaseFigPopulationWorker } = await import(
         ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/population/client.ts')).href)}
       )
-      const { getLazyFigImportContext } = await import(
-        ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/lazy-import.ts')).href)}
+      const { isReaderPagePending, hasReaderSession } = await import(
+        ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/session/document-state.ts')).href)}
       )
       const { deserializeSceneGraph } = await import(
         ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/parse/transfer.ts')).href)}
@@ -985,65 +984,68 @@ describe('FIG session ownership', () => {
       const input = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
       const graph = await parseFigFile(input, { populate: 'first-page' })
       assert.equal(input.byteLength, 0)
-      const context = getLazyFigImportContext(graph)
-      assert(context)
-      const finalPage = graph.getPages(true).find((page) => !context.populatedRootIds.has(page.id))
+      assert(hasReaderSession(graph))
+      const finalPage = graph.getPages(true).find((page) => isReaderPagePending(graph, page.id))
       assert(finalPage)
       const population = createFigPopulationWorker(graph)
       assert(population)
       assert.equal(await population.populate(finalPage.id), true)
-      assert.equal(getLazyFigImportContext(graph), undefined)
+      assert.equal(isReaderPagePending(graph, finalPage.id), false)
+      assert(hasReaderSession(graph))
       const archive = await requestOriginalArchive(graph)
       assert(archive)
       assert.equal(Buffer.compare(Buffer.from(archive), bytes), 0)
       releaseFigPopulationWorker(graph)
 
-      const legacyWorker = new Worker(
-        ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/parse/worker.ts')).href)},
+      const directWorker = new Worker(
+        ${JSON.stringify(pathToFileURL(resolve(ROOT, 'packages/core/src/kiwi/fig/session/worker.ts')).href)},
         { type: 'module' }
       )
-      const nextLegacyMessage = (predicate) =>
+      const directChannel = new MessageChannel()
+      const nextDirectMessage = (predicate) =>
         new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('legacy worker timed out')), 5_000)
-          legacyWorker.onmessage = (event) => {
+          const timeout = setTimeout(() => reject(new Error('direct worker timed out')), 5_000)
+          directChannel.port1.onmessage = (event) => {
             if (!predicate(event.data)) return
             clearTimeout(timeout)
             resolve(event.data)
           }
-          legacyWorker.onerror = (event) => {
+          directWorker.onerror = (event) => {
             clearTimeout(timeout)
-            reject(new Error(event.message || 'legacy worker failed'))
+            reject(new Error(event.message || 'direct worker failed'))
           }
         })
-      const legacyInput = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-      const legacyGraphPending = nextLegacyMessage((message) => message.type === 'graph')
-      legacyWorker.postMessage(
-        { buffer: legacyInput, options: { populate: 'first-page' } },
-        [legacyInput]
+      const directInput = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      const directGraphPending = nextDirectMessage((message) => message.type === 'graph')
+      directWorker.postMessage(
+        { type: 'open', originalBuffer: directInput, options: { populate: 'first-page' }, port: directChannel.port2 },
+        [directInput, directChannel.port2]
       )
-      const legacyGraphResult = await legacyGraphPending
-      assert(legacyGraphResult.graph)
-      const legacyGraph = deserializeSceneGraph(legacyGraphResult.graph)
-      const legacyContext = getLazyFigImportContext(legacyGraph)
-      assert(legacyContext)
-      const legacyFinalPage = legacyGraph
-        .getPages(true)
-        .find((page) => !legacyContext.populatedRootIds.has(page.id))
-      assert(legacyFinalPage)
-      const legacyPopulationPending = nextLegacyMessage(
+      const directGraphResult = await directGraphPending
+      assert(directGraphResult.graph)
+      const directGraph = deserializeSceneGraph(directGraphResult.graph)
+      const directCheckpoint = directGraphResult.checkpoint
+      assert(directCheckpoint)
+      const directFinalPage = directGraph.getPages(true).find((page) => {
+        const sourceId = directCheckpoint.sources.find(([, id]) => id === page.id)?.[0]
+        return sourceId && !directCheckpoint.loadedPageIds.includes(sourceId)
+      })
+      assert(directFinalPage)
+      const directPopulationPending = nextDirectMessage(
         (message) => message.type === 'population-result' || message.type === 'population-error'
       )
-      legacyWorker.postMessage({
+      directChannel.port1.postMessage({
         type: 'populate',
         requestId: 'final-page',
         baseRevision: 0,
-        pageId: legacyFinalPage.id
+        pageId: directFinalPage.id
       })
-      const legacyPopulation = await legacyPopulationPending
-      assert.equal(legacyPopulation.type, 'population-result')
-      assert.equal(legacyPopulation.populated, true)
-      assert(legacyPopulation.delta.populatedRootIds.includes(legacyFinalPage.id))
-      legacyWorker.terminate()
+      const directPopulation = await directPopulationPending
+      assert.equal(directPopulation.type, 'population-result')
+      assert.equal(directPopulation.populated, true)
+      assert(directPopulation.delta.populatedRootIds.includes(directFinalPage.id))
+      directChannel.port1.close()
+      directWorker.terminate()
 
       const probe = new MessageChannel()
       const portPrototype = Object.getPrototypeOf(probe.port1)

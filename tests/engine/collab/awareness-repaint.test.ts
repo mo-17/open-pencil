@@ -5,7 +5,6 @@ import type { Awareness } from 'y-protocols/awareness'
 
 import { createEditor } from '@open-pencil/core/editor'
 
-import { createFollowActions } from '@/app/collab/awareness'
 import type { CursorBroadcastScheduler } from '@/app/collab/cursor-broadcast'
 import { createLocalAwarenessActions } from '@/app/collab/local-awareness'
 import {
@@ -17,6 +16,7 @@ import {
   watchAwarenessZoom
 } from '@/app/collab/session'
 import type { EditorStore } from '@/app/editor/active-store'
+import { follow, setPeers } from '@/app/presence/registry'
 
 test('remote peer cursor changes repaint overlays without invalidating the scene', () => {
   const editor = createEditor({ skipInitialGraphSetup: true })
@@ -36,8 +36,8 @@ test('remote peer cursor changes repaint overlays without invalidating the scene
       ]),
     setLocalStateField: mock(() => undefined)
   } as Awareness
-  let overlays = 0
-  editor.onEditorEvent('overlay:requested', () => overlays++)
+  let repaints = 0
+  editor.onEditorEvent('repaint:requested', () => repaints++)
   const state = ref(createInitialCollabState('Local'))
   const actions = createLocalAwarenessActions({
     state,
@@ -51,9 +51,9 @@ test('remote peer cursor changes repaint overlays without invalidating the scene
   actions.updatePeersList()
 
   expect(state.value.peers).toHaveLength(1)
-  expect(editor.state.remoteCursors).toHaveLength(1)
-  expect(overlays).toBe(1)
-  expect(editor.state.renderVersion).toBe(initialRenderVersion)
+  expect(editor.state.presenceCursors).toHaveLength(1)
+  expect(repaints).toBe(1)
+  expect(editor.state.renderVersion).toBe(initialRenderVersion + 1)
   expect(editor.state.sceneVersion).toBe(initialSceneVersion)
 })
 
@@ -100,11 +100,11 @@ test('selection and editing boundaries flush the latest cursor first', () => {
   expect(fields.slice(-2)).toEqual(['cursor', 'editing'])
 })
 
-test('disconnect cleanup clears cursors with an overlay-only repaint', () => {
+test('disconnect cleanup clears cursors with a repaint without invalidating the scene', () => {
   const editor = createEditor({ skipInitialGraphSetup: true })
-  editor.state.remoteCursors = [{ name: 'Remote', color: { r: 1, g: 0, b: 0, a: 1 }, x: 1, y: 2 }]
-  let overlays = 0
-  editor.onEditorEvent('overlay:requested', () => overlays++)
+  editor.state.presenceCursors = [{ name: 'Remote', color: { r: 1, g: 0, b: 0, a: 1 }, x: 1, y: 2 }]
+  let repaints = 0
+  editor.onEditorEvent('repaint:requested', () => repaints++)
   const initialRenderVersion = editor.state.renderVersion
   const initialSceneVersion = editor.state.sceneVersion
 
@@ -117,12 +117,12 @@ test('disconnect cleanup clears cursors with an overlay-only repaint', () => {
     motionUndoManager: null,
     unbindGraphEvents: null,
     stopZoomWatch: null,
-    resetFollow: mock(() => undefined)
+    stopAgentSync: null
   })
 
-  expect(editor.state.remoteCursors).toEqual([])
-  expect(overlays).toBe(1)
-  expect(editor.state.renderVersion).toBe(initialRenderVersion)
+  expect(editor.state.presenceCursors).toEqual([])
+  expect(repaints).toBe(1)
+  expect(editor.state.renderVersion).toBe(initialRenderVersion + 1)
   expect(editor.state.sceneVersion).toBe(initialSceneVersion)
 })
 
@@ -130,7 +130,7 @@ test('disconnect flushes the trailing cursor before destroying awareness', () =>
   const editor = createEditor({ skipInitialGraphSetup: true })
   const calls: string[] = []
   const runtime = createCollabRuntime()
-  runtime.connectedStore = editor as EditorStore
+  runtime.connectedStore.value = editor as EditorStore
   runtime.awareness = {
     destroy: () => calls.push('destroy')
   } as Awareness
@@ -139,12 +139,10 @@ test('disconnect flushes the trailing cursor before destroying awareness', () =>
     state: ref(createInitialCollabState('Local')),
     getStore: () => editor as EditorStore,
     updatePeersList: mock(() => undefined),
-    tickFollow: mock(() => undefined),
     broadcastAwareness: mock(() => undefined),
     applyYjsToGraph: mock(() => undefined),
     applyYjsMotionToGraph: mock(() => undefined),
     syncNodeToYjs: mock(() => undefined),
-    resetFollow: mock(() => undefined),
     flushCursor: () => calls.push('flush'),
     clearCursorBroadcast: () => calls.push('clear')
   })
@@ -155,46 +153,31 @@ test('disconnect flushes the trailing cursor before destroying awareness', () =>
 })
 
 test('following a peer keeps viewport updates on the scene render path', () => {
-  const requestRender = mock(() => undefined)
-  const requestOverlayRepaint = mock(() => undefined)
-  const store = {
-    state: { currentPageId: 'page-1', zoom: 1, panX: 0, panY: 0 },
-    switchPage: mock(() => Promise.resolve()),
-    requestRender,
-    requestOverlayRepaint
-  } as EditorStore
-  const awareness = {
-    getStates: () => new Map([[2, { cursor: { x: 10, y: 20, pageId: 'page-1', zoom: 2 } }]])
-  } as Awareness
-  const originalDocument = globalThis.document
-  const originalDevicePixelRatio = globalThis.devicePixelRatio
-  globalThis.document = {
-    querySelector: () => ({ width: 800, height: 600 })
-  } as Document
-  globalThis.devicePixelRatio = 2
-
-  try {
-    const follow = createFollowActions(
-      () => store,
-      () => awareness
-    )
-    follow.followPeer(2)
-    follow.tickFollow()
-
-    expect(store.state.zoom).toBe(2)
-    expect(store.state.panX).toBe(180)
-    expect(store.state.panY).toBe(110)
-    expect(requestRender).toHaveBeenCalledTimes(1)
-    expect(requestOverlayRepaint).not.toHaveBeenCalled()
-  } finally {
-    if (originalDocument) globalThis.document = originalDocument
-    else Reflect.deleteProperty(globalThis, 'document')
-    if (originalDevicePixelRatio === undefined) {
-      Reflect.deleteProperty(globalThis, 'devicePixelRatio')
-    } else {
-      globalThis.devicePixelRatio = originalDevicePixelRatio
+  const editor = createEditor({ getViewportSize: () => ({ width: 400, height: 300 }) })
+  const store = editor as EditorStore
+  setPeers(store, [
+    {
+      clientId: 2,
+      name: 'Remote',
+      color: { r: 1, g: 0, b: 0, a: 1 },
+      cursor: { x: 10, y: 20, pageId: editor.state.currentPageId, zoom: 2 },
+      agents: []
     }
-  }
+  ])
+  let repaints = 0
+  let overlays = 0
+  editor.onEditorEvent('repaint:requested', () => repaints++)
+  editor.onEditorEvent('overlay:requested', () => overlays++)
+  const sceneVersion = editor.state.sceneVersion
+
+  follow(store, { kind: 'person', clientId: 2 })
+
+  expect(editor.state.zoom).toBe(2)
+  expect(editor.state.panX).toBe(180)
+  expect(editor.state.panY).toBe(110)
+  expect(repaints).toBe(1)
+  expect(overlays).toBe(0)
+  expect(editor.state.sceneVersion).toBe(sceneVersion)
 })
 
 test('panning does not bypass cursor cadence while zoom still updates awareness', () => {

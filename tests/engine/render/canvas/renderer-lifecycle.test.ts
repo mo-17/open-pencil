@@ -36,6 +36,7 @@ function createRenderer() {
     ck: {} as SkiaRenderer['ck'],
     destroyed: false,
     textPreparationCache: new TextPreparationCache(),
+    transientPreviews: new Map(),
     imageCache: new Map(),
     imageCacheByteSize: 0,
     imageCacheByteBudget: 128 * 1024 * 1024,

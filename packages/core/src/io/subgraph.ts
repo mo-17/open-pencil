@@ -190,6 +190,17 @@ export function findPageId(source: SceneGraph, nodeId: string): string | null {
   return source.getPageId(nodeId) ?? null
 }
 
+/** The page child containing `nodeId`, or the node itself when it is a page child. */
+export function findPageChildId(source: SceneGraph, nodeId: string): string | null {
+  let current = source.getNode(nodeId)
+  while (current?.parentId) {
+    const parent = source.getNode(current.parentId)
+    if (parent?.type === 'CANVAS') return current.id
+    current = parent
+  }
+  return null
+}
+
 function ancestorChain(source: SceneGraph, id: string): string[] {
   const chain: string[] = []
   let current = source.getNode(id)
@@ -236,6 +247,17 @@ function rootNodeIds(source: SceneGraph): Set<string> {
     ids.add(node.id)
   }
   return ids
+}
+
+/** Clone `pageId` with only the subtrees of `nodeIds` (none keeps an empty page) and their dependencies. */
+export function extractPageContext(
+  source: SceneGraph,
+  pageId: string,
+  nodeIds: string[]
+): SceneGraph {
+  const ids = collectSelectionIds(source, nodeIds)
+  ids.add(pageId)
+  return cloneIntoGraph(source, ids)
 }
 
 export function extractExportGraph(source: SceneGraph, target: ExportTarget): ExtractedGraph {

@@ -51,5 +51,9 @@
   "applicationStateRetentionUnset": "未设置（沿用原有行为）",
   "applicationStateRetentionReset": "每次访问重置",
   "applicationStateRetentionPreserve": "本次会话内保留",
-  "applicationStateRetentionHint": "网页应用在本次运行会话内，按具体路径与查询参数保留已绑定的页面状态和滚动位置。重新加载会开启新会话。"
+  "applicationStateRetentionHint": "网页应用在本次运行会话内，按具体路径与查询参数保留已绑定的页面状态和滚动位置。重新加载会开启新会话。",
+  "pages": "页面",
+  "goToPage": "转到页面…",
+  "recentPage": "最近",
+  "currentPage": "当前页面"
 }
