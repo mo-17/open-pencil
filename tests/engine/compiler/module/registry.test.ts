@@ -77,7 +77,7 @@ describe('compiler module registry boundaries', () => {
       .map(({ lowerer }) => `${lowerer.pluginId}/${lowerer.moduleType}`)
       .sort()
 
-    expect(neutralIdentities).toHaveLength(42)
+    expect(neutralIdentities).toHaveLength(43)
     expect(reactIdentities).toEqual(neutralIdentities)
     const vueIdentities = BUILTIN_VUE_MODULE_REGISTRY.listBundles()
       .map(({ lowerer }) => `${lowerer.pluginId}/${lowerer.moduleType}`)

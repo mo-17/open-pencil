@@ -15,6 +15,7 @@ import { codeBlockTextNode } from '#core/canvas/modules/code-block/text'
 import { dataGridTextNode } from '#core/canvas/modules/data-grid/text'
 import { dateRangeTextNode } from '#core/canvas/modules/date-range/text'
 import { descriptionsTextNode } from '#core/canvas/modules/descriptions/text'
+import { effectPickTextNode } from '#core/canvas/modules/effect-pick/text'
 import { emptyStateTextNode } from '#core/canvas/modules/empty-state/text'
 import { markdownTextNode } from '#core/canvas/modules/markdown'
 import { modalTriggerTextNode } from '#core/canvas/modules/modal/text'
@@ -200,6 +201,7 @@ export function collectGraphFontRequirements(
 
 function displayTextNode(node: SceneNode, graph: SceneGraph): SceneNode | null {
   return (
+    effectPickTextNode(node) ??
     richTextTextNode(node) ??
     dateRangeTextNode(node) ??
     treeTextNode(node) ??

@@ -5,12 +5,13 @@ import { uint8ArrayToArrayBuffer } from '#core-tests/helpers/fig/fixtures'
 import { deflateSync } from 'fflate'
 
 import { exportFigFile, parseFigFile } from '@open-pencil/core'
+import { createEditor } from '@open-pencil/core/editor'
 import { parseFigBuffer } from '@open-pencil/fig'
 import { guidToString } from '@open-pencil/fig/node-change'
 import { figmaSchema } from '@open-pencil/kiwi/fig'
 import { initCodec, type NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { encodeBinarySchema } from '@open-pencil/kiwi/schema-runtime'
-import { SceneGraph, type Fill } from '@open-pencil/scene-graph'
+import { recordInstanceOverride, SceneGraph, type Fill } from '@open-pencil/scene-graph'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 beforeAll(initCodec)
@@ -36,6 +37,70 @@ function findRecord(changes: readonly NodeChange[], name: string) {
     name
   )
 }
+
+test('an explicit instance PATTERN override resolves its external source through edited saves and sync', async () => {
+  const graph = new SceneGraph(),
+    page = expectDefined(graph.getPages()[0]),
+    external = graph.createNode('RECTANGLE', page.id, { name: 'External override source' }),
+    component = graph.createNode('COMPONENT', page.id, { name: 'Pattern component' }),
+    internal = graph.createNode('RECTANGLE', component.id, { name: 'Internal source' })
+  graph.createNode('RECTANGLE', component.id, {
+    name: 'Pattern artwork',
+    fills: [pattern(internal.id)]
+  })
+  const instance = expectDefined(
+      graph.createInstance(component.id, page.id, { name: 'Edited instance' })
+    ),
+    owner = expectDefined(
+      graph.getChildren(instance.id).find((node) => node.name === 'Pattern artwork')
+    )
+  graph.updateNode(owner.id, {
+    fills: [pattern(external.id)],
+    strokes: [
+      {
+        ...pattern(external.id),
+        weight: 2,
+        align: 'INSIDE',
+        cap: 'NONE',
+        join: 'MITER',
+        dashPattern: []
+      }
+    ]
+  })
+  recordInstanceOverride(graph, owner.id, ['fills', 'strokes'])
+  let bytes = await exportFigFile(graph)
+  for (let cycle = 0; cycle < 2; cycle++) {
+    const reopened = await parseFigFile(uint8ArrayToArrayBuffer(bytes)),
+      target = expectDefined(
+        [...reopened.getAllNodes()].find((node) => node.name === external.name)
+      ),
+      savedInstance = expectDefined(
+        [...reopened.getAllNodes()].find((node) => node.name === instance.name)
+      ),
+      savedOwner = expectDefined(
+        reopened.getChildren(savedInstance.id).find((node) => node.name === owner.name)
+      ),
+      savedComponent = expectDefined(reopened.getNode(savedInstance.componentId ?? ''))
+    expect(savedOwner.fills[0]?.sourceNodeId).toBe(target.id)
+    expect(savedOwner.strokes[0]?.sourceNodeId).toBe(target.id)
+    const editor = createEditor({ graph: reopened })
+    try {
+      const sourceOwner = expectDefined(
+        reopened.getChildren(savedComponent.id).find((node) => node.name === owner.name)
+      )
+      reopened.updateNode(sourceOwner.id, { opacity: 0.5 })
+      await Promise.resolve()
+      expect(savedOwner.fills[0]?.sourceNodeId).toBe(target.id)
+      expect(savedOwner.strokes[0]?.sourceNodeId).toBe(target.id)
+      reopened.updateNode(target.id, { x: target.x + 1 })
+      const edited = await exportFigFile(reopened)
+      expect(edited).not.toEqual(bytes)
+      bytes = edited
+    } finally {
+      editor.dispose()
+    }
+  }
+})
 
 async function decode(graph: SceneGraph) {
   const bytes = await exportFigFile(graph)
@@ -71,13 +136,18 @@ test('encoded canvas background source follows a reassigned reserved GUID and pr
   })
   expect([...graph.nodes]).toEqual(before)
   const reopened = await parseFigFile(uint8ArrayToArrayBuffer(result.bytes)),
-    second = await decode(reopened)
+    reopenedTarget = expectDefined(
+      Array.from(reopened.getAllNodes()).find((node) => node.name === target.name)
+    )
+  reopened.updateNode(reopenedTarget.id, { x: reopenedTarget.x + 1 })
+  const second = await decode(reopened)
+  expect(second.bytes).not.toEqual(result.bytes)
   expect(findRecord(second.changes, page.name).backgroundPaints?.[0]?.sourceNodeId).toEqual(
     findRecord(second.changes, target.name).guid
   )
 })
 
-test('an encoded embedded-schema paint remaps while a GUID-shaped opaque payload survives two local writes', async () => {
+test('an encoded embedded-schema paint and opaque payload survive edited re-encoding', async () => {
   const schema = structuredClone(figmaSchema),
     node = expectDefined(schema.definitions.find((definition) => definition.name === 'NodeChange')),
     paint = expectDefined(schema.definitions.find((definition) => definition.name === 'Paint')),
@@ -93,6 +163,7 @@ test('an encoded embedded-schema paint remaps while a GUID-shaped opaque payload
   const graph = new SceneGraph(),
     page = graph.getPages()[0]
   graph.figSchemaDeflated = deflateSync(encodeBinarySchema(schema))
+  const root = expectDefined(graph.getNode(graph.rootId))
   const target = graph.createNode('RECTANGLE', page.id, { name: 'Embedded source' }),
     owner = graph.createNode('RECTANGLE', page.id, { name: 'Embedded owner' }),
     originalGUID: GUID = { sessionID: 0, localID: 0 }
@@ -103,23 +174,50 @@ test('an encoded embedded-schema paint remaps while a GUID-shaped opaque payload
   owner.source.fig.rawNodeFields.opaquePaintMetadata = {
     fillPaints: [{ type: 'PATTERN', sourceNodeId: originalGUID }]
   }
+  for (const container of [root, page]) {
+    container.source.fig.rawNodeFields.futurePaint = {
+      type: 'PATTERN',
+      sourceNodeId: originalGUID
+    }
+    container.source.fig.rawNodeFields.opaquePaintMetadata = {
+      fillPaints: [{ type: 'PATTERN', sourceNodeId: originalGUID }]
+    }
+  }
   owner.pluginData = [{ pluginId: 'guid-fixture', key: 'binding', value: 'preserve-42:2' }]
   const before = structuredClone([...graph.nodes])
+  let previousBytes: Uint8Array | undefined
   for (let cycle = 0, current = graph; cycle < 2; cycle++) {
+    if (cycle > 0) {
+      // Check passthrough separately; the following edit must exercise the encoder.
+      expect((await decode(current)).bytes).toEqual(expectDefined(previousBytes))
+      const reopenedTarget = expectDefined(
+        Array.from(current.getAllNodes()).find((node) => node.name === target.name)
+      )
+      current.updateNode(reopenedTarget.id, { x: reopenedTarget.x + 1 })
+    }
     const result = await decode(current),
       targetRecord = findRecord(result.changes, target.name),
       ownerRecord = findRecord(result.changes, owner.name) as NodeChange & {
         futurePaint?: { sourceNodeId?: GUID }
         opaquePaintMetadata?: { fillPaints?: Array<{ sourceNodeId?: GUID }> }
       }
+    if (previousBytes) expect(result.bytes).not.toEqual(previousBytes)
     expect(ownerRecord.futurePaint?.sourceNodeId).toEqual(targetRecord.guid)
     expect(ownerRecord.opaquePaintMetadata?.fillPaints?.[0]?.sourceNodeId).toEqual(originalGUID)
+    for (const type of ['DOCUMENT', 'CANVAS']) {
+      const container = expectDefined(
+        result.changes.find((change) => change.type === type)
+      ) as typeof ownerRecord
+      expect(container.futurePaint?.sourceNodeId).toEqual(targetRecord.guid)
+      expect(container.opaquePaintMetadata?.fillPaints?.[0]?.sourceNodeId).toEqual(originalGUID)
+    }
     expect(ownerRecord.pluginData).toContainEqual({
       pluginID: 'guid-fixture',
       key: 'binding',
       value: 'preserve-42:2'
     })
     current = await parseFigFile(uint8ArrayToArrayBuffer(result.bytes))
+    previousBytes = result.bytes
   }
   expect([...graph.nodes]).toEqual(before)
 })

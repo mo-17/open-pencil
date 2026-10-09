@@ -10,7 +10,12 @@ import {
   type TranslatedLocale
 } from '@open-pencil/vue'
 
-import { hasMixedLatinAndCjk, placeholders } from './quality'
+import {
+  hasMixedLatinAndCjk,
+  isIdenticalEnglishProse,
+  normalizedTranslationText,
+  placeholders
+} from './quality'
 
 const LOCALES_DIR = 'packages/vue/src/i18n/locales'
 const LOCALE_FILE_NAMES: Record<string, string> = {
@@ -28,10 +33,6 @@ function sourceMessage(value: unknown): string | null {
     return typeof input === 'string' ? input : null
   }
   return null
-}
-
-function normalized(value: string): string {
-  return value.normalize('NFKC').replaceAll(/\s+/g, ' ').trim()
 }
 
 function localeFileName(namespace: string) {
@@ -128,6 +129,7 @@ for (const [locale, dir] of expectedLocaleDirs) {
   const missing: string[] = []
   const extra: string[] = []
   let translated = 0
+  let nonlinguistic = 0
   let total = 0
 
   for (const file of fileDiff.missing) missing.push(`${file}.*`)
@@ -159,11 +161,14 @@ for (const [locale, dir] of expectedLocaleDirs) {
       }
       if ((locale === 'ja' || locale === 'zh-CN') && hasMixedLatinAndCjk(localized)) {
         observedMixedScript.add(id)
-        if (!mixedScriptBaseline.has(id)) report(`${id}: mixed Latin/CJK scripts require review`)
+        if (hasMixedLatinAndCjk(localized, source) && !mixedScriptBaseline.has(id))
+          report(`${id}: mixed Latin/CJK scripts require review`)
       }
-      if (normalized(source) === normalized(localized)) {
+      if (normalizedTranslationText(source) === normalizedTranslationText(localized)) {
         observedIdentical.add(id)
-        if (!translationBaseline.has(id))
+        if (!isIdenticalEnglishProse(source, localized)) {
+          nonlinguistic++
+        } else if (!translationBaseline.has(id))
           report(`${id}: translation is identical to the English source`)
       } else {
         translated++
@@ -176,7 +181,9 @@ for (const [locale, dir] of expectedLocaleDirs) {
 
   if (total > 0) {
     const coverage = ((translated / total) * 100).toFixed(1)
-    console.log(`${locale}: ${translated}/${total} translated (${coverage}%)`)
+    console.log(
+      `${locale}: ${translated}/${total} translated (${coverage}%); ${nonlinguistic} nonlinguistic formats/URLs`
+    )
   }
 
   const extraNonJSONFiles = files.filter(

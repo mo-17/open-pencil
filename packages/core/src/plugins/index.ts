@@ -1,4 +1,5 @@
 export * from './popover'
+export * from './effect-pick'
 export * from './tree'
 export * from './date-range'
 export * from './descriptions'

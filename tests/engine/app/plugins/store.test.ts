@@ -4,6 +4,8 @@ import { describe, expect, test } from 'bun:test'
 import {
   CHART_MODULE_TYPE,
   CHART_PLUGIN_ID,
+  EFFECT_PICK_MODULE_TYPE,
+  EFFECT_PICK_PLUGIN_ID,
   MAP_MODULE_TYPE,
   MAP_PLUGIN_ID
 } from '@open-pencil/core/plugins'
@@ -187,7 +189,18 @@ describe('app plugin store', () => {
 
     const loaded = await store.load()
     expect(loaded.error).toBeNull()
-    expect(loaded.installed).toHaveLength(9)
+    expect(loaded.installed).toHaveLength(10)
+    expect(
+      loaded.installed.find(
+        ({ package: value }) => value.manifest.plugin.id === EFFECT_PICK_PLUGIN_ID
+      )
+    ).toMatchObject({
+      enabled: true,
+      package: {
+        trustSource: 'app-bundle',
+        manifest: { plugin: { id: EFFECT_PICK_PLUGIN_ID } }
+      }
+    })
     expect(
       loaded.installed.find(
         ({ package: value }) => value.manifest.plugin.id === NESTJS_BACKEND_PROVIDER_PLUGIN_ID
@@ -215,6 +228,7 @@ describe('app plugin store', () => {
       )
     ).toMatchObject({ enabled: true })
     expect(store.canCreateModule(MAP_PLUGIN_ID, MAP_MODULE_TYPE)).toBe(true)
+    expect(store.canCreateModule(EFFECT_PICK_PLUGIN_ID, EFFECT_PICK_MODULE_TYPE)).toBe(true)
     expect(store.canCreateModule(CHART_PLUGIN_ID, CHART_MODULE_TYPE)).toBe(false)
 
     const installedChart = await store.install(CHART_PLUGIN_ID)
@@ -247,6 +261,7 @@ describe('app plugin store', () => {
       ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
       BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      EFFECT_PICK_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
       NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
@@ -263,6 +278,7 @@ describe('app plugin store', () => {
       ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
       BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      EFFECT_PICK_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
       NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
@@ -520,6 +536,7 @@ describe('app plugin store', () => {
       ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
       BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      EFFECT_PICK_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
       NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,
@@ -631,6 +648,7 @@ describe('app plugin store', () => {
       ALIYUN_DRIVE_STORAGE_PLUGIN_ID,
       BAIDU_NETDISK_STORAGE_PLUGIN_ID,
       COMPILER_PREVIEW_POPOUT_PLUGIN_ID,
+      EFFECT_PICK_PLUGIN_ID,
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
       NESTJS_BACKEND_PROVIDER_PLUGIN_ID,
       ONEDRIVE_STORAGE_PLUGIN_ID,

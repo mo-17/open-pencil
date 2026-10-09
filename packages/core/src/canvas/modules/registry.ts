@@ -30,6 +30,7 @@ import {
   DROPDOWN_MENU_MODULE_CANVAS_ADAPTER,
   renderDropdownMenuModulePreview
 } from './dropdown-menu'
+import { EFFECT_PICK_MODULE_CANVAS_ADAPTER } from './effect-pick'
 import { EMPTY_STATE_MODULE_CANVAS_ADAPTER } from './empty-state'
 import { HTML_MODULE_CANVAS_ADAPTER, renderHTMLModulePreview } from './html'
 import { LOTTIE_MODULE_CANVAS_ADAPTER, renderLottieModulePreview } from './lottie'
@@ -106,6 +107,7 @@ export class ModuleCanvasAdapterRegistry {
 }
 
 export const BUILTIN_MODULE_CANVAS_ADAPTERS = new ModuleCanvasAdapterRegistry()
+  .register(EFFECT_PICK_MODULE_CANVAS_ADAPTER)
   .register(MAP_MODULE_CANVAS_ADAPTER)
   .register(CHART_MODULE_CANVAS_ADAPTER)
   .register(RICH_TEXT_MODULE_CANVAS_ADAPTER)

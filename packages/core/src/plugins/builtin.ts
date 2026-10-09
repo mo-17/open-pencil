@@ -13,6 +13,7 @@ import { DATA_GRID_PLUGIN } from './data-grid'
 import { DATE_RANGE_PLUGIN } from './date-range'
 import { DESCRIPTIONS_PLUGIN } from './descriptions'
 import { DROPDOWN_MENU_PLUGIN } from './dropdown-menu'
+import { EFFECT_PICK_PLUGIN } from './effect-pick'
 import { EMPTY_STATE_PLUGIN } from './empty-state'
 import { HTML_PLUGIN } from './html'
 import { LOTTIE_PLUGIN } from './lottie'
@@ -47,6 +48,7 @@ export const BUILTIN_PLUGIN_REGISTRY = new PluginRegistry()
   .register(CHART_PLUGIN)
   .register(RICH_TEXT_PLUGIN)
   .register(HTML_PLUGIN)
+  .register(EFFECT_PICK_PLUGIN)
   .register(VIDEO_PLUGIN)
   .register(TABLE_PLUGIN)
   .register(SLIDE_MENU_PLUGIN)

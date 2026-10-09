@@ -1,3 +1,10 @@
+import {
+  EFFECT_PICK_CATALOG,
+  EFFECT_PICK_MODULE_TYPE,
+  EFFECT_PICK_PLUGIN_ID,
+  getEffectPickCatalogEntry
+} from '@open-pencil/core/plugins'
+
 import type { InstalledPluginModule } from '@/app/plugins'
 
 export type AssetSource = 'all' | 'local' | 'library' | 'plugin' | 'template'
@@ -39,12 +46,61 @@ export function moduleAssetCategory(moduleType: string): Exclude<AssetCategory, 
   return MODULE_CATEGORIES[moduleType] ?? 'components'
 }
 
-export function pluginAssetKey(module: InstalledPluginModule): string {
+export function pluginAssetKey(module: InstalledPluginModule, effectId?: string): string {
   return JSON.stringify([
     'plugin',
     module.plugin.package.manifest.plugin.id,
-    module.contribution.moduleType
+    module.contribution.moduleType,
+    ...(effectId ? [effectId] : [])
   ])
+}
+
+export interface ModuleAssetVariant {
+  readonly module: InstalledPluginModule
+  readonly effectId?: string
+  readonly name?: string
+  readonly description?: string
+  readonly tags?: readonly string[]
+}
+
+function isBundledEffectPickModule(module: InstalledPluginModule): boolean {
+  return (
+    module.plugin.package.trustSource === 'app-bundle' &&
+    module.plugin.package.manifest.plugin.id === EFFECT_PICK_PLUGIN_ID &&
+    module.contribution.moduleType === EFFECT_PICK_MODULE_TYPE
+  )
+}
+
+export function moduleAssetVariants(module: InstalledPluginModule): readonly ModuleAssetVariant[] {
+  return isBundledEffectPickModule(module)
+    ? EFFECT_PICK_CATALOG.map((effect) => ({
+        module,
+        effectId: effect.id,
+        name: effect.title,
+        description: effect.description,
+        tags: effect.tags
+      }))
+    : [{ module }]
+}
+
+/** Select only a reviewed bundled artifact; callers cannot supply source, digest or paths. */
+export function effectPickAssetModule(
+  module: InstalledPluginModule,
+  effectId: string
+): InstalledPluginModule {
+  const effect = getEffectPickCatalogEntry(effectId)
+  if (!isBundledEffectPickModule(module) || !effect)
+    throw new TypeError('The selected EffectPick asset is unavailable')
+  return {
+    plugin: module.plugin,
+    contribution: {
+      ...module.contribution,
+      name: effect.title,
+      description: effect.description,
+      defaultSize: { ...effect.defaultSize },
+      defaultConfig: { ...effect.defaultConfig }
+    }
+  }
 }
 
 export function componentAssetKey(

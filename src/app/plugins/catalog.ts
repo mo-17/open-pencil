@@ -1,4 +1,6 @@
 import {
+  EFFECT_PICK_MODULE_DEFINITION,
+  EFFECT_PICK_PLUGIN,
   CASCADER_PLUGIN,
   CASCADER_MODULE_DEFINITION,
   POPOVER_PLUGIN,
@@ -886,6 +888,16 @@ function deploymentPlanManifest(
 
 export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
   return Object.freeze([
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        EFFECT_PICK_PLUGIN,
+        EFFECT_PICK_MODULE_DEFINITION,
+        'open-pencil.effect-pick'
+      ),
+      installedByDefault: true,
+      enabledByDefault: true
+    },
     {
       trustSource: 'app-bundle',
       manifest: bundledModuleManifest(

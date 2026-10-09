@@ -7,13 +7,15 @@ import {
   type InstalledPluginModule
 } from '@/app/plugins'
 
+import { effectPickAssetModule } from './catalog'
 import { captureAssetTarget } from './target'
 
 export async function insertModuleAsset(
   editor: EditorStore,
   module: InstalledPluginModule,
   locale: string,
-  staleMessage: string
+  staleMessage: string,
+  effectId?: string
 ): Promise<string> {
   const isCurrent = captureAssetTarget(() => ({
     graph: editor.graph,
@@ -29,7 +31,11 @@ export async function insertModuleAsset(
       throw new Error(staleMessage)
     const compatibility = inspectInstalledPluginModuleCompatibility(current)
     if (!compatibility.ok) throw new Error(compatibility.reason)
-    return addInstalledPluginModuleToCanvas(editor, current, locale)
+    return addInstalledPluginModuleToCanvas(
+      editor,
+      effectId ? effectPickAssetModule(current, effectId) : current,
+      locale
+    )
   }
   return module.plugin.package.trustSource === 'publisher-signature'
     ? withAppPluginPublisherPrivilege(add)

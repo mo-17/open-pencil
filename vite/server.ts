@@ -26,6 +26,9 @@ export function createDevServerOptions(host: string | undefined, rootDir: string
     port: 1420,
     strictPort: true,
     host: host || false,
+    // The support gate dynamically imports boot, so Vite cannot anticipate its module graph.
+    // Transform the always-used entry and stylesheet before the browser requests them.
+    warmup: { clientFiles: ['./src/boot.ts', './src/app.css'] },
     hmr: host
       ? {
           protocol: 'ws',

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from '@open-pencil/vue'
+
+const { panels } = useI18n()
+
 const { modelValue } = defineProps<{
   modelValue: string
 }>()
@@ -20,16 +24,16 @@ function updateValue(event: Event) {
       <icon-lucide-search class="size-3 shrink-0" />
       <input
         :value="modelValue"
-        aria-label="Filter properties"
+        :aria-label="panels.inspectorFilterProperties"
         data-test-id="inspector-filter-input"
         class="min-w-0 flex-1 bg-transparent text-xs text-surface outline-none placeholder:text-muted"
-        placeholder="Filter properties"
+        :placeholder="panels.inspectorFilterProperties"
         type="search"
         @input="updateValue"
       />
       <button
         v-if="modelValue"
-        aria-label="Clear property filter"
+        :aria-label="panels.inspectorClearFilter"
         class="-mr-1 flex size-5 items-center justify-center rounded text-muted hover:bg-hover hover:text-surface"
         data-test-id="inspector-filter-clear"
         type="button"

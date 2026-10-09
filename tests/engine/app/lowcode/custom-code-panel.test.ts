@@ -215,7 +215,7 @@ describe('lowcode custom code panel state', () => {
       kind: 'customCssUnsafeUrl',
       url: 'data:image/svg+xml,<svg></svg>'
     })
-    expect(risks[0]?.title).toContain('will not be persisted')
+    expect(risks[0]?.title).toContain('Changes cannot be applied')
   })
 
   test('reports unsafe meta refresh URL protocols before persistence', () => {

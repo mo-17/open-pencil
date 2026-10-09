@@ -11,7 +11,8 @@ const { items, favorites, busy } = defineProps<{
 }>()
 const emit = defineEmits<{
   insert: [
-    module: ReturnType<typeof useAssetWorkbench>['filteredModules']['value'][number]['module']
+    module: ReturnType<typeof useAssetWorkbench>['filteredModules']['value'][number]['module'],
+    effectId?: string
   ]
   favorite: [key: string]
 }>()
@@ -27,6 +28,7 @@ const dialogs = useDialogMessages()
         v-for="item in items"
         :key="item.key"
         :data-module-type="item.module.contribution.moduleType"
+        :data-effect-id="item.effectId"
         class="rounded border border-border p-2"
       >
         <div class="flex items-start gap-2">
@@ -59,7 +61,7 @@ const dialogs = useDialogMessages()
           size="sm"
           class="mt-2 w-full"
           :disabled="busy"
-          @click="emit('insert', item.module)"
+          @click="emit('insert', item.module, item.effectId)"
         >
           <icon-lucide-plus class="size-3" />{{ dialogs.pluginAddToCanvas }}
         </AppButton>

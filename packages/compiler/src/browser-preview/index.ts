@@ -1,3 +1,4 @@
+export { effectPickRuntimeSource } from '#compiler/adapters/effect-pick/source'
 export { buildBrowserPreview } from './bundler'
 export { BROWSER_PREVIEW_LIMITS } from './limits'
 export { hasBrowserDynamicImport, isSafeBrowserPackageSpecifier } from './source-security'

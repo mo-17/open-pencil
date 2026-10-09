@@ -6,17 +6,18 @@ import {
   ContextMenuRoot,
   ContextMenuTrigger
 } from 'reka-ui'
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 import { usePanelMessages, useCommandMessages, useDialogMessages } from '@open-pencil/vue'
 
 import { componentAssetKey, matchesAssetQuery } from '@/app/assets/catalog'
+import { consumeAssetLibraryRequest, pendingAssetLibraryRequest } from '@/app/assets/navigation'
 import { captureAssetTarget } from '@/app/assets/target'
 import type { LocalAsset } from '@/app/assets/types'
 import { useAssetWorkbench } from '@/app/assets/use'
-import { useEditorStore } from '@/app/editor/active-store'
+import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
 import { nodeIcon } from '@/app/editor/icons'
 import { useLibraryService } from '@/app/libraries'
 import type { ComponentTemplateId } from '@/app/lowcode/component-templates'
@@ -72,9 +73,23 @@ const {
   busyTemplate,
   insertTemplate,
   clearFilters,
+  browseEffectPickLibrary,
   error,
   notice
 } = useAssetWorkbench()
+const owner = getActiveEditorStore()
+const assetList = useTemplateRef<HTMLElement>('asset-list')
+watch(
+  () => pendingAssetLibraryRequest(owner),
+  (request) => {
+    if (!request) return
+    consumeAssetLibraryRequest(owner, request, browseEffectPickLibrary)
+    void nextTick(() => {
+      if (getActiveEditorStore() === owner) assetList.value?.scrollTo({ top: 0 })
+    })
+  },
+  { immediate: true, flush: 'sync' }
+)
 const assetView = ref<AssetView>('grid')
 const detailsOpen = ref(false)
 const {
@@ -421,7 +436,10 @@ const hasNoResults = computed(
       <AppAlert v-if="error" tone="error" :heading="error" />
       <p v-else-if="notice" role="status" class="text-[11px] text-muted">{{ notice }}</p>
     </div>
-    <div class="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2">
+    <div
+      ref="asset-list"
+      class="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2"
+    >
       <section v-for="group in assetGroups" :key="group.pageId" class="mb-3">
         <h2 class="mb-1 px-1 text-[10px] font-medium tracking-wide text-muted uppercase">
           {{ group.pageName }}

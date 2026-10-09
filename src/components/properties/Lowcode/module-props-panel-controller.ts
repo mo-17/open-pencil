@@ -4,6 +4,8 @@ import {
   ACCORDION_PLUGIN_ID,
   BUILTIN_PLUGIN_REGISTRY,
   CAROUSEL_PLUGIN_ID,
+  EFFECT_PICK_PLUGIN_ID,
+  getEffectPickCatalogEntry,
   UPLOAD_BUTTON_MODULE_TYPE,
   UPLOAD_BUTTON_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
@@ -92,6 +94,10 @@ export function useModulePropsPanelController() {
   const { locale, panels } = useI18n()
   const { selectedNode } = useSelectionState()
   const jsonErrors = reactive<Record<string, string>>({})
+  const modulePreviewSize = computed(() => ({
+    width: selectedNode.value?.width ?? 1,
+    height: selectedNode.value?.height ?? 1
+  }))
 
   const tabsOwner = computed(() => {
     void editor.state.sceneVersion
@@ -177,6 +183,13 @@ export function useModulePropsPanelController() {
         (field) =>
           definition.value?.pluginId !== 'open-pencil.stepper' || fieldKey(field) !== 'currentIndex'
       )
+      .filter((field) => {
+        if (definition.value?.pluginId !== EFFECT_PICK_PLUGIN_ID) return true
+        const effectId = config.value.effectId
+        const effect =
+          typeof effectId === 'string' ? getEffectPickCatalogEntry(effectId) : undefined
+        return effect?.editableFields.some((key) => key === fieldKey(field)) ?? false
+      })
       .filter(
         (field) =>
           (definition.value?.pluginId !== 'open-pencil.cascader' ||
@@ -472,6 +485,7 @@ export function useModulePropsPanelController() {
   }
 
   return {
+    modulePreviewSize,
     tabsOwner,
     tabsContentStates,
     tabsPreviewId,

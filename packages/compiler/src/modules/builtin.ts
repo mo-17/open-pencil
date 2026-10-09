@@ -13,6 +13,7 @@ import { DATA_GRID_COMPILER_MODULE_LOWERER } from './data-grid'
 import { DATE_RANGE_COMPILER_MODULE_LOWERER } from './date-range'
 import { DESCRIPTIONS_COMPILER_MODULE_LOWERER } from './descriptions'
 import { DROPDOWN_MENU_COMPILER_MODULE_LOWERER } from './dropdown-menu'
+import { EFFECT_PICK_COMPILER_MODULE_LOWERER } from './effect-pick'
 import { EMPTY_STATE_COMPILER_MODULE_LOWERER } from './empty-state'
 import { HTML_COMPILER_MODULE_LOWERER } from './html'
 import { LOTTIE_COMPILER_MODULE_LOWERER } from './lottie'
@@ -124,4 +125,5 @@ export const BUILTIN_COMPILER_MODULE_REGISTRY = new CompilerModuleRegistry()
   .register({ lowerer: ORG_CHART_COMPILER_MODULE_LOWERER, targets: {} })
   .register({ lowerer: WALKTOUR_COMPILER_MODULE_LOWERER, targets: {} })
   .register({ lowerer: CASCADER_COMPILER_MODULE_LOWERER, targets: {} })
+  .register({ lowerer: EFFECT_PICK_COMPILER_MODULE_LOWERER, targets: {} })
   .freeze()

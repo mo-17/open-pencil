@@ -191,7 +191,7 @@ function createReaderSession(
       reader,
       blobs,
       sessionOptions,
-      createAssemblyState(reader, sessionOptions)
+      createAssemblyState(reader, sessionOptions, blobs)
     )
   } else state = materializeReader(initialReader, blobs, sessionOptions)
   const loaded = new Set<string>(
@@ -248,19 +248,20 @@ function seedDefinitionTypes(graph: SceneGraph): Map<string, string> {
 
 function createAssemblyState(
   reader: ReturnType<typeof createDocumentReader>,
-  options: DocumentAssemblyOptions
+  options: DocumentAssemblyOptions,
+  blobs: Uint8Array[]
 ): AssemblyState {
   const graph = new SceneGraph({
     maxNodes: options.archiveLimits?.maxGraphNodes,
     maxDepth: options.archiveLimits?.maxTreeDepth
   })
-  applyDocumentMetadata(graph, reader.documentRecord)
+  applyDocumentMetadata(graph, reader.documentRecord, blobs)
   const document = reader.documentRecord
   const root = graph.getNode(graph.rootId)
   if (document && root && options.mapNodeProps) {
     const { nodeType: _type, ...props } = options.mapNodeProps(
       document,
-      nodeChangeToProps(document, [])
+      nodeChangeToProps(document, blobs)
     )
     Object.assign(root, props, {
       width: document.size?.x ?? 0,
@@ -287,7 +288,7 @@ function materializeReader(
   options: DocumentAssemblyOptions,
   previous?: AssemblyState
 ) {
-  const state = previous ?? createAssemblyState(reader, options)
+  const state = previous ?? createAssemblyState(reader, options, blobs)
   state.graph.withNodeMutationOrigin('source-hydration', () =>
     state.graph.applyImportedStateDuring(() =>
       materializeReaderIntoState(reader, blobs, options, state, previous)
@@ -366,6 +367,7 @@ function materializeReaderIntoState(
       resolveStyleReference: reader.resolveStyleReference,
       mapNodeProps: options.mapNodeProps,
       afterMaterializeInstance: options.afterMaterializeInstance,
+      sourceNodes: sources,
       retainRootSourceMetadata: true,
       sourceChildren: mapInstanceSourceChildren(item.occurrence, components),
       existingNodes
@@ -403,6 +405,7 @@ function materializeReaderIntoState(
           resolveStyleReference: reader.resolveStyleReference,
           mapNodeProps: options.mapNodeProps,
           afterMaterializeInstance: options.afterMaterializeInstance,
+          sourceNodes: sources,
           retainRootSourceMetadata: true,
           sourceChildren: mapInstanceSourceChildren(child, components),
           existingNodes: existing ? new Map([[child, existing]]) : undefined

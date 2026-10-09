@@ -4,6 +4,7 @@ import type { HitTestOptions } from '@open-pencil/scene-graph/hit-test'
 import { modalHidesContent } from '#core/plugins/content/modal'
 import { resolveTabsContent, type TabsContentProjection } from '#core/plugins/content/tabs'
 import { tabsPreviewNode, type TabsTabPreview } from '#core/plugins/content/tabs-preview'
+import { resolveEffectPickModule } from '#core/plugins/effect-pick'
 
 export interface SelectionPresentation extends HitTestOptions {
   contentRootId?: string
@@ -24,6 +25,11 @@ export function createSelectionPresentation(
   return {
     contentRootId,
     rootId: contentRootId,
+    hasOwnContent(node) {
+      return (
+        node.type === 'FRAME' && resolveEffectPickModule(node.interactiveProps?.module)?.ok === true
+      )
+    },
     includeChild(parent, child) {
       if (modalHidesContent(parent)) return false
       const content = projection(parent)

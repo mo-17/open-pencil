@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 import { tv } from 'tailwind-variants'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
+import { useAssetLibraryRequest } from '@/app/assets/navigation'
+import { getActiveEditorStore } from '@/app/editor/active-store'
 import AppMenu from '@/components/shell/AppMenu.vue'
 import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 import splitterTheme from '@/theme/splitter'
@@ -14,7 +16,16 @@ import LayerTree from './LayerTree/LayerTree.vue'
 import PagesPanel from './PagesPanel.vue'
 
 const { menu, panels } = useI18n()
+const owner = getActiveEditorStore()
+const libraryRequest = useAssetLibraryRequest(owner)
 const activePanel = ref<'file' | 'assets'>('file')
+watch(
+  libraryRequest,
+  (request) => {
+    if (request) activePanel.value = 'assets'
+  },
+  { immediate: true, flush: 'sync' }
+)
 const panelModel = computed({
   get: () => activePanel.value,
   set: (value: string) => {

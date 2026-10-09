@@ -30,7 +30,7 @@ export function devAutomationRoute(
   const suffix = appURL.hostname.slice(markerIndex + APP_NAME.length)
   const mcpHostname = `${prefix}${MCP_SERVICE_NAME}${suffix}`
   return {
-    browserURL: `wss://${mcpHostname}${appURL.port ? `:${appURL.port}` : ''}`,
+    browserURL: `${appURL.protocol === 'https:' ? 'wss' : 'ws'}://${mcpHostname}${appURL.port ? `:${appURL.port}` : ''}`,
     corsOrigin: appURL.origin,
     portlessServiceName: MCP_SERVICE_NAME,
     runtimeId: mcpHostname

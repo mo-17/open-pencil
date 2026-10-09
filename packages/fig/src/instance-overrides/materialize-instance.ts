@@ -47,8 +47,11 @@ export interface MaterializeInstanceOptions {
   ) => ReturnType<typeof nodeChangeToProps>
   afterMaterializeInstance?: (
     graph: SceneGraph,
-    nodes: ReadonlyMap<InstanceOccurrence, SceneNode>
+    nodes: ReadonlyMap<InstanceOccurrence, SceneNode>,
+    sourceNodes: ReadonlyMap<string, string>
   ) => void
+  /** Authored source GUIDs already materialized outside this occurrence tree. */
+  sourceNodes?: ReadonlyMap<string, string>
   /** Graph ids for occurrences a component definition already materialized. */
   sourceChildren?: ReadonlyMap<InstanceOccurrence, string>
   /** Nodes to update in place rather than create, keyed by occurrence. */
@@ -165,8 +168,9 @@ export function materializeInstance(
     return node
   }
   const root = create(occurrence, parentId)
+  options.afterMaterializeInstance?.(graph, nodes, options.sourceNodes ?? new Map())
+  // Claims retain final runtime identities after the host resolves occurrence references.
   recordPropertyClaims(nodes)
-  options.afterMaterializeInstance?.(graph, nodes)
   return { root, nodes }
 }
 

@@ -13,6 +13,7 @@ import { DATA_GRID_COMPILER_MODULE_LOWERER } from '#compiler/modules/data-grid'
 import { DATE_RANGE_COMPILER_MODULE_LOWERER } from '#compiler/modules/date-range'
 import { DESCRIPTIONS_COMPILER_MODULE_LOWERER } from '#compiler/modules/descriptions'
 import { DROPDOWN_MENU_COMPILER_MODULE_LOWERER } from '#compiler/modules/dropdown-menu'
+import { EFFECT_PICK_COMPILER_MODULE_LOWERER } from '#compiler/modules/effect-pick'
 import { EMPTY_STATE_COMPILER_MODULE_LOWERER } from '#compiler/modules/empty-state'
 import * as htmlLowerer from '#compiler/modules/html'
 import * as lottieLowerer from '#compiler/modules/lottie'
@@ -57,6 +58,7 @@ import { DATA_GRID_VUE_MODULE_ADAPTER } from './data-grid'
 import { DATE_RANGE_VUE_MODULE_ADAPTER } from './date-range'
 import { DESCRIPTIONS_VUE_MODULE_ADAPTER } from './descriptions'
 import { DROPDOWN_MENU_VUE_MODULE_ADAPTER } from './dropdown-menu'
+import { EFFECT_PICK_VUE_MODULE_ADAPTER } from './effect-pick'
 import { EMPTY_STATE_VUE_MODULE_ADAPTER } from './empty-state'
 import { HTML_VUE_MODULE_ADAPTER } from './html'
 import { LOTTIE_VUE_MODULE_ADAPTER } from './lottie'
@@ -240,5 +242,9 @@ export const BUILTIN_VUE_MODULE_REGISTRY = new CompilerModuleRegistry()
   .register({
     lowerer: qrBarcodeLowerer.QR_BARCODE_COMPILER_MODULE_LOWERER,
     targets: { vue: QR_BARCODE_VUE_MODULE_ADAPTER }
+  })
+  .register({
+    lowerer: EFFECT_PICK_COMPILER_MODULE_LOWERER,
+    targets: { vue: EFFECT_PICK_VUE_MODULE_ADAPTER }
   })
   .freeze()

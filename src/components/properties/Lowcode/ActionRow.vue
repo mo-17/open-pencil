@@ -1066,8 +1066,7 @@ function changeServerWorkflow(id: string): void {
       class="flex flex-col gap-1 pl-1"
     >
       <p class="rounded border border-border bg-panel px-2 py-1 text-[10px] text-muted">
-        Calls your server endpoint. Put Stripe secret keys only on that server, never in this
-        document.
+        {{ panels.lowcodeActionStripeServerSecretHint }}
       </p>
       <label class="flex items-center gap-1 text-[11px] text-muted">
         <input
@@ -1141,16 +1140,12 @@ function changeServerWorkflow(id: string): void {
       </button>
       <select
         :value="action.errorTarget ?? ''"
-        :aria-label="
-          action.kind === 'stripeCheckout'
-            ? 'Stripe checkout error target'
-            : 'Stripe customer portal error target'
-        "
+        :aria-label="panels.lowcodeActionSupabaseErrorTarget"
         data-test-id="lowcode-action-stripe-error-target"
         class="self-start rounded border border-border bg-input px-1.5 py-0.5 text-[11px] text-surface outline-none focus:border-accent"
         @change="patch({ errorTarget: ($event.target as HTMLSelectElement).value || undefined })"
       >
-        <option value="">No error target</option>
+        <option value="">{{ panels.lowcodeActionSupabaseErrorTargetNone }}</option>
         <option v-for="d in docStates" :key="d.id" :value="d.name">{{ d.name }}</option>
       </select>
     </div>

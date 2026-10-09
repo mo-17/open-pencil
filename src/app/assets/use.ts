@@ -26,6 +26,7 @@ import {
 
 import {
   matchesAssetQuery,
+  moduleAssetVariants,
   moduleAssetCategory,
   pluginAssetKey,
   type AssetCategory,
@@ -81,7 +82,9 @@ export function useAssetWorkbench() {
     return appPluginStore
       .installedModules()
       .filter((module) => inspectInstalledPluginModuleCompatibility(module).ok)
-      .map((module) => {
+      .flatMap(moduleAssetVariants)
+      .map((variant) => {
+        const { module } = variant
         const pluginId = module.plugin.package.manifest.plugin.id
         const localized = localizedAppPluginContributionText(
           pluginId,
@@ -90,9 +93,12 @@ export function useAssetWorkbench() {
         )
         return {
           module,
-          key: pluginAssetKey(module),
-          name: moduleName(module),
-          description: localized?.description ?? module.contribution.description,
+          effectId: variant.effectId,
+          tags: variant.tags,
+          key: pluginAssetKey(module, variant.effectId),
+          name: variant.name ?? moduleName(module),
+          description:
+            variant.description ?? localized?.description ?? module.contribution.description,
           pluginName:
             localizedAppPluginText(pluginId, locale.value)?.name ??
             module.plugin.package.manifest.plugin.name,
@@ -108,7 +114,14 @@ export function useAssetWorkbench() {
           (item) =>
             (category.value === 'all' || category.value === item.category) &&
             (!favoritesOnly.value || favorites.value.keys.has(item.key)) &&
-            matchesAssetQuery(query.value, item.name, item.description, item.pluginName)
+            matchesAssetQuery(
+              query.value,
+              item.name,
+              item.description,
+              item.pluginName,
+              item.effectId,
+              item.tags?.join(' ')
+            )
         )
   )
   const filteredTemplates = computed(() => {
@@ -148,13 +161,19 @@ export function useAssetWorkbench() {
     { value: 'input' as const, label: panels.value.assetCategoryInput },
     { value: 'feedback' as const, label: panels.value.assetCategoryFeedback }
   ])
-  async function insertModule(module: InstalledPluginModule) {
+  async function insertModule(module: InstalledPluginModule, effectId?: string) {
     if (busyModule.value || busyTemplate.value) return
-    busyModule.value = pluginAssetKey(module)
+    busyModule.value = pluginAssetKey(module, effectId)
     error.value = ''
     notice.value = ''
     try {
-      await insertModuleAsset(editor, module, locale.value, panels.value.assetTargetChanged)
+      await insertModuleAsset(
+        editor,
+        module,
+        locale.value,
+        panels.value.assetTargetChanged,
+        effectId
+      )
       notice.value = panels.value.assetInsertedHint
     } catch (cause) {
       error.value = dialogs.value.pluginOperationFailed({
@@ -193,6 +212,14 @@ export function useAssetWorkbench() {
     favoritesOnly.value = false
     templateKind.value = 'all'
   }
+
+  function browseEffectPickLibrary() {
+    clearFilters()
+    source.value = 'plugin'
+    query.value = 'EffectPick'
+    error.value = ''
+    notice.value = ''
+  }
   return {
     query,
     source,
@@ -211,6 +238,7 @@ export function useAssetWorkbench() {
     busyTemplate,
     insertTemplate,
     clearFilters,
+    browseEffectPickLibrary,
     error,
     notice
   }

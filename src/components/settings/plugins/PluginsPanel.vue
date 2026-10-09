@@ -3,11 +3,16 @@ import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'rek
 /* eslint-disable max-lines -- Plugin settings coordinates lifecycle, runtime, host actions, and dependency review. */
 import { computed, nextTick, ref } from 'vue'
 
-import { VR_TOUR_PLUGIN_ID } from '@open-pencil/core/plugins'
+import {
+  EFFECT_PICK_MODULE_TYPE,
+  EFFECT_PICK_PLUGIN_ID,
+  VR_TOUR_PLUGIN_ID
+} from '@open-pencil/core/plugins'
 import type { JSONValue } from '@open-pencil/scene-graph/primitives'
-import { useI18n, useSceneComputed } from '@open-pencil/vue'
+import { useI18n, useSceneComputed, useViewportKind } from '@open-pencil/vue'
 
-import { useEditorStore } from '@/app/editor/active-store'
+import { requestEffectPickLibrary } from '@/app/assets/navigation'
+import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
 import {
   activateAppPluginMarketplaceSource,
   addInstalledPluginModuleToCanvas,
@@ -82,6 +87,7 @@ import {
 } from '@/app/plugins/vr-tour/assets'
 import { settingsDialogOpen } from '@/app/settings/dialog'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+import AppAlert from '@/components/ui/feedback/AppAlert.vue'
 import AppBadge from '@/components/ui/feedback/AppBadge.vue'
 import SegmentedControl from '@/components/ui/select/SegmentedControl.vue'
 import AppSwitch from '@/components/ui/toggle/AppSwitch.vue'
@@ -102,7 +108,8 @@ import PluginMarketplaceSummary from './PluginMarketplaceSummary.vue'
 import PluginPackageReviewDialog from './PluginPackageReviewDialog.vue'
 import PluginV2ContractSummary from './PluginV2ContractSummary.vue'
 
-const { dialogs, locale } = useI18n()
+const { dialogs, locale, panels } = useI18n()
+const { isMobile } = useViewportKind()
 const editor = useEditorStore()
 const view = ref<'browse' | 'installed'>('browse')
 const busyPluginId = ref<string | null>(null)
@@ -977,11 +984,18 @@ async function addModule(
   plugin: InstalledAppPlugin,
   contribution: InstalledPluginModule['contribution']
 ): Promise<void> {
+  if (isEffectPickLibrary(plugin, contribution) && isMobile.value) return
   operationError.value = null
   try {
     const add = async (): Promise<void> => {
       const module = appPluginStore.module(pluginId(plugin), contribution.moduleType)
       if (!module) throw new Error(dialogs.value.pluginDisabledHint)
+      if (isEffectPickLibrary(plugin, contribution)) {
+        const owner = getActiveEditorStore()
+        owner.state.showUI = true
+        requestEffectPickLibrary(owner)
+        return
+      }
       addInstalledPluginModuleToCanvas(editor, module)
     }
     if (plugin.package.trustSource === 'publisher-signature') {
@@ -993,6 +1007,17 @@ async function addModule(
       error: error instanceof Error ? error.message : String(error)
     })
   }
+}
+
+function isEffectPickLibrary(
+  plugin: InstalledAppPlugin,
+  contribution: InstalledPluginModule['contribution']
+): boolean {
+  return (
+    plugin.package.trustSource === 'app-bundle' &&
+    pluginId(plugin) === EFFECT_PICK_PLUGIN_ID &&
+    contribution.moduleType === EFFECT_PICK_MODULE_TYPE
+  )
 }
 
 async function runHostContribution(
@@ -1887,13 +1912,23 @@ function confirmResetLocalState(): void {
                   !plugin.enabled ||
                   Boolean(plugin.blockedReason) ||
                   !moduleCompatibility(pluginId(plugin), contribution).ok ||
-                  busyPluginId === pluginId(plugin)
+                  busyPluginId === pluginId(plugin) ||
+                  (isEffectPickLibrary(plugin, contribution) && isMobile)
                 "
                 :data-test-id="`plugin-add-${pluginId(plugin)}-${contribution.moduleType}`"
                 @click="addModule(plugin, contribution)"
               >
-                <icon-lucide-plus class="mr-1 inline size-3" />
-                {{ dialogs.pluginAddToCanvas }} ·
+                <icon-lucide-library
+                  v-if="isEffectPickLibrary(plugin, contribution)"
+                  class="mr-1 inline size-3"
+                />
+                <icon-lucide-plus v-else class="mr-1 inline size-3" />
+                {{
+                  isEffectPickLibrary(plugin, contribution)
+                    ? panels.effectPickBrowseLibrary
+                    : dialogs.pluginAddToCanvas
+                }}
+                ·
                 {{
                   contributionDisplayName(
                     pluginId(plugin),
@@ -1902,6 +1937,10 @@ function confirmResetLocalState(): void {
                   )
                 }}
               </button>
+              <AppAlert
+                v-if="isEffectPickLibrary(plugin, contribution) && isMobile"
+                :heading="panels.effectPickLibraryWideWindow"
+              />
               <span
                 v-if="!moduleCompatibility(pluginId(plugin), contribution).ok"
                 class="max-w-44 text-[9px] text-error"

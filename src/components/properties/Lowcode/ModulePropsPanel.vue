@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { VR_TOUR_MODULE_TYPE, VR_TOUR_PLUGIN_ID } from '@open-pencil/core/plugins'
+import { computed } from 'vue'
+
+import {
+  EFFECT_PICK_PLUGIN_ID,
+  parseEffectPickConfig,
+  VR_TOUR_MODULE_TYPE,
+  VR_TOUR_PLUGIN_ID
+} from '@open-pencil/core/plugins'
 import { useI18n } from '@open-pencil/vue'
 
 import { feedbackControlHint } from '@/app/lowcode/feedback-controls/properties'
 import { useSectionUI } from '@/components/ui/section'
 
+import EffectPickPreview from './EffectPickPreview.vue'
+import EffectPickSelector from './EffectPickSelector.vue'
 import { useModulePropsPanelController } from './module-props-panel-controller'
 import ModuleDataBindingPanel from './ModuleDataBindingPanel.vue'
 import ModulePropertyFieldEditor from './ModulePropertyFieldEditor.vue'
@@ -29,6 +38,7 @@ const {
   moduleDescription,
   moduleEditorText,
   moduleName,
+  modulePreviewSize,
   optionLabel,
   panels,
   statusMessage,
@@ -50,6 +60,7 @@ const {
   editTabContent,
   resetTabsPreview
 } = useModulePropsPanelController()
+const effectPick = computed(() => parseEffectPickConfig(config.value))
 </script>
 
 <template>
@@ -109,6 +120,31 @@ const {
     />
 
     <ModuleDataBindingPanel v-if="!statusMessage" />
+
+    <EffectPickSelector
+      v-if="
+        definition?.pluginId === EFFECT_PICK_PLUGIN_ID &&
+        effectPick?.ok &&
+        tabsOwner &&
+        !statusMessage
+      "
+      :node="tabsOwner"
+      :config="effectPick.config"
+    />
+
+    <EffectPickPreview
+      :key="`${tabsOwner?.id}:${effectPick.ok ? effectPick.config.effectId : ''}:${effectPick.ok ? effectPick.config.artifactDigest : ''}`"
+      v-if="
+        definition?.pluginId === EFFECT_PICK_PLUGIN_ID &&
+        effectPick?.ok &&
+        tabsOwner &&
+        !statusMessage
+      "
+      :node-id="tabsOwner.id"
+      :config="effectPick.config"
+      :width="modulePreviewSize.width"
+      :height="modulePreviewSize.height"
+    />
 
     <ModulePropertyFieldEditor
       v-for="field in fields"

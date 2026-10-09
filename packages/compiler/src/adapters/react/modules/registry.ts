@@ -1,4 +1,8 @@
 import { withBundledModuleAssets } from '#compiler/adapters/avatar/assets'
+import {
+  collectEffectPickArtifacts,
+  emitEffectPickNotices
+} from '#compiler/adapters/effect-pick/source'
 import type { ComponentDef, IRModule, IRNode } from '#compiler/ir/types'
 import type { CompilerModuleRegistry } from '#compiler/modules/registry'
 
@@ -98,7 +102,14 @@ export function collectReactModuleProject(
       dependencies.set(name, version)
     }
   }
-  return { adapters, dependencies: Object.fromEntries(dependencies) }
+  return {
+    adapters,
+    dependencies: Object.fromEntries(dependencies),
+    effectPickArtifacts: collectEffectPickArtifacts([
+      ...irNodes.flat(),
+      ...components.flatMap(componentBodyNodes)
+    ])
+  }
 }
 
 export function emitReactModuleRuntimes(
@@ -106,11 +117,20 @@ export function emitReactModuleRuntimes(
   contribution: ReactModuleProjectContribution,
   options: ReactModuleRuntimeOptions
 ): void {
+  emitEffectPickNotices(files, contribution.effectPickArtifacts ?? [])
   for (const adapter of contribution.adapters) {
     if (files.has(adapter.runtimePath)) {
       throw new Error(`React module runtime would overwrite generated file: ${adapter.runtimePath}`)
     }
-    files.set(adapter.runtimePath, adapter.buildRuntime(withBundledModuleAssets(options, files)))
+    files.set(
+      adapter.runtimePath,
+      adapter.buildRuntime(
+        withBundledModuleAssets(
+          { ...options, effectPickArtifacts: contribution.effectPickArtifacts },
+          files
+        )
+      )
+    )
   }
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { hitTest, hitTestDeep } from '@open-pencil/scene-graph/hit-test'
 
 import { expectDefined } from '../helpers/assert'
 import { pageId, rect } from './helpers'
@@ -29,6 +30,48 @@ describe('hitTest', () => {
       fills: []
     })
     expect(graph.hitTest(100, 100, pageId(graph))).toBeNull()
+  })
+
+  for (const type of ['FRAME', 'COMPONENT'] as const) {
+    test(`host content makes an unpainted ${type} pickable only within its bounds`, () => {
+      const graph = new SceneGraph()
+      const page = pageId(graph)
+      const node = graph.createNode(type, page, {
+        x: 20,
+        y: 30,
+        width: 100,
+        height: 80,
+        fills: [],
+        strokes: []
+      })
+      const options = { hasOwnContent: (candidate: typeof node) => candidate.id === node.id }
+      for (const query of [hitTest, hitTestDeep]) {
+        expect(query(graph, 70, 70, page)).toBeNull()
+        expect(query(graph, 70, 70, page, options)?.id).toBe(node.id)
+        expect(query(graph, 19, 70, page, options)).toBeNull()
+        expect(query(graph, 121, 70, page, options)).toBeNull()
+      }
+      expect(node.fills).toEqual([])
+      expect(node.strokes).toEqual([])
+    })
+  }
+
+  test('host content respects child inclusion and clipping presentation', () => {
+    const graph = new SceneGraph()
+    const page = pageId(graph)
+    const parent = graph.createNode('FRAME', page, { width: 100, height: 100 })
+    const node = graph.createNode('FRAME', parent.id, { width: 100, height: 100 })
+    const ownContent = { hasOwnContent: (candidate: typeof node) => candidate.id === node.id }
+    for (const query of [hitTest, hitTestDeep]) {
+      expect(query(graph, 50, 50, page, ownContent)?.id).toBe(node.id)
+      expect(query(graph, 50, 50, page, { ...ownContent, includeChild: () => false })).toBeNull()
+      expect(
+        query(graph, 50, 50, page, {
+          ...ownContent,
+          childClip: () => ({ x: 0, y: 0, width: 20, height: 20 })
+        })
+      ).toBeNull()
+    }
   })
 
   test('frame with visible fill is hittable', () => {

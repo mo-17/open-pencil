@@ -27,6 +27,7 @@ export const UNIT_TEST_GROUPS = {
     'tests/engine/tauri'
   ],
   compiler: [
+    'packages/compiler/tests',
     'tests/engine/compiler',
     'packages/backend-compiler-sidecar/tests',
     'packages/codepen-sidecar/tests'

@@ -2,9 +2,18 @@ import { params } from '@nanostores/i18n'
 
 import { i18n } from '#vue/i18n/create'
 
+import { effectPickPanelMessageDefaults } from './panels-effect-pick'
 import { lowcodeDocumentPanelMessageDefaults } from './panels-lowcode-document'
 
 export const panelMessageDefaults = {
+  ...effectPickPanelMessageDefaults,
+  inspectorFilterProperties: 'Filter properties',
+  inspectorClearFilter: 'Clear property filter',
+  inspectorNoMatches: 'No matching property sections',
+  inspectorSectionLowcodeState: 'Lowcode State',
+  inspectorSectionServices: 'Services & Workflows',
+  inspectorSectionContent: 'Content & i18n',
+  inspectorSectionAssets: 'Assets & Variables',
   lowcodeNavigationOperation: 'Navigation operation',
   lowcodeNavigationJump: 'Jump to page',
   lowcodeNavigationReplace: 'Replace current page',
@@ -1889,6 +1898,8 @@ export const panelMessageDefaults = {
   lowcodeActionSupabaseFilterRemove: 'Remove filter',
   lowcodeActionSupabaseErrorTarget: 'Write error to',
   lowcodeActionSupabaseErrorTargetNone: 'no error target',
+  lowcodeActionStripeServerSecretHint:
+    'Calls your server endpoint. Put Stripe secret keys only on that server, never in this document.',
   lowcodeActionSupabaseAuth: 'Supabase auth',
   lowcodeActionAuthEmail: 'Email expression',
   lowcodeActionAuthEmailPlaceholder: "e.g. emailInput or 'a@b.co'",

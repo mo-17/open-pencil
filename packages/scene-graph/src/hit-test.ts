@@ -3,12 +3,14 @@ import { getWorldMatrix } from './coordinate'
 import Matrix from './matrix'
 import type { Rect } from './primitives'
 
-/** Host-owned presentation can restrict input without changing authored visibility. */
+/** Host-owned presentation supplies input boundaries without changing authored paints or visibility. */
 export interface HitTestOptions {
   /** Optional view boundary: ancestors outside it do not clip or hide this scope. */
   rootId?: string
   includeChild?: (parent: SceneNode, child: SceneNode) => boolean
   childClip?: (parent: SceneNode) => Rect | null
+  /** Renderer-owned content can make an unpainted container pickable within its node bounds. */
+  hasOwnContent?: (node: SceneNode) => boolean
 }
 
 const CONTAINER_TYPES = new Set<NodeType>([
@@ -131,7 +133,7 @@ function hitTestOpaqueContainer(
   if (!containsPoint(px, py, child, graph, transformCache)) return null
   const childHit = hitTestChildren(graph, px, py, childId, deep, transformCache, options)
   if (childHit) return child
-  if (hasVisibleFillOrStroke(child)) return child
+  if (hasVisibleFillOrStroke(child) || options?.hasOwnContent?.(child)) return child
   return null
 }
 function hitTestTransparentContainer(
@@ -158,7 +160,10 @@ function hitTestTransparentContainer(
     return childHit
   }
 
-  if (containsPoint(px, py, child, graph, transformCache) && hasVisibleFillOrStroke(child))
+  if (
+    containsPoint(px, py, child, graph, transformCache) &&
+    (hasVisibleFillOrStroke(child) || options?.hasOwnContent?.(child))
+  )
     return child
   return null
 }

@@ -216,10 +216,10 @@ function sectionLabel(id: string): string {
     'lowcode-validation': 'Validation',
     'lowcode-advanced': 'Advanced',
     page: panels.value.page,
-    'lowcode-document-state': 'Lowcode State',
-    'lowcode-document-services': 'Services & Workflows',
-    'lowcode-document-content': 'Content & i18n',
-    'assets-variables': 'Assets & Variables'
+    'lowcode-document-state': panels.value.inspectorSectionLowcodeState,
+    'lowcode-document-services': panels.value.inspectorSectionServices,
+    'lowcode-document-content': panels.value.inspectorSectionContent,
+    'assets-variables': panels.value.inspectorSectionAssets
   }
   return labels[id] ?? id
 }
@@ -546,15 +546,17 @@ const singleHasMatches = computed(
 
 const showEmptyPage = computed(() => sectionMatches('page', panels.value.page))
 const showEmptyLowcodeState = computed(() =>
-  sectionMatches('lowcode-document-state', 'Lowcode State')
+  sectionMatches('lowcode-document-state', panels.value.inspectorSectionLowcodeState)
 )
 const showEmptyLowcodeServices = computed(() =>
-  sectionMatches('lowcode-document-services', 'Services & Workflows')
+  sectionMatches('lowcode-document-services', panels.value.inspectorSectionServices)
 )
 const showEmptyLowcodeContent = computed(() =>
-  sectionMatches('lowcode-document-content', 'Content & i18n')
+  sectionMatches('lowcode-document-content', panels.value.inspectorSectionContent)
 )
-const showEmptyAssets = computed(() => sectionMatches('assets-variables', 'Assets & Variables'))
+const showEmptyAssets = computed(() =>
+  sectionMatches('assets-variables', panels.value.inspectorSectionAssets)
+)
 const showEmptyExport = computed(() => sectionMatches('export', panels.value.export))
 const emptyHasMatches = computed(
   () =>
@@ -667,7 +669,7 @@ const emptyHasMatches = computed(
       data-test-id="inspector-filter-empty"
       class="border-b border-border px-3 py-5 text-center text-xs text-muted"
     >
-      No matching property sections
+      {{ panels.inspectorNoMatches }}
     </div>
   </div>
 
@@ -907,7 +909,7 @@ const emptyHasMatches = computed(
         data-test-id="inspector-filter-empty"
         class="border-b border-border px-3 py-5 text-center text-xs text-muted"
       >
-        No matching property sections
+        {{ panels.inspectorNoMatches }}
       </div>
     </div>
   </RetainedPanel>
@@ -945,9 +947,11 @@ const emptyHasMatches = computed(
         v-else-if="sectionId === 'lowcode-document-state'"
         v-show="sectionVisible('lowcode-document-state', showEmptyLowcodeState)"
         id="lowcode-document-state"
-        label="Lowcode State"
+        :label="panels.inspectorSectionLowcodeState"
         v-bind="inspectorSectionState('lowcode-document-state')"
-        :highlighted="sectionHighlighted('lowcode-document-state', 'Lowcode State')"
+        :highlighted="
+          sectionHighlighted('lowcode-document-state', panels.inspectorSectionLowcodeState)
+        "
       >
         <StatePanel />
         <DocumentStatePanel />
@@ -956,9 +960,11 @@ const emptyHasMatches = computed(
         v-else-if="sectionId === 'lowcode-document-services'"
         v-show="sectionVisible('lowcode-document-services', showEmptyLowcodeServices)"
         id="lowcode-document-services"
-        label="Services & Workflows"
+        :label="panels.inspectorSectionServices"
         v-bind="inspectorSectionState('lowcode-document-services')"
-        :highlighted="sectionHighlighted('lowcode-document-services', 'Services & Workflows')"
+        :highlighted="
+          sectionHighlighted('lowcode-document-services', panels.inspectorSectionServices)
+        "
       >
         <BackendEditorPanel />
         <SupabaseConfigPanel />
@@ -970,9 +976,11 @@ const emptyHasMatches = computed(
         v-else-if="sectionId === 'lowcode-document-content'"
         v-show="sectionVisible('lowcode-document-content', showEmptyLowcodeContent)"
         id="lowcode-document-content"
-        label="Content & i18n"
+        :label="panels.inspectorSectionContent"
         v-bind="inspectorSectionState('lowcode-document-content')"
-        :highlighted="sectionHighlighted('lowcode-document-content', 'Content & i18n')"
+        :highlighted="
+          sectionHighlighted('lowcode-document-content', panels.inspectorSectionContent)
+        "
       >
         <TranslationsPanel />
       </InspectorSection>
@@ -980,9 +988,9 @@ const emptyHasMatches = computed(
         v-else-if="sectionId === 'assets-variables'"
         v-show="sectionVisible('assets-variables', showEmptyAssets)"
         id="assets-variables"
-        label="Assets & Variables"
+        :label="panels.inspectorSectionAssets"
         v-bind="inspectorSectionState('assets-variables')"
-        :highlighted="sectionHighlighted('assets-variables', 'Assets & Variables')"
+        :highlighted="sectionHighlighted('assets-variables', panels.inspectorSectionAssets)"
       >
         <LibrariesPanel />
         <VariablesSection @open-dialog="variablesOpen = true" />
@@ -1003,7 +1011,7 @@ const emptyHasMatches = computed(
       data-test-id="inspector-filter-empty"
       class="border-b border-border px-3 py-5 text-center text-xs text-muted"
     >
-      No matching property sections
+      {{ panels.inspectorNoMatches }}
     </div>
   </div>
 

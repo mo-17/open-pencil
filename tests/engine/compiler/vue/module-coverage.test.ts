@@ -13,7 +13,7 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 describe('bundled Vue module coverage', () => {
   test('every Core bundled module identity has a matching Vue runtime', () => {
     const modules = BUILTIN_PLUGIN_REGISTRY.listModules()
-    expect(modules).toHaveLength(42)
+    expect(modules).toHaveLength(43)
     for (const module of modules) {
       const adapter = findVueModuleAdapter(module)
       expect(adapter).not.toBeNull()

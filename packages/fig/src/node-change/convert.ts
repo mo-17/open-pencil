@@ -10,6 +10,7 @@ import { parseVariantName } from '@open-pencil/scene-graph/variant-name'
 
 import { importCanvasGuides } from './canvas-guides'
 import { convertFigmaDerivedTextGlyphs } from './derived-text/glyphs'
+import { figmaNodeExtensionEntries } from './extension-fields'
 import { convertFontFeatures } from './font/features'
 import { convertFontVariations } from './font/variations'
 import { extractLayoutPreferences } from './layout-preferences'
@@ -1269,6 +1270,11 @@ function extractFigmaRawGeometry(
   for (const key of FIGMA_RAW_NODE_FIELD_KEYS) {
     const value = nc[key]
     if (value !== undefined) rawNodeFields[key] = preserveFigmaPayloadBlobs(value, blobs)
+  }
+  // Retain newer embedded-schema fields without turning known editable fields
+  // into stale raw fallbacks. Paint references are remapped by the schema visitor.
+  for (const [key, value] of figmaNodeExtensionEntries(nc)) {
+    rawNodeFields[key] = preserveFigmaPayloadBlobs(value, blobs)
   }
   const rawNodeType = isFigmaOpaqueNodeType(nc.type) ? nc.type : null
   return {

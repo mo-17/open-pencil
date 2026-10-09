@@ -44,7 +44,7 @@ test('document control panels render fields and feedback in Simplified Chinese',
   await expect(analytics.getByLabel('隐私政策 URL')).toBeVisible()
 
   const customCode = editor.page.getByTestId('lowcode-custom-code-section')
-  await expect(customCode.getByText('自定义页头与 CSS', { exact: true })).toBeVisible()
+  await expect(customCode.getByText('自定义文档头部与 CSS', { exact: true })).toBeVisible()
   await expect(customCode).toContainText('添加用于 SEO、CSP 或社交预览的结构化元数据标签')
   await expect(customCode.getByLabel('页头样式')).toBeVisible()
   await expect(customCode.getByLabel('应用 CSS')).toBeVisible()
@@ -58,12 +58,43 @@ test('document control panels render fields and feedback in Simplified Chinese',
   await expect(customCode.getByLabel('链接 rel 属性')).toBeVisible()
   await expect(customCode.getByLabel('链接地址')).toBeVisible()
   await expect(customCode.getByLabel('链接跨域模式')).toBeVisible()
+  await expect(customCode.getByLabel('链接跨域模式')).toHaveValue('')
+  await expect(customCode.getByLabel('链接跨域模式').locator('option').first()).toHaveText(
+    '不设置 crossorigin 属性'
+  )
 
   const headStyles = customCode.getByLabel('页头样式')
   await headStyles.fill(':root { color-scheme: light; }')
   await headStyles.blur()
   await expect(customCode.getByText('部署 CSP 检查', { exact: true })).toBeVisible()
   await expect(customCode).toContainText('内联页头样式可能需要 CSP 放行')
+
+  await headStyles.fill('.hero { background: url(javascript:alert(1)); }')
+  await headStyles.blur()
+  await expect(customCode).toContainText('文档头部样式包含不安全的 URL 时，无法应用更改。')
+  await headStyles.fill(':root { color-scheme: light; }')
+  await headStyles.blur()
+  await expect(customCode).not.toContainText('文档头部样式包含不安全的 URL 时，无法应用更改。')
+
+  const appCSS = customCode.getByLabel('应用 CSS')
+  await appCSS.fill('.hero { background: url(javascript:alert(1)); }')
+  await appCSS.blur()
+  await expect(customCode).toContainText('自定义 CSS 包含不安全的 URL 时，无法应用更改。')
+  await appCSS.fill('body { margin: 0; }')
+  await appCSS.blur()
+  await expect(customCode).not.toContainText('自定义 CSS 包含不安全的 URL 时，无法应用更改。')
+
+  await customCode.getByTestId('lowcode-custom-head-meta-add').click()
+  await customCode.getByLabel('元数据键').fill('refresh')
+  await customCode.getByLabel('元数据键').blur()
+  await customCode.getByLabel('元数据类型').selectOption('httpEquiv')
+  const metaContent = customCode.getByLabel('元数据内容')
+  await metaContent.fill('0; url=javascript:alert(1)')
+  await metaContent.blur()
+  await expect(customCode).toContainText('meta refresh 包含不安全的 URL 时，无法应用更改。')
+  await metaContent.fill('0; url=/docs')
+  await metaContent.blur()
+  await expect(customCode).not.toContainText('meta refresh 包含不安全的 URL 时，无法应用更改。')
 })
 
 test('workflow, translation, and library controls render dynamic content in Simplified Chinese', async () => {

@@ -37,9 +37,9 @@ export function readerSessionOptions(sink: FigReaderDiagnostic[]): DocumentAssem
       graph.withNodeMutationOrigin('source-hydration', () =>
         graph.applyImportedStateDuring(() => restoreReaderMetadata(graph, sources, records))
       ),
-    afterMaterializeInstance: (graph, nodes) =>
+    afterMaterializeInstance: (graph, nodes, sources) =>
       graph.withNodeMutationOrigin('source-hydration', () =>
-        graph.applyImportedStateDuring(() => restoreOccurrenceReferences(graph, nodes))
+        graph.applyImportedStateDuring(() => restoreOccurrenceReferences(graph, nodes, sources))
       ),
     onUnresolvedProperty: (diagnostic) => sink.push({ kind: 'property', diagnostic }),
     onUnresolvedAssignment: (diagnostic) => sink.push({ kind: 'assignment', diagnostic }),

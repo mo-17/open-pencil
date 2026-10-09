@@ -1,4 +1,6 @@
 import {
+  EFFECT_PICK_MODULE_TYPE,
+  EFFECT_PICK_PLUGIN_ID,
   CASCADER_PLUGIN_ID,
   CASCADER_MODULE_TYPE,
   WALKTOUR_PLUGIN_ID,
@@ -94,6 +96,10 @@ import type { EditorStore } from '@/app/editor/active-store'
 import type { InstalledPluginModule } from './types'
 
 const TRUSTED_MODULE_ADAPTERS = new Map([
+  [
+    'open-pencil.effect-pick',
+    { pluginId: EFFECT_PICK_PLUGIN_ID, moduleType: EFFECT_PICK_MODULE_TYPE }
+  ],
   ['open-pencil.cascader', { pluginId: CASCADER_PLUGIN_ID, moduleType: CASCADER_MODULE_TYPE }],
   ['open-pencil.walktour', { pluginId: WALKTOUR_PLUGIN_ID, moduleType: WALKTOUR_MODULE_TYPE }],
   ['open-pencil.org-chart', { pluginId: ORG_CHART_PLUGIN_ID, moduleType: ORG_CHART_MODULE_TYPE }],

@@ -123,7 +123,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
       id: `head-style-unsafe-url:${url}`,
       kind: 'headStyleUnsafeUrl',
       url,
-      title: 'Head style URL protocol will not be persisted',
+      title: 'Changes cannot be applied while document head styles contain an unsafe URL.',
       detail: `${url} uses a protocol outside the allowed http(s), protocol-relative, or relative URL set.`
     })
   }
@@ -134,7 +134,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
       id: `head-meta-refresh-unsafe-url:${url}`,
       kind: 'metaRefreshUnsafeUrl',
       url,
-      title: 'Meta refresh URL protocol will not be persisted',
+      title: 'Changes cannot be applied while meta refresh contains an unsafe URL.',
       detail: `${url} uses a protocol outside the allowed http(s) or relative URL set.`
     })
   }
@@ -181,7 +181,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
       id: `custom-css-unsafe-url:${url}`,
       kind: 'customCssUnsafeUrl',
       url,
-      title: 'Custom CSS URL protocol will not be persisted',
+      title: 'Changes cannot be applied while custom CSS contains an unsafe URL.',
       detail: `${url} uses a protocol outside the allowed http(s), protocol-relative, or relative URL set.`
     })
   }

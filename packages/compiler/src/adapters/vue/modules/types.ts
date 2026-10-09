@@ -1,7 +1,10 @@
+import type { EffectPickCatalogEntry } from '@open-pencil/core/plugins'
+
 export interface VueModuleRuntimeOptions {
   devMode?: boolean
   /** Paths emitted from graph-owned bytes before module runtime generation. */
   bundledAssetPaths?: readonly string[]
+  effectPickArtifacts?: readonly EffectPickCatalogEntry[]
   microfrontend?: boolean
 }
 
@@ -18,6 +21,7 @@ export interface VueModuleAdapter {
 }
 
 export interface VueModuleProjectContribution {
+  effectPickArtifacts?: readonly EffectPickCatalogEntry[]
   readonly adapters: readonly VueModuleAdapter[]
   readonly usesLayerRuntime: boolean
   readonly dependencies: Readonly<Record<string, string>>

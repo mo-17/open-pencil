@@ -49,7 +49,7 @@ export const lowcodeDocumentPanelMessageDefaults = {
     'Use the public PostHog project API key, usually starting with phc_.',
   lowcodeAnalyticsPosthogEndpointHint:
     'Leave blank for app.posthog.com, or use your regional/self-hosted host.',
-  lowcodeCustomCode: 'Custom head & CSS',
+  lowcodeCustomCode: 'Custom document head & CSS',
   lowcodeCustomCodeClear: 'Clear',
   lowcodeCustomCodeMeta: 'Meta',
   lowcodeCustomCodeAddMeta: 'Add meta',
@@ -69,7 +69,7 @@ export const lowcodeDocumentPanelMessageDefaults = {
   lowcodeCustomCodeLinkType: 'Link type',
   lowcodeCustomCodeLinkMedia: 'Link media',
   lowcodeCustomCodeLinkCrossorigin: 'Link crossorigin',
-  lowcodeCustomCodeNoCors: 'no CORS',
+  lowcodeCustomCodeNoCors: 'No crossorigin attribute',
   lowcodeCustomCodeHeadStyles: 'Head styles',
   lowcodeCustomCodeAppCss: 'App CSS',
   lowcodeCustomCodeDeployCspChecks: 'Deploy CSP checks',
@@ -78,11 +78,13 @@ export const lowcodeDocumentPanelMessageDefaults = {
   lowcodeCustomCodeCspInlineStyleTitle: 'Inline head styles may require CSP allowance',
   lowcodeCustomCodeCspInlineStyleDetail:
     'Hosts with strict CSP must allow inline styles by nonce/hash or style-src unsafe-inline.',
-  lowcodeCustomCodeCspHeadStyleUnsafeTitle: 'Head style URL protocol will not be persisted',
+  lowcodeCustomCodeCspHeadStyleUnsafeTitle:
+    'Changes cannot be applied while document head styles contain an unsafe URL.',
   lowcodeCustomCodeCspHeadStyleUnsafeDetail: params(
     '{url} uses a protocol outside the allowed http(s), protocol-relative, or relative URL set.'
   ),
-  lowcodeCustomCodeCspMetaRefreshUnsafeTitle: 'Meta refresh URL protocol will not be persisted',
+  lowcodeCustomCodeCspMetaRefreshUnsafeTitle:
+    'Changes cannot be applied while meta refresh contains an unsafe URL.',
   lowcodeCustomCodeCspMetaRefreshUnsafeDetail: params(
     '{url} uses a protocol outside the allowed http(s) or relative URL set.'
   ),
@@ -98,7 +100,8 @@ export const lowcodeDocumentPanelMessageDefaults = {
   lowcodeCustomCodeCspExternalResourceDetail: params(
     '{url} must be allowed by the deployed host CSP resource directives.'
   ),
-  lowcodeCustomCodeCspCustomCssUnsafeTitle: 'Custom CSS URL protocol will not be persisted',
+  lowcodeCustomCodeCspCustomCssUnsafeTitle:
+    'Changes cannot be applied while custom CSS contains an unsafe URL.',
   lowcodeCustomCodeCspCustomCssUnsafeDetail: params(
     '{url} uses a protocol outside the allowed http(s), protocol-relative, or relative URL set.'
   ),

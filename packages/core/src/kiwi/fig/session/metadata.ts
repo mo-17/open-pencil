@@ -1,7 +1,7 @@
 import type { InstanceOccurrence } from '@open-pencil/fig/instance-overrides'
-import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import type { NodeChange, Paint } from '@open-pencil/kiwi/fig/codec'
 import { guidToString } from '@open-pencil/kiwi/fig/guid'
-import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import type { Fill, SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { collapseFigmaProjectionChildren } from '#core/kiwi/fig/node-change/figma-projection'
 import { reapplyInstanceOverrides } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
@@ -51,11 +51,13 @@ export function restoreReaderMetadata(
 /** Repeated instances remap their own Motion targets without retargeting a sibling occurrence. */
 export function restoreOccurrenceReferences(
   graph: SceneGraph,
-  nodes: ReadonlyMap<InstanceOccurrence, SceneNode>
+  nodes: ReadonlyMap<InstanceOccurrence, SceneNode>,
+  sources: ReadonlyMap<string, string>
 ): void {
   for (const [occurrence, root] of nodes) {
     if (root.type !== 'INSTANCE') continue
     const mapping = new Map<string, string>()
+    const scope: Array<[InstanceOccurrence, SceneNode]> = []
     const visit = (current: InstanceOccurrence): void => {
       const node = nodes.get(current)
       if (!node) return
@@ -65,10 +67,44 @@ export function restoreOccurrenceReferences(
       if (mapping.has(source) && mapping.get(source) !== node.id)
         throw new Error(`Ambiguous Motion occurrence reference ${source}`)
       mapping.set(source, node.id)
+      scope.push([current, node])
       if (current !== occurrence && node.type === 'INSTANCE') return
       for (const child of current.children) visit(child)
     }
     visit(occurrence)
     graph.remapClonedNodeReferences(mapping, 'instance')
+    for (const [current, node] of scope) {
+      const fills = resolveOccurrencePaintSources(
+        node.fills,
+        current.properties.fillPaints,
+        mapping,
+        sources
+      )
+      const strokes = resolveOccurrencePaintSources(
+        node.strokes,
+        current.properties.strokePaints,
+        mapping,
+        sources
+      )
+      if (fills || strokes)
+        graph.updateNode(node.id, { ...(fills ? { fills } : {}), ...(strokes ? { strokes } : {}) })
+    }
   }
+}
+
+function resolveOccurrencePaintSources<T extends Omit<Fill, 'type'>>(
+  paints: readonly T[],
+  saved: readonly Paint[] | undefined,
+  occurrences: ReadonlyMap<string, string>,
+  sources: ReadonlyMap<string, string>
+): T[] | undefined {
+  const resolved = paints.map((paint, index) => {
+    const reference = saved?.[index]?.sourceNodeId
+    if (!reference) return paint
+    // Resolve from the saved GUID; a runtime id can coincide with a different source GUID.
+    const source = guidToString(reference)
+    const target = occurrences.get(source) ?? sources.get(source)
+    return target && target !== paint.sourceNodeId ? { ...paint, sourceNodeId: target } : paint
+  })
+  return resolved.some((paint, index) => paint !== paints[index]) ? resolved : undefined
 }

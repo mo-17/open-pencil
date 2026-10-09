@@ -14,6 +14,7 @@ import {
   exportCanvasGuides,
   guidToString,
   importCanvasGuides,
+  isFigmaNodeExtensionField,
   materializeFigmaPayload,
   mergePluginData,
   remapFigmaMessageObjectAnimations,
@@ -143,7 +144,11 @@ function applyPreservedRootMetadata(
   blobs: Uint8Array[],
   blobIndexByHex: Map<string, number>
 ): void {
-  for (const field of fields) {
+  const preservedFields = new Set([
+    ...fields,
+    ...Object.keys(rawNodeFields).filter(isFigmaNodeExtensionField)
+  ])
+  for (const field of preservedFields) {
     const value = rawNodeFields[field]
     if (value === undefined) continue
     nodeChange[field] = materializeFigmaPayload(value, blobs, {

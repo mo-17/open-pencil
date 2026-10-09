@@ -13,6 +13,7 @@ import { DATA_GRID_COMPILER_MODULE_LOWERER } from '#compiler/modules/data-grid'
 import { DATE_RANGE_COMPILER_MODULE_LOWERER } from '#compiler/modules/date-range'
 import { DESCRIPTIONS_COMPILER_MODULE_LOWERER } from '#compiler/modules/descriptions'
 import { DROPDOWN_MENU_COMPILER_MODULE_LOWERER } from '#compiler/modules/dropdown-menu'
+import { EFFECT_PICK_COMPILER_MODULE_LOWERER } from '#compiler/modules/effect-pick'
 import { EMPTY_STATE_COMPILER_MODULE_LOWERER } from '#compiler/modules/empty-state'
 import { HTML_COMPILER_MODULE_LOWERER } from '#compiler/modules/html'
 import { LOTTIE_COMPILER_MODULE_LOWERER } from '#compiler/modules/lottie'
@@ -57,6 +58,7 @@ import { DATA_GRID_REACT_MODULE_ADAPTER } from './data-grid'
 import { DATE_RANGE_REACT_MODULE_ADAPTER } from './date-range'
 import { DESCRIPTIONS_REACT_MODULE_ADAPTER } from './descriptions'
 import { DROPDOWN_MENU_REACT_MODULE_ADAPTER } from './dropdown-menu'
+import { EFFECT_PICK_REACT_MODULE_ADAPTER } from './effect-pick'
 import { EMPTY_STATE_REACT_MODULE_ADAPTER } from './empty-state'
 import { HTML_REACT_MODULE_ADAPTER } from './html'
 import { LOTTIE_REACT_MODULE_ADAPTER } from './lottie'
@@ -255,5 +257,9 @@ export const BUILTIN_REACT_MODULE_REGISTRY = new CompilerModuleRegistry()
   .register({
     lowerer: CASCADER_COMPILER_MODULE_LOWERER,
     targets: { react: CASCADER_REACT_MODULE_ADAPTER }
+  })
+  .register({
+    lowerer: EFFECT_PICK_COMPILER_MODULE_LOWERER,
+    targets: { react: EFFECT_PICK_REACT_MODULE_ADAPTER }
   })
   .freeze()

@@ -1,9 +1,15 @@
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import { preserveFigmaPayloadBlobs } from '../node-change/convert'
+import { figmaNodeExtensionEntries } from '../node-change/extension-fields'
 import { ENABLED_LIBRARIES_PLUGIN_KEY, getOpenPencilPluginValue } from '../node-change/plugin-data'
 
-export function applyDocumentMetadata(graph: SceneGraph, document: NodeChange | undefined): void {
+export function applyDocumentMetadata(
+  graph: SceneGraph,
+  document: NodeChange | undefined,
+  blobs: Uint8Array[] = []
+): void {
   const root = graph.getNode(graph.rootId)
   if (!root || !document) return
   root.source.format = 'fig'
@@ -16,6 +22,9 @@ export function applyDocumentMetadata(graph: SceneGraph, document: NodeChange | 
     })) ?? []
   root.source.fig.rawNodeFields.strokeJoin = document.strokeJoin
   root.source.fig.rawNodeFields.strokeWeight = document.strokeWeight
+  for (const [field, value] of figmaNodeExtensionEntries(document)) {
+    root.source.fig.rawNodeFields[field] = preserveFigmaPayloadBlobs(value, blobs)
+  }
   const bindings = getOpenPencilPluginValue(document, ENABLED_LIBRARIES_PLUGIN_KEY)
   if (!bindings) return
   let parsed: unknown
